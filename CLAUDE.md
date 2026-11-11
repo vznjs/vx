@@ -163,7 +163,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (the npm registry), `release.images` (pushes the server images through Docker),
   `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) and
-  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task}` and `#check.perf` (the tracer would be timed), and
+  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task,real}` and `#check.perf` (the tracer would be timed), and
   `@vzn/vx-conformance#test` and `#conformance` (each drives bubblewrap itself) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates

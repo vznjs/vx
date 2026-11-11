@@ -5,18 +5,32 @@
 // loss with Engineering.
 //
 //   bun private/vx-bench/real/nightly.ts [--reps N] [--out report.md] [--only name]
+//     [--json real-repos.json]
 //
 // Needs network (git clone, pnpm install) and node + pnpm on PATH. Repos
 // are kept under VX_NIGHTLY_DIR (default ~/.vx-nightly), reset to their
-// pinned commit and re-moved to vx (`vx init --native`) each night.
+// pinned commit each night and moved to vx: a repo with an overlay gets
+// the native config written for it under real/<name>/ copied over the
+// clone (REPOS.md); the others run `vx init --native`. `--json` writes each
+// repo's row in real-repos.json's shape into that file, replacing the row
+// of the same repo.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { benchEnv } from '../bench-env.js'
 import { vxCompileEntries } from '../compile-entries.js'
 import { type Matchup, verdict } from './verdict.js'
+import { ARMS, bestReps, dataRow, mergeRows, serializeData, settle, type DataRow } from './rows.js'
 
 interface Repo {
   name: string
@@ -27,6 +41,8 @@ interface Repo {
   /** FILTERS for the harness: both tools run the same projects. */
   filters?: string
   workers: number
+  /** Native config kept in real/<name>/, copied over the clone; pinned by full SHA. */
+  overlay?: boolean
 }
 
 // The repos and scopes /compare/real-repos/ publishes (benchmarks.md § Real repos).
@@ -34,11 +50,30 @@ const REPOS: Repo[] = [
   {
     name: 'create-t3-turbo',
     url: 'https://github.com/t3-oss/create-t3-turbo',
-    commit: '8f945b7',
+    commit: '8f945b7bb3bfb3ca8358d48b1ff0214079bc11ee',
     tool: 'turbo',
     tasks: 'build',
     filters: './packages/*',
     workers: 10,
+    overlay: true,
+  },
+  {
+    name: 'solid',
+    url: 'https://github.com/solidjs/solid',
+    commit: 'b25c557754f2ced0d86490e6dbfded9b1745b663',
+    tool: 'turbo',
+    tasks: 'build',
+    workers: 10,
+    overlay: true,
+  },
+  {
+    name: 'vueuse',
+    url: 'https://github.com/vueuse/vueuse',
+    commit: 'efdd69a1481205051e85d9c815eaa5840237f2d1',
+    tool: 'turbo',
+    tasks: 'build',
+    workers: 10,
+    overlay: true,
   },
   {
     name: 'react-email',
@@ -60,13 +95,12 @@ const REPOS: Repo[] = [
   },
 ]
 
-const ARMS = ['cold', 'restore', 'noop'] as const
-
 const { values } = parseArgs({
   options: {
     reps: { type: 'string', default: '3' },
     out: { type: 'string' },
     only: { type: 'string' },
+    json: { type: 'string' },
   },
 })
 const REPO_ROOT = path.resolve(import.meta.dir, '../../..')
@@ -136,6 +170,26 @@ function moveRunFields(dir: string): void {
   }
 }
 
+// The overlay's configs over the clone, and the plugin packages its
+// workspace file imports linked from this checkout: the binary serves
+// `@vzn/vx` itself, a plugin it does not carry.
+function applyOverlay(name: string, dir: string): void {
+  const overlay = path.join(REPO_ROOT, 'private/vx-bench/real', name)
+  cpSync(overlay, dir, { recursive: true })
+  const workspace = readFileSync(path.join(overlay, '.vx/workspace.ts'), 'utf8')
+  for (const [, pkg] of workspace.matchAll(/from '@vzn\/(vx-[\w-]+)'/g)) {
+    // Replaced each night: a link kept from another checkout dangles.
+    const link = path.join(dir, 'node_modules/@vzn', pkg!)
+    rmSync(link, { force: true, recursive: true })
+    mkdirSync(path.dirname(link), { recursive: true })
+    symlinkSync(path.join(REPO_ROOT, 'packages', pkg!), link)
+  }
+  // The copy rewrites tracked files (vueuse's turbo.json) and the install
+  // touched others: a stale index stat makes vx hash a clean file from disk
+  // instead of trusting its blob id. Exit 1 (files differ) is expected.
+  sh(['git', 'update-index', '-q', '--refresh'], dir)
+}
+
 const vxBin = path.join(WORK, 'vx')
 must(
   [
@@ -157,7 +211,9 @@ interface Row extends Matchup {
   arm: (typeof ARMS)[number]
 }
 const rows: Row[] = []
+const dataRows: DataRow[] = []
 const failures: string[] = []
+const today = new Date().toISOString().slice(0, 10)
 
 for (const repo of REPOS) {
   if (values.only !== undefined && values.only !== repo.name) continue
@@ -173,11 +229,15 @@ for (const repo of REPOS) {
     must(['git', 'clean', '-fdxq', '-e', 'node_modules', '-e', '**/node_modules'], dir)
     must(['pnpm', 'install', '--frozen-lockfile'], dir)
     repairManagedPnpm(dir)
-    allowSameDayVx(dir)
-    must([vxBin, 'init', '--native'], dir)
-    moveRunFields(dir)
+    if (repo.overlay === true) applyOverlay(repo.name, dir)
+    else {
+      allowSameDayVx(dir)
+      must([vxBin, 'init', '--native'], dir)
+      moveRunFields(dir)
+    }
     const script = path.join(REPO_ROOT, 'private/vx-bench/real', `${repo.tool}-repo.sh`)
     const toolArgs = repo.tool === 'nx' ? 'NX_ARGS' : 'TURBO_ARGS'
+    const load = await settle(os.loadavg, (ms) => Bun.sleep(ms))
     const out = must(['bash', script, dir, vxBin, repo.tasks, values.reps!], dir, {
       ...benchEnv(),
       FILTERS: repo.filters ?? '',
@@ -185,28 +245,37 @@ for (const repo of REPOS) {
       [toolArgs]:
         repo.tool === 'nx' ? `--parallel=${repo.workers}` : `--concurrency=${repo.workers}`,
     })
-    // `<tool> <arm> <ms> ms exit=<code>`: the best successful rep per tool and arm.
-    const best = new Map<string, number>()
-    for (const m of out.matchAll(/^(\w+) (\w+) (\d+) ms exit=(\d+)$/gm)) {
-      const [, tool, arm, ms, code] = m
-      if (code !== '0') {
-        failures.push(`${repo.name}: ${tool} ${arm} exited ${code}`)
-        continue
-      }
-      const k = `${tool} ${arm}`
-      best.set(k, Math.min(best.get(k) ?? Infinity, Number(ms)))
-    }
+    // Every rep and the box's load: a best rep says nothing of the others,
+    // or of what else ran (a 91 ms no-op that was 55 ms idle, 2026-11-10).
+    console.error(`${repo.name}: load before ${load}\n${out}`)
+    const best = bestReps(out)
+    failures.push(...best.failed.map((f) => `${repo.name}: ${f}`))
     for (const arm of ARMS) {
-      const vx = best.get(`vx ${arm}`)
-      const rival = best.get(`${repo.tool} ${arm}`)
-      if (vx === undefined || rival === undefined) {
-        failures.push(
-          `${repo.name}: no successful ${arm} rep for ${vx === undefined ? 'vx' : repo.tool}`,
-        )
-        continue
-      }
-      rows.push({ repo: repo.name, tool: repo.tool, arm, vx, rival })
+      const vx = best.ms.get(`vx ${arm}`)
+      const rival = best.ms.get(`${repo.tool} ${arm}`)
+      if (vx !== undefined && rival !== undefined)
+        rows.push({ repo: repo.name, tool: repo.tool, arm, vx, rival })
     }
+    const toolPkg = path.join(dir, 'node_modules', repo.tool, 'package.json')
+    const row = dataRow(
+      {
+        repo: new URL(repo.url).pathname.slice(1),
+        version: JSON.parse(readFileSync(toolPkg, 'utf8')).version,
+        commit: repo.commit,
+        machine: `${os.platform()} ${os.arch()}, ${os.cpus().length} cores`,
+        load,
+        setup:
+          repo.overlay === true
+            ? `native config, \`private/vx-bench/real/${repo.name}/\``
+            : 'native config, `vx init --native`',
+        date: today,
+        heading: 'Real repos on native config',
+      },
+      repo.tool,
+      best,
+    )
+    if ('row' in row) dataRows.push(row.row)
+    else failures.push(`${repo.name}: no successful rep of ${row.missing.join(', ')}`)
   } catch (err) {
     // The command line alone named no cause: keep the output's last line too.
     const lines = (err as Error).message.split('\n').filter((l) => l.trim() !== '')
@@ -217,7 +286,7 @@ for (const repo of REPOS) {
 const secs = (ms: number): string => `${(ms / 1000).toFixed(ms < 1000 ? 3 : 2)} s`
 const losses = rows.filter((r) => r.vx > r.rival)
 const report = [
-  `# Nightly real-repo bench ${new Date().toISOString().slice(0, 10)}`,
+  `# Nightly real-repo bench ${today}`,
   '',
   `vx ${vxCommit} (compiled from this checkout), ${values.reps} reps, best of each; ` +
     `${os.type()} ${os.arch()}, ${os.cpus().length} cores.`,
@@ -231,6 +300,11 @@ const report = [
   ...(failures.length > 0 ? ['## Failed', '', ...failures.map((f) => `- ${f}`), ''] : []),
 ].join('\n')
 if (values.out !== undefined) writeFileSync(values.out, report)
+if (values.json !== undefined && dataRows.length > 0) {
+  const file = values.json
+  const data = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { rows: [] }
+  writeFileSync(file, serializeData({ ...data, rows: mergeRows(data.rows, dataRows) }))
+}
 console.log(report)
 for (const r of losses)
   console.log(`LOSS ${r.repo} ${r.arm}: vx ${secs(r.vx)} vs ${r.tool} ${secs(r.rival)}`)

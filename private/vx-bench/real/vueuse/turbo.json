@@ -1,0 +1,12 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["@vueuse/metadata#update"],
+      "outputs": ["dist/**"]
+    },
+    "//#docs:build:vitepress": {
+      "outputs": ["packages/.vitepress/dist/**"]
+    }
+  }
+}

@@ -13,6 +13,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { RUNNERS, TOKEN, figures, type BenchData, type RunnerResult } from '../src/bench/format.ts'
 import { FIGURES } from '../src/bench/data.ts'
+import { realFigures, type RealRow } from '../src/bench/real.ts'
+import real from '../../vx-bench/real-repos.json'
 import docs from '../vx.config.ts'
 
 const site = path.resolve(import.meta.dir, '..')
@@ -149,7 +151,8 @@ describe('no benchmark figure on the site is typed by hand', () => {
       concurrency: 10,
       runners: Object.fromEntries(RUNNERS.map((r) => [r, run(r)])) as BenchData['runners'],
     }
-    const known = figures(data)
+    // The real-repo tokens are the rows the bench wrote, not a fixture's.
+    const known = new Map([...figures(data), ...realFigures(real.rows as RealRow[])])
     const sources = [
       ...pages(),
       path.join(site, 'src', 'pages', 'index.astro'),

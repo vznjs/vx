@@ -122,7 +122,7 @@ export function provenance(d: BenchData): string {
   return `Measured: ${runs.join(', ')}; ${machines.join(' and ')}.`
 }
 
-export const TOKEN = /%bench\.([a-z.-]+)%/g
+export const TOKEN = /%bench\.([a-z0-9.-]+)%/g
 
 /** The text with every `%bench.…%` token filled; an unknown one throws. */
 export function fill(text: string, table: Map<string, string>): string {
