@@ -597,7 +597,14 @@ reaches an output: one `git check-ignore` over each such
 output's directory (`dist/`, and a fresh `__vx_probe__/dist/` for a
 glob that starts with `**`), and the walk's listing must hold no file
 the glob matches (a tracked output, a directory a `!` rule takes back);
-anything git cannot answer keeps the key late. Undeclared writes, an
+anything git cannot answer keeps the key late. A root glob with no
+literal directory whose one wildcard part is a name of `*` and `?`
+(`*.tgz`, `**/*.tsbuildinfo`) is asked as a fresh name it matches
+(`__vx_probe__.tgz`, and `__vx_probe__/__vx_probe__.tgz` under `**`), and
+counts as ignored whole only when the rule git names for each is that
+name pattern itself (`*.tgz`, `**/*.tgz`, or `/*.tgz` for a root-only
+glob): `pkg-*.tgz` or `?.tgz` ignore some names, not every one. Any other
+glob with no literal directory (`*.{js,ts}`) stays undecided, an overlap. Undeclared writes, an
 `outputs.workspaceFiles` producer upstream, a rewriter the key does not
 fold, and runtime probes after a writer still leave a key preliminary.
 With a
@@ -1258,10 +1265,14 @@ project's directory, even if a `**/*` pattern would otherwise match.
 
 `workspace/nested-dirs.ts` computes the set of nested project
 directories (projects rooted inside this one) once per `vx run`. A
-workspace package counts whether or not it has a vx config: it is the
+workspace package a `discover` plugin lists (a lockfile plugin such as
+`bun()`) counts whether or not it has a vx config: it is the
 project `--affected` gives its files to, and its default `build` keys
 them (X-57). The same set fences the output clean, so a root
-`outputs.files: ['**/*.js']` never removes a member's source. Every
+`outputs.files: ['**/*.js']` never removes a member's source. Core reads
+no `package.json`, so with no such plugin a directory with no vx config is
+no project: it is the root's, its files are the root's inputs, and a root
+output glob (`**/*.tsbuildinfo`) cleans its untracked matches. Every
 glob pass drops a path under one of them (an ancestor lookup,
 A-11). A nested workspace (a directory holding its own
 `.vx/workspace.*`, which `vx lock` records in the lock) joins the set for
