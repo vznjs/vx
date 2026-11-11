@@ -8,7 +8,7 @@
 // clock ahead only makes a stamp look newer, which every window reads the
 // safe way.
 
-import { mkdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, fstatSync, mkdirSync, openSync, unlinkSync, writeSync } from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -42,9 +42,8 @@ export function stampGrainMs(stampMs: number): number {
 
 /**
  * "Now" as the file system will stamp the next write, not as `Date.now()`
- * reads it: a stamp read off a file written and removed in `dir` (the
- * run's cache dir), and every later write's mtime and ctime is at or after
- * it. Linux before 6.13 stamps from its coarse clock, a tick behind the
+ * reads it: a stamp read off a file written in `dir` (the run's cache
+ * dir), and every later write's mtime and ctime is at or after it. Linux before 6.13 stamps from its coarse clock, a tick behind the
  * fine clock `Date.now()` reads — on the Linux bench box 2026-09-11, 2 of
  * 3,000 tight writes carried an mtime 5.8 ms EARLIER than a `Date.now()`
  * taken before the write, and more under CPU load. That lag is under the
@@ -55,34 +54,58 @@ export function stampGrainMs(stampMs: number): number {
  * file falls back to `Date.now()` less the measured lag.
  */
 export function fsClockNow(dir: string): number {
-  const stamp = path.join(dir, `.vx-clock-${process.pid}`)
+  return stampIn(dir) ?? Date.now() - lagMs
+}
+
+/** The file `stampIn` writes: open, already unlinked, in `dir`. */
+let held: { dir: string; fd: number } | undefined
+const BYTE = new Uint8Array(1)
+
+/**
+ * The stamp of a one-byte write to a file held open in `dir` and unlinked
+ * at once, so nothing is left there and a later call is a write and an
+ * fstat. A file made, stat'ed and removed per call cost every cached task
+ * 91 us of the main thread on a cold 9,603-task run (0.9 s, 2026-11-11):
+ * a create and an unlink take the directory's lock beside the tasks'
+ * writes. One fd for the last dir asked: a process that runs many
+ * workspaces (a test file) holds no more. Undefined when `dir` cannot take
+ * the file. Since 6.13 Linux stamps a file whose times were read since its
+ * last change from its fine clock, as this one's are, and raises the floor
+ * of every coarse stamp after it to that: no later write to another file
+ * was stamped before it (0 of 20,000 on 6.18, 2026-11-11).
+ */
+function stampIn(dir: string): number | undefined {
   try {
-    writeFileSync(stamp, '')
-    const at = statSync(stamp).mtimeMs
-    unlinkSync(stamp)
-    return at
+    if (held?.dir !== dir) {
+      const was = held
+      held = undefined
+      if (was !== undefined) closeSync(was.fd)
+      const name = path.join(dir, `.vx-clock-${process.pid}`)
+      const fd = openSync(name, 'w')
+      held = { dir, fd }
+      unlinkSync(name)
+    }
+    writeSync(held.fd, BYTE, 0, 1, 0)
+    return fstatSync(held.fd).mtimeMs
   } catch {
-    return Date.now() - lagMs
+    return undefined
   }
 }
 
 /**
  * Measure the lag from a file written and removed in `dir` (the run's cache
  * dir: on the workspace's file system by default, and ignored by git and
- * `vx watch`), and apply it. Once a run: one write, one stat, one unlink. A
- * directory that cannot take the file measures no lag.
+ * `vx watch`), and apply it. Once a run, on the file `fsClockNow` then
+ * writes too. A directory that cannot take the file measures no lag.
  */
 export function measureFsClockLag(dir: string): void {
-  const stamp = path.join(dir, `.vx-clock-${process.pid}`)
   let ms = 0
   try {
     mkdirSync(dir, { recursive: true })
-    writeFileSync(stamp, '')
-    const at = statSync(stamp).mtimeMs
-    ms = Date.now() - at - stampGrainMs(at)
-    unlinkSync(stamp)
   } catch {
-    // unmeasured: no lag, as before
+    // unmeasured below: no lag, as before
   }
+  const at = stampIn(dir)
+  if (at !== undefined) ms = Date.now() - at - stampGrainMs(at)
   setFsClockLag(ms)
 }
