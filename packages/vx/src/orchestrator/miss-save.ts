@@ -210,7 +210,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   // nothing is a glob against the wrong directory.
   if (
     a.outputs.length + a.wsOutputs.length > 0 &&
-    outputFiles.length + wsOutputFiles.length === 0
+    outputFiles.length + wsOutputFiles.length === 0 &&
+    // Empty directories are saved and a hit makes them.
+    tree.emptyDirs.length + wsTree.emptyDirs.length === 0
   ) {
     // One cause is common enough to name, because the task shows no other
     // symptom: a sandboxed task with no write grant. Its writes land in the

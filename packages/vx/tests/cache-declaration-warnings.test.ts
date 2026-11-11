@@ -3,7 +3,7 @@
 // and an output set that resolves to no files saves an artifact a later hit
 // "restores". Both are said once, on the miss, on the run's status line.
 
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -70,6 +70,9 @@ describe('cache declarations that match nothing', () => {
         // The control: matching inputs, matching outputs.
         found: { exec: { command: 'mkdir -p dist && echo x > dist/a.js' },
           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
+        // Only empty directories: the artifact holds them and a hit makes them.
+        dirsonly: { exec: { command: 'mkdir -p gen/a/b' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true },
         // A deliberate cached no-op: empty outputs say nothing.
         noop: { exec: { command: 'true' },
           inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
@@ -122,6 +125,14 @@ describe('cache declarations that match nothing', () => {
     ])
     // The hit says nothing: the warning belongs to the run that saved.
     expect(await runTask('lost')).toEqual([])
+  })
+
+  // The warning said a hit restores nothing, yet the hit made the directories.
+  it('outputs that matched only empty directories are not named', async () => {
+    expect(await runTask('dirsonly')).toEqual([])
+    await rm(path.join(root, 'packages/app/gen'), { recursive: true })
+    expect(await runTask('dirsonly')).toEqual([])
+    expect(existsSync(path.join(root, 'packages/app/gen/a/b'))).toBe(true)
   })
 
   // `vendor -> ../../lib` was listed by the link's name, which `vendor/**`
