@@ -601,6 +601,23 @@ function ciShaped(): SimTask[] {
   return [t('vx#check.bun', [], 400, 0.25), ...long, ...lints, ...shards]
 }
 
+// CI runners asked at once join 2.5 s apart. Packed on each joining as
+// the first, the run asked 11 and ended at 149.5 s; told the spread an
+// earlier run saw, it asks more, each sooner, and ends on its chain
+// (2026-11-11).
+it('a run told its runners join one after another ends on its chain', () => {
+  const graph = ciShaped()
+  const stagger = (n: number): number => 55_000 + n * 2_500
+  const r = simulate(graph, {
+    sizes: [{ ...small, max: 25 }],
+    warmUpMs: stagger,
+    likely: misses(graph),
+    spreadsMs: new Map([['small', 2_500]]),
+  })
+  // The first joins at 57.5 s; the longest root runs 73.2 s.
+  expect(r.endMs).toBeLessThanOrEqual(57_500 + 73_200 + 1_000)
+})
+
 // Main 1c91c9d (2026-11-07): the roots joined the queue 0.7 s in, before
 // the default branch's timings landed, each ranked as an unknown task's
 // 30 s; the 46 shards ready after check.bun ranked by history and went

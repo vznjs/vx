@@ -357,6 +357,8 @@ export function dte(options: DteOptions = {}) {
   let basesRead: ReadonlyMap<string, number> = new Map()
   /** Each size's cores an earlier run's machines spent besides its tasks (`Orchestrator.othersOf`). */
   let othersRead: ReadonlyMap<string, number> = new Map()
+  /** Each size's join spread an earlier run learned (`Orchestrator.spreadsMs`). */
+  let spreadsRead: ReadonlyMap<string, number> = new Map()
   let warming: Promise<void> = Promise.resolve()
   /** On CI, where the run keeps the warm-ups it learned: `setup`'s cache, root and warn. */
   let keep: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
@@ -410,8 +412,17 @@ export function dte(options: DteOptions = {}) {
         ),
       )
     }
+    if (k !== undefined && o !== undefined) {
+      const { writeJoinSpreads } = await import('./warm-ups.js')
+      await writeJoinSpreads(k.cache, k.root, spreadsRead, o.spreadsMs()).catch((err: unknown) =>
+        k.warn(
+          `[vx] dte: join spreads not kept: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
+    }
     learned = new Map()
     othersRead = new Map()
+    spreadsRead = new Map()
     bases = new Map()
     basesRead = new Map()
     warming = Promise.resolve()
@@ -620,12 +631,14 @@ export function dte(options: DteOptions = {}) {
           Promise.all([
             w.readWarmUps(ctx.cache, ctx.workspaceRoot),
             w.readSizeOthers(ctx.cache, ctx.workspaceRoot),
+            w.readJoinSpreads(ctx.cache, ctx.workspaceRoot),
           ]),
         )
         .then(
-          ([m, others]) => {
+          ([m, others, spreads]) => {
             learned = m
             othersRead = others
+            spreadsRead = spreads
           },
           (err: unknown) =>
             ctx.warn(
@@ -851,6 +864,7 @@ export function dte(options: DteOptions = {}) {
         // Each size as the plan counts it: its cores less what its
         // machines spend besides the run's tasks, this run's or an earlier one's.
         const others = o.othersOf()
+        const spreads = o.spreadsMs()
         const planned = sizes.map((s) => {
           const other = others.get(s.name) ?? othersRead.get(s.name) ?? 0
           return other > 0 ? { ...s, cpu: Math.max(s.cpu / 2, s.cpu - other) } : s
@@ -875,7 +889,7 @@ export function dte(options: DteOptions = {}) {
           started,
           final,
           warmUpMs: warmUp,
-          spreadMs: (size) => o.spreadOf(size),
+          spreadMs: (size) => spreads.get(size) ?? spreadsRead.get(size) ?? 0,
           replaceable: adapter !== undefined,
           limitMs: deadline === undefined ? undefined : deadline - performance.now(),
           known,
