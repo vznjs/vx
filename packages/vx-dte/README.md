@@ -984,6 +984,20 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     started to join then, when that holds less CPU and the run ends no
     later. The big one leaves once its running tasks end. While a task
     with no history is left, this happens only for the run's last work.
+    With every task's time known, the plan packs the work instead, when
+    that holds less CPU and ends as soon (`src/pack.ts`): each task, in
+    order of its latest start, goes where a worker has room for it
+    between its ready time and its latest start, on the worker whose
+    time it lengthens least; a new worker, of the smallest size it fits,
+    starts only for a task none has room for by then, asked to join as
+    that task gets ready. It packs the whole run, past the window. Each next new
+    worker of a size is counted as joining later by the spread this run's
+    joins of it showed (the slowest less the fastest, over the joins
+    between). A
+    worker past its warm-up is packed as if asked now. The run then gives each task only to the worker the plan gave
+    it, once that joined, and not before the plan starts it: one the plan
+    starts as it gets ready goes as soon as it is. A task whose worker
+    has not joined by its start goes to any worker with room.
     The plan may end 5% (5 s at least) past the best; that margin is
     spent once: later plans keep its deadline until new work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when

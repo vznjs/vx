@@ -24,6 +24,7 @@ import {
   type Soon,
   type Span,
 } from './dispatch.js'
+import { leftMs, pack } from './pack.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
 /** Where a task naming no platform runs, or (several worker types) where each task runs. */
@@ -150,6 +151,28 @@ export interface Plan {
    * stands; empty while a task has no history.
    */
   readonly placed?: ReadonlyMap<string, string>
+  /**
+   * When the plan starts each task, from now: none is given before, so
+   * it runs where the plan has room for it then. Ready sooner than played
+   * (its upstream a hit), one took the room planned for a shard and the
+   * run ended 7 s late (tests/sim.test.ts, 2026-11-11). Undefined: the
+   * last one's stands.
+   */
+  readonly after?: ReadonlyMap<string, number>
+  /**
+   * Of `after`, those the plan starts as they get ready: one ready sooner
+   * goes to its worker at once, if that joined. Held to its planned start,
+   * a chain's next step waited 11 s past an upstream of no history that
+   * ended sooner than guessed (lab, 2026-11-11).
+   */
+  readonly asap?: ReadonlySet<string>
+  /** The workers `placed` names that the run starts, of each size, in the order they join. */
+  readonly fresh?: readonly { readonly id: string; readonly size: string }[]
+  /**
+   * Each task goes only to the worker `placed` names, from `after` on:
+   * the plan reserved its room there, and kept no other.
+   */
+  readonly exact?: boolean
 }
 
 /**
@@ -177,6 +200,22 @@ interface Ahead {
     readonly joinInMs: number
     readonly given: readonly string[]
   }[]
+}
+
+/**
+ * How much later each next worker of a size joins than the one before,
+ * from the warm-ups those of it took: the spread of the slowest from the
+ * fastest, over the joins between. None until two joined.
+ */
+export function spreadMs(warmUps: readonly number[]): number {
+  if (warmUps.length < 2) return 0
+  let least = Infinity
+  let most = 0
+  for (const w of warmUps) {
+    least = Math.min(least, w)
+    most = Math.max(most, w)
+  }
+  return (most - least) / (warmUps.length - 1)
 }
 
 /** History the run's finished tasks must have had before `slowdown` says anything. */
@@ -397,13 +436,7 @@ interface Wake {
   readonly readyAt: number
 }
 
-/**
- * What a running task has left: past its time, as long again as it is
- * over, not none. Counted as ending now, a filler running three times its
- * history kept the room a critical task was held, the plan started no
- * worker for it, and it waited 100 s (2026-11-10).
- */
-export const leftMs = (endsIn: number): number => (endsIn >= 0 ? endsIn : -endsIn)
+export { leftMs }
 
 /**
  * `t`'s time on `s`: on fewer cores than it asks, it shares them, as
@@ -1488,6 +1521,8 @@ export function plan(
   // The latest an earlier plan of the same work allowed, from now.
   limitMs = Infinity,
   how: Strategy = DEFAULT_STRATEGY,
+  // How much later each next worker of a size asked at once joins (`decide`'s `spreadMs`).
+  spreadMs: (size: string) => number = () => 0,
 ): Plan & Ahead {
   const warm = warmOf(warmUpMs)
   const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
@@ -1723,6 +1758,78 @@ export function plan(
         break
       }
     }
+  // Packed by latest start, the work ends at the same deadline on less
+  // worker time: started as soon as there was room, tasks with slack
+  // spread over workers the run then kept, 21% more than the least that
+  // ends at the critical path (lab, 2026-11-11). Known work only: a
+  // guessed time packs nothing.
+  if (
+    !blind &&
+    replaceable &&
+    bound < Infinity &&
+    tasks.every((t) => t.servers === undefined || t.servers.length === 0)
+  ) {
+    // One past its warm-up may join any time: packed as if asked now. Packed
+    // on joining at once, workers the CI started 2.5 s apart took work
+    // planned on the fleet and the run ended 19 s late, where a play
+    // started two more (tests/sim.test.ts, 2026-11-11).
+    const packed = pack(
+      tasks,
+      workers.map((w) => (w.starting === true && w.at <= 0 ? { ...w, at: warm(w.size) } : w)),
+      candidates,
+      (size, nth) => warm(size) + nth * spreadMs(size),
+      best,
+    )
+    // A play cut at its window holds less than its run: not compared.
+    if (packed.end <= best + 1e-6 && (played.cut === true || packed.held < played.held())) {
+      const start: Size[] = []
+      const started: Ahead['started'][number][] = []
+      const later: Ahead['later'][number][] = []
+      for (const s of packed.starts) {
+        const given = packed.given.get(s.id) ?? []
+        const freeInMs = packed.free.get(s.id)!
+        const joinInMs = warm(s.size.name)
+        // Asked a margin early, as the play's are.
+        if (s.at < MARGIN_MS + 1) {
+          start.push(s.size)
+          started.push({ freeInMs, joinInMs, given })
+        } else later.push({ size: s.size, inMs: s.at - MARGIN_MS, freeInMs, joinInMs, given })
+      }
+      later.sort((a, b) => a.inMs - b.inMs)
+      const fresh = [...packed.starts]
+        .sort((a, b) => a.at + warm(a.size.name) - b.at - warm(b.size.name))
+        .map((s) => ({ id: s.id, size: s.size.name }))
+      const ids = new Set(workers.map((w) => w.id))
+      const after = new Map<string, number>()
+      const placed = new Map<string, string>()
+      const asap = new Set<string>()
+      for (const [id, p] of packed.placed) {
+        placed.set(id, p.worker)
+        if (p.at > 1) after.set(id, p.at)
+        if (p.at <= p.ready + 1) asap.add(id)
+      }
+      return {
+        start,
+        release: workers
+          .filter((w) => (w.idle || w.starting === true) && !packed.given.has(w.id))
+          .map((w) => w.id),
+        endsInMs: packed.end,
+        boundMs: Math.max(bound, packed.end),
+        againInMs: later[0]?.inMs,
+        untilInMs: undefined,
+        freeInMs: new Map([...packed.free].filter(([id]) => ids.has(id))),
+        given: new Map([...packed.given].filter(([id]) => ids.has(id))),
+        later,
+        started,
+        drain: [],
+        placed,
+        after,
+        asap,
+        fresh,
+        exact: true,
+      }
+    }
+  }
   const { end, first, free, cut, given } = played
   const start: Size[] = []
   const frees = free()
@@ -1787,6 +1894,8 @@ export function plan(
     drain,
     // None while a task of no history is left: placed on guesses, graphs
     // a third unmeasured ended 2% late to 3.5% (lab, 2026-11-11).
+    after: new Map(),
+    fresh: [],
     placed: new Map(
       blind
         ? []
@@ -1892,6 +2001,13 @@ export function decide(input: {
    */
   readonly last?: { forecast?: Forecast }
   readonly now?: number
+  /**
+   * How much later each next worker of a size asked at once joins: CI
+   * runners asked together joined 2.5 s apart, and a packing that counted
+   * on all joining as the first ended a run 18 s late (tests/sim.test.ts,
+   * 2026-11-11).
+   */
+  readonly spreadMs?: ((size: string) => number) | undefined
 }): Plan & { readonly tasks: readonly PlanTask[] } {
   const how = input.how ?? DEFAULT_STRATEGY
   const now = input.now ?? 0
@@ -1949,6 +2065,7 @@ export function decide(input: {
     // New work moves the deadline; work done or known already does not.
     tasks.every((t) => input.known?.has(t.id) === true) ? input.limitMs : undefined,
     how,
+    input.spreadMs,
   )
   if (input.last !== undefined)
     input.last.forecast = forecastOf(

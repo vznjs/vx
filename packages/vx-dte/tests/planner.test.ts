@@ -63,15 +63,16 @@ it('plans main’s run on four workers: only its misses are work, never a group 
   )
   expect(work.map((t) => t.id).sort()).toEqual(Object.keys(ran).sort())
   const p = plan(work, [], candidates([small], new Map(), [], work.length), WARM)
-  // Three end it on its longest chain: a fourth, asked at once, ends it no sooner (2026-11-10).
-  expect(p.start).toEqual([small, small, small])
+  // Two end it on its longest chain, its slack packed beside the chain
+  // (2026-11-11); played as soon as there was room, it took three.
+  expect(p.start).toEqual([small, small])
   expect(p.release).toEqual([])
   // How busy it keeps them is tests/sim.test.ts's to judge.
   // The longest chain, vx-docs's import, build and test, after the warm-up.
   expect(p.endsInMs).toBeLessThan(WARM + 75_000)
 })
 
-it('plays two warm-ups and the longest task ahead, and plans again as that window moves', () => {
+it('packs the run past two warm-ups, and plans again a margin before its next worker is due', () => {
   // A 200 s chain, then 16 wide: the wide part is past the window.
   const tasks = [
     task('a', 100_000),
@@ -81,8 +82,8 @@ it('plays two warm-ups and the longest task ahead, and plans again as that windo
   const online = [worker('one', { idle: false, running: [] })]
   const p = plan(tasks, online, candidates([small], new Map(), [], tasks.length), WARM)
   expect(p.start).toEqual([])
-  // Not asked for the wide part yet: planned again half its window on.
-  expect(p.againInMs).toBe((2 * WARM + 100_000) / 2)
+  // Not asked for the wide part yet: asked a warm-up and a margin before it is ready.
+  expect(p.againInMs).toBe(200_000 - WARM - 5_000)
   // The rest ends no sooner than its chain.
   expect(p.endsInMs).toBeGreaterThanOrEqual(230_000)
 })
@@ -190,14 +191,20 @@ it('keeps a starting worker that ends the run sooner, though within the margin',
 })
 
 // Main 005e8f2: asked at 2.1 s, mac#2 was cancelled 0.2 s later as adding
-// nothing to the run's end, and a mac asked again at 19.9 s joined 20 s late.
-it('keeps a starting worker the plan gives a task, though the run ends no sooner', () => {
+// nothing to the run's end, and a mac asked again at 19.9 s joined 20 s
+// late: a play of a window let it go for work past the window. Packed,
+// the whole run has no task for it.
+it('lets a starting worker go only when the whole run has no task for it', () => {
   const one = worker('one', { idle: false })
   const three = worker('three', { idle: false })
   const two = worker('two', { at: 1_000, idle: false, starting: true })
   const tasks = [task('a', 40_000, [], 4), task('b', 3_000, [], 4), task('c', 3_000, [], 4)]
   expect(simulate(tasks, [one, three])).toBe(simulate(tasks, [one, three, two]))
-  expect(plan(tasks, [one, three, two], [], WARM).release).toEqual([])
+  const p = plan(tasks, [one, three, two], [], WARM)
+  expect(p.release).toEqual(['two'])
+  expect(p.endsInMs).toBe(40_000)
+  // Each task on the run's workers: none waits for one let go.
+  expect(new Set(p.placed!.values())).toEqual(new Set(['one', 'three']))
 })
 
 it('waits a task on the running task it depends on', () => {

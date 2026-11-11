@@ -52,10 +52,11 @@ import {
   type PlanTask,
   type PlanWorker,
   type Size,
+  spreadMs,
   type WarmUp,
 } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
-import { type Need, Queue, type Soon } from './dispatch.js'
+import { type Need, Placing, Queue, type Soon } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
@@ -385,8 +386,10 @@ export class Orchestrator {
   private readonly cancelledAt = new Map<string, number>()
   /** When each worker a plan drained stops taking tasks (`drain`). */
   private readonly drainAt = new Map<string, number>()
-  /** Where the last plan gave each task (`place`). */
-  private placed: ReadonlyMap<string, string> = new Map()
+  /** Where and when the last plan gave each task (`place`). */
+  private readonly placing = new Placing()
+  /** The pump at the next planned start (`Placing.next`). */
+  private due: { at: number; timer: ReturnType<typeof setTimeout> } | undefined
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
   private readonly late = new Set<string>()
   /** Of `cancelled`, those that joined anyway and were told to exit. */
@@ -635,6 +638,7 @@ export class Orchestrator {
 
   async close(): Promise<void> {
     clearTimeout(this.relend)
+    if (this.due !== undefined) clearTimeout(this.due.timer)
     this.ended = true
     this.endedAt = performance.now()
     this.stop.abort()
@@ -743,8 +747,9 @@ export class Orchestrator {
       }
     })
     const nodes = this.o.nodes()
+    // An exact plan keeps the room itself.
     const soon =
-      this.o.soon === undefined || ms === undefined
+      this.o.soon === undefined || ms === undefined || this.placing.exact
         ? undefined
         : this.o
             .soon(endsIn)
@@ -762,7 +767,7 @@ export class Orchestrator {
         ...(soon === undefined || this.o.next === undefined
           ? {}
           : { next: (id: string) => this.o.next!(id, endsIn) }),
-        want: (id) => this.placed.get(id),
+        want: (id) => this.placing.want(id),
         book: (need) => this.booking(need),
         deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
         gate: (id) => {
@@ -773,7 +778,9 @@ export class Orchestrator {
           const pin = this.pin(job, up)
           // It ended: the queue lets it go.
           if (pin === 'done') byId.delete(id)
-          return pin
+          if (typeof pin !== 'object' || pin.only !== undefined || pin.avoid !== undefined)
+            return pin
+          return this.placing.gate(id, now)
         },
         waits: (above, platform) => this.bigger(above, platform),
       }))
@@ -813,6 +820,22 @@ export class Orchestrator {
       else batch.push(job)
     }
     for (const [a, jobs] of batches) this.send(a, jobs)
+    this.wake(now)
+  }
+
+  /** A pump when the next task the plan starts late may go. */
+  private wake(now: number): void {
+    const at = this.placing.next(now)
+    if (at === this.due?.at) return
+    if (this.due !== undefined) clearTimeout(this.due.timer)
+    this.due = undefined
+    if (at === undefined) return
+    const timer = setTimeout(() => {
+      this.due = undefined
+      this.pumpSoon()
+    }, at - now)
+    timer.unref?.()
+    this.due = { at, timer }
   }
 
   /**
@@ -1733,6 +1756,7 @@ export class Orchestrator {
         for (const [s, { at, declared }] of this.spawnedAt)
           if (s !== info.id && declared.size === size) this.deadline(s, at, size)
       }
+      this.placing.joined(id, info.id, size)
       this.workers.set(id, {
         id,
         warmUpMs,
@@ -2060,6 +2084,14 @@ export class Orchestrator {
     return out
   }
 
+  /** How much later each next worker of `size` joined than the one before, this run (`spreadMs`). */
+  spreadOf(size: string): number {
+    const ups: number[] = []
+    for (const a of [...this.workers.values(), ...this.gone])
+      if (a.warmUpMs !== undefined && a.declared?.size === size) ups.push(a.warmUpMs)
+    return spreadMs(ups)
+  }
+
   /** Each size's cores its machines spent besides the run's tasks, on average: what the plan leaves it. */
   othersOf(): Map<string, number> {
     const sum = new Map<string, [number, number]>()
@@ -2173,9 +2205,14 @@ export class Orchestrator {
     for (const d of drain) this.drainAt.set(d.id, now + d.inMs)
   }
 
-  /** The worker the last plan gave each task (`Plan.placed`): each goes there first where it fits. */
-  place(placed: ReadonlyMap<string, string>): void {
-    this.placed = placed
+  /**
+   * Where and when the last plan gave each task (`Plan.placed`,
+   * `Plan.after`, `Plan.fresh`, `Plan.exact`): each goes there first
+   * where it fits, or only there when the plan is exact.
+   */
+  place(p: Parameters<Placing['set']>[0]): void {
+    this.placing.set(p, performance.now())
+    this.pumpSoon()
   }
 
   /**

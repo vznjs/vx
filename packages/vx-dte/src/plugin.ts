@@ -875,6 +875,7 @@ export function dte(options: DteOptions = {}) {
           started,
           final,
           warmUpMs: warmUp,
+          spreadMs: (size) => o.spreadOf(size),
           replaceable: adapter !== undefined,
           limitMs: deadline === undefined ? undefined : deadline - performance.now(),
           known,
@@ -887,7 +888,7 @@ export function dte(options: DteOptions = {}) {
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)
         if (p.drain.length > 0) o.drain(p.drain)
-        if (p.placed !== undefined) o.place(p.placed)
+        o.place(p)
         if ((p.start.length > 0 && !final) || p.release.length > 0)
           o.planned({
             start: final ? [] : p.start.map((s) => s.name),

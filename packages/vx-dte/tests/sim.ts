@@ -6,7 +6,7 @@
 // What the summary's Workers table would say comes back with it.
 
 import type { TaskNode } from '@vzn/vx'
-import { type Need, Queue, type Soon } from '../src/dispatch.js'
+import { type Need, Placing, Queue, type Soon } from '../src/dispatch.js'
 import { needOf } from '../src/plugin.js'
 import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
@@ -15,6 +15,7 @@ import {
   simulate as play,
   sized,
   slowdown,
+  spreadMs,
   tailsMs,
   type Forecast,
   type PlanTask,
@@ -78,7 +79,7 @@ export interface SimWorker {
   cancelledAt?: number
   tasks: number
   busyMs: number
-  /** Joined, nothing running, while a task waited in the queue. */
+  /** Joined, nothing running, while a task the plan lets go there waited in the queue. */
   idleQueuedMs: number
   /** Joined, nothing running, while the run had work left. */
   idleMs: number
@@ -261,7 +262,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   // As the plugin (`Orchestrator.drain`): from then on a worker takes no task.
   const drainAt = new Map<string, number>()
   // As the plugin (`Plan.placed`): the worker the last plan gave each task.
-  let placed: ReadonlyMap<string, string> = new Map()
+  // And when each it starts late may go (`Plan.after`).
+  const placing = new Placing()
   const dispatch = (): void => {
     const draining = (w: Live): boolean => (drainAt.get(w.id) ?? Infinity) <= now
     const all = joined().map((w) => {
@@ -327,11 +329,15 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         for (const [id, b] of queue.pass(bins, {
           deps: (id) => byId.get(id)!.deps,
           ms: durationMs,
-          soon: soon.slice(0, 4 * bins.length + 8),
-          next: (id) => nextOf(id, endsAt),
-          want: (id) => placed.get(id),
-        }))
+          // An exact plan keeps the room itself.
+          ...(placing.exact
+            ? {}
+            : { soon: soon.slice(0, 4 * bins.length + 8), next: (id) => nextOf(id, endsAt) }),
+          want: (id) => placing.want(id),
+          gate: (id) => placing.gate(id, now),
+        })) {
           to.set(id, b)
+        }
     for (const [id, bin] of to) {
       const w = bin.w
       if (overloaded.has(w.id)) overSent++
@@ -379,6 +385,15 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           least = Math.min(least ?? Infinity, w.joinedAt - w.spawnedAt)
       return least ?? warmUpOf(1)
     }
+    // As the plugin (`Orchestrator.spreadsMs`).
+    const spread = (size: string): number =>
+      spreadMs(
+        workers.flatMap((w) =>
+          w.joinedAt !== undefined && sizeOf.get(w.id)?.name === size
+            ? [w.joinedAt - w.spawnedAt]
+            : [],
+        ),
+      )
     const planWorkers: PlanWorker[] = []
     const running = new Set<string>()
     for (const w of joined()) {
@@ -450,6 +465,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       started,
       final: false,
       warmUpMs: warmUp,
+      spreadMs: spread,
       replaceable: true,
       limitMs: deadline === undefined ? undefined : deadline - now,
       known: planned,
@@ -462,7 +478,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     deadline = now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
     for (const d of p.drain) drainAt.set(d.id, now + d.inMs)
-    if (p.placed !== undefined) placed = p.placed
+    placing.set(p, now)
+    replaced = p.placed !== undefined
     if (p.release.length > 0 && !remaining[Symbol.iterator]().next().done)
       for (const id of p.release) {
         const w = workers.find((x) => x.id === id)!
@@ -513,9 +530,14 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   // One pass an event, as the run pumps once a message: a plan starts or
   // lets workers go, and none it starts joins at once, so a second pass
   // placed nothing and was a quarter of a 10 000-task sim (2026-11-05).
+  // As the plugin (`Orchestrator.place`): a new plan's placing is passed
+  // at once, its gates moved.
+  let replaced = false
   const step = (): void => {
     dispatch()
+    replaced = false
     replan()
+    if (replaced) dispatch()
   }
   step()
   for (let guard = 0; done.size < graph.length; guard++) {
@@ -528,10 +550,13 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     }
     for (const w of starting()) next = Math.min(next, joinAt.get(w.id)!)
     if (again !== undefined) next = Math.min(next, again)
+    next = Math.min(next, placing.next(now) ?? Infinity)
     for (const at of restoring.values()) next = Math.min(next, at)
     if (!learned) next = Math.min(next, options.historyAt!)
     if (next === Infinity) throw new Error(`sim: stuck at ${now} ms with ${queue.size} queued`)
     const dt = next - now
+    // Those the plan lets go now: one it starts later or elsewhere keeps no worker idle.
+    let mayGo: (string | undefined)[] | undefined
     for (const w of joined()) {
       const rate = rateOf(w)
       let cpu = 0
@@ -544,7 +569,12 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       if (w.running.size > 0) w.busyMs += dt
       else {
         w.idleMs += dt
-        if (queue.size > 0) w.idleQueuedMs += dt
+        if (queue.size === 0) continue
+        mayGo ??= queue.ids().flatMap((id) => {
+          const g = placing.gate(id, now)
+          return g === 'wait' ? [] : [g.only]
+        })
+        if (mayGo.some((only) => only === undefined || only === w.id)) w.idleQueuedMs += dt
       }
     }
     now = next
@@ -556,7 +586,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       // As the plugin's refine (`Orchestrator.rerank`).
       queue.rerank()
     }
-    for (const w of starting()) if (joinAt.get(w.id)! <= now) w.joinedAt = now
+    for (const w of starting())
+      if (joinAt.get(w.id)! <= now) {
+        w.joinedAt = now
+        placing.joined(w.id, w.id, sizeOf.get(w.id)?.name)
+      }
     for (const [id, at] of restoring)
       if (at <= now) {
         restoring.delete(id)
