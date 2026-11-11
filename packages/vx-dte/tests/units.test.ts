@@ -5071,6 +5071,12 @@ it('a worker’s reason is its error line, not the hint after it', () => {
     errorLine('resolving\nerror: cannot find module\n  at x\n'),
     errorLine('just this\n\n'),
     errorLine(''),
+    // A worktree whose `.vx/workspace.ts` failed to load: core says why on
+    // the lines below the `✗` one, which the row dropped (2026-11-11).
+    errorLine(
+      "✗ vx  unknown command: dte\n\n  (plugin verbs could not be looked up: .vx/workspace failed to load: cannot find './gen.ts') (see `vx help`)\n",
+    ),
+    errorLine('✗ vx  refused\n\n  a\n  b\n  c\n  d\n\n  fix  x\n'),
     // git's own, from a container's clone (2026-10-21).
     errorLine(
       "warning: templates not found\nfatal: detected dubious ownership in repository at '/src/.git'\nTo add an exception...\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n",
@@ -5080,6 +5086,8 @@ it('a worker’s reason is its error line, not the hint after it', () => {
     'error: cannot find module',
     'just this',
     '',
+    "✗ vx  unknown command: dte (plugin verbs could not be looked up: .vx/workspace failed to load: cannot find './gen.ts') (see `vx help`)",
+    '✗ vx  refused a b c',
     "fatal: detected dubious ownership in repository at '/src/.git'",
   ])
 })
@@ -5168,7 +5176,9 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
 
 // A worker runs a task in its project's directory of the run's tree: a
 // project whose config is untracked is not there, and every worker failed
-// to spawn it, exit 127, saying only that the directory did not exist.
+// to spawn it, exit 127, saying only that the directory did not exist. A
+// plugin's project has no vx.config (turbo() reads package.json): the
+// reason named one anyway (2026-11-11).
 it('fails a task whose project the run’s tree lacks, naming it', async () => {
   const root = await tmp()
   const git = (...a: string[]) =>
@@ -5181,7 +5191,7 @@ it('fails a task whose project the run’s tree lacks, naming it', async () => {
   await writeFile(path.join(root, 'a/src/x'), 'x\n')
   git('add', '-A')
   git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
-  await writeFile(path.join(root, 'e/vx.config.mjs'), 'export default {}\n')
+  await writeFile(path.join(root, 'e/package.json'), '{"name":"e"}\n')
   const served = servedRelay()
   try {
     const o = new Orchestrator({
@@ -5198,7 +5208,7 @@ it('fails a task whose project the run’s tree lacks, naming it', async () => {
     await expect(
       o.execute({ taskId: 'e#hi', cwd: path.join(root, 'e') } as unknown as ExecuteRequest),
     ).rejects.toThrow(
-      'e#hi runs in e, which is not in the commit workers check out: commit its project (its vx.config file is untracked)',
+      'e#hi runs in e, which is not in the commit workers check out: commit its project (no file under e is tracked)',
     )
     await o.close()
   } finally {

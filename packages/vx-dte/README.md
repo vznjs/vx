@@ -642,7 +642,7 @@ use your own instead.
   commit holds only as a gitlink) fails, naming the file: no worker has it.
   A dependency's declared output is not one: its worker restores it first,
   or, uncached, ran it there.
-  A task whose project the commit lacks (its config untracked) fails,
+  A task whose project the commit lacks (no file under it tracked) fails,
   naming the project, and a run whose `.vx/workspace.*` is untracked is
   refused before a worker starts.
 - A task's `exec.timeout` counts from its start on its worker: the wait
