@@ -219,6 +219,22 @@ export function isLiteralPattern(glob: string): boolean {
 export const GLOB_WILDCARDS = /[*?{}[\]\\]/
 
 /**
+ * A path as a task glob names it, matching that path alone, in a spelling
+ * the config check accepts (a hint is applied as given). `*` and `?` take
+ * a class: the check reads `\*` as a Windows separator. A leading `!` is
+ * escaped, or the entry is a negation that keys nothing, and a space at
+ * either end takes a class, which the surrounding-whitespace check spares.
+ */
+export function taskGlobOf(rel: string): string {
+  return rel
+    .replace(new RegExp(GLOB_WILDCARDS.source, 'g'), (c) =>
+      c === '*' || c === '?' ? `[${c}]` : `\\${c}`,
+    )
+    .replace(/^!/, '\\!')
+    .replace(/^\s+|\s+$/g, (ws) => ws.replace(/\s/g, '[$&]'))
+}
+
+/**
  * `Bun.Glob`'s own alphabet, for the globs vx does not own: package-manager
  * workspace members and `--filter` path globs follow npm/pnpm semantics,
  * and a sandbox grant's prefix must stop where the scan that expands the

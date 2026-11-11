@@ -1428,7 +1428,9 @@ anywhere in the workspace (`'../a/src/x.js'`; an absolute path holds on
 no other machine):
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
 Each path is a JS string literal, spelled as the glob it must be: a
-bracket escaped (`read: ['pages/\\[id\\].tsx']`, and so in `inputs.files`);
+bracket escaped (`read: ['pages/\\[id\\].tsx']`, and so in `inputs.files`, where
+a `*` or `?` is a class, `'a[*]b.txt'`, and a leading `!` is escaped,
+`'\\!notes'`: raw, it is a negation that keys nothing);
 a path no grant can name alone (a `*`, `?` or backslash, and on Linux a
 write with a bracket; `schema.md`) is granted as the directory above it.
 On Linux a refused open is a read or a write by the flags it asked

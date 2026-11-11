@@ -59,6 +59,9 @@ export const BRACE_RANGE_LIMIT: number // 1024 — the most names a range may na
 // a task glob's product past BRACE_RANGE_LIMIT is refused at load
 export function braceExpansionCount(pattern: string, cap: number): number
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
+// A path as a task glob names it alone, in a spelling the config check accepts: `[*]`, `[?]`,
+// `\[`, `\{`, `\\`, a leading `\!`, a space at either end `[ ]` (a sandbox fix's key entry)
+export function taskGlobOf(rel: string): string
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
 // An extglob group, which vx's matchers do not read: refused in member and task globs (A-62).
 export const EXTGLOB: RegExp // /[!@+*?]\(/

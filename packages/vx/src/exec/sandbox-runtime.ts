@@ -75,6 +75,8 @@ import {
   grantPrefix,
   isTmpdirRefusal,
   procfsIsOwn,
+  relPosix,
+  taskGlobOf,
   TMPDIR_HINT,
   UserError,
   xxh3hex,
@@ -2963,8 +2965,12 @@ function grantRemovalHint(
   }
 }
 
-/** A path as a JS string literal a config can take: a quote in it is escaped. */
-const jsString = (p: string): string => (p.includes("'") ? JSON.stringify(p) : `'${p}'`)
+/**
+ * A path as a JS string literal a config can take: a quote or a backslash
+ * in it is escaped, so the escape in a key entry `\!cfg` survives being pasted.
+ */
+const jsString = (p: string): string =>
+  p.includes("'") ? JSON.stringify(p) : `'${p.replaceAll('\\', '\\\\')}'`
 
 /** The host's shared temp directories, canonical: what a fixed temp path in a tool names. */
 function hostTempRoots(): string[] {
@@ -3000,7 +3006,7 @@ function hiddenReadsHint(
     grantable === undefined || root === undefined || !atOrUnder(grantable, root)
       ? ''
       : `, and, if the output depends on it, key it: ` +
-        `\`inputs: { workspaceFiles: [${jsString(path.relative(root, grantable).replace(/[*?{}[\]\\]/g, '\\$&'))}] }\``
+        `\`inputs: { workspaceFiles: [${jsString(taskGlobOf(relPosix(root, grantable)))}] }\``
   return {
     timestamp: new Date(),
     hint: true,

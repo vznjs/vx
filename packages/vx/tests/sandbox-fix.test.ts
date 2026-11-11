@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { SandboxViolation } from '../src/exec/index.js'
 import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
 import { CREDENTIAL_STORES } from '../src/orchestrator/sandbox-request.js'
+import { anyTaskGlob } from '../src/util/index.js'
+import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
 let dir: string
 beforeEach(() => {
@@ -252,11 +254,44 @@ describe('sandboxFix', () => {
     expect(fix).toEqual({
       // A literal `*` or a backslash: the sandbox grants no such path alone.
       read: ['odd/', 'pages/\\[id\\].tsx'],
-      inputs: ['odd/a\\*b.txt', 'odd/c\\\\d.txt', 'pages/\\[id\\].tsx'],
+      inputs: ['odd/a[*]b.txt', 'odd/c\\\\d.txt', 'pages/\\[id\\].tsx'],
     })
     expect(new Bun.Glob(fix!.read![1]!).match('pages/[id].tsx')).toBe(true)
     expect(new Bun.Glob(fix!.read![1]!).match('pages/i.tsx')).toBe(false)
     expect(new Bun.Glob(fix!.inputs![0]!).match('odd/a*b.txt')).toBe(true)
     expect(new Bun.Glob(fix!.inputs![1]!).match('odd/c\\d.txt')).toBe(true)
+  })
+  // Each entry named for `inputs` is applied as given: `!notes` was a
+  // negation that keyed nothing, so an edit replayed the old bytes, and
+  // `st\*r` was refused as a Windows separator.
+  it('names each awkward file by a key entry the config accepts that matches it alone', () => {
+    const names = ['!x', 'st*r', 'q?', '[b]', '{c}', 'a\\b', '#h', ' lead', 'trail ', 'a/!y']
+    mkdirSync(path.join(dir, 'a'))
+    for (const n of names) writeFileSync(path.join(dir, n), '')
+    const all = [...names, 'x', 'stXr', 'qa', 'b', 'c', 'lead', 'trail', 'a/y']
+    for (const n of names) {
+      const fix = sandboxFix(
+        [v(`deny(1) file-read-data ${n}`, ['read'], path.join(dir, n))],
+        dir,
+        dir,
+        undefined,
+        { files: ['src/**'] },
+      )
+      const [entry] = fix?.inputs ?? []
+      expect(fix?.inputs).toHaveLength(1)
+      const files = ['src/**', entry!]
+      expect(() =>
+        validateProjectConfig(
+          {
+            tasks: {
+              t: { exec: { command: 'x' }, cache: true, inputs: { files }, outputs: { files: [] } },
+            },
+          } as never,
+          path.join(dir, 'vx.config.ts'),
+        ),
+      ).not.toThrow()
+      expect(all.filter((f) => new Bun.Glob(entry!).match(f))).toEqual([n])
+      expect(all.filter(anyTaskGlob([entry!]))).toEqual([n])
+    }
   })
 })

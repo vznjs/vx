@@ -2920,3 +2920,39 @@ describe('sandbox probe', () => {
     TIMEOUT,
   )
 })
+
+// The fix named a project file `!notes` raw for `inputs.files`: applied as
+// given it was a negation that keyed nothing, so an edit was a stale hit.
+describe.skipIf(!available)('the suggested fix for a file that starts with !', () => {
+  let root: string
+  beforeEach(async () => {
+    root = realpathSync(await makeWorkspaceRoot({ prefix: 'vx-fix-bang-' }))
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  it(
+    'applied as given, keys the file: an edit re-runs the task',
+    async () => {
+      const config = (read: string[], files: string[]) =>
+        `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && cat "!notes" > dist/out.txt',
+            sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['dist/'] } } },
+          cache: true,
+          inputs: { files: ${JSON.stringify(['vx.config.mjs', ...files])} },
+          outputs: { files: ['dist/**'] },
+        } } }\n`
+      const app = await addProject(root, 'app', { config: config([], []) })
+      await writeFile(path.join(app, '!notes'), 'N1\n')
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const build = async () => (await run({ cwd: root, tasks: ['build'], log: quiet })).outcomes[0]
+      const fix = (await build())?.sandboxFix
+      expect(fix).toEqual({ read: ['!notes'], inputs: ['\\!notes'] })
+      await writeFile(path.join(app, 'vx.config.mjs'), config(fix!.read!, fix!.inputs!))
+      expect((await build())?.status).toBe('success')
+      await writeFile(path.join(app, '!notes'), 'N2\n')
+      expect((await build())?.status).toBe('success')
+      expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('N2\n')
+    },
+    TIMEOUT,
+  )
+})

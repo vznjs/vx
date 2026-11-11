@@ -74,6 +74,29 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
     expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('{ "v": 2 }\n')
   })
 
+  // The key entry named `!cfg` raw: applied as given it was a negation that
+  // keyed nothing, so an edit replayed the old bytes.
+  it('names a file that starts with ! by an escaped key entry, which re-runs on an edit', async () => {
+    await writeFile(path.join(root, '!cfg'), 'v1\n')
+    const cached = (read: string[], workspaceFiles: string[]) =>
+      `export default { tasks: { t: {
+        exec: { command: 'cat < "../../!cfg" > out.txt',
+          sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out.txt'] } } },
+        cache: true,
+        inputs: { files: ['src/**'], workspaceFiles: ${JSON.stringify(workspaceFiles)} },
+        outputs: { files: ['out.txt'] },
+      } } }\n`
+    const app = await addProject(root, 'app', { config: cached(['.'], []) })
+    const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
+    const [line] = (await t())?.sandboxViolationLines ?? []
+    expect(line).toEndWith("key it: `inputs: { workspaceFiles: ['\\\\!cfg'] }`.")
+    await writeFile(path.join(app, 'vx.config.mjs'), cached(['.', '../../!cfg'], ['\\!cfg']))
+    expect((await t())?.status).toBe('success')
+    await writeFile(path.join(root, '!cfg'), 'v2\n')
+    expect((await t())?.status).toBe('success')
+    expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('v2\n')
+  })
+
   it('CONTROL: never beside a passing task', async () => {
     expect(await outcome('cat < ../../tsconfig.base.json || true')).toEqual(['success', []])
   })

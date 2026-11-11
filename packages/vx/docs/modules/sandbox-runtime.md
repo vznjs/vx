@@ -595,7 +595,9 @@ grant: an agent applies a suggestion as given, and `cat ~/.npmrc` was
 told to grant `../../home/.npmrc` until 2026-11-08. For a cached task
 (`keyRoot`) a grant inside the workspace comes with the
 `inputs.workspaceFiles` entry that keys it: applied alone, the grant
-read the file unkeyed and an edit there was a stale hit.
+read the file unkeyed and an edit there was a stale hit. The entry is
+spelled by `taskGlobOf`, as the fix's is: `'\\!cfg'` for a file `!cfg`,
+which raw is a negation that keyed nothing.
 
 bwrap enters the task's cwd only if a mount holds it, and otherwise
 `$HOME`, with no word: a project granted no read (`sandbox: {}`, its own

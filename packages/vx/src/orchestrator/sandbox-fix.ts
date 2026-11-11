@@ -9,7 +9,7 @@ import path from 'node:path'
 import type { InputsConfig } from '../config.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath, type SandboxViolation } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { isLiteralPattern, relPosix } from '../util/index.js'
+import { isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
 import { credentialStorePaths } from './sandbox-request.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
@@ -59,9 +59,6 @@ function grantFor(abs: string, dirs: Dirs, kind: 'read' | 'write'): string {
   const at = bad === Infinity ? raw : raw.slice(0, raw.lastIndexOf('/', bad) + 1) || '.'
   return at.replace(/[[\]]/g, '\\$&')
 }
-
-/** A path as a task glob names it: each wildcard escaped. */
-const taskGlobOf = (rel: string): string => rel.replace(/[*?{}[\]\\]/g, '\\$&')
 
 /**
  * A write grant covers the top directory the write landed in: granting
