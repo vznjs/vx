@@ -1423,7 +1423,9 @@ declare either fails naturally (Linux: `ENOENT` from bwrap's
 mount-namespace hide) or is flagged via the macOS violation store
 and forced to exit non-zero. No cache is written for a failed task. The
 task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
-the grants that would have allowed each denial, project-relative:
+the grants that would have allowed each denial, project-relative
+anywhere in the workspace (`'../a/src/x.js'`; an absolute path holds on
+no other machine):
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
 Each path is a JS string literal, spelled as the glob it must be: a
 bracket escaped (`read: ['pages/\\[id\\].tsx']`, and so in `inputs.files`);
@@ -1435,7 +1437,10 @@ would create. A host `deny.network` holds gets no network grant.
 A write grants the top directory it landed in, so the next file there
 passes too, unless `inputs.files` reads that directory: then it
 grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
-the line says so, since a grant never adds one. A read through a link
+the line says so, since a grant never adds one: `inputs.files` for a
+read of the project, `inputs.workspaceFiles` (workspace-relative) for one
+elsewhere in the workspace. Applied as given, the two lines key every
+read they grant, so an edit there re-runs the task. A read through a link
 grants the directory holding the link too: the sandbox mounts a grant at
 its real path and never the link, so the target alone stayed out of
 reach. A credential path
@@ -3807,8 +3812,9 @@ entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`;
 `withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`), and, for
 a cached task, `inputs` the reads of its project no `inputs.files`
-glob matches (the terminal's `and, if the output depends on them, …`
-line). A task
+glob matches and `workspaceFiles` its reads elsewhere in the workspace no
+`inputs.workspaceFiles` glob matches (the terminal's `and, if the output
+depends on them, …` lines). A task
 failed by `inputs.stability.severity: 'error'` adds `inputMoved`, the
 input that changed during the run. They live in cache.db's `failures`
 rows, the newest 50 failed runs; past those, or when the write was

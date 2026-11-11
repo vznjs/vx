@@ -194,7 +194,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
     it('a hard link of a sibling no grant covers is reported, and named for a read', async () => {
       const r = await run('ln -f secret.txt out.txt', ['out.txt'])
       expect([r.exitCode, targets(r)]).toEqual([0, ['secret.txt']])
-      expect(sandboxFix(r.violations, path.join(dir, 'proj'), undefined, ['src/**'])).toEqual({
+      expect(
+        sandboxFix(r.violations, path.join(dir, 'proj'), dir, undefined, { files: ['src/**'] }),
+      ).toEqual({
         read: ['secret.txt'],
         inputs: ['secret.txt'],
       })
@@ -237,7 +239,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await symlink('v1', path.join(dir, 'proj', 'cfg'))
       const r = await run('readlink cfg > out.txt', ['out.txt'])
       expect([r.exitCode, targets(r)]).toEqual([0, ['cfg']])
-      expect(sandboxFix(r.violations, path.join(dir, 'proj'), undefined, ['src/**'])).toEqual({
+      expect(
+        sandboxFix(r.violations, path.join(dir, 'proj'), dir, undefined, { files: ['src/**'] }),
+      ).toEqual({
         read: ['cfg'],
         inputs: ['cfg'],
       })

@@ -1304,6 +1304,7 @@ async function runOnBus(
       keyedProjects: keyed,
       readableDeps: readable,
       nestedDirsOf: nestedDirsOf(nodes, prepared.keyOnly, nestedDirsByProject),
+      projectAt: (rel) => projectAtDir(rel, workspaceRoot, prepared.projects.values()),
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,
