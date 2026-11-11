@@ -158,6 +158,28 @@ export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumera
   return discoveredGit.get(projects)
 }
 
+type WorkspacePlugins = Awaited<ReturnType<typeof loadWorkspacePlugins>>
+
+/**
+ * The workspace a discovery's caller loaded (`loadWorkspacePlugins`), by the
+ * discovery's array: a run handed that array (`RunOptions.discovered`) runs
+ * the `config` stage no second time, and a plugin's warning prints once.
+ */
+const discoveredWorkspace = new WeakMap<readonly ProjectMeta[], WorkspacePlugins>()
+
+export function keepDiscoveryWorkspace(
+  projects: readonly ProjectMeta[],
+  workspace: WorkspacePlugins,
+): void {
+  discoveredWorkspace.set(projects, workspace)
+}
+
+export function workspaceOfDiscovery(
+  projects: readonly ProjectMeta[],
+): WorkspacePlugins | undefined {
+  return discoveredWorkspace.get(projects)
+}
+
 /**
  * The run's extra-file hashes (`ExtraHashes`), by the discovery's array: a
  * discovery is one run's (`vx watch` discovers each cycle), and the CLI's

@@ -12,6 +12,7 @@ import { UserError } from '../util/index.js'
 import { sayLine } from '../ui/index.js'
 import {
   discoverProjects,
+  keepDiscoveryWorkspace,
   loadProjects,
   loadWorkspacePlugins,
   lockOfDiscovery,
@@ -31,6 +32,8 @@ interface CliWorkspace {
   plugins: readonly VxPlugin[]
   /** What a plugin's `config` stage said of the branch: its cache scope and base commit. */
   branch: BranchFacts
+  /** Setting path → the last plugin whose `config` hook changed it. */
+  settingPlugins: ReadonlyMap<string, string>
   cacheDir: string
   /**
    * The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked
@@ -48,11 +51,15 @@ export async function loadCliWorkspace(
   workspaceRoot: string,
   warn: (message: string) => void = warnToStderr,
 ): Promise<CliWorkspace> {
-  const { workspaceConfig, plugins, branch } = await loadWorkspacePlugins(workspaceRoot, warn)
+  const { workspaceConfig, plugins, branch, settingPlugins } = await loadWorkspacePlugins(
+    workspaceRoot,
+    warn,
+  )
   return {
     workspaceConfig,
     plugins,
     branch,
+    settingPlugins,
     cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
     storeRoot: () => resolveStoreRoot(workspaceRoot, workspaceConfig),
   }
@@ -67,12 +74,37 @@ export async function discoverCliProjects(
   load: CliLoadOptions = {},
   /** The whole-tree enumeration the caller started; the run reuses it with the discovery. */
   git?: LazyGitEnumeration,
+  /** The workspace the verb already loaded: its `config` stage runs once. */
+  loaded?: CliWorkspace,
 ): Promise<ProjectMeta[]> {
-  const warn = load.warn ?? warnToStderr
-  const ws = await loadCliWorkspace(root, warn)
+  const ws = loaded ?? (await loadCliWorkspace(root, load.warn ?? warnToStderr))
   const projects = await discoverProjects(root, lockReader(root), git)
   discoveredWorkspaces.set(projects, ws)
+  keepDiscoveryWorkspace(projects, ws)
   return projects
+}
+
+/**
+ * One reading verb's workspace, each part loaded on first ask and once:
+ * the `config` stage, then the discovery over it. A verb whose helpers
+ * each loaded their own ran the stage per helper (`vx why`: five times).
+ */
+export interface VerbWorkspace {
+  readonly root: string
+  workspace(): Promise<CliWorkspace>
+  projects(): Promise<ProjectMeta[]>
+}
+
+export function verbWorkspace(root: string): VerbWorkspace {
+  let ws: Promise<CliWorkspace> | undefined
+  let projects: Promise<ProjectMeta[]> | undefined
+  const workspace = (): Promise<CliWorkspace> => (ws ??= loadCliWorkspace(root))
+  return {
+    root,
+    workspace,
+    projects: () =>
+      (projects ??= workspace().then((loaded) => discoverCliProjects(root, {}, undefined, loaded))),
+  }
 }
 
 /**
@@ -99,10 +131,10 @@ export function stageCacheDir(ws: { cacheDir: string }, load: CliLoadOptions): s
  * `//#task`, Turbo's root package, as the root project's id: the name
  * discovery gives it (D-39), for a verb that reads history by task id.
  */
-export async function rootSpelled(root: string, target: string): Promise<string> {
+export async function rootSpelled(at: VerbWorkspace, target: string): Promise<string> {
   if (!target.startsWith('//#')) return target
-  const name = await discoverCliProjects(root).then(
-    (metas) => metas.find((m) => m.dir === root)?.name,
+  const name = await at.projects().then(
+    (metas) => metas.find((m) => m.dir === at.root)?.name,
     () => undefined,
   )
   return name === undefined ? target : `${name}#${target.slice(3)}`
@@ -151,11 +183,11 @@ export function namedCacheDir(override: string): string {
  * so `vx run --cache-dir X` and `vx last --cache-dir X` read one history.
  */
 export async function cliCacheDir(
-  workspaceRoot: string,
+  at: VerbWorkspace,
   override: string | undefined,
 ): Promise<string> {
   if (override !== undefined) return namedCacheDir(override)
-  return (await loadCliWorkspace(workspaceRoot)).cacheDir
+  return (await at.workspace()).cacheDir
 }
 
 /** The run flags a verb's staged load must honour to see what the run sees. */

@@ -21,6 +21,7 @@ export {
   gitOfDiscovery,
   ignoredConfigRefusal,
   keepDiscoveryGraph,
+  keepDiscoveryWorkspace,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,

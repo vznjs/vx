@@ -29,11 +29,11 @@ import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import {
   cliCacheDir,
-  discoverCliProjects,
   loadCliProjects,
-  loadCliWorkspace,
   parseCacheDirFlag,
   rootSpelled,
+  verbWorkspace,
+  type VerbWorkspace,
 } from './workspace-config.js'
 
 interface WhyArgs {
@@ -285,17 +285,18 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   }
 
   const root = await findWorkspaceRoot(process.cwd())
-  const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
+  const at = verbWorkspace(root)
+  const cache = Cache.inspect(await cliCacheDir(at, parsed.cacheDir))
   try {
     const db = indexDb(cache)
-    const target = await rootSpelled(root, parsed.target)
+    const target = await rootSpelled(at, parsed.target)
     const taskId = await resolveTarget(
       cache,
       target,
-      () => findCwdProject(process.cwd()),
-      () => declares(root, target),
+      () => findCwdProject(process.cwd(), at),
+      () => declares(at, target),
       // The cwd project's own: a bare `vx run` there skips its default build.
-      (id) => declares(root, id, true),
+      (id) => declares(at, id, true),
     )
     let runId: string | null
     if (parsed.runId !== undefined) {
@@ -352,7 +353,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const unrecorded = diff.entries.filter(
       (e) => e.kind === 'upstream' && e.change === 'changed' && !recorded.has(upstreamTask(e.name)),
     )
-    const groups = unrecorded.length > 0 ? await groupMembers(root, taskId) : new Map()
+    const groups = unrecorded.length > 0 ? await groupMembers(at, taskId) : new Map()
     const roots = rootCauses(db, runId, taskId, diff.entries, groups)
     const writers = inputWriters(db, runId, root, taskId, diff.entries, roots)
 
@@ -566,9 +567,9 @@ function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffE
 type Declared = false | 'task' | 'group'
 
 /** Whether a project declares `target` (`pkg#task`, or a bare task); `task` when no config loads. */
-async function declares(root: string, target: string, own = false): Promise<Declared> {
+async function declares(at: VerbWorkspace, target: string, own = false): Promise<Declared> {
   try {
-    const projects = await loadCliProjects(root, await discoverCliProjects(root), 'all')
+    const projects = await loadCliProjects(at.root, await at.projects(), 'all')
     const [project, task] = target.includes('#') ? splitTaskId(target) : [undefined, target]
     const found = [...projects.values()].flatMap((p) => {
       const t = p.config.tasks?.[task]
@@ -601,9 +602,10 @@ function groupRefusal(id: string): UserError {
  * Each group in `taskId`'s graph with the tasks it gathers. Empty when a
  * config no longer loads: the advice then names the group to `vx show`.
  */
-async function groupMembers(root: string, taskId: string): Promise<Map<string, string[]>> {
+async function groupMembers(at: VerbWorkspace, taskId: string): Promise<Map<string, string[]>> {
   try {
-    const metas = await discoverCliProjects(root)
+    const { root } = at
+    const metas = await at.projects()
     const projects = await loadCliProjects(root, metas, 'all', { closure: true })
     const [project, task] = splitTaskId(taskId)
     const nodes = buildTaskGraph({
@@ -611,7 +613,7 @@ async function groupMembers(root: string, taskId: string): Promise<Map<string, s
       packageGraph: buildPackageGraph(metas),
       requested: [{ project, task }],
       workspaceRoot: root,
-      rules: runRules((await loadCliWorkspace(root)).workspaceConfig),
+      rules: runRules((await at.workspace()).workspaceConfig),
     })
     return new Map([...nodes.values()].filter(isGroupTask).map((n) => [n.id, n.deps]))
   } catch {

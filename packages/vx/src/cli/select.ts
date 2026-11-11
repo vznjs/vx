@@ -58,6 +58,7 @@ import {
   loadCliProjects,
   loadCliWorkspace,
   stageCacheDir,
+  type VerbWorkspace,
   workspaceOfDiscovery,
 } from './workspace-config.js'
 
@@ -187,8 +188,12 @@ async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise
   return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
 }
 
-export async function findCwdProject(cwd: string): Promise<string | null> {
-  return (await findCwdSelection(cwd))?.name ?? null
+export async function findCwdProject(
+  cwd: string,
+  /** The verb's workspace, whose discovery this reuses. */
+  at?: VerbWorkspace,
+): Promise<string | null> {
+  return (await findCwdSelection(cwd, {}, await at?.projects()))?.name ?? null
 }
 
 /**
@@ -199,9 +204,11 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
 export async function findCwdSelection(
   cwd: string,
   load: CliLoadOptions = {},
+  /** A discovery of this workspace the caller made. */
+  discovered?: ProjectMeta[],
 ): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(root, load)
+  const projects = discovered ?? (await discoverCliProjects(root, load))
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): { name: string; dir: string } | null => {
     let best: { name: string; dir: string } | null = null
