@@ -1197,6 +1197,44 @@ describe.skipIf(process.platform !== 'linux')('Ctrl-Z (SIGTSTP) during vx run', 
     },
     TIMEOUT,
   )
+
+  it(
+    'time stopped is not run time: a task continued by fg is not timed out',
+    async () => {
+      // A plain timer kept counting while vx and the task were stopped,
+      // and killed the task as timed out the moment vx continued. `sleep`
+      // counts wall time, so the second one is the run time left after `fg`.
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              slow: { exec: { command: 'echo $$ > pid.txt; sleep 1; sleep 1', timeout: '3s' } },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+        cwd: fixture.root,
+        env: { ...process.env },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      try {
+        proc.kill('SIGTSTP')
+        expect(await untilState(proc.pid, 'stopped', 5_000)).toBe('stopped')
+        await Bun.sleep(4_000)
+        proc.kill('SIGCONT')
+        const err = await new Response(proc.stderr).text()
+        expect([await proc.exited, err.includes('timed out')]).toEqual([0, false])
+      } finally {
+        proc.kill('SIGKILL')
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('terminateChildren — the second sweep re-reads what is live', () => {

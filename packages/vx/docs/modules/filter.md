@@ -22,6 +22,7 @@ export interface ParsedFilter {
   sinceViaDeps?: true // <name>...[<git-ref>]: changed, or depends on a changed package
   pathGlob?: Bun.Glob // a path form carrying a glob (`./packages/*`), matched over the root-relative project dir
   pathGlobBase?: Bun.Glob // `./a/**`'s `a`: a trailing `**` matches zero dirs (D-84)
+  pathGlobRoot?: true // `./**`: the one path glob that reaches the root project
   pathRoot?: string // the workspace root `pathGlob` is relative to
   exactDir?: true // `//`: the project at `matcher` itself, never the ones under it
   tag?: true // tag:<pattern>: `matcher` is a glob over the projects' tags

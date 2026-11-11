@@ -734,6 +734,7 @@ export async function loadProjectConfigs(
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
   let invokedIn = ''
+  let invokedPwd: string | undefined
   let umask = -1
   let unredirect: (() => void) | undefined
   let unredirectFd: (() => void) | undefined
@@ -820,10 +821,14 @@ export async function loadProjectConfigs(
       unredirect = stdoutToStderr()
       unredirectFd = fdOneToStderr()
       builtins = builtinSnapshot()
-      env = { ...process.env }
       invokedIn = process.cwd()
+      invokedPwd = process.env['PWD']
       if (root !== undefined && root !== invokedIn) process.chdir(root)
       cwd = process.cwd()
+      // A config reading `PWD` saw the caller's directory, so `vx lock` in
+      // a subdirectory wrote another lock: `PWD` names the cwd it runs in.
+      process.env['PWD'] = cwd
+      env = { ...process.env }
       umask = currentUmask()
     }
     if (prepared.length > 1) watch = await watchSharedModules(prepared, reads)
@@ -892,6 +897,10 @@ export async function loadProjectConfigs(
     return results as ProjectConfig[]
   } finally {
     if (invokedIn !== '' && process.cwd() !== invokedIn) process.chdir(invokedIn)
+    if (invokedIn !== '') {
+      if (invokedPwd === undefined) delete process.env['PWD']
+      else process.env['PWD'] = invokedPwd
+    }
     unredirectFd?.()
     unredirect?.()
     endRound()
