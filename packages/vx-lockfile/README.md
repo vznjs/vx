@@ -62,7 +62,7 @@ Files no lockfile records lay `node_modules` out anew under a byte-identical loc
 
 It reads the root's `dependencies`, `devDependencies` and `optionalDependencies` because yarn 1's lockfile records no importer, only the ranges asked: moving a range between the root and a workspace (root `is-number` `^6` → `^7`, `packages/a` `^7` → `^6`) leaves yarn.lock byte-identical and moves the root `node_modules` copy every project without its own resolves. Any change to them re-keys every project and selects every project under `--affected`; berry records them on the root workspace's entry, which every project's digest already includes.
 
-For the same reason a yarn 1 key folds every workspace's `package.json`: `packages/a` moving `is-number` `^6` → `^7` beside `packages/b`'s `^7` leaves yarn.lock byte-identical, yet `a`, and every project linking `a`, resolves 7.0.0. Any edit to a workspace manifest re-keys every project and selects every project under `--affected`, since yarn 1's one digest covers the whole workspace.
+For the same reason a yarn 1 key reads every workspace's `package.json`: `packages/a` moving `is-number` `^6` → `^7` beside `packages/b`'s `^7` leaves yarn.lock byte-identical, yet `a`, and every project linking `a`, resolves 7.0.0. Any edit to a workspace manifest re-keys every project and selects every project under `--affected`, since a yarn 1 key covers the whole workspace.
 
 A file has one owner, so two of these plugins that share a settings file (`pnpm()` and `bun()` both own `.npmrc`) cannot be declared together.
 
