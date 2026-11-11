@@ -3714,7 +3714,8 @@ socket beside its run lock (in this user's own temp directory, so no
 other user reaches it) while it holds the lock, and keeps only when each
 task started; the snapshot is built when asked. Output is not kept: it
 reaches a follower only while one is attached, and a follower that falls
-1 MiB behind is let go, so a stuck reader never holds the run. `--live`
+1 MiB behind is let go, so a stuck reader never holds the run. A
+follower let go, or whose run is killed, exits 1 with no `run:done`. `--live`
 combines only with `--follow`, `--format` and `--cache-dir`.
 
 ### `--sql`

@@ -523,6 +523,7 @@ export interface CachePolicy {
 export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 export function formatCachePolicy(p: CachePolicy): string // the spec parseCachePolicy reads: local:rw,remote:r
+export function cachePolicyEnvRefusal(spec: string): string | null // why VX_CACHE_POLICY is refused, checked before any verb
 // `--no-cache` (all off) beats `--force` (reads off), over whichever spec set the base
 export interface CacheFlags {
   noCache?: boolean

@@ -18,6 +18,7 @@ import {
   ignoreCaseLies,
   isExecutableMissing,
   isInstalledPath,
+  isUserError,
   notAWorkTree,
   parseCheckAttrOutput,
   relPosix,
@@ -456,9 +457,17 @@ export async function affectedChanges(
   // The base commit's `vx lock` record, read once and only when asked.
   let baseDeps: Promise<DependenciesLock | null> | undefined
   const baseDependencies = (): Promise<DependenciesLock | null> =>
-    (baseDeps ??= gitBytesAt(args.workspaceRoot, base, DEPENDENCIES_LOCK_NAME).then(
-      parseDependenciesLock,
-    ))
+    (baseDeps ??= gitBytesAt(args.workspaceRoot, base, DEPENDENCIES_LOCK_NAME).then((bytes) => {
+      // A base a newer vx locked is read as no record (everything its
+      // files key moves), as before: only the working tree's lock is this
+      // vx's to refuse, since only that one `vx lock` would write over.
+      try {
+        return parseDependenciesLock(bytes)
+      } catch (err) {
+        if (isUserError(err)) return null
+        throw err
+      }
+    }))
   let claims: FingerprintClaims | undefined
   const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
     (claims ??= await args.fingerprintClaims?.())

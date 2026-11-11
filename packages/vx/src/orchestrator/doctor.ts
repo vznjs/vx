@@ -7,7 +7,13 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { indexDb, Cache, CACHE_VERSION, SCHEMA_VERSION } from '../cache/index.js'
+import {
+  cachePolicyEnvRefusal,
+  indexDb,
+  Cache,
+  CACHE_VERSION,
+  SCHEMA_VERSION,
+} from '../cache/index.js'
 import { PLUGIN_HOOKS, type WorkspaceConfig } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -179,8 +185,14 @@ function refusedSettings(): Map<string, { name: string; raw: string; reason: str
     if (s.env === false) continue
     const name = envName(s.path)
     const raw = process.env[name]
-    if (raw === undefined || raw === '' || parseSettingValue(s.kind, raw) !== null) continue
-    out.set(s.path, { name, raw, reason: settingRefusal(s.path, name, raw) })
+    if (raw === undefined || raw === '') continue
+    if (parseSettingValue(s.kind, raw) === null)
+      out.set(s.path, { name, raw, reason: settingRefusal(s.path, name, raw) })
+    else if (s.path === 'cache.policy') {
+      // A string to the settings table; its grammar is the cache module's.
+      const reason = cachePolicyEnvRefusal(raw)
+      if (reason !== null) out.set(s.path, { name, raw, reason })
+    }
   }
   return out
 }

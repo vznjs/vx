@@ -178,3 +178,29 @@ it('a deleted project leaves the alike task it pooled with unselected', async ()
   git('commit', '-q', '-m', 'drop a')
   expect(await dry(root, ['build', '--affected=HEAD~1'])).toEqual([])
 })
+
+// The base commit's dependencies lock is only read, never written: one a
+// newer vx wrote reads as no record, as before. The newer-lock refusal is
+// for the working tree's, which `vx lock` would write over; it fired on the
+// base and named the working tree's file.
+it('a base whose dependencies lock a newer vx wrote is read, not refused', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-affected-newer-base-', edges: { p: [] } })
+  made.push(root)
+  await addProject(root, 'p', { config: config(['src/**']), files: { 'src/x': '1\n' } })
+  await addProject(root, 'q', { config: config(['src/**']), files: { 'src/x': '1\n' } })
+  await lock(root)
+  const file = path.join(root, '.vx', 'dependencies.lock.json')
+  const text = await Bun.file(file).text()
+  await Bun.write(file, text.replace('"version":3', '"version":4'))
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'base')
+  // A deleted project's edges are read from the base's lock.
+  await rm(path.join(root, 'packages/q'), { recursive: true })
+  await Bun.write(path.join(root, 'packages/p/src/x'), '2\n')
+  await lock(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'head')
+  const tasks = await dry(root, ['build', '--affected=HEAD~1'])
+  expect(tasks.map((t) => t.id)).toContain('p#build')
+})

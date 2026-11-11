@@ -551,6 +551,8 @@ async function printLive(
   let snapshot: LiveSnapshot | undefined
   /** The run answered a snapshot this vx cannot read: another vx version's. */
   let unreadable = false
+  /** `run:done` arrived: a follower whose stream stops before it lost the run. */
+  let ended = false
   let settle!: (answered: boolean) => void
   const done = new Promise<boolean>((resolve) => (settle = resolve))
   const line = (text: string): void => {
@@ -574,6 +576,9 @@ async function printLive(
       else ui.print('out', ...formatLive(snapshot))
       return
     }
+    // Parsed only where it may be the end: JSON mode passes lines through.
+    if (text.includes('"run:done"') && (parsed(text) as { kind?: unknown })?.kind === 'run:done')
+      ended = true
     if (format === 'json') ui.data('out', `${text}\n`)
     else {
       const e = parsed(text)
@@ -619,6 +624,12 @@ async function printLive(
       fix: 'ask with the vx that started the run',
     })
   if (!answered) none()
+  // Exit 0 read as "followed to its end" to a script that had lost the run.
+  if (follow && !ended)
+    throw refusal({
+      headline: 'the run let go before it ended: it was killed, or this follower fell 1 MiB behind',
+      fix: 'vx last',
+    })
   return 0
 }
 
