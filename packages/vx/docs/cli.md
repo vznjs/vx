@@ -3454,7 +3454,9 @@ row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
 them under `root cause`, one chain per root (five at most, then a
 count; a chain of more than six tasks prints its first two and last
-three around `N more`), and `what to do` speaks to those kinds instead. Each upstream is
+three around `N more`), and `what to do` speaks to those kinds instead
+(a `config` line names the `vx show` of the root's task, not the asked
+one). Each upstream is
 compared between the two keys the dependant folded, so a run of the
 upstream alone in between changes nothing it names:
 
@@ -3509,11 +3511,15 @@ the terminal; `--format json` carries the name as it is.
 **When there is no diff.** The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
-names the hash change and says the component diff is unavailable. When
+names the hash change and says the component diff is unavailable. An
+entry restored from a remote cache came with no fingerprints (the
+artifact carries none), and the detail line says so rather than a
+prune. When
 only the previous run failed, or passed beside a failed task
 (`--continue`, never saved), or wrote no cache (`--no-cache`, or a
 `--cache-policy` without write), the diff is taken against the last run
-that saved an entry instead, and the detail line names that run. When
+that saved an entry instead, and the detail line names that run, even
+when the diff has rows. When
 this run wrote no cache, the detail line says so rather than a prune. A
 task with `inputs` and no `cache: true` derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report

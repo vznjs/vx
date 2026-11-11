@@ -876,7 +876,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
           ? `the previous run did not write the cache: ${NO_WRITE}`
           : `the previous run ended ${prev.status}`
       const since = `run ${saved.runId}, the last that saved an entry (${why})`
-      return {
+      const diff: CacheKeyDiff = {
         runId,
         taskId,
         found: true,
@@ -888,6 +888,8 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
             ? `${entries.length} cache-key component(s) changed since ${since}`
             : `cache key matches ${since}`,
       }
+      olderRun.add(diff)
+      return diff
     }
   }
 
@@ -909,6 +911,16 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
               : old.length === 0 && prevNoWrite
                 ? `the previous run did not write the cache (${NO_WRITE})`
                 : null
+    // An entry a remote put here arrives with no fingerprints (the artifact
+    // carries none): that is why, not a prune (2026-11-11).
+    const remote =
+      unsaved !== null
+        ? null
+        : cur.length === 0 && restoredFromRemote(db, project, task, this_.hash)
+          ? "this run's entry"
+          : old.length === 0 && restoredFromRemote(db, project, task, prev.hash)
+            ? 'the previous entry'
+            : null
     return {
       runId,
       taskId,
@@ -923,7 +935,9 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
             'without `cache: true` it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key'
           : unsaved !== null
             ? `cache key changed but input fingerprints are unavailable — ${unsaved} and saved no entry; only the key change is known`
-            : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
+            : remote !== null
+              ? `cache key changed but input fingerprints are unavailable — ${remote} was restored from the remote cache, which keeps no input fingerprints, so vx cannot name what changed; only the key change is known`
+              : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
     }
   }
 
@@ -941,6 +955,32 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
         ? `${entries.length} cache-key component(s) changed since the previous run`
         : 'cache key changed but no component-level difference was recorded',
   }
+}
+
+/** Whether a run of the task took `hash` from the remote cache: its entry came with no fingerprints. */
+function restoredFromRemote(db: Database, project: string, task: string, hash: string): boolean {
+  return (
+    db
+      .query(
+        "SELECT 1 FROM runs WHERE project = ? AND task = ? AND hash = ? AND status = 'cache-hit-remote' LIMIT 1",
+      )
+      .get(project, task, hash) !== null
+  )
+}
+
+/**
+ * The diffs taken against an older run than the previous one (the last
+ * that saved an entry): kept beside the value, so its JSON is unchanged.
+ */
+const olderRun = new WeakSet<CacheKeyDiff>()
+
+/**
+ * Whether `diff` compared this run with an older run than the previous
+ * one: a reader that labels the previous run must then name the run its
+ * diff is from (`diff.note` does).
+ */
+export function diffsOlderRun(diff: CacheKeyDiff): boolean {
+  return olderRun.has(diff)
 }
 
 /**

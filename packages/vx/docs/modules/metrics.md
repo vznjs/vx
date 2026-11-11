@@ -19,6 +19,7 @@ explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
 latestRunId(db, taskId): string | null              // the run a caller without one means
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
+diffsOlderRun(diff): boolean                         // the diff is against the last run that saved an entry, not the previous one (its note names it)
 rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upstreams (through groups), the tasks whose own inputs moved between the keys the dependant folded; on its own stack, each visit linked to the one that reached it, so no chain is copied per level
 recordedTasks(db, runId): Set<string>               // the run's rows as project#task, read once
 upstreamTask(name): string                           // the task an upstream row names, past a group (GROUP_VIA)
@@ -137,7 +138,10 @@ case it is.
 - `cacheKeyDiff` is the moat: it resolves both runs to their task
   hashes and full-outer-joins the two `entry_inputs` fingerprint sets
   over `(kind, name)` — `changed` / `added` / `removed`, unchanged ones
-  counted — with no config re-evaluation and no re-hash. Values are
+  counted — with no config re-evaluation and no re-hash. A side with no
+  fingerprints is named for why: a run that failed or wrote no cache,
+  an entry a remote hit restored (a `cache-hit-remote` row of that key:
+  the artifact carries none), and only then a prune. Values are
   digests, never the material (an env value can be a secret), and a
   secret-named env input's digest leaves as `***` (unsalted, a short
   value is recoverable from it, M-62), as does one its task's
@@ -172,5 +176,7 @@ writers over a 10,000-task chain, by memory and statement count);
 ## Replacing this module
 
 A reader over another store implements the same twelve signatures (the
-join, `diffKeyComponents`, needs no store and is reused as it is); the
-CLI verbs format, they do not query.
+join, `diffKeyComponents`, needs no store and is reused as it is, and
+`diffsOlderRun` answers only for this module's own `cacheKeyDiff`
+results, so such a reader supplies its own); the CLI verbs format, they
+do not query.

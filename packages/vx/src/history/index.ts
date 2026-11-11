@@ -25,6 +25,7 @@ export {
 } from './failure-mode.js'
 export {
   cacheKeyDiff,
+  diffsOlderRun,
   explainCacheKey,
   getInvocation,
   getRun,
