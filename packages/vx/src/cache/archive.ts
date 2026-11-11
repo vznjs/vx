@@ -2185,7 +2185,7 @@ const stagingMade = new Set<string>()
  * (2026-11-10); the call is one `mkdir` of microseconds.
  */
 function stagingDir(root: string): string {
-  const top = path.join(root, '.vx', STAGING)
+  const top = stagingRoot(root)
   const own = ownStaging(root)
   if (stagingMade.has(own) && existsSync(own)) return own
   mkdirSync(own, { recursive: true })
@@ -2200,7 +2200,12 @@ function stagingDir(root: string): string {
 }
 
 function ownStaging(root: string): string {
-  return path.join(root, '.vx', STAGING, `${process.pid.toString(36)}-0`)
+  return path.join(stagingRoot(root), `${process.pid.toString(36)}-0`)
+}
+
+/** `root`'s `.vx/tmp/`, which holds every process's staging directory. */
+export function stagingRoot(root: string): string {
+  return path.join(root, '.vx', STAGING)
 }
 
 /**

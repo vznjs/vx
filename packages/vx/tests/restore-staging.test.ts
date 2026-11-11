@@ -16,14 +16,17 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
+import * as fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it } from 'bun:test'
+import { afterEach, expect, it, spyOn } from 'bun:test'
 import { extractArtifactStream } from '../src/cache/archive.js'
+import { Cache } from '../src/cache/index.js'
 import { tarPack } from '../src/cache/tar-stream.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { vx } from './helpers/parity.js'
 import { streamOf } from './helpers/stream.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const made: string[] = []
@@ -315,3 +318,51 @@ it('a target already holding the bytes stays, with the entry mode', async () => 
   const after = statSync(file)
   expect([after.ino, after.mode & 0o777]).toEqual([before, 0o644])
 })
+
+// A read-only source mount with writable output volumes: the outputs could
+// be written, `.vx/tmp/` could not, and the restore told the user to make
+// the outputs writable (2026-11-11). Root ignores permission bits, so the
+// read-only mount is a refused `mkdirSync` under `.vx/`.
+for (const [form, store] of [
+  ['tree', undefined],
+  ['archive', TAR_STORE],
+] as const) {
+  it(`a restore (${form} form) whose staging cannot be made names .vx/tmp, not the outputs`, async () => {
+    const ws = dir('vx-staging-ro-')
+    const proj = path.join(ws, 'app')
+    const out = path.join(proj, 'dist', 'a.js')
+    mkdirSync(path.dirname(out), { recursive: true })
+    writeFileSync(out, 'a\n')
+    const cacheDir = dir('vx-staging-ro-cache-')
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, store)
+    const realMkdir = fs.mkdirSync
+    const spy = spyOn(fs, 'mkdirSync').mockImplementation(((p: fs.PathLike, o?: unknown) => {
+      if (String(p).startsWith(path.join(ws, '.vx'))) {
+        throw Object.assign(new Error(`EROFS: read-only file system, mkdir '${String(p)}'`), {
+          code: 'EROFS',
+          path: String(p),
+        })
+      }
+      return realMkdir(p, o as fs.MakeDirectoryOptions)
+    }) as typeof fs.mkdirSync)
+    try {
+      await cache.save({
+        hash: 'h-ro-stage',
+        projectDir: proj,
+        outputFiles: [out],
+        entry: { taskId: 'app#build', command: 'c', durationMs: 1, stdout: '' },
+      })
+      rmSync(path.join(proj, 'dist'), { recursive: true })
+      const err = await cache.restoreOutputs('h-ro-stage', proj, ws).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect(err?.message).toMatch(
+        /^restore of h-ro-stage into .*app could not stage its outputs: restores stage in .*\/\.vx\/tmp, which is not writable \(EROFS: .*\)\. Make it writable by this user \(a writable mount or volume over a read-only checkout\)\.$/,
+      )
+    } finally {
+      spy.mockRestore()
+      cache.close()
+    }
+  })
+}

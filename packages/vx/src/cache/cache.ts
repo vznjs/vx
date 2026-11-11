@@ -96,6 +96,7 @@ import {
   type ExecUsage,
   copyStaging,
   extractArtifactStream,
+  stagingRoot,
   scanArtifact,
   scanTarBytes,
   packArtifactBytes,
@@ -3055,7 +3056,18 @@ export class Cache implements CacheLayer {
             `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
         )
       }
+      // The outputs may be writable while `.vx/tmp/`, where a restore
+      // stages, is not: a read-only source mount with writable output
+      // volumes. The outputs' remedy sent the user to the wrong path.
       if (isFsRefusal(err)) {
+        const top = workspaceRoot === undefined ? undefined : stagingRoot(workspaceRoot)
+        if (top !== undefined && code !== 'ENOSPC' && code !== 'EDQUOT' && inTree(err.path, top)) {
+          throw new UserError(
+            `restore of ${hash} into ${projectDir} could not stage its outputs: restores stage in ${top}, ` +
+              `which is not writable (${codeFirst(code, err.message)}). ` +
+              `Make it writable by this user (a writable mount or volume over a read-only checkout).`,
+          )
+        }
         const remedy = isDiskFull(err)
           ? 'Free space on that disk and re-run.'
           : 'Make the declared output paths writable by this user, or stop declaring them as outputs.'

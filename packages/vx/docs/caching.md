@@ -1141,7 +1141,12 @@ user wrote, a read-only checkout) fails the task with `cannot remove
 declared output <path>: EACCES — …`, and a restore that cannot write
 into such a directory with `restore of <hash> into <dir> could not write its outputs
 (EACCES: …)`: the environment's failure, reported plainly, never as an
-internal error or a corrupt artifact.
+internal error or a corrupt artifact. A restore stages in the
+workspace's `.vx/tmp/`, so a read-only checkout with writable output
+volumes needs `.vx/tmp/` writable too (a mount or volume of its own);
+where it is not, the restore fails with `could not stage its outputs:
+restores stage in <root>/.vx/tmp, which is not writable (EROFS: …)`,
+naming that path, not the outputs.
 
 Why so strict? Turbo and Nx restore additively — files from a prior
 state can survive. We've seen this cause:
@@ -1665,7 +1670,9 @@ and the files below stay files: the config bundle in
 before the workspace config names the cache dir), the no-remote workspace
 id `.vx/cache/workspace-id` (outlives a cleared or reset index), restore
 staging in `.vx/tmp/` (output bytes), and the probes a run writes and
-removes at once (`.vx-clock-<pid>`, the watch stamps). A failed run's
+removes at once (`.vx-clock-<pid>`, the watch stamps). A hit needs
+`.vx/tmp/` writable even where `--cache-dir` points elsewhere: a
+read-only checkout mounts one over it. A failed run's
 task output is `failures` rows (one per task: `output` plain text, ANSI
 stripped, secrets masked, the first 8 KiB and last 56 KiB; `locations`
 and `sandbox_fix` JSON), written at run end only when a task failed with
