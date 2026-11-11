@@ -70,6 +70,11 @@ export interface PlanTask {
   readonly depsN?: Int32Array
   /** Its servers' bases (`Need.servers`): booked once on each worker. */
   readonly servers?: Need['servers']
+  /**
+   * Its upstreams whose files only the worker that ran them holds
+   * (`leaves`): on another worker each runs again first.
+   */
+  readonly reads?: readonly string[]
 }
 
 /** The run's tasks numbered once, and each one's deps by number. */
@@ -85,6 +90,19 @@ interface Node {
   readonly runs: boolean
   deps?: string[]
   depsN?: Int32Array
+  reads?: string[]
+}
+
+/**
+ * An uncached task that may leave files its dependants read: no cache
+ * carries them. A sandboxed one writes only where its grants say; with
+ * none (a gate like a lint or a version check) it leaves nothing, and
+ * pinning every dependant to its worker held a run's shards on one.
+ */
+export function leaves(node: TaskNode): boolean {
+  if (node.config.cache === true) return false
+  const sandbox = node.config.exec?.sandbox
+  return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
 }
 
 /** The numbering each `depsN` is of. */
@@ -120,6 +138,8 @@ export interface PlanWorker {
   readonly dormant?: boolean
   /** From then on, ms from now, it takes no task: it leaves once what runs there ends (`Plan.drain`). */
   readonly drainIn?: number
+  /** Tasks that ran here whose files no cache holds (`leaves`), each with its ms: their dependants read them here, or make them again. */
+  readonly holds?: ReadonlyMap<string, number>
 }
 
 /** A worker's warm-up, one for all, or by its size (`Size.name`; none for one that joined on its own). */
@@ -313,10 +333,25 @@ export function planTasks(
     }
     return (e.deps = [...out])
   }
+  // Every upstream that runs and leaves files, through groups and tasks:
+  // the orchestrator pins a task to all of them (`Orchestrator.pin`).
+  const readsOf = (e: Node): string[] => {
+    if (e.reads !== undefined) return e.reads
+    e.reads = []
+    const out = new Set<string>()
+    for (const d of e.node.deps) {
+      const x = of.get(d)
+      if (x === undefined) continue
+      if (x.runs && x.node.config.exec?.persistent === undefined && leaves(x.node)) out.add(d)
+      for (const r of readsOf(x)) out.add(r)
+    }
+    return (e.reads = [...out])
+  }
   const out: PlanTask[] = []
   for (const id of ids) {
     const e = of.get(id)
     if (e === undefined || !e.runs) continue
+    const reads = readsOf(e)
     const n = need(id)
     const deps = depsOf(e)
     if (e.depsN === undefined) {
@@ -334,6 +369,7 @@ export function planTasks(
       n: e.n,
       depsN: e.depsN,
       ...(n.servers === undefined ? {} : { servers: n.servers }),
+      ...(reads.length === 0 ? {} : { reads }),
     })
   }
   return out

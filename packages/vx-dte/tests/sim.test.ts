@@ -647,3 +647,29 @@ it('ranks the waiting again when history lands: a long root goes before later sh
   }
   expect(late.endMs).toBeLessThanOrEqual(known.endMs * 1.02)
 })
+
+// Main's deploy (2026-11-11) read the files its uncached build left on
+// its worker; the plan let that worker go, and the deploy ran the 25 s
+// build again on the run's last worker, past the chain. Planned with the
+// build's files where it ran, the deploy goes there: the run ends on its
+// chain, 25 s sooner.
+it('keeps the worker an uncached task left files on until its dependant runs there', () => {
+  const t = (id: string, ms: number, deps: string[] = [], cores = 1, leaves = false): SimTask => ({
+    id,
+    deps,
+    exec: true,
+    cache: !leaves,
+    ran: { ms, cores, memory: 2e8 },
+    ...(leaves ? { leaves: true } : {}),
+  })
+  const r = simulate(
+    [
+      t('c1', 60_000, [], 4),
+      t('c2', 40_000, ['c1'], 4),
+      t('build', 25_000, [], 2, true),
+      t('deploy', 10_000, ['c2', 'build']),
+    ],
+    { sizes: [small] },
+  )
+  expect(r.endMs).toBe(20_000 + 60_000 + 40_000 + 10_000)
+})

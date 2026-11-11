@@ -45,6 +45,7 @@ import {
 } from './messages.js'
 import {
   advise,
+  leaves,
   leftMs,
   simulate,
   UNKNOWN_MS,
@@ -2124,6 +2125,12 @@ export class Orchestrator {
     const now = performance.now()
     const running = new Set<string>()
     const workers: PlanWorker[] = []
+    const holds = new Map<string, Map<string, number>>()
+    for (const [task, k] of this.kept) {
+      const on = holds.get(k.worker)
+      if (on === undefined) holds.set(k.worker, new Map([[task, ms(task) ?? 0]]))
+      else on.set(task, ms(task) ?? 0)
+    }
     for (const a of this.workers.values()) {
       if (a.faulty) continue
       const jobs = [...a.busy.values()].filter((j) => j.startedAt !== undefined)
@@ -2141,6 +2148,7 @@ export class Orchestrator {
         ...(a.declared === undefined ? {} : { size: a.declared.size }),
         at: 0,
         ...(this.drainAt.has(a.id) ? { drainIn: Math.max(0, this.drainAt.get(a.id)! - now) } : {}),
+        ...(holds.has(a.id) ? { holds: holds.get(a.id)! } : {}),
         idle: a.busy.size === 0,
         // An unmeasured one counts as it did waiting (`ask`), not as the
         // one core it holds: started, it freed a core the plan then found
@@ -2977,18 +2985,6 @@ function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): Sandb
     if (s !== undefined) seen.set(JSON.stringify(s), s)
   }
   return [...seen.values()]
-}
-
-/**
- * An uncached task that may leave files its dependants read: no cache
- * carries them. A sandboxed one writes only where its grants say; with
- * none (a gate like a lint or a version check) it leaves nothing, and
- * pinning every dependant to its worker held a run's shards on one.
- */
-function leaves(node: TaskNode): boolean {
-  if (node.config.cache === true) return false
-  const sandbox = node.config.exec?.sandbox
-  return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
 }
 
 /**
