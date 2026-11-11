@@ -381,6 +381,32 @@ describe('buildTaskGraph', () => {
     ).toThrow('b#lint: dependsOn a#deploy, but a declares no task deploy (its tasks: build)')
   })
 
+  // d2 deleted, `dependsOn: ['d#compile', 'd2#compile']`: the fix offered
+  // d#compile, which the list already has.
+  it('a pkg#task miss never offers a target the same list already names', () => {
+    const graph =
+      (...more: ReturnType<typeof project>[]) =>
+      () =>
+        buildTaskGraph({
+          projects: projects(
+            project('d', { compile: cmd('d') }),
+            ...more,
+            project('root', {
+              compile: { ...cmd('r'), dependsOn: ['d#compile', 'd2#compile'] },
+            }),
+          ),
+          packageGraph: packageGraph({}),
+          requested: [{ project: 'root', task: 'compile' }],
+        })
+    expect(graph()).toThrow(
+      /^root#compile: dependsOn d2#compile, but no project is named d2 — remove d2#compile from dependsOn$/,
+    )
+    // CONTROL: another near target is still offered.
+    expect(graph(project('d3', { compile: cmd('d3') }))).toThrow(
+      /^root#compile: dependsOn d2#compile, but no project is named d2\. Did you mean d3#compile\?$/,
+    )
+  })
+
   // `a#build` against a project named by its path (`packages/a`) named
   // neither the project nor what to type instead.
   // A project that exists was told "no such project or task", though only

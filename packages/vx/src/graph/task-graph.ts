@@ -359,17 +359,18 @@ export function undeclaredDepsError(
  * declaring `task` — or the one whose path ends in it, since a project is
  * named by its path unless named, and `a#build` is how a `packages/a` is
  * first typed. A default build is never offered: depending on it orders
- * nothing.
+ * nothing; nor is a target in `listed`, the `dependsOn` it would join.
  */
 function nearestTarget(
   projects: ReadonlyMap<string, ProjectEntry>,
   project: string,
   task: string,
+  listed: ReadonlySet<string> = new Set(),
 ): string | undefined {
   const all = [...projects.values()]
   const declared = (p: ProjectEntry): string[] =>
     Object.entries(p.config.tasks ?? {})
-      .filter(([, t]) => !isDefaultBuild(t))
+      .filter(([n, t]) => !isDefaultBuild(t) && !listed.has(taskId(p.name, n)))
       .map(([n]) => n)
   const holder =
     projects.get(project) ??
@@ -387,6 +388,22 @@ function nearestTarget(
   const tasks = declared(holder)
   const name = tasks.includes(task) ? task : nearest(task, tasks)
   return name === undefined ? undefined : taskId(holder.name, name)
+}
+
+/** The targets a task's `dependsOn` names by `pkg#task` or a bare task name. */
+function listedTargets(node: TaskNode): Set<string> {
+  const out = new Set<string>()
+  for (const raw of node.config.dependsOn ?? []) {
+    let spec: DependencySpec
+    try {
+      spec = parseDependencySpec(raw, 'dependsOn')
+    } catch {
+      continue
+    }
+    if (spec.kind === 'cross') out.add(taskId(spec.project, spec.task))
+    else if (spec.kind === 'self') out.add(taskId(node.projectName, spec.task))
+  }
+  return out
 }
 
 function onlyOne<T>(list: readonly T[]): T | undefined {
@@ -728,7 +745,12 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             `${id}: dependsOn //#${spec.task}, the workspace root's task, but the root declares no such task: add a vx.config at the root declaring it and run \`vx lock\``,
             'VX_E_DEPENDS_ON',
           )
-        const meant = nearestTarget(projects, spec.project, spec.task)
+        const listed = listedTargets(node)
+        const meant = nearestTarget(projects, spec.project, spec.task, listed)
+        // The only near target is one the list already has (a deleted
+        // project's entry beside its sibling's): the entry is the fix.
+        const remove =
+          meant === undefined && listed.has(nearestTarget(projects, spec.project, spec.task) ?? '')
         // Which half is missing: a project that exists was told "no such
         // project or task", though only its task was.
         const owner = projects.get(spec.project)
@@ -738,7 +760,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             ? `no project is named ${spec.project}`
             : `${spec.project} declares no task ${spec.task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
         throw new UserError(
-          `${id}: dependsOn ${taskId(spec.project, spec.task)}, but ${what}${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
+          `${id}: dependsOn ${taskId(spec.project, spec.task)}, but ${what}${remove ? ` — remove ${taskId(spec.project, spec.task)} from dependsOn` : meant === undefined ? '' : `. Did you mean ${meant}?`}`,
           'VX_E_DEPENDS_ON',
         )
       }
