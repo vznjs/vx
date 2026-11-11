@@ -1240,6 +1240,8 @@ export interface SandboxedRunArgs {
   readonly reportWithin: string
   /** Canonical directories whose denials are reported too (`ExecuteSandbox.reportLinked`). */
   readonly reportLinked: readonly string[]
+  /** `ExecuteSandbox.keyRoot`. */
+  readonly keyRoot?: string
   /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
@@ -2844,7 +2846,7 @@ async function runSandboxedOnce(
       skip: [taskTmpRoot()],
     })
     if (hidden.length > 0)
-      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin))
+      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, args.keyRoot))
   }
 
   afterCommand(SandboxManager)
@@ -2975,12 +2977,15 @@ function hostTempRoots(): string[] {
  * or its link's target, vx's own store, the repository's git data outside
  * the workspace) is walled on purpose and never the suggested grant: an
  * agent applies a suggestion as given, and `cat ~/.npmrc` was told to
- * grant `../../home/.npmrc`.
+ * grant `../../home/.npmrc`. For a cached task (`keyRoot`) a grant in the
+ * workspace is named for `inputs.workspaceFiles` too: applied alone, an
+ * edit there replayed the old bytes.
  */
 function hiddenReadsHint(
   paths: readonly string[],
   walled: readonly string[],
   within: string,
+  keyRoot: string | undefined,
 ): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
@@ -2990,6 +2995,12 @@ function hiddenReadsHint(
   const said =
     `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
     `not reported as violations: ${shown}${more}.`
+  const root = keyRoot === undefined ? undefined : toRealPath(keyRoot)
+  const key =
+    grantable === undefined || root === undefined || !atOrUnder(grantable, root)
+      ? ''
+      : `, and, if the output depends on it, key it: ` +
+        `\`inputs: { workspaceFiles: [${jsString(path.relative(root, grantable).replace(/[*?{}[\]\\]/g, '\\$&'))}] }\``
   return {
     timestamp: new Date(),
     hint: true,
@@ -2997,7 +3008,7 @@ function hiddenReadsHint(
       grantable === undefined
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
-          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`.`,
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`${key}.`,
   }
 }
 

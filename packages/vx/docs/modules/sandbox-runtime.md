@@ -234,6 +234,7 @@ export interface SandboxedRunArgs {
   baseDenyRead: readonly string[] // [workspaceRoot, ...credential stores] — not its project's neighbours, nor ~/.ssh (L-41)
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
+  keyRoot?: string // a cached task's workspace root: a hidden read under it is named for inputs.workspaceFiles too
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
 }
 
@@ -591,7 +592,10 @@ entry other than the ones holding the project (a credential store or its
 link's target, `~/.vx` or a cache directory outside the workspace, the
 repository's git data outside it) is named but never the suggested
 grant: an agent applies a suggestion as given, and `cat ~/.npmrc` was
-told to grant `../../home/.npmrc` until 2026-11-08.
+told to grant `../../home/.npmrc` until 2026-11-08. For a cached task
+(`keyRoot`) a grant inside the workspace comes with the
+`inputs.workspaceFiles` entry that keys it: applied alone, the grant
+read the file unkeyed and an edit there was a stale hit.
 
 bwrap enters the task's cwd only if a mount holds it, and otherwise
 `$HOME`, with no word: a project granted no read (`sandbox: {}`, its own

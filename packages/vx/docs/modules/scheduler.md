@@ -78,7 +78,7 @@ export interface TaskOutcome {
   flaky?: { passes: number; failures: number } // the run proved it flaky; its row says so
   sandboxViolations?: number
   sandboxViolationLines?: string[]
-  sandboxFix?: { read?: string[]; write?: string[]; network?: string[]; systemInfo?: string[]; withheld?: string[] } // the grants that would have allowed the denials; withheld: credential paths left out
+  sandboxFix?: { read?: string[]; write?: string[]; network?: string[]; systemInfo?: string[]; withheld?: string[]; inputs?: string[]; workspaceFiles?: string[] } // the grants that would have allowed the denials; withheld: credential paths left out; inputs / workspaceFiles: a cached task's unkeyed reads
 }
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'

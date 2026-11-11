@@ -1991,7 +1991,9 @@ from the project when it is in the workspace (under the host's temp
 directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
-host, with the grant spelled from the project (`'../../tsconfig.base.json'`):
+host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
+and, for a cached task, the `inputs.workspaceFiles` entry that keys it
+(`'tsconfig.base.json'`; a grant alone leaves an edit there a stale hit):
 the tool said only "not found". To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).

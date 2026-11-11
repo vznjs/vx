@@ -361,6 +361,8 @@ export interface TaskOutcome {
      * output built from an older copy. Cached tasks only.
      */
     inputs?: string[]
+    /** The same for reads elsewhere in the workspace, as `inputs.workspaceFiles` names them. */
+    workspaceFiles?: string[]
   }
 }
 

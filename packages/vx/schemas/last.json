@@ -365,6 +365,11 @@
               "type": "array",
               "description": "a cached task's reads of its project no inputs.files glob matches",
               "items": { "type": "string" }
+            },
+            "workspaceFiles": {
+              "type": "array",
+              "description": "a cached task's reads elsewhere in the workspace no inputs.workspaceFiles glob matches",
+              "items": { "type": "string" }
             }
           }
         },

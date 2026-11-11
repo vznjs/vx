@@ -1121,18 +1121,27 @@ describe("a link to the task's own project, or to a directory holding it, is not
     ])
   })
 
-  it('the hint names the package, the link it went through, and both ways to key it', () => {
-    const line = withheldLinkLine('@x/app#test', {
+  // The install name (`@x/ui`) is no project id: `dependsOn: ['@x/ui#build']`
+  // failed at `vx lock` where the project is `packages/ui`. A package that
+  // is no project was offered an edge too, which nothing can satisfy.
+  it('the hint names the project id, where it is linked, and the ways to key it', () => {
+    const w = {
       dir: '/ws/packages/ui',
       name: '@x/ui',
       target: 'packages/ui',
       link: 'node_modules/@x/ui',
-    })
-    expect(line).toBe(
-      'vx: @x/app#test read `packages/ui` through `node_modules/@x/ui`, and its key includes no task ' +
-        'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
-        'reaches one (`^build`, where @x/ui#build keys its sources), or grant and key ' +
-        'the files yourself (`allow.read` plus ' +
+    }
+    expect(withheldLinkLine('packages/app#test', w, 'packages/ui')).toBe(
+      'vx: packages/app#test read `packages/ui` (linked at `node_modules/@x/ui`), and its key ' +
+        'includes no task of packages/ui, so an edit there would not re-run it. Add a ' +
+        '`dependsOn` edge that reaches one (`^build`, or `packages/ui#build` where it keys its ' +
+        'sources), or grant and key the files yourself (`allow.read` plus ' +
+        '`inputs.workspaceFiles`).',
+    )
+    expect(withheldLinkLine('packages/app#test', w, undefined)).toBe(
+      'vx: packages/app#test read `packages/ui` (linked at `node_modules/@x/ui`), and it is no ' +
+        'project, so no `dependsOn` edge can key it and an edit there would not re-run this ' +
+        'task. To read it, grant and key the files yourself (`allow.read` plus ' +
         '`inputs.workspaceFiles`).',
     )
   })

@@ -809,6 +809,7 @@ export interface ExecuteSandbox {
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
+  readonly keyRoot?: string
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
 }
@@ -3119,6 +3120,7 @@ export interface TaskOutcome {
     systemInfo?: string[]
     withheld?: string[]
     inputs?: string[]
+    workspaceFiles?: string[]
   }
 }
 ```

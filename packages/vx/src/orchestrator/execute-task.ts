@@ -292,6 +292,12 @@ export interface ExecuteArgs {
    */
   nestedDirsOf?: (projectDir: string) => readonly string[]
   /**
+   * The id of the project whose directory a workspace-relative path is
+   * (run.ts `projectAtDir`): what a withheld link's hint names for its
+   * `dependsOn` edge. Absent: none is one.
+   */
+  projectAt?: (rel: string) => string | undefined
+  /**
    * Run-scoped list the miss path appends its output-directory snapshot
    * request to, taken at run end (run.ts) instead of right after the save:
    * a directory written milliseconds ago is inside the snapshot's racy
@@ -1333,7 +1339,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // ENOENT; the line beside it names the package and how to key it. Only
     // with a denial there, so it never reddens a pass.
     for (const w of reachedWithheld(withheld, violations)) {
-      violations.push({ timestamp: new Date(), hint: true, line: withheldLinkLine(node.id, w) })
+      violations.push({
+        timestamp: new Date(),
+        hint: true,
+        line: withheldLinkLine(node.id, w, args.projectAt?.(w.target)),
+      })
     }
     // A placeholder the task never wrote is not its output: take it back
     // before the outputs are collected. On a failure it is also the one
@@ -2123,8 +2133,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
             sandboxFix(
               finalViolations,
               node.projectDir,
+              args.workspaceRoot,
               (t) => secrets?.mask(t) ?? t,
-              cfg.inputs?.files,
+              cfg.inputs,
             ),
           ),
         }

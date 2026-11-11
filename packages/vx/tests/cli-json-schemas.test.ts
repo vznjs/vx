@@ -237,6 +237,7 @@ beforeAll(async () => {
         systemInfo: ['s'],
         withheld: ['/c'],
         inputs: ['src/b.txt'],
+        workspaceFiles: ['shared/c.txt'],
       }),
       failedRun,
     ])
@@ -593,6 +594,7 @@ describe('each schema object is its source type', () => {
         systemInfo: true,
         withheld: true,
         inputs: true,
+        workspaceFiles: true,
       }),
     )
     expect(props('last', 'oneOf', '0', 'properties', 'steps', 'items')).toEqual(

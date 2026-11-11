@@ -50,6 +50,7 @@ describe('sandboxFix', () => {
         v('deny(1) mach-lookup x', undefined, 'x'),
       ],
       dir,
+      dir,
     )
     expect(fix).toEqual({
       read: ['/etc/hosts', 'src/i.js', 'tsconfig.json'],
@@ -73,6 +74,7 @@ describe('sandboxFix', () => {
           net('npmjs.org', 'host is not on the allow list'),
         ],
         dir,
+        dir,
       ),
     ).toEqual({ network: ['npmjs.org'] })
   })
@@ -80,12 +82,10 @@ describe('sandboxFix', () => {
   it('grants a write under a read input as the file alone', () => {
     const write = (p: string) => v('deny(1) file-write-create', ['write'], path.join(dir, p))
     const denials = [write('src/gen.js'), write('dist/a.js'), write('lib/x.js')]
-    expect(sandboxFix(denials, dir, undefined, ['src/**', '!dist/**'])?.write).toEqual([
-      'dist/',
-      'lib/',
-      'src/gen.js',
-    ])
-    expect(sandboxFix(denials, dir, undefined, ['./**/*.ts'])?.write).toEqual([
+    expect(
+      sandboxFix(denials, dir, dir, undefined, { files: ['src/**', '!dist/**'] })?.write,
+    ).toEqual(['dist/', 'lib/', 'src/gen.js'])
+    expect(sandboxFix(denials, dir, dir, undefined, { files: ['./**/*.ts'] })?.write).toEqual([
       'dist/a.js',
       'lib/x.js',
       'src/gen.js',
@@ -102,13 +102,37 @@ describe('sandboxFix', () => {
       read(path.join(os.homedir(), '.cache/x')),
       v('deny(1) file-write-create', ['write'], path.join(dir, 'out.txt')),
     ]
-    expect(sandboxFix(denials, dir, undefined, ['./src/**', '!src/gen/**'])?.inputs).toEqual([
-      'src/gen/x.js',
-      'tsconfig.json',
-    ])
+    expect(
+      sandboxFix(denials, dir, dir, undefined, { files: ['./src/**', '!src/gen/**'] })?.inputs,
+    ).toEqual(['src/gen/x.js', 'tsconfig.json'])
     // CONTROL: every read keyed, and a task with no cache, name none.
-    expect(sandboxFix(denials, dir, undefined, ['**'])?.inputs).toBeUndefined()
-    expect(sandboxFix(denials, dir)?.inputs).toBeUndefined()
+    expect(sandboxFix(denials, dir, dir, undefined, { files: ['**'] })?.inputs).toBeUndefined()
+    expect(sandboxFix(denials, dir, dir)?.inputs).toBeUndefined()
+  })
+
+  // A read elsewhere in the workspace was granted by its absolute path,
+  // which holds on no other machine, and never named for the key: the fix
+  // applied as given turned an edit there into a stale hit.
+  it('spells a workspace read from the project, and names it for inputs.workspaceFiles', () => {
+    const project = path.join(dir, 'packages', 'b')
+    const at = (p: string) => path.join(dir, p)
+    const read = (p: string) => v('deny(1) file-read-data', ['read'], at(p))
+    const denials = [
+      read('packages/a/src/index.js'),
+      read('package.json'),
+      read('packages/b/src/x.js'),
+      v('deny(1) file-read-data', ['read'], '/etc/hosts'),
+      v('deny(1) file-write-create', ['write'], at('packages/a/dist/o.js')),
+    ]
+    const inputs = { files: ['src/**'], workspaceFiles: ['package.json'] }
+    expect(sandboxFix(denials, project, dir, undefined, inputs)).toEqual({
+      read: ['../../package.json', '../a/src/index.js', '/etc/hosts', 'src/x.js'],
+      // Outside the project the top directory is `..`: the path alone.
+      write: ['../a/dist/o.js'],
+      workspaceFiles: ['packages/a/src/index.js'],
+    })
+    // CONTROL: a task with no cache has no key to name it for.
+    expect(sandboxFix(denials, project, dir)?.workspaceFiles).toBeUndefined()
   })
 
   it('never turns a credential path into a grant', () => {
@@ -135,6 +159,7 @@ describe('sandboxFix', () => {
         read(path.join(dir, '.envrc')),
         read(path.join(dir, 'env')),
       ],
+      dir,
       dir,
     )
     expect(fix).toEqual({
@@ -164,7 +189,7 @@ describe('sandboxFix', () => {
     const reads = CREDENTIAL_STORES.flatMap((s) => [s, `${s}/x`]).map((s) =>
       v('deny(1) file-read-data', ['read'], path.join(os.homedir(), s)),
     )
-    expect(sandboxFix(reads, dir)?.read).toBeUndefined()
+    expect(sandboxFix(reads, dir, dir)?.read).toBeUndefined()
   })
 
   // A task sees $XDG_CONFIG_HOME and $XDG_DATA_HOME, so a CLI reads its
@@ -183,6 +208,7 @@ describe('sandboxFix', () => {
             read('/xdg/config/ghx'),
           ],
           dir,
+          dir,
         ),
       ).toEqual({
         read: ['/xdg/config/ghx'],
@@ -199,9 +225,10 @@ describe('sandboxFix', () => {
   })
 
   it('is undefined when nothing maps, and masks what it names', () => {
-    expect(sandboxFix([v('x', undefined, 'x')], dir)).toBeUndefined()
+    expect(sandboxFix([v('x', undefined, 'x')], dir, dir)).toBeUndefined()
     const fix = sandboxFix(
       [v('deny(1) file-read-data', ['read'], path.join(dir, 'tok-SECRET'))],
+      dir,
       dir,
       (t) => t.replaceAll('SECRET', '***'),
     )
@@ -218,8 +245,9 @@ describe('sandboxFix', () => {
     const fix = sandboxFix(
       [read('pages/[id].tsx'), read('odd/a*b.txt'), read('odd/c\\d.txt')],
       dir,
+      dir,
       undefined,
-      ['src/**'],
+      { files: ['src/**'] },
     )
     expect(fix).toEqual({
       // A literal `*` or a backslash: the sandbox grants no such path alone.

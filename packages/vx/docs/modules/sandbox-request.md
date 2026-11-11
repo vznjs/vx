@@ -70,7 +70,11 @@ export function reachedWithheld(
   withheld: readonly WithheldLink[],
   violations: readonly SandboxViolation[],
 ): WithheldLink[]
-export function withheldLinkLine(taskId: string, w: WithheldLink): string
+export function withheldLinkLine(
+  taskId: string,
+  w: WithheldLink,
+  project: string | undefined,
+): string
 
 export type WriteReach = 'none' | 'project' | 'workspace'
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
@@ -137,8 +141,12 @@ export function mayWriteFingerprint(
   calls it after each task too, from the package.
 - `reachedWithheld` names the withheld packages a reported denial lies
   under; execute-task appends `withheldLinkLine` for each, beside the
-  denial (so never on a pass): the package, the link the task went
-  through, and the two ways to make the key answer for it.
+  denial (so never on a pass): the package, where it is linked (a
+  violation holds the resolved path, so whether the read went through
+  that link is not known), and the ways to make the key answer for it: a
+  `dependsOn` edge to a task of `project`, the id of the project at the
+  target, or, always and alone when no project is there, `allow.read`
+  plus `inputs.workspaceFiles`.
 - `undeclaredWriteReach` says where a task that ran a command may have
   written files no declaration names (item 743): `'none'` for a cached
   task (held to its declared outputs), a group, or a sandboxed task with

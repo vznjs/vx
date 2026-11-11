@@ -276,7 +276,9 @@ keyed set for the task when it declares `cache`
 ([`keyed-projects.md`](./keyed-projects.md)) and nothing otherwise (the
 persistent path never does). A reported denial under a linked package
 the request withheld gets one more line beside it
-(`withheldLinkLine`): the package, the link, and the two ways to key it.
+(`withheldLinkLine`): the package, where it is linked, and the ways to
+key it (a `dependsOn` edge names the project id at the target, `projectAt`;
+a target that is no project gets only the grant and `inputs.workspaceFiles`).
 
 ## Verdict
 

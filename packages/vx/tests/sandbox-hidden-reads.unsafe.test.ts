@@ -45,6 +45,35 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
     ])
   })
 
+  // The grant alone, applied as given, read the file unkeyed: an edit to
+  // it replayed the old bytes. A cached task is told to key it too.
+  it('beside a cached task names the key entry too, and the two applied re-run on an edit', async () => {
+    const cached = (read: string[], workspaceFiles: string[]) =>
+      `export default { tasks: { t: {
+        exec: { command: 'cat < ../../tsconfig.base.json > out.txt',
+          sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out.txt'] } } },
+        cache: true,
+        inputs: { files: ['src/**'], workspaceFiles: ${JSON.stringify(workspaceFiles)} },
+        outputs: { files: ['out.txt'] },
+      } } }\n`
+    const app = await addProject(root, 'app', { config: cached(['.'], []) })
+    const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
+    expect((await t())?.sandboxViolationLines).toEqual([
+      `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
+        `not reported as violations: ${root}/tsconfig.base.json. If the task reads one, grant ` +
+        "it, e.g. `allow: { read: ['../../tsconfig.base.json'] }`, and, if the output depends " +
+        "on it, key it: `inputs: { workspaceFiles: ['tsconfig.base.json'] }`.",
+    ])
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      cached(['.', '../../tsconfig.base.json'], ['tsconfig.base.json']),
+    )
+    expect((await t())?.status).toBe('success')
+    await writeFile(path.join(root, 'tsconfig.base.json'), '{ "v": 2 }\n')
+    expect((await t())?.status).toBe('success')
+    expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('{ "v": 2 }\n')
+  })
+
   it('CONTROL: never beside a passing task', async () => {
     expect(await outcome('cat < ../../tsconfig.base.json || true')).toEqual(['success', []])
   })

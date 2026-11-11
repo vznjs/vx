@@ -44,6 +44,12 @@ export interface ExecuteSandbox {
    */
   readonly keyed?: readonly string[]
   /**
+   * A cached task's workspace root: a read the wall hid under it is named
+   * for `inputs.workspaceFiles` too, as a grant alone left an edit there
+   * a stale hit.
+   */
+  readonly keyRoot?: string
+  /**
    * The dependencies' outputs it may read (absolute), which an executor
    * that builds the request again hands `sandboxRequestFor` too.
    */

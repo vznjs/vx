@@ -904,6 +904,13 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
                 ),
               ]
             : []),
+          ...(fix.workspaceFiles !== undefined
+            ? [
+                dim(
+                  `and, if the output depends on them, inputs.workspaceFiles: [${fix.workspaceFiles.map(jsString).join(', ')}]`,
+                ),
+              ]
+            : []),
           ...(fix.withheld !== undefined
             ? [
                 dim(
@@ -1081,7 +1088,9 @@ const jsString = (p: string): string => `'${printable(p.replace(/[\\']/g, '\\$&'
  * or undefined when every denial was a withheld credential path.
  */
 function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | undefined {
-  const fix = Object.entries(f).filter(([k]) => k !== 'withheld' && k !== 'inputs')
+  const fix = Object.entries(f).filter(
+    ([k]) => k !== 'withheld' && k !== 'inputs' && k !== 'workspaceFiles',
+  )
   if (fix.length === 0) return undefined
   const parts = fix.map(
     ([k, list]: [string, string[]]) => `${k}: [${list.map(jsString).join(', ')}]`,
