@@ -128,7 +128,10 @@ import type { CacheKeyInput } from './layer.js'
 // v54: an additive task's entry holds what it found as its own save or
 // restore left it (item 588); a v53 one an incremental emitter saved
 // lacks the files it did not rewrite.
-export const CACHE_VERSION = 'vx-cache-v54'
+// v55: a run that removed a committed file under its outputs saves nothing
+// (2026-11-11); a v54 entry of one holds no removal, and its hit left the
+// file standing.
+export const CACHE_VERSION = 'vx-cache-v55'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

@@ -190,6 +190,7 @@ export async function cleanOutputs(args: {
   committed?: (abs: string) => boolean // git tracks it: never removed (default: asks git)
   resolved?: readonly string[] | undefined // the walk's files, when the caller just walked
   beforeRun?: boolean // the command runs next: a directory the clean opened stays open
+  kept?: string[] // filled with the committed files it found and left (absolute)
 }): Promise<string[]>
 
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
@@ -220,6 +221,7 @@ export async function cleanWorkspaceOutputs(args: {
   committed?: (abs: string) => boolean
   resolved?: readonly string[] | undefined
   beforeRun?: boolean
+  kept?: string[]
 }): Promise<string[]>
 
 // No clean removes a file git tracks (2026-10-14); `committedFiles`

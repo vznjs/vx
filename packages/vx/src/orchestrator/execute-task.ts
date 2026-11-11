@@ -869,6 +869,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // stamped only when a retry can follow.
   let committedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsCommittedBefore: ReadonlyMap<string, OutputStamp> | undefined
+  // The committed files the last attempt's clean found and left (absolute).
+  // One its run removed cannot be replayed by a hit, whose restore leaves
+  // it too: that run saves nothing (`ownOutputs`).
+  let committedKept: string[] = []
   // `outputs.clean: false` leaves the outputs to the first attempt's
   // command, and the save stores whatever they hold after it, a leftover
   // included: the user opted out of the clean-tree guarantee
@@ -1108,6 +1112,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // Its throw (a name vx cannot clear) fails the task before this
     // attempt's command: no exit of its own to name.
     await outputsStep('clean', attempt > 1 ? effectiveExitCode : 1, async () => {
+      committedKept = []
       if (additive && willWrite && !deferralRequested && outputs.length > 0) {
         const endStamp = span('miss: stamp outputs')
         if (stampedBefore === undefined) stampedBefore = await stampOutputs(cleanArgs)
@@ -1131,7 +1136,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         // re-create would stay in a same-project consumer's input set, keeping
         // that consumer's key unchanged while the file is gone from disk.
         const endClean = span('miss: clean outputs')
-        const cleanedRels = await cleanOutputs({ ...cleanArgs, beforeRun: true })
+        const cleanedRels = await cleanOutputs({
+          ...cleanArgs,
+          beforeRun: true,
+          kept: committedKept,
+        })
         endClean()
         args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
         committedBefore = checkCommitted(
@@ -1170,7 +1179,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       } else if (clean && wsOutputs.length > 0) {
         // Root-anchored deletions can land in other projects' dirs; mark
         // them so stale per-project git snapshots can't survive the wipe.
-        const cleanedWsRels = await cleanWorkspaceOutputs({ ...wsCleanArgs, beforeRun: true })
+        const cleanedWsRels = await cleanWorkspaceOutputs({
+          ...wsCleanArgs,
+          beforeRun: true,
+          kept: committedKept,
+        })
         args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
         wsCommittedBefore = checkCommitted(
           args.workspaceRoot,
@@ -1809,12 +1822,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * What an additive run saves as its own, or undefined when it removed a
    * file it found: no entry replays a removal (`ownOutputsSince`), so the
    * task saves nothing and runs again. Undefined too for any task when a
-   * failed attempt moved a file no clean removed (`failedTouchedFound`).
+   * failed attempt moved a file no clean removed (`failedTouchedFound`),
+   * or the run removed a committed file its clean left (`committedKept`).
    */
   async function ownOutputs(): Promise<
     { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } | undefined
   > {
     if (failedTouchedFound) return undefined
+    if (committedKept.some((f) => lstatSync(f, { throwIfNoEntry: false }) === undefined))
+      return undefined
     const mine: { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } = {}
     const left = leftByOwnEntries()
     if (stampedBefore !== undefined) {

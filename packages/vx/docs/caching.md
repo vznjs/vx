@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v54'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v55'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1083,6 +1083,15 @@ out, and a hit wrote the old bytes over a committed edit, as
 turborepo#14831 fixed in Turbo) or a `!` entry takes it back (`**`,
 `!dist/**`; until 2026-11-10 the negation dropped it too), so an edit
 moves the key and the saved bytes follow from it; the task's rewrite is no input that moved mid-run.
+A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
+could replay the removal, since its restore leaves the file too, so the
+tree a hit left (a fresh CI checkout's) held a file the run took away,
+and every warm run restored again (until 2026-11-11). With the file gone
+the key moves, and the next run saves as usual. The clean before the run
+lists the committed files it leaves; after a passing run, one lstat each
+says whether one is gone (none, and no stat, for outputs git tracks
+nothing under). Under `outputs.clean: false` the first attempt cleans
+nothing, so no list is taken: that opt-out keeps this gap.
 A committed file under `outputs.workspaceFiles` is keyed only where
 `inputs.workspaceFiles` reaches it. Until then the
 clean deleted a committed file under an output, and a reader with no edge
@@ -1171,7 +1180,9 @@ With the rule off, an edge fixes the order, and the dependant is
 - a run that **removes** a file it found (a bundler deleting the
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
-  file back, so the dependant runs again on every warm run (X-32);
+  file back, so the dependant runs again on every warm run (X-32). Any
+  task that removes a committed file under its outputs saves nothing
+  the same way (Strict output ownership);
 - before a **retry**, what the failed attempt added is removed, so its
   partial outputs are neither left nor saved; a failed attempt that
   changed or removed a file it found saves nothing on the retry's pass,
@@ -2485,6 +2496,11 @@ breaking footer).
 
 ### History
 
+- **v54 → v55**: stored bytes wrong under a key the change does not move
+  (2026-11-11). No clean deletes a committed file, so a hit cannot replay
+  a run that removed one under its outputs: the restore left it, and the
+  tree differed from the run's on every hit. Such a run now saves nothing
+  (X-32); a v54 entry may be one, so it is never read.
 - **v53 → v54**: stored bytes wrong under a key the change does not move
   (2026-11-11). An additive task (item 588) saved only what its run
   added or changed, so an incremental emitter's entry lacked the files
