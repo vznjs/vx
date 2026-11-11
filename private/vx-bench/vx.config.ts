@@ -153,7 +153,14 @@ export default defineProject({
 
     'site.numbers': {
       description: 'every runner of the head-to-head, the rows the site reads',
-      dependsOn: ['bench.*'],
+      // Named, not `bench.*`: that took bench.real, and the Bench job ran
+      // the weekly real-repo clones before the site's rows.
+      dependsOn: [
+        '@vzn/vx-bench#bench.vx',
+        '@vzn/vx-bench#bench.turbo',
+        '@vzn/vx-bench#bench.nx',
+        '@vzn/vx-bench#bench.vite-task',
+      ],
     },
 
     lint: {
