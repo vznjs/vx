@@ -22,9 +22,9 @@ import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Forecast, Size } from './planner.js'
 
-/** One worker type: the machines of it the adapter can start, by name. */
+/** One worker type: the machines of it the adapter can start, by name (letters, digits, `_` and `-`). */
 export interface WorkerType {
-  /** Its machines by name: each a size the adapter may start, named `<type>.<machine>`. */
+  /** Its machines by name (letters, digits, `_` and `-`): each a size the adapter may start, named `<type>.<machine>`. */
   readonly machines: Readonly<Record<string, WorkerSize>>
 }
 
@@ -166,6 +166,15 @@ const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> 
   memory: 'any',
 }
 
+/**
+ * A worker type's or machine's name: it rides a worker's id, `<type>.<machine>#<n>`,
+ * into a log file's name and the lists adapters split (`a,b`, `id=…`, `<type>:<platform>`).
+ * `m/x` named a log in no folder, and the run waited for good on a worker
+ * whose end was lost (2026-11-11).
+ */
+const NAME = /^[A-Za-z0-9_-]+$/
+const NAMED = 'named by letters, digits, _ and -'
+
 const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 
 /**
@@ -205,8 +214,11 @@ export function dte(options: DteOptions = {}) {
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
   const declared = Object.entries(options.workers ?? {}).flatMap(([type, t]) => {
+    if (!NAME.test(type)) refuse('workers', NAMED, type)
     refuseUnknownOptions(`dte() option "workers.${type}"`, t, TYPE_KEYS)
     const machines = Object.entries(t?.machines ?? {})
+    for (const [machine] of machines)
+      if (!NAME.test(machine)) refuse(`workers.${type}.machines`, NAMED, machine)
     if (machines.length === 0)
       refuse(
         `workers.${type}.machines`,

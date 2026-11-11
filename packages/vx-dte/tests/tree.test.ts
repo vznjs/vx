@@ -161,6 +161,34 @@ it('names an untracked workspace config, the one core loads', async () => {
   }
 })
 
+// A hook in a linked worktree exports its gitdir as GIT_DIR and no
+// GIT_WORK_TREE, and git took the cwd, a workspace in a subdirectory, for
+// the checkout's top: the snapshot's tree held no `.vx/workspace.mjs` at
+// the workspace's place, and the run was refused, the config "untracked".
+it('snapshots a linked worktree’s subdirectory workspace under its hook’s GIT_DIR', async () => {
+  const { repo, git } = await repository()
+  const wt = `${repo}-wt`
+  const saved = process.env['GIT_DIR']
+  try {
+    await mkdir(path.join(repo, 'ws/.vx'), { recursive: true })
+    await writeFile(path.join(repo, 'ws/.vx/workspace.mjs'), 'export default {}\n')
+    git('add', '-A')
+    git('commit', '-qm', 'a')
+    git('worktree', 'add', '-q', '--detach', wt)
+    const ws = path.join(wt, 'ws')
+    const head = git('-C', wt, 'rev-parse', 'HEAD^{tree}')
+    process.env['GIT_DIR'] = path.join(repo, '.git/worktrees', path.basename(wt))
+    const { tree } = await snapshot(ws)
+    expect(tree).toBe(head)
+    expect(await untrackedWorkspace(ws, tree)).toBeUndefined()
+  } finally {
+    if (saved === undefined) delete process.env['GIT_DIR']
+    else process.env['GIT_DIR'] = saved
+    await rm(wt, { recursive: true, force: true })
+    await rm(repo, { recursive: true, force: true })
+  }
+})
+
 /** A fresh repository, and git run in it with an identity: its stdout, trimmed. */
 async function repository(): Promise<{ repo: string; git: (...a: string[]) => string }> {
   const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-tree-'))
