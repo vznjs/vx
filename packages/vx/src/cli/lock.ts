@@ -47,6 +47,7 @@ import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
   ConfigsRefused,
+  configImports,
   findProjectConfigs,
   findWorkspaceRoot,
   REVIEW_FILE,
@@ -500,19 +501,7 @@ async function writeLock(
     metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config]),
   )
   const reviews = check.reviewFiles ? reviewsOf(metas, check.resolved) : []
-  // The review copies and the `project` stage's record are committed too;
-  // the stage can add a value the bare config lacks. A place both hold is
-  // named once.
-  const leaks = secretsIn(projects)
-  const named = new Set(leaks.map((l) => l.at))
-  const nameAt = new Map(check.all.map((m) => [lockKey(root, m.dir), m.name]))
-  const staged = Object.entries(check.fresh.projectStage?.configs ?? {}).map(
-    ([dir, config]) => [nameAt.get(dir) ?? dir, config] as const,
-  )
-  for (const l of secretsIn(
-    Object.fromEntries([...reviews.map((r) => [r.name, r.config] as const), ...staged]),
-  ))
-    if (!named.has(l.at)) leaks.push(l)
+  const leaks = await lockLeaks(root, check, metas, projects, reviews)
   if (leaks.length > 0) {
     notWritten('', {
       headline: 'these configs evaluated to a secret value',
@@ -733,14 +722,67 @@ function strayLine(root: string, file: string): string {
 }
 
 /**
+ * Where the lock `vx lock` would write holds a secret value here: the
+ * configs, the review copies and the `project` stage's record, all
+ * committed (a place two hold is named once). A value the config's source
+ * or a local module it imports spells is the repo's own text, not one the
+ * evaluation read: `docker compose up postgres` beside
+ * `DATABASE_URL=postgres://postgres:postgres@…` refused every relock. Read
+ * only when some value matched, so the common lock reads nothing more.
+ */
+async function lockLeaks(
+  root: string,
+  check: GraphCheck,
+  metas: readonly ConfiguredMeta[],
+  projects: Record<string, ProjectConfig>,
+  reviews: readonly Review[],
+): Promise<Array<{ at: string; name: string }>> {
+  const nameAt = new Map(check.all.map((m) => [lockKey(root, m.dir), m.name]))
+  const staged = Object.entries(check.fresh.projectStage?.configs ?? {}).map(
+    ([dir, config]) => [nameAt.get(dir) ?? dir, config] as const,
+  )
+  const committed = Object.fromEntries([
+    ...reviews.map((r) => [r.name, r.config] as const),
+    ...staged,
+  ])
+  const scan = (spelled: (project: string, value: string) => boolean) => {
+    const leaks = secretsIn(projects, spelled)
+    const named = new Set(leaks.map((l) => l.at))
+    for (const l of secretsIn(committed, spelled)) if (!named.has(l.at)) leaks.push(l)
+    return leaks
+  }
+  if (scan(() => false).length === 0) return []
+  const texts = new Map(
+    await Promise.all(metas.map(async (m) => [m.name, await sourceTexts(m.configPath)] as const)),
+  )
+  return scan((project, value) => texts.get(project)?.some((t) => t.includes(value)) === true)
+}
+
+/** A config's text and each local module's it imports, as `vx watch` finds them. */
+async function sourceTexts(configPath: string): Promise<string[]> {
+  const read = (file: string): Promise<string | null> =>
+    Bun.file(file)
+      .text()
+      .catch(() => null)
+  const own = await read(configPath)
+  if (own === null) return []
+  const imported = await Promise.all((await configImports(configPath, own)).map(read))
+  return [own, ...imported.filter((t) => t !== null)]
+}
+
+/**
  * Each place an evaluated config holds the value of a secret in this
  * environment, by the rule output masking uses (a secret-named variable,
  * one a task lists in `exec.env.secret`, or a define of such a name whose
  * value this environment holds). The lock is committed, so such a value
  * would be published, and masking it would freeze a `***` that every run
- * runs (L-42).
+ * runs (L-42). A value the project's own source text `spelled` is not
+ * one the config evaluated: it is committed already.
  */
-function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string; name: string }> {
+function secretsIn(
+  projects: Record<string, ProjectConfig>,
+  spelled: (project: string, value: string) => boolean,
+): Array<{ at: string; name: string }> {
   const named = new Set<string>()
   const defines: Array<[name: string, value: string]> = []
   for (const config of Object.values(projects)) {
@@ -776,7 +818,10 @@ function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string;
       for (const [mask, name] of secrets) {
         const place = `${project}: ${at} holds $${name}`
         // A define's mask and its variable's own both find one value.
-        if (mask.spans(v).length > 0 && !found.some((f) => f.at === place))
+        if (
+          mask.spans(v).some(([s, e]) => !spelled(project, v.slice(s, e))) &&
+          !found.some((f) => f.at === place)
+        )
           found.push({ at: place, name })
       }
     } else if (Array.isArray(v)) {
@@ -902,6 +947,21 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       ...stageDrift(lock, check.fresh, drifted),
     )
   if (broken !== null && check.loaded) failures.push(broken)
+  // What `vx lock` refuses to write here fails here too: a lock written
+  // where the value was no secret passed in an env where it is one.
+  if (check.loaded)
+    for (const l of await lockLeaks(
+      root,
+      check,
+      metas,
+      Object.fromEntries(
+        metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config]),
+      ),
+      check.reviewFiles ? reviewsOf(metas, check.resolved) : [],
+    ))
+      failures.push(
+        `${l.at}, a secret value here — the lock is committed, so the secret is too; let the shell expand $${l.name} instead of reading process.env in the config, then run 'vx lock'`,
+      )
   // Each config that does not load, as `vx lock` names them: a CI fixing
   // one at a time re-ran the gate once per broken config.
   const refused: { message: string; parts?: RefusalParts }[] =

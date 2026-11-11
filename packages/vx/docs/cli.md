@@ -2205,7 +2205,11 @@ named as `$MY_CREDS`). It names each place
 (`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
 Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in
-`exec.env.passThrough` (L-42).
+`exec.env.passThrough` (L-42). A value the config's own text spells
+(the config or a local module it imports) is committed already and
+locks: `docker compose up -d postgres` beside
+`DATABASE_URL=postgres://postgres:postgres@…`. `vx lock --check` fails
+a lock that holds such a secret here, as `vx lock` refuses to write it.
 
 For the same reason it warns of a config that evaluated to this
 checkout's absolute path (`` `bun ${import.meta.dir}/gen.ts` ``):
