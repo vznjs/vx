@@ -751,7 +751,9 @@ statement at all, since an inline save moves the tree aside in the
 commit that adds its blob (2026-11-07: ~70 ms of a 1,600-restore run's
 main thread). The tree's inode is taken once, before the copy, and
 asked again after it to catch a swap; the project directory and the
-staging directory are each stat'ed once per restore, and the copy-out
+staging directory are each stat'ed once per restore (the staging
+directory made synchronously: a run's first restores arrive together, and
+each thread-pool `mkdir` waited behind the others' work), and the copy-out
 asks what stands at each path synchronously, on dentries the walk just
 looked up. `pinArtifact()`
 (the upload's body) hands an inline artifact over as a `Blob` of its

@@ -51,6 +51,7 @@ import {
   fstatSync,
   futimesSync,
   lstatSync,
+  mkdirSync,
   openSync,
   readFileSync,
   readlinkSync,
@@ -1526,7 +1527,7 @@ class Extractor {
       probe = path.dirname(probe)
     }
     if (top === undefined) return undefined
-    const staging = await stagingDir(this.stageRoot)
+    const staging = stagingDir(this.stageRoot)
     if (!stagesInto(statSync(staging), statSync(probe, { throwIfNoEntry: false }))) return undefined
     const at = path.join(staging, (tmpSeq++).toString(36))
     this.trees.set(top, { at, base, dirs: [] })
@@ -1663,7 +1664,7 @@ class Extractor {
     // outputs, and a killed restore left them there (2026-10-16).
     const staged = this.stageRoot !== undefined
     const tmp = staged
-      ? path.join(await stagingDir(this.stageRoot!), (tmpSeq++).toString(36))
+      ? path.join(stagingDir(this.stageRoot!), (tmpSeq++).toString(36))
       : siblingTemp(target)
     const streamed = !(body instanceof Uint8Array)
     this.staged.push({ staged, name, tmp, target, created, streamed, base })
@@ -1734,7 +1735,7 @@ class Extractor {
     }
     const staged = this.stageRoot !== undefined
     const tmp = staged
-      ? path.join(await stagingDir(this.stageRoot!), (tmpSeq++).toString(36))
+      ? path.join(stagingDir(this.stageRoot!), (tmpSeq++).toString(36))
       : siblingTemp(target)
     this.staged.push({ staged, name, tmp, target, created, streamed: false, base, link: to })
     await symlink(to, tmp)
@@ -2149,12 +2150,16 @@ const stagingMade = new Set<string>()
  * first restore and again only if something removed it: one per restore
  * cost 300 restores 12% (2026-10-16). Every restore's renames empty it;
  * the next run's `sweepStaging` removes it once this process is gone.
+ * Made synchronously: a run's first restores arrive together, and each
+ * awaited its own thread-pool `mkdir` of the one directory behind the
+ * others' synchronous work, 2-3 ms of solid's three-restore run
+ * (2026-11-10); the call is one `mkdir` of microseconds.
  */
-async function stagingDir(root: string): Promise<string> {
+function stagingDir(root: string): string {
   const top = path.join(root, '.vx', STAGING)
   const own = ownStaging(root)
   if (stagingMade.has(own) && existsSync(own)) return own
-  await mkdir(own, { recursive: true })
+  mkdirSync(own, { recursive: true })
   // Ignored by git whatever `.vx/.gitignore` an older init committed.
   try {
     ignoreDir(top)
@@ -2174,16 +2179,17 @@ function ownStaging(root: string): string {
  * `root`'s `.vx/tmp/`, its stats, and a fresh name in it per call of
  * `temp`. With no root each temp sits beside its target.
  */
-export async function copyStaging(
-  root: string | undefined,
-): Promise<{ stats: Stats | undefined; temp: (target: string) => string }> {
+export function copyStaging(root: string | undefined): {
+  stats: Stats | undefined
+  temp: (target: string) => string
+} {
   if (root === undefined) return { stats: undefined, temp: siblingTemp }
   // Made already: its stat is the check that it still stands, one call
   // where `stagingDir`'s check and a stat were two on every restore.
   let dir = ownStaging(root)
   let stats = stagingMade.has(dir) ? statSync(dir, { throwIfNoEntry: false }) : undefined
   if (stats === undefined) {
-    dir = await stagingDir(root)
+    dir = stagingDir(root)
     stats = statSync(dir)
   }
   return { stats, temp: () => path.join(dir, (tmpSeq++).toString(36)) }

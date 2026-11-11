@@ -142,6 +142,8 @@ interface Worker {
   usedMemory: number
   /** Its machine's use as its last frame said, and when this machine heard it. */
   load?: { cpu: number; memory: number; at: number }
+  /** Cores its machine spends on no task of the run while it runs some, averaged over its frames (`heard`). */
+  other?: number
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
   /**
@@ -159,6 +161,13 @@ interface Worker {
   /** It failed a task it began: it gets no more. */
   faulty: boolean
 }
+
+/** How far each frame moves a worker's `other`: a frame read as a task starts lags it. */
+const OTHER_WEIGHT = 0.25
+
+/** `a`'s `other`, where its machine is the size it was given: a bigger one's spare cores take it. */
+const otherOf = (a: Worker): number =>
+  a.other === undefined || a.cores !== a.reported.cores ? 0 : a.other
 
 /** What a worker was started as: its size's `cpu` and `memory` in bytes. */
 export interface Declared {
@@ -903,7 +912,7 @@ export class Orchestrator {
    * shards on 4 cores at once, 28 failed (main bf77a58, 2026-10-23).
    */
   private used(a: Worker): { cores: number; memory: number } {
-    const booked = { cores: a.usedCores, memory: a.usedMemory }
+    const booked = { cores: a.usedCores + otherOf(a), memory: a.usedMemory }
     const l = a.load
     if (l === undefined || a.cores !== a.reported.cores) return booked
     let cores = l.cpu
@@ -964,6 +973,14 @@ export class Orchestrator {
         if (typeof cores === 'number' && Number.isFinite(cores) && cores >= 0 && cores <= a.cores)
           this.o.bases?.set(id, cores)
     const tasks = Number(load.tasks)
+    // What the machine spends besides the run's tasks: GitHub's runner
+    // agent alone took 0.2 to 0.6 of a 4-core small's cores, and its
+    // machine 0.6 to 1.1 past its tasks, so shards booked on all 4 ran
+    // 30% past their history (main 36e410f, 2026-11-10).
+    if (Number.isFinite(tasks) && a.busy.size > 0) {
+      const o = Math.min(a.cores / 2, Math.max(0, a.load.cpu - tasks))
+      a.other = a.other === undefined ? o : a.other + (o - a.other) * OTHER_WEIGHT
+    }
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
 
@@ -1993,6 +2010,18 @@ export class Orchestrator {
     return out
   }
 
+  /** Each size's cores its machines spent besides the run's tasks, on average: what the plan leaves it. */
+  othersOf(): Map<string, number> {
+    const sum = new Map<string, [number, number]>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      const size = a.declared?.size
+      if (size === undefined || a.other === undefined || a.cores !== a.reported.cores) continue
+      const [s, n] = sum.get(size) ?? [0, 0]
+      sum.set(size, [s + a.other, n + 1])
+    }
+    return new Map([...sum].map(([size, [s, n]]) => [size, s / n]))
+  }
+
   /**
    * The workers the plan places on (`planner.ts`): each online, what it
    * runs and how long that has left by `ms`, and each still starting,
@@ -2011,10 +2040,11 @@ export class Orchestrator {
       for (const j of jobs) running.add(j.req.taskId)
       // Its tasks use more than their history said (a suite given more
       // workers): the plan holds them at what the load says, this run.
-      const over = a.usedCores > 0 ? Math.max(1, this.used(a).cores / a.usedCores) : 1
+      const over =
+        a.usedCores > 0 ? Math.max(1, (this.used(a).cores - otherOf(a)) / a.usedCores) : 1
       workers.push({
         id: a.id,
-        cores: a.cores,
+        cores: a.cores - otherOf(a),
         memory: a.memory,
         platform: a.platform,
         ...(a.serving.size === 0 ? {} : { serving: new Map(a.serving) }),
