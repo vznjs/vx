@@ -89,7 +89,9 @@ export function unlockedDir(
    runs; a run never walks for configs); the
    workspace config arrives evaluated and with the `config` stage
    applied (`RunOptions`, from `cli/workspace-config.ts`), and
-   `loadWorkspacePlugins` gives the declared plugin list.
+   `loadWorkspacePlugins` gives the declared plugin list — or, for a
+   reused discovery, the load the CLI made before it
+   (`pluginsOfDiscovery`), so the `config` stage runs once per run.
 2. **Project config load** — `loadProjects` ([`projects.md`](./projects.md)),
    the load `vx show` shares: scoped to the seeds and their package
    closure, from the lock, with the plugin `project` stage as `vx lock`

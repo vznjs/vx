@@ -75,6 +75,15 @@ export function nestedWorkspacesOf(projects: readonly ProjectMeta[]): readonly s
 // added none: the graph a run reusing the discovery would build again.
 export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void
 export function graphOfDiscovery(projects: readonly ProjectMeta[]): PackageGraph | undefined
+// The workspace (`loadWorkspacePlugins`) the CLI loaded before that discovery:
+// a run reusing the array runs the `config` stage no second time.
+export function keepDiscoveryWorkspace(
+  projects: readonly ProjectMeta[],
+  workspace: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
+): void
+export function pluginsOfDiscovery(
+  projects: readonly ProjectMeta[],
+): Awaited<ReturnType<typeof loadWorkspacePlugins>> | undefined
 // Why a project a `discover` plugin added has no config while its directory
 // holds one git ignores (`config`, looked for when not given), naming the
 // plugin, or undefined: `vx lock` refuses it, and a run says it instead of

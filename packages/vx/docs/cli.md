@@ -2209,7 +2209,7 @@ command: the lock they wrote would have dropped it); a config added since the lo
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it, and so do `--filter ./c`, `vx show c` and `vx show c#build`; so does a bare `build` that the
+around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`; so does a bare `build` that the
 cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with

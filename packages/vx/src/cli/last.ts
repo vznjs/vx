@@ -53,12 +53,12 @@ import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import {
   cliCacheDir,
-  discoverCliProjects,
   loadCliProjects,
-  loadCliWorkspace,
   parseCacheDirFlag,
   rootSpelled,
   stageCacheDir,
+  verbWorkspace,
+  type VerbWorkspace,
 } from './workspace-config.js'
 
 interface LastArgs {
@@ -310,15 +310,16 @@ export interface TaskStats {
  * definition's rows are read, as before definitions were kept.
  */
 async function definitionsNow(
-  root: string,
+  at: VerbWorkspace,
   cacheDir: string | undefined,
 ): Promise<Map<string, string> | undefined> {
   try {
+    const { root } = at
     // A plugin's warning is the run's to say, not a history read's.
     const opts = { warn: () => {}, ...(cacheDir === undefined ? {} : { cacheDir }) }
-    const metas = await discoverCliProjects(root)
+    const metas = await at.projects()
     const projects = await loadCliProjects(root, metas, 'all', opts)
-    const ws = await loadCliWorkspace(root, opts.warn)
+    const ws = await at.workspace()
     const rules = runRules(ws.workspaceConfig)
     const names = new Set<string>()
     for (const p of projects.values())
@@ -899,7 +900,7 @@ export function formatRunList(
  * cwd's among several (as `vx why` picks), else refused naming them. It
  * read as an id and said "no recorded run of build" for a task that ran.
  */
-async function bareTaskId(db: Database, task: string): Promise<string> {
+async function bareTaskId(db: Database, task: string, at: VerbWorkspace): Promise<string> {
   if (task.includes('#')) return task
   const ids = (
     db
@@ -909,7 +910,7 @@ async function bareTaskId(db: Database, task: string): Promise<string> {
     }[]
   ).map((r) => `${r.project}#${task}`)
   if (ids.length <= 1) return ids[0] ?? task
-  const here = await findCwdProject(process.cwd())
+  const here = await findCwdProject(process.cwd(), at)
   if (here !== null && ids.includes(`${here}#${task}`)) return `${here}#${task}`
   throw new UserError(
     `vx last: "${task}" ran in ${ids.length} projects — pick one:\n${ids.map((id) => `  ${id}`).join('\n')}`,
@@ -923,7 +924,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
 
   const root = await findWorkspaceRoot(process.cwd())
   if (parsed.live === true) return await printLive(root, parsed.follow === true, parsed.format)
-  const cacheDir = await cliCacheDir(root, parsed.cacheDir)
+  const at = verbWorkspace(root)
+  const cacheDir = await cliCacheDir(at, parsed.cacheDir)
   const cache = Cache.inspect(cacheDir)
   try {
     const db = indexDb(cache)
@@ -931,18 +933,24 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     // recorded run failed" and a run id pointed at a `--list` that lists
     // nothing, while `--list --failed` past green runs said there were none.
     const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
+    const noRunsYet = (): UserError =>
+      refusal(
+        { tone: 'info', headline: 'no runs yet', fix: 'vx run' },
+        { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
+      )
 
     if (parsed.sql !== undefined) return printQuery(db, parsed.sql, parsed.format)
 
     if (parsed.stats === true) {
+      if (noRuns()) throw noRunsYet()
       const branch = currentBranch(root, undefined, parsed.branch)
-      const task = parsed.task === undefined ? undefined : await rootSpelled(root, parsed.task)
+      const task = parsed.task === undefined ? undefined : await rootSpelled(at, parsed.task)
       return await printStats(
         db,
         task,
         parsed.format,
         branch,
-        await definitionsNow(root, parsed.cacheDir),
+        await definitionsNow(at, parsed.cacheDir),
       )
     }
 
@@ -951,7 +959,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         parsed.runId === undefined
           ? undefined
           : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-      const log = taskLog(db, await bareTaskId(db, await rootSpelled(root, parsed.log)), runId)
+      const log = taskLog(db, await bareTaskId(db, await rootSpelled(at, parsed.log), at), runId)
       if (log === null) {
         // The id's form is hinted only when it lacks one: a task that
         // never ran was told how to spell a task id. A typo of one that
@@ -1061,12 +1069,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         'VX_E_NO_HISTORY',
       )
     }
-    if ((inv === null || inv === undefined) && noRuns()) {
-      throw refusal(
-        { tone: 'info', headline: 'no runs yet', fix: 'vx run' },
-        { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
-      )
-    }
+    if ((inv === null || inv === undefined) && noRuns()) throw noRunsYet()
     // Nothing failed is no fault: said as `--list --failed` says it.
     if ((inv === null || inv === undefined) && parsed.failed === true) {
       throw refusal(

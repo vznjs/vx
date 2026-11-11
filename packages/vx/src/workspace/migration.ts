@@ -22,6 +22,7 @@ import {
 import * as ui from '../ui/index.js'
 import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
+import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 
 /**
  * The nearest existing directory at or above `dir` (under `root`) and its
@@ -429,6 +430,16 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   for (const p of projects) {
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
     if (existing && existing !== path.join(p.dir, names.get(p.dir)!)) replaced.push(existing)
+  }
+  // `vx init`'s starter is mapped as no config, so no meta names it: one of
+  // another extension stayed beside the root's new config, and the loader
+  // read the starter, not the root's tasks.
+  if (projects.some((p) => p.dir === root)) {
+    const target = path.join(root, names.get(root)!)
+    for (const n of PROJECT_CONFIG_FILENAMES) {
+      const f = path.join(root, n)
+      if (f !== target && !replaced.includes(f) && isStarterConfig(f)) replaced.push(f)
+    }
   }
   if (dry && args.json !== true) {
     for (const f of files) {

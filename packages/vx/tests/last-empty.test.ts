@@ -37,14 +37,27 @@ it('before any run, every form says nothing has run', () => {
     vx('last'),
     vx('last', '--failed'),
     vx('last', '0199'),
+    vx('last', '--stats'),
+    vx('last', '--stats', 'packages/a#build'),
     vx('last', '--list'),
     vx('last', '--list', '--failed'),
   ]).toEqual([
     [1, '', NONE],
     [1, '', NONE],
     [1, '', NONE],
+    [1, '', NONE],
+    [1, '', NONE],
     [0, '› vx last  no runs yet\n', ''],
     [0, '› vx last  no runs yet\n', ''],
+  ])
+}, 30_000)
+
+it('before any run, --stats --format json is the no-history refusal', () => {
+  // `{"stats":[]}`, exit 0: `vx last --stats` said nothing ran by succeeding.
+  const [code, out] = vx('last', '--stats', '--format', 'json')
+  expect([code, (JSON.parse(out) as { error?: { code: string } }).error?.code]).toEqual([
+    1,
+    'VX_E_NO_HISTORY',
   ])
 }, 30_000)
 

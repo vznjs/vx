@@ -30,6 +30,7 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
 import { declaresInput, lazyGitEnumeration, workspaceFilesReachInto } from '../cache/index.js'
 import {
+  BUN_GLOB_WILDCARDS,
   isUserError,
   listed,
   maskedCommand,
@@ -49,6 +50,7 @@ import {
   hashExtra,
   hasHook,
   keepDiscoveryGraph,
+  unlockedDir,
   withExtraHashes,
 } from '../orchestrator/index.js'
 import {
@@ -57,6 +59,7 @@ import {
   loadCliProjects,
   loadCliWorkspace,
   stageCacheDir,
+  type VerbWorkspace,
   workspaceOfDiscovery,
 } from './workspace-config.js'
 
@@ -186,8 +189,12 @@ async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise
   return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
 }
 
-export async function findCwdProject(cwd: string): Promise<string | null> {
-  return (await findCwdSelection(cwd))?.name ?? null
+export async function findCwdProject(
+  cwd: string,
+  /** The verb's workspace, whose discovery this reuses. */
+  at?: VerbWorkspace,
+): Promise<string | null> {
+  return (await findCwdSelection(cwd, {}, await at?.projects()))?.name ?? null
 }
 
 /**
@@ -198,9 +205,11 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
 export async function findCwdSelection(
   cwd: string,
   load: CliLoadOptions = {},
+  /** A discovery of this workspace the caller made. */
+  discovered?: ProjectMeta[],
 ): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(root, load)
+  const projects = discovered ?? (await discoverCliProjects(root, load))
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): { name: string; dir: string } | null => {
     let best: { name: string; dir: string } | null = null
@@ -259,6 +268,7 @@ async function refuseUnlockedConfig(
       if (config !== undefined) {
         throw new UserError(
           `${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``,
+          'VX_E_LOCK',
         )
       }
     }
@@ -353,12 +363,16 @@ export async function affectedFilterFor(
   affected: string,
   /** What the verb does instead on the base branch (`defaultAffectedBase`). */
   instead?: string,
+  /** The verb's own discovery, whose `config` stage answered the branch. */
+  discovered?: readonly ProjectMeta[],
 ): Promise<AffectedFilter | Refusal> {
   const root = await findWorkspaceRoot(cwd)
   const env = affected === '' ? (settingEnv('affectedBase') as string | undefined) : undefined
   let base = affected || (env ?? '')
   if (base === '') {
-    const ws = await loadCliWorkspace(root)
+    const ws =
+      (discovered === undefined ? undefined : workspaceOfDiscovery(discovered)) ??
+      (await loadCliWorkspace(root))
     try {
       base =
         ws.branch.base ??
@@ -379,6 +393,8 @@ export async function resolveFilters(
   affected?: AffectedFilter,
   /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
   verb: 'run' | 'show' | 'watch' = 'run',
+  /** The verb's own discovery of this workspace, reused with its `config` stage. */
+  discovered?: ProjectMeta[],
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   let parsed: ReturnType<typeof parseFilter>[]
@@ -394,7 +410,8 @@ export async function resolveFilters(
   // it starts before the workspace config and discovery, not after them.
   const git = parsed.some((f) => f.gitSince !== undefined) ? lazyGitEnumeration(root) : undefined
   void git?.start()
-  const discovering = discoverCliProjects(root, load, git)
+  const discovering =
+    discovered === undefined ? discoverCliProjects(root, load, git) : Promise.resolve(discovered)
   discovering.catch(() => {})
   // `sinceViaDeps` (`e2e...[main]`) walks the changed projects' dependents.
   const walksGraph = parsed.some(
@@ -510,7 +527,10 @@ export async function resolveFilters(
         // candidate, and the run keeps the tasks its final graph reaches.
         if (
           changes.changed.length > 0 &&
-          hasHook((await loadCliWorkspace(root)).plugins, 'graph')
+          hasHook(
+            (workspaceOfDiscovery(projects) ?? (await loadCliWorkspace(root))).plugins,
+            'graph',
+          )
         ) {
           names = new Set(projects.map((p) => p.name))
         }
@@ -610,10 +630,15 @@ export async function resolveFilters(
     // the patterns are in the error, and the nearest project name is the
     // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
     // app, and `--affected` a `...[<base>]` nobody typed.
+    const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
+    if (unlocked !== undefined) {
+      return {
+        error: `filter "${unlocked.filter}": ${relPosix(root, unlocked.config)} is not in the lock yet — run \`vx lock\``,
+        code: 'VX_E_LOCK',
+      }
+    }
     const hint =
-      (await unlockedHint(root, parsed, unmatched)) ??
-      bracedHint(root, parsed, unmatched, projects, graph) ??
-      didYouMean(unmatched, projects, tags)
+      bracedHint(root, parsed, unmatched, projects, graph) ?? didYouMean(unmatched, projects, tags)
     // Quoted, as the warning below quotes it: bare, `apq...` and the hint's
     // full stop read `apq....` in the flat message `--format json` carries.
     return {
@@ -626,7 +651,7 @@ export async function resolveFilters(
     sayNotice(
       'warn',
       `vx ${verb}`,
-      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f])) ?? bracedHint(root, parsed, [f], projects, graph) ?? didYouMean([f], projects, tags)}`,
+      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f], projects)) ?? bracedHint(root, parsed, [f], projects, graph) ?? didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
@@ -776,24 +801,43 @@ export async function pickTask(
 }
 
 /**
- * `. packages/c/vx.config.ts is not in the lock yet — run \`vx lock\``
- * for an unmatched `./dir` filter naming a directory `vx lock` would make
- * a project: a config written after the lock is none yet, and "Projects:
- * …" without it read as a typo of the path. Asked on the refusal's path only.
+ * The first unmatched include naming, by path or by a config-only
+ * project's directory name, a config `vx lock` would make a project: one
+ * written after the lock is none yet, and "Projects: …" without it read as
+ * a typo. Asked on the no-match path only; `unlockedDir` lists the tree
+ * only when that directory holds a config.
  */
+async function unlockedFilter(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+  projects: readonly ProjectMeta[],
+): Promise<{ filter: string; config: string } | undefined> {
+  for (const f of parsed) {
+    if (f.negate || f.tag === true || !unmatched.includes(f.raw)) continue
+    if (
+      f.isPath
+        ? f.pathGlob !== undefined
+        : BUN_GLOB_WILDCARDS.test(f.matcher) || f.matcher.includes('!')
+    )
+      continue
+    const config = await unlockedDir(f.matcher, projects, root)
+    if (config !== undefined) return { filter: f.raw, config }
+  }
+  return undefined
+}
+
+/** The same said beside a filter that matched, where the run goes on. */
 async function unlockedHint(
   root: string,
   parsed: readonly ReturnType<typeof parseFilter>[],
   unmatched: readonly string[],
+  projects: readonly ProjectMeta[],
 ): Promise<string | undefined> {
-  const dirs = parsed
-    .filter((f) => f.isPath && f.pathGlob === undefined && unmatched.includes(f.raw))
-    .map((f) => f.matcher)
-  if (dirs.length === 0) return undefined
-  const { configs } = await findProjectConfigs(root)
-  const config = configs.find((c) => dirs.includes(c.dir))
-  if (config === undefined) return undefined
-  return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
+  const found = await unlockedFilter(root, parsed, unmatched, projects)
+  return found === undefined
+    ? undefined
+    : `. ${relPosix(root, found.config)} is not in the lock yet — run \`vx lock\``
 }
 
 /**
