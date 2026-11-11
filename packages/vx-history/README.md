@@ -123,7 +123,8 @@ each run with every task's p50 (its directory made if absent), so a
 CI cache keeps one file. Git-ignore it: a task whose inputs cover it (a
 root project's `**`) would re-key on every rewrite, `vx watch` would
 re-run on each one in a project it watches, and a rewrite of a file git
-does not ignore warns.
+does not ignore warns. A committed one stays tracked whatever `.gitignore`
+says: `git rm --cached` it.
 
 ```ts
 export default {
