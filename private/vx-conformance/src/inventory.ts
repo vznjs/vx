@@ -582,6 +582,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/local-e2e-saves',
     'vx-dte/noise',
     'vx-dte/outputs',
+    'vx-dte/pack',
     'vx-dte/planner',
     'vx-dte/planner-properties',
     'vx-dte/plugin-order',
