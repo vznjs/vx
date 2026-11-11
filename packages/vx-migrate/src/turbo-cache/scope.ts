@@ -19,11 +19,22 @@ export function remoteScope(factory: string, scope: unknown): RemoteScope {
 /** A server caps the read header at this many refs (the server rules), so vx never sends more. */
 const MAX_READ_SCOPES = 8
 
-/** The read header: the refs in order. Writes carry none: the server files them by the token. */
+/**
+ * The read header: the refs in order. Writes carry none: the server files
+ * them by the token. A header value carries Latin-1 at most: a ref past
+ * ASCII (`feat/日本`) threw in fetch and failed every request, and `über`
+ * went out as a byte that is not its UTF-8. So past ASCII a ref is
+ * percent-encoded UTF-8, as a vx-cache-server scope is; ASCII goes out as it is.
+ */
 export function readScopes(refs: readonly string[]): Record<string, string> {
   return refs.length === 0
     ? {}
-    : { 'x-artifact-read-scopes': refs.slice(0, MAX_READ_SCOPES).join(', ') }
+    : {
+        'x-artifact-read-scopes': refs
+          .slice(0, MAX_READ_SCOPES)
+          .map((r) => r.replace(/[\u0080-\uffff]+/g, encodeURIComponent))
+          .join(', '),
+      }
 }
 
 /** The key `ref` stores `hash` under: 16 hex, task-key shaped, so every wire takes it. */

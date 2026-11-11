@@ -99,4 +99,27 @@ describe("scope: 'key'", () => {
     const refs = Array.from({ length: 10 }, (_, i) => `refs/heads/b${i}`)
     expect(readScopes(refs)['x-artifact-read-scopes']!.split(', ')).toEqual(refs.slice(0, 8))
   })
+
+  // `feat/日本` threw in fetch, failing every request on that branch, and
+  // `über` went out as a Latin-1 byte, not its UTF-8.
+  it('a ref past ASCII goes out percent-encoded, an ASCII one as it is', async () => {
+    const refs = ['refs/heads/feat/日本', 'refs/heads/über', MAIN]
+    const seen: (string | null)[] = []
+    const srv = Bun.serve({
+      port: 0,
+      fetch(req) {
+        seen.push(req.headers.get('x-artifact-read-scopes'))
+        return new Response()
+      },
+    })
+    try {
+      await fetch(srv.url, { headers: readScopes(refs) })
+    } finally {
+      await srv.stop()
+    }
+    expect(seen).toEqual([
+      'refs/heads/feat/%E6%97%A5%E6%9C%AC, refs/heads/%C3%BCber, refs/heads/main',
+    ])
+    expect(seen[0]!.split(', ').map(decodeURIComponent)).toEqual(refs)
+  })
 })
