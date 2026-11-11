@@ -496,8 +496,10 @@ use your own instead.
   filled its worker last time). A task with history goes only on a size
   with room for its cores and memory when some size has it, so a 4-core
   task never runs at half speed on a 2-core worker while 8-core sizes
-  go unasked. Workers the run asks for at once come biggest size first:
-  fewer machines, fewer warm-ups. The first such task waiting holds
+  go unasked. Workers its work needs within a warm-up of each other
+  start as fewer, bigger ones with the cores of them all: four 2-core
+  tasks ready at once start one 8-core worker, so fewer machines pay a
+  warm-up. The first such task waiting holds
   the worker that empties soonest: no task after it is sent there, so it
   is not passed over again and again. Any ready task with history that
   fits no worker now keeps its room where it first frees: a task of lower

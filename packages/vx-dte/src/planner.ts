@@ -1303,6 +1303,66 @@ export function sized(need: Need, sizes: readonly Size[]): Need {
 }
 
 /**
+ * When each of `asleep` starts: the `wakes` within a warm-up of the first
+ * of them, of one platform, as fewer, bigger workers with all their cores
+ * and no less than the biggest of them, each from the first's time, when
+ * that takes fewer; the rest as they woke.
+ */
+function together(wakes: readonly Wake[], asleep: readonly PlanWorker[]): Map<string, number> {
+  const byId = new Map(asleep.map((a) => [a.id, a]))
+  const sorted = [...wakes].sort((x, y) => x.readyAt - y.readyAt)
+  const unwoken = new Set(asleep.map((a) => a.id))
+  for (const w of sorted) unwoken.delete(w.id)
+  const out = new Map<string, number>()
+  for (let i = 0; i < sorted.length;) {
+    const from = sorted[i]!.readyAt
+    const until = from + byId.get(sorted[i]!.id)!.at
+    const group = new Map<string | undefined, PlanWorker[]>()
+    const woke = new Map<string, number>()
+    for (; i < sorted.length && sorted[i]!.readyAt <= until + 1e-6; i++) {
+      const a = byId.get(sorted[i]!.id)!
+      woke.set(a.id, sorted[i]!.readyAt)
+      group.set(a.platform, [...(group.get(a.platform) ?? []), a])
+    }
+    for (const [platform, of] of group) {
+      let cores = 0
+      let most = 0
+      let memory = 0
+      for (const a of of) {
+        cores += a.cores
+        most = Math.max(most, a.cores)
+        memory = Math.max(memory, a.memory)
+      }
+      const pool = [
+        ...of,
+        ...[...unwoken].map((id) => byId.get(id)!).filter((a) => a.platform === platform),
+      ].sort((x, y) => x.cores - y.cores || x.memory - y.memory)
+      const taken = new Set<PlanWorker>()
+      while (cores > 1e-9) {
+        const left = pool.filter((x) => !taken.has(x))
+        const pick =
+          left.find((x) => x.cores >= Math.max(cores, most) - 1e-9 && x.memory >= memory) ??
+          left[left.length - 1]
+        if (pick === undefined) break
+        taken.add(pick)
+        cores -= pick.cores
+      }
+      // No fewer: each as it woke, none sooner than its task needs it.
+      if (taken.size >= of.length) {
+        for (const a of of) out.set(a.id, woke.get(a.id)!)
+        continue
+      }
+      for (const a of taken) {
+        out.set(a.id, from)
+        unwoken.delete(a.id)
+      }
+      for (const a of of) if (!taken.has(a)) unwoken.add(a.id)
+    }
+  }
+  return out
+}
+
+/**
  * The workers to start and to let go. Of the new ones (`candidates`, in
  * the order the run would start them, each joining after its size's
  * `warmUpMs`), those a task needs to end by the best (all of them
@@ -1375,6 +1435,7 @@ export function plan(
   // random, layered, wide and chain graphs (2026-11-10).
   const asleep =
     none <= best || best === Infinity ? [] : added.map((a) => ({ ...a, dormant: true }))
+  const smallFirst = [...asleep].sort((x, y) => x.cores - y.cores || x.memory - y.memory)
   // Played twice: once to learn which it starts, at their tasks' latest
   // start; again with each joining as soon as its task is ready, no
   // sooner than its warm-up, as the run starts it: one a task needs
@@ -1388,8 +1449,13 @@ export function plan(
     // worker as it gets ready, not a window before its latest start.
     // Read for its wakes: played on past the last, each plan of 3,800
     // tasks played the rest of the run (2026-11-11).
-    const lazy = memo([...ws, ...asleep], best, Infinity, true)
-    const at = new Map(lazy.wakes.map((w) => [w.id, w.readyAt]))
+    // Learned smallest first, then those within a warm-up of each other
+    // asked as fewer, bigger ones: on graphs of 2- to 16-core sizes, 1.6%
+    // late to 1.2% and 3% less CPU held (lab, 2026-11-11: "scale the
+    // workers to as big as possible at the same time to save on startup
+    // times").
+    const lazy = memo([...ws, ...smallFirst], best, Infinity, true)
+    const at = together(lazy.wakes, asleep)
     const early = memo(
       [
         ...ws,
@@ -1522,7 +1588,7 @@ export function plan(
  * filled its worker last time (`above`), one of the smallest size of its platform bigger
  * than it while the run has none of that size; for each platform tasks
  * run on, its sizes in declared order, up to one per task of it; then
- * sizes in declared order up to each one's max.
+ * sizes biggest first, each up to its max and `limit`.
  */
 export function candidates(
   sizes: readonly Size[],
@@ -1561,12 +1627,14 @@ export function candidates(
       added = true
     }
   }
-  // The biggest first: workers started at once save warm-ups as fewer,
-  // and declared smallest first, a plan of 2- to 16-core sizes took 2-core
-  // ones only, 59% late (2026-11-11: "scale the workers to as big as
-  // possible at the same time to save on startup times").
-  const down = [...sizes].sort((x, y) => y.cpu - x.cpu || y.memory - x.memory)
-  for (const s of down) while (out.length < limit && (count.get(s.name) ?? 0) < s.max) add(s)
+  // The biggest first, `limit` of each: declared smallest first, a plan
+  // of 2- to 16-core sizes took 2-core ones only, 59% late; `limit` in all,
+  // the biggest only, and a short burst held a 16-core worker for the
+  // chain after it, 10% more CPU held than with each size (lab, 2026-11-11:
+  // "scale the workers to as big as possible at the same time to save on
+  // startup times").
+  for (const s of [...sizes].sort((x, y) => y.cpu - x.cpu || y.memory - x.memory))
+    for (let n = 0; n < limit && (count.get(s.name) ?? 0) < s.max; n++) add(s)
   return out
 }
 

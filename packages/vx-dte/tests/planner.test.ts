@@ -557,6 +557,21 @@ it('advises a task only workers with room for its peak memory', () => {
   expect(advice.any?.fleet.every((f) => f.memory >= 25e9)).toBe(true)
 })
 
+// 2026-11-11: "scale the workers to as big as possible at the same time
+// to save on startup times": four 2-core tasks ready at once.
+it('starts workers needed at once as one sized to them all', () => {
+  const sizes: Size[] = [2, 4, 8, 16].map((cpu) => ({
+    name: `c${cpu}`,
+    max: 4,
+    cpu,
+    memory: cpu * 4e9,
+  }))
+  const tasks = Array.from({ length: 4 }, (_, i) => ({ ...task(`t${i}`, 60_000), cores: 2 }))
+  const p = plan(tasks, [], candidates(sizes, new Map(), [], tasks.length), 20_000)
+  expect(p.start.map((s) => s.name)).toEqual(['c8'])
+  expect(p.endsInMs).toBe(80_000)
+})
+
 it('keeps a need to the sizes with room for all of it', () => {
   const sizes: Size[] = [
     { name: 'c2', max: 1, cpu: 2, memory: 8e9 },
