@@ -7,6 +7,7 @@ import { copyFile, mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises
 import os from 'node:os'
 import path from 'node:path'
 import { PROJECT_CONFIG_FILENAMES, UserError } from '@vzn/vx'
+import { repoEnv } from './local.js'
 
 /**
  * A commit of the tracked files as they are now (`HEAD`'s when none changed),
@@ -110,6 +111,7 @@ export async function unfilter(root: string): Promise<string[]> {
   if (off.length === 0) return []
   const p = Bun.spawn(['git', 'cat-file', '--batch'], {
     cwd: top,
+    env: repoEnv(top),
     stdin: Buffer.from(off.map((f) => blobs.get(f)).join('\n') + '\n'),
     stdout: 'pipe',
     stderr: 'ignore',
@@ -245,7 +247,7 @@ async function unflag(top: string, env: Record<string, string>): Promise<void> {
       stdin: Buffer.from(files.join('\0') + '\0'),
       stdout: 'ignore',
       stderr: 'pipe',
-      env: { ...process.env, ...env },
+      env: { ...repoEnv(top), ...env },
     })
     const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited])
     if (code !== 0)
@@ -279,7 +281,7 @@ async function git(
     stdin: input === undefined ? 'ignore' : Buffer.from(input),
     stdout: 'pipe',
     stderr: 'ignore',
-    ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
+    env: { ...repoEnv(cwd), ...env },
   })
   const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
   return code === 0 ? out : undefined

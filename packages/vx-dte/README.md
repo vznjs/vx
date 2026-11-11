@@ -139,9 +139,12 @@ workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
 A run from a git hook works too: the worktree and its worker drop the
 hook's repository variables (`git rev-parse --local-env-vars`), so the
-index being committed is left as it is. When a worker fails, its row names
+index being committed is left as it is, and a linked worktree's hook
+`GIT_DIR` is dropped where git finds that repository anyway, as core
+does, so a workspace in a subdirectory is found there. When a worker
+fails, or cannot start, its row names
 the error line and the log that holds its whole stderr and all `prepare`
-printed. At the run's end,
+printed (the error line alone when the log cannot be written). At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell waits up to 5 s for the workers to leave, kills any
 still running, removes the worktrees and prunes git's records. A run whose vx
@@ -544,6 +547,12 @@ use your own instead.
   fails the task when it answers otherwise than this machine did. A path
   under the worker's checkout root reads as the same path under this
   machine's, as the task's environment does.
+- A task's command runs on a worker as written: a plugin changes where a
+  command runs, never what it is. A path under this machine's checkout
+  in the environment is moved to the worker's; one written into the
+  command is not, so a `local()` worker would read and write this
+  checkout through it. Name a file relative to the task's directory, or
+  through `$PWD`.
 - No task runs on the orchestrator, only cache hits restore there
   (2026-10-24): a task with `exec.remote: false`, an interactive
   one and their dependants run on workers too (the executor is
@@ -895,6 +904,9 @@ What `@vzn/vx-dte` reads from the CI job it runs in:
 - `GIT_INDEX_FILE`: `local()` clears it before `git worktree add`, so a
   run started from a git hook checks out the run's commit, not the hook's
   index.
+- `GIT_DIR`: with no `GIT_WORK_TREE`, the run's snapshot and `local()`'s
+  and `docker()`'s git drop it when git finds that repository from the
+  workspace anyway (a linked worktree's hook sets it), as core does.
 
 ## API
 
@@ -909,7 +921,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
   `relay-proof`) is refused. The rest:
   - `workers` names each worker type, a `WorkerType` `{ machines }`, in order of
     preference (`exec.worker` picks one). Each machine is a size the
-    adapter may start, named `<type>.<machine>` (`linux.small`) in the
+    adapter may start, named `<type>.<machine>` (`linux.small`; each name
+    letters, digits, `_` and `-`, as worker ids and log files carry them) in the
     run's output and an adapter's options, and is a `WorkerSize`,
     `{ cpu, memory, max?, platform?, runsOn? }` (`runsOn`: the runner
     label `vx dte init` writes for it): its cores

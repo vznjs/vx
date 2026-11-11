@@ -4283,6 +4283,20 @@ it('refuses options it does not read and workers it cannot start', () => {
   )
   // A plain Error printed a stack under VX_E_INTERNAL (2026-10-28).
   expect(() => docker({} as never)).toThrow(UserError)
+  // A name rides a worker's id into a log file's name and adapters' lists
+  // (`a,b`, `t=id`, `<type>.<machine>`): `m/x` named a log in no folder, and
+  // the run waited for good on a worker whose end was lost.
+  const named = (type: string, machine: string) =>
+    refusal(() =>
+      dte({ workers: { [type]: { machines: { [machine]: { cpu: 1, memory: '1GB' } } } }, adapter }),
+    )
+  expect(named('linux', 'm/x')).toBe(
+    'dte() option "workers.linux.machines" must be named by letters, digits, _ and -, got "m/x"',
+  )
+  expect(named('li.nux', 'small')).toBe(
+    'dte() option "workers" must be named by letters, digits, _ and -, got "li.nux"',
+  )
+  expect(named('arm_64', 'big-1')).toBe('taken')
 })
 
 // A run from a git hook inherits the hook's GIT_INDEX_FILE / GIT_DIR. The
@@ -4350,6 +4364,138 @@ for (const hook of ['main', 'linked'] as const)
     const env = await readFile(seen, 'utf8')
     expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
   }, 30_000)
+
+/** A repository with one commit, and git run in it with an identity: its stdout, trimmed. */
+const committed = async (files: Record<string, string>) => {
+  const repo = await realpath(await tmp())
+  const git = (...args: string[]) => {
+    const p = Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...args,
+      ],
+      { cwd: repo, env: { ...process.env, GIT_INDEX_FILE: undefined, GIT_DIR: undefined } },
+    )
+    if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+    return p.stdout.toString().trim()
+  }
+  git('init', '-q')
+  for (const [f, text] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(repo, f)), { recursive: true })
+    await writeFile(path.join(repo, f), text)
+  }
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  return { repo, git }
+}
+
+/** `local()`'s spawn of one worker `id` of `root` at `commit`: its error, or '' once it started. */
+const spawnOne = async (
+  adapter: ReturnType<typeof local>,
+  root: string,
+  commit: string,
+  id = 's#1',
+  exited: (why: string) => void = () => {},
+): Promise<string> => {
+  try {
+    await adapter.spawn({
+      run: R,
+      relay: 'http://127.0.0.1:9',
+      size: 's',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id,
+      workspaceRoot: root,
+      commit,
+      env: {},
+      exited,
+    })
+    return ''
+  } catch (err) {
+    return (err as Error).message
+  }
+}
+
+// A hook in a linked worktree exports its gitdir as GIT_DIR, and
+// `rev-parse --show-prefix` in a workspace in a subdirectory answered ''
+// (git took the cwd for the top): the worker ran at its worktree's root,
+// where no `.vx/workspace` is.
+it('local() runs a worker at the workspace’s place in its worktree under a linked worktree’s hook', async () => {
+  const { repo, git } = await committed({ 'ws/.vx/workspace.mjs': 'export default {}\n' })
+  const wt = path.join(await realpath(await tmp()), 'wt')
+  git('worktree', 'add', '-q', '--detach', wt)
+  const seen = path.join(await tmp(), 'pwd.txt')
+  // A child of its own: a spawn reads the env vx started with, as a hook set it.
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '-e',
+      `const { local } = await import(${JSON.stringify(path.join(import.meta.dir, '../src/index.js'))})
+const adapter = local({ prepare: ${JSON.stringify(`pwd > ${JSON.stringify(seen)}; exit 1`)} })
+try {
+  await adapter.spawn({ run: ${JSON.stringify(R)}, relay: 'http://127.0.0.1:9', size: 's', max: 1, cpu: 1, memory: 1e9, index: 1, id: 's#1', workspaceRoot: ${JSON.stringify(path.join(wt, 'ws'))}, commit: ${JSON.stringify(git('rev-parse', 'HEAD'))}, env: {}, exited() {} })
+} catch (err) {
+  console.log(err.message)
+} finally {
+  await adapter.close()
+}`,
+    ],
+    {
+      cwd: path.join(wt, 'ws'),
+      env: { ...process.env, GIT_DIR: path.join(repo, '.git/worktrees/wt') },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  const [out, err] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  expect(out + err).toStartWith('prepare exited 1')
+  expect((await readFile(seen, 'utf8')).trim()).toEndWith(`${path.sep}1${path.sep}ws`)
+}, 30_000)
+
+// A log the reason could not write (a full temp dir, a name no file takes)
+// rejected the exit path: the run never heard the worker end and waited
+// for good, and a failed prepare said ENOENT, not why it failed.
+it('a worker’s end is reported with its own error line when its log cannot be written', async () => {
+  const { reasons } = await import('../src/local.js')
+  expect(await reasons()('exited 1', 'no/such/dir', 'error: boom\n')).toBe('exited 1: error: boom')
+  const { repo, git } = await committed({ 'a.txt': 'a' })
+  const adapter = local({ prepare: 'echo "error: no install" >&2; exit 3' })
+  try {
+    expect(await spawnOne(adapter, repo, git('rev-parse', 'HEAD'), 'linux.m/x#1')).toBe(
+      'prepare exited 3: error: no install',
+    )
+  } finally {
+    await adapter.close?.()
+  }
+}, 30_000)
+
+// A worker whose spawn threw (its worktree gone under it) was a rejection
+// no one caught: the run never heard it end, and waited for good.
+it('local() reports a worker it could not start as ended', async () => {
+  const { repo, git } = await committed({ 'a.txt': 'a' })
+  const adapter = local({ prepare: 'rm -rf "$PWD"' })
+  const ended = Promise.withResolvers<string>()
+  try {
+    expect(await spawnOne(adapter, repo, git('rev-parse', 'HEAD'), 's#1', ended.resolve)).toBe('')
+    expect(await Promise.race([ended.promise, Bun.sleep(5_000).then(() => 'never')])).toStartWith(
+      'could not start',
+    )
+  } finally {
+    await adapter.close?.()
+  }
+}, 30_000)
 
 // A run whose vx was killed never closed, and its worktrees stayed in the
 // repository for good (2026-11-06). The next local() run removes each

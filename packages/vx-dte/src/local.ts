@@ -3,6 +3,7 @@
 // loopback. For tests, demos
 // and trying a distributed run before a CI starts the workers.
 
+import { readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -102,7 +103,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         const add = await run(
           ['git', 'worktree', 'add', '-q', '--detach', dir, a.commit],
           a.workspaceRoot,
-          { ...process.env, GIT_INDEX_FILE: undefined },
+          { ...repoEnv(a.workspaceRoot), GIT_INDEX_FILE: undefined },
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
         // The workspace's own place in the checkout: from the worktree's
@@ -110,6 +111,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         // `.vx/workspace` above, and every worker exited (2026-10-25).
         const prefix = Bun.spawn(['git', 'rev-parse', '--show-prefix'], {
           cwd: a.workspaceRoot,
+          env: repoEnv(a.workspaceRoot),
           stdout: 'pipe',
           stderr: 'ignore',
         })
@@ -127,9 +129,16 @@ export function local(options: LocalOptions = {}): DteAdapter {
             throw new Error(await why(`prepare exited ${p.code}`, a.id, p.err))
         }
         if (closed) return
-        void run([...vx(), 'dte', 'worker'], at, env, false).then(async (r) => {
-          if (!closed) a.exited(await why(`exited ${r.code}`, a.id, r.err))
-        })
+        // Every end reported, a start that threw too: one lost left the run
+        // waiting for good on a worker that never joined.
+        void run([...vx(), 'dte', 'worker'], at, env, false)
+          .then(
+            (r) => why(`exited ${r.code}`, a.id, r.err),
+            (err: Error) => `could not start: ${err.message}`,
+          )
+          .then((reason) => {
+            if (!closed) a.exited(reason)
+          })
       })()
       pending.add(work)
       try {
@@ -274,17 +283,24 @@ function group(p: Bun.Subprocess, signal: NodeJS.Signals): void {
 
 /**
  * `<what>: <its error line> (log: <path>)`, a worker's whole stderr kept at
- * that path, which outlives the run.
+ * that path, which outlives the run; without the log when it cannot be
+ * written (a full temp dir): a write that threw lost the worker's end, and
+ * the run waited for good.
  */
 export function reasons(): (what: string, id: string, err: string) => Promise<string> {
   let logs: Promise<string> | undefined
   return async (what, id, err) => {
     const line = errorLine(err)
     if (line === '') return what
-    logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
-    const file = path.join(await logs, `${id}.log`)
-    await writeFile(file, err)
-    return `${what}: ${line} (log: ${file})`
+    try {
+      logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
+      const file = path.join(await logs, `${id}.log`)
+      await writeFile(file, err)
+      return `${what}: ${line} (log: ${file})`
+    } catch {
+      // quiet: the error line is the reason; the log was its detail
+      return `${what}: ${line}`
+    }
   }
 }
 
@@ -342,6 +358,46 @@ const GIT_REPO_ENV = [
   'GIT_SHALLOW_FILE',
   'GIT_COMMON_DIR',
 ]
+
+/**
+ * The env for a git in `cwd`: a hook's `GIT_DIR` dropped when git finds
+ * that repository from `cwd` anyway, as core's own git env does. A linked
+ * worktree's hook exports its gitdir and no `GIT_WORK_TREE`, and git took
+ * `cwd`, a workspace in a subdirectory, for the checkout's top: the
+ * snapshot held no workspace config there, and the run was refused
+ * (2026-11-11). A `GIT_DIR` naming another repository is kept.
+ */
+export function repoEnv(cwd: string): Record<string, string | undefined> {
+  const dir = process.env['GIT_DIR']
+  if (dir === undefined || process.env['GIT_WORK_TREE'] !== undefined) return process.env
+  const key = `${cwd}\0${dir}`
+  let found = rediscovered.get(key)
+  if (found === undefined) {
+    found = false
+    try {
+      const abs = path.resolve(dir)
+      let dotGit = abs
+      try {
+        // A linked worktree's admin dir names its checkout's `.git` file.
+        dotGit = path.resolve(abs, readFileSync(path.join(abs, 'gitdir'), 'utf8').trim())
+      } catch {
+        // quiet: the main worktree's `.git` has no `gitdir`
+      }
+      if (path.basename(dotGit) === '.git') {
+        const rel = path.relative(realpathSync(path.dirname(dotGit)), realpathSync(cwd))
+        found = !rel.startsWith('..') && !path.isAbsolute(rel)
+      }
+    } catch {
+      // quiet: a GIT_DIR not found is kept
+    }
+    rediscovered.set(key, found)
+  }
+  if (!found) return process.env
+  const { GIT_DIR: _, ...env } = process.env
+  return env
+}
+
+const rediscovered = new Map<string, boolean>()
 
 /** The argv that runs this vx: the binary when compiled, else Bun and its entry. */
 function vx(): string[] {

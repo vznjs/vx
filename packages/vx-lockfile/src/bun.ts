@@ -43,6 +43,8 @@ export interface Entry {
   /** `name@version`, `name@workspace:dir`, `name@github:…` */
   readonly id: string
   readonly deps: ReadonlyMap<string, string>
+  /** the `peerDependencies` it installs under no other field */
+  readonly peers: ReadonlySet<string>
   /** integrity / commit — whatever pins the bytes */
   readonly resolution: string
 }
@@ -98,6 +100,7 @@ export function parseLockfile(text: string): Lockfile {
     packages.set(p, {
       id: tuple[0],
       deps: depsOf(record(meta) ?? {}),
+      peers: peerOnly(record(meta) ?? {}),
       resolution: typeof resolution === 'string' ? resolution : '',
     })
   }
@@ -395,6 +398,21 @@ function buildGraph(
     }
     if (!hit) loose.push([key, file, files.get(file) ?? ''])
   }
+  // Bun's isolated linker (the default for a workspace whose bun.lock
+  // says `configVersion: 1`) links a peer from its store, not by this
+  // walk: c's `react` peer was b's nested react@19.0.0 while the walk
+  // found the root's 18.3.1, so b's react bump moved no key of c (probed,
+  // bun 1.4.4). A peer folds every installed copy of its name.
+  const copies = new Map<string, number[]>()
+  for (const [p, i] of index) {
+    const name = installName(p)
+    const list = copies.get(name)
+    if (list === undefined) copies.set(name, [i])
+    else list.push(i)
+  }
+  const peerCopies = (from: number, peers: ReadonlySet<string>): void => {
+    for (const name of peers) for (const i of copies.get(name) ?? []) edges[from]!.push(i)
+  }
   for (const [p, e] of lock.packages) {
     const from = index.get(p)!
     for (const [name, spec] of e.deps) {
@@ -402,6 +420,7 @@ function buildGraph(
       if (target !== undefined) edges[from]!.push(index.get(target)!)
       else material[from] += `\nunresolved\0${name}\0${spec}`
     }
+    peerCopies(from, e.peers)
   }
   // A workspace importer resolves like the package at its own name; the
   // root importer ('') resolves from the root.
@@ -419,6 +438,7 @@ function buildGraph(
       if (target !== undefined) edges[own]!.push(index.get(target)!)
       else material[own] += `\nunresolved\0${name}\0${spec}`
     }
+    peerCopies(own, lock.workspacePeers.get(dir)!)
   }
   // A workspace package's node carries no dependencies of its own — they
   // live on its importer — so the node points at the importer: what a

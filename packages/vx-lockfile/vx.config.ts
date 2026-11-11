@@ -11,6 +11,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'dependency-names',
     'extra-in-project',
     'file-dir-dep',
+    'installed-layout',
     'link-to-workspace',
     'lockfile-shapes',
     'npm',
