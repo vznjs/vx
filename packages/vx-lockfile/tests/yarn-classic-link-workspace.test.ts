@@ -151,5 +151,13 @@ it("--affected's extra files leave out a workspace a classic `link:` names, as t
   }
   const bytes = await Bun.file(path.join(root, 'yarn.lock')).bytes()
   const named = await yarn().fingerprint!.extraFiles!('yarn.lock', bytes, ctx)
-  expect([...named].sort()).toEqual(['packages/d', 'vendor/l'])
+  // Each workspace's manifest is named too: yarn.lock records no ranges of theirs.
+  expect([...named].sort()).toEqual([
+    'packages/a/package.json',
+    'packages/b/package.json',
+    'packages/c/package.json',
+    'packages/d',
+    'packages/d/package.json',
+    'vendor/l',
+  ])
 })

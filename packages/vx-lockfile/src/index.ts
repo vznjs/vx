@@ -272,7 +272,8 @@ const MANAGERS = {
         affected || lock.generation !== 'classic'
           ? undefined
           : (d: string) => isClassicWorkspace(root, d)
-      return yarnLock().fileDeps(lock, linked)
+      const deps = yarnLock().fileDeps(lock, linked)
+      return lock.generation === 'classic' ? [...deps, ...classicManifests(root)] : deps
     },
     recorded: (t) => {
       const lock = yarnParse(t)
@@ -746,6 +747,33 @@ function isClassicWorkspace(root: string, dir: string): boolean {
     !dir.split('/').includes('node_modules') &&
     globs.some((p) => !p.startsWith('!') && glob(p).match(dir))
   )
+}
+
+/**
+ * Each Yarn 1 workspace's `package.json`, root-relative: what the one
+ * classic digest folds, since yarn.lock records no workspace's ranges.
+ * Yarn 1 takes no `!` glob: it links the directory anyway.
+ */
+function classicManifests(root: string): string[] {
+  let pkg: Record<string, unknown> | null
+  try {
+    pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
+  } catch {
+    return []
+  }
+  const out = new Set<string>()
+  for (const pattern of globsOf(pkg)) {
+    if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
+    const glob = new Bun.Glob(`${pattern.replace(/^\.\//, '').replace(/\/+$/, '')}/package.json`)
+    for (const file of glob.scanSync({ cwd: root, onlyFiles: true })) {
+      const rel = file.split(path.sep).join('/')
+      if (rel !== 'package.json' && !rel.split('/').includes('node_modules')) out.add(rel)
+    }
+  }
+  return [...out].sort()
 }
 
 /** A root manifest's `workspaces` globs: an array, or Yarn 1's `{ packages }`. */
