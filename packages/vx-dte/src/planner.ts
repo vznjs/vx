@@ -10,12 +10,14 @@ import type { TaskNode } from '@vzn/vx'
 import {
   assign,
   dead,
+  fits,
   kindOf,
   ordered,
   type Ask,
   type Bin,
   holdFor,
   type Bounds,
+  type Kept,
   type Need,
   type Soon,
 } from './dispatch.js'
@@ -448,6 +450,8 @@ function play(
   // them when economically the best ... Otherwise we spawn as soon as
   // possible").
   deadline?: number,
+  // Read for its wakes only: it ends once no dormant one is left to start.
+  wakesOnly = false,
 ): {
   end: number
   /** It stopped at `horizon` with work left. */
@@ -511,6 +515,18 @@ function play(
   let joining = tasks.filter((_, i) => waits[i] === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
+  const kept = new Map<string, Kept>()
+  // Proved to fail, as `assign` would skip it: yielded to it, each ask was
+  // most of a plan of 3,800 tasks (2026-11-11).
+  const proved = (place: number, kind: string): boolean => {
+    const k = kept.get(kind)
+    return (
+      k !== undefined &&
+      unstarted !== undefined &&
+      (tasks[place]!.ms ?? UNKNOWN_MS) > k.longest &&
+      tailAt(place) <= k.rank
+    )
+  }
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   // Ready tasks by what they need: no ready task needs less than the
   // least of these, and a pass ends once no slot takes that.
@@ -766,7 +782,14 @@ function play(
       for (const s of slots) if (s.at > now) nextJoin = Math.min(nextJoin, s.at)
     }
     // With none ready nothing is given: a third of a sim's steps (2026-11-05).
-    if (unstarted !== undefined && readyCount > 0) {
+    // Nor with no worker room for the least ready: holds keep room only
+    // from the asks, which `assign` then reads none of. Each step held for
+    // a worker's count of tasks on full workers (2026-11-11).
+    if (
+      unstarted !== undefined &&
+      readyCount > 0 &&
+      joined.some((s) => fits(s, (floor ??= floorOf(needs.values()))))
+    ) {
       const soon: Soon[] = []
       for (const d of coming) {
         if (waits[d] === 0) {
@@ -784,10 +807,11 @@ function play(
     const to =
       readyCount === 0
         ? NONE
-        : assign(ranked(ready.asks(spent, bounds, needs.size)), joined, later, how.place, {
+        : assign(ranked(ready.asks(spent, bounds, needs.size, proved)), joined, later, how.place, {
             floor: (floor ??= floorOf(needs.values())),
             kinds: needs.size,
             spent,
+            kept,
             bounds,
           })
     // `graphene` ranks against the longest chain still ready.
@@ -835,6 +859,8 @@ function play(
       nextJoin = -Infinity
       continue
     }
+    if (wakesOnly && dormant.length === 0)
+      return { end: Infinity, cut: true, first: first(), ends: byPlatform(), free, given, wakes }
     if (left === 0 && readyCount === 0)
       return { end: last, first: first(), ends: byPlatform(), free, given, wakes }
     // The next moment anything changes: a task ends or a worker joins.
@@ -1273,10 +1299,11 @@ export function plan(
     ws: readonly PlanWorker[],
     deadline?: number,
     until = horizon,
+    wakesOnly = false,
   ): ReturnType<typeof play> => {
-    const key = `${deadline}\0${until}\n${ws.map((w) => `${w.id}\0${w.at}\0${w.dormant === true}`).join('\n')}`
+    const key = `${deadline}\0${until}\0${wakesOnly}\n${ws.map((w) => `${w.id}\0${w.at}\0${w.dormant === true}`).join('\n')}`
     let p = plays.get(key)
-    if (p === undefined) plays.set(key, (p = play(tasks, ws, how, until, deadline)))
+    if (p === undefined) plays.set(key, (p = play(tasks, ws, how, until, deadline, wakesOnly)))
     return p
   }
   // Given no task in the play, and none past its window.
@@ -1311,7 +1338,9 @@ export function plan(
     if (asleep.length === 0) return memo(ws)
     // Played through: a task with slack past the window still starts its
     // worker as it gets ready, not a window before its latest start.
-    const lazy = memo([...ws, ...asleep], best, Infinity)
+    // Read for its wakes: played on past the last, each plan of 3,800
+    // tasks played the rest of the run (2026-11-11).
+    const lazy = memo([...ws, ...asleep], best, Infinity, true)
     const at = new Map(lazy.wakes.map((w) => [w.id, w.readyAt]))
     const early = memo(
       [
@@ -2275,11 +2304,17 @@ class Ready {
   }
 
   /** In order, past each kind in `spent` as `assign` reads it then. */
-  *asks(spent: Set<string>, bounds?: Bounds, kinds?: number): Generator<Ask> {
+  *asks(
+    spent: Set<string>,
+    bounds?: Bounds,
+    kinds?: number,
+    // Read past, as `assign` would skip it (`Kept`).
+    skip?: (place: number, kind: string) => boolean,
+  ): Generator<Ask> {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
     if (this.kinds.size > MAX_JUMP_KINDS) {
-      yield* this.byClass(spent, bounds, kinds)
+      yield* this.byClass(spent, bounds, kinds, skip)
       return
     }
     // Arrays, not the maps: the scan below is most of a sim's time (2026-11-05).
@@ -2320,6 +2355,7 @@ class Ready {
       if (next === -1) return
       at[nextAt]!++
       cursor = next
+      if (skip?.(next, ks[nextAt]!) === true) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
@@ -2333,7 +2369,12 @@ class Ready {
    * found dead stays dead until a bin is given, and a give only shrinks
    * the bins' room, so the read goes past it for the rest of the pass.
    */
-  private *byClass(spent: Set<string>, bounds?: Bounds, kinds?: number): Generator<Ask> {
+  private *byClass(
+    spent: Set<string>,
+    bounds?: Bounds,
+    kinds?: number,
+    skip?: (place: number, kind: string) => boolean,
+  ): Generator<Ask> {
     const cs: number[] = []
     const qs: (readonly number[])[] = []
     for (const [c, q] of this.classes) {
@@ -2377,6 +2418,7 @@ class Ready {
       }
       if (next === -1) return
       cursor = next
+      if (skip?.(next, this.kindAt(next)) === true) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: this.kindAt(next) }
     }

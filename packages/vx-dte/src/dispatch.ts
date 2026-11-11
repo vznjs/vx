@@ -261,39 +261,151 @@ export function holdFor(bins: readonly Bin[], soon: readonly Soon[]): void {
 
 /** Keeps room for `s` on the bin where it is first free from its `at`. */
 function holdOne(bins: readonly Bin[], s: Soon, ready?: true): void {
-  {
-    let best: Bin | undefined
-    let bestAt = Infinity
-    for (const b of bins) {
-      if (s.need.platform !== undefined && b.platform !== s.need.platform) continue
-      const times = [s.at]
-      for (const [end] of b.ends ?? []) if (end > s.at) times.push(end)
-      for (const h of b.holds ?? []) if (h.until > s.at) times.push(h.until)
-      times.sort((x, y) => x - y)
-      for (const at of times) {
-        if (at >= bestAt) break
-        const u = heldAt(b, at)
-        const empty = u.cores <= 1e-9 && u.memory <= 0
-        if (
-          empty ||
-          (u.cores + s.need.cores <= b.cores + 1e-9 && u.memory + s.need.memory <= b.memory)
-        ) {
-          best = b
-          bestAt = at
-          break
-        }
-      }
+  let best: Bin | undefined
+  let bestAt = Infinity
+  for (const b of bins) {
+    if (s.need.platform !== undefined && b.platform !== s.need.platform) continue
+    // None frees it sooner than at once: most holds found one free at once.
+    if (s.at >= bestAt) break
+    const at = firstFree(b, s.need, s.at, bestAt)
+    if (at < bestAt) {
+      best = b
+      bestAt = at
     }
-    if (best === undefined) return
-    ;(best.holds ??= []).push({
-      at: bestAt,
-      until: bestAt + s.ms,
-      cores: Math.min(s.need.cores, best.cores),
-      memory: Math.min(s.need.memory, best.memory),
-      rank: s.rank,
-      ...(ready === undefined ? {} : { ready }),
-    })
   }
+  if (best === undefined) return
+  ;(best.holds ??= []).push({
+    at: bestAt,
+    until: bestAt + s.ms,
+    cores: Math.min(s.need.cores, best.cores),
+    memory: Math.min(s.need.memory, best.memory),
+    rank: s.rank,
+    ...(ready === undefined ? {} : { ready }),
+  })
+}
+
+/**
+ * What a bin holds through time: each change (an end, a hold's start or
+ * end) in order, and what it holds after it. Kept while its ends and use
+ * are the ones it read, a hold added in place: a read of the bin at each
+ * end it might free, for each hold, was most of a plan of 3,800 tasks
+ * (2026-11-11).
+ */
+interface Sweep {
+  ends: Bin['ends']
+  holds: Bin['holds']
+  count: number
+  cores: number
+  memory: number
+  /** Held before the first change. */
+  base: { cores: number; memory: number }
+  at: number[]
+  deltaCores: number[]
+  deltaMemory: number[]
+  /** Held from it on. */
+  heldCores: number[]
+  heldMemory: number[]
+}
+
+const sweeps = new WeakMap<Bin, Sweep>()
+
+/** Puts a change in time order, after those at its time, and what is held from there on. */
+function change(w: Sweep, at: number, cores: number, memory: number): void {
+  let i = w.at.length
+  while (i > 0 && w.at[i - 1]! > at) i--
+  w.at.splice(i, 0, at)
+  w.deltaCores.splice(i, 0, cores)
+  w.deltaMemory.splice(i, 0, memory)
+  w.heldCores.splice(i, 0, 0)
+  w.heldMemory.splice(i, 0, 0)
+  let c = i === 0 ? w.base.cores : w.heldCores[i - 1]!
+  let m = i === 0 ? w.base.memory : w.heldMemory[i - 1]!
+  for (let j = i; j < w.at.length; j++) {
+    c += w.deltaCores[j]!
+    m += w.deltaMemory[j]!
+    w.heldCores[j] = c
+    w.heldMemory[j] = m
+  }
+}
+
+function sweepOf(b: Bin): Sweep {
+  const holds = b.holds ?? []
+  let w = sweeps.get(b)
+  if (
+    w === undefined ||
+    w.ends !== b.ends ||
+    w.holds !== b.holds ||
+    w.count > holds.length ||
+    w.cores !== b.used.cores ||
+    w.memory !== b.used.memory
+  ) {
+    let ending = 0
+    let endingMemory = 0
+    for (const [, c, m] of b.ends ?? []) {
+      ending += c
+      endingMemory += m
+    }
+    w = {
+      ends: b.ends,
+      holds: b.holds,
+      count: 0,
+      cores: b.used.cores,
+      memory: b.used.memory,
+      // What no end is known for (a server's base) stays.
+      base: {
+        cores: Math.max(0, b.used.cores - ending) + ending,
+        memory: b.ends === undefined ? b.used.memory : endingMemory,
+      },
+      at: [],
+      deltaCores: [],
+      deltaMemory: [],
+      heldCores: [],
+      heldMemory: [],
+    }
+    for (const [end, c, m] of b.ends ?? []) change(w, end, -c, -m)
+    sweeps.set(b, w)
+  }
+  for (; w.count < holds.length; w.count++) {
+    const h = holds[w.count]!
+    change(w, h.at, h.cores, h.memory)
+    change(w, h.until, -h.cores, -h.memory)
+  }
+  return w
+}
+
+/**
+ * The first of `from`, an end or a hold's end after it, before `before`,
+ * where `need` fits on `b` beside what it holds then (`heldAt`), or
+ * where `b` is empty; else Infinity.
+ */
+function firstFree(b: Bin, need: Need, from: number, before: number): number {
+  const w = sweepOf(b)
+  const n = w.at.length
+  const roomCores = b.cores + 1e-9 - need.cores
+  const roomMemory = b.memory - need.memory
+  // The first change after `from`.
+  let lo = 0
+  let hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (w.at[mid]! <= from) lo = mid + 1
+    else hi = mid
+  }
+  let cores = lo === 0 ? w.base.cores : w.heldCores[lo - 1]!
+  let memory = lo === 0 ? w.base.memory : w.heldMemory[lo - 1]!
+  if ((cores <= 1e-9 && memory <= 0) || (cores <= roomCores && memory <= roomMemory)) return from
+  for (let i = lo; i < n;) {
+    const at = w.at[i]!
+    if (at >= before) return Infinity
+    let frees = false
+    for (; i < n && w.at[i] === at; i++)
+      if (w.deltaCores[i]! < 0 || w.deltaMemory[i]! < 0) frees = true
+    if (!frees) continue
+    cores = Math.max(0, w.heldCores[i - 1]!)
+    memory = w.heldMemory[i - 1]!
+    if ((cores <= 1e-9 && memory <= 0) || (cores <= roomCores && memory <= roomMemory)) return at
+  }
+  return Infinity
 }
 
 /**
@@ -330,6 +442,31 @@ function breaks(b: Bin, ask: Ask): boolean {
       return true
   }
   return false
+}
+
+/**
+ * The longest `ask` (of finite time) may run on `b` before a hold of
+ * higher rank it would break begins: `breaks` with its `ms` past it.
+ */
+function window(b: Bin, ask: Ask): number {
+  let out = Infinity
+  for (const h of b.holds ?? []) {
+    if (h.rank <= ask.rank! || h.at >= out) continue
+    const u = heldAt(b, h.at)
+    if (u.cores + ask.need.cores > b.cores + 1e-9 || u.memory + ask.need.memory > b.memory)
+      out = h.at
+  }
+  return out
+}
+
+/**
+ * Of a kind holds kept off every bin it fits, its rank and the longest
+ * that fits before them: one of no higher rank and longer fails alike
+ * until a bin is given (`assign`).
+ */
+export interface Kept {
+  readonly rank: number
+  readonly longest: number
 }
 
 export interface Ask {
@@ -403,6 +540,8 @@ export function assign<B extends Bin>(
     readonly kinds: number
     /** Where it keeps the kinds spent, for the asks to skip them as it reads. */
     readonly spent?: Set<string>
+    /** Where it keeps each kind's `Kept`, for the asks to skip those it proves fail as they read. */
+    readonly kept?: Map<string, Kept>
     /** Where it keeps the bins' bounds as it gives, for the asks to skip each `dead` one as it reads. */
     readonly bounds?: Bounds
   },
@@ -420,11 +559,13 @@ export function assign<B extends Bin>(
   spent.clear()
   // Ready asks given room ahead this pass.
   let waiting = 0
-  // Of each kind that a hold kept off and no bin took, the shortest such
-  // ask and its rank: one of no higher rank and no shorter fails alike, as
-  // holds only grow until a bin is given. Each read every bin: a billion
-  // reads in a sim of 3,800 tasks (2026-11-11).
-  const kept = new Map<string, { rank: number; ms: number }>()
+  // Of each kind that holds kept off and no bin took, its rank and the
+  // longest that fits before them: one of no higher rank and longer fails
+  // alike, as holds only grow and room only shrinks until a bin is given.
+  // Each read every bin: a billion reads in a sim of 3,800 tasks, a plan
+  // of 15 s (2026-11-11).
+  const kept = all?.kept ?? new Map<string, Kept>()
+  kept.clear()
   for (const ask of asks) {
     if (
       all !== undefined &&
@@ -445,7 +586,7 @@ export function assign<B extends Bin>(
       ask.rank !== undefined &&
       ask.ms !== undefined &&
       ask.rank <= k.rank &&
-      ask.ms >= k.ms
+      ask.ms > k.longest
     )
       continue
     const { need } = ask
@@ -521,8 +662,10 @@ export function assign<B extends Bin>(
         ask.rank !== undefined &&
         ask.ms !== undefined
       ) {
-        const had = kept.get(ask.kind)
-        if (had === undefined || ask.ms < had.ms) kept.set(ask.kind, { rank: ask.rank, ms: ask.ms })
+        let longest = 0
+        for (const b of pool)
+          if (!held.has(b) && fits(b, need)) longest = Math.max(longest, window(b, ask))
+        kept.set(ask.kind, { rank: ask.rank, longest })
       }
       continue
     }
