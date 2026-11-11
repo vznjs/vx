@@ -141,6 +141,7 @@ it('a pull request whose head repository is unknown writes its own pr-<n> scope'
     })
   expect([
     await pr({ pull_request: { number: 3, head: { ref: 'main', repo: null } } }),
+    // No readable event: the ref's number, not the `pr-target` all such PRs shared.
     await pr({}, { GITHUB_EVENT_PATH: path.join(dir, 'missing.json') }),
     await on('pull_request_target', {
       pull_request: { number: 7, head: { ref: 'main', repo: null } },
@@ -156,7 +157,7 @@ it('a pull request whose head repository is unknown writes its own pr-<n> scope'
     await on('workflow_run', {
       workflow_run: { event: 'pull_request', head_branch: 'main', pull_requests: [] },
     }),
-  ]).toEqual(['pr-3', 'pr-target', 'pr-7', 'pr-5', 'pr-target'])
+  ]).toEqual(['pr-3', 'pr-3', 'pr-7', 'pr-5', 'pr-target'])
 })
 
 it('another branch or tag writes to its own scope', async () => {
