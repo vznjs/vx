@@ -2037,6 +2037,46 @@ it('replays a crowded task with the cores it used, never above the real run', as
   }
 })
 
+// 2026-11-11: main 547694b ended 70 s past its ideal, and the summary
+// did not say why: four workers joined ~100 s after their ask.
+it('names what kept the run from its ideal: a worker joining late, then no room on it', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    // The footer's plan rows, the ideal's among them, follow an ask.
+    h.o.asked(1, 2, 2, 1_000, [])
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await Bun.sleep(300)
+    // One core: t2 waits for t1's.
+    const w = await h.worker(1)
+    await w.batches()
+    await Bun.sleep(300)
+    await w.finish('t1', 'k-t1', { exitCode: 0, durationMs: 300, cpuMs: 300 })
+    await w.batches()
+    await w.finish('t2', 'k-t2', { exitCode: 0, durationMs: 10, cpuMs: 10 })
+    await Promise.all(runs)
+    const d = h.o.driftOf(() => [])!
+    expect([d.joining >= 250 && d.joining < 450, d.room >= 250 && d.room < 450]).toEqual([
+      true,
+      true,
+    ])
+    await h.stop()
+    const rows = h.o
+      .footer(
+        () => 10,
+        undefined,
+        () => h.o.driftOf(() => []),
+      )
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.filter((r) => r.startsWith('drift'))).toEqual([
+      expect.stringMatching(
+        /^drift +\+\d+\.\ds past ideal: workers joining 0\.\ds · waiting for room 0\.\ds( · sending inputs \d+\.\ds)?( · after the last task \d+\.\ds)?$/,
+      ),
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-21: a worker the run's end stopped still read `online`, and
 // a size's machines were a `!` line apart from its workers.
 it('the final summary says how each worker ended, its size and machine under it', async () => {

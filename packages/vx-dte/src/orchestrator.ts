@@ -63,6 +63,18 @@ import { leftUnder, names, outputFiles } from './outputs.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
 
+/** What kept a run from its ideal, in ms along the chain that ended it (`driftOf`). */
+interface Drift {
+  /** Waiting for a worker to join, past the fastest warm-up. */
+  readonly joining: number
+  /** Waiting for room on a joined worker. */
+  readonly room: number
+  /** From its send to its worker beginning it: its inputs reaching it. */
+  readonly sending: number
+  /** The run's time after its last task. */
+  readonly after: number
+}
+
 interface Job {
   readonly req: ExecuteRequest
   /** Read as it joined the queue, and again while it waits when history changes (`rerank`). */
@@ -125,6 +137,8 @@ interface Worker {
   readonly label: string
   /** From its start to its join, when this run started it. */
   readonly warmUpMs: number | undefined
+  /** When it joined. */
+  readonly joinedAt: number
   /** The size it was started as, when this run started it. */
   readonly declared: Declared | undefined
   /** Tasks it finished. */
@@ -398,6 +412,11 @@ export class Orchestrator {
   private readonly took = new Map<
     string,
     { ms: number; cores: number; memory: number; platform: string | undefined }
+  >()
+  /** Each task a worker ran: when it joined the queue, was sent, began and ended, and when its worker joined. */
+  private readonly timeline = new Map<
+    string,
+    { queued: number; sent: number; began: number; end: number; joined: number }
   >()
   /** Each time the run asked for workers: when, how many, for which work, ending when. */
   private readonly asks: {
@@ -1418,6 +1437,14 @@ export class Orchestrator {
       head.durationMs,
       job.startedAt === undefined ? 0 : endAt - job.startedAt,
     )
+    const sent = job.sentAt ?? endAt
+    this.timeline.set(task, {
+      queued: Math.min(job.queuedAt ?? sent, sent),
+      sent,
+      began: Math.max(sent, Math.min(endAt, job.startedAt ?? sent)),
+      end: endAt,
+      joined: a.joinedAt,
+    })
     this.took.set(task, {
       ms: held,
       cores:
@@ -1688,6 +1715,7 @@ export class Orchestrator {
       this.workers.set(id, {
         id,
         warmUpMs,
+        joinedAt: performance.now(),
         declared: spawn?.declared,
         ran: 0,
         done: [],
@@ -2271,6 +2299,51 @@ export class Orchestrator {
   }
 
   /**
+   * What kept the run from its ideal (2026-11-11: "Could the summary tell
+   * us what caused the drift from ideal"): along the chain that ended it,
+   * from its last task back through the dependency each waited on last,
+   * the time each waited past when its ideal could start it (as
+   * `idealMs`, its platform's fastest warm-up from when the run knew its
+   * work) for its worker to join, then for room on it; the time its
+   * inputs took to reach it once sent; and the run's time after its last
+   * task. `undefined` with no task run on a worker.
+   */
+  driftOf(depsOf: (id: string) => readonly string[]): Drift | undefined {
+    const r = this.replay(depsOf)
+    if (r === undefined) return undefined
+    const deps = new Map(r.tasks.map((t) => [t.id, t.deps]))
+    const platform = new Map(r.tasks.map((t) => [t.id, t.platform]))
+    let id: string | undefined
+    for (const [t, l] of this.timeline)
+      if (id === undefined || l.end > this.timeline.get(id)!.end) id = t
+    if (id === undefined) return undefined
+    const until = this.ended ? this.endedAt : performance.now()
+    const out = {
+      joining: 0,
+      room: 0,
+      sending: 0,
+      after: Math.max(0, until - this.timeline.get(id)!.end),
+    }
+    for (const seen = new Set<string>(); id !== undefined && !seen.has(id);) {
+      seen.add(id)
+      const l = this.timeline.get(id)!
+      const earliest = Math.max(l.queued, this.startedAt + r.from + r.warm(platform.get(id)))
+      const lost = Math.max(0, l.sent - earliest)
+      const joining = Math.min(lost, Math.max(0, l.joined - earliest))
+      out.joining += joining
+      out.room += lost - joining
+      out.sending += l.began - l.sent
+      let next: string | undefined
+      for (const d of deps.get(id) ?? []) {
+        const e = this.timeline.get(d)?.end
+        if (e !== undefined && (next === undefined || e > this.timeline.get(next)!.end)) next = d
+      }
+      id = next
+    }
+    return out
+  }
+
+  /**
    * The workers that would have run this run best (`advise`), from the
    * same replay as `idealMs`: on `sizes`, past their `max`, and of any
    * cores. With no sizes (workers that join on their own), the shapes
@@ -2421,11 +2494,13 @@ export class Orchestrator {
    * with its status, the tasks it has done and the ones it runs now, then
    * this machine's; once over, each joined worker's warm-up and, under
    * each, the cores and memory its size declares and its machine reports;
-   * and `ideal`, the run's `idealMs`, asked once it ended.
+   * and `ideal`, the run's `idealMs`, asked once it ended, with what kept
+   * the run from it (`drift`).
    */
   footer(
     ideal?: () => number | undefined,
     advice?: () => readonly WorkerAdvice[],
+    drift?: () => Drift | undefined,
   ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
     // pool) read as the run's when no task needed one (2026-10-25), and
@@ -2577,6 +2652,7 @@ export class Orchestrator {
                         `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly`,
                       ),
                     ] as [string, ui.Inline],
+                    ...driftRow(this.endedAt - this.startedAt - ms, drift?.(), width),
                   ])(ideal?.()),
             // What to declare next time (2026-11-05: "So I can add more
             // or change their specs").
@@ -2614,6 +2690,32 @@ export class Orchestrator {
 
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
+}
+
+/**
+ * The footer's `drift` row: how far past its ideal the run ended, and the
+ * parts of it `driftOf` names, each of a tenth of a second or more.
+ */
+function driftRow(past: number, d: Drift | undefined, width: number): [string, ui.Inline][] {
+  if (d === undefined || past < 100) return []
+  const parts = (
+    [
+      ['workers joining', d.joining],
+      ['waiting for room', d.room],
+      ['sending inputs', d.sending],
+      ['after the last task', d.after],
+    ] as const
+  )
+    .filter(([, ms]) => ms >= 100)
+    .map(([what, ms]) => `${what} ${seconds(ms)}`)
+  return [
+    [
+      '',
+      ui.dim(
+        `${'drift'.padEnd(width)}  +${seconds(past)} past ideal${parts.length > 0 ? `: ${parts.join(' · ')}` : ''}`,
+      ),
+    ],
+  ]
 }
 
 function result(r: WiredResult, log: readonly CapturedChunk[]): ExecuteResult {

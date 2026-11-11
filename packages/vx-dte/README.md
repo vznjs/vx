@@ -814,7 +814,12 @@ cache, or not answered for) and how many of them it found in none. The `asked` l
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
 as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
-(below), so every log reads it beside core's `time` row. The first ask
+(below), so every log reads it beside core's `time` row. The `drift`
+line says how far past it the run ended and what caused it, along the
+chain of tasks that ended the run: tasks waiting for a worker to join
+past its platform's fastest warm-up, waiting for room on a joined one,
+their inputs reaching their worker, and the run's time after its last
+task. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
@@ -838,6 +843,7 @@ machine together, and the share of their history the run's tasks used:
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
             ideal    10.8s: each task as long as it took, placed perfectly
+            drift    +1.3s past ideal: workers joining 0.8s · waiting for room 0.3s · sending inputs 0.1s
             best     2 × linux.small (4c/14G): 11.4s, the fewest of its sizes
             more     3 × linux.small (4c/14G): 10.8s, past its sizes' max
             any      1 × (8c/28G): 10.9s, of any cores, the least core time

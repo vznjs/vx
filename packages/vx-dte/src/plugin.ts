@@ -1085,6 +1085,7 @@ export function dte(options: DteOptions = {}) {
           o.footer(
             () => o.idealMs(depsOf, sizes),
             () => o.advice(depsOf, sizes),
+            () => o.driftOf(depsOf),
           ),
         machines: () => o.machines(),
         idealMs: () => o.idealMs(depsOf, sizes),
