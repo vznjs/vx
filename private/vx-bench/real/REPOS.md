@@ -8,6 +8,92 @@ The rule for adjustments: a change is made only when the repo's own
 config cannot run here as shipped, or when it handicaps one tool for a
 reason that has nothing to do with the runner; every one is named.
 
+## Native config overlays (2026-11-10)
+
+The rows below ran vx through `turbo()` / `nx()`. The repos here run on
+native vx config instead, written by hand to mirror each `turbo.json`
+and kept in this directory as an overlay: `real/<name>/` mirrors the
+repo's tree (`.vx/workspace.ts`, a `vx.config.ts` per project, a
+preset beside them). `nightly.ts` clones the repo at the pinned SHA,
+installs it, copies the overlay over the clone, links the plugin
+packages `.vx/workspace.ts` imports (`@vzn/vx-lockfile`) from this
+checkout, and runs `turbo-repo.sh`; `--json <file>` writes each repo's
+row, best of N interleaved reps per arm, into `real-repos.json`'s shape.
+Each overlay is a nested workspace here, so this repo's lock lists it
+and no config in it is a project of this workspace.
+
+Each `.vx/workspace.ts` declares `pnpm()`: vx keys a task on its own
+dependency closure where Turbo keys every task on the lockfile. Each
+benched task declares exactly `turbo.json`'s outputs, so a restore
+writes the same files under both tools; where `turbo.json` caught less
+input, the overlay names more, and each case is named per repo.
+
+### solidjs/solid — b25c557754f2ced0d86490e6dbfded9b1745b663
+
+pnpm 9.15, Turbo 2.10.10. Benched: `build` on the whole workspace, 4
+tasks (`solid-js#build`, `#types`, `#link`, `solid-element#build`).
+
+- Mapped: every `turbo.json` task — `build`, `types`, `link`, `test`,
+  `test-types`, `coverage` of solid-js, `solid-element#build`,
+  `test-integration#test`, `babel-preset-solid#test`. Not mapped:
+  `solid-ssr`, whose scripts are examples no turbo task names.
+- Outputs are `turbo.json`'s, no more: `solid-element#build` declares
+  none (both tools cache its log, and a restore leaves no `dist`), and
+  `types` names neither ignored `jsx.d.ts` it copies into sources.
+  Naming them made vx's restore write three artifacts to Turbo's two
+  (2026-11-10). Each task reads the root `tsconfig.json`
+  (`workspaceFiles`).
+- Commands are the scripts' own steps, not `npm-run-all -nl types:*`:
+  run outside a package manager, npm-run-all starts each of the eleven
+  steps through npm, and `types` took 40.6 s against 31.0 s as one
+  `&&` command. The `rimraf` steps go, as vx clears declared outputs
+  before a task runs. Turbo runs the scripts through pnpm as shipped.
+  With the scripts as shipped, vx lost all three arms (cold 44.2 s
+  against 41.7 s, 2026-11-10).
+
+### vueuse/vueuse — efdd69a1481205051e85d9c815eaa5840237f2d1
+
+pnpm 11.25, Turbo 2.10.12. Benched: `build` on the whole workspace, 12
+tasks (11 package builds and `@vueuse/metadata#update`).
+
+- Mapped: `build` of the 11 packages, `@vueuse/metadata#update`. Not
+  mapped: `//#docs:build:vitepress` (the docs site) and
+  `@vueuse/skills#update` (writes the tracked root `skills/`).
+- **turbo.json edited, for both tools:** `build` depends on
+  `@vueuse/metadata#update`. The root `tsdown.config.ts` imports the
+  `index.json` that task writes, so on a clean tree any build may start
+  before it exists; the overlay's `turbo.json` replaces the repo's.
+- **packages/metadata/turbo.json edited, for Turbo's benefit:**
+  `!$TURBO_ROOT$/packages/*/dist/**` and `!$TURBO_ROOT$/packages/*/.turbo/**`
+  added to `update`'s inputs. Its explicit `$TURBO_ROOT$/packages/<p>/**/*`
+  globs match ignored files, so each build's `dist` and Turbo's own run
+  log re-keyed `update` and, through the edge above, every build: Turbo's
+  no-op rebuilt all 12 (20.7 s, 2026-11-10). With the edit, 12 of 12 hit.
+  vx's `workspaceFiles` leave ignored files out.
+- A build reads its workspace dependencies as sources through the root
+  tsconfig's `paths`, so their directories are its inputs
+  (`workspaceFiles`), not their builds; no build waits on another.
+
+### t3-oss/create-t3-turbo — 8f945b7bb3bfb3ca8358d48b1ff0214079bc11ee
+
+pnpm 10.19, Turbo 2.5.8. Benched: `build` over `./packages/*`, 3 tasks
+(`@acme/api`, `@acme/db`, `@acme/validators`).
+
+- Mapped for `packages/*` and `tooling/*`: `topo` (a keyed group),
+  `build`, `typecheck`, `lint`, `format`, with `globalEnv` as each
+  task's keyed and passed env. Not mapped: the three apps (`nextjs`,
+  `expo`, `tanstack-start`) and the uncached, persistent or
+  interactive tasks (`dev`, `clean`, `push`, `studio`, `ui-add`).
+- `turbo.json` gives `build` and `typecheck` one output,
+  `.cache/tsbuildinfo.json`; vx refuses two tasks on one path, so
+  where a package has a build, the build owns it.
+- Only `build` is benched: `@acme/auth` and `tooling/*` typecheck,
+  lint and format every `.ts` in the package, the overlay's
+  `vx.config.ts` among them, which imports `@vzn/vx/config` the repo
+  does not install (under either tool).
+
+## The `turbo()` / `nx()` runs
+
 Every run below predates 2026-09-29 and ran vx without a lock, each
 config evaluated per run. A vx run now loads configs only from
 `.vx/projects.lock.json`, so both scripts take `vx lock` once before the arms; a
