@@ -6041,3 +6041,34 @@ it('serversOf names a task’s servers through groups, and the servers they need
   expect(serversOf(nodes, 's#build')).toEqual([])
   expect(serversOf(undefined, 's#e2e')).toEqual([])
 })
+
+// A plan's timer can ask for a worker after the run closed: its folder
+// was made after close removed the run's, and nothing removed it.
+it('local() makes no worktree folder for a worker asked after close', async () => {
+  const dir = await realpath(await tmp())
+  const saved = process.env['TMPDIR']
+  process.env['TMPDIR'] = dir
+  const adapter = local()
+  try {
+    await adapter.relay!()
+    await adapter.close!()
+    await adapter.spawn({
+      run: R,
+      relay: 'http://127.0.0.1:9',
+      size: 's',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id: 's#1',
+      workspaceRoot: dir,
+      commit: 'HEAD',
+      env: {},
+      exited: () => {},
+    })
+  } finally {
+    if (saved === undefined) delete process.env['TMPDIR']
+    else process.env['TMPDIR'] = saved
+  }
+  expect(await readdir(dir)).toEqual([])
+})
