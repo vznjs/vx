@@ -6,7 +6,14 @@
 // reads the lock only for each task's definition.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, Cache, keptSteps, keptWarnings, type RunStep } from '../cache/index.js'
+import {
+  indexDb,
+  indexError,
+  Cache,
+  keptSteps,
+  keptWarnings,
+  type RunStep,
+} from '../cache/index.js'
 import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
@@ -1191,6 +1198,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     }
     ui.print('out', ...blocks)
     return 0
+  } catch (err) {
+    throw indexError(cache, err)
   } finally {
     cache.close()
   }

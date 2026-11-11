@@ -24,6 +24,7 @@ export {
   holdCacheDir,
   holdStore,
   indexDb,
+  indexError,
   formatCachePolicy,
   FULL_CACHE_POLICY,
   type InvocationRecord,

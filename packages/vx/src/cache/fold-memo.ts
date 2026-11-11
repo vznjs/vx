@@ -7,6 +7,7 @@
 // pure memo, so a lost or swept row is one fold more.
 
 import type { Database } from 'bun:sqlite'
+import { unreadableIndex } from './schema.js'
 
 export interface FoldMemoRow {
   probe: string
@@ -33,8 +34,22 @@ export class IndexFoldMemo implements FoldMemo {
 
   /** The key remembered for `taskId` under `probe`, if that is the probe it was folded under. */
   get(taskId: string, probe: string): string | undefined {
-    const row = this.dirty.get(taskId) ?? this.read(taskId)
+    const row = this.dirty.get(taskId) ?? this.readable(taskId)
     return row?.probe === probe ? row.key : undefined
+  }
+
+  // A page SQLite cannot read reached `vx run` as a raw `SQLiteError` and a
+  // stack (2026-11-11). A memo it cannot read is no memo: every fold is
+  // made afresh, and the entries' own reads refuse the file by name.
+  private readable(taskId: string): FoldMemoRow | null | undefined {
+    try {
+      return this.read(taskId)
+    } catch (err) {
+      if (!unreadableIndex(err)) throw err
+      this.rows ??= new Map()
+      this.runRows.set(taskId, null)
+      return undefined
+    }
   }
 
   private read(taskId: string): FoldMemoRow | null | undefined {

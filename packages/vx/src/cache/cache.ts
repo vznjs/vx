@@ -69,6 +69,7 @@ import {
   lazyStatement,
   RUNS_VIEW,
   SQLITE_FCNTL_PERSIST_WAL,
+  unreadableIndex,
 } from './schema.js'
 import {
   UserError,
@@ -227,12 +228,6 @@ const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 export interface SchemaReset {
   from: string
   to: string
-}
-
-/** SQLite's answer for a file that is not a readable database: corrupt, or not one at all. */
-function unreadableIndex(err: unknown): boolean {
-  const code = (err as { code?: unknown }).code
-  return typeof code === 'string' && (code.startsWith('SQLITE_CORRUPT') || code === 'SQLITE_NOTADB')
 }
 
 /** The refusal for an index SQLite cannot read, at the open or at any later read or write (A-8). */
@@ -1621,7 +1616,7 @@ export class Cache implements CacheLayer {
    */
   private guard<T>(op: () => T): T {
     const refuse = (err: unknown): never => {
-      throw unreadableIndex(err) ? unreadableIndexError(this.unreadableFile(), err) : err
+      throw indexError(this, err)
     }
     try {
       const out = op()
@@ -2685,7 +2680,13 @@ export class Cache implements CacheLayer {
     // tree files against 1.9; `cpSync` 3.5), nor a Worker: the copies are
     // 1.9 ms of a 25 ms restore, and one Worker's start is 1.5–2.4 ms
     // (2026-11-11).
-    const copy = async (to: string, from: string): Promise<number> => {
+    // A tree file is asked its type first: a FIFO at its place (damage at
+    // rest) blocked the copy's open for a writer that never came, and the
+    // run hung (2026-11-11). An lstat, not an open of our own handed to Bun:
+    // Bun clones only from a path, and a link there is damage too.
+    const copy = async (to: string, from: string, rel: string): Promise<number> => {
+      if (lstatSync(from, { throwIfNoEntry: false })?.isFile() === false)
+        throw new CorruptArtifactError(hash, `${rel} is not a file in its stored tree`)
       try {
         return await Bun.write(to, Bun.file(from), { createPath: false })
       } catch (err) {
@@ -2714,7 +2715,7 @@ export class Cache implements CacheLayer {
       const copied = await Promise.allSettled(
         files.map(async (r) => {
           const to = target(r.path)
-          const n = await copy(to, path.join(tree, r.path))
+          const n = await copy(to, path.join(tree, r.path), r.path)
           if (n !== r.size)
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
           const mode = restoredMode(r.mode)
@@ -4351,6 +4352,15 @@ export function historyFiles(cache: Cache): { index: string; store?: string } | 
  */
 export function indexDb(cache: Cache): Database {
   return cache['db']
+}
+
+/**
+ * `err` as a reader of `indexDb(cache)` reports it: a page SQLite cannot
+ * read is refused by its file, as every `Cache` read refuses it, where
+ * `vx last` and `vx why` printed a raw `SQLiteError` and a stack.
+ */
+export function indexError(cache: Cache, err: unknown): unknown {
+  return unreadableIndex(err) ? unreadableIndexError(cache['unreadableFile'](), err) : err
 }
 
 /**
