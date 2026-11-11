@@ -77,6 +77,28 @@ describe.skipIf(!available)('a sandboxed task and a git dir outside the workspac
     }).toEqual({ status: 'success', own: true, secret: false, other: false })
   })
 
+  it('names the hidden .git outside the workspace, and suggests no grant for it', async () => {
+    const repo = path.join(tmp, 'repo')
+    await mkdir(repo)
+    gitInit(repo)
+    const ws = await makeWorkspace({ dir: repo, git: false })
+    await addProject(ws, 'a', {
+      config: `export default { tasks: { t: { exec: {
+        command: 'git rev-parse HEAD',
+        sandbox: { allow: { read: ['.'] } },
+      } } } }\n`,
+    })
+    const git = gitIn(repo)
+    git('add', '-A')
+    git('commit', '-qm', 'init')
+    const r = await run({ cwd: ws, tasks: ['a#t'] })
+    expect(r.outcomes[0]?.status).toBe('failed')
+    const lines = r.outcomes[0]?.sandboxViolationLines ?? []
+    const named = lines.filter((l) => l.includes(`hides ${repo}/.git`))
+    expect(named).toHaveLength(1)
+    expect(named[0]).toContain('suggests no grant')
+  })
+
   it('refuses a write grant into the git dir outside the workspace', async () => {
     const repo = path.join(tmp, 'repo')
     await mkdir(repo)

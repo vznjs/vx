@@ -58,6 +58,59 @@ describe.skipIf(!available || process.platform !== 'linux')('git in a sandboxed 
     expect(await said(`['.']`)).toEqual(['failed', false])
   })
 
+  // The schema's version-stamp claim: a file the task may not read is
+  // deleted to git status, so describe says dirty unless the whole
+  // workspace is granted.
+  it('stamps a clean tree dirty unless the whole workspace is readable', async () => {
+    // A workspace each: a run rewrites the `.vx` locks the other committed.
+    const stamp = async (read: string): Promise<string> => {
+      const ws = realpathSync(await makeWorkspace({ prefix: 'vx-git-stamp-' }))
+      await addProject(ws, 'b', { files: { 'x.txt': 'x' } })
+      await addProject(ws, 'app', {
+        config: `export default { tasks: { t: { exec: {
+          command: 'git describe --always --dirty',
+          sandbox: { allow: { read: ${read} } },
+        } } } }\n`,
+      })
+      const git = gitIn(ws)
+      git('add', '-A')
+      git('commit', '-qm', 'app')
+      const out: string[] = []
+      const log = {
+        status() {},
+        taskStdout(_n: unknown, chunk: string) {
+          out.push(chunk)
+        },
+        taskStderr() {},
+        taskComplete() {},
+      }
+      await run({ cwd: ws, tasks: ['app#t'], log })
+      await rm(ws, { recursive: true, force: true })
+      return out.join('').trim()
+    }
+    expect(await stamp(`['.', '../../.git']`)).toEndWith('-dirty')
+    expect(await stamp(`['../..', '../../.git']`)).toMatch(/^[0-9a-f]+$/)
+  })
+
+  // git probes `.git` by stat alone, which strace does not stop on
+  // (TRACED_CALLS), so a task denied it failed with git's "not a git
+  // repository" and nothing named the sandbox.
+  it('names the .git grant when git finds no repository it was denied', async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { t: { exec: {
+        command: 'git rev-parse HEAD',
+        sandbox: { allow: { read: ['.'] } },
+      } } } }\n`,
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-qm', 'app')
+    const r = await run({ cwd: root, tasks: ['t'] })
+    expect(r.outcomes[0]?.status).toBe('failed')
+    const lines = r.outcomes[0]?.sandboxViolationLines ?? []
+    expect(lines.filter((l) => l.includes("allow: { read: ['../../.git'] }"))).toHaveLength(1)
+  })
+
   it('CONTROL: a task that names no .git does not see the variable', async () => {
     await addProject(root, 'app', {
       config: `export default { tasks: { t: { exec: {

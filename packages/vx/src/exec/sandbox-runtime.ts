@@ -2704,6 +2704,8 @@ async function runSandboxedOnce(
   let partial = ''
   let straceSpoke = false
   let mountGone = false
+  // Read whatever the capture setting, as the two above: `hiddenGitHint`.
+  let gitNoRepo = false
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
@@ -2717,6 +2719,7 @@ async function runSandboxedOnce(
         partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
         if (lines.some((l) => BWRAP_MOUNT_GONE.test(l))) mountGone = true
+        if (lines.some((l) => GIT_NO_REPO.test(l))) gitNoRepo = true
         ends.onStderr?.(chunk)
       },
       ac.signal,
@@ -2905,6 +2908,10 @@ async function runSandboxedOnce(
     })
     if (hidden.length > 0)
       violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, args.keyRoot))
+    const git = gitNoRepo
+      ? hiddenGitHint(args.cwd, grantedRead, baselines.denyRead, args.reportWithin)
+      : undefined
+    if (git !== undefined && !hidden.some((p) => atOrUnder(p, git.dir))) violations.push(git.hint)
   }
 
   afterCommand(SandboxManager)
@@ -3044,6 +3051,48 @@ function grantRemovalHint(
       `vx: the write grant ${grants} is mounted in place on Linux: the task may empty it ` +
       `but not remove or rename it ("Read-only file system"). Remove its contents ` +
       `instead, e.g. \`rm -rf ${contents}/*\`.`,
+  }
+}
+
+/** git's word, on stderr, for a discovery that found no `.git`. */
+const GIT_NO_REPO = /not a git repository/i
+
+/**
+ * The hint for git finding no repository because the sandbox hid `.git`.
+ * git probes it by `stat` alone, which strace does not stop on
+ * (`TRACED_CALLS`: a stop per stat cost every sandboxed task), so no
+ * record names it; git's own words (`GIT_NO_REPO`) do, and a failed task
+ * that said them is the only one looked at. The `.git`
+ * nearest the cwd is the one git looked for. Grantable only where its
+ * directory is a deny anchor the task stands in (the workspace root); one
+ * outside the workspace, or a worktree's `.git` file, whose data lies
+ * outside, is walled on purpose.
+ */
+function hiddenGitHint(
+  cwd: string,
+  granted: readonly string[],
+  walled: readonly string[],
+  within: string,
+): { dir: string; hint: SandboxViolation } | undefined {
+  let dir = toRealPath(cwd)
+  let st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
+  while (st === undefined && path.dirname(dir) !== dir) {
+    dir = path.dirname(dir)
+    st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
+  }
+  const git = path.join(dir, '.git')
+  if (st === undefined || readableUnder(git, granted)) return undefined
+  const said = `vx: git found no repository: the sandbox hides ${git}, and its probe is not reported.`
+  const grantable = st.isDirectory() && walled.some((w) => toRealPath(w) === dir)
+  return {
+    dir: git,
+    hint: {
+      timestamp: new Date(),
+      hint: true,
+      line: grantable
+        ? `${said} Grant it: \`allow: { read: [${jsString(path.relative(toRealPath(within), git))}] }\`.`
+        : `${said} Its data lies outside the workspace, walled on purpose, so vx suggests no grant.`,
+    },
   }
 }
 
