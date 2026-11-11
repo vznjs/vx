@@ -340,6 +340,46 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
   )
 
   it(
+    "the re-check's command start: one stamp file a run, not one per cached task",
+    async () => {
+      const root = await makeWorkspace({ dir, git: false })
+      for (const name of ['a', 'b', 'c']) {
+        await addProject(root, name, {
+          config: `export default { tasks: { build: {
+            exec: { command: 'mkdir -p dist && cp src/s.txt dist/' },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+          } } }\n`,
+          files: { 'src/s.txt': name },
+        })
+      }
+      const lock = Bun.spawnSync({
+        cmd: [process.execPath, path.join(SRC, 'bin.ts'), 'lock'],
+        cwd: root,
+        stderr: 'pipe',
+      })
+      expect(`${lock.exitCode}\n${lock.stderr.toString()}`).toBe('0\n')
+      gitInitCommit(root)
+      const calls = await trace(
+        dir,
+        `
+        process.chdir(${JSON.stringify(root)})
+        process.argv.splice(2, Infinity, 'run', 'build', '--all')
+        await import('$SRC/bin.ts')
+        `,
+      )
+      // The lag's measure makes it and each of the three misses writes it
+      // through the held fd. Made, stat'ed and removed per task, it was
+      // twelve calls (2026-11-11).
+      const stamps = calls.filter((c) => path.basename(c.path).startsWith('.vx-clock-'))
+      expect(stamps.map((c) => (c.name === 'unlinkat' ? 'unlink' : c.name))).toEqual([
+        'openat',
+        'unlink',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'keys with no index OID to trust: a file several tasks read is stat-ed twice a run, not per task',
     async () => {
       const root = await makeWorkspace({ dir, git: false })
@@ -401,6 +441,46 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       // existence check), then the hash's own, taken once for all three
       // keys. Taken per task and per declaration, it was seven.
       expect(on(calls, path.join(root, 'shared', 'a.txt')).filter((c) => c === 'lstat')).toEqual([
+        'lstat',
+        'lstat',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a miss with no index OID to trust: its key folds the digests it described, no second hash',
+    async () => {
+      const root = await makeWorkspace({ dir, git: false })
+      await writeFile(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      const proj = await addProject(root, 'p', {
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        } } }\n`,
+        files: { 'src/a.txt': 'a' },
+      })
+      const lock = Bun.spawnSync({
+        cmd: [process.execPath, path.join(SRC, 'bin.ts'), 'lock'],
+        cwd: root,
+        stderr: 'pipe',
+      })
+      expect(`${lock.exitCode}\n${lock.stderr.toString()}`).toBe('0\n')
+      gitInitCommit(root)
+      const calls = await trace(
+        dir,
+        `
+        process.chdir(${JSON.stringify(root)})
+        process.argv.splice(2, Infinity, 'run', 'build', '--all')
+        await import('$SRC/bin.ts')
+        `,
+      )
+      // The run's (the files token), the probe's hash, the miss's describe,
+      // and the re-check after the command. The key folded after describe
+      // hashed every input again: five.
+      expect(on(calls, path.join(proj, 'src', 'a.txt')).filter((c) => c === 'lstat')).toEqual([
+        'lstat',
+        'lstat',
         'lstat',
         'lstat',
       ])

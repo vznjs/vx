@@ -323,7 +323,13 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
       if (digests[i]!.startsWith('120000:')) behind.set(f, await behindLink(f, hashFile))
     }),
   )
-  const hash = await args.cache.key(input)
+  // The key folds these same digests: asked again, each file was a second
+  // lstat and memo lookup per miss (8,002 cold tasks: 160,000 of each), and
+  // the key could fold bytes the facts the re-check compares never saw.
+  const hash = await args.cache.key({
+    ...input,
+    fileHashes: new Map(sorted.map((f, i) => [f, digests[i]!])),
+  })
   // A file gone since the enumeration is no input: the task will not read it.
   const files: InputFile[] = sorted.flatMap((f, i) =>
     digests[i] === ABSENT_INPUT

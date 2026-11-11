@@ -911,8 +911,8 @@ has moved whatever it holds (a whole-second stamp counts as any moment
 of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
-1015). That moment is read off the file system's clock (a file written
-and removed in the cache dir, `fsClockNow`), not `Date.now()`: Linux
+1015). That moment is read off the file system's clock (a one-byte write
+to a file the run holds open, unlinked, in the cache dir, `fsClockNow`), not `Date.now()`: Linux
 before 6.13 stamps from its coarse clock, a tick behind, which dated an
 edit in the command's first tick before it. A coarse clock gives a write
 in that moment's own tick the moment itself, whether an upstream's just
