@@ -4,23 +4,53 @@
 
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
+import { braceAlternatives } from '../util/index.js'
 
 /**
  * The wildcard alphabet of a GRANT — what decides whether a declared read or
  * write path is scanned for its matches or mounted as the path it names.
  * Deliberately smaller than `BUN_GLOB_WILDCARDS` (util/paths.ts, `Bun.Glob`'s
- * own set), which also counts `{}`: `write: ['g/{a,b}.txt']` is a
- * LITERAL to the sandbox, gets a placeholder file, and is widened to its
- * directory like any other file-shaped grant — measured ok, and pinned in
- * `tests/sandbox-lifecycle.unsafe.test.ts`. Counting the brace here would
- * move that spelling into the scan, which finds nothing before the task has
- * written, and turn a working grant into `Read-only file system`. The two
+ * own set), which also counts `{}`: a grant's braces are expanded before
+ * (`grantAlternatives`), so `write: ['g/{a,b}.txt']` arrives as two
+ * LITERALS, each gets a placeholder file and is widened to its directory
+ * like any other file-shaped grant — measured ok, and pinned in
+ * `tests/sandbox-lifecycle.unsafe.test.ts`. A brace that reaches here was
+ * escaped and names itself. Counting it would move such a grant into the
+ * scan, which finds nothing before the task has written, and turn a
+ * working grant into `Read-only file system`. The two
  * predicates answer different questions: whether a declaration must be
  * MATCHED against other declarations (495; `GLOB_WILDCARDS`), and whether a
  * grant can be mounted (here).
  * Item 577 gave each question one spelling.
  */
 export const MOUNT_WILDCARDS = /[*?[\]]/
+
+/**
+ * The grants one declared grant stands for: its braces expanded as a task
+ * glob's are (`braceAlternatives`), and in one that names a path, each
+ * escaped brace or comma read as itself. Kept as written, `read:
+ * ['c{a,b}']` named a literal `c{a,b}` no project holds and granted
+ * nothing, with no word; and the Linux sandbox drops a grant holding a
+ * backslash, so `c\{a,b\}` was refused. A pattern keeps its escapes for
+ * the scan, which reads a bare brace as alternation.
+ */
+export function grantAlternatives(grant: string): string[] {
+  return braceAlternatives(grant).map((g) =>
+    isMountableLiteral(g)
+      ? g.replace(/\\(.)/g, (escaped, c: string) => ('{},'.includes(c) ? c : escaped))
+      : g,
+  )
+}
+
+/**
+ * Linux: `dir` is under `/dev`, which the sandbox mounts afresh after
+ * every bind (SRT's `--dev /dev`, which also skips any grant there), so a
+ * project there is gone from the task's view and bwrap fails to remount
+ * it. No grant can bring it back.
+ */
+export function replacedBySandbox(dir: string): boolean {
+  return process.platform === 'linux' && atOrUnder(dir, '/dev')
+}
 
 /** True when a grant names one path the sandbox can mount, rather than a pattern to scan. */
 export function isMountableLiteral(grant: string): boolean {

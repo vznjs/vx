@@ -134,9 +134,33 @@ export default defineProject({
       ]),
     ),
 
+    // The real-repo bench: each repo of real/nightly.ts cloned at its pin,
+    // on native vx config, against the tool it ships with; the rows go to
+    // real-repos.json, which the site's real-repos page renders. Only the
+    // Real repos workflow runs it (real-repos.yml), weekly, on a machine of
+    // its own: it clones and installs from the network, and the arms are
+    // timed. No sandbox, as the bench.* tasks: its tracer would be timed.
+    'bench.real': {
+      description:
+        'real/nightly.ts: real repos on native config vs their own tool → real-repos.json',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun real/nightly.ts --reps 5 --json real-repos.json',
+        timeout: '170m',
+        env: { ...NO_TRANSPILER_CACHE, passThrough: ['VX_NIGHTLY_DIR'] },
+      },
+    },
+
     'site.numbers': {
       description: 'every runner of the head-to-head, the rows the site reads',
-      dependsOn: ['bench.*'],
+      // Named, not `bench.*`: that took bench.real, and the Bench job ran
+      // the weekly real-repo clones before the site's rows.
+      dependsOn: [
+        '@vzn/vx-bench#bench.vx',
+        '@vzn/vx-bench#bench.turbo',
+        '@vzn/vx-bench#bench.nx',
+        '@vzn/vx-bench#bench.vite-task',
+      ],
     },
 
     lint: {
@@ -156,7 +180,7 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: {
-        files: ['*.ts', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        files: ['*.ts', 'real/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
       outputs: { files: [] },
       cache: true,
@@ -189,7 +213,7 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
-      inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
+      inputs: { files: ['*.ts', 'real/*.ts', 'real-repos.json', 'tests/**', 'package.json'] },
       outputs: { files: [] },
       cache: true,
     },

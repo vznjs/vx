@@ -11,6 +11,7 @@
 // fall back to lazy read-through in execute-task, which is always
 // correct. The check is conservative: when unsure, treat as unstable.
 
+import path from 'node:path'
 import {
   foldedDeps,
   isGroupTask,
@@ -19,7 +20,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import type { CacheLayer, GitFilesCache } from '../cache/index.js'
+import { type CacheLayer, freshProbe, type GitFilesCache, namedOutright } from '../cache/index.js'
 import {
   checkIgnore,
   ignoreProbes,
@@ -426,8 +427,9 @@ class ProjectOutputs {
 }
 
 /**
- * The same-project outputs a reader's inputs reach, root-relative, each with
- * its project dir and project-relative glob: the outputs the gate would key
+ * The outputs a reader's inputs reach, root-relative, each with its project
+ * dir and project-relative glob (a reader's own project's, and any
+ * project's for a `workspaceFiles` reader): the outputs the gate would key
  * a reader late over, unless git ignores them (`askIgnoredOutputs`).
  */
 export function gatedOutputs(
@@ -460,6 +462,31 @@ export function gatedOutputs(
       out.set(rooted, { projectDir: n.projectDir, glob: o })
     }
   }
+  // A `workspaceFiles` reader reaches other projects' outputs as well, and
+  // is keyed late over them unless git ignores them whole too.
+  let rootedOutputs: ProjectOutputs | undefined
+  const owner = new Map<string, { projectDir: string; glob: string }>()
+  for (const n of nodes.values()) {
+    const ws = n.config.inputs?.workspaceFiles
+    if (ws === undefined || ws.length === 0 || isGroupTask(n)) continue
+    if (rootedOutputs === undefined) {
+      rootedOutputs = new ProjectOutputs()
+      for (const m of nodes.values()) {
+        const files = m.config.outputs?.files
+        if (files === undefined || files.length === 0) continue
+        const rel = relPosix(workspaceRoot, m.projectDir)
+        for (const glob of files) {
+          if (glob.startsWith('!')) continue
+          const rooted = rel === '' ? glob : `${rel}/${glob}`
+          if (owner.has(rooted)) continue
+          owner.set(rooted, { projectDir: m.projectDir, glob })
+          rootedOutputs.add(rooted, literalPrefix(rooted))
+        }
+      }
+    }
+    for (const rooted of rootedOutputs.reachedBy(ws))
+      if (!out.has(rooted)) out.set(rooted, owner.get(rooted)!)
+  }
   return out
 }
 
@@ -468,21 +495,62 @@ export function gatedOutputs(
  * enumeration; the call it returns settles `files.ignoredOutputs` once that
  * enumeration is in, whose listing says whether a tracked or re-included
  * file lies under a glob. Nothing gated: no spawn.
+ *
+ * The same spawn asks whether git ignores a new file directly in each
+ * directory a task of `nodes` names outright (`namedOutright`), which the
+ * key asks `GitFilesCache.newFilesIgnored` of: answered later, it was a
+ * synchronous `check-ignore` on the key path. A probe git refuses (one
+ * past a symlink, or inside a submodule) fails the whole spawn, so the
+ * outputs are then asked again alone and those directories later, as before.
  */
 export function askIgnoredOutputs(
   gated: ReadonlyMap<string, { projectDir: string; glob: string }>,
   workspaceRoot: string,
+  nodes: ReadonlyMap<string, TaskNode>,
 ): (files: GitFilesCache) => Promise<void> {
   if (gated.size === 0) return async () => {}
   const paths = [...gated.keys()].flatMap((g) => ignoreProbes(g)?.paths ?? [])
-  const asked = paths.length === 0 ? Promise.resolve(null) : checkIgnore(workspaceRoot, paths)
+  if (paths.length === 0) return async () => {}
+  const dirs = namedDirs(nodes, workspaceRoot)
+  const asked: Promise<{ hit: Set<string> | null; dirs: readonly string[] }> =
+    dirs.length === 0
+      ? checkIgnore(workspaceRoot, paths).then((hit) => ({ hit, dirs }))
+      : checkIgnore(workspaceRoot, [...paths, ...dirs.map(freshProbe)]).then(async (hit) =>
+          hit !== null ? { hit, dirs } : { hit: await checkIgnore(workspaceRoot, paths), dirs: [] },
+        )
   return async (files) => {
-    files.ignoredOutputs = wholeIgnored(gated.keys(), await asked, (g) => {
+    const { hit, dirs: answered } = await asked
+    files.ignoredOutputs = wholeIgnored(gated.keys(), hit, (g) => {
       const { projectDir, glob } = gated.get(g)!
       const listed = files.get(projectDir)
       return listed === undefined || listed.some((f) => taskGlob(glob).match(f))
     })
+    if (hit !== null && answered.length > 0)
+      files.answerNewFilesIgnored(answered, (d) => hit.has(freshProbe(d)))
   }
+}
+
+/** Every directory a task's inputs name outright, root-relative, once each; none above the root. */
+function namedDirs(nodes: ReadonlyMap<string, TaskNode>, workspaceRoot: string): string[] {
+  const out = new Set<string>()
+  const seen = new Set<string>()
+  for (const n of nodes.values()) {
+    if (n.config.inputs === undefined || isGroupTask(n)) continue
+    const named = namedOutright(n.config)
+    for (const [base, entries] of [
+      [n.projectDir, named.files],
+      [workspaceRoot, named.workspaceFiles],
+    ] as const) {
+      for (const e of entries) {
+        const at = `${base}\0${e}`
+        if (seen.has(at)) continue
+        seen.add(at)
+        const rel = relPosix(workspaceRoot, path.resolve(base, e))
+        if (rel !== '' && !rel.startsWith('../') && !path.isAbsolute(rel)) out.add(rel)
+      }
+    }
+  }
+  return [...out]
 }
 
 /** `outputsOf` less what git ignores whole; the same map when it ignores none. */
@@ -732,13 +800,34 @@ export function dependsOnSiblingOutputs(
     // reach no package — classing those as unstable hashed medusa's 83
     // tasks twice and probed 76 of them lazily (2026-09-11).
     if (dirByProject === undefined) return true
-    const dirs: string[] = []
+    // A producer whose writes are all declared reaches the reader only where
+    // its outputs can meet the globs, and not through an output git ignores
+    // whole that no entry names, as for a same-project reader: vueuse's
+    // `packages/core/**` readers keyed late over the ignored `index.json`
+    // metadata writes, and derived again after its restore (2026-11-11).
+    // Undeclared writes may land anywhere in the project: its directory.
+    const heads: string[] = []
     for (const p of upstreamOutputProjects) {
       const d = dirByProject.get(p)
       if (d === undefined) return true
-      dirs.push(d)
+      const outputs = sameProject?.outputsOf.get(p)
+      if (
+        sameProject === undefined ||
+        sameProject.wide?.has(p) === true ||
+        outputs === undefined ||
+        outputs.length === 0
+      ) {
+        heads.push(d)
+        continue
+      }
+      const rooted = (o: string): string => (d === '' || d === '.' ? o : `${d}/${o}`)
+      const all = outputs.filter((o) => !o.startsWith('!')).map(rooted)
+      const readable = (sameProject.readableOf?.get(p) ?? outputs)
+        .filter((o) => !o.startsWith('!'))
+        .map(rooted)
+      for (const o of withNamedIgnored(wsInputs, all, readable)) heads.push(literalPrefix(o))
     }
-    return workspaceInputsReach(wsInputs, dirs)
+    return workspaceInputsReach(wsInputs, heads)
   }
   return false
 }

@@ -118,11 +118,13 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   vx's own and the callbacks hear nothing; placement hands such a task
   to core's local executor alone),
   `inputs?: TaskInputs`, `cacheKey?` (a cacheable task's key, the address
-  an executor's own remote record uses), `refresh?` (cache reads are off:
-  do not answer from that record), `unsaved?` (core saves no entry
-  under the key: the policy writes no layer, or an upstream failed under
-  `--continue=always`, ran unkeyed or is keyless; an executor that saves
-  results for dependants keeps them off the key too), `remoteOnly?` (`exec.remote: 'only'`:
+  an executor's own remote record uses), `refresh?` (cache reads are off, or
+  remote reads are with a remote layer composed: do not answer from that
+  record), `unsaved?` (core saves no entry under the key: the policy
+  writes no layer, or an upstream failed under `--continue=always`, ran
+  unkeyed or is keyless; or, with a remote layer composed, the policy
+  writes no remote; an executor that saves results for dependants keeps
+  them off the key too), `remoteOnly?` (`exec.remote: 'only'`:
   leave outputs off this disk), `platform?` (one of the task's
   `exec.platforms` the executor's `platforms` lists: run it there; its key
   folds it), `worker?` (the type of the executor's `workers` to run it
@@ -135,7 +137,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `reportWithin` (the project: denials there are reported), `reportLinked`
   (the canonical directories of the linked workspace packages core
   withheld from a cached task because its key does not answer for them:
-  denials there are reported too), `config`. An executor that ships the
+  denials there are reported too), `config`, and for a cached task
+  `keyed`, `keyRoot` (the workspace root: a hidden read under it is named
+  for `inputs.workspaceFiles` beside its grant). An executor that ships the
   sandbox elsewhere receives the narrowed `baseAllowRead`; enforcing it
   is its own.
 - `TaskInputs` — everything the cache key folds, WITH values: `files`

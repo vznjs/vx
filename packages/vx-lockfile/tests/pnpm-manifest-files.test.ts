@@ -7,7 +7,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
 import { type DiscoverContext, type Logger } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { pnpm } from '../src/index.js'
@@ -113,6 +113,28 @@ it('a package.yaml or package.json5 member is named by it and keeps its edges', 
   const tasks = await plan()
   expect(tasks.get('p#build')!.node.deps).toEqual(['q#build'])
   expect(tasks.get('r#build')!.node.deps).toEqual(['q#build'])
+})
+
+// A read of a name that is not there rejects with an error built for it,
+// two per package on pnpm's three names, every run: only names a stat
+// finds are read.
+it('reads no manifest name that is not there', async () => {
+  const file = spyOn(Bun, 'file')
+  try {
+    await discover()
+    const asked = file.mock.calls
+      .map(([p]) => (typeof p === 'string' ? path.relative(root, p) : ''))
+      .filter((p) => /(^|\/)package\.(json|json5|yaml)$/.test(p))
+      .sort()
+    expect(asked).toEqual([
+      'package.json',
+      'packages/p/package.yaml',
+      'packages/q/package.json',
+      'packages/r/package.json5',
+    ])
+  } finally {
+    file.mockRestore()
+  }
 })
 
 it("its manifest is its tasks' input, and an edit to it re-keys them", async () => {

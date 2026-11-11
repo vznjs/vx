@@ -49,6 +49,7 @@ import {
   slashBraceExpansions,
   braceAlternatives,
   ESSENTIAL_ENV,
+  ownEnv,
   POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
@@ -58,7 +59,13 @@ import {
   writableUnder,
   withoutWorkspaceBins,
 } from '../util/index.js'
-import { GitFilesCache, listingEnv, newFilesIgnoredIn, runGitLsFiles } from './git-inputs.js'
+import {
+  GitFilesCache,
+  listingEnv,
+  lstatOrAbsent,
+  newFilesIgnoredIn,
+  runGitLsFiles,
+} from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
@@ -71,7 +78,6 @@ export {
   startGitEnumeration,
   applyGitEnumeration,
   gitPathspecs,
-  parseCheckAttrOutput,
   autocrlfConverts,
   gitStatWeakened,
   attributeFilesOutsideTree,
@@ -244,10 +250,17 @@ export function filesToken(
     | 'gitFilesCache'
   >,
 ): string | undefined {
-  if ((args.inputs?.workspaceFiles?.length ?? 0) > 0) return undefined
-  const plan = filesPlan(args.inputs?.files, args.ownOutputs)
   const cache = args.gitFilesCache
-  if (plan === null || cache === undefined) return undefined
+  if (cache === undefined) return undefined
+  const ws = workspaceFilesToken(args.workspaceRoot, args.inputs?.workspaceFiles, cache)
+  if (ws === undefined) return undefined
+  const plan = filesPlan(args.inputs?.files, args.ownOutputs)
+  if (plan === null) {
+    // Only workspace files: a project fold of none.
+    return ws === ''
+      ? undefined
+      : `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, { positive: [], negative: [] }, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0-${ws}`
+  }
   const snapshot = cache.snapshotFor(args.projectDir, plan.positiveGlobs)
   if (snapshot === undefined) return undefined
   const digest = cache.filesDigest(args.projectDir, snapshot)
@@ -256,13 +269,87 @@ export function filesToken(
     ignoredReach(plan, snapshot, { dir: args.projectDir, cache }).length > 0
   )
     return undefined
-  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}`
+  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}${ws}`
+}
+
+/**
+ * The `workspaceFiles` half of {@link filesToken}: '' for none declared,
+ * undefined when git cannot vouch for what the declaration lists. Else the
+ * declaration and a digest of every workspace path its globs may take in
+ * (`declarationDigest`): what `resolveWorkspaceFiles` picks from them is a
+ * function of that, the task's outputs and project (the token's memo key).
+ * One a glob names that git answers nothing for is read from disk
+ * (`ignoredReach`), which no digest covers.
+ */
+function workspaceFilesToken(
+  workspaceRoot: string,
+  declared: readonly string[] | undefined,
+  cache: GitFilesCache,
+): string | undefined {
+  if (declared === undefined || declared.length === 0) return ''
+  const key = JSON.stringify(declared)
+  let plan = wsPlans.get(key)
+  if (plan === undefined) {
+    const positive = declared.filter((e) => !e.startsWith('!'))
+    const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
+    const mayHold = mayHoldMatch(positive)
+    plan = {
+      positive,
+      globs: asTrees(positive).map(globFor),
+      reach: reachOf(positive),
+      takes: (rel) => isPositive(rel) || mayHold(rel),
+      heads: headsOf(positive),
+    }
+    wsPlans.set(key, plan)
+  }
+  // No positive entry lists no workspace file (`resolveWorkspaceFiles`).
+  if (plan.positive.length === 0) return ''
+  const snapshot = cache.snapshotFor(workspaceRoot, plan.globs)
+  if (snapshot === undefined) return undefined
+  if (ignoredReach(plan.reach, snapshot, { dir: workspaceRoot, cache }).length > 0) return undefined
+  const digest = cache.declarationDigest(workspaceRoot, snapshot, key, plan.takes, plan.heads)
+  return digest === undefined ? undefined : `\0ws\0${key}\0${digest}`
+}
+
+const wsPlans = new Map<
+  string,
+  {
+    positive: string[]
+    globs: Bun.Glob[]
+    reach: { prefixes: string[]; literals: string[] }
+    takes: (rel: string) => boolean
+    heads: string[] | undefined
+  }
+>()
+
+/**
+ * Each entry's fixed head: every path it takes in lies at, under or above
+ * one (`declarationDigest`). Undefined when one has none (a leading `**`).
+ */
+function headsOf(positive: readonly string[]): string[] | undefined {
+  const heads: string[] = []
+  for (const glob of asTrees(positive.flatMap(braceAlternatives))) {
+    const fixed = isLiteralPattern(glob) ? normalizeGlob(glob) : staticPrefix(glob)
+    const head = fixed.replace(/\/+$/, '')
+    // An escape names a character the path spells bare: walked whole.
+    if (
+      head === '' ||
+      head === '.' ||
+      head === '..' ||
+      head.startsWith('../') ||
+      head.includes('\\') ||
+      path.isAbsolute(head)
+    )
+      return undefined
+    heads.push(head)
+  }
+  return heads
 }
 
 /** Everything below the git snapshot that decides `resolveFiles`' result. */
 function filesMemoKey(
   projectDir: string,
-  plan: FilesPlan,
+  plan: Pick<FilesPlan, 'positive' | 'negative'>,
   ownOutputs: readonly string[],
   ownWorkspaceOutputs: readonly string[],
   nestedProjectDirs: readonly string[],
@@ -423,7 +510,9 @@ function resolveWorkspaceFiles(args: {
       !excludedByDeclaration(rel) &&
       !own(rel),
     linked: (rel) =>
-      (mayHold ??= mayHoldMatch(positive))(rel) && !excludedByDeclaration(rel) && !own(rel),
+      (mayHold ??= mayHoldMatch(positive))(rel) &&
+      !excludedBeneath(excludedByDeclaration, rel) &&
+      !own(rel),
     nested: () => false,
     ...reachOf(positive),
   }
@@ -481,14 +570,15 @@ async function resolveWorkspaceFilesOver(
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
   const mayHold = mayHoldMatch(positive)
   for (const rel of gitFiles) {
-    if (isPositive(rel)) {
-      if (!excluded(rel)) candidates.push(path.resolve(args.workspaceRoot, rel))
-    } else if (mayHold(rel) && !excluded(rel)) {
+    if (isPositive(rel) && !excluded(rel)) candidates.push(path.resolve(args.workspaceRoot, rel))
+    else if (mayHold(rel) && !excludedBeneath(excluded, rel)) {
       const abs = path.resolve(args.workspaceRoot, rel)
       if (dirLinkInput(abs, oids)) candidates.push(abs)
     }
   }
-  return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+  return candidates
+    .filter((abs) => oids?.has(abs) === true || inputOnDisk(abs, args.gitFilesCache))
+    .sort()
 }
 
 /**
@@ -574,6 +664,22 @@ function isInputOnDisk(abs: string): boolean {
   }
 }
 
+/**
+ * `isInputOnDisk` from the run's stat of the path (`statOf`): each
+ * declaration naming a file the index vouches no OID for stat'ed it again,
+ * seven times a run for each of vueuse's core sources (2026-11-11).
+ */
+function inputOnDisk(abs: string, run: GitFilesCache | undefined): boolean {
+  if (run === undefined) return isInputOnDisk(abs)
+  let st
+  try {
+    st = run.statOf(abs)
+  } catch {
+    return false
+  }
+  return st !== undefined && (st.isFile() || st.isSymbolicLink())
+}
+
 /** vx's values of `ESSENTIAL_ENV`: the one environment every probe gets. */
 function probeEnv(): Record<string, string> {
   const env: Record<string, string> = {}
@@ -627,7 +733,7 @@ function resolveEnvValues(
   source: NodeJS.ProcessEnv,
 ): Array<[string, string | undefined]> {
   return [...names].sort().map((name) => {
-    const value = source[name]
+    const value = ownEnv(source, name)
     // Bun decodes the environment lossily and offers no raw bytes on every
     // platform (Linux's /proc/self/environ misses what vx sets itself), so
     // Latin-1 é and è both read as U+FFFD and replayed each other's build.
@@ -1310,6 +1416,15 @@ export async function cleanOutputs(args: {
    * restore's tree work (X-161).
    */
   resolved?: readonly string[] | undefined
+  /**
+   * The task's command runs next. A directory of this user's the clean
+   * opened (`removeAll`) is left open: given its `chmod 555` back, a
+   * kept `dist` refused the command's own write, and the task never
+   * missed again.
+   */
+  beforeRun?: boolean
+  /** Filled with the committed files it found and left (absolute). */
+  kept?: string[]
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.projectDir,
@@ -1328,8 +1443,9 @@ export async function cleanOutputs(args: {
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
   const removed = await removeAll(
-    [...matched, ...tree.special].filter((f) => !committed(f)),
+    [...matched, ...tree.special].filter((f) => !keptCommitted(f, committed, args.kept)),
     args.projectDir,
+    args.beforeRun,
   )
   await pruneEmptiedDirs(
     args.projectDir,
@@ -1337,6 +1453,7 @@ export async function cleanOutputs(args: {
     pruneScope(args.projectDir, args.outputs),
     undefined,
     tree.emptyDirs,
+    args.beforeRun,
   )
   // Project-relative posix paths the outputs reach, for the caller's
   // GitFilesCache.markOutputsChanged: a committed one kept here is the
@@ -1526,6 +1643,11 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * identical bytes, counts as its own (its ctime moved), which is the
  * rewrite-in-place cost the design note records.
  *
+ * A file the run found and left as it was is its own too when `mine` says
+ * a save or restore of this task left it so (an incremental emitter keeps
+ * the files whose bytes did not change; without them its entry restored a
+ * tree a forced run never leaves).
+ *
  * Undefined when the run REMOVED a file it found: an artifact holds what a
  * run wrote, never what it took away, and the upstream's restore puts the
  * file back, so no entry reproduces that run and none is saved.
@@ -1538,21 +1660,24 @@ export async function ownOutputsSince(
     inputs?: OwnInputs | undefined
   },
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): Promise<string[] | undefined> {
-  return changedSince(await resolveOutputs(args), before)
+  return changedSince(await resolveOutputs(args), before, mine)
 }
 
 /** `ownOutputsSince` for root-anchored `outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): Promise<string[] | undefined> {
-  return changedSince(await resolveWorkspaceOutputs(args), before)
+  return changedSince(await resolveWorkspaceOutputs(args), before, mine)
 }
 
 function changedSince(
   after: readonly string[],
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): string[] | undefined {
   const own: string[] = []
   let kept = 0
@@ -1569,7 +1694,8 @@ function changedSince(
         st.size !== was.size ||
         st.mtimeMs !== was.mtimeMs ||
         st.ino !== was.ino ||
-        st.ctimeMs !== was.ctimeMs
+        st.ctimeMs !== was.ctimeMs ||
+        mine?.(f) === true
       )
         own.push(f)
     } catch {
@@ -1599,8 +1725,13 @@ const SYNC_CLEAN_MAX = 128
  * into it does (archive.ts `reopen`): else that task could never run or
  * restore again until someone chmodded the tree by hand. The prune after
  * reopens the same way for the subdirectories it removes (`pruneEmptiedDirs`).
+ * `keepOpen`: the command runs next, and gets no mode back (`cleanOutputs`).
  */
-async function removeAll(all: readonly string[], root: string): Promise<string[]> {
+async function removeAll(
+  all: readonly string[],
+  root: string,
+  keepOpen = false,
+): Promise<string[]> {
   const files = insideRoot(all, root)
   const reopened: Reopened = new Map()
   const reopen = (dir: string): boolean => reopenDir(dir, reopened)
@@ -1644,21 +1775,24 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
     )
     return files
   } finally {
-    giveBack(reopened)
+    if (!keepOpen) giveBack(reopened)
   }
 }
 
-/** Directories given owner write and search for a remove, with the mode each had. */
+/** Directories given missing owner bits for a remove or a walk, with the mode each had. */
 type Reopened = Map<string, number>
 
-/** Whether `dir` is now open to a remove: this user's, and its missing owner bits given. */
-function reopenDir(dir: string, reopened: Reopened): boolean {
+/**
+ * Whether `dir` is now open: this user's, and the owner `bits` it lacked
+ * given (write and search for a remove, read and search for a walk).
+ */
+function reopenDir(dir: string, reopened: Reopened, bits = 0o300): boolean {
   if (reopened.has(dir)) return true
   const st = lstatSync(dir, { throwIfNoEntry: false })
   if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
-  if ((st.mode & 0o300) === 0o300) return false
+  if ((st.mode & bits) === bits) return false
   reopened.set(dir, st.mode & 0o7777)
-  chmodSync(dir, (st.mode & 0o7777) | 0o300)
+  chmodSync(dir, (st.mode & 0o7777) | bits)
   return true
 }
 
@@ -1716,7 +1850,7 @@ function insideRoot(files: readonly string[], root: string): string[] {
  * wrote `dist/out/…` and now writes `dist/out`) blocks the rename. A directory that still
  * holds something — a stray the globs do not cover — stays, and the restore
  * says so if it is in the way. With a `scope`, only a directory inside it
- * goes (`pruneScope`).
+ * goes (`pruneScope`). `keepOpen` as `removeAll`'s.
  */
 async function pruneEmptiedDirs(
   root: string,
@@ -1724,6 +1858,7 @@ async function pruneEmptiedDirs(
   scope?: PruneScope,
   keep?: ReadonlySet<string>,
   emptyDirs: readonly string[] = [],
+  keepOpen = false,
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -1783,7 +1918,7 @@ async function pruneEmptiedDirs(
       level = parents
     }
   } finally {
-    giveBack(reopened)
+    if (!keepOpen) giveBack(reopened)
   }
 }
 
@@ -1900,6 +2035,10 @@ export async function cleanWorkspaceOutputs(args: {
   committed?: (abs: string) => boolean
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
+  /** As `cleanOutputs`'s. */
+  beforeRun?: boolean
+  /** As `cleanOutputs`'s. */
+  kept?: string[]
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.workspaceRoot,
@@ -1914,14 +2053,26 @@ export async function cleanWorkspaceOutputs(args: {
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(
-      [...matched, ...tree.special].filter((f) => !committed(f)),
+      [...matched, ...tree.special].filter((f) => !keptCommitted(f, committed, args.kept)),
       args.workspaceRoot,
+      args.beforeRun,
     ),
     pruneScope(args.workspaceRoot, args.outputs),
     undefined,
     tree.emptyDirs,
+    args.beforeRun,
   )
   return matched.map((f) => relPosix(args.workspaceRoot, f))
+}
+
+function keptCommitted(
+  abs: string,
+  committed: (abs: string) => boolean,
+  kept: string[] | undefined,
+): boolean {
+  if (!committed(abs)) return false
+  kept?.push(abs)
+  return true
 }
 
 function realOrNull(p: string): string | null {
@@ -2101,24 +2252,36 @@ function ignoredInputs(
   for (const entry of reach) {
     const abs = path.resolve(root, entry)
     if (vxOwn(abs)) continue
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     if (st === undefined) continue
     if (!st.isDirectory()) {
       if ((st.isFile() || st.isSymbolicLink()) && accept(entry)) found.add(abs)
       continue
     }
-    for (const rel of WALK.scanSync({
-      cwd: abs,
-      onlyFiles: false,
-      followSymlinks: false,
-      dot: true,
-    })) {
-      const full = `${entry}/${rel.split(path.sep).join('/')}`
-      const file = path.join(abs, rel)
-      if (vxOwn(file)) continue
-      if (accept(full)) {
-        if (isInputOnDisk(file)) found.add(file)
-      } else if (linked(full) && dirLinkInput(file, undefined)) found.add(file)
+    try {
+      for (const rel of WALK.scanSync({
+        cwd: abs,
+        onlyFiles: false,
+        followSymlinks: false,
+        dot: true,
+      })) {
+        const full = `${entry}/${rel.split(path.sep).join('/')}`
+        const file = path.join(abs, rel)
+        if (vxOwn(file)) continue
+        if (accept(full)) {
+          if (isInputOnDisk(file)) found.add(file)
+        } else if (linked(full) && dirLinkInput(file, undefined)) found.add(file)
+      }
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException
+      if (e.code !== 'EACCES' || e.path === undefined) throw err
+      // The walk stops at a directory it cannot list: the files past it
+      // would be in no key. Named, not told as a write it is not.
+      throw new UserError(
+        `cannot list input directory ${relPosix(root, path.resolve(abs, e.path))}: EACCES — ` +
+          `no key would see the files under it; give this user read and search permission ` +
+          `on it (chmod u+rx), or stop declaring it as an input`,
+      )
     }
   }
   return [...found].sort()
@@ -2199,11 +2362,16 @@ interface FilesPlan {
    */
   verdicts: Map<string, boolean>
   /**
-   * Whether a path is under the task's own outputs, and no exclude takes it
-   * back: one git tracks is an input (`committedFiles`) whether or not a
-   * positive glob reaches it, since a hit writes the artifact's copy over it.
+   * Whether a path is under the task's own outputs and not vx's own
+   * (`ALWAYS_IGNORE`): one git tracks is an input (`committedFiles`) whether
+   * or not a positive glob reaches it, since a hit writes the artifact's
+   * copy over it. A `!` entry does not take it back: `!dist/**` names the
+   * outputs to keep the build's own writes out, and dropped the committed
+   * `dist/LICENSE` with them, so a committed edit hit and the restore wrote
+   * the old bytes over it (2026-11-10).
    */
   ownOnly: Map<string, boolean>
+  isIgnored: (rel: string) => boolean
 }
 
 /**
@@ -2249,6 +2417,7 @@ function filesPlan(
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
           ownOnly: new Map<string, boolean>(),
+          isIgnored: anyTaskGlob(ALWAYS_IGNORE),
         }
   filesPlans.set(key, plan)
   return plan
@@ -2331,6 +2500,22 @@ export function holdReach(
   })
 }
 
+/** A name no file holds: only a `!` entry that takes back a whole tree matches it. */
+const BENEATH = '\0'
+
+/**
+ * Whether the `!` entries take back every path under `rel`, a link to a
+ * directory: a negation applies to the files behind it, as under a real
+ * directory, never to the link's own name. `!src/**\/*.skip` matched the
+ * name of `src/l.skip -> ../top` and dropped every file behind it, where
+ * under a real `src/d.skip/` it drops none, so an edit there was a hit
+ * (2026-11-10). Two depths, so `!l/*` alone, which leaves `l/a/b` an
+ * input, keeps the link.
+ */
+function excludedBeneath(isExcluded: (rel: string) => boolean, rel: string): boolean {
+  return isExcluded(`${rel}/${BENEATH}`) && isExcluded(`${rel}/${BENEATH}/${BENEATH}`)
+}
+
 /**
  * Whether `abs`, a path a glob may reach below, is a link to a directory.
  * A trusted index OID answers for a tracked file with no syscall: only a
@@ -2380,7 +2565,12 @@ export function declaresInput(
     if (plan !== null && (inPlan(plan, projectRel) || (!untracked && ownOnly(plan, projectRel)))) {
       return true
     }
-    if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
+    if (
+      plan !== null &&
+      dirLink &&
+      plan.mayHold(projectRel) &&
+      !excludedBeneath(plan.isExcluded, projectRel)
+    ) {
       return true
     }
   }
@@ -2439,7 +2629,7 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
 function ownOnly(plan: FilesPlan, rel: string): boolean {
   let own = plan.ownOnly.get(rel)
   if (own === undefined) {
-    own = plan.ownOutput(rel) && !plan.isExcluded(rel)
+    own = plan.ownOutput(rel) && !plan.isIgnored(rel)
     plan.ownOnly.set(rel, own)
   }
   return own
@@ -2455,7 +2645,9 @@ function workspaceMatcher(decl: readonly string[]): (rel: string, dirLink: boole
   const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
   const mayHold = mayHoldMatch(positive)
   const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
-  m = (rel, dirLink) => (isPositive(rel) || (dirLink && mayHold(rel))) && !isExcluded(rel)
+  m = (rel, dirLink) =>
+    (isPositive(rel) && !isExcluded(rel)) ||
+    (dirLink && mayHold(rel) && !excludedBeneath(isExcluded, rel))
   workspaceMatchers.set(key, m)
   return m
 }
@@ -2564,7 +2756,12 @@ async function resolveFiles(
     if (nested(rel) || ownWsOutput(rel)) continue
     const abs = base === undefined ? path.resolve(args.projectDir, rel) : (paths?.[i] ?? base + rel)
     if (!input && !ownOnly(plan, rel)) {
-      if (plan.mayHold(rel) && !isExcluded(rel) && !ownOutput(rel) && dirLinkInput(abs, oids)) {
+      if (
+        plan.mayHold(rel) &&
+        !excludedBeneath(isExcluded, rel) &&
+        !ownOutput(rel) &&
+        dirLinkInput(abs, oids)
+      ) {
         candidates.push(paths === undefined ? abs : (paths[i] = abs))
       }
       continue
@@ -2580,7 +2777,9 @@ async function resolveFiles(
   // per-file syscalls. Paths without an OID keep the probe:
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
-  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs))
+  const resolved = candidates.filter(
+    (abs) => oids?.has(abs) === true || inputOnDisk(abs, args.gitFilesCache),
+  )
   // Git's slice comes sorted and a common prefix keeps it so: one pass
   // proves it instead of a sort per task.
   for (let i = 1; i < resolved.length; i++) {
@@ -2621,7 +2820,7 @@ function withIgnored(
     (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
     (rel) =>
       plan.mayHold(rel) &&
-      !plan.isExcluded(rel) &&
+      !excludedBeneath(plan.isExcluded, rel) &&
       !plan.ownOutput(rel) &&
       !nested(rel) &&
       !ownWsOutput(rel),
@@ -2649,7 +2848,10 @@ function listingFor(
           (committed ??= committedFiles(args.gitFilesCache, root))(path.join(root, rel)))) &&
       !ownWsOutput(rel),
     linked: (rel) =>
-      plan.mayHold(rel) && !plan.isExcluded(rel) && !plan.ownOutput(rel) && !ownWsOutput(rel),
+      plan.mayHold(rel) &&
+      !excludedBeneath(plan.isExcluded, rel) &&
+      !plan.ownOutput(rel) &&
+      !ownWsOutput(rel),
     nested,
     prefixes: plan.prefixes,
     literals: plan.literals,
@@ -2908,7 +3110,35 @@ async function scanUnion(
       if (emptyDirs !== undefined && readdirSync(abs).length === 0) emptyDirs.add(abs)
     } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs, clearing)
   }
-  const opts = { cwd, onlyFiles: false, followSymlinks: false, dot: true }
+  const opts = { onlyFiles: false, followSymlinks: false, dot: true }
+  // A directory the task left unlistable (`chmod 000 dist/s`) stopped the
+  // walk with EACCES: the clean failed every later run until a manual
+  // chmod. A walk for a clean or a restore opens this user's own for its
+  // listing and gives each its mode back; a save refuses it by its path
+  // (`unlistedOutput`), as it cannot store what it cannot read.
+  const reopened: Reopened = new Map()
+  const tried = new Set<string>()
+  const walk = (glob: Bun.Glob, at: string, each: (rel: string) => void): void => {
+    for (;;) {
+      try {
+        for (const rel of glob.scanSync({ ...opts, cwd: at })) each(rel)
+        return
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException
+        if (e.code !== 'EACCES' || e.path === undefined) throw err
+        const dir = path.resolve(at, e.path)
+        // Under a directory with no search bit (`chmod 444`) the refusal
+        // names its child: the parent is the one to open.
+        const open = (d: string): boolean => {
+          if (tried.has(d)) return false
+          tried.add(d)
+          return reopenDir(d, reopened, 0o500)
+        }
+        if (!clearing || !(open(dir) || open(path.dirname(dir))))
+          throw unlistedOutput(cwd, dir, clearing)
+      }
+    }
+  }
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
   // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
   // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
@@ -2934,18 +3164,26 @@ async function scanUnion(
     !patterns.some((p) => headLinked(cwd, p))
   ) {
     const any = anyTaskGlob(patterns)
-    for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
+    try {
+      walk(WHOLE_TREE, cwd, (rel) => {
+        if (any(rel)) take(rel)
+      })
+    } finally {
+      giveBack(reopened)
+    }
     return matches
   }
-  for (const pattern of patterns) {
-    if (absentPrefix(cwd, pattern, absent)) continue
-    const from = scanRoot(cwd, pattern)
-    if (from === null) continue
-    roots?.add(from === undefined ? cwd : from.dir)
-    if (from === undefined) for (const rel of globFor(pattern).scanSync(opts)) take(rel)
-    else
-      for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
-        take(`${from.prefix}/${rel}`)
+  try {
+    for (const pattern of patterns) {
+      if (absentPrefix(cwd, pattern, absent)) continue
+      const from = scanRoot(cwd, pattern)
+      if (from === null) continue
+      roots?.add(from === undefined ? cwd : from.dir)
+      if (from === undefined) walk(globFor(pattern), cwd, take)
+      else walk(globFor(from.rest), from.dir, (rel) => take(`${from.prefix}/${rel}`))
+    }
+  } finally {
+    giveBack(reopened)
   }
   // A literal names the path and its tree (`dist`, `dist/**`), and a tree
   // whose head is a directory link is walked through it: the link and the
@@ -2960,6 +3198,17 @@ async function scanUnion(
     }
   }
   return matches
+}
+
+/** The refusal of an output directory this user cannot list, by its path from `cwd`. */
+function unlistedOutput(cwd: string, dir: string, clearing: boolean): UserError {
+  const why = clearing
+    ? "vx lists a task's declared outputs to clear them before it runs and before a restore"
+    : "vx lists a task's declared outputs to save them, and cannot store what it cannot read"
+  return new UserError(
+    `cannot list declared output directory ${relPosix(cwd, dir)}: EACCES — ${why}; ` +
+      `leave it readable and searchable by this user (chmod u+rx), or stop declaring it as an output`,
+  )
 }
 
 /** Filled by a walk asked for it: what lists the FIFOs, sockets and devices its globs name. */

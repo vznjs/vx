@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v52'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v55'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -307,7 +307,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     Your globs are a **filter over the set git reports**, so a broad
     glob never reaches a gitignored file. An entry that names one
     outright does: a literal (`.env.local`, `gen`), or a glob whose fixed
-    prefix git ignores (`dist/**`), walked on disk under that prefix
+    prefix git ignores (`dist/**`, or a `gen` whose every file it
+    ignores, where it lists nothing), walked on disk under that prefix
     only (2026-10-16). Such a file is hashed from disk with the
     blob formula an untracked file gets, and is never stored or
     restored. `--affected` reflects only what git sees, so an edit to
@@ -396,7 +397,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     string, kept the key that `git status` and `--affected` saw move.
     Under `core.fileMode=false` (WSL's DrvFs) git reports no chmod, so
     there a clean file's mode comes from an lstat too, and its OID
-    from the index (item 1076). Each of these settings is read as git
+    from the index (item 1076), and `--affected` diffs with
+    `core.fileMode=true` (likewise `core.trustctime=true` and
+    `core.checkStat=default` under a weakened stat), so it selects what
+    the key sees. Each of these settings is read as git
     reads a boolean: `false`, `no`, `off`, the empty value or a zero
     integer (`0`, `00`) is false, and a bare key is true.
 
@@ -426,6 +430,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     pattern, and an edit behind it was a hit (2026-10-28). So is one
     in a gitignored directory an entry names (`gen/**/*.ts` over
     `gen/v -> ../shared`), which the walk on disk meets the same way.
+    A `!` entry applies to the paths beneath such a link, as beneath a
+    real directory, never to its name: `!src/**/*.skip` keeps
+    `src/l.skip -> ../top`, as it keeps every file of a real
+    `src/d.skip/`, and only a negation that takes back the whole tree
+    (`!src/l.skip`, `!src/l.skip/**`) leaves the link out. Asked of the
+    name, the negation dropped every file behind it, and an edit there
+    was a hit (2026-11-10).
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
@@ -580,8 +591,9 @@ producer ran, so the clauses on declared outputs fire only for such a
 dependency read or a pair the check cannot decide. An output git ignores whole is no reach either:
 a key reads only what git lists, so a `**/*` reader beside a gitignored
 `**/dist/**` producer keys up front, the same key before and after the
-build. The run asks git once, beside its walk and only when a reader
-reaches a same-project output: one `git check-ignore` over each such
+build. The same holds for a `workspaceFiles` reader over another
+project's ignored output. The run asks git once, beside its walk and only when a reader
+reaches an output: one `git check-ignore` over each such
 output's directory (`dist/`, and a fresh `__vx_probe__/dist/` for a
 glob that starts with `**`), and the walk's listing must hold no file
 the glob matches (a tracked output, a directory a `!` rule takes back);
@@ -899,8 +911,8 @@ has moved whatever it holds (a whole-second stamp counts as any moment
 of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
-1015). That moment is read off the file system's clock (a file written
-and removed in the cache dir, `fsClockNow`), not `Date.now()`: Linux
+1015). That moment is read off the file system's clock (a one-byte write
+to a file the run holds open, unlinked, in the cache dir, `fsClockNow`), not `Date.now()`: Linux
 before 6.13 stamps from its coarse clock, a tick behind, which dated an
 edit in the command's first tick before it. A coarse clock gives a write
 in that moment's own tick the moment itself, whether an upstream's just
@@ -961,7 +973,11 @@ candidate turned up; a hit runs no command and checks nothing.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run
-until A-55. Absent stays unmoved while it stays gone.
+until A-55. Absent stays unmoved while it stays gone. So is a
+declared path under a parent that is now a file (`conf/b.txt` with
+`conf` a file, a tracked directory replaced by a file): its `lstat`
+answers ENOTDIR, which failed the key as an internal error until
+2026-11-10.
 Its dependants whose keys fold its key save nothing either,
 transitively: that key does not name the bytes they built from (`[vx] app#use: ran
 over app#gen's outputs, which its key no longer describes — …`). Until
@@ -991,7 +1007,11 @@ and only literal files did (`scr/**` beside the `package.json` a
 lockfile plugin appends), naming the wildcard globs. `outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
 save path, and when a deferred fetch (`--cache-download=none`) lands
-nothing. Both are almost always a glob
+nothing. It is said too when every wildcard output glob matched nothing
+and only literal files did (`dist/**` beside the `tsconfig.tsbuildinfo`
+turbo()/nx() add to an incremental tsc task): `outputs matched no files
+(dist/**) — a later hit restores only the literal files
+(tsconfig.tsbuildinfo)`. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk, or a `workspaceFiles` directory that is a
@@ -1064,8 +1084,18 @@ and a restore writes them. It is also in the task's key, even under its
 own output glob and when no `inputs.files` glob reaches it (`dist/LICENSE`
 under `dist/**` with inputs `src/**`; until 2026-10-28 that one was left
 out, and a hit wrote the old bytes over a committed edit, as
-turborepo#14831 fixed in Turbo), so an edit moves the key and the saved
-bytes follow from it; the task's rewrite is no input that moved mid-run.
+turborepo#14831 fixed in Turbo) or a `!` entry takes it back (`**`,
+`!dist/**`; until 2026-11-10 the negation dropped it too), so an edit
+moves the key and the saved bytes follow from it; the task's rewrite is no input that moved mid-run.
+A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
+could replay the removal, since its restore leaves the file too, so the
+tree a hit left (a fresh CI checkout's) held a file the run took away,
+and every warm run restored again (until 2026-11-11). With the file gone
+the key moves, and the next run saves as usual. The clean before the run
+lists the committed files it leaves; after a passing run, one lstat each
+says whether one is gone (none, and no stat, for outputs git tracks
+nothing under). Under `outputs.clean: false` the first attempt cleans
+nothing, so no list is taken: that opt-out keeps this gap.
 A committed file under `outputs.workspaceFiles` is keyed only where
 `inputs.workspaceFiles` reaches it. Until then the
 clean deleted a committed file under an output, and a reader with no edge
@@ -1093,8 +1123,15 @@ Skipped when:
 
 A directory of this user's that withholds its own write (a task's
 `chmod 555 dist/ro`, which a hit restores too) gets owner write for the
-clean's remove, then its mode back, as a restore's write into it does; the
-subdirectories the clean empties in it go too.
+clean's remove, as a restore's write into it does; the subdirectories the
+clean empties in it go too. Before a restore it gets its mode back after.
+Before the command runs it stays writable: a glob's root stays (`dist`
+for `dist/**`), and given back a task's `chmod 555 dist` it refused the
+command's own write, so the task never missed again. One the task left
+unlistable (`chmod 000 dist/s`) is listed the same way for a clean or a
+restore; a save cannot store what it cannot read, so it fails the task
+with `cannot list declared output directory dist/s: EACCES — …`, and the
+next run's clean still clears it.
 A declared output the process cannot remove even so (a `dist/` another
 user wrote, a read-only checkout) fails the task with `cannot remove
 declared output <path>: EACCES — …`, and a restore that cannot write
@@ -1138,10 +1175,18 @@ With the rule off, an edge fixes the order, and the dependant is
   trusts — and only that set is saved; `outputs.workspaceFiles` are
   stamped the same way (until A-43 its miss cleaned them by glob, deleting
   a same-tree upstream's root-anchored files before it read them);
+- a file it **found and left alone** is its own too when a save or
+  restore of this task left it exactly so (a row of one of its entries,
+  current by the same proof): an incremental emitter (`tsc`, `cmp || cp`)
+  rewrites only what changed, and its entry held only those, so a hit
+  over a wiped tree restored without the rest. A stale file of its own
+  that its command leaves is saved too, as under Turbo;
 - a run that **removes** a file it found (a bundler deleting the
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
-  file back, so the dependant runs again on every warm run (X-32);
+  file back, so the dependant runs again on every warm run (X-32). Any
+  task that removes a committed file under its outputs saves nothing
+  the same way (Strict output ownership);
 - before a **retry**, what the failed attempt added is removed, so its
   partial outputs are neither left nor saved; a failed attempt that
   changed or removed a file it found saves nothing on the retry's pass,
@@ -1159,7 +1204,10 @@ The upstream keeps strict ownership of its glob — a miss or a restore
 wipes the whole tree, the dependant's additions included, and the
 dependant restores or runs after — and its "already current" check
 ignores strays a dependant's glob could have added, so a warm run stays
-a no-op for both. A file the dependant rewrites in place (refine's
+a no-op for both — a run of the upstream alone too: every task in the
+workspace outside the run whose outputs overlap the upstream's is a
+dependant (an upstream would be in the run, and `vx lock` refuses an
+unordered pair), so the run loads every project's config to find them. A file the dependant rewrites in place (refine's
 `types` regenerating `build`'s `.d.ts`) counts as the dependant's own
 (its ctime moved, even where a tool stamps the size and mtime back; X-33),
 which is correct and costs the upstream a restore on
@@ -1281,9 +1329,13 @@ is gated in three steps, and the common case pays nothing:
    binary, where a standard build puts it. Before 2026-09-24 the gate
    missed the default global file, so `* text` there left a CRLF file
    keyed on its LF blob: a CRLF→LF edit was a stale hit.
-3. Otherwise `git check-attr` resolves `text`, `eol`, `ident`, `filter`
-   and `working-tree-encoding` from the index — without reading worktree
-   content — and only the paths actually carrying one lose their OID. A
+3. Otherwise `git check-attr --all` resolves every attribute a rule
+   sets from the index — without reading worktree content — and only the
+   paths carrying `text`, `eol`, `ident`, `filter`,
+   `working-tree-encoding` or the legacy `crlf` lose their OID. Asked by
+   name, git printed all five for every path, `unspecified` included:
+   vueuse's `* text=auto eol=lf` was 473 KB to decode and split each run
+   (~5 ms of the main thread), 160 KB under `--all`. A
    `filter` driver was missing from the list until item 978: a clean
    driver that drops comment lines (`sed '/^#/d'`, nbstripout's shape)
    stores one blob for two worktree files, so an edit git calls clean
@@ -1297,6 +1349,12 @@ Losing an OID is not over-invalidation. It routes that path to the
 content hasher, which hashes the worktree bytes — the correct source
 either way. The only cost is reading the file, which is exactly what
 the gate exists to avoid paying needlessly.
+
+Nor can the index's stat stand in for the file's own `lstat` there. When
+a file's stat moved, git compares content after the filter, calls a
+match clean and keeps the old stat: `a\r\nb\n` rewritten as `a\nb\r\n`
+(same size, same blob) is clean, and the index still describes the
+first file. So each such file is stat'ed once per run.
 
 `--affected` asks the same question (`core.autocrlf`, then `check-attr`)
 of a file whose stat moved: such a file is a change, though git, which
@@ -1475,7 +1533,9 @@ re-run`, and a restore fails the task with that hint, never as a
 corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a
 descriptor it could not get as `unable to open database file`, and vx
 says `the cache index <path> could not be opened (…) — …raise the limit`
-(A-56).
+(A-56). A path SQLite will not open, past 504 bytes (its 512 less the
+`-journal` it may add), says its length and to point the cache at a
+shorter directory (`--cache-dir`, `VX_CACHE_DIR`).
 A restore that cannot READ its artifact (a cache directory another
 user owns) names the cache, not the outputs: `restore of <hash> could
 not read its artifact (EACCES: …). Make the cache directory readable
@@ -1483,7 +1543,11 @@ by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
 An input the key must hash that this user cannot read fails its task
 naming the read: `<path> is not readable by this user (EACCES), and vx
 reads it to derive a cache key. Make it readable, or, for a task input,
-take it out of inputs.files.` (A-50).
+take it out of inputs.files.` (A-50). An input directory this user may
+enter but not list (`chmod 111`) refuses the run by name: git cannot
+list it, so the files a task reads there by name were in no key, and an
+edit to one was a stale hit. One it may not enter is left out, as no task
+of its reads under it.
 
 By default the entries and their artifacts live in a **shared store**
 in `~/.vx/<id>/cache`, and each workspace keeps only its own index in
@@ -1547,20 +1611,22 @@ naming the task: the task's output clean would delete it mid-run. Its layout:
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
-    ├── outputs/<rel>                       declared output files, project-relative (when any),
-    │                                       each with its saved mode and mtime
-    │                                       (a restore dates its copy now)
-    ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
-    │                                       WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
-    │                                       packed under (v35), the miss's CPU and RSS,
-    │                                       the empty output directories (v44),
-    │                                       the output symlinks (v45), the modes of
-    │                                       output directories narrower than 0755 (v49)
-    └── .vx-sum                             CRC-32 of the archive this tree packs to (v36)
+    ├── <rel>                               declared output files, project-relative (when any),
+    │                                       each with its saved mtime; an output symlink
+    │                                       as the link itself
+    └── workspace-outputs/<rel>             declared outputs.workspaceFiles,
+                                            WORKSPACE-ROOT-relative (when any)
 ```
 
-The stdout of a tree entry is its `entry_stdout` row. With
+The stdout of a tree entry is its `entry_stdout` row, and each file's
+mode and mtime, the empty and moded output directories, the key and the
+miss's CPU and RSS are its `output_files` and `entries` rows: a tree
+keeps each output at its row's path and nothing else (v53). A
+`.vx-meta.json` and an `outputs/` level once took a 4 KiB block each,
+~8 of the ~16 KiB a small entry spent on the file system beyond its
+files (217 against 225 KiB an entry on the 500-task bench; a tree save
+16 to 26 % faster, a restore unchanged). An upload rebuilds the archive's sidecar from the rows,
+each link held to its row's length and CRC-32. With
 `cache.store.decompress: false` an artifact is instead one `<hash>.tar.zst`
 holding `stdout`, `outputs/`, `workspace-outputs/`, `.vx-meta.json` and
 `.vx-sum`: the bytes a remote stores. The tree form is that archive
@@ -2418,7 +2484,8 @@ Not required when:
 
 `tests/contract-stored-format.test.ts` holds the layout rows: it
 records the index's DDL beside `SCHEMA_VERSION` and a fixture
-artifact's entries, sidecar and digest beside `CACHE_VERSION`
+artifact's entries, sidecar and digest, and the tree a save keeps of it,
+beside `CACHE_VERSION`
 (`tests/contract/stored-format.json`), and fails when either layout
 moves under its recorded version. Every bump of either version
 regenerates the record
@@ -2439,6 +2506,21 @@ breaking footer).
 
 ### History
 
+- **v54 → v55**: stored bytes wrong under a key the change does not move
+  (2026-11-11). No clean deletes a committed file, so a hit cannot replay
+  a run that removed one under its outputs: the restore left it, and the
+  tree differed from the run's on every hit. Such a run now saves nothing
+  (X-32); a v54 entry may be one, so it is never read.
+- **v53 → v54**: stored bytes wrong under a key the change does not move
+  (2026-11-11). An additive task (item 588) saved only what its run
+  added or changed, so an incremental emitter's entry lacked the files
+  it found from its own last run and left alone, and a hit over a wiped
+  tree restored without them; a v53 entry may lack them, so it is never
+  read.
+- **v52 → v53**: the tree form's layout (2026-11-10). A tree keeps each
+  output at its row's path, with no `.vx-meta.json` and no `outputs/`
+  level; a v52 tree read by row path would find a project output named
+  `outputs/…` at another output's place, so it is never read.
 - **v51 → v52**: stored bytes wrong under a key the change does not move
   (2026-11-07). A sandboxed task could read through a `node_modules`
   that is itself a link (to the workspace root or a sibling project), or

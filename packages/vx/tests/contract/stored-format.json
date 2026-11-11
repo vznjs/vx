@@ -277,7 +277,7 @@
     ]
   },
   "artifact": {
-    "version": "vx-cache-v52",
+    "version": "vx-cache-v55",
     "layout": {
       "entries": [
         {
@@ -309,7 +309,15 @@
           "body": "…"
         }
       ],
-      "sha256": "f9194eaaecb184f92089077fa539361ba02a93881292f2bfcb18a6f6c658e478"
+      "sha256": "f9194eaaecb184f92089077fa539361ba02a93881292f2bfcb18a6f6c658e478",
+      "tree": [
+        "dir dist",
+        "file dist/a.txt",
+        "link dist/l",
+        "dir workspace-outputs",
+        "dir workspace-outputs/gen",
+        "file workspace-outputs/gen/w.txt"
+      ]
     }
   }
 }

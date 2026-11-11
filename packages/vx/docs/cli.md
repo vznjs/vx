@@ -451,9 +451,9 @@ What counts as a change:
   beside one), so `vx lock` never marks a project affected by itself. So
   is the `.vx/.gitignore` `vx init` writes.
   `.vx/projects.lock.json` counts entry by entry when the base has
-  one: a project whose locked config changed is selected whole (a run
-  reads its config from there), and `vx lock` rewriting the same
-  entries selects nothing.
+  one: a project whose locked config, name or edges changed is
+  selected whole (a run reads them from there; the lock is the reason
+  shown), and `vx lock` rewriting the same entries selects nothing.
 
 **A lockfile change selects what its plugin says.** Core keys no
 lockfile and no install setting: without a lockfile plugin, the root
@@ -943,7 +943,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    A running row's status is yellow.
 
    - **time**: the live elapsed time; no spinner.
-   - **usual**: the task's executed p50 from local history, fixed while
+   - **usual**: the task's executed p50 from local history (a run with
+     forwarded args, `-- <args>`, is left out), fixed while
      the time counts up toward it; `—` for a task history never
      timed. History is read once, on the first row that asks, so a run
      that executes nothing never reads it. The results list's `±usual`
@@ -1164,7 +1165,7 @@ cache entry for them, so the next run is a plain local hit.
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
 each task's process group, then vx; `fg` or `bg` continues vx, and vx
-continues them. A Linux sandboxed task's command is not stopped, only
+continues them. Neither a `timeout` nor a task's duration counts the time stopped. A Linux sandboxed task's command is not stopped, only
 held once its output pipe fills. A stop starts no more remote
 cache uploads and does not wait on one in flight, nor on a remote lookup or
 download: what was half-read is dropped and fetched again next run.
@@ -1422,7 +1423,9 @@ declare either fails naturally (Linux: `ENOENT` from bwrap's
 mount-namespace hide) or is flagged via the macOS violation store
 and forced to exit non-zero. No cache is written for a failed task. The
 task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
-the grants that would have allowed each denial, project-relative:
+the grants that would have allowed each denial, project-relative
+anywhere in the workspace (`'../a/src/x.js'`; an absolute path holds on
+no other machine):
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
 Each path is a JS string literal, spelled as the glob it must be: a
 bracket escaped (`read: ['pages/\\[id\\].tsx']`, and so in `inputs.files`);
@@ -1434,7 +1437,10 @@ would create. A host `deny.network` holds gets no network grant.
 A write grants the top directory it landed in, so the next file there
 passes too, unless `inputs.files` reads that directory: then it
 grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
-the line says so, since a grant never adds one. A read through a link
+the line says so, since a grant never adds one: `inputs.files` for a
+read of the project, `inputs.workspaceFiles` (workspace-relative) for one
+elsewhere in the workspace. Applied as given, the two lines key every
+read they grant, so an edit there re-runs the task. A read through a link
 grants the directory holding the link too: the sandbox mounts a grant at
 its real path and never the link, so the target alone stayed out of
 reach. A credential path
@@ -1485,10 +1491,15 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour, printed as its rows alone.
-   No watcher is armed yet, so an edit made while it runs is unheard;
-   one to the inputs of a task it was running leaves that task unsaved
+   No watcher is armed yet, so an edit made while it runs has no event.
+   One to the inputs of a task it was running leaves that task unsaved
    (its key no longer describes them), and the loop starts its first
    cycle on that, labelled `<task> inputs, edited during the first run`.
+   Any other (an input of a task that already finished, a new lock) is
+   found as the loop arms: a file git lists as untracked or modified,
+   written since the run started by none of its commands, is a change,
+   and the first cycle runs on it. A deletion made while it runs is
+   still unheard: it has no date to tell it from one made before.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
@@ -2101,12 +2112,12 @@ never reach it (its inputs still key its files), and `--check` fails a
 lock that misses one.
 Configs are
 programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, by directory (version 5; a lock an
+stores the post-evaluation objects, by directory (version 6; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
 the root); two projects of one name are refused naming both
-directories. The plugin `discover` stage runs here as in a run, and may
+directories. The plugin `discover` stage runs here and nowhere else, and may
 add directories (X-143); one holding a config git ignores is refused, as
 is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
 gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
@@ -2136,14 +2147,34 @@ that file. `vx lock` also writes
 missing, so GitHub collapses the machine lock in a diff; `vx init` does
 too, and an existing one is never edited.
 
-A project with no `vx.config.*` — its tasks from a plugin's `project`
-stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
-to freeze: the lock records nothing for it, `--check` does not audit
-it, and a run still loads its tasks live. Both verbs name such
-projects that have tasks (`0 project configs → .vx/projects.lock.json (no
-vx.config, so not locked: app, lib)`, five names then `and N more`),
-so an empty lock on a plugin-only workspace never reads like an audit.
-One with no task (core's default `build` aside) is not named.
+A plugin's `project` stage (`turbo()` and `nx()` from
+`@vzn/vx-migrate`, `@vzn/vx-lockfile`) runs here and nowhere else: the
+lock records each project's config as the stage left it
+(`projectStage`, with the plugins that filled it), a project with no
+`vx.config.*` included, and a run reads that record and calls no hook.
+So a run never maps: an edited `turbo.json` or `package.json` script
+runs only after the next `vx lock`, and `--check` names the project the
+stage now maps otherwise (``packages/lib: the `project` stage maps it
+differently from the lock here``). A run follows the record blindly,
+whatever plugins the workspace declares now; `--check` names a plugin
+added or dropped since (2026-11-11). Both verbs name the projects
+with no config that the stage gives tasks (`0 project configs →
+.vx/projects.lock.json (and the tasks a plugin maps for app, lib)`, five
+names then `and N more`), so a lock on a plugin-only workspace never
+reads like an audit of nothing. One with no task (core's default
+`build` aside) is not named.
+
+The `discover` stage is recorded the same way (`discoverStage`, with the
+plugins that filled it): each project it added, named or gave `deps` /
+`reach`. A run, `vx show`, `vx why`, `--affected` and each `vx watch`
+cycle apply that record to the locked projects and call no `discover`
+hook, so an edge a plugin derives (a `package.json` dependency, an Nx
+`implicitDependencies` or import under `nx()`) orders and selects
+nothing until the next `vx lock`, and `--check` names the project
+(``packages/b: the `discover` stage finds it otherwise than the lock
+here``) or a plugin added or dropped since. A record `vx lock` never
+writes (an edge or a stage config naming no project, a recorded name
+another project has) is refused: ``.vx/projects.lock.json is invalid: … — run `vx lock` ``.
 
 The lock is committed, so `vx lock` refuses to write one that holds a
 secret: a config that evaluated to the value of a secret-named variable
@@ -2158,7 +2189,10 @@ shell expand it: `$API_TOKEN` in the command, the name in
 
 The review copies are written before the lock: one that cannot be
 written (a directory in its place, a read-only file) is named and the
-lock is left as it was.
+lock is left as it was. One `vx lock` writes at a time on a workspace: a
+second waits (`[vx] waiting for another vx lock (pid N) on this workspace
+to finish…`), then evaluates and writes, so the review copies and the lock
+always come from one run.
 
 ### How runs read it
 
@@ -2168,13 +2202,17 @@ of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
 locked directory whose config file is gone (X-144) or that this user
 may not search (EACCES, named as such), or a missing lock, is a hard error;
+a config-less one (a `project` plugin's, such as `turbo()`'s) whose
+directory is gone fails its task with the same `vx lock` hint, asked only
+once its spawn failed, so a run stats no project directory;
 one a sparse checkout left out is refused only when the run selects it or
 depends on it, naming the `git sparse-checkout add` that brings it back
-(`vx lock` there would drop it from the committed lock); a config added since the lock is no project until
+(`vx lock` and `vx lock --check` there refuse too, naming the same
+command: the lock they wrote would have dropped it); a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it, and so do `--filter ./c`, `vx show c` and `vx show c#build`; so does a bare `build` that the
+around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`; so does a bare `build` that the
 cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
@@ -2341,8 +2379,8 @@ Any entry by one of those names marks the root: one that is a broken
 link or a directory, with no file beside it, is refused by name
 (`<path>: is a broken link — fix or remove it`), not walked past, as
 `vx lock` counts it a nested workspace. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
-`vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json` or
-`nx.json`). A project inside the
+`vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json`,
+`nx.json`, exported Nx graph or Lerna on Nx). A project inside the
 root is a directory holding a `vx.config.*`, which `vx lock` finds
 (see [`vx lock`](#vx-lock)); a `discover` plugin adds others.
 
@@ -2616,8 +2654,10 @@ version is read from the registry that manager is configured for
 
 When the directory it runs in, or one above it up
 to the git top-level (outside git, up to the `package.json` root below),
-holds a `turbo.json`, `turbo.jsonc` or `nx.json`,
-it runs `@vzn/vx-migrate` there, so `vx init` is the one command
+holds a `turbo.json`, `turbo.jsonc` or `nx.json`, an exported Nx graph
+(`.nx/workspace-data/project-graph.json`), or a `lerna.json` whose root
+script runs `lerna run` through Nx (`useNx`, else Lerna 6+), as
+vx-migrate detects them, it runs `@vzn/vx-migrate` there, so `vx init` is the one command
 (2026-10-08): the latest release through `bun x`,
 never an installed one, so init always installs the latest `@vzn/vx`
 and moves every `@vzn/vx-*` plugin the root lists to it
@@ -2708,7 +2748,8 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 Mapping a repo's own config to vx is `@vzn/vx-migrate`, its own
 package, run before a workspace file exists (it writes one); `vx init`
-runs it in a repo with a `turbo.json`, `turbo.jsonc` or `nx.json` —
+runs it in a repo with a `turbo.json`, `turbo.jsonc`, `nx.json`, an
+exported Nx graph or Lerna on Nx —
 
 ```
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
@@ -3146,7 +3187,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v52 · index schema v55
+  cache versions    keys vx-cache-v55 · index schema v55
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3701,7 +3742,8 @@ socket beside its run lock (in this user's own temp directory, so no
 other user reaches it) while it holds the lock, and keeps only when each
 task started; the snapshot is built when asked. Output is not kept: it
 reaches a follower only while one is attached, and a follower that falls
-1 MiB behind is let go, so a stuck reader never holds the run. `--live`
+1 MiB behind is let go, so a stuck reader never holds the run. A
+follower let go, or whose run is killed, exits 1 with no `run:done`. `--live`
 combines only with `--follow`, `--format` and `--cache-dir`.
 
 ### `--sql`
@@ -3773,8 +3815,9 @@ entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`;
 `withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`), and, for
 a cached task, `inputs` the reads of its project no `inputs.files`
-glob matches (the terminal's `and, if the output depends on them, …`
-line). A task
+glob matches and `workspaceFiles` its reads elsewhere in the workspace no
+`inputs.workspaceFiles` glob matches (the terminal's `and, if the output
+depends on them, …` lines). A task
 failed by `inputs.stability.severity: 'error'` adds `inputMoved`, the
 input that changed during the run. They live in cache.db's `failures`
 rows, the newest 50 failed runs; past those, or when the write was
@@ -3967,7 +4010,9 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `@vzn/vx-ci`'s. A sandboxed
 task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
 else `/tmp/claude`), the sandbox runtime's own convention
-(`docs/modules/sandbox-runtime.md`).
+(`docs/modules/sandbox-runtime.md`). Both it and `TMPDIR` hold sockets
+whose paths pass unquoted through a shell, so a sandboxed task is refused
+unless each is an absolute path of ASCII letters, digits and `. _ - / + @`.
 
 ## Output format
 

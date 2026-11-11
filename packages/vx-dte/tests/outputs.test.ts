@@ -54,14 +54,14 @@ it('sorts the files under outputs into stale and an upstream’s in time linear 
   const under = Array.from({ length: 40_000 }, (_, i) => `web/.next/chunks/${i}.js`)
   under.push('web/.next/BUILD_ID', 'web/.next/kept.txt', 'web/.next/sub/x.js', 'web/.next/lib/a.js')
   const start = process.cpuUsage()
-  const { cleared, held } = leftUnder(
+  const { cleared, held, committed } = leftUnder(
     under,
-    new Set(['web/.next/kept.txt']),
+    new Set(['web/.next/kept.txt', 'web/.next/sub/x.js']),
     ['web/.next/sub'],
     [(f) => f.startsWith('web/.next/lib/')],
   )
   const { user, system } = process.cpuUsage(start)
-  expect(held).toEqual(['web/.next/lib/a.js'])
+  expect([held, committed]).toEqual([['web/.next/lib/a.js'], ['web/.next/kept.txt']])
   expect(cleared).toHaveLength(40_001)
   expect(cleared.at(-1)).toBe('web/.next/BUILD_ID')
   expect((user + system) / 1000).toBeLessThan(500)

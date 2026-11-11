@@ -62,7 +62,7 @@ export class ChangeJudge {
   seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
   sawEvent(abs: string): void // an event: a write during `cycle` no command of it (nor a held server) may have made is a change next time, whatever it settles to
   unseen(moved: readonly (string | null)[]): void // inputs a run read in a state no judgement saw (TaskOutcome.driftedInput): each is a change next time; null marks every pending path
-  judge(): string | undefined // the first changed path's label, or none
+  judge(): string | undefined // the least changed path's label (a file before a directory, a live path before a gone one), or none
 }
 
 // watch-cycle.ts — one cycle's run, stoppable while it waits on readiness alone:
@@ -86,7 +86,8 @@ export function makeWatchIgnore(
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export function gitFiles(
   workspaceRoot: string,
-): { listed: Set<string>; tracked: Set<string>; links: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
+  dirty?: boolean, // add `-m`: `dirty` is the untracked files and the tracked ones modified
+): { listed: Set<string>; tracked: Set<string>; links: Set<string>; dirty: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
 export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
 export function lockedExtras(workspaceRoot: string): Set<string> // the files the recorded digests read besides a claimed file (.vx/dependencies.lock.json extras), absolute: watch arms them
 export function makeRootEventFilter(
@@ -173,8 +174,8 @@ too: they format one run's result.
 2. `cli/run.ts:resolveRunOptions(parsed, cwd, tasks)` → `RunOptions`.
    Same scope resolution as `vx run`.
 3. Enumerate projects in the resolved scope via `discoverCliProjects`
-   (discovery plus the plugins' `discover` stage, as `vx run` lists
-   them): `opts.projects` (every project when undefined) plus each
+   (the lock's projects with the `discover` stage it records, as
+   `vx run` lists them): `opts.projects` (every project when undefined) plus each
    `pkg#task`'s project, or only those when every task is anchored
    (`tests/watch-anchored-scope.test.ts`). Empty scope → exit 1, judged
    after the initial run so an unknown `pkg` gets the run's refusal.
@@ -186,6 +187,15 @@ too: they format one run's result.
    `opts.selectedOutright` are dropped: the `--affected` diff is the
    tree at start, so a later cycle runs the requested task across the
    scope and the keys decide (`tests/watch-affected.test.ts`).
+   No watcher hears an edit made while it runs. One to a task it was
+   running leaves the task unsaved (`drifted`); any other is found once
+   the loop arms (`heardSinceRun`): of the files the arm's `gitFiles`
+   lists as untracked or modified, each written since the run started
+   (`InitialRun.from`, on the mtime clock) outside every window of its
+   commands (`InitialRun.windows`) is an event, marked `unseen` so the
+   judgement takes it for a change; a re-lock among them is the first
+   cycle's (`InitialRun.lock`). A start with no edit pays `-m`'s stats
+   alone (`tests/watch-initial-edit-done.test.ts`).
 5. **Watch loop** (`runWatchLoop`):
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with
@@ -250,9 +260,10 @@ too: they format one run's result.
      the watched set (`shapesWatchedSet`): a project config (a task
      that starts or stops declaring `workspaceFiles` swaps the arm
      between per-project and root, `dropMode` / `armMode`), the
-     workspace config, or a file a plugin claims (a lockfile plugin's
-     `discover` names and edges come from it, so a dependency added
-     under `--filter` widens the closure). Until item 891 each of
+     workspace config, or a file a plugin claims. A plugin's `discover`
+     names and edges come from the lock (2026-11-11), so a dependency
+     added widens a `--filter` closure only once `vx lock` records it,
+     whose own event re-reads. Until item 891 each of
      these waited for a restart. A re-read that fails is said once,
      after the cycle's header: the one before the run stays silent, and
      the one after says nothing the cycle's own failure said.
@@ -333,6 +344,12 @@ git checkout packages`) was no event to its own arm, nor to the
      event, empty) and then writes it (another, full), so consecutive
      events never agree (CI read 9 re-runs where macOS, which coalesces
      the two, read 2). Pinned end to end in `tests/cli.test.ts`.
+   - A name not valid UTF-8 reaches every watcher decoded, U+FFFD for
+     its bad bytes: a path no file has. Gone by its state, it is a
+     change all the same, and the poller samples such names by their
+     bytes (`readdir` as buffers), so the cycle shows the refusal
+     `vx run` gives rather than staying silent
+     (`tests/watch-lossy-name.test.ts`; Linux only, APFS refuses one).
    - Debounce events `~150ms` after the last one before triggering a
      cycle, and at most 1 s after the first: a writer that never pauses
      (a dev server's log) reset the timer forever and held every edit

@@ -3,7 +3,8 @@
 // loopback. For tests, demos
 // and trying a distributed run before a CI starts the workers.
 
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { readFileSync, realpathSync } from 'node:fs'
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
@@ -83,6 +84,8 @@ export function local(options: LocalOptions = {}): DteAdapter {
     },
 
     async spawn(a) {
+      // Its folder, made after close removed the run's, stayed for good.
+      if (closed) return
       const work = (async () => {
         base ??= (async () => {
           const d = await mkdtemp(path.join(os.tmpdir(), BASE_PREFIX))
@@ -100,7 +103,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         const add = await run(
           ['git', 'worktree', 'add', '-q', '--detach', dir, a.commit],
           a.workspaceRoot,
-          { ...process.env, GIT_INDEX_FILE: undefined },
+          { ...repoEnv(a.workspaceRoot), GIT_INDEX_FILE: undefined },
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
         // The workspace's own place in the checkout: from the worktree's
@@ -108,6 +111,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         // `.vx/workspace` above, and every worker exited (2026-10-25).
         const prefix = Bun.spawn(['git', 'rev-parse', '--show-prefix'], {
           cwd: a.workspaceRoot,
+          env: repoEnv(a.workspaceRoot),
           stdout: 'pipe',
           stderr: 'ignore',
         })
@@ -125,9 +129,16 @@ export function local(options: LocalOptions = {}): DteAdapter {
             throw new Error(await why(`prepare exited ${p.code}`, a.id, p.err))
         }
         if (closed) return
-        void run([...vx(), 'dte', 'worker'], at, env, false).then(async (r) => {
-          if (!closed) a.exited(await why(`exited ${r.code}`, a.id, r.err))
-        })
+        // Every end reported, a start that threw too: one lost left the run
+        // waiting for good on a worker that never joined.
+        void run([...vx(), 'dte', 'worker'], at, env, false)
+          .then(
+            (r) => why(`exited ${r.code}`, a.id, r.err),
+            (err: Error) => `could not start: ${err.message}`,
+          )
+          .then((reason) => {
+            if (!closed) a.exited(reason)
+          })
       })()
       pending.add(work)
       try {
@@ -199,7 +210,9 @@ const OWN_BASE = new RegExp(`^${BASE_PREFIX}[A-Za-z0-9]{6}$`)
  * The worktrees a run whose vx was killed (SIGKILL, a lost machine) left in
  * `root`'s repository, removed: each under a base whose owner process is
  * gone. A killed run's close never ran, and they stayed for good
- * (2026-11-06). One `git worktree list`, off the run's path.
+ * (2026-11-06). One `git worktree list`, off the run's path. So are this
+ * machine's other bases whose owner is gone: one of a repository no run
+ * comes back to (a test's, deleted) stayed for good too (2026-11-11).
  */
 async function reclaim(root: string): Promise<void> {
   try {
@@ -213,6 +226,12 @@ async function reclaim(root: string): Promise<void> {
       stderr: 'ignore',
     })
     const bases = new Set<string>()
+    const tmp = os.tmpdir()
+    for (const name of await readdir(tmp).catch(
+      // quiet: an unreadable temp dir leaves only the repository's bases
+      () => [],
+    ))
+      if (OWN_BASE.test(name)) bases.add(path.join(tmp, name))
     for (const line of (await new Response(list.stdout).text()).split('\n')) {
       if (!line.startsWith('worktree ')) continue
       const dir = line.slice('worktree '.length)
@@ -264,36 +283,49 @@ function group(p: Bun.Subprocess, signal: NodeJS.Signals): void {
 
 /**
  * `<what>: <its error line> (log: <path>)`, a worker's whole stderr kept at
- * that path, which outlives the run.
+ * that path, which outlives the run; without the log when it cannot be
+ * written (a full temp dir): a write that threw lost the worker's end, and
+ * the run waited for good.
  */
 export function reasons(): (what: string, id: string, err: string) => Promise<string> {
   let logs: Promise<string> | undefined
   return async (what, id, err) => {
     const line = errorLine(err)
     if (line === '') return what
-    logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
-    const file = path.join(await logs, `${id}.log`)
-    await writeFile(file, err)
-    return `${what}: ${line} (log: ${file})`
+    try {
+      logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
+      const file = path.join(await logs, `${id}.log`)
+      await writeFile(file, err)
+      return `${what}: ${line} (log: ${file})`
+    } catch {
+      // quiet: the error line is the reason; the log was its detail
+      return `${what}: ${line}`
+    }
   }
 }
 
 /**
  * The line of a process's stderr that says what went wrong: vx's own `✗`
- * line, else the first naming an error or git's `fatal:`, else the last. The last alone was
- * often a hint (`fix  vx run …`) that hid the error above it.
+ * line with the facts core prints below it (up to three lines; a
+ * `.vx/workspace.ts` that failed to load is named only there), else the
+ * first naming an error or git's `fatal:`, else the last. The last alone
+ * was often a hint (`fix  vx run …`) that hid the error above it.
  */
 export function errorLine(text: string): string {
-  const lines = Bun.stripANSI(text)
+  const all = Bun.stripANSI(text)
     .split('\n')
     .map((l) => l.trim())
-    .filter(Boolean)
-  return (
-    lines.find((l) => l.startsWith('✗')) ??
-    lines.find((l) => /\berror\b|^fatal:/i.test(l)) ??
-    lines.at(-1) ??
-    ''
-  )
+  const x = all.findIndex((l) => l.startsWith('✗'))
+  if (x !== -1) {
+    let i = x + 1
+    while (all[i] === '') i++
+    const facts: string[] = []
+    for (let l = all[i]; facts.length < 3 && l && !/^(fix|next)\s/.test(l); l = all[++i])
+      facts.push(l)
+    return [all[x], ...facts].join(' ')
+  }
+  const lines = all.filter(Boolean)
+  return lines.find((l) => /\berror\b|^fatal:/i.test(l)) ?? lines.at(-1) ?? ''
 }
 
 /** A relay of the run's own on loopback, with no auth: only this machine reaches it. */
@@ -332,6 +364,46 @@ const GIT_REPO_ENV = [
   'GIT_SHALLOW_FILE',
   'GIT_COMMON_DIR',
 ]
+
+/**
+ * The env for a git in `cwd`: a hook's `GIT_DIR` dropped when git finds
+ * that repository from `cwd` anyway, as core's own git env does. A linked
+ * worktree's hook exports its gitdir and no `GIT_WORK_TREE`, and git took
+ * `cwd`, a workspace in a subdirectory, for the checkout's top: the
+ * snapshot held no workspace config there, and the run was refused
+ * (2026-11-11). A `GIT_DIR` naming another repository is kept.
+ */
+export function repoEnv(cwd: string): Record<string, string | undefined> {
+  const dir = process.env['GIT_DIR']
+  if (dir === undefined || process.env['GIT_WORK_TREE'] !== undefined) return process.env
+  const key = `${cwd}\0${dir}`
+  let found = rediscovered.get(key)
+  if (found === undefined) {
+    found = false
+    try {
+      const abs = path.resolve(dir)
+      let dotGit = abs
+      try {
+        // A linked worktree's admin dir names its checkout's `.git` file.
+        dotGit = path.resolve(abs, readFileSync(path.join(abs, 'gitdir'), 'utf8').trim())
+      } catch {
+        // quiet: the main worktree's `.git` has no `gitdir`
+      }
+      if (path.basename(dotGit) === '.git') {
+        const rel = path.relative(realpathSync(path.dirname(dotGit)), realpathSync(cwd))
+        found = !rel.startsWith('..') && !path.isAbsolute(rel)
+      }
+    } catch {
+      // quiet: a GIT_DIR not found is kept
+    }
+    rediscovered.set(key, found)
+  }
+  if (!found) return process.env
+  const { GIT_DIR: _, ...env } = process.env
+  return env
+}
+
+const rediscovered = new Map<string, boolean>()
 
 /** The argv that runs this vx: the binary when compiled, else Bun and its entry. */
 function vx(): string[] {

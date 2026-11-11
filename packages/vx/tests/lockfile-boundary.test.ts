@@ -161,6 +161,15 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     expect(err.message).toContain(String(LOCKFILE_VERSION))
   })
 
+  it('a lock a newer vx wrote says to upgrade vx, not to re-lock', async () => {
+    // Re-running this vx's `vx lock` would write the older version over it.
+    await writeRaw(JSON.stringify({ version: LOCKFILE_VERSION + 1, projects: {} }))
+    const err = await rejection(readLockfile(root))
+    expect(err.message).toBe(
+      `.vx/projects.lock.json was written by a newer vx (version ${LOCKFILE_VERSION + 1}; this vx reads ${LOCKFILE_VERSION}) — upgrade vx`,
+    )
+  })
+
   it('rejects a lock with no version field', async () => {
     await writeRaw(JSON.stringify({ projects: {} }))
     await expect(readLockfile(root)).rejects.toThrow(/unsupported version/)

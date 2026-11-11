@@ -33,6 +33,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'plugin-sweep',
     'queue-timeout',
     'read-bounds',
+    'record-policy',
     'record-streams',
     'request-metadata-action',
     'timeout-options',

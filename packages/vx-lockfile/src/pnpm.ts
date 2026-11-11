@@ -16,6 +16,7 @@ import path from 'node:path'
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { reachedImporters, withTransitive } from './graph.js'
 import { record, sectionsOf, stable } from './json.js'
+import { topLevel } from './pnpm-blocks.js'
 import { joinPosix, resolvePosix } from './posix.js'
 
 // The graph the digest built from this parse, for `importerLinks`: `vx
@@ -28,6 +29,8 @@ export interface Lockfile {
   readonly importers: ReadonlyMap<string, ReadonlyMap<string, string>>
   /** importer path → which field each dependency sits in (`sectionsOf`) */
   readonly sections: ReadonlyMap<string, string>
+  /** an importer's `publishDirectory` (root-relative) → the importer */
+  readonly published: ReadonlyMap<string, string>
   /** snapshot key → dependency name → version (v9 `snapshots`; v5/v6 `packages`) */
   readonly snapshots: ReadonlyMap<string, ReadonlyMap<string, string>>
   /** package key (v9: `name@version`; v5/v6: the snapshot key) → resolution digest */
@@ -83,11 +86,19 @@ export function parseLockfile(text: string): Lockfile {
 
   const importers = new Map<string, ReadonlyMap<string, string>>()
   const sections = new Map<string, string>()
+  const published = new Map<string, string>()
   const rawImporters = record(doc['importers'])
   if (rawImporters !== undefined) {
     for (const [dir, entry] of Object.entries(rawImporters)) {
       importers.set(dir, depsOf(entry))
       sections.set(dir, sectionsOf(record(entry) ?? {}, DEP_FIELDS))
+      // `publishConfig.directory` with `linkDirectory`: a dependant's
+      // `link:` names this directory, and it is the importer.
+      const publishDir = record(entry)?.['publishDirectory']
+      if (typeof publishDir === 'string') {
+        const at = joinPosix(dir, publishDir)
+        if (at !== undefined && at !== dir) published.set(at, dir)
+      }
     }
   } else if (DEP_FIELDS.some((f) => doc[f] !== undefined)) {
     // A single-package lockfile keeps its dependencies at the top level.
@@ -140,50 +151,13 @@ export function parseLockfile(text: string): Lockfile {
     version,
     importers,
     sections,
+    published,
     snapshots,
     resolutions,
     patches,
     directories,
     global,
     excludesLinks,
-  }
-}
-
-/**
- * Whether pnpm drops a manifest's dependency `name` from the install:
- * one of its `optionalDependencies` the lockfile's
- * `ignoredOptionalDependencies` names (pnpm also drops it from
- * `dependencies`, and records it nowhere), matched as `@pnpm/matcher`
- * does: `*` any run, a leading `!` excludes.
- */
-export function ignoredOptional(
-  text: string,
-): (name: string, pkg: Record<string, unknown>) => boolean {
-  const list = topLevel(text, 'ignoredOptionalDependencies')
-  const patterns = Array.isArray(list) ? list.filter((p) => typeof p === 'string') : []
-  if (patterns.length === 0) return () => false
-  const matchers = patterns.map((p) => {
-    const ignore = p.startsWith('!')
-    const pattern = ignore ? p.slice(1) : p
-    const re = new RegExp(`^${pattern.replace(/[|\\{}()[\]^$+?.]/g, '\\$&').replace(/\*/g, '.*')}$`)
-    return { ignore, match: (s: string) => re.test(s) }
-  })
-  const hasInclude = matchers.some((m) => !m.ignore)
-  const hasIgnore = matchers.some((m) => m.ignore)
-  const matches = (name: string): boolean => {
-    if (!hasIgnore) return matchers.some((m) => m.match(name))
-    if (!hasInclude) return !matchers.some((m) => m.match(name))
-    let matched = false
-    for (const m of matchers) {
-      if (m.ignore) {
-        if (m.match(name)) matched = false
-      } else if (!matched && m.match(name)) matched = true
-    }
-    return matched
-  }
-  return (name, pkg) => {
-    const optional = record(pkg['optionalDependencies'])
-    return optional !== undefined && Object.hasOwn(optional, name) && matches(name)
   }
 }
 
@@ -200,30 +174,6 @@ export function recordedImporters(text: string): ReadonlyMap<string, ReadonlyMap
   const importers = new Map<string, ReadonlyMap<string, string>>()
   for (const [dir, entry] of Object.entries(rawImporters)) importers.set(dir, depsOf(entry))
   return importers
-}
-
-/** `settings.excludeLinksFromLockfile`, read from its block alone as `recordedImporters` reads. */
-export function excludesLinks(text: string): boolean {
-  return record(topLevel(text, 'settings'))?.['excludeLinksFromLockfile'] === true
-}
-
-/**
- * The last document's top-level `key`, parsed from its block alone (to
- * the next top-level key); undefined where pnpm wrote no such block. A
- * CRLF file (a Windows checkout) heads it `key:\r\n`: found by `\n`
- * alone, the block read as absent though the whole parse has it.
- */
-function topLevel(text: string, key: string): unknown {
-  const doc = Math.max(text.lastIndexOf('\n---'), 0)
-  // The first line's ending says which: a second scan cost every LF run.
-  const head = text.charCodeAt(text.indexOf('\n') - 1) === 13 ? `\n${key}:\r\n` : `\n${key}:\n`
-  const at = text.indexOf(head, doc)
-  if (at < 0) return undefined
-  const block = text.slice(at + 1)
-  const end = /\n\S/.exec(block.slice(head.length - 1))
-  return record(
-    Bun.YAML.parse(end === null ? block : block.slice(0, head.length - 1 + end.index + 1)),
-  )?.[key]
 }
 
 /** `dependencies` + `devDependencies` + `optionalDependencies` of an entry, as name → version. */
@@ -321,15 +271,17 @@ function patchOf(lock: Lockfile, snapshot: string): string {
  * `reachDigests` folding what every node reaches (components, so pnpm's
  * cycles terminate). A `link:` dependency is an edge to the linked
  * importer's node, so what project A can import through workspace
- * package B is B's whole reach.
+ * package B is B's whole reach. `hoisted` (`nodeLinker: hoisted`) folds
+ * every peer variant of a package into each (`withVariants`).
  */
 export function importerDigests(
   lock: Lockfile,
   files: ReadonlyMap<string, string> = new Map(),
+  hoisted = false,
 ): ReadonlyMap<string, string> {
   const g = buildGraph(lock, files)
   built.set(lock, g)
-  const hashes = reachDigests(g)
+  const hashes = reachDigests(hoisted ? withVariants(lock, g) : g)
   const out = new Map<string, string>()
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).
@@ -356,6 +308,43 @@ export function importerDigests(
   return out
 }
 
+/**
+ * `g` with each package's peer variants (`foo@1(react@18)`,
+ * `foo@1(react@19)`) reaching one another. The hoisted linker installs
+ * one copy per `name@version` with whichever variant's dependencies it
+ * placed first, so b's `foo@1(react@19)` loaded a's react@18 and a's
+ * react bump moved no key of b. A copy, so `importerLinks` reads the
+ * lockfile's own edges.
+ */
+function withVariants(lock: Lockfile, g: Graph): Pick<Graph, 'material' | 'edges'> {
+  const groups = new Map<string, number[]>()
+  for (const key of lock.snapshots.keys()) {
+    const id = variantOf(lock, key)
+    const list = groups.get(id)
+    if (list === undefined) groups.set(id, [g.index.get(key)!])
+    else list.push(g.index.get(key)!)
+  }
+  const material = [...g.material]
+  const edges = g.edges.map((e) => [...e])
+  for (const [id, members] of groups) {
+    if (members.length < 2) continue
+    // One node the variants share, not an edge per pair.
+    const hub = material.length
+    material.push(`variants\0${id}`)
+    edges.push(members)
+    for (const m of members) edges[m]!.push(hub)
+  }
+  return { material, edges }
+}
+
+/** A snapshot key without its peers: `foo@1(react@18)` (v6, v9) or `/foo/1_react@18` (v5) → `foo@1`, `/foo/1`. */
+function variantOf(lock: Lockfile, snapshot: string): string {
+  const id = packageKey(snapshot)
+  if (Number.parseInt(lock.version, 10) >= 6) return id
+  const underscore = id.indexOf('_', id.lastIndexOf('/') + 1)
+  return underscore === -1 ? id : id.slice(0, underscore)
+}
+
 interface Graph {
   /** node id → index */
   readonly index: Map<string, number>
@@ -378,11 +367,13 @@ function importerNode(dir: string): string {
  * (`importerLinks`), not content: its build output re-keyed its dependants.
  */
 export function fileDeps(lock: Lockfile): string[] {
-  const out = new Set([...lock.directories.values()].filter((dir) => !lock.importers.has(dir)))
+  const out = new Set(
+    [...lock.directories.values()].filter((dir) => importerAt(lock, dir) === undefined),
+  )
   const add = (dir: string, deps: ReadonlyMap<string, string>): void => {
     for (const version of deps.values()) {
       const target = linkTarget(lock, dir, version)
-      if (target !== undefined && !lock.importers.has(target)) out.add(target)
+      if (target !== undefined && importerAt(lock, target) === undefined) out.add(target)
     }
   }
   for (const [dir, deps] of lock.importers) add(dir, deps)
@@ -428,7 +419,7 @@ export function manifestLinks(lock: Lockfile, root: string): string[] {
           const target = path.isAbsolute(to)
             ? path.relative(root, to).split(path.sep).join('/') || '.'
             : resolvePosix(importer, to)
-          if (!lock.importers.has(target)) out.add(target)
+          if (importerAt(lock, target) === undefined) out.add(target)
         }
       }
     }
@@ -438,6 +429,16 @@ export function manifestLinks(lock: Lockfile, root: string): string[] {
 
 function linkTarget(lock: Lockfile, dir: string, version: string): string | undefined {
   return version.startsWith('link:') ? resolvePosix(dir, version.slice('link:'.length)) : undefined
+}
+
+/**
+ * The importer a directory installs: its own, or the one whose
+ * `publishDirectory` it is. Read as no importer, `link:../b/dist` was no
+ * edge: a built before b and folded none of b's dependencies, which
+ * b/dist resolves through packages/b.
+ */
+function importerAt(lock: Lockfile, target: string): string | undefined {
+  return lock.importers.has(target) ? target : lock.published.get(target)
 }
 
 function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
@@ -471,8 +472,8 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   const link = (from: number, by: string, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
       const target = linkTarget(lock, dir, version)
-      if (target !== undefined && lock.importers.has(target))
-        edges[from]!.push(index.get(importerNode(target))!)
+      const importer = target === undefined ? undefined : importerAt(lock, target)
+      if (importer !== undefined) edges[from]!.push(index.get(importerNode(importer))!)
       else {
         const content = target === undefined ? '' : `\0file\0${files.get(target) ?? ''}`
         material[from] += `\nlink\0${name}\0${version}${content}`
@@ -548,14 +549,13 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
   for (const [dir, deps] of lock.importers) {
     const links: Record<string, string> = {}
     for (const [name, version] of deps) {
-      const target = version.startsWith('link:')
+      const at = version.startsWith('link:')
         ? joinPosix(dir, version.slice('link:'.length))
         : version.startsWith('file:')
           ? fileTarget(lock, version)
           : undefined
-      if (target !== undefined && target !== dir && lock.importers.has(target)) {
-        links[name] = target
-      }
+      const target = at === undefined ? undefined : importerAt(lock, at)
+      if (target !== undefined && target !== dir) links[name] = target
     }
     out.set(dir, withTransitive({ deps: links, peers: {} }, reached.get(dir)))
   }

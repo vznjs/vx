@@ -157,3 +157,54 @@ it.skipIf(SETPRIV === null)(
   },
   60_000,
 )
+
+// A task that took its own write from the glob's root (`chmod 555 dist`)
+// could never miss again: the clean removed `dist/a`, kept `dist` (a glob's
+// root stays) and gave it 555 back, so the command's own write failed.
+it.skipIf(skip)(
+  'a clean before the command leaves the read-only root it kept writable',
+  async () => {
+    const { root, app } = await workspace('mkdir -p dist && cat src/a > dist/a && chmod 555 dist')
+    const build = () => vx(root, ['run', 'build', '--all'])
+    for (const [a, hit] of [
+      ['1', false],
+      ['2', false],
+      ['1', true],
+      ['3', false],
+    ] as const) {
+      await writeFile(path.join(app, 'src/a'), `${a}\n`)
+      const r = await build()
+      expect(`${r.code}\n${r.text}`).toStartWith('0\n')
+      expect(r.text.includes('local 1↓')).toBe(hit)
+      expect(readFileSync(path.join(app, 'dist/a'), 'utf8')).toBe(`${a}\n`)
+      expect(lstatSync(path.join(app, 'dist')).mode & 0o777).toBe(0o555)
+    }
+  },
+  60_000,
+)
+
+// An output directory the task left unlistable (`chmod 000 dist/s`) failed
+// the save with "open 's'", told as a write, and every later run's clean
+// until someone chmodded it by hand.
+for (const mode of ['000', '111']) {
+  it.skipIf(skip)(
+    `an output directory left ${mode} refuses the save by its path, and the next clean clears it`,
+    async () => {
+      const { root, app } = await workspace(
+        `case "$(cat src/a)" in lock*) mkdir -p dist/s && echo x > dist/s/f && chmod ${mode} dist/s;; *) mkdir -p dist && cat src/a > dist/o;; esac`,
+      )
+      const build = () => vx(root, ['run', 'build', '--all'])
+      await writeFile(path.join(app, 'src/a'), 'lock\n')
+      const locked = await build()
+      expect(locked.code).toBe(1)
+      expect(locked.text).toContain(
+        "[vx] app#build: cannot list declared output directory dist/s: EACCES — vx lists a task's declared outputs to save them, and cannot store what it cannot read; leave it readable and searchable by this user (chmod u+rx), or stop declaring it as an output\n",
+      )
+      await writeFile(path.join(app, 'src/a'), '1\n')
+      const next = await build()
+      expect(`${next.code}\n${next.text}`).toStartWith('0\n')
+      expect(readdirSync(path.join(app, 'dist'))).toEqual(['o'])
+    },
+    60_000,
+  )
+}

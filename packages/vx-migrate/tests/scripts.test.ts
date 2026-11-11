@@ -1229,6 +1229,32 @@ describe('migrateScripts', () => {
     ).toEqual(['build', 'pack', 'postprepare'])
   })
 
+  // `npm run version` runs `preversion` and `postversion` around it, as pnpm,
+  // Yarn 1 and Bun do, for `pack` and `publish` too (2026-11-11): the task
+  // ran `version` alone.
+  it('a script named for a lifecycle verb folds its hooks as `<pm> run` does', () => {
+    const tasks = mapped({
+      version: 'echo v',
+      preversion: 'echo pv',
+      postversion: 'echo ppv',
+      pack: 'echo mypack',
+      prepack: 'echo pk',
+      publish: 'npm run version',
+      prepublish: 'echo pp',
+    })
+    expect(Object.keys(tasks).sort()).toEqual(['pack', 'publish', 'version'])
+    expect(tasks['version']).toEqual({
+      exec: { command: foldScriptHooks('echo pv', 'echo v', 'echo ppv') },
+    })
+    expect(tasks['pack']).toEqual({
+      exec: { command: foldScriptHooks('echo pk', 'echo mypack', undefined) },
+    })
+    // A hook keeps a delegation a command: a group would drop it.
+    expect(tasks['publish']).toEqual({
+      exec: { command: foldScriptHooks('echo pp', 'npm run version', undefined) },
+    })
+  })
+
   it('a delegation that cannot become a group stays the command it was', () => {
     const tasks = mapped({
       b: 'real',
@@ -2291,7 +2317,7 @@ describe('vx init (package.json scripts)', () => {
         postbuild: 'cp -r assets dist/',
         pretest: 'echo no test script here',
         pack: 'echo pack',
-        prepack: 'echo lifecycle, not a hook of a task',
+        prepack: 'echo pre pack',
       })
       await withLockfile(hooked)
       const r = await vx(hooked, ['init'])
@@ -2299,12 +2325,14 @@ describe('vx init (package.json scripts)', () => {
       const cfg = await loadProjectConfig(path.join(hooked, 'packages', 'app', 'vx.config.ts'))
       const tasks = cfg.tasks!
       // `pretest` wraps nothing (no `test`), so it stays a task of its own;
-      // `prepack` is an npm lifecycle hook and is never a task.
+      // `prepack` rides in `pack`, as `npm run pack` runs it.
       expect(Object.keys(tasks).sort()).toEqual(['build', 'pack', 'pretest'])
       expect(tasks['build']!.exec?.command).toBe(
         foldScriptHooks('rimraf dist', 'tsc -b', 'cp -r assets dist/'),
       )
-      expect(tasks['pack']!.exec?.command).toBe('echo pack')
+      expect(tasks['pack']!.exec?.command).toBe(
+        foldScriptHooks('echo pre pack', 'echo pack', undefined),
+      )
       const text = await Bun.file(path.join(hooked, 'packages', 'app', 'vx.config.ts')).text()
       expect(text).toContain(
         'TODO(vx-migrate): pnpm ran `prebuild` and `postbuild` around this script',

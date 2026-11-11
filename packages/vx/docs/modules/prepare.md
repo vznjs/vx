@@ -85,14 +85,17 @@ export function unlockedDir(
 
 1. **Workspace discovery** — `findWorkspaceRoot`, then
    `discoverProjects`: the directories `.vx/projects.lock.json` records
-   and the plugin `discover` stage (a run never walks for configs); the
+   with the plugin `discover` stage as `vx lock` recorded it (no hook
+   runs; a run never walks for configs); the
    workspace config arrives evaluated and with the `config` stage
    applied (`RunOptions`, from `cli/workspace-config.ts`), and
-   `loadWorkspacePlugins` gives the declared plugin list.
+   `loadWorkspacePlugins` gives the declared plugin list — or, for a
+   reused discovery, the load the CLI made before it
+   (`pluginsOfDiscovery`), so the `config` stage runs once per run.
 2. **Project config load** — `loadProjects` ([`projects.md`](./projects.md)),
    the load `vx show` shares: scoped to the seeds and their package
-   closure, from the lock, through the plugin
-   `project` stage. A project a `discover` plugin added has no config:
+   closure, from the lock, with the plugin `project` stage as `vx lock`
+   recorded it (no hook runs). A project a `discover` plugin added has no config:
    it is kept in the graph (for its edges) and contributes no tasks
    unless a plugin fills the `project` stage, or the default `build`.
 3. **Package + task structure** — `buildPackageGraph`,

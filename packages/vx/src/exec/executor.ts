@@ -44,6 +44,12 @@ export interface ExecuteSandbox {
    */
   readonly keyed?: readonly string[]
   /**
+   * A cached task's workspace root: a read the wall hid under it is named
+   * for `inputs.workspaceFiles` too, as a grant alone left an edit there
+   * a stale hit.
+   */
+  readonly keyRoot?: string
+  /**
    * The dependencies' outputs it may read (absolute), which an executor
    * that builds the request again hands `sandboxRequestFor` too.
    */
@@ -138,13 +144,16 @@ export interface ExecuteRequest {
    * Core saves no entry under `cacheKey` after this attempt: the run's
    * policy writes no layer (`--no-cache`, `--cache-policy local:r`), or an
    * upstream failed under `--continue=always`, ran unkeyed or is keyless.
+   * Also set when a remote layer is composed and the policy writes no
+   * remote (a run off CI): an executor's own record is a remote store.
    * An executor that saves a task's result for its dependants keeps it off
    * that key too: a distributed run's worker saved it, and the next run
    * hit an entry the user had said not to write (2026-10-24).
    */
   readonly unsaved?: boolean
   /**
-   * Cache READS are disabled for this run (`--force` / `--no-cache`). An
+   * Cache READS are disabled for this run (`--force` / `--no-cache`), or
+   * remote reads are with a remote layer composed (`--cache-policy=remote:`). An
    * executor that keeps its OWN remote record of executions must not serve
    * this request from it — the user asked for re-execution, and a private
    * cache that ignores the flag is still a cache.

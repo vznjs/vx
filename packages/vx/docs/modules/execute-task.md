@@ -210,13 +210,21 @@ An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
 `run.rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
-run added or changed against that stamp (`ownOutputsSince`), handed to
+run added or changed against that stamp (`ownOutputsSince`), plus what
+it found and left exactly as a save or restore of its own left it: a
+row of any of the task's entries (`taskEntryHashes`) that
+`isOutputsCurrent` holds current. An incremental emitter rewrites only
+what changed, and without those its entry restored a tree a forced run
+never leaves. The set is handed to
 `saveMiss` as `ownOutputFiles` in place of the glob walk. Its
 `workspaceFiles` get the same treatment (`stampWorkspaceOutputs`,
 `ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43). A run that removed a file
 it found (a bundler deleting its upstream's intermediate) saves nothing:
 an artifact holds what a run wrote, never what it took away, and the
-upstream's restore puts the file back (X-32). Before a retry, what the
+upstream's restore puts the file back (X-32). Any task's run that removed
+a committed file its clean left (`cleanOutputs`'s `kept`) saves nothing
+for the same reason: no restore deletes a committed file, so no hit
+replays the removal (2026-11-11). Before a retry, what the
 failed attempt added against the stamp is removed by path
 (`dropFailedAdditions`, `cleanOutputPaths`); a found file it changed or
 removed cannot be put back, so that task saves nothing. No clean
@@ -268,7 +276,9 @@ keyed set for the task when it declares `cache`
 ([`keyed-projects.md`](./keyed-projects.md)) and nothing otherwise (the
 persistent path never does). A reported denial under a linked package
 the request withheld gets one more line beside it
-(`withheldLinkLine`): the package, the link, and the two ways to key it.
+(`withheldLinkLine`): the package, where it is linked, and the ways to
+key it (a `dependsOn` edge names the project id at the target, `projectAt`;
+a target that is no project gets only the grant and `inputs.workspaceFiles`).
 
 ## Verdict
 

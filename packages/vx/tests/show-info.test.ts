@@ -4,6 +4,7 @@
 // bottom against the cli contract re-export.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -843,6 +844,35 @@ describe('vx info — the sandbox row is stable across invocations', () => {
     expect(stableSandboxReason(plain)).toBe(plain)
   })
 })
+
+// The Linux sandbox mounts a fresh /dev, so no sandboxed task runs in a
+// workspace under /dev/shm; the doctor called the sandbox available there.
+describe.skipIf(process.platform !== 'linux' || !existsSync('/dev/shm'))(
+  'vx info — a workspace under /dev',
+  () => {
+    let root = ''
+    afterAll(async () => {
+      if (root !== '') await rm(root, { recursive: true, force: true })
+    })
+
+    it(
+      'calls the sandbox unavailable, and says why',
+      async () => {
+        root = await mkdtemp('/dev/shm/vx-show-')
+        await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+        Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+        const facts = await collectInfo(root, { warn: () => {} })
+        expect(facts.sandbox).toEqual({
+          available: false,
+          reason: `the workspace is under /dev, which the Linux sandbox replaces with its own`,
+          declared: 0,
+          untraced: null,
+        })
+      },
+      TIMEOUT,
+    )
+  },
+)
 
 // Every row of the printout from literal facts: a real box shows one side of
 // each branch (a supported Bun, git present, a sandbox that starts), so the

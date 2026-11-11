@@ -36,7 +36,8 @@ beforeEach(async () => {
   )
   // Its discover hook writes to the git shim's log, so the log orders the
   // stage against each git call; it first lets a merge-base already
-  // spawned reach the log (the shim's own start is the race).
+  // spawned reach the log (the shim's own start is the race). Only
+  // `vx lock` calls it (2026-11-11): a run reads what it recorded.
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
@@ -85,7 +86,7 @@ afterEach(async () => {
   await rm(shimDir, { recursive: true, force: true })
 })
 
-it('--affected spawns merge-base and the whole-tree walk before the discover stage', async () => {
+it('--affected spawns merge-base and the whole-tree walk once, and calls no discover hook', async () => {
   const log = path.join(shimDir, 'order.log')
   await writeFile(
     path.join(shimDir, 'git'),
@@ -113,13 +114,9 @@ it('--affected spawns merge-base and the whole-tree walk before the discover sta
   const discover = calls.indexOf('DISCOVER')
   const mergeBase = calls.findIndex((c) => c.startsWith('merge-base ') && c.includes('main'))
   const walk = calls.findIndex((c) => c.endsWith(' ls-files -s -v -z -- .'))
-  expect(discover).toBeGreaterThanOrEqual(0)
+  expect(discover).toBe(-1)
   expect({ mergeBase: mergeBase >= 0, walk: walk >= 0 }).toEqual({ mergeBase: true, walk: true })
-  expect({ mergeBase: mergeBase < discover, walk: walk < discover }).toEqual({
-    mergeBase: true,
-    walk: true,
-  })
   // Once per run: the run reuses the walk and the diff selection made.
   expect(calls.filter((c) => c.endsWith(' ls-files -s -v -z -- .'))).toHaveLength(1)
-  expect(calls.filter((c) => /^(-c \S+ )?diff /.test(c))).toHaveLength(1)
+  expect(calls.filter((c) => /^(-c \S+ )*diff /.test(c))).toHaveLength(1)
 })

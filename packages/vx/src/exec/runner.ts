@@ -29,6 +29,7 @@ import {
   signalThrough,
   guardLine,
   spawnGuarded,
+  runTime,
   untilGroupsGone,
 } from './kill-tree.js'
 import { type TreeUsage, watchTree } from './proc-sample.js'
@@ -348,7 +349,9 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
       const head = trimmed.slice(0, -end.length).trimEnd()
       return `${withForwardArgs(head, args)}${trimmed.slice(head.length)}`
     }
-    return `${escaped ? command : trimmed} ${quoted}`
+    // Only the one character the backslash escapes: blank lines after a
+    // continuation put the args on a command line of their own.
+    return `${escaped ? command.slice(0, trimmed.length + 1) : trimmed} ${quoted}`
   }
   // A comment-only last line after a commented line: the args go before
   // the earliest comment, or they land inside it (`echo one # c\n# two`).
@@ -539,6 +542,28 @@ function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
 }
 
 /**
+ * Run `fn` (after pending exits) once `ms` of run time has passed. Time vx
+ * spent stopped by Ctrl-Z is not run time: its tasks were stopped with it,
+ * and a plain timer killed a task resumed by `fg` as timed out.
+ */
+function afterRunTime(ms: number, fn: () => void): { clear: () => void } {
+  // Re-arm for the run time LEFT, not the time stopped: a deadline that
+  // passed while vx was stopped is due ms - ran after `fg`, and re-arming
+  // for the whole stop let a long Ctrl-Z lift the timeout.
+  const due = runTime() + ms
+  let timer: ReturnType<typeof setTimeout>
+  const arm = (delay: number): void => {
+    timer = setTimeout(() => {
+      const left = due - runTime()
+      if (left > 1) arm(left)
+      else timer = afterPendingExits(fn)
+    }, delay)
+  }
+  arm(ms)
+  return { clear: () => clearTimeout(timer) }
+}
+
+/**
  * Arm a SIGTERM timeout on a spawned child. Returns a handle whose
  * `timedOut()` reports whether the timer fired — so the caller can
  * classify the resulting SIGTERM as a real failure rather than a
@@ -561,9 +586,7 @@ export function armTimeout(
   let sigkilled = false
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
-  let timer = setTimeout(() => {
-    timer = afterPendingExits(fire)
-  }, timeoutMs)
+  const timer = afterRunTime(timeoutMs, fire)
   function fire(): void {
     firedAt = performance.now()
     killTree(proc, 'SIGTERM')
@@ -583,7 +606,7 @@ export function armTimeout(
     timedOut: () => firedAt !== undefined,
     sigkilled: () => sigkilled,
     settle: async () => {
-      clearTimeout(timer)
+      timer.clear()
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
       const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - performance.now()))
@@ -913,7 +936,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     // A marker printed on the way down, once the wait gave up, is not ready.
     if (readyAt === undefined && gaveUpAt === undefined && !failedExit) {
       readyAt = performance.now()
-      if (readyTimer !== undefined) clearTimeout(readyTimer)
+      readyTimer?.clear()
       resolveReady()
       opts.onReady?.()
     }
@@ -1024,7 +1047,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // handler is a one-shot (`process.once('SIGTERM')`, a trap that resets
   // itself) died on the second mid-cleanup. Cleared the moment ready
   // fires so a healthy server is never killed by a stale timer.
-  let readyTimer: ReturnType<typeof setTimeout> | undefined
+  let readyTimer: { clear: () => void } | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
     const limit = opts.timeoutMs
     const giveUp = async (): Promise<void> => {
@@ -1052,9 +1075,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         ),
       )
     }
-    readyTimer = setTimeout(() => {
-      readyTimer = afterPendingExits(() => void giveUp())
-    }, opts.timeoutMs)
+    readyTimer = afterRunTime(opts.timeoutMs, () => void giveUp())
   }
 
   // If the child exits BEFORE ready fires, that's a failure to start
@@ -1062,7 +1083,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   void child.exited.then(async (code) => {
     opts.liveChildren?.delete(child)
     releaseServerGroup(child)
-    if (readyTimer !== undefined) clearTimeout(readyTimer)
+    readyTimer?.clear()
     if (code !== 0) failedExit = true
     // What the shell wrote reaches the frame before the failure line. The
     // drain is bounded, as a task's is, for a grandchild holding the pipe.
@@ -1220,8 +1241,9 @@ async function stopLate(proc: Child, signal: 'SIGINT' | 'SIGTERM'): Promise<void
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // Elapsed time, not wall time: an NTP step mid-task gave a negative or
-  // hour-long duration (the executor check refuses a negative one).
-  const start = performance.now()
+  // hour-long duration (the executor check refuses a negative one). Nor
+  // time vx was stopped (Ctrl-Z): the task was stopped with it.
+  const start = runTime()
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: Child
@@ -1275,7 +1297,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       opts.onStderr?.(stderr)
       return {
         exitCode: 127,
-        durationMs: Math.round(performance.now() - start),
+        durationMs: Math.round(runTime() - start),
         stdout: '',
         stderr,
         spawnFailed: true,
@@ -1316,9 +1338,11 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
   ends.end()
+  // A leftover of a task the run stopped is vx's doing, not the task's.
+  const blame = cut && opts.signal?.aborted !== true
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
-  if (cut) opts.onStderr?.(cutLine)
-  const stderr = cut ? streamed + cutLine : streamed
+  if (blame) opts.onStderr?.(cutLine)
+  const stderr = blame ? streamed + cutLine : streamed
   // A leftover with its stdio sent elsewhere holds no pipe for the drain to
   // cut: its group, still not empty, is what says so. One kill(0) when the
   // group is empty, as it is after any task that waits for what it starts.
@@ -1337,7 +1361,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     opts.onStderr?.(text)
     return {
       exitCode: 127,
-      durationMs: Math.round(performance.now() - start),
+      durationMs: Math.round(runTime() - start),
       stdout,
       stderr: stderr + text,
       spawnFailed: true,
@@ -1348,7 +1372,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
   return {
     exitCode,
-    durationMs: Math.round(performance.now() - start),
+    durationMs: Math.round(runTime() - start),
     stdout,
     stderr,
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),

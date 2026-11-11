@@ -3,7 +3,7 @@
 
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { cliCacheDir, parseCacheDirFlag } from '../src/cli/workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag, verbWorkspace } from '../src/cli/workspace-config.js'
 import type { UserError } from '../src/util/index.js'
 
 describe('parseCacheDirFlag', () => {
@@ -19,12 +19,14 @@ describe('parseCacheDirFlag', () => {
 describe('cliCacheDir', () => {
   it('resolves a relative --cache-dir against the working directory, as vx run does', async () => {
     // A directory that exists under the working directory (the suite's own).
-    expect(await cliCacheDir('/nowhere', 'tests')).toBe(path.resolve(process.cwd(), 'tests'))
+    expect(await cliCacheDir(verbWorkspace('/nowhere'), 'tests')).toBe(
+      path.resolve(process.cwd(), 'tests'),
+    )
   })
 
   it('refuses a --cache-dir that is not there, by name (item 900)', async () => {
     let threw = {}
-    await cliCacheDir('/nowhere', 'rel/cache').catch((err: UserError) => {
+    await cliCacheDir(verbWorkspace('/nowhere'), 'rel/cache').catch((err: UserError) => {
       threw = { message: err.message, code: err.code }
     })
     // A mistyped flag value is an argument mistake: VX_E_USAGE, as every

@@ -1,7 +1,7 @@
 // Cases drawn from vx fixes of November 2026: each guards a behaviour a
 // bug once broke, written so any task runner can be held to it.
 import { defineCase, type TaskSpec, type WorkspaceSpec } from '../src/spec.ts'
-import { CONCAT, one, out } from './shapes.ts'
+import { CONCAT, chainProject, one, out } from './shapes.ts'
 
 const build = (extra: Partial<TaskSpec> = {}): TaskSpec => ({
   command: CONCAT,
@@ -315,5 +315,135 @@ export default [
       },
     },
     steps: [{ run: 'build', expect: { exit: 'fail' } }],
+  }),
+  defineCase({
+    id: 'outputs/hit-restores-a-default-dir-mode',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A hit gives a standing output directory back the default mode its build left',
+    why: 'One build leaves `dist/d` at the default 755, another locks it to 700. Replaying the first must open the directory again, since the mode is part of what that build produced. A tool that restores only modes a task changed leaves the folder locked from the other build, and whatever reads it next sees a tree no build made.',
+    from: ['restore-dir-mode'],
+    workspace: one(
+      build({
+        command:
+          'mkdir -p dist/d && cat src/a.txt > dist/d/f && if grep -q tight src/a.txt; then chmod 700 dist/d; fi',
+      }),
+      { 'src/a.txt': 'open\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [A]: 'tight\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { check: { modes: { 'packages/a/dist/d': 0o700 } } },
+      { write: { [A]: 'open\n' } },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/dist/d/f': 'open\n' } } },
+      { check: { modes: { 'packages/a/dist/d': 0o755 } } },
+    ],
+  }),
+  defineCase({
+    id: 'graph/dependency-left-out-by-sparse-checkout-not-replayed',
+    category: 'graph',
+    kind: 'correctness',
+    title: 'A task whose dependency a sparse checkout left out does not replay its old result',
+    why: 'A sparse checkout leaves some projects off disk, and `app` builds from `lib`. With `lib` gone, nothing can say whether `app`’s stored result still fits, so replaying it is a guess. The run should fail or refuse, never go green on a build whose dependency is missing.',
+    from: ['sparse-checkout-config'],
+    workspace: { projects: { lib: chainProject('lib'), app: chainProject('app', ['lib']) } },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'lib\napp\n' } } },
+      { sh: "git sparse-checkout set --no-cone '/*' '!/packages/lib/' && rm -rf packages/lib" },
+      { run: 'build', projects: ['app'], expect: { exit: 'fail' } },
+    ],
+  }),
+  defineCase({
+    id: 'inputs/negation-matching-a-directory-link-name-keeps-its-files',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'A negation that matches a directory link’s name still keys the files behind it',
+    why: 'Inputs are `src/**` but not `src/**/*.skip`, and `src/l.skip` is a link to a shared folder the build reads. Under a real folder named `l.skip` the negation matches none of its files, so they stay inputs; a link must not change that. A tool that matches the negation against the link’s own name drops every file behind it, and an edit there replays the old build.',
+    from: ['linked-inputs'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: build({
+              command:
+                'mkdir -p dist && find -L src -type f ! -name "*.skip" | sort | xargs cat > dist/out.txt',
+              inputs: ['src/**', '!src/**/*.skip'],
+            }),
+          },
+          files: { 'src/a.txt': 'a\n' },
+        },
+      },
+      files: { 'top/f.txt': 'one\n' },
+    },
+    steps: [
+      { link: { 'packages/a/src/l.skip': '../../../top' } },
+      { commit: 'link' },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\none\n' } } },
+      { write: { 'top/f.txt': 'two\n' } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\ntwo\n' } } },
+    ],
+  }),
+  defineCase({
+    id: 'outputs/committed-output-kept-when-inputs-negate-the-outputs',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A committed edit under the outputs is not reverted by a replay when the inputs negate the outputs',
+    why: 'Inputs are everything but `out/**`, the common way to keep a build’s own writes out of its inputs. `out/LICENSE` is committed source under the outputs. The negation keeps the build’s writes out, but the committed file still decides what a replay writes back: a tool that drops it with the rest replays the old LICENSE over the one just committed.',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command: 'mkdir -p out && cat src/*.txt > out/out.txt',
+        inputs: ['**', '!out/**'],
+        outputs: ['out/**'],
+      },
+      { 'src/a.txt': 'a\n', 'out/LICENSE': 'license v1', '.gitignore': 'out/out.txt\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/out/LICENSE': 'license v2' } },
+      { commit: 'license v2' },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/out/LICENSE': 'license v2' } } },
+    ],
+  }),
+  defineCase({
+    id: 'outputs/write-through-linked-output-dir-reaches-reader',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A task reading the directory an output link points at sees what was written through the link',
+    why: '`out` is a link to `gen` inside the same project, and `make` declares `out/**`, so its writes land in `gen`. `use` reads `gen/**`. A tool that records the write only under `out` keeps its old fingerprint of `gen/x` and replays the result from before, under a green run.',
+    from: ['stale-hit-digest'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            make: { command: 'cp src/p.txt out/x', inputs: ['src/**'], outputs: ['out/**'] },
+            use: {
+              command: 'mkdir -p dist && cat gen/x > dist/r.txt',
+              dependsOn: ['make'],
+              dependencyInputs: false,
+              inputs: ['gen/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/p.txt': '1\n', 'gen/x': '1\n', '.gitignore': 'out\n' },
+        },
+      },
+    },
+    steps: [
+      { link: { 'packages/a/out': 'gen' } },
+      { run: 'use', expect: { exit: 0, files: { 'packages/a/dist/r.txt': '1\n' } } },
+      { write: { 'packages/a/src/p.txt': '2\n' } },
+      {
+        run: 'use',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/gen/x': '2\n', 'packages/a/dist/r.txt': '2\n' },
+        },
+      },
+    ],
   }),
 ]

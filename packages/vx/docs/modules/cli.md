@@ -67,7 +67,11 @@ workspace through `cli/workspace-config.ts:loadCliWorkspace`: the
 workspace config with the plugin `config` stage applied, the plugin
 list, and the cache dir derived from the staged config. The stage
 shapes `cache.dir`, so a verb reading the file raw would open a
-directory the run never used. Plugin warnings go to stderr. A plugin
+directory the run never used. Plugin warnings go to stderr. Each verb
+runs the stage once: a reading verb's helpers share one `verbWorkspace`
+(the stage, then the discovery over it), a discovery keeps the workspace
+it loaded (`workspaceOfDiscovery`), and a run handed that discovery
+reuses it (`keepDiscoveryWorkspace`, projects.md). A plugin
 verb the dispatcher could never reach — one naming a core verb, or one
 plugins of two packages both declare — is refused by the workspace VALIDATOR
 (`validateWorkspace`, against `util/verbs.ts`), so a run refuses it

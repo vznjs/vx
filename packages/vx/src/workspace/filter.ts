@@ -55,6 +55,8 @@ export interface ParsedFilter {
   pathGlob?: Bun.Glob
   /** `./a/**`'s `a`: a trailing `**` matches zero dirs, and `Bun.Glob` does not (D-84). */
   pathGlobBase?: Bun.Glob
+  /** `./**`: the one path glob that reaches the root project (zero dirs). */
+  pathGlobRoot?: true
   /** The workspace root a path form is relative to. */
   pathRoot?: string
   /** `//`: the project at `matcher` itself, never the ones under it. */
@@ -218,6 +220,7 @@ export function parseFilter(
   let matcher = s
   let pathGlob: Bun.Glob | undefined
   let pathGlobBase: Bun.Glob | undefined
+  let pathGlobRoot = false
   const pathForm =
     s.startsWith('./') || s === '.'
       ? s
@@ -246,6 +249,7 @@ export function parseFilter(
       const glob = rel.replace(/\/+$/, '')
       pathGlob = new Bun.Glob(glob)
       if (glob.endsWith('/**')) pathGlobBase = new Bun.Glob(glob.slice(0, -3))
+      pathGlobRoot = glob === '**'
     }
   }
 
@@ -271,6 +275,7 @@ export function parseFilter(
     ...(isPath ? { pathRoot: workspaceRoot } : {}),
     ...(pathGlob !== undefined ? { pathGlob } : {}),
     ...(pathGlobBase !== undefined ? { pathGlobBase } : {}),
+    ...(pathGlobRoot ? { pathGlobRoot: true as const } : {}),
     ...(gitSince !== undefined ? { gitSince } : {}),
     ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
   }
@@ -350,6 +355,9 @@ function matchSelector(
           .relative(filter.pathRoot ?? '', p.dir)
           .split(path.sep)
           .join('/')
+        // `Bun.Glob('*')` matches '', so `./*` took the root project as a
+        // child of itself; only `**` (zero dirs) reaches the root.
+        if (rel === '' && filter.pathGlobRoot !== true) continue
         if (filter.pathGlob.match(rel) || filter.pathGlobBase?.match(rel) === true) out.push(p.name)
       }
     }

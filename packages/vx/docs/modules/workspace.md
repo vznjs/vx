@@ -48,6 +48,8 @@ export interface ProjectConfigs {
   readonly shadowed: { file: string; read: string }[]
   // the outermost nested workspace roots, absolute: `vx lock` records them
   readonly nestedWorkspaces: string[]
+  // listed configs a sparse checkout left out: `vx lock` refuses them
+  readonly sparse: { file: string; add: string }[]
 }
 
 // A project's config file names, in the order discovery prefers them.
@@ -158,14 +160,20 @@ any depth, as the walk skips it (`.vx/workspace.*` still marks a nested
 workspace). A nested repository is one entry to the
 outer git (a submodule's gitlink, an embedded repository's untracked
 `dir/`): its own git lists its configs, or a walk when it has no `.git`,
-as the input enumeration expands one. Outside git: a walk that skips
+as the input enumeration expands one. A linked worktree of the same
+repository made inside it (`git worktree add .worktrees/x`) is this tree
+checked out again and is skipped, not a nested workspace: recorded as
+one, the lock failed `--check` on every other checkout. Outside git: a walk that skips
 `node_modules`, `.git` and `.vx`, and enters every other dot-directory,
 as git lists `.github/actions/x`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out: any entry, a
 broken link or a directory too, as the root walk stops at one, but not a
 tracked one deleted from the worktree. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
-file (git lists a tracked config deleted from the worktree, skipped).
+file (git lists a tracked config deleted from the worktree, skipped;
+one a sparse checkout left out, skip-worktree in the index, is
+`sparse`, which `vx lock` refuses, naming `git sparse-checkout add`:
+skipped, its project left the committed lock).
 With no file, an entry by a config's name (a broken link, a directory)
 is refused by name, as the root walk refuses one: skipped, its project
 was in no lock and nothing said so. Every other file there is `shadowed`, with
@@ -188,6 +196,12 @@ config-less twin at the link taking every `^task` edge
 (vercel/turborepo#12489). A link leading out of the root stays a
 project at the link. Only a directory no project holds is resolved, so
 locked projects cost no syscall (`tests/discover-stage.test.ts`).
+
+Discovery follows no link. Outside git the walk does not enter one; in
+git, a config the index lists behind a symlinked directory (a project
+moved and linked back, `b -> real/b`) is skipped, as git calls it
+deleted: locked, `b` and `real/b` were two projects over one directory,
+their tasks writing the same `dist` (`tests/discovery-links.test.ts`).
 
 ### Names
 

@@ -259,11 +259,16 @@ export function resolveOtelConfig(
   if (tracesUrl === undefined && metricsUrl === undefined && logsUrl === undefined) {
     return undefined
   }
-  // The standard SDK opt-outs, honoured so a pipeline already configured
-  // that way does not start receiving vx's telemetry because it upgraded
-  // vx. Only the logs one was read; the traces and metrics `=none` were
-  // ignored and still exported (item 1056).
-  const off = (name: string): boolean => env[name]?.trim().toLowerCase() === 'none'
+  // The standard SDK exporter lists, honoured so a pipeline already
+  // configured that way does not start receiving vx's telemetry because it
+  // upgraded vx. Only the logs one was read; the traces and metrics `=none`
+  // were ignored and still exported (item 1056). As the spec has it, a
+  // signal goes over OTLP only when its list names `otlp` (unset or empty is
+  // `otlp`): `console` or `prometheus` exported OTLP all the same.
+  const off = (name: string): boolean => {
+    const v = env[name]?.trim().toLowerCase()
+    return v ? !v.split(',').some((e) => e.trim() === 'otlp') : false
+  }
   const tracesWanted = !off('OTEL_TRACES_EXPORTER')
   const logsWanted = opts.logs ?? !off('OTEL_LOGS_EXPORTER')
   const metricsWanted = opts.metrics ?? !off('OTEL_METRICS_EXPORTER')

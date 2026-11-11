@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { UserError } from '../util/index.js'
+import { ownEnv, UserError } from '../util/index.js'
 
 const NPMJS = 'https://registry.npmjs.org/'
 
@@ -30,11 +30,14 @@ function npmEnv(env: Env, key: string): string | undefined {
 
 /** `${VAR}` from `env`, as npm expands it; an unset one is empty. */
 const expandNpm = (value: string, env: Env): string =>
-  value.replace(/\$\{([^}?]+)\??\}/g, (_, name: string) => env[name] ?? '')
+  value.replace(/\$\{([^}?]+)\??\}/g, (_, name: string) => ownEnv(env, name) ?? '')
 
 /** `$VAR` and `${VAR}` from `env`, as Bun expands bunfig. */
 const expandBun = (value: string, env: Env): string =>
-  expandNpm(value, env).replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name: string) => env[name] ?? '')
+  expandNpm(value, env).replace(
+    /\$([A-Za-z_][A-Za-z0-9_]*)/g,
+    (_, name: string) => ownEnv(env, name) ?? '',
+  )
 
 function readText(file: string): string | undefined {
   try {

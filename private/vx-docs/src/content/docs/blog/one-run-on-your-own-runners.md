@@ -153,7 +153,9 @@ cacophony vectors (`packages/vx-dte/src/noise.ts`).
 Only misses need workers. A run the cache answers whole starts none.
 
 - **How many workers:** the planner (`packages/vx-dte/src/planner.ts`)
-  starts the fewest that end within 5% of the best. Idle workers leave.
+  starts a worker only when a task would otherwise miss the best end.
+  Tasks with slack wait for room on workers already running. Idle
+  workers leave.
 - **Where a task goes:** to a worker with room, holding most of its
   dependencies' outputs, then the fullest one.
 - **Which first:** the longest tail of recorded time.

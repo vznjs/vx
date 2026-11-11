@@ -1,6 +1,6 @@
 // Nx → vx mapping over the RESOLVED project graph, shared by the two
 // consumers: `bunx @vzn/vx-migrate --from nx` writes it to files, and the
-// `nx()` plugin runs it live. Static by design: targets that Nx plugins
+// `nx()` plugin runs it at `vx lock`. Static by design: targets that Nx plugins
 // infer at runtime are whatever the graph says. Named inputs expand from
 // nx.json when readable; the graph's dependency edges are ignored (vx's
 // package edges come from a lockfile plugin, which installs what the
@@ -24,7 +24,7 @@ import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
-import { mapRunCommands, shellQuote } from '../nx-command.js'
+import { guardOutputs, mapRunCommands, shellQuote } from '../nx-command.js'
 import { type Owner, runsScriptHooks, scriptCommand, yarnPnp, yarnRun } from '../script-command.js'
 import {
   ownFileTakeBacks,
@@ -51,7 +51,13 @@ import {
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { dotenvGlobsProbe } from '../dotenv-probe.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
-import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs } from './nx-outputs.js'
+import {
+  mapNxOutputs,
+  nxDefaultOutputs,
+  nxOutputOptions,
+  nxProjectOutputs,
+  nxTargetOutputs,
+} from './nx-outputs.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
@@ -903,6 +909,8 @@ function buildTask(
 ): GeneratedTask {
   const todos: string[] = []
   const options = variant.options
+  const cacheWanted =
+    target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
 
   const mapped = mapCommand(
     targetName,
@@ -923,6 +931,7 @@ function buildTask(
       !(p === nodeName && t === targetName) &&
       metaByNode.has(p) &&
       Object.hasOwn(nodeMap[p]?.data?.targets ?? {}, t),
+    cacheWanted && !persistentTarget(target) ? outputsOptions(targetName, target, options) : [],
   )
 
   const inputs = emptyNxInputs()
@@ -931,12 +940,16 @@ function buildTask(
     name: projectName,
     outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
     ...(opts.ignoredOutputs === undefined ? {} : { ignoredOutputs: opts.ignoredOutputs }),
+    // Only a cached task declares outputs; one taken back may hold the input.
+    ...(!cacheWanted || persistentTarget(target) || target.outputs?.some((o) => o.startsWith('!'))
+      ? {}
+      : {
+          ownOutputs: nxTargetOutputs(targetName, { ...target, options }, projectRel, projectName),
+        }),
     rootDeps: opts.rootDeps,
     ...(opts.lockfile === undefined ? {} : { lockfile: opts.lockfile }),
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
-  const cacheWanted =
-    target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
   // An output only matters to a task vx caches: Nx's default `build` /
   // `public` note sat on every uncached `build` that declares none.
   const outTodos = cacheWanted ? todos : []
@@ -1116,6 +1129,17 @@ function buildTask(
   // 2026-10-16). The whole file here: a `paths` edit re-keys every task.
   if (opts.rootTsConfig !== undefined && !inputs.wsFiles.includes(opts.rootTsConfig))
     inputs.wsFiles.push(opts.rootTsConfig)
+  // With no `{ externalDependencies }` of its own, Nx 24 hashes every
+  // external dependency (`AllExternalDependencies` in `nx show target
+  // inputs`), save for an `@nx/` or `@nrwl/` executor, which hashes its own
+  // package. Keyed on nothing, a lockfile bump was a hit where Nx re-ran.
+  if (
+    opts.lockfile !== undefined &&
+    !inputs.externalDependencies &&
+    !/^@(nx|nrwl)\//.test(target.executor ?? '') &&
+    !inputs.wsFiles.includes(opts.lockfile)
+  )
+    inputs.wsFiles.push(opts.lockfile)
   if (inputs.wsFiles.length > 0) keyed.workspaceFiles = withoutTakenBack(inputs.wsFiles)
   if (inputs.envNames.length > 0) keyed.env = inputs.envNames
   // The `.env` files the task loads are inputs, and gitignored ones
@@ -1357,6 +1381,7 @@ function mapCommand(
   manifestField: MapNxOptions['manifestField'],
   executors: NxExecutors | undefined,
   isTarget: (project: string, target: string) => boolean,
+  outputsOptions: readonly string[],
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -1395,7 +1420,7 @@ function mapCommand(
   if (executor === 'nx:run-commands' || plain) {
     const rc = mapRunCommands(
       plain ? { ...options, command: target.command } : options,
-      { projectRel, projectName, isTarget },
+      { projectRel, projectName, isTarget, outputsOptions },
       todos,
     )
     if (rc === null) return line(PLACEHOLDER)
@@ -1430,7 +1455,7 @@ function mapCommand(
         command === yarnRun(script)
           ? {}
           : npmScriptEnv(command, script, command !== body, manifest, manifestField, todos)
-      return shell(command, undefined, { env, readyWhen: undefined })
+      return shell(guardOutputs(command, outputsOptions), undefined, { env, readyWhen: undefined })
     }
     todos.push(
       body === undefined
@@ -1459,7 +1484,10 @@ function mapCommand(
       // `.env` files load as they do for a run-commands line: Nx loads
       // them for every executor.
       return {
-        ...shell(mapped.command, undefined, { env: mapped.env, readyWhen: undefined }),
+        ...shell(guardOutputs(mapped.command, outputsOptions, true), undefined, {
+          env: mapped.env,
+          readyWhen: undefined,
+        }),
         ...(mapped.timeout === undefined ? {} : { timeout: mapped.timeout }),
       }
     }
@@ -1469,7 +1497,17 @@ function mapCommand(
   // command line, so the key sees them and the line pastes into a shell.
   argsTodo(options, todos)
   return {
-    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
+    ...line(
+      nxExecCommand(
+        executor,
+        projectName,
+        targetName,
+        configuration,
+        options,
+        files,
+        outputsOptions,
+      ),
+    ),
     envInputs: files,
   }
 }
@@ -1512,6 +1550,27 @@ function nxSelfCall(command: string): string | undefined {
     : `the command runs \`nx ${m[1]}\`, which needs Nx installed — name that task in dependsOn, or run its command here`
 }
 
+/**
+ * The options a target's cached outputs are resolved from: each
+ * `{options.x}` in its outputs, and with none declared the `outputPath`
+ * Nx's default reads (`nxDefaultOutputs`). Nx resolves them again from a
+ * run's overrides; vx keeps the mapped outputs, so the line refuses an
+ * override of one.
+ */
+function outputsOptions(
+  targetName: string,
+  target: NxTarget,
+  options: Record<string, unknown>,
+): string[] {
+  if (target.outputs === undefined)
+    return 'outputPath' in options || targetName === 'build' || targetName === 'prepare'
+      ? ['outputPath']
+      : []
+  const names = new Set<string>()
+  for (const o of target.outputs) for (const n of nxOutputOptions(o)) names.add(n)
+  return [...names]
+}
+
 const isReleasePublish = (executor: string | undefined): boolean =>
   executor === '@nx/js:release-publish' || executor === '@nrwl/js:release-publish'
 
@@ -1540,12 +1599,14 @@ export function nxExecCommand(
   configuration: string | undefined,
   options: Record<string, unknown>,
   dotenv: readonly string[] = [],
+  outputsOptions: readonly string[] = [],
 ): string {
   const parts = ['nx-exec', executor, '--project', project, '--target', target]
   if (configuration !== undefined) parts.push('--configuration', configuration)
   // JSON's own escapes keep a newline out of the line.
   if (Object.keys(options).length > 0) parts.push('--options', JSON.stringify(options))
   for (const f of dotenv) parts.push('--dotenv', f)
+  for (const o of outputsOptions) parts.push('--outputs-option', o)
   return parts.map(shellQuote).join(' ')
 }
 

@@ -133,7 +133,7 @@ and graph traversal.
 - transitiveDependents terminates on a 2-node cycle and includes the other node
 - reach from a plugin is in both closures and orders nothing
 - with no plugin supplying edges, `^build` fails naming the fix
-- a run whose lock was written with an edge source refuses once the plugin is gone
+- a run whose lock was written with an edge source keeps its edges once the plugin is gone
 - with an edge source, a leaf resolves `^build` to nothing and a dependent waits on its dep
 - a workspace that writes no `^` runs with no edge source
 

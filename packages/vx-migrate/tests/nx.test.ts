@@ -626,7 +626,7 @@ describe('nx()', () => {
   )
 
   it(
-    'a failed export with a snapshot in hand warns and runs on the previous graph',
+    'a failed export with a snapshot in hand warns and locks the previous graph',
     async () => {
       await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       await writeFile(
@@ -634,11 +634,12 @@ describe('nx()', () => {
         '#!/bin/sh\necho boom >&2\nexit 7\n',
       )
       await appendFile(path.join(root, 'nx.json'), '\n')
-      const log = silent()
-      const plan = await planRun({ cwd: root, tasks: ['lint'], log })
+      // `vx lock` maps, so it is the one to say so (2026-11-11).
+      const lines = await lockWarnings()
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
       expect(
-        log.lines.some((l) => /nx graph --file exited 7: boom — running on the previous/.test(l)),
+        lines.some((l) => /nx graph --file exited 7: boom — running on the previous/.test(l)),
       ).toBe(true)
     },
     TIMEOUT,
@@ -663,19 +664,17 @@ describe('nx()', () => {
   )
 
   it(
-    'without the nx-exec bin in node_modules/.bin the run warns once, naming the fix',
+    'without the nx-exec bin in node_modules/.bin vx lock warns once, naming the fix',
     async () => {
       await rm(path.join(root, 'node_modules', '.bin', 'nx-exec'))
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['build'], log })
       expect(
-        log.lines.filter((l) => l.includes('`nx-exec`, which is not in node_modules/.bin')).length,
+        (await lockWarnings()).filter((l) =>
+          l.includes('`nx-exec`, which is not in node_modules/.bin'),
+        ).length,
       ).toBe(1)
       // The control: with the bin there, no such line.
-      const quiet = silent()
       await fakeNxCli(root).catch(() => {})
-      await planRun({ cwd: root, tasks: ['build'], log: quiet })
-      expect(quiet.lines.some((l) => l.includes('not in node_modules/.bin'))).toBe(false)
+      expect((await lockWarnings()).some((l) => l.includes('not in node_modules/.bin'))).toBe(false)
     },
     TIMEOUT,
   )
@@ -1086,17 +1085,13 @@ describe('nx()', () => {
   })
 
   it(
-    'without nx in node_modules the run warns once that nx-exec and nx-env need it',
+    'without nx in node_modules vx lock warns once that nx-exec and nx-env need it',
     async () => {
       const line = 'nx-exec and nx-env load Nx from the workspace, and node_modules/nx is not there'
-      const quiet = silent()
-      await planRun({ cwd: root, tasks: ['build'], log: quiet })
-      expect(quiet.lines.filter((l) => l.includes(line))).toEqual([])
+      expect((await lockWarnings()).filter((l) => l.includes(line))).toEqual([])
       await rm(path.join(root, 'node_modules', 'nx'), { recursive: true })
       await workspace("nx({ graph: 'graph.json' })")
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['build'], log })
-      expect(log.lines.filter((l) => l.includes(line)).length).toBe(1)
+      expect((await lockWarnings()).filter((l) => l.includes(line)).length).toBe(1)
     },
     TIMEOUT,
   )
@@ -1513,15 +1508,14 @@ describe('nx(): the graph snapshot, keyed and not', () => {
       const good = await Bun.file(bin).text()
       await writeFile(bin, '#!/bin/sh\necho boom >&2\nexit 7\n')
       await appendFile(path.join(root, 'nx.json'), '\n')
-      const failed = silent()
-      await plan(failed)
-      expect(failed.lines.some((l) => l.includes('running on the previous graph'))).toBe(true)
+      // `vx lock` maps, so it is the one to say so (2026-11-11).
+      const failed = await lockWarnings()
+      expect(failed.some((l) => l.includes('running on the previous graph'))).toBe(true)
       // Same graph, same nx.json: only the note tells the kept mapping apart.
       await writeFile(bin, good)
-      const healed = silent()
-      await plan(healed)
+      const healed = await lockWarnings()
       expect(await nxCalls(root)).toBe(2)
-      expect(healed.lines.filter((l) => l.includes('running on the previous graph'))).toEqual([])
+      expect(healed.filter((l) => l.includes('running on the previous graph'))).toEqual([])
     },
     TIMEOUT,
   )
@@ -1563,8 +1557,8 @@ describe('nx(): the graph snapshot, keyed and not', () => {
         await fakeNx(sub)
         await fakeNxCli(sub)
         await workspace(`nx({ root: ${JSON.stringify(sub)} })`)
-        // Locked once: a lock maps the graph too, and a manifest still newer
-        // than the snapshot would re-export at the lock and again at the run.
+        // Only `vx lock` exports: a run reads the graph's projects and edges
+        // from the lock (2026-11-11).
         await lock(root)
         const plan = () => corePlanRun({ cwd: root, tasks: ['lint'], log: silent() })
         let calls = 1
@@ -1580,6 +1574,8 @@ describe('nx(): the graph snapshot, keyed and not', () => {
           const later = new Date(Date.now() + 60_000)
           await utimes(f, later, later)
           await plan()
+          expect([f, await nxCalls(sub)]).toEqual([f, calls])
+          await lock(root)
           expect([f, await nxCalls(sub)]).toEqual([f, ++calls])
           await utimes(f, past, past)
         }
@@ -1591,8 +1587,8 @@ describe('nx(): the graph snapshot, keyed and not', () => {
   )
 })
 
-// Every run reads configs from the lock, real Nx repos too: nx()'s tasks are
-// no vx.config, so the lock records none and a run maps the graph live.
+// Every run reads configs from the lock, real Nx repos too: `vx lock` maps
+// the graph and records the tasks and edges; a run exports nothing.
 describe('nx() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -1612,7 +1608,7 @@ describe('nx() under vx lock', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: '✓ vx lock  0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib, ws)\n',
+        out: '✓ vx lock  0 project configs → .vx/projects.lock.json (and the tasks a plugin maps for app, lib, ws)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all')
@@ -1623,6 +1619,35 @@ describe('nx() under vx lock', () => {
       const second = vx('run', 'build', '--all')
       expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
       expect(second.out).toContain('2✓')
+    },
+    TIMEOUT,
+  )
+
+  // A run asked Nx for its graph each time, and the live graph's edges
+  // decided it: an edge added without `vx lock` changed what ran.
+  it(
+    'a run follows the locked edges and exports nothing until vx lock',
+    async () => {
+      expect(vx('lock').code).toBe(0)
+      const g = structuredClone(GRAPH)
+      g.graph.dependencies.app = []
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      // The fixture's manifest-edges plugin reads the same edge from here.
+      await writeFile(
+        path.join(root, 'packages', 'app', 'package.json'),
+        JSON.stringify({ name: 'app', version: '1.0.0' }),
+      )
+      const stale = vx('run', 'build', '--filter', 'app', '--dry')
+      expect({ code: stale.code, err: stale.err }).toEqual({ code: 0, err: '' })
+      expect(stale.out).toContain('lib#build')
+      expect(await nxCalls(root)).toBe(1)
+      const check = vx('lock', '--check')
+      expect(check.code).toBe(1)
+      expect(check.err).toContain('packages/app: the `discover` stage finds it otherwise')
+      // `--check` exported; the lock reuses that snapshot.
+      expect(vx('lock').code).toBe(0)
+      expect(await nxCalls(root)).toBe(2)
+      expect(vx('run', 'build', '--filter', 'app', '--dry').out).not.toContain('lib#build')
     },
     TIMEOUT,
   )
@@ -1673,9 +1698,12 @@ describe('nx(): one git status per run', () => {
       expect(await nxCalls(root)).toBe(1)
       expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
       expect(await statuses('run', 'lint', '--filter', 'lib', '--dry')).toBe(1)
-      // The shared status still moves the key: an edit re-exports.
+      // The shared status still moves the key: an edit re-exports, at the
+      // next `vx lock` only (a run reads the graph's edges from the lock).
       await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// edited\n')
       expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
+      expect(await nxCalls(root)).toBe(1)
+      await statuses('lock')
       expect(await nxCalls(root)).toBe(2)
     },
     TIMEOUT,
@@ -1709,7 +1737,8 @@ describe("nx(): an Nx project's tags", () => {
       await lock(root)
       expect(await load()).toEqual({ tags, lint: 'echo lint-ran > lint.log' })
       await tamperMapping(root, 'nx')
-      // Served from the kept mapping (the tampered command), tags intact.
+      // `vx lock` serves it from the kept mapping (the tampered command), tags intact.
+      await lock(root)
       expect(await load()).toEqual({ tags, lint: 'echo from-cache' })
     },
     TIMEOUT,

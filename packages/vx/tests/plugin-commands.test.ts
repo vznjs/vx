@@ -541,6 +541,24 @@ describe('plugin commands', () => {
     expect(out.join('').split('\n')).toContain(`  vx ${'hello'.padEnd(17)} says hi (org/hello)`)
   })
 
+  // `ESC ]0;…BEL` printed raw retitled the terminal, as a task description
+  // in `vx show` would were it not escaped.
+  it("vx help escapes a control character in a plugin verb's description", async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/ctl',
+          `{ commands: { hi: { description: 'd\\u001b]0;pwn\\u0007', run() { return 0 } } } }`,
+        ),
+      ]),
+    )
+    expect(await cli(['help'])).toBe(0)
+    expect(out.join('').split('\n')).toContain(
+      `  vx ${'hi'.padEnd(17)} d\\x1b]0;pwn\\x07 (org/ctl)`,
+    )
+  })
+
   it('keeps two spaces after a verb longer than the column', async () => {
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
@@ -646,6 +664,9 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
       } },
       crash: { description: 'throws a plain Error', run() { throw new Error('kaboom') } },
       floats: { description: 'leaves a rejection unawaited', run() { Promise.reject(new Error('floating')); return 0 } },
+      late: { description: 'leaves a rejection as it resolves', run() {
+        return new Promise((resolve) => setImmediate(() => { Promise.reject(new Error('floating')); resolve(0) }))
+      } },
       'My.verb': { description: 'a capital and a dot', run() { throw new Error('dotted') } },
       big: { description: 'resolves a bigint', run() { return 0n } },
     },
@@ -657,6 +678,15 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
   it('a rejection the verb left unawaited fails the run, saying so', async () => {
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
     const r = spawn('floats')
+    expect([r.code, r.err.includes('floating')]).toEqual([1, true])
+  })
+
+  // Reported in the turn the exit ended the streams, its line came after
+  // stderr had ended and was dropped: exit 1 and no word of why (CI, under
+  // load, 2026-11-11).
+  it('a rejection reported as the exit begins still says so', async () => {
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    const r = spawn('late')
     expect([r.code, r.err.includes('floating')]).toEqual([1, true])
   })
 

@@ -11,6 +11,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'dependency-names',
     'extra-in-project',
     'file-dir-dep',
+    'installed-layout',
     'link-to-workspace',
     'lockfile-shapes',
     'npm',
@@ -56,6 +57,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'settings',
     'sparse-checkout',
     'yarn-bound-descriptor',
+    'yarn-classic-workspace-deps',
     'yarn-numeric-range',
   ],
 ]

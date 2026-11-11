@@ -11,6 +11,7 @@ import {
   cleanOutputPaths,
   committedFiles,
   cleanWorkspaceOutputs,
+  type OutputFileRow,
   type OutputStamp,
   ownOutputsSince,
   ownWorkspaceOutputsSince,
@@ -27,6 +28,8 @@ import {
   type TaskInputComponent,
   declaresInput,
   fsClockNow,
+  taskEntryHashes,
+  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import {
   signalExitCode,
@@ -103,6 +106,7 @@ import type { FingerprintWatch } from './fingerprint-watch.js'
 import { currentHit, restoreHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
 import { shellVerdict } from './shell-verdict.js'
+import { lockedDirGone } from './projects.js'
 import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
@@ -288,6 +292,12 @@ export interface ExecuteArgs {
    * Absent: none.
    */
   nestedDirsOf?: (projectDir: string) => readonly string[]
+  /**
+   * The id of the project whose directory a workspace-relative path is
+   * (run.ts `projectAtDir`): what a withheld link's hint names for its
+   * `dependsOn` edge. Absent: none is one.
+   */
+  projectAt?: (rel: string) => string | undefined
   /**
    * Run-scoped list the miss path appends its output-directory snapshot
    * request to, taken at run end (run.ts) instead of right after the save:
@@ -646,6 +656,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const willSave =
     willWrite && args.taintedUpstream !== true && !unkeyed && !keyless && args.belowNoop !== true
 
+  // An executor's own record of executions is a remote store: a run whose
+  // policy turns the remote's read or write off keeps it off that record
+  // too. A `--cache-policy=remote:` run replayed one, and a run off CI wrote
+  // one a CI run on a fresh cache then replayed and uploaded. Only with a
+  // remote layer: without one the remote axes read off, and a worker that
+  // shares this machine's store (`@vzn/vx-dte`'s `local()`) is no remote.
+  const remoteOff = (axis: 'remoteRead' | 'remoteWrite'): boolean =>
+    cache.hasRemote === true && !policy[axis]
+
   // The executor retains nothing: the entry's output is the attempt's
   // `output` log, both streams in the order they reached the logger, kept
   // only when this task will WRITE an entry. Both streams are still drained
@@ -851,7 +870,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // orders them; item 588) does not clean by glob — the glob selects the
   // upstream's files it adds beside. Its outputs are stamped once before
   // the first attempt, and after a 0 exit its own set is what the run
-  // added or changed against that stamp; a retry first removes what the
+  // added or changed against that stamp, or found as a save or restore of
+  // its own left it (`leftByOwnEntries`); a retry first removes what the
   // failed attempt added (`dropFailedAdditions`). Stale files of its own from an
   // earlier run are its command's to clean, as they are under Turbo.
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
@@ -865,6 +885,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // stamped only when a retry can follow.
   let committedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsCommittedBefore: ReadonlyMap<string, OutputStamp> | undefined
+  // The committed files the last attempt's clean found and left (absolute).
+  // One its run removed cannot be replayed by a hit, whose restore leaves
+  // it too: that run saves nothing (`ownOutputs`).
+  let committedKept: string[] = []
   // `outputs.clean: false` leaves the outputs to the first attempt's
   // command, and the save stores whatever they hold after it, a leftover
   // included: the user opted out of the clean-tree guarantee
@@ -1104,6 +1128,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // Its throw (a name vx cannot clear) fails the task before this
     // attempt's command: no exit of its own to name.
     await outputsStep('clean', attempt > 1 ? effectiveExitCode : 1, async () => {
+      committedKept = []
       if (additive && willWrite && !deferralRequested && outputs.length > 0) {
         const endStamp = span('miss: stamp outputs')
         if (stampedBefore === undefined) stampedBefore = await stampOutputs(cleanArgs)
@@ -1127,7 +1152,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         // re-create would stay in a same-project consumer's input set, keeping
         // that consumer's key unchanged while the file is gone from disk.
         const endClean = span('miss: clean outputs')
-        const cleanedRels = await cleanOutputs(cleanArgs)
+        const cleanedRels = await cleanOutputs({
+          ...cleanArgs,
+          beforeRun: true,
+          kept: committedKept,
+        })
         endClean()
         args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
         committedBefore = checkCommitted(
@@ -1166,7 +1195,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       } else if (clean && wsOutputs.length > 0) {
         // Root-anchored deletions can land in other projects' dirs; mark
         // them so stale per-project git snapshots can't survive the wipe.
-        const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+        const cleanedWsRels = await cleanWorkspaceOutputs({
+          ...wsCleanArgs,
+          beforeRun: true,
+          kept: committedKept,
+        })
         args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
         wsCommittedBefore = checkCommitted(
           args.workspaceRoot,
@@ -1282,6 +1315,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         throw thrown
       })
     endExec()
+    // A locked directory moved away after `vx lock`: the spawn's "working
+    // directory does not exist" named no way out (X-144). Asked only here.
+    if (res.spawnFailed === true && !existsSync(node.projectDir)) {
+      await sweepPlaceholders(placeholders)
+      throw new UserError(
+        lockedDirGone(args.workspaceRoot, node.projectName, node.projectDir),
+        'VX_E_LOCK',
+      )
+    }
     if (unbegun) {
       await sweepPlaceholders(placeholders)
       if (attempt === 1) return { result: res, exitCode: res.exitCode, unbegun: true }
@@ -1307,7 +1349,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // ENOENT; the line beside it names the package and how to key it. Only
     // with a denial there, so it never reddens a pass.
     for (const w of reachedWithheld(withheld, violations)) {
-      violations.push({ timestamp: new Date(), hint: true, line: withheldLinkLine(node.id, w) })
+      violations.push({
+        timestamp: new Date(),
+        hint: true,
+        line: withheldLinkLine(node.id, w, args.projectAt?.(w.target)),
+      })
     }
     // A placeholder the task never wrote is not its output: take it back
     // before the outputs are collected. On a failure it is also the one
@@ -1655,14 +1701,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
-      ...(cfgCacheable && !remoteOnly && !willSave ? { unsaved: true } : {}),
+      ...(cfgCacheable && ((!remoteOnly && !willSave) || remoteOff('remoteWrite'))
+        ? { unsaved: true }
+        : {}),
       ...(remoteOnly ? { remoteOnly: true } : {}),
       ...(node.platform !== undefined ? { platform: node.platform } : {}),
       ...(node.worker !== undefined ? { worker: node.worker } : {}),
       ...(deferralRequested ? { download: 'deferred' as const } : {}),
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.
-      ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
+      ...(cfgCacheable && (!(policy.localRead || policy.remoteRead) || remoteOff('remoteRead'))
+        ? { refresh: true }
+        : {}),
       outputs: { files: own(outputs), workspaceFiles: own(wsOutputs) },
       ...(args.terminal === true ? { terminal: true as const } : {}),
       ...(args.servers === undefined
@@ -1805,24 +1855,59 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * What an additive run saves as its own, or undefined when it removed a
    * file it found: no entry replays a removal (`ownOutputsSince`), so the
    * task saves nothing and runs again. Undefined too for any task when a
-   * failed attempt moved a file no clean removed (`failedTouchedFound`).
+   * failed attempt moved a file no clean removed (`failedTouchedFound`),
+   * or the run removed a committed file its clean left (`committedKept`).
    */
   async function ownOutputs(): Promise<
     { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } | undefined
   > {
     if (failedTouchedFound) return undefined
+    if (committedKept.some((f) => lstatSync(f, { throwIfNoEntry: false }) === undefined))
+      return undefined
     const mine: { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } = {}
+    const left = leftByOwnEntries()
     if (stampedBefore !== undefined) {
-      const files = await ownOutputsSince(cleanArgs, stampedBefore)
+      const files = await ownOutputsSince(cleanArgs, stampedBefore, left)
       if (files === undefined) return undefined
       mine.ownOutputFiles = files
     }
     if (wsStampedBefore !== undefined) {
-      const files = await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore)
+      const files = await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore, left)
       if (files === undefined) return undefined
       mine.ownWsOutputFiles = files
     }
     return mine
+  }
+
+  /**
+   * Whether a file the additive run found and left alone is one a save or
+   * restore of this task left there: the proof a hit trusts
+   * (`isOutputsCurrent`) against the rows of any of its entries. Read on
+   * the first such file only; the upstream's files and what nobody saved
+   * have no row of this task's and stay the upstream's.
+   */
+  function leftByOwnEntries(): (abs: string) => boolean {
+    let byPath: Map<string, Array<[root: string, row: OutputFileRow]>> | undefined
+    return (abs) => {
+      if (byPath === undefined) {
+        byPath = new Map()
+        const hashes = taskEntryHashes(args.cache, node.id)
+        for (const rows of args.cache.loadOutputFilesBatch(hashes).values()) {
+          for (const row of rows) {
+            if (row.ino === undefined) continue
+            const ws = row.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+            const root = ws ? args.workspaceRoot : node.projectDir
+            const rel = ws ? row.path.slice(WORKSPACE_OUTPUT_PREFIX.length) : row.path
+            const at = path.join(root, rel)
+            const list = byPath.get(at)
+            const entry: [string, OutputFileRow] = [root, { ...row, path: rel }]
+            if (list === undefined) byPath.set(at, [entry])
+            else list.push(entry)
+          }
+        }
+      }
+      return (byPath.get(abs) ?? []).some(([root, row]) => args.cache.isOutputsCurrent(root, [row]))
+    }
   }
 
   /**
@@ -2058,12 +2143,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
             sandboxFix(
               finalViolations,
               node.projectDir,
+              args.workspaceRoot,
               (t) => secrets?.mask(t) ?? t,
-              cfg.inputs?.files,
+              cfg.inputs,
             ),
           ),
         }
       : {}),
+  }
+}
+
+/**
+ * Whether `abs` leads to a directory. A link that leads nowhere is no
+ * directory: under a file (ENOTDIR) or in a loop (ELOOP) as well as
+ * dangling, where the stat's throw failed the run (2026-11-10).
+ */
+function linksToDir(abs: string): boolean {
+  try {
+    return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+  } catch {
+    return false
   }
 }
 
@@ -2095,8 +2194,7 @@ function deadSourceGlobs(
   // A link to a directory a glob reaches below is listed by its own name,
   // which the glob does not match: `src/**` over `src -> ../shared` was
   // called dead though an edit through it moved the key.
-  for (const { path: p } of files)
-    if (statSync(path.join(root, p), { throwIfNoEntry: false })?.isDirectory() === true) return []
+  for (const { path: p } of files) if (linksToDir(path.join(root, p))) return []
   return [...own, ...ws]
 }
 

@@ -260,7 +260,8 @@ nothing-changed at 0.87 to 1.33 of Turbo on the CI machines they drew.
 `private/vx-bench/real/nightly.ts` re-runs the repos on
 [Real repos](#real-repos) each night against the tool they ship with,
 on this checkout's vx, and exits 1 with a `LOSS` line for any case vx
-loses.
+loses. `--json <file>` also writes each repo's row into
+`private/vx-bench/real-repos.json`'s shape.
 
 ## Head to head
 
@@ -375,9 +376,10 @@ so seconds move no comparison. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
 Main's DTE run deploys the site (`@vzn/vx-docs#deploy.pages`, part of
-`release`). It fetches the newest `bench-data` from main and builds the
-site with it, so it never waits on Bench and never ships the committed
-copy, older than the live one. New numbers go live with the next main push.
+`release`). `build.live` fetches the newest `bench-data` from main and
+builds the site with it while the tests run, so it never waits on Bench
+and never ships the committed copy, older than the live one; the upload
+waits only on `ci`. New numbers go live with the next main push.
 
 No build depends on the
 benchmarks, so neither the DTE run, where a worker is packed beside
@@ -664,14 +666,143 @@ Nx 23.3.0, warm (21 to 24 s, 9,603 of 9,603 hit), self time:
 
 ## Real repos
 
-Public repos, each moved to native vx config with `vx init --native`
-and timed against the tool it ships with, through
-`private/vx-bench/real/nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo):
-both tools run the same tasks with the same worker count, three
-interleaved reps per case, best of three. `cold` wipes the outputs and
-both caches; `restore` wipes the outputs and keeps both caches; `noop`
-wipes nothing. Nx runs with
-`NX_DAEMON=false` and no Nx Cloud.
+Public repos, each moved to native vx config and timed against the
+tool it ships with, through `private/vx-bench/real/nightly.ts`, which
+drives `nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo): both tools run the
+same tasks with the same worker count, three interleaved reps per
+case, best of three. `cold` wipes the outputs and both caches;
+`restore` wipes the outputs and keeps both caches; `noop` wipes
+nothing. Nx runs with `NX_DAEMON=false` and no Nx Cloud.
+
+The native config is either written by `vx init --native` on the
+night, or kept in this repo as an overlay: `private/vx-bench/real/<name>/`
+mirrors the repo's tree with a hand-written `.vx/workspace.ts` and a
+`vx.config.ts` per project that follow its `turbo.json`, copied over a
+clone pinned to a full SHA (solid, vueuse, create-t3-turbo;
+`real/REPOS.md` names each repo's mapped tasks and adjustments).
+
+### Real repos on native config
+
+Each repo on its overlay's native config, 10 workers each, best of five
+interleaved runs; vx at main with #5206, pnpm per repo, Node 22.23, linux x64, 4 cores, 2026-11-11.
+`real-repos.json` holds the rows and the site's
+[real repos](https://vznjs.github.io/vx/compare/real-repos/) page renders
+them; the nightly waits up to two minutes for a 1-minute load under 1
+before each workspace, prints every rep and records the load in the row.
+
+| Repo                                      | Case        | vx      | Turbo   |
+| ----------------------------------------- | ----------- | ------- | ------- |
+| solid `b25c557`, 4 tasks, 2.10.10         | Cold build  | 30.45 s | 36.01 s |
+| solid                                     | Restore     | 0.075 s | 0.075 s |
+| solid                                     | Nothing new | 0.064 s | 0.066 s |
+| vueuse `efdd69a`, 12 tasks, 2.10.12       | Cold build  | 16.70 s | 18.57 s |
+| vueuse                                    | Restore     | 0.140 s | 0.106 s |
+| vueuse                                    | Nothing new | 0.097 s | 0.098 s |
+| create-t3-turbo `8f945b7`, 3 tasks, 2.5.8 | Cold build  | 5.37 s  | 6.47 s  |
+| create-t3-turbo                           | Restore     | 0.078 s | 0.408 s |
+| create-t3-turbo                           | Nothing new | 0.071 s | 0.407 s |
+
+The harness's restore follows a cold run and its "nothing new" that
+restore, and vx paid two stalls there that the run after did not. A
+cold run had no `.vx/cache` while its workspace config loaded, so it
+built no config bundle (project-loader.md), and the restore built it
+inside `workspace config` (~30 ms); now the build runs off the run's
+path. The next run, the first on the bundle, missed the pnpm lockfile
+memo, whose claimant was its functions' printed text, which the bundle
+prints unlike the source (`throw new Error(` against `throw Error(`),
+and parsed `pnpm-lock.yaml` again (~25 ms in `discover`); now
+`@vzn/vx-lockfile` names itself with its source hash (`identity`).
+Solid, interleaved against main, min of five: restore 93 → 66 ms,
+nothing new 75 → 58 ms, the run after 50 → 51 ms.
+
+Vueuse's restore is the first run after the cold build, and it derives
+every key: the cold run took its keys after `@vueuse/metadata#update`
+wrote, so it left no key memo. Its `.gitattributes` sets `* text=auto
+eol=lf`, which drops every index OID, so each key hashes its files from
+the worktree, and each of its 1,300 files was stat'ed and looked up in
+the hash memo once per task that reads it (12,200 `statx`, 13,600
+SQLite lock calls). Now the run holds each file's identity until a
+write it marks (git-inputs.md) and asks the memo once for all the files
+it lacks: 5,000 `statx`, 275 lock calls; restore 162 → 141 ms against
+the two fixes above, interleaved, min of five, nothing new unchanged.
+
+A restore marks the files it writes, and each mark dropped every
+identity the run held: metadata's `index.json` sent the late keys back
+to stat and look up all 900 of their files. Only the marked paths'
+identities go now (git-inputs.md): 137 → 133 ms. Those late keys were
+core's and nuxt's builds, whose `workspaceFiles` read
+`packages/metadata/**`. A reader was keyed late whenever its globs
+reached a producer's directory, so the gitignored `index.json` kept
+both off the restore tier and derived them again after the restore, on
+a synchronous git listing, ~13 ms of main thread each. A producer now
+reaches a reader only through the outputs it can see (stable-keys.md):
+126 → 114 ms, nothing new 93 → 89 ms, interleaved, min of five. Solid
+and t3 take no late key and did not move: solid's restore against the
+base, 30 pairs half in each order, was slower in 17 and faster in 11,
+medians 75 / 77 ms. Extraction was not the cost: one artifact at a
+time it is 1.2 ms each, 15 ms for the twelve, and it overlaps.
+
+`discover` looked like the pnpm lockfile parsed every run (~18 ms). It
+was not: the memo is served each run (a 680 KB read, its hash and one
+row, ~1 ms). The stage's wall was vx-lockfile's own hook (~7 ms) and the
+git enumeration's attribute check landing in it. Asked for five
+attributes by name, `check-attr` printed all five for every path,
+`unspecified` included: 473 KB for vueuse's 1,583 files, ~5 ms of main
+thread to decode and split every run. `--all` prints only what a rule
+sets (160 KB here; util-git-attributes.md). Against the C2 base,
+interleaved, min of five: restore 140 → 120 ms, nothing new 98 → 83 ms, cold 15.43 →
+14.97 s. The hook also read package.json5 and package.yaml in each
+package where neither is, two rejected reads per package (~65 µs each);
+a stat skips them now: restore 91 → 87 ms, nothing new 77 → 75 ms, min
+of 20, medians 1 to 2 ms, within noise.
+
+Nothing new is a tie: 84 against 83 ms. Over 10 warm runs each both
+reach 85 ms; vx makes 10,500 syscalls to Turbo's 16,000 and spawns five
+gits (`var`, `ls-files`, `status`, `check-attr`, `check-ignore`) to
+Turbo's two. Of vx's 84 ms, ~12 are the process (exec, Bun's boot,
+exit) and the rest its stages, median of 12: startup 5, workspace
+config 7, discover 14 (vx-lockfile's hook and the overlapping git
+enumeration), open cache and load configs 6, git enumeration 6, plugin
+stages 2.5, classify 16, of it `stable keys` 13 (each key's files token
+stats the 1,300 files the twelve keys read: no index OID holds under
+`text=auto`), run graph 4, history and close 4.
+
+Restore lost by ~18 ms in the run before this one: the up-front derivation the cold run
+left no memo for (`stable keys`, ~15 ms) and the extraction's wall in
+`run graph`. Remembering the keys at the end of the cold run, after its
+last write, is safe (the memo's token is checked when it is read) but
+moves the cost instead of saving it: +43 ms on vueuse's cold run for
+~18 ms off its restore, +700 ms on the 8,002-task bench's cold run for
+540 ms off its. Not shipped. The bench's derivation was dear because a
+save into a project, even into its ignored `dist/`, ended the
+project's files digest, so a cold run stored a fold row for each
+project's first task only (1,603 of 8,002 keys). A mark now ends it only
+when the digest lists the marked path (git-inputs.md): the bench's
+restore after cold 1,864 → 1,564 ms, median 2,390 → 1,655, cold within
+noise (min 16,524 → 16,597 ms, median 17,423 → 16,965), interleaved,
+min of five. The three repos' cold runs did not slow (min of five:
+vueuse 16.43 → 15.94 s, solid 30.13 → 29.74, t3 5.04 → 4.98). Their
+restores barely moved: twelve tasks or fewer, one or two per project.
+The tests written for it turned up a stale hit: an output glob's head
+linked into the project (`out -> gen` for `out/**`) wrote `gen/x`, but
+only `out/x` was marked, so a reader of `gen/**` kept the old index OID.
+The write is now marked where it landed too. Turbo without its daemon extracts
+every hit on every run, the no-op too, on parallel goroutines: its
+restore and no-op make the same syscalls.
+
+Vueuse's restore still loses, 140 against 106 ms. About 7 ms is
+`stable keys` statting 1,124 files: under `text=auto` the index's stat
+cannot stand in for them, since git calls a same-size line-ending swap
+clean and keeps the old stat (stale-hit-git.test.ts). Turbo keys on the
+index there and replays stale output: the conformance case
+`inputs/same-size-line-ending-swap-under-text-attribute`. The rest is
+the restore's own work, 25 ms on 4 cores: trees alone 10 ms, the five
+inline artifacts alone 9 ms, all twelve 26 ms. Copying is 1.9 ms of it;
+`fs.promises.cp` (14.5 ms) and a Worker (1.5–2.4 ms to start) lost.
+
+Load average before each workspace: vueuse 0.3, solid 1.0 and t3 0.2,
+the last two rerun once the box settled (solid began at 14 after
+vueuse's cold builds and lost its restore tie by one rival rep).
 
 ### TanStack/query (2026-10-09)
 

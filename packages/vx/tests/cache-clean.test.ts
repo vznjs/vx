@@ -324,13 +324,20 @@ describe('vx cache clean with no bound clears the cache', () => {
   // A cache directory with no store (`--cache-dir`, `cache.dir`,
   // `VX_CACHE_DIR`) may be shared by workspaces, each with a run lock of its
   // own: a clear in one deleted the directory under a run of another, which
-  // died opening it (ENOENT on its .gitignore, SQLite's disk I/O error).
-  it(
-    'a clear of a shared cache directory waits for a run of another workspace on it',
-    async () => {
+  // died opening it (ENOENT on its .gitignore, SQLite's disk I/O error). A
+  // run that found no index there held nothing, and the clear deleted the
+  // index it made: the run ended green and its entry was gone.
+  it.each([
+    ['its index there', 'index'],
+    ['no directory there yet', 'none'],
+    ['an empty directory there', 'empty'],
+  ])(
+    'a clear of a shared cache directory waits for a run of another workspace on it, %s',
+    async (_, before) => {
       const shared = path.join(home, 'shared')
       const env = { VX_CACHE_DIR: shared }
-      expect((await vx(['run', 'build', '--all'], env)).code).toBe(0)
+      if (before === 'index') expect((await vx(['run', 'build', '--all'], env)).code).toBe(0)
+      if (before === 'empty') mkdirSync(shared)
       const other = realpathSync(await makeWorkspace({ prefix: 'vx-clear-other-', git: 'commit' }))
       try {
         const gate = await addProject(other, 'gate', {

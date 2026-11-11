@@ -1,8 +1,8 @@
 // A sparse checkout leaves a locked project's config out of the worktree
 // (skip-worktree in the index). It is not a deleted config: `vx lock`
-// would drop the project from the committed lock, and a dependant ran or
+// dropped the project from the committed lock, and a dependant ran or
 // hit without its dependency. A run that needs it names the sparse
-// checkout; one that does not proceeds.
+// checkout; one that does not proceeds; `vx lock` and `--check` refuse.
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -27,7 +27,7 @@ async function vx(root: string, args: string[]) {
 }
 
 const REFUSAL =
-  '✗ vx run  packages/lib is outside this sparse checkout, but this run needs its vx.config.mjs — run `git sparse-checkout add packages/lib`'
+  '✗ vx run  packages/lib ("lib") is outside this sparse checkout, but this run needs its vx.config.mjs — run `git sparse-checkout add packages/lib`'
 
 let root: string
 beforeEach(async () => {
@@ -61,4 +61,16 @@ it('a run that does not need the excluded project proceeds', async () => {
   const r = await vx(root, ['run', 'build', '--filter', 'other', '--output-logs=full'])
   expect(`${r.code}\n${r.err}`).toStartWith('0\n')
   expect(r.out).toContain('built')
+}, 30_000)
+
+it('vx lock and its --check refuse what the sparse checkout left out, the lock untouched', async () => {
+  const lockFile = path.join(root, '.vx/projects.lock.json')
+  const before = await Bun.file(lockFile).text()
+  const said =
+    'packages/lib is outside this sparse checkout, so vx lock cannot read its vx.config.mjs — run `git sparse-checkout add packages/lib`'
+  for (const args of [['lock'], ['lock', '--check']]) {
+    const r = await vx(root, args)
+    expect([r.code, r.err.includes(said)]).toEqual([1, true])
+  }
+  expect(await Bun.file(lockFile).text()).toBe(before)
 }, 30_000)

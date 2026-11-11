@@ -1,8 +1,9 @@
 // `vx run --dry=json` is a machine's input: stdout carries the plan and
-// nothing else. A `project` stage's warning (turbo() warns there) went
-// through the plan's default logger to stdout ahead of the JSON, and the
-// output did not parse (C-6).
-import { writeFileSync } from 'node:fs'
+// nothing else. A plugin stage's warning (turbo() warned in its `project`
+// stage; only `vx lock` runs that and `discover` since 2026-11-11, and
+// `config` runs on every verb) went through the plan's default logger to
+// stdout ahead of the JSON, and the output did not parse (C-6).
+import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -27,7 +28,7 @@ beforeEach(async () => {
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
-      pluginSource('org/warner', `{ project(config, ctx) { ctx.warn('careful: app') } }`),
+      pluginSource('org/warner', `{ config(_ws, ctx) { ctx.warn('careful: app') } }`),
     ]),
   )
   gitInitCommit(root)
@@ -74,7 +75,7 @@ it('`vx lock` and the run over its lock each print a stage warning once', () => 
     const all = p.stdout.toString() + p.stderr.toString()
     return { code: p.exitCode, warned: all.split('careful: app').length - 1 }
   }
-  // Each loads the plugin once: the lock to stage the configs, the run to stage the locked ones.
+  // Each loads the plugin once: the lock and the run each run the config stage once.
   expect({
     lock: count(['lock']),
     dry: count(['run', 'build', '--all', '--dry']),
@@ -84,6 +85,62 @@ it('`vx lock` and the run over its lock each print a stage warning once', () => 
     dry: { code: 0, warned: 1 },
     run: { code: 0, warned: 1 },
   })
+})
+
+it('each verb runs the config stage once', () => {
+  // `vx show` loaded the workspace again for its project load, a third
+  // time for `--affected`; `vx why` five times; a run again after its
+  // selection pass: turbo()'s warning printed each time (principle 9).
+  // Counted by the hook, not the warning: `vx last` replays a run's output.
+  const calls = path.join(root, 'config-calls')
+  writeFileSync(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource(
+      [
+        pluginSource(
+          'org/counter',
+          `{ config() { appendFileSync(${JSON.stringify(calls)}, 'x') } }`,
+        ),
+      ],
+      "import { appendFileSync } from 'node:fs'\n",
+    ),
+  )
+  const count = (args: string[], cwd = root) => {
+    writeFileSync(calls, '')
+    Bun.spawnSync({
+      cmd: ['bun', BIN, ...args],
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+    })
+    return readFileSync(calls, 'utf8').length
+  }
+  expect(count(['lock'])).toBe(1)
+  const verbs = [
+    ['why', 'app#build'],
+    ['why', 'build'],
+    ['show'],
+    ['show', '--format', 'json'],
+    ['show', '--filter', 'app'],
+    ['show', '--affected=HEAD'],
+    ['show', 'build', '--affected=HEAD'],
+    ['show', 'app#build'],
+    ['run', 'build', '--affected=HEAD', '--dry'],
+    ['run', 'build', '--filter', 'app', '--dry'],
+    ['run', 'app#build', '--dry'],
+    ['run', 'build', '--all'],
+    ['why', 'app#build'],
+    ['why', 'build'],
+    ['last'],
+    ['last', '--stats'],
+    ['last', '--log', 'app#build'],
+    ['info'],
+    ['cache', 'clean', '--dry'],
+  ]
+  expect(verbs.map((v) => [v.join(' '), count(v)])).toEqual(verbs.map((v) => [v.join(' '), 1]))
+  // From the project's directory the selection pass places the cwd first.
+  expect(count(['run', 'build', '--dry'], path.join(root, 'pkgs', 'app'))).toBe(1)
 })
 
 // vercel/turborepo#2067: "Remote computation caching enabled" printed on

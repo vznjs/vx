@@ -913,6 +913,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                   `upstream ${up.taskId} outputs are neither on this machine nor in the remote store — re-run it (e.g. --force)`,
                 )
               }
+              // As the replay above: a record of a failed run is no output
+              // set. Grafted, the dependant ran on a failed build's outputs
+              // and was cached as a success.
+              if ((record.exit_code ?? 0) !== 0) {
+                throw new UserError(
+                  `upstream ${up.taskId} outputs are in the remote store only as a failed run (exit ${record.exit_code}) — re-run it (e.g. --force)`,
+                )
+              }
               // A record can OUTLIVE its blobs: the AC and the CAS evict on
               // independent schedules. On THIS branch nothing is local (that is
               // why we are grafting), so an evicted blob has no local path to
@@ -1600,7 +1608,8 @@ function literalHead(glob: string): { path: string; rest: string[] } {
  * The action's environment: `inputs.env` (values read from THIS
  * machine's environment, already folded into the cache key) plus
  * `exec.env.define` (literals from the task config), plus the
- * `FORCE_COLOR=1` vx sets on every local child. A define wins on
+ * `FORCE_COLOR` and `NO_COLOR` the local child sees (this machine's, or the
+ * `FORCE_COLOR=1` vx sets on every local child). A define wins on
  * collision — it is the more explicit statement of intent. An `inputs.env`
  * name crosses only when the local child gets the same value (`childEnv`,
  * the request's resolved environment): a name the config only TRACKS is in
@@ -1629,6 +1638,13 @@ export function commandEnvironment(
     if (e.value !== undefined && childEnv[e.name] === e.value) merged.set(e.name, e.value)
   }
   for (const [name, value] of Object.entries(envDefine)) merged.set(name, value)
+  // The local child keeps this machine's FORCE_COLOR and NO_COLOR (the
+  // essential allowlist), unkeyed: the worker forced colour where a local
+  // run printed plain, so the same key stored other bytes.
+  for (const name of ['FORCE_COLOR', 'NO_COLOR']) {
+    const value = childEnv[name]
+    if (value !== undefined && !merged.has(name)) merged.set(name, value)
+  }
   // Core's exec/env.ts gives the local child FORCE_COLOR=1 unless it already
   // sees FORCE_COLOR or a non-empty NO_COLOR. Without it here a worker
   // stored plain bytes under the key a local run stores coloured ones.

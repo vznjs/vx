@@ -21,7 +21,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../packages/vx/src/**"
+              "../../packages/vx/src/**",
+              "../vx-bench/real-repos.json"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -52,6 +53,9 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -256,7 +260,8 @@
               "../../packages/vx-reapi/tests/exec-e2e.test.ts",
               "../../packages/vx-migrate/tests/turbo.test.ts",
               "../../packages/vx/docs/cli.md",
-              "../../packages/vx/docs/schema.md"
+              "../../packages/vx/docs/schema.md",
+              "../vx-bench/real-repos.json"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -320,7 +325,8 @@
           "packages/vx-reapi/tests/exec-e2e.test.ts",
           "packages/vx-migrate/tests/turbo.test.ts",
           "packages/vx/docs/cli.md",
-          "packages/vx/docs/schema.md"
+          "packages/vx/docs/schema.md",
+          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -377,7 +383,7 @@
         "build.images"
       ],
       "exec": {
-        "command": "mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build",
+        "command": "rm -rf .astro/cache && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build",
         "env": {
           "define": {
             "ASTRO_TELEMETRY_DISABLED": "1"
@@ -386,7 +392,8 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*"
+              "**/*",
+              "../vx-bench/real-repos.json"
             ],
             "write": [
               "dist/**",
@@ -431,6 +438,9 @@
           "!public/_img/**",
           "!dist/**",
           "package.json"
+        ],
+        "workspaceFiles": [
+          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -445,21 +455,64 @@
         "deploy.pages"
       ]
     },
-    "deploy.pages": {
-      "description": "build the site with main's newest bench numbers → dist-live/ and deploy it to GitHub Pages (GitHub Actions only)",
+    "build.live": {
+      "description": "build the site with main's newest bench numbers → dist-live/ (GitHub Actions only)",
       "dependsOn": [
-        "ci",
         "install",
         "import",
         "build.images"
       ],
       "exec": {
-        "command": "bun scripts/live-bench.ts && rm -rf .astro/live && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live && bun scripts/deploy-pages.ts dist-live",
+        "command": "bun scripts/live-bench.ts && rm -rf .astro/live && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live",
         "env": {
           "define": {
             "ASTRO_TELEMETRY_DISABLED": "1",
             "VX_DOCS_BENCH": "measured/live.json"
           },
+          "passThrough": [
+            "GITHUB_TOKEN",
+            "GITHUB_REPOSITORY",
+            "GITHUB_API_URL"
+          ],
+          "secret": [
+            "GITHUB_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../vx-bench/real-repos.json"
+            ],
+            "write": [
+              "measured/live.json",
+              "dist-live/**",
+              ".astro/**"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ],
+            "network": [
+              "api.github.com",
+              "*.blob.core.windows.net"
+            ]
+          }
+        }
+      }
+    },
+    "deploy.pages": {
+      "description": "deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)",
+      "dependsOn": [
+        "ci",
+        "build.live"
+      ],
+      "exec": {
+        "command": "bun scripts/deploy-pages.ts dist-live",
+        "env": {
           "passThrough": [
             "ACTIONS_RUNTIME_TOKEN",
             "ACTIONS_RESULTS_URL",
@@ -481,17 +534,9 @@
             "read": [
               "**/*"
             ],
-            "write": [
-              "measured/live.json",
-              "dist-live/**",
-              ".astro/**"
-            ],
             "systemInfo": [
               "vfs.disk-space",
               "net.link.addr"
-            ],
-            "machLookup": [
-              "com.apple.SystemConfiguration.DNSConfiguration"
             ],
             "network": [
               "*.actions.githubusercontent.com",
@@ -522,7 +567,8 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*"
+              "**/*",
+              "../vx-bench/real-repos.json"
             ],
             "write": [
               ".astro/**"

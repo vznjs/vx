@@ -4,7 +4,7 @@
 // are hashed from disk, never stored. A broad glob (`**`, `src/**`) still
 // skips what git ignores, so `node_modules` is never walked.
 
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it, spyOn } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -300,7 +300,7 @@ it(
     root = await workspace(
       { t: task("{ files: ['gen/**'] }"), u: task("{ files: ['out/**'] }") },
       { 'gen/.gitkeep': '', 'gen/client.ts': 'v1\n', 'out/a.txt': 'a\n', 'out/b.txt': 'b1\n' },
-      'gen/*\n!gen/.gitkeep\nout/\n',
+      '**/gen/*\n!**/gen/.gitkeep\nout/\n',
     )
     gitIn(root)('add', '-f', 'packages/lib/out/a.txt')
     gitIn(root)('commit', '-q', '-m', 'force-add')
@@ -325,6 +325,21 @@ it(
     const t = await key('lib#t')
     await writeFile(pkg('src/x.generated.js'), 'v2\n')
     expect(await key('lib#t')).toBe(t)
+  },
+  TIMEOUT,
+)
+
+it(
+  'a glob over a directory whose every file a pattern ignores walks it: git reports the directory ignored',
+  async () => {
+    root = await workspace(
+      { t: task("{ files: ['gen/**'] }") },
+      { 'gen/x.generated.js': 'v1\n' },
+      '*.generated.js\n',
+    )
+    const t = await key('lib#t')
+    await writeFile(pkg('gen/x.generated.js'), 'v2\n')
+    expect(await key('lib#t')).not.toBe(t)
   },
   TIMEOUT,
 )
@@ -402,3 +417,61 @@ it('asks no path.relative for a normalized directory under the root', () => {
     relative.mockRestore()
   }
 })
+
+// The directories a task names outright are asked in the run's one
+// `check-ignore` beside the enumeration, with the outputs it gates: asked
+// on the key path, it was a synchronous spawn (vueuse, 2026-11-10).
+it('a directory answered beside the enumeration is asked of git no more', () => {
+  const cache = new GitFilesCache()
+  cache.setIgnored('/w', ['packages/a/gen/x.ts', 'packages/c/src/y.log'])
+  cache.answerNewFilesIgnored(['packages/a/gen', 'packages/c/src'], (d) => d === 'packages/a/gen')
+  const spawn = spyOn(Bun, 'spawnSync')
+  try {
+    expect(cache.newFilesIgnored('/w/packages/a/gen')).toBe(true)
+    expect(cache.newFilesIgnored('/w/packages/c/src')).toBe(false)
+    expect(spawn).toHaveBeenCalledTimes(0)
+    // CONTROL: one it holds no answer for is still asked.
+    cache.newFilesIgnored('/w/packages/c')
+    expect(spawn).toHaveBeenCalled()
+  } finally {
+    spawn.mockRestore()
+  }
+})
+
+const gating = (inputs: string) =>
+  `{ exec: { command: 'true' }, inputs: ${inputs}, outputs: { files: ['dist/**'] }, cache: true }`
+
+it(
+  'a prefix git ignores new files in is walked when its answer came with the gated outputs',
+  async () => {
+    // `**/*` reaches the task's own `dist/**`, so the run asks git about
+    // `dist` beside the enumeration, and `gen` with it.
+    root = await workspace(
+      { t: gating("{ files: ['**/*', 'gen/**'] }") },
+      { 'gen/.gitkeep': '', 'gen/client.ts': 'v1\n' },
+      '**/gen/*\n!**/gen/.gitkeep\ndist/\n',
+    )
+    const t = await key('lib#t')
+    await writeFile(pkg('gen/client.ts'), 'v2\n')
+    expect(await key('lib#t')).not.toBe(t)
+  },
+  TIMEOUT,
+)
+
+it(
+  'a named entry past a symlink, which git refuses to check, still keys the ignored files',
+  async () => {
+    // git fails a whole `check-ignore` over a path beyond a symlink: the
+    // gated outputs are asked again alone, and `gen` as before.
+    root = await workspace(
+      { t: gating("{ files: ['**/*', 'gen/**', 'link/x/**'] }") },
+      { 'gen/.gitkeep': '', 'gen/client.ts': 'v1\n', 'real/x/a.txt': 'a\n' },
+      '**/gen/*\n!**/gen/.gitkeep\ndist/\n',
+    )
+    await symlink('real', pkg('link'))
+    const t = await key('lib#t')
+    await writeFile(pkg('gen/client.ts'), 'v2\n')
+    expect(await key('lib#t')).not.toBe(t)
+  },
+  TIMEOUT,
+)

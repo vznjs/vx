@@ -27,7 +27,7 @@ import { type AffectedFilter, affectedFilterFor, resolveFilters } from './select
 import {
   discoverCliProjects,
   loadCliProjects,
-  loadCliWorkspace,
+  workspaceOfDiscovery,
   warnToStderr,
 } from './workspace-config.js'
 import {
@@ -186,12 +186,13 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         process.cwd(),
         parsed.affected,
         'drop --affected to list them all',
+        metas,
       )
       if ('error' in f) throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
       affected = f
       raw.unshift(f.filter)
     }
-    const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show')
+    const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show', metas)
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
     if ('empty' in r) sayNotice('info', 'vx show', r.empty)
     selected = new Set('empty' in r ? [] : r.names)
@@ -238,7 +239,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     }
     let shown = declaring.filter((p) => inSelection(p.name))
     if (byDiff !== undefined) {
-      const ws = await loadCliWorkspace(root)
+      const ws = workspaceOfDiscovery(metas)!
       const kept = new Set(
         await affectedTaskProjects({
           task: projectName!,

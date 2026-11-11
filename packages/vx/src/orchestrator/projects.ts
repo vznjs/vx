@@ -2,7 +2,8 @@
 // `prepareRun` (a run, a plan) and `vx show` (introspection). One code
 // path, so what `show` prints is what a run would see — including the
 // plugin `project` stage, which can give tasks to a package that never
-// wrote a `vx.config.ts`.
+// wrote a `vx.config.ts`. `vx lock` runs that stage and records what it
+// left (`Lockfile.projectStage`); every other reader takes the record.
 
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -16,8 +17,11 @@ import {
   NO_LOCK,
   pathName,
   PROJECT_CONFIG_FILENAMES,
+  lockKey,
   readLockfile,
   validateProjectConfig,
+  type DiscoveredLock,
+  type DiscoverStageLock,
   type Lockfile,
   type PackageGraph,
   type ProjectEntry,
@@ -47,6 +51,7 @@ import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 import { freezeDeep, readOnly } from './read-only.js'
+import { type ExtraHashes, withExtraHashes } from './lockfile-claim.js'
 
 /**
  * The workspace config with the plugin `config` stage applied — the first
@@ -153,6 +158,38 @@ export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumera
   return discoveredGit.get(projects)
 }
 
+type WorkspacePlugins = Awaited<ReturnType<typeof loadWorkspacePlugins>>
+
+/**
+ * The workspace a discovery's caller loaded (`loadWorkspacePlugins`), by the
+ * discovery's array: a run handed that array (`RunOptions.discovered`) runs
+ * the `config` stage no second time, and a plugin's warning prints once.
+ */
+const discoveredWorkspace = new WeakMap<readonly ProjectMeta[], WorkspacePlugins>()
+
+export function keepDiscoveryWorkspace(
+  projects: readonly ProjectMeta[],
+  workspace: WorkspacePlugins,
+): void {
+  discoveredWorkspace.set(projects, workspace)
+}
+
+export function pluginsOfDiscovery(projects: readonly ProjectMeta[]): WorkspacePlugins | undefined {
+  return discoveredWorkspace.get(projects)
+}
+
+/**
+ * The run's extra-file hashes (`ExtraHashes`), by the discovery's array: a
+ * discovery is one run's (`vx watch` discovers each cycle), and the CLI's
+ * `--affected` pass, the `project` stage and the key share what `discover`
+ * hashed.
+ */
+const discoveredHashes = new WeakMap<readonly ProjectMeta[], ExtraHashes>()
+
+export function extraHashesOfDiscovery(projects: readonly ProjectMeta[]): ExtraHashes | undefined {
+  return discoveredHashes.get(projects)
+}
+
 /** The lock a discovery read, by the array it returned: a later config load reads no second copy. */
 const discoveredLock = new WeakMap<readonly ProjectMeta[], () => Promise<Lockfile>>()
 
@@ -188,6 +225,23 @@ export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: Pack
   discoveredGraph.set(projects, graph)
 }
 
+/** A locked project as a refusal names it: its directory, and its name where that differs. */
+function lockedProject(root: string, name: string, dir: string): string {
+  // `.` read as a sentence's end: the notice cut the line there.
+  const rel = relPosix(root, dir) || 'the workspace root project'
+  return name === pathName(root, dir) ? rel : `${rel} ("${name}")`
+}
+
+/**
+ * The refusal for a locked project whose directory is gone (X-144): a
+ * config-less one has no config file for the load to find missing, so it
+ * is asked only when a spawn into the directory failed, and a run pays no
+ * stat per project.
+ */
+export function lockedDirGone(root: string, name: string, dir: string): string {
+  return `${LOCKFILE_NAME} locks ${lockedProject(root, name, dir)}, but its directory is gone — run \`vx lock\``
+}
+
 /** The plugin whose `discover` entry made each project the lock does not hold. */
 const addedBy = new WeakMap<object, string>()
 
@@ -215,31 +269,90 @@ export function ignoredConfigRefusal(
 
 /**
  * The workspace's projects: the directories the lock records (a run never
- * walks for configs), then the plugin `discover` stage, which may add
- * directories, name path-named ones and give edges. Sorted by name; two
- * projects of one name are refused.
+ * walks for configs), with what the plugin `discover` stage added, named
+ * and linked as `vx lock` recorded it (`Lockfile.discoverStage`). No hook
+ * runs, whatever plugins the workspace declares now (2026-11-11: "it
+ * should always follow the lock blindly"). Sorted by name; two projects of
+ * one name are refused.
  */
 export async function discoverProjects(
+  workspaceRoot: string,
+  lock: () => Promise<Lockfile>,
+  /** The run's enumeration, which an `--affected` selection reads (and starts). */
+  git: LazyGitEnumeration = lazyGitEnumeration(workspaceRoot),
+): Promise<ProjectMeta[]> {
+  const read = await lock()
+  const projects = lockedDiscovery(workspaceRoot, read, lock, git)
+  const recorded = read.discoverStage?.projects ?? {}
+  const byDir = new Map(projects.map((p) => [p.dir, p]))
+  const named = new Set<ProjectMeta>()
+  const atKey = (rel: string): string =>
+    rel === '.' ? workspaceRoot : path.join(workspaceRoot, rel)
+  for (const rel of Object.keys(recorded)) {
+    const rec = recorded[rel]!
+    const dir = atKey(rel)
+    let meta = byDir.get(dir)
+    if (meta === undefined) {
+      meta = { name: rec.name, dir, configPath: null }
+      projects.push(meta)
+      byDir.set(dir, meta)
+      if (rec.by !== undefined) addedBy.set(meta, rec.by)
+    } else meta.name = rec.name
+    named.add(meta)
+    if (rec.deps !== undefined) meta.deps = [...rec.deps]
+    if (rec.reach !== undefined) meta.reach = [...rec.reach]
+  }
+  // A run follows the lock blindly: an edge to no project was dropped (the
+  // dependant ran, and hit, without it), a stage config for no project was
+  // never read, and a clash with a recorded name sent the user to a
+  // vx.config. `vx lock` writes none of them.
+  const names = new Map<string, ProjectMeta>()
+  for (const p of projects) {
+    const other = names.get(p.name)
+    if (other !== undefined && (named.has(p) || named.has(other))) {
+      const dirs = [other, p].map((m) => relPosix(workspaceRoot, m.dir) || '.').sort()
+      throw lockInvalid(`two projects are named "${p.name}": ${dirs[0]} and ${dirs[1]}`)
+    }
+    names.set(p.name, p)
+  }
+  for (const rel of Object.keys(recorded)) {
+    const rec = recorded[rel]!
+    for (const [verb, edges] of [
+      ['depends on', rec.deps],
+      ['reaches', rec.reach],
+    ] as const) {
+      const unknown = edges?.find((n) => !names.has(n))
+      if (unknown !== undefined)
+        throw lockInvalid(`${rel} ${verb} "${unknown}", which no project is named`)
+    }
+  }
+  for (const rel of Object.keys(read.projectStage?.configs ?? {})) {
+    if (!byDir.has(atKey(rel)))
+      throw lockInvalid(`it holds a \`projectStage\` config for ${rel}, which is no project`)
+  }
+  return checkProjectNames(workspaceRoot, projects)
+}
+
+function lockInvalid(why: string): UserError {
+  return new UserError(`${LOCKFILE_NAME} is invalid: ${why} — run \`vx lock\``, 'VX_E_LOCK')
+}
+
+/**
+ * `vx lock`'s discovery: the locked projects through the plugin `discover`
+ * hooks, and what they left to record (`Lockfile.discoverStage`), absent
+ * when no plugin fills the stage. The one place a `discover` hook runs.
+ */
+export async function lockDiscovery(
   workspaceRoot: string,
   lock: () => Promise<Lockfile>,
   plugins: readonly VxPlugin[],
   cacheDir: string,
   warn: (message: string) => void,
-  /** The run's enumeration, which `DiscoverContext.worktreeChanges` reads (and starts). */
-  git: LazyGitEnumeration = lazyGitEnumeration(workspaceRoot),
-): Promise<ProjectMeta[]> {
-  const read = await lock()
-  const projects = lockedProjects(workspaceRoot, read.projects)
-  if (read.nestedWorkspaces !== undefined)
-    discoveredWalls.set(
-      projects,
-      read.nestedWorkspaces.map((rel) => path.join(workspaceRoot, rel)),
-    )
-  // Registered whatever the hooks: an `--affected` selection reads its
-  // untracked files from this walk, and the run reuses it (I-26).
-  discoveredGit.set(projects, git)
-  discoveredLock.set(projects, lock)
-  if (!hasHook(plugins, 'discover')) return checkProjectNames(workspaceRoot, projects)
+): Promise<{ projects: ProjectMeta[]; stage?: DiscoverStageLock }> {
+  const git = lazyGitEnumeration(workspaceRoot)
+  const projects = lockedDiscovery(workspaceRoot, await lock(), lock, git)
+  if (!hasHook(plugins, 'discover')) return { projects: checkProjectNames(workspaceRoot, projects) }
+  const before = new Map(projects.map((p) => [p, p.name]))
   const worktreeChanges = (): Promise<readonly string[] | null> =>
     git.start().then(
       (e) => e.changed,
@@ -249,7 +362,10 @@ export async function discoverProjects(
   const edges = await applyDiscoverHooks(
     plugins,
     projects,
-    { workspaceRoot, cacheDir, warn, worktreeChanges },
+    withExtraHashes(
+      { workspaceRoot, cacheDir, warn, worktreeChanges },
+      discoveredHashes.get(projects),
+    ),
     async (entry, plugin) => {
       const found = await discoveredProject(workspaceRoot, byDir, entry, plugin.name)
       if (found.added) {
@@ -261,6 +377,54 @@ export async function discoverProjects(
   )
   checkProjectNames(workspaceRoot, projects)
   linkDiscoveredEdges(workspaceRoot, projects, edges)
+  const recorded: [string, DiscoveredLock][] = []
+  for (const meta of projects) {
+    const by = addedBy.get(meta)
+    if (
+      meta.name === before.get(meta) &&
+      by === undefined &&
+      meta.deps === undefined &&
+      meta.reach === undefined
+    )
+      continue
+    recorded.push([
+      lockKey(workspaceRoot, meta.dir),
+      {
+        name: meta.name,
+        ...(by !== undefined ? { by } : {}),
+        ...(meta.deps !== undefined ? { deps: [...meta.deps] } : {}),
+        ...(meta.reach !== undefined ? { reach: [...meta.reach] } : {}),
+      },
+    ])
+  }
+  recorded.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return {
+    projects,
+    stage: {
+      plugins: plugins.filter((p) => typeof p.discover === 'function').map((p) => p.name),
+      projects: Object.fromEntries(recorded),
+    },
+  }
+}
+
+/** The projects the lock records, registered for the readers keyed on the discovery's array. */
+function lockedDiscovery(
+  workspaceRoot: string,
+  read: Lockfile,
+  lock: () => Promise<Lockfile>,
+  git: LazyGitEnumeration,
+): ProjectMeta[] {
+  const projects = lockedProjects(workspaceRoot, read.projects)
+  if (read.nestedWorkspaces !== undefined)
+    discoveredWalls.set(
+      projects,
+      read.nestedWorkspaces.map((rel) => path.join(workspaceRoot, rel)),
+    )
+  // An `--affected` selection reads its untracked files from this walk,
+  // and the run reuses it (I-26).
+  discoveredGit.set(projects, git)
+  discoveredLock.set(projects, lock)
+  discoveredHashes.set(projects, new Map())
   return projects
 }
 
@@ -290,7 +454,11 @@ interface LoadProjectsBase {
    */
   configs: () => Promise<Lockfile>
   warn: (message: string) => void
-  /** `vx lock`'s audit: the `project` stage's `ctx.lock`. */
+  /**
+   * `vx lock`'s audit: the one load that runs the `project` stage's hooks
+   * (`ctx.lock`) and returns what they left (`LoadedProjects.stage`).
+   * Every other load reads that from the lock.
+   */
   lock?: boolean
   /**
    * Entries a load in this same process already produced with the same
@@ -311,6 +479,12 @@ export interface LoadedProjects {
    * fills the `project` stage and may give it tasks.
    */
   configured: readonly ProjectMeta[]
+  /**
+   * With `lock` and a `project` plugin: each loaded project's config as the
+   * stage left it, before the default `build`, by directory. What `vx lock`
+   * records (`Lockfile.projectStage`).
+   */
+  stage?: Map<string, ProjectConfig>
 }
 
 /**
@@ -329,21 +503,42 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // A package with no config file declares no tasks — unless a plugin
   // fills the `project` stage, in which case it is a project the stage may
   // give tasks to (the zero-migration shape: `turbo.json` or `package.json`
-  // scripts mapped onto packages that never wrote a `vx.config.ts`). It
-  // then loads as `{ tasks: {} }` — nothing to evaluate, nothing to freeze
-  // — and the stage runs on that like on any loaded config. With no
+  // scripts mapped onto packages that never wrote a `vx.config.ts`). Under
+  // `vx lock` it then loads as `{ tasks: {} }` — nothing to evaluate — and
+  // the stage runs on that like on any loaded config; a run loads what the
+  // lock recorded of it. With no
   // `project` plugin a plain run never seeds a config-less
   // package, but loads one a loaded project's closure reaches: it gets the
   // default `build`, so a dependant bundling its source is keyed on it
   // behind `^build`. Left out, its edit replayed the dependant's stale
   // output as a hit (X-9).
-  const projectStage = hasHook(plugins, 'project')
+  // Only `vx lock` runs the hooks. A run follows the configs they left,
+  // as `vx lock` recorded them, blindly: whatever plugins the workspace
+  // declares now, and reading nothing a mapping reads (2026-11-11: "we
+  // never relock during runs ... it should always follow the lock blindly").
+  const hooks = args.lock === true && hasHook(plugins, 'project')
+  const stage = hooks ? new Map<string, ProjectConfig>() : undefined
+  // Asked only when a config is to be read: a run whose every project the
+  // CLI's selection pass staged never parses the lock.
+  const recorded =
+    !hooks && args.projectMetas.some((m) => args.staged?.get(m.name) === undefined)
+      ? (await lock()).projectStage?.configs
+      : undefined
+  const recordedOf = (meta: ProjectMeta): ProjectConfig | undefined => {
+    if (recorded === undefined) return undefined
+    const dir = lockKey(workspaceRoot, meta.dir)
+    return Object.hasOwn(recorded, dir) ? recorded[dir] : undefined
+  }
   // A hook that set one project's `dir` to another's moved it there: the
   // graph's directory guard read the moved entry, and its outputs clean
   // emptied the other project's.
-  if (projectStage) freezeDeep(args.projectMetas)
+  if (hooks) freezeDeep(args.projectMetas)
   const configured = args.projectMetas.filter(
-    (m) => projectStage || (typeof m.configPath === 'string' && m.configPath.length > 0),
+    (m) =>
+      hooks ||
+      (typeof m.configPath === 'string' && m.configPath.length > 0) ||
+      recordedOf(m) !== undefined ||
+      args.staged?.get(m.name) !== undefined,
   )
   const metaByName = new Map<string, ProjectMeta>(args.projectMetas.map((m) => [m.name, m]))
   const needed = new Set<string>()
@@ -419,16 +614,14 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const present = await Promise.all(withFile.map((m) => Bun.file(m.configPath).exists()))
     const gone = withFile.find((_, i) => !present[i])
     if (gone !== undefined) {
-      // `.` read as a sentence's end: the notice cut the line there.
-      const rel = relPosix(workspaceRoot, gone.dir) || 'the workspace root project'
-      const named = gone.name === pathName(workspaceRoot, gone.dir) ? '' : ` ("${gone.name}")`
+      const locked = lockedProject(workspaceRoot, gone.name, gone.dir)
       const file = relPosix(gone.dir, gone.configPath)
-      // A sparse checkout left it out: `vx lock` would drop it from the
-      // committed lock. Asked only on this failure path.
+      // A sparse checkout left it out, not deleted: `vx lock` there
+      // refuses too. Asked only on this failure path.
       const sparse = skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, gone.configPath))
       if (sparse !== null) {
         throw new UserError(
-          `${rel}${named} is outside this sparse checkout, but this run needs its ${file} — run \`git sparse-checkout add ${path.posix.dirname(sparse)}\``,
+          `${locked} is outside this sparse checkout, but this run needs its ${file} — run \`git sparse-checkout add ${path.posix.dirname(sparse)}\``,
         )
       }
       // exists() says false for a file behind a directory this user may not
@@ -440,16 +633,17 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       )
       throw denied !== null
         ? new UserError(
-            `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is not readable by this user (${denied})`,
+            `${LOCKFILE_NAME} locks ${locked}, but its ${file} is not readable by this user (${denied})`,
             'VX_E_FS',
           )
         : new UserError(
-            `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is gone — run \`vx lock\``,
+            `${LOCKFILE_NAME} locks ${locked}, but its ${file} is gone — run \`vx lock\``,
             'VX_E_LOCK',
           )
     }
+    const fromLock = withFile.filter((m) => recordedOf(m) === undefined)
     const loaded =
-      withFile.length === 0 ? [] : frozenProjectConfigs(await lock(), withFile, workspaceRoot)
+      fromLock.length === 0 ? [] : frozenProjectConfigs(await lock(), fromLock, workspaceRoot)
     let next = 0
     for (const meta of round) {
       const pre = args.staged?.get(meta.name)
@@ -462,12 +656,13 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         continue
       }
       const frozen: ProjectConfig =
-        meta.configPath === null ? { tasks: {} } : (loaded[next++] as ProjectConfig)
+        recordedOf(meta) ??
+        (meta.configPath === null ? { tasks: {} } : (loaded[next++] as ProjectConfig))
       // The lock shares a task, or a part of one, every place declares alike,
       // in this project too: an edit in place works on a copy that shares
       // nothing. `structuredClone` keeps the sharing; the lock is JSON.
-      const config: ProjectConfig = projectStage ? JSON.parse(JSON.stringify(frozen)) : frozen
-      if (projectStage) {
+      let config: ProjectConfig = hooks ? JSON.parse(JSON.stringify(frozen)) : frozen
+      if (hooks) {
         // The `project` stage edits the validated object in place; core
         // re-validates after EACH plugin so a plugin can only produce what
         // the loader accepts from a user, and the refusal names both the
@@ -477,16 +672,19 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         await applyProjectHooks(
           plugins,
           config,
-          {
-            workspaceRoot,
-            cacheDir: args.cacheDir,
-            warn: args.warn,
-            name: meta.name,
-            dir: meta.dir,
-            // The view `discover` was handed: nx() keys its graph on its identity.
-            projects: readOnly(args.projectMetas),
-            lock: args.lock === true,
-          },
+          withExtraHashes(
+            {
+              workspaceRoot,
+              cacheDir: args.cacheDir,
+              warn: args.warn,
+              name: meta.name,
+              dir: meta.dir,
+              // The view `discover` was handed: nx() keys its graph on its identity.
+              projects: readOnly(args.projectMetas),
+              lock: true,
+            },
+            discoveredHashes.get(args.projectMetas),
+          ),
           (plugin) => {
             const at = `${where} (after plugin '${plugin.name}')`
             validateProjectConfig(config, at, meta.configPath)
@@ -499,6 +697,12 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             }
           },
         )
+        // The run takes a copy of what the hooks left: a plugin that kept
+        // the object and wrote it later (from `admit`, or another project's
+        // hook) ran a command its key never saw, past the validation above.
+        // A copy, not a deep freeze: 1.5 ms of 1,000 projects against 4.4.
+        config = JSON.parse(JSON.stringify(config))
+        stage!.set(meta.dir, config)
       }
       const built = withDefaultBuild(config)
       const named = rootName === undefined ? built : rootSpelled(built, rootName)
@@ -509,7 +713,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       }
     }
   }
-  return { projects, configured }
+  return stage === undefined ? { projects, configured } : { projects, configured, stage }
 }
 
 function withDefaultBuild(config: ProjectConfig): ProjectConfig {
@@ -577,7 +781,7 @@ export async function loadResolvedProjects(
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warn)
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
   const lock = lockReader(workspaceRoot)
-  const metas = await discoverProjects(workspaceRoot, lock, plugins, cacheDir, warn)
+  const metas = await discoverProjects(workspaceRoot, lock)
   const loaded = await loadProjects({
     workspaceRoot,
     cacheDir,

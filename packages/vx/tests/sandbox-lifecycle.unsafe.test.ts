@@ -891,15 +891,14 @@ describe.skipIf(!available || process.platform !== 'linux')(
 )
 
 describe.skipIf(!available || process.platform !== 'linux')(
-  'a brace in a write grant is a LITERAL to the sandbox, and the grant works',
+  'a brace in a write grant names each alternative, and the grant works',
   () => {
-    // `MOUNT_WILDCARDS` (sandbox-paths.ts) leaves `{}` out on purpose, and
-    // this row is the measurement its docblock cites: `write: ['g/{a,b}.txt']`
-    // gets a placeholder file and is widened to `g/` like any file-shaped
-    // grant, so the task writes `g/a.txt`. Counted as a wildcard instead,
-    // the grant goes to the scan, matches nothing before the task has
-    // written, and the write fails with `Read-only file system` (flip the
-    // constant to `[*?[\]{}]` and this row reddens; item 577).
+    // The measurement `MOUNT_WILDCARDS` (sandbox-paths.ts) cites:
+    // `write: ['g/{a,b}.txt']` is expanded to two file grants, each gets a
+    // placeholder file and is widened to `g/` like any file-shaped grant,
+    // so the task writes `g/a.txt`. Sent to the scan instead, a grant
+    // matches nothing before the task has written, and the write fails
+    // with `Read-only file system` (item 577).
     let fixture: Fixture
 
     beforeEach(async () => {

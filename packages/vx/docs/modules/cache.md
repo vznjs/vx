@@ -239,6 +239,15 @@ export function hashFileSeen(
   seen: (ctimeMs: number) => void,
 ): Promise<string>
 
+// Each of `files` by `layer.hashFile`'s answer, with one memo query for
+// them all when the layer is core's own (`hashFiles`); any other layer is
+// asked per file. A file that cannot be hashed is absent: the key's fold
+// asks `hashFile` for it, and the error is that call's.
+export function hashFilesOf(
+  layer: CacheLayer,
+  files: readonly string[],
+): Promise<Map<string, string>>
+
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,
 // `.vx/cache` and `.yarn/cache` skipped. `vx watch` judges a change behind
@@ -456,6 +465,9 @@ export interface FoldMemo {
 // Core's own readers (`vx last`, `vx why`, the history provider) take the
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
+// What such a reader throws for `err`: a page SQLite cannot read is the
+// open's own refusal, naming the file (`vx last`, `vx why`).
+export function indexError(cache: Cache, err: unknown): unknown
 // Wait until no other connection has `<storeDir>/store.db` open (a run in
 // any checkout holds it from its run lock to its end; WAL connections keep a shared lock),
 // then hold it alone until the release. Nothing to hold without the file.
@@ -464,13 +476,16 @@ export function holdStore(storeDir: string, log: (line: string) => void): Promis
 // which workspaces may share: a run holds `<dir>/cache.lock` shared from
 // before its cache opens to its end, `vx cache clean` exclusive; each waits
 // for the other, saying so after a second. A clean deletes the file it
-// holds, so a taker checks the name still is that file. A directory with
-// no index yet, or an unwritable one, holds nothing.
+// holds, so a taker checks the name still is that file. A run finding no
+// index yet makes the directory and the file first, so the index it makes
+// is held; a clean finding none, an unwritable directory, or one the open
+// refuses (`workspaceRoot`'s, as the open asks it) holds nothing.
 export function holdCacheDir(
   dir: string,
   mode: 'shared' | 'exclusive',
   log: (line: string) => void,
   signal?: AbortSignal,
+  workspaceRoot?: string,
 ): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
 // when the store keeps no history on disk.
@@ -487,6 +502,7 @@ export const SCHEMA_VERSION = 'v55'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
+export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] // every entry this machine holds for the task (an additive miss reads their rows)
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -510,6 +526,7 @@ export interface CachePolicy {
 export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 export function formatCachePolicy(p: CachePolicy): string // the spec parseCachePolicy reads: local:rw,remote:r
+export function cachePolicyEnvRefusal(spec: string): string | null // why VX_CACHE_POLICY is refused, checked before any verb
 // `--no-cache` (all off) beats `--force` (reads off), over whichever spec set the base
 export interface CacheFlags {
   noCache?: boolean
@@ -601,15 +618,23 @@ everything in `cache.db`.
 constructor argument) picks the local form: `embeddings` keeps an entry up
 to that size inline, `decompress: false` keeps a file-backed one as the
 tar.zst, and otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
-at save, the validated tar extracted at ingest, `sealTree`), stdout in
-its `entry_stdout` row. A tree restore checks nothing (the tree holds no
+at save, the validated tar extracted at ingest), each at its
+`output_files` row's path: a project output at its rel, a workspace one
+under `workspace-outputs/`, an output link as the link (v53). The tree
+keeps no sidecar and no `outputs/` level: stdout is its `entry_stdout`
+row, and every other fact the sidecar holds (modes, mtimes, empty and
+moded directories, the key, `exec`) is in its rows, but a link's target,
+which the link itself keeps. `planOfTree` rebuilds the sidecar from the
+rows, each link held to its row's length and CRC-32. A tree restore checks nothing (the tree holds no
 `.vx-sum`; the archive's sum is checked when it is unpacked) and copies each file with `Bun.write` (copy_file_range, a clone where
 the filesystem has one; never a hard link): a missing top directory is
 built in `.vx/tmp/` (`copyStaging`) and renamed into place once, a
 missing file in a directory that stands is copied straight to its place.
 Every copy settles before a failure's cleanup. Into existing outputs, a workspace output, a link, or
 where that rename would cross a filesystem or a setgid directory it feeds `extractArtifactStream` the
-tree packed back (`packArtifactStream(planOfTree(…))`). `pinArtifact`
+tree packed back (`packArtifactStream(planOfTree(…))`), so the extract at
+ingest leaves where a link points to that restore, the one that knows the
+workspace: bounded by the tree, a link into a sibling project was refused. `pinArtifact`
 packs a tree into the upload's tar.zst.
 
 `exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution
@@ -684,7 +709,8 @@ SQLite stores metadata, and the small artifacts above:
   artifact, indexed again from its own bytes when its task next hits.
 - **`fold_memo`** — each task's last key, `(task_id, probe, key, seen_at)`
   (v42, `fold-memo.ts`). A memo: the key a row names is the one the whole
-  fold derives under that probe.
+  fold derives under that probe. A page of it SQLite cannot read is no
+  memo: every fold is made afresh.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
   tables and recreate (pre-alpha; no migration code). An open that does
   not read the current version re-reads it under `BEGIN IMMEDIATE`
@@ -742,7 +768,9 @@ statement at all, since an inline save moves the tree aside in the
 commit that adds its blob (2026-11-07: ~70 ms of a 1,600-restore run's
 main thread). The tree's inode is taken once, before the copy, and
 asked again after it to catch a swap; the project directory and the
-staging directory are each stat'ed once per restore, and the copy-out
+staging directory are each stat'ed once per restore (the staging
+directory made synchronously: a run's first restores arrive together, and
+each thread-pool `mkdir` waited behind the others' work), and the copy-out
 asks what stands at each path synchronously, on dentries the walk just
 looked up. `pinArtifact()`
 (the upload's body) hands an inline artifact over as a `Blob` of its
@@ -772,7 +800,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   that entry as a miss and runs the task. An artifact that is not a
   readable archive or lacks an output the index recorded, or a tree
   still in place that lacks one of its files (`CorruptArtifactError`,
-  `<rel> is missing from its stored tree`), is dropped, unless the cache is read-only,
+  `<rel> is missing from its stored tree`) or holds anything but a file
+  at one's place (`<rel> is not a file in its stored tree`: a FIFO there
+  hung the copy-out's open), is dropped, unless the cache is read-only,
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name
@@ -879,7 +909,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v52'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v55'`; `SCHEMA_VERSION` is
 `'v55'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

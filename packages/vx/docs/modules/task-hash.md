@@ -171,6 +171,12 @@ export interface UpfrontGroupKey {
   existing field does not, since it moves those keys itself (see
   [`../caching.md`](../caching.md#bumping-cache_version)).
 - Hash algorithm is xxHash3 via `util/hash.ts` (16-hex keys).
+- A key hands `Cache.key()` each input file's identity in
+  `fileHashes`: the index OID, else the run's `identityOf`, else one
+  `hashFilesOf` for every file left, learned for the run. The map is the
+  fold's fast path only, so the key is the bytes the fold would derive
+  per file (`tests/stale-hit-memo.test.ts`: a file a task rewrote after
+  its identity was learned keys again).
 
 ## Tests
 

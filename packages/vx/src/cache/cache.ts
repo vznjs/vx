@@ -69,6 +69,7 @@ import {
   lazyStatement,
   RUNS_VIEW,
   SQLITE_FCNTL_PERSIST_WAL,
+  unreadableIndex,
 } from './schema.js'
 import {
   UserError,
@@ -99,7 +100,6 @@ import {
   packArtifactStream,
   planArtifact,
   planOfTree,
-  sealTree,
   stagesInto,
   writeTree,
 } from './archive.js'
@@ -230,12 +230,6 @@ export interface SchemaReset {
   to: string
 }
 
-/** SQLite's answer for a file that is not a readable database: corrupt, or not one at all. */
-function unreadableIndex(err: unknown): boolean {
-  const code = (err as { code?: unknown }).code
-  return typeof code === 'string' && (code.startsWith('SQLITE_CORRUPT') || code === 'SQLITE_NOTADB')
-}
-
 /** The refusal for an index SQLite cannot read, at the open or at any later read or write (A-8). */
 function unreadableIndexError(dbFile: string, err: unknown): UserError {
   return new UserError(
@@ -244,6 +238,9 @@ function unreadableIndexError(dbFile: string, err: unknown): UserError {
       `re-run, and \`vx cache clean\` reclaims the artifacts it indexed`,
   )
 }
+
+/** The longest index path SQLite opens: its unix `MAX_PATHNAME`, 512, less `-journal`. */
+const SQLITE_PATH_MAX = 512 - '-journal'.length
 
 /**
  * SQLite reports a descriptor it could not get as `SQLITE_CANTOPEN`, never
@@ -262,6 +259,17 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
     return new UserError(
       `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ${OUT_OF_FDS_HINT}`,
       'VX_E_FDS',
+    )
+  }
+  // SQLite's unix VFS opens no path past 512 bytes, the `-journal` it may
+  // add counted: a long one was blamed on permissions (2026-11-10).
+  const bytes = Buffer.byteLength(path.resolve(dbFile))
+  if (bytes > SQLITE_PATH_MAX) {
+    return new UserError(
+      `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ` +
+        `its path is ${bytes} bytes and SQLite opens none past ${SQLITE_PATH_MAX}; ` +
+        'point the cache at a shorter directory (--cache-dir, VX_CACHE_DIR)',
+      'VX_E_FS',
     )
   }
   // Any other: a directory, or a file this user may not open, where the
@@ -1035,6 +1043,8 @@ const seenHashers = new WeakMap<
     /** The layer's `hashFile` when it registered: one replaced since is not this. */
     method: CacheLayer['hashFile']
     hash: (file: string, seen: (ctimeMs: number) => void) => Promise<string>
+    /** `hashFiles`: one memo query for them all. */
+    many: (files: readonly string[]) => Promise<Map<string, string>>
   }
 >()
 
@@ -1055,10 +1065,56 @@ export function hashFileSeen(
     : own.hash(file, seen)
 }
 
+/**
+ * Each of `files` by `layer.hashFile`'s answer, with one memo query for
+ * them all when the layer is core's own cache (`hashFiles`), where one
+ * point query per file took the lock each time: 10 of vueuse's 45 ms of
+ * keys (2026-11-11). A file that cannot be hashed is absent: the caller
+ * asks `hashFile` for it, and its error is that call's.
+ */
+export async function hashFilesOf(
+  layer: CacheLayer,
+  files: readonly string[],
+): Promise<Map<string, string>> {
+  const own = seenHashers.get(layer)
+  if (own !== undefined && own.method === layer.hashFile) return own.many(files)
+  const out = new Map<string, string>()
+  await Promise.all(
+    files.map((f) =>
+      layer.hashFile(f).then(
+        (id) => void out.set(f, id),
+        () => {},
+      ),
+    ),
+  )
+  return out
+}
+
 /** `to` answers `hashFileSeen` as `from` does: a layer over core's cache. */
 export function shareSeenHasher(from: CacheLayer, to: CacheLayer): void {
   const own = seenHashers.get(from)
-  if (own !== undefined) seenHashers.set(to, { method: to.hashFile, hash: own.hash })
+  if (own !== undefined)
+    seenHashers.set(to, { method: to.hashFile, hash: own.hash, many: own.many })
+}
+
+/**
+ * The hashes of every entry this machine's index holds for `taskId`: an
+ * additive task's miss reads their rows to tell the files a save or
+ * restore of its own left from what it found (item 588). A function, not
+ * a layer method, so the package's API is unchanged; a layer with no
+ * local index (a test double) answers none.
+ */
+export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] {
+  const local = layer instanceof Cache ? layer : (layer as { local?: unknown }).local
+  if (!(local instanceof Cache)) return []
+  const [project, task] = splitTaskId(taskId)
+  return local['guard'](() =>
+    (
+      local['db']
+        .query('SELECT hash FROM entries WHERE project = ? AND task = ?')
+        .all(project, task) as Array<{ hash: string }>
+    ).map((r) => r.hash),
+  )
 }
 
 export class Cache implements CacheLayer {
@@ -1082,6 +1138,7 @@ export class Cache implements CacheLayer {
   private readonly upsertStdout: ReturnType<Database['prepare']>
   private readonly deleteStdout: ReturnType<Database['prepare']>
   private readonly selectStdout: ReturnType<Database['prepare']>
+  private readonly selectUsage: ReturnType<Database['prepare']>
   private readonly logOf = (hash: string): string => this.guard(() => this.stdoutText(hash))
   private readonly entryExists: ReturnType<Database['prepare']>
   private readonly selectBlob: ReturnType<Database['prepare']>
@@ -1491,6 +1548,10 @@ export class Cache implements CacheLayer {
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
     this.selectStdout = lazyStatement(this.db, 'SELECT stdout FROM entry_stdout WHERE hash = ?')
+    this.selectUsage = lazyStatement(
+      this.db,
+      'SELECT cpu_ms, peak_rss_bytes FROM entries WHERE hash = ? LIMIT 1',
+    )
     this.selectEntry = lazyStatement(this.db, SELECT_ENTRY)
     // `has` asks only whether the row is there and where its artifact is,
     // with no stdout joined. A column off the index, so the table row is
@@ -1522,6 +1583,7 @@ export class Cache implements CacheLayer {
     seenHashers.set(this, {
       method: this.hashFile,
       hash: (file, seen) => this.guard(() => this.files.hashFile(file, seen)),
+      many: (files) => this.hashFiles(files),
     })
     this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
@@ -1554,7 +1616,7 @@ export class Cache implements CacheLayer {
    */
   private guard<T>(op: () => T): T {
     const refuse = (err: unknown): never => {
-      throw unreadableIndex(err) ? unreadableIndexError(this.unreadableFile(), err) : err
+      throw indexError(this, err)
     }
     try {
       const out = op()
@@ -2447,24 +2509,33 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * The tree packed back into its tar, each file held to its row's size:
-   * the tree form keeps no checksum, and a file cut short at rest (a crash
-   * after its rename, before its data reached the disk) was restored, and
-   * uploaded under a fresh sum.
+   * The tree packed back into its tar, its sidecar rebuilt from the rows
+   * and each file held to its row's size: the tree form keeps no checksum,
+   * and a file cut short at rest (a crash after its rename, before its data
+   * reached the disk) was restored, and uploaded under a fresh sum.
    */
   private treePlan(hash: string, tree: string, rows: readonly OutputFileRow[]): ArtifactPlan {
+    const usage = this.selectUsage.get(hash) as {
+      cpu_ms: number | null
+      peak_rss_bytes: number | null
+    } | null
+    const exec = usageOfEntry({
+      ...(usage?.cpu_ms != null ? { cpuMs: usage.cpu_ms } : {}),
+      ...(usage?.peak_rss_bytes != null ? { peakRssBytes: usage.peak_rss_bytes } : {}),
+    })
     let plan: ArtifactPlan
     try {
-      plan = planOfTree(tree, this.stdoutText(hash))
+      plan = planOfTree(tree, this.stdoutText(hash), rows, hash, exec)
     } catch (err) {
-      // A sidecar cut short at rest, as a file is: named as the damage it is.
-      if (err instanceof SyntaxError)
-        throw new CorruptArtifactError(hash, 'its sidecar does not parse')
+      // A kept link retargeted at rest, as a file is cut short: named as the damage it is.
+      if (err instanceof ArchiveSecurityError)
+        throw new CorruptArtifactError(hash, err.message, err)
       throw err
     }
-    const size = new Map(rows.map((r) => [treeName(r.path), r.size]))
+    const size = new Map(rows.map((r) => [r.path, r.size]))
     for (const i of plan.inputs) {
-      const want = size.get(i.name)
+      const rel = i.name.startsWith('outputs/') ? i.name.slice('outputs/'.length) : i.name
+      const want = size.get(rel)
       if (want !== undefined && want !== i.size)
         throw new CorruptArtifactError(hash, `${i.name} holds ${i.size} bytes, recorded ${want}`)
     }
@@ -2581,7 +2652,7 @@ export class Cache implements CacheLayer {
       projectStat = undefined
     }
     if (projectStat === undefined) await mkdir(projectDir, { recursive: true })
-    const staging = roots.length > 0 ? await copyStaging(workspaceRoot) : undefined
+    const staging = roots.length > 0 ? copyStaging(workspaceRoot) : undefined
     if (staging?.stats !== undefined) {
       const fits = new Map<string, boolean>()
       for (const rel of roots) {
@@ -2605,7 +2676,17 @@ export class Cache implements CacheLayer {
       }
       return path.join(projectDir, rel)
     }
-    const copy = async (to: string, from: string): Promise<number> => {
+    // Per file, not `fs.promises.cp` of the tree (14.5 ms for vueuse's 92
+    // tree files against 1.9; `cpSync` 3.5), nor a Worker: the copies are
+    // 1.9 ms of a 25 ms restore, and one Worker's start is 1.5–2.4 ms
+    // (2026-11-11).
+    // A tree file is asked its type first: a FIFO at its place (damage at
+    // rest) blocked the copy's open for a writer that never came, and the
+    // run hung (2026-11-11). An lstat, not an open of our own handed to Bun:
+    // Bun clones only from a path, and a link there is damage too.
+    const copy = async (to: string, from: string, rel: string): Promise<number> => {
+      if (lstatSync(from, { throwIfNoEntry: false })?.isFile() === false)
+        throw new CorruptArtifactError(hash, `${rel} is not a file in its stored tree`)
       try {
         return await Bun.write(to, Bun.file(from), { createPath: false })
       } catch (err) {
@@ -2623,13 +2704,18 @@ export class Cache implements CacheLayer {
       for (const r of rows) {
         dirs.add(target(r.path.endsWith('/') ? r.path.slice(0, -1) : path.posix.dirname(r.path)))
       }
-      for (const d of dirs) await mkdir(d, { recursive: true })
+      // Only the deepest, at once: each makes its parents, and one after
+      // another they cost solid's 13-directory restore ~1.5 ms of awaits.
+      const sorted = [...dirs].sort()
+      const leaves = sorted.filter((d, i) => !sorted[i + 1]?.startsWith(`${d}/`))
+      if (leaves.length === 1) await mkdir(leaves[0]!, { recursive: true })
+      else await Promise.all(leaves.map((d) => mkdir(d, { recursive: true })))
       // Every copy settles before a failure is handled: one still in flight
       // would write its file again after the cleanup removed it.
       const copied = await Promise.allSettled(
         files.map(async (r) => {
           const to = target(r.path)
-          const n = await copy(to, path.join(tree, treeName(r.path)))
+          const n = await copy(to, path.join(tree, r.path), r.path)
           if (n !== r.size)
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
           const mode = restoredMode(r.mode)
@@ -2642,9 +2728,17 @@ export class Cache implements CacheLayer {
       if (failed !== undefined) throw failed.reason
       if (swapped()) throw new ArtifactVanishedError(hash)
       landing = true
-      for (const rel of roots) {
+      // At once, every one settled before a failure is handled, as the
+      // copies; one alone is awaited, as a 1,601-restore run felt the promises.
+      const land = async (rel: string): Promise<void> => {
         await rename(temps.get(rel)!, path.join(projectDir, rel))
         landed.push(rel)
+      }
+      if (roots.length === 1) await land(roots[0]!)
+      else {
+        const renamed = await Promise.allSettled(roots.map(land))
+        const unrenamed = renamed.find((c) => c.status === 'rejected')
+        if (unrenamed !== undefined) throw unrenamed.reason
       }
     } catch (err) {
       await Promise.all([...temps.values()].map((t) => rm(t, { recursive: true, force: true })))
@@ -2982,10 +3076,7 @@ export class Cache implements CacheLayer {
         if (lstatSync(tree, { throwIfNoEntry: false })?.ino !== treeIno)
           throw new ArtifactVanishedError(hash)
         const rel = path.relative(tree, missing!).split(path.sep).join('/')
-        throw new CorruptArtifactError(
-          hash,
-          `${rel.startsWith('outputs/') ? rel.slice('outputs/'.length) : rel} is missing from its stored tree`,
-        )
+        throw new CorruptArtifactError(hash, `${rel} is missing from its stored tree`)
       }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs
@@ -3486,7 +3577,7 @@ export class Cache implements CacheLayer {
             hash,
             this.artifactCeiling,
           ),
-          path.join(dir, 'outputs'),
+          dir,
           path.join(dir, WORKSPACE_OUTPUT_PREFIX),
           undefined,
           undefined,
@@ -3496,7 +3587,8 @@ export class Cache implements CacheLayer {
           },
         )
         scanned = scan!
-        await sealTree(dir, scanned)
+        // An artifact with no outputs extracts nothing, so nothing made `dir`.
+        await mkdir(dir, { recursive: true })
       } else if (tar !== undefined) {
         // Our own tar, in memory: read in place, on this thread.
         scanned = scanTarBytes(tar)
@@ -3556,10 +3648,10 @@ export class Cache implements CacheLayer {
             : Bun.file(tmpPath!)
         await extractArtifactStream(
           await decodedTar(source, hash, this.artifactCeiling),
-          path.join(dir, 'outputs'),
+          dir,
           path.join(dir, WORKSPACE_OUTPUT_PREFIX),
         )
-        await sealTree(dir, scanned)
+        await mkdir(dir, { recursive: true })
       } catch (err) {
         await rm(dir, { recursive: true, force: true })
         if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
@@ -3582,7 +3674,7 @@ export class Cache implements CacheLayer {
     // `workspace-outputs/<rel>` name as the namespace discriminator.
     //
     // Mode and MILLISECOND mtime come from the artifact's own sidecar
-    // (`.vx-meta.json`), written from a stat taken while packing. Both
+    // (`.vx-meta.json` in its tar), written from a stat taken while packing. Both
     // paths — save and remote ingest — therefore index the same values,
     // and `restoreOutputs` materialises exactly them, so
     // `isOutputsCurrent` compares equal at ms precision straight after a
@@ -4263,6 +4355,15 @@ export function indexDb(cache: Cache): Database {
 }
 
 /**
+ * `err` as a reader of `indexDb(cache)` reports it: a page SQLite cannot
+ * read is refused by its file, as every `Cache` read refuses it, where
+ * `vx last` and `vx why` printed a raw `SQLiteError` and a stack.
+ */
+export function indexError(cache: Cache, err: unknown): unknown {
+  return unreadableIndex(err) ? unreadableIndexError(cache['unreadableFile'](), err) : err
+}
+
+/**
  * Close for real. A plain `close()` leaves the connection open while any
  * statement from `db.prepare()` lives (bun:sqlite 1.4.2 defers it, as
  * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
@@ -4342,15 +4443,18 @@ const DIR_LOCK = 'cache.lock'
  * `cache.lock` in the directory: shared and exclusive, any spelling of the
  * directory meets it, and a holder's lock dies with its process. A clean
  * deletes the file with the rest while it holds it, so a taker checks the
- * name still is the file it locked. A directory with no index yet, or one
- * this user cannot write, holds nothing: there is nothing a clean deletes.
- * A default directory beside its store pays nothing.
+ * name still is the file it locked. A run finding no index yet makes the
+ * directory and the file first, so the index it makes next is held; a clean
+ * finding none has nothing to delete, and a directory this user cannot
+ * write, or one the open refuses (`workspaceRoot`'s, as the open asks it),
+ * holds nothing. A default directory beside its store pays nothing.
  */
 export async function holdCacheDir(
   dir: string,
   mode: 'shared' | 'exclusive',
   log: (line: string) => void,
   signal?: AbortSignal,
+  workspaceRoot?: string,
 ): Promise<() => void> {
   const file = path.join(dir, DIR_LOCK)
   const started = performance.now()
@@ -4361,11 +4465,19 @@ export async function holdCacheDir(
     let before: Stats
     try {
       let seen = statSync(file, { throwIfNoEntry: false })
+      if (seen === undefined && !existsSync(path.join(dir, 'cache.db'))) {
+        if (mode === 'exclusive') return () => {}
+        // The run makes the index next: unheld, a clean in another workspace
+        // deleted it under the run, which ended green with its entry gone.
+        // A directory that was there may be one the open refuses a first
+        // index in (a project's own): its refusal, thrown here, writes
+        // nothing, and the open throws it again.
+        if (mkdirSync(dir, { recursive: true }) === undefined) {
+          refuseManifestDir(dir, workspaceRoot)
+          refuseForeignCacheDir(dir, workspaceRoot)
+        }
+      }
       if (seen === undefined) {
-        // A directory with no index has nothing a clean deletes, and may be
-        // one a first index is refused in (a project's own): nothing is
-        // written there.
-        if (!existsSync(path.join(dir, 'cache.db'))) return () => {}
         // Made before it is stat'ed: a file Database creates is not the one
         // a stat before it saw.
         writeFileSync(file, '', { flag: 'a' })
@@ -4514,11 +4626,6 @@ function narrowedDirs(
     if (r.path.endsWith('/') && (r.mode & 0o170000) !== DIR_MODE) wide(r.path.slice(0, -1))
   for (const rel of rowAncestors(rows)) wide(rel)
   return out
-}
-
-/** A row's path as the tree names its file. */
-function treeName(rowPath: string): string {
-  return rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rowPath : `outputs/${rowPath}`
 }
 
 /** `code: message`, where Bun's message does not already open with the code. */

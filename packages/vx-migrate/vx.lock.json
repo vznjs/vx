@@ -99,7 +99,7 @@
     "test.shard-1": {
       "description": "bun test, shard 1 of 4",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 --shard=1/4 --timings=tests/timings.json",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=1/4 --timings=tests/timings.json",
         "env": {
           "passThrough": [
             "VX_NX_MODULES",
@@ -157,7 +157,7 @@
     "test.shard-2": {
       "description": "bun test, shard 2 of 4",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 --shard=2/4 --timings=tests/timings.json",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=2/4 --timings=tests/timings.json",
         "env": {
           "passThrough": [
             "VX_NX_MODULES",
@@ -215,7 +215,7 @@
     "test.shard-3": {
       "description": "bun test, shard 3 of 4",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 --shard=3/4 --timings=tests/timings.json",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=3/4 --timings=tests/timings.json",
         "env": {
           "passThrough": [
             "VX_NX_MODULES",
@@ -273,7 +273,7 @@
     "test.shard-4": {
       "description": "bun test, shard 4 of 4",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 --shard=4/4 --timings=tests/timings.json",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=4/4 --timings=tests/timings.json",
         "env": {
           "passThrough": [
             "VX_NX_MODULES",

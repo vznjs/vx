@@ -133,6 +133,8 @@ it('with no memo yet (a fresh clone) the edit still selects the project reaching
 })
 
 it('the files --affected is told the lockfile names come from the memo once a run wrote it', async () => {
+  // Two: the first run's `discover` reads before cache.db exists (pnpm.test.ts).
+  await warm()
   await warm()
   const cacheDir = path.join(root, '.vx', 'cache')
   expect(Object.keys(readMemo(cacheDir, 'pnpm-lock.yaml').extras)).toEqual([

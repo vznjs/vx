@@ -7,9 +7,9 @@ trusts: `git ls-files -s` (paths with their index blob OIDs, stage 0,
 regular files and symlinks), `git status --porcelain -z` (which of those
 are dirty, plus the untracked; `--no-renames`, so a rename's source,
 the original of a `git add -N` copy (item 976) or a deletion paired with
-an unmerged path (A-59), is a deletion of its own), and `git check-attr` where a clean
+an unmerged path (A-59), is a deletion of its own), and `git check-attr --all` where a clean
 filter (`text`, `eol`, `ident`, a `filter` driver, `working-tree-encoding`,
-`core.autocrlf`) could make the blob
+the legacy `crlf`, `core.autocrlf`) could make the blob
 differ from the bytes on disk. The gate looks for a `.gitattributes`
 among every listed path, untracked and modified ones too: git applies
 those, and a scan of the trusted paths alone never saw them (item 977),
@@ -41,10 +41,18 @@ enter a directory, so the files under it were in no key: past PATH_MAX
 (4096 bytes on Linux) an edit there was a stale hit. The status walk and
 `runGitLsFiles` refuse such a warning, naming the directory (git cuts its
 message at 4096 bytes, so a long one is shown cut). A directory this user
-may not read is left out as before: no task of theirs reads it either,
-and a root-owned volume beside the projects must not stop every run.
+may not enter is left out as before: no task of theirs reads under it
+either, and a root-owned volume beside the projects must not stop every
+run. One it may enter but not list (`chmod 111`) is refused, `git could
+not list the directory <dir>: it can be entered but not read …`: a task
+reads a file there by name, and an edit to it was a stale hit
+(`tests/unlistable-input-dir.test.ts`).
 A directory gone before git opened it (a run lock's staging directory in a
-TMPDIR inside the workspace) holds no file to miss, so it is skipped too.
+TMPDIR inside the workspace) holds no file to miss, so it is skipped too,
+and so is one git's reason says was gone (`No such file or directory`,
+`Not a directory`) though it is back by the check: a task re-created its
+own output directory under another task's walk, which was refused as a
+path too long (2026-11-10).
 A cut message is never skipped: it may name a prefix of a real path.
 
 Every enumeration spawn runs `git --no-optional-locks`. A plain `status`
@@ -97,6 +105,17 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs (a file with none by its stat), none a link
+  declarationDigest(
+    root: string,
+    snapshot: readonly string[],
+    key: string,
+    takes: (rel: string) => boolean,
+    heads?: readonly string[], // its entries' fixed heads: only paths at, under or above one are asked, found in a sorted copy when git listed untracked paths last
+  ): string | undefined // filesDigest of the workspace paths a workspaceFiles declaration may take in
+  statOf(abs: string): Stats | undefined // a path's lstat, once until a partition moves
+  identityOf(abs: string): string | undefined // a file's key identity (`hashFile`'s answer), once until the run marks a write to it
+  get factsEpoch(): number // moves with every write the run marks
+  learnIdentities(ids: ReadonlyMap<string, string>, epoch: number): void // kept only if no write since `epoch`
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
@@ -110,7 +129,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
   ignoredOutputs: ReadonlySet<string> // declared outputs (root-relative) git ignores whole, asked once per run (`stable-keys.md`)
   setIgnored(root: string, paths: readonly string[]): void // what `status --ignored=matching` named
-  newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir; a normalized dir under the root is relative as its rest, no path.relative)
+  newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir; a normalized dir under the root is relative as its rest, no path.relative; the first spawn asks every dir above an ignored path, up to 256; none for a dir `answerNewFilesIgnored` answered)
+  answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void // git's answer for root-relative dirs, asked beside the enumeration (`askIgnoredOutputs`); held until the next enumeration
 }
 
 export interface GitEnumeration {
@@ -152,6 +172,7 @@ export interface LazyGitEnumeration {
 }
 export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration
 export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> // which root-relative dirs git ignores a new file directly in, one check-ignore (`newFilesIgnored`'s probe)
+export function freshProbe(dir: string): string // the path that probe asks for dir: a new file directly in it
 export const MAX_SCOPED_PATHSPECS: number // 64: above it the walk is the whole tree
 export function gitPathspecs(
   workspaceRoot: string,
@@ -200,7 +221,8 @@ export function gitRefusal(dir: string): UserError | undefined
 export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // the repo root, from `--show-prefix`
 // The identity the key folds: the blob OID, prefixed `<mode>:` unless mode is 100644 (item 887)
 export function fileIdentity(mode: string, oid: string): string
-export function parseCheckAttrOutput(out: string): Set<string>
+// `lstat`, or undefined for no entry, under a parent that is a file (ENOTDIR) too
+export function lstatOrAbsent(p: string): Stats | undefined
 export function autocrlfConverts(gitVars: string): boolean // over `git var -l`
 // `core.trustctime` off or `core.checkStat=minimal`: `git status` cannot see a
 // same-size, time-keeping rewrite, so the enumeration trusts no OID (A-6).
@@ -217,8 +239,36 @@ export function attributeFilesOutsideTree(
 and index OIDs joined and hashed once, when the enumeration trusted an
 OID for every path and none is a symlink or an undecodable name.
 `filesDigest` answers it only while the partition is that snapshot with
-those OIDs and no path marked changed: a re-enumeration, a save or a
-restore in the project ends it for the run.
+those OIDs and no path of the snapshot is marked changed: a
+re-enumeration ends it for the run, and so does a save, clean or restore
+that writes a listed path. One that writes only outside the snapshot (a
+build's ignored `dist/`) leaves it: the listed files are as the digest
+names them, and a task whose input globs take a marked path gets no
+snapshot from `snapshotFor`, so no token. Refused on any mark, six in
+seven of a cold 8,002-task bench run's keys stored no fold row, and the
+restore after derived them again (2026-11-11). `declarationDigest` does
+the same for the workspace partition, per `workspaceFiles` declaration:
+the paths its globs may take in, each by OID, or by its stat and
+whether git tracks it, once per declaration and partition; each path's
+record once for every declaration, and a stat a project's digest took
+is not taken again (`statOf`).
+
+A file the index vouches no OID for (untracked, edited, or under a
+`text`/`eol`/`filter` attribute, which drops every OID) is hashed from
+the worktree. Its identity is held for the run (`identityOf`), so a
+file several tasks read is stat'ed and hashed once, not once per task,
+and the listing's existence check reads `statOf` too. A write the run
+marks path by path (a save's or a restore's outputs) drops those paths'
+identities, an undeclared write drops them all, a listing again drops
+none, and an identity hashed before any write is not kept after it
+(`factsEpoch`). The stats go on every one.
+
+A marked path written through a linked directory (an output glob's head
+may be a link that stays in the project, `out -> gen` for `out/**`) is
+marked under the name it landed at too: marked only as `out/x`, the
+`gen/x` a reader of `gen/**` keys kept its index OID and a stale hit
+replayed the bytes from before the write. One that lands outside the
+partition drops the partition, as an undeclared write does.
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
 are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root
@@ -335,7 +385,10 @@ gitlink or an untracked embedded repository, and one inside a project:
 its own git enumerates it, and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
 (through the resolver), `tests/restore-git-spawns.test.ts` (spawn
 count), `tests/cache-hash-files.test.ts`, `tests/affected*.test.ts`
-(the same enumeration behind `--affected`).
+(the same enumeration behind `--affected`), `tests/stale-hit-digest.test.ts`
+(a task moves another's input mid-run by a save, a clean or a write
+through a linked directory, tracked or loose: the reader reads the moved
+files, and the files put back are not answered by a row stored mid-run).
 
 ## Replacing this module
 

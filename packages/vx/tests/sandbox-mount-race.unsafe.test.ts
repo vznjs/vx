@@ -5,6 +5,8 @@
 // "/newroot/tmp/containerd-mount…": No such file or directory`), and the
 // task failed in 23 ms having never started. Its command never ran, so it
 // is run once more. A fake `bwrap` first on PATH plays the race once.
+// Caught between the unmount and the removal of its directory, the same
+// remount fails `Invalid argument`: the path is no longer a mount point.
 //
 // A path the wrap walls gone before bwrap mounts on it is the same race:
 // bwrap makes the mount point anew under a read-only parent and fails. The
@@ -23,6 +25,8 @@ const available = await sandboxAvailable('sandbox mount race test')
 const realBwrap = Bun.which('bwrap')
 const RACE =
   'bwrap: Can\'t bind mount /oldroot/ on /newroot/: Unable to apply mount flags: remount "/newroot/tmp/containerd-mount1": No such file or directory'
+const UNMOUNTED =
+  'bwrap: Can\'t bind mount /oldroot/ on /newroot/: Unable to apply mount flags: remount "/newroot/tmp/containerd-mount1517674899": Invalid argument'
 const POINT_GONE = "bwrap: Can't mkdir /tmp/vx-noscan-0: Read-only file system"
 
 describe.skipIf(!available || process.platform !== 'linux' || realBwrap === null)(
@@ -94,6 +98,15 @@ describe.skipIf(!available || process.platform !== 'linux' || realBwrap === null
         exitCode: 0,
         stdout: 'marker-ran\n',
         streamed: `${RACE}\n[vx] a mount went away as the sandbox was set up; running the task again\n`,
+        races: 1,
+      })
+    }, 30_000)
+
+    it('is run once more when the mount is gone but its directory is not', async () => {
+      expect(await run(1, UNMOUNTED)).toEqual({
+        exitCode: 0,
+        stdout: 'marker-ran\n',
+        streamed: `${UNMOUNTED}\n[vx] a mount went away as the sandbox was set up; running the task again\n`,
         races: 1,
       })
     }, 30_000)

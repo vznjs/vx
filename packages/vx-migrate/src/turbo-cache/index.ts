@@ -683,6 +683,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const signal = () => (timeoutMs === 0 ? undefined : deadline(timeoutMs))
     // The batch query is never preflighted, as in Turbo.
     const preflight = this.config.preflight && method !== 'POST'
+    let sent = { url: '', auth: true }
     const res = await hidingErrors(
       this.breaker.send(
         () =>
@@ -692,6 +693,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
               const to = preflight
                 ? await this.preflight(this.url(pathname), method, extra, signal)
                 : { url: this.url(pathname), auth: true }
+              sent = to
               const s = signal()
               return this.fetchImpl(to.url, {
                 method,
@@ -708,6 +710,11 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       ),
       this.hidden,
     )
+    // A host the token never reached (a storage URL past a preflight that
+    // did not admit it, or past a cross-origin redirect) cannot refuse it:
+    // its 403, an expired signed URL, fails this request alone. It turned
+    // the remote off and deleted the keychain token.
+    if (!tokenReached(res, sent.url, sent.auth)) return res
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
@@ -1091,4 +1098,12 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         )
     },
   })
+}
+
+/**
+ * Whether the answer came from a host `url`'s request took the token to:
+ * the runtime drops `Authorization` on a cross-origin redirect.
+ */
+function tokenReached(res: Response, url: string, auth: boolean): boolean {
+  return auth && (!res.redirected || new URL(res.url).origin === new URL(url).origin)
 }

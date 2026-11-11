@@ -18,6 +18,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -117,6 +118,63 @@ describe('a project under a directory holding a line break', () => {
         'none',
       ])
     }
+  })
+})
+
+// The Linux sandbox mounts a fresh /dev after every bind and skips any
+// grant there, so a project under /dev/shm was gone from the task's view:
+// bwrap failed to remount it, vx called that a mount race, ran the task
+// again, and it failed the same way.
+describe.skipIf(process.platform !== 'linux' || !existsSync('/dev/shm'))(
+  'a project under /dev',
+  () => {
+    let shm = ''
+    afterEach(async () => {
+      if (shm !== '') await rm(shm, { recursive: true, force: true })
+    })
+
+    it('is refused with the directory named, before anything is created', async () => {
+      shm = await mkdtemp('/dev/shm/vx-sandbox-request-')
+      dir = path.join(shm, 'proj')
+      await mkdir(dir, { recursive: true })
+      const err = await sandboxRequestFor(
+        node(),
+        { allow: { write: ['dist/'] } },
+        shm,
+        undefined,
+      ).then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+      expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
+        `exec.sandbox: ${dir} is under /dev, which the Linux sandbox replaces with its own, so ` +
+          `it mounts none of the project — move the workspace out of /dev, or run the task without exec.sandbox`,
+        'none',
+      ])
+    })
+  },
+)
+
+// A grant's brace is alternation, as a task glob's is: `read: ['c{a,b}']`
+// named the literal `c{a,b}`, which no project holds, and granted nothing
+// with no word; `c\{a,b\}` was dropped for its backslash.
+describe('a brace in a grant', () => {
+  it('names each alternative; an escaped brace names the braced path', async () => {
+    const r = await sandboxRequestFor(
+      node(),
+      { allow: { read: ['c{a,b}', 'd\\{a\\,b\\}', 'e{1..2}.txt'], write: ['g/{x,y}.txt'] } },
+      root,
+      undefined,
+    )
+    expect([
+      r.sandbox.config.allowRead.map((p) => relPosix(dir, p)),
+      r.sandbox.config.allowWrite.map((p) => relPosix(dir, p)),
+      r.placeholders.map((p) => relPosix(dir, p.path)),
+    ]).toEqual([
+      ['ca', 'cb', 'd{a,b}', 'e1.txt', 'e2.txt'],
+      ['g/x.txt', 'g/y.txt'],
+      ['g/x.txt', 'g/y.txt'],
+    ])
   })
 })
 
@@ -1063,18 +1121,27 @@ describe("a link to the task's own project, or to a directory holding it, is not
     ])
   })
 
-  it('the hint names the package, the link it went through, and both ways to key it', () => {
-    const line = withheldLinkLine('@x/app#test', {
+  // The install name (`@x/ui`) is no project id: `dependsOn: ['@x/ui#build']`
+  // failed at `vx lock` where the project is `packages/ui`. A package that
+  // is no project was offered an edge too, which nothing can satisfy.
+  it('the hint names the project id, where it is linked, and the ways to key it', () => {
+    const w = {
       dir: '/ws/packages/ui',
       name: '@x/ui',
       target: 'packages/ui',
       link: 'node_modules/@x/ui',
-    })
-    expect(line).toBe(
-      'vx: @x/app#test read `packages/ui` through `node_modules/@x/ui`, and its key includes no task ' +
-        'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
-        'reaches one (`^build`, where @x/ui#build keys its sources), or grant and key ' +
-        'the files yourself (`allow.read` plus ' +
+    }
+    expect(withheldLinkLine('packages/app#test', w, 'packages/ui')).toBe(
+      'vx: packages/app#test read `packages/ui` (linked at `node_modules/@x/ui`), and its key ' +
+        'includes no task of packages/ui, so an edit there would not re-run it. Add a ' +
+        '`dependsOn` edge that reaches one (`^build`, or `packages/ui#build` where it keys its ' +
+        'sources), or grant and key the files yourself (`allow.read` plus ' +
+        '`inputs.workspaceFiles`).',
+    )
+    expect(withheldLinkLine('packages/app#test', w, undefined)).toBe(
+      'vx: packages/app#test read `packages/ui` (linked at `node_modules/@x/ui`), and it is no ' +
+        'project, so no `dependsOn` edge can key it and an edit there would not re-run this ' +
+        'task. To read it, grant and key the files yourself (`allow.read` plus ' +
         '`inputs.workspaceFiles`).',
     )
   })

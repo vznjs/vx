@@ -381,6 +381,31 @@ export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL')
   }
 }
 
+let stoppedTotal = 0
+let stoppedSince: number | undefined
+
+/** vx stopped (Ctrl-Z) or continued (`fg`, `bg`): its tasks' clocks stop with it. */
+export function markStopped(stopped: boolean): void {
+  if (stopped) stoppedSince ??= performance.now()
+  else if (stoppedSince !== undefined) {
+    stoppedTotal += performance.now() - stoppedSince
+    stoppedSince = undefined
+  }
+}
+
+/**
+ * ms vx has spent stopped so far, a stop still open included: a timer due
+ * while vx was stopped runs before the SIGCONT handler closes it.
+ */
+function stoppedMs(): number {
+  return stoppedTotal + (stoppedSince === undefined ? 0 : performance.now() - stoppedSince)
+}
+
+/** `performance.now()` less the time vx spent stopped: the clock a task's duration reads. */
+export function runTime(): number {
+  return performance.now() - stoppedMs()
+}
+
 /**
  * Stop or continue `child`'s group with vx (Ctrl-Z, `fg`). Straight to
  * the group, never down a sandbox's channel: its watcher passes one

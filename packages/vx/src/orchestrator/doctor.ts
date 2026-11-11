@@ -7,7 +7,13 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { indexDb, Cache, CACHE_VERSION, SCHEMA_VERSION } from '../cache/index.js'
+import {
+  cachePolicyEnvRefusal,
+  indexDb,
+  Cache,
+  CACHE_VERSION,
+  SCHEMA_VERSION,
+} from '../cache/index.js'
 import { PLUGIN_HOOKS, type WorkspaceConfig } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -24,7 +30,13 @@ import { isDefaultBuild } from '../graph/index.js'
 import * as ui from '../ui/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
-import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
+import {
+  probeSandbox,
+  replacedBySandbox,
+  resetSandbox,
+  toRealPath,
+  untracedReason,
+} from '../exec/index.js'
 import {
   findWorkspaceRoot,
   lockfilePath,
@@ -173,8 +185,14 @@ function refusedSettings(): Map<string, { name: string; raw: string; reason: str
     if (s.env === false) continue
     const name = envName(s.path)
     const raw = process.env[name]
-    if (raw === undefined || raw === '' || parseSettingValue(s.kind, raw) !== null) continue
-    out.set(s.path, { name, raw, reason: settingRefusal(s.path, name, raw) })
+    if (raw === undefined || raw === '') continue
+    if (parseSettingValue(s.kind, raw) === null)
+      out.set(s.path, { name, raw, reason: settingRefusal(s.path, name, raw) })
+    else if (s.path === 'cache.policy') {
+      // A string to the settings table; its grammar is the cache module's.
+      const reason = cachePolicyEnvRefusal(raw)
+      if (reason !== null) out.set(s.path, { name, raw, reason })
+    }
   }
   return out
 }
@@ -226,7 +244,7 @@ async function collectWorkspaceInfo(
       return false
     },
   )
-  const metas = held ? await discoverProjects(root, lock, plugins, cacheDir, warn) : []
+  const metas = held ? await discoverProjects(root, lock) : []
   const storeRoot =
     opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null
   // The index is read first and alone: one SQLite cannot read is a fact
@@ -295,7 +313,17 @@ async function collectWorkspaceInfo(
   // Asked while the probe runs: each is a synchronous spawn.
   const git = gitVersion()
   const statusCache = gitStatusCache(root)
-  const sandbox = { ...(await probing), declared: sandboxed }
+  const probed = await probing
+  // The host's runtime may start, but no sandboxed task runs here (a run
+  // refuses each one, sandbox-request.ts).
+  const sandbox = replacedBySandbox(toRealPath(root))
+    ? {
+        available: false,
+        reason: 'the workspace is under /dev, which the Linux sandbox replaces with its own',
+        untraced: null,
+        declared: sandboxed,
+      }
+    : { ...probed, declared: sandboxed }
   const cacheStore = indexStore ?? storeRoot
   return {
     vx: VERSION,

@@ -1,8 +1,7 @@
 // A plugin's mapping, kept under the cache dir and keyed on everything it
-// reads. Both adoption plugins mapped every package of the workspace on
-// every run, when a run asks for a few: nx() ~55 ms cold on refine (206
-// projects), turbo() ~43 ms on astro (553). A hit costs the key's reads
-// and one JSON parse.
+// reads, for the next `vx lock` or `--check` (no run maps, 2026-11-11):
+// nx() ~55 ms cold on refine (206 projects), turbo() ~43 ms on astro
+// (553). A hit costs the key's reads and one JSON parse.
 //
 // The key is the plugin's own list of what its mapping read, plus this
 // package's sources and the core helpers the mappers call: a new

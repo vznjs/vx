@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { Cache } from '../src/cache/index.js'
 import { errorCode, errorDocument, UserError, wantsJson } from '../src/util/index.js'
 import { LOCKFILE_VERSION } from '../src/workspace/index.js'
 import { docsIn } from './helpers/docs-pages.js'
@@ -414,6 +415,32 @@ describe('a refusal under --format json', () => {
       ])
     } finally {
       await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  // SQLite's unix VFS opens no path past 512 bytes, its `-journal` suffix
+  // counted, so a 505-byte cache.db path failed `unable to open database
+  // file` and the refusal blamed permissions the directory had (2026-11-10).
+  it('a cache index path too long for SQLite says so', async () => {
+    const base = await mkdtemp(path.join(os.tmpdir(), 'vx-error-codes-long-'))
+    try {
+      let dir = base
+      while (Buffer.byteLength(path.join(dir, 'cache.db')) < 505)
+        dir = path.join(dir, 'd'.repeat(100))
+      let err: unknown
+      try {
+        new Cache(dir).close()
+      } catch (e) {
+        err = e
+      }
+      const db = path.join(dir, 'cache.db')
+      expect([err instanceof UserError, errorCode(err), (err as Error).message]).toEqual([
+        true,
+        'VX_E_FS',
+        `the cache index ${db} could not be opened (unable to open database file) — its path is ${Buffer.byteLength(db)} bytes and SQLite opens none past 504; point the cache at a shorter directory (--cache-dir, VX_CACHE_DIR)`,
+      ])
+    } finally {
+      await rm(base, { recursive: true, force: true })
     }
   })
 

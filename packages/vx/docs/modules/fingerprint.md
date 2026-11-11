@@ -49,8 +49,13 @@ the projects reaching it move.
 
 A named path above the root (a `file:` or `link:` directory beside the
 checkout, `../vendor/dep`) is read and hashed into the key like one
-inside it. Git holds no base for it, so `--affected` sees an edit there
-only when the lockfile changes too.
+inside it, and so is a gitignored file in a directory inside the root,
+which `hashDir` reads as the manager copies it. Git lists no change to
+either, so `--affected` hashes each extra file the base's
+`.vx/dependencies.lock.json` records (`FingerprintClaims.hashExtra`, the
+run's own hashes, which its key reads too) and hands one that moved to
+the claimant as a changed directory: only the projects reaching it are
+selected.
 
 ## Claiming a file (`VxPlugin.fingerprint`)
 
@@ -84,6 +89,10 @@ What each claims:
 | `bun()`  | `bun.lock` (a lone `bun.lockb` is refused)     | `bunfig.toml`, `.npmrc`                                                                                                      |
 | `npm()`  | `npm-shrinkwrap.json` over `package-lock.json` | `.npmrc`                                                                                                                     |
 | `yarn()` | `yarn.lock`                                    | `.yarnrc.yml`, `.yarnrc`, `.npmrc`, `package.json` (`workspaces.nohoist`, `installConfig`, `resolutions`, dependency ranges) |
+
+Under yarn 1, `yarn()` also names each workspace's `package.json` through
+`extraFiles`: yarn.lock records no workspace's ranges, so one moved to a
+range another already keys changes the install with yarn.lock byte for byte.
 
 An install setting moves `node_modules` under a byte-identical lockfile:
 bun 1.4.2 with `[install] linker = "isolated"` rewrote no byte of

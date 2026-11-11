@@ -22,6 +22,7 @@ import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
 import {
   machineParallelism,
   maskedLine,
+  printable,
   SecretBroker,
   thrownMessage,
   UserError,
@@ -341,7 +342,8 @@ export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> 
           // Two spaces at least: one ran a long verb into its description,
           // and the help painter reads a description after two.
           `  vx ${verb.length < 17 ? `${verb.padEnd(17)} ` : `${verb}  `}`,
-          `${command.description} (${plugin.name})`,
+          // Escaped as `vx show` escapes a task's: `ESC ]0;` retitled the terminal.
+          `${printable(command.description)} (${plugin.name})`,
         ),
       )
     }

@@ -3,7 +3,7 @@
 // and an output set that resolves to no files saves an artifact a later hit
 // "restores". Both are said once, on the miss, on the run's status line.
 
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -70,6 +70,9 @@ describe('cache declarations that match nothing', () => {
         // The control: matching inputs, matching outputs.
         found: { exec: { command: 'mkdir -p dist && echo x > dist/a.js' },
           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
+        // Only empty directories: the artifact holds them and a hit makes them.
+        dirsonly: { exec: { command: 'mkdir -p gen/a/b' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true },
         // A deliberate cached no-op: empty outputs say nothing.
         noop: { exec: { command: 'true' },
           inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
@@ -88,6 +91,16 @@ describe('cache declarations that match nothing', () => {
         // Its only input is a link to a directory: the glob reads through it.
         linked: { exec: { command: 'true' },
           inputs: { files: ['vendor/**'] }, outputs: { files: [] }, cache: true },
+        // turbo()/nx() add the literal tsconfig.tsbuildinfo to an incremental
+        // tsc task: it always matched, and hid that \`tsc --outDir out\` left
+        // the wildcard glob empty, so a hit restored only the literal file.
+        partial: { exec: { command: 'echo x > partial.info' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['emit/**', 'partial.info'] }, cache: true },
+        wspartial: { exec: { command: 'echo x > stamp.info' },
+          inputs: { files: ['src/**'] },
+          outputs: { files: ['stamp.info'], workspaceFiles: ['wsgone/**'] }, cache: true },
+        partialok: { exec: { command: 'mkdir -p made && echo x > made/a.js && echo x > made.info' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['made/**', 'made.info'] }, cache: true },
         wsfound: { exec: { command: 'mkdir -p ../../shared && echo x > ../../shared/a.js' },
           inputs: { files: ['src/**'] },
           outputs: { files: ['out/**'], workspaceFiles: ['shared/**'] },
@@ -124,6 +137,14 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('lost')).toEqual([])
   })
 
+  // The warning said a hit restores nothing, yet the hit made the directories.
+  it('outputs that matched only empty directories are not named', async () => {
+    expect(await runTask('dirsonly')).toEqual([])
+    await rm(path.join(root, 'packages/app/gen'), { recursive: true })
+    expect(await runTask('dirsonly')).toEqual([])
+    expect(existsSync(path.join(root, 'packages/app/gen/a/b'))).toBe(true)
+  })
+
   // `vendor -> ../../lib` was listed by the link's name, which `vendor/**`
   // does not match: the warning said the key would not move, yet it did.
   it('a glob that reaches its files only through a linked directory is not named', async () => {
@@ -137,6 +158,17 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('typo')).toEqual([
       "[vx] app#typo: inputs matched no files (scr/**) — the key will not change when this project's source does",
     ])
+  })
+
+  it('a wildcard output glob that matches nothing is named though a literal output matched', async () => {
+    expect(await runTask('partial')).toEqual([
+      '[vx] app#partial: outputs matched no files (emit/**) — a later hit restores only the literal files (partial.info)',
+    ])
+    expect(await runTask('partial')).toEqual([])
+    expect((await runTask('wspartial')).filter((l) => l.includes('outputs'))).toEqual([
+      '[vx] app#wspartial: outputs matched no files (wsgone/**) — a later hit restores only the literal files (stamp.info)',
+    ])
+    expect(await runTask('partialok')).toEqual([])
   })
 
   // A literal output read through a linked parent is nx#37661 (2026-11).

@@ -320,7 +320,7 @@ describe('a local cache artifact whose bytes are corrupt', () => {
       const quiet = (): Logger => logger({ status: [], complete: [], started: [] })
       const cold = await run({ cwd: root, tasks: ['build'], log: quiet() })
       const hash = cold.outcomes[0]!.hash!
-      await rm(path.join(root, '.vx', 'cache', `${hash}.tree`, 'outputs', 'dist', 'b.bin'))
+      await rm(path.join(root, '.vx', 'cache', `${hash}.tree`, 'dist', 'b.bin'))
       await rm(path.join(dir, 'dist'), { recursive: true, force: true })
 
       const seen: Seen = { status: [], complete: [], started: [] }
@@ -329,6 +329,37 @@ describe('a local cache artifact whose bytes are corrupt', () => {
       expect(seen.complete).toEqual(['app#build success'])
       expect(seen.status.filter((l) => l.includes(hash))).toEqual([
         `[vx] app#build: cache: corrupt artifact for ${hash}: dist/b.bin is missing from its stored tree; dropped it — running it`,
+      ])
+    },
+    TIMEOUT,
+  )
+
+  // A FIFO at a tree file's place blocked the copy-out's open for a writer
+  // that never came: the run hung, where a directory there is a miss.
+  it(
+    'a tree entry whose file is now a FIFO is dropped as damaged, not waited on',
+    async () => {
+      const dir = await addProject(root, 'app', {
+        files: { 'src/a.txt': 'a' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && head -c 65536 /dev/urandom > dist/a.bin && head -c 65536 /dev/urandom > dist/b.bin' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        } } }`,
+      })
+      const quiet = (): Logger => logger({ status: [], complete: [], started: [] })
+      const cold = await run({ cwd: root, tasks: ['build'], log: quiet() })
+      const hash = cold.outcomes[0]!.hash!
+      const fifo = path.join(root, '.vx', 'cache', `${hash}.tree`, 'dist', 'b.bin')
+      await rm(fifo)
+      expect(Bun.spawnSync(['mkfifo', fifo]).exitCode).toBe(0)
+      await rm(path.join(dir, 'dist'), { recursive: true, force: true })
+
+      const seen: Seen = { status: [], complete: [], started: [] }
+      const healed = await run({ cwd: root, tasks: ['build'], log: logger(seen) })
+      expect(healed.ok).toBe(true)
+      expect(seen.complete).toEqual(['app#build success'])
+      expect(seen.status.filter((l) => l.includes(hash))).toEqual([
+        `[vx] app#build: cache: corrupt artifact for ${hash}: dist/b.bin is not a file in its stored tree; dropped it — running it`,
       ])
     },
     TIMEOUT,

@@ -9,11 +9,19 @@ import { scriptCommand } from '../src/script-command.js'
 import { resolveSharedOutputs } from '../src/shared-outputs.js'
 import { dotenvCandidates, listDotenv, ownerTargetOf } from '../src/nx/nx-dotenv.js'
 
-describe('scriptCommand: the package manager’s own lifecycle hooks never ride a task', () => {
-  it.each(['pack', 'publish', 'version'])('`pre%s` / `post%s` stay out of the task', (name) => {
-    const scripts = { [`pre${name}`]: 'echo pre', [`post${name}`]: 'echo post' }
-    expect(scriptCommand(name, 'echo body', scripts)).toBe('echo body')
-  })
+describe('scriptCommand: a task named for a lifecycle verb runs its hooks as `<pm> run` does', () => {
+  // `npm run version` runs `preversion`, `version`, `postversion`; so do
+  // pnpm 10, Yarn 1 and Bun 1.4, for `pack`, `publish` and `install` too
+  // (2026-11-11). Left out, `vx run version` skipped the hooks.
+  it.each(['install', 'pack', 'publish', 'version'])(
+    '`pre` / `post` hooks fold around `%s`',
+    (name) => {
+      const scripts = { [`pre${name}`]: 'echo pre', [`post${name}`]: 'echo post' }
+      expect(scriptCommand(name, 'echo body', scripts)).toBe(
+        foldScriptHooks('echo pre', 'echo body', 'echo post'),
+      )
+    },
+  )
 
   it('CONTROL: an ordinary task’s hooks are folded around it', () => {
     expect(scriptCommand('build', 'tsc', { prebuild: 'gen', postbuild: 'copy' })).toBe(

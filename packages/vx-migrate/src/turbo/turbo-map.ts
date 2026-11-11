@@ -2236,12 +2236,17 @@ function buildTask(
       files.unshift('**/*')
     }
     // Turbo keys the package's own package.json beside any explicit
-    // `inputs` (PACKAGE_CONFIG_INPUTS, turborepo#1832): without it, an edit
-    // to its `exports` or `type` replayed the old build. A glob naming it
-    // already, or an exclusion of it, is left as written.
-    const named = files.some(
-      (g) => typeof g === 'string' && new Bun.Glob(g.replace(/^!/, '')).match('package.json'),
-    )
+    // `inputs` (PACKAGE_CONFIG_INPUTS, turborepo#1832), whatever the
+    // negations: without it, an edit to its `exports` or `type` replayed
+    // the old build. A vx `!` subtracts wherever it sits, so a negation
+    // that matches it (`!**/*.json`, `!**`) is dropped: the key widens,
+    // which costs hits and never serves a stale one.
+    const pkgJson = (g: string) => new Bun.Glob(g).match('package.json')
+    for (let n = files.length - 1; n >= 0; n--) {
+      const g = files[n]
+      if (typeof g === 'string' && g.startsWith('!') && pkgJson(g.slice(1))) files.splice(n, 1)
+    }
+    const named = files.some((g) => typeof g === 'string' && !g.startsWith('!') && pkgJson(g))
     if (!named) files.push('package.json')
   }
   // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes,

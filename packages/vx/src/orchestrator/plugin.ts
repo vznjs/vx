@@ -22,6 +22,7 @@ import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import {
   errorCode,
+  hookStarted,
   maskedLine,
   nearest,
   type PluginSecrets,
@@ -66,7 +67,9 @@ export interface VxPlugin {
   // core re-validates after each plugin, so a plugin cannot produce what
   // the loader would refuse from a user. Declaration order is the order.
   // Whatever a stage changes reaches the cache key by construction: the key
-  // hashes the task config AFTER `project` ran. See
+  // hashes the task config AFTER `project` and `graph` ran, and a reference
+  // kept past its stage cannot change it later: the run copies a project's
+  // config after its hooks and freezes each task's after `graph`. See
   // docs/design/pipeline-2026-09.md.
 
   /**
@@ -84,7 +87,9 @@ export interface VxPlugin {
    * edges between projects, as `DiscoveredProject`s (each directory
    * absolute or relative to the workspace root): a lockfile's importers,
    * their package names and the dependencies it records; a runner's root
-   * tasks. Runs once per discovery, before any project config loads; each
+   * tasks. Runs under `vx lock` (and `--check`) only, before any project
+   * config loads: the lock records what the hooks found, and every other
+   * verb applies that record and calls no hook (2026-11-11). Each
    * plugin sees the locked projects and the ones earlier plugins added,
    * without their edges. A directory that is not a project becomes one
    * (with no config; named by `name`, else its path). A project named by
@@ -100,12 +105,14 @@ export interface VxPlugin {
 
   /**
    * One project's validated config, right after it loaded and before the
-   * graph is built. Add, remove or edit tasks. Runs for every loaded project
-   * on every run — a locked config is the user's file, and the hook is
-   * applied on top of it live. A project with NO config file (a
-   * `discover` plugin added it) is loaded too, as `{ tasks: {} }`, so a
-   * plugin can give it tasks; with no `project` plugin such a project is
-   * never visited. Its `name` is fixed by then: a change is refused.
+   * graph is built. Add, remove or edit tasks. Runs under `vx lock` (and
+   * `--check`) only, for every project: the lock records what the hooks
+   * left, and a run reads that record and calls no hook — a run follows
+   * the lock, never what the files say now (2026-11-11). A project with NO
+   * config file (a `discover` plugin added it) is visited too, as
+   * `{ tasks: {} }`, so a plugin can give it tasks; with no `project`
+   * plugin such a project is never visited. Its `name` is fixed by then: a
+   * change is refused.
    */
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
 
@@ -261,7 +268,8 @@ export interface VxPlugin {
    * declaration order, a plugin with `cache` after every other: the
    * others may still write through its remote. Errors are logged, never
    * thrown. A run that ran to its end passes its
-   * `RunReport`; every other exit (a refused setup, a stop) passes none.
+   * `RunReport`; every other exit (a refused setup, a stop, a hook that
+   * never settles) passes none.
    */
   teardown?(run?: RunReport): void | Promise<void>
 }
@@ -414,7 +422,7 @@ export interface DiscoverContext extends WorkspaceHookContext {
   /**
    * What `git status` lists in the workspace, workspace-relative: modified,
    * staged or deleted paths (both sides of a rename) and untracked files;
-   * null outside a git worktree. It is the run's own enumeration, so a
+   * null outside a git worktree. It is core's own enumeration, so a
    * plugin whose answer depends on the worktree (nx()'s graph key) reads it
    * here instead of walking the tree a second time.
    */
@@ -456,10 +464,9 @@ export interface ProjectHookContext extends BaseContext {
    */
   readonly projects: readonly ProjectMeta[]
   /**
-   * True when `vx lock` (or `--check`) visits: the one pass that checks the
-   * configs, so the place to report what a plugin's mapping could not say.
-   * A run checks nothing (the lock model), so such a report there repeats
-   * on every run.
+   * True: the stage runs only when `vx lock` (or `--check`) visits, the one
+   * pass that checks the configs and so the place to report what a
+   * plugin's mapping could not say.
    */
   readonly lock: boolean
 }
@@ -949,8 +956,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   // By object, not name: one package can export two plugins.
   const disabled = new Set<Plugin>()
   // Made at the first event a plugin hears: a run no handler hears pays nothing.
-  let readOnly: ((event: RunEvent) => RunEvent) | undefined
-  const viewOf = (event: RunEvent): RunEvent => (readOnly ??= readOnlyEvents())(event)
+  let readOnly: (<T>(value: T) => T) | undefined
+  const viewOf = <T>(value: T): T => (readOnly ??= readOnlyEvents())(value)
 
   for (const plugin of plugins) {
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
@@ -1021,40 +1028,39 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
           )
         }
         const onFail = (err: unknown): void => fail(hook, err)
+        const kind = HOOK_EVENTS[hook]
         const dispose = bus.subscribe((live) => {
-          if (disabled.has(plugin)) return
-          const event = HOOK_EVENTS[hook] === live.kind ? viewOf(live) : live
+          if (live.kind !== kind || disabled.has(plugin)) return
           // Not awaited: the bus is synchronous and plugin work runs off the
           // critical path. A handler's rejection is caught like its throw.
+          // Handed each part's view, not the event's: a view of the event
+          // was one more proxy and two traps per task a hook heard.
           let ret: unknown
           try {
-            switch (hook) {
-              case 'onRunStart':
-                if (event.kind === 'run:start')
-                  ret = (handler as PluginHookHandlers['onRunStart'])(event.info)
+            switch (live.kind) {
+              case 'run:start':
+                ret = (handler as PluginHookHandlers['onRunStart'])(viewOf(live.info))
                 break
-              case 'onTaskStart':
-                if (event.kind === 'task:start')
-                  ret = (handler as PluginHookHandlers['onTaskStart'])(event.node)
+              case 'task:start':
+                ret = (handler as PluginHookHandlers['onTaskStart'])(viewOf(live.node))
                 break
-              case 'onTaskStdout':
-                if (event.kind === 'task:stdout')
-                  ret = (handler as PluginHookHandlers['onTaskStdout'])(event.node, event.chunk)
+              case 'task:stdout':
+                ret = (handler as PluginHookHandlers['onTaskStdout'])(viewOf(live.node), live.chunk)
                 break
-              case 'onTaskStderr':
-                if (event.kind === 'task:stderr')
-                  ret = (handler as PluginHookHandlers['onTaskStderr'])(event.node, event.chunk)
+              case 'task:stderr':
+                ret = (handler as PluginHookHandlers['onTaskStderr'])(viewOf(live.node), live.chunk)
                 break
-              case 'onTaskComplete':
-                if (event.kind === 'task:complete')
-                  ret = (handler as PluginHookHandlers['onTaskComplete'])(event.node, event.outcome)
+              case 'task:complete':
+                ret = (handler as PluginHookHandlers['onTaskComplete'])(
+                  viewOf(live.node),
+                  viewOf(live.outcome),
+                )
                 break
-              case 'onRunStatus':
-                if (event.kind === 'run:status')
-                  ret = (handler as PluginHookHandlers['onRunStatus'])(event.line)
+              case 'run:status':
+                ret = (handler as PluginHookHandlers['onRunStatus'])(live.line)
                 break
-              case 'onRunEnd':
-                if (event.kind === 'run:end') ret = (handler as PluginHookHandlers['onRunEnd'])()
+              case 'run:end':
+                ret = (handler as PluginHookHandlers['onRunEnd'])()
                 break
             }
           } catch (err) {
@@ -1068,7 +1074,14 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     }
 
     try {
-      const setup = async (): Promise<void> => plugin.setup?.(ctx)
+      const setup = async (): Promise<void> => {
+        const settled = hookStarted(plugin.name, 'setup')
+        try {
+          await plugin.setup?.(ctx)
+        } finally {
+          settled()
+        }
+      }
       await unlessStopped(
         args.step === undefined ? setup() : args.step(`${plugin.name}:setup`, setup),
         args.signal,

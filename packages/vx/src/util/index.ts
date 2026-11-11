@@ -66,6 +66,7 @@ export {
   wholeSubtreePrefixes,
   slashBraceExpansions,
   braceAlternatives,
+  braceExpansionCount,
   braceRange,
   BRACE_RANGE_LIMIT,
   writableUnder,
@@ -97,7 +98,7 @@ export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.
 export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
 export { hangupIgnored } from './hangup.js'
-export { ESSENTIAL_ENV, withoutWorkspaceBins } from './essential-env.js'
+export { ESSENTIAL_ENV, ownEnv, withoutWorkspaceBins } from './essential-env.js'
 export { gitEnv, helperEnv, hideEnvFromTasks } from './hide-env.js'
 export {
   checkIgnore,
@@ -109,8 +110,17 @@ export {
   skipWorktreeSync,
   wholeIgnored,
 } from './git-ignored.js'
+export { CHECK_ATTR, parseCheckAttrOutput } from './git-attributes.js'
+export {
+  beforeExit,
+  hookStarted,
+  owedIfStranded,
+  settleBeforeExit,
+  settleStranded,
+  unsettledHooks,
+} from './before-exit.js'
 export { OWN_DIR_HINT, refuseForeignCacheDir } from './foreign-cache-dir.js'
-export { realPath, realpathOf } from './real-path.js'
+export { realPath, realpathOf, sameDir } from './real-path.js'
 export {
   IGNORE_ALL,
   ignoreDir,

@@ -26,7 +26,7 @@ import {
   OPEN_LINE_HOLD_CHARS,
   OPEN_LINE_WAIT_MS,
 } from '../src/exec/runner.js'
-import { killTree } from '../src/exec/kill-tree.js'
+import { killTree, markStopped } from '../src/exec/kill-tree.js'
 
 /**
  * A deadline a fresh shell's first command (an `echo`, a `trap`) meets on
@@ -133,6 +133,54 @@ describe('runCommand', () => {
     expect(clean.stdout).toBe('early-line\n')
     expect(clean.stderr).toBe('')
     expect(control).toEqual([])
+  }, 30_000)
+
+  // vx stopped the task: a leftover holding the pipe after vx's own kill
+  // is not the task's doing, and the line blamed the user for it.
+  it('a task the run stopped gets no cut line', async () => {
+    const stop = new AbortController()
+    const live = new Set<ReturnType<typeof Bun.spawn>>()
+    const lines: string[] = []
+    const pids: number[] = []
+    const run = runCommand({
+      // sh runs a background job with SIGINT ignored: it outlives the stop.
+      command: 'sleep 7 & echo $! > bg.pid; exec sleep 9',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      liveChildren: live as never,
+      signal: stop.signal,
+      onSpawn: (pid) => pids.push(pid),
+      onStderr: (chunk) => lines.push(chunk),
+    })
+    await Bun.sleep(300)
+    stop.abort('SIGINT')
+    for (const child of live) killTree(child, 'SIGINT')
+    const r = await run
+    try {
+      expect([r.signal, r.stderr, lines]).toEqual(['SIGINT', '', []])
+    } finally {
+      const bg = Number((await Bun.file(path.join(cwd, 'bg.pid')).text()).trim())
+      try {
+        process.kill(bg, 'SIGKILL')
+      } catch {
+        // gone
+      }
+    }
+  }, 30_000)
+
+  // Ctrl-Z stops vx and its tasks: time stopped is not time the task ran,
+  // and it fed history's forecasts and critical path.
+  it('time vx spent stopped is not in the duration', async () => {
+    const run = runCommand({ command: 'sleep 1', cwd, env: { PATH: process.env.PATH ?? '' } })
+    try {
+      await Bun.sleep(100)
+      markStopped(true)
+      await Bun.sleep(600)
+    } finally {
+      markStopped(false)
+    }
+    const r = await run
+    expect(r.durationMs).toBeLessThan(800)
   }, 30_000)
 
   // The cut line opens a line of its own, and only that: its leading
@@ -1002,6 +1050,9 @@ describe('withForwardArgs', () => {
     ['a trailing newline', '\n  echo args:\n', 'args: --fix a b\n'],
     ['trailing blank lines', 'echo args: \n\t\n', 'args: --fix a b\n'],
     ['control: a line continuation', 'echo args: \\\n', 'args: --fix a b\n'],
+    ['a line continuation then a blank line', 'echo args: \\\n\n', 'args: --fix a b\n'],
+    ['a line continuation then a spaces-only line', '\n  echo args: \\\n  \n', 'args: --fix a b\n'],
+    ['an escaped trailing space then a blank line', 'echo a\\ \n\n', 'a  --fix a b\n'],
     ['control: an escaped trailing space', 'echo a\\ ', 'a  --fix a b\n'],
     ['control: an escaped backslash before the newline', 'echo a\\\\\n', 'a\\ --fix a b\n'],
   ])('%s', (_name, command, printed) => {

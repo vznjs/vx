@@ -97,7 +97,11 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
   description: `bun test${flags}, shard ${i} of ${n} (dealt by scripts/test-shard.ts)`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
+    // Bun's transpiler cache in the task's own TMPDIR (the sandbox makes one
+    // per task and removes it): the suite spawns vx hundreds of times, and
+    // each spawn compiled all of src again. One shard took 47 s of CPU
+    // without the cache and 34 s with it, cold (2026-11-10).
+    command: `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
     ...(flags === '' ? {} : { platforms: MAC }),
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],

@@ -171,6 +171,29 @@ export default [
   }),
 
   watchCase({
+    id: 'watch/directory-moved-in-reruns',
+    kind: 'correctness',
+    title: 'A folder moved into the inputs rebuilds with its files, and so does an edit inside it',
+    why: 'Moving a folder in is one rename: no file inside it is written, so a watch that waits for file writes hears nothing. Its files are still new inputs, as if they had been created there. The build must take them, and the folder must be watched from then on so its next edit rebuilds too.',
+    from: ['watch-tree-linux'],
+    workspace: app(
+      { files: { 'staging/sub/c.txt': 'c1\n' } },
+      { command: 'mkdir -p dist && cat $(find src -type f | sort) > dist/out.txt' },
+    ),
+    phases: [
+      firstBuild,
+      {
+        sh: 'mv packages/app/staging/sub packages/app/src/sub',
+        expect: { ran: ['app#build'], files: { [OUT]: 'a1\nc1\n' } },
+      },
+      {
+        write: { 'packages/app/src/sub/c.txt': 'c2\n' },
+        expect: { ran: ['app#build'], files: { [OUT]: 'a1\nc2\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
     id: 'watch/empty-directory-reruns-nothing',
     kind: 'efficiency',
     title: 'Creating an empty folder under the inputs reruns nothing',
@@ -368,6 +391,41 @@ export default [
     phases: [
       { expect: { files: { 'packages/app/dist/started': 'a1\n' }, inFlight: true } },
       { write: { [A]: 'a2\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'a2\n' } } },
+    ],
+  }),
+
+  watchCase({
+    id: 'watch/edit-after-task-in-first-run-rebuilds',
+    kind: 'correctness',
+    title:
+      'An edit made during the watch’s first build, to a task already done, is built right after',
+    why: 'The first build of a watch can finish one task while another still runs, and a save to the finished task’s source lands in that gap. No running task read the edit, so nothing marks its output stale. The watch must still build it once it starts watching, or it idles on output from the old bytes.',
+    from: ['watch-initial-edit-done'],
+    workspace: {
+      projects: {
+        lib: chainProject('lib'),
+        app: {
+          tasks: {
+            // `started` once lib's build is long done, so the edit lands after it.
+            build: build(
+              'sleep 0.5 && mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt',
+            ),
+          },
+          files: { 'src/a.txt': 'a1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          files: { 'packages/lib/dist/out.txt': 'lib\n', 'packages/app/dist/started': 'a1\n' },
+          inFlight: true,
+        },
+      },
+      {
+        write: { 'packages/lib/src/a.txt': 'lib2\n' },
+        expect: { ran: ['lib#build'], files: { 'packages/lib/dist/out.txt': 'lib2\n' } },
+      },
     ],
   }),
 

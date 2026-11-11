@@ -25,8 +25,8 @@ import * as ui from '../ui/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot, repoIdsOf } from '../workspace/index.js'
 import {
-  cliCacheDir,
   loadCliWorkspace,
+  namedCacheDir,
   parseCacheDirFlag,
   warnToStderr,
 } from './workspace-config.js'
@@ -221,7 +221,7 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // stayed restorable (X-17).
   let dir: string
   let storeRoot: string | null = null
-  if (parsed.cacheDir !== undefined) dir = await cliCacheDir(root, parsed.cacheDir)
+  if (parsed.cacheDir !== undefined) dir = namedCacheDir(parsed.cacheDir)
   else {
     const ws = await loadCliWorkspace(root)
     dir = ws.cacheDir

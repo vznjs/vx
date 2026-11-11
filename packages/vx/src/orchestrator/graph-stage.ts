@@ -13,6 +13,7 @@ import {
 import { relPosix, UserError } from '../util/index.js'
 import { type ProjectMeta, validateProjectConfig } from '../workspace/index.js'
 import { applyGraphHooks } from './plugin-host.js'
+import { freezeDeep } from './read-only.js'
 import type { VxPlugin } from './plugin.js'
 import { isDefaultBuild } from '../graph/index.js'
 
@@ -78,6 +79,15 @@ export async function applyGraphStage(
     },
     args.rules,
   )
+  // The last stage that edits a task config is over: a plugin that kept a
+  // node wrote its config after the key read it, and ran a command the key
+  // never saw. Frozen, not copied as the project stage's is: the plugin
+  // holds the node, so a copy is what it reads next. Core sets neither
+  // from here. ~2 us a node, beside the clone above.
+  for (const n of nodes.values()) {
+    freezeDeep(n.config)
+    Object.defineProperty(n, 'config', { writable: false })
+  }
   // A hook may rebuild a node, which drops what its edges stand in for, or
   // remove an edge a record names: re-attach each by id, less what is gone.
   for (const [id, before] of standIns) {

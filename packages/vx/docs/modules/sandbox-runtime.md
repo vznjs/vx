@@ -34,7 +34,8 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
   (`bindableWrites`), read grants punched around the write grants
   inside them (`punchWritePaths`), and the SRT custom config.
 - `sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`,
-  `isUnderAny`, `sandboxReads`, `unique`.
+  `isUnderAny`, `sandboxReads`, `unique`, `grantAlternatives`,
+  `replacedBySandbox`.
 - `sandbox-deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
   found within each task's write grants instead of the whole root.
@@ -234,6 +235,7 @@ export interface SandboxedRunArgs {
   baseDenyRead: readonly string[] // [workspaceRoot, ...credential stores] — not its project's neighbours, nor ~/.ssh (L-41)
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
+  keyRoot?: string // a cached task's workspace root: a hidden read under it is named for inputs.workspaceFiles too
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
 }
 
@@ -275,10 +277,11 @@ export function releaseBridges(tag: string): void
 // errno, anything else its message. The sandbox never reports a stack.
 export function thrownReason(err: unknown, what?: string): string
 // The probe's verdicts as one line each: a failed start, missing
-// dependencies, a temp dir too long for the socket path.
+// dependencies, a temp dir too long for the socket path or one the
+// runtime cannot carry unquoted.
 export function unavailableReason(exitCode: number | null, stderr: string): string
 export function dependencyReason(errors: readonly string[]): string
-export function socketPathRefusal(tmpdir?: string): string | undefined
+export function socketPathRefusal(tmpdir?: string, taskTmp?: string): string | undefined
 
 // The port bridge (Linux; § Port bridge)
 export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[]
@@ -291,12 +294,18 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[]
 export function sbplResolvedPath(value: string, field: string): string
 
 // sandbox-paths.ts: the wildcard alphabet of a GRANT. Smaller than
-// util/paths.ts's BUN_GLOB_WILDCARDS on purpose — `{}` is a literal to a
-// grant (a brace grant gets a placeholder and is widened to its
-// directory; scanned, it matches nothing before the task writes). The
-// request builder reads it to decide whether an output grant is a glob.
+// util/paths.ts's BUN_GLOB_WILDCARDS on purpose — a grant's braces are
+// expanded first, so one left is escaped and literal (scanned, it would
+// match nothing before the task writes). The request builder reads it to
+// decide whether an output grant is a glob.
 export const MOUNT_WILDCARDS: RegExp
 export function isMountableLiteral(grant: string): boolean
+// The grants one declared grant stands for: braces expanded as a task
+// glob's are, and an escaped brace or comma in a literal read as itself.
+export function grantAlternatives(grant: string): string[]
+// Linux: `dir` is under `/dev`, which the sandbox mounts afresh, so no
+// sandboxed task runs there (refused by the request builder; `vx info`).
+export function replacedBySandbox(dir: string): boolean
 // The one path a grant names: a literal, or one whose only brackets are
 // escaped (`out/\[id\]` names `out/[id]`); undefined for a pattern.
 export function namedPath(grant: string): string | undefined
@@ -396,7 +405,17 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    bridge's, `claude-http-<16 hex>.sock`): past it the runtime said ENAMETOOLONG on
    macOS and "Failed to create bridge sockets after 5 attempts" on
    Linux, neither naming the directory; the verdict now gives the path,
-   its length, the limit and "point TMPDIR at a shorter path".
+   its length, the limit and "point TMPDIR at a shorter path". It also
+   refuses a TMPDIR, or a CLAUDE_CODE_TMPDIR (the parent of the task temp
+   directories, which hold vx's own bridge sockets), that is not absolute
+   or holds anything but ASCII letters, digits and `. _ - / + @`: the
+   runtime pastes the socket path unquoted into the shell script it runs
+   in the sandbox and into socat addresses on the host, and vx splices its
+   own into bwrap's command line. A `;` hung the run, a space cost every
+   task ~7 s and its network proxy, `,` `:` `'` `"` `(` failed "Failed to
+   create bridge sockets after 5 attempts", a relative path failed "a
+   mount went away", and a non-ASCII letter failed a networked task; the
+   verdict names the variable and the path.
 2. **`initSandbox`** is called at most once per `vx run`, lazily: the
    first sandboxed execution arms the run's `prepareSandbox` armer
    (sandbox-request.md), which probes and then inits. It calls `SandboxManager.initialize`
@@ -448,6 +467,9 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      too: its dial must reach the proxy, whose refusal names the host and
      fails it; without the wait it met the closed port under load and
      passed with nothing reported. The wait costs ~4 ms, the socat's start.
+     A bridge that never listens is said on the task's stderr (`[vx] the
+sandbox's network proxy bridges (ports 3128 and 1080) did not listen
+within 5 s; …`) and the command runs anyway.
 4. **Filtering.** Enforcement anchors at the workspace root, but only
    denials on a path inside `reportWithin` (the project) or one of
    `reportLinked` (the linked packages a cached task was denied because
@@ -479,7 +501,7 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
 
 On Linux the command runs in a session, and so a process group, of its own inside the sandbox: `: 'vx-<tag>'; { read -r s <&3 && kill -s "$s" -- -$$; } & exec setsid sh -c '<command>' 3<&-`, both tools resolved on vx's own PATH. `sh`, the shell an unsandboxed task runs: it was `bash`, and brace expansion, `[[ … ]]` and `echo 'a\tb'` read one way with the block and another without it where `/bin/sh` is dash (item 964). bwrap's `--new-session` puts the runtime's shells (the proxy bridges' script, the seccomp step's) in one group with the command, and `kill 0` reaches a group's members across the nested pid namespace, so a command that signalled its own group ended the runtime's shell: bwrap exited 143 and the namespace's teardown SIGKILLed the rest mid-trap (item 751). The shell `exec`s `setsid`, which is no group leader there, so it execs without a fork and the command keeps the shell's pid: an exit status and a signal death (137) are the command's, as before. The cost is a `setsid` exec and a second shell, about 3 ms on a 35 ms sandboxed `true` (min of 15, three interleaved pairs). A cancellation reaches the command the same way (item 752): vx's group signal would end bwrap's monitor, and `--die-with-parent` SIGKILLs the namespace, so a `trap … TERM` never ran. The watcher forked before the `exec` reads a signal's name off fd 3, which vx writes for SIGINT and SIGTERM (`signalThrough`, `kill-tree.md`), and signals the command's group, `$$`; SIGKILL at the grace's end still goes to bwrap's group. The command runs in the foreground because an `&` command starts with SIGINT ignored, which a shell cannot trap; it does not get fd 3. `wrapSandboxedCommand` says so in `forwardsSignals`, and both spawns (`runSandboxed`, and `runPersistent` with `signalChannel`) pass fd 3 when it is set.
 
-On Linux the wrapped command is `exec /abs/bwrap …`, behind `GIT_DISCOVERY_ACROSS_FILESYSTEM=${…-1}` for a task whose grants name a `.git`: every mask and bind is a mount point, and git's discovery stops at one, so such a task read "Stopping at filesystem boundary" (2026-10-03, `sandbox-git-discovery.unsafe.test.ts`). Only such a task: git-aware tools read the variable, vx's own repo probe among them. The bwrap: SRT wrote a bare `bwrap` into a command the task's shell runs with the TASK's environment, so a dependency's `node_modules/.bin/bwrap` ran in its place and the task ran unsandboxed, exit 0; `initSandbox` now hands SRT vx's own paths for `bwrap` and `socat` (B-19). the spawn's shell execs bwrap, so bwrap is vx's own child and its `--die-with-parent` fires when vx dies, a `kill -9` included. The pid namespace then takes every descendant, one that called `setsid` too. Behind a shell that waited on it, bwrap's parent was that shell, which outlived vx, and a sandboxed server's whole tree ran on under init (turborepo#9666; item 801, `sandbox-runtime.unsafe.test.ts` › "a sandboxed server’s backgrounded and setsid children die with vx"). A one-shot task traced for violations is the same `exec bwrap …`: its strace runs inside (B-11). A persistent task is never traced. strace failing on its own (a stderr line of its own, `strace: …`) ends only the attempt: the task runs once more, with a line saying why, and the second attempt is its verdict — unless the run is stopping (`ExecuteRequest.signal` aborted): its kill already took the children it held, and a retry would be spawned after it (B-36). The second attempt runs in what the first left of `timeoutMs`, not a fresh window: `timeout` bounds the task's whole run (`schema.md`), and a fresh one let a task run near twice its timeout. Its exit is no longer the task's — a tracer that dies leaves the command running untraced — so the line, not the exit, is the sign: the trace stopped short, and a denial after it would go unreported. Inside, the tracer shares the task's pid namespace and uid, so a task can end it or reach its log through `/proc`: the violation REPORT is at the task's mercy, as it never is for enforcement, which is bwrap's mounts. The sandbox kept the first attempt's writes to what it declared, so the second redoes rather than doubles them (STATUS Next 24, `sandbox-tracer-retry.unsafe.test.ts`). A mount gone as bwrap set the sandbox up (`bwrap: Can't …: No such file or directory`: a `docker build` beside the task left a transient mount under /tmp, read from the mount table and gone by its remount) is retried the same way, once: the command never started (`sandbox-mount-race.unsafe.test.ts`). The trace log is the task's own file beside the task directories (L-25), removed once it is read; a second signal's exit (`process.exit`) never reaches that read, so the process's `exit` event removes every log still listed (item 848, `sandbox-runtime.unsafe.test.ts` › "a second signal exit leaves no strace log behind"). A first signal lets the run end and read the log itself (item 849).
+On Linux the wrapped command is `exec /abs/bwrap …`, behind `GIT_DISCOVERY_ACROSS_FILESYSTEM=${…-1}` for a task whose grants name a `.git`: every mask and bind is a mount point, and git's discovery stops at one, so such a task read "Stopping at filesystem boundary" (2026-10-03, `sandbox-git-discovery.unsafe.test.ts`). Only such a task: git-aware tools read the variable, vx's own repo probe among them. The bwrap: SRT wrote a bare `bwrap` into a command the task's shell runs with the TASK's environment, so a dependency's `node_modules/.bin/bwrap` ran in its place and the task ran unsandboxed, exit 0; `initSandbox` now hands SRT vx's own paths for `bwrap` and `socat` (B-19). the spawn's shell execs bwrap, so bwrap is vx's own child and its `--die-with-parent` fires when vx dies, a `kill -9` included. The pid namespace then takes every descendant, one that called `setsid` too. Behind a shell that waited on it, bwrap's parent was that shell, which outlived vx, and a sandboxed server's whole tree ran on under init (turborepo#9666; item 801, `sandbox-runtime.unsafe.test.ts` › "a sandboxed server’s backgrounded and setsid children die with vx"). A one-shot task traced for violations is the same `exec bwrap …`: its strace runs inside (B-11). A persistent task is never traced. strace failing on its own (a stderr line of its own, `strace: …`) ends only the attempt: the task runs once more, with a line saying why, and the second attempt is its verdict — unless the run is stopping (`ExecuteRequest.signal` aborted): its kill already took the children it held, and a retry would be spawned after it (B-36). The second attempt runs in what the first left of `timeoutMs`, not a fresh window: `timeout` bounds the task's whole run (`schema.md`), and a fresh one let a task run near twice its timeout. Its exit is no longer the task's — a tracer that dies leaves the command running untraced — so the line, not the exit, is the sign: the trace stopped short, and a denial after it would go unreported. Inside, the tracer shares the task's pid namespace and uid, so a task can end it or reach its log through `/proc`: the violation REPORT is at the task's mercy, as it never is for enforcement, which is bwrap's mounts. The sandbox kept the first attempt's writes to what it declared, so the second redoes rather than doubles them (STATUS Next 24, `sandbox-tracer-retry.unsafe.test.ts`). A mount gone as bwrap set the sandbox up (`bwrap: Can't …: No such file or directory`: a `docker build` beside the task left a transient mount under /tmp, read from the mount table and gone by its remount; `… remount "…": Invalid argument` when the mount is gone but its directory is not yet) is retried the same way, once: the command never started (`sandbox-mount-race.unsafe.test.ts`). The trace log is the task's own file beside the task directories (L-25), removed once it is read; a second signal's exit (`process.exit`) never reaches that read, so the process's `exit` event removes every log still listed (item 848, `sandbox-runtime.unsafe.test.ts` › "a second signal exit leaves no strace log behind"). A first signal lets the run end and read the log itself (item 849).
 
 A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). `punchWritePaths` warns naming the grant; the fix is to keep writable caches out of `node_modules` (astro's `cache.dir`, vite's `cache.dir`), since SRT's config has no `--symlink`. A linked child that points INTO a write grant is that grant under a second name, mounted read-only: the warning names the link and says to grant it. A write grant spelled through a link in the project (`gen/` over `gen -> real`) resolves to `real`, and SRT skips a sibling link as a write path, so `resolveSandboxConfig` records it (`linkedWrites`) and vx binds the target at the link's spelling itself, last before bwrap's `--` (`linkedWriteBinds`, `withLinkedWrites`); the read punch goes around that bind too. A linked child whose target lies under the deny anchor (the workspace root) and inside no read grant is dropped, not bound: `node_modules -> ..` or `shared -> ../b` under a `read: ['.']` punched around `dist/` bound the root or a sibling no key answers for, where the grant bound whole keeps the link a link into the deny (item 1006's glob hit, through the punch).
 
@@ -571,7 +593,10 @@ entry other than the ones holding the project (a credential store or its
 link's target, `~/.vx` or a cache directory outside the workspace, the
 repository's git data outside it) is named but never the suggested
 grant: an agent applies a suggestion as given, and `cat ~/.npmrc` was
-told to grant `../../home/.npmrc` until 2026-11-08.
+told to grant `../../home/.npmrc` until 2026-11-08. For a cached task
+(`keyRoot`) a grant inside the workspace comes with the
+`inputs.workspaceFiles` entry that keys it: applied alone, the grant
+read the file unkeyed and an edit there was a stale hit.
 
 bwrap enters the task's cwd only if a mount holds it, and otherwise
 `$HOME`, with no word: a project granted no read (`sandbox: {}`, its own
@@ -691,7 +716,7 @@ variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `GRPC_PROXY`,
 `FTP_PROXY`, `NO_PROXY` and their lowercase forms, `RSYNC_PROXY`,
 `DOCKER_HTTP(S)_PROXY`, `CLOUDSDK_PROXY_*`,
 `CLAUDE_CODE_HOST_*_PROXY_PORT`), `GIT_SSH_COMMAND`,
-`GIT_CONFIG_PARAMETERS`, `JAVA_TOOL_OPTIONS` (below), and the CA-bundle variables when it has a CA
+`GIT_CONFIG_PARAMETERS`, `SOCAT_DEFAULT_LISTEN_IP`, `SHLVL`, `JAVA_TOOL_OPTIONS` (below), and the CA-bundle variables when it has a CA
 (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and the others in its
 `CA_TRUST_VARS`). A task's `define` or `passThrough` of one of these
 names does not reach a sandboxed task: the sandbox's network goes through
@@ -933,9 +958,13 @@ Linux's observer records every write attempt). `bun build --compile`
 said only "Failed to extract executable" when its cache was not
 writable.
 
-`write: ['g/{a,b}.txt']` is ok, because the classifier here counts only
-`*?[]` and a brace-spelled grant is therefore treated as a file — placed,
-then widened to its directory. It deliberately does NOT read
+A grant's braces are expanded first (`grantAlternatives`, both
+platforms, as a task glob's are; an escaped `\{`, `\}` or `\,` in a
+grant that names a path then reads as itself), so
+`write: ['g/{a,b}.txt']` is two file grants, each placed, then widened to
+its directory. Kept as written, `read: ['c{a,b}']` named a literal no
+project holds and granted nothing. The classifier here counts only
+`*?[]`, so an escaped brace stays a literal. It deliberately does NOT read
 `BUN_GLOB_WILDCARDS`, `Bun.Glob`'s own set, which also counts `{}`
 (nor `isLiteralPattern`, the task-glob predicate item 495 unified): doing so would move that spelling into the scan and turn a
 working grant into `Read-only file system`. The two predicates answer

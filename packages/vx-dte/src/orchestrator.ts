@@ -45,7 +45,9 @@ import {
 } from './messages.js'
 import {
   advise,
+  leftMs,
   simulate,
+  UNKNOWN_MS,
   type Fleets,
   type PlanTask,
   type PlanWorker,
@@ -53,13 +55,25 @@ import {
   type WarmUp,
 } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
-import { type Need, Queue } from './dispatch.js'
+import { type Need, Queue, type Soon } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
-import { names } from './outputs.js'
+import { leftUnder, names, outputFiles } from './outputs.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
+
+/** What kept a run from its ideal, in ms along the chain that ended it (`driftOf`). */
+interface Drift {
+  /** Waiting for a worker to join, past the fastest warm-up. */
+  readonly joining: number
+  /** Waiting for room on a joined worker. */
+  readonly room: number
+  /** From its send to its worker beginning it: its inputs reaching it. */
+  readonly sending: number
+  /** The run's time after its last task. */
+  readonly after: number
+}
 
 interface Job {
   readonly req: ExecuteRequest
@@ -123,6 +137,8 @@ interface Worker {
   readonly label: string
   /** From its start to its join, when this run started it. */
   readonly warmUpMs: number | undefined
+  /** When it joined. */
+  readonly joinedAt: number
   /** The size it was started as, when this run started it. */
   readonly declared: Declared | undefined
   /** Tasks it finished. */
@@ -140,6 +156,8 @@ interface Worker {
   usedMemory: number
   /** Its machine's use as its last frame said, and when this machine heard it. */
   load?: { cpu: number; memory: number; at: number }
+  /** Cores its machine spends on no task of the run while it runs some, averaged over its frames (`heard`). */
+  other?: number
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
   /**
@@ -157,6 +175,13 @@ interface Worker {
   /** It failed a task it began: it gets no more. */
   faulty: boolean
 }
+
+/** How far each frame moves a worker's `other`: a frame read as a task starts lags it. */
+const OTHER_WEIGHT = 0.25
+
+/** `a`'s `other`, where its machine is the size it was given: a bigger one's spare cores take it. */
+const otherOf = (a: Worker): number =>
+  a.other === undefined || a.cores !== a.reported.cores ? 0 : a.other
 
 /** What a worker was started as: its size's `cpu` and `memory` in bytes. */
 export interface Declared {
@@ -204,6 +229,13 @@ export interface OrchestratorOptions {
   readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
   readonly tail?: (taskId: string) => number
+  /** A task's time as history says it (ms): when a running one ends, and what a hold keeps from (`Hold`). */
+  readonly ms?: (taskId: string) => number | undefined
+  /**
+   * Tasks about to be ready, given when each running one ends (ms from
+   * now): the queue keeps room for them (`holdFor`), highest rank first.
+   */
+  readonly soon?: (ends: ReadonlyMap<string, number>) => readonly (Soon & { readonly id: string })[]
   /** How waiting tasks are ordered and placed (`Strategy`). */
   readonly how?: Strategy
   /** The platform a task naming none runs on (`homeOf`). */
@@ -347,6 +379,8 @@ export class Orchestrator {
   private readonly refused: string[] = []
   /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
+  /** When each cancelled one was: held from its ask until then (`heldMs`). */
+  private readonly cancelledAt = new Map<string, number>()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
   private readonly late = new Set<string>()
   /** Of `cancelled`, those that joined anyway and were told to exit. */
@@ -380,6 +414,11 @@ export class Orchestrator {
   private readonly took = new Map<
     string,
     { ms: number; cores: number; memory: number; platform: string | undefined }
+  >()
+  /** Each task a worker ran: when it joined the queue, was sent, began and ended, and when its worker joined. */
+  private readonly timeline = new Map<
+    string,
+    { queued: number; sent: number; began: number; end: number; joined: number }
   >()
   /** Each time the run asked for workers: when, how many, for which work, ending when. */
   private readonly asks: {
@@ -446,7 +485,7 @@ export class Orchestrator {
     const nodes = this.o.nodes()
     const up = upstream(nodes, req.taskId)
     // A worker runs a task in its project's directory of the run's tree: a
-    // project whose config is untracked is not there, and every worker
+    // project with no tracked file is not there, and every worker
     // failed to spawn it, exit 127 (2026-11-07).
     const dir = path.relative(this.o.root, req.cwd)
     if (dir !== '' && !dir.startsWith('..')) {
@@ -454,7 +493,7 @@ export class Orchestrator {
       const tree = await this.inTree
       if (tree !== undefined && !holds(tree, dir))
         throw new UserError(
-          `${req.taskId} runs in ${dir}, which is not in the commit workers check out: commit its project (its vx.config file is untracked)`,
+          `${req.taskId} runs in ${dir}, which is not in the commit workers check out: commit its project (no file under ${dir} is tracked)`,
         )
     }
     // A worker runs the run's tree: a file its key includes that the tree
@@ -463,14 +502,23 @@ export class Orchestrator {
     if (req.inputs !== undefined && req.inputs.files.length > 0) {
       this.inTree ??= listTree(this.o.root, this.o.tree)
       const tree = await this.inTree
-      // A dependency's output is restored there before the task runs: a
-      // key that reads an upstream's bytes (`inputs.tasks` leaving it out)
-      // was refused (2026-10-25).
+      // A dependency's output is there before the task runs: a cached one's
+      // restored, an uncached one's left where it ran, which its dependants
+      // follow. A key that reads an upstream's bytes (`inputs.tasks` leaving
+      // it out) was refused (2026-10-25), an uncached one's too (2026-11-10).
       let restored: ((file: string) => boolean)[] | undefined
       const made = (file: string): boolean =>
         (restored ??= [...up].flatMap((id) => {
-          const d = this.dep(nodes, id)
-          return d === undefined ? [] : [names(d.project, d.outputs)]
+          const n = nodes?.get(id)
+          const outs = n?.config.outputs
+          return n === undefined || outs === undefined
+            ? []
+            : [
+                names(path.relative(this.o.root, n.projectDir), {
+                  files: outs.files,
+                  workspaceFiles: outs.workspaceFiles ?? [],
+                }),
+              ]
         })).some((m) => m(file))
       const stray =
         tree === undefined
@@ -657,10 +705,26 @@ export class Orchestrator {
     // and its 41 s build began 47 s in, the run's end (main, 2026-10-23).
     const workers = [...this.workers.values()].filter((a) => !a.faulty)
     const byId = this.waiting
+    const now = performance.now()
+    const ms = this.o.ms
+    // When each running task ends, as history says: where a hold finds room.
+    const endsIn = new Map<string, number>()
     const bins = workers.map((a) => {
       let running = 0
-      for (const j of a.busy.values()) if (j.held !== undefined) running++
+      const ends: [number, number, number][] = []
+      for (const j of a.busy.values()) {
+        if (j.held === undefined) continue
+        running++
+        if (ms === undefined) continue
+        const at = Math.max(
+          1,
+          leftMs((ms(j.req.taskId) ?? UNKNOWN_MS) - (now - (j.startedAt ?? j.sentAt ?? now))),
+        )
+        endsIn.set(j.req.taskId, at)
+        ends.push([at, j.held.cores, j.held.memory])
+      }
       return {
+        ...(ms === undefined ? {} : { ends }),
         id: a.id,
         cores: a.cores,
         memory: a.memory,
@@ -673,7 +737,16 @@ export class Orchestrator {
       }
     })
     const nodes = this.o.nodes()
+    const soon =
+      this.o.soon === undefined || ms === undefined
+        ? undefined
+        : this.o
+            .soon(endsIn)
+            .filter((s) => !byId.has(s.id) && !endsIn.has(s.id))
+            // As many as the run has workers, and a few: room kept for more is room no task gets.
+            .slice(0, 4 * bins.length + 8)
     const to = this.queue.pass(bins, {
+      ...(soon === undefined ? {} : { soon, ms: (id: string) => ms!(id) ?? UNKNOWN_MS }),
       book: (need) => this.booking(need),
       deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
       gate: (id) => {
@@ -860,7 +933,7 @@ export class Orchestrator {
    * shards on 4 cores at once, 28 failed (main bf77a58, 2026-10-23).
    */
   private used(a: Worker): { cores: number; memory: number } {
-    const booked = { cores: a.usedCores, memory: a.usedMemory }
+    const booked = { cores: a.usedCores + otherOf(a), memory: a.usedMemory }
     const l = a.load
     if (l === undefined || a.cores !== a.reported.cores) return booked
     let cores = l.cpu
@@ -921,6 +994,14 @@ export class Orchestrator {
         if (typeof cores === 'number' && Number.isFinite(cores) && cores >= 0 && cores <= a.cores)
           this.o.bases?.set(id, cores)
     const tasks = Number(load.tasks)
+    // What the machine spends besides the run's tasks: GitHub's runner
+    // agent alone took 0.2 to 0.6 of a 4-core small's cores, and its
+    // machine 0.6 to 1.1 past its tasks, so shards booked on all 4 ran
+    // 30% past their history (main 36e410f, 2026-11-10).
+    if (Number.isFinite(tasks) && a.busy.size > 0) {
+      const o = Math.min(a.cores / 2, Math.max(0, a.load.cpu - tasks))
+      a.other = a.other === undefined ? o : a.other + (o - a.other) * OTHER_WEIGHT
+    }
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
 
@@ -1358,6 +1439,14 @@ export class Orchestrator {
       head.durationMs,
       job.startedAt === undefined ? 0 : endAt - job.startedAt,
     )
+    const sent = job.sentAt ?? endAt
+    this.timeline.set(task, {
+      queued: Math.min(job.queuedAt ?? sent, sent),
+      sent,
+      began: Math.max(sent, Math.min(endAt, job.startedAt ?? sent)),
+      end: endAt,
+      joined: a.joinedAt,
+    })
     this.took.set(task, {
       ms: held,
       cores:
@@ -1405,7 +1494,10 @@ export class Orchestrator {
       job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
     // A failed download reads as a miss: asked once more, since one stalled
     // download failed a CI run whose upload had landed (main, 2026-10-28).
-    const log = await read()
+    const log = await (
+      job.req.remoteOnly === true || deferred ? Promise.resolve() : this.clear(job, node)
+    )
+      .then(read)
       .then((got) => got ?? read())
       .catch((err: unknown) => {
         job.reject(err)
@@ -1483,6 +1575,31 @@ export class Orchestrator {
         ...(share < 1 ? { cpuShare: share } : {}),
       },
     })
+  }
+
+  /**
+   * Clears what its worker cleared before `job`'s task ran: an earlier
+   * run's files under its outputs, not committed ones, nested projects' or
+   * its dependencies'. A restore lays files and removes none, so a file
+   * the task no longer writes, or deleted (an uncached `rm -rf dist`, which
+   * core cleans nothing for), stayed beside its new ones (2026-11-10).
+   */
+  private async clear(job: Job, node: TaskNode | undefined): Promise<void> {
+    if (job.req.outputs.files.length + job.req.outputs.workspaceFiles.length === 0) return
+    this.inTree ??= listTree(this.o.root, this.o.tree)
+    const tree = await this.inTree
+    // No list of the committed files: none is told from the rest.
+    if (tree === undefined) return
+    const nodes = this.o.nodes()
+    const held = [...(job.up ?? upstream(nodes, job.req.taskId))].flatMap((id) => {
+      const d = this.dep(nodes, id)
+      return d === undefined ? [] : [names(d.project, d.outputs)]
+    })
+    const project = path.relative(this.o.root, node?.projectDir ?? job.req.cwd)
+    const nested = node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root)
+    const under = await outputFiles(this.o.root, project, job.req.outputs)
+    for (const f of leftUnder(under, tree.files, nested, held).cleared)
+      await rm(path.join(this.o.root, f), { force: true })
   }
 
   /**
@@ -1600,6 +1717,7 @@ export class Orchestrator {
       this.workers.set(id, {
         id,
         warmUpMs,
+        joinedAt: performance.now(),
         declared: spawn?.declared,
         ran: 0,
         done: [],
@@ -1885,6 +2003,7 @@ export class Orchestrator {
         if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
         if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
         this.cancelled.add(id)
+        this.cancelledAt.set(id, performance.now())
         this.late.add(id)
         this.o.overdue?.(id)
         this.failed(id, `did not join within ${Math.round(ms / 1000)} s`, true)
@@ -1922,6 +2041,18 @@ export class Orchestrator {
     return out
   }
 
+  /** Each size's cores its machines spent besides the run's tasks, on average: what the plan leaves it. */
+  othersOf(): Map<string, number> {
+    const sum = new Map<string, [number, number]>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      const size = a.declared?.size
+      if (size === undefined || a.other === undefined || a.cores !== a.reported.cores) continue
+      const [s, n] = sum.get(size) ?? [0, 0]
+      sum.set(size, [s + a.other, n + 1])
+    }
+    return new Map([...sum].map(([size, [s, n]]) => [size, s / n]))
+  }
+
   /**
    * The workers the plan places on (`planner.ts`): each online, what it
    * runs and how long that has left by `ms`, and each still starting,
@@ -1940,10 +2071,11 @@ export class Orchestrator {
       for (const j of jobs) running.add(j.req.taskId)
       // Its tasks use more than their history said (a suite given more
       // workers): the plan holds them at what the load says, this run.
-      const over = a.usedCores > 0 ? Math.max(1, this.used(a).cores / a.usedCores) : 1
+      const over =
+        a.usedCores > 0 ? Math.max(1, (this.used(a).cores - otherOf(a)) / a.usedCores) : 1
       workers.push({
         id: a.id,
-        cores: a.cores,
+        cores: a.cores - otherOf(a),
         memory: a.memory,
         platform: a.platform,
         ...(a.serving.size === 0 ? {} : { serving: new Map(a.serving) }),
@@ -2032,6 +2164,7 @@ export class Orchestrator {
         !this.unstoppable.has(id)
       ) {
         this.cancelled.add(id)
+        this.cancelledAt.set(id, performance.now())
         cancelled.push(id)
         this.trace.unstarted(id, this.spawnedAt.get(id)!.at, 'cancelled: not needed')
       }
@@ -2170,6 +2303,93 @@ export class Orchestrator {
   }
 
   /**
+   * The least CPU its ideal could hold (2026-11-11: "Allocated cpu but
+   * not used counts as used"): each task's cores for as long as it held
+   * its worker, and one warm-up of the smallest worker.
+   */
+  leastHeldMs(
+    depsOf: (id: string) => readonly string[],
+    sizes: readonly Size[],
+  ): number | undefined {
+    const r = this.replay(depsOf)
+    if (r === undefined) return undefined
+    let ms = 0
+    for (const t of r.tasks) ms += t.cores * (t.ms ?? 0)
+    const all = [...this.workers.values(), ...this.gone]
+    const smallest = Math.min(
+      ...(sizes.length > 0
+        ? sizes.filter((s) => s.max > 0).map((s) => s.cpu)
+        : all.map((a) => a.cores)),
+    )
+    return ms + (Number.isFinite(smallest) ? smallest * r.warm(undefined) : 0)
+  }
+
+  /**
+   * The CPU the run's workers held: each its cores from when the run asked
+   * for it (or it joined, one that joined on its own) until it left, was
+   * cancelled or the run ended, idle or not.
+   */
+  heldMs(): number {
+    const until = this.ended ? this.endedAt : performance.now()
+    let ms = 0
+    const joined = new Set<string>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      joined.add(a.label)
+      const from = this.spawnedAt.get(a.label)?.at ?? a.usage.from
+      ms += a.cores * Math.max(0, (a.usage.to ?? until) - from)
+    }
+    for (const [id, { at, declared }] of this.spawnedAt)
+      if (!joined.has(id) && !this.unstarted.has(id))
+        ms += declared.cpu * Math.max(0, (this.cancelledAt.get(id) ?? until) - at)
+    return ms
+  }
+
+  /**
+   * What kept the run from its ideal (2026-11-11: "Could the summary tell
+   * us what caused the drift from ideal"): along the chain that ended it,
+   * from its last task back through the dependency each waited on last,
+   * the time each waited past when its ideal could start it (as
+   * `idealMs`, its platform's fastest warm-up from when the run knew its
+   * work) for its worker to join, then for room on it; the time its
+   * inputs took to reach it once sent; and the run's time after its last
+   * task. `undefined` with no task run on a worker.
+   */
+  driftOf(depsOf: (id: string) => readonly string[]): Drift | undefined {
+    const r = this.replay(depsOf)
+    if (r === undefined) return undefined
+    const deps = new Map(r.tasks.map((t) => [t.id, t.deps]))
+    const platform = new Map(r.tasks.map((t) => [t.id, t.platform]))
+    let id: string | undefined
+    for (const [t, l] of this.timeline)
+      if (id === undefined || l.end > this.timeline.get(id)!.end) id = t
+    if (id === undefined) return undefined
+    const until = this.ended ? this.endedAt : performance.now()
+    const out = {
+      joining: 0,
+      room: 0,
+      sending: 0,
+      after: Math.max(0, until - this.timeline.get(id)!.end),
+    }
+    for (const seen = new Set<string>(); id !== undefined && !seen.has(id);) {
+      seen.add(id)
+      const l = this.timeline.get(id)!
+      const earliest = Math.max(l.queued, this.startedAt + r.from + r.warm(platform.get(id)))
+      const lost = Math.max(0, l.sent - earliest)
+      const joining = Math.min(lost, Math.max(0, l.joined - earliest))
+      out.joining += joining
+      out.room += lost - joining
+      out.sending += l.began - l.sent
+      let next: string | undefined
+      for (const d of deps.get(id) ?? []) {
+        const e = this.timeline.get(d)?.end
+        if (e !== undefined && (next === undefined || e > this.timeline.get(next)!.end)) next = d
+      }
+      id = next
+    }
+    return out
+  }
+
+  /**
    * The workers that would have run this run best (`advise`), from the
    * same replay as `idealMs`: on `sizes`, past their `max`, and of any
    * cores. With no sizes (workers that join on their own), the shapes
@@ -2255,7 +2475,8 @@ export class Orchestrator {
       const known = seen.get(id)
       if (known !== undefined) return known
       seen.set(id, [])
-      const out = depsOf(id).flatMap((d) => (this.took.has(d) ? [d] : ran(d)))
+      // Each once, as `planTasks`: a diamond of groups held a task once per path.
+      const out = [...new Set(depsOf(id).flatMap((d) => (this.took.has(d) ? [d] : ran(d))))]
       seen.set(id, out)
       return out
     }
@@ -2320,11 +2541,14 @@ export class Orchestrator {
    * with its status, the tasks it has done and the ones it runs now, then
    * this machine's; once over, each joined worker's warm-up and, under
    * each, the cores and memory its size declares and its machine reports;
-   * and `ideal`, the run's `idealMs`, asked once it ended.
+   * and `ideal`, the run's `idealMs`, asked once it ended, with what kept
+   * the run from it (`drift`).
    */
   footer(
     ideal?: () => number | undefined,
     advice?: () => readonly WorkerAdvice[],
+    drift?: () => Drift | undefined,
+    least?: () => number | undefined,
   ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
     // pool) read as the run's when no task needed one (2026-10-25), and
@@ -2473,9 +2697,10 @@ export class Orchestrator {
                     [
                       '',
                       ui.dim(
-                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly`,
+                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly${((h) => (h === undefined ? '' : `, holding ${coreTime(h)} at least`))(least?.())}`,
                       ),
                     ] as [string, ui.Inline],
+                    ...driftRow(this.endedAt - this.startedAt - ms, drift?.(), width),
                   ])(ideal?.()),
             // What to declare next time (2026-11-05: "So I can add more
             // or change their specs").
@@ -2504,7 +2729,7 @@ export class Orchestrator {
         ? [
             [
               '',
-              `${'total'.padEnd(width)}  ${utilization(cpuMs / coreMs, tasksMs / coreMs, workerMs === undefined ? undefined : workerMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`}`,
+              `${'total'.padEnd(width)}  ${utilization(cpuMs / coreMs, tasksMs / coreMs, workerMs === undefined ? undefined : workerMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`} · held ${coreTime(this.heldMs())}`,
             ] as [string, ui.Inline],
           ]
         : []),
@@ -2513,6 +2738,39 @@ export class Orchestrator {
 
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
+}
+
+/** Core-time as read: `42.0 core-s`, `12.5 core-min`, `3.2 core-h`. */
+function coreTime(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} core-s`
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} core-min`
+  return `${(ms / 3_600_000).toFixed(1)} core-h`
+}
+
+/**
+ * The footer's `drift` row: how far past its ideal the run ended, and the
+ * parts of it `driftOf` names, each of a tenth of a second or more.
+ */
+function driftRow(past: number, d: Drift | undefined, width: number): [string, ui.Inline][] {
+  if (d === undefined || past < 100) return []
+  const parts = (
+    [
+      ['workers joining', d.joining],
+      ['waiting for room', d.room],
+      ['sending inputs', d.sending],
+      ['after the last task', d.after],
+    ] as const
+  )
+    .filter(([, ms]) => ms >= 100)
+    .map(([what, ms]) => `${what} ${seconds(ms)}`)
+  return [
+    [
+      '',
+      ui.dim(
+        `${'drift'.padEnd(width)}  +${seconds(past)} past ideal${parts.length > 0 ? `: ${parts.join(' · ')}` : ''}`,
+      ),
+    ],
+  ]
 }
 
 function result(r: WiredResult, log: readonly CapturedChunk[]): ExecuteResult {

@@ -523,6 +523,35 @@ export default [
   }),
 
   defineCase({
+    id: 'inputs/global-link-dependency-edit-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'An edit inside a package linked by name (`link:dep`) runs the task depending on it',
+    why: 'A `link:<name>` dependency points at a folder the user registered with `bun link`, so the manifest names no path at all. The folder is still what the project imports, and an edit there is live at once. A runner that keys only path-shaped links misses it and replays the old build.',
+    from: ['vx-lockfile/linked-dirs'],
+    workspace: {
+      projects: {
+        lib: reader('lib', {}, 'cat node_modules/dep/*.txt'),
+        other: reader('other', {}, 'cat src/a.txt'),
+      },
+      files: vendored('dep', 'dep'),
+    },
+    steps: [
+      { sh: 'cd vendor/dep && bun link >/dev/null' },
+      { write: { 'packages/lib/package.json': manifest('lib', { dep: 'link:dep' }) } },
+      // The manifest is written again, so a tool that keeps its scripts there gets them back.
+      { configure: (ws) => ws },
+      { install: true },
+      { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
+      { write: { 'vendor/dep/v.txt': 'dep v2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'dep v2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'affected/file-dir-dependency-edit-selects-dependent',
     category: 'affected',
     kind: 'correctness',

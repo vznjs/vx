@@ -95,6 +95,7 @@ import {
 } from './sandbox-binds.js'
 import {
   atOrUnder,
+  grantAlternatives,
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
@@ -120,6 +121,7 @@ import {
   groupAlive,
   killTree,
   releaseGroup,
+  runTime,
   signalThrough,
   guardLine,
   guardSession,
@@ -317,8 +319,18 @@ export function dependencyReason(errors: readonly string[]): string {
  * directory (2026-09-16). Checked up front, with room for the sequence.
  * On Linux the longer name is the network bridge's,
  * `claude-http-<16 hex>.sock`, and it is the one that fails there.
+ *
+ * Both directories that hold sockets are also checked for what the paths
+ * pass through: `tmpdir`, where the runtime puts its bridges, and
+ * `taskTmp`, the parent of vx's own task temp directories (`taskTmpdir`).
  */
-export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
+export function socketPathRefusal(
+  tmpdir = os.tmpdir(),
+  taskTmp = sandboxTmpdir(),
+): string | undefined {
+  const unsafe =
+    unquotableSocketDir(tmpdir, 'TMPDIR') ?? unquotableSocketDir(taskTmp, 'CLAUDE_CODE_TMPDIR')
+  if (unsafe !== undefined) return unsafe
   const sample = path.join(
     tmpdir,
     process.platform === 'linux'
@@ -329,6 +341,26 @@ export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
   const length = Buffer.byteLength(sample)
   if (length <= limit) return undefined
   return `the sandbox runtime listens on a unix socket under the temp directory, and ${sample} is ${length} bytes where the OS allows ${limit} — point TMPDIR at a shorter path`
+}
+
+/**
+ * The runtime pastes its bridge socket's path unquoted into the shell
+ * script it runs inside the sandbox and into socat addresses on the host,
+ * and vx's port bridges hand theirs to socat and splice them into bwrap's
+ * command line. Shell splits on whitespace and its metacharacters, socat on
+ * `:` `,` `!` and `\`, and a relative path names another directory inside
+ * the sandbox: `;` hung the run, a space cost every task ~7 s and its
+ * network proxy, `,` failed "Failed to create bridge sockets" (2026-11-10).
+ * Each character this lets through was run as both directories. Not a
+ * non-ASCII letter: the runtime quotes it in the command it hands back, and
+ * a networked task's proxy front, found by the bare path, was not swapped in.
+ */
+const SOCKET_DIR = /^\/[A-Za-z0-9._\-/+@]*$/
+
+function unquotableSocketDir(dir: string, variable: string): string | undefined {
+  if (SOCKET_DIR.test(dir)) return undefined
+  const why = path.isAbsolute(dir) ? 'holds a character they cannot carry' : 'is not absolute'
+  return `the sandbox runtime writes socket paths under ${variable} unquoted into shell and socat commands, and ${JSON.stringify(dir)} ${why} — point ${variable} at an absolute path of ASCII letters, digits and . _ - / + @`
 }
 
 /**
@@ -1206,6 +1238,8 @@ export interface SandboxedRunArgs {
   readonly reportWithin: string
   /** Canonical directories whose denials are reported too (`ExecuteSandbox.reportLinked`). */
   readonly reportLinked: readonly string[]
+  /** `ExecuteSandbox.keyRoot`. */
+  readonly keyRoot?: string
   /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
@@ -1388,9 +1422,9 @@ export function resolveSandboxConfig(
   const pending: string[] = []
   const linked: Array<{ link: string; target: string }> = []
   const r: ResolvedSandboxConfig = {
-    allowRead: expandGrants((a.read ?? []).map(resolve), walls),
+    allowRead: expandGrants((a.read ?? []).flatMap(grantAlternatives).map(resolve), walls),
     allowWrite: expandGrants(
-      (a.write ?? []).map((p) => {
+      (a.write ?? []).flatMap(grantAlternatives).map((p) => {
         const real = resolve(p)
         assertWriteStaysHome(p, real, projectDir)
         const link = linkSpelling(p, real, projectDir)
@@ -1656,7 +1690,7 @@ async function wrapIn(
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
-  // and the proxy wait below is the same 190 for every task.
+  // and the proxy wait below is the same ~360 for every task.
   const inner = [
     process.platform === 'linux' ? `: 'vx-${tag}';` : '',
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
@@ -2053,7 +2087,8 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
  * (curl's `000`) on a loaded box (M-20). This waits, in front of the
  * command, until both listen in the task's network namespace, read off
  * /proc/net (IPv4 or IPv6, state 0A). Bounded at ~5 s: a bridge that never
- * listens leaves the command to meet the refusal it met before.
+ * listens leaves the command to meet the refusal it met before, and says
+ * so on the task's stderr (it gave up in silence, 2026-11-10).
  *
  * Every task the run's bridge reaches waits, not only one that lists a
  * network: one that lists none dials the same proxy, which refuses and
@@ -2062,8 +2097,8 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
  * and passed with nothing reported (2026-11-06). The wait costs ~4 ms, the
  * socat's own start.
  */
-const PROXY_BRIDGE_WAIT =
-  "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
+export const PROXY_BRIDGE_WAIT =
+  "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && { echo \"[vx] the sandbox's network proxy bridges (ports 3128 and 1080) did not listen within 5 s; this task's network requests will be refused\" >&2; break; }; i=$((i+1)); sleep 0.01; done );"
 
 /** Each networked task's own proxy front, by tag, closed when its bridges go. */
 const taskProxies = new Map<string, TaskProxy>()
@@ -2357,13 +2392,15 @@ const MOUNT_RACE_RETRY_LINE =
  * bwrap's own refusal of a mount gone between its read of the mount table
  * and its remount: a container runtime's transient mount under /tmp
  * (`/newroot/tmp/containerd-mount…`, a `docker build` beside the task on
- * CI). The command never started. Or a path the wrap walls, gone before
+ * CI). The command never started. Caught after the unmount but before its
+ * directory is removed, the remount meets a path that is no longer a mount
+ * point: `Invalid argument`. Or a path the wrap walls, gone before
  * bwrap mounts on it: bwrap makes the mount point anew under a read-only
  * parent (`Can't mkdir /tmp/vx-noscan-0: Read-only file system`, the no-scan
  * directory removed by another process).
  */
 const BWRAP_MOUNT_GONE =
-  /^bwrap: Can't (?:.*: No such file or directory|mkdir .*: Read-only file system)$/
+  /^bwrap: Can't (?:.*: No such file or directory|mkdir .*: Read-only file system|bind mount .*: Unable to apply mount flags: remount ".*": Invalid argument)$/
 
 /**
  * Run a single task wrapped in the sandbox. Caller must have called
@@ -2514,8 +2551,8 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
 ): Promise<SandboxedRunResult & { tracerFailed: boolean; mountGone: boolean; ranMs: number }> {
-  // Elapsed time, not wall time: see runCommand.
-  const start = performance.now()
+  // Elapsed time, not wall time, less time vx was stopped: see runCommand.
+  const start = runTime()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
   // the command traced and the trace parsed for denied syscalls. The trace
@@ -2584,7 +2621,7 @@ async function runSandboxedOnce(
     const signal = stopSignal(args.signal.reason)
     return {
       exitCode: signalExitCode(signal),
-      durationMs: Math.round(performance.now() - start),
+      durationMs: Math.round(runTime() - start),
       stdout: '',
       stderr: '',
       signal,
@@ -2639,7 +2676,7 @@ async function runSandboxedOnce(
     afterCommand(SandboxManager)
     return {
       exitCode: 127,
-      durationMs: Math.round(performance.now() - start),
+      durationMs: Math.round(runTime() - start),
       stdout: '',
       stderr,
       spawnFailed: true,
@@ -2658,7 +2695,7 @@ async function runSandboxedOnce(
   args.onSpawn?.(proc.pid)
   const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, args.timeoutMs)
-  const armedAt = performance.now()
+  const armedAt = runTime()
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
@@ -2687,7 +2724,7 @@ async function runSandboxedOnce(
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
-  const ranMs = Math.round(performance.now() - armedAt)
+  const ranMs = Math.round(runTime() - armedAt)
   const looked = watch?.stop()
   await timeout.settle()
   let cut = false
@@ -2695,9 +2732,13 @@ async function runSandboxedOnce(
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
   ends.end()
+  // As runCommand: a leftover of a task the run stopped is vx's doing.
+  // (`?? false`: the check above narrowed `aborted`, which a stop has
+  // turned true across the awaits since.)
+  const blame = cut && !(args.signal?.aborted ?? false)
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
-  if (cut) args.onStderr?.(cutLine)
-  const stderr = cut ? streamed + cutLine : streamed
+  if (blame) args.onStderr?.(cutLine)
+  const stderr = blame ? streamed + cutLine : streamed
   // As runCommand: a leftover holding no pipe is still in the group. Under
   // Linux's pid namespace it died with the command; macOS keeps it.
   const left = cut || groupAlive(proc)
@@ -2856,14 +2897,14 @@ async function runSandboxedOnce(
       skip: [taskTmpRoot()],
     })
     if (hidden.length > 0)
-      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin))
+      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, args.keyRoot))
   }
 
   afterCommand(SandboxManager)
 
   return {
     exitCode,
-    durationMs: Math.round(performance.now() - start),
+    durationMs: Math.round(runTime() - start),
     stdout,
     stderr,
     violations,
@@ -2987,12 +3028,15 @@ function hostTempRoots(): string[] {
  * or its link's target, vx's own store, the repository's git data outside
  * the workspace) is walled on purpose and never the suggested grant: an
  * agent applies a suggestion as given, and `cat ~/.npmrc` was told to
- * grant `../../home/.npmrc`.
+ * grant `../../home/.npmrc`. For a cached task (`keyRoot`) a grant in the
+ * workspace is named for `inputs.workspaceFiles` too: applied alone, an
+ * edit there replayed the old bytes.
  */
 function hiddenReadsHint(
   paths: readonly string[],
   walled: readonly string[],
   within: string,
+  keyRoot: string | undefined,
 ): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
@@ -3002,6 +3046,12 @@ function hiddenReadsHint(
   const said =
     `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
     `not reported as violations: ${shown}${more}.`
+  const root = keyRoot === undefined ? undefined : toRealPath(keyRoot)
+  const key =
+    grantable === undefined || root === undefined || !atOrUnder(grantable, root)
+      ? ''
+      : `, and, if the output depends on it, key it: ` +
+        `\`inputs: { workspaceFiles: [${jsString(path.relative(root, grantable).replace(/[*?{}[\]\\]/g, '\\$&'))}] }\``
   return {
     timestamp: new Date(),
     hint: true,
@@ -3009,7 +3059,7 @@ function hiddenReadsHint(
       grantable === undefined
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
-          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`.`,
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`${key}.`,
   }
 }
 

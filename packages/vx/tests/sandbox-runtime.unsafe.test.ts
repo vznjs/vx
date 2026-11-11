@@ -727,7 +727,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           [
             `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
               `not reported as violations: ${root}/packages/secret/token.txt. If the task reads ` +
-              "one, grant it, e.g. `allow: { read: ['../secret/token.txt'] }`.",
+              "one, grant it, e.g. `allow: { read: ['../secret/token.txt'] }`, and, if the output " +
+              "depends on it, key it: `inputs: { workspaceFiles: ['packages/secret/token.txt'] }`.",
           ],
         ])
       } finally {

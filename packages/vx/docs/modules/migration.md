@@ -135,7 +135,9 @@ export function taskNameProblem(name: string): string | null
   lists it under `kept`; the rest are written (M-52). For a migration, a
   discovered project with any existing config, and under either caller
   every actual write target (a synthesized root project, the Turbo
-  preset), abort the whole run before a byte lands.
+  preset), abort the whole run before a byte lands. `vx init`'s untouched
+  root starter is no conflict: a root config of another extension
+  replaces it, and the report lists it under `replaced`.
 - No write goes through a symlink (`src/util/write-file.ts`, shared with
   `vx init` and `vx lock`): `refuseSymlink` refuses every target that is a
   link, or whose directory resolves outside the workspace root (a cloned

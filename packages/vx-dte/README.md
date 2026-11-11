@@ -139,14 +139,17 @@ workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
 A run from a git hook works too: the worktree and its worker drop the
 hook's repository variables (`git rev-parse --local-env-vars`), so the
-index being committed is left as it is. When a worker fails, its row names
+index being committed is left as it is, and a linked worktree's hook
+`GIT_DIR` is dropped where git finds that repository anyway, as core
+does, so a workspace in a subdirectory is found there. When a worker
+fails, or cannot start, its row names
 the error line and the log that holds its whole stderr and all `prepare`
-printed. At the run's end,
+printed (the error line alone when the log cannot be written). At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell waits up to 5 s for the workers to leave, kills any
 still running, removes the worktrees and prunes git's records. A run whose vx
-was killed (`kill -9`) removes none; the next `local()` run in the
-repository removes them, once their run's process is gone.
+was killed (`kill -9`) removes none; the next `local()` run on the
+machine removes them, once their run's process is gone.
 
 `docker()` starts each worker as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
@@ -480,16 +483,27 @@ use your own instead.
   its report no longer names goes back to the queue at once. A task goes to it only when it fits now: while
   one of its cores is free and the task's memory fits. What a worker has
   in use is what its running tasks used on their last run (history's
-  measured CPU and peak RAM), or its live load plus what was sent since
+  measured CPU and peak RAM), plus the cores its machine spends on no
+  task of the run while it runs some (each frame's load less its tasks',
+  averaged: a GitHub runner's own agent and the like, 0.6 to 1.1 of a
+  4-core small's), or its live load plus what was sent since
   when that is more. Never less: load lags a task's start, and a test
   shard idle for a second then uses all its cores. A command that ended
   frees its cores while its outputs save, and its worker's load until the
   next frame: that load counted the task. Every
   task sent begins at once; none waits in a worker's queue. A task asking
   a whole worker, or bigger than any, runs alone on an idle one (one that
-  filled its worker last time). The first such task waiting holds
+  filled its worker last time). A task with history goes only on a size
+  with room for its cores and memory when some size has it, so a 4-core
+  task never runs at half speed on a 2-core worker while 8-core sizes
+  go unasked. Workers its work needs within a warm-up of each other
+  start as fewer, bigger ones with the cores of them all: four 2-core
+  tasks ready at once start one 8-core worker, so fewer machines pay a
+  warm-up. The first such task waiting holds
   the worker that empties soonest: no task after it is sent there, so it
-  is not passed over again and again.
+  is not passed over again and again. Any ready task with history that
+  fits no worker now keeps its room where it first frees: a task of lower
+  rank goes there only beside it, and one with no history still goes.
 - A task naming `exec.platforms` runs only on a worker of the platform
   core placed it on: this machine's when a size has it, else the first of
   the task's a size has. A worker reports its platform when it joins: a
@@ -539,6 +553,12 @@ use your own instead.
   fails the task when it answers otherwise than this machine did. A path
   under the worker's checkout root reads as the same path under this
   machine's, as the task's environment does.
+- A task's command runs on a worker as written: a plugin changes where a
+  command runs, never what it is. A path under this machine's checkout
+  in the environment is moved to the worker's; one written into the
+  command is not, so a `local()` worker would read and write this
+  checkout through it. Name a file relative to the task's directory, or
+  through `$PWD`.
 - No task runs on the orchestrator, only cache hits restore there
   (2026-10-24): a task with `exec.remote: false`, an interactive
   one and their dependants run on workers too (the executor is
@@ -580,9 +600,12 @@ use your own instead.
   fails the run. Before a task runs, its
   worker removes the files under its outputs that an earlier task left,
   except committed files, nested projects' files, and its dependencies'
-  outputs (an additive task builds on its upstream's tree). An upstream's
+  outputs (an additive task builds on its upstream's tree); before laying
+  what it left, this machine removes the same, cached task or not, so its
+  outputs end as the worker's did. An upstream's
   file the task leaves as it found it is not saved in its entry; one it
-  removes is removed on this machine too, unless a link on its path leads
+  removes, or a committed file under its own outputs it removes, is
+  removed on this machine too, unless a link on its path leads
   elsewhere (that file is kept, with a warning), and the task saves no
   entry, as core saves none.
 - A hit only this machine's cache holds (the remote evicted it, or this
@@ -623,8 +646,9 @@ use your own instead.
 - A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
-  A dependency's declared output is not one: its worker restores it first.
-  A task whose project the commit lacks (its config untracked) fails,
+  A dependency's declared output is not one: its worker restores it first,
+  or, uncached, ran it there.
+  A task whose project the commit lacks (no file under it tracked) fails,
   naming the project, and a run whose `.vx/workspace.*` is untracked is
   refused before a worker starts.
 - A task's `exec.timeout` counts from its start on its worker: the wait
@@ -796,7 +820,14 @@ cache, or not answered for) and how many of them it found in none. The `asked` l
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
 as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
-(below), so every log reads it beside core's `time` row. The first ask
+(below), so every log reads it beside core's `time` row, and the least
+CPU a run ending then holds: each task's cores for as long as it held its
+worker, and one warm-up of the smallest size. The `drift`
+line says how far past it the run ended and what caused it, along the
+chain of tasks that ended the run: tasks waiting for a worker to join
+past its platform's fastest warm-up, waiting for room on a joined one,
+their inputs reaching their worker, and the run's time after its last
+task. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
@@ -807,7 +838,10 @@ rest went, the worker says in its own log as it leaves: `cpu over 61.2s:
 machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other
 children 0.05 cores · most besides: Runner.Worker 0.30 cores`, the last
 from one `ps` as it starts and one as it leaves. The `total` line is the same cpu utilization of every
-machine together, and the share of their history the run's tasks used:
+machine together, the share of their history the run's tasks used, and
+the CPU the workers held: each one's cores from when the run asked for it
+until it left, was cancelled or the run ended, idle or not, so it reads
+against the `ideal` line's least:
 
 ```
             linux.small#1  stopped  5 done · warm-up 0.2s
@@ -819,11 +853,12 @@ machine together, and the share of their history the run's tasks used:
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
-            ideal    10.8s: each task as long as it took, placed perfectly
+            ideal    10.8s: each task as long as it took, placed perfectly, holding 34.5 core-s at least
+            drift    +1.3s past ideal: workers joining 0.8s · waiting for room 0.3s · sending inputs 0.1s
             best     2 × linux.small (4c/14G): 11.4s, the fewest of its sizes
             more     3 × linux.small (4c/14G): 10.8s, past its sizes' max
             any      1 × (8c/28G): 10.9s, of any cores, the least core time
-            total    cpu utilization machine 74% · tasks 60% · worker 2%
+            total    cpu utilization machine 74% · tasks 60% · worker 2% · held 52.1 core-s
 ```
 
 `vx run --profile[=<path>]` adds the run in time to the profile it
@@ -855,12 +890,13 @@ real time in the run summary and the footer's `ideal` line, and
 
 The same replay says which workers to declare next time
 (`TaskExecutor.advice`), each from an empty run with the plan's own
-rules (the fewest that end it within its margin of the soonest): `best`
+rule (the fewest that end it within 5% of the soonest): `best`
 is how many of each size; `more`, shown only when more than a size's
 `max` would end the run sooner past that margin, is how many it would
 take; `any` is one shape for each platform, of 2 to 64 cores (memory a
 core as the platform's sizes have most), the one ending as soon for the
-least core time. Raise a size's `max`, or change its `cpu` and
+least CPU held, each worker from its ask to its last task's end. A task goes only on a size with room for its cores
+and peak memory, when one is declared. Raise a size's `max`, or change its `cpu` and
 `memory`, by them. They are in the footer and the run summary, and
 `@vzn/vx-ci` prints them under "Workers to declare".
 
@@ -886,6 +922,9 @@ What `@vzn/vx-dte` reads from the CI job it runs in:
 - `GIT_INDEX_FILE`: `local()` clears it before `git worktree add`, so a
   run started from a git hook checks out the run's commit, not the hook's
   index.
+- `GIT_DIR`: with no `GIT_WORK_TREE`, the run's snapshot and `local()`'s
+  and `docker()`'s git drop it when git finds that repository from the
+  workspace anyway (a linked worktree's hook sets it), as core does.
 
 ## API
 
@@ -900,7 +939,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
   `relay-proof`) is refused. The rest:
   - `workers` names each worker type, a `WorkerType` `{ machines }`, in order of
     preference (`exec.worker` picks one). Each machine is a size the
-    adapter may start, named `<type>.<machine>` (`linux.small`) in the
+    adapter may start, named `<type>.<machine>` (`linux.small`; each name
+    letters, digits, `_` and `-`, as worker ids and log files carry them,
+    and a machine's `.` after its first character, `c5.large`) in the
     run's output and an adapter's options, and is a `WorkerSize`,
     `{ cpu, memory, max?, platform?, runsOn? }` (`runsOn`: the runner
     label `vx dte init` writes for it): its cores
@@ -915,15 +956,24 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
-    and takes the fewest N that end within 5% (5 s at least) of the best.
+    and the best end is the one with all N. A worker counts its cores
+    less what its machine spends besides the run's tasks, and a new one
+    of a size what this run's of that size spent, else an earlier run's
+    (kept under the commit, as warm-ups are), else none. A new worker starts only when
+    a task reaches its latest start (the best end less three times its
+    chain, as history is a guess) with no room sooner on a worker running
+    or starting: a task with slack waits for room the run pays for
+    anyway, and the critical path never waits. A worker started for a
+    task starts as soon as that task is ready, and tasks with slack fill
+    its room. A chain through a task with no history has no slack the
+    plan can prove: it takes room on a worker running or starting as it
+    gets ready, and starts no worker for that alone. A task running past
+    its history counts as running as long again.
     It plays only two warm-ups and the longest task ahead; past that, the
     rest ends no sooner than its longest chain, nor than its work spread
     on the cores it has, and the next plan, a warm-up on, sees further.
-    Sizes of different platforms come in turns, so of those N it drops
-    each the plan ends as soon without, its platform's work no more than
-    5 s later.
-    That margin is spent once: later plans keep its deadline until new
-    work is known. A task waiting on one that runs waits until it ends.
+    The plan may end 5% (5 s at least) past the best; that margin is
+    spent once: later plans keep its deadline until new work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when
     due, and a worker idle with its planned work done goes, once every
     task planned on it has started. It plays again
@@ -989,13 +1039,14 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     task with no measure counts for when the run decides how many workers
     to start: a new task, or one over before the Linux sandbox's first
     look (250 ms), which leaves no CPU. It books one free core on any
-    worker, so it waits for no worker of its own.
+    worker, so it waits for no worker of its own, and goes where the most
+    cores are free, room to use more than it booked.
   - `scheduler` (a partial `Strategy`) picks each layer of how the run schedules; a layer left
     out is the default (first named):
     - `order`, which waiting task goes first: `critical-path` (the
       longest chain after it), `graphene` (the long and the wide first),
       `fifo`;
-    - `place`, which worker takes it: `best-fit` (fewest cores left),
+    - `place`, which worker takes a measured task: `best-fit` (fewest cores left),
       `tetris` (needs aligned with what is free), `worst-fit`,
       `first-fit`;
     - `book`, what a task holds: `measured` (its history), `margin`

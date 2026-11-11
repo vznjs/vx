@@ -8,12 +8,12 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { affectedProjects } from '../src/workspace/index.js'
+import { CHECK_ATTR, parseCheckAttrOutput } from '../src/util/index.js'
 import {
   GitFilesCache,
   attributeFilesOutsideTree,
   autocrlfConverts,
   gitStatWeakened,
-  parseCheckAttrOutput,
   populateGitFilesCache,
   runGitLsFiles,
 } from '../src/cache/inputs.js'
@@ -162,43 +162,47 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
-  it(
-    'an edit to a committed file under its own output moves the key though no input glob reaches it',
-    async () => {
-      // `dist/LICENSE` is committed under `dist/**`, outside `src/**`. A hit
-      // writes the artifact's copy of it back, so the key must fold it: left
-      // out, a committed edit hit and the restore put the old bytes back
-      // (turborepo#14831).
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await writeLocalWorkspace(root)
-      await write(
-        path.join(root, 'vx.config.mjs'),
-        `export default {
+  // The second row negates the outputs out of the inputs, as the docs advise
+  // (`!dist/**`): the negation dropped the committed file from the key too,
+  // and a committed edit hit and was overwritten (2026-11-10).
+  for (const inputs of [`['src/**']`, `['**', '!dist/**', '!vx.config.mjs']`])
+    it(
+      `an edit to a committed file under its own output moves the key though no input glob reaches it (${inputs})`,
+      async () => {
+        // `dist/LICENSE` is committed under `dist/**`, outside `src/**`. A hit
+        // writes the artifact's copy of it back, so the key must fold it: left
+        // out, a committed edit hit and the restore put the old bytes back
+        // (turborepo#14831).
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        await write(
+          path.join(root, 'vx.config.mjs'),
+          `export default {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+               inputs: { files: ${inputs} }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
-      )
-      await write(path.join(root, 'src/a.txt'), 'a')
-      await write(path.join(root, 'dist/LICENSE'), 'license v1')
-      await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
-      git(root, 'init', '-q')
-      git(root, 'add', '-A')
-      git(root, 'commit', '-q', '-m', 'initial')
+        )
+        await write(path.join(root, 'src/a.txt'), 'a')
+        await write(path.join(root, 'dist/LICENSE'), 'license v1')
+        await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
+        git(root, 'init', '-q')
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
 
-      await writeLocalWorkspace(root)
-      vx(root, 'run', 'build')
-      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
-      await write(path.join(root, 'dist/LICENSE'), 'license v2')
-      git(root, 'commit', '-q', '-am', 'license v2')
-      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
-      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v2')
-    },
-    TIMEOUT,
-  )
+        await writeLocalWorkspace(root)
+        vx(root, 'run', 'build')
+        expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+        await write(path.join(root, 'dist/LICENSE'), 'license v2')
+        git(root, 'commit', '-q', '-am', 'license v2')
+        expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+        expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v2')
+      },
+      TIMEOUT,
+    )
 
   it(
     'a codegen that rewrites its committed output is saved, and a hit writes what it left',
@@ -243,6 +247,50 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
+
+  // No clean deletes a committed file (2026-10-14), so a hit cannot replay
+  // a run that removed one: the restore left it, and the tree a hit left
+  // (a fresh CI checkout's) held a file the run took away, restored on
+  // every run after. Such a run saves nothing, as X-32 has it.
+  for (const shape of ['files', 'workspaceFiles'] as const)
+    it(
+      `a run that removes a committed file under its outputs saves nothing (${shape})`,
+      async () => {
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        const outputs =
+          shape === 'files'
+            ? `{ files: ['dist/**'] }`
+            : `{ files: [], workspaceFiles: ['dist/**'] }`
+        await write(
+          path.join(root, 'vx.config.mjs'),
+          `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && rm -f dist/tracked.txt && cat src/a.txt > dist/a' },
+               inputs: { files: ['src/**'] }, outputs: ${outputs}, cache: true,
+             },
+           },
+         }`,
+        )
+        await write(path.join(root, 'src/a.txt'), 'a')
+        await write(path.join(root, 'dist/tracked.txt'), 'T')
+        await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/a\n')
+        git(root, 'init', '-q')
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
+
+        await writeLocalWorkspace(root)
+        vx(root, 'run', 'build')
+        git(root, 'checkout', '--', 'dist/tracked.txt')
+        expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+        expect(await readdir(path.join(root, 'dist'))).toEqual(['a'])
+        // With the file gone the key moves, and that run saves as usual.
+        expect(vx(root, 'run', 'build')).toContain('local 1↑')
+        expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      },
+      TIMEOUT,
+    )
 
   // No clean deletes a committed file, so attempt 1's `HALF` stayed for
   // attempt 2 to pass beside, the pass was saved under the tree's key, and
@@ -543,6 +591,63 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  // The index's stat cannot stand in for a file's lstat under a text
+  // filter (2026-11-11): git called this same-size rewrite clean by
+  // content after normalizing and kept the old stat, so a token built from
+  // the index held while the bytes the task reads moved.
+  it(
+    'a same-size line-ending swap git calls clean is not served from cache',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeLocalWorkspace(root)
+      const proj = path.join(root, 'packages', 'app')
+      await write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
+      await write(
+        path.join(proj, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             own: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/own.txt' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/own.txt'] }, cache: true,
+             },
+             ws: {
+               exec: { command: 'mkdir -p dist && cat ../../shared/a.txt > dist/ws.txt' },
+               inputs: { files: [], workspaceFiles: ['shared/**'] },
+               outputs: { files: ['dist/ws.txt'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      const files = [path.join(proj, 'src/a.txt'), path.join(root, 'shared/a.txt')]
+      for (const f of files) await write(f, 'a\r\nb\n')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      const out = (task: string) => readFile(path.join(proj, `dist/${task}.txt`), 'utf8')
+      for (const task of ['own', 'ws']) {
+        vx(root, 'run', `app#${task}`)
+        vx(root, 'run', `app#${task}`)
+        expect(await out(task)).toBe('a\r\nb\n')
+      }
+      for (const f of files) await write(f, 'a\nb\r\n')
+      const status = Bun.spawnSync({
+        cmd: ['git', '--no-optional-locks', 'status', '--porcelain', '--', 'packages', 'shared'],
+        cwd: root,
+      })
+      expect(new TextDecoder().decode(status.stdout)).toBe('')
+      const got: string[] = []
+      for (const task of ['own', 'ws']) {
+        vx(root, 'run', `app#${task}`)
+        got.push(JSON.stringify(await out(task)))
+      }
+      expect(got).toEqual([JSON.stringify('a\nb\r\n'), JSON.stringify('a\nb\r\n')])
+    },
+    TIMEOUT,
+  )
+
   // Row X of the upstream survey: git's DEFAULT global attributes file,
   // read when `core.attributesFile` is unset, is `$XDG_CONFIG_HOME/git/
   // attributes`, else `~/.config/git/attributes`. The gate looked for the
@@ -618,6 +723,41 @@ describe('stale cache hits', () => {
       TIMEOUT,
     )
   }
+
+  // git reads a relative `core.attributesFile` from the repo's top level;
+  // the gate looked for it under the workspace root, so with the workspace
+  // in a subdirectory it found nothing and trusted the index: a clean
+  // filter hid the edit from `git status` and the run replayed old bytes.
+  it(
+    'a relative core.attributesFile is found from the repo top, not the workspace',
+    async () => {
+      const ws = path.join(root, 'ws')
+      await write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(ws)
+      await write(
+        path.join(ws, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+         } } }`,
+      )
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await write(path.join(ws, 'src/a.txt'), 'abc\n')
+      await write(path.join(root, 'myattrs'), '*.txt filter=low\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'filter.low.clean', 'tr A-Z a-z')
+      git(root, 'config', 'filter.low.smudge', 'cat')
+      git(root, 'config', 'core.attributesFile', 'myattrs')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      vx(ws, 'run', 'build')
+      expect(await readFile(path.join(ws, 'dist/out.txt'), 'utf8')).toBe('abc\n')
+      await write(path.join(ws, 'src/a.txt'), 'Abc\n')
+      vx(ws, 'run', 'build')
+      expect(await readFile(path.join(ws, 'dist/out.txt'), 'utf8')).toBe('Abc\n')
+    },
+    TIMEOUT,
+  )
 
   it(
     'core.autocrlf alone is enough to distrust index OIDs',
@@ -793,6 +933,13 @@ describe('stale cache hits', () => {
         for (const dirs of [[root], [p]]) await enumerate(dirs)
         expect(runGitLsFiles(p).files).toContain('kept/f')
         await shim('p/package.json/x', 'Not a directory')
+        expect(runGitLsFiles(p).files).toContain('kept/f')
+        // Gone when git opened it and made again since (a task re-creating
+        // its own output directory under another task's walk): the reason
+        // says it was not there, and it was refused as a path too long
+        // (2026-11-10).
+        await shim('p/kept', 'No such file or directory')
+        for (const dirs of [[root], [p]]) await enumerate(dirs)
         expect(runGitLsFiles(p).files).toContain('kept/f')
         await shim('p/kept', 'Too many open files')
         await expect(enumerate([root])).rejects.toThrow(
@@ -1429,6 +1576,49 @@ describe('parseCheckAttrOutput', () => {
       ),
     ]).toEqual([])
     expect([...parseCheckAttrOutput('')]).toEqual([])
+  })
+
+  it("reads git's own CHECK_ATTR answer: only what converts, the legacy crlf too", async () => {
+    const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-attr-'))
+    try {
+      git(ws, 'init', '-q')
+      await write(
+        path.join(ws, '.gitattributes'),
+        [
+          '*.png binary',
+          'gen.ts linguist-generated',
+          'a.ts text eol=lf',
+          'legacy.txt crlf',
+          'input.txt crlf=input',
+          'off.txt -crlf',
+          'plain.c -text',
+          '',
+        ].join('\n'),
+      )
+      const files = [
+        'x.png',
+        'gen.ts',
+        'a.ts',
+        'legacy.txt',
+        'input.txt',
+        'off.txt',
+        'plain.c',
+        'none.md',
+      ]
+      const out = Bun.spawnSync({
+        cmd: ['git', ...CHECK_ATTR],
+        cwd: ws,
+        stdin: new TextEncoder().encode(files.map((f) => `${f}\0`).join('')),
+      })
+      expect(out.exitCode).toBe(0)
+      expect([...parseCheckAttrOutput(out.stdout.toString())].sort()).toEqual([
+        'a.ts',
+        'input.txt',
+        'legacy.txt',
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
   })
 })
 

@@ -27,6 +27,7 @@ import {
   type Stats,
 } from 'node:fs'
 import {
+  CHECK_ATTR,
   checkIgnoreSync,
   executablePath,
   gitCaseArgs,
@@ -36,7 +37,9 @@ import {
   ignoreCaseLies,
   isInstalledPath,
   notAWorkTree,
+  parseCheckAttrOutput,
   relPosix,
+  sameDir,
   UserError,
   xxh3hex,
 } from '../util/index.js'
@@ -51,9 +54,14 @@ const FRESH_NAME = '__vx_probe__'
  * watch asks of the entries a task names (`namedIgnoredReach`).
  */
 export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> {
-  const probes = dirs.map((d) => `${d}/${FRESH_NAME}`)
+  const probes = dirs.map(freshProbe)
   const hit = checkIgnoreSync(root, probes)
   return new Set(dirs.filter((_, i) => hit?.has(probes[i]!) === true))
+}
+
+/** The path `newFilesIgnored` asks git about for `dir` (root-relative): a new file directly in it. */
+export function freshProbe(dir: string): string {
+  return `${dir}/${FRESH_NAME}`
 }
 
 /** The facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
@@ -291,12 +299,154 @@ class OidSlot {
   }
 }
 
+/**
+ * `rels` (names under `dir`) plus, for each written through a linked
+ * directory, the name it landed under: an output glob's head may be a
+ * link into the project (`out -> gen` for `out/**`, X-88), and marked only
+ * as `out/x`, the `gen/x` a reader of `gen/**` keys kept its index OID
+ * and replayed the bytes from before the write. Undefined when one lands
+ * outside `dir`, where no name in it covers the write.
+ */
+function realNames(dir: string, rels: readonly string[]): readonly string[] | undefined {
+  let out: string[] | undefined
+  // Each directory asked once per call: a save's outputs share a few.
+  const links = new Map<string, string | null>()
+  let realDir: string | undefined
+  const queue = [...rels]
+  for (let n = 0; n < queue.length; n++) {
+    const rel = queue[n]!
+    for (let i = rel.indexOf('/'); i > 0; i = rel.indexOf('/', i + 1)) {
+      const head = rel.slice(0, i)
+      let real = links.get(head)
+      if (real === undefined) {
+        real = null
+        const abs = path.join(dir, head)
+        let st: Stats | undefined
+        try {
+          st = lstatSync(abs, { throwIfNoEntry: false })
+        } catch {
+          st = undefined
+        }
+        if (st?.isSymbolicLink() === true) {
+          let to: string
+          try {
+            to = realpathSync(abs)
+            realDir ??= realpathSync(dir)
+          } catch {
+            return undefined
+          }
+          const inside = relPosix(realDir, to)
+          if (
+            inside === '' ||
+            inside === '..' ||
+            inside.startsWith('../') ||
+            path.isAbsolute(inside)
+          )
+            return undefined
+          real = inside
+        }
+        links.set(head, real)
+      }
+      if (real !== null) {
+        const landed = real + rel.slice(i)
+        ;(out ??= [...rels]).push(landed)
+        queue.push(landed)
+        break
+      }
+    }
+  }
+  return out ?? rels
+}
+
 interface IgnoredListing {
   root: string
   /** `root/` when `root` is absolute and normalized: a normalized path under it is relative as its rest. */
   base: string | undefined
   paths: readonly string[]
   asked: Map<string, boolean>
+  /** Whether every directory above an ignored path was asked at once (`ancestorDirs`). */
+  batched?: boolean
+  /**
+   * git's answer for a new file directly in each directory the tasks name
+   * outright, asked beside the enumeration (`answerNewFilesIgnored`).
+   */
+  answered?: ReadonlyMap<string, boolean>
+}
+
+/**
+ * The paths of `snapshot` at, under or above one of `heads` (root-relative,
+ * none empty), in code-unit order: every path a glob with that fixed head
+ * can take in, through a link above it too. A walk of all of it took each
+ * declaration's globs to every workspace path (vueuse: 11 declarations,
+ * 1,583 paths). A snapshot not in that order (untracked paths follow the
+ * tracked ones) is searched through a sorted copy, made once: walked whole,
+ * it cost vueuse's no-op 8 ms with its configs untracked.
+ */
+function underHeads(snapshot: readonly string[], heads: readonly string[]): readonly string[] {
+  let ordered = sortedMemo.get(snapshot)
+  if (ordered === undefined) {
+    let sorted = true
+    for (let i = 1; i < snapshot.length; i++) {
+      if (!(snapshot[i - 1]! < snapshot[i]!)) {
+        sorted = false
+        break
+      }
+    }
+    ordered = sorted ? snapshot : [...snapshot].sort()
+    sortedMemo.set(snapshot, ordered)
+  }
+  const list = ordered
+  const lowerBound = (key: string): number => {
+    let lo = 0
+    let hi = list.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (list[mid]! < key) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+  const at = new Set<number>()
+  const exact = (rel: string): void => {
+    let i = lowerBound(rel)
+    // A path listed twice (tracked and untracked spellings) is taken once each.
+    for (; list[i] === rel; i++) at.add(i)
+  }
+  for (const head of heads) {
+    for (let i = head.lastIndexOf('/'); i > 0; i = head.lastIndexOf('/', i - 1))
+      exact(head.slice(0, i))
+    exact(head)
+    // `/` sorts after `-` and `.`: `dir-x` lies between `dir` and `dir/a`.
+    const end = lowerBound(`${head}0`)
+    for (let i = lowerBound(`${head}/`); i < end; i++) at.add(i)
+  }
+  return [...at].sort((x, y) => x - y).map((i) => list[i]!)
+}
+
+const sortedMemo = new WeakMap<readonly string[], readonly string[]>()
+
+/** Past this many, a directory is asked alone, when it is: most never are. */
+const BATCHED_DIRS = 256
+
+/**
+ * The directories `newFilesIgnored` can be asked of and has not been: each
+ * above an ignored path, and an ignored directory itself. Undefined past
+ * {@link BATCHED_DIRS}.
+ */
+function ancestorDirs(
+  paths: readonly string[],
+  asked: ReadonlyMap<string, boolean>,
+): string[] | undefined {
+  const dirs = new Set<string>()
+  for (const p of paths) {
+    const rel = p.endsWith('/') ? p.slice(0, -1) : p.slice(0, Math.max(0, p.lastIndexOf('/')))
+    for (let d = rel; d !== ''; d = d.slice(0, Math.max(0, d.lastIndexOf('/')))) {
+      if (dirs.has(d)) break
+      if (!asked.has(d)) dirs.add(d)
+      if (dirs.size > BATCHED_DIRS) return undefined
+    }
+  }
+  return [...dirs]
 }
 
 export class GitFilesCache extends Map<string, readonly string[]> {
@@ -473,9 +623,37 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       else hi = mid
     }
     known = false
-    if (ig.paths[lo]?.startsWith(under) === true) known = newFilesIgnoredIn(ig.root, [rel]).size > 0
+    const answered = ig.answered?.get(rel)
+    if (answered !== undefined) known = answered && ig.paths[lo]?.startsWith(under) === true
+    else if (ig.paths[lo]?.startsWith(under) === true) {
+      // Every directory this question can be asked of, in one spawn: a
+      // workspaceFiles glob per package (vueuse's `packages/core/**`) asked
+      // for each, and each spawn was ~2 ms (11 of a no-op, 2026-11-10).
+      if (!ig.batched) {
+        ig.batched = true
+        const dirs = ancestorDirs(ig.paths, ig.asked)
+        if (dirs !== undefined && dirs.length > 1) {
+          const hit = newFilesIgnoredIn(ig.root, dirs)
+          for (const d of dirs) ig.asked.set(d, hit.has(d))
+          const batched = ig.asked.get(rel)
+          if (batched !== undefined) return batched
+        }
+      }
+      known = newFilesIgnoredIn(ig.root, [rel]).size > 0
+    }
     ig.asked.set(rel, known)
     return known
+  }
+
+  /**
+   * git's answer for a new file directly in each of `dirs` (root-relative),
+   * asked with the run's other `check-ignore` while git enumerated:
+   * `newFilesIgnored` reads it instead of a spawn of its own on the key
+   * path (vueuse: one `check-ignore` of ~2-4 ms, 2026-11-10). Held until
+   * the next enumeration.
+   */
+  answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void {
+    if (this.ignored !== null) this.ignored.answered = new Map(dirs.map((d) => [d, ignored(d)]))
   }
 
   get undecodableNames(): ReadonlySet<string> {
@@ -566,7 +744,13 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     if (this.wsRoot !== null) this.delete(this.wsRoot)
   }
 
-  private recordChanged(partitionDir: string, relPaths: readonly string[]): void {
+  private recordChanged(partitionDir: string, written: readonly string[]): void {
+    const relPaths = realNames(partitionDir, written)
+    if (relPaths === undefined) {
+      this.delete(partitionDir)
+      return
+    }
+    this.forgetFacts({ dir: partitionDir, rels: relPaths })
     // A partition with no snapshot has nothing for a mark to invalidate
     // (`snapshotFor` answers undefined either way), so this guard bounds
     // memory for a project the enumeration left without a partition; it
@@ -586,13 +770,158 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * trusted an OID for every one, none is a symlink and every name decodes:
    * then the files a task resolves there, and what it folds for them, are
    * a function of this digest and its declaration (`filesToken`). Undefined
-   * once anything moved the partition: a re-enumeration, a changed path.
+   * once the partition moved under it: a re-enumeration, a changed path in
+   * the snapshot. A changed path outside it (a save's ignored `dist/`)
+   * leaves it standing: the snapshot's files are as listed, and a task
+   * whose globs take a changed path is refused by `snapshotFor` first. Six
+   * in seven of a cold 8,002-task run's keys had no fold row (2026-11-11).
    */
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined {
     const d = this.digests.get(projectDir)
     if (d === undefined || d.snapshot !== snapshot || this.get(projectDir) !== snapshot) return
-    if (this.oids.get(projectDir) !== d.oids || this.changed.has(projectDir)) return
+    if (this.oids.get(projectDir) !== d.oids) return
+    const pending = this.changed.get(projectDir)
+    if (pending !== undefined && this.movesSnapshot(pending, snapshot)) return
     return d.digest()
+  }
+
+  /**
+   * Whether a path of `pending` is one of `snapshot`'s. Each path read once
+   * (the list only grows until a reset replaces it, as `pendingMatch`).
+   */
+  private movesSnapshot(pending: readonly string[], snapshot: readonly string[]): boolean {
+    let seen = this.seen.get(pending)
+    if (seen === undefined) this.seen.set(pending, (seen = { upTo: 0, moved: false }))
+    if (seen.moved) return true
+    if (seen.upTo === pending.length) return false
+    let names = this.names.get(snapshot)
+    if (names === undefined) this.names.set(snapshot, (names = new Set(snapshot)))
+    for (; seen.upTo < pending.length; seen.upTo++)
+      if (names.has(pending[seen.upTo]!)) return (seen.moved = true)
+    return false
+  }
+
+  private readonly seen = new WeakMap<readonly string[], { upTo: number; moved: boolean }>()
+  private readonly names = new WeakMap<readonly string[], ReadonlySet<string>>()
+
+  /**
+   * `filesDigest` for a `workspaceFiles` declaration: a digest of the paths
+   * of the workspace partition `snapshot` that `takes`, each with its index
+   * OID, or its stat and whether git tracks it where git vouches for none
+   * (an untracked or edited file). Undefined where `filesDigest` would be:
+   * the partition moved, a path is a link, undecodable, or written within
+   * the racy window. Once per `key` and partition: tasks share declarations.
+   */
+  declarationDigest(
+    root: string,
+    snapshot: readonly string[],
+    key: string,
+    takes: (rel: string) => boolean,
+    heads?: readonly string[],
+  ): string | undefined {
+    const slot = this.oids.get(root)
+    if (slot === undefined || this.get(root) !== snapshot || this.changed.has(root)) return
+    let held = this.declDigests.get(slot)
+    if (held === undefined)
+      this.declDigests.set(slot, (held = { digests: new Map(), records: new Map() }))
+    if (held.digests.has(key)) return held.digests.get(key)
+    const oids = slot.map
+    const base = root.endsWith(path.sep) ? root : root + path.sep
+    // Declarations overlap (each package's reads the shared `meta/**`):
+    // each path's record is made once for them all.
+    const records = held.records
+    let committed: ((abs: string) => boolean) | undefined
+    const now = Date.now()
+    let joined = ''
+    let refused = false
+    for (const rel of heads === undefined ? snapshot : underHeads(snapshot, heads)) {
+      if (!takes(rel)) continue
+      let record = records.get(rel)
+      if (record === undefined) {
+        const abs = base + rel
+        const oid = oids.get(abs)
+        if (this.undecodable.has(abs) || oid?.startsWith('120000:') === true) record = null
+        else if (oid !== undefined) record = `${rel}\0${oid}\n`
+        else {
+          const stat = statRecord(rel, this.statOf(abs), now, 0)
+          committed ??= this.committedIn(root)
+          record =
+            stat === undefined ? null : `${stat}:${committed(abs) ? 'tracked' : 'untracked'}\n`
+        }
+        records.set(rel, record)
+      }
+      if (record === null) {
+        refused = true
+        break
+      }
+      joined += record
+    }
+    const digest = refused ? undefined : xxh3hex(joined)
+    held.digests.set(key, digest)
+    return digest
+  }
+
+  private readonly declDigests = new WeakMap<
+    OidSlot,
+    { digests: Map<string, string | undefined>; records: Map<string, string | null> }
+  >()
+
+  /**
+   * A path's lstat, once until a partition moves: a path a project's digest
+   * and a workspace declaration both name was stat'ed for each.
+   */
+  statOf(abs: string): Stats | undefined {
+    if (this.stats.has(abs)) return this.stats.get(abs)
+    const st = lstatOrAbsent(abs)
+    this.stats.set(abs, st)
+    return st
+  }
+
+  private readonly stats = new Map<string, Stats | undefined>()
+
+  /**
+   * A file's key identity (`hashFile`'s answer), once until a write the
+   * run marks moves it (`forgetFacts`). Tasks share
+   * inputs: with no index OID to trust (a `.gitattributes` setting `text`
+   * drops them all), each of vueuse's 1,300 files was stat'ed and looked
+   * up once per task that reads it, 7,000 times a run (2026-11-11).
+   */
+  identityOf(abs: string): string | undefined {
+    return this.identities.get(abs)
+  }
+
+  /** Which facts `learnIdentities` may keep: a write since moves it. */
+  get factsEpoch(): number {
+    return this.epoch
+  }
+
+  /**
+   * Keep identities hashed while the facts stood at `epoch`. Hashed before
+   * a write and kept after it, one would outlive the bytes it names.
+   */
+  learnIdentities(ids: ReadonlyMap<string, string>, epoch: number): void {
+    if (epoch !== this.epoch) return
+    for (const [abs, id] of ids) this.identities.set(abs, id)
+  }
+
+  private readonly identities = new Map<string, string>()
+  private epoch = 0
+
+  /**
+   * Every file fact the run holds, when a write may have moved one.
+   * `written`: what moved, when the run knows each path (a save's or a
+   * restore's marked outputs): only those identities go, so a restore's few
+   * files do not send every later key back to hash the whole workspace.
+   * `'listed'`: a partition listed again, which writes nothing. Absent:
+   * anything may have moved (an undeclared write), and every identity goes.
+   */
+  private forgetFacts(written?: { dir: string; rels: readonly string[] } | 'listed'): void {
+    this.stats?.clear()
+    if (written === undefined) this.identities?.clear()
+    else if (written !== 'listed')
+      for (const rel of written.rels) this.identities.delete(path.resolve(written.dir, rel))
+    // Undefined only under `super()`: there is no fact yet to outlive.
+    if (this.epoch !== undefined) this.epoch++
   }
 
   noteFilesDigest(
@@ -669,6 +998,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override set(key: string, value: readonly string[]): this {
+    this.forgetFacts('listed')
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -676,6 +1006,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override delete(key: string): boolean {
+    this.forgetFacts()
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -683,6 +1014,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override clear(): void {
+    this.forgetFacts()
     this.changed.clear()
     this.oids.clear()
     this.digests.clear()
@@ -756,14 +1088,18 @@ const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
 const UNOPENED = "warning: could not open directory '"
+/** The reasons (ENOENT, ENOTDIR) git gives for a directory that was not there when it looked. */
+const GONE = new Set(['No such file or directory', 'Not a directory'])
 
 /**
  * Refuses a walk git did not finish. `could not open directory` is a
  * warning and the exit is 0, so the files under it were in no key: past
  * PATH_MAX (4096 bytes on Linux) an edit there was a stale hit. A directory
- * this user may not read is left out as before: no task of theirs reads it
- * either, and a root-owned volume beside the projects must not stop every
- * run. git cuts its message at 4096 bytes, so a long path comes with no
+ * this user may not enter is left out as before: no task of theirs reads
+ * under it either, and a root-owned volume beside the projects must not
+ * stop every run. One it may enter but not list (`chmod 111`) is refused:
+ * a task reads a file there by name, and an edit to it was a stale hit.
+ * git cuts its message at 4096 bytes, so a long path comes with no
  * reason. `cwd`: where git ran; it names the directory from its work tree's top.
  */
 function refuseUnopenedDirs(cwd: string, stderr: string): void {
@@ -785,17 +1121,46 @@ function refuseUnopenedDirs(cwd: string, stderr: string): void {
     // Gone since git read its parent (a run lock's staging directory in a
     // TMPDIR inside the workspace): no file is under it to miss. Only a
     // line git did not cut: a cut one may name a prefix of a real path.
-    if (end !== -1 && vanished(at)) continue
-    try {
-      accessSync(at, fsConstants.R_OK | fsConstants.X_OK)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'EACCES') continue
-    }
+    // Gone when git opened it and made again since (a task re-creating its
+    // own output directory under another task's walk) is the same race:
+    // git's reason says so, and it was refused as a path too long
+    // (2026-11-10).
+    if (end !== -1 && (GONE.has(rest.slice(end + 3).trim()) || vanished(at))) continue
+    if (!canAccess(at, fsConstants.X_OK)) continue
     const shown = dir.length > 100 ? `${dir.slice(0, 40)}…${dir.slice(-40)}` : dir
+    if (end !== -1 && !canAccess(at, fsConstants.R_OK))
+      throw new UserError(
+        `git could not list the directory ${shown}: it can be entered but not read, so no key would see the files under it. Give this user read permission on it, or ignore it in .gitignore.`,
+        'VX_E_GIT',
+      )
     throw new UserError(
       `git could not open the directory ${shown}, so no key would see the files under it. Shorten the path, or ignore it in .gitignore.`,
       'VX_E_GIT',
     )
+  }
+}
+
+/** False only when `p` refuses this user `mode` (EACCES); any other error is no answer. */
+function canAccess(p: string, mode: number): boolean {
+  try {
+    accessSync(p, mode)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'EACCES'
+  }
+}
+
+/**
+ * `lstat`, or undefined for a path that is not there, a parent that is a
+ * file included: `throwIfNoEntry: false` passes over ENOENT alone, and the
+ * ENOTDIR of `conf/b.txt` under a file `conf` failed the key (2026-11-10).
+ */
+export function lstatOrAbsent(p: string): Stats | undefined {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
+    throw err
   }
 }
 
@@ -1297,23 +1662,6 @@ interface GitRun {
 }
 
 /**
- * Parse `git check-attr -z text eol ident filter working-tree-encoding` output — a flat stream of
- * `<path>\0<attr>\0<value>\0` triples — into the set of paths where a clean
- * filter can rewrite bytes. `unspecified` means no rule matched and
- * `unset` (`-text`) explicitly disables conversion; both leave the index blob
- * byte-identical to the worktree file, so those OIDs stay trusted.
- */
-export function parseCheckAttrOutput(out: string): Set<string> {
-  const affected = new Set<string>()
-  const fields = out.split('\0')
-  for (let i = 0; i + 2 < fields.length; i += 3) {
-    const value = fields[i + 2]!
-    if (value !== 'unspecified' && value !== 'unset') affected.add(fields[i]!)
-  }
-  return affected
-}
-
-/**
  * Remove from `trusted` every path whose index blob may differ from its
  * worktree bytes because a clean filter applies.
  *
@@ -1368,10 +1716,13 @@ async function dropFilteredOids(
   // on a 15k-file repo with no attributes this whole function is a size check,
   // a line scan of `git var -l`, three stats, and a key walk that exits on the
   // first `.gitattributes` it does not find.
+  // git reads a relative `core.attributesFile` from the repo's top level,
+  // not from where the workspace sits in it.
+  const top = repoRootOf(args.workspaceRoot, args.gitPrefix)
   let attributesPossible =
     args.ignoredAttributes ||
     attributeFilesOutsideTree(args.gitVars, process.env).some((f) =>
-      existsSync(path.resolve(args.workspaceRoot, f)),
+      existsSync(path.resolve(top, f)),
     ) ||
     (args.gitDir !== '' &&
       existsSync(path.resolve(args.workspaceRoot, args.gitDir, 'info', 'attributes')))
@@ -1413,17 +1764,6 @@ async function dropFilteredOids(
   if (res === null || res.exitCode !== 0) return
   for (const rel of parseCheckAttrOutput(res.stdout)) trusted.delete(rel)
 }
-
-const CHECK_ATTR = [
-  'check-attr',
-  '--stdin',
-  '-z',
-  'text',
-  'eol',
-  'ident',
-  'filter',
-  'working-tree-encoding',
-]
 
 /**
  * The filter gate's half that needs only the index listing: an attributes
@@ -2360,18 +2700,30 @@ function statRecords(
   rels: readonly string[],
   abs: (rel: string) => string,
   prefixLength: number,
+  stat: (abs: string) => Stats | undefined,
 ): string | undefined {
   if (rels.length === 0) return ''
   const now = Date.now()
   let out = ''
   for (const rel of rels) {
-    const st = lstatSync(abs(rel), { throwIfNoEntry: false })
-    if (st === undefined || !st.isFile()) return undefined
-    if (now - Math.floor(st.ctimeMs) < racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) return
-    const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'
-    out += `${rel.slice(prefixLength)}\0stat:${mode}:${st.size}:${Math.floor(st.mtimeMs)}:${Math.floor(st.ctimeMs)}:${Number(st.ino)}\n`
+    const record = statRecord(rel, stat(abs(rel)), now, prefixLength)
+    if (record === undefined) return undefined
+    out += `${record}\n`
   }
   return out
+}
+
+/** One loose file's record for {@link statRecords}, less its line end. */
+function statRecord(
+  rel: string,
+  st: Stats | undefined,
+  now: number,
+  prefixLength: number,
+): string | undefined {
+  if (st === undefined || !st.isFile()) return undefined
+  if (now - Math.floor(st.ctimeMs) < racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) return
+  const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'
+  return `${rel.slice(prefixLength)}\0stat:${mode}:${st.size}:${Math.floor(st.mtimeMs)}:${Math.floor(st.ctimeMs)}:${Number(st.ino)}`
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
@@ -2390,10 +2742,6 @@ export async function applyGitEnumeration(
   cache.setIgnored(workspaceRoot, enumeration.ignored)
   cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
-  cache.noteTrackedLater(
-    enumeration.scopes.map((rel) => path.join(workspaceRoot, rel)),
-    () => enumeration.tracked.map((rel) => path.join(workspaceRoot, rel)),
-  )
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×
@@ -2425,6 +2773,13 @@ export async function applyGitEnumeration(
       : undefined
   const abs = (rel: string): string =>
     base === undefined ? path.join(workspaceRoot, rel) : base + rel
+  // Built when a no-OID file's record asks (`committedIn`): with
+  // `path.join`, 1.2 ms of vueuse's no-op for 1,583 tracked files, 0.7
+  // joined as above (2026-11-11).
+  cache.noteTrackedLater(
+    enumeration.scopes.map((rel) => path.join(workspaceRoot, rel)),
+    () => enumeration.tracked.map(abs),
+  )
   const lowerBound = (key: string): number => {
     let lo = 0
     let hi = sorted.length
@@ -2445,19 +2800,30 @@ export async function applyGitEnumeration(
       base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
         ? projectDir.slice(base.length).replace(/\/$/, '')
         : relPosix(workspaceRoot, projectDir)
-    // macOS git reports paths NFC (core.precomposeunicode) while a dir
-    // discovered by readdir keeps the spelling it was created with: match
-    // NFC, and key the OIDs by the project's spelling, which is how
-    // `resolveFiles` looks them up.
-    const relPrefix = spelled.normalize('NFC')
-    if (relPrefix === '' || relPrefix === '.') {
+    if (spelled === '' || spelled === '.') {
       cache.set(projectDir, all)
       cache.setLazyOids(projectDir, rootOids)
       continue
     }
+    let relPrefix = spelled
+    let start = lowerBound(`${spelled}/`)
+    let end = lowerBound(`${spelled}0`)
+    // macOS git reports paths NFC (core.precomposeunicode) while a dir
+    // discovered by readdir keeps the spelling it was created with: match
+    // NFC, and key the OIDs by the project's spelling, which is how
+    // `resolveFiles` looks them up. Only when the NFC name is this very
+    // directory: Linux git lists bytes as they are, `café` NFC and NFD are
+    // two directories there, and the NFD project took its sibling's files
+    // and OIDs, a stale hit.
+    if (start === end) {
+      const nfc = spelled.normalize('NFC')
+      if (nfc !== spelled && sameDir(projectDir, path.join(workspaceRoot, nfc))) {
+        relPrefix = nfc
+        start = lowerBound(`${nfc}/`)
+        end = lowerBound(`${nfc}0`)
+      }
+    }
     const prefix = `${relPrefix}/`
-    const start = lowerBound(prefix)
-    const end = lowerBound(`${relPrefix}0`)
     const matches: string[] = []
     const projAbs =
       relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
@@ -2510,7 +2876,7 @@ export async function applyGitEnumeration(
     if (records !== undefined) {
       const known = records
       cache.noteFilesDigest(projectDir, matches, () => {
-        const statted = statRecords(loose, projAbs, prefix.length)
+        const statted = statRecords(loose, projAbs, prefix.length, (p) => cache.statOf(p))
         return statted === undefined ? undefined : xxh3hex(`${known}\0${statted}`)
       })
     }

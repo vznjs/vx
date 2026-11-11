@@ -127,7 +127,7 @@
   {
     "key": "turbo.json tasks.*.inputs",
     "status": "mapped",
-    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; the package's own `package.json` joins an explicit list, as Turbo keys it, unless a glob names or excludes it; unsafe globs get a TODO; a path git ignores is keyed by a `inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
+    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; the package's own `package.json` joins an explicit list, as Turbo keys it, unless a glob names it, and a negation that matches it (`!**/*.json`) is dropped, as Turbo keys it whatever the negations; unsafe globs get a TODO; a path git ignores is keyed by a `inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
   },
   {
     "key": "turbo.json tasks.*.interactive",
@@ -587,7 +587,7 @@
   {
     "key": "project.json targets.*.outputs",
     "status": "mapped",
-    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files, and one outside the workspace is dropped with a TODO; negations kept; vx cleans outputs before a run but never a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!`; a wildcard first segment stays cached under git and leaves the task uncached with a TODO without it."
+    "reason": "Tokens and `{options.x}` resolved, Nx 24's `{options.x ?? fallback}` included; paths outside the project become workspace files, and one outside the workspace is dropped with a TODO; negations kept; vx cleans outputs before a run but never a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!`; a wildcard first segment stays cached under git and leaves the task uncached with a TODO without it."
   },
   {
     "key": "project.json targets.*.defaultConfiguration",
@@ -667,7 +667,7 @@
   {
     "key": "inputs: {externalDependencies}",
     "status": "mapped",
-    "reason": "Core keys no lockfile. With a @vzn/vx-lockfile plugin, which keys the project's and the root's dependencies, dropped: silent for names the root package.json declares, a TODO names any other. With no plugin claiming the lockfile, the task keys the whole file."
+    "reason": "Core keys no lockfile. With a @vzn/vx-lockfile plugin, which keys the project's and the root's dependencies, dropped: silent for names the root package.json declares, a TODO names any other. With no plugin claiming the lockfile, the task keys the whole file, as does a target with no such input of its own whose executor is not an `@nx/` or `@nrwl/` one (Nx hashes every external dependency there)."
   },
   {
     "key": "inputs: {dependentTasksOutputFiles, transitive}",

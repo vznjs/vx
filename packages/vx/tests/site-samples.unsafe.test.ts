@@ -762,8 +762,8 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     expect(guide).toContain('An executor target is written as an `nx-exec` line')
     // The mapper agrees: one executor line, `nxExecCommand`'s (its `.env`
     // files appended), and no translator beside it (2026-10-03).
-    expect(src).toContain(
-      'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
+    expect(src.replace(/\s+/g, '')).toContain(
+      'line(nxExecCommand(executor,projectName,targetName,configuration,options,files,',
     )
     expect(src).not.toContain('nativeExecutorCommand')
   })

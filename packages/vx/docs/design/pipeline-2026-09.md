@@ -57,12 +57,20 @@ Rules that keep it a pipeline and not a soup:
 2. **A transform hook mutates in place and returns nothing.** `project`
    receives the validated config object and may edit it; core
    re-validates after the last plugin, so a plugin cannot produce a
-   config the loader would refuse from a user. Same for `graph`.
+   config the loader would refuse from a user. Same for `graph`, whose
+   edited graph is also checked as `vx lock` checks one (overlapping
+   outputs, an input reading another task's outputs), in a run too: a
+   hook may edit only the graph a run sees.
 3. **Everything a hook changes reaches the cache key by construction.**
    Resolved-config hashing (principle #4) hashes the task config _after_
    `project` ran, so an injected task or edited command re-keys exactly
    like a hand edit. `key` material is folded as one more part. `graph`
    edits change `dependsOn` closure, which changes upstream folding.
+   Once a project's own `project` hooks have run, the run reads a copy
+   of what they left; once the `graph` stage ends, each task's config is
+   frozen and the node's `config` cannot be swapped. A plugin that kept
+   the object and wrote it later, from `admit`, ran a command its key
+   never saw.
 4. **Observe hooks cannot change behaviour.** `telemetry` keeps its
    handle-free contract. `setup` gets the bus, read-only. Until
    2026-11-07 "read-only" held for the handle, not the data: a handler

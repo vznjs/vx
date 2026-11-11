@@ -16,15 +16,15 @@ import {
   type TaskResources,
 } from '@vzn/vx'
 import type { DteInit, DteSetup } from './init.js'
-import type { Need } from './dispatch.js'
+import type { Need, Soon } from './dispatch.js'
 import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Forecast, Size } from './planner.js'
 
-/** One worker type: the machines of it the adapter can start, by name. */
+/** One worker type: the machines of it the adapter can start, by name (letters, digits, `_` and `-`). */
 export interface WorkerType {
-  /** Its machines by name: each a size the adapter may start, named `<type>.<machine>`. */
+  /** Its machines by name (letters, digits, `_` and `-`): each a size the adapter may start, named `<type>.<machine>`. */
   readonly machines: Readonly<Record<string, WorkerSize>>
 }
 
@@ -166,6 +166,22 @@ const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> 
   memory: 'any',
 }
 
+/**
+ * A worker type's or machine's name: it rides a worker's id, `<type>.<machine>#<n>`,
+ * into a log file's name and the lists adapters split (`a,b`, `id=…`, `<type>:<platform>`).
+ * `m/x` named a log in no folder, and the run waited for good on a worker
+ * whose end was lost (2026-11-11).
+ */
+const NAME = /^[A-Za-z0-9_-]+$/
+const NAMED = 'named by letters, digits, _ and -'
+/**
+ * A machine may hold dots after its first character (`c5.large`): its
+ * type's has none, so `<type>.<machine>` splits at the first dot alone, and
+ * no name is `.` or `..` in a log path.
+ */
+const MACHINE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/
+const MACHINE_NAMED = 'named by letters, digits, _, - and . (not first)'
+
 const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 
 /**
@@ -205,8 +221,11 @@ export function dte(options: DteOptions = {}) {
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
   const declared = Object.entries(options.workers ?? {}).flatMap(([type, t]) => {
+    if (!NAME.test(type)) refuse('workers', NAMED, type)
     refuseUnknownOptions(`dte() option "workers.${type}"`, t, TYPE_KEYS)
     const machines = Object.entries(t?.machines ?? {})
+    for (const [machine] of machines)
+      if (!MACHINE.test(machine)) refuse(`workers.${type}.machines`, MACHINE_NAMED, machine)
     if (machines.length === 0)
       refuse(
         `workers.${type}.machines`,
@@ -336,6 +355,8 @@ export function dte(options: DteOptions = {}) {
   let bases = new Map<string, number>()
   /** The bases as read, before this run's: kept with this run's over them. */
   let basesRead: ReadonlyMap<string, number> = new Map()
+  /** Each size's cores an earlier run's machines spent besides its tasks (`Orchestrator.othersOf`). */
+  let othersRead: ReadonlyMap<string, number> = new Map()
   let warming: Promise<void> = Promise.resolve()
   /** On CI, where the run keeps the warm-ups it learned: `setup`'s cache, root and warn. */
   let keep: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
@@ -381,7 +402,16 @@ export function dte(options: DteOptions = {}) {
         ),
       )
     }
+    if (k !== undefined && o !== undefined) {
+      const { writeSizeOthers } = await import('./warm-ups.js')
+      await writeSizeOthers(k.cache, k.root, othersRead, o.othersOf()).catch((err: unknown) =>
+        k.warn(
+          `[vx] dte: sizes' other cores not kept: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
+    }
     learned = new Map()
+    othersRead = new Map()
     bases = new Map()
     basesRead = new Map()
     warming = Promise.resolve()
@@ -586,9 +616,17 @@ export function dte(options: DteOptions = {}) {
             ),
         )
       warming = import('./warm-ups.js')
-        .then((w) => w.readWarmUps(ctx.cache, ctx.workspaceRoot))
+        .then((w) =>
+          Promise.all([
+            w.readWarmUps(ctx.cache, ctx.workspaceRoot),
+            w.readSizeOthers(ctx.cache, ctx.workspaceRoot),
+          ]),
+        )
         .then(
-          (m) => void (learned = m),
+          ([m, others]) => {
+            learned = m
+            othersRead = others
+          },
           (err: unknown) =>
             ctx.warn(
               `[vx] dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
@@ -623,7 +661,7 @@ export function dte(options: DteOptions = {}) {
       const [
         { Orchestrator },
         { joinOffLoop },
-        { decide, keepLast, knownMisses, slowdown, tailsMs, WARM_UP_MS },
+        { decide, keepLast, knownMisses, sized: within, slowdown, tailsMs, UNKNOWN_MS, WARM_UP_MS },
         { snapshot, untrackedWorkspace },
         seal,
       ] = await Promise.all([
@@ -660,7 +698,7 @@ export function dte(options: DteOptions = {}) {
         )
       const serves = new Map<string, readonly string[]>()
       const need = (id: string): Need => {
-        const n = booked(needOf(peaks.get(id), unmeasured), how.book)
+        const n = within(booked(needOf(peaks.get(id), unmeasured), how.book), sizes)
         let ids = serves.get(id)
         if (ids === undefined) {
           ids = serversOf(nodes, id)
@@ -672,6 +710,8 @@ export function dte(options: DteOptions = {}) {
       }
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
+      // Tasks about to be ready (`OrchestratorOptions.soon`); set once the run's work is known.
+      let soonOf = (_ends: ReadonlyMap<string, number>): (Soon & { id: string })[] => []
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
           // Off this loop: the run's own sync work held its acks, and every
@@ -693,6 +733,8 @@ export function dte(options: DteOptions = {}) {
         keyOf: (id) => keys.get(id),
         tail: (id) =>
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
+        ms: (id) => peaks.get(id)?.p50DurationMs,
+        soon: (ends) => soonOf(ends),
         how,
         home,
         joinedPlace,
@@ -783,9 +825,9 @@ export function dte(options: DteOptions = {}) {
       const last: { forecast?: Forecast } = {}
       // A plan that needs a worker later plans again then.
       let again: ReturnType<typeof setTimeout> | undefined
-      // The fewest workers that end the run's known work within a margin of
-      // the most would, played out (`planner.ts`); idle ones it does
-      // without leave. Again at each miss, finish, join and history read.
+      // The workers the run's known work needs to end as soon as all
+      // would, each started when a task needs it, played out
+      // (`planner.ts`); idle ones it does without leave. Again at each miss, finish, join and history read.
       const shape = (remaining: ReadonlySet<string>): void => {
         // This run's for the size, else an earlier run's, else any size's
         // this run, else the default.
@@ -804,9 +846,16 @@ export function dte(options: DteOptions = {}) {
         }
         const state = o.planState(ms, warmUp)
         const running = state.running
+        // Each size as the plan counts it: its cores less what its
+        // machines spend besides the run's tasks, this run's or an earlier one's.
+        const others = o.othersOf()
+        const planned = sizes.map((s) => {
+          const other = others.get(s.name) ?? othersRead.get(s.name) ?? 0
+          return other > 0 ? { ...s, cpu: Math.max(s.cpu / 2, s.cpu - other) } : s
+        })
         const workers = keepLast(
           state.workers,
-          sizes,
+          planned,
           started,
           (p) => (leftOf.get(p) ?? 0) > 0 || (p === home && (leftOf.get('') ?? 0) > 0),
         )
@@ -820,7 +869,7 @@ export function dte(options: DteOptions = {}) {
           durationMs: ms,
           workers,
           running,
-          sizes,
+          sizes: planned,
           started,
           final,
           warmUpMs: warmUp,
@@ -895,7 +944,9 @@ export function dte(options: DteOptions = {}) {
           p.endsInMs,
           tasks.filter((t) => !measured(t.id)).map((t) => t.id),
         )
-        for (const s of p.start) {
+        for (const p0 of p.start) {
+          // Started as declared: the plan's size is its cores less the other.
+          const s = sizes.find((x) => x.name === p0.name) ?? p0
           ++index
           const id = nextId(s.name)
           const a = spawnOf(s, id, index)
@@ -952,6 +1003,51 @@ export function dte(options: DteOptions = {}) {
       }
       if (needsIn === undefined) scheduled = forecast
       else forecast()
+      // Each task's dependants, by the graph: made once it is.
+      let after: Map<string, string[]> | undefined
+      let afterOf: ReadonlyMap<string, TaskNode> | undefined
+      soonOf = (ends) => {
+        const graph = nodes
+        if (graph === undefined || pending === undefined) return []
+        if (afterOf !== graph) {
+          afterOf = graph
+          after = new Map()
+          for (const [id, n] of graph)
+            for (const d of n.deps) {
+              const list = after.get(d)
+              if (list === undefined) after.set(d, [id])
+              else list.push(id)
+            }
+        }
+        const rest = pending
+        const out: (Soon & { id: string })[] = []
+        const seen = new Set<string>()
+        for (const id of ends.keys())
+          for (const d of after!.get(id) ?? []) {
+            if (seen.has(d) || !rest.has(d) || !(likely.has(d) || sure.has(d))) continue
+            seen.add(d)
+            let at = 0
+            let all = true
+            for (const x of graph.get(d)!.deps) {
+              if (!rest.has(x)) continue
+              const e = ends.get(x)
+              if (e === undefined) {
+                all = false
+                break
+              }
+              at = Math.max(at, e)
+            }
+            if (!all) continue
+            out.push({
+              id: d,
+              need: o.booking(need(d)),
+              at,
+              rank: (tails ??= tailsMs(graph, (x) => peaks.get(x)?.p50DurationMs))(d),
+              ms: peaks.get(d)?.p50DurationMs ?? UNKNOWN_MS,
+            })
+          }
+        return out.sort((a, b) => b.rank - a.rank)
+      }
       // Core asks the footer and the summary after teardown: the last run's graph.
       const depsOf = (id: string): readonly string[] => (nodes ?? ran)?.get(id)?.deps ?? []
       return {
@@ -996,6 +1092,8 @@ export function dte(options: DteOptions = {}) {
           o.footer(
             () => o.idealMs(depsOf, sizes),
             () => o.advice(depsOf, sizes),
+            () => o.driftOf(depsOf),
+            () => o.leastHeldMs(depsOf, sizes),
           ),
         machines: () => o.machines(),
         idealMs: () => o.idealMs(depsOf, sizes),

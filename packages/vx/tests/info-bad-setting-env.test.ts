@@ -81,6 +81,23 @@ describe('vx info under a setting variable vx refuses', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'VX_CACHE_POLICY, whose grammar is not a setting kind: info names it, every verb refuses it',
+    () => {
+      // Typed a string in the table, it passed the early check: `vx lock`
+      // and `vx show` ran, `vx info` showed it as fine, only `vx run` refused.
+      const info = vx({ VX_CACHE_POLICY: 'bogus' }, 'info', '--format', 'json')
+      expect(info.code).toBe(0)
+      const f = JSON.parse(info.out) as { settings: Record<string, unknown> }
+      const refused = "VX_CACHE_POLICY: invalid segment 'bogus': expected '<layer>:<flags>'"
+      expect(f.settings['cache.policy']).toEqual({ value: 'bogus', source: 'env', refused })
+      const lock = vx({ VX_CACHE_POLICY: 'bogus' }, 'lock')
+      expect(lock.code).toBe(1)
+      expect(lock.err).toContain(refused)
+    },
+    TIMEOUT,
+  )
 })
 
 describe('a refused setting variable its flag beats', () => {

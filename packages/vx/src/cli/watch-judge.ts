@@ -244,6 +244,10 @@ export class ChangeJudge {
     const state = settledState(abs)
     const prev = this.lastState.get(abs)
     this.lastState.set(abs, state)
+    // A name not valid UTF-8 reaches a watcher with U+FFFD for its bad
+    // bytes, a path no file has: read as gone, its edit started no cycle,
+    // where `vx run` refuses the key. The run names it.
+    if (state === ABSENT && abs.includes('\uFFFD')) return false
     if (prev !== undefined) return prev === state
     // A new empty directory holds nothing a key reads: a file made in it
     // is the edit.
@@ -344,16 +348,24 @@ export class ChangeJudge {
       changed.push(p)
       if (!fs.existsSync(p)) {
         goneCount++
-        gone ??= [l, p]
+        if (gone === undefined || p < gone[1]) gone = [l, p]
         continue
       }
       live++
       // A file names the cycle before a directory: `mkdir -p` and a write
       // in it fire the directory first, and the cycle was named by it.
-      if (first !== undefined && (firstIsFile || isDirectory(p))) continue
+      // Within a kind the least path does, never the first event: macOS
+      // FSEvents does not keep a batch's order, and the same edits were
+      // named apart on Linux and a Mac.
+      const isFile = !isDirectory(p)
+      if (
+        first !== undefined &&
+        ((firstIsFile && !isFile) || (firstIsFile === isFile && p > firstAbs!))
+      )
+        continue
       first = l
       firstAbs = p
-      firstIsFile = !isDirectory(p)
+      firstIsFile = isFile
     }
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     // A path is anyone's bytes, and a file named `ESC ]0;…` printed raw

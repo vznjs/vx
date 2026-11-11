@@ -21,7 +21,9 @@ import {
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import {
+  anyTaskGlob,
   asTrees,
+  isLiteralPattern,
   outputDirPrefixes,
   relPosix,
   span,
@@ -210,7 +212,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   // nothing is a glob against the wrong directory.
   if (
     a.outputs.length + a.wsOutputs.length > 0 &&
-    outputFiles.length + wsOutputFiles.length === 0
+    outputFiles.length + wsOutputFiles.length === 0 &&
+    // Empty directories are saved and a hit makes them.
+    tree.emptyDirs.length + wsTree.emptyDirs.length === 0
   ) {
     // One cause is common enough to name, because the task shows no other
     // symptom: a sandboxed task with no write grant. Its writes land in the
@@ -233,6 +237,26 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
           ...a.wsOutputs.map((g) => [a.workspaceRoot, g] as const),
         ]),
     )
+  } else {
+    const dead = deadOutputGlobs(
+      a,
+      node.projectDir,
+      [...outputFiles, ...tree.emptyDirs],
+      [...wsOutputFiles, ...wsTree.emptyDirs],
+    )
+    if (dead.length > 0) {
+      const literal = [...a.outputs, ...a.wsOutputs].filter(
+        (g) => !g.startsWith('!') && isLiteralPattern(g),
+      )
+      warnOf(log)(
+        `[vx] ${node.id}: outputs matched no files (${dead.join(', ')}) — ` +
+          `a later hit restores only the literal files (${literal.join(', ')})` +
+          bracketLiteralHint([
+            ...a.outputs.map((g) => [node.projectDir, g] as const),
+            ...a.wsOutputs.map((g) => [a.workspaceRoot, g] as const),
+          ]),
+      )
+    }
   }
   const facts: SaveFacts = {}
   let kept = false
@@ -420,11 +444,49 @@ function markWritten(
 }
 
 /**
+ * The wildcard output globs, when not one of them matched: the literal
+ * files beside them did, so the artifact is not empty and a later hit
+ * restores only those. turbo()/nx() add `tsconfig.tsbuildinfo` to an
+ * incremental tsc task; `tsc --outDir out` then left `dist/**` empty under
+ * a silent save. `deadSourceGlobs`' rule (execute-task.ts) for outputs: an
+ * empty directory a glob matched counts, a hit makes it. Stops at the
+ * first matched path.
+ */
+function deadOutputGlobs(
+  a: Pick<SaveMissArgs, 'outputs' | 'wsOutputs' | 'workspaceRoot'>,
+  projectDir: string,
+  own: readonly string[],
+  ws: readonly string[],
+): string[] {
+  const wild = (globs: readonly string[]): string[] =>
+    globs.filter((g) => !g.startsWith('!') && !isLiteralPattern(g))
+  const ownWild = wild(a.outputs)
+  const wsWild = wild(a.wsOutputs)
+  if (ownWild.length === 0 && wsWild.length === 0) return []
+  const ownMatch = anyTaskGlob(ownWild)
+  const wsMatch = anyTaskGlob(wsWild)
+  for (const p of own) if (ownMatch(relPosix(projectDir, p))) return []
+  for (const p of ws) if (wsMatch(relPosix(a.workspaceRoot, p))) return []
+  // As the input rule: a link to a directory is listed by its own name,
+  // which a glob reaching below it does not match.
+  for (const p of [...own, ...ws]) if (linksToDir(p)) return []
+  return [...ownWild, ...wsWild]
+}
+
+function linksToDir(abs: string): boolean {
+  try {
+    return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+  } catch {
+    return false
+  }
+}
+
+/**
  * The clause a "matched no files" warning gains when a glob holds an
  * unescaped `[` and, read as a literal path, names something on disk:
  * `app/[slug]/page.tsx` is a character class (caching.md) that matches
  * no route, so the key stops following the file and an edit replays the
- * old output. Only on the already-empty path; one stat per such glob, on
+ * old output. Only on a warning's path; one stat per such glob, on
  * its literal prefix up to the first segment holding another glob token.
  */
 export function bracketLiteralHint(

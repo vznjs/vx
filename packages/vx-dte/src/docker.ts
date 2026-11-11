@@ -8,7 +8,7 @@ import { mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
-import { loopbackRelay, reasons } from './local.js'
+import { loopbackRelay, reasons, repoEnv } from './local.js'
 import type { DteAdapter } from './plugin.js'
 
 export interface DockerOptions {
@@ -44,7 +44,11 @@ export function docker(options: DockerOptions): DteAdapter {
 
     async spawn(a) {
       const git = (...args: string[]): string => {
-        const r = Bun.spawnSync(['git', ...args], { cwd: a.workspaceRoot, stderr: 'pipe' })
+        const r = Bun.spawnSync(['git', ...args], {
+          cwd: a.workspaceRoot,
+          env: repoEnv(a.workspaceRoot),
+          stderr: 'pipe',
+        })
         if (r.exitCode !== 0) throw new Error(`git ${args[0]}: ${r.stderr.toString().trim()}`)
         return r.stdout.toString().trim()
       }
@@ -58,6 +62,7 @@ export function docker(options: DockerOptions): DteAdapter {
       // clone's would be /src, a store of its own the run never reads.
       const origin = Bun.spawnSync(['git', 'remote', 'get-url', 'origin'], {
         cwd: a.workspaceRoot,
+        env: repoEnv(a.workspaceRoot),
         stderr: 'ignore',
       })
         .stdout.toString()

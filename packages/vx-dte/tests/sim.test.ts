@@ -107,7 +107,7 @@ const cases: Case[] = [
     name: 'main 2163fff (23 misses)',
     graph: load(f2163),
     measured: true,
-    failing: ['utilization', 'makespan'],
+    failing: ['utilization'],
   },
   {
     name: 'a growing graph',
@@ -222,11 +222,13 @@ function aThirdUnmeasured(): SimTask[] {
 
 // 2026-10-23: "we can't waste whole worker for one task", "pack them
 // where we have free capability". Booking each unmeasured task a whole
-// worker ended this run at 195 s, its workers 37% busy.
-it('a run a third unmeasured ends within 165 s, its workers 70% busy', () => {
+// worker ended this run at 195 s, its workers 37% busy. Started only as
+// its tasks need them, so its critical path waits on none, it ends at
+// 134 s, not 161, for 8% more worker time (2026-11-10).
+it('a run a third unmeasured ends within 140 s, its workers 65% busy', () => {
   const r = simulate(aThirdUnmeasured(), { sizes: [small], likely: misses(load(a09)) })
-  expect(r.endMs).toBeLessThanOrEqual(165_000)
-  expect(r.utilization).toBeGreaterThanOrEqual(0.7)
+  expect(r.endMs).toBeLessThanOrEqual(140_000)
+  expect(r.utilization).toBeGreaterThanOrEqual(0.65)
 })
 
 for (const c of cases) {
@@ -270,6 +272,32 @@ for (const c of cases) {
     })
   })
 }
+
+// Sizes declared smallest first: a 4-core task ran on 2-core workers at
+// half speed and the run started no bigger one, 59% late on a lab of 2-
+// to 16-core sizes (2026-11-11).
+describe('sizes declared smallest first', () => {
+  const sizes: Size[] = [2, 4, 8, 16].map((cpu) => ({
+    name: `c${cpu}`,
+    max: 8,
+    cpu,
+    memory: cpu * 4e9,
+  }))
+  const graph: SimTask[] = Array.from({ length: 24 }, (_, i) => ({
+    id: `t${i}`,
+    deps: i < 4 ? [] : [`t${i - 4}`],
+    exec: true,
+    cache: true,
+    ran: { ms: 30_000, cores: 4, memory: 1e9 },
+  }))
+  const r = simulate(graph, { sizes, likely: new Set(graph.map((t) => t.id)) })
+  it('runs no task on a worker with fewer cores than it asks', () => {
+    expect(r.workers.filter((w) => w.tasks > 0 && w.cores < 4).map((w) => w.id)).toEqual([])
+  })
+  it('ends in its chain and a warm-up', () => {
+    expect(r.endMs).toBeLessThanOrEqual(6 * 30_000 + 20_000 + 5_000)
+  })
+})
 
 // Tasks core placed on a platform (`exec.platforms`) go only to workers of
 // it, and the run starts a worker of each platform its work needs, though
@@ -465,7 +493,21 @@ it('asks no worker while the CI queues one of its size', () => {
     home: 'linux-x64',
     warmUpMs: (n) => (joins[n - 1] ?? 90) * 1_000,
   })
-  expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
+  // None asked while one of its size, asked before, has not joined.
+  const size = (id: string) => id.split('#')[0]
+  const late = r.workers.filter((w) =>
+    r.workers.some(
+      (x) =>
+        x !== w &&
+        size(x.id) === size(w.id) &&
+        x.spawnedAt < w.spawnedAt &&
+        (x.joinedAt ?? x.cancelledAt ?? Infinity) > w.spawnedAt,
+    ),
+  )
+  expect(late.map((w) => w.id)).toEqual([])
+  // Asked at once for tasks of no history, which no guess gives slack,
+  // two the CI queued past 83 s are cancelled once those ran shorter.
+  expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(2)
   // The run's ideal, 121.6 s, within the plan's 5% margin: a plan that
   // holds is followed, not played again at each join for a closer end.
   expect(r.endMs).toBeLessThanOrEqual(121_600 * 1.05)

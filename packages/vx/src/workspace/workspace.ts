@@ -4,7 +4,7 @@
 // never walks. A project is named by `name` in its config, else by a
 // `discover` plugin, else by its root-relative path, `//` for the root.
 // Design: docs/design/language-agnostic-core-2026-10.md.
-import type { Dirent } from 'node:fs'
+import { type Dirent, lstatSync, realpathSync } from 'node:fs'
 import { lstat, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -20,6 +20,7 @@ import {
   printable,
   refusal,
   relPosix,
+  skipWorktreeSync,
   UserError,
 } from '../util/index.js'
 import {
@@ -31,7 +32,7 @@ import {
 } from '../handoff.js'
 import { canonicalDir } from './canonical-dir.js'
 import { parseFilter } from './filter.js'
-import { repoIdOf } from './repo-id.js'
+import { locateGitDir, repoIdOf } from './repo-id.js'
 
 export interface ProjectMeta {
   /** `name` in its config, else a `discover` plugin's, else its root-relative path (`//` for the root). */
@@ -275,6 +276,8 @@ export interface ProjectConfigs {
   readonly shadowed: { file: string; read: string }[]
   /** Absolute, sorted: the outermost directories holding their own `.vx/workspace.*`. */
   readonly nestedWorkspaces: string[]
+  /** Config files git lists that a sparse checkout left out: `file` absolute, `add` what `git sparse-checkout add` takes. */
+  readonly sparse: { file: string; add: string }[]
 }
 
 /**
@@ -290,7 +293,11 @@ export interface ProjectConfigs {
  */
 export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
   const inGit = (await gitTop(root)) !== null
-  const rels = inGit ? await gitConfigs(root) : await scanConfigs(root)
+  const linked = new Map<string, boolean>()
+  // The walk outside git never follows a link.
+  const rels = inGit
+    ? (await gitConfigs(root)).filter((rel) => !behindLink(root, rel, linked))
+    : await scanConfigs(root)
   // Each on disk, a broken link included, as the root walk takes one: git
   // lists a tracked one deleted from the worktree, which marks no root.
   const marks = rels.filter((rel) => {
@@ -337,13 +344,23 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
       shadowed.push({ file: path.join(dir, n), read: path.join(dir, files[0]!) })
     return files[0] === undefined ? null : path.join(dir, files[0])
   }
+  const sparse: { file: string; add: string }[] = []
   const found = await Promise.all(
     [...byDir].map(async ([rel, names]) => {
       const dir = rel === '' ? root : path.join(root, rel)
       const configPath = await firstFile(dir, names, CONFIG_RANK)
+      // Skipped, its project left the committed lock unsaid. Asked only of
+      // a listed config the worktree lacks, so a full checkout pays nothing.
+      if (configPath === null && inGit) {
+        for (const n of names) {
+          const at = skipWorktreeSync(root, rel === '' ? n : `${rel}/${n}`)
+          if (at !== null) sparse.push({ file: path.join(dir, n), add: path.posix.dirname(at) })
+        }
+      }
       return configPath === null ? null : { dir, configPath }
     }),
   )
+  sparse.sort((a, b) => (a.file < b.file ? -1 : 1))
   // The root's own, asked by name: a walk outside git lists no dot-directory.
   await firstFile(root, [...WORKSPACE_CONFIG_FILENAMES], WORKSPACE_RANK)
   shadowed.sort((a, b) => (a.file < b.file ? -1 : 1))
@@ -370,7 +387,13 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((n) => !nested.some((m) => n.startsWith(`${m}/`)))
     .map((rel) => path.join(root, rel))
     .sort()
-  return { configs, strayReviews, shadowed, nestedWorkspaces: [...new Set(nestedWorkspaces)] }
+  return {
+    configs,
+    strayReviews,
+    shadowed,
+    nestedWorkspaces: [...new Set(nestedWorkspaces)],
+    sparse,
+  }
 }
 
 /**
@@ -407,6 +430,27 @@ async function unlistedNested(
     ),
   )
   return found.filter((d) => d !== null)
+}
+
+/**
+ * Whether a directory on root-relative `rel`'s path is a symlink, memoised
+ * in `linked`. Git's index lists a tracked path a link now stands in front
+ * of (a project moved and linked back), which git calls deleted; a stat
+ * through the link found the config, and one directory was locked as two
+ * projects. Asked by `vx lock` only.
+ */
+function behindLink(root: string, rel: string, linked: Map<string, boolean>): boolean {
+  const slash = rel.lastIndexOf('/')
+  if (slash === -1) return false
+  const dir = rel.slice(0, slash)
+  let is = linked.get(dir)
+  if (is === undefined) {
+    is =
+      behindLink(root, dir, linked) ||
+      (lstatSync(path.join(root, dir), { throwIfNoEntry: false })?.isSymbolicLink() ?? false)
+    linked.set(dir, is)
+  }
+  return is
 }
 
 /** An entry by that name, whatever it is (`lstat`): a broken link counts. */
@@ -468,7 +512,21 @@ async function gitConfigs(root: string): Promise<string[]> {
   const gitlinks = index
     .filter((e) => e.startsWith('160000 '))
     .map((e) => e.slice(e.indexOf('\t') + 1))
-  const embedded = untracked.filter((e) => e.endsWith('/')).map((e) => e.slice(0, -1))
+  // A linked worktree of this repository made inside it (`git worktree add
+  // .worktrees/x`) is this tree checked out again, no nested repository:
+  // recorded as a nested workspace, it failed `--check` on every other checkout.
+  const common = (dir: string): string | null => {
+    const at = locateGitDir(dir)?.commonDir
+    return at === undefined ? null : realpathSync(at)
+  }
+  let rootCommon: string | null | undefined
+  const embedded = untracked
+    .filter((e) => e.endsWith('/'))
+    .map((e) => e.slice(0, -1))
+    .filter((rel) => {
+      const theirs = common(path.join(root, rel))
+      return theirs === null || theirs !== (rootCommon ??= common(root))
+    })
   const inner = await Promise.all([
     ...gitlinks.map(async (rel) =>
       // A submodule never initialised, or vendored with its `.git` removed, is walked.
@@ -478,7 +536,8 @@ async function gitConfigs(root: string): Promise<string[]> {
   ])
   const nested = [...gitlinks, ...embedded]
   const prefixed = inner.flatMap((files, i) => files.map((f) => `${nested[i]}/${f}`))
-  return [...configs, ...prefixed]
+  // Deduplicated: an unmerged path is listed once per stage.
+  return [...new Set(configs), ...prefixed]
 }
 
 /**

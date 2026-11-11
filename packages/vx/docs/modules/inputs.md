@@ -31,7 +31,7 @@ export function declaresInput(
   task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
-  dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts
+  dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts, unless a negation takes back its whole tree
   untracked?: boolean, // git does not track it: under the task's own outputs it is no input
   projectDir?: string, // the task's project, workspace-relative: its outputs.files a workspaceFiles glob reaches
 ): boolean
@@ -108,7 +108,7 @@ export interface InputListing {
   workspaceRoot: string // where git's location variables point; a nested repo's root is listed without them
   listed: readonly string[] // root-relative, as git listed them
   isInput: (rel: string) => boolean // the declaration's verdict
-  linked: (rel: string) => boolean // a link to a directory here is an input
+  linked: (rel: string) => boolean // a link to a directory here is an input; a negation counts only if it takes back the tree beneath
   nested: (rel: string) => boolean // inside a nested project
   prefixes: readonly string[] // directories a positive entry reaches, '' for the root
   literals: readonly string[]
@@ -188,6 +188,9 @@ export async function cleanOutputs(args: {
   nestedProjectDirs: string[]
   inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean // git tracks it: never removed (default: asks git)
+  resolved?: readonly string[] | undefined // the walk's files, when the caller just walked
+  beforeRun?: boolean // the command runs next: a directory the clean opened stays open
+  kept?: string[] // filled with the committed files it found and left (absolute)
 }): Promise<string[]>
 
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
@@ -216,6 +219,9 @@ export async function cleanWorkspaceOutputs(args: {
   outputs: readonly string[]
   inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
+  resolved?: readonly string[] | undefined
+  beforeRun?: boolean
+  kept?: string[]
 }): Promise<string[]>
 
 // No clean removes a file git tracks (2026-10-14); `committedFiles`
@@ -231,8 +237,10 @@ export function asTrees(patterns: readonly string[]): string[]
 // An ADDITIVE task (its outputs overlap an upstream's, with the edge that
 // orders them; item 588) owns what its run added or changed, not what
 // its glob selects: the stamp before, the diff after, and a clean by
-// recorded rows rather than by glob. The diff is undefined when the run
-// removed a file it found: no entry replays a removal, so none is saved.
+// recorded rows rather than by glob. A file it found and left alone is
+// its own too when `mine` says a save or restore of the task left it so.
+// The diff is undefined when the run removed a file it found: no entry
+// replays a removal, so none is saved.
 export interface OutputStamp {
   size: number
   mtimeMs: number
@@ -253,6 +261,7 @@ export async function ownOutputsSince(
     inputs?: OwnInputs | undefined
   },
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): Promise<string[] | undefined>
 // The same two for root-anchored `outputs.workspaceFiles` (A-43).
 export async function stampWorkspaceOutputs(args: {
@@ -263,6 +272,7 @@ export async function stampWorkspaceOutputs(args: {
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): Promise<string[] | undefined>
 // No clean deletes a committed file, so before a retry these tell whether
 // a failed attempt added, removed or touched one among the files a clean
@@ -302,11 +312,14 @@ export function stopRuntimeProbes(...memos: readonly Map<string, Promise<string>
 `filesToken` names what `resolveFiles` would resolve and the key would
 fold for a task's files without resolving them: the project's
 `filesDigest` (git-inputs.md), the workspace root and the declaration
-`resolveFiles` keys its own memo on. It is undefined for a task with
-`workspaceFiles`, a declaration that names a gitignored path outright,
+`resolveFiles` keys its own memo on, and for `workspaceFiles` the
+declaration and `declarationDigest` of the workspace paths its globs may
+take in (git-inputs.md). It is undefined for a declaration that names a
+gitignored path outright,
 and a partition holding anything the enumeration did not vouch for (a
-dirty, untracked, linked or undecodable file, or a path a run already
-marked changed). `computeTaskHash` keys the fold memo on it
+linked or undecodable file, a loose one within the racy window, or a
+path a run already marked changed that the partition lists or the
+declaration's globs take). `computeTaskHash` keys the fold memo on it
 (task-hash.md).
 
 ## File resolution rules
@@ -341,7 +354,8 @@ other walker: a project outside a git work tree is a `UserError`
    or under it — is read from disk (`ignoredReach`, `ignoredInputs`):
    gitignored, named outright, so an input (2026-10-16). Outside
    the per-run memo, since a dependency writes there mid-run. One that
-   does not exist stays silent until it does.
+   does not exist (under a parent that is a file, too) stays silent
+   until it does.
 3. **Negative globs** — entries starting with `!`. The `!` is
    stripped; the rest becomes a `Bun.Glob` (a literal is a tree here
    too) and any matched path is removed.
@@ -455,9 +469,21 @@ task's declared outputs. A
 directory of this user's that withholds its own write (`chmod 555
 dist/ro`) gets owner write for the remove and its mode back after, and
 the prune reopens one the same way to remove an emptied subdirectory
-(`tests/clean-readonly-dir.test.ts`). A declared output the process
+(`tests/clean-readonly-dir.test.ts`). Before the command runs
+(`beforeRun`) no mode is given back: a kept glob root the task made 555
+(`chmod 555 dist`) refused the command's own write, and the task never
+missed again. A declared output the process
 cannot remove even so — another user's `dist/`, a read-only checkout —
 is a `UserError` naming the path, not an internal error.
+
+An output directory the task left unlistable (`chmod 000 dist/s` or
+`111`) stopped the output walk with EACCES. A walk for a clean or a
+restore gives this user's own read and search for its listing and the
+mode back after; a save refuses it, `cannot list declared output
+directory dist/s: EACCES — …`, as it cannot store what it cannot read.
+An ignored input under a directory the walk cannot list is refused the
+same way, `cannot list input directory <path>: EACCES — …`
+(`tests/unlistable-input-dir.test.ts`).
 
 ## What this does NOT do
 

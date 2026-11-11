@@ -8,7 +8,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { PORT_DIAL_SCRIPT } from '../src/exec/sandbox-runtime.js'
+import { PORT_DIAL_SCRIPT, PROXY_BRIDGE_WAIT } from '../src/exec/sandbox-runtime.js'
 
 const HEAD =
   '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n'
@@ -74,5 +74,40 @@ describe('the bridge dial', () => {
       await dial(5173, [], []),
       await dial(5173, [], null),
     ]).toEqual(Array(4).fill('TCP4:127.0.0.1:5173'))
+  })
+})
+
+// The wait in front of a sandboxed command for the runtime's proxy
+// bridges gave up after ~5 s in silence: under a TMPDIR with a space the
+// bridges never listened, and every task paid the 5 s and met a refused
+// proxy, nothing saying why (2026-11-10). Here it reads fixture tables,
+// with its bound cut to two tries.
+describe('the proxy bridge wait', () => {
+  async function wait(listening: boolean): Promise<{ code: number; err: string }> {
+    const net = await mkdtemp(path.join(os.tmpdir(), 'vx-proxy-wait-'))
+    try {
+      const rows = listening ? row(0, V4.loop, 3128) + row(1, V4.loop, 1080) : ''
+      await writeFile(path.join(net, 'tcp'), HEAD + rows)
+      const script = PROXY_BRIDGE_WAIT.replaceAll('/proc/net/', `${net}/`).replace(
+        '-ge 500',
+        '-ge 2',
+      )
+      expect(script).not.toContain('/proc/net/')
+      const p = Bun.spawn(['sh', '-c', `${script} exit 0`], { stderr: 'pipe' })
+      const err = await new Response(p.stderr).text()
+      return { code: await p.exited, err }
+    } finally {
+      await rm(net, { recursive: true, force: true })
+    }
+  }
+
+  it('says so when the bridges never listen, and goes on to the command', async () => {
+    expect([await wait(true), await wait(false)]).toEqual([
+      { code: 0, err: '' },
+      {
+        code: 0,
+        err: "[vx] the sandbox's network proxy bridges (ports 3128 and 1080) did not listen within 5 s; this task's network requests will be refused\n",
+      },
+    ])
   })
 })

@@ -23,7 +23,9 @@ export default defineWorkspace({
 ```
 
 Off CI a run reads the remote and does not write it unless its policy names
-the remote. Give the write credential only to the default branch's CI and a
+the remote. The execution record below follows the same policy: a run that
+does not read the remote replays no record, and one that does not write it
+records none under the task's key. Give the write credential only to the default branch's CI and a
 read-only one to laptops and pull request jobs: the server's token is the
 boundary (`docs/security.md` § Cache poisoning). A server that refuses a
 save's `UpdateActionResult` (`PERMISSION_DENIED`, `UNIMPLEMENTED`) is taken
@@ -140,12 +142,16 @@ while the outputs come down. A later run whose vx cache missed but whose key
 already has a record skips the Merkle build, the upload pass and `Execute`
 entirely: the outputs are already in the CAS, and both streams replay from
 the record, as a vx hit replays them. A run core does not save
-(`--no-cache`, a read-only policy, a tainted upstream) records under a key
+(`--no-cache`, a read-only policy, a tainted upstream), or whose policy does
+not write the remote (a run off CI, `--cache-policy=remote:r`), records under a key
 only this run's executor knows instead: its dependants in this run graft
 from it, and no later run replays it as the task's hit. A `v1` record kept no stderr and is
 never read: its key executes once more and writes a `v2` one. A record
 with a non-zero exit code (vx writes none, but the action cache is the
-server's) is no record either: the task executes. `--force` bypasses it.
+server's) is no record either: the task executes, and a dependant whose
+upstream's outputs exist only as such a record is refused. `--force`
+bypasses it, as does a policy that does not read the remote
+(`--cache-policy=remote:`).
 
 The input tree is read after the key was taken, so each file's bytes are
 held to the git blob id the key hashed for it. A file edited, removed or
@@ -546,9 +552,10 @@ sorted by name — the proto requires that, so equivalent Commands hash alike:
 A `define` wins over an `inputs.env` entry of the same name: it is the more
 explicit statement of intent.
 
-One constant is vx's own: `FORCE_COLOR=1`, which every local child gets
-too (unless the task sees a `FORCE_COLOR` or a non-empty `NO_COLOR`), so a
-remote entry holds the same coloured bytes a local one does.
+Colour is the one exception: the action gets the `FORCE_COLOR` and
+`NO_COLOR` the local child sees, this machine's or vx's own
+`FORCE_COLOR=1` (set unless the task sees a `FORCE_COLOR` or a non-empty
+`NO_COLOR`), so a remote entry holds the same bytes a local one does.
 
 Nothing else crosses. In particular **`exec.env.passThrough` does not reach a
 remote worker**, and neither does the essential allowlist (`PATH`, `HOME`,

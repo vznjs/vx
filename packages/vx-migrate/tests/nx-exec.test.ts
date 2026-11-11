@@ -176,6 +176,40 @@ describe('nx-exec', () => {
     expect(rec['target']).toEqual({ executor: 'x:y', options: { registry: 'x' } })
   })
 
+  it('an override of an --outputs-option is exit 2 before the executor runs; others run', async () => {
+    const argv = ['x:y', '--project', 'app', '--target', 'build', '--outputs-option', 'outputPath']
+    const r = await nxExec([...argv, '--outputPath=dist/other'])
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('--outputPath')
+    expect(await Bun.file(path.join(root, 'record.json')).exists()).toBe(false)
+    const ok = await nxExec([...argv, '--otp=1'])
+    expect({ code: ok.code, err: ok.err }).toEqual({ code: 0, err: '' })
+    expect((await record())['overrides']).toEqual({ otp: 1 })
+  })
+
+  // Nx names an override as the executor's schema does before the executor
+  // reads it: `--output-path` and an alias set `outputPath`, which moves the
+  // outputs as surely as `--outputPath`.
+  it('an --outputs-option spelled kebab-case or by a schema alias is refused too', async () => {
+    await writeFile(
+      path.join(root, 'executor-schema.json'),
+      JSON.stringify({ properties: { outputPath: { type: 'string', aliases: ['o'] } } }),
+    )
+    const argv = ['x:y', '--project', 'app', '--target', 'build', '--outputs-option', 'outputPath']
+    for (const arg of ['--output-path=dist/kebab', '--o=dist/alias']) {
+      const r = await nxExec([...argv, arg])
+      expect({ arg, code: r.code, named: r.err.includes('{options.outputPath}') }).toEqual({
+        arg,
+        code: 2,
+        named: true,
+      })
+      expect(await Bun.file(path.join(root, 'record.json')).exists()).toBe(false)
+    }
+    // Not a schema property: Nx leaves the key as typed, and the executor never reads it.
+    const ok = await nxExec([...argv, '--other-path=x'])
+    expect({ code: ok.code, err: ok.err }).toEqual({ code: 0, err: '' })
+  })
+
   it('a project the graph does not have is exit 1 with its name', async () => {
     // Not in the cache, so computed (P2-43), and not there either.
     await writeFile(path.join(root, 'fallback-graph.json'), JSON.stringify(GRAPH))

@@ -28,7 +28,7 @@ import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 5
+export const LOCKFILE_VERSION = 6
 
 /** One project as the lock holds it. */
 export interface LockedProject {
@@ -51,8 +51,55 @@ export interface Lockfile {
    * workspace without one locks the bytes it always did.
    */
   nestedWorkspaces?: string[]
+  /**
+   * The plugin `project` stage as `vx lock` ran it. A run reads each
+   * recorded project's config from here and runs no hook, whatever plugins
+   * the workspace declares now: a mapping (`turbo()`, `nx()`) is made by
+   * `vx lock` only (2026-11-11). Absent when no plugin fills the stage.
+   */
+  projectStage?: ProjectStageLock
+  /**
+   * The plugin `discover` stage as `vx lock` ran it: the projects it added,
+   * the names it gave and the edges it declared. A run applies this to the
+   * locked projects and runs no hook, whatever plugins the workspace
+   * declares now (2026-11-11). Absent when no plugin fills the stage.
+   */
+  discoverStage?: DiscoverStageLock
   /** Written by `writeLockfile` from the bytes; never read off the object. */
   validated?: string
+}
+
+/** `Lockfile.projectStage`. */
+export interface ProjectStageLock {
+  /** The plugins that filled the stage, in order: `--check` names another set. */
+  plugins: string[]
+  /**
+   * Root-relative POSIX directory → its project's config after the stage,
+   * before core's default `build`: every project the stage visited, config
+   * file or not.
+   */
+  configs: Record<string, ProjectConfig>
+}
+
+/** `Lockfile.discoverStage`. */
+export interface DiscoverStageLock {
+  /** The plugins that filled the stage, in order: `--check` names another set. */
+  plugins: string[]
+  /**
+   * Root-relative POSIX directory → the project as the stage left it, for
+   * each project it added, renamed or gave edges.
+   */
+  projects: Record<string, DiscoveredLock>
+}
+
+/** One project in `DiscoverStageLock.projects`. */
+export interface DiscoveredLock {
+  name: string
+  /** The plugin that added it: set only on a project the lock holds no config for. */
+  by?: string
+  /** Project names, as `ProjectMeta.deps`: present, even empty, makes the workspace an edge source. */
+  deps?: string[]
+  reach?: string[]
 }
 
 export function lockfilePath(root: string): string {
@@ -70,7 +117,8 @@ export const LOCK_INVALID = `${LOCKFILE_NAME} is invalid, run \`vx lock\``
 export function lockEntryBroken(root: string): boolean {
   let lock: Pooled
   try {
-    lock = JSON.parse(readFileSync(lockfilePath(root), 'utf8')) as Pooled
+    // As `readLockfile` reads it: `Bun.file().text()` drops a leading BOM.
+    lock = JSON.parse(readFileSync(lockfilePath(root), 'utf8').replace(/^\uFEFF/, '')) as Pooled
   } catch {
     return false
   }
@@ -80,10 +128,13 @@ export function lockEntryBroken(root: string): boolean {
   } catch {
     return true
   }
-  const projects = lock.projects
-  for (const [dir, entry] of Object.entries(projects)) {
+  const configs = [
+    ...Object.entries(lock.projects).map(([dir, e]) => [dir, (e as LockedProject).config] as const),
+    ...Object.entries(lock.projectStage?.configs ?? {}),
+  ]
+  for (const [dir, config] of configs) {
     try {
-      validateProjectConfig((entry as LockedProject).config, `${LOCKFILE_NAME}: "${dir}"`, null)
+      validateProjectConfig(config, `${LOCKFILE_NAME}: "${dir}"`, null)
     } catch {
       return true
     }
@@ -145,8 +196,20 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new UserError(`${LOCKFILE_NAME} must be a JSON object — re-run \`vx lock\``, 'VX_E_LOCK')
   }
-  const lock = parsed as { version?: unknown; projects?: unknown; nestedWorkspaces?: unknown }
+  const lock = parsed as {
+    version?: unknown
+    projects?: unknown
+    nestedWorkspaces?: unknown
+    projectStage?: unknown
+    discoverStage?: unknown
+  }
   if (lock.version !== LOCKFILE_VERSION) {
+    // This vx's `vx lock` would write the older version over it.
+    if (typeof lock.version === 'number' && lock.version > LOCKFILE_VERSION)
+      throw new UserError(
+        `${LOCKFILE_NAME} was written by a newer vx (version ${lock.version}; this vx reads ${LOCKFILE_VERSION}) — upgrade vx`,
+        'VX_E_LOCK',
+      )
     throw new UserError(
       `${LOCKFILE_NAME} has unsupported version ${String(lock.version)} ` +
         `(this vx expects ${LOCKFILE_VERSION}) — re-run \`vx lock\``,
@@ -175,11 +238,7 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       Array.isArray(entry) ||
       typeof file !== 'string' ||
       !PROJECT_CONFIG_FILENAMES.includes(file) ||
-      !isObj(config) ||
-      // A run trusts these shapes: a string `name`, a `tags` list, a `tasks` object.
-      (config['name'] !== undefined && typeof config['name'] !== 'string') ||
-      (config['tags'] !== undefined && !Array.isArray(config['tags'])) ||
-      (config['tasks'] !== undefined && !isObj(config['tasks']))
+      !configShaped(config)
     ) {
       throw malformed(dir)
     }
@@ -195,11 +254,51 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       'VX_E_LOCK',
     )
   }
+  const stage = lock.projectStage
+  if (stage !== undefined) {
+    const { plugins, configs } = (isObj(stage) ? stage : {}) as Obj
+    if (
+      !Array.isArray(plugins) ||
+      plugins.some((p) => typeof p !== 'string') ||
+      !isObj(configs) ||
+      Object.entries(configs).some(([dir, config]) => !isLockKey(dir) || !configShaped(config))
+    ) {
+      throw new UserError(
+        `${LOCKFILE_NAME}: \`projectStage\` is malformed — re-run \`vx lock\``,
+        'VX_E_LOCK',
+      )
+    }
+  }
+  const found = lock.discoverStage
+  if (found !== undefined) {
+    const { plugins, projects } = (isObj(found) ? found : {}) as Obj
+    const names = (v: unknown): boolean =>
+      v === undefined || (Array.isArray(v) && v.every((n) => typeof n === 'string'))
+    if (
+      !Array.isArray(plugins) ||
+      plugins.some((p) => typeof p !== 'string') ||
+      !isObj(projects) ||
+      Object.entries(projects).some(
+        ([dir, p]) =>
+          !isLockKey(dir) ||
+          !isObj(p) ||
+          typeof p['name'] !== 'string' ||
+          (p['by'] !== undefined && typeof p['by'] !== 'string') ||
+          !names(p['deps']) ||
+          !names(p['reach']),
+      )
+    ) {
+      throw new UserError(
+        `${LOCKFILE_NAME}: \`discoverStage\` is malformed — re-run \`vx lock\``,
+        'VX_E_LOCK',
+      )
+    }
+  }
   pooledIn(parsed as Pooled)
   // After the pool is put back, as a task may be an index into it. A
   // string `dependsOn` was walked per character: "dependsOn b#a".
-  for (const [dir, entry] of Object.entries(lock.projects as Record<string, LockedProject>)) {
-    const tasks = entry.config.tasks as Obj | undefined
+  for (const [dir, config] of configsOf(parsed as Pooled)) {
+    const tasks = config.tasks as Obj | undefined
     for (const name in tasks) {
       const t = tasks[name]
       if (!isObj(t) || (t['dependsOn'] !== undefined && !Array.isArray(t['dependsOn'])))
@@ -208,6 +307,16 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   }
   digests.set(parsed as Lockfile, xxh3hex(text))
   return parsed as Lockfile
+}
+
+/** A run trusts these shapes: an object with a string `name`, a `tags` list, a `tasks` object. */
+function configShaped(config: unknown): boolean {
+  return (
+    isObj(config) &&
+    (config['name'] === undefined || typeof config['name'] === 'string') &&
+    (config['tags'] === undefined || Array.isArray(config['tags'])) &&
+    (config['tasks'] === undefined || isObj(config['tasks']))
+  )
 }
 
 const malformed = (dir: string): UserError =>
@@ -227,7 +336,20 @@ export function lockEntries(bytes: Uint8Array | null): Record<string, unknown> |
     const lock = JSON.parse(new TextDecoder().decode(bytes)) as Pooled
     if (typeof lock?.projects !== 'object' || lock.projects === null) return null
     pooledIn(lock)
-    return lock.projects
+    // A project's `project`-stage config and `discover`-stage record (its
+    // name, its edges) are its entry too: a run reads them.
+    const staged = lock.projectStage?.configs ?? {}
+    const found = lock.discoverStage?.projects ?? {}
+    const dirs = new Set([
+      ...Object.keys(lock.projects),
+      ...Object.keys(staged),
+      ...Object.keys(found),
+    ])
+    const at = (o: Record<string, unknown>, dir: string): unknown =>
+      Object.hasOwn(o, dir) ? o[dir] : null
+    return Object.fromEntries(
+      [...dirs].map((dir) => [dir, [at(lock.projects, dir), at(staged, dir), at(found, dir)]]),
+    )
   } catch {
     return null
   }
@@ -245,7 +367,12 @@ const POOLS = ['env', 'sandbox', 'exec', 'inputs', 'cache', 'task'] as const
 type PoolName = (typeof POOLS)[number]
 type Part = Exclude<PoolName, 'task'>
 type Pools = Partial<Record<PoolName, unknown[]>>
-type Pooled = { pool?: Pools; projects: Record<string, LockedProject> }
+type Pooled = {
+  pool?: Pools
+  projects: Record<string, LockedProject>
+  projectStage?: ProjectStageLock
+  discoverStage?: DiscoverStageLock
+}
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 const TASK_PARTS = ['exec', 'inputs', 'cache'] as const
@@ -283,8 +410,8 @@ function pooledIn(lock: Pooled): void {
   // Inner pools first: a pooled task's exec may itself be pooled.
   for (const e of pool.exec ?? []) parts(e, EXEC_PARTS)
   for (const t of pool.task ?? []) task(t)
-  for (const entry of Object.values(lock.projects)) {
-    const tasks = (entry as { config?: { tasks?: unknown } } | null)?.config?.tasks
+  for (const [, config] of configsOf(lock)) {
+    const tasks = (config as { tasks?: unknown } | null | undefined)?.tasks
     if (!isObj(tasks)) continue
     for (const name of Object.keys(tasks)) {
       const t = tasks[name]
@@ -294,8 +421,18 @@ function pooledIn(lock: Pooled): void {
   }
 }
 
-/** `projects` as written: each value two slots hold alike, once in `pool`. */
-function pooledOut(projects: Record<string, LockedProject>): Pooled {
+/** Every config a lock holds, by directory: each project's, then each `project`-stage one. */
+function configsOf(lock: Pooled): [dir: string, config: ProjectConfig][] {
+  return [
+    ...Object.entries(lock.projects).map(
+      ([dir, entry]) => [dir, (entry as LockedProject | null)?.config] as [string, ProjectConfig],
+    ),
+    ...Object.entries(lock.projectStage?.configs ?? {}),
+  ]
+}
+
+/** `projects` and the stage's configs as written: each value two slots hold alike, once in `pool`. */
+function pooledOut(projects: Record<string, LockedProject>, stage?: ProjectStageLock): Pooled {
   const seen = new Map<string, number>()
   const keyOf = (name: PoolName, v: Obj): string => `${name}\0${JSON.stringify(v)}`
   const count = (name: PoolName, v: unknown): void => {
@@ -303,10 +440,14 @@ function pooledOut(projects: Record<string, LockedProject>): Pooled {
     const k = keyOf(name, v)
     seen.set(k, (seen.get(k) ?? 0) + 1)
   }
-  const tasksOf = (p: LockedProject): Obj | undefined =>
-    isObj(p.config.tasks) ? p.config.tasks : undefined
-  for (const p of Object.values(projects)) {
-    for (const t of Object.values(tasksOf(p) ?? {})) {
+  const tasksOf = (config: ProjectConfig): Obj | undefined =>
+    isObj(config.tasks) ? config.tasks : undefined
+  const configs = [
+    ...Object.values(projects).map((p) => p.config),
+    ...Object.values(stage?.configs ?? {}),
+  ]
+  for (const config of configs) {
+    for (const t of Object.values(tasksOf(config) ?? {})) {
       if (!isObj(t)) continue
       count('task', t)
       for (const n of TASK_PARTS) count(n, t[n])
@@ -335,31 +476,33 @@ function pooledOut(projects: Record<string, LockedProject>): Pooled {
   }
   const exec = (e: Obj): Obj => withParts(e, EXEC_PARTS)
   const task = (t: Obj): Obj => withParts(t, TASK_PARTS)
+  const pooled = (config: ProjectConfig): ProjectConfig => {
+    const tasks = tasksOf(config)
+    return tasks === undefined
+      ? config
+      : ({
+          ...config,
+          tasks: Object.fromEntries(
+            Object.entries(tasks).map(([name, t]) => [name, out('task', t, task)]),
+          ),
+        } as ProjectConfig)
+  }
   // Entries, not assignment: a directory named `__proto__` set the prototype (D-152).
-  const written = Object.fromEntries(
-    Object.entries(projects).map(([dir, p]) => {
-      const tasks = tasksOf(p)
-      return [
-        dir,
-        tasks === undefined
-          ? p
-          : {
-              ...p,
-              config: {
-                ...p.config,
-                tasks: Object.fromEntries(
-                  Object.entries(tasks).map(([name, t]) => [name, out('task', t, task)]),
-                ),
-              } as ProjectConfig,
-            },
-      ]
-    }),
-  )
+  const written: Pooled = {
+    projects: Object.fromEntries(
+      Object.entries(projects).map(([dir, p]) => [dir, { ...p, config: pooled(p.config) }]),
+    ),
+  }
+  if (stage !== undefined)
+    written.projectStage = {
+      plugins: stage.plugins,
+      configs: Object.fromEntries(
+        Object.entries(stage.configs).map(([dir, config]) => [dir, pooled(config)]),
+      ),
+    }
   const ordered: Pools = {}
   for (const n of POOLS) if (pool[n] !== undefined) ordered[n] = pool[n]
-  return POOLS.some((n) => pool[n] !== undefined)
-    ? { pool: ordered, projects: written }
-    : { projects: written }
+  return POOLS.some((n) => pool[n] !== undefined) ? { pool: ordered, ...written } : written
 }
 
 /**
@@ -399,11 +542,16 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
   // JSON (measured, 10k projects: 15.6 ms against 22.5 ms). `vx.lock.json`
   // beside each config is the copy for people.
   const sorted = JSON.parse(JSON.stringify(lock.projects, taskKeysSorted)) as Lockfile['projects']
+  const stage =
+    lock.projectStage === undefined
+      ? undefined
+      : (JSON.parse(JSON.stringify(lock.projectStage, taskKeysSorted)) as ProjectStageLock)
   const nested = lock.nestedWorkspaces ?? []
   const body = JSON.stringify({
     version: lock.version,
     ...(nested.length > 0 ? { nestedWorkspaces: nested } : {}),
-    ...pooledOut(sorted),
+    ...(lock.discoverStage !== undefined ? { discoverStage: lock.discoverStage } : {}),
+    ...pooledOut(sorted, stage),
   })
   return {
     file: lockfilePath(root),

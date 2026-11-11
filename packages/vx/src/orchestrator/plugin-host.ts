@@ -20,6 +20,7 @@ import {
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import {
   errorCode,
+  hookStarted,
   maskedLine,
   settleWithin,
   teardownTimeoutMs,
@@ -45,7 +46,7 @@ import type {
   ConfigContext,
 } from './plugin.js'
 import type { ProjectMeta } from '../workspace/index.js'
-import { hashExtra } from './lockfile-claim.js'
+import { extraHashesOf, hashExtra } from './lockfile-claim.js'
 import { readOnly, readOnlyNodes } from './read-only.js'
 
 /** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
@@ -97,10 +98,14 @@ function assertShape(
  * and telemetry-host.ts logs-and-skips them instead.)
  */
 async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>): Promise<T> {
+  // Named while awaited: one that never settles is what a stranded run names.
+  const settled = hookStarted(plugin.name, hook)
   try {
     return await fn()
   } catch (err) {
     throw pluginFailure(plugin, hook, err)
+  } finally {
+    settled()
   }
 }
 
@@ -292,9 +297,10 @@ export async function applyProjectHooks(
 
 /**
  * `graph` stage: every plugin edits the task graph in place, then the graph
- * is checked ONCE the way the builder checks its own output (`checkGraph`:
- * each node under its own id, every dep a node, no cycle, no two tasks
- * deleting each other's outputs). A violation is reported
+ * is checked ONCE the way `vx lock` checks the builder's output, in a run
+ * too (`checkGraph`: each node under its own id, every dep a node, no
+ * cycle, no two tasks deleting each other's outputs, no input reading
+ * another task's outputs). A violation is reported
  * against the LAST plugin that ran: usually the one whose edit made it so,
  * but an earlier plugin's edit that a later one left in place is blamed on
  * the later one, since the structure is not checked between plugins.
@@ -321,7 +327,10 @@ export async function applyGraphHooks(
     last = plugin
   }
   if (last === undefined) return
-  await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot, rules))
+  // Unlocked, whatever the run's rules say: the lock checked the graph it
+  // built, and a hook may edit a run's graph only (by what was asked, or
+  // what it reads at run time). Paid only when a `graph` hook ran.
+  await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot, { ...rules, locked: false }))
 }
 
 /**
@@ -529,7 +538,9 @@ export async function claimedDigests(
   }
   if (extras === undefined || extras.length === 0) return { hash, projects }
   const hashed = await Promise.all(
-    extras.map(async (rel) => [rel, await hashExtra(ctx.workspaceRoot, rel)] as const),
+    extras.map(
+      async (rel) => [rel, await hashExtra(ctx.workspaceRoot, rel, extraHashesOf(ctx))] as const,
+    ),
   )
   return { hash, projects, extras: Object.fromEntries(hashed) }
 }

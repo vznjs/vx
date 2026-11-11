@@ -15,6 +15,7 @@ import {
   mark,
   nearest,
   OWN_DIR_HINT,
+  owedIfStranded,
   relPosix,
   restorableOutput,
   type SecretBroker,
@@ -67,6 +68,7 @@ import {
   type GraphRules,
   isDefaultBuild,
   isGroupTask,
+  markOutsideAdditions,
   refuseFiltersThroughGroups,
   type TaskNode,
   undeclaredDepsError,
@@ -82,14 +84,17 @@ import {
   type ScheduleRun,
 } from './plugin-host.js'
 import { lockedFiles } from './locked-digests.js'
+import { withExtraHashes } from './lockfile-claim.js'
 import {
   discoverProjects,
+  extraHashesOfDiscovery,
   gitOfDiscovery,
   graphOfDiscovery,
   ignoredConfigRefusal,
   loadProjects,
   loadWorkspacePlugins,
   lockOfDiscovery,
+  pluginsOfDiscovery,
   lockReader,
   type LoadedProjects,
   nestedWorkspacesOf,
@@ -308,7 +313,8 @@ export async function prepareRunLocked(
     workspaceConfig,
     plugins,
     branch: branchFacts,
-  } = await loadWorkspacePlugins(workspaceRoot, warnOf(log))
+  } = (reused !== undefined ? pluginsOfDiscovery(reused.projects) : undefined) ??
+  (await loadWorkspacePlugins(workspaceRoot, warnOf(log)))
   mark('workspace config')
   const baseBranch = configuredBaseBranch(workspaceConfig)
   const cacheScope =
@@ -342,7 +348,7 @@ export async function prepareRunLocked(
   const discovering =
     reused !== undefined
       ? Promise.resolve(reused.projects)
-      : discoverProjects(workspaceRoot, readLock, plugins, cacheDir, warnOf(log), git)
+      : discoverProjects(workspaceRoot, readLock, git)
   const projectMetas = await discovering
   mark('discover projects')
 
@@ -656,7 +662,9 @@ export async function prepareRunLocked(
   // throw (a stage hook, a `^name` nobody declares, a cycle, an unknown
   // exclude name) closed neither and tore nothing down, once per failed
   // cycle under `vx watch` (item 1029). run() owns both only once this
-  // returns.
+  // returns. A hook here that never settles strands the process, which
+  // tears the plugins down before it ends (bin.ts).
+  const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
   try {
     const hashCache = createHashCache(
       localCache.foldMemo(),
@@ -724,13 +732,10 @@ export async function prepareRunLocked(
     // for its addition marks.
     const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
     const unproven: Array<[taskId: string, name: string]> = []
-    // Every config is the lock's only when it was read and no `project`
-    // plugin edited one (graph-memo.ts).
+    // Every config is the lock's when it was read: a `project` plugin's
+    // edits are the lock's record too (graph-memo.ts).
     const lock =
-      hashCache.folds !== undefined &&
-      options.staged === undefined &&
-      !allStaged &&
-      !hasHook(plugins, 'project')
+      hashCache.folds !== undefined && options.staged === undefined && !allStaged
         ? lockDigest(await readLock())
         : undefined
     const graphMemo: GraphMemo | undefined =
@@ -866,7 +871,11 @@ export async function prepareRunLocked(
       )
     // While git walks: the gate's pass over every task cost 2-8 ms at
     // 1,000 projects when it ran before the spawn.
-    const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
+    const settleIgnored = askIgnoredOutputs(
+      gatedOutputs(nodes, workspaceRoot),
+      workspaceRoot,
+      nodes,
+    )
     const enumeration = await enumerating
     localCache.holdBlobSizes()
     const applied = applyGitEnumeration(
@@ -893,6 +902,16 @@ export async function prepareRunLocked(
     await settleIgnored(gitFilesCache)
     mark('git enumeration')
     if (hasGraphHook && !hooksFirst) await graphStage()
+    // An upstream run without the dependants that add to its outputs still
+    // ignores what they added (`markOutsideAdditions`): over every project,
+    // so a scoped load loads the rest, only in a workspace that allows it.
+    if (graphRules.exclusiveOutputs === false) {
+      const every = partialLoad
+        ? (await loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }))
+            .projects
+        : projects
+      markOutsideAdditions(nodes, every, workspaceRoot)
+    }
     // Args after `--` go to requested commands only; with none among them
     // they reached nothing and the run passed, the `--watch` unheard.
     if ((options.forwardArgs?.length ?? 0) > 0) {
@@ -907,7 +926,14 @@ export async function prepareRunLocked(
     }
     if (hasHook(plugins, 'key')) {
       const locked = lockedFiles(workspaceRoot, claimed, claimedBytes, await dependenciesLock)
-      await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log), locked })
+      await applyKeyHooks(
+        plugins,
+        nodes,
+        withExtraHashes(
+          { workspaceRoot, cacheDir, warn: warnOf(log), locked },
+          extraHashesOfDiscovery(projectMetas),
+        ),
+      )
     }
     refuseFiltersThroughGroups(nodes)
     refuseCacheInOutputs(nodes, gitFilesCache.vxDirs, cacheDir, workspaceRoot, nestedDirsByProject)
@@ -1010,6 +1036,8 @@ export async function prepareRunLocked(
     await teardownPlugins(plugins, warnOf(log))
     cache.close()
     throw err
+  } finally {
+    unowe()
   }
 }
 

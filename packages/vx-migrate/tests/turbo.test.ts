@@ -814,6 +814,78 @@ describe("the package's package.json with explicit inputs", () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a negation that matches it does not take it back, as Turbo keys it whatever the negations',
+    async () => {
+      // Turbo 2.11's dry run lists package.json under each of these. Mapped
+      // as written, `!**/*.json` kept it out of the key (a stale hit on a
+      // `type` edit), and beside a literal `package.json` core refused the
+      // list.
+      const cases: [string[], string[]][] = [
+        [
+          ['src/**', '!**/*.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', '!package.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', '!*.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', 'package.json', '!**/*.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', '!**/*.md'],
+          ['src/**', '!**/*.md', 'package.json'],
+        ],
+        [['!**'], ['**/*']],
+        [['!**/*.json'], ['**/*']],
+        [['!**/*.md'], ['**/*', '!**/*.md']],
+      ]
+      for (const [given, mapped] of cases) {
+        await writeFile(
+          path.join(root, 'turbo.json'),
+          JSON.stringify({ tasks: { build: { inputs: given, outputs: ['dist/**'] } } }),
+        )
+        const plan = await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })
+        const files = plan.tasks.find((t) => t.node.id === 'lib#build')!.node.config.inputs!.files
+        expect({ given, files }).toEqual({ given, files: mapped })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an edit to it re-runs a task whose inputs exclude every json file',
+    async () => {
+      const lib = path.join(root, 'packages', 'lib')
+      const BUILD = `mkdir -p dist && grep -o '"type":"[a-z]*"' package.json > dist/t`
+      const manifest = (type: string) =>
+        JSON.stringify({ name: 'lib', version: '1.0.0', type, scripts: { build: BUILD } })
+      await writeFile(path.join(lib, 'package.json'), manifest('commonjs'))
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: { build: { inputs: ['src/**', '!**/*.json'], outputs: ['dist/**'] } },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const opts = { cwd: root, tasks: ['lib#build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'lib#build')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      await writeFile(path.join(lib, 'package.json'), manifest('module'))
+      expect(status(await run(opts))).toBe('success')
+      expect(await Bun.file(path.join(lib, 'dist', 't')).text()).toBe('"type":"module"\n')
+    },
+    TIMEOUT,
+  )
 })
 
 describe('output negation', () => {
@@ -1391,7 +1463,7 @@ describe('turbo() under vx lock', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: '✓ vx lock  0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)\n',
+        out: '✓ vx lock  0 project configs → .vx/projects.lock.json (and the tasks a plugin maps for app, lib)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all')
@@ -1415,6 +1487,43 @@ describe('turbo() under vx lock', () => {
         out: '',
         err: "✗ vx lock --check  packages/lib/vx.config.mjs is not in the lock — run 'vx lock'\n",
       })
+    },
+    TIMEOUT,
+  )
+
+  // 2026-11-11: "We never relock during runs ... it should always follow
+  // the lock blindly." A run mapped turbo.json and the scripts afresh, so
+  // an edit ran with no `vx lock`.
+  it(
+    'a run follows the mapping vx lock made: an edit maps only at the next vx lock',
+    async () => {
+      expect(vx('lock').code).toBe(0)
+      const kept = await Array.fromAsync(
+        new Bun.Glob('**/vx-migrate-turbo-mapping.json').scan({ cwd: root, dot: true }),
+      )
+      for (const f of kept) await rm(path.join(root, f))
+      await pkg('lib', { build: 'mkdir -p dist && echo edited > dist/lib.js' })
+      // Unreadable to the mapper: a run that mapped would refuse it.
+      await writeFile(path.join(root, 'turbo.json'), '{ not json')
+      const stale = vx('run', 'lib#build', '--no-cache')
+      expect({ code: stale.code, err: stale.err }).toEqual({ code: 0, err: '' })
+      const lib = path.join(root, 'packages', 'lib', 'dist', 'lib.js')
+      expect(await Bun.file(lib).text()).toBe('lib\n')
+      // Nothing was mapped, so nothing was kept.
+      expect(
+        await Array.fromAsync(
+          new Bun.Glob('**/vx-migrate-turbo-mapping.json').scan({ cwd: root, dot: true }),
+        ),
+      ).toEqual([])
+      expect(vx('lock').code).toBe(1)
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(TURBO_JSON))
+      expect(vx('lock', '--check').err).toContain(
+        'packages/lib: the `project` stage maps it differently from the lock here',
+      )
+      expect(vx('lock').code).toBe(0)
+      const fresh = vx('run', 'lib#build', '--no-cache')
+      expect({ code: fresh.code, err: fresh.err }).toEqual({ code: 0, err: '' })
+      expect(await Bun.file(lib).text()).toBe('edited\n')
     },
     TIMEOUT,
   )

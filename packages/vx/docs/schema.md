@@ -31,6 +31,8 @@ stop there as at a nested project (its inputs do not). A run takes its projects 
 runs once `vx lock` records it. A `discover` plugin may add directories
 with no config (`@vzn/vx-lockfile` adds the package manager's members);
 one whose config git ignores is refused, naming the plugin and the file.
+The hook runs under `vx lock` only: the lock records the projects, names
+and edges it returned, and a run uses that record.
 
 A project's name is its config's `name`, else the name a `discover` plugin
 gives (`@vzn/vx-lockfile` gives `package.json#name`), else its
@@ -91,7 +93,7 @@ absent, which is what a conditional spread
 held to this: its plugins are objects of functions.
 
 `vx lock` evaluates a project config with the workspace root as
-`process.cwd()`, from whichever directory it runs, so the lock does not
+`process.cwd()` and `PWD`, from whichever directory it runs, so the lock does not
 depend on where you ran it; `import.meta.dir` is the config's own
 directory. What it prints goes to stderr, a child it spawns
 included: a verb's stdout is its output.
@@ -251,7 +253,8 @@ build: { exec: { command: 'tsc -b', timeout: '2m' } }
 
 - For a **normal task**, `timeout` bounds each attempt's run time,
   counted from its spawn (a sandbox's setup, its wrap included, is vx's,
-  not the task's); a [retry](#retries-optional) gets the whole limit again. A task
+  not the task's, and time stopped by Ctrl-Z is not run time); a
+  [retry](#retries-optional) gets the whole limit again. A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
@@ -999,7 +1002,11 @@ depth or `src/*.ts` for one; inside a brace too (`src/{a,**}.ts` is
 `src/**.ts`). A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
-names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
+names is refused wherever it sits in the glob, and so is a glob whose
+braces together expand to more than 1024 (`src/{1..100}{1..100}`, ten
+`{a,b}` in a row is 1024 and loads): each is a glob vx compiles, and a
+million took a run gigabytes. A class range that runs backwards
+(`[z-a]`) matches no character and is refused, naming `[a-z]`. A leading `!` is still the negation, so `!(group)/**`
 takes a route group back. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
@@ -1031,13 +1038,16 @@ Always applied to every glob pass (regardless of what you wrote):
   `.cache/gen/**`), which is then walked on disk under that prefix only.
   A directory git ignores but for a file it lists (`gen/*` with
   `!gen/.gitkeep`, or `gen/` with a force-added file) counts as ignored:
-  `gen/**` reads the untracked files beside the kept one.
+  `gen/**` reads the untracked files beside the kept one. So does a
+  directory where git lists nothing because it ignores every file in it
+  (`src/**` over a `src` holding only `*.log` files): `git status`
+  reports the directory itself as ignored.
   Each alternative of a brace counts on its own: `{gen/a.txt,gen/b.txt}`
   names both files and `{gen,out}/**` both trees, as `gen/{a,b}.txt` does.
   Such a file is hashed from disk and never stored or restored; a
   missing one is not an input until it exists. A broad glob (`**`,
-  `src/**` over a listed `src`) still skips ignored files, so it never
-  walks `node_modules`.
+  `src/**` over a `src` holding a file git lists) still skips ignored
+  files, so it never walks `node_modules`.
   Its bytes differ per machine, so machines with different files miss
   each other's shared entries. An ignored file never selects a task
   under `--affected` on its own, as in Nx (only what git sees does); `vx
@@ -1119,7 +1129,10 @@ matched nothing under that arm and said so nowhere. A Windows spelling
 is refused the same way, with the forward-slash glob to write: a
 backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 `C:/src/**`). A backslash before a bracket, a brace, a `!` or a
-backslash stays an escape.
+backslash stays an escape. A glob with surrounding whitespace
+(`' src/**'`) or a control character (`'src/\n'`) is refused: the
+engine reads either as part of a name, so it matched nothing and the
+task keyed nothing for it.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
 `.vx/projects.lock.json`, `vx.lock.json`, `.vx/tmp/**`, and the
@@ -1536,7 +1549,8 @@ positive globs, so a task with a `!` entry keeps it (A-46).
   is the cached snapshot, byte-for-byte.
 - A file git tracks is never wiped (2026-10-14). It is still saved and
   restored, and is in the task's key even when no `inputs.files` glob
-  reaches it, so an edit to it moves the key.
+  reaches it, so an edit to it moves the key. A run that removes one
+  saves nothing: no hit could replay the removal.
 
 Skipped when `outputs.files` is empty (nothing declared as
 output) and when no cache-write axis is enabled (e.g. `--no-cache`,
@@ -1594,7 +1608,8 @@ collides with `b`'s `dist/**` (item 1088). An overlap
 between two tasks one of which depends on the other is refused too,
 unless the workspace sets `run.rules.exclusiveOutputs: false` (X-53);
 then the dependant is additive and owns only what its run adds to the
-tree (`caching.md` § Additive outputs, item 588). Across the two namespaces
+tree, or finds as its own last run left it (`caching.md` § Additive
+outputs, item 588). Across the two namespaces
 an upstream `files` task is told the dependant's globs in its own
 project's terms, so a workspace glob that does not start inside that
 project (`**/a.txt`) is refused even with the edge.
@@ -1707,7 +1722,11 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
-As in a task glob, `[id]` is a class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
+As in a task glob, `[id]` is a class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`,
+and a brace is alternation on both platforms: `read: ['c{a,b}']` grants
+`ca` and `cb` (a range, `{1..3}`, too), and `write: ['g/{a,b}.txt']` is
+two file grants. A name holding a brace is granted escaped,
+`read: ['c\\{a,b\\}']`.
 On Linux a WRITE path holding a bracket, `*` or `?` cannot be mounted
 (the runtime drops it): vx says so once, names the directory above it to
 grant instead, and a write under it is refused and reported. A READ path
@@ -1979,7 +1998,9 @@ from the project when it is in the workspace (under the host's temp
 directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
-host, with the grant spelled from the project (`'../../tsconfig.base.json'`):
+host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
+and, for a cached task, the `inputs.workspaceFiles` entry that keys it
+(`'tsconfig.base.json'`; a grant alone leaves an edit there a stale hit):
 the tool said only "not found". To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
@@ -2017,6 +2038,9 @@ directory holding a backslash, which the runtime cannot mount at all (its
 task saw no project and ran in `$HOME`). On every platform so is one
 under a directory holding a line break: the runtime reports a refused
 touch one line per record, so it arrived split and was misreported.
+On Linux so is a project under `/dev` (a workspace in `/dev/shm`): the
+sandbox mounts a fresh `/dev`, so the project is gone from the task's
+view, and `vx info` calls the sandbox unavailable there.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
@@ -2880,6 +2904,8 @@ Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projec
 | `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                                       | A locked project's config was deleted or renamed (X-144).                                                   |
 | `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`                           | This user may not search the project's directory (D-132).                                                   |
 | `.vx/projects.lock.json has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``                        | A lock an earlier vx wrote.                                                                                 |
+| `.vx/projects.lock.json was written by a newer vx (version <n>; this vx reads 5) — upgrade vx`                       | A lock a later vx wrote: re-locking would write the older version.                                          |
+| `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                           |
 | `.vx/projects.lock.json: no <pool> <n> in its pool — re-run \`vx lock\``                                             | A hand-edited lock names a pooled value it does not hold.                                                   |
 | `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it` | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task. |
 | `git ls-files failed (exit <n>): <why>`                                                                              | `vx lock` could not list the configs (a torn index).                                                        |

@@ -10,6 +10,7 @@ import {
   plan,
   planTasks,
   simulate,
+  sized,
   type PlanTask,
   type PlanWorker,
   type Size,
@@ -37,8 +38,8 @@ const task = (id: string, ms: number, deps: string[] = [], cores = 1): PlanTask 
 })
 
 // Main 2163fff asked 6 workers at 0.6 s for 109 tasks; 85 hit and 2 did
-// the work at 46% (2026-10-23). Booked in full beside others, it takes three.
-it('plans main’s run on three workers: only its misses are work, never a group or a hit', () => {
+// the work at 46% (2026-10-23). Booked in full beside others, it takes four.
+it('plans main’s run on four workers: only its misses are work, never a group or a hit', () => {
   const nodes = new Map(
     replay.nodes.map((n) => [
       n.id,
@@ -62,6 +63,7 @@ it('plans main’s run on three workers: only its misses are work, never a group
   )
   expect(work.map((t) => t.id).sort()).toEqual(Object.keys(ran).sort())
   const p = plan(work, [], candidates([small], new Map(), [], work.length), WARM)
+  // Three end it on its longest chain: a fourth, asked at once, ends it no sooner (2026-11-10).
   expect(p.start).toEqual([small, small, small])
   expect(p.release).toEqual([])
   // How busy it keeps them is tests/sim.test.ts's to judge.
@@ -432,6 +434,38 @@ it('plans 9000 ready tasks of mixed needs in seconds of CPU, not minutes', () =>
   expect((user + system) / 1000).toBeLessThan(5000)
 }, 60_000)
 
+// 2026-11-11: a ~380-project workspace, tasks of measured varied needs,
+// planned 2.9 s mid-run (one sim plan 21.5 s): every ask that fit nowhere
+// read every worker. A plan never takes more than 1 s.
+it('plans 3800 tasks of varied needs mid-run in under a second of CPU', () => {
+  let seed = 7
+  const r = (): number => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed / 0x7fffffff)
+  const need = () => ({
+    cores: 0.3 + r() * 1.5,
+    memory: 2e8 + Math.floor(r() * 2e9),
+    ms: 2000 + Math.floor(r() * 60_000),
+  })
+  const tasks: PlanTask[] = []
+  for (let p = 0; p < 380; p++) {
+    const up = Array.from({ length: Math.min(p, 6) }, () => `p${Math.floor(r() * p)}#compile`)
+    tasks.push({ id: `p${p}#compile`, deps: [...new Set(up)], ...need() })
+    tasks.push({ id: `p${p}#lint`, deps: [`p${p}#compile`], ...need() })
+    for (let k = 0; k < 8; k++)
+      tasks.push({ id: `p${p}#test${k}`, deps: [`p${p}#compile`], ...need() })
+  }
+  const busy = Array.from({ length: 10 }, (_, i) =>
+    worker(`w${i}`, {
+      size: 'small',
+      idle: false,
+      running: [{ cores: 3, memory: 4e9, endsIn: 5000 + i * 1000 }],
+    }),
+  )
+  const start = process.cpuUsage()
+  plan(tasks, busy, [{ ...small, max: 40 }], WARM)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(1000)
+}, 60_000)
+
 // 2026-10-25: measured needs are unrounded, so every task can be its own
 // kind; read kind by kind, a plan of 1000 took 37 s. Read task by task,
 // each pass asked every ready one that fit nowhere: 9000 took 15 s.
@@ -508,6 +542,56 @@ it('advises the workers that would have run it best: of the declared sizes, past
   })
   // As many as it needs already: nothing more to say.
   expect(advise(tasks, [{ ...small, max: 4 }], () => 0).more).toBeUndefined()
+})
+
+// 2026-11-11: a 25 GB task was advised a 16 GB worker: alone on an empty
+// worker any task fits.
+it('advises a task only workers with room for its peak memory', () => {
+  const tasks = [
+    { ...task('heavy', 10_000), memory: 25e9 },
+    ...Array.from({ length: 4 }, (_, i) => task(`t${i}`, 10_000)),
+  ]
+  const big: Size = { name: 'big', max: 1, cpu: 4, memory: 32e9 }
+  const advice = advise(tasks, [{ ...small, max: 4 }, big], () => 0)
+  expect(advice.declared?.fleet.some((f) => f.size === 'big')).toBe(true)
+  expect(advice.any?.fleet.every((f) => f.memory >= 25e9)).toBe(true)
+})
+
+// 2026-11-11: "scale the workers to as big as possible at the same time
+// to save on startup times": four 2-core tasks ready at once.
+it('starts workers needed at once as one sized to them all', () => {
+  const sizes: Size[] = [2, 4, 8, 16].map((cpu) => ({
+    name: `c${cpu}`,
+    max: 4,
+    cpu,
+    memory: cpu * 4e9,
+  }))
+  const tasks = Array.from({ length: 4 }, (_, i) => ({ ...task(`t${i}`, 60_000), cores: 2 }))
+  const p = plan(tasks, [], candidates(sizes, new Map(), [], tasks.length), 20_000)
+  expect(p.start.map((s) => s.name)).toEqual(['c8'])
+  expect(p.endsInMs).toBe(80_000)
+})
+
+it('keeps a need to the sizes with room for all of it', () => {
+  const sizes: Size[] = [
+    { name: 'c2', max: 1, cpu: 2, memory: 8e9 },
+    { name: 'c8', max: 1, cpu: 8, memory: 32e9 },
+  ]
+  expect(sized({ cores: 4, memory: 1e9 }, sizes).above?.cores).toBeLessThan(4)
+  expect(sized({ cores: 4, memory: 1e9 }, sizes).above?.cores).toBeGreaterThan(2)
+  expect(sized({ cores: 1, memory: 16e9 }, sizes).above?.cores).toBeGreaterThan(2)
+  // Room on each, or on none: as asked.
+  expect(sized({ cores: 1, memory: 1e9 }, sizes).above).toBeUndefined()
+  expect(sized({ cores: 16, memory: 1e9 }, sizes).above).toBeUndefined()
+  // More memory, not more cores, where only memory sets them apart.
+  const wide: Size[] = [
+    { name: 'lean', max: 1, cpu: 8, memory: 8e9 },
+    { name: 'fat', max: 1, cpu: 8, memory: 64e9 },
+  ]
+  expect(sized({ cores: 2, memory: 16e9 }, wide).above).toEqual({
+    cores: Infinity,
+    memory: 16e9 - 1,
+  })
 })
 
 it('advises each platform its own workers, joined after its warm-up', () => {
@@ -731,6 +815,37 @@ it('starts a worker the plan foresaw without reading the work, and none past its
   const spent: { forecast?: Forecast } = {}
   at(0, 0, spent)
   expect(at(due, small.max, spent).start).toEqual([])
+})
+
+// 2026-11-11, a ~380-project workspace: `<p>#build` a group over
+// `install` and `^build`, each a group over the deps' `#build`. A group's
+// deps joined as lists held a task once per path to it: 2e9 for one
+// task's 570, and the first plan never returned.
+it('a task behind a diamond of groups waits on each task once', () => {
+  const nodes = new Map<string, TaskNode>()
+  const add = (id: string, deps: string[], runs: boolean) =>
+    nodes.set(id, {
+      id,
+      deps,
+      config: runs ? { exec: { command: 'x' } } : {},
+    } as unknown as TaskNode)
+  add('c', [], true)
+  let below = 'c'
+  // Each level two groups on the one below, joined by a third: 2^20 paths.
+  for (let i = 0; i < 20; i++) {
+    add(`a${i}`, [below], false)
+    add(`b${i}`, [below], false)
+    add(`g${i}`, [`a${i}`, `b${i}`], false)
+    below = `g${i}`
+  }
+  add('top', [below], true)
+  const tasks = planTasks(
+    ['c', 'top'],
+    nodes,
+    () => ({ cores: 1, memory: 1e9 }),
+    () => 1000,
+  )
+  expect(tasks.find((t) => t.id === 'top')!.deps).toEqual(['c'])
 })
 
 // 2026-11-06: a plan reads the run's tasks by number, not by id, where a

@@ -687,6 +687,43 @@ export default [
     ],
   }),
 
+  // --- A git config that weakens what git sees ---
+
+  defineCase({
+    id: 'affected/chmod-file-mode-off',
+    category: 'affected',
+    kind: 'correctness',
+    title: 'A `chmod +x` selects its project though git’s `core.fileMode` is off',
+    why: 'WSL’s DrvFs sets `core.fileMode` off, so git reports no mode change. A task that runs a script or checks `test -x` reads the mode, and a cache key that follows it moves. Selecting from git’s quieted view skips the project whose result changed.',
+    from: ['affected-weak-stat'],
+    needs: ['affected'],
+    workspace: each(['a', 'b']),
+    steps: [
+      { sh: 'git config core.fileMode false' },
+      { chmod: { 'packages/a/own.txt': 0o755 } },
+      { affected: 'test', base: 'HEAD', expect: { exit: 0, ran: tests('a'), notRan: tests('b') } },
+    ],
+  }),
+
+  defineCase({
+    id: 'affected/rewrite-keeping-stat-check-stat-minimal',
+    category: 'affected',
+    kind: 'correctness',
+    title:
+      'A same-size rewrite that keeps its mtime selects its project under `core.checkStat=minimal`',
+    why: '`cp -p` and `tar -x` write new bytes and put the old mtime back. Under `core.checkStat=minimal` git compares only size and whole-second mtime, so it calls the file unchanged. The task reads the new bytes; trusting git’s stat skips it.',
+    from: ['affected-weak-stat'],
+    needs: ['affected'],
+    workspace: each(['a', 'b']),
+    steps: [
+      {
+        // An old mtime first: one in the index's own second is racy, and git rereads it.
+        sh: 'touch -t 202001010000 packages/a/own.txt && git update-index -q --refresh && git config core.checkStat minimal && printf "A\\n" > t && touch -r packages/a/own.txt t && mv t packages/a/own.txt',
+      },
+      { affected: 'test', base: 'HEAD', expect: { exit: 0, ran: tests('a'), notRan: tests('b') } },
+    ],
+  }),
+
   // --- Task edges: what a change reaches ---
 
   defineCase({

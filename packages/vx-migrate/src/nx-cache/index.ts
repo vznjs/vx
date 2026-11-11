@@ -158,12 +158,13 @@ export class NxRemoteCache implements RemoteCacheLayer {
       // every hit read as a corrupt artifact (nx#33092).
       headers['Accept'] = 'application/octet-stream'
     }
+    const url = `${this.config.url}/v1/cache/${hash}`
     const res = await hidingErrors(
       this.breaker.send(
         () =>
           withRetry(
             () =>
-              this.fetchImpl(`${this.config.url}/v1/cache/${hash}`, {
+              this.fetchImpl(url, {
                 method,
                 headers,
                 ...(body === undefined ? {} : { body }),
@@ -177,6 +178,10 @@ export class NxRemoteCache implements RemoteCacheLayer {
       ),
       this.hidden,
     )
+    // A host past a cross-origin redirect never saw the token: its 401 or
+    // 403 (an expired signed URL) fails this request alone. It turned the
+    // remote off and deleted the keychain token.
+    if (!tokenReached(res, url)) return res
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
@@ -294,4 +299,12 @@ export function nxCache(options: NxCacheOptions = {}): VxPlugin {
       return config === undefined ? undefined : new NxRemoteCache(config)
     },
   })
+}
+
+/**
+ * Whether the answer came from `url`'s own origin, the one host that saw
+ * the token: the runtime drops `Authorization` on a cross-origin redirect.
+ */
+function tokenReached(res: Response, url: string): boolean {
+  return !res.redirected || new URL(res.url).origin === new URL(url).origin
 }

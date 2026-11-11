@@ -24,7 +24,7 @@ export interface TaskNode {
   platform?: string // the platform this run runs it on, when it names `exec.platforms`: set by placement, keyed
   worker?: string // the worker type its executor runs it on (`TaskExecutor.workers`): set by placement, unkeyed
   addsToOutputsOf?: string[] // upstream ids whose output trees this task adds to (item 588)
-  outputsAddedToBy?: string[] // dependants' output globs that add into this task's tree
+  outputsAddedToBy?: string[] // dependants' output globs that add into this task's tree, those outside the run too
   excludedUpstream?: TaskOutcome[] // dependencies --exclude-dependencies dropped, with their keys
 }
 
@@ -121,6 +121,17 @@ export function unresolvedRequests(
   projects: Map<string, ProjectEntry>,
   unselected?: (task: TaskConfig) => boolean,
 ): string[]
+
+// With `run.rules.exclusiveOutputs: false`: marks `outputsAddedToBy` on
+// `nodes` for every task in `projects` outside the run whose outputs
+// overlap one in it. Such a task is a dependant (an upstream would be in
+// the run, and `vx lock` refuses an unordered pair), so an upstream run
+// alone still ignores what it added (`prepareRun` calls it).
+export function markOutsideAdditions(
+  nodes: Map<string, TaskNode>,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  workspaceRoot: string,
+): void
 
 // Flags the display-only `surfaced` tasks a requested GROUP stands for;
 // returns how many it flagged. See "transparent folders" in cli.md.
@@ -228,7 +239,8 @@ their `dependsOn` array.
 ## Cycle detection
 
 After every reachable node has been added, `checkGraph()` checks the
-graph (the `graph` stage runs it again after its plugins, item 981):
+graph (the `graph` stage runs it again after its plugins, item 981,
+unlocked even in a run, since a hook can edit what the lock never saw):
 each node under its own id, every dep a node named once (a plugin's
 repeat is dropped), then `detectCycle()` runs a
 3-color DFS:

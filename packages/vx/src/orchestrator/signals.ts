@@ -24,6 +24,7 @@ import {
 import {
   holdGroups,
   killTree,
+  markStopped,
   pauseTree,
   restoreTerminalModes,
   untilGroupsGone,
@@ -287,11 +288,13 @@ export function forwardSignals(args: {
   // So vx stops each task's group, then itself; `fg` or `bg` continues vx,
   // and vx continues them.
   const onSigtstp = (): void => {
+    markStopped(true)
     for (const child of everyChild()) pauseTree(child, 'SIGSTOP')
     process.kill(process.pid, 'SIGSTOP')
   }
   const onSigcont = (): void => {
     for (const child of everyChild()) pauseTree(child, 'SIGCONT')
+    markStopped(false)
   }
   if (args.enabled) {
     process.on('SIGINT', onSigint)

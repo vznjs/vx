@@ -39,11 +39,17 @@ it('a worker that never leaves is killed and its worktree removed, though vx exi
       }
     }
     const left = async () => (await readdir(tmp)).filter((d) => d.startsWith('vx-dte-'))
-    for (let i = 0; i < 200 && (alive() || (await left()).length > 0); i++) await Bun.sleep(50)
+    // The shell prunes git's records after it removes the folder: a list
+    // between the two still names the worktree (CI, 2026-11-11).
+    const trees = () =>
+      Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+        .stdout.toString()
+        .match(/^worktree /gm)?.length
+    for (let i = 0; i < 200 && (alive() || (await left()).length > 0 || trees() !== 1); i++)
+      await Bun.sleep(50)
     expect(alive()).toBe(false)
     expect(await left()).toEqual([])
-    const list = Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
-    expect(list.stdout.toString().match(/^worktree /gm)?.length).toBe(1)
+    expect(trees()).toBe(1)
   } finally {
     try {
       if (pid > 0) process.kill(pid, 'SIGKILL')

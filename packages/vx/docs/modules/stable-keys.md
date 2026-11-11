@@ -30,14 +30,19 @@ can never drift on the stability gate.
   unkeyed group's key with the synthetic upstream it folded, stable or
   not: execute-task compares that upstream with the live one before
   reusing the key (`group-key-once.test.ts`).
-- `gatedOutputs(nodes, workspaceRoot)` / `askIgnoredOutputs(gated, workspaceRoot)`
-  — the same-project outputs some reader's inputs reach, and one `git
+- `gatedOutputs(nodes, workspaceRoot)` / `askIgnoredOutputs(gated, workspaceRoot, nodes)`
+  — the outputs some reader's inputs reach (its own project's, and any
+  project's for a `workspaceFiles` reader), and one `git
 check-ignore` over their directories (`util/git-ignored.ts`) that
   `prepare` starts beside the git enumeration and settles into
   `GitFilesCache.ignoredOutputs` once the listing is in: a deep glob
   (`**/dist/**`) counts only when the listing holds no file it matches
   (a tracked output, a directory a `!` rule takes back). Nothing reached:
-  no spawn.
+  no spawn. The same spawn asks of every directory a task names outright
+  (`namedOutright`) whether git ignores a new file in it, settled by
+  `GitFilesCache.answerNewFilesIgnored`, so the key spawns no
+  `check-ignore` of its own; a spawn git refuses (a path past a symlink)
+  asks the outputs again alone.
 - `dependsOnSiblingOutputs(node, upstreamOutputProjects, hasWsOutputUpstream, dirByProject?, sameProject?)`
   — the conservative gate, fed the TRANSITIVE-upstream output producers
   `deriveStableKeys` accumulates in topo order. The key is preliminary
@@ -53,7 +58,10 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   early, it raced the producer's restore), when ANY upstream declares
   `outputs.workspaceFiles` (it may land in this project), or the task
   reads `inputs.workspaceFiles` whose literal prefixes reach an
-  upstream `outputs.files` producer's directory.
+  upstream `outputs.files` producer's outputs: their globs, less what
+  git ignores whole unless an entry starts inside it, as for a
+  same-project reader; the producer's whole directory when it may
+  write undeclared there, or without `sameProject`.
   Transitive because a producer reached through a no-output intermediate
   still poisons the key. A task with no `cache: true` is a producer too,
   where `undeclaredWriteReach` (`sandbox-request.md`) says it may write:

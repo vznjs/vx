@@ -90,6 +90,8 @@ describe('findCwdProject', () => {
       await expect(findCwdProject(nested)).rejects.toThrow(
         'packages/app/tools/vx.config.mjs is not in the lock yet — run `vx lock`',
       )
+      // The lock's code, as `fresh#build` and `--filter ./packages/fresh` give it.
+      await expect(findCwdProject(nested)).rejects.toMatchObject({ code: 'VX_E_LOCK' })
       await expect(findCwdProject(path.join(fresh, 'src'))).rejects.toThrow(
         'packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
       )
@@ -105,17 +107,20 @@ describe('findCwdProject', () => {
 })
 
 describe('resolveFilters', () => {
-  it('a ./dir filter naming a config the lock lacks says to lock it', async () => {
+  it('a filter naming a config the lock lacks is the lock refusal', async () => {
     // "Projects: app, lib" read as a typo of a path that holds a config
-    // written after `vx lock`.
+    // written after `vx lock`; by name it was that alone, a usage error
+    // where `fresh#build` and a run from its directory say VX_E_LOCK.
     const fresh = path.join(root, 'packages', 'fresh')
     await Bun.write(path.join(fresh, 'vx.config.mjs'), 'export default {}\n')
     try {
-      const { value } = await quiet(() => resolveFilters(root, ['./packages/fresh']))
-      expect(value).toEqual({
-        error:
-          'no projects matched filter(s): "./packages/fresh". packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
-      })
+      for (const filter of ['./packages/fresh', 'packages/fresh']) {
+        const { value } = await quiet(() => resolveFilters(root, [filter]))
+        expect(value).toEqual({
+          error: `filter "${filter}": packages/fresh/vx.config.mjs is not in the lock yet — run \`vx lock\``,
+          code: 'VX_E_LOCK',
+        })
+      }
       // CONTROL: beside a filter that matched, the line is a warning.
       const { stderr } = await quiet(() => resolveFilters(root, ['app', './packages/fresh']))
       expect(stderr).toContain('packages/fresh/vx.config.mjs is not in the lock yet')
@@ -158,6 +163,29 @@ describe('resolveFilters', () => {
     // CONTROL: a real name its diff did not reach is the exit-0 note.
     const named = await quiet(() => resolveFilters(root, ['app[HEAD]']))
     expect((named.value as { empty: string }).empty).toStartWith('nothing affected since HEAD')
+  })
+
+  it('a ./dir with a git ref hints the braced form that reads it', async () => {
+    // `./packages/lib[HEAD]` is a path glob, as pnpm and Turbo read it; the
+    // refusal listed the project names, where `{packages/lib}[HEAD]` works.
+    for (const [f, meant] of [
+      ['./packages/lib[HEAD]', '{packages/lib}[HEAD]'],
+      ['./packages/*[HEAD]', '{packages/*}[HEAD]'],
+      ['..../packages/lib[HEAD]', '...{packages/lib}[HEAD]'],
+    ]) {
+      const { value } = await quiet(() => resolveFilters(root, [f!]))
+      expect(value).toEqual({
+        error: `no projects matched filter(s): "${f}". A directory takes a git ref braced: did you mean ${meant}?`,
+      })
+      // CONTROL: the braced form it names reads.
+      const braced = await quiet(() => resolveFilters(root, [meant!]))
+      expect((braced.value as { empty: string }).empty).toStartWith('nothing affected since HEAD')
+    }
+    // CONTROL: a braced form that would match nothing is no hint.
+    const none = await quiet(() => resolveFilters(root, ['./packages/nosuch[HEAD]']))
+    expect(none.value).toEqual({
+      error: 'no projects matched filter(s): "./packages/nosuch[HEAD]". Projects: app, lib',
+    })
   })
 
   it('a typo beside a walk that came back empty names the typo, with its hint', async () => {

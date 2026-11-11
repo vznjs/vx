@@ -70,6 +70,7 @@ import {
   SecretBroker,
   thrownMessage,
   relPosix,
+  owedIfStranded,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 
@@ -522,7 +523,7 @@ async function runOnBus(
     // this one's: it waits for this hold, and this for it. Released with the
     // run lock.
     if (sharedCacheDir !== undefined) {
-      const dir = await holdCacheDir(sharedCacheDir, 'shared', warnOf(log), signal)
+      const dir = await holdCacheDir(sharedCacheDir, 'shared', warnOf(log), signal, root)
       heldLock = Object.assign(
         async (): Promise<void> => {
           dir()
@@ -557,12 +558,17 @@ async function runOnBus(
   // per cycle under `vx watch`. A plugin whose own setup threw set up
   // nothing, and is the one left out.
   let tornDown = false
+  // A hook that never settles strands the run with no exit of its own:
+  // bin.ts tears the plugins down before the process ends.
+  let unowe = (): void => {}
   const teardown = async (except?: unknown, report?: RunReport): Promise<void> => {
     if (tornDown) return
     tornDown = true
+    unowe()
     const plugins = prepared.plugins.filter((p) => p !== except)
     await teardownPlugins(plugins, warnOf(log), report, step)
   }
+  unowe = owedIfStranded(() => teardown())
   // The setting variables are read before any task, so a bad value is
   // refused here, not mid-run; an embedder's (the CLI refuses it first)
   // threw past the teardown and the cache close.
@@ -1210,6 +1216,7 @@ async function runOnBus(
           // now, and a local miss may still be a remote hit.
           cache: remote ? prepared.localCache : cache,
           localOnly: remote,
+          remoteOnly: placements.remoteOnly,
           workspaceRoot,
           claimedFiles: fingerprintWatch.names,
           forwardArgs: options.forwardArgs,
@@ -1297,6 +1304,7 @@ async function runOnBus(
       keyedProjects: keyed,
       readableDeps: readable,
       nestedDirsOf: nestedDirsOf(nodes, prepared.keyOnly, nestedDirsByProject),
+      projectAt: (rel) => projectAtDir(rel, workspaceRoot, prepared.projects.values()),
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,

@@ -123,6 +123,43 @@ it("a fork's pull request writes the fork's scope", async () => {
   expect(await scopeOf(pr)).toBe('eve/vx:main')
 })
 
+// A pull request whose fork was deleted has `head.repo: null`; its scope
+// fell back to the base repository's, `vznjs/vx:main`, the base's own main.
+it('a pull request whose head repository is unknown writes its own pr-<n> scope', async () => {
+  const pr = async (payload: object, env: Record<string, string> = {}) =>
+    scopeOf({
+      ...actions('refs/pull/3/merge', '3/merge'),
+      GITHUB_HEAD_REF: 'main',
+      GITHUB_EVENT_PATH: await event(payload),
+      ...env,
+    })
+  const on = async (name: string, payload: object): Promise<string | undefined> =>
+    scopeOf({
+      ...actions('refs/heads/main', 'main'),
+      GITHUB_EVENT_PATH: await event(payload),
+      GITHUB_EVENT_NAME: name,
+    })
+  expect([
+    await pr({ pull_request: { number: 3, head: { ref: 'main', repo: null } } }),
+    // No readable event: the ref's number, not the `pr-target` all such PRs shared.
+    await pr({}, { GITHUB_EVENT_PATH: path.join(dir, 'missing.json') }),
+    await on('pull_request_target', {
+      pull_request: { number: 7, head: { ref: 'main', repo: null } },
+    }),
+    await on('workflow_run', {
+      workflow_run: {
+        event: 'pull_request',
+        head_branch: 'main',
+        head_repository: null,
+        pull_requests: [{ number: 5 }],
+      },
+    }),
+    await on('workflow_run', {
+      workflow_run: { event: 'pull_request', head_branch: 'main', pull_requests: [] },
+    }),
+  ]).toEqual(['pr-3', 'pr-3', 'pr-7', 'pr-5', 'pr-target'])
+})
+
 it('another branch or tag writes to its own scope', async () => {
   expect(await scopeOf(actions('refs/heads/feat/x', 'feat/x'))).toBe('vznjs/vx:feat/x')
   expect(await scopeOf(actions('refs/tags/v1.0', 'v1.0'))).toBe('vznjs/vx:v1.0')
@@ -139,11 +176,18 @@ it("an event that runs in main's context for a pull request is the PR's", async 
       GITHUB_EVENT_NAME: name,
     })
   expect([
-    await on('pull_request_target', { pull_request: { number: 7, head: { ref: 'b7' } } }),
+    await on('pull_request_target', {
+      pull_request: { number: 7, head: { ref: 'b7', repo: { full_name: 'vznjs/vx' } } },
+    }),
     await on('pull_request_target', {}),
     await on('issue_comment', { issue: { number: 9, pull_request: { url: 'x' } } }),
     await on('workflow_run', {
-      workflow_run: { event: 'pull_request', head_branch: 'b5', pull_requests: [{ number: 5 }] },
+      workflow_run: {
+        event: 'pull_request',
+        head_branch: 'b5',
+        head_repository: { full_name: 'vznjs/vx' },
+        pull_requests: [{ number: 5 }],
+      },
     }),
     await on('workflow_run', { workflow_run: { event: 'pull_request', pull_requests: [] } }),
     // CONTROLS: the same events with no PR behind them keep the default keys.
@@ -175,6 +219,7 @@ it('a workflow_run a pull request started reads its head branch, then its base',
         workflow_run: {
           event: 'pull_request',
           head_branch: 'b5',
+          head_repository: { full_name: 'vznjs/vx' },
           pull_requests: [{ number: 5, base: { ref: 'release' } }],
         },
       }),

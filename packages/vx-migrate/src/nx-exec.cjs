@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // `nx-exec <executor> --project <p> --target <t> [--configuration <c>] --options '<json>'
-//   [--dotenv <file>]... [overrides…]`
+//   [--dotenv <file>]... [--outputs-option <name>]... [overrides…]`
 //
 // One Nx executor as one process, through Nx's own public `runExecutor`
 // (design: docs/design/nx-unchanged-2026-09.md). The command line carries
@@ -38,10 +38,11 @@ if (typeof enableCompileCache === 'function') {
 }
 
 const USAGE =
-  "usage: nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>'] [--dotenv <file>]... [overrides…]"
+  "usage: nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>'] [--dotenv <file>]... [--outputs-option <name>]... [overrides…]"
 
-/** The flags that are nx-exec's own, each taken once but `--dotenv`; everything else is Nx's. */
-const OWN = new Set(['project', 'target', 'configuration', 'options', 'dotenv'])
+/** The flags that are nx-exec's own, each taken once but the repeated ones; everything else is Nx's. */
+const OWN = new Set(['project', 'target', 'configuration', 'options', 'dotenv', 'outputs-option'])
+const REPEATED = { dotenv: 'dotenv', 'outputs-option': 'outputsOptions' }
 
 /**
  * Parsed argv, or `{ error }` — a usage error is exit 2, before Nx is loaded.
@@ -58,6 +59,7 @@ function parseArgs(argv) {
     configuration: undefined,
     options: {},
     dotenv: [],
+    outputsOptions: [],
     overrides: [],
   }
   const seen = new Set()
@@ -75,10 +77,10 @@ function parseArgs(argv) {
       out.overrides.push(a)
       continue
     }
-    if (name !== 'dotenv') seen.add(name)
+    if (!Object.hasOwn(REPEATED, name)) seen.add(name)
     const value = eq === -1 ? argv[++i] : a.slice(eq + 1)
     if (value === undefined) return { error: `--${name} needs a value\n${USAGE}` }
-    if (name === 'dotenv') out.dotenv.push(value)
+    if (Object.hasOwn(REPEATED, name)) out[REPEATED[name]].push(value)
     else if (name === 'options') {
       try {
         out.options = JSON.parse(value)
@@ -98,6 +100,14 @@ function parseArgs(argv) {
     if (out[f] === undefined || out[f] === '') return { error: `--${f} is required\n${USAGE}` }
   }
   return out
+}
+
+/** The refusal of an override that moves the target's cached outputs; nx-command.ts writes the same. */
+function movedOutputs(key, name) {
+  return (
+    `${key.length === 1 ? '-' : '--'}${key} moves the outputs ({options.${name}}) vx caches as mapped — ` +
+    `set ${name} in a configuration and run that configuration's task`
+  )
 }
 
 /** Both shapes a graph file takes: Nx's cache (`{ nodes, … }`) and `nx graph --file` (`{ graph: { nodes, … } }`). */
@@ -218,6 +228,33 @@ async function main(argv) {
     const { createOverrides } = nx('nx/src/utils/command-line-utils')
     const { __overrides_unparsed__: _raw, ...parsed } = createOverrides(args.overrides)
     overrides = parsed
+  }
+  // The cached outputs were resolved from these options when the target
+  // was mapped; Nx resolves them from the overrides, and vx, keeping the
+  // mapped ones, cleaned and saved the wrong path: a hit restored nothing.
+  // Each key named as `runExecutor` names it for the executor
+  // (`combineOptionsForExecutor`): `--output-path` and a schema alias are
+  // `outputPath` there. Nx caches the schema it reads here.
+  const keys = Object.keys(overrides)
+  if (keys.length > 0 && args.outputsOptions.length > 0) {
+    const { parseExecutor, getExecutorInformation } = nx('nx/src/command-line/run/executor-utils')
+    const { convertToCamelCase, convertAliases } = nx('nx/src/utils/params')
+    const [nodeModule, executor] = parseExecutor(args.executor)
+    const { schema } = getExecutorInformation(
+      nodeModule,
+      executor,
+      workspaceRoot,
+      context.projectsConfigurations.projects,
+    )
+    for (const key of keys) {
+      const [name] = Object.keys(
+        convertAliases(convertToCamelCase({ [key]: true }, schema), schema, false),
+      )
+      if (args.outputsOptions.includes(name)) {
+        process.stderr.write(`nx-exec: ${movedOutputs(key, name)}\n`)
+        return 2
+      }
+    }
   }
   // As `nx run` reads it (`getLastValueFromAsyncIterableIterator`): the
   // generator's RETURN value when it has one, else the last yield. A

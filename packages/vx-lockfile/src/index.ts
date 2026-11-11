@@ -17,7 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -43,6 +43,7 @@ const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
+const pnpmBlocks = (): typeof import('./pnpm-blocks.js') => load('./pnpm-blocks.js')
 const pnpmSettings = (): typeof import('./pnpm-settings.js') => load('./pnpm-settings.js')
 const yarnSettings = (): typeof import('./yarn-settings.js') => load('./yarn-settings.js')
 
@@ -57,8 +58,11 @@ export interface LockfileOptions {
   readonly scope?: 'project' | 'workspace'
 }
 
+/** `recorded`'s entry for `stalenessFacts`: no importer path is `\0`. */
+const FACTS = '\0'
+
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 24
+const DIGEST_VERSION = 25
 
 let memoVersion: number | undefined
 /**
@@ -124,13 +128,21 @@ interface Manager {
   readonly member?: (pkg: Record<string, unknown>) => boolean
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
-  /** The file leaves out every `link:` dependency (pnpm's `excludeLinksFromLockfile`): the manifests name them. */
-  readonly linksUnrecorded?: (text: string) => boolean
+  /**
+   * What the staleness check reads from the file beside the recorded
+   * names, memoised with them: `links` when the file leaves out every
+   * `link:` dependency (pnpm's `excludeLinksFromLockfile`), so the
+   * manifests name them, and `optional:<i>:<pattern>` per pattern
+   * `unrecorded` matches.
+   */
+  readonly stalenessFacts?: (text: string) => readonly string[]
   /**
    * A manifest dependency the install leaves out of the file by design, so
-   * its absence is no stale lockfile.
+   * its absence is no stale lockfile: `patterns` from `stalenessFacts`.
    */
-  readonly unrecorded?: (text: string) => (name: string, pkg: Record<string, unknown>) => boolean
+  readonly unrecorded?: (
+    patterns: readonly string[],
+  ) => (name: string, pkg: Record<string, unknown>) => boolean
   /** The manager reads package.json as JSONC (trailing commas, comments): bun does. */
   readonly jsoncManifests?: true
   /** The file names a manifest may have (default `package.json` alone). */
@@ -168,7 +180,17 @@ const MANAGERS = {
   pnpm: {
     name: 'pnpm',
     files: ['pnpm-lock.yaml'],
-    digest: (t, files) => pnpmLock().importerDigests(pnpmParse(t), files),
+    // The working tree's linker on both sides of an `--affected` diff: a
+    // changed one is a settings change, which selects every project.
+    digest: (t, files, root) =>
+      pnpmLock().importerDigests(
+        pnpmParse(t),
+        files,
+        pnpmSettings().hoistedLinker(
+          readText(path.join(root, 'pnpm-workspace.yaml')),
+          readText(path.join(root, '.npmrc')),
+        ),
+      ),
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     extraFiles: (t, root) => [
       ...pnpmLock().fileDeps(pnpmParse(t)),
@@ -190,9 +212,10 @@ const MANAGERS = {
     // package.json, and records its dependencies like any other's.
     manifests: ['package.json', 'package.json5', 'package.yaml'],
     peersInManifest: true,
-    // Read from their blocks alone: a whole parse here was on every warm run.
-    linksUnrecorded: (t) => pnpmLock().excludesLinks(t),
-    unrecorded: (t) => pnpmLock().ignoredOptional(t),
+    // Read from their blocks alone, without the parser, and memoised with
+    // the recorded names: a warm run read and searched the text for them.
+    stalenessFacts: (t) => pnpmBlocks().stalenessFacts(t),
+    unrecorded: (patterns) => pnpmBlocks().ignoredOptional(patterns),
   },
   bun: {
     name: 'bun',
@@ -259,7 +282,8 @@ const MANAGERS = {
         affected || lock.generation !== 'classic'
           ? undefined
           : (d: string) => isClassicWorkspace(root, d)
-      return yarnLock().fileDeps(lock, linked)
+      const deps = yarnLock().fileDeps(lock, linked)
+      return lock.generation === 'classic' ? [...deps, ...classicManifests(root)] : deps
     },
     recorded: (t) => {
       const lock = yarnParse(t)
@@ -338,12 +362,19 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       file,
       part: manager.name,
       version: digestVersion(),
+      // digestVersion hashes this package's source: the guarded wrappers'
+      // text is the same for every manager, and differs between a source
+      // load and the config's bytecode bundle.
+      identity: `@vzn/vx-lockfile/${manager.name}@${digestVersion()}`,
       scope,
       importers: guarded((text: string) => manager.importers(text)),
-      recorded: guarded(
-        (text: string) =>
-          new Map([...manager.recorded(text)].map(([i, deps]) => [i, [...deps.keys()]])),
-      ),
+      recorded: guarded((text: string) => {
+        const recorded = new Map<string, readonly string[]>(
+          [...manager.recorded(text)].map(([i, deps]) => [i, [...deps.keys()]]),
+        )
+        if (manager.stalenessFacts !== undefined) recorded.set(FACTS, manager.stalenessFacts(text))
+        return recorded
+      }),
       // Read before `digest` on the key path: a malformed bun.lock refused
       // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
       ...(extraFiles !== undefined
@@ -447,6 +478,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       let settings = settingsPerRun.get(ctx)
       if (settings === undefined) {
         settings = readSettings(ctx.workspaceRoot, manager.settings, manager.settingsText)
+        // Awaited only after the lockfile's key: a rejection before then (a
+        // refused key, a key slower than the read) was unhandled, and vx
+        // exits 1 on one. Every key still awaits it below.
+        settings.catch(() => {})
         settingsPerRun.set(ctx, settings)
       }
       let deps: Readonly<Record<string, string>> | undefined
@@ -492,21 +527,28 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       // lock refuses until the install, as a key from a stale lockfile names
       // an install that is not on disk.
       if (file !== undefined) {
-        const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
-        const linksUnrecorded = manager.linksUnrecorded?.(text) === true
+        const recorded = new Map(
+          await claimsAt(ctx.workspaceRoot)
+            .find((c) => c.file === file)!
+            .claim.recorded(ctx),
+        )
+        const facts = [...(recorded.get(FACTS) ?? [])]
+        recorded.delete(FACTS)
+        const linksUnrecorded = facts.includes('links')
         if (linksUnrecorded)
           importers = await withManifestLinks(ctx.workspaceRoot, importers, manifest)
+        const optional = facts
+          .filter((f) => f.startsWith('optional:'))
+          .map((f) => f.slice(f.indexOf(':', 9) + 1))
         const missing = await staleness(
           ctx.workspaceRoot,
           importers,
-          (await claimsAt(ctx.workspaceRoot)
-            .find((c) => c.file === file)!
-            .claim.recorded(ctx)) ?? new Map(),
+          recorded,
           await dirs,
           manifest,
           manager.member,
           linksUnrecorded,
-          manager.unrecorded?.(text),
+          optional.length > 0 ? manager.unrecorded?.(optional) : undefined,
         )
         if (missing.length > 0) {
           // pnpm then writes a lockfile per package, and the root's lists
@@ -619,6 +661,21 @@ function importerOf(workspaceRoot: string, dir: string): string {
 }
 
 /**
+ * Whether a manifest name may be there, on a stat: a read of one that is
+ * not rejects with an error built for it (~65 µs), and pnpm tries three
+ * names per package, so each run built two per package (vueuse: 26, ~1.7
+ * ms of its no-op). Any answer but no entry goes on to the read, which
+ * refuses an unreadable one.
+ */
+function present(file: string): boolean {
+  try {
+    return statSync(file, { throwIfNoEntry: false }) !== undefined
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'ENOTDIR'
+  }
+}
+
+/**
  * An importer's manifest (the one of `names` present), or null where it
  * has none. One that does not parse refuses, named: read as none, a
  * conflicted manifest lost its dependencies and its dependents hit with
@@ -635,6 +692,7 @@ async function manifestOf(
   const found: { name: string; text: string }[] = []
   for (const base of names) {
     const file = path.join(dir, base)
+    if (!present(file)) continue
     const name = path.relative(root, file).split(path.sep).join('/')
     try {
       found.push({ name, text: await Bun.file(file).text() })
@@ -719,6 +777,33 @@ function isClassicWorkspace(root: string, dir: string): boolean {
     !dir.split('/').includes('node_modules') &&
     globs.some((p) => !p.startsWith('!') && glob(p).match(dir))
   )
+}
+
+/**
+ * Each Yarn 1 workspace's `package.json`, root-relative: what the one
+ * classic digest folds, since yarn.lock records no workspace's ranges.
+ * Yarn 1 takes no `!` glob: it links the directory anyway.
+ */
+function classicManifests(root: string): string[] {
+  let pkg: Record<string, unknown> | null
+  try {
+    pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
+  } catch {
+    return []
+  }
+  const out = new Set<string>()
+  for (const pattern of globsOf(pkg)) {
+    if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
+    const glob = new Bun.Glob(`${pattern.replace(/^\.\//, '').replace(/\/+$/, '')}/package.json`)
+    for (const file of glob.scanSync({ cwd: root, onlyFiles: true })) {
+      const rel = file.split(path.sep).join('/')
+      if (rel !== 'package.json' && !rel.split('/').includes('node_modules')) out.add(rel)
+    }
+  }
+  return [...out].sort()
 }
 
 /** A root manifest's `workspaces` globs: an array, or Yarn 1's `{ packages }`. */

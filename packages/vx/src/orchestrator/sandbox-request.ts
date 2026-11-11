@@ -22,6 +22,8 @@ import {
   type ExecuteRequest,
   isMountableLiteral,
   atOrUnder,
+  grantAlternatives,
+  replacedBySandbox,
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -239,6 +241,14 @@ export async function sandboxRequestFor(
         `it mounts none of the project — rename the directory, or run the task without exec.sandbox`,
     )
   }
+  // Asked here, not left to bwrap: its "Can't remount" reads as a mount
+  // race, so the task ran twice and failed with no word of the cause.
+  if (replacedBySandbox(home)) {
+    throw new UserError(
+      `exec.sandbox: ${home} is under /dev, which the Linux sandbox replaces with its own, so ` +
+        `it mounts none of the project — move the workspace out of /dev, or run the task without exec.sandbox`,
+    )
+  }
   // A workspace dependency is a SYMLINK in `node_modules` pointing at a
   // sibling project, so granting `node_modules` grants a link whose
   // target is outside it. That target is a dependency, not a reach-out:
@@ -284,7 +294,10 @@ export async function sandboxRequestFor(
   // Made before the walls judge the binds: a directory grant naming nothing
   // yet (`dist/`, `dist/**`) was judged as a file, its bind its parent, and
   // a root project's was refused for `.git`.
-  const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
+  const placeholders = await prepareOutputsForBind(
+    node.projectDir,
+    (sandbox.allow?.write ?? []).flatMap(grantAlternatives),
+  )
   let config: ResolvedSandboxConfig
   try {
     config = wallOff(resolved, workspaceRoot, walls, sealed)
@@ -338,7 +351,7 @@ export async function sandboxRequestFor(
       ...dependencyReported.map(toRealPath),
     ],
     config,
-    ...(keyed === undefined ? {} : { keyed: [...keyed] }),
+    ...(keyed === undefined ? {} : { keyed: [...keyed], keyRoot: workspaceRoot }),
     ...(dependencyOutputs.length === 0 ? {} : { dependencyReads: [...dependencyOutputs] }),
     ...(dependencyReported.length === 0 ? {} : { dependencyReported: [...dependencyReported] }),
   }
@@ -640,18 +653,28 @@ async function linkedDeps(
 
 /**
  * The line a task denied a withheld dependency gets beside the denial:
- * what it reached, through which link, and the two ways to make the key
- * answer for it. Added only when a violation already sits under the
- * target, so it never reddens a pass.
+ * what it reached, where it is linked, and the ways to make the key
+ * answer for it. `project` is the id of the project at the target, which
+ * a `dependsOn` edge names (the install name is not one); with none, no
+ * task keys it and only the grant and `inputs.workspaceFiles` do. The
+ * link is named as where the package is linked, not the route the read
+ * took: a violation holds the resolved path, and the opened spelling is
+ * relative to a cwd vx does not see. Added only when a violation already
+ * sits under the target, so it never reddens a pass.
  */
-export function withheldLinkLine(taskId: string, w: WithheldLink): string {
-  return (
-    `vx: ${taskId} read \`${w.target}\` through \`${w.link}\`, and its key includes no task of ` +
-    `${w.name}, so an edit there would not re-run it. Add a \`dependsOn\` edge that ` +
-    `reaches one (\`^build\`, where ${w.name}#build keys its sources), or grant and key ` +
-    `the files yourself (\`allow.read\` plus ` +
-    `\`inputs.workspaceFiles\`).`
-  )
+export function withheldLinkLine(
+  taskId: string,
+  w: WithheldLink,
+  project: string | undefined,
+): string {
+  const read = `vx: ${taskId} read \`${w.target}\` (linked at \`${w.link}\`), and `
+  const yourself = 'grant and key the files yourself (`allow.read` plus `inputs.workspaceFiles`).'
+  return project === undefined
+    ? `${read}it is no project, so no \`dependsOn\` edge can key it and an edit there would ` +
+        `not re-run this task. To read it, ${yourself}`
+    : `${read}its key includes no task of ${project}, so an edit there would not re-run ` +
+        `it. Add a \`dependsOn\` edge that reaches one (\`^build\`, or \`${project}#build\` ` +
+        `where it keys its sources), or ${yourself}`
 }
 
 /** The withheld dependencies a reported denial lies under: each earns its hint. */

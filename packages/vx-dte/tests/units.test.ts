@@ -1210,6 +1210,35 @@ it('sends a worker what its booking fits, though its load reads low; busier than
   }
 })
 
+// Main 36e410f: a 4-core small spent 0.6 to 1.1 cores on no task of the
+// run (GitHub's runner agent among them), the run booked all 4, and its
+// test shards ran 30% past their history. What a machine spends besides
+// the run's tasks is booked on it, and the plan leaves it out.
+it("books a worker's cores its machine spends besides the run's tasks", async () => {
+  const ids = Array.from({ length: 5 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3', 't4'],
+      batch: 1,
+      load: { cpu: 4, memory: 0, tasks: 3 },
+    })
+    await a.say({ type: 'ran', task: 't1', load: { cpu: 3.9, memory: 0, tasks: 2.9 } })
+    await Bun.sleep(50)
+    expect(h.o.where('t5')).toBeNull()
+    const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
+    expect(w.cores).toBeCloseTo(3)
+    expect(w.running.reduce((n, r) => n + r.cores, 0)).toBeCloseTo(3)
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main 2975e38: a Mac's frame as a task ended read 2.9 of 3 cores busy,
 // that task and its save among them, and held the next task for the next
 // frame, up to 30 s on.
@@ -1361,6 +1390,41 @@ it('says cpu utilization from the machine, not from its tasks alone', async () =
   expect(rows.find((r) => r.includes('total'))).toContain(
     'cpu utilization machine 75% · tasks 0% · worker 5%',
   )
+})
+
+// 2026-11-11: "Allocated cpu but not used counts as used": the run held
+// each worker's cores from its ask to its leave, idle or not.
+it('counts the CPU each worker held, idle and cancelled ones too', async () => {
+  const h = await harness(new Map([node('t1')]))
+  h.o.asked(2, 1, 1, 70_000, [])
+  const t0 = performance.now()
+  h.o.spawned('small#1', { size: 'small', cpu: 2, memory: 4e9 })
+  h.o.spawned('big#1', { size: 'big', cpu: 8, memory: 4e9 })
+  const t1 = performance.now()
+  await h.worker(2, 'small#1')
+  await Bun.sleep(40)
+  const t2 = performance.now()
+  h.o.release(['big#1'])
+  const t3 = performance.now()
+  await Bun.sleep(40)
+  const t4 = performance.now()
+  await h.stop()
+  const t5 = performance.now()
+  const held = h.o.heldMs()
+  expect(held).toBeGreaterThanOrEqual(2 * (t4 - t1) + 8 * (t2 - t1))
+  expect(held).toBeLessThanOrEqual(2 * (t5 - t0) + 8 * (t3 - t0))
+  const rows = h.o
+    .footer(
+      () => 98_240,
+      undefined,
+      undefined,
+      () => 125_000,
+    )
+    .map(([, line]) => ui.inline(line, { enabled: false }))
+  expect(rows.find((r) => r.startsWith('ideal'))).toMatch(
+    /^ideal +98\.2s: each task as long as it took, placed perfectly, holding 2\.1 core-min at least$/,
+  )
+  expect(rows.find((r) => r.startsWith('total'))).toMatch(/ · held \d+\.\d core-s$/)
 })
 
 it('says no worker started once a run that needed none is over', async () => {
@@ -2003,6 +2067,46 @@ it('replays a crowded task with the cores it used, never above the real run', as
     await Promise.all(runs)
     expect(h.o.finished(() => undefined).map((t) => t.took)).toEqual([400, 400])
     expect(h.o.idealMs(() => [], sizes)).toBe(400)
+  } finally {
+    await h.stop()
+  }
+})
+
+// 2026-11-11: main 547694b ended 70 s past its ideal, and the summary
+// did not say why: four workers joined ~100 s after their ask.
+it('names what kept the run from its ideal: a worker joining late, then no room on it', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    // The footer's plan rows, the ideal's among them, follow an ask.
+    h.o.asked(1, 2, 2, 1_000, [])
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await Bun.sleep(300)
+    // One core: t2 waits for t1's.
+    const w = await h.worker(1)
+    await w.batches()
+    await Bun.sleep(300)
+    await w.finish('t1', 'k-t1', { exitCode: 0, durationMs: 300, cpuMs: 300 })
+    await w.batches()
+    await w.finish('t2', 'k-t2', { exitCode: 0, durationMs: 10, cpuMs: 10 })
+    await Promise.all(runs)
+    const d = h.o.driftOf(() => [])!
+    expect([d.joining >= 250 && d.joining < 450, d.room >= 250 && d.room < 450]).toEqual([
+      true,
+      true,
+    ])
+    await h.stop()
+    const rows = h.o
+      .footer(
+        () => 10,
+        undefined,
+        () => h.o.driftOf(() => []),
+      )
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.filter((r) => r.startsWith('drift'))).toEqual([
+      expect.stringMatching(
+        /^drift +\+\d+\.\ds past ideal: workers joining 0\.\ds · waiting for room 0\.\ds( · sending inputs \d+\.\ds)?( · after the last task \d+\.\ds)?$/,
+      ),
+    ])
   } finally {
     await h.stop()
   }
@@ -4083,6 +4187,31 @@ it('places an unmeasured task on any free core, and sizes the run by 2 cores and
   )
 })
 
+// Lab, 2026-11-10: graphs a third unmeasured ran 4.47% late, as best-fit
+// stacked their tasks, booked at a core each, on one worker they overran.
+it('places an unmeasured task where most cores are free, a measured one where fewest are', () => {
+  const bin = (id: string, used: number) => ({
+    id,
+    cores: 8,
+    memory: 64e9,
+    used: { cores: used, memory: 0 },
+    running: used,
+    has: new Set<string>(),
+    platform: undefined,
+  })
+  const bins = [bin('full', 6), bin('half', 4), bin('empty', 0)]
+  const fresh = needOf(undefined)
+  expect(assign([{ id: 'u', need: fresh, up: [] }], bins, undefined, 'best-fit').get('u')?.id).toBe(
+    'empty',
+  )
+  // CONTROL: a task measured at a core goes where fewest are free.
+  expect(
+    assign([{ id: 'm', need: { cores: 1, memory: 1 }, up: [] }], bins, undefined, 'best-fit').get(
+      'm',
+    )?.id,
+  ).toBe('full')
+})
+
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),
@@ -4229,6 +4358,26 @@ it('refuses options it does not read and workers it cannot start', () => {
   )
   // A plain Error printed a stack under VX_E_INTERNAL (2026-10-28).
   expect(() => docker({} as never)).toThrow(UserError)
+  // A name rides a worker's id into a log file's name and adapters' lists
+  // (`a,b`, `t=id`, `<type>.<machine>`): `m/x` named a log in no folder, and
+  // the run waited for good on a worker whose end was lost.
+  const named = (type: string, machine: string) =>
+    refusal(() =>
+      dte({ workers: { [type]: { machines: { [machine]: { cpu: 1, memory: '1GB' } } } }, adapter }),
+    )
+  expect(named('linux', 'm/x')).toBe(
+    'dte() option "workers.linux.machines" must be named by letters, digits, _, - and . (not first), got "m/x"',
+  )
+  expect(named('linux', '..')).toBe(
+    'dte() option "workers.linux.machines" must be named by letters, digits, _, - and . (not first), got ".."',
+  )
+  // A cloud size, as yesterday's configs named it: the type's name has no
+  // dot, so `linux.c5.large` splits at its first.
+  expect(named('linux', 'c5.large')).toBe('taken')
+  expect(named('li.nux', 'small')).toBe(
+    'dte() option "workers" must be named by letters, digits, _ and -, got "li.nux"',
+  )
+  expect(named('arm_64', 'big-1')).toBe('taken')
 })
 
 // A run from a git hook inherits the hook's GIT_INDEX_FILE / GIT_DIR. The
@@ -4297,6 +4446,138 @@ for (const hook of ['main', 'linked'] as const)
     expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
   }, 30_000)
 
+/** A repository with one commit, and git run in it with an identity: its stdout, trimmed. */
+const committed = async (files: Record<string, string>) => {
+  const repo = await realpath(await tmp())
+  const git = (...args: string[]) => {
+    const p = Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...args,
+      ],
+      { cwd: repo, env: { ...process.env, GIT_INDEX_FILE: undefined, GIT_DIR: undefined } },
+    )
+    if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+    return p.stdout.toString().trim()
+  }
+  git('init', '-q')
+  for (const [f, text] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(repo, f)), { recursive: true })
+    await writeFile(path.join(repo, f), text)
+  }
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  return { repo, git }
+}
+
+/** `local()`'s spawn of one worker `id` of `root` at `commit`: its error, or '' once it started. */
+const spawnOne = async (
+  adapter: ReturnType<typeof local>,
+  root: string,
+  commit: string,
+  id = 's#1',
+  exited: (why: string) => void = () => {},
+): Promise<string> => {
+  try {
+    await adapter.spawn({
+      run: R,
+      relay: 'http://127.0.0.1:9',
+      size: 's',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id,
+      workspaceRoot: root,
+      commit,
+      env: {},
+      exited,
+    })
+    return ''
+  } catch (err) {
+    return (err as Error).message
+  }
+}
+
+// A hook in a linked worktree exports its gitdir as GIT_DIR, and
+// `rev-parse --show-prefix` in a workspace in a subdirectory answered ''
+// (git took the cwd for the top): the worker ran at its worktree's root,
+// where no `.vx/workspace` is.
+it('local() runs a worker at the workspace’s place in its worktree under a linked worktree’s hook', async () => {
+  const { repo, git } = await committed({ 'ws/.vx/workspace.mjs': 'export default {}\n' })
+  const wt = path.join(await realpath(await tmp()), 'wt')
+  git('worktree', 'add', '-q', '--detach', wt)
+  const seen = path.join(await tmp(), 'pwd.txt')
+  // A child of its own: a spawn reads the env vx started with, as a hook set it.
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '-e',
+      `const { local } = await import(${JSON.stringify(path.join(import.meta.dir, '../src/index.js'))})
+const adapter = local({ prepare: ${JSON.stringify(`pwd > ${JSON.stringify(seen)}; exit 1`)} })
+try {
+  await adapter.spawn({ run: ${JSON.stringify(R)}, relay: 'http://127.0.0.1:9', size: 's', max: 1, cpu: 1, memory: 1e9, index: 1, id: 's#1', workspaceRoot: ${JSON.stringify(path.join(wt, 'ws'))}, commit: ${JSON.stringify(git('rev-parse', 'HEAD'))}, env: {}, exited() {} })
+} catch (err) {
+  console.log(err.message)
+} finally {
+  await adapter.close()
+}`,
+    ],
+    {
+      cwd: path.join(wt, 'ws'),
+      env: { ...process.env, GIT_DIR: path.join(repo, '.git/worktrees/wt') },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  const [out, err] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  expect(out + err).toStartWith('prepare exited 1')
+  expect((await readFile(seen, 'utf8')).trim()).toEndWith(`${path.sep}1${path.sep}ws`)
+}, 30_000)
+
+// A log the reason could not write (a full temp dir, a name no file takes)
+// rejected the exit path: the run never heard the worker end and waited
+// for good, and a failed prepare said ENOENT, not why it failed.
+it('a worker’s end is reported with its own error line when its log cannot be written', async () => {
+  const { reasons } = await import('../src/local.js')
+  expect(await reasons()('exited 1', 'no/such/dir', 'error: boom\n')).toBe('exited 1: error: boom')
+  const { repo, git } = await committed({ 'a.txt': 'a' })
+  const adapter = local({ prepare: 'echo "error: no install" >&2; exit 3' })
+  try {
+    expect(await spawnOne(adapter, repo, git('rev-parse', 'HEAD'), 'linux.m/x#1')).toBe(
+      'prepare exited 3: error: no install',
+    )
+  } finally {
+    await adapter.close?.()
+  }
+}, 30_000)
+
+// A worker whose spawn threw (its worktree gone under it) was a rejection
+// no one caught: the run never heard it end, and waited for good.
+it('local() reports a worker it could not start as ended', async () => {
+  const { repo, git } = await committed({ 'a.txt': 'a' })
+  const adapter = local({ prepare: 'rm -rf "$PWD"' })
+  const ended = Promise.withResolvers<string>()
+  try {
+    expect(await spawnOne(adapter, repo, git('rev-parse', 'HEAD'), 's#1', ended.resolve)).toBe('')
+    expect(await Promise.race([ended.promise, Bun.sleep(5_000).then(() => 'never')])).toStartWith(
+      'could not start',
+    )
+  } finally {
+    await adapter.close?.()
+  }
+}, 30_000)
+
 // A run whose vx was killed never closed, and its worktrees stayed in the
 // repository for good (2026-11-06). The next local() run removes each
 // whose owner is gone, and keeps one whose run is alive.
@@ -4325,6 +4606,10 @@ it('local() reclaims the worktrees of a run whose vx is gone, and keeps a live r
   }
   const dead = await left(done.pid)
   const live = await left(process.pid)
+  // A base of a repository since deleted: no run there reclaims it.
+  const orphan = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
+  dirs.push(orphan)
+  await writeFile(path.join(orphan, 'owner'), String(done.pid))
   const adapter = local({ prepare: 'exit 1' })
   try {
     await adapter.spawn({
@@ -4361,13 +4646,15 @@ it('local() reclaims the worktrees of a run whose vx is gone, and keeps a live r
     }
   }
   const until = Date.now() + 10_000
-  while ((await trees()).includes(dead) && Date.now() < until) await Bun.sleep(20)
+  while (((await trees()).includes(dead) || existsSync(orphan)) && Date.now() < until)
+    await Bun.sleep(20)
   const after = await trees()
-  expect([after.includes(dead), existsSync(dead), after.includes(live)]).toEqual([
-    false,
-    false,
-    true,
-  ])
+  expect([
+    after.includes(dead),
+    existsSync(dead),
+    after.includes(live),
+    existsSync(orphan),
+  ]).toEqual([false, false, true, false])
 }, 30_000)
 
 it('a worker size or unmeasured with a key dte() does not read is refused', () => {
@@ -4819,6 +5106,12 @@ it('a worker’s reason is its error line, not the hint after it', () => {
     errorLine('resolving\nerror: cannot find module\n  at x\n'),
     errorLine('just this\n\n'),
     errorLine(''),
+    // A worktree whose `.vx/workspace.ts` failed to load: core says why on
+    // the lines below the `✗` one, which the row dropped (2026-11-11).
+    errorLine(
+      "✗ vx  unknown command: dte\n\n  (plugin verbs could not be looked up: .vx/workspace failed to load: cannot find './gen.ts') (see `vx help`)\n",
+    ),
+    errorLine('✗ vx  refused\n\n  a\n  b\n  c\n  d\n\n  fix  x\n'),
     // git's own, from a container's clone (2026-10-21).
     errorLine(
       "warning: templates not found\nfatal: detected dubious ownership in repository at '/src/.git'\nTo add an exception...\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n",
@@ -4828,6 +5121,8 @@ it('a worker’s reason is its error line, not the hint after it', () => {
     'error: cannot find module',
     'just this',
     '',
+    "✗ vx  unknown command: dte (plugin verbs could not be looked up: .vx/workspace failed to load: cannot find './gen.ts') (see `vx help`)",
+    '✗ vx  refused a b c',
     "fatal: detected dubious ownership in repository at '/src/.git'",
   ])
 })
@@ -4916,7 +5211,9 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
 
 // A worker runs a task in its project's directory of the run's tree: a
 // project whose config is untracked is not there, and every worker failed
-// to spawn it, exit 127, saying only that the directory did not exist.
+// to spawn it, exit 127, saying only that the directory did not exist. A
+// plugin's project has no vx.config (turbo() reads package.json): the
+// reason named one anyway (2026-11-11).
 it('fails a task whose project the run’s tree lacks, naming it', async () => {
   const root = await tmp()
   const git = (...a: string[]) =>
@@ -4929,7 +5226,7 @@ it('fails a task whose project the run’s tree lacks, naming it', async () => {
   await writeFile(path.join(root, 'a/src/x'), 'x\n')
   git('add', '-A')
   git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
-  await writeFile(path.join(root, 'e/vx.config.mjs'), 'export default {}\n')
+  await writeFile(path.join(root, 'e/package.json'), '{"name":"e"}\n')
   const served = servedRelay()
   try {
     const o = new Orchestrator({
@@ -4946,7 +5243,7 @@ it('fails a task whose project the run’s tree lacks, naming it', async () => {
     await expect(
       o.execute({ taskId: 'e#hi', cwd: path.join(root, 'e') } as unknown as ExecuteRequest),
     ).rejects.toThrow(
-      'e#hi runs in e, which is not in the commit workers check out: commit its project (its vx.config file is untracked)',
+      'e#hi runs in e, which is not in the commit workers check out: commit its project (no file under e is tracked)',
     )
     await o.close()
   } finally {
@@ -5986,4 +6283,35 @@ it('serversOf names a task’s servers through groups, and the servers they need
   expect(serversOf(nodes, 's#e2e').sort((x, y) => x.localeCompare(y))).toEqual(['s#api', 's#db'])
   expect(serversOf(nodes, 's#build')).toEqual([])
   expect(serversOf(undefined, 's#e2e')).toEqual([])
+})
+
+// A plan's timer can ask for a worker after the run closed: its folder
+// was made after close removed the run's, and nothing removed it.
+it('local() makes no worktree folder for a worker asked after close', async () => {
+  const dir = await realpath(await tmp())
+  const saved = process.env['TMPDIR']
+  process.env['TMPDIR'] = dir
+  const adapter = local()
+  try {
+    await adapter.relay!()
+    await adapter.close!()
+    await adapter.spawn({
+      run: R,
+      relay: 'http://127.0.0.1:9',
+      size: 's',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id: 's#1',
+      workspaceRoot: dir,
+      commit: 'HEAD',
+      env: {},
+      exited: () => {},
+    })
+  } finally {
+    if (saved === undefined) delete process.env['TMPDIR']
+    else process.env['TMPDIR'] = saved
+  }
+  expect(await readdir(dir)).toEqual([])
 })

@@ -564,6 +564,16 @@ describe('formatTaskBlock', () => {
       "and, if the output depends on them, inputs.files: ['tsconfig.json']",
       '',
     ])
+    // A read elsewhere in the workspace is keyed by inputs.workspaceFiles, and
+    // never offered in the allow line an agent pastes as a grant.
+    const ws = fixed({ read: ['../b/x.js'], workspaceFiles: ['b/x.js'] })
+    const w = ws.indexOf('openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]')
+    expect(ws.slice(w + 1, w + 5)).toEqual([
+      '',
+      "fix: exec.sandbox.allow: { read: ['../b/x.js'] }",
+      "and, if the output depends on them, inputs.workspaceFiles: ['b/x.js']",
+      '',
+    ])
     // A read the inputs already match, or an uncached task's: no inputs note.
     const keyed = fixed({ read: ['tsconfig.json'] })
     expect(keyed.filter((l) => l.includes('inputs'))).toEqual([])

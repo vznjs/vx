@@ -827,11 +827,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
       const link = layout === 'root' ? 'node_modules/@x/ui' : 'packages/x-app/node_modules/@x/ui'
       const expected = [
         `openat(${linkPath[layout]}/src/index.js) = -1 ENOENT  [${realpathSync(ui)}/src/index.js]`,
-        `vx: @x/app#test read \`packages/x-ui\` through \`${link}\`, and its key includes no task ` +
-          'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
-          'reaches one (`^build`, where @x/ui#build keys its sources), or grant and key ' +
-          'the files yourself (`allow.read` plus ' +
-          '`inputs.workspaceFiles`).',
+        `vx: @x/app#test read \`packages/x-ui\` (linked at \`${link}\`), and its key includes ` +
+          'no task of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
+          'reaches one (`^build`, or `@x/ui#build` where it keys its sources), or grant and key ' +
+          'the files yourself (`allow.read` plus `inputs.workspaceFiles`).',
       ]
       const first = testOutcome(await runTest())
       expect(first?.status).toBe('failed')
@@ -852,6 +851,37 @@ describe.skipIf(!available || process.platform !== 'linux')(
     it(
       'an unkeyed sibling is withheld and the read reported, with the hint (project link)',
       () => withheldAndReported('project'),
+      TIMEOUT,
+    )
+
+    // The fix named the sibling's file by its absolute path and no key
+    // entry: applied as given, an edit there replayed the old bytes.
+    it(
+      'the suggested fix, applied as given, keys the read: an edit re-runs it',
+      async () => {
+        const { app, ui } = await workspace('project', { cache: true, dependsOn: [] })
+        const fix = testOutcome(await runTest())?.sandboxFix
+        expect(fix).toEqual({
+          read: ['../x-ui/src/index.js'],
+          workspaceFiles: ['packages/x-ui/src/index.js'],
+        })
+        await writeFile(
+          path.join(app, 'vx.config.mjs'),
+          appConfig('project', { cache: true, dependsOn: [] })
+            .replace("read: ['.']", `read: ['.', ...${JSON.stringify(fix!.read)}]`)
+            .replace(
+              "files: ['src/**'] }",
+              `files: ['src/**'], workspaceFiles: ${JSON.stringify(fix!.workspaceFiles)} }`,
+            ),
+        )
+        const out = path.join(app, 'dist', 'out.txt')
+        expectOk(await runTest(), fixture)
+        expect(await readFile(out, 'utf8')).toBe('export const ui = 1\n')
+        await writeFile(path.join(ui, 'src', 'index.js'), 'export const ui = 2\n')
+        const r = await runTest()
+        expect(testOutcome(r)?.status).toBe('success')
+        expect(await readFile(out, 'utf8')).toBe('export const ui = 2\n')
+      },
       TIMEOUT,
     )
 
@@ -1007,10 +1037,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const r = testOutcome(await runTest())
         expect(r?.status).toBe('failed')
         expect(r?.sandboxViolationLines?.at(-1)).toBe(
-          'vx: @x/app#test read `packages/x-core` through `packages/x-ui/node_modules/@x/core`, ' +
+          'vx: @x/app#test read `packages/x-core` (linked at `packages/x-ui/node_modules/@x/core`), ' +
             'and its key includes no task of @x/core, so an edit there would not re-run it. Add a ' +
-            '`dependsOn` edge that reaches one (`^build`, where @x/core#build keys its sources), ' +
-            'or grant and key the files yourself ' +
+            '`dependsOn` edge that reaches one (`^build`, or `@x/core#build` where it keys its ' +
+            'sources), or grant and key the files yourself ' +
             '(`allow.read` plus `inputs.workspaceFiles`).',
         )
       },

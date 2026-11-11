@@ -64,6 +64,15 @@ it('a deleted assume-unchanged file selects its project; an absent skip-worktree
   expect(await owners()).toEqual(['a'])
 })
 
+// lstat of `src/index.js` under a file `src` answers ENOTDIR, which
+// `throwIfNoEntry: false` passes over not: `--affected` failed (2026-11-10).
+it('an assume-unchanged file whose directory is now a file is deleted: its project is selected', async () => {
+  git('update-index', '--assume-unchanged', 'packages/a/src/index.js')
+  await rm(path.dirname(file('a')), { recursive: true })
+  await writeFile(path.dirname(file('a')), 'now a file\n')
+  expect(await owners()).toEqual(['a'])
+})
+
 it('the run selects what its key re-hashes', async () => {
   git('update-index', '--assume-unchanged', 'packages/a/src/index.js')
   await writeFile(file('a'), 'export const x = 1\n')

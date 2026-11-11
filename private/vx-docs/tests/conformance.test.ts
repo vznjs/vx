@@ -172,6 +172,9 @@ describe('the conformance page', () => {
     expect(percent({ pass: 1, can: 200, of: 200 })).toBe('0%')
     expect(percent({ pass: 1, can: 1, of: 11 })).toBe('100%')
     expect(percent({ pass: 1, can: 2, of: 11 })).toBe('50%')
+    // (29 / 100) * 100 is 28.999…: an exact share must not lose a point.
+    expect(percent({ pass: 29, can: 100, of: 100 })).toBe('29%')
+    expect(supports({ pass: 0, can: 29, of: 100 })).toBe('29%')
   })
 
   it('names each tool’s version, where the cases come from and the method', () => {

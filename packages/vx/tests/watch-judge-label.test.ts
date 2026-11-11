@@ -1,4 +1,4 @@
-// A cycle is named by its first changed path. `mkdir -p src/x/y` and a file
+// A cycle is named by its least changed path. `mkdir -p src/x/y` and a file
 // written in it fire the new directory first, and the cycle read
 // `changed app src/x (+1 more)`: the directory, not the file the user made.
 

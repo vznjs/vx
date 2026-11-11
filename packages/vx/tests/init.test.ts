@@ -221,7 +221,7 @@ describe('vx run with no vx config', () => {
       "export default { tasks: { build: { command: 'echo hi' } } }\n",
     )
     await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
-    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"version":5,"projects":{}}\n')
+    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"version":6,"projects":{}}\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
     const said = (args: string[]): string => {

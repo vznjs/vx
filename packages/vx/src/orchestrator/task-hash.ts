@@ -10,6 +10,7 @@ import {
   filesToken,
   foldHead,
   hashFileSeen,
+  hashFilesOf,
   type InputListing,
   type CacheKeyInput,
   type CacheLayer,
@@ -176,7 +177,7 @@ async function taskHash(args: ComputeHashArgs): Promise<string> {
     const folds = args.captureInto === undefined ? args.hashCache?.folds : undefined
     const token = folds === undefined ? undefined : filesToken(inputsArgs(args))
     if (folds === undefined || token === undefined) {
-      return await args.cache.key((await resolveKeyInput(args)).input)
+      return await args.cache.key(await knownIdentities(args, (await resolveKeyInput(args)).input))
     }
     // The files fold last, so a fold up to them seeded into their token
     // names the key the whole fold would: the files go unresolved.
@@ -184,12 +185,51 @@ async function taskHash(args: ComputeHashArgs): Promise<string> {
     const probe = xxh3hex(`${FOLD_MEMO_VERSION}\0${token}`, head)
     const known = folds.get(args.node.id, probe)
     if (known !== undefined) return known
-    const key = await args.cache.key((await resolveKeyInput(args)).input)
+    const key = await args.cache.key(
+      await knownIdentities(args, (await resolveKeyInput(args)).input),
+    )
     folds.set(args.node.id, probe, key)
     return key
   } finally {
     end()
   }
+}
+
+/**
+ * `input` with every file the index vouches no OID for named by the
+ * identity the run already learned for it (`identityOf`), so a file many
+ * tasks read is stat'ed and looked up once, not once per task. The map is
+ * the fold's fast path and nothing more (`CacheKeyInput.fileHashes`): each
+ * answer is `hashFile`'s own, so the key is the one the fold would derive.
+ * A file whose hash fails is left out, and the fold asks for it itself.
+ */
+async function knownIdentities(
+  args: ComputeHashArgs,
+  input: CacheKeyInput,
+): Promise<CacheKeyInput> {
+  const run = args.gitFilesCache
+  if (run === undefined) return input
+  const provided = input.fileHashes
+  let missing = false
+  for (const f of input.inputFiles) {
+    if (provided?.get(f) === undefined) {
+      missing = true
+      break
+    }
+  }
+  if (!missing) return input
+  const known = new Map<string, string>()
+  const ask: string[] = []
+  for (const f of input.inputFiles) {
+    const id = provided?.get(f) ?? run.identityOf(f)
+    if (id !== undefined) known.set(f, id)
+    else ask.push(f)
+  }
+  const epoch = run.factsEpoch
+  const learned = await hashFilesOf(args.cache, ask)
+  run.learnIdentities(learned, epoch)
+  for (const [f, id] of learned) known.set(f, id)
+  return { ...input, fileHashes: known }
 }
 
 /**
@@ -283,7 +323,13 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
       if (digests[i]!.startsWith('120000:')) behind.set(f, await behindLink(f, hashFile))
     }),
   )
-  const hash = await args.cache.key(input)
+  // The key folds these same digests: asked again, each file was a second
+  // lstat and memo lookup per miss (8,002 cold tasks: 160,000 of each), and
+  // the key could fold bytes the facts the re-check compares never saw.
+  const hash = await args.cache.key({
+    ...input,
+    fileHashes: new Map(sorted.map((f, i) => [f, digests[i]!])),
+  })
   // A file gone since the enumeration is no input: the task will not read it.
   const files: InputFile[] = sorted.flatMap((f, i) =>
     digests[i] === ABSENT_INPUT

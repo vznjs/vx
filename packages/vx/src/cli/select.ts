@@ -9,7 +9,6 @@ import fs from 'node:fs'
 import {
   affectedChanges,
   type AffectedChanges,
-  affectedProjects,
   headBase,
   applyFilters,
   buildPackageGraph,
@@ -22,6 +21,7 @@ import {
   NO_LOCK,
   parseFilter,
   PROJECT_CONFIG_FILENAMES,
+  type PackageGraph,
   type ProjectMeta,
   readLockfile,
 } from '../workspace/index.js'
@@ -30,6 +30,7 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
 import { declaresInput, lazyGitEnumeration, workspaceFilesReachInto } from '../cache/index.js'
 import {
+  BUN_GLOB_WILDCARDS,
   isUserError,
   listed,
   maskedCommand,
@@ -44,9 +45,13 @@ import {
   claimedAffected,
   claimedExtraFiles,
   claimedDigests,
+  extraHashesOfDiscovery,
   fingerprintClaims,
+  hashExtra,
   hasHook,
   keepDiscoveryGraph,
+  unlockedDir,
+  withExtraHashes,
 } from '../orchestrator/index.js'
 import {
   type CliLoadOptions,
@@ -54,6 +59,8 @@ import {
   loadCliProjects,
   loadCliWorkspace,
   stageCacheDir,
+  type VerbWorkspace,
+  workspaceOfDiscovery,
 } from './workspace-config.js'
 
 /**
@@ -156,19 +163,25 @@ async function workspaceFingerprintClaims(
   projects: readonly ProjectMeta[],
   load: CliLoadOptions,
 ): Promise<FingerprintClaims> {
-  const ws = await loadCliWorkspace(root)
+  const ws = workspaceOfDiscovery(projects) ?? (await loadCliWorkspace(root))
   const claims = fingerprintClaims(ws.plugins)
-  const ctx = {
-    workspaceRoot: root,
-    cacheDir: stageCacheDir(ws, load),
-    warn: (m: string) => ui.say('warn', maskedLine(m)),
-    projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
-  }
+  // The run's own hashes: what selection hashes, its key reads.
+  const hashes = extraHashesOfDiscovery(projects)
+  const ctx = withExtraHashes(
+    {
+      workspaceRoot: root,
+      cacheDir: stageCacheDir(ws, load),
+      warn: (m: string) => ui.say('warn', maskedLine(m)),
+      projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
+    },
+    hashes,
+  )
   return {
     files: new Set(claims.keys()),
     affected: (change) => claimedAffected(claims.get(change.file)!, change, ctx),
     extraFiles: (file, bytes) => claimedExtraFiles(claims.get(file)!, file, bytes, ctx),
     digests: (file) => claimedDigests(claims.get(file)!, file, ctx),
+    hashExtra: (rel) => hashExtra(root, rel, hashes),
   }
 }
 
@@ -176,8 +189,12 @@ async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise
   return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
 }
 
-export async function findCwdProject(cwd: string): Promise<string | null> {
-  return (await findCwdSelection(cwd))?.name ?? null
+export async function findCwdProject(
+  cwd: string,
+  /** The verb's workspace, whose discovery this reuses. */
+  at?: VerbWorkspace,
+): Promise<string | null> {
+  return (await findCwdSelection(cwd, {}, await at?.projects()))?.name ?? null
 }
 
 /**
@@ -188,9 +205,11 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
 export async function findCwdSelection(
   cwd: string,
   load: CliLoadOptions = {},
+  /** A discovery of this workspace the caller made. */
+  discovered?: ProjectMeta[],
 ): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(root, load)
+  const projects = discovered ?? (await discoverCliProjects(root, load))
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): { name: string; dir: string } | null => {
     let best: { name: string; dir: string } | null = null
@@ -249,6 +268,7 @@ async function refuseUnlockedConfig(
       if (config !== undefined) {
         throw new UserError(
           `${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``,
+          'VX_E_LOCK',
         )
       }
     }
@@ -271,7 +291,11 @@ export type FilterResolution =
       outright?: string[]
     }
   | Refusal
-  | { empty: string }
+  | {
+      empty: string
+      /** The discovery this pass made, for the undeclared-task check to reuse. */
+      discovered: { root: string; projects: ProjectMeta[] }
+    }
 
 /**
  * The cross-project `dependsOn` edges the configs declare, project → the
@@ -339,12 +363,16 @@ export async function affectedFilterFor(
   affected: string,
   /** What the verb does instead on the base branch (`defaultAffectedBase`). */
   instead?: string,
+  /** The verb's own discovery, whose `config` stage answered the branch. */
+  discovered?: readonly ProjectMeta[],
 ): Promise<AffectedFilter | Refusal> {
   const root = await findWorkspaceRoot(cwd)
   const env = affected === '' ? (settingEnv('affectedBase') as string | undefined) : undefined
   let base = affected || (env ?? '')
   if (base === '') {
-    const ws = await loadCliWorkspace(root)
+    const ws =
+      (discovered === undefined ? undefined : workspaceOfDiscovery(discovered)) ??
+      (await loadCliWorkspace(root))
     try {
       base =
         ws.branch.base ??
@@ -365,6 +393,8 @@ export async function resolveFilters(
   affected?: AffectedFilter,
   /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
   verb: 'run' | 'show' | 'watch' = 'run',
+  /** The verb's own discovery of this workspace, reused with its `config` stage. */
+  discovered?: ProjectMeta[],
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   let parsed: ReturnType<typeof parseFilter>[]
@@ -380,7 +410,8 @@ export async function resolveFilters(
   // it starts before the workspace config and discovery, not after them.
   const git = parsed.some((f) => f.gitSince !== undefined) ? lazyGitEnumeration(root) : undefined
   void git?.start()
-  const discovering = discoverCliProjects(root, load, git)
+  const discovering =
+    discovered === undefined ? discoverCliProjects(root, load, git) : Promise.resolve(discovered)
   discovering.catch(() => {})
   // `sinceViaDeps` (`e2e...[main]`) walks the changed projects' dependents.
   const walksGraph = parsed.some(
@@ -400,7 +431,7 @@ export async function resolveFilters(
   // config, discovery and the config load, where they waited on all three.
   // One after another, as a shallow clone's fetches must be; each is
   // awaited in filter order below, so a refusal comes where it came.
-  const diffs = new Map<(typeof parsed)[number], Promise<AffectedChanges | Set<string>>>()
+  const diffs = new Map<(typeof parsed)[number], Promise<AffectedChanges>>()
   let previous: Promise<unknown> | undefined
   for (const f of parsed) {
     if (f.gitSince === undefined) continue
@@ -438,8 +469,9 @@ export async function resolveFilters(
         return g !== undefined && g.scopes.includes('.') ? g.flagged : null
       },
     }
-    const diff = (): Promise<AffectedChanges | Set<string>> =>
-      f.raw === affected?.filter ? affectedChanges(args) : affectedProjects(args)
+    // A typed `[<since>]` needs only the projects, not the per-task paths,
+    // but its changed paths too: they say whether the tree is clean.
+    const diff = (): Promise<AffectedChanges> => affectedChanges(args, f.raw === affected?.filter)
     const started = previous === undefined ? diff() : previous.then(diff)
     started.catch(() => {})
     diffs.set(f, started)
@@ -486,19 +518,19 @@ export async function resolveFilters(
   for (const [f, diff] of diffs) {
     try {
       const answer = await diff
-      let names: Set<string>
-      if (answer instanceof Set) {
-        names = answer
-      } else {
+      let names = answer.projects
+      if (answer.changed.length > 0 || answer.nested !== undefined) changedAny.add(f)
+      if (f.raw === affected?.filter) {
         changes = answer
-        names = changes.projects
-        if (changes.changed.length > 0 || changes.nested !== undefined) changedAny.add(f)
         // A `graph` plugin may tie any task to a changed path (an edge, an
         // input), and the run alone builds that graph: every project is a
         // candidate, and the run keeps the tasks its final graph reaches.
         if (
           changes.changed.length > 0 &&
-          hasHook((await loadCliWorkspace(root)).plugins, 'graph')
+          hasHook(
+            (workspaceOfDiscovery(projects) ?? (await loadCliWorkspace(root))).plugins,
+            'graph',
+          )
         ) {
           names = new Set(projects.map((p) => p.name))
         }
@@ -578,13 +610,14 @@ export async function resolveFilters(
             : self === 'HEAD'
               ? ' — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
               : ` — ${self} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
-        return { empty: `nothing affected since ${refs}${hint}` }
+        return { empty: `nothing affected since ${refs}${hint}`, discovered: { root, projects } }
       }
       // The diff matched and a walk or an exclusion left nothing: still the
       // exit-0 outcome (`--affected --filter '!docs'` on a docs-only change
       // must not red CI), said as what happened (X-146).
       return {
         empty: `no projects selected: ${emptyWalks.length > 0 ? emptyWalks.join('; ') : excluded}`,
+        discovered: { root, projects },
       }
     }
     if (unmatched.length === 0 && emptyWalks.length > 0) {
@@ -597,8 +630,15 @@ export async function resolveFilters(
     // the patterns are in the error, and the nearest project name is the
     // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
     // app, and `--affected` a `...[<base>]` nobody typed.
+    const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
+    if (unlocked !== undefined) {
+      return {
+        error: `filter "${unlocked.filter}": ${relPosix(root, unlocked.config)} is not in the lock yet — run \`vx lock\``,
+        code: 'VX_E_LOCK',
+      }
+    }
     const hint =
-      (await unlockedHint(root, parsed, unmatched)) ?? didYouMean(unmatched, projects, tags)
+      bracedHint(root, parsed, unmatched, projects, graph) ?? didYouMean(unmatched, projects, tags)
     // Quoted, as the warning below quotes it: bare, `apq...` and the hint's
     // full stop read `apq....` in the flat message `--format json` carries.
     return {
@@ -611,7 +651,7 @@ export async function resolveFilters(
     sayNotice(
       'warn',
       `vx ${verb}`,
-      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f])) ?? didYouMean([f], projects, tags)}`,
+      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f], projects)) ?? bracedHint(root, parsed, [f], projects, graph) ?? didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
@@ -761,24 +801,73 @@ export async function pickTask(
 }
 
 /**
- * `. packages/c/vx.config.ts is not in the lock yet — run \`vx lock\``
- * for an unmatched `./dir` filter naming a directory `vx lock` would make
- * a project: a config written after the lock is none yet, and "Projects:
- * …" without it read as a typo of the path. Asked on the refusal's path only.
+ * The first unmatched include naming, by path or by a config-only
+ * project's directory name, a config `vx lock` would make a project: one
+ * written after the lock is none yet, and "Projects: …" without it read as
+ * a typo. Asked on the no-match path only; `unlockedDir` lists the tree
+ * only when that directory holds a config.
  */
+async function unlockedFilter(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+  projects: readonly ProjectMeta[],
+): Promise<{ filter: string; config: string } | undefined> {
+  for (const f of parsed) {
+    if (f.negate || f.tag === true || !unmatched.includes(f.raw)) continue
+    if (
+      f.isPath
+        ? f.pathGlob !== undefined
+        : BUN_GLOB_WILDCARDS.test(f.matcher) || f.matcher.includes('!')
+    )
+      continue
+    const config = await unlockedDir(f.matcher, projects, root)
+    if (config !== undefined) return { filter: f.raw, config }
+  }
+  return undefined
+}
+
+/** The same said beside a filter that matched, where the run goes on. */
 async function unlockedHint(
   root: string,
   parsed: readonly ReturnType<typeof parseFilter>[],
   unmatched: readonly string[],
+  projects: readonly ProjectMeta[],
 ): Promise<string | undefined> {
-  const dirs = parsed
-    .filter((f) => f.isPath && f.pathGlob === undefined && unmatched.includes(f.raw))
-    .map((f) => f.matcher)
-  if (dirs.length === 0) return undefined
-  const { configs } = await findProjectConfigs(root)
-  const config = configs.find((c) => dirs.includes(c.dir))
-  if (config === undefined) return undefined
-  return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
+  const found = await unlockedFilter(root, parsed, unmatched, projects)
+  return found === undefined
+    ? undefined
+    : `. ${relPosix(root, found.config)} is not in the lock yet — run \`vx lock\``
+}
+
+/**
+ * `. A directory takes a git ref braced: did you mean {libs}[HEAD]?` for an
+ * unmatched `./libs[HEAD]`: an unbraced path keeps its brackets as a glob
+ * class, as pnpm and Turbo read it, and the project names listed instead
+ * read as a typo of the path. Only when the braced directory matches a project.
+ */
+function bracedHint(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+  projects: ProjectMeta[],
+  graph: PackageGraph,
+): string | undefined {
+  for (const f of parsed) {
+    if (!f.isPath || f.exactDir === true || !unmatched.includes(f.raw)) continue
+    const at = (f.negate ? 1 : 0) + (f.withDependents ? 3 : 0) + (f.onlyDependents ? 1 : 0)
+    const m = /^(\.\/[^{}[\]]+|\.)\[([^\]]+)\](\^?\.\.\.)?$/.exec(f.raw.slice(at))
+    if (m === null) continue
+    const dir = m[1] === '.' ? '.' : m[1]!.slice(2)
+    const braced = parseFilter(`{${dir}}`, root)
+    if (
+      applyFilters({ filters: [braced], projects, graph, affectedByFilter: new Map() }).size === 0
+    )
+      continue
+    const meant = `${f.raw.slice(0, at)}{${dir}}[${m[2]}]${m[3] ?? ''}`
+    return `. A directory takes a git ref braced: did you mean ${meant}?`
+  }
+  return undefined
 }
 
 /** A pattern as a name: its `[<since>]` and graph operators aside. */

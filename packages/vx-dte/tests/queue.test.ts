@@ -161,3 +161,55 @@ describe('Queue', () => {
     expect([...q.pass([full], { deps: () => [] }).keys()]).toEqual(['t0', 't10'])
   })
 })
+
+// A ready task no worker fits keeps the room it frees: unheld, a smaller
+// task of lower rank took each core as it freed and the critical path
+// waited 6 s (main 2163fff, 2026-11-10).
+describe('a ready task that fits nowhere', () => {
+  const how: Strategy = {
+    order: 'critical-path',
+    place: 'best-fit',
+    book: 'measured',
+    scale: 'plan',
+  }
+  const needs = new Map<string, Need>([
+    ['crit', { cores: 1.5, memory: 1e8 }],
+    ['fill', { cores: 0.7, memory: 1e8 }],
+    ['blind', { cores: 0.7, memory: 1e8 }],
+  ])
+  const tails = new Map([
+    ['crit', 60_000],
+    ['fill', 40_000],
+    ['blind', 30_000],
+  ])
+  const ms = (id: string): number | undefined => (id === 'blind' ? undefined : tails.get(id))
+  // 2.8 of 4 cores used: 0.3 frees in 50 ms, then 1.5 fits.
+  const busy = (): B => ({
+    ...bin('w0', 4, 16e9),
+    used: { cores: 2.8, memory: 4e8 },
+    running: 4,
+    ends: [
+      [60_000, 1, 1e8],
+      [60_000, 1, 1e8],
+      [2_000, 0.5, 1e8],
+      [50, 0.3, 1e8],
+    ],
+  })
+  const o = {
+    how,
+    tail: (id: string) => tails.get(id)!,
+    need: (id: string) => needs.get(id)!,
+    deps: () => [],
+    ms,
+    soon: [],
+  }
+  it('is not passed by one of lower rank', () => {
+    expect([...dispatch(['crit', 'fill'], [busy()], o).to.keys()]).toEqual([])
+    const q = new Queue(how, o.tail, o.need)
+    q.add(['crit', 'fill'])
+    expect([...q.pass([busy()], o).keys()]).toEqual([])
+  })
+  it('is passed by one of no history', () => {
+    expect([...dispatch(['crit', 'blind'], [busy()], o).to.keys()]).toEqual(['blind'])
+  })
+})

@@ -142,6 +142,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   ignoredOutputs: ReadonlySet<string>
   setIgnored(root: string, paths: readonly string[]): void
   newFilesIgnored(dir: string): boolean
+  answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void
   get undecodableNames(): ReadonlySet<string>
   markUndecodable(absPaths: readonly string[]): void
   setWorkspaceRoot(root: string): void
@@ -153,6 +154,20 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined
+  declarationDigest(
+    root: string,
+    snapshot: readonly string[],
+    key: string,
+    takes: (rel: string) => boolean,
+    heads?: readonly string[],
+  ): string | undefined
+    OidSlot,
+    { digests: Map<string, string | undefined>; records: Map<string, string | null> }
+  >()
+  statOf(abs: string): Stats | undefined
+  identityOf(abs: string): string | undefined
+  get factsEpoch(): number
+  learnIdentities(ids: ReadonlyMap<string, string>, epoch: number): void
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
@@ -166,6 +181,12 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   override set(key: string, value: readonly string[]): this
   override delete(key: string): boolean
   override clear(): void
+}
+== class OidSlot (src/cache/git-inputs.ts)
+class OidSlot {
+  constructor(private build: () => Map<string, string>) {}
+  get map(): Map<string, string>
+  drop(paths: Iterable<string>): void
 }
 == class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
 export class TaskLogBuffer {
@@ -886,6 +907,7 @@ export interface ExecuteSandbox {
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
+  readonly keyRoot?: string
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
 }
@@ -1151,6 +1173,7 @@ export interface LockfileClaimOptions {
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly extraFiles?: (text: string) => readonly string[]
   readonly version: number
+  readonly identity?: string
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
   readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
@@ -2132,6 +2155,7 @@ export interface TaskOutcome {
     systemInfo?: string[]
     withheld?: string[]
     inputs?: string[]
+    workspaceFiles?: string[]
   }
 }
 == type TaskOutputs (src/config.ts)

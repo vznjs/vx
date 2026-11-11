@@ -7,9 +7,11 @@ src/graph.ts
 src/index.ts
 src/json.ts
 src/npm.ts
+src/pnpm-blocks.ts
 src/pnpm-settings.ts
 src/pnpm.ts
 src/posix.ts
 src/syml.ts
+src/yarn-builtin.ts
 src/yarn-settings.ts
 src/yarn.ts

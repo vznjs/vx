@@ -13,7 +13,7 @@ import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { xxh3hex } from '../util/index.js'
+import { ownEnv, xxh3hex } from '../util/index.js'
 import type { StableKey } from './stable-keys.js'
 import {
   hashTaskConfig,
@@ -96,7 +96,12 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
   const declarationOf = (cfg: TaskNode['config']): string => {
     let text = declarations.get(cfg)
     if (text === undefined) {
-      text = JSON.stringify([cfg.inputs?.files, cfg.outputs?.files, cfg.outputs?.workspaceFiles])
+      text = JSON.stringify([
+        cfg.inputs?.files,
+        cfg.inputs?.workspaceFiles,
+        cfg.outputs?.files,
+        cfg.outputs?.workspaceFiles,
+      ])
       declarations.set(cfg, text)
     }
     return text
@@ -115,9 +120,13 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     // node names that hash, which is also what the delta compares.
     let files = ''
     if (inputs !== undefined) {
-      if ((inputs.workspaceFiles?.length ?? 0) > 0) return undefined
-      // No positive entry resolves no files (`filesPlan`).
-      if (inputs.files === undefined || inputs.files.some((e) => !e.startsWith('!'))) {
+      // No positive entry resolves no files (`filesPlan`). The files token
+      // carries the workspace files a declaration lists as well.
+      if (
+        inputs.files === undefined ||
+        inputs.files.some((e) => !e.startsWith('!')) ||
+        (inputs.workspaceFiles?.some((e) => !e.startsWith('!')) ?? false)
+      ) {
         const declared = declarationOf(cfg)
         let byDeclared = tokens.get(node.projectName)
         if (byDeclared === undefined) tokens.set(node.projectName, (byDeclared = new Map()))
@@ -159,7 +168,7 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     )
   }
   for (const name of [...envNames].sort()) {
-    const value = process.env[name]
+    const value = ownEnv(process.env, name)
     parts.push(value === undefined ? name : `${name}=${value}`)
   }
   const selection = xxh3hex(ids.join('\0'))

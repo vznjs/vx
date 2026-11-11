@@ -21,6 +21,7 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv
 
 // ESSENTIAL_ENV (util/essential-env.ts, so hideEnvFromTasks keeps it too): the allowlist below
 export function withoutWorkspaceBins(PATH: string, workspaceRoot: string): string // util/essential-env.ts; runtime probes use it too
+export function ownEnv(source: NodeJS.ProcessEnv, name: string): string | undefined // util/essential-env.ts; an inherited name (`constructor`) is unset
 export const VX_RUN_WORKSPACE_ENV = 'VX_RUN_WORKSPACE' // set on every task's env by execute-task: the workspace root
 export const VX_RUN_TASK_ENV = 'VX_RUN_TASK' // and the task id — a `vx run` inside its own workspace reads them and refuses
 export const PM_EXEC_ENV = 'npm_execpath' // set by execute-task unless a layer gives it

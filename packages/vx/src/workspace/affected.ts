@@ -10,6 +10,7 @@ import { lstatSync } from 'node:fs'
 import { lstat, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  CHECK_ATTR,
   executablePath,
   gitCaseArgs,
   gitEnv,
@@ -17,8 +18,11 @@ import {
   ignoreCaseLies,
   isExecutableMissing,
   isInstalledPath,
+  isUserError,
   notAWorkTree,
+  parseCheckAttrOutput,
   relPosix,
+  sameDir,
   UserError,
   xxh3hex,
 } from '../util/index.js'
@@ -155,6 +159,11 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
   extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
+  /**
+   * An extra file's hash now, as the key takes it (`hashExtra`), from the
+   * hashes the run's key reads too; absent = selection checks none.
+   */
+  hashExtra?(rel: string): Promise<string>
   /** Each project's digest of a claimed file now (`FingerprintClaim.digests`); absent or undefined = none. */
   digests?(
     file: string,
@@ -448,9 +457,17 @@ export async function affectedChanges(
   // The base commit's `vx lock` record, read once and only when asked.
   let baseDeps: Promise<DependenciesLock | null> | undefined
   const baseDependencies = (): Promise<DependenciesLock | null> =>
-    (baseDeps ??= gitBytesAt(args.workspaceRoot, base, DEPENDENCIES_LOCK_NAME).then(
-      parseDependenciesLock,
-    ))
+    (baseDeps ??= gitBytesAt(args.workspaceRoot, base, DEPENDENCIES_LOCK_NAME).then((bytes) => {
+      // A base a newer vx locked is read as no record (everything its
+      // files key moves), as before: only the working tree's lock is this
+      // vx's to refuse, since only that one `vx lock` would write over.
+      try {
+        return parseDependenciesLock(bytes)
+      } catch (err) {
+        if (isUserError(err)) return null
+        throw err
+      }
+    }))
   let claims: FingerprintClaims | undefined
   const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
     (claims ??= await args.fingerprintClaims?.())
@@ -507,6 +524,37 @@ export async function affectedChanges(
       const patches = new Set(bunPatchFiles(after))
       const patch = changed.find((p) => patches.has(p))
       if (patch !== undefined) return everything(patch)
+    }
+  }
+  // An extra file can move with no change git lists: a gitignored file in
+  // a `file:` directory (a vendored package's built `dist/`, which the
+  // manager copies), or a `file:` or `link:` directory outside the
+  // repository. The key digests anew from what `vx lock` recorded, so
+  // selection compares the same hashes, against the base's record, and
+  // the run's key reads them from this pass (`FingerprintClaims.hashExtra`).
+  const hashing = await loadClaims()
+  if (hashing?.hashExtra !== undefined && hashing.files.size > 0) {
+    // Not in the diff, the working tree's lock is the base's: no git show.
+    const relocked =
+      diffed.paths.includes(DEPENDENCIES_LOCK_NAME) || untracked.includes(DEPENDENCIES_LOCK_NAME)
+    const record = relocked
+      ? await baseDependencies()
+      : parseDependenciesLock(await bytesOrNull(path.join(rootDir, DEPENDENCIES_LOCK_NAME)))
+    for (const file of hashing.files) {
+      const was = record === null ? undefined : recordedDigests(record, file)
+      const rels = was === undefined ? [] : Object.keys(was.extras)
+      if (rels.length === 0) continue
+      const now = await Promise.all(rels.map((rel) => hashing.hashExtra!(rel)))
+      const listed = extrasBy.get(file) ?? new Map()
+      const side = (hash: string): Uint8Array | null =>
+        hash === '' ? null : new TextEncoder().encode(hash)
+      rels.forEach((rel, i) => {
+        const then = was!.extras[rel]!
+        if (now[i] === then || listed.has(rel)) return
+        // Sides that differ as the hashes do: the claimant folds each.
+        listed.set(rel, { before: side(then), after: side(now[i]!) })
+      })
+      if (listed.size > 0) extrasBy.set(file, listed)
     }
   }
   // The projects whose digest of `file` moved, from the base's recorded
@@ -597,9 +645,12 @@ export async function affectedChanges(
       : undefined,
   )
   for (const name of claimedOwned.keys()) owned.add(name)
-  // A run reads each config from the lock, so an entry that moved moved
-  // its project's keys, though no config or import did (one evaluated
-  // under another env, a preset imported by package name).
+  // A run reads each config, name and edge from the lock, so an entry that
+  // moved moved its project's keys, though no config or import did (one
+  // evaluated under another env, a preset imported by package name, an
+  // edge a `discover` plugin added). The lock is the reason only when no
+  // file below names a closer one.
+  const lockMoved: string[] = []
   if (diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)) {
     // A side with no lock (or one that will not parse) ran nothing from
     // it: the paths of the configs say what changed, as before the lock.
@@ -614,6 +665,7 @@ export async function affectedChanges(
       if (same(lockKey(rootDir, p.dir))) continue
       owned.add(p.name)
       whole.add(p.name)
+      lockMoved.push(p.name)
     }
   }
 
@@ -646,6 +698,7 @@ export async function affectedChanges(
       whole.add(name)
     }
   }
+  for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
 
   // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
   // Resolved-config hashing folds those values into the key, so the same
@@ -713,6 +766,49 @@ const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 const PROJECT_MARKERS: ReadonlySet<string> = new Set([...PROJECT_CONFIG_FILENAMES, 'package.json'])
 
 /**
+ * Each project's dir to its name, looked up by a path's own spelling first.
+ * macOS git reports paths NFC (core.precomposeunicode) while a dir
+ * discovered by readdir keeps the spelling it was created with, so a dir
+ * not spelled NFC is found by its NFC name too, when that name is the same
+ * directory: Linux keeps `café` NFC and NFD as two, git reports each
+ * byte-exact, and one NFC key made an edit in one select the other.
+ */
+interface DirIndex {
+  /** The name `dir` maps to, and the spelling of `dir` that matched. */
+  get(dir: string): { name: string; dir: string } | undefined
+  /** Adds `dir` unless a project already holds it. */
+  add(dir: string, name: string): void
+  entries(): Iterable<[string, string]>
+}
+
+function dirIndex(projects: readonly ProjectMeta[]): DirIndex {
+  const exact = new Map<string, string>()
+  const alias = new Map<string, string>()
+  const aliasOf = (dir: string, name: string): void => {
+    const nfc = dir.normalize('NFC')
+    if (nfc !== dir && !exact.has(nfc) && sameDir(dir, nfc)) alias.set(nfc, name)
+  }
+  for (const p of projects) exact.set(p.dir, p.name)
+  for (const p of projects) aliasOf(p.dir, p.name)
+  return {
+    get(dir) {
+      const name = exact.get(dir)
+      if (name !== undefined) return { name, dir }
+      if (alias.size === 0) return undefined
+      const nfc = dir.normalize('NFC')
+      const viaNfc = alias.get(nfc)
+      return viaNfc === undefined ? undefined : { name: viaNfc, dir: nfc }
+    },
+    add(dir, name) {
+      if (exact.has(dir)) return
+      exact.set(dir, name)
+      aliasOf(dir, name)
+    },
+    entries: () => [...exact, ...alias],
+  }
+}
+
+/**
  * The projects a NEW nested project took files from. A project's inputs
  * stop at every project below it, so a marker that makes an existing
  * directory a project re-keys the project above it — its `**` lost the
@@ -727,19 +823,16 @@ function parentsOfNewNested(
   projects: readonly ProjectMeta[],
 ): Set<string> {
   const out = new Set<string>()
-  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
-  // dir discovered by readdir keeps the spelling it was created with.
-  const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
+  const dirToName = dirIndex(projects)
   const existed = new Set<string>()
   for (const [rel, bytes] of atBase) if (bytes !== null) existed.add(path.posix.dirname(rel))
   for (const rel of atBase.keys()) {
     if (existed.has(path.posix.dirname(rel))) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
-    if (!dirToName.has(dir)) continue
+    if (dirToName.get(dir) === undefined) continue
     let parent: string | undefined
     for (let d = path.dirname(dir); parent === undefined; d = path.dirname(d)) {
-      parent = dirToName.get(d)
+      parent = dirToName.get(d)?.name
       if (path.dirname(d) === d) break
     }
     if (parent !== undefined) out.add(parent)
@@ -753,7 +846,7 @@ async function removedProjectConfigs(
   atBase: ReadonlyMap<string, Uint8Array | null>,
   projects: readonly ProjectMeta[],
 ): Promise<string[]> {
-  const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
+  const dirs = dirIndex(projects)
   const gone: string[] = []
   let added: Uint8Array[] | undefined
   for (const [rel, bytes] of atBase) {
@@ -761,8 +854,7 @@ async function removedProjectConfigs(
     if (bytes === null || !CONFIG_NAMES.has(path.posix.basename(rel))) continue
     // Under `.vx` no config made a project, at the base either.
     if (inVxDir(rel)) continue
-    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
-    if (dirs.has(dir)) continue
+    if (dirs.get(path.resolve(workspaceRoot, path.posix.dirname(rel))) !== undefined) continue
     if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
     // Each config the base lacked, read once, only when one went.
     added ??= await Promise.all(
@@ -888,6 +980,16 @@ async function indexEntries(workspaceRoot: string): Promise<IndexEntry[]> {
   return out
 }
 
+/** No entry at `p`, under a parent that is now a file too (ENOTDIR). */
+function absent(p: string): boolean {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false }) === undefined
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return true
+    throw err
+  }
+}
+
 /**
  * The flagged paths whose disk side moved from the index (`git diff` covers
  * the index against the base): a file whose bytes hash to another blob, a
@@ -911,7 +1013,7 @@ async function flaggedChanges(
     if (entry === undefined || seen.has(rel)) continue
     // Synchronous: a sparse checkout flags its every absent file, and one
     // awaited stat each was 7 s per 100,000 (a loop of these, 0.15 s).
-    if (lstatSync(path.join(workspaceRoot, rel), { throwIfNoEntry: false }) === undefined) {
+    if (absent(path.join(workspaceRoot, rel))) {
       if (!entry.skipWorktree) out.push(rel)
     } else if (entry.mode === '120000' || rel.includes('\n')) out.push(rel)
     else hash.push(entry)
@@ -1057,7 +1159,7 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
   const exit = await proc.exited
   if (exit !== 0) {
     throw new UserError(
-      `git ${cmd[cmd[0] === '-c' ? 2 : 0]} failed (exit ${exit}): ${stderr.trim()}`,
+      `git ${cmd.find((a, i) => a !== '-c' && cmd[i - 1] !== '-c')} failed (exit ${exit}): ${stderr.trim()}`,
       'VX_E_GIT',
     )
   }
@@ -1088,6 +1190,16 @@ async function gitDiffPaths(
     gitPaths(workspaceRoot, [
       '-c',
       'diff.autoRefreshIndex=false',
+      // The key reads the worktree's mode under `core.fileMode=false` and
+      // trusts no index OID under a weakened stat (git-inputs.ts), so the
+      // diff judges by git's full stat: a file only that stat calls dirty
+      // is hashed below, and only a DrvFs mode over-selects.
+      '-c',
+      'core.fileMode=true',
+      '-c',
+      'core.trustctime=true',
+      '-c',
+      'core.checkStat=default',
       'diff',
       '--no-renames',
       '--ignore-submodules=none',
@@ -1222,7 +1334,7 @@ async function outsideChanged(
 
 /**
  * Of `rels`, the paths a clean filter can rewrite (`core.autocrlf`, or a
- * `text`, `eol`, `ident`, `filter` or `working-tree-encoding` attribute),
+ * converting attribute, `parseCheckAttrOutput`),
  * as the key asks it (cache/git-inputs.ts `dropFilteredOids`). `hash-object`
  * names such a file's filtered blob, which a CRLF edit to an LF file leaves
  * the base's, while the key hashes the raw bytes; and raw bytes equal to the
@@ -1236,18 +1348,12 @@ async function filtered(
 ): Promise<Set<string>> {
   if (rels.length === 0 || autocrlf) return new Set(rels)
   const proc = spawnGit(
-    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident', 'filter', 'working-tree-encoding'],
+    CHECK_ATTR,
     workspaceRoot,
     new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
   )
   const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  if (exit !== 0) return new Set(rels)
-  const hit = new Set<string>()
-  const fields = out.split('\0')
-  for (let i = 0; i + 2 < fields.length; i += 3) {
-    if (fields[i + 2] !== 'unspecified' && fields[i + 2] !== 'unset') hit.add(fields[i]!)
-  }
-  return hit
+  return exit === 0 ? parseCheckAttrOutput(out) : new Set(rels)
 }
 
 /**
@@ -1759,10 +1865,7 @@ function projectsContaining(
   // O(files · path-depth) instead of O(files · projects): independent of the
   // project count, which is what a big --affected diff on a 1000-project repo
   // pays for.
-  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
-  // dir discovered by readdir keeps the spelling it was created with.
-  const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
+  const dirToName = dirIndex(projects)
   // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
   // indexed by its link, and git reports its files at their real place
   // (`ext/b/src/a.txt`), which resolved to no project: an edit there
@@ -1773,18 +1876,19 @@ function projectsContaining(
     const real = realDirs.get(p.dir) ?? p.dir
     const rel = path.relative(realRoot, real)
     if (rel.startsWith('..') || path.isAbsolute(rel)) continue
-    const spelled = path.resolve(workspaceRoot, rel).normalize('NFC')
-    if (!dirToName.has(spelled)) dirToName.set(spelled, p.name)
+    dirToName.add(path.resolve(workspaceRoot, rel), p.name)
   }
   const owned = new Set<string>()
   for (const rel of changedRelPaths) {
     const repo = nested.has(rel)
-    let dir = path.resolve(workspaceRoot, rel).normalize('NFC')
+    const at = path.resolve(workspaceRoot, rel)
+    let dir = at
     for (;;) {
-      const name = dirToName.get(dir)
-      if (name !== undefined) {
+      const hit = dirToName.get(dir)
+      if (hit !== undefined) {
+        const { name } = hit
         owned.add(name)
-        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel).normalize('NFC')), rel)
+        on?.path(name, relPosix(hit.dir, hit.dir === dir ? at : at.normalize('NFC')), rel)
         // Its files are the project's inputs, and none of them is this
         // path: a task's globs cannot say whether they reach inside.
         if (repo) on?.repo(name)
@@ -1802,8 +1906,8 @@ function projectsContaining(
     // Its own enumeration already keys those projects on their files
     // (git-inputs.ts); without this, `--affected` after an edit inside
     // selected none of them.
-    const prefix = path.resolve(workspaceRoot, rel).normalize('NFC') + path.sep
-    for (const [dir, name] of dirToName) {
+    const prefix = at + path.sep
+    for (const [dir, name] of dirToName.entries()) {
       if (!dir.startsWith(prefix)) continue
       owned.add(name)
       on?.repo(name)

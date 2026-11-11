@@ -267,9 +267,38 @@ describe('a hook that never settles', () => {
     })
     expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
       1,
-      'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)\n',
+      "vx: the run stopped before it finished: plugin 'org/hang' never settled its setup hook\n",
     ])
   }, 30_000)
+
+  it.each(['key', 'schedule'])(
+    'in %s: the plugin is torn down and named, as on every other exit',
+    async (hook) => {
+      // The teardown writes its marker under the workspace: the loop had
+      // drained, and the plugin's teardown, which plugin.ts promises on every
+      // exit, never ran. `key` hangs inside prepareRun, `schedule` inside run().
+      const root = await fixture(
+        `{ ${hook}() { return new Promise(() => {}) }, teardown() { require('node:fs').writeFileSync('torn-down', 'yes') } }`,
+      )
+      const r = Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+          'run',
+          'boom',
+          '--all',
+        ],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
+        1,
+        `vx: the run stopped before it finished: plugin 'org/hang' never settled its ${hook} hook\n`,
+      ])
+      expect(await Bun.file(path.join(root, 'torn-down')).text()).toBe('yes')
+    },
+    30_000,
+  )
 })
 
 describe('the telemetry task set matches what the terminal reports', () => {

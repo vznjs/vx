@@ -14,6 +14,7 @@ import {
   applyCacheFlags,
   type CacheFlags,
   type CachePolicy,
+  cachePolicyEnvRefusal,
   FULL_CACHE_POLICY,
   gitRefusal,
   parseCachePolicy,
@@ -359,19 +360,9 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
   // `VX_CACHE_POLICY` is the spec a run takes when no flag names one.
   const envSpec = process.env['VX_CACHE_POLICY'] || undefined
   if (!cacheFlag && envSpec !== undefined) {
-    if (!envSpec.split(',').some((seg) => seg.trim().length > 0))
-      return {
-        ...out,
-        error: `VX_CACHE_POLICY needs a spec like local:r, local:rw, remote:, or local:,remote:rw`,
-      }
-    try {
-      cachePolicy = parseCachePolicy(envSpec, cachePolicy)
-    } catch (err) {
-      return {
-        ...out,
-        error: `VX_CACHE_POLICY: ${err instanceof Error ? err.message : String(err)}`,
-      }
-    }
+    const refused = cachePolicyEnvRefusal(envSpec)
+    if (refused !== null) return { ...out, error: refused }
+    cachePolicy = parseCachePolicy(envSpec, cachePolicy)
     if (/remote:[rw]/.test(envSpec)) out.remoteRequested = 'VX_CACHE_POLICY'
   }
   // --no-cache (all off) beats --force (reads off, writes kept), both
@@ -527,11 +518,12 @@ export async function resolveRunOptions(
       // `pkg#task`, which resolves to its own project regardless of
       // scope. An empty project list keeps the bare tasks unselected
       // while the anchored ones still run.
-      const typo = await undeclaredTasks(bareTasks, cwd)
+      const typo = await undeclaredTasks(bareTasks, cwd, resolved.discovered)
       if (typo !== undefined) return { error: typo, code: 'VX_E_UNKNOWN_TASK' }
       if (anchoredTasks.length === 0) return { nothingSelected: resolved.empty }
       sayNotice('info', 'vx run', `${resolved.empty} — running ${anchoredTasks.join(', ')} only`)
       projects = []
+      discovered = resolved.discovered
     } else {
       projects = resolved.names
       selectedByDiff = resolved.byDiff

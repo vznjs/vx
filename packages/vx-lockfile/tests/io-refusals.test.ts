@@ -49,6 +49,27 @@ it('a settings file that is there but unreadable refuses the key, not folds as a
   await expect(lockedKey(pnpm(), root, path.join(root, '.vx', 'cache'))).rejects.toThrow('.npmrc')
 })
 
+it('an unreadable settings file is no unhandled rejection when the key refuses first', async () => {
+  // The settings read starts before the lockfile's key and was awaited
+  // after it: a key that refused left the read's rejection unhandled, and
+  // vx exits 1 on one, beside the refusal. A key slower than the read did
+  // the same for a while (the flake this replaces).
+  await writeFile(path.join(root, 'bun.lockb'), '')
+  await mkdir(path.join(root, '.npmrc'))
+  const escaped: unknown[] = []
+  const onRejection = (e: unknown): void => void escaped.push(e)
+  process.on('unhandledRejection', onRejection)
+  try {
+    await expect(lockedKey(bun(), root, path.join(root, '.vx', 'cache'))).rejects.toThrow(
+      'bun.lockb',
+    )
+    await Bun.sleep(10)
+  } finally {
+    process.off('unhandledRejection', onRejection)
+  }
+  expect(escaped).toEqual([])
+})
+
 it('a package.json that is there but unreadable refuses the lock, not reads as no manifest', async () => {
   // Read as none, the root's workspace globs were none: a workspace the
   // lockfile does not list yet passed `vx lock` with no edges.

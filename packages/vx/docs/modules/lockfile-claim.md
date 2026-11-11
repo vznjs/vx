@@ -22,6 +22,7 @@ export interface LockfileClaimOptions {
   // root-relative files the lockfile names but does not pin (bun.lock's patches)
   readonly extraFiles?: (text: string) => readonly string[]
   readonly version: number // the memo's identity; bump when `digest` folds differently
+  readonly identity?: string // stands for the functions' text in the claimant; changes when they do
   readonly scope?: 'project' | 'workspace'
   readonly part?: string // the key part's name as `vx why` shows it under the plugin; default 'deps'
   // importer dir → its links to other importers, memoised beside the digests
@@ -49,6 +50,15 @@ export interface LockfileClaimHooks {
   }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
+
+// an extra file's content hash ('' when absent; a directory: every file under
+// it but node_modules and .git), read once per run through `hashes`
+export function hashExtra(workspaceRoot: string, rel: string, hashes?: ExtraHashes): Promise<string>
+export type ExtraHashes = Map<string, Promise<string>> // absolute path → hash, one run's
+// `ctx` carrying the run's hashes (a spread of it keeps them); core makes its
+// discover, project, key and fingerprint contexts so
+export function withExtraHashes<T extends object>(ctx: T, hashes: ExtraHashes | undefined): T
+export function extraHashesOf(ctx: object): ExtraHashes | undefined
 
 export interface ReachGraph {
   readonly material: readonly string[] // one per node
@@ -79,9 +89,15 @@ All are on the `@vzn/vx` façade.
 - **Once per content.** The digests, and `importers`' and `recorded`'s
   answers beside them, are memoised in cache.db (`lockfile_memos`, one
   row per file and claimant, `cache/lockfile-memo.ts`) by `version`, the
-  claimant (its `part`, its `scope` and its functions' source: another
-  claimant of the file at the same `version` does not read it, nor a
-  workspace-scope memo a project-scope one) and the file's xxh3, so a
+  claimant (its `part`, its `scope` and its functions' source, or the
+  `identity` it gives for them: another claimant of the file at the same
+  `version` does not read it, nor a workspace-scope memo a project-scope
+  one). A function's source is how its loader printed it, and one plugin
+  prints two ways: from source under the compiled binary (`throw
+Error(`) and from the workspace config's bytecode bundle (`throw new
+Error(`). Each switch missed the memo and parsed the lockfile again,
+  ~25 ms of solid's no-op after a restore (2026-11-11); `@vzn/vx-lockfile`
+  gives `identity`, a hash of its own source files and the file's xxh3, so a
   warm run pays one read, one hash and one row read — never a parse.
   Core owns the row; a plugin passes parsers. Its readers (a `discover`
   hook, `--affected`'s selection) run before a run opens the index, so
@@ -94,6 +110,14 @@ All are on the `@vzn/vx` façade.
   context object; under `scope: 'workspace'` a `WeakMap` on it makes the
   stat + read happen once per run, not once per task (1000 tasks cost
   1000 stats, 47 ms in the plugin-stages row, before this).
+- **An extra file is hashed once per run.** A `file:` directory is
+  walked and read whole, and `discover` (`importers`), the in-process
+  gate, `--affected`'s check and the key each asked for it: four walks
+  a run, six when it had moved. Each discovery makes one `ExtraHashes`
+  (`extraHashesOfDiscovery`), the contexts core hands a claim carry it
+  (`withExtraHashes`), and every hash a claim takes goes through it. A
+  run hashes before any task starts, so no task's write falls between;
+  a `vx watch` cycle discovers, and hashes, afresh.
 - **Once per process.** The file's size, mtime, ctime and inode gate the
   read within a process (a `vx watch` cycle), as `Cache.hashFile`'s memo
   keys a file: size and mtime alone kept the digests of a same-size
@@ -170,7 +194,19 @@ its path (Growth, file-dir-dep-stale.sh). Its hash covers every file
 under it but `node_modules` and `.git`, following links, and the
 in-process gate uses that hash as the
 directory's identity, since a directory's stat does not move when a file
-in it is edited. A path outside the root is never read.
+in it is edited. A path outside the root is read too: a `file:` or
+`link:` directory beside the checkout is what a task imports.
+
+`--affected` sees an extra file move that git lists no change to: a
+file git ignores inside a `file:` directory (a vendored package's built
+`dist/`, which the install copies) or a directory outside the
+repository. Selection hashes each extra file the base's
+`.vx/dependencies.lock.json` records for a claimed file (the working
+tree's copy when the diff does not touch it, no `git show`) and hands one
+whose hash moved to `affected` in `change.extras`, as a changed path
+under it would be, so only the projects reaching it are selected. The
+hashes are the run's (`FingerprintClaims.hashExtra`): the key reads the
+same ones.
 
 ## What it does NOT do
 

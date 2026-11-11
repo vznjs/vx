@@ -14,6 +14,11 @@ const PROOFS = [
   'packages/vx-migrate/tests/turbo.test.ts',
 ]
 
+// The real-repo rows src/bench/data.ts imports (the bench's own file): every
+// task that loads that module is granted it by name and keyed on it.
+const REAL_ROWS = 'private/vx-bench/real-repos.json'
+const REAL_ROWS_READ = '../vx-bench/real-repos.json'
+
 // What `import` generates from packages/vx/docs: a hit restores only these,
 // so a page missing here vanishes from the site on a hit. Pinned to the
 // .gitignore manifest by tests/sidebar-coverage.test.ts.
@@ -78,7 +83,7 @@ export default defineProject({
           'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/features src/nav src/pages src/plugins tests',
         sandbox: {
           allow: {
-            read: ['**/*', '../../packages/vx/src/**'],
+            read: ['**/*', '../../packages/vx/src/**', REAL_ROWS_READ],
             systemInfo: ['vfs.disk-space'],
           },
         },
@@ -107,6 +112,7 @@ export default defineProject({
           '.oxlintrc.json',
           'tsconfig.json',
         ],
+        workspaceFiles: [REAL_ROWS],
       },
       outputs: { files: [] },
       cache: true,
@@ -238,6 +244,7 @@ export default defineProject({
               // reference-pages.test.ts maps the one-page references' ids to their pages.
               '../../packages/vx/docs/cli.md',
               '../../packages/vx/docs/schema.md',
+              REAL_ROWS_READ,
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -275,7 +282,12 @@ export default defineProject({
           'scripts/**',
           ...NOT_GENERATED,
         ],
-        workspaceFiles: [...PROOFS, 'packages/vx/docs/cli.md', 'packages/vx/docs/schema.md'],
+        workspaceFiles: [
+          ...PROOFS,
+          'packages/vx/docs/cli.md',
+          'packages/vx/docs/schema.md',
+          REAL_ROWS,
+        ],
       },
       outputs: { files: [] },
       cache: true,
@@ -329,14 +341,20 @@ export default defineProject({
         // after; min of three interleaved sandboxed builds, 17.2 s before and
         // 14.5 s after (item 708). Build-time code still must not assume Bun:
         // astro 6 refuses a Node below 22.12 wherever it does run on Node.
-        command: ASTRO_BUILD,
+        // From an empty content store: it keeps each markdown page as
+        // rendered, keyed by the page's text, so a page whose figures come
+        // from data (real-repos.json) built with the old ones, and this
+        // task's cache kept that `dist` under the new key (2026-11-11). CI's
+        // checkout has no store either; locally the build is ~4.5 s longer
+        // (36 s → 40.5 s, min of three).
+        command: `rm -rf .astro/cache && ${ASTRO_BUILD}`,
         // astro's telemetry does `mkdir ~/.config` before anything else; a
         // sandboxed task may read HOME but not write it, so it is told to
         // stay home.
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         sandbox: {
           allow: {
-            read: ['**/*'],
+            read: ['**/*', REAL_ROWS_READ],
             // astro's and vite's caches live under `.astro/` (astro.config.mjs),
             // never under node_modules: a write grant there makes the sandbox
             // punch the read grant into node_modules' children, and bwrap
@@ -358,6 +376,7 @@ export default defineProject({
       // `packages/`, so a docs edit never re-keyed the build.
       inputs: {
         files: ['**/*', ...NOT_GENERATED],
+        workspaceFiles: [REAL_ROWS],
       },
       outputs: { files: ['dist/**'] },
       cache: true,
@@ -371,14 +390,38 @@ export default defineProject({
     // main (scripts/live-bench.ts): the committed copy is older than the
     // live one (2026-11-01), and the deploy never waits on the bench
     // (2026-11-06). Uncached: those numbers are no file of the commit.
-    'deploy.pages': {
+    // The build runs beside the tests and only the upload waits on `ci`:
+    // built after `ci`, it added 108 s to main's run (2026-11-10). Its
+    // files stay on its worker, where the upload follows it.
+    'build.live': {
       description:
-        "build the site with main's newest bench numbers → dist-live/ and deploy it to GitHub Pages (GitHub Actions only)",
-      dependsOn: ['ci', 'install', 'import', 'build.images'],
+        "build the site with main's newest bench numbers → dist-live/ (GitHub Actions only)",
+      dependsOn: ['install', 'import', 'build.images'],
       exec: {
-        command: `bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live && bun scripts/deploy-pages.ts dist-live`,
+        command: `bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live`,
         env: {
           define: { ASTRO_TELEMETRY_DISABLED: '1', VX_DOCS_BENCH: 'measured/live.json' },
+          passThrough: ['GITHUB_TOKEN', 'GITHUB_REPOSITORY', 'GITHUB_API_URL'],
+          secret: ['GITHUB_TOKEN'],
+        },
+        sandbox: {
+          allow: {
+            read: ['**/*', REAL_ROWS_READ],
+            write: ['measured/live.json', 'dist-live/**', '.astro/**'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            network: ['api.github.com', '*.blob.core.windows.net'],
+          },
+        },
+      },
+    },
+    'deploy.pages': {
+      description:
+        'deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)',
+      dependsOn: ['ci', 'build.live'],
+      exec: {
+        command: 'bun scripts/deploy-pages.ts dist-live',
+        env: {
           passThrough: [
             'ACTIONS_RUNTIME_TOKEN',
             'ACTIONS_RESULTS_URL',
@@ -394,9 +437,7 @@ export default defineProject({
         sandbox: {
           allow: {
             read: ['**/*'],
-            write: ['measured/live.json', 'dist-live/**', '.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
-            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
             network: [
               '*.actions.githubusercontent.com',
               '*.blob.core.windows.net',
@@ -417,7 +458,7 @@ export default defineProject({
         timeout: '2m',
         sandbox: {
           allow: {
-            read: ['**/*'],
+            read: ['**/*', REAL_ROWS_READ],
             write: ['.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],

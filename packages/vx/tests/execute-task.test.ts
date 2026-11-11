@@ -22,7 +22,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { Cache, GitFilesCache, type CacheEntry } from '../src/cache/index.js'
+import { Cache, GitFilesCache, type CacheEntry, type CacheLayer } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import * as spawnOffModule from '../src/exec/spawn-off.js'
 import * as warmShellModule from '../src/exec/warm-shell.js'
@@ -30,6 +30,7 @@ import { UserError } from '../src/util/index.js'
 import { RestoreDemoted, type TaskNode, type TaskOutcome } from '../src/graph/index.js'
 import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
 import type { Logger } from '../src/report/index.js'
+import { layeredOver } from './helpers/layered.js'
 import { run } from './helpers/orchestrator.js'
 import { executeTask, restoreHit } from '../src/orchestrator/execute-task.js'
 import type { OutputDirSnapshot } from '../src/orchestrator/miss-save.js'
@@ -435,6 +436,65 @@ describe('execute-task — what the outcome and the request carry', () => {
       await run({ cachePolicy: NO_CACHE })
       await run({ cachePolicy: force, taintedUpstream: true })
       expect(seen).toEqual([undefined, true, true])
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it("keeps an executor's own record off the remote axes the policy turns off", async () => {
+    // A REAPI executor's record is a remote store: `--cache-policy=remote:`
+    // replayed and wrote one, and a run off CI (`remote:r`) wrote one a CI
+    // run on a fresh cache replayed and uploaded as its own.
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      const seen: Array<[boolean | undefined, boolean | undefined]> = []
+      const recorder = {
+        name: 'org/recorder',
+        remote: true,
+        execute: async (req: ExecuteRequest) => {
+          seen.push([req.refresh, req.unsaved])
+          return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+        },
+      } as never
+      const remote = {
+        has: async () => null,
+        get: async () => null,
+        put: async () => undefined,
+      }
+      // A command of its own each: a run with remote reads on hits the entry an earlier one saved.
+      const run = (policy: typeof NO_CACHE, cache: CacheLayer) => {
+        const cached = node(b, {
+          exec: { command: `true ${seen.length}` },
+          inputs: { files: ['package.json'] },
+          outputs: { files: [] },
+          cache: true,
+        })
+        return executeTask({
+          ...baseArgs(b, cached, log),
+          executor: recorder,
+          cachePolicy: policy,
+          cache,
+        })
+      }
+      const at = (remoteRead: boolean, remoteWrite: boolean) => ({
+        localRead: false,
+        localWrite: true,
+        remoteRead,
+        remoteWrite,
+      })
+      const layered = (p: typeof NO_CACHE) => layeredOver(b.cache, remote, { policy: p })
+      for (const p of [at(true, true), at(true, false), at(false, true), at(false, false)])
+        await run(p, layered(p))
+      // No remote layer: the axes read off and say nothing (`local()` workers share this store).
+      await run(at(false, false), b.cache)
+      expect(seen).toEqual([
+        [undefined, undefined],
+        [undefined, true],
+        [true, undefined],
+        [true, true],
+        [true, undefined],
+      ])
     } finally {
       await closeBench(b)
     }

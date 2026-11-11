@@ -69,6 +69,10 @@ export interface Dispatching {
   readonly gate?: (id: string) => 'wait' | 'done' | { only?: string; avoid?: string }
   /** A worker bigger than `above` of `platform` is coming (`assign`'s `waits`). */
   readonly waits?: (above: NonNullable<Need['above']>, platform: string | undefined) => boolean
+  /** Its time, as history said: with `soon`, what a hold keeps it from (`Hold`). */
+  readonly ms?: (id: string) => number | undefined
+  /** Tasks about to be ready, highest rank first: room is kept for each (`holdFor`). */
+  readonly soon?: readonly Soon[]
 }
 
 /**
@@ -112,11 +116,14 @@ export function dispatch<B extends Bin>(
   // of them at each event was most of a 10 000-task sim (2026-11-05).
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   let i = 0
+  const kept = new Set<string>()
   function* asks(): Generator<Ask> {
     for (; i < queue.length; i++) {
       const id = queue[i]!
       if (bounds.done) return
       if (dead(needs[i]!, bounds)) {
+        if (o.soon !== undefined)
+          holdReady(bins, kept, id, needs[i]!, o.tail?.(id) ?? 0, o.ms?.(id))
         read.push(id)
         continue
       }
@@ -124,9 +131,16 @@ export function dispatch<B extends Bin>(
       if (gate === 'done') continue
       read.push(id)
       if (gate === 'wait') continue
-      yield { id, need: needs[i]!, up: o.deps(id) ?? [], ...gate }
+      yield {
+        id,
+        need: needs[i]!,
+        up: o.deps(id) ?? [],
+        ...gate,
+        ...(o.soon === undefined ? {} : { rank: o.tail?.(id) ?? 0, ms: o.ms?.(id) ?? Infinity }),
+      }
     }
   }
+  if (o.soon !== undefined) holdFor(bins, o.soon)
   const to = assign(asks(), bins, o.waits, o.how.place, { floor, kinds: Infinity, bounds })
   const left = read.filter((id) => !to.has(id))
   // The pass ended at the ask it read last, and took or left it.
@@ -180,6 +194,339 @@ export interface Bin {
   readonly platform?: string | undefined
   /** The servers it runs, each base booked: a task needing one books no base here. */
   readonly serving?: Set<string>
+  /** When each task on it ends, from now (ms), its cores and memory: where a hold finds room. */
+  ends?: readonly (readonly [at: number, cores: number, memory: number])[] | undefined
+  /** Room kept for tasks about to be ready (`holdFor`): one of lower rank goes here only beside it. */
+  holds?: Hold[] | undefined
+}
+
+/**
+ * Room a task about to be ready keeps on a bin: from `at` to `until` ms
+ * from now, `cores` and `memory`, for a task of `rank` (its chain). A
+ * task of lower rank that would still run at `at` goes there only if
+ * both fit then: a worker started for a critical task joined early, was
+ * filled by short ones, and the critical task waited a minute
+ * (2026-11-10: "Critical path should never have to wait for availability").
+ */
+export interface Hold {
+  readonly at: number
+  readonly until: number
+  readonly cores: number
+  readonly memory: number
+  readonly rank: number
+  /** Kept for a ready task no worker fits now (`holdReady`). */
+  readonly ready?: true
+}
+
+/** A task the run expects ready `at` ms from now, with its rank (its chain) and time. */
+export interface Soon {
+  readonly need: Need
+  readonly at: number
+  readonly rank: number
+  readonly ms: number
+}
+
+/** What `b` holds at `at`: its tasks still running then, and holds over it (`Sweep`). */
+function heldAt(b: Bin, at: number): { cores: number; memory: number } {
+  const w = sweepOf(b)
+  let lo = 0
+  let hi = w.at.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (w.at[mid]! <= at) lo = mid + 1
+    else hi = mid
+  }
+  return lo === 0
+    ? w.base
+    : { cores: Math.max(0, w.heldCores[lo - 1]!), memory: w.heldMemory[lo - 1]! }
+}
+
+/**
+ * Keeps room for each of `soon` (highest rank first) on the bin where it
+ * is first free from its `at`: tasks of lower rank then fit beside it
+ * only. A bin of another platform, or too small, holds none.
+ */
+export function holdFor(bins: readonly Bin[], soon: readonly Soon[]): void {
+  for (const b of bins) b.holds = undefined
+  for (const s of soon) holdOne(bins, s)
+}
+
+/** Keeps room for `s` on the bin where it is first free from its `at`. */
+function holdOne(bins: readonly Bin[], s: Soon, ready?: true): void {
+  let best: Bin | undefined
+  let bestAt = Infinity
+  for (const b of bins) {
+    if (s.need.platform !== undefined && b.platform !== s.need.platform) continue
+    // None frees it sooner than at once: most holds found one free at once.
+    if (s.at >= bestAt) break
+    const at = firstFree(b, s.need, s.at, bestAt)
+    if (at < bestAt) {
+      best = b
+      bestAt = at
+    }
+  }
+  if (best === undefined) return
+  ;(best.holds ??= []).push({
+    at: bestAt,
+    until: bestAt + s.ms,
+    cores: Math.min(s.need.cores, best.cores),
+    memory: Math.min(s.need.memory, best.memory),
+    rank: s.rank,
+    ...(ready === undefined ? {} : { ready }),
+  })
+}
+
+/**
+ * What a bin holds through time: each change (an end, a hold's start or
+ * end) in order, and what it holds after it. Kept while its ends and use
+ * are the ones it read, a hold added in place: a read of the bin at each
+ * end it might free, for each hold, was most of a plan of 3,800 tasks
+ * (2026-11-11).
+ */
+interface Sweep {
+  ends: Bin['ends']
+  holds: Bin['holds']
+  count: number
+  cores: number
+  memory: number
+  /** Held before the first change. */
+  base: { cores: number; memory: number }
+  at: number[]
+  deltaCores: number[]
+  deltaMemory: number[]
+  /** Held from it on. */
+  heldCores: number[]
+  heldMemory: number[]
+}
+
+const sweeps = new WeakMap<Bin, Sweep>()
+
+/** Puts a change in time order, after those at its time, and what is held from there on. */
+function change(w: Sweep, at: number, cores: number, memory: number): void {
+  // Moved up one by one from the end, as it finds its place: five splices
+  // and a second pass over the same changes were most of a sweep.
+  const { at: ats, deltaCores: dc, deltaMemory: dm, heldCores: hc, heldMemory: hm } = w
+  let i = ats.length
+  for (; i > 0 && ats[i - 1]! > at; i--) {
+    ats[i] = ats[i - 1]!
+    dc[i] = dc[i - 1]!
+    dm[i] = dm[i - 1]!
+    hc[i] = hc[i - 1]! + cores
+    hm[i] = hm[i - 1]! + memory
+  }
+  ats[i] = at
+  dc[i] = cores
+  dm[i] = memory
+  hc[i] = (i === 0 ? w.base.cores : hc[i - 1]!) + cores
+  hm[i] = (i === 0 ? w.base.memory : hm[i - 1]!) + memory
+}
+
+function sweepOf(b: Bin): Sweep {
+  const holds = b.holds ?? []
+  let w = sweeps.get(b)
+  if (
+    w === undefined ||
+    w.ends !== b.ends ||
+    w.holds !== b.holds ||
+    w.count > holds.length ||
+    w.cores !== b.used.cores ||
+    w.memory !== b.used.memory
+  ) {
+    let ending = 0
+    let endingMemory = 0
+    for (const [, c, m] of b.ends ?? []) {
+      ending += c
+      endingMemory += m
+    }
+    w = {
+      ends: b.ends,
+      holds: b.holds,
+      count: 0,
+      cores: b.used.cores,
+      memory: b.used.memory,
+      // What no end is known for (a server's base) stays.
+      base: {
+        cores: Math.max(0, b.used.cores - ending) + ending,
+        memory: b.ends === undefined ? b.used.memory : endingMemory,
+      },
+      at: [],
+      deltaCores: [],
+      deltaMemory: [],
+      heldCores: [],
+      heldMemory: [],
+    }
+    for (const [end, c, m] of b.ends ?? []) change(w, end, -c, -m)
+    sweeps.set(b, w)
+  }
+  for (; w.count < holds.length; w.count++) {
+    const h = holds[w.count]!
+    change(w, h.at, h.cores, h.memory)
+    change(w, h.until, -h.cores, -h.memory)
+  }
+  return w
+}
+
+/**
+ * The first of `from`, an end or a hold's end after it, before `before`,
+ * where `need` fits on `b` beside what it holds then (`heldAt`), or
+ * where `b` is empty; else Infinity.
+ */
+function firstFree(b: Bin, need: Need, from: number, before: number): number {
+  const w = sweepOf(b)
+  const n = w.at.length
+  const roomCores = b.cores + 1e-9 - need.cores
+  const roomMemory = b.memory - need.memory
+  // The first change after `from`.
+  let lo = 0
+  let hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (w.at[mid]! <= from) lo = mid + 1
+    else hi = mid
+  }
+  let cores = lo === 0 ? w.base.cores : w.heldCores[lo - 1]!
+  let memory = lo === 0 ? w.base.memory : w.heldMemory[lo - 1]!
+  if ((cores <= 1e-9 && memory <= 0) || (cores <= roomCores && memory <= roomMemory)) return from
+  for (let i = lo; i < n;) {
+    const at = w.at[i]!
+    if (at >= before) return Infinity
+    let frees = false
+    for (; i < n && w.at[i] === at; i++)
+      if (w.deltaCores[i]! < 0 || w.deltaMemory[i]! < 0) frees = true
+    if (!frees) continue
+    cores = Math.max(0, w.heldCores[i - 1]!)
+    memory = w.heldMemory[i - 1]!
+    if ((cores <= 1e-9 && memory <= 0) || (cores <= roomCores && memory <= roomMemory)) return at
+  }
+  return Infinity
+}
+
+/**
+ * Keeps room for a ready task no worker fits now where it first frees, a
+ * worker's count of them a pass: skipped unheld, smaller tasks of lower
+ * rank took each core as it freed and the critical path waited 6 s (main
+ * 2163fff, 2026-11-10).
+ */
+function holdReady(
+  bins: readonly Bin[],
+  kept: Set<string>,
+  id: string,
+  need: Need,
+  rank: number,
+  ms: number | undefined,
+): void {
+  if (ms === undefined || kept.has(id) || kept.size >= bins.length) return
+  kept.add(id)
+  holdOne(bins, { need, at: 0, rank, ms }, true)
+}
+
+/** Whether `ask` on `b` would take room a hold of higher rank keeps. */
+function breaks(b: Bin, ask: Ask): boolean {
+  if (b.holds === undefined || ask.rank === undefined) return false
+  const until = ask.ms ?? Infinity
+  for (const h of b.holds) {
+    if (h.rank <= ask.rank || h.at >= until) continue
+    // One of no history still goes: held back for a guessed-at chain, it
+    // was the critical path more often than the task held for (lab, wide
+    // graphs a third unmeasured: 9.9% late to 10.8%, 9.5% passing it).
+    if (h.ready === true && until === Infinity) continue
+    const u = heldAt(b, h.at)
+    if (u.cores + ask.need.cores > b.cores + 1e-9 || u.memory + ask.need.memory > b.memory)
+      return true
+  }
+  return false
+}
+
+/**
+ * The longest `ask` (of finite time) may run on `b` before a hold of
+ * higher rank it would break begins: `breaks` with its `ms` past it.
+ */
+function window(b: Bin, ask: Ask): number {
+  let out = Infinity
+  for (const h of b.holds ?? []) {
+    if (h.rank <= ask.rank! || h.at >= out) continue
+    const u = heldAt(b, h.at)
+    if (u.cores + ask.need.cores > b.cores + 1e-9 || u.memory + ask.need.memory > b.memory)
+      out = h.at
+  }
+  return out
+}
+
+/**
+ * An ask that no bin took and that changed nothing (`assign`): its need,
+ * rank, the longest that fits before the holds that kept it off, and the
+ * room left where one it fits only empty is held. One needing as much or
+ * more of the same platform, of no higher rank and longer, fails alike
+ * until a bin is given: bins it fits are fewer, holds it breaks more.
+ */
+export interface Kept {
+  readonly cores: number
+  readonly memory: number
+  readonly platform: string | undefined
+  readonly rank: number
+  readonly longest: number
+  /** The fewest cores and least memory free of a bin in use: needing less, no bin is held for it. */
+  readonly under: { readonly cores: number; readonly memory: number }
+}
+
+/** At most this many `Kept` a pass: the newest. */
+const KEPT = 32
+
+/** Whether one of `kept` proves `need`, of `rank` and `ms`, fails (`Kept`). */
+export function failsAlike(
+  kept: readonly Kept[],
+  need: Need,
+  rank: number | undefined,
+  ms: number | undefined,
+): boolean {
+  if (kept.length === 0 || rank === undefined || ms === undefined) return false
+  if (need.above !== undefined || (need.servers?.length ?? 0) > 0) return false
+  for (const k of kept)
+    if (
+      need.platform === k.platform &&
+      need.cores >= k.cores &&
+      need.memory >= k.memory &&
+      rank <= k.rank &&
+      ms > k.longest &&
+      need.cores < k.under.cores &&
+      need.memory <= k.under.memory
+    )
+      return true
+  return false
+}
+
+/**
+ * What a run of ready tasks asks all told: the least and most of each
+ * need, the longest chain (`rank`) and the shortest time, one platform
+ * (`mixed` if not) and whether any has a bigger size to wait for or servers.
+ */
+export interface Span {
+  minCores: number
+  maxCores: number
+  minMemory: number
+  maxMemory: number
+  maxRank: number
+  minMs: number
+  platform: string | undefined
+  mixed: boolean
+  special: boolean
+}
+
+/** Whether one of `kept` proves every task of `s` fails (`failsAlike` of each). */
+export function allFailAlike(kept: readonly Kept[], s: Span): boolean {
+  if (s.mixed || s.special) return false
+  for (const k of kept)
+    if (
+      s.platform === k.platform &&
+      s.minCores >= k.cores &&
+      s.minMemory >= k.memory &&
+      s.maxRank <= k.rank &&
+      s.minMs > k.longest &&
+      s.maxCores < k.under.cores &&
+      s.maxMemory <= k.under.memory
+    )
+      return true
+  return false
 }
 
 export interface Ask {
@@ -197,6 +544,9 @@ export interface Ask {
   readonly only?: string
   /** A bin that may not take it. */
   readonly avoid?: string
+  /** Its rank (its chain) and time: a bin's holds of higher rank keep it off (`Hold`). */
+  readonly rank?: number
+  readonly ms?: number
 }
 
 /** What `Ask.kind` names: every field of a need `assign` reads. */
@@ -207,7 +557,8 @@ export function kindOf(need: Need): string {
 /** The cores `need` books on `bin`: its own, and the base of each server `bin` does not run yet. */
 function coresOn(bin: Bin, need: Need): number {
   let cores = need.cores
-  for (const s of need.servers ?? []) if (bin.serving?.has(s.id) !== true) cores += s.cores
+  if (need.servers === undefined) return cores
+  for (const s of need.servers) if (bin.serving?.has(s.id) !== true) cores += s.cores
   return cores
 }
 
@@ -250,6 +601,8 @@ export function assign<B extends Bin>(
     readonly kinds: number
     /** Where it keeps the kinds spent, for the asks to skip them as it reads. */
     readonly spent?: Set<string>
+    /** Where it keeps the `Kept`, for the asks to skip those they prove fail as they read. */
+    readonly kept?: Kept[]
     /** Where it keeps the bins' bounds as it gives, for the asks to skip each `dead` one as it reads. */
     readonly bounds?: Bounds
   },
@@ -265,6 +618,12 @@ export function assign<B extends Bin>(
   // until one is, each ask of them fails alike.
   const spent = all?.spent ?? new Set<string>()
   spent.clear()
+  // Ready asks given room ahead this pass.
+  let waiting = 0
+  // Asks no bin took that changed nothing (`Kept`): each read every bin,
+  // a billion reads in a sim of 3,800 tasks, a plan of 15 s (2026-11-11).
+  const kept = all?.kept ?? []
+  kept.length = 0
   for (const ask of asks) {
     if (
       all !== undefined &&
@@ -277,6 +636,12 @@ export function assign<B extends Bin>(
     )
       break
     if (ask.kind !== undefined && spent.has(ask.kind)) continue
+    if (
+      ask.only === undefined &&
+      ask.avoid === undefined &&
+      failsAlike(kept, ask.need, ask.rank, ask.ms)
+    )
+      continue
     const { need } = ask
     const bigger = (b: B): boolean =>
       need.above === undefined || b.cores > need.above.cores || b.memory > need.above.memory
@@ -296,14 +661,27 @@ export function assign<B extends Bin>(
     let best: B | undefined
     let bestScore: [number, number] = [0, 0]
     let seen = 0
+    // A hold kept it off a bin it fits: one of its kind may still fit.
+    let blocked = false
     for (let i = 0; i < pool.length; i++) {
       const b = pool[i]!
       if (held.has(b) || !fits(b, need)) continue
+      if (breaks(b, ask)) {
+        blocked = true
+        continue
+      }
       // Workers fill in order, so the first that fit hold the fullest.
       if (++seen > SAMPLE) break
       let has = 0
       for (const id of ask.up ?? []) if (b.has?.has(id) === true) has++
-      const score: [number, number] = [has, fit(b, need, place, i)]
+      // A task of no history books next to nothing but may use any share:
+      // where most is free, it has room to be bigger than it booked. Best-fit
+      // stacked them on one worker, which they overran: 4.47% late to 3.95%
+      // on graphs a third unmeasured, 1% more worker time (lab, 2026-11-10).
+      const score: [number, number] = [
+        has,
+        fit(b, need, need.ask === undefined ? place : 'worst-fit', i),
+      ]
       if (
         best === undefined ||
         score[0] > bestScore[0] ||
@@ -314,6 +692,10 @@ export function assign<B extends Bin>(
       }
     }
     if (best === undefined) {
+      // Ready and no room: room is kept where it first frees, so no task
+      // of lower rank takes it meanwhile, a few a pass.
+      const holds = ask.rank !== undefined && ask.ms !== undefined && waiting++ < pool.length
+      if (holds) holdOne(pool, { need, at: 0, rank: ask.rank!, ms: ask.ms! })
       // One it fits only empty: the one using least is held for it.
       let soonest: B | undefined
       for (const b of pool) {
@@ -324,15 +706,52 @@ export function assign<B extends Bin>(
       if (soonest !== undefined) {
         held.add(soonest)
         rebound()
-      } else if (ask.kind !== undefined) spent.add(ask.kind)
+        continue
+      }
+      if (ask.kind !== undefined && !blocked) spent.add(ask.kind)
+      if (
+        !holds &&
+        ask.only === undefined &&
+        ask.avoid === undefined &&
+        ask.rank !== undefined &&
+        ask.ms !== undefined &&
+        need.above === undefined &&
+        (need.servers?.length ?? 0) === 0
+      ) {
+        let longest = -Infinity
+        const under = { cores: Infinity, memory: Infinity }
+        for (const b of pool) {
+          if (held.has(b)) continue
+          if (blocked && fits(b, need)) longest = Math.max(longest, window(b, ask))
+          if (b.running > 0) {
+            under.cores = Math.min(under.cores, b.cores)
+            under.memory = Math.min(under.memory, b.memory - b.used.memory)
+          }
+        }
+        if (kept.length === KEPT) kept.shift()
+        kept.push({
+          cores: need.cores,
+          memory: need.memory,
+          platform: need.platform,
+          rank: ask.rank,
+          longest,
+          under,
+        })
+      }
       continue
     }
     spent.clear()
+    kept.length = 0
     out.set(ask.id, best)
     best.used.cores += Math.min(coresOn(best, need), best.cores)
     for (const sv of need.servers ?? []) best.serving?.add(sv.id)
     best.used.memory += Math.min(need.memory, best.memory)
     best.running++
+    if (best.holds !== undefined && best.ends !== undefined && ask.ms !== undefined)
+      best.ends = [
+        ...best.ends,
+        [ask.ms, Math.min(coresOn(best, need), best.cores), Math.min(need.memory, best.memory)],
+      ]
     rebound()
   }
   return out
@@ -581,6 +1000,7 @@ export class Queue {
     const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
     const done: Entry[] = []
     let cursor: Entry | undefined
+    const kept = new Set<string>()
     function* asks(): Generator<Ask> {
       for (;;) {
         if (bounds.done) return
@@ -589,7 +1009,11 @@ export class Queue {
         let second: Entry | undefined
         for (const x of gs) {
           if (x.at >= x.q.length) continue
-          if (!x.odd && x.full(bounds)) continue
+          if (!x.odd && x.full(bounds)) {
+            const e = o.soon === undefined ? undefined : x.q[x.skip(x.at)]
+            if (e !== undefined) holdReady(bins, kept, e.id, book(e.need), -e.rank, o.ms?.(e.id))
+            continue
+          }
           if (cursor !== undefined && !before(cursor, x.q[x.at]!)) x.at = x.after(cursor)
           x.at = x.skip(x.at)
           const e = x.q[x.at]
@@ -609,18 +1033,28 @@ export class Queue {
           cursor = e
           if (bounds.done) return
           const need = book(e.need)
-          if (dead(need, bounds)) continue
+          if (dead(need, bounds)) {
+            if (o.soon !== undefined) holdReady(bins, kept, e.id, need, -e.rank, o.ms?.(e.id))
+            continue
+          }
           const gate = o.gate?.(e.id) ?? {}
           if (gate === 'done') {
             done.push(e)
             continue
           }
           if (gate === 'wait') continue
-          yield { id: e.id, need, up: o.deps(e.id) ?? [], ...gate }
+          yield {
+            id: e.id,
+            need,
+            up: o.deps(e.id) ?? [],
+            ...gate,
+            ...(o.soon === undefined ? {} : { rank: -e.rank, ms: o.ms?.(e.id) ?? Infinity }),
+          }
           break
         }
       }
     }
+    if (o.soon !== undefined) holdFor(bins, o.soon)
     const to = assign(asks(), bins, o.waits, this.how.place, { floor, kinds: Infinity, bounds })
     for (const e of done) if (!e.gone) this.drop(e)
     for (const id of to.keys()) this.drop(this.of.get(id)!)

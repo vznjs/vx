@@ -782,3 +782,60 @@ describe('reachDigests', () => {
     expect(asMember).not.toBe(asChild)
   })
 })
+
+// The claimant was its functions' text, which one plugin prints two ways:
+// loaded from source by the compiled binary (`throw Error(`) and from the
+// workspace config's bytecode bundle (`throw new Error(`). Each switch
+// missed the memo and parsed the lockfile again (solid's no-op after a
+// restore, ~25 ms, 2026-11-11). `identity` stands for the text.
+describe("the claimant's identity", () => {
+  const parse = (text: string): Map<string, string> =>
+    new Map(
+      text
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => l.split('=') as [string, string]),
+    )
+  /** The same parse, printed as `print` says. */
+  const printed = (print: 'source' | 'bundle', identity?: string) =>
+    lockfileClaim({
+      file: 'bun.lock',
+      version: 1,
+      ...(identity === undefined ? {} : { identity }),
+      digest:
+        print === 'source'
+          ? (text) => {
+              calls.push(text)
+              if (text.startsWith('!')) throw Error('conflicted')
+              return parse(text)
+            }
+          : (text) => {
+              calls.push(text)
+              // Bun's own loader prints `new Error(` as `Error(` too, so the
+              // bundle's print stands in as another spelling of the check.
+              if (text[0] === '!') throw Error('conflicted')
+              return parse(text)
+            },
+    })
+
+  it('one identity reads the memo whichever way its functions print', async () => {
+    await lock('packages/a=a1\n')
+    await digestOf(printed('source', 'probe@1'), 'packages/a')
+    expect(await digestOf(printed('bundle', 'probe@1'), 'packages/a')).toEqual({ deps: 'a1' })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('without one, the text decides: a print that differs parses again', async () => {
+    await lock('packages/a=a1\n')
+    await digestOf(printed('source'), 'packages/a')
+    await digestOf(printed('bundle'), 'packages/a')
+    expect(calls).toHaveLength(2)
+  })
+
+  it("another identity's memo is not trusted", async () => {
+    await lock('packages/a=a1\n')
+    await digestOf(printed('source', 'probe@1'), 'packages/a')
+    await digestOf(printed('source', 'other@1'), 'packages/a')
+    expect(calls).toHaveLength(2)
+  })
+})

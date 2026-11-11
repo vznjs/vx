@@ -55,6 +55,9 @@ export function braceAlternatives(pattern: string): string[]
 // A brace range's names as Bun.Glob (1.4.4) reads them (`1..3`, `01..03`, `a..c`, `1..10..3`), or null
 export function braceRange(body: string): string[] | null
 export const BRACE_RANGE_LIMIT: number // 1024 — the most names a range may name
+// How many globs braceAlternatives would return, counted without expanding, capped at cap + 1:
+// a task glob's product past BRACE_RANGE_LIMIT is refused at load
+export function braceExpansionCount(pattern: string, cap: number): number
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
 // An extglob group, which vx's matchers do not read: refused in member and task globs (A-62).

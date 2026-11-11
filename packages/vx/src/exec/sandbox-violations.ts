@@ -960,16 +960,13 @@ export function refusedWrites(
 ): SandboxViolation[] {
   const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
   const granted = new Set((widened?.granted ?? []).map((w) => toRealPath(absolutize(w))))
-  // A brace is literal to the mount (`MOUNT_WILDCARDS`) and widened like
-  // any file grant, but `write: ['g/{a,b}.txt']` means `g/a.txt` too.
-  const braced = [...granted].filter((w) => w.includes('{')).map((w) => new Bun.Glob(w))
   const globs = scratch.map((g) => new Bun.Glob(g))
   // Whether a write `binds` covers lands under a widened directory where
   // no grant covers it, and so is reported (see above).
   const undeclared = (syscall: string, abs: string): boolean => {
     for (const [dir, entries] of widened?.entries ?? []) {
       if (abs === dir || !atOrUnder(abs, dir)) continue
-      if (isUnderAny(abs, granted) || underGlob(abs, braced)) return false
+      if (isUnderAny(abs, granted)) return false
       const top = path.join(dir, path.relative(dir, abs).split(path.sep)[0]!)
       if (!entries.has(top)) return exists(abs) && !(syscall.startsWith('mkdir') && abs !== top)
       if (syscall.startsWith('mkdir')) return false

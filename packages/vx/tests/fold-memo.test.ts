@@ -4,7 +4,7 @@
 // and expects the task to run.
 
 import { Database } from 'bun:sqlite'
-import { statSync, utimesSync } from 'node:fs'
+import { closeSync, openSync, statSync, utimesSync, writeSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
@@ -75,6 +75,25 @@ it('a warm run takes its key from the memo', async () => {
   db.close()
   build()
   expect(await runs()).toBe(2)
+}, 60_000)
+
+// A garbled `fold_memo` page reached `vx run` as a raw `SQLiteError` and a
+// stack from the graph's own row: a memo the run cannot read is no memo.
+it('a fold_memo SQLite cannot read is no memo: the run folds and hits', async () => {
+  build()
+  const file = path.join(root, '.vx', 'cache', 'cache.db')
+  const db = new Database(file)
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  const { page_size } = db.query('PRAGMA page_size').get() as { page_size: number }
+  const { rootpage } = db
+    .query("SELECT rootpage FROM sqlite_master WHERE name = 'fold_memo'")
+    .get() as { rootpage: number }
+  db.close()
+  const fd = openSync(file, 'r+')
+  writeSync(fd, Buffer.alloc(page_size, 0xab), 0, page_size, (rootpage - 1) * page_size)
+  closeSync(fd)
+  build()
+  expect(await runs()).toBe(1)
 }, 60_000)
 
 it('the memo answers the key the whole fold derives', async () => {
@@ -275,4 +294,23 @@ it('a files digest, once asked, lets go of what it was computed from', async () 
   }
   expect(cache.filesDigest('/w/p0', cache.get('/w/p0')!)).toBe('100')
   expect(refs.filter((r) => r.deref() !== undefined).length).toBeLessThan(10)
+})
+
+// A save into an ignored `dist/` turned every later same-project task's
+// files digest off: six in seven of a cold 8,002-task run's keys stored no
+// fold row, and the restore after derived them again (2026-11-11).
+it('a files digest stands past a mark outside its snapshot, and falls to one in it', () => {
+  const cache = new GitFilesCache()
+  const dir = '/w/p'
+  const snapshot = ['package.json', 'src/a.ts']
+  cache.set(dir, snapshot)
+  cache.noteFilesDigest(dir, snapshot, () => 'd')
+  cache.markOutputsChanged(dir, ['dist/a.js', 'dist/b.js'])
+  expect(cache.filesDigest(dir, snapshot)).toBe('d')
+  cache.markOutputsChanged(dir, ['dist/c.js'])
+  expect(cache.filesDigest(dir, snapshot)).toBe('d')
+  cache.markOutputsChanged(dir, ['src/a.ts'])
+  expect(cache.filesDigest(dir, snapshot)).toBeUndefined()
+  cache.markOutputsChanged(dir, ['dist/d.js'])
+  expect(cache.filesDigest(dir, snapshot)).toBeUndefined()
 })

@@ -9,17 +9,18 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   // A rejection nothing awaited (a plugin verb's floating promise) is a
   // failure: the exit after the streams end came before Bun reported it,
-  // and the run said nothing and exited 0.
+  // and the run said nothing and exited 0. Its line is written here, not
+  // after an import: one reported in the turn the exit ends the streams
+  // landed after stderr had ended and was dropped (exit 1, no word of why).
   process.on('unhandledRejection', (reason) => {
     process.exitCode = 1
-    void Promise.all([import('./ui/index.js'), import('./util/index.js')]).then(
-      ([ui, { maskedLine }]) =>
-        ui.say(
-          'error',
-          maskedLine(
-            `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}\n`,
-          ),
-        ),
+    const ui = require('./ui/index.js') as typeof import('./ui/index.js')
+    const { maskedLine } = require('./util/index.js') as typeof import('./util/index.js')
+    ui.say(
+      'error',
+      maskedLine(
+        `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}\n`,
+      ),
     )
   })
   try {
@@ -57,7 +58,10 @@ async function main(): Promise<void> {
       () => require('./index.js') as Record<string, unknown>,
       () => require('./config.js') as Record<string, unknown>,
     )
-    const code = await run(argv)
+    // A refusal too: work a verb left running (a config bundle) finishes,
+    // never cut by the exit below with its temp dir left behind.
+    const { settleBeforeExit } = await import('./util/index.js')
+    const code = await run(argv).finally(settleBeforeExit)
     // Not `process.exit` here: Bun drops what a pipe has not yet taken
     // when it follows a large write (300 KB written, 64 KiB delivered;
     // `vx history --format json` was cut mid-string, 2026-09-15). The code
@@ -178,11 +182,17 @@ function withCauses(err: unknown): string {
 process.on('beforeExit', () => {
   if (settled) return
   settled = true
+  const util = require('./util/index.js') as typeof import('./util/index.js')
+  const hooks = util.unsettledHooks()
   ;(require('./ui/index.js') as typeof import('./ui/index.js')).say(
     'error',
-    'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)',
+    `vx: the run stopped before it finished: ${hooks.length > 0 ? hooks.join(', ') : 'something it awaited can never settle (a plugin hook?)'}`,
   )
   process.exitCode = 1
+  // Teardown runs on every exit (plugin.ts): the plugins' factories and
+  // setup ran, and what they opened is theirs to release. Its timers keep
+  // the loop up; the next drain finds `settled` and exits.
+  void util.settleStranded()
 })
 
 /** `process.cwd()`'s refusal of a directory removed under the process. */
