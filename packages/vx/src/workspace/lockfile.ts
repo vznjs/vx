@@ -336,17 +336,19 @@ export function lockEntries(bytes: Uint8Array | null): Record<string, unknown> |
     const lock = JSON.parse(new TextDecoder().decode(bytes)) as Pooled
     if (typeof lock?.projects !== 'object' || lock.projects === null) return null
     pooledIn(lock)
-    // A project's `project`-stage config is its entry too: a run reads it.
+    // A project's `project`-stage config and `discover`-stage record (its
+    // name, its edges) are its entry too: a run reads them.
     const staged = lock.projectStage?.configs ?? {}
-    const dirs = new Set([...Object.keys(lock.projects), ...Object.keys(staged)])
+    const found = lock.discoverStage?.projects ?? {}
+    const dirs = new Set([
+      ...Object.keys(lock.projects),
+      ...Object.keys(staged),
+      ...Object.keys(found),
+    ])
+    const at = (o: Record<string, unknown>, dir: string): unknown =>
+      Object.hasOwn(o, dir) ? o[dir] : null
     return Object.fromEntries(
-      [...dirs].map((dir) => [
-        dir,
-        [
-          Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : null,
-          Object.hasOwn(staged, dir) ? staged[dir] : null,
-        ],
-      ]),
+      [...dirs].map((dir) => [dir, [at(lock.projects, dir), at(staged, dir), at(found, dir)]]),
     )
   } catch {
     return null
@@ -369,6 +371,7 @@ type Pooled = {
   pool?: Pools
   projects: Record<string, LockedProject>
   projectStage?: ProjectStageLock
+  discoverStage?: DiscoverStageLock
 }
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)

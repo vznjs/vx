@@ -645,9 +645,12 @@ export async function affectedChanges(
       : undefined,
   )
   for (const name of claimedOwned.keys()) owned.add(name)
-  // A run reads each config from the lock, so an entry that moved moved
-  // its project's keys, though no config or import did (one evaluated
-  // under another env, a preset imported by package name).
+  // A run reads each config, name and edge from the lock, so an entry that
+  // moved moved its project's keys, though no config or import did (one
+  // evaluated under another env, a preset imported by package name, an
+  // edge a `discover` plugin added). The lock is the reason only when no
+  // file below names a closer one.
+  const lockMoved: string[] = []
   if (diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)) {
     // A side with no lock (or one that will not parse) ran nothing from
     // it: the paths of the configs say what changed, as before the lock.
@@ -662,6 +665,7 @@ export async function affectedChanges(
       if (same(lockKey(rootDir, p.dir))) continue
       owned.add(p.name)
       whole.add(p.name)
+      lockMoved.push(p.name)
     }
   }
 
@@ -694,6 +698,7 @@ export async function affectedChanges(
       whole.add(name)
     }
   }
+  for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
 
   // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
   // Resolved-config hashing folds those values into the key, so the same
