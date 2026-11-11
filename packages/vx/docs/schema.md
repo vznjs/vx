@@ -298,6 +298,14 @@ step independently (e.g. `codegen` then `build`), split into two
 tasks linked by `dependsOn`. If you don't need that, `&&` in shell is
 the right tool.
 
+**npm's `pre`/`post` scripts.** vx runs `command` as written: a
+`prebuild` or `postbuild` in package.json runs only when the command is
+`npm run build` (npm runs the hooks), and then that package.json is an
+input — list it in `inputs.files`, or an edited hook replays a stale hit.
+Better: put the steps in the command (`rimraf dist && tsc && node
+scripts/copy.js`), as `bunx @vzn/vx-migrate` does when it maps
+scripts.
+
 #### `retries` (optional)
 
 Maximum ADDITIONAL attempts after a failed attempt. `retries: 2` means

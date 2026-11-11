@@ -23,6 +23,7 @@ import {
   type AffectedFilter,
   affectedFilterFor,
   findCwdSelection,
+  NO_TASKS_DECLARED,
   pickTask,
   resolveFilters,
 } from './select.js'
@@ -653,6 +654,19 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       const shown = names.slice(0, TASKS_SHOWN)
       const more = names.length - shown.length
       const list = `${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+      // A workspace with no task yet is told how to declare one, as the
+      // picker tells it; the example line is for outside a workspace.
+      if (
+        here !== null &&
+        shown.length === 0 &&
+        typeof asked !== 'object' &&
+        // Only the cwd project's names were read: another project may have one.
+        (asked === undefined && here.inProject
+          ? ((await taskNamesHere(cwd, 'all'))?.names.length ?? 0)
+          : 0) === 0
+      ) {
+        return refuse('run', args, NO_TASKS_DECLARED, 'VX_E_USAGE')
+      }
       // Outside a project a bare name is refused without --all: the list
       // said "tasks here", and `vx run build` then said "not inside a project".
       const tasksHere =

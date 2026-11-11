@@ -205,7 +205,7 @@ If no task name is given:
   `not inside a project, the workspace's tasks with --all: build, test`
   (twelve, then `and N more`). Under `--all` it names
   `every project's tasks: …`; under `--filter` or `--affected`,
-  `the selected projects' tasks: …`, or why nothing was selected. Outside a workspace it reads `vx run <task>, e.g. vx run build`.
+  `the selected projects' tasks: …`, or why nothing was selected. Outside a workspace it reads `vx run <task>, e.g. vx run build`. A workspace with no task says how to declare one, as the picker does.
 - **Under `--dry=json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
@@ -2671,6 +2671,9 @@ $ vx init --dry
             vx.config.ts
             .vx/.gitignore
             .vx/.gitattributes
+  lock      .vx/projects.lock.json
+            .vx/dependencies.lock.json
+            vx.lock.json beside each vx.config
 
   next      declare a task in vx.config.ts, then vx lock && vx run <task>
 ```
@@ -2679,7 +2682,7 @@ $ vx init --dry
 
 | Option               | Meaning                                                                   |
 | -------------------- | ------------------------------------------------------------------------- |
-| `--dry`              | print the files; write nothing                                            |
+| `--dry`              | print the files, and the lock's; write nothing                            |
 | `--format json`      | with `--dry`, the plan as one document                                    |
 | `--force`            | replace a file already there                                              |
 | `--mjs`              | write `.mjs` files instead of `.ts`                                       |

@@ -12,6 +12,8 @@ import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { lockAfterMigration } from './lock.js'
+import { loadCliWorkspace } from './workspace-config.js'
+import { resolveSetting } from '../settings.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import {
   isCompiledBinary,
@@ -32,8 +34,11 @@ import {
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import {
+  DEPENDENCIES_LOCK_NAME,
   findWorkspaceRoot,
+  LOCKFILE_NAME,
   PROJECT_CONFIG_FILENAMES,
+  REVIEW_FILE,
   renderWorkspace,
   starterProject,
   WORKSPACE_CONFIG_FILENAMES,
@@ -479,6 +484,19 @@ function hasScripts(pkgRoot: string | null): boolean {
   }
 }
 
+/** Whether the lock after init writes review copies: a kept workspace file's setting, else the variable's or the default. */
+async function reviewFiles(root: string, kept: readonly string[]): Promise<boolean> {
+  let workspaceConfig: unknown
+  if (kept.some((f) => (WORKSPACE_CONFIG_FILENAMES as readonly string[]).includes(f))) {
+    try {
+      ;({ workspaceConfig } = await loadCliWorkspace(root, () => {}))
+    } catch {
+      // A file that does not load is the lock's refusal, not the plan's.
+    }
+  }
+  return resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
+}
+
 /**
  * No Turbo or Nx config: the installs, then `.vx/workspace.ts` declaring
  * no plugin and a root `vx.config.ts` with no task, then the lock.
@@ -564,6 +582,12 @@ async function starter(
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (replaced.length > 0) rows.push(['replaced', ...replaced])
   if (args.dry) {
+    rows.push([
+      'lock',
+      LOCKFILE_NAME,
+      DEPENDENCIES_LOCK_NAME,
+      ...((await reviewFiles(root, kept)) ? [`${REVIEW_FILE} beside each vx.config`] : []),
+    ])
     for (const f of files) ui.print('out', ui.excerpt(f.path, f.contents))
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0

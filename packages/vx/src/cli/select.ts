@@ -694,6 +694,10 @@ interface PickedTask {
   description?: string
 }
 
+/** What a workspace with no task yet says, picker or not. */
+export const NO_TASKS_DECLARED =
+  'no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`'
+
 /**
  * The task the user picks from a numbered menu; null when nothing was
  * picked (said on stderr), `'interrupted'` for a Ctrl-C at the prompt.
@@ -735,11 +739,7 @@ export async function pickTask(
     return null
   }
   if (entries.length === 0) {
-    sayNotice(
-      'error',
-      'vx run',
-      'no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`',
-    )
+    sayNotice('error', 'vx run', NO_TASKS_DECLARED)
     return null
   }
   // The menu is a conversation with the terminal, not the run's output: on

@@ -206,6 +206,22 @@ describe('a task typed as a verb', () => {
     }
   })
 
+  // A workspace with no task yet said `vx run <task>, e.g. vx run build`,
+  // the outside-a-workspace line: the picker's says how to declare one.
+  it('`vx run` with no task and no terminal in a workspace with no task says how to declare one', async () => {
+    const empty = await makeWorkspace({ prefix: 'vx-task-verb-empty-' })
+    try {
+      const dir = await addProject(empty, 'a', `export default { tasks: {} }`)
+      const said = noticed(
+        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
+      )
+      for (const cwd of [empty, dir])
+        for (const args of [['run'], ['run', '--all']]) expect(vx(cwd, ...args)).toEqual([1, said])
+    } finally {
+      await rm(empty, { recursive: true, force: true })
+    }
+  })
+
   // `--all` and `--filter` scope the list as they scope the picker: it named
   // the cwd's tasks, and "not inside a project … with --all" beside --all.
   it('`vx run` with no task and no terminal names the tasks of the asked scope', async () => {
