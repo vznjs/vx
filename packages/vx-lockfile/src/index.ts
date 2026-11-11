@@ -572,6 +572,15 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
             `${file} is out of date: it does not list ${listed(missing)} — run \`${manager.name} install\``,
           )
         }
+        // The other way round: a workspace deleted while another still
+        // depends on it fails the install, which leaves the lockfile as it
+        // was, and its edge went with its manifest without a word.
+        const gone = await departed(ctx.workspaceRoot, importers, manifest)
+        if (gone.length > 0) {
+          throw new UserError(
+            `${file} is out of date: ${listed(gone)} — remove the dependency and run \`${manager.name} install\``,
+          )
+        }
       }
       const rootIsProject = ctx.projects.some((p) => importerOf(ctx.workspaceRoot, p.dir) === '.')
       return await discovered(
@@ -929,6 +938,40 @@ async function staleness(
     }
   }
   return [...new Set(missing)]
+}
+
+/**
+ * Each importer's dependency, as its manifest still declares it, that the
+ * lockfile resolves to an importer whose manifest is gone, unless another
+ * workspace on disk carries the name (a moved one, which `staleness` names).
+ */
+async function departed(
+  root: string,
+  importers: ReadonlyMap<string, LockfileImporter>,
+  manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+): Promise<string[]> {
+  const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
+  const names = new Set<string>()
+  for (const d of importers.keys()) {
+    const n = (await manifest(dirOf(d)))?.['name']
+    if (typeof n === 'string') names.add(n)
+  }
+  const gone: string[] = []
+  for (const [importer, { deps }] of importers) {
+    const pkg = await manifest(dirOf(importer))
+    if (pkg === null) continue
+    for (const [name, target] of Object.entries(deps)) {
+      if (names.has(name) || (await manifest(dirOf(target))) !== null) continue
+      const declared = ['dependencies', 'devDependencies', 'optionalDependencies'].some((field) => {
+        const deps = pkg[field]
+        return deps !== null && typeof deps === 'object' && Object.hasOwn(deps, name)
+      })
+      if (declared) {
+        gone.push(`${importer} depends on the workspace ${name} (${target}), which is not on disk`)
+      }
+    }
+  }
+  return gone
 }
 
 /**
