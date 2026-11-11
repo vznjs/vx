@@ -1,4 +1,4 @@
-// A cycle is named by the first path that changed. An editor or `sed -i`
+// A cycle is named by the least path that changed. An editor or `sed -i`
 // that saves through a temporary file fires that file's event first, so
 // `changed app sedzCKbWc` named a file already renamed
 // away, never the config the user edited. A path still there names the
@@ -56,4 +56,29 @@ it('writes a control byte of the path naming the cycle as \\xNN', async () => {
   const judge = judgeIn(dir)
   judge.pending.set(path.join(dir, name), `app ${name}`)
   expect(judge.judge()).toBe('app x\\x1b]0;t\\x07\\x0dy.txt')
+})
+
+// macOS FSEvents does not keep a batch's order: `b` then `a` written
+// arrived as `a` first, and the same edits read `changed app src/b.txt`
+// on Linux and `src/a.txt` on a Mac (CI, 2026-11-11). The path's own
+// order names the cycle, whatever order the events came in.
+it('names the cycle by the same path whatever order the events came in', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-label-'))
+  for (const name of ['a.txt', 'b.txt']) await writeFile(path.join(dir, name), 'x\n')
+  for (const order of [
+    ['b.txt', 'a.txt'],
+    ['a.txt', 'b.txt'],
+  ]) {
+    const judge = judgeIn(dir)
+    for (const name of order) judge.pending.set(path.join(dir, name), `app ${name}`)
+    expect(judge.judge()).toBe('app a.txt (+1 more)')
+  }
+  for (const order of [
+    ['gone-b.txt', 'gone-a.txt'],
+    ['gone-a.txt', 'gone-b.txt'],
+  ]) {
+    const judge = judgeIn(dir)
+    for (const name of order) judge.pending.set(path.join(dir, name), `app ${name}`)
+    expect(judge.judge()).toBe('app gone-a.txt (+1 more)')
+  }
 })

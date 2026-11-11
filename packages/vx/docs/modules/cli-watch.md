@@ -62,7 +62,7 @@ export class ChangeJudge {
   seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
   sawEvent(abs: string): void // an event: a write during `cycle` no command of it (nor a held server) may have made is a change next time, whatever it settles to
   unseen(moved: readonly (string | null)[]): void // inputs a run read in a state no judgement saw (TaskOutcome.driftedInput): each is a change next time; null marks every pending path
-  judge(): string | undefined // the first changed path's label, or none
+  judge(): string | undefined // the least changed path's label (a file before a directory, a live path before a gone one), or none
 }
 
 // watch-cycle.ts — one cycle's run, stoppable while it waits on readiness alone:

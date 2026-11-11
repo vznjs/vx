@@ -117,7 +117,7 @@ describe('vx watch loop (e2e)', () => {
           '0 local          app#build',
         'watching 1 project · 1 task',
         '',
-        'changed app src/b.txt (+1 more)',
+        'changed app src/a.txt (+1 more)',
         '            success miss D Nms C M' +
           ' '.repeat(6) +
           '6B' +
