@@ -1395,6 +1395,7 @@ export interface LockfileClaimOptions {
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly extraFiles?: (text: string) => readonly string[]
   readonly version: number
+  readonly identity?: string
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
   readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>

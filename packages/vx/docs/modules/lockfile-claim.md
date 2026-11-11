@@ -22,6 +22,7 @@ export interface LockfileClaimOptions {
   // root-relative files the lockfile names but does not pin (bun.lock's patches)
   readonly extraFiles?: (text: string) => readonly string[]
   readonly version: number // the memo's identity; bump when `digest` folds differently
+  readonly identity?: string // stands for the functions' text in the claimant; changes when they do
   readonly scope?: 'project' | 'workspace'
   readonly part?: string // the key part's name as `vx why` shows it under the plugin; default 'deps'
   // importer dir → its links to other importers, memoised beside the digests
@@ -88,9 +89,15 @@ All are on the `@vzn/vx` façade.
 - **Once per content.** The digests, and `importers`' and `recorded`'s
   answers beside them, are memoised in cache.db (`lockfile_memos`, one
   row per file and claimant, `cache/lockfile-memo.ts`) by `version`, the
-  claimant (its `part`, its `scope` and its functions' source: another
-  claimant of the file at the same `version` does not read it, nor a
-  workspace-scope memo a project-scope one) and the file's xxh3, so a
+  claimant (its `part`, its `scope` and its functions' source, or the
+  `identity` it gives for them: another claimant of the file at the same
+  `version` does not read it, nor a workspace-scope memo a project-scope
+  one). A function's source is how its loader printed it, and one plugin
+  prints two ways: from source under the compiled binary (`throw
+Error(`) and from the workspace config's bytecode bundle (`throw new
+Error(`). Each switch missed the memo and parsed the lockfile again,
+  ~25 ms of solid's no-op after a restore (2026-11-11); `@vzn/vx-lockfile`
+  gives `identity`, a hash of its own source files and the file's xxh3, so a
   warm run pays one read, one hash and one row read — never a parse.
   Core owns the row; a plugin passes parsers. Its readers (a `discover`
   hook, `--affected`'s selection) run before a run opens the index, so

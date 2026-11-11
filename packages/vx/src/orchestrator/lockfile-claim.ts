@@ -61,6 +61,17 @@ export interface LockfileClaimOptions {
   /** Folded into the memo's identity: bump when `digest` folds differently. */
   readonly version: number
   /**
+   * Stands for the functions in the memo's identity in place of their
+   * text, which is not stable: the same plugin loaded from source and
+   * from the workspace config's bytecode bundle prints differently (the
+   * compiled binary's loader writes `throw Error(`, the bundle `throw new
+   * Error(`), so each switch missed the memo and parsed the lockfile again
+   * (~25 ms on solid's pnpm-lock.yaml). Give a value that changes
+   * whenever the functions do, such as a hash of their source files; two
+   * claimants of one file must not share it.
+   */
+  readonly identity?: string
+  /**
    * `'project'` (default): each task folds its own project's digest.
    * `'workspace'`: the whole file's hash into every task — the coarse key.
    */
@@ -296,16 +307,26 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
   // `version` is one claimant's counter, and another claimant of the file
   // at the same number read this one's memo: one that named no extra file
   // left the other's patch edits out of its key (X-130). The functions'
-  // source stands for the claimant; a rebuild that changes it is a miss.
+  // source stands for the claimant, or the `identity` the plugin gives for
+  // it; a rebuild that changes it is a miss.
   // The scope too: a workspace-scope memo holds no digests.
   const claimant = xxh3hex(
     [
       part,
       scope,
-      String(digest),
-      String(options.extraFiles ?? ''),
-      String(options.importers ?? ''),
-      String(options.recorded ?? ''),
+      ...(options.identity !== undefined
+        ? [
+            `identity:${options.identity}`,
+            options.extraFiles === undefined ? '' : 'extraFiles',
+            options.importers === undefined ? '' : 'importers',
+            options.recorded === undefined ? '' : 'recorded',
+          ]
+        : [
+            String(digest),
+            String(options.extraFiles ?? ''),
+            String(options.importers ?? ''),
+            String(options.recorded ?? ''),
+          ]),
     ].join('\0'),
   )
   if (scope !== 'project' && scope !== 'workspace') {
