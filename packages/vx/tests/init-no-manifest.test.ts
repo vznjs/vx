@@ -235,6 +235,39 @@ describe('vx init in a Turbo or Nx repo hands over to @vzn/vx-migrate', () => {
       argv: ['--keep'],
     })
   })
+
+  // vx-migrate maps an Nx workspace from an exported graph or a Lerna repo
+  // that runs through Nx as it does from nx.json; init wrote its starter
+  // over both and named the scripts mapper instead (2026-11-11).
+  it.each([
+    ['an exported Nx graph', '.nx/workspace-data/project-graph.json', {}],
+    [
+      'Lerna on Nx',
+      'lerna.json',
+      { devDependencies: { lerna: '^8.0.0' }, scripts: { build: 'lerna run build' } },
+    ],
+  ])('from %s', async (_, file, manifest) => {
+    const root = await jsRepo('package.json')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['packages/*'], ...manifest }),
+    )
+    await mkdir(path.dirname(path.join(root, file)), { recursive: true })
+    await writeFile(path.join(root, file), '{}\n')
+    const r = await vx(root, ['init', '--dry'])
+    expect([r.code, r.err, existsSync(path.join(root, 'asked'))]).toEqual([0, '', true])
+  })
+
+  it('CONTROL: a lerna.json no script runs through Lerna stays the starter', async () => {
+    const root = await jsRepo('package.json')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['packages/*'], devDependencies: { lerna: '^8' } }),
+    )
+    await writeFile(path.join(root, 'lerna.json'), '{}\n')
+    const r = await vx(root, ['init', '--dry'])
+    expect([r.code, r.err, existsSync(path.join(root, 'asked'))]).toEqual([0, '', false])
+  })
 })
 
 describe('vx init in a repo with a package.json and no Turbo or Nx', () => {

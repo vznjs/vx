@@ -102,4 +102,55 @@ describe('vx-migrate on package.json scripts', () => {
     expect(r.out).not.toContain('kept')
     expect(await readFile(path.join(root, 'vx.config.ts'), 'utf8')).toContain("command: 'oxlint .'")
   })
+
+  // A lone package with no lockfile, `--no-install`: the workspace file
+  // declares no lockfile plugin, so `^build` had no edges to follow and the
+  // `vx lock` the report named refused it (2026-11-11).
+  it('a lone package with no lockfile plugin gets no ^ edge, and the next line runs', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-solo-'))
+    roots.push(root)
+    await writeFile(
+      path.join(root, 'package.json'),
+      '{"name":"solo","scripts":{"build":"echo built","test":"echo tested"}}\n',
+    )
+    const env = {
+      ...process.env,
+      HOME: root,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+    }
+    expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
+    const r = await migrate(root, ['--no-install'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect(r.out).toContain('vx lock, then vx run build --all')
+    const vx = (args: string[]) =>
+      Bun.spawnSync(
+        [process.execPath, path.resolve(import.meta.dir, '../../vx/src/bin.ts'), ...args],
+        {
+          cwd: root,
+          env,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+    for (const args of [['lock'], ['run', 'build', '--all']]) {
+      const p = vx(args)
+      expect([args, p.exitCode, p.stderr.toString()]).toEqual([args, 0, ''])
+    }
+  })
+
+  it('a workspace with no lockfile plugin is told what gives `^build` its edges', async () => {
+    const root = await bunRepo()
+    await rm(path.join(root, 'bun.lock'))
+    await mkdir(path.join(root, 'packages', 'b'), { recursive: true })
+    await writeFile(
+      path.join(root, 'packages', 'b', 'package.json'),
+      '{"name":"b","scripts":{"build":"tsc"}}\n',
+    )
+    const r = await migrate(root, ['--no-install'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect(r.out.replace(/\s+/g, ' ')).toContain(
+      '`^build` has no project edges: install with the package manager',
+    )
+  })
 })
