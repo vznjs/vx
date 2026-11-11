@@ -2199,6 +2199,13 @@ Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in
 `exec.env.passThrough` (L-42).
 
+For the same reason it warns of a config that evaluated to this
+checkout's absolute path (`` `bun ${import.meta.dir}/gen.ts` ``):
+another checkout's `vx lock --check` fails and its cache keys differ
+(`packages/a: its config holds this checkout's path (…)`). Use a path
+relative to the project (the command's cwd) or `$VX_RUN_WORKSPACE` in
+the command.
+
 The review copies are written before the lock: one that cannot be
 written (a directory in its place, a read-only file) is named and the
 lock is left as it was. One `vx lock` writes at a time on a workspace: a

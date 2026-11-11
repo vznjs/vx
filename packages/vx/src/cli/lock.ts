@@ -566,6 +566,16 @@ async function writeLock(
   // Named here too: a lock that wrote clean failed the `--check` after it.
   if (check.reviewFiles)
     for (const file of await strayCopies(check)) sayNotice('warn', 'vx lock', strayLine(root, file))
+  // `import.meta.dir` in a command locks this checkout's path: another
+  // checkout's `--check` fails and its keys differ.
+  const at = new RegExp(`${RegExp.escape(root)}(?![^/\\s"'])`)
+  for (const [name, config] of Object.entries(projects))
+    if (at.test(JSON.stringify(config)))
+      sayNotice(
+        'warn',
+        'vx lock',
+        `${name}: its config holds this checkout's path (${root}), so another checkout locks it otherwise and keys it apart — use a path relative to the project, or $VX_RUN_WORKSPACE in the command`,
+      )
   return 0
 }
 

@@ -88,14 +88,20 @@ each), and any object that is not a
 plain object or an array (a `Date`, `Map`, `Set`, `RegExp` or class
 instance), and nesting deeper than 256 levels. An
 `undefined` property is fine: JSON drops it and the schema reads it as
-absent, which is what a conditional spread
-(`...(ci ? { retries: 2 } : {})`) relies on. The workspace config is not
+absent, which is what a preset's optional field
+(`description: opts.description`) relies on. A config is evaluated once,
+by `vx lock`, so a branch on `process.env` (`CI`) is fixed by whoever
+locked it, and `vx lock --check` under the other value fails. The workspace config is not
 held to this: its plugins are objects of functions.
 
 `vx lock` evaluates a project config with the workspace root as
 `process.cwd()` and `PWD`, from whichever directory it runs, so the lock does not
 depend on where you ran it; `import.meta.dir` is the config's own
-directory. What it prints goes to stderr, a child it spawns
+directory, an absolute path: in a command it locks this checkout's path,
+so another checkout fails `vx lock --check` and keys apart (`vx lock`
+warns). A command runs in its project's directory: name a script by a
+path relative to it, or `$VX_RUN_WORKSPACE/scripts/gen.ts` from the
+workspace root. What it prints goes to stderr, a child it spawns
 included: a verb's stdout is its output.
 
 `tasks` is a `Record<string, TaskConfig>`. Task names are strings

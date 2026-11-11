@@ -368,6 +368,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock',
     'lock-bracket-literal',
     'lock-check-broken',
+    'lock-checkout-path',
     'lock-config-cwd',
     'lock-discover-stage',
     'lock-graph-rules',
