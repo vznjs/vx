@@ -223,6 +223,8 @@ export function setFsClockLag(lagMs: number): void
 // it cannot be written. The coarse kernel tick under the measured lag puts a
 // write up to a tick before a `Date.now()` read ahead of it; `vx watch`'s
 // arm and cycle start and the re-check's command start read it instead.
+// The file's times are read before its first stamp, so Linux 6.13+ stamps
+// it from the fine clock: a write made before the call reads as before it.
 export function fsClockNow(dir: string): number
 // What a stamp's own precision may hide: 1000 ms for a whole-second stamp,
 // 2000 for an even one (FAT), else 0.
