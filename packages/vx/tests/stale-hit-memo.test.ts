@@ -587,4 +587,51 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a file a hit restores over the one the run learned keys its reader on the restored bytes',
+    async () => {
+      // A restore marks the paths it wrote, and only their identities are
+      // dropped. Here `gen/v.ts` stands as v2 when the run learns it, and
+      // codegen's hit puts v1 back: consume must key on v1 (run 1's
+      // entry), not on the v2 it learned (run 2's).
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await write(path.join(root, 'src', 'v.txt'), 'v1')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             codegen: {
+               exec: { command: 'mkdir -p gen && cp src/v.txt gen/v.ts' },
+               inputs: { files: ['src/**'] },
+               outputs: { files: [], workspaceFiles: ['gen/**'] },
+               cache: true,
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/v.ts > out/all.txt' },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
+               outputs: { files: ['out/**'] },
+               cache: true,
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitignore'), 'out/\ngen/\n.vx/cache/\n')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      vx(root, 'run', 'consume')
+      await write(path.join(root, 'src', 'v.txt'), 'v2')
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('v2')
+      await write(path.join(root, 'src', 'v.txt'), 'v1')
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'gen/v.ts'), 'utf8')).toBe('v1')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('v1')
+    },
+    TIMEOUT,
+  )
 })

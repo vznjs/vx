@@ -113,7 +113,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     heads?: readonly string[], // its entries' fixed heads: only paths at, under or above one are asked, found in a sorted copy when git listed untracked paths last
   ): string | undefined // filesDigest of the workspace paths a workspaceFiles declaration may take in
   statOf(abs: string): Stats | undefined // a path's lstat, once until a partition moves
-  identityOf(abs: string): string | undefined // a file's key identity (`hashFile`'s answer), once until a partition moves
+  identityOf(abs: string): string | undefined // a file's key identity (`hashFile`'s answer), once until the run marks a write to it
   get factsEpoch(): number // moves with every write the run marks
   learnIdentities(ids: ReadonlyMap<string, string>, epoch: number): void // kept only if no write since `epoch`
   noteFilesDigest(
@@ -252,9 +252,11 @@ A file the index vouches no OID for (untracked, edited, or under a
 `text`/`eol`/`filter` attribute, which drops every OID) is hashed from
 the worktree. Its identity is held for the run (`identityOf`), so a
 file several tasks read is stat'ed and hashed once, not once per task,
-and the listing's existence check reads `statOf` too. Both are dropped
-with the stats on any write the run marks, and an identity hashed
-before such a write is not kept after it (`factsEpoch`).
+and the listing's existence check reads `statOf` too. A write the run
+marks path by path (a save's or a restore's outputs) drops those paths'
+identities, an undeclared write drops them all, a listing again drops
+none, and an identity hashed before any write is not kept after it
+(`factsEpoch`). The stats go on every one.
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
 are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root
