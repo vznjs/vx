@@ -12,5 +12,6 @@ src/pnpm-settings.ts
 src/pnpm.ts
 src/posix.ts
 src/syml.ts
+src/yarn-builtin.ts
 src/yarn-settings.ts
 src/yarn.ts
