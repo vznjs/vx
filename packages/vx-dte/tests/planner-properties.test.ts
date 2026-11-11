@@ -70,7 +70,10 @@ function reference(tasks: readonly PlanTask[], workers: readonly PlanWorker[], h
     const to = assign(asks, joined, later, how.place)
     for (const [id, best] of to) {
       const t = byId.get(id)!
-      const end = now + (t.ms ?? UNKNOWN_MS)
+      // On fewer cores than it asks, at their share of its pace (`msOn`).
+      const end =
+        now +
+        (t.ms ?? UNKNOWN_MS) * (Number.isFinite(t.cores) ? Math.max(1, t.cores / best.cores) : 1)
       ends.push([end, best, Math.min(t.cores, best.cores), Math.min(t.memory, best.memory), id])
       last = Math.max(last, end)
     }

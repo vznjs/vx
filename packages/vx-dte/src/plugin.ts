@@ -712,6 +712,7 @@ export function dte(options: DteOptions = {}) {
       let onChange = (_now?: boolean): void => {}
       // Tasks about to be ready (`OrchestratorOptions.soon`); set once the run's work is known.
       let soonOf = (_ends: ReadonlyMap<string, number>): (Soon & { id: string })[] => []
+      let nextOf = (_id: string, _ends: ReadonlyMap<string, number>): Soon[] => []
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
           // Off this loop: the run's own sync work held its acks, and every
@@ -735,6 +736,7 @@ export function dte(options: DteOptions = {}) {
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
         ms: (id) => peaks.get(id)?.p50DurationMs,
         soon: (ends) => soonOf(ends),
+        next: (id, ends) => nextOf(id, ends),
         how,
         home,
         joinedPlace,
@@ -884,6 +886,8 @@ export function dte(options: DteOptions = {}) {
         })
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)
+        if (p.drain.length > 0) o.drain(p.drain)
+        if (p.placed !== undefined) o.place(p.placed)
         if ((p.start.length > 0 && !final) || p.release.length > 0)
           o.planned({
             start: final ? [] : p.start.map((s) => s.name),
@@ -1006,7 +1010,13 @@ export function dte(options: DteOptions = {}) {
       // Each task's dependants, by the graph: made once it is.
       let after: Map<string, string[]> | undefined
       let afterOf: ReadonlyMap<string, TaskNode> | undefined
-      soonOf = (ends) => {
+      // The tasks about to be ready once each of `from` ends, the rest of
+      // their dependencies ending as `ends` says, each `from` by `at`.
+      const soonAfter = (
+        from: Iterable<string>,
+        ends: ReadonlyMap<string, number>,
+        at: (id: string) => number,
+      ): (Soon & { id: string })[] => {
         const graph = nodes
         if (graph === undefined || pending === undefined) return []
         if (afterOf !== graph) {
@@ -1022,32 +1032,34 @@ export function dte(options: DteOptions = {}) {
         const rest = pending
         const out: (Soon & { id: string })[] = []
         const seen = new Set<string>()
-        for (const id of ends.keys())
+        for (const id of from)
           for (const d of after!.get(id) ?? []) {
             if (seen.has(d) || !rest.has(d) || !(likely.has(d) || sure.has(d))) continue
             seen.add(d)
-            let at = 0
+            let when = 0
             let all = true
             for (const x of graph.get(d)!.deps) {
               if (!rest.has(x)) continue
-              const e = ends.get(x)
+              const e = x === id ? at(x) : ends.get(x)
               if (e === undefined) {
                 all = false
                 break
               }
-              at = Math.max(at, e)
+              when = Math.max(when, e)
             }
             if (!all) continue
             out.push({
               id: d,
               need: o.booking(need(d)),
-              at,
+              at: when,
               rank: (tails ??= tailsMs(graph, (x) => peaks.get(x)?.p50DurationMs))(d),
               ms: peaks.get(d)?.p50DurationMs ?? UNKNOWN_MS,
             })
           }
         return out.sort((a, b) => b.rank - a.rank)
       }
+      soonOf = (ends) => soonAfter(ends.keys(), ends, (x) => ends.get(x)!)
+      nextOf = (id, ends) => soonAfter([id], ends, (x) => peaks.get(x)?.p50DurationMs ?? UNKNOWN_MS)
       // Core asks the footer and the summary after teardown: the last run's graph.
       const depsOf = (id: string): readonly string[] => (nodes ?? ran)?.get(id)?.deps ?? []
       return {

@@ -73,17 +73,17 @@ function trap(r: () => number, steps: number, fillers: number, cores: number): T
   ]
 }
 
-// Over ten graphs a family, each ends past its chain and one warm-up by
-// 1% on average and 8% at most, and its worker time on its floor (all
-// its work on cores, one warm-up) is at most `cost`. Wall time first,
-// then worker time (2026-11-10): the plan of fewest workers within 5%
-// ended 0.6 to 2% late on average, 10% at most, for 1.30 to 1.57.
+// Over ten graphs a family, each ends by its chain and one warm-up, not a
+// second later (2026-11-11: "The maximum time you are allowed is the
+// critical path plus the startup. Not a second longer"), and its worker
+// time on its floor (all its work on cores, one warm-up) is at most
+// `cost`. Wall time first, then worker time.
 const families: [name: string, cores: number, make: (r: () => number) => Task[], cost: number][] = [
-  ['random', 4, (r) => random(r, 40, 0.05, 4), 1.55],
-  ['dense', 4, (r) => random(r, 80, 0.15, 4), 1.7],
-  ['layered', 4, (r) => layered(r, 6, 12, 4), 1.7],
-  ['wide', 8, (r) => layered(r, 3, 40, 8), 1.65],
-  ['trap', 4, (r) => trap(r, 10, 30, 4), 1.55],
+  ['random', 4, (r) => random(r, 40, 0.05, 4), 1.4],
+  ['dense', 4, (r) => random(r, 80, 0.15, 4), 1.67],
+  ['layered', 4, (r) => layered(r, 6, 12, 4), 1.55],
+  ['wide', 8, (r) => layered(r, 3, 40, 8), 1.55],
+  ['trap', 4, (r) => trap(r, 10, 30, 4), 1.35],
 ]
 
 /** A family's graph `seed`, as run: how late past its chain and a warm-up, its worker time and floor. */
@@ -111,6 +111,7 @@ function run(cores: number, make: (r: () => number) => Task[], seed: number, unk
   })
   return {
     late: (r.endMs - chain - WARM_UP_MS) / chain,
+    lateMs: r.endMs - chain - WARM_UP_MS,
     spent: r.workers.reduce((a, w) => a + (w.leftAt ?? w.cancelledAt ?? r.endMs) - w.spawnedAt, 0),
     floor: tasks.reduce((a, t) => a + (t.ms * t.cores) / cores, 0) + WARM_UP_MS,
   }
@@ -120,15 +121,12 @@ for (const [name, cores, make, cost] of families)
   it(`${name} graphs end at their chain on little worker time`, () => {
     let spent = 0
     let floor = 0
-    let late = 0
     for (let seed = 1; seed <= 10; seed++) {
       const r = run(cores, make, seed)
-      expect(r.late).toBeLessThanOrEqual(0.08)
-      late += r.late / 10
+      expect({ seed, lateMs: Math.max(0, r.lateMs) }).toEqual({ seed, lateMs: 0 })
       spent += r.spent
       floor += r.floor
     }
-    expect(late).toBeLessThanOrEqual(0.01)
     expect(spent / floor).toBeLessThanOrEqual(cost)
   })
 
@@ -138,10 +136,11 @@ for (const [name, cores, make, cost] of families)
 // average (2026-11-10). A guessed task books what it guesses and slows
 // what shares its worker, so one graph moves a family's average: wide
 // seed 9 went from 12% to 18% with ready holds, while 30 more seeds
-// went from 9.9% to 9.5%.
+// went from 9.9% to 9.5%. A big worker's last work moved to a small one
+// and the plan's own placing followed: 2.4 to 5.7% (2026-11-11).
 for (const [name, cores, make] of families)
-  it(`${name} graphs a third unmeasured end within 7% of their chain`, () => {
+  it(`${name} graphs a third unmeasured end within 6% of their chain`, () => {
     let late = 0
     for (let seed = 1; seed <= 10; seed++) late += run(cores, make, seed, 0.3).late / 10
-    expect(late).toBeLessThanOrEqual(0.07)
+    expect(late).toBeLessThanOrEqual(0.06)
   })

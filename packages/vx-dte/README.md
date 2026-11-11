@@ -504,6 +504,8 @@ use your own instead.
   is not passed over again and again. Any ready task with history that
   fits no worker now keeps its room where it first frees: a task of lower
   rank goes there only beside it, and one with no history still goes.
+  A task given keeps room for the tasks it makes ready before the rest of
+  the pass takes it, so a chain's next step never waits on fillers.
 - A task naming `exec.platforms` runs only on a worker of the platform
   core placed it on: this machine's when a size has it, else the first of
   the task's a size has. A worker reports its platform when it joins: a
@@ -525,8 +527,9 @@ use your own instead.
 - Tasks waiting for room go out longest tail first: a task's recorded
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
-- A task goes to the worker that holds most of its dependencies' outputs,
-  so a chain stays on one machine; then to the one with fewest cores
+- A task goes first to the worker the last plan gave it, where it fits
+  now, while every task left has history; then to the worker that holds
+  most of its dependencies' outputs, so a chain stays on one machine; then to the one with fewest cores
   free that it fits, so workers fill before the next takes work and the
   ones the rest no longer needs fall idle and leave.
 - A sandboxed task runs on a worker inside the worker's own sandbox, with
@@ -971,7 +974,16 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     its history counts as running as long again.
     It plays only two warm-ups and the longest task ahead; past that, the
     rest ends no sooner than its longest chain, nor than its work spread
-    on the cores it has, and the next plan, a warm-up on, sees further.
+    on the cores it has, nor than a ready task with no room in the window
+    can end from the window's end, and the next plan, a warm-up on, sees
+    further. A task on fewer cores than it asks is played at their share
+    of its pace. A worker started in place of one let go is asked as its
+    work nears, as any later start is.
+    A big worker whose last work fits a smaller size stops taking tasks
+    once its big work ends: the rest goes to the smallest size it fits,
+    started to join then, when that holds less CPU and the run ends no
+    later. The big one leaves once its running tasks end. While a task
+    with no history is left, this happens only for the run's last work.
     The plan may end 5% (5 s at least) past the best; that margin is
     spent once: later plans keep its deadline until new work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when
