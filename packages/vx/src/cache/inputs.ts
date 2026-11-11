@@ -1424,6 +1424,8 @@ export async function cleanOutputs(args: {
    * missed again.
    */
   beforeRun?: boolean
+  /** Filled with the committed files it found and left (absolute). */
+  kept?: string[]
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.projectDir,
@@ -1442,7 +1444,7 @@ export async function cleanOutputs(args: {
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
   const removed = await removeAll(
-    [...matched, ...tree.special].filter((f) => !committed(f)),
+    [...matched, ...tree.special].filter((f) => !keptCommitted(f, committed, args.kept)),
     args.projectDir,
     args.beforeRun,
   )
@@ -2036,6 +2038,8 @@ export async function cleanWorkspaceOutputs(args: {
   resolved?: readonly string[] | undefined
   /** As `cleanOutputs`'s. */
   beforeRun?: boolean
+  /** As `cleanOutputs`'s. */
+  kept?: string[]
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.workspaceRoot,
@@ -2050,7 +2054,7 @@ export async function cleanWorkspaceOutputs(args: {
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(
-      [...matched, ...tree.special].filter((f) => !committed(f)),
+      [...matched, ...tree.special].filter((f) => !keptCommitted(f, committed, args.kept)),
       args.workspaceRoot,
       args.beforeRun,
     ),
@@ -2060,6 +2064,16 @@ export async function cleanWorkspaceOutputs(args: {
     args.beforeRun,
   )
   return matched.map((f) => relPosix(args.workspaceRoot, f))
+}
+
+function keptCommitted(
+  abs: string,
+  committed: (abs: string) => boolean,
+  kept: string[] | undefined,
+): boolean {
+  if (!committed(abs)) return false
+  kept?.push(abs)
+  return true
 }
 
 function realOrNull(p: string): string | null {

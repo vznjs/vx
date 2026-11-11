@@ -248,6 +248,50 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  // No clean deletes a committed file (2026-10-14), so a hit cannot replay
+  // a run that removed one: the restore left it, and the tree a hit left
+  // (a fresh CI checkout's) held a file the run took away, restored on
+  // every run after. Such a run saves nothing, as X-32 has it.
+  for (const shape of ['files', 'workspaceFiles'] as const)
+    it(
+      `a run that removes a committed file under its outputs saves nothing (${shape})`,
+      async () => {
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        const outputs =
+          shape === 'files'
+            ? `{ files: ['dist/**'] }`
+            : `{ files: [], workspaceFiles: ['dist/**'] }`
+        await write(
+          path.join(root, 'vx.config.mjs'),
+          `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && rm -f dist/tracked.txt && cat src/a.txt > dist/a' },
+               inputs: { files: ['src/**'] }, outputs: ${outputs}, cache: true,
+             },
+           },
+         }`,
+        )
+        await write(path.join(root, 'src/a.txt'), 'a')
+        await write(path.join(root, 'dist/tracked.txt'), 'T')
+        await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/a\n')
+        git(root, 'init', '-q')
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
+
+        await writeLocalWorkspace(root)
+        vx(root, 'run', 'build')
+        git(root, 'checkout', '--', 'dist/tracked.txt')
+        expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+        expect(await readdir(path.join(root, 'dist'))).toEqual(['a'])
+        // With the file gone the key moves, and that run saves as usual.
+        expect(vx(root, 'run', 'build')).toContain('local 1↑')
+        expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      },
+      TIMEOUT,
+    )
+
   // No clean deletes a committed file, so attempt 1's `HALF` stayed for
   // attempt 2 to pass beside, the pass was saved under the tree's key, and
   // a hit after `git checkout` wrote `HALF` over the committed file.
