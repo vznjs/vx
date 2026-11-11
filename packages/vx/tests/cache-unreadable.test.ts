@@ -15,6 +15,7 @@ import {
   rmSync,
   writeFileSync,
   writeSync,
+  realpathSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -249,7 +250,8 @@ describe('a history page SQLite cannot read, read by a verb', () => {
     return { code: p.exitCode, err: p.stderr.toString() }
   }
   beforeAll(async () => {
-    root = await makeWorkspace({ prefix: 'vx-unreadable-history-' })
+    // realpath: macOS's tmpdir is a /private link and vx prints the real path.
+    root = realpathSync(await makeWorkspace({ prefix: 'vx-unreadable-history-' }))
     await addProject(
       root,
       'a',
