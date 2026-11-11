@@ -992,6 +992,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'frame-secret-mask',
     'framed-output',
     'free-port',
+    'fs-clock-now',
     'gates',
     'git-env',
     'git-ignorecase',
