@@ -10,6 +10,8 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { historyFiles, indexDb, Cache, HistoryStream, type RunRecord } from '../src/cache/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 import type { Logger } from '../src/report/index.js'
 
 const T = Date.now()
@@ -74,8 +76,26 @@ it('writes full batches on its thread and hands back the rest', async () => {
 // A run's process has nothing else to wait on while `finish` awaits the
 // thread's answers: an unreferenced thread left them unheard, and a
 // restoring run ended "something it awaited can never settle", exit 1.
+// The entries are seeded by an executor that writes each output in this
+// process: 2,100 shells, traced on a packed CI worker, took the whole
+// 60 s before the CLI run started (2026-11-11).
 it('a restoring CLI run waits for its thread', async () => {
   const root = await makeWorkspace({ dir })
+  const ws = path.join(root, '.vx/workspace.mjs')
+  const plain = readFileSync(ws, 'utf8')
+  const seed = pluginSource(
+    'org/seed',
+    `{ executor() { return { name: 'seed', execute(req) {
+      const i = req.taskId.slice(req.taskId.lastIndexOf('#t') + 2)
+      mkdirSync(req.cwd + '/o' + i, { recursive: true })
+      writeFileSync(req.cwd + '/o' + i + '/f', 'seeded')
+      return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+    } } } }`,
+  )
+  await Bun.write(
+    ws,
+    localWorkspaceSource([seed], "import { mkdirSync, writeFileSync } from 'node:fs'\n"),
+  )
   const tasks = Array.from(
     { length: N },
     (_, i) =>
@@ -84,6 +104,7 @@ it('a restoring CLI run waits for its thread', async () => {
   const proj = await addProject(root, 'p', `export default { tasks: { ${tasks.join(', ')} } }`)
   const names = Array.from({ length: N }, (_, i) => `t${i}`)
   expect((await run({ cwd: root, tasks: names, log: quiet })).ok).toBe(true)
+  await Bun.write(ws, plain)
   for (let i = 0; i < N; i++) await rm(path.join(proj, `o${i}`), { recursive: true })
   const bin = path.join(import.meta.dir, '..', 'src', 'bin.ts')
   const p = Bun.spawnSync(['bun', bin, 'run', ...names, '--all'], {
@@ -94,6 +115,7 @@ it('a restoring CLI run waits for its thread', async () => {
   })
   const out = p.stdout.toString() + p.stderr.toString()
   expect([p.exitCode, out.includes('never settle')]).toEqual([0, false])
+  expect(readFileSync(path.join(proj, 'o2099/f'), 'utf8')).toBe('seeded')
 }, 60_000)
 
 // A thread's start cost more than it saved below ~2,000 hits: 1,000
