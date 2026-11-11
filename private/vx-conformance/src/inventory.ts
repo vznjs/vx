@@ -633,6 +633,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/yarn-bound-descriptor',
     'vx-lockfile/yarn-classic-link-workspace',
     'vx-lockfile/yarn-classic-root-deps',
+    'vx-lockfile/yarn-classic-workspace-deps',
     'vx-lockfile/yarn-numeric-range',
     'vx-lockfile/yarn-package-extensions',
     'vx-lockfile/yarn-package-settings',
