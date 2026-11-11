@@ -433,6 +433,38 @@ it('plans 9000 ready tasks of mixed needs in seconds of CPU, not minutes', () =>
   expect((user + system) / 1000).toBeLessThan(5000)
 }, 60_000)
 
+// 2026-11-11: a ~380-project workspace, tasks of measured varied needs,
+// planned 2.9 s mid-run (one sim plan 21.5 s): every ask that fit nowhere
+// read every worker. A plan never takes more than 1 s.
+it('plans 3800 tasks of varied needs mid-run in under a second of CPU', () => {
+  let seed = 7
+  const r = (): number => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed / 0x7fffffff)
+  const need = () => ({
+    cores: 0.3 + r() * 1.5,
+    memory: 2e8 + Math.floor(r() * 2e9),
+    ms: 2000 + Math.floor(r() * 60_000),
+  })
+  const tasks: PlanTask[] = []
+  for (let p = 0; p < 380; p++) {
+    const up = Array.from({ length: Math.min(p, 6) }, () => `p${Math.floor(r() * p)}#compile`)
+    tasks.push({ id: `p${p}#compile`, deps: [...new Set(up)], ...need() })
+    tasks.push({ id: `p${p}#lint`, deps: [`p${p}#compile`], ...need() })
+    for (let k = 0; k < 8; k++)
+      tasks.push({ id: `p${p}#test${k}`, deps: [`p${p}#compile`], ...need() })
+  }
+  const busy = Array.from({ length: 10 }, (_, i) =>
+    worker(`w${i}`, {
+      size: 'small',
+      idle: false,
+      running: [{ cores: 3, memory: 4e9, endsIn: 5000 + i * 1000 }],
+    }),
+  )
+  const start = process.cpuUsage()
+  plan(tasks, busy, [{ ...small, max: 40 }], WARM)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(1000)
+}, 60_000)
+
 // 2026-10-25: measured needs are unrounded, so every task can be its own
 // kind; read kind by kind, a plan of 1000 took 37 s. Read task by task,
 // each pass asked every ready one that fit nowhere: 9000 took 15 s.
