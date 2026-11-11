@@ -24,7 +24,7 @@ import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
-import { mapRunCommands, shellQuote } from '../nx-command.js'
+import { guardOutputs, mapRunCommands, shellQuote } from '../nx-command.js'
 import { type Owner, runsScriptHooks, scriptCommand, yarnPnp, yarnRun } from '../script-command.js'
 import {
   ownFileTakeBacks,
@@ -1438,7 +1438,7 @@ function mapCommand(
         command === yarnRun(script)
           ? {}
           : npmScriptEnv(command, script, command !== body, manifest, manifestField, todos)
-      return shell(command, undefined, { env, readyWhen: undefined })
+      return shell(guardOutputs(command, outputsOptions), undefined, { env, readyWhen: undefined })
     }
     todos.push(
       body === undefined
@@ -1467,7 +1467,10 @@ function mapCommand(
       // `.env` files load as they do for a run-commands line: Nx loads
       // them for every executor.
       return {
-        ...shell(mapped.command, undefined, { env: mapped.env, readyWhen: undefined }),
+        ...shell(guardOutputs(mapped.command, outputsOptions), undefined, {
+          env: mapped.env,
+          readyWhen: undefined,
+        }),
         ...(mapped.timeout === undefined ? {} : { timeout: mapped.timeout }),
       }
     }

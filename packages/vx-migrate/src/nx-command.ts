@@ -151,6 +151,16 @@ function outputsGuard(names: readonly string[]): string {
   return `for nx_a; do case $nx_a in ${arms.join(' ')} esac; done; `
 }
 
+/**
+ * A whole line (an `nx:run-script` script, a translated executor's
+ * command) behind {@link outputsGuard}, the forwarded arguments still
+ * appended to it as text.
+ */
+export function guardOutputs(command: string, names: readonly string[]): string {
+  if (names.length === 0) return command
+  return `${NX_RUN}; nx_guarded() { ${outputsGuard(names)}nx_run ${shellQuote(command)} "$@"; }; nx_guarded`
+}
+
 /** A no-op: Nx completes a target with `commands: []` at once (nx#31345). */
 const NOOP = 'true'
 
