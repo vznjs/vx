@@ -29,6 +29,7 @@ import {
   signalThrough,
   guardLine,
   spawnGuarded,
+  stoppedMs,
   untilGroupsGone,
 } from './kill-tree.js'
 import { type TreeUsage, watchTree } from './proc-sample.js'
@@ -541,6 +542,27 @@ function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
 }
 
 /**
+ * Run `fn` (after pending exits) once `ms` of run time has passed. Time vx
+ * spent stopped by Ctrl-Z is not run time: its tasks were stopped with it,
+ * and a plain timer killed a task resumed by `fg` as timed out.
+ */
+function afterRunTime(ms: number, fn: () => void): { clear: () => void } {
+  let base = stoppedMs()
+  let timer: ReturnType<typeof setTimeout>
+  const arm = (delay: number): void => {
+    timer = setTimeout(() => {
+      const owed = stoppedMs() - base
+      if (owed > 0) {
+        base += owed
+        arm(owed)
+      } else timer = afterPendingExits(fn)
+    }, delay)
+  }
+  arm(ms)
+  return { clear: () => clearTimeout(timer) }
+}
+
+/**
  * Arm a SIGTERM timeout on a spawned child. Returns a handle whose
  * `timedOut()` reports whether the timer fired — so the caller can
  * classify the resulting SIGTERM as a real failure rather than a
@@ -563,9 +585,7 @@ export function armTimeout(
   let sigkilled = false
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
-  let timer = setTimeout(() => {
-    timer = afterPendingExits(fire)
-  }, timeoutMs)
+  const timer = afterRunTime(timeoutMs, fire)
   function fire(): void {
     firedAt = performance.now()
     killTree(proc, 'SIGTERM')
@@ -585,7 +605,7 @@ export function armTimeout(
     timedOut: () => firedAt !== undefined,
     sigkilled: () => sigkilled,
     settle: async () => {
-      clearTimeout(timer)
+      timer.clear()
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
       const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - performance.now()))
@@ -915,7 +935,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     // A marker printed on the way down, once the wait gave up, is not ready.
     if (readyAt === undefined && gaveUpAt === undefined && !failedExit) {
       readyAt = performance.now()
-      if (readyTimer !== undefined) clearTimeout(readyTimer)
+      readyTimer?.clear()
       resolveReady()
       opts.onReady?.()
     }
@@ -1026,7 +1046,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // handler is a one-shot (`process.once('SIGTERM')`, a trap that resets
   // itself) died on the second mid-cleanup. Cleared the moment ready
   // fires so a healthy server is never killed by a stale timer.
-  let readyTimer: ReturnType<typeof setTimeout> | undefined
+  let readyTimer: { clear: () => void } | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
     const limit = opts.timeoutMs
     const giveUp = async (): Promise<void> => {
@@ -1054,9 +1074,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         ),
       )
     }
-    readyTimer = setTimeout(() => {
-      readyTimer = afterPendingExits(() => void giveUp())
-    }, opts.timeoutMs)
+    readyTimer = afterRunTime(opts.timeoutMs, () => void giveUp())
   }
 
   // If the child exits BEFORE ready fires, that's a failure to start
@@ -1064,7 +1082,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   void child.exited.then(async (code) => {
     opts.liveChildren?.delete(child)
     releaseServerGroup(child)
-    if (readyTimer !== undefined) clearTimeout(readyTimer)
+    readyTimer?.clear()
     if (code !== 0) failedExit = true
     // What the shell wrote reaches the frame before the failure line. The
     // drain is bounded, as a task's is, for a grandchild holding the pipe.
