@@ -218,6 +218,43 @@ describe('workspaceInputsReach — a workspace reader against its producers', ()
     expect(dependsOnSiblingOutputs(reader, new Set(['A']), false, dirs)).toBe(true)
     expect(dependsOnSiblingOutputs(reader, new Set(['B']), true, dirs)).toBe(true)
   })
+
+  it('a workspace reader of another project keys late only over the outputs it can see', () => {
+    const dirs = new Map([
+      ['A', 'packages/a'],
+      ['B', 'packages/b'],
+    ])
+    const outputsOf = new Map([['B', ['dist/**']]])
+    const listed = { wide: undefined, outputsOf, readableOf: outputsOf }
+    const ignored = { wide: undefined, outputsOf, readableOf: new Map([['B', []]]) }
+    const reads = (ws: string[]) => node('A', { workspaceFiles: ws })
+    // B's sources are not where B writes.
+    expect(
+      dependsOnSiblingOutputs(reads(['packages/b/src/**']), new Set(['B']), false, dirs, listed),
+    ).toBe(false)
+    expect(
+      dependsOnSiblingOutputs(reads(['packages/b/**']), new Set(['B']), false, dirs, listed),
+    ).toBe(true)
+    // An output git ignores whole is in no key that does not name it...
+    expect(
+      dependsOnSiblingOutputs(reads(['packages/b/**']), new Set(['B']), false, dirs, ignored),
+    ).toBe(false)
+    // ...and in one that does (`ignoredReach`).
+    expect(
+      dependsOnSiblingOutputs(
+        reads(['packages/b/dist/x.js']),
+        new Set(['B']),
+        false,
+        dirs,
+        ignored,
+      ),
+    ).toBe(true)
+    // Undeclared writes may land anywhere in B.
+    const wide = { ...ignored, wide: new Set(['B']) }
+    expect(
+      dependsOnSiblingOutputs(reads(['packages/b/src/**']), new Set(['B']), false, dirs, wide),
+    ).toBe(true)
+  })
 })
 
 describe('gatedOutputs — the outputs a same-project reader reaches', () => {
@@ -263,6 +300,29 @@ describe('gatedOutputs — the outputs a same-project reader reaches', () => {
     const got = new Set([...gatedOutputs(nodes, '/w').values()].map((o) => o.glob))
     expect([...got].toSorted()).toEqual([...want].toSorted())
     expect(want.size).toBeLessThan(new Set(all).size)
+  })
+
+  it("asks about another project's outputs a workspace reader reaches", () => {
+    const nodes = new Map<string, TaskNode>([
+      task('p#gen', [], ['gen.json', 'dist/**']),
+      [
+        'q#build',
+        {
+          id: 'q#build',
+          projectName: 'q',
+          projectDir: '/w/q',
+          config: {
+            exec: { command: 'true' },
+            inputs: { files: ['src/**'], workspaceFiles: ['p/gen.json', 'other/**'] },
+            outputs: { files: [] },
+            cache: true,
+          },
+        } as unknown as TaskNode,
+      ],
+    ])
+    expect([...gatedOutputs(nodes, '/w')]).toEqual([
+      ['p/gen.json', { projectDir: '/w/p', glob: 'gen.json' }],
+    ])
   })
 
   it('reads 6000 readers in one project in well under a second of CPU', () => {
