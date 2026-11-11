@@ -4291,8 +4291,14 @@ it('refuses options it does not read and workers it cannot start', () => {
       dte({ workers: { [type]: { machines: { [machine]: { cpu: 1, memory: '1GB' } } } }, adapter }),
     )
   expect(named('linux', 'm/x')).toBe(
-    'dte() option "workers.linux.machines" must be named by letters, digits, _ and -, got "m/x"',
+    'dte() option "workers.linux.machines" must be named by letters, digits, _, - and . (not first), got "m/x"',
   )
+  expect(named('linux', '..')).toBe(
+    'dte() option "workers.linux.machines" must be named by letters, digits, _, - and . (not first), got ".."',
+  )
+  // A cloud size, as yesterday's configs named it: the type's name has no
+  // dot, so `linux.c5.large` splits at its first.
+  expect(named('linux', 'c5.large')).toBe('taken')
   expect(named('li.nux', 'small')).toBe(
     'dte() option "workers" must be named by letters, digits, _ and -, got "li.nux"',
   )

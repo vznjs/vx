@@ -22,6 +22,7 @@ export interface ShortCircuitArgs {
   hashCache: HashCache // the run's memo — no double hashing
   concurrency: number // the probe pump's width
   localOnly?: boolean | undefined // `cache` is the local store before a remote: only hits are recorded
+  remoteOnly?: ReadonlySet<string> | undefined // `exec.remote: 'only'` tasks a remote took: never probed
 }
 export interface ProbedEntry {
   hash: string
@@ -70,6 +71,11 @@ export function restoreTierExclusions(
   as it does with no remote; a local miss is left out of `preProbed`, so
   execute asks the layers and the remote GETs stay on remote-prefetch's
   fire-and-forget path, never before the first spawn.
+- An `exec.remote: 'only'` task a remote executor took (`remoteOnly`) is
+  never probed: nothing here restores it. A held entry counted as a
+  restore, so the run asked an executor's `demand` for no work and skipped
+  the `schedule` stage, and a `@vzn/vx-dte` run waited on a worker it
+  never started (2026-11-11).
 - An `outputs.workspaceFiles` producer upstream takes its dependents out
   of BOTH tiers — not just the restore tier. A root-anchored output is
   boundary-ignoring, so it can land in a dependent's own project dir; and

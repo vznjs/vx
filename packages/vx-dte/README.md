@@ -922,7 +922,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
   - `workers` names each worker type, a `WorkerType` `{ machines }`, in order of
     preference (`exec.worker` picks one). Each machine is a size the
     adapter may start, named `<type>.<machine>` (`linux.small`; each name
-    letters, digits, `_` and `-`, as worker ids and log files carry them) in the
+    letters, digits, `_` and `-`, as worker ids and log files carry them,
+    and a machine's `.` after its first character, `c5.large`) in the
     run's output and an adapter's options, and is a `WorkerSize`,
     `{ cpu, memory, max?, platform?, runsOn? }` (`runsOn`: the runner
     label `vx dte init` writes for it): its cores

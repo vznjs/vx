@@ -67,6 +67,13 @@ export interface ShortCircuitArgs {
    * execute probes every other task through the layers.
    */
   localOnly?: boolean | undefined
+  /**
+   * `exec.remote: 'only'` tasks a remote executor took: never probed, as
+   * nothing here restores them. One this store held counted as a restore,
+   * so the run planned no remote work for it, and it waited on a worker
+   * none started.
+   */
+  remoteOnly?: ReadonlySet<string> | undefined
 }
 
 /** Per-task result of the up-front probe. `hit` null = a confirmed
@@ -167,7 +174,11 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   // Every stable key is a cacheable task's: deriveStableKeys pushes only
   // `cacheEnabled && !unstable` (item 640 deleted a second filter here and
   // nothing reddened).
-  const candidates = stableKeys
+  const remoteOnly = args.remoteOnly
+  const candidates =
+    remoteOnly === undefined || remoteOnly.size === 0
+      ? stableKeys
+      : stableKeys.filter((k) => !remoteOnly.has(k.node.id))
   const preProbed = new Map<string, ProbedEntry>()
   const restoreTier = new Set<string>()
   const remoteAsk = new Map<string, string>()

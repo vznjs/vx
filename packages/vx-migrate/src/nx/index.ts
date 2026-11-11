@@ -36,7 +36,6 @@ import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import { collectGaps } from '../plugin-gaps.js'
 import {
   BUILTIN_EXECUTORS,
-  ignoredAmong,
   mapNxWorkspace,
   type NxExecutors,
   type NxGraph,
@@ -352,28 +351,11 @@ async function mapAll(
   if (executors !== undefined)
     reads.push(JSON.stringify(Object.entries(executors).map(([k, fn]) => [k, String(fn)])))
   reads.push(`unclaimed lockfile: ${lockfile ?? ''}`)
-  // Which outputs git ignores decides whether an input under one is kept,
-  // and no read above sees a `.gitignore` edit: the kept mapping holds what
-  // git answered and is used only while git answers the same. Once per
-  // run: a remap reuses it.
-  const answers = new Map<string, Promise<string>>()
-  const ask = (question: string): Promise<string> => {
-    let answer = answers.get(question)
-    if (answer === undefined) {
-      const untracked = JSON.parse(question) as string[]
-      answers.set(
-        question,
-        (answer = ignoredAmong(root, untracked).then((s) => JSON.stringify([...s].sort()))),
-      )
-    }
-    return answer
-  }
   return {
     name: 'nx',
     spareTracked: true,
     reads,
-    map: (tracked) => index(root, metas, graph, notes, tracked, executors, lockfile, ask),
-    ask,
+    map: (tracked) => index(root, metas, graph, notes, tracked, executors, lockfile),
   }
 }
 
@@ -455,11 +437,9 @@ async function index(
   trackedFiles: () => Promise<readonly string[] | null>,
   executors: NxExecutors | undefined,
   lockfile: string | undefined,
-  ask: (question: string) => Promise<string>,
 ): Promise<AdoptionMapping> {
   const notes: string[] = []
   const live = [...loadNotes]
-  const asked: [string, string][] = []
   const tracked = await trackedFiles()
   const configs = new Map(
     metas.flatMap((m) =>
@@ -475,12 +455,6 @@ async function index(
     ownConfig: (rel) => configs.get(relRoot(rel)) ?? null,
     ...(executors === undefined ? {} : { executors }),
     ...(lockfile === undefined ? {} : { lockfile }),
-    ignoredAmong: async (untracked) => {
-      const question = JSON.stringify(untracked)
-      const answer = await ask(question)
-      asked.push([question, answer])
-      return new Set(JSON.parse(answer) as string[])
-    },
   })
   notes.push(...mapped.notes)
   const byName = new Map<string, GeneratedProject>()
@@ -544,7 +518,6 @@ async function index(
       notes,
       live,
     ),
-    asked,
   }
 }
 
@@ -659,8 +632,8 @@ async function graphInputKey(
   // stray write at the root (a report, a log) is not, and counting it
   // re-exported the graph on every run after it.
   // A `project.json` anywhere: a new one is a project no root lists yet.
-  // A `.gitignore` or `.nxignore` anywhere too: Nx's project walk honours
-  // each one, so an edit between project roots hides or shows a project.
+  // A `.gitignore` anywhere too: Nx's project walk honours each one, so an
+  // edit between project roots hides or shows a project.
   const roots = dirs.map((d) => relPosix(root, d))
   // A manifest needs no read of its own: git lists it when it is edited, and
   // HEAD moves when an edit is committed (reading all 2,000 cost 50 ms at
@@ -673,7 +646,6 @@ async function graphInputKey(
     p.endsWith('/project.json') ||
     p === '.gitignore' ||
     p.endsWith('/.gitignore') ||
-    p.endsWith('/.nxignore') ||
     roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
     (!p.includes('/') && ROOT_GRAPH_FILE.test(p)) ||
     plugin(p)

@@ -257,12 +257,6 @@ export interface MapNxOptions {
    * declares one).
    */
   readonly lockfile?: string
-  /**
-   * Which of the root-relative untracked outputs git ignores
-   * (`ignoredAmong`): the live plugin's keeps git's answer beside its kept
-   * mapping. Absent, git is asked.
-   */
-  readonly ignoredAmong?: (untracked: readonly string[]) => Promise<ReadonlySet<string>>
 }
 
 /** One target of a translated executor, as the graph resolved it. */
@@ -343,12 +337,12 @@ function nxTags(node: NxNode | undefined): string[] {
  * (a changed `dist` file is a hit under Nx 23.3, YL-1). One untracked but
  * not ignored is in Nx's file map, so an input under it is hashed: taken
  * for ignored, `build` keyed on no file and a generated source's edit
- * replayed (stale hit).
+ * replayed (stale hit). One `git check-ignore` per mapping.
  */
 async function ignoredOutputs(
+  root: string,
   nodes: Readonly<Record<string, NxNode>>,
   tracked: (rel: string) => TrackedKinds,
-  among: (untracked: readonly string[]) => Promise<ReadonlySet<string>>,
 ): Promise<ReadonlySet<string>> {
   const untracked = new Set<string>()
   for (const [nodeName, node] of Object.entries(nodes)) {
@@ -362,19 +356,11 @@ async function ignoredOutputs(
         untracked.add(o)
     }
   }
-  return untracked.size === 0 ? new Set() : among([...untracked].sort())
-}
-
-/** Which of the root-relative `untracked` paths git ignores, with one `git check-ignore`. */
-export async function ignoredAmong(
-  root: string,
-  untracked: readonly string[],
-): Promise<Set<string>> {
   // A missing `dist` matches a `dist/` rule only spelled as a directory;
   // an existing file never does.
   const hit = await gitIgnored(
     root,
-    untracked.flatMap((o) => [o, `${o}/`]),
+    [...untracked].flatMap((o) => [o, `${o}/`]),
   )
   const out = new Set<string>()
   for (const o of untracked) {
@@ -421,13 +407,7 @@ export async function mapNxWorkspace(
     hooks: (dir) => runsScriptHooks(dir, hookMemo) !== null,
     syncTasks: new Map(),
     ignoredOutputs:
-      opts.tracked === undefined
-        ? undefined
-        : await ignoredOutputs(
-            nodeMap,
-            opts.tracked,
-            opts.ignoredAmong ?? ((u) => ignoredAmong(root, u)),
-          ),
+      opts.tracked === undefined ? undefined : await ignoredOutputs(root, nodeMap, opts.tracked),
   }
 
   const metaByRel = new Map<string, PackageMeta>()

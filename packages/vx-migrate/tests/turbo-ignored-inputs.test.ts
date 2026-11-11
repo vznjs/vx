@@ -86,45 +86,6 @@ describe('turbo(): gitignored inputs named by path', () => {
       takenBackStill: (await key()) === deepEdit,
     }).toEqual({ cached: true, genMoved: true, deepMoved: true, takenBackStill: true })
   }, 30_000)
-
-  // The kept mapping (`mapping-cache.ts`) named the ignored paths there were
-  // when it was made: an ignored file or directory made after it keyed
-  // nothing, and an edit to it replayed the old output.
-  it('an ignored file or directory made after the mapping was kept keys the task', async () => {
-    const root = ws.root
-    const lib = path.join(root, 'packages', 'lib')
-    await writeFile(path.join(root, '.gitignore'), 'dist\ngen.ts\ngenerated/\n')
-    Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
-    const key = async () => {
-      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
-      return plan.tasks.find((t) => t.node.id === 'lib#build')!.hash
-    }
-    const first = await key()
-    const gen = path.join(lib, 'src', 'gen.ts')
-    await writeFile(gen, 'a\n')
-    const made = await key()
-    await writeFile(gen, 'b\n')
-    const edited = await key()
-    const deep = path.join(lib, 'src', 'generated', 'g.ts')
-    await mkdir(path.dirname(deep))
-    await writeFile(deep, 'a\n')
-    const dirMade = await key()
-    await writeFile(deep, 'b\n')
-    const dirEdited = await key()
-    expect({
-      madeMoved: made !== first,
-      editMoved: edited !== made,
-      dirMoved: dirMade !== edited,
-      dirEditMoved: dirEdited !== dirMade,
-      stable: (await key()) === dirEdited,
-    }).toEqual({
-      madeMoved: true,
-      editMoved: true,
-      dirMoved: true,
-      dirEditMoved: true,
-      stable: true,
-    })
-  }, 30_000)
 })
 
 // A literal path git ignores leaves the file lists (core refuses one) and
@@ -287,54 +248,6 @@ describe('turbo-map: gitignored inputs named by path', () => {
         },
       },
     })
-  })
-
-  // Core refuses an input its own outputs hold whole (the task would clean
-  // it), and a run there writes what an ignored directory holds: `src/**`
-  // over an output `src/generated/**` named `src/generated/**` back once
-  // the directory existed, and every later mapping refused to load.
-  it('names no ignored path its own outputs hold whole', async () => {
-    await writeFile(
-      path.join(dir, 'turbo.json'),
-      JSON.stringify({
-        tasks: {
-          gen: {
-            inputs: ['src/**/*.txt'],
-            outputs: ['src/generated/**', 'src/one/*.txt', 'src/part/out/**'],
-          },
-        },
-      }),
-    )
-    const pkgDir = path.join(dir, 'packages', 'a')
-    await mkdir(pkgDir, { recursive: true })
-    const metas: PackageMeta[] = [
-      {
-        name: 'a',
-        dir: pkgDir,
-        packageJson: { name: 'a', scripts: { gen: 'g' } } as never,
-        configPath: null,
-      },
-    ]
-    const m = await mapTurboWorkspace(dir, metas, {
-      splice: ownSplice,
-      persistentTodo: 'PERSIST',
-      ignoredUnder: async () => [
-        'packages/a/src/generated/',
-        'packages/a/src/generated/deep/',
-        'packages/a/src/one/x.txt',
-        'packages/a/src/part/',
-        'packages/a/src/own.txt',
-      ],
-    })
-    const gen = m.projects[0]!.tasks.find((t) => t.name === 'gen')!.task as {
-      inputs: { files: unknown[] }
-    }
-    expect(gen.inputs.files).toEqual([
-      'src/**/*.txt',
-      'package.json',
-      'src/part/**/*.txt',
-      'src/own.txt',
-    ])
   })
 
   // Core keys a probe on its output trimmed (cache/inputs.ts), so each

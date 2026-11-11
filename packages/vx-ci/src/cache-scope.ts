@@ -95,10 +95,11 @@ function scopeOf(
   if (/^refs\/pull\/\d+\//.test(ref)) {
     const head = event?.pull_request?.head
     const branch = env['GITHUB_HEAD_REF'] || stringOf(head?.ref)
+    // No readable event: the ref still carries the PR's number, so it keeps
+    // its own scope rather than sharing `pr-target` with every such PR.
+    const number = event?.pull_request?.number ?? Number(/^refs\/pull\/(\d+)\//.exec(ref)![1])
     if (branch !== undefined)
-      return withBase(
-        headScope(branch, stringOf(head?.repo?.full_name), event?.pull_request?.number),
-      )
+      return withBase(headScope(branch, stringOf(head?.repo?.full_name), number))
     return withBase('pr-target')
   }
   const onBehalf = prOf(env['GITHUB_EVENT_NAME'], event)
