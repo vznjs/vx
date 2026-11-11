@@ -258,6 +258,23 @@ it('leaves a remote-only task’s files on the workers', async () => {
   expect(await Bun.file(path.join(root, 'a/out/ro.txt')).exists()).toBe(false)
 }, 60_000)
 
+// A remote-only task this machine's store held counted as a hit to restore:
+// the run asked no worker for it, and it waited on one forever (2026-11-11).
+it('runs a remote-only task on a worker when this machine’s store holds it', () => {
+  const { VX_DTE_RUN: _, ...env } = process.env
+  const run = () =>
+    Bun.spawnSync([process.execPath, CORE_BIN, 'run', 'a#ro'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: crypto.randomUUID(), NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 20_000,
+    })
+  expect(run().exitCode).toBe(0)
+  const again = run()
+  expect([again.exitCode, again.stdout.toString().includes('far')]).toEqual([0, true])
+}, 60_000)
+
 // `--cache-download` holds for a worker's task: under `none` every file of
 // the run came home anyway (2026-10-24).
 it('brings home only the asked task’s files under --cache-download=toplevel', async () => {

@@ -1216,6 +1216,7 @@ async function runOnBus(
           // now, and a local miss may still be a remote hit.
           cache: remote ? prepared.localCache : cache,
           localOnly: remote,
+          remoteOnly: placements.remoteOnly,
           workspaceRoot,
           claimedFiles: fingerprintWatch.names,
           forwardArgs: options.forwardArgs,
