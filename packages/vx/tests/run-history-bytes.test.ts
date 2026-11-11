@@ -99,3 +99,34 @@ it('an all-hit run of 500 tasks adds at most 160 bytes a task to the index', () 
   const perTask = (used() - before) / runs / TASKS
   expect(perTask).toBeLessThanOrEqual(160)
 })
+
+// recordRuns writes a batch in one transaction: each table's touched pages
+// go to the WAL once, not once a row. Counted in WAL frames, not timed: a
+// wall-clock ratio of the two read 1.08 under a loaded CI shard.
+it('a batch of 50 runs writes at most a tenth of the pages 50 single runs write', () => {
+  const db = indexDb(cache)
+  const row = (hash: string): RunRecord => ({
+    hash,
+    project: 'p',
+    task: 'build',
+    status: 'success',
+    exitCode: 0,
+    durationMs: 1,
+    startedAt: 1_800_000_000_000,
+    endedAt: 1_800_000_000_001,
+  })
+  const frames = (write: () => void): number => {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    write()
+    return (db.query('PRAGMA wal_checkpoint(PASSIVE)').get() as { log: number }).log
+  }
+  const rows = (tag: string) => Array.from({ length: 50 }, (_, j) => row(hex(`${tag}${j}`)))
+  // The first write makes each table's first pages.
+  cache.recordRuns(rows('warm'))
+  const single = frames(() => {
+    for (const r of rows('single')) cache.recordRun(r)
+  })
+  const batch = frames(() => cache.recordRuns(rows('batch')))
+  expect(batch).toBeGreaterThan(0)
+  expect(batch * 10).toBeLessThanOrEqual(single)
+})

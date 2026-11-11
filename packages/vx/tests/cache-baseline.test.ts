@@ -733,62 +733,6 @@ describePerf('cache baseline: SQLite writes', () => {
     if (r.medianNs / 1000 >= budget) console.log(diag(r, budget))
     assertBudget(r, budget)
   })
-
-  it('batched recordRuns is ≥ 2× faster per row than single recordRun', async () => {
-    // The batch path's win is one transaction vs N. Catches accidental
-    // "for (r of rows) recordRun(r)" replacements. The bar isn't huge
-    // because WAL + synchronous=NORMAL already amortizes fsync;
-    // most of the savings come from transaction + lock overhead.
-    // Min-of-3 interleaved: single-window ratios flake on loaded machines.
-    let i = 200000
-    let base = 300000
-    const { aMinNs: singleMinNs, bMinNs: batchMinNs } = await benchRatioSides(
-      () =>
-        bench(
-          100,
-          () => {
-            cache.recordRun({
-              hash: `sb-${i++}`,
-              project: 'p',
-              task: 'build',
-              status: 'success',
-              exitCode: 0,
-              durationMs: 1,
-              startedAt: Date.now(),
-              endedAt: Date.now(),
-            })
-          },
-          3,
-        ),
-      () =>
-        bench(
-          20,
-          () => {
-            const rows = Array.from({ length: 50 }, (_, j) => ({
-              hash: `bb-${base + j}`,
-              project: 'p',
-              task: 'build',
-              status: 'success' as const,
-              exitCode: 0,
-              durationMs: 1,
-              startedAt: Date.now(),
-              endedAt: Date.now(),
-            }))
-            base += 50
-            cache.recordRuns(rows)
-          },
-          3,
-        ),
-    )
-    const perRowSingle = singleMinNs
-    const perRowBatch = batchMinNs / 50
-    // The claim is that one transaction per 50 rows beats one per row by a
-    // margin no noise erases; a floor of 3× read 2.35× on the ubuntu runner
-    // (2026-09-04, the rest of the job green) with the interleaved min-of-N
-    // above, so the floor is 2× — "batching does nothing" is ≈1× and still
-    // fails.
-    expect(perRowSingle / perRowBatch).toBeGreaterThanOrEqual(2)
-  })
 })
 
 describePerf('scanArtifact — foreign tar dialects', () => {
