@@ -661,7 +661,7 @@ export function dte(options: DteOptions = {}) {
       const [
         { Orchestrator },
         { joinOffLoop },
-        { decide, keepLast, knownMisses, slowdown, tailsMs, UNKNOWN_MS, WARM_UP_MS },
+        { decide, keepLast, knownMisses, sized: within, slowdown, tailsMs, UNKNOWN_MS, WARM_UP_MS },
         { snapshot, untrackedWorkspace },
         seal,
       ] = await Promise.all([
@@ -698,7 +698,7 @@ export function dte(options: DteOptions = {}) {
         )
       const serves = new Map<string, readonly string[]>()
       const need = (id: string): Need => {
-        const n = booked(needOf(peaks.get(id), unmeasured), how.book)
+        const n = within(booked(needOf(peaks.get(id), unmeasured), how.book), sizes)
         let ids = serves.get(id)
         if (ids === undefined) {
           ids = serversOf(nodes, id)

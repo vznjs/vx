@@ -10,6 +10,7 @@ import {
   plan,
   planTasks,
   simulate,
+  sized,
   type PlanTask,
   type PlanWorker,
   type Size,
@@ -554,6 +555,28 @@ it('advises a task only workers with room for its peak memory', () => {
   const advice = advise(tasks, [{ ...small, max: 4 }, big], () => 0)
   expect(advice.declared?.fleet.some((f) => f.size === 'big')).toBe(true)
   expect(advice.any?.fleet.every((f) => f.memory >= 25e9)).toBe(true)
+})
+
+it('keeps a need to the sizes with room for all of it', () => {
+  const sizes: Size[] = [
+    { name: 'c2', max: 1, cpu: 2, memory: 8e9 },
+    { name: 'c8', max: 1, cpu: 8, memory: 32e9 },
+  ]
+  expect(sized({ cores: 4, memory: 1e9 }, sizes).above?.cores).toBeLessThan(4)
+  expect(sized({ cores: 4, memory: 1e9 }, sizes).above?.cores).toBeGreaterThan(2)
+  expect(sized({ cores: 1, memory: 16e9 }, sizes).above?.cores).toBeGreaterThan(2)
+  // Room on each, or on none: as asked.
+  expect(sized({ cores: 1, memory: 1e9 }, sizes).above).toBeUndefined()
+  expect(sized({ cores: 16, memory: 1e9 }, sizes).above).toBeUndefined()
+  // More memory, not more cores, where only memory sets them apart.
+  const wide: Size[] = [
+    { name: 'lean', max: 1, cpu: 8, memory: 8e9 },
+    { name: 'fat', max: 1, cpu: 8, memory: 64e9 },
+  ]
+  expect(sized({ cores: 2, memory: 16e9 }, wide).above).toEqual({
+    cores: Infinity,
+    memory: 16e9 - 1,
+  })
 })
 
 it('advises each platform its own workers, joined after its warm-up', () => {

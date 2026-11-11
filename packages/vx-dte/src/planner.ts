@@ -1258,6 +1258,32 @@ function fresh(
 }
 
 /**
+ * `need`, kept to the sizes with room for all of it when some sizes have
+ * none: alone on an empty worker any task fits, so a 4-core task ran on
+ * 2 cores at half speed while 8-core sizes went unasked, 59% late on
+ * graphs of 2- to 16-core sizes (2026-11-11), and a 25 GB one was
+ * advised a 16 GB worker. Bigger is more cores when every size with
+ * the cores has the memory, else more memory.
+ */
+export function sized(need: Need, sizes: readonly Size[]): Need {
+  if (need.above !== undefined || need.ask !== undefined || !Number.isFinite(need.cores))
+    return need
+  const of = sizes.filter((s) => need.platform === undefined || s.platform === need.platform)
+  const roomy = (s: Size): boolean => s.cpu >= need.cores - 1e-9 && s.memory >= need.memory
+  const fit = of.filter(roomy).length
+  if (fit === 0 || fit === of.length) return need
+  const byCores = of.every((s) => s.cpu < need.cores - 1e-9 || s.memory >= need.memory)
+  const byMemory = of.every((s) => s.memory < need.memory || s.cpu >= need.cores - 1e-9)
+  return {
+    ...need,
+    above:
+      byMemory && !byCores
+        ? { cores: Infinity, memory: need.memory - 1 }
+        : { cores: need.cores - 1e-6, memory: Infinity },
+  }
+}
+
+/**
  * The workers to start and to let go. Of the new ones (`candidates`, in
  * the order the run would start them, each joining after its size's
  * `warmUpMs`), those a task needs to end by the best (all of them
@@ -1516,7 +1542,12 @@ export function candidates(
       added = true
     }
   }
-  for (const s of sizes) while (out.length < limit && (count.get(s.name) ?? 0) < s.max) add(s)
+  // The biggest first: workers started at once save warm-ups as fewer,
+  // and declared smallest first, a plan of 2- to 16-core sizes took 2-core
+  // ones only, 59% late (2026-11-11: "scale the workers to as big as
+  // possible at the same time to save on startup times").
+  const down = [...sizes].sort((x, y) => y.cpu - x.cpu || y.memory - x.memory)
+  for (const s of down) while (out.length < limit && (count.get(s.name) ?? 0) < s.max) add(s)
   return out
 }
 
@@ -2627,14 +2658,7 @@ export function advise(
   if (ran.length === 0) return {}
   // A task goes only where its peak memory fits: alone on an empty worker
   // any task fits, and a 25 GB one was advised a 16 GB worker (2026-11-11).
-  const tasks = ran.map((t) =>
-    t.above === undefined &&
-    sizes.some(
-      (s) => (t.platform === undefined || s.platform === t.platform) && s.memory < t.memory,
-    )
-      ? { ...t, above: { cores: Infinity, memory: t.memory - 1 } }
-      : t,
-  )
+  const tasks = ran.map((t) => ({ ...t, ...sized(t, sizes) }))
   // First a worker each of them fits, as the live plan starts one.
   const bigger = tasks.flatMap((t) =>
     t.above === undefined ? [] : [{ ...t.above, platform: t.platform }],
