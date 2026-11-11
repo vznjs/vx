@@ -155,6 +155,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'signal-handling',
     'sparse-checkout-config',
     'stale-hit',
+    'stale-hit-digest',
     'stale-hit-git',
     'stop-signal-before-spawn',
     'task-edge-selection',
