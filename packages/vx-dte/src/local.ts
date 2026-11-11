@@ -83,6 +83,8 @@ export function local(options: LocalOptions = {}): DteAdapter {
     },
 
     async spawn(a) {
+      // Its folder, made after close removed the run's, stayed for good.
+      if (closed) return
       const work = (async () => {
         base ??= (async () => {
           const d = await mkdtemp(path.join(os.tmpdir(), BASE_PREFIX))
