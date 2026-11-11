@@ -811,7 +811,10 @@ describe('vx migrate (nx)', () => {
       expect(build.exec?.command).toBe(
         `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }; ` +
           `nx_opt() { nx_k=$1; shift; for nx_a; do case $nx_a in "--$nx_k"|"--$nx_k="*|"--no-$nx_k") return 0;; esac; if [ \${#nx_k} -eq 1 ]; then case $nx_a in "-$nx_k"|"-$nx_k="*) return 0;; esac; fi; done; return 1; }; ` +
-          `nx_run_commands() { trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; ` +
+          // A forwarded --outFile would move the cached output (nx-forwarded-output-option.test.ts).
+          `nx_run_commands() { for nx_a; do case $nx_a in --outFile|--outFile=*|--outFile.*|--no-outFile) ` +
+          `printf '%s\\n' '--outFile moves the outputs ({options.outFile}) vx caches as mapped — set outFile in a configuration and run that configuration'\\''s task' >&2; return 2;; esac; done; ` +
+          `trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; ` +
           `{ trap 'nx_term=1' TERM; (nx_u=; ${OUT}nx_run 'tsc -b'"$nx_u" "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & ` +
           `{ trap 'nx_term=1' TERM; (nx_u=; ${OUT}nx_run 'echo done'"$nx_u" "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & wait; }; ` +
           'cd ../.. && nx_run_commands',

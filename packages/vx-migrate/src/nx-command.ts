@@ -42,6 +42,8 @@ interface NxCommandContext {
   readonly projectName: string
   /** Whether a vx task runs Nx project `project`'s `target`: what a leading `nx <target> <project>` may become. */
   readonly isTarget?: (project: string, target: string) => boolean
+  /** The options the cached outputs were resolved from: a forwarded argument naming one is refused. */
+  readonly outputsOptions?: readonly string[]
 }
 
 /** The line `nx-env --ready-when` prints once every string is seen (`READY` in nx-env.cjs). */
@@ -129,6 +131,25 @@ const NX_VAL =
   'if [ "$nx_s" = 2 ]; then if [ $# -gt 1 ] && case $2 in --*|-[!0-9]*) false;; *) true;; esac; then nx_x=$2; shift; else nx_x=true; fi; fi; ' +
   'if [ -n "$nx_s" ]; then if [ -n "$nx_n" ]; then nx_v="$nx_v,$nx_x"; else nx_v=$nx_x; nx_n=1; fi; fi; ' +
   `shift; done; printf '%s' "$nx_v"; }`
+
+/**
+ * The refusal of a forwarded argument that moves the target's cached
+ * outputs (nx-exec.cjs writes the same): Nx resolves `{options.x}` in the
+ * outputs from the overrides, vx from the options when it mapped the
+ * target, so it cleaned and saved the old path and a hit restored nothing.
+ * Matches what Nx's override parser reads as the key (no camel-case
+ * expansion, dot notation): `--k`, `--k=v`, `--k.x`, `--no-k`.
+ */
+function outputsGuard(names: readonly string[]): string {
+  const arms = names.map((k) => {
+    const flag = shellQuote(`--${k}`)
+    const msg =
+      `--${k} moves the outputs ({options.${k}}) vx caches as mapped — ` +
+      `set ${k} in a configuration and run that configuration's task`
+    return `${flag}|${flag}=*|${flag}.*|${shellQuote(`--no-${k}`)}) printf '%s\\n' ${shellQuote(msg)} >&2; return 2;;`
+  })
+  return `for nx_a; do case $nx_a in ${arms.join(' ')} esac; done; `
+}
 
 /** A no-op: Nx completes a target with `commands: []` at once (nx#31345). */
 const NOOP = 'true'
@@ -412,8 +433,13 @@ export function mapRunCommands(
         ? readyWhen[0]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         : NX_ENV_READY
   const ready = readyWhen.length > 1 ? { readyAll: readyWhen } : {}
+  // A server is never cached, so nothing it writes is replayed.
+  const guard =
+    readyWhen.length === 0 && (ctx.outputsOptions?.length ?? 0) > 0
+      ? outputsGuard(ctx.outputsOptions!)
+      : ''
   const only = commands.length === 1 ? commands[0]! : undefined
-  if (only !== undefined && only.runtime === 'append' && only.baked.length === 0) {
+  if (only !== undefined && only.runtime === 'append' && only.baked.length === 0 && guard === '') {
     const line = only.tail === undefined ? only.text : `${only.text} ${only.tail}`
     return { command: `${cd}${line}`, env, readyWhen: pattern, envFile, ...ready, ...calls }
   }
@@ -463,7 +489,7 @@ export function mapRunCommands(
     (commands.some((c) => c.runtime !== 'none' && c.baked.length > 0) ? `${NX_OPT}; ` : '') +
     (named ? `${NX_VAL}; ` : '')
   return {
-    command: `${helper}${FN}() { ${body}; }; ${cd}${FN}`,
+    command: `${helper}${FN}() { ${guard}${body}; }; ${cd}${FN}`,
     env,
     readyWhen: pattern,
     envFile,

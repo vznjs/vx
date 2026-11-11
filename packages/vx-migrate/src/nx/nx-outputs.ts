@@ -261,35 +261,46 @@ export function nxProjectOutputs(
   const known = projectOutputsMemo.get(targets)
   if (known !== undefined) return known
   const out = new Set<string>()
-  const scratch: string[] = []
-  const rel = projectRel === '.' ? '' : projectRel
-  for (const [name, t] of Object.entries(targets)) {
-    const options = t.options ?? {}
-    const { outFiles, wsOutFiles } = mapNxOutputs(
-      t.outputs ?? nxDefaultOutputs(name, options, projectRel, scratch),
-      options,
-      projectRel,
-      projectName,
-      scratch,
-    )
-    const literal = (f: string): string | null => {
-      const lit = f.replace(/\/\*\*(\/\*)?$/, '')
-      return lit.startsWith('!') || /[*?[]|(?<!\\)[{}]/.test(lit)
-        ? null
-        : lit.replace(/\\([{}!])/g, '$1')
-    }
-    for (const f of outFiles) {
-      const lit = literal(f)
-      if (lit !== null) out.add(path.posix.join(rel, lit))
-    }
-    for (const f of wsOutFiles) {
-      const lit = literal(f)
-      if (lit !== null) out.add(lit)
-    }
-  }
+  for (const [name, t] of Object.entries(targets))
+    for (const o of nxTargetOutputs(name, t, projectRel, projectName)) out.add(o)
   const r = [...out]
   projectOutputsMemo.set(targets, r)
   return r
+}
+
+/** One target's literal output paths, workspace-relative; see {@link nxProjectOutputs}. */
+export function nxTargetOutputs(
+  name: string,
+  t: { outputs?: string[]; options?: Record<string, unknown> },
+  projectRel: string,
+  projectName: string,
+): string[] {
+  const scratch: string[] = []
+  const rel = projectRel === '.' ? '' : projectRel
+  const options = t.options ?? {}
+  const { outFiles, wsOutFiles } = mapNxOutputs(
+    t.outputs ?? nxDefaultOutputs(name, options, projectRel, scratch),
+    options,
+    projectRel,
+    projectName,
+    scratch,
+  )
+  const literal = (f: string): string | null => {
+    const lit = f.replace(/\/\*\*(\/\*)?$/, '')
+    return lit.startsWith('!') || /[*?[]|(?<!\\)[{}]/.test(lit)
+      ? null
+      : lit.replace(/\\([{}!])/g, '$1')
+  }
+  const out: string[] = []
+  for (const f of outFiles) {
+    const lit = literal(f)
+    if (lit !== null) out.push(path.posix.join(rel, lit))
+  }
+  for (const f of wsOutFiles) {
+    const lit = literal(f)
+    if (lit !== null) out.push(lit)
+  }
+  return out
 }
 
 // Keyed on the node's own targets object: every target of a project asks.

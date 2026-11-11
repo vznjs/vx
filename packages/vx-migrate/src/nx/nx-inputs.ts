@@ -86,6 +86,8 @@ export function expandNxInputs(
     readonly outputs?: readonly string[]
     /** The root-relative outputs git ignores; unknown, every output counts as ignored. */
     readonly ignoredOutputs?: ReadonlySet<string>
+    /** This target's own literal outputs, root-relative, when none is taken back. */
+    readonly ownOutputs?: readonly string[]
     /** The root package.json's dependency names: a lockfile plugin keys them into every task. */
     readonly rootDeps?: ReadonlySet<string>
     /** The root lockfile no plugin claims, which nothing keys unless a task lists it. */
@@ -130,6 +132,16 @@ export function expandNxInputs(
           at.outputs?.some((o) => (lit === o || lit.startsWith(`${o}/`)) && ignored(o))
         )
           return
+        // vx cleans a task's outputs before it runs, so core refuses an
+        // input that reads only them, and that refused the whole `vx lock`.
+        const inOwn = neg === '' && at.ownOutputs?.find((o) => lit === o || lit.startsWith(`${o}/`))
+        if (inOwn) {
+          todos.push(
+            `input ${JSON.stringify(entry)} lies inside this target's own output ${inOwn} — dropped: ` +
+              'vx cleans the outputs before the task runs, where Nx hashes the last run’s files',
+          )
+          return
+        }
         const bare = nxBareGroups(p)
         const g = bare === null ? null : minimatchToVx(gluedGlobstarAsStar(bare), neg !== '')
         if (g === null) {
