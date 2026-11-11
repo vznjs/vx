@@ -1359,8 +1359,9 @@ export function sized(need: Need, sizes: readonly Size[]): Need {
 }
 
 /**
- * When `small`, asked now, would take the rest of what a worker of
- * `cores` runs (`runs`) for least CPU held: from a start on, the tasks
+ * When `small`, joining `small.at` after its ask, would take the rest of
+ * what a worker of `cores` runs (`runs`) for least CPU held, its warm-up
+ * counted: from a start on, the tasks
  * starting then or later fit on `small` side by side, and the big one
  * leaves once those started before end. Undefined when none holds less.
  */
@@ -1389,7 +1390,9 @@ function tailFrom(runs: Ran, cores: number, small: PlanWorker): number | undefin
     // More tasks only need more room.
     if (!fits) break
     const leaves = byStart.slice(i + 1).reduce((most, r) => Math.max(most, r[1]), 0)
-    const held = cores * Math.max(leaves, from) + small.cores * end
+    // The small one is held from its ask, a warm-up before it joins: a
+    // warm-up is CPU paid for as much as a task's.
+    const held = cores * Math.max(leaves, from) + small.cores * (end - from + small.at)
     if (held < least) {
       least = held
       best = from
