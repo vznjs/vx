@@ -616,7 +616,7 @@ async function runOnBus(
   // A refusal is the caller's to print (on stderr, as `vx run:`): as a
   // status line it went to stdout, into whatever a script piped there.
   if (prepared.unresolvedTasks.length > 0) {
-    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared)}`
+    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects)}`
     await teardown()
     await closeUnrun()
     return { ok: false, outcomes: [], refused }
@@ -634,7 +634,7 @@ async function runOnBus(
     // buildTaskGraph semantics but logged just in case.
     const refused =
       prepared.empty === 'no-tasks-declared'
-        ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
+        ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere, true, options.projects, prepared.projects)}${await initHint(prepared)}`
         : 'no tasks to run.'
     await teardown()
     await closeUnrun()
@@ -2183,14 +2183,19 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: await unresolvedHint(prepared),
+        unresolvedHint: await unresolvedHint(prepared, options.projects),
       }
     }
     if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
       return {
         tasks: [],
         unresolvedTasks: prepared.declaredElsewhere,
-        unresolvedHint: elsewhereHint(prepared.declaredElsewhere),
+        unresolvedHint: elsewhereHint(
+          prepared.declaredElsewhere,
+          true,
+          options.projects,
+          prepared.projects,
+        ),
       }
     }
     if (prepared.empty === 'none-affected')
@@ -2284,10 +2289,39 @@ async function planRestorable(
   }
 }
 
-/** The names a project outside the run's selection declares, and how to reach them. */
-function elsewhereHint(names: readonly string[]): string {
+const LOCK_HINT = ' A run reads the lock: after editing a vx.config, run `vx lock`.'
+
+/**
+ * The names a project outside the run's selection declares, and how to
+ * reach them; `lock` adds that a task just added to a selected project's
+ * config is declared only outside the selection until `vx lock`.
+ */
+function elsewhereHint(
+  names: readonly string[],
+  lock: boolean,
+  selected: readonly string[] | undefined,
+  projects: ReadonlyMap<string, ProjectEntry>,
+): string {
   if (names.length === 0) return ''
-  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or a --filter that includes them.`
+  const own = ownDefaultBuild(names, selected, projects)
+  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or a --filter that includes them.${own}${lock && own === '' ? LOCK_HINT : ''}`
+}
+
+/**
+ * Why a selected project `vx show` lists with a build does not run it: its
+ * build is the default one, which no bare name takes (X-145). A quickstart
+ * root read `1 task, default build` and `vx run build` there refused.
+ */
+function ownDefaultBuild(
+  names: readonly string[],
+  selected: readonly string[] | undefined,
+  projects: ReadonlyMap<string, ProjectEntry>,
+): string {
+  if (selected === undefined || !names.includes('build')) return ''
+  const own = selected.filter((p) => isDefaultBuild(projects.get(p)?.config.tasks?.['build']))
+  if (own.length === 0) return ''
+  const one = own.length === 1
+  return ` ${own.join(', ')} declare${one ? 's' : ''} no build of ${one ? 'its' : 'their'} own: \`vx show\` counts ${one ? 'its' : 'their'} default build, which a bare name does not run.`
 }
 
 /**
@@ -2295,16 +2329,20 @@ function elsewhereHint(names: readonly string[]): string {
  * nearest spelling, and, with neither, the lock a run reads its configs
  * from: a task just added to a vx.config is not in it until `vx lock`.
  */
-async function unresolvedHint(prepared: {
-  workspaceRoot: string
-  unresolvedTasks: readonly string[]
-  hintProjects: ReadonlyMap<string, ProjectEntry>
-  declaredElsewhere: readonly string[]
-  anyProjectConfig: boolean
-  taskless: (name: string) => boolean
-  unlockedConfig: () => string | undefined
-}): Promise<string> {
-  const elsewhere = elsewhereHint(prepared.declaredElsewhere)
+async function unresolvedHint(
+  prepared: {
+    workspaceRoot: string
+    unresolvedTasks: readonly string[]
+    hintProjects: ReadonlyMap<string, ProjectEntry>
+    declaredElsewhere: readonly string[]
+    anyProjectConfig: boolean
+    taskless: (name: string) => boolean
+    unlockedConfig: () => string | undefined
+    projects: ReadonlyMap<string, ProjectEntry>
+  },
+  selected: readonly string[] | undefined,
+): Promise<string> {
+  const elsewhere = elsewhereHint(prepared.declaredElsewhere, false, selected, prepared.projects)
   const near = didYouMean(
     prepared.unresolvedTasks,
     prepared.hintProjects,
@@ -2320,9 +2358,14 @@ async function unresolvedHint(prepared: {
     if (unlocked !== undefined)
       return `${elsewhere}${near.replace(NO_TASK, `The lock holds no project for ${unlocked}: run \`vx lock\` (did it fail?).`)}${init}`
   }
+  // Beside `--all` too: a task just added to the selected project's config
+  // is declared only outside the selection until `vx lock`.
   const lock =
-    init === '' && elsewhere === '' && !near.startsWith(' Did you mean') && !near.includes(NO_TASK)
-      ? ' A run reads the lock: after editing a vx.config, run `vx lock`.'
+    init === '' &&
+    !near.startsWith(' Did you mean') &&
+    !near.includes(NO_TASK) &&
+    ownDefaultBuild(prepared.declaredElsewhere, selected, prepared.projects) === ''
+      ? LOCK_HINT
       : ''
   return `${elsewhere}${near}${init}${lock}`
 }

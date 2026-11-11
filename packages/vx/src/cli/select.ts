@@ -801,11 +801,10 @@ export async function pickTask(
 }
 
 /**
- * The first unmatched include naming, by path or by a config-only
- * project's directory name, a config `vx lock` would make a project: one
- * written after the lock is none yet, and "Projects: …" without it read as
- * a typo. Asked on the no-match path only; `unlockedDir` lists the tree
- * only when that directory holds a config.
+ * The first unmatched include naming, by path, by a config-only
+ * project's directory name or by a package name, a config `vx lock` would
+ * make a project: one written after the lock is none yet, and "Projects: …"
+ * without it read as a typo. Asked on the no-match path only.
  */
 async function unlockedFilter(
   root: string,

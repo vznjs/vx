@@ -119,14 +119,16 @@ describe('task selection', () => {
   // `vx run typecheck` at a root whose members declare it said no project
   // did. A scoped run names the projects outside it and `--all`; a name
   // declared nowhere keeps the plain message (CONTROL). The hint said
-  // "pass --filter" to a run that was given one (`--filter api`).
+  // "pass --filter" to a run that was given one (`--filter api`). A task
+  // just added to the selected project's config is not locked yet, so the
+  // lock line follows too.
   it(
     'a task only projects outside the selection declare says so, and names --all',
     async () => {
       await addProject('a', ['build'])
       await addProject('b', ['typecheck'])
       const hint =
-        'no projects declare task(s): typecheck. Only projects outside the selection declare typecheck — pass --all, or a --filter that includes them.'
+        'no projects declare task(s): typecheck. Only projects outside the selection declare typecheck — pass --all, or a --filter that includes them. A run reads the lock: after editing a vx.config, run `vx lock`.'
       const log = silent()
       const r = await run({ cwd: root, projects: ['a'], tasks: ['typecheck'], log })
       expect(r.ok).toBe(false)

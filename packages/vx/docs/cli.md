@@ -83,7 +83,10 @@ declares a task yet: add one under `tasks` in a vx.config, then run
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
 --all, or a --filter that includes them.` when the run was scoped and a project
-  outside the scope declares it.
+  outside the scope declares it, then the lock line, since a task just added
+  to a selected project's config is not in the lock yet. A selected project
+  whose `build` is the default one (a root with an empty config) is named
+  instead: `vx show` counts that build, but no bare name runs it.
 
 A name declared by only some projects is fine; the check fires only when
 a name matches nowhere. So `vx run lint test typecheck` fails on CI the
@@ -1848,7 +1851,9 @@ $ vx cache clean --older-than 30d --dry
 | `--cache-dir <path>`      | the cache a run with the same flag uses                 |
 
 Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
-total is still over the size cap. No run evicts anything: to bound the
+total is still over the size cap. Sizes are on disk, as `du` counts them: a
+5 KB file holds a whole block, so a store of small files is bigger than
+their lengths. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
 
 A clean with a bound also drops run
@@ -2214,7 +2219,7 @@ command: the lock they wrote would have dropped it); a config added since the lo
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`; so does a bare `build` that the
+around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`, `c` its directory or its `package.json` name; so does a bare `build` that the
 cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with

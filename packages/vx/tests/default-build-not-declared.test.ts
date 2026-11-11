@@ -159,4 +159,32 @@ describe('a workspace that declares no task yet', () => {
       await rm(ws, { recursive: true, force: true })
     }
   })
+
+  // The quickstart's monorepo root: `vx show` lists its default build
+  // (`1 task, default build`) and `vx run build` there refused with only
+  // "pass --all". The refusal says why the root's build is not run.
+  it('a run from a root whose only build is the default says so', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-root-default-build-' })
+    try {
+      await writeFile(path.join(ws, 'vx.config.mjs'), 'export default {}\n')
+      await addProject(
+        ws,
+        'x',
+        `export default { tasks: { build: { exec: { command: 'echo x' } } } }`,
+      )
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', 'build'],
+        cwd: ws,
+        stdin: 'ignore',
+      })
+      expect(p.exitCode).toBe(1)
+      expect(p.stderr.toString()).toContain('Only projects outside the selection declare build')
+      expect(p.stderr.toString()).toContain(
+        'fixture-root declares no build of its own: `vx show` counts its default build, which a bare name does not run',
+      )
+      expect(p.stderr.toString()).not.toContain('after editing a vx.config')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
 })
