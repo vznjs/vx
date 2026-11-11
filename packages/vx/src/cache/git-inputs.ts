@@ -27,6 +27,7 @@ import {
   type Stats,
 } from 'node:fs'
 import {
+  CHECK_ATTR,
   checkIgnoreSync,
   executablePath,
   gitCaseArgs,
@@ -36,6 +37,7 @@ import {
   ignoreCaseLies,
   isInstalledPath,
   notAWorkTree,
+  parseCheckAttrOutput,
   relPosix,
   UserError,
   xxh3hex,
@@ -1570,23 +1572,6 @@ interface GitRun {
 }
 
 /**
- * Parse `git check-attr -z text eol ident filter working-tree-encoding` output — a flat stream of
- * `<path>\0<attr>\0<value>\0` triples — into the set of paths where a clean
- * filter can rewrite bytes. `unspecified` means no rule matched and
- * `unset` (`-text`) explicitly disables conversion; both leave the index blob
- * byte-identical to the worktree file, so those OIDs stay trusted.
- */
-export function parseCheckAttrOutput(out: string): Set<string> {
-  const affected = new Set<string>()
-  const fields = out.split('\0')
-  for (let i = 0; i + 2 < fields.length; i += 3) {
-    const value = fields[i + 2]!
-    if (value !== 'unspecified' && value !== 'unset') affected.add(fields[i]!)
-  }
-  return affected
-}
-
-/**
  * Remove from `trusted` every path whose index blob may differ from its
  * worktree bytes because a clean filter applies.
  *
@@ -1686,17 +1671,6 @@ async function dropFilteredOids(
   if (res === null || res.exitCode !== 0) return
   for (const rel of parseCheckAttrOutput(res.stdout)) trusted.delete(rel)
 }
-
-const CHECK_ATTR = [
-  'check-attr',
-  '--stdin',
-  '-z',
-  'text',
-  'eol',
-  'ident',
-  'filter',
-  'working-tree-encoding',
-]
 
 /**
  * The filter gate's half that needs only the index listing: an attributes

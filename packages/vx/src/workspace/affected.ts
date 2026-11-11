@@ -10,6 +10,7 @@ import { lstatSync } from 'node:fs'
 import { lstat, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  CHECK_ATTR,
   executablePath,
   gitCaseArgs,
   gitEnv,
@@ -18,6 +19,7 @@ import {
   isExecutableMissing,
   isInstalledPath,
   notAWorkTree,
+  parseCheckAttrOutput,
   relPosix,
   UserError,
   xxh3hex,
@@ -1278,7 +1280,7 @@ async function outsideChanged(
 
 /**
  * Of `rels`, the paths a clean filter can rewrite (`core.autocrlf`, or a
- * `text`, `eol`, `ident`, `filter` or `working-tree-encoding` attribute),
+ * converting attribute, `parseCheckAttrOutput`),
  * as the key asks it (cache/git-inputs.ts `dropFilteredOids`). `hash-object`
  * names such a file's filtered blob, which a CRLF edit to an LF file leaves
  * the base's, while the key hashes the raw bytes; and raw bytes equal to the
@@ -1292,18 +1294,12 @@ async function filtered(
 ): Promise<Set<string>> {
   if (rels.length === 0 || autocrlf) return new Set(rels)
   const proc = spawnGit(
-    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident', 'filter', 'working-tree-encoding'],
+    CHECK_ATTR,
     workspaceRoot,
     new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
   )
   const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  if (exit !== 0) return new Set(rels)
-  const hit = new Set<string>()
-  const fields = out.split('\0')
-  for (let i = 0; i + 2 < fields.length; i += 3) {
-    if (fields[i + 2] !== 'unspecified' && fields[i + 2] !== 'unset') hit.add(fields[i]!)
-  }
-  return hit
+  return exit === 0 ? parseCheckAttrOutput(out) : new Set(rels)
 }
 
 /**

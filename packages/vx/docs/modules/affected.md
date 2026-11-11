@@ -125,8 +125,8 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    whose content still hashes (`git hash-object`, a link's target in
    process) to the base's blob is dropped, so a stat-only change selects
    nothing, as the refresh did. A file a clean filter can rewrite
-   (`core.autocrlf`, or a `text`, `eol`, `ident`, `filter` or
-   `working-tree-encoding` attribute per `git check-attr`) stays: its
+   (`core.autocrlf`, or a converting attribute per the key's own
+   `git check-attr --all`, util `parseCheckAttrOutput`) stays: its
    filtered hash can match the base while the key, which hashes raw
    bytes, moved (a CRLF edit to an LF file). So does such a file git
    was told not to look at (`--assume-unchanged`). The diff also runs

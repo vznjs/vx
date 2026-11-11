@@ -17,7 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -647,6 +647,21 @@ function importerOf(workspaceRoot: string, dir: string): string {
 }
 
 /**
+ * Whether a manifest name may be there, on a stat: a read of one that is
+ * not rejects with an error built for it (~65 µs), and pnpm tries three
+ * names per package, so each run built two per package (vueuse: 26, ~1.7
+ * ms of its no-op). Any answer but no entry goes on to the read, which
+ * refuses an unreadable one.
+ */
+function present(file: string): boolean {
+  try {
+    return statSync(file, { throwIfNoEntry: false }) !== undefined
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'ENOTDIR'
+  }
+}
+
+/**
  * An importer's manifest (the one of `names` present), or null where it
  * has none. One that does not parse refuses, named: read as none, a
  * conflicted manifest lost its dependencies and its dependents hit with
@@ -663,6 +678,7 @@ async function manifestOf(
   const found: { name: string; text: string }[] = []
   for (const base of names) {
     const file = path.join(dir, base)
+    if (!present(file)) continue
     const name = path.relative(root, file).split(path.sep).join('/')
     try {
       found.push({ name, text: await Bun.file(file).text() })

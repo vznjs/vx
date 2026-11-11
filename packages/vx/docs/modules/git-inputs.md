@@ -7,9 +7,9 @@ trusts: `git ls-files -s` (paths with their index blob OIDs, stage 0,
 regular files and symlinks), `git status --porcelain -z` (which of those
 are dirty, plus the untracked; `--no-renames`, so a rename's source,
 the original of a `git add -N` copy (item 976) or a deletion paired with
-an unmerged path (A-59), is a deletion of its own), and `git check-attr` where a clean
+an unmerged path (A-59), is a deletion of its own), and `git check-attr --all` where a clean
 filter (`text`, `eol`, `ident`, a `filter` driver, `working-tree-encoding`,
-`core.autocrlf`) could make the blob
+the legacy `crlf`, `core.autocrlf`) could make the blob
 differ from the bytes on disk. The gate looks for a `.gitattributes`
 among every listed path, untracked and modified ones too: git applies
 those, and a scan of the trusted paths alone never saw them (item 977),
@@ -221,7 +221,6 @@ export function gitRefusal(dir: string): UserError | undefined
 export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // the repo root, from `--show-prefix`
 // The identity the key folds: the blob OID, prefixed `<mode>:` unless mode is 100644 (item 887)
 export function fileIdentity(mode: string, oid: string): string
-export function parseCheckAttrOutput(out: string): Set<string>
 // `lstat`, or undefined for no entry, under a parent that is a file (ENOTDIR) too
 export function lstatOrAbsent(p: string): Stats | undefined
 export function autocrlfConverts(gitVars: string): boolean // over `git var -l`
