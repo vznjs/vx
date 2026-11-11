@@ -52,6 +52,7 @@ import {
 } from 'node:fs'
 import {
   chmod,
+  lstat,
   mkdir,
   readdir,
   rename,
@@ -73,6 +74,7 @@ import {
 } from './schema.js'
 import {
   UserError,
+  diskBytes,
   DOT_VX_GITIGNORE,
   IGNORE_ALL,
   formatBytes,
@@ -609,7 +611,7 @@ async function scanOrphanFiles(
       try {
         const st = await stat(file)
         if ((name.includes('.tree') ? st.isDirectory() : st.isFile()) && st.mtimeMs <= cutoff) {
-          const size = st.isDirectory() ? await treeBytes(file) : st.size
+          const size = st.isDirectory() ? await treeBytes(file) : diskBytes(st)
           found.push({ file, size, mtimeMs: st.mtimeMs, temp })
         }
       } catch {
@@ -620,12 +622,12 @@ async function scanOrphanFiles(
   return found
 }
 
-/** The bytes a tree-form artifact's files hold. */
+/** The bytes a tree-form artifact holds on disk, its directories too, as `vx info` counts them. */
 async function treeBytes(dir: string): Promise<number> {
-  let n = 0
+  const none = { size: 0, blocks: 0 }
+  let n = diskBytes(await lstat(dir).catch(() => none))
   for (const e of await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])) {
-    if (e.isFile())
-      n += (await stat(path.join(e.parentPath, e.name)).catch(() => ({ size: 0 }))).size
+    n += diskBytes(await lstat(path.join(e.parentPath, e.name)).catch(() => none))
   }
   return n
 }
@@ -3476,9 +3478,7 @@ export class Cache implements CacheLayer {
     const tree = this.tempTreePath(args.hash)
     try {
       const scan = await writeTree(plan, tree)
-      let bytes = 0
-      for (const e of scan.entries) bytes += e.size
-      return { plan: true, saved: { tree, scan, bytes } }
+      return { plan: true, saved: { tree, scan, bytes: await treeBytes(tree) } }
     } catch (err) {
       await rm(tree, { recursive: true, force: true })
       throw err
@@ -3661,12 +3661,9 @@ export class Cache implements CacheLayer {
       tmpPath = undefined
       tree = dir
     }
-    // A tree keeps its files as they are: counted as a saved tree counts
-    // them, not as the archive it was unpacked from (`--max-size`, stats).
-    if (tree !== undefined && saved === undefined) {
-      totalBytes = 0
-      for (const e of entries) totalBytes += e.size
-    }
+    // A tree keeps its files as they are: counted on disk as a saved tree
+    // counts them, not as the archive it was unpacked from (`--max-size`, stats).
+    if (tree !== undefined && saved === undefined) totalBytes = await treeBytes(tree)
     const outputFileRows: Array<[string, number, number, number]> = []
     // Per-output-file fingerprint rows feed the skip-restore check.
     // Row paths: project entries store the bare rel (`outputs/`

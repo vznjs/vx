@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { indexDb, Cache, type StoreOptions } from '../src/cache/index.js'
 import { parseSettingValue } from '../src/settings.js'
+import { treeBytes } from '../src/util/index.js'
 
 const SMALL = new TextEncoder().encode('small output\n')
 const LARGE = crypto.getRandomValues(new Uint8Array(48 * 1024))
@@ -313,7 +314,7 @@ describe('a tree no row names', () => {
     const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000
     await utimes(orphan, old, old)
     await utimes(indexed, old, old)
-    expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: 11 })
+    expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: treeBytes(orphan) })
     await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(existsSync(orphan)).toBe(false)
     await cache.restoreOutputs(HASH, proj)

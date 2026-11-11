@@ -70,11 +70,21 @@ export function formatBytes(n: number): string {
   return `${v.toFixed(0)} PB`
 }
 
-/** Bytes under `p` on disk, links not followed; 0 when missing, and for a directory this user cannot list. */
+/**
+ * What a stat says its file holds on disk, as `du` counts it: its blocks,
+ * a whole one for a 5 KB file, or its length where the filesystem reports none.
+ * A clone's blocks are its source's too; `du` counts them for each, and so
+ * does this: a clean frees them once the last holder goes.
+ */
+export function diskBytes(st: { size: number; blocks: number }): number {
+  return st.blocks > 0 ? st.blocks * 512 : st.size
+}
+
+/** Bytes under `p` on disk, as {@link diskBytes} counts them, links not followed; 0 when missing, and for a directory this user cannot list. */
 export function treeBytes(p: string): number {
   const st = lstatSync(p, { throwIfNoEntry: false })
   if (st === undefined) return 0
-  if (!st.isDirectory()) return st.size
+  if (!st.isDirectory()) return diskBytes(st)
   let names: string[]
   try {
     names = readdirSync(p)
@@ -85,5 +95,5 @@ export function treeBytes(p: string): number {
     if (code === 'EACCES' || code === 'EPERM') return 0
     throw err
   }
-  return names.reduce((n, e) => n + treeBytes(path.join(p, e)), 0)
+  return names.reduce((n, e) => n + treeBytes(path.join(p, e)), diskBytes(st))
 }

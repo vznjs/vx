@@ -1,7 +1,10 @@
 import { cpuClock } from './helpers/cpu-clock.js'
 import { describe, expect, it } from 'bun:test'
 import { parsePruneArgs } from '../src/cli/cache.js'
-import { parseSize } from '../src/util/size.js'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { parseSize, treeBytes } from '../src/util/size.js'
 // Every cross-module caller reaches parseSize through the util CONTRACT
 // (tests/module-boundaries.test.ts): workspace/project-loader.ts:3,
 // cli/cache.ts:2. The barrel
@@ -554,5 +557,21 @@ describe('call-site contracts', () => {
     expect(parseSizeViaBarrel).toBe(parseSize)
     expect(parseSizeViaBarrel('512MB')).toBe(512 * MiB)
     expect(parseSizeViaBarrel('1.5GB')).toBeNull()
+  })
+})
+
+// `vx info`'s size on disk is what `du` reports: a 5 KB file holds a whole
+// block or more, and a store of small JS chunks read 445 MB where du said 733M.
+describe('treeBytes', () => {
+  it('counts the blocks small files hold, not their length', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-tree-bytes-'))
+    try {
+      for (let i = 0; i < 20; i++) writeFileSync(path.join(dir, `${i}.js`), 'x'.repeat(100))
+      const block = statSync(path.join(dir, '0.js')).blocks * 512
+      // A filesystem reporting no blocks falls back to the length.
+      expect(treeBytes(dir)).toBeGreaterThanOrEqual(20 * (block > 0 ? block : 100))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

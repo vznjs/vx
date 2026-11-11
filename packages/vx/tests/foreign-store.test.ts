@@ -8,13 +8,22 @@
 // Root bypasses the permission bits, so as root each vx drops the
 // capabilities that bypass them (`setpriv`); without `setpriv` root skips.
 
-import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { diskBytes } from '../src/util/index.js'
 
 const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 const SIZE = path.join(import.meta.dir, '..', 'src', 'util', 'size.ts')
@@ -172,6 +181,7 @@ describe('a store vx run will not use', () => {
       '-e',
       `import { treeBytes } from ${JSON.stringify(SIZE)}; console.log(treeBytes(${JSON.stringify(dir)}))`,
     ])
-    expect(`${p.exitCode} ${p.stdout.toString().trim()}`).toBe('0 5')
+    const own = diskBytes(lstatSync(dir)) + diskBytes(lstatSync(path.join(dir, 'a')))
+    expect(`${p.exitCode} ${p.stdout.toString().trim()}`).toBe(`0 ${own}`)
   })
 })
