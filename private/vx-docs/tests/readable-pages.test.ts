@@ -9,6 +9,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
 const CONTENT = path.resolve(import.meta.dir, '../src/content/docs')
+// The site's own pages: the home page said "Distributed runs".
+const SITE = ['pages', 'components'].map((d) => path.resolve(import.meta.dir, '../src', d))
 const MAX_PARAGRAPH = 200
 // Wrong even in code font.
 const BANNED =
@@ -118,5 +120,31 @@ describe('every page reads on a phone', () => {
     const found = problems('guides/upgrading.md')
     expect(found.some((p) => p.includes('paragraph of'))).toBe(true)
     expect(found.some((p) => p.includes('internal'))).toBe(true)
+  })
+})
+
+describe('the site pages say none of the banned words', () => {
+  const files = (abs: string): string[] =>
+    statSync(abs).isDirectory()
+      ? readdirSync(abs).flatMap((f) => files(path.join(abs, f)))
+      : /\.(astro|tsx?|mdx?)$/.test(abs)
+        ? [abs]
+        : []
+  const all = SITE.flatMap(files)
+
+  it('walks the pages', () => {
+    expect(all.some((f) => f.endsWith('index.astro'))).toBe(true)
+  })
+
+  it('finds none', () => {
+    const hits = all.flatMap((f) =>
+      readFileSync(f, 'utf8')
+        .split('\n')
+        .flatMap((line, i) => {
+          const m = BANNED.exec(line)
+          return m ? [`${path.relative(SITE[0]!, f)}:${i + 1} "${m[0]}"`] : []
+        }),
+    )
+    expect(hits).toEqual([])
   })
 })

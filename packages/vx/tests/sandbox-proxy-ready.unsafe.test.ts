@@ -1,5 +1,5 @@
 // A sandboxed task's first dial of the run's proxy (M-20). SRT starts its
-// in-sandbox bridges (`socat TCP-LISTEN:3128`, `:1080`) in the background
+// in-sandbox bridges (`socat TCP6-LISTEN:3128`, `:1080`) in the background
 // and runs the command at once, so on a loaded box curl met "connection
 // refused" (`000`) where the proxy's own 403 was due. A fake `socat` first
 // on PATH plays the loaded box: the in-sandbox listener starts 500 ms late.
@@ -29,7 +29,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realSocat === null
         path.join(bin, 'socat'),
         [
           '#!/bin/sh',
-          'case "$1" in TCP-LISTEN:3128,*) sleep 0.5;; esac',
+          'case "$1" in TCP*-LISTEN:3128,*) sleep 0.5;; esac',
           `exec ${realSocat} "$@"`,
           '',
         ].join('\n'),

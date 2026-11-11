@@ -18,6 +18,21 @@ import type { ResolvedSandboxConfig, SandboxedRunArgs } from './sandbox-runtime.
 import * as ui from '../ui/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
+type SrtTaskConfig = NonNullable<Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2]>
+
+/**
+ * SRT's per-task config as vx builds it: every path a plain string. SRT
+ * also takes `{ path, literal: true }`; vx spells literals itself.
+ */
+export type TaskSandboxConfig = Omit<SrtTaskConfig, 'filesystem'> & {
+  filesystem?: {
+    denyRead: string[]
+    allowRead?: string[]
+    allowWrite: string[]
+    denyWrite: string[]
+    allowGitConfig?: boolean
+  }
+}
 
 /**
  * Write grants as bwrap can actually honour them.
@@ -79,6 +94,23 @@ export function withLinkedWrites(
     if (m[0] !== '--') continue
     const words = binds.map(([s, a]) => `--bind ${shellQuote(s)} ${shellQuote(a)} `).join('')
     return `${wrapped.slice(0, m.index)}${words}${wrapped.slice(m.index)}`
+  }
+  return wrapped
+}
+
+/**
+ * Linux: the denied cwd made inside the tmpfs that hides it. bwrap enters
+ * the old cwd only if it exists in the new root, else `$HOME`, with no
+ * word; SRT (0.0.81) lays no mount at a deny an ancestor's tmpfs already
+ * hides, so the cwd vx denies under the workspace root's mask was gone and
+ * `pwd` read `$HOME`. `--dir` comes after the masks and before their
+ * read-only remount, so the task enters an empty, read-only directory.
+ */
+export function withCwd(wrapped: string, cwd: string | undefined): string {
+  if (cwd === undefined) return wrapped
+  for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
+    if (m[0] !== '--') continue
+    return `${wrapped.slice(0, m.index)}--dir ${shellQuote(cwd)} ${wrapped.slice(m.index)}`
   }
   return wrapped
 }
@@ -376,7 +408,7 @@ export function buildCustomConfig(
     allowRead: readonly string[]
     denyRead: readonly string[]
   },
-): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+): TaskSandboxConfig {
   const c = args.config
   const denyRead = unique([...baselines.denyRead])
   const allowWrite = bindableWrites(unique([...c.allowWrite]))
@@ -395,7 +427,7 @@ export function buildCustomConfig(
   }
   const allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
 
-  const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {
+  const custom: TaskSandboxConfig = {
     filesystem: {
       denyRead,
       allowRead,

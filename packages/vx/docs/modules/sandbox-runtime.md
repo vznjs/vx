@@ -43,7 +43,9 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
 ### The mandatory-deny scan, scoped (B-40)
 
 On every wrap SRT walked `process.cwd()`, the workspace root, with
-`rg --max-depth 3` for names a task must not write, and kept a hit only
+`rg --max-depth 4` (depth 3, files one level deeper; a named directory
+such as `.idea` or a repository's `.git/hooks` one level less deep) for
+names a task must not write, and kept a hit only
 inside an allowed write path (the rest is read-only under `--ro-bind /
 /` already). On 1,090 packages that walk was half of a sandboxed run's
 wall time (25.4 s → 14.7 s once scoped; interleaved, min of 3). vx now
@@ -52,9 +54,8 @@ root's entries, and each wrap adds the denies `scopedMandatoryDenies`
 finds under the task's write grants (SRT's default write paths
 included) to `denyWrite`. A deny is the hit or one of its ancestors, so
 every hit that counts lies under a write path. It runs per task and is
-never cached: it decides refusals. It is stricter than rg: it does not
-read `.gitignore`, walks into `node_modules` and counts a symlink by its
-name, so such a file inside a write grant is refused where rg missed it.
+never cached: it decides refusals. It is stricter than rg: it walks
+into `node_modules` and counts a symlink by its name, so such a file inside a write grant is refused where rg missed it.
 A deny whose path holds a glob character would be dropped by SRT on
 Linux, so the task is refused instead, and a root with one keeps SRT's
 own depth-3 scan. `sandbox-deny-scan.unsafe.test.ts` holds the binds
@@ -152,7 +153,7 @@ that link re-granted the whole project past its `allow.read`.
 `localBinding`, `unixSockets`, `machLookup`, `weakerNetworkIsolation` (its
 `trustd.agent` lookup) and `systemInfo` do not reach
 SRT as config, and neither does a `network` domain list. The first four exist as fields, but `sandbox-manager.js`
-(0.0.75, still 0.0.76) reads them off the config given to `initialize()` and never off
+(0.0.75, still 0.0.81) reads them off the config given to `initialize()` and never off
 the per-call one, so a per-task grant is silently dropped; `systemInfo`
 has no field at any level (each name becomes both a `system-info` and a
 `sysctl-read` rule: Bun reads `hw.optional.neon` as a sysctl). vx is per-task by definition, so it appends
@@ -673,13 +674,6 @@ every networked task met only a refused connection on the proxy. There
 the wrapped command sets `SOCAT_DEFAULT_LISTEN_IP=4`, socat's own switch
 for the listen family (`hostHasIpv6`: `/proc/net/if_inet6`, asked once);
 a host with IPv6 is untouched (B-22).
-
-`initSandbox` names the JVM proxy agent SRT ships (`javaAgentJarPath`,
-`bundledJavaAgent`). SRT's own search builds its candidate list with
-`npm root -g` in it before trying the bundled path, so every init
-spawned npm, about 110 ms of `vx info` and of a run's first sandboxed
-task. Where the jar is not on disk (a compiled vx), SRT searches as
-before (B-25).
 
 ## A task's temp directory
 
