@@ -239,7 +239,8 @@ their `dependsOn` array.
 ## Cycle detection
 
 After every reachable node has been added, `checkGraph()` checks the
-graph (the `graph` stage runs it again after its plugins, item 981):
+graph (the `graph` stage runs it again after its plugins, item 981,
+unlocked even in a run, since a hook can edit what the lock never saw):
 each node under its own id, every dep a node named once (a plugin's
 repeat is dropped), then `detectCycle()` runs a
 3-color DFS:

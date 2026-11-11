@@ -66,6 +66,7 @@ export {
   wholeSubtreePrefixes,
   slashBraceExpansions,
   braceAlternatives,
+  braceExpansionCount,
   braceRange,
   BRACE_RANGE_LIMIT,
   writableUnder,

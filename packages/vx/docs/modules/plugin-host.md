@@ -18,11 +18,16 @@ trap in it that threw crashed vx with a raw stack (2026-11-07). A
 `affected` list are copied as they are checked, and core uses the copy,
 so a getter cannot answer the check one value and the run another
 (`tests/plugin-hostile-answers.test.ts`, `tests/discover-stage.test.ts`).
-After the `graph` stage the graph is re-checked the way the builder
-checks its own (`checkGraph`: each node under its own id, every dep a
-node, no cycle, no two tasks deleting each other's outputs, the addition
-marks derived again) and a violation is reported against the last plugin
-that ran. A dep listed twice is dropped to one, as the builder dedupes
+After the `graph` stage the graph is re-checked the way `vx lock`
+checks the builder's (`checkGraph`: each node under its own id, every dep a
+node, no cycle, no two tasks deleting each other's outputs, no input
+reading another task's outputs, the addition marks derived again) and a
+violation is reported against the last plugin that ran. A run checks
+it unlocked too, though it skips those walks over a graph the lock
+checked: a hook that edited only a run's graph (by `ctx.requested`)
+made two tasks write one file, and both ran and saved
+(`tests/plugin-pipeline.test.ts`, "an overlap a hook makes only in a
+run"). No `graph` hook, no walk. A dep listed twice is dropped to one, as the builder dedupes
 its own: the key folded the upstream twice, and a server held on the
 remote's answer waited on one answer too many, so the run never settled. Only the first two were checked until item 981: a plugin that
 dropped the edge between two overlapping outputs lost one task's files

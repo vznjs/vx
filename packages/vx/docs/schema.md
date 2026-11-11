@@ -1002,7 +1002,11 @@ depth or `src/*.ts` for one; inside a brace too (`src/{a,**}.ts` is
 `src/**.ts`). A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
-names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
+names is refused wherever it sits in the glob, and so is a glob whose
+braces together expand to more than 1024 (`src/{1..100}{1..100}`, ten
+`{a,b}` in a row is 1024 and loads): each is a glob vx compiles, and a
+million took a run gigabytes. A class range that runs backwards
+(`[z-a]`) matches no character and is refused, naming `[a-z]`. A leading `!` is still the negation, so `!(group)/**`
 takes a route group back. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
@@ -1125,7 +1129,10 @@ matched nothing under that arm and said so nowhere. A Windows spelling
 is refused the same way, with the forward-slash glob to write: a
 backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 `C:/src/**`). A backslash before a bracket, a brace, a `!` or a
-backslash stays an escape.
+backslash stays an escape. A glob with surrounding whitespace
+(`' src/**'`) or a control character (`'src/\n'`) is refused: the
+engine reads either as part of a name, so it matched nothing and the
+task keyed nothing for it.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
 `.vx/projects.lock.json`, `vx.lock.json`, `.vx/tmp/**`, and the
