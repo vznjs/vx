@@ -103,9 +103,9 @@ function parseArgs(argv) {
 }
 
 /** The refusal of an override that moves the target's cached outputs; nx-command.ts writes the same. */
-function movedOutputs(name) {
+function movedOutputs(key, name) {
   return (
-    `--${name} moves the outputs ({options.${name}}) vx caches as mapped — ` +
+    `${key.length === 1 ? '-' : '--'}${key} moves the outputs ({options.${name}}) vx caches as mapped — ` +
     `set ${name} in a configuration and run that configuration's task`
   )
 }
@@ -232,10 +232,28 @@ async function main(argv) {
   // The cached outputs were resolved from these options when the target
   // was mapped; Nx resolves them from the overrides, and vx, keeping the
   // mapped ones, cleaned and saved the wrong path: a hit restored nothing.
-  for (const name of args.outputsOptions) {
-    if (Object.hasOwn(overrides, name)) {
-      process.stderr.write(`nx-exec: ${movedOutputs(name)}\n`)
-      return 2
+  // Each key named as `runExecutor` names it for the executor
+  // (`combineOptionsForExecutor`): `--output-path` and a schema alias are
+  // `outputPath` there. Nx caches the schema it reads here.
+  const keys = Object.keys(overrides)
+  if (keys.length > 0 && args.outputsOptions.length > 0) {
+    const { parseExecutor, getExecutorInformation } = nx('nx/src/command-line/run/executor-utils')
+    const { convertToCamelCase, convertAliases } = nx('nx/src/utils/params')
+    const [nodeModule, executor] = parseExecutor(args.executor)
+    const { schema } = getExecutorInformation(
+      nodeModule,
+      executor,
+      workspaceRoot,
+      context.projectsConfigurations.projects,
+    )
+    for (const key of keys) {
+      const [name] = Object.keys(
+        convertAliases(convertToCamelCase({ [key]: true }, schema), schema, false),
+      )
+      if (args.outputsOptions.includes(name)) {
+        process.stderr.write(`nx-exec: ${movedOutputs(key, name)}\n`)
+        return 2
+      }
     }
   }
   // As `nx run` reads it (`getLastValueFromAsyncIterableIterator`): the

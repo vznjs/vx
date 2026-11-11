@@ -142,6 +142,40 @@ it('a translated executor line refuses it too, and hands the command the rest', 
   expect({ code: ok.code, stdout: ok.stdout }).toEqual({ code: 0, stdout: 'built --x=1\n' })
 })
 
+// The command stands in for an executor, and Nx names `--out-dir` as the
+// executor's schema does (`outDir`) before the executor reads it.
+it('a translated executor line refuses the kebab-case spelling too', async () => {
+  const command = await commandOf(
+    {
+      executor: '@x/y:build',
+      cache: true,
+      outputs: ['{options.outDir}'],
+      options: { outDir: 'dist/libs/b' },
+    },
+    { executors: { '@x/y:build': () => ({ command: 'echo built' }) } },
+  )
+  for (const args of ['--out-dir dist/other', '--out-dir=dist/other', '--no-out-dir']) {
+    const r = run(command, args)
+    expect({ args, code: r.code, stdout: r.stdout }).toEqual({ args, code: 2, stdout: '' })
+    expect(r.stderr).toContain('{options.outDir}')
+  }
+})
+
+// Nx's run-commands and run-script read forwarded args as typed (no
+// camel-case expansion; run-script's schema has no such property), so
+// `--output-path` leaves `{args.outputPath}` and the outputs where they are.
+it('run-commands and run-script lines forward the kebab-case spelling', async () => {
+  const rc = await commandOf(write)
+  const r = run(rc, '--output-path=dist/other')
+  expect(r.code).toBe(0)
+  expect(await Bun.file(path.join(root, 'dist/libs/b/o.txt')).exists()).toBe(true)
+  const script = await commandOf(
+    { executor: 'nx:run-script', cache: true, options: { script: 'build' } },
+    { scripts: { build: 'echo built' } },
+  )
+  expect(run(script, '--output-path=x').stdout).toBe('built --output-path=x\n')
+})
+
 it('an uncached target forwards the option as before', async () => {
   const command = await commandOf({ ...write, cache: false })
   expect(run(command, '--outputPath=dist/other').code).toBe(0)
