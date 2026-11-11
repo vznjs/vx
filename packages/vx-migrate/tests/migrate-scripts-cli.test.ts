@@ -103,6 +103,33 @@ describe('vx-migrate on package.json scripts', () => {
     expect(await readFile(path.join(root, 'vx.config.ts'), 'utf8')).toContain("command: 'oxlint .'")
   })
 
+  // A starter of the other extension was left beside the migrated root
+  // config: the loader read the starter, and the root's tasks were lost
+  // (2026-11-11). Replaced, as `--force` replaces one (item 1033).
+  for (const [starter, written, args, text] of [
+    [
+      'vx.config.ts',
+      'vx.config.mjs',
+      ['--mjs'],
+      "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default { tasks: {} } satisfies ProjectConfig\n",
+    ],
+    ['vx.config.mjs', 'vx.config.ts', [], 'export default { tasks: {} }\n'],
+  ] as const) {
+    it(`replaces vx init's ${starter} starter with ${written}`, async () => {
+      const root = await bunRepo()
+      await writeFile(
+        path.join(root, 'package.json'),
+        '{"name":"r","workspaces":["packages/*"],"scripts":{"fmt":"oxfmt ."}}\n',
+      )
+      await writeFile(path.join(root, starter), text)
+      const r = await migrate(root, ['--no-install', ...args])
+      expect([r.code, r.err]).toEqual([0, ''])
+      expect(r.out).toContain(`replaced  ${starter}`)
+      expect(await Bun.file(path.join(root, starter)).exists()).toBe(false)
+      expect(await readFile(path.join(root, written), 'utf8')).toContain("'oxfmt .'")
+    })
+  }
+
   // A lone package with no lockfile, `--no-install`: the workspace file
   // declares no lockfile plugin, so `^build` had no edges to follow and the
   // `vx lock` the report named refused it (2026-11-11).
