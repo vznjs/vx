@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test'
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { benchEnv } from '../bench-env.js'
@@ -31,6 +31,33 @@ it('copies a workspace whose git index vouches for every file, apart from the so
     expect(git(['status', '--porcelain'], dst)).toBe('')
     await writeFile(path.join(dst, 'p', 'src', 'i.js'), 'y\n')
     expect(await Bun.file(path.join(src, 'p', 'src', 'i.js')).text()).toBe('x\n')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+// A copy refreshed in the second its files' ctimes fall in, over older
+// mtimes, is an index git cannot see a same-second rewrite in (vx's
+// `sameSecond`): vx then trusted none of its OIDs, which no checkout does.
+it('refreshes the copy in a later second than its files were copied in', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-bench-copy-racy-'))
+  try {
+    const src = path.join(root, 'a')
+    const file = path.join(src, 'p', 'src', 'i.js')
+    await Bun.write(file, 'x\n')
+    await utimes(file, 1000, 1000)
+    git(['init', '-q'], src)
+    git(['add', '-A'], src)
+    git(['-c', 'commit.gpgsign=false', 'commit', '-qm', 'f'], src)
+    const dst = path.join(root, 'b')
+    copyWorkspace(src, dst)
+    const written = Math.floor((await lstat(path.join(dst, '.git', 'index'))).mtimeMs / 1000)
+    const ctime = /^  ctime: (\d+):/m.exec(git(['ls-files', '--debug'], dst))
+    // The entry was refreshed: it holds the copy's ctime, not the source's.
+    expect(Number(ctime?.[1])).toBe(
+      Math.floor((await lstat(path.join(dst, 'p', 'src', 'i.js'))).ctimeMs / 1000),
+    )
+    expect(Number(ctime?.[1])).toBeLessThan(written)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
