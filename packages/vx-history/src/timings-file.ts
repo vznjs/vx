@@ -112,7 +112,8 @@ export function askIgnored(file: string, root: string): Promise<boolean> {
 /**
  * Says so when git does not ignore the file it rewrote: a task whose
  * inputs cover it (a root project's `**`) keyed each run's new timings,
- * and missed the run after every write.
+ * and missed the run after every write; in a watched project each write
+ * started a `vx watch` cycle, as only a git-ignored path starts none.
  */
 export async function warnUnignored(
   file: string,
@@ -122,6 +123,6 @@ export async function warnUnignored(
 ): Promise<void> {
   if (await ignored) return
   warn(
-    `[vx] vx-history: timings file ${path.relative(root, file)} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
+    `[vx] vx-history: timings file ${path.relative(root, file)} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite and vx watch re-runs on it — add it to .gitignore`,
   )
 }

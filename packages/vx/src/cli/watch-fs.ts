@@ -2,6 +2,7 @@
 // the stat poller that stands in where it cannot, and the clock both are
 // judged against. Nothing here knows about tasks, cycles or the cache.
 
+import { isUtf8 } from 'node:buffer'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as ui from '../ui/index.js'
@@ -98,9 +99,21 @@ export function pollWatcher(
       } catch {
         return // vanished or unreadable: its files simply stop appearing
       }
+      let lossy: Map<string, string> | undefined
       for (const e of entries) {
         if (e.name === WATCH_PROBE) continue
         const childRel = rel === '' ? e.name : `${rel}/${e.name}`
+        // A name not valid UTF-8 decodes to one no file has (U+FFFD for its
+        // bad bytes), which no stat finds: sampled by its bytes instead,
+        // under the decoded name the judgement takes as a change.
+        if (e.name.includes('\uFFFD')) {
+          lossy ??= byteNamed(abs)
+          const stamp = lossy.get(e.name)
+          if (stamp !== undefined) {
+            current.set(childRel, stamp)
+            continue
+          }
+        }
         if (e.isDirectory()) {
           if (recursive && skipDir(childRel)) continue
           // A directory is sampled for a name coming or going (a project's
@@ -160,6 +173,32 @@ export function pollWatcher(
       clearInterval(timer)
     },
   }
+}
+
+/**
+ * The entries of `dir` whose names are not valid UTF-8, by the decoded name
+ * (several may decode alike), each stamped by its identity and times.
+ */
+function byteNamed(dir: string): Map<string, string> {
+  const out = new Map<string, string>()
+  const base = Buffer.from(dir + '/')
+  let names: Buffer[]
+  try {
+    names = fs.readdirSync(Buffer.from(dir), { encoding: 'buffer' })
+  } catch {
+    return out
+  }
+  for (const name of names) {
+    if (isUtf8(name)) continue
+    try {
+      const st = fs.lstatSync(Buffer.concat([base, name]))
+      const key = name.toString()
+      out.set(key, `${out.get(key) ?? ''}${st.ino}:${Math.max(st.mtimeMs, st.ctimeMs)};`)
+    } catch {
+      // raced with a delete; the next scan settles it
+    }
+  }
+  return out
 }
 
 /**
