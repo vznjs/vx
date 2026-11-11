@@ -2361,13 +2361,15 @@ const MOUNT_RACE_RETRY_LINE =
  * bwrap's own refusal of a mount gone between its read of the mount table
  * and its remount: a container runtime's transient mount under /tmp
  * (`/newroot/tmp/containerd-mount…`, a `docker build` beside the task on
- * CI). The command never started. Or a path the wrap walls, gone before
+ * CI). The command never started. Caught after the unmount but before its
+ * directory is removed, the remount meets a path that is no longer a mount
+ * point: `Invalid argument`. Or a path the wrap walls, gone before
  * bwrap mounts on it: bwrap makes the mount point anew under a read-only
  * parent (`Can't mkdir /tmp/vx-noscan-0: Read-only file system`, the no-scan
  * directory removed by another process).
  */
 const BWRAP_MOUNT_GONE =
-  /^bwrap: Can't (?:.*: No such file or directory|mkdir .*: Read-only file system)$/
+  /^bwrap: Can't (?:.*: No such file or directory|mkdir .*: Read-only file system|bind mount .*: Unable to apply mount flags: remount ".*": Invalid argument)$/
 
 /**
  * Run a single task wrapped in the sandbox. Caller must have called
