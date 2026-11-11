@@ -112,7 +112,7 @@ export {
 export { CHECK_ATTR, parseCheckAttrOutput } from './git-attributes.js'
 export { beforeExit, settleBeforeExit } from './before-exit.js'
 export { OWN_DIR_HINT, refuseForeignCacheDir } from './foreign-cache-dir.js'
-export { realPath, realpathOf } from './real-path.js'
+export { realPath, realpathOf, sameDir } from './real-path.js'
 export {
   IGNORE_ALL,
   ignoreDir,

@@ -1,4 +1,4 @@
-import { readlinkSync, realpathSync } from 'node:fs'
+import { readlinkSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -7,6 +7,16 @@ import path from 'node:path'
  */
 export function realPath(p: string): string {
   return realpathSync.native(p)
+}
+
+/**
+ * Whether `a` and `b` are one directory: two spellings a disk folds
+ * together (APFS's NFC and NFD), not two that merely compare equal.
+ */
+export function sameDir(a: string, b: string): boolean {
+  const sa = statSync(a, { throwIfNoEntry: false })
+  const sb = sa === undefined ? undefined : statSync(b, { throwIfNoEntry: false })
+  return sb !== undefined && sa!.ino === sb.ino && sa!.dev === sb.dev
 }
 
 /**
