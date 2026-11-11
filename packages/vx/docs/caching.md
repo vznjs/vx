@@ -591,8 +591,9 @@ producer ran, so the clauses on declared outputs fire only for such a
 dependency read or a pair the check cannot decide. An output git ignores whole is no reach either:
 a key reads only what git lists, so a `**/*` reader beside a gitignored
 `**/dist/**` producer keys up front, the same key before and after the
-build. The run asks git once, beside its walk and only when a reader
-reaches a same-project output: one `git check-ignore` over each such
+build. The same holds for a `workspaceFiles` reader over another
+project's ignored output. The run asks git once, beside its walk and only when a reader
+reaches an output: one `git check-ignore` over each such
 output's directory (`dist/`, and a fresh `__vx_probe__/dist/` for a
 glob that starts with `**`), and the walk's listing must hold no file
 the glob matches (a tracked output, a directory a `!` rule takes back);
