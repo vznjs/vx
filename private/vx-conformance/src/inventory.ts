@@ -27,6 +27,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'affected-default-text',
     'affected-dependents',
     'affected-diff-early',
+    'affected-discover-stage',
     'affected-dry-reasons',
     'affected-flagged',
     'affected-head-range',

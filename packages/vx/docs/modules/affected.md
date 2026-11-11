@@ -146,9 +146,12 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    `-c core.ignorecase=false`, else a new `a.txt` beside the tracked
    `A.txt` selected nothing. `.vx/projects.lock.json` is
    no project's path: its entries are compared at the base and now (when
-   both have a lock that parses), and a project whose entry changed is
-   selected whole, so a lock rewritten over the same configs selects
-   nothing. A changed path that is a link to a directory, or was a link (mode
+   both have a lock that parses): an entry is a project's config, its
+   `project`-stage config and its `discoverStage` record (name, `deps`,
+   `reach`). A project whose entry changed is selected whole, the lock
+   named as the reason unless a deleted config names a closer one, so
+   an edge or name a `discover` plugin changed selects it, and a lock
+   rewritten over the same entries selects nothing. A changed path that is a link to a directory, or was a link (mode
    120000 on either side) and is no link to a file now, is a `dirLinks`
    entry: `declaresInput` matches it as a directory a glob may reach
    below, as the key does (`mayHoldMatch`), and a negation by the paths
