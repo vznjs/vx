@@ -2,7 +2,7 @@
 // already listening on a `localBinding` port counted as the bridge: its
 // own bind failed unseen, the task passed, and a client of the port
 // reached the other process (2026-10-03).
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -50,12 +50,28 @@ describe.skipIf(!available || process.platform !== 'linux')(
         },
         taskComplete() {},
       }
+      const started = Date.now()
       const r = await run({ cwd: root, tasks: ['t'], log })
       return [
         r.outcomes[0]?.status,
         err.join('').includes(`port ${port} is already in use`),
-        readdirSync(path.join(base, 'vx-tasks')),
+        readdirSync(path.join(base, 'vx-tasks')).map((name) => leftover(name, started)),
       ]
+    }
+
+    // A task directory left behind once failed the CONTROL on CI (job
+    // 130659155195) and never again in ~800 local runs under load: the
+    // failure names what it held and when it was made, so the next one
+    // says which wrap made it and what kept it.
+    const leftover = (name: string, started: number): string => {
+      const dir = path.join(base, 'vx-tasks', name)
+      try {
+        const st = statSync(dir)
+        const held = st.isDirectory() ? readdirSync(dir).join(',') : 'not a directory'
+        return `${name} [${held}] made ${Math.round(st.birthtimeMs - started)} ms after the run began, test pid ${process.pid}`
+      } catch (e) {
+        return `${name} (${(e as Error).message})`
+      }
     }
 
     it('fails the task, naming the port', async () => {
