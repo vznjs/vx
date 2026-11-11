@@ -425,14 +425,14 @@ it(
 
 // The README's `.vx-timings.json` sat untracked at the root, where a root
 // project's `**` keyed it: each rewrite missed the next run, unsaid.
-it('says a timings file git does not ignore re-keys the tasks over it', async () => {
+it('says a timings file git does not ignore re-keys the tasks over it and re-runs vx watch', async () => {
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   const said: string[] = []
   const file = path.join(root, '.vx-timings.json')
   await writeFile(file, '{}')
   await warnUnignored(file, root, (m) => said.push(m))
   expect(said).toEqual([
-    '[vx] vx-history: timings file .vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
+    '[vx] vx-history: timings file .vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite and vx watch re-runs on it — add it to .gitignore',
   ])
   await writeFile(path.join(root, '.gitignore'), '.vx-timings.json\n')
   await warnUnignored(file, root, (m) => said.push(m))
@@ -443,7 +443,7 @@ it('says a timings file git does not ignore re-keys the tasks over it', async ()
   await writeFile(dotted, '{}')
   await warnUnignored(dotted, root, (m) => said.push(m))
   expect(said.slice(1)).toEqual([
-    '[vx] vx-history: timings file ..vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
+    '[vx] vx-history: timings file ..vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite and vx watch re-runs on it — add it to .gitignore',
   ])
 })
 

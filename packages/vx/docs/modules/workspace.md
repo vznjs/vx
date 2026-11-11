@@ -197,6 +197,12 @@ config-less twin at the link taking every `^task` edge
 project at the link. Only a directory no project holds is resolved, so
 locked projects cost no syscall (`tests/discover-stage.test.ts`).
 
+Discovery follows no link. Outside git the walk does not enter one; in
+git, a config the index lists behind a symlinked directory (a project
+moved and linked back, `b -> real/b`) is skipped, as git calls it
+deleted: locked, `b` and `real/b` were two projects over one directory,
+their tasks writing the same `dist` (`tests/discovery-links.test.ts`).
+
 ### Names
 
 A project's name is, in order: its config's `name`; the name a `discover`

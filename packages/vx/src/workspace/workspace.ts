@@ -4,7 +4,7 @@
 // never walks. A project is named by `name` in its config, else by a
 // `discover` plugin, else by its root-relative path, `//` for the root.
 // Design: docs/design/language-agnostic-core-2026-10.md.
-import { type Dirent, realpathSync } from 'node:fs'
+import { type Dirent, lstatSync, realpathSync } from 'node:fs'
 import { lstat, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -293,7 +293,11 @@ export interface ProjectConfigs {
  */
 export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
   const inGit = (await gitTop(root)) !== null
-  const rels = inGit ? await gitConfigs(root) : await scanConfigs(root)
+  const linked = new Map<string, boolean>()
+  // The walk outside git never follows a link.
+  const rels = inGit
+    ? (await gitConfigs(root)).filter((rel) => !behindLink(root, rel, linked))
+    : await scanConfigs(root)
   // Each on disk, a broken link included, as the root walk takes one: git
   // lists a tracked one deleted from the worktree, which marks no root.
   const marks = rels.filter((rel) => {
@@ -426,6 +430,27 @@ async function unlistedNested(
     ),
   )
   return found.filter((d) => d !== null)
+}
+
+/**
+ * Whether a directory on root-relative `rel`'s path is a symlink, memoised
+ * in `linked`. Git's index lists a tracked path a link now stands in front
+ * of (a project moved and linked back), which git calls deleted; a stat
+ * through the link found the config, and one directory was locked as two
+ * projects. Asked by `vx lock` only.
+ */
+function behindLink(root: string, rel: string, linked: Map<string, boolean>): boolean {
+  const slash = rel.lastIndexOf('/')
+  if (slash === -1) return false
+  const dir = rel.slice(0, slash)
+  let is = linked.get(dir)
+  if (is === undefined) {
+    is =
+      behindLink(root, dir, linked) ||
+      (lstatSync(path.join(root, dir), { throwIfNoEntry: false })?.isSymbolicLink() ?? false)
+    linked.set(dir, is)
+  }
+  return is
 }
 
 /** An entry by that name, whatever it is (`lstat`): a broken link counts. */

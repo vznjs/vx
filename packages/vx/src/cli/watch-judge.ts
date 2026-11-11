@@ -244,6 +244,10 @@ export class ChangeJudge {
     const state = settledState(abs)
     const prev = this.lastState.get(abs)
     this.lastState.set(abs, state)
+    // A name not valid UTF-8 reaches a watcher with U+FFFD for its bad
+    // bytes, a path no file has: read as gone, its edit started no cycle,
+    // where `vx run` refuses the key. The run names it.
+    if (state === ABSENT && abs.includes('\uFFFD')) return false
     if (prev !== undefined) return prev === state
     // A new empty directory holds nothing a key reads: a file made in it
     // is the edit.

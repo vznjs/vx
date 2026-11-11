@@ -343,6 +343,12 @@ git checkout packages`) was no event to its own arm, nor to the
      event, empty) and then writes it (another, full), so consecutive
      events never agree (CI read 9 re-runs where macOS, which coalesces
      the two, read 2). Pinned end to end in `tests/cli.test.ts`.
+   - A name not valid UTF-8 reaches every watcher decoded, U+FFFD for
+     its bad bytes: a path no file has. Gone by its state, it is a
+     change all the same, and the poller samples such names by their
+     bytes (`readdir` as buffers), so the cycle shows the refusal
+     `vx run` gives rather than staying silent
+     (`tests/watch-lossy-name.test.ts`; Linux only, APFS refuses one).
    - Debounce events `~150ms` after the last one before triggering a
      cycle, and at most 1 s after the first: a writer that never pauses
      (a dev server's log) reset the timer forever and held every edit
