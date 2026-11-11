@@ -201,6 +201,39 @@ describe('resolveOtelConfig', () => {
     ).toBe(true)
   })
 
+  // The SDK spec sends a signal over OTLP only when its exporter list names
+  // `otlp`; `console` or `prometheus` still exported OTLP here.
+  it('an exporter list without otlp turns its signal off', () => {
+    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' }
+    const o = resolveOtelConfig(
+      {},
+      {
+        ...base,
+        OTEL_TRACES_EXPORTER: 'console',
+        OTEL_METRICS_EXPORTER: 'prometheus',
+        OTEL_LOGS_EXPORTER: 'otlp',
+      },
+    )!
+    expect([o.tracesEnabled, o.metricsEnabled, o.logsEnabled]).toEqual([false, false, true])
+    expect(
+      resolveOtelConfig(
+        {},
+        {
+          ...base,
+          OTEL_TRACES_EXPORTER: 'console',
+          OTEL_METRICS_EXPORTER: 'console',
+          OTEL_LOGS_EXPORTER: 'console',
+        },
+      ),
+    ).toBeUndefined()
+    // CONTROL: a list naming otlp, in any case and spacing, or an empty value, keeps it on.
+    const on = resolveOtelConfig(
+      {},
+      { ...base, OTEL_TRACES_EXPORTER: 'console, OTLP ', OTEL_METRICS_EXPORTER: '' },
+    )!
+    expect([on.tracesEnabled, on.metricsEnabled]).toEqual([undefined, true])
+  })
+
   // With every signal off the sink exported nothing, yet a run still paid
   // for it: the exporter loaded, and core built the telemetry it reads.
   it('declines when no signal is left to export', () => {

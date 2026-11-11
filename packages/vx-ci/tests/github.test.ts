@@ -746,6 +746,20 @@ describe('every output the vx-ci sweep found unheld', () => {
     expect(md).toContain('- **a#\\~x\\~\\&lt;** — exit 1')
   })
 
+  // GitHub reads `$x$` as math and `www.x` or `http://x` as a link, and a
+  // space at either end of the bold id left `**p#1 **` unbolded.
+  it('an id escapes math and autolinks, and keeps its edge spaces inside the bold', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: ' $x$#www.a http://b ', status: 'failed', exitCode: 1 })]),
+    )
+    const esc = String.raw`&#32;\$x\$#www\.a http\://b&#32;`
+    const rows = md.split('\n')
+    expect([
+      rows.find((l) => l.startsWith('- **')),
+      rows.find((l) => l.startsWith('| &#32;')),
+    ]).toEqual([`- **${esc}** — exit 1`, `| ${esc} | ❌ failed | 1.2s |`])
+  })
+
   it('an empty GITHUB_STEP_SUMMARY declines like a missing one', () => {
     const prev = { ...process.env }
     process.env['GITHUB_STEP_SUMMARY'] = ''
