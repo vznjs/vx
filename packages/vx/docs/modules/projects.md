@@ -39,8 +39,9 @@ export function loadWorkspacePlugins(
 
 // The lock's directories (lockedProjects; a run never walks for configs),
 // with the `discover` stage `vx lock` recorded (Lockfile.discoverStage)
-// applied: added projects, names, deps and reach. No hook runs. Then
-// checkProjectNames.
+// applied: added projects, names, deps and reach. No hook runs. An edge
+// to no project, a recorded name that clashes, or a `projectStage` config
+// for no project is refused as an invalid lock. Then checkProjectNames.
 export function discoverProjects(
   workspaceRoot: string,
   lock: () => Promise<Lockfile>,

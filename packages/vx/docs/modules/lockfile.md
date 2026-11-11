@@ -104,12 +104,16 @@ by name), is a `UserError` asking to re-run `vx lock`; a lock a newer vx
 wrote (a higher version) asks to upgrade vx instead, as re-locking would
 write the older version over it. `frozenProjectConfigs` is what a run's load serves instead
 of an evaluation: an entry missing for the project is a
-`UserError` naming the project and the remedy. No entry is otherwise validated:
+`UserError` naming the project and the remedy. `discoverProjects` refuses
+what its parse already holds and `vx lock` never writes, in
+`LOCK_INVALID`'s words with the reason (a `discoverStage` edge or a recorded name that clashes, a
+`projectStage` config for no project): followed blindly, the edge was
+dropped and the dependant ran without it. No entry is otherwise validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates
 (2026-10-14). A hand-broken entry that then crashes a run is
 named, not shown as a raw TypeError: on that crash's path only, a task
-or the CLI asks `lockEntryBroken` and prints `LOCK_INVALID`
-(2026-10-14). `writeLockfile` writes a value two places hold alike once, in `pool`
+or the CLI asks `lockEntryBroken` (which reads past a leading BOM, as
+`readLockfile` does) and prints `LOCK_INVALID` (2026-10-14). `writeLockfile` writes a value two places hold alike once, in `pool`
 (`task`, `exec`, `env`, `sandbox`, `inputs`, `cache`), and puts its index
 in each place. Each slot is one the schema types as an object, so a number
 there can only be an index. Big workspaces repeat their tasks: 2,000

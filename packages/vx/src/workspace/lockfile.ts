@@ -117,7 +117,8 @@ export const LOCK_INVALID = `${LOCKFILE_NAME} is invalid, run \`vx lock\``
 export function lockEntryBroken(root: string): boolean {
   let lock: Pooled
   try {
-    lock = JSON.parse(readFileSync(lockfilePath(root), 'utf8')) as Pooled
+    // As `readLockfile` reads it: `Bun.file().text()` drops a leading BOM.
+    lock = JSON.parse(readFileSync(lockfilePath(root), 'utf8').replace(/^\uFEFF/, '')) as Pooled
   } catch {
     return false
   }

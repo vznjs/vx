@@ -337,17 +337,21 @@ describe('vx lock (e2e)', () => {
           },
         },
       ]) {
-        await writeFile(
-          file,
-          JSON.stringify({
-            version: 6,
-            projects: { 'packages/app': { file: 'vx.config.mjs', config: app } },
-          }),
-        )
-        const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
-        expect(run.code).toBe(1)
-        expect(run.err + run.out).toContain(invalid)
-        expect(run.err + run.out).not.toContain('TypeError')
+        // A run reads past a leading BOM, so the crash's own check must too.
+        for (const bom of ['', '\uFEFF']) {
+          await writeFile(
+            file,
+            bom +
+              JSON.stringify({
+                version: 6,
+                projects: { 'packages/app': { file: 'vx.config.mjs', config: app } },
+              }),
+          )
+          const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
+          expect(run.code).toBe(1)
+          expect(run.err + run.out).toContain(invalid)
+          expect(run.err + run.out).not.toContain('TypeError')
+        }
       }
     },
     TIMEOUT,

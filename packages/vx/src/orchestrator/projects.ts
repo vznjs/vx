@@ -248,19 +248,56 @@ export async function discoverProjects(
   const projects = lockedDiscovery(workspaceRoot, read, lock, git)
   const recorded = read.discoverStage?.projects ?? {}
   const byDir = new Map(projects.map((p) => [p.dir, p]))
+  const named = new Set<ProjectMeta>()
+  const atKey = (rel: string): string =>
+    rel === '.' ? workspaceRoot : path.join(workspaceRoot, rel)
   for (const rel of Object.keys(recorded)) {
     const rec = recorded[rel]!
-    const dir = rel === '.' ? workspaceRoot : path.join(workspaceRoot, rel)
+    const dir = atKey(rel)
     let meta = byDir.get(dir)
     if (meta === undefined) {
       meta = { name: rec.name, dir, configPath: null }
       projects.push(meta)
+      byDir.set(dir, meta)
       if (rec.by !== undefined) addedBy.set(meta, rec.by)
     } else meta.name = rec.name
+    named.add(meta)
     if (rec.deps !== undefined) meta.deps = [...rec.deps]
     if (rec.reach !== undefined) meta.reach = [...rec.reach]
   }
+  // A run follows the lock blindly: an edge to no project was dropped (the
+  // dependant ran, and hit, without it), a stage config for no project was
+  // never read, and a clash with a recorded name sent the user to a
+  // vx.config. `vx lock` writes none of them.
+  const names = new Map<string, ProjectMeta>()
+  for (const p of projects) {
+    const other = names.get(p.name)
+    if (other !== undefined && (named.has(p) || named.has(other))) {
+      const dirs = [other, p].map((m) => relPosix(workspaceRoot, m.dir) || '.').sort()
+      throw lockInvalid(`two projects are named "${p.name}": ${dirs[0]} and ${dirs[1]}`)
+    }
+    names.set(p.name, p)
+  }
+  for (const rel of Object.keys(recorded)) {
+    const rec = recorded[rel]!
+    for (const [verb, edges] of [
+      ['depends on', rec.deps],
+      ['reaches', rec.reach],
+    ] as const) {
+      const unknown = edges?.find((n) => !names.has(n))
+      if (unknown !== undefined)
+        throw lockInvalid(`${rel} ${verb} "${unknown}", which no project is named`)
+    }
+  }
+  for (const rel of Object.keys(read.projectStage?.configs ?? {})) {
+    if (!byDir.has(atKey(rel)))
+      throw lockInvalid(`it holds a \`projectStage\` config for ${rel}, which is no project`)
+  }
   return checkProjectNames(workspaceRoot, projects)
+}
+
+function lockInvalid(why: string): UserError {
+  return new UserError(`${LOCKFILE_NAME} is invalid: ${why} — run \`vx lock\``, 'VX_E_LOCK')
 }
 
 /**

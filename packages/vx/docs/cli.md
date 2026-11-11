@@ -2167,7 +2167,9 @@ hook, so an edge a plugin derives (a `package.json` dependency, an Nx
 `implicitDependencies` or import under `nx()`) orders and selects
 nothing until the next `vx lock`, and `--check` names the project
 (``packages/b: the `discover` stage finds it otherwise than the lock
-here``) or a plugin added or dropped since.
+here``) or a plugin added or dropped since. A record `vx lock` never
+writes (an edge or a stage config naming no project, a recorded name
+another project has) is refused: ``.vx/projects.lock.json is invalid: … — run `vx lock` ``.
 
 The lock is committed, so `vx lock` refuses to write one that holds a
 secret: a config that evaluated to the value of a secret-named variable

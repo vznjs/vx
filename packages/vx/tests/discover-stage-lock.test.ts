@@ -146,3 +146,38 @@ it('and one dropped still runs what it discovered until vx lock', async () => {
     "the lock holds the `discover` stage of 'vx-test-packages', 'org/edges', not of 'vx-test-packages'",
   )
 }, 60_000)
+
+// A run follows the lock blindly, so a record no `vx lock` writes is
+// refused: an edge to no project was dropped, and b ran without a.
+it('a lock naming no project in an edge or a stage config is invalid', async () => {
+  await Bun.write(path.join(root, 'edges.txt'), 'b-on-a gen\n')
+  expect((await vx(root, ['lock'])).code).toBe(0)
+  const file = path.join(root, '.vx/projects.lock.json')
+  const good = await Bun.file(file).json()
+  const edit = async (change: (lock: any) => void) => {
+    const lock = structuredClone(good)
+    change(lock)
+    await Bun.write(file, JSON.stringify(lock))
+    return run('--filter', 'b')
+  }
+  const edge = await edit((l) => (l.discoverStage.projects['packages/b'].deps = ['lib']))
+  expect(edge.code).toBe(1)
+  expect(edge.err).toContain(
+    '.vx/projects.lock.json is invalid: packages/b depends on "lib", which no project is named — run `vx lock`',
+  )
+  expect(edge.out).not.toContain('built-b')
+  const reach = await edit((l) => (l.discoverStage.projects['packages/b'].reach = ['lib']))
+  expect(reach.err).toContain('packages/b reaches "lib", which no project is named')
+  const stage = await edit(
+    (l) => (l.projectStage = { plugins: ['org/x'], configs: { 'packages/c': { tasks: {} } } }),
+  )
+  expect(stage.code).toBe(1)
+  expect(stage.err).toContain(
+    '.vx/projects.lock.json is invalid: it holds a `projectStage` config for packages/c, which is no project — run `vx lock`',
+  )
+  const clash = await edit((l) => (l.discoverStage.projects['tools/gen'].name = 'a'))
+  expect(clash.code).toBe(1)
+  expect(clash.err).toContain(
+    '.vx/projects.lock.json is invalid: two projects are named "a": packages/a and tools/gen — run `vx lock`',
+  )
+}, 60_000)
