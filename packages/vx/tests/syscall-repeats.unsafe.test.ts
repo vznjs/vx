@@ -325,9 +325,16 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       // The link check, whose "absent" the walk takes (the clean takes the
       // walk's answer), then the extractor's containment probe, which an
       // lstat answers and the staged tree reuses; the directory is built in
-      // `.vx/tmp/` and renamed in whole, so nothing else asks about it
-      // before the run-end snapshot.
-      expect(on(calls, path.join(proj, 'dist'))).toEqual(['lstat', 'lstat', 'lstat', 'openat'])
+      // `.vx/tmp/` and renamed in whole. The restore's marks ask once more
+      // whether it is a link (`realNames`): a write through a linked head
+      // must be marked where it landed, or a reader replays the old bytes.
+      expect(on(calls, path.join(proj, 'dist'))).toEqual([
+        'lstat',
+        'lstat',
+        'lstat',
+        'lstat',
+        'openat',
+      ])
     },
     TIMEOUT,
   )

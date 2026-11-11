@@ -257,6 +257,13 @@ identities, an undeclared write drops them all, a listing again drops
 none, and an identity hashed before any write is not kept after it
 (`factsEpoch`). The stats go on every one.
 
+A marked path written through a linked directory (an output glob's head
+may be a link that stays in the project, `out -> gen` for `out/**`) is
+marked under the name it landed at too: marked only as `out/x`, the
+`gen/x` a reader of `gen/**` keys kept its index OID and a stale hit
+replayed the bytes from before the write. One that lands outside the
+partition drops the partition, as an undeclared write does.
+
 `gitPathspecs` scopes the spawn to the projects in the run when there
 are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root
 itself; otherwise (or `workspaceWide`) it is `.`. A run that names more
@@ -372,7 +379,10 @@ gitlink or an untracked embedded repository, and one inside a project:
 its own git enumerates it, and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
 (through the resolver), `tests/restore-git-spawns.test.ts` (spawn
 count), `tests/cache-hash-files.test.ts`, `tests/affected*.test.ts`
-(the same enumeration behind `--affected`).
+(the same enumeration behind `--affected`), `tests/stale-hit-digest.test.ts`
+(a task moves another's input mid-run by a save, a clean or a write
+through a linked directory, tracked or loose: the reader reads the moved
+files, and the files put back are not answered by a row stored mid-run).
 
 ## Replacing this module
 
