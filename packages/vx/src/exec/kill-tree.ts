@@ -397,7 +397,7 @@ export function markStopped(stopped: boolean): void {
  * ms vx has spent stopped so far, a stop still open included: a timer due
  * while vx was stopped runs before the SIGCONT handler closes it.
  */
-export function stoppedMs(): number {
+function stoppedMs(): number {
   return stoppedTotal + (stoppedSince === undefined ? 0 : performance.now() - stoppedSince)
 }
 

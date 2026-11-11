@@ -30,7 +30,6 @@ import {
   guardLine,
   spawnGuarded,
   runTime,
-  stoppedMs,
   untilGroupsGone,
 } from './kill-tree.js'
 import { type TreeUsage, watchTree } from './proc-sample.js'
@@ -548,15 +547,16 @@ function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
  * and a plain timer killed a task resumed by `fg` as timed out.
  */
 function afterRunTime(ms: number, fn: () => void): { clear: () => void } {
-  let base = stoppedMs()
+  // Re-arm for the run time LEFT, not the time stopped: a deadline that
+  // passed while vx was stopped is due ms - ran after `fg`, and re-arming
+  // for the whole stop let a long Ctrl-Z lift the timeout.
+  const due = runTime() + ms
   let timer: ReturnType<typeof setTimeout>
   const arm = (delay: number): void => {
     timer = setTimeout(() => {
-      const owed = stoppedMs() - base
-      if (owed > 0) {
-        base += owed
-        arm(owed)
-      } else timer = afterPendingExits(fn)
+      const left = due - runTime()
+      if (left > 1) arm(left)
+      else timer = afterPendingExits(fn)
     }, delay)
   }
   arm(ms)
