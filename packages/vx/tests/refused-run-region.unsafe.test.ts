@@ -23,13 +23,16 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** A workspace whose `discover` stage takes 600 ms, then does `then` (not while locking). */
+/**
+ * A workspace whose `graph` stage takes 600 ms, then does `then` (not while
+ * locking): a run calls no `discover` hook since 2026-11-11.
+ */
 async function slowLoad(then: string): Promise<void> {
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
       'slow-load',
-      `{ async discover() { if (process.argv.includes('lock')) return []; await new Promise((r) => setTimeout(r, 600)); ${then} } }`,
+      `{ async graph() { if (process.argv.includes('lock')) return; await new Promise((r) => setTimeout(r, 600)); ${then} } }`,
     )}] }\n`,
   )
 }
@@ -68,17 +71,17 @@ function startsClean(screen: string, line: string): boolean {
 }
 
 it('a refused run takes the region down before the refusal', async () => {
-  await slowLoad('return []')
-  const { code, screen } = await onTerminal(['run', 'nosuch', '--all'])
+  await slowLoad('return')
+  const { code, screen } = await onTerminal(['run', 'b', 'nosuch', '--all'])
   expect(code).toBe(1)
   expect(screen).toContain('vx:load')
   expect(startsClean(screen, '✗ vx run')).toBe(true)
 }, 30_000)
 
 it('a run whose load throws takes the region down before the error', async () => {
-  await slowLoad(`throw new Error('discover broke')`)
+  await slowLoad(`throw new Error('graph broke')`)
   const { code, screen } = await onTerminal(['run', 'b', '--all'])
   expect(code).toBe(1)
-  expect(screen).toContain('discover broke')
+  expect(screen).toContain('graph broke')
   expect(startsClean(screen, '✗ vx run')).toBe(true)
 }, 30_000)

@@ -59,9 +59,8 @@ export async function loadCliWorkspace(
 }
 
 /**
- * The workspace's projects as a run discovers them: the lock's, then the
- * plugin `discover` stage, with the cache dir the run uses. No lock is
- * `NO_LOCK`.
+ * The workspace's projects as a run discovers them: the lock's, with the
+ * plugin `discover` stage it records. No lock is `NO_LOCK`.
  */
 export async function discoverCliProjects(
   root: string,
@@ -71,14 +70,7 @@ export async function discoverCliProjects(
 ): Promise<ProjectMeta[]> {
   const warn = load.warn ?? warnToStderr
   const ws = await loadCliWorkspace(root, warn)
-  const projects = await discoverProjects(
-    root,
-    lockReader(root),
-    ws.plugins,
-    stageCacheDir(ws, load),
-    warn,
-    git,
-  )
+  const projects = await discoverProjects(root, lockReader(root), git)
   discoveredWorkspaces.set(projects, ws)
   return projects
 }

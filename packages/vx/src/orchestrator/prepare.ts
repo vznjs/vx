@@ -346,7 +346,7 @@ export async function prepareRunLocked(
   const discovering =
     reused !== undefined
       ? Promise.resolve(reused.projects)
-      : discoverProjects(workspaceRoot, readLock, plugins, cacheDir, warnOf(log), git)
+      : discoverProjects(workspaceRoot, readLock, git)
   const projectMetas = await discovering
   mark('discover projects')
 

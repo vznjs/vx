@@ -18,7 +18,7 @@ import {
   acquireRunLock,
   applyGraphStage,
   claimedDigests,
-  discoverProjects,
+  lockDiscovery,
   fingerprintClaims,
   hasHook,
   ignoredConfigRefusal,
@@ -239,7 +239,11 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // The stages edit what they are handed; the lock keeps what the configs say.
     const view = structuredClone(out.fresh)
     const lock = async (): Promise<Lockfile> => view
-    out.all = await discoverProjects(root, lock, plugins, cacheDir, warn)
+    const discovered = await lockDiscovery(root, lock, plugins, cacheDir, warn)
+    out.all = discovered.projects
+    // What the plugin `discover` stage found, recorded: a run reads it and
+    // runs no hook (2026-11-11).
+    if (discovered.stage !== undefined) out.fresh.discoverStage = discovered.stage
     for (const m of out.all) {
       const why = m.configPath === null ? ignoredConfigRefusal(root, m) : undefined
       if (why !== undefined) throw new UserError(why, 'VX_E_LOCK')
@@ -610,6 +614,53 @@ function stageDrift(lock: Lockfile, fresh: Lockfile, drifted: ReadonlySet<string
   return out
 }
 
+/**
+ * Where the plugin `discover` stage, run here, finds the projects otherwise
+ * than the lock records: a run follows the record, so a new edge or name
+ * (an edited `project.json` under nx()) is drift until `vx lock`. A
+ * directory already in `drifted` is named once.
+ */
+function discoverDrift(lock: Lockfile, fresh: Lockfile, drifted: ReadonlySet<string>): string[] {
+  const was = lock.discoverStage
+  const now = fresh.discoverStage
+  const named = (list: readonly string[]): string => list.map((p) => `'${p}'`).join(', ')
+  if (was === undefined && now === undefined) return []
+  if (was === undefined)
+    return [`the lock holds no \`discover\` stage of plugin ${named(now!.plugins)} — run 'vx lock'`]
+  if (now === undefined)
+    return [
+      `the lock holds the \`discover\` stage of ${named(was.plugins)}, which no plugin fills now — run 'vx lock'`,
+    ]
+  if (was.plugins.join('\0') !== now.plugins.join('\0'))
+    return [
+      `the lock holds the \`discover\` stage of ${named(was.plugins)}, not of ${named(now.plugins)} — run 'vx lock'`,
+    ]
+  const out: string[] = []
+  const what = (dir: string): string => (dir === '.' ? 'the workspace root project' : dir)
+  for (const [dir, found] of Object.entries(now.projects)) {
+    if (drifted.has(dir)) continue
+    const held = Object.hasOwn(was.projects, dir) ? was.projects[dir] : undefined
+    if (held === undefined)
+      out.push(`${what(dir)} is not in the lock's \`discover\` stage — run 'vx lock'`)
+    else if (!Bun.deepEquals(found, held, true))
+      out.push(
+        `${what(dir)}: the \`discover\` stage finds it otherwise than the lock here; run 'vx lock'` +
+          configDiff(held, found)
+            .map((d) => `\n  ${d}`)
+            .join(''),
+      )
+  }
+  // A config gone is named as such below.
+  const gone = (dir: string): boolean =>
+    Object.hasOwn(lock.projects, dir) && !Object.hasOwn(fresh.projects, dir)
+  for (const dir of Object.keys(was.projects))
+    if (!drifted.has(dir) && !gone(dir) && !Object.hasOwn(now.projects, dir))
+      out.push(
+        `the lock's \`discover\` stage holds ${what(dir)}, which it does not find now — run 'vx lock'`,
+      )
+  return out
+}
+
 /** The first places (three at most) two evaluated configs differ: `path: locked → now`. */
 function configDiff(locked: unknown, now: unknown, at = '', out: string[] = []): string[] {
   if (out.length >= 3 || Bun.deepEquals(locked, now, true)) return out
@@ -835,7 +886,11 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       failures.push(
         `the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`,
       )
-  if (check.loaded) failures.push(...stageDrift(lock, check.fresh, drifted))
+  if (check.loaded)
+    failures.push(
+      ...discoverDrift(lock, check.fresh, drifted),
+      ...stageDrift(lock, check.fresh, drifted),
+    )
   if (broken !== null && check.loaded) failures.push(broken)
   // Each config that does not load, as `vx lock` names them: a CI fixing
   // one at a time re-ran the gate once per broken config.

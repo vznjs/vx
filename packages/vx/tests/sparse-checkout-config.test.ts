@@ -27,7 +27,7 @@ async function vx(root: string, args: string[]) {
 }
 
 const REFUSAL =
-  '✗ vx run  packages/lib is outside this sparse checkout, but this run needs its vx.config.mjs — run `git sparse-checkout add packages/lib`'
+  '✗ vx run  packages/lib ("lib") is outside this sparse checkout, but this run needs its vx.config.mjs — run `git sparse-checkout add packages/lib`'
 
 let root: string
 beforeEach(async () => {

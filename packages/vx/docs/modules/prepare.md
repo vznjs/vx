@@ -85,7 +85,8 @@ export function unlockedDir(
 
 1. **Workspace discovery** — `findWorkspaceRoot`, then
    `discoverProjects`: the directories `.vx/projects.lock.json` records
-   and the plugin `discover` stage (a run never walks for configs); the
+   with the plugin `discover` stage as `vx lock` recorded it (no hook
+   runs; a run never walks for configs); the
    workspace config arrives evaluated and with the `config` stage
    applied (`RunOptions`, from `cli/workspace-config.ts`), and
    `loadWorkspacePlugins` gives the declared plugin list.

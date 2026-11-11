@@ -244,7 +244,7 @@ async function collectWorkspaceInfo(
       return false
     },
   )
-  const metas = held ? await discoverProjects(root, lock, plugins, cacheDir, warn) : []
+  const metas = held ? await discoverProjects(root, lock) : []
   const storeRoot =
     opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null
   // The index is read first and alone: one SQLite cannot read is a fact

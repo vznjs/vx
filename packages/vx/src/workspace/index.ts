@@ -31,6 +31,8 @@ export {
   lockfileWrite,
   writeLockfile,
   type Lockfile,
+  type DiscoveredLock,
+  type DiscoverStageLock,
   type LockedProject,
 } from './lockfile.js'
 export {

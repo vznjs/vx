@@ -160,6 +160,7 @@ describe('a project is a directory with a vx.config', () => {
       expect(planned(root, 'hello', '--all')).toEqual(['apps/api#hello', 'web#hello'])
       // CONTROL: without the config's name the plugin's wins over the path.
       await namingPlugin('apps/api', 'plugin-api')
+      expect(vx(root, 'lock').code).toBe(0)
       expect(planned(root, 'hello', '--all')).toEqual(['plugin-api#hello', 'web#hello'])
     },
     TIMEOUT,
@@ -198,9 +199,8 @@ describe('a project is a directory with a vx.config', () => {
     'a discovered directory whose config git ignores is refused, not sent to `vx lock`',
     async () => {
       await write(path.join(root, '.gitignore'), 'gen/\n')
-      await write(path.join(root, 'gen/vx.config.mjs'), config())
+      await write(path.join(root, 'gen/notes.txt'), 'gen\n')
       await write(path.join(root, 'kept/vx.config.mjs'), config())
-      expect(vx(root, 'lock').code).toBe(0)
       await write(
         path.join(root, '.vx/workspace.mjs'),
         `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
@@ -208,6 +208,9 @@ describe('a project is a directory with a vx.config', () => {
           `{ discover: () => [{ dir: 'gen' }] }`,
         )}] }\n`,
       )
+      // The lock records that the plugin added gen; a run reads that.
+      expect(vx(root, 'lock').code).toBe(0)
+      await write(path.join(root, 'gen/vx.config.mjs'), config())
       const ignored =
         "plugin 'vx-test-gen' adds project gen, but git ignores gen/vx.config.mjs, so `vx lock` cannot read it — unignore it or delete it"
       expect(planned(root, 'gen#hello')).toBe(`exit 1: ✗ vx run  gen#hello: ${ignored}`)
@@ -280,7 +283,7 @@ describe('a project is a directory with a vx.config', () => {
         JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
       )
       expect(planned(root, 'hello', '--all')).toBe(
-        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 5) — re-run `vx lock`',
+        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 6) — re-run `vx lock`',
       )
     },
     TIMEOUT,

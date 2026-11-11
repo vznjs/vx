@@ -31,6 +31,8 @@ stop there as at a nested project (its inputs do not). A run takes its projects 
 runs once `vx lock` records it. A `discover` plugin may add directories
 with no config (`@vzn/vx-lockfile` adds the package manager's members);
 one whose config git ignores is refused, naming the plugin and the file.
+The hook runs under `vx lock` only: the lock records the projects, names
+and edges it returned, and a run uses that record.
 
 A project's name is its config's `name`, else the name a `discover` plugin
 gives (`@vzn/vx-lockfile` gives `package.json#name`), else its

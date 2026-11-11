@@ -2107,12 +2107,12 @@ never reach it (its inputs still key its files), and `--check` fails a
 lock that misses one.
 Configs are
 programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, by directory (version 5; a lock an
+stores the post-evaluation objects, by directory (version 6; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
 the root); two projects of one name are refused naming both
-directories. The plugin `discover` stage runs here as in a run, and may
+directories. The plugin `discover` stage runs here and nowhere else, and may
 add directories (X-143); one holding a config git ignores is refused, as
 is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
 gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
@@ -2158,6 +2158,16 @@ with no config that the stage gives tasks (`0 project configs →
 names then `and N more`), so a lock on a plugin-only workspace never
 reads like an audit of nothing. One with no task (core's default
 `build` aside) is not named.
+
+The `discover` stage is recorded the same way (`discoverStage`, with the
+plugins that filled it): each project it added, named or gave `deps` /
+`reach`. A run, `vx show`, `vx why`, `--affected` and each `vx watch`
+cycle apply that record to the locked projects and call no `discover`
+hook, so an edge a plugin derives (a `package.json` dependency, an Nx
+`implicitDependencies` or import under `nx()`) orders and selects
+nothing until the next `vx lock`, and `--check` names the project
+(``packages/b: the `discover` stage finds it otherwise than the lock
+here``) or a plugin added or dropped since.
 
 The lock is committed, so `vx lock` refuses to write one that holds a
 secret: a config that evaluated to the value of a secret-named variable

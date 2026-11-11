@@ -87,7 +87,9 @@ export interface VxPlugin {
    * edges between projects, as `DiscoveredProject`s (each directory
    * absolute or relative to the workspace root): a lockfile's importers,
    * their package names and the dependencies it records; a runner's root
-   * tasks. Runs once per discovery, before any project config loads; each
+   * tasks. Runs under `vx lock` (and `--check`) only, before any project
+   * config loads: the lock records what the hooks found, and every other
+   * verb applies that record and calls no hook (2026-11-11). Each
    * plugin sees the locked projects and the ones earlier plugins added,
    * without their edges. A directory that is not a project becomes one
    * (with no config; named by `name`, else its path). A project named by
@@ -420,7 +422,7 @@ export interface DiscoverContext extends WorkspaceHookContext {
   /**
    * What `git status` lists in the workspace, workspace-relative: modified,
    * staged or deleted paths (both sides of a rename) and untracked files;
-   * null outside a git worktree. It is the run's own enumeration, so a
+   * null outside a git worktree. It is core's own enumeration, so a
    * plugin whose answer depends on the worktree (nx()'s graph key) reads it
    * here instead of walking the tree a second time.
    */

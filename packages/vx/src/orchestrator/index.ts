@@ -16,6 +16,7 @@ export { applyGraphStage } from './graph-stage.js'
 export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,
+  lockDiscovery,
   extraHashesOfDiscovery,
   gitOfDiscovery,
   ignoredConfigRefusal,

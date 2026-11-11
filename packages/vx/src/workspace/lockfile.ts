@@ -28,7 +28,7 @@ import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 5
+export const LOCKFILE_VERSION = 6
 
 /** One project as the lock holds it. */
 export interface LockedProject {
@@ -58,6 +58,13 @@ export interface Lockfile {
    * `vx lock` only (2026-11-11). Absent when no plugin fills the stage.
    */
   projectStage?: ProjectStageLock
+  /**
+   * The plugin `discover` stage as `vx lock` ran it: the projects it added,
+   * the names it gave and the edges it declared. A run applies this to the
+   * locked projects and runs no hook, whatever plugins the workspace
+   * declares now (2026-11-11). Absent when no plugin fills the stage.
+   */
+  discoverStage?: DiscoverStageLock
   /** Written by `writeLockfile` from the bytes; never read off the object. */
   validated?: string
 }
@@ -72,6 +79,27 @@ export interface ProjectStageLock {
    * file or not.
    */
   configs: Record<string, ProjectConfig>
+}
+
+/** `Lockfile.discoverStage`. */
+export interface DiscoverStageLock {
+  /** The plugins that filled the stage, in order: `--check` names another set. */
+  plugins: string[]
+  /**
+   * Root-relative POSIX directory → the project as the stage left it, for
+   * each project it added, renamed or gave edges.
+   */
+  projects: Record<string, DiscoveredLock>
+}
+
+/** One project in `DiscoverStageLock.projects`. */
+export interface DiscoveredLock {
+  name: string
+  /** The plugin that added it: set only on a project the lock holds no config for. */
+  by?: string
+  /** Project names, as `ProjectMeta.deps`: present, even empty, makes the workspace an edge source. */
+  deps?: string[]
+  reach?: string[]
 }
 
 export function lockfilePath(root: string): string {
@@ -172,6 +200,7 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     projects?: unknown
     nestedWorkspaces?: unknown
     projectStage?: unknown
+    discoverStage?: unknown
   }
   if (lock.version !== LOCKFILE_VERSION) {
     // This vx's `vx lock` would write the older version over it.
@@ -235,6 +264,31 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     ) {
       throw new UserError(
         `${LOCKFILE_NAME}: \`projectStage\` is malformed — re-run \`vx lock\``,
+        'VX_E_LOCK',
+      )
+    }
+  }
+  const found = lock.discoverStage
+  if (found !== undefined) {
+    const { plugins, projects } = (isObj(found) ? found : {}) as Obj
+    const names = (v: unknown): boolean =>
+      v === undefined || (Array.isArray(v) && v.every((n) => typeof n === 'string'))
+    if (
+      !Array.isArray(plugins) ||
+      plugins.some((p) => typeof p !== 'string') ||
+      !isObj(projects) ||
+      Object.entries(projects).some(
+        ([dir, p]) =>
+          !isLockKey(dir) ||
+          !isObj(p) ||
+          typeof p['name'] !== 'string' ||
+          (p['by'] !== undefined && typeof p['by'] !== 'string') ||
+          !names(p['deps']) ||
+          !names(p['reach']),
+      )
+    ) {
+      throw new UserError(
+        `${LOCKFILE_NAME}: \`discoverStage\` is malformed — re-run \`vx lock\``,
         'VX_E_LOCK',
       )
     }
@@ -492,6 +546,7 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
   const body = JSON.stringify({
     version: lock.version,
     ...(nested.length > 0 ? { nestedWorkspaces: nested } : {}),
+    ...(lock.discoverStage !== undefined ? { discoverStage: lock.discoverStage } : {}),
     ...pooledOut(sorted, stage),
   })
   return {

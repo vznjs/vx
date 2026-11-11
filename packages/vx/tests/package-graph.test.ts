@@ -182,7 +182,7 @@ describe('`^task` needs an edge source', () => {
   )
 
   it(
-    'a run whose lock was written with an edge source refuses once the plugin is gone',
+    'a run whose lock was written with an edge source keeps its edges once the plugin is gone',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-edge-source-gone-', edges: { app: ['lib'] } })
       try {
@@ -193,14 +193,23 @@ describe('`^task` needs an edge source', () => {
           'lib#build',
         ])
         await writeLocalWorkspace(root)
-        // The run itself, past the lock the helper would rewrite.
-        const run = Bun.spawnSync(
-          [process.execPath, path.join(import.meta.dir, '../src/bin.ts'), 'run', 'build', '--all'],
-          { cwd: root, stdout: 'pipe', stderr: 'pipe' },
-        )
-        expect([run.exitCode, run.stderr.toString().split('\n')[0]]).toEqual([
+        // The run itself, past the lock the helper would rewrite: it follows
+        // the edges the lock recorded (2026-11-11), and `--check` names the drop.
+        const bin = path.join(import.meta.dir, '../src/bin.ts')
+        const run = Bun.spawnSync([process.execPath, bin, 'run', 'build', '--all'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        expect([run.exitCode, run.stderr.toString()]).toEqual([0, ''])
+        const check = Bun.spawnSync([process.execPath, bin, 'lock', '--check'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        expect([check.exitCode, check.stderr.toString().split('\n')[0]]).toEqual([
           1,
-          '✗ vx run  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
+          "✗ vx lock --check  packages/app: the `discover` stage finds it otherwise than the lock here; run 'vx lock'",
         ])
       } finally {
         await rm(root, { recursive: true, force: true })
