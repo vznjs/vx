@@ -756,6 +756,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/remote-breaker',
     'vx-migrate/remote-cache-carry',
     'vx-migrate/remote-cache-degrade',
+    'vx-migrate/remote-cache-foreign-403',
     'vx-migrate/remote-retry',
     'vx-migrate/script-command',
     'vx-migrate/script-hooks-skipped',
