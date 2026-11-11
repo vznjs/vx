@@ -12,7 +12,6 @@ import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { PLUGIN_IMPORT, pluginSource } from '../../vx/tests/helpers/plugin.js'
-import { indexDb } from '../../vx/src/cache/index.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
 import { HistoryServer, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
@@ -839,10 +838,14 @@ describe('vx run with vxHistory({ url })', () => {
       })
       // Gone from here, the next run reads it from the server.
       const cache = new Cache(path.join(root, '.vx', 'cache'))
+      const store = cache.storeDir
+      cache.close()
+      // History rows live in the store `cache.db` attaches.
+      const db = new Database(path.join(store!, 'store.db'))
       try {
-        indexDb(cache).run(`DELETE FROM task_durations WHERE project = 'org/meter'`)
+        db.run(`DELETE FROM task_durations WHERE project = 'org/meter'`)
       } finally {
-        cache.close()
+        db.close()
       }
       const mid = seen.length
       await run({ cwd: root, tasks: ['build'], handleSignals: false })
