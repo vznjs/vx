@@ -42,6 +42,8 @@ export interface NxInputs {
   readonly dependentOutputs: string[]
   /** Those of them marked `transitive`: read from every task below, not only the direct ones. */
   readonly transitiveOutputs: string[]
+  /** An own `{ externalDependencies }` was read: Nx hashes those packages, not all. */
+  externalDependencies: boolean
 }
 
 export function emptyNxInputs(): NxInputs {
@@ -53,6 +55,7 @@ export function emptyNxInputs(): NxInputs {
     upstream: [],
     dependentOutputs: [],
     transitiveOutputs: [],
+    externalDependencies: false,
   }
 }
 
@@ -218,6 +221,7 @@ export function expandNxInputs(
         // the root declares is keyed there: the todo sat on 32 tasks of
         // analogjs for `eslint`. Nx's inferred targets name root
         // devDependencies (eslint, vitest), not the project's package.json.
+        into.externalDependencies = true
         const names = Array.isArray(o.externalDependencies) ? o.externalDependencies : []
         if (at.lockfile !== undefined) {
           expand(`{workspaceRoot}/${at.lockfile}`, seen)

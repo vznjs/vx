@@ -79,6 +79,20 @@ beforeEach(async () => {
                 inputs: ['{projectRoot}/src/**/*', { externalDependencies: ['left-pad'] }],
                 options: { command: 'echo lint' },
               },
+              check: {
+                executor: 'nx:run-commands',
+                cache: true,
+                outputs: [],
+                inputs: ['{projectRoot}/src/**/*'],
+                options: { command: 'echo check' },
+              },
+              tsc: {
+                executor: '@nx/js:tsc',
+                cache: true,
+                outputs: [],
+                inputs: ['{projectRoot}/src/**/*'],
+                options: {},
+              },
             },
           },
         },
@@ -122,6 +136,33 @@ it(
     expect(await workspaceFiles()).toContain('package-lock.json')
     await workspace(["nx({ graph: 'graph.json' })", "claimFile('package-lock.json')"])
     expect(await workspaceFiles()).not.toContain('package-lock.json')
+  },
+  TIMEOUT,
+)
+
+// A target with no `externalDependencies` input hashes every external
+// dependency under Nx 24 (`nx show target inputs`: `AllExternalDependencies`)
+// unless its executor is an `@nx/` or `@nrwl/` package's, which hashes that
+// package. It keyed no lockfile: a `left-pad` bump was a hit where Nx re-ran.
+it(
+  'with no plugin claiming the lockfile, a target with no externalDependencies input keys it',
+  async () => {
+    await workspace(["nx({ graph: 'graph.json' })"])
+    const opts = { cwd: root, tasks: ['lib#check'], log: silent(), handleSignals: false }
+    const statusOf = (r: Awaited<ReturnType<typeof run>>) =>
+      r.outcomes.find((o) => o.node.id === 'lib#check')!.status
+    expect(statusOf(await run(opts))).toBe('success')
+    expect(statusOf(await run(opts))).toBe('cache-hit')
+    await writeFile(path.join(root, 'package-lock.json'), lockfile('1.3.0'))
+    expect(statusOf(await run(opts))).toBe('success')
+
+    const workspaceFiles = async (id: string) =>
+      (await planRun({ cwd: root, tasks: [id], log: silent() })).tasks.find(
+        (t) => t.node.id === id,
+      )!.node.config.inputs?.workspaceFiles ?? []
+    expect(await workspaceFiles('lib#tsc')).not.toContain('package-lock.json')
+    await workspace(["nx({ graph: 'graph.json' })", "claimFile('package-lock.json')"])
+    expect(await workspaceFiles('lib#check')).not.toContain('package-lock.json')
   },
   TIMEOUT,
 )

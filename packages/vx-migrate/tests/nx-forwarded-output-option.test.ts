@@ -78,6 +78,18 @@ it('a forwarded arg naming an option the outputs read is refused, others run', a
   expect(await Bun.file(path.join(root, 'dist/libs/b/o.txt')).exists()).toBe(true)
 })
 
+// Nx 24's fallback grammar: the option is `outputPath`, not
+// `outputPath ?? {workspaceRoot`, so a forwarded one moves the outputs.
+it('an option read through a `??` fallback is refused too', async () => {
+  const command = await commandOf({
+    ...write,
+    outputs: ['{options.outputPath ?? {workspaceRoot}/dist/{projectRoot}}'],
+  })
+  const r = run(command, '--outputPath=dist/other')
+  expect(r.code).toBe(2)
+  expect(r.stderr).toContain('--outputPath')
+})
+
 it('a single appended run-commands line is guarded too', async () => {
   const command = await commandOf({
     ...write,

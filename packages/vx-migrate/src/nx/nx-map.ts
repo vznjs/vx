@@ -51,7 +51,13 @@ import {
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { dotenvGlobsProbe } from '../dotenv-probe.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
-import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs, nxTargetOutputs } from './nx-outputs.js'
+import {
+  mapNxOutputs,
+  nxDefaultOutputs,
+  nxOutputOptions,
+  nxProjectOutputs,
+  nxTargetOutputs,
+} from './nx-outputs.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
@@ -1123,6 +1129,17 @@ function buildTask(
   // 2026-10-16). The whole file here: a `paths` edit re-keys every task.
   if (opts.rootTsConfig !== undefined && !inputs.wsFiles.includes(opts.rootTsConfig))
     inputs.wsFiles.push(opts.rootTsConfig)
+  // With no `{ externalDependencies }` of its own, Nx 24 hashes every
+  // external dependency (`AllExternalDependencies` in `nx show target
+  // inputs`), save for an `@nx/` or `@nrwl/` executor, which hashes its own
+  // package. Keyed on nothing, a lockfile bump was a hit where Nx re-ran.
+  if (
+    opts.lockfile !== undefined &&
+    !inputs.externalDependencies &&
+    !/^@(nx|nrwl)\//.test(target.executor ?? '') &&
+    !inputs.wsFiles.includes(opts.lockfile)
+  )
+    inputs.wsFiles.push(opts.lockfile)
   if (inputs.wsFiles.length > 0) keyed.workspaceFiles = withoutTakenBack(inputs.wsFiles)
   if (inputs.envNames.length > 0) keyed.env = inputs.envNames
   // The `.env` files the task loads are inputs, and gitignored ones
@@ -1550,8 +1567,7 @@ function outputsOptions(
       ? ['outputPath']
       : []
   const names = new Set<string>()
-  for (const o of target.outputs)
-    for (const m of o.matchAll(/\{options\.([^}.]+)/g)) names.add(m[1]!)
+  for (const o of target.outputs) for (const n of nxOutputOptions(o)) names.add(n)
   return [...names]
 }
 
