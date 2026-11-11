@@ -511,6 +511,19 @@ it('advises the workers that would have run it best: of the declared sizes, past
   expect(advise(tasks, [{ ...small, max: 4 }], () => 0).more).toBeUndefined()
 })
 
+// 2026-11-11: a 25 GB task was advised a 16 GB worker: alone on an empty
+// worker any task fits.
+it('advises a task only workers with room for its peak memory', () => {
+  const tasks = [
+    { ...task('heavy', 10_000), memory: 25e9 },
+    ...Array.from({ length: 4 }, (_, i) => task(`t${i}`, 10_000)),
+  ]
+  const big: Size = { name: 'big', max: 1, cpu: 4, memory: 32e9 }
+  const advice = advise(tasks, [{ ...small, max: 4 }, big], () => 0)
+  expect(advice.declared?.fleet.some((f) => f.size === 'big')).toBe(true)
+  expect(advice.any?.fleet.every((f) => f.memory >= 25e9)).toBe(true)
+})
+
 it('advises each platform its own workers, joined after its warm-up', () => {
   const tasks = [
     ...Array.from({ length: 4 }, (_, i) => ({ ...task(`l${i}`, 10_000), platform: 'linux' })),

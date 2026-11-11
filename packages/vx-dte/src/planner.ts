@@ -2463,12 +2463,26 @@ const MEMORY_PER_CORE = 4 * 2 ** 30
  * cores. Each worker joins after its platform's `warm` warm-up.
  */
 export function advise(
-  tasks: readonly PlanTask[],
+  ran: readonly PlanTask[],
   sizes: readonly Size[],
   warm: (platform: string | undefined) => number,
   how: Strategy = DEFAULT_STRATEGY,
 ): Advice {
-  if (tasks.length === 0) return {}
+  if (ran.length === 0) return {}
+  // A task goes only where its peak memory fits: alone on an empty worker
+  // any task fits, and a 25 GB one was advised a 16 GB worker (2026-11-11).
+  const tasks = ran.map((t) =>
+    t.above === undefined &&
+    sizes.some(
+      (s) => (t.platform === undefined || s.platform === t.platform) && s.memory < t.memory,
+    )
+      ? { ...t, above: { cores: Infinity, memory: t.memory - 1 } }
+      : t,
+  )
+  // First a worker each of them fits, as the live plan starts one.
+  const bigger = tasks.flatMap((t) =>
+    t.above === undefined ? [] : [{ ...t.above, platform: t.platform }],
+  )
   const perPlatform = new Map<string | undefined, number>()
   for (const t of tasks) perPlatform.set(t.platform, (perPlatform.get(t.platform) ?? 0) + 1)
   const wants = new Map(
@@ -2507,7 +2521,7 @@ export function advise(
   /** The fewest of `of`, each up to its `max`, ending within the margin of all of them: halving. */
   const halved = (of: readonly Size[]): { fleets: Fleets; kept: PlanWorker[] } | undefined => {
     const at = byName(of)
-    const all = candidates(of, new Map(), [], Infinity, wants).map((s, i) =>
+    const all = candidates(of, new Map(), bigger, Infinity, wants).map((s, i) =>
       fresh({ ...s, size: s.name }, `\0advice${i}`, at(s.name)),
     )
     const best = simulate(tasks, all, how)

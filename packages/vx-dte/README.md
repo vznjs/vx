@@ -884,7 +884,8 @@ is how many of each size; `more`, shown only when more than a size's
 `max` would end the run sooner past that margin, is how many it would
 take; `any` is one shape for each platform, of 2 to 64 cores (memory a
 core as the platform's sizes have most), the one ending as soon for the
-least core time. Raise a size's `max`, or change its `cpu` and
+least core time. A task goes only on a size with room for its peak
+memory, when one is declared. Raise a size's `max`, or change its `cpu` and
 `memory`, by them. They are in the footer and the run summary, and
 `@vzn/vx-ci` prints them under "Workers to declare".
 
