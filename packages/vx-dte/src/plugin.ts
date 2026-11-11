@@ -1093,6 +1093,7 @@ export function dte(options: DteOptions = {}) {
             () => o.idealMs(depsOf, sizes),
             () => o.advice(depsOf, sizes),
             () => o.driftOf(depsOf),
+            () => o.leastHeldMs(depsOf, sizes),
           ),
         machines: () => o.machines(),
         idealMs: () => o.idealMs(depsOf, sizes),

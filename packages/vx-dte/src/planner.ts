@@ -465,6 +465,8 @@ function play(
   given: () => Map<string, readonly string[]>
   /** The dormant workers it started (`deadline`), in order. */
   wakes: readonly Wake[]
+  /** Core-ms its workers were held, each from its ask to its last task's end (`Ideal`). */
+  held: () => number
 } {
   // A dependency running now ends when it does; one ended or a hit, now.
   const runningIds = new Set<string>()
@@ -589,6 +591,13 @@ function play(
     }
   }
   const wakes: Wake[] = []
+  const held = (): number => {
+    let ms = 0
+    for (const x of slots)
+      if (x.free !== undefined && x.at < Infinity)
+        ms += x.cores * Math.max(0, x.free - Math.max(0, x.at - x.warm))
+    return ms
+  }
   /** Ready places whose chain runs through a task of no history, in rank order. */
   let blindQ: number[] = []
   let blindHead = 0
@@ -861,9 +870,18 @@ function play(
       continue
     }
     if (wakesOnly && dormant.length === 0)
-      return { end: Infinity, cut: true, first: first(), ends: byPlatform(), free, given, wakes }
+      return {
+        end: Infinity,
+        cut: true,
+        first: first(),
+        ends: byPlatform(),
+        free,
+        given,
+        wakes,
+        held,
+      }
     if (left === 0 && readyCount === 0)
-      return { end: last, first: first(), ends: byPlatform(), free, given, wakes }
+      return { end: last, first: first(), ends: byPlatform(), free, given, wakes, held }
     // The next moment anything changes: a task ends or a worker joins.
     let next = ends.next()
     for (const s of slots) if (s.at > now) next = Math.min(next, s.at)
@@ -897,7 +915,7 @@ function play(
       for (const e of ends.all())
         for (const d of (e.place >= 0 ? afterAt(e.place) : after.get(e.id!)) ?? [])
           end = Math.max(end, e.at + tailAt(d))
-      return { end, cut: true, first: first(), ends: byPlatform(), free, given, wakes }
+      return { end, cut: true, first: first(), ends: byPlatform(), free, given, wakes, held }
     }
     if (next === Infinity)
       return {
@@ -907,6 +925,7 @@ function play(
         free,
         given,
         wakes,
+        held,
       }
     now = next
     while (ends.next() <= now) {
@@ -2699,7 +2718,9 @@ export function advise(
     return Math.min(n, 2 * Math.ceil(w / cores / Math.max(1, chain)) + 1)
   }
   /** The fewest of `of`, each up to its `max`, ending within the margin of all of them: halving. */
-  const halved = (of: readonly Size[]): { fleets: Fleets; kept: PlanWorker[] } | undefined => {
+  const halved = (
+    of: readonly Size[],
+  ): { fleets: Fleets; kept: PlanWorker[]; held: number } | undefined => {
     const at = byName(of)
     const all = candidates(of, new Map(), bigger, Infinity, wants).map((s, i) =>
       fresh({ ...s, size: s.name }, `\0advice${i}`, at(s.name)),
@@ -2721,7 +2742,7 @@ export function advise(
       play(tasks, all.slice(0, lo), how),
       (ws) => play(tasks, ws, how),
     )
-    return { fleets: { fleet: fleetOf(kept, of), endMs: before.end }, kept }
+    return { fleets: { fleet: fleetOf(kept, of), endMs: before.end }, kept, held: before.held() }
   }
   const declared = sizes.length === 0 ? undefined : halved(sizes)?.fleets
   const lifted = sizes.map((s) => ({ ...s, max: Math.max(s.max, capOf(s.cpu, s.platform)) }))
@@ -2752,9 +2773,10 @@ export function advise(
     }))
     const got = halved(shapes)
     if (got === undefined) continue
-    let coreMs = 0
-    for (const k of got.kept) coreMs += k.cores * Math.max(0, got.fleets.endMs - k.at)
-    tried.push({ fleets: got.fleets, coreMs, workers: got.kept.length })
+    // Each held from its ask to its last task's end, warm-up and idle
+    // cores counted: charged to the run's end, one small task's worker
+    // cost as much as the busiest (2026-11-11).
+    tried.push({ fleets: got.fleets, coreMs: got.held, workers: got.kept.length })
   }
   let any: Fleets | undefined
   if (tried.length > 0) {
