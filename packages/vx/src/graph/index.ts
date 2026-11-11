@@ -52,6 +52,7 @@ export {
   excludeDependencies,
   expandRequested,
   type GraphRules,
+  markOutsideAdditions,
   markSurfacedDeps,
   outputsOverlap,
   outputTakenBack,

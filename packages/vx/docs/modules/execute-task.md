@@ -210,7 +210,12 @@ An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
 `run.rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
-run added or changed against that stamp (`ownOutputsSince`), handed to
+run added or changed against that stamp (`ownOutputsSince`), plus what
+it found and left exactly as a save or restore of its own left it: a
+row of any of the task's entries (`taskEntryHashes`) that
+`isOutputsCurrent` holds current. An incremental emitter rewrites only
+what changed, and without those its entry restored a tree a forced run
+never leaves. The set is handed to
 `saveMiss` as `ownOutputFiles` in place of the glob walk. Its
 `workspaceFiles` get the same treatment (`stampWorkspaceOutputs`,
 `ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43). A run that removed a file

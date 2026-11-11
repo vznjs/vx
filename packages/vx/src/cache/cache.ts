@@ -1102,6 +1102,26 @@ export function shareSeenHasher(from: CacheLayer, to: CacheLayer): void {
     seenHashers.set(to, { method: to.hashFile, hash: own.hash, many: own.many })
 }
 
+/**
+ * The hashes of every entry this machine's index holds for `taskId`: an
+ * additive task's miss reads their rows to tell the files a save or
+ * restore of its own left from what it found (item 588). A function, not
+ * a layer method, so the package's API is unchanged; a layer with no
+ * local index (a test double) answers none.
+ */
+export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] {
+  const local = layer instanceof Cache ? layer : (layer as { local?: unknown }).local
+  if (!(local instanceof Cache)) return []
+  const [project, task] = splitTaskId(taskId)
+  return local['guard'](() =>
+    (
+      local['db']
+        .query('SELECT hash FROM entries WHERE project = ? AND task = ?')
+        .all(project, task) as Array<{ hash: string }>
+    ).map((r) => r.hash),
+  )
+}
+
 export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false

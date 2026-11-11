@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v53'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v54'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1161,6 +1161,12 @@ With the rule off, an edge fixes the order, and the dependant is
   trusts — and only that set is saved; `outputs.workspaceFiles` are
   stamped the same way (until A-43 its miss cleaned them by glob, deleting
   a same-tree upstream's root-anchored files before it read them);
+- a file it **found and left alone** is its own too when a save or
+  restore of this task left it exactly so (a row of one of its entries,
+  current by the same proof): an incremental emitter (`tsc`, `cmp || cp`)
+  rewrites only what changed, and its entry held only those, so a hit
+  over a wiped tree restored without the rest. A stale file of its own
+  that its command leaves is saved too, as under Turbo;
 - a run that **removes** a file it found (a bundler deleting the
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
@@ -1182,7 +1188,10 @@ The upstream keeps strict ownership of its glob — a miss or a restore
 wipes the whole tree, the dependant's additions included, and the
 dependant restores or runs after — and its "already current" check
 ignores strays a dependant's glob could have added, so a warm run stays
-a no-op for both. A file the dependant rewrites in place (refine's
+a no-op for both — a run of the upstream alone too: every task in the
+workspace outside the run whose outputs overlap the upstream's is a
+dependant (an upstream would be in the run, and `vx lock` refuses an
+unordered pair), so the run loads every project's config to find them. A file the dependant rewrites in place (refine's
 `types` regenerating `build`'s `.d.ts`) counts as the dependant's own
 (its ctime moved, even where a tool stamps the size and mtime back; X-33),
 which is correct and costs the upstream a restore on
@@ -2471,6 +2480,12 @@ breaking footer).
 
 ### History
 
+- **v53 → v54**: stored bytes wrong under a key the change does not move
+  (2026-11-11). An additive task (item 588) saved only what its run
+  added or changed, so an incremental emitter's entry lacked the files
+  it found from its own last run and left alone, and a hit over a wiped
+  tree restored without them; a v53 entry may lack them, so it is never
+  read.
 - **v52 → v53**: the tree form's layout (2026-11-10). A tree keeps each
   output at its row's path, with no `.vx-meta.json` and no `outputs/`
   level; a v52 tree read by row path would find a project output named

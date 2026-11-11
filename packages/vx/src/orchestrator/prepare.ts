@@ -67,6 +67,7 @@ import {
   type GraphRules,
   isDefaultBuild,
   isGroupTask,
+  markOutsideAdditions,
   refuseFiltersThroughGroups,
   type TaskNode,
   undeclaredDepsError,
@@ -899,6 +900,16 @@ export async function prepareRunLocked(
     await settleIgnored(gitFilesCache)
     mark('git enumeration')
     if (hasGraphHook && !hooksFirst) await graphStage()
+    // An upstream run without the dependants that add to its outputs still
+    // ignores what they added (`markOutsideAdditions`): over every project,
+    // so a scoped load loads the rest, only in a workspace that allows it.
+    if (graphRules.exclusiveOutputs === false) {
+      const every = partialLoad
+        ? (await loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }))
+            .projects
+        : projects
+      markOutsideAdditions(nodes, every, workspaceRoot)
+    }
     // Args after `--` go to requested commands only; with none among them
     // they reached nothing and the run passed, the `--watch` unheard.
     if ((options.forwardArgs?.length ?? 0) > 0) {

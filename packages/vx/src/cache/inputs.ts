@@ -1642,6 +1642,11 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * identical bytes, counts as its own (its ctime moved), which is the
  * rewrite-in-place cost the design note records.
  *
+ * A file the run found and left as it was is its own too when `mine` says
+ * a save or restore of this task left it so (an incremental emitter keeps
+ * the files whose bytes did not change; without them its entry restored a
+ * tree a forced run never leaves).
+ *
  * Undefined when the run REMOVED a file it found: an artifact holds what a
  * run wrote, never what it took away, and the upstream's restore puts the
  * file back, so no entry reproduces that run and none is saved.
@@ -1654,21 +1659,24 @@ export async function ownOutputsSince(
     inputs?: OwnInputs | undefined
   },
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): Promise<string[] | undefined> {
-  return changedSince(await resolveOutputs(args), before)
+  return changedSince(await resolveOutputs(args), before, mine)
 }
 
 /** `ownOutputsSince` for root-anchored `outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): Promise<string[] | undefined> {
-  return changedSince(await resolveWorkspaceOutputs(args), before)
+  return changedSince(await resolveWorkspaceOutputs(args), before, mine)
 }
 
 function changedSince(
   after: readonly string[],
   before: ReadonlyMap<string, OutputStamp>,
+  mine?: (abs: string) => boolean,
 ): string[] | undefined {
   const own: string[] = []
   let kept = 0
@@ -1685,7 +1693,8 @@ function changedSince(
         st.size !== was.size ||
         st.mtimeMs !== was.mtimeMs ||
         st.ino !== was.ino ||
-        st.ctimeMs !== was.ctimeMs
+        st.ctimeMs !== was.ctimeMs ||
+        mine?.(f) === true
       )
         own.push(f)
     } catch {

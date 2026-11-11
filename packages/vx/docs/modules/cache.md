@@ -499,6 +499,7 @@ export const SCHEMA_VERSION = 'v55'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
+export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] // every entry this machine holds for the task (an additive miss reads their rows)
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -899,7 +900,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v53'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v54'`; `SCHEMA_VERSION` is
 `'v55'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

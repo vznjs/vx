@@ -82,7 +82,8 @@ refuses an edge-ordered overlap. An ADDITIVE task
 (`node.addsToOutputsOf`) is judged current by its
 recorded rows alone and its restore rewrites exactly those rows, never
 touching what its glob, which also selects the upstream's files it adds beside. An
-upstream that dependants add to (`node.outputsAddedToBy`) drops the
+upstream that dependants add to (`node.outputsAddedToBy`, dependants
+outside the run included: `markOutsideAdditions`) drops the
 strays their globs could have added before it judges its own tree — on
 both halves, project and root-anchored (`overlapping-outputs.test.ts`
 holds each, item 638) — and never a row it recorded; its restore still removes them — the dependant

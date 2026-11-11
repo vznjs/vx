@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: an additive task keeps the outputs it left
+
+CACHE_VERSION is vx-cache-v54: caches start empty once, so every cached task misses once after upgrading.
+
 ## cache: keep tree entries without sidecar or outputs/ level
 
 CACHE_VERSION is vx-cache-v53: caches start empty once, so every cached task misses once after upgrading.
