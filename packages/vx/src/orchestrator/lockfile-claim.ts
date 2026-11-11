@@ -141,8 +141,44 @@ interface Digests {
  * there but unreadable (EACCES, a symlink loop) refuses, as a settings file
  * does: folded as '', it keyed as no file at all.
  */
-export async function hashExtra(workspaceRoot: string, rel: string): Promise<string> {
+export function hashExtra(
+  workspaceRoot: string,
+  rel: string,
+  hashes?: ExtraHashes,
+): Promise<string> {
   const abs = path.resolve(workspaceRoot, rel)
+  if (hashes === undefined) return hashOf(abs, rel)
+  let held = hashes.get(abs)
+  if (held === undefined) {
+    held = hashOf(abs, rel)
+    hashes.set(abs, held)
+    // A refusal is the read's, never the memo's: the next ask reads again.
+    held.catch(() => hashes.delete(abs))
+  }
+  return held
+}
+
+/**
+ * One run's hash of each extra file, by absolute path: `--affected`, the
+ * `discover` read and the key all ask for a `file:` directory, and each
+ * walked and read all of it (four walks a run, six when one had moved).
+ * A run hashes before any task starts, so no task's write falls between.
+ */
+export type ExtraHashes = Map<string, Promise<string>>
+
+const RUN_HASHES = Symbol('vx.extraHashes')
+
+/** `ctx` carrying the run's `ExtraHashes`; a spread of it keeps them, so a claim reads them from the context a hook hands it. */
+export function withExtraHashes<T extends object>(ctx: T, hashes: ExtraHashes | undefined): T {
+  return hashes === undefined ? ctx : Object.assign(ctx, { [RUN_HASHES]: hashes })
+}
+
+/** The `ExtraHashes` `withExtraHashes` gave `ctx`; undefined for a context core did not make. */
+export function extraHashesOf(ctx: object): ExtraHashes | undefined {
+  return (ctx as { [RUN_HASHES]?: ExtraHashes })[RUN_HASHES]
+}
+
+async function hashOf(abs: string, rel: string): Promise<string> {
   try {
     return xxh3hex(await Bun.file(abs).bytes())
   } catch (err) {
@@ -224,12 +260,13 @@ const RACY = 'racy'
 async function statsOf(
   workspaceRoot: string,
   rels: readonly string[],
+  hashes: ExtraHashes | undefined,
   readAt?: number,
 ): Promise<string[]> {
   return Promise.all(
     rels.map((rel) =>
       stat(path.resolve(workspaceRoot, rel)).then(
-        (st) => (st.isDirectory() ? hashExtra(workspaceRoot, rel) : identityOf(st, readAt)),
+        (st) => (st.isDirectory() ? hashExtra(workspaceRoot, rel, hashes) : identityOf(st, readAt)),
         () => 'gone',
       ),
     ),
@@ -240,11 +277,14 @@ async function statsOf(
 async function hashExtras(
   workspaceRoot: string,
   rels: readonly string[],
+  run: ExtraHashes | undefined,
 ): Promise<{ hashes: Record<string, string>; stats: Record<string, string> }> {
-  const ids = await statsOf(workspaceRoot, rels, Date.now())
+  const ids = await statsOf(workspaceRoot, rels, run, Date.now())
   const stats = Object.fromEntries(rels.map((rel, i) => [rel, ids[i]!] as const))
   const hashes = Object.fromEntries(
-    await Promise.all(rels.map(async (rel) => [rel, await hashExtra(workspaceRoot, rel)] as const)),
+    await Promise.all(
+      rels.map(async (rel) => [rel, await hashExtra(workspaceRoot, rel, run)] as const),
+    ),
   )
   return { hashes, stats }
 }
@@ -304,6 +344,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     workspaceRoot: string,
     cacheDir: string,
     withDigests: boolean,
+    run: ExtraHashes | undefined,
   ): Promise<Digests> => {
     const full = path.join(workspaceRoot, file)
     let identity: string
@@ -331,7 +372,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       last.identity === identity &&
       (!withDigests || last.digests.importers !== undefined)
     ) {
-      const now = await statsOf(workspaceRoot, last.extras)
+      const now = await statsOf(workspaceRoot, last.extras, run)
       if (now.every((s, i) => s === last.extraStats[last.extras[i]!])) {
         if (last.unsaved !== undefined && writeLockfileMemo(cacheDir, file, claimant, last.unsaved))
           delete last.unsaved
@@ -354,7 +395,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     let unsaved: LockfileMemo | undefined
     let served = false
     if (memo !== undefined && (!withDigests || memo.importers !== null)) {
-      const now = await hashExtras(workspaceRoot, Object.keys(memo.extras))
+      const now = await hashExtras(workspaceRoot, Object.keys(memo.extras), run)
       if (Object.entries(memo.extras).every(([rel, h]) => now.hashes[rel] === h)) {
         served = true
         extras = memo.extras
@@ -368,7 +409,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     if (!served) {
       const text = decode(bytes)
       const rels = [...new Set(options.extraFiles?.(text) ?? [])].sort()
-      const now = await hashExtras(workspaceRoot, rels)
+      const now = await hashExtras(workspaceRoot, rels, run)
       extras = now.hashes
       extraStats = now.stats
       importers =
@@ -430,11 +471,12 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         const rec = await ctx.locked(file)
         if (rec === undefined) return undefined
         const rels = Object.keys(rec.extras)
-        const now = await Promise.all(rels.map((rel) => hashExtra(ctx.workspaceRoot, rel)))
+        const run = extraHashesOf(ctx)
+        const now = await Promise.all(rels.map((rel) => hashExtra(ctx.workspaceRoot, rel, run)))
         if (now.every((h, i) => h === rec.extras[rels[i]!])) {
           return (dir: string) => rec.digest(dir)
         }
-        const digests = await load(ctx.workspaceRoot, ctx.cacheDir, true)
+        const digests = await load(ctx.workspaceRoot, ctx.cacheDir, true, run)
         const importers = digests.importers!
         return (dir: string) => digestFor(importers, importerOf(ctx.workspaceRoot, dir))
       })()
@@ -445,7 +487,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
   const loadOnce = (ctx: KeyHookContext): Promise<Digests> => {
     let p = perRun.get(ctx)
     if (p === undefined) {
-      p = load(ctx.workspaceRoot, ctx.cacheDir, false)
+      p = load(ctx.workspaceRoot, ctx.cacheDir, false, extraHashesOf(ctx))
       perRun.set(ctx, p)
     }
     return p
@@ -497,7 +539,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       // instead of parsing the base's file.
       async digests(_file: string, ctx: FingerprintContext) {
         if (scope === 'workspace') return undefined
-        const digests = await load(ctx.workspaceRoot, ctx.cacheDir, true)
+        const digests = await load(ctx.workspaceRoot, ctx.cacheDir, true, extraHashesOf(ctx))
         if (digests.lock === '') return undefined
         const importers = digests.importers!
         return {
@@ -535,11 +577,11 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       return digests.lock === '' ? undefined : { [part]: digests.lock }
     },
     async importers(ctx) {
-      const digests = await load(ctx.workspaceRoot, ctx.cacheDir, false)
+      const digests = await load(ctx.workspaceRoot, ctx.cacheDir, false, extraHashesOf(ctx))
       return digests.lock === '' ? undefined : digests.edges
     },
     async recorded(ctx) {
-      const digests = await load(ctx.workspaceRoot, ctx.cacheDir, false)
+      const digests = await load(ctx.workspaceRoot, ctx.cacheDir, false, extraHashesOf(ctx))
       return digests.lock === '' ? undefined : digests.recorded
     },
   }

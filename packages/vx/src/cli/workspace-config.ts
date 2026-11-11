@@ -71,7 +71,7 @@ export async function discoverCliProjects(
 ): Promise<ProjectMeta[]> {
   const warn = load.warn ?? warnToStderr
   const ws = await loadCliWorkspace(root, warn)
-  return await discoverProjects(
+  const projects = await discoverProjects(
     root,
     lockReader(root),
     ws.plugins,
@@ -79,6 +79,19 @@ export async function discoverCliProjects(
     warn,
     git,
   )
+  discoveredWorkspaces.set(projects, ws)
+  return projects
+}
+
+/**
+ * The workspace a discovery loaded, by the array it returned: `--affected`
+ * asks every run for the claims, and loading the workspace again read its
+ * file again (1.5-3.7 ms with no plugin, 2026-11-10).
+ */
+const discoveredWorkspaces = new WeakMap<readonly ProjectMeta[], CliWorkspace>()
+
+export function workspaceOfDiscovery(projects: readonly ProjectMeta[]): CliWorkspace | undefined {
+  return discoveredWorkspaces.get(projects)
 }
 
 /**

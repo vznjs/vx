@@ -16,6 +16,7 @@ export { applyGraphStage } from './graph-stage.js'
 export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,
+  extraHashesOfDiscovery,
   gitOfDiscovery,
   ignoredConfigRefusal,
   keepDiscoveryGraph,
@@ -109,8 +110,10 @@ export {
   resolveExecutors,
 } from './plugin-host.js'
 export {
+  hashExtra,
   lockfileClaim,
   reachDigests,
+  withExtraHashes,
   type LockfileClaimHooks,
   type LockfileClaimOptions,
   type LockfileImporter,

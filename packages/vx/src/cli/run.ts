@@ -527,11 +527,12 @@ export async function resolveRunOptions(
       // `pkg#task`, which resolves to its own project regardless of
       // scope. An empty project list keeps the bare tasks unselected
       // while the anchored ones still run.
-      const typo = await undeclaredTasks(bareTasks, cwd)
+      const typo = await undeclaredTasks(bareTasks, cwd, resolved.discovered)
       if (typo !== undefined) return { error: typo, code: 'VX_E_UNKNOWN_TASK' }
       if (anchoredTasks.length === 0) return { nothingSelected: resolved.empty }
       sayNotice('info', 'vx run', `${resolved.empty} — running ${anchoredTasks.join(', ')} only`)
       projects = []
+      discovered = resolved.discovered
     } else {
       projects = resolved.names
       selectedByDiff = resolved.byDiff

@@ -47,6 +47,7 @@ import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 import { freezeDeep, readOnly } from './read-only.js'
+import { type ExtraHashes, withExtraHashes } from './lockfile-claim.js'
 
 /**
  * The workspace config with the plugin `config` stage applied — the first
@@ -153,6 +154,18 @@ export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumera
   return discoveredGit.get(projects)
 }
 
+/**
+ * The run's extra-file hashes (`ExtraHashes`), by the discovery's array: a
+ * discovery is one run's (`vx watch` discovers each cycle), and the CLI's
+ * `--affected` pass, the `project` stage and the key share what `discover`
+ * hashed.
+ */
+const discoveredHashes = new WeakMap<readonly ProjectMeta[], ExtraHashes>()
+
+export function extraHashesOfDiscovery(projects: readonly ProjectMeta[]): ExtraHashes | undefined {
+  return discoveredHashes.get(projects)
+}
+
 /** The lock a discovery read, by the array it returned: a later config load reads no second copy. */
 const discoveredLock = new WeakMap<readonly ProjectMeta[], () => Promise<Lockfile>>()
 
@@ -239,6 +252,8 @@ export async function discoverProjects(
   // untracked files from this walk, and the run reuses it (I-26).
   discoveredGit.set(projects, git)
   discoveredLock.set(projects, lock)
+  const hashes: ExtraHashes = new Map()
+  discoveredHashes.set(projects, hashes)
   if (!hasHook(plugins, 'discover')) return checkProjectNames(workspaceRoot, projects)
   const worktreeChanges = (): Promise<readonly string[] | null> =>
     git.start().then(
@@ -249,7 +264,7 @@ export async function discoverProjects(
   const edges = await applyDiscoverHooks(
     plugins,
     projects,
-    { workspaceRoot, cacheDir, warn, worktreeChanges },
+    withExtraHashes({ workspaceRoot, cacheDir, warn, worktreeChanges }, hashes),
     async (entry, plugin) => {
       const found = await discoveredProject(workspaceRoot, byDir, entry, plugin.name)
       if (found.added) {
@@ -477,16 +492,19 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         await applyProjectHooks(
           plugins,
           config,
-          {
-            workspaceRoot,
-            cacheDir: args.cacheDir,
-            warn: args.warn,
-            name: meta.name,
-            dir: meta.dir,
-            // The view `discover` was handed: nx() keys its graph on its identity.
-            projects: readOnly(args.projectMetas),
-            lock: args.lock === true,
-          },
+          withExtraHashes(
+            {
+              workspaceRoot,
+              cacheDir: args.cacheDir,
+              warn: args.warn,
+              name: meta.name,
+              dir: meta.dir,
+              // The view `discover` was handed: nx() keys its graph on its identity.
+              projects: readOnly(args.projectMetas),
+              lock: args.lock === true,
+            },
+            discoveredHashes.get(args.projectMetas),
+          ),
           (plugin) => {
             const at = `${where} (after plugin '${plugin.name}')`
             validateProjectConfig(config, at, meta.configPath)

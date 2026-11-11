@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { type Logger } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { affectedIds, commitAll, moved } from './helpers/affected.js'
+import { affectedIds, commitAll, lockAt, moved } from './helpers/affected.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const BUILD =
@@ -395,6 +395,23 @@ for (const row of [
       expect(moved(before, await hashes())).toEqual([])
       await writeFile(path.join(root, 'vendor/dep/index.js'), '// dep v2\n')
       expect(moved(before, await hashes())).toEqual([...reaches])
+      expect(affectedIds(root, 'build')).toEqual([...reaches])
+    })
+
+    // The install copies a file git ignores (a vendored package's built
+    // `dist/`) and the key hashes it, but no diff lists it: selection
+    // compares the directory's hash with the one the base's lock records.
+    it('an edit to a file git ignores in the directory selects the projects reaching it', async () => {
+      await writeFile(path.join(root, '.gitignore'), 'vendor/dep/dist/\n')
+      await mkdir(path.join(root, 'vendor/dep/dist'))
+      await writeFile(path.join(root, 'vendor/dep/dist/index.js'), '// built v1\n')
+      lockAt(root)
+      commitAll(root)
+      // CONTROL: the record matches the directory, nothing is selected.
+      expect(affectedIds(root, 'build', { lock: false })).toEqual([])
+      await writeFile(path.join(root, 'vendor/dep/dist/index.js'), '// built v2\n')
+      expect(affectedIds(root, 'build', { lock: false })).toEqual([...reaches])
+      // Re-locked, the base's record still holds the old hash.
       expect(affectedIds(root, 'build')).toEqual([...reaches])
     })
 

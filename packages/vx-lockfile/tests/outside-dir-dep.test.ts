@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { type Logger } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { affectedIds, commitAll, moved } from './helpers/affected.js'
+import { affectedIds, commitAll, lockAt, moved } from './helpers/affected.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const BUILD =
@@ -285,13 +285,16 @@ for (const [row, lock] of Object.entries(LOCKS)) {
       expect(moved(before, await hashes())).toEqual([...reaches])
     })
 
-    // Git holds no base for a directory outside the repository: a diff that
-    // changes no lockfile selects nothing for it, and must not fail.
-    it('--affected reads no base for the directory, and does not fail', async () => {
-      await hashes()
+    // Git holds no base for a directory outside the repository; the base's
+    // lock records its hash, which selection compares as the key does.
+    it('--affected selects the projects an edit in the directory re-keys', async () => {
+      lockAt(root)
       commitAll(root)
+      // CONTROL: the record matches the directory, nothing is selected.
+      expect(affectedIds(root, 'build', { lock: false })).toEqual([])
       await writeFile(path.join(box, 'outside/dep/index.js'), '// dep v2\n')
-      expect(affectedIds(root, 'build')).toEqual([])
+      expect(affectedIds(root, 'build', { lock: false })).toEqual([...reaches])
+      expect(affectedIds(root, 'build')).toEqual([...reaches])
     })
 
     it('a file added to the directory re-keys the projects reaching it', async () => {

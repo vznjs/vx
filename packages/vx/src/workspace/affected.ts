@@ -155,6 +155,11 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
   extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
+  /**
+   * An extra file's hash now, as the key takes it (`hashExtra`), from the
+   * hashes the run's key reads too; absent = selection checks none.
+   */
+  hashExtra?(rel: string): Promise<string>
   /** Each project's digest of a claimed file now (`FingerprintClaim.digests`); absent or undefined = none. */
   digests?(
     file: string,
@@ -507,6 +512,37 @@ export async function affectedChanges(
       const patches = new Set(bunPatchFiles(after))
       const patch = changed.find((p) => patches.has(p))
       if (patch !== undefined) return everything(patch)
+    }
+  }
+  // An extra file can move with no change git lists: a gitignored file in
+  // a `file:` directory (a vendored package's built `dist/`, which the
+  // manager copies), or a `file:` or `link:` directory outside the
+  // repository. The key digests anew from what `vx lock` recorded, so
+  // selection compares the same hashes, against the base's record, and
+  // the run's key reads them from this pass (`FingerprintClaims.hashExtra`).
+  const hashing = await loadClaims()
+  if (hashing?.hashExtra !== undefined && hashing.files.size > 0) {
+    // Not in the diff, the working tree's lock is the base's: no git show.
+    const relocked =
+      diffed.paths.includes(DEPENDENCIES_LOCK_NAME) || untracked.includes(DEPENDENCIES_LOCK_NAME)
+    const record = relocked
+      ? await baseDependencies()
+      : parseDependenciesLock(await bytesOrNull(path.join(rootDir, DEPENDENCIES_LOCK_NAME)))
+    for (const file of hashing.files) {
+      const was = record === null ? undefined : recordedDigests(record, file)
+      const rels = was === undefined ? [] : Object.keys(was.extras)
+      if (rels.length === 0) continue
+      const now = await Promise.all(rels.map((rel) => hashing.hashExtra!(rel)))
+      const listed = extrasBy.get(file) ?? new Map()
+      const side = (hash: string): Uint8Array | null =>
+        hash === '' ? null : new TextEncoder().encode(hash)
+      rels.forEach((rel, i) => {
+        const then = was!.extras[rel]!
+        if (now[i] === then || listed.has(rel)) return
+        // Sides that differ as the hashes do: the claimant folds each.
+        listed.set(rel, { before: side(then), after: side(now[i]!) })
+      })
+      if (listed.size > 0) extrasBy.set(file, listed)
     }
   }
   // The projects whose digest of `file` moved, from the base's recorded
@@ -1067,7 +1103,7 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
   const exit = await proc.exited
   if (exit !== 0) {
     throw new UserError(
-      `git ${cmd[cmd[0] === '-c' ? 2 : 0]} failed (exit ${exit}): ${stderr.trim()}`,
+      `git ${cmd.find((a, i) => a !== '-c' && cmd[i - 1] !== '-c')} failed (exit ${exit}): ${stderr.trim()}`,
       'VX_E_GIT',
     )
   }
@@ -1098,6 +1134,16 @@ async function gitDiffPaths(
     gitPaths(workspaceRoot, [
       '-c',
       'diff.autoRefreshIndex=false',
+      // The key reads the worktree's mode under `core.fileMode=false` and
+      // trusts no index OID under a weakened stat (git-inputs.ts), so the
+      // diff judges by git's full stat: a file only that stat calls dirty
+      // is hashed below, and only a DrvFs mode over-selects.
+      '-c',
+      'core.fileMode=true',
+      '-c',
+      'core.trustctime=true',
+      '-c',
+      'core.checkStat=default',
       'diff',
       '--no-renames',
       '--ignore-submodules=none',

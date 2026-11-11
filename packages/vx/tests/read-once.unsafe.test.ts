@@ -24,6 +24,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitInitCommit } from './helpers/workspace.js'
+import { CORE_INDEX } from './helpers/core-index.js'
+import { pluginOrigin } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 60_000
@@ -172,6 +174,107 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       // it exists, which the staged load had already proved (I-23); the run
       // parsed it again for configs the selection had staged (I-27).
       expect(run('.vx/projects.lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
+    },
+    TIMEOUT,
+  )
+})
+
+// A claimed lockfile's `file:` directory (`FingerprintDigests.extras`) is
+// walked and read whole: the `discover` read, its in-process gate,
+// `--affected`'s check of the base's record and the key each hashed it,
+// four reads of every file in it a run, six when it had moved.
+describe.skipIf(strace === null)('one run hashes a claimed directory once', () => {
+  let root: string
+  let scratch: string
+
+  beforeAll(async () => {
+    scratch = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-read-once-dir-')))
+    root = path.join(scratch, 'ws')
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(path.join(dir, 'src'), { recursive: true })
+    await mkdir(path.join(root, 'vendor', 'dep', 'dist'), { recursive: true })
+    await writeFile(path.join(root, 'vendor', 'dep', 'index.js'), 'export {}\n')
+    await writeFile(path.join(root, 'vendor', 'dep', 'dist', 'out.js'), '// v1\n')
+    await writeFile(path.join(root, '.gitignore'), 'vendor/dep/dist/\n')
+    await writeFile(path.join(root, 'custom.lock'), 'dep\n')
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root' }))
+    await writeFile(path.join(dir, 'src', 'index.js'), 'export {}\n')
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default {
+  tasks: {
+    build: {
+      exec: { command: 'true' },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
+    },
+  },
+}
+`,
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { definePlugin, lockfileClaim } from ${JSON.stringify(CORE_INDEX)}
+const claim = lockfileClaim({
+  file: 'custom.lock',
+  version: 1,
+  extraFiles: () => ['vendor/dep'],
+  importers: () => new Map(),
+  digest: (_text, files) => new Map([['packages/a', files.get('vendor/dep')]]),
+})
+export default {
+  plugins: [
+    definePlugin(${JSON.stringify(pluginOrigin('org/dir-claimant'))}, {
+      fingerprint: claim.fingerprint,
+      key: claim.key,
+      async discover(ctx) {
+        await claim.importers(ctx)
+        return []
+      },
+    }),
+  ],
+}
+`,
+    )
+    expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: root }).exitCode).toBe(0)
+    gitInitCommit(root)
+  })
+
+  afterAll(async () => {
+    await rm(scratch, { recursive: true, force: true })
+  })
+
+  async function opens(name: string): Promise<(rel: string) => number> {
+    const out = path.join(scratch, `${name}.trace`)
+    const p = Bun.spawnSync({
+      cmd: [strace!, '-f', '-qq', '-y', '-e', 'trace=%file,%process', '-o', out].concat([
+        process.execPath,
+        BIN,
+        'run',
+        'build',
+        '--affected=HEAD',
+        '--dry=json',
+      ]),
+      env: { ...process.env, VX_DEBUG_DUMPABLE: '1' },
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(p.exitCode).toBe(0)
+    const calls = callsByPath(await readFile(out, 'utf8'), root)
+    return (rel) => (calls.get(path.join(root, rel)) ?? []).filter((c) => c === 'openat').length
+  }
+
+  it(
+    'an --affected run that selects and keys reads each file under it once',
+    async () => {
+      // CONTROL: the directory is as `vx lock` recorded it.
+      const same = await opens('same')
+      expect(same('vendor/dep/index.js')).toBe(1)
+      // A file git ignores moved: selection sees it, the key digests anew.
+      await writeFile(path.join(root, 'vendor', 'dep', 'dist', 'out.js'), '// v2\n')
+      const moved = await opens('moved')
+      expect(moved('vendor/dep/index.js')).toBe(1)
+      expect(moved('vendor/dep/dist/out.js')).toBe(1)
     },
     TIMEOUT,
   )
