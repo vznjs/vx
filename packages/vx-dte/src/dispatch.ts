@@ -226,27 +226,19 @@ export interface Soon {
   readonly ms: number
 }
 
-/** What `b` holds at `at`: its tasks still running then, and holds over it. */
-function heldAt(b: Bin, at: number, skip?: Hold): { cores: number; memory: number } {
-  let cores = 0
-  let memory = 0
-  let ending = 0
-  for (const [end, c, m] of b.ends ?? []) {
-    ending += c
-    if (end > at) {
-      cores += c
-      memory += m
-    }
+/** What `b` holds at `at`: its tasks still running then, and holds over it (`Sweep`). */
+function heldAt(b: Bin, at: number): { cores: number; memory: number } {
+  const w = sweepOf(b)
+  let lo = 0
+  let hi = w.at.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (w.at[mid]! <= at) lo = mid + 1
+    else hi = mid
   }
-  // What no end is known for (a server's base) stays.
-  cores += Math.max(0, b.used.cores - ending)
-  if (b.ends === undefined) memory = b.used.memory
-  for (const h of b.holds ?? [])
-    if (h !== skip && h.at <= at && h.until > at) {
-      cores += h.cores
-      memory += h.memory
-    }
-  return { cores, memory }
+  return lo === 0
+    ? w.base
+    : { cores: Math.max(0, w.heldCores[lo - 1]!), memory: w.heldMemory[lo - 1]! }
 }
 
 /**
@@ -460,13 +452,46 @@ function window(b: Bin, ask: Ask): number {
 }
 
 /**
- * Of a kind holds kept off every bin it fits, its rank and the longest
- * that fits before them: one of no higher rank and longer fails alike
- * until a bin is given (`assign`).
+ * An ask that no bin took and that changed nothing (`assign`): its need,
+ * rank, the longest that fits before the holds that kept it off, and the
+ * room left where one it fits only empty is held. One needing as much or
+ * more of the same platform, of no higher rank and longer, fails alike
+ * until a bin is given: bins it fits are fewer, holds it breaks more.
  */
 export interface Kept {
+  readonly cores: number
+  readonly memory: number
+  readonly platform: string | undefined
   readonly rank: number
   readonly longest: number
+  /** The fewest cores and least memory free of a bin in use: needing less, no bin is held for it. */
+  readonly under: { readonly cores: number; readonly memory: number }
+}
+
+/** At most this many `Kept` a pass: the newest. */
+const KEPT = 8
+
+/** Whether one of `kept` proves `need`, of `rank` and `ms`, fails (`Kept`). */
+export function failsAlike(
+  kept: readonly Kept[],
+  need: Need,
+  rank: number | undefined,
+  ms: number | undefined,
+): boolean {
+  if (kept.length === 0 || rank === undefined || ms === undefined) return false
+  if (need.above !== undefined || (need.servers?.length ?? 0) > 0) return false
+  for (const k of kept)
+    if (
+      need.platform === k.platform &&
+      need.cores >= k.cores &&
+      need.memory >= k.memory &&
+      rank <= k.rank &&
+      ms > k.longest &&
+      need.cores < k.under.cores &&
+      need.memory <= k.under.memory
+    )
+      return true
+  return false
 }
 
 export interface Ask {
@@ -540,8 +565,8 @@ export function assign<B extends Bin>(
     readonly kinds: number
     /** Where it keeps the kinds spent, for the asks to skip them as it reads. */
     readonly spent?: Set<string>
-    /** Where it keeps each kind's `Kept`, for the asks to skip those it proves fail as they read. */
-    readonly kept?: Map<string, Kept>
+    /** Where it keeps the `Kept`, for the asks to skip those they prove fail as they read. */
+    readonly kept?: Kept[]
     /** Where it keeps the bins' bounds as it gives, for the asks to skip each `dead` one as it reads. */
     readonly bounds?: Bounds
   },
@@ -559,13 +584,10 @@ export function assign<B extends Bin>(
   spent.clear()
   // Ready asks given room ahead this pass.
   let waiting = 0
-  // Of each kind that holds kept off and no bin took, its rank and the
-  // longest that fits before them: one of no higher rank and longer fails
-  // alike, as holds only grow and room only shrinks until a bin is given.
-  // Each read every bin: a billion reads in a sim of 3,800 tasks, a plan
-  // of 15 s (2026-11-11).
-  const kept = all?.kept ?? new Map<string, Kept>()
-  kept.clear()
+  // Asks no bin took that changed nothing (`Kept`): each read every bin,
+  // a billion reads in a sim of 3,800 tasks, a plan of 15 s (2026-11-11).
+  const kept = all?.kept ?? []
+  kept.length = 0
   for (const ask of asks) {
     if (
       all !== undefined &&
@@ -578,15 +600,10 @@ export function assign<B extends Bin>(
     )
       break
     if (ask.kind !== undefined && spent.has(ask.kind)) continue
-    const k = ask.kind === undefined ? undefined : kept.get(ask.kind)
     if (
-      k !== undefined &&
       ask.only === undefined &&
       ask.avoid === undefined &&
-      ask.rank !== undefined &&
-      ask.ms !== undefined &&
-      ask.rank <= k.rank &&
-      ask.ms > k.longest
+      failsAlike(kept, ask.need, ask.rank, ask.ms)
     )
       continue
     const { need } = ask
@@ -653,24 +670,42 @@ export function assign<B extends Bin>(
       if (soonest !== undefined) {
         held.add(soonest)
         rebound()
-      } else if (ask.kind !== undefined && !blocked) spent.add(ask.kind)
-      else if (
-        ask.kind !== undefined &&
+        continue
+      }
+      if (ask.kind !== undefined && !blocked) spent.add(ask.kind)
+      if (
         !holds &&
         ask.only === undefined &&
         ask.avoid === undefined &&
         ask.rank !== undefined &&
-        ask.ms !== undefined
+        ask.ms !== undefined &&
+        need.above === undefined &&
+        (need.servers?.length ?? 0) === 0
       ) {
-        let longest = 0
-        for (const b of pool)
-          if (!held.has(b) && fits(b, need)) longest = Math.max(longest, window(b, ask))
-        kept.set(ask.kind, { rank: ask.rank, longest })
+        let longest = -Infinity
+        const under = { cores: Infinity, memory: Infinity }
+        for (const b of pool) {
+          if (held.has(b)) continue
+          if (blocked && fits(b, need)) longest = Math.max(longest, window(b, ask))
+          if (b.running > 0) {
+            under.cores = Math.min(under.cores, b.cores)
+            under.memory = Math.min(under.memory, b.memory - b.used.memory)
+          }
+        }
+        if (kept.length === KEPT) kept.shift()
+        kept.push({
+          cores: need.cores,
+          memory: need.memory,
+          platform: need.platform,
+          rank: ask.rank,
+          longest,
+          under,
+        })
       }
       continue
     }
     spent.clear()
-    kept.clear()
+    kept.length = 0
     out.set(ask.id, best)
     best.used.cores += Math.min(coresOn(best, need), best.cores)
     for (const sv of need.servers ?? []) best.serving?.add(sv.id)

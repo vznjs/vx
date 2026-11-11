@@ -10,6 +10,7 @@ import type { TaskNode } from '@vzn/vx'
 import {
   assign,
   dead,
+  failsAlike,
   fits,
   kindOf,
   ordered,
@@ -515,18 +516,12 @@ function play(
   let joining = tasks.filter((_, i) => waits[i] === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
-  const kept = new Map<string, Kept>()
+  const kept: Kept[] = []
   // Proved to fail, as `assign` would skip it: yielded to it, each ask was
   // most of a plan of 3,800 tasks (2026-11-11).
-  const proved = (place: number, kind: string): boolean => {
-    const k = kept.get(kind)
-    return (
-      k !== undefined &&
-      unstarted !== undefined &&
-      (tasks[place]!.ms ?? UNKNOWN_MS) > k.longest &&
-      tailAt(place) <= k.rank
-    )
-  }
+  const proved = (place: number): boolean =>
+    unstarted !== undefined &&
+    failsAlike(kept, tasks[place]!, tailAt(place), tasks[place]!.ms ?? UNKNOWN_MS)
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   // Ready tasks by what they need: no ready task needs less than the
   // least of these, and a pass ends once no slot takes that.
@@ -2309,7 +2304,7 @@ class Ready {
     bounds?: Bounds,
     kinds?: number,
     // Read past, as `assign` would skip it (`Kept`).
-    skip?: (place: number, kind: string) => boolean,
+    skip?: (place: number) => boolean,
   ): Generator<Ask> {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
@@ -2355,7 +2350,7 @@ class Ready {
       if (next === -1) return
       at[nextAt]!++
       cursor = next
-      if (skip?.(next, ks[nextAt]!) === true) continue
+      if (skip?.(next) === true) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
@@ -2373,7 +2368,7 @@ class Ready {
     spent: Set<string>,
     bounds?: Bounds,
     kinds?: number,
-    skip?: (place: number, kind: string) => boolean,
+    skip?: (place: number) => boolean,
   ): Generator<Ask> {
     const cs: number[] = []
     const qs: (readonly number[])[] = []
@@ -2418,7 +2413,7 @@ class Ready {
       }
       if (next === -1) return
       cursor = next
-      if (skip?.(next, this.kindAt(next)) === true) continue
+      if (skip?.(next) === true) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: this.kindAt(next) }
     }
