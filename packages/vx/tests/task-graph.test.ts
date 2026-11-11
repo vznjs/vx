@@ -12,6 +12,7 @@ import {
   type ProjectEntry,
   type TaskNode,
 } from '../src/graph/task-graph.js'
+import { DEFAULT_BUILD } from '../src/graph/default-build.js'
 import { foldedDeps } from '../src/graph/folds.js'
 import { UserError } from '../src/util/index.js'
 
@@ -399,6 +400,46 @@ describe('buildTaskGraph', () => {
         requested: [{ project: 'packages/app', task: 'test' }],
       }),
     ).toThrow(`packages/app#test: dependsOn ${dep}, but ${what}. Did you mean ${meant}?`)
+  })
+
+  // `packages/a#build` where packages/a is named `web` was offered
+  // `packages/b#build`, nearest by spelling, though b's `build` is only
+  // its default build: following it ran green without the edge.
+  it('a pkg#task miss by directory names the project there', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          { name: 'web', dir: '/ws/packages/a', config: { tasks: { build: cmd('a') } } },
+          {
+            name: 'packages/b',
+            dir: '/ws/packages/b',
+            config: { tasks: { lint: cmd('l'), build: DEFAULT_BUILD } },
+          },
+          project('packages/app', { test: { ...cmd('t'), dependsOn: ['packages/a#build'] } }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'packages/app', task: 'test' }],
+      }),
+    ).toThrow(
+      'packages/app#test: dependsOn packages/a#build, but no project is named packages/a. Did you mean web#build?',
+    )
+  })
+
+  it('a pkg#task miss never offers a default build', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          {
+            name: 'packages/b',
+            dir: '/ws/packages/b',
+            config: { tasks: { lint: cmd('l'), build: DEFAULT_BUILD } },
+          },
+          project('packages/app', { test: { ...cmd('t'), dependsOn: ['packages/c#build'] } }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'packages/app', task: 'test' }],
+      }),
+    ).toThrow(/no project is named packages\/c$/)
   })
 
   it('detects a same-project task self-cycle', () => {

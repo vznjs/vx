@@ -353,21 +353,38 @@ export function undeclaredDepsError(
 
 /**
  * The `pkg#task` to offer for a cross-project miss: the task nearest
- * `task` in the project named, or in the one nearest `project` — or the
- * one whose path ends in it, since a project is named by its path unless
- * named, and `a#build` is how a `packages/a` is first typed.
+ * `task` in the project named, or in the one whose directory is
+ * `project` (a project named by `name:` or its package.json is still
+ * typed by its path), or in the one nearest `project` among those
+ * declaring `task` — or the one whose path ends in it, since a project is
+ * named by its path unless named, and `a#build` is how a `packages/a` is
+ * first typed. A default build is never offered: depending on it orders
+ * nothing.
  */
 function nearestTarget(
   projects: ReadonlyMap<string, ProjectEntry>,
   project: string,
   task: string,
 ): string | undefined {
+  const all = [...projects.values()]
+  const declared = (p: ProjectEntry): string[] =>
+    Object.entries(p.config.tasks ?? {})
+      .filter(([, t]) => !isDefaultBuild(t))
+      .map(([n]) => n)
   const holder =
     projects.get(project) ??
-    projects.get(nearest(project, projects.keys()) ?? '') ??
-    onlyOne([...projects.values()].filter((p) => p.name.endsWith(`/${project}`)))
+    onlyOne(all.filter((p) => p.dir.endsWith(`/${project}`))) ??
+    projects.get(
+      nearest(
+        project,
+        all.filter((p) => declared(p).includes(task)).map((p) => p.name),
+      ) ??
+        nearest(project, projects.keys()) ??
+        '',
+    ) ??
+    onlyOne(all.filter((p) => p.name.endsWith(`/${project}`)))
   if (holder === undefined) return undefined
-  const tasks = Object.keys(holder.config.tasks ?? {})
+  const tasks = declared(holder)
   const name = tasks.includes(task) ? task : nearest(task, tasks)
   return name === undefined ? undefined : taskId(holder.name, name)
 }
