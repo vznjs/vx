@@ -145,3 +145,12 @@ it('renders the deploy from an empty content store of its own', () => {
   const tasks = readFileSync(path.join(dir, 'vx.config.ts'), 'utf8')
   expect(tasks).toContain('bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD}')
 })
+
+// The build's store too: a page whose figures come from data (the real
+// repos page, real-repos.json) is the same text with new numbers, and the
+// store served its old render, which the build task's cache then kept
+// under the new key (2026-11-11).
+it('renders the build from an empty content store', () => {
+  const tasks = readFileSync(path.join(import.meta.dir, '..', 'vx.config.ts'), 'utf8')
+  expect(tasks).toContain('command: `rm -rf .astro/cache && ${ASTRO_BUILD}`')
+})

@@ -377,7 +377,7 @@
         "build.images"
       ],
       "exec": {
-        "command": "mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build",
+        "command": "rm -rf .astro/cache && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build",
         "env": {
           "define": {
             "ASTRO_TELEMETRY_DISABLED": "1"
