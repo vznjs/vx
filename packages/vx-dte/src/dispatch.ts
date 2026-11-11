@@ -303,21 +303,22 @@ const sweeps = new WeakMap<Bin, Sweep>()
 
 /** Puts a change in time order, after those at its time, and what is held from there on. */
 function change(w: Sweep, at: number, cores: number, memory: number): void {
-  let i = w.at.length
-  while (i > 0 && w.at[i - 1]! > at) i--
-  w.at.splice(i, 0, at)
-  w.deltaCores.splice(i, 0, cores)
-  w.deltaMemory.splice(i, 0, memory)
-  w.heldCores.splice(i, 0, 0)
-  w.heldMemory.splice(i, 0, 0)
-  let c = i === 0 ? w.base.cores : w.heldCores[i - 1]!
-  let m = i === 0 ? w.base.memory : w.heldMemory[i - 1]!
-  for (let j = i; j < w.at.length; j++) {
-    c += w.deltaCores[j]!
-    m += w.deltaMemory[j]!
-    w.heldCores[j] = c
-    w.heldMemory[j] = m
+  // Moved up one by one from the end, as it finds its place: five splices
+  // and a second pass over the same changes were most of a sweep.
+  const { at: ats, deltaCores: dc, deltaMemory: dm, heldCores: hc, heldMemory: hm } = w
+  let i = ats.length
+  for (; i > 0 && ats[i - 1]! > at; i--) {
+    ats[i] = ats[i - 1]!
+    dc[i] = dc[i - 1]!
+    dm[i] = dm[i - 1]!
+    hc[i] = hc[i - 1]! + cores
+    hm[i] = hm[i - 1]! + memory
   }
+  ats[i] = at
+  dc[i] = cores
+  dm[i] = memory
+  hc[i] = (i === 0 ? w.base.cores : hc[i - 1]!) + cores
+  hm[i] = (i === 0 ? w.base.memory : hm[i - 1]!) + memory
 }
 
 function sweepOf(b: Bin): Sweep {
@@ -556,7 +557,8 @@ export function kindOf(need: Need): string {
 /** The cores `need` books on `bin`: its own, and the base of each server `bin` does not run yet. */
 function coresOn(bin: Bin, need: Need): number {
   let cores = need.cores
-  for (const s of need.servers ?? []) if (bin.serving?.has(s.id) !== true) cores += s.cores
+  if (need.servers === undefined) return cores
+  for (const s of need.servers) if (bin.serving?.has(s.id) !== true) cores += s.cores
   return cores
 }
 
