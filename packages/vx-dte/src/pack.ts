@@ -33,11 +33,9 @@ interface Bay {
   readonly open: boolean
   /** When its last task ends. */
   end: number
-  /** Each change in what it holds, in time order: when, and the cores and memory it adds. */
+  /** Each change in what it holds, in time order, the first at 0. */
   readonly at: number[]
-  readonly dc: number[]
-  readonly dm: number[]
-  /** What it holds from each change on. */
+  /** What it holds from each change to the next. */
   readonly hc: number[]
   readonly hm: number[]
   readonly given: string[]
@@ -70,18 +68,27 @@ export interface PackOptions {
   readonly strict?: boolean
 }
 
-/** Adds what `bay` holds from `at` on, as `hc`/`hm` count it. */
-function change(bay: Bay, at: number, cores: number, memory: number): void {
-  let i = bay.at.length
-  while (i > 0 && bay.at[i - 1]! > at) i--
-  bay.at.splice(i, 0, at)
-  bay.dc.splice(i, 0, cores)
-  bay.dm.splice(i, 0, memory)
-  bay.hc.splice(i, 0, 0)
-  bay.hm.splice(i, 0, 0)
-  for (let j = i; j < bay.at.length; j++) {
-    bay.hc[j] = (j === 0 ? 0 : bay.hc[j - 1]!) + bay.dc[j]!
-    bay.hm[j] = (j === 0 ? 0 : bay.hm[j - 1]!) + bay.dm[j]!
+/**
+ * The index of a change at `t`, split from the one before it. Levels, not
+ * deltas: a running total rebuilt to the end on each insert made a
+ * 9000-task pack 3.7 s (2026-11-11).
+ */
+function split(bay: Bay, t: number): number {
+  const i = before(bay, t)
+  if (bay.at[i] === t) return i
+  bay.at.splice(i + 1, 0, t)
+  bay.hc.splice(i + 1, 0, bay.hc[i]!)
+  bay.hm.splice(i + 1, 0, bay.hm[i]!)
+  return i + 1
+}
+
+/** Adds `cores` and `memory` to what `bay` holds over [from, to). */
+function hold(bay: Bay, from: number, to: number, cores: number, memory: number): void {
+  const a = split(bay, from)
+  const b = split(bay, to)
+  for (let k = a; k < b; k++) {
+    bay.hc[k]! += cores
+    bay.hm[k]! += memory
   }
 }
 
@@ -97,18 +104,19 @@ function before(bay: Bay, t: number): number {
   return lo - 1
 }
 
-/** Whether `bay` has `cores` and `memory` free over [t, t + ms). */
-function room(bay: Bay, t: number, ms: number, cores: number, memory: number): boolean {
+/** The first change over [t, t + ms) where `bay` lacks `cores` or `memory`, or -1. */
+function blocked(bay: Bay, t: number, ms: number, cores: number, memory: number): number {
   const freeCores = bay.cores + 1e-9 - cores
   const freeMemory = bay.memory - memory
-  let i = before(bay, t)
-  if (i >= 0 && (bay.hc[i]! > freeCores || bay.hm[i]! > freeMemory)) return false
-  for (i++; i < bay.at.length && bay.at[i]! < t + ms; i++)
-    if (bay.hc[i]! > freeCores || bay.hm[i]! > freeMemory) return false
-  return true
+  for (let i = before(bay, t); i < bay.at.length && bay.at[i]! < t + ms; i++)
+    if (bay.hc[i]! > freeCores || bay.hm[i]! > freeMemory) return i
+  return -1
 }
 
-/** The earliest start in [from, until] where `bay` has room for the task, or undefined. */
+/**
+ * The earliest start in [from, until] where `bay` has room for the task, or
+ * undefined: past each change that lacks room, never back over it.
+ */
 function first(
   bay: Bay,
   from: number,
@@ -117,12 +125,13 @@ function first(
   cores: number,
   memory: number,
 ): number | undefined {
-  const lo = Math.max(from, bay.join)
-  if (lo > until + 1e-6) return undefined
-  if (room(bay, lo, ms, cores, memory)) return lo
-  for (let i = before(bay, lo) + 1; i < bay.at.length && bay.at[i]! <= until + 1e-6; i++)
-    if ((bay.dc[i]! < 0 || bay.dm[i]! < 0) && room(bay, bay.at[i]!, ms, cores, memory))
-      return bay.at[i]!
+  let t = Math.max(from, bay.join)
+  while (t <= until + 1e-6) {
+    const k = blocked(bay, t, ms, cores, memory)
+    if (k < 0) return t
+    if (k + 1 >= bay.at.length) return undefined
+    t = bay.at[k + 1]!
+  }
   return undefined
 }
 
@@ -213,17 +222,14 @@ export function pack(
       join: Math.max(0, w.at),
       open: w.drainIn === undefined,
       end: 0,
-      at: [],
-      dc: [],
-      dm: [],
-      hc: [],
-      hm: [],
+      at: [0],
+      hc: [0],
+      hm: [0],
       given: [],
     }
     for (const r of w.running) {
       const end = Math.max(1, leftMs(r.endsIn))
-      change(bay, 0, r.cores, r.memory)
-      change(bay, end, -r.cores, -r.memory)
+      hold(bay, 0, end, r.cores, r.memory)
       bay.end = Math.max(bay.end, end)
     }
     bays.push(bay)
@@ -334,11 +340,9 @@ export function pack(
           join: at,
           open: true,
           end: 0,
-          at: [],
-          dc: [],
-          dm: [],
-          hc: [],
-          hm: [],
+          at: [0],
+          hc: [0],
+          hm: [0],
           given: [],
         }
         bays.push(best)
@@ -359,8 +363,7 @@ export function pack(
       if (best === undefined) continue
     }
     if (strict && bestAt > by + 1e-6) return undefined
-    change(best, bestAt, t.cores, t.memory)
-    change(best, bestAt + ms, -t.cores, -t.memory)
+    hold(best, bestAt, bestAt + ms, t.cores, t.memory)
     best.end = Math.max(best.end, bestAt + ms)
     best.given.push(t.id)
     placed.set(t.id, { worker: best.id, at: bestAt, ready: r })
