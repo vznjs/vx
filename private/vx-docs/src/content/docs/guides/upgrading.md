@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: vx lock records the project stage; runs read it
+
+a workspace with a project-stage plugin (turbo(), nx(), bun()/pnpm()/npm()/yarn()) must re-run vx lock after upgrading; until then a run maps nothing the lock does not record.
+
 ## cache: save nothing when a run removes a committed output
 
 CACHE_VERSION is vx-cache-v55: caches start empty once, so every cached task misses once after upgrading.
@@ -25,7 +29,7 @@ CACHE_VERSION is vx-cache-v53: caches start empty once, so every cached task mis
 
 SCHEMA_VERSION v55; the next run on every machine misses once.
 
-## sandbox: judge a linked node_modules by its target
+## close stale hits, leaks and data loss found by hardening
 
 CACHE_VERSION is vx-cache-v52; entries saved before it are never read, so the next run misses once.
 

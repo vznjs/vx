@@ -194,12 +194,12 @@ describe('Plugin API — end-to-end via run()', () => {
       expect(order()).not.toContain('setup')
       expect(order()).toContain('schedule')
       order().length = 0
-      // From the lock the plan wrote: locking again runs the stages it runs.
+      // From the lock the plan wrote: the project stage is recorded there, so
+      // the run calls no project hook.
       const summary = await runFromLock({ ...opts, handleSignals: false })
       expect(summary.ok).toBe(true)
       expect(order()).toEqual([
         'config',
-        'project',
         'cache',
         'graph',
         'key',
