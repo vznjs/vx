@@ -2,9 +2,11 @@
 // locked, and a RENAMED one is refused (D-88). A DELETED config is neither:
 // the project loads live as config-less, its locked tasks vanish, and the
 // run exited 0 having run only the other project's build (X-144).
-import { rm, unlink } from 'node:fs/promises'
+import { rename, rm, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -79,5 +81,30 @@ it('the root project is named as the root, not as `.`', async () => {
   expect(check.code).toBe(1)
   expect(check.err).toContain(
     "✗ vx lock --check  the lock holds the workspace root project, which has no vx.config now — run 'vx lock'",
+  )
+}, 30_000)
+
+it('a locked config-less project whose directory is gone is refused with the same way out', async () => {
+  // A `project` plugin's tasks (turbo()'s) for a package with no config
+  // file: moved away after `vx lock`, its build said only that the spawn's
+  // working directory does not exist.
+  await addProject(root, 'svc', {})
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'gen',
+        `{ project(config, ctx) {
+          if (ctx.name === 'svc') config.tasks.build = { exec: { command: 'echo SVC' } }
+        } }`,
+      ),
+    ]),
+  )
+  expect((await vx(root, ['lock'])).code).toBe(0)
+  await rename(path.join(root, 'packages', 'svc'), path.join(root, 'packages', 'moved'))
+  const r = await vx(root, ['run', 'build', '--filter', 'svc', '--output-logs=full'])
+  expect(r.code).toBe(1)
+  expect(r.out + r.err).toContain(
+    '[vx] svc#build: .vx/projects.lock.json locks packages/svc ("svc"), but its directory is gone — run `vx lock`',
   )
 }, 30_000)

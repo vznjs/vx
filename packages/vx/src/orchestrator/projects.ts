@@ -225,6 +225,23 @@ export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: Pack
   discoveredGraph.set(projects, graph)
 }
 
+/** A locked project as a refusal names it: its directory, and its name where that differs. */
+function lockedProject(root: string, name: string, dir: string): string {
+  // `.` read as a sentence's end: the notice cut the line there.
+  const rel = relPosix(root, dir) || 'the workspace root project'
+  return name === pathName(root, dir) ? rel : `${rel} ("${name}")`
+}
+
+/**
+ * The refusal for a locked project whose directory is gone (X-144): a
+ * config-less one has no config file for the load to find missing, so it
+ * is asked only when a spawn into the directory failed, and a run pays no
+ * stat per project.
+ */
+export function lockedDirGone(root: string, name: string, dir: string): string {
+  return `${LOCKFILE_NAME} locks ${lockedProject(root, name, dir)}, but its directory is gone — run \`vx lock\``
+}
+
 /** The plugin whose `discover` entry made each project the lock does not hold. */
 const addedBy = new WeakMap<object, string>()
 
@@ -597,16 +614,14 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const present = await Promise.all(withFile.map((m) => Bun.file(m.configPath).exists()))
     const gone = withFile.find((_, i) => !present[i])
     if (gone !== undefined) {
-      // `.` read as a sentence's end: the notice cut the line there.
-      const rel = relPosix(workspaceRoot, gone.dir) || 'the workspace root project'
-      const named = gone.name === pathName(workspaceRoot, gone.dir) ? '' : ` ("${gone.name}")`
+      const locked = lockedProject(workspaceRoot, gone.name, gone.dir)
       const file = relPosix(gone.dir, gone.configPath)
       // A sparse checkout left it out, not deleted: `vx lock` there
       // refuses too. Asked only on this failure path.
       const sparse = skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, gone.configPath))
       if (sparse !== null) {
         throw new UserError(
-          `${rel}${named} is outside this sparse checkout, but this run needs its ${file} — run \`git sparse-checkout add ${path.posix.dirname(sparse)}\``,
+          `${locked} is outside this sparse checkout, but this run needs its ${file} — run \`git sparse-checkout add ${path.posix.dirname(sparse)}\``,
         )
       }
       // exists() says false for a file behind a directory this user may not
@@ -618,11 +633,11 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       )
       throw denied !== null
         ? new UserError(
-            `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is not readable by this user (${denied})`,
+            `${LOCKFILE_NAME} locks ${locked}, but its ${file} is not readable by this user (${denied})`,
             'VX_E_FS',
           )
         : new UserError(
-            `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is gone — run \`vx lock\``,
+            `${LOCKFILE_NAME} locks ${locked}, but its ${file} is gone — run \`vx lock\``,
             'VX_E_LOCK',
           )
     }
