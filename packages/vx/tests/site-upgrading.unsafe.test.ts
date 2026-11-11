@@ -6,8 +6,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { commitsBetween } from '../scripts/release-notes.ts'
-import { page, PAGE } from '../scripts/upgrading.ts'
+import { page, PAGE, taggedCommits } from '../scripts/upgrading.ts'
 import { fetchHistory } from './helpers/history.ts'
 
 const ROOT = path.resolve(import.meta.dir, '../../..')
@@ -15,7 +14,7 @@ if (process.env['VX_REQUIRE_TAGS'] === '1') fetchHistory(ROOT)
 
 /** Each entry's text under its heading. */
 function footers(md: string): string[] {
-  return [...md.matchAll(/^## .+\n\n(.+)\n/gm)].map((m) => m[1]!).toSorted()
+  return [...md.matchAll(/^### .+\n\n(.+)\n/gm)].map((m) => m[1]!).toSorted()
 }
 
 const shallow =
@@ -38,7 +37,7 @@ it('guides/upgrading.md carries every breaking footer in git log', () => {
     )
     return
   }
-  const want = footers(page(commitsBetween('', 'HEAD', ROOT)))
+  const want = footers(page(taggedCommits(ROOT)))
   expect(want.length).toBeGreaterThanOrEqual(11)
   expect(footers(readFileSync(PAGE, 'utf8'))).toEqual(want)
 })
