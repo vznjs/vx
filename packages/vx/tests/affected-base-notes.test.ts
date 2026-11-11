@@ -488,11 +488,16 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'readme')
     await writeFile(path.join(root, 'README.md'), 'r2\n')
-    const r = vx(root, 'run', 'build', '--affected=HEAD')
-    expect({ exitCode: r.exitCode, out: r.out.trim() }).toEqual({
-      exitCode: 0,
-      out: noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
-    })
+    // A typed `[HEAD]` filter is the same question: its diff, too, named
+    // the edit, and the note still claimed a clean tree.
+    for (const args of [['--affected=HEAD'], ['--filter', '[HEAD]'], ['--filter', 'app[HEAD]']]) {
+      const r = vx(root, 'run', 'build', ...args)
+      expect({ args, exitCode: r.exitCode, out: r.out.trim() }).toEqual({
+        args,
+        exitCode: 0,
+        out: noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
+      })
+    }
   })
 
   it('no origin/HEAD and no parent commit: no base at all, exit 1', () => {
