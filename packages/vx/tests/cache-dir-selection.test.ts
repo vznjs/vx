@@ -49,7 +49,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
     afterEach(async () => {
       const { chmod, readdir } = await import('node:fs/promises')
       await chmod(ro, 0o755)
-      for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o644)
+      for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o755)
       await rm(root, { recursive: true, force: true })
       await rm(ro, { recursive: true, force: true })
     })
@@ -206,7 +206,9 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           expect(shown.out).toContain('app')
         } finally {
           await chmod(own, 0o755)
-          for (const f of await readdir(own)) await chmod(path.join(own, f), 0o644)
+          // 0o755, not 0o644: the run leaves a directory there too (the
+          // config bundle, `compiled/`), and rm cannot enter one without x.
+          for (const f of await readdir(own)) await chmod(path.join(own, f), 0o755)
         }
       },
       TIMEOUT,

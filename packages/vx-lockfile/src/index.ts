@@ -351,6 +351,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       file,
       part: manager.name,
       version: digestVersion(),
+      // digestVersion hashes this package's source: the guarded wrappers'
+      // text is the same for every manager, and differs between a source
+      // load and the config's bytecode bundle.
+      identity: `@vzn/vx-lockfile/${manager.name}@${digestVersion()}`,
       scope,
       importers: guarded((text: string) => manager.importers(text)),
       recorded: guarded((text: string) => {

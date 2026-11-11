@@ -190,6 +190,7 @@ src/ui/terminal-signals.ts
 src/ui/terminal.ts
 src/ui/theme.ts
 src/ui/version-line.ts
+src/util/before-exit.ts
 src/util/bun-version.ts
 src/util/cgroup.ts
 src/util/config-frame.ts

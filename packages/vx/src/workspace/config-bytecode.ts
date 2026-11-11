@@ -34,7 +34,7 @@ import {
 import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { refuseForeignCacheDir, xxh3hex } from '../util/index.js'
+import { beforeExit, refuseForeignCacheDir, xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
 const COMPILED_VERSION = 3
@@ -156,11 +156,19 @@ function loaderOf(file: string): 'ts' | 'tsx' | 'js' | 'jsx' | null {
   return null
 }
 
+let builds = 0
+
 /**
- * Bundle the workspace config's graph for the next run. A speed-up only:
- * every failure leaves the next run loading the source.
+ * Bundle the workspace config's graph for the next run, off the run's
+ * path: awaited here, the build was ~30 ms of `workspace config` on the
+ * run after a cold one, which had no `.vx/cache` yet and so built nothing
+ * (solid's restore 100 ms after a cold run against 67 after a restore,
+ * 2026-11-11). It starts now when `.vx/cache` is there, overlapping the
+ * run, and otherwise once the verb has answered, if the run made it.
+ * Either way the process waits for it before exiting (`beforeExit`). A
+ * speed-up only: every failure leaves the next run loading the source.
  */
-export async function buildCompiled(
+export function buildCompiled(
   root: string,
   configPath: string,
   bytes: Uint8Array,
@@ -168,20 +176,44 @@ export async function buildCompiled(
   loaded: ReadonlySet<string>,
   /** What that load evaluated: a repeat load in this process gets it, not a bundle or a second build. */
   ns: { default?: unknown },
-): Promise<void> {
+): void {
   answered.set(configPath, { bytes, ns })
+  const cacheDir = path.dirname(compiledDir(root))
+  if (existsSync(cacheDir)) {
+    // Before the first write there: the cache's own open, which refuses a
+    // `.vx/cache` linked to the home directory, comes after this load.
+    refuseForeignCacheDir(cacheDir, root)
+    const started = build(root, configPath, bytes, loaded)
+    beforeExit(() => started)
+    return
+  }
+  beforeExit(async () => {
+    // A reading verb makes no `.vx/cache`, so it still writes nothing (item 900).
+    if (!existsSync(cacheDir)) return
+    try {
+      refuseForeignCacheDir(cacheDir, root)
+    } catch {
+      return
+    }
+    await build(root, configPath, bytes, loaded)
+  })
+}
+
+async function build(
+  root: string,
+  configPath: string,
+  bytes: Uint8Array,
+  loaded: ReadonlySet<string>,
+): Promise<void> {
   const dir = compiledDir(root)
-  if (!existsSync(path.dirname(dir))) return
-  // Before the first write there: the cache's own open, which refuses a
-  // `.vx/cache` linked to the home directory, comes after this load.
-  refuseForeignCacheDir(path.dirname(dir), root)
   const name = nameOf(configPath, bytes)
-  const entryFile = realpathSync(configPath)
   const inputs: Record<string, string> = {}
   let faithful = true
   const transpilers = new Map<string, Bun.Transpiler>()
-  const tmp = path.join(dir, `.tmp-${process.pid}-${Date.now()}`)
+  // Two builds of one process may now overlap (a `vx watch` cycle's edit).
+  const tmp = path.join(dir, `.tmp-${process.pid}-${Date.now()}-${++builds}`)
   try {
+    const entryFile = realpathSync(configPath)
     mkdirSync(tmp, { recursive: true })
     // Ignored by git under a cache dir elsewhere, where no `.vx/.gitignore` is written.
     try {

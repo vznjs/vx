@@ -329,8 +329,14 @@ without it `@vzn/vx` resolves only for `import` and the source loads.
 
 Every workspace load asks for it, so a repeat load in one process (the
 run after the CLI's selection pass) gets the same required module and
-plugin instances. It is built only once `.vx/cache` exists, so a reading verb on a fresh
-workspace writes nothing (item 900), and never where `.vx/cache` resolves
+plugin instances. The build is off the run's path (`beforeExit`,
+util-before-exit.md): it starts beside the run when `.vx/cache` exists,
+and otherwise once the verb has answered, if the run made `.vx/cache`.
+Awaited inside the load, it was ~30 ms of `workspace config` on the run
+after a cold one, which had no `.vx/cache` while it loaded and built
+nothing (solid, 2026-11-11). It is built only once `.vx/cache` exists,
+so a reading verb on a fresh workspace writes nothing (item 900), and
+never where `.vx/cache` resolves
 to home, `/` or the workspace (`refuseForeignCacheDir` refuses the run
 first, util-foreign-cache-dir.md). `compiled/` holds a `*` `.gitignore`
 (written when missing), so git skips it when `VX_CACHE_DIR` points

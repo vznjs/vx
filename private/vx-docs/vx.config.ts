@@ -329,7 +329,13 @@ export default defineProject({
         // after; min of three interleaved sandboxed builds, 17.2 s before and
         // 14.5 s after (item 708). Build-time code still must not assume Bun:
         // astro 6 refuses a Node below 22.12 wherever it does run on Node.
-        command: ASTRO_BUILD,
+        // From an empty content store: it keeps each markdown page as
+        // rendered, keyed by the page's text, so a page whose figures come
+        // from data (real-repos.json) built with the old ones, and this
+        // task's cache kept that `dist` under the new key (2026-11-11). CI's
+        // checkout has no store either; locally the build is ~4.5 s longer
+        // (36 s → 40.5 s, min of three).
+        command: `rm -rf .astro/cache && ${ASTRO_BUILD}`,
         // astro's telemetry does `mkdir ~/.config` before anything else; a
         // sandboxed task may read HOME but not write it, so it is told to
         // stay home.

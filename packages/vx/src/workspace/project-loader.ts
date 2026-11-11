@@ -282,7 +282,7 @@ async function loadDefaultExport(
   }
   const mod = defaultOf(ns, kind, configPath)
   if (compiledRoot !== undefined && loaded !== undefined) {
-    await buildCompiled(compiledRoot, configPath, bytes, loaded, ns)
+    buildCompiled(compiledRoot, configPath, bytes, loaded, ns)
   }
   try {
     // The budget again: a default that is a Promise which never settles
