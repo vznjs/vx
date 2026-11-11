@@ -980,6 +980,13 @@ function inTheWay(dir: string): string {
   }
 }
 
+/** Bytes the files hold now; one gone counts 0. */
+function sizeOf(files: readonly string[]): number {
+  let total = 0
+  for (const f of files) total += statSync(f, { throwIfNoEntry: false })?.size ?? 0
+  return total
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -4107,20 +4114,36 @@ export class Cache implements CacheLayer {
     // close: five DELETEs on every run's exit was its slowest step
     // (2026-10-18). `invocations` shares the window with `runs`, or `vx last`
     // would list a run whose task rows are gone.
-    const cutoff = now - HISTORY_RETENTION_MS
-    this.history.pruneOlderThan(cutoff)
-    this.files.pruneOlderThan(cutoff)
-    this.folds.prune(cutoff)
     const orphans = await this.reapOrphans(picked.files)
     // An inline artifact's deleted pages go to SQLite's free list and the
     // file keeps its size: give them back, or the bytes said freed are not.
-    if ([...victims].some((h) => inline.has(h))) this.releaseFreePages()
-    return { evicted: victims.size, bytesFreed, ...orphans }
+    if ([...victims].some((h) => inline.has(h))) {
+      this.releaseFreePages(this.storeDir === undefined ? 'main' : 'store')
+    }
+    // After the inline release, so the shrink measured here is the history's
+    // alone: a year of runs left 28k of 36k pages free in a 140 MB index.
+    const cutoff = now - HISTORY_RETENTION_MS
+    const historyRows =
+      this.history.pruneOlderThan(cutoff) +
+      this.files.pruneOlderThan(cutoff) +
+      this.folds.prune(cutoff)
+    const result = { evicted: victims.size, bytesFreed, ...orphans }
+    if (historyRows === 0) return result
+    const files = [
+      this.dbFile,
+      ...(this.storeDir === undefined ? [] : [path.join(this.storeDir, 'store.db')]),
+    ]
+    const before = sizeOf(files)
+    this.releaseFreePages('main')
+    if (this.storeDir !== undefined) this.releaseFreePages('store')
+    return { ...result, historyRows, historyBytes: Math.max(0, before - sizeOf(files)) }
   }
 
-  /** VACUUM the schema holding inline artifacts; busy or no room to rewrite keeps the pages for reuse. */
-  private releaseFreePages(): void {
-    const schema = this.storeDir === undefined ? 'main' : 'store'
+  /**
+   * VACUUM `schema` when it has free pages; busy or no room to rewrite
+   * keeps the pages for reuse. A clean's step only: a run never pays it.
+   */
+  private releaseFreePages(schema: 'main' | 'store'): void {
     try {
       const { freelist_count: free } = this.db.prepare(`PRAGMA ${schema}.freelist_count`).get() as {
         freelist_count: number

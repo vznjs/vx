@@ -2,7 +2,8 @@
 // workspace's `.vx/cache` and the store its index names (`~/.vx/<id>/cache`),
 // and nothing else in `.vx`; `--global` takes every store under `~/.vx`.
 // Before it, a bare prune was refused and the docs said to delete the
-// store by hand (2026-10-14).
+// store by hand (2026-10-14). A bounded clean's history prune is here too:
+// it shares the workspace and the binary.
 
 import { Database } from 'bun:sqlite'
 import {
@@ -609,6 +610,45 @@ describe('vx cache clean with no bound clears the cache', () => {
       expect(r.out).not.toContain(other)
       expect(existsSync(path.join(other, 'store.db'))).toBe(true)
       expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a bounded clean gives back the pages of the history it drops, and says so',
+    async () => {
+      // Months of runs left a 140 MB index: the prune dropped 722k rows, the
+      // file kept its size, and the verb said "nothing to free".
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const dbFile = path.join(root, '.vx', 'cache', 'cache.db')
+      const old = Date.now() - 40 * 86_400_000
+      const db = new Database(dbFile)
+      db.run('PRAGMA journal_mode = DELETE')
+      const insert = db.prepare(
+        "INSERT INTO runs (hash, project, task, status, exit_code, duration_ms, started_at, ended_at) VALUES (?, 'app', 'build', 'success', 0, 1, ?, ?)",
+      )
+      db.transaction(() => {
+        for (let i = 0; i < 20_000; i++) insert.run(`h${i}`.padEnd(64, 'x'), old, old)
+      })()
+      db.close()
+      const before = statSync(dbFile).size
+      expect(before).toBeGreaterThan(2 * 1024 * 1024)
+
+      const dry = await vx(['cache', 'clean', '--older-than', '30d', '--dry'])
+      expect(statSync(dbFile).size).toBe(before)
+      expect(dry.out).not.toContain('history')
+
+      const r = await vx(['cache', 'clean', '--older-than', '30d', '--format', 'json'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      const out = JSON.parse(r.out) as { historyRows: number; historyBytes: number }
+      expect(out.historyRows).toBe(20_000)
+      const after = statSync(dbFile).size
+      expect(after).toBeLessThan(before / 2)
+      expect(out.historyBytes).toBe(before - after)
+
+      // Nothing left to drop: nothing to free.
+      const again = await vx(['cache', 'clean', '--older-than', '30d'])
+      expect(again).toEqual({ code: 0, out: '› vx cache clean  nothing to free\n', err: '' })
     },
     TIMEOUT,
   )

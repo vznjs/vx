@@ -1514,6 +1514,8 @@ export interface PruneResult {
   bytesFreed: number
   orphans: number
   orphanBytes: number
+  historyRows?: number
+  historyBytes?: number
 }
 == type RawExpr (src/workspace/migration.ts)
 export interface RawExpr {

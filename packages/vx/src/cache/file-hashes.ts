@@ -59,14 +59,15 @@ export class FileHashStore {
    * path) keeps its row forever otherwise, and `cache.db` grows with every
    * path ever hashed. A hit does not refresh `seen_at` (a write per file
    * per run), so a file unchanged for the window loses its row too and is
-   * read once more; a dropped row is only a memo miss.
+   * read once more; a dropped row is only a memo miss. Returns the rows dropped.
    */
-  pruneOlderThan(cutoff: number): void {
-    this.db.transaction(() => {
-      this.db.prepare('DELETE FROM file_hashes WHERE seen_at < ?').run(cutoff)
-      this.db.prepare('DELETE FROM blob_sizes WHERE seen_at < ?').run(cutoff)
-      this.db.prepare('DELETE FROM blob_verdicts WHERE seen_at < ?').run(cutoff)
-    })()
+  pruneOlderThan(cutoff: number): number {
+    return this.db.transaction(
+      () =>
+        this.db.prepare('DELETE FROM file_hashes WHERE seen_at < ?').run(cutoff).changes +
+        this.db.prepare('DELETE FROM blob_sizes WHERE seen_at < ?').run(cutoff).changes +
+        this.db.prepare('DELETE FROM blob_verdicts WHERE seen_at < ?').run(cutoff).changes,
+    )()
   }
 
   /** Each of `oids` whose size a `rememberBlobSizes` stored: one `IN` query per 900. */

@@ -676,6 +676,8 @@ describe('each schema object is its source type', () => {
         bytesFreed: true,
         orphans: true,
         orphanBytes: true,
+        historyRows: true,
+        historyBytes: true,
       }),
     )
     expect(def('cache', 'clear')).toEqual(

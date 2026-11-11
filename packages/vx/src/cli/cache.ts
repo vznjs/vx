@@ -287,13 +287,18 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
 }
 
 function printPruned(
-  result: { evicted: number; bytesFreed: number; orphans: number; orphanBytes: number },
+  result: Awaited<ReturnType<Cache['prune']>>,
   dry: boolean,
   json: boolean,
 ): void {
+  const { historyRows = 0, historyBytes = 0 } = result
   if (json) {
     const { evicted, bytesFreed, orphans, orphanBytes } = result
-    ui.data('out', `${JSON.stringify({ dry: dry, evicted, bytesFreed, orphans, orphanBytes })}\n`)
+    const history = dry ? {} : { historyRows, historyBytes }
+    ui.data(
+      'out',
+      `${JSON.stringify({ dry: dry, evicted, bytesFreed, orphans, orphanBytes, ...history })}\n`,
+    )
     return
   }
   const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
@@ -302,10 +307,13 @@ function printPruned(
     ...(result.orphans > 0
       ? [plural(result.orphans, 'orphaned artifact', 'orphaned artifacts')]
       : []),
+    ...(historyRows > 0
+      ? [plural(historyRows, 'history row', 'history rows') + ' past 30 days']
+      : []),
   ]
   ui.print(
     'out',
-    freedStatus(dry, result.bytesFreed + result.orphanBytes, facts.length > 0),
+    freedStatus(dry, result.bytesFreed + result.orphanBytes + historyBytes, facts.length > 0),
     ...(facts.length > 0 ? [ui.text(facts.join(' · '))] : []),
   )
 }

@@ -97,8 +97,8 @@ export class IndexFoldMemo implements FoldMemo {
     this.dirty.clear()
   }
 
-  /** Rows no run has rewritten since `cutoff`. */
-  prune(cutoff: number): void {
-    this.db.prepare('DELETE FROM fold_memo WHERE seen_at < ?').run(cutoff)
+  /** Drop the rows no run has rewritten since `cutoff`; returns how many. */
+  prune(cutoff: number): number {
+    return this.db.prepare('DELETE FROM fold_memo WHERE seen_at < ?').run(cutoff).changes
   }
 }

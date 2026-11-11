@@ -1819,7 +1819,7 @@ bound clears the cache. It operates on the entries and
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
-vx cache clean ... --format json            # { dry, evicted, bytesFreed, orphans, orphanBytes }
+vx cache clean ... --format json            # { dry, evicted, bytesFreed, orphans, orphanBytes, historyRows, historyBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
 vx cache clean --global                     # Also clear every other workspace's store.
@@ -1837,6 +1837,11 @@ $ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
 ✓ vx cache clean  freed 1.3 GB
 
   42 orphaned artifacts
+
+$ vx cache clean --older-than 30d      # months of runs, nothing evicted
+✓ vx cache clean  freed 112 MB
+
+  722193 history rows past 30 days
 
 $ vx cache clean --older-than 30d --dry
 › vx cache clean  would free 1.3 GB (dry run)
@@ -1862,7 +1867,10 @@ their lengths. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
 
 A clean with a bound also drops run
-history and hash memos older than 30 days; a run never does.
+history and hash memos older than 30 days, and gives their pages back
+to the disk (a `VACUUM` of the index, once rows went); a run never does.
+It reports the rows and the bytes the index shrank by
+(`historyRows`, `historyBytes`); a dry run reports neither.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
