@@ -705,11 +705,27 @@ function play(
       if (!late(t, now, false)) break
       changed = true
     }
-    for (const t of ready.from()) {
+    // With no worker left to start, a task takes only room that frees by
+    // its latest start, never past `by`: with none such, none is read
+    // (9000 ready tasks, each read at each step past the end, 2026-11-10).
+    const room = dormant.length > 0 || woken.some((x) => x.lanes![0]! <= Math.max(by, now) + 1e-6)
+    // Unset, not Infinity: a whole worker is asked as Infinity cores.
+    let failed: number | undefined
+    for (const t of room ? ready.from() : []) {
       if (by - tailOf(t.id) * CHAIN_TIMES > now + 1e-6) break
       const latest = by - riskAt(indexOf.get(t.id)!) * CHAIN_TIMES
       if (latest > now + 1e-6) continue
+      // Each read here asks for room by now: one of any platform, ready by
+      // now, that found none in so many lanes and no worker to start leaves
+      // none for as many.
+      const k = Math.max(1, Math.ceil(t.cores * LANES - 1e-9))
+      const plain = t.platform === undefined && t.above === undefined
+      if (plain && failed !== undefined && k >= failed) continue
       if (late(t, latest)) changed = true
+      else if (plain && readyAt![indexOf.get(t.id)!]! <= now + 1e-6) {
+        failed = k
+        if (k === 1) break
+      }
     }
     nextJoin = -Infinity
     return changed

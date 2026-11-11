@@ -4112,6 +4112,31 @@ it('places an unmeasured task on any free core, and sizes the run by 2 cores and
   )
 })
 
+// Lab, 2026-11-10: graphs a third unmeasured ran 4.47% late, as best-fit
+// stacked their tasks, booked at a core each, on one worker they overran.
+it('places an unmeasured task where most cores are free, a measured one where fewest are', () => {
+  const bin = (id: string, used: number) => ({
+    id,
+    cores: 8,
+    memory: 64e9,
+    used: { cores: used, memory: 0 },
+    running: used,
+    has: new Set<string>(),
+    platform: undefined,
+  })
+  const bins = [bin('full', 6), bin('half', 4), bin('empty', 0)]
+  const fresh = needOf(undefined)
+  expect(assign([{ id: 'u', need: fresh, up: [] }], bins, undefined, 'best-fit').get('u')?.id).toBe(
+    'empty',
+  )
+  // CONTROL: a task measured at a core goes where fewest are free.
+  expect(
+    assign([{ id: 'm', need: { cores: 1, memory: 1 }, up: [] }], bins, undefined, 'best-fit').get(
+      'm',
+    )?.id,
+  ).toBe('full')
+})
+
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),

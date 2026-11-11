@@ -135,6 +135,8 @@ const KNOWN = new Set([
   '7effceb8134385018f9cd443d0dfeedd05c4c607',
   // #5151's ctime-message fix, 72 chars; pushed before its subject was cut.
   '8f3c5a2fc288f1b2c75023e09e694117676c86bb',
+  // #5183's, type style; the branch takes no force push.
+  '1d6cc432ed9b6eae38b0e31563eb392e89545ea1',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
