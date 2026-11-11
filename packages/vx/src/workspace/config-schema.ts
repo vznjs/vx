@@ -1684,14 +1684,13 @@ function assertInputGlob(glob: string, where: string): void {
 }
 
 /**
- * `!!x` INVERTS the input set instead of double-negating it.
+ * `!!x` is refused: no reading of it is coherent.
  *
- * The resolver strips ONE `!` and hands the remainder to `new Bun.Glob()` —
- * which applies its OWN leading-`!` negation. So `!!vendor/**` becomes the
- * exclude glob `Glob('!vendor/**')`, and that matches every path EXCEPT
- * vendor's. Everything else is therefore excluded and the task folds ONLY
- * `vendor/**`: its own source drops out of the cache key entirely, which is a
- * permanent stale hit.
+ * The resolver once stripped ONE `!` and handed the remainder to
+ * `new Bun.Glob()`, which applied its OWN leading-`!` negation, so
+ * `!!vendor/**` excluded every path EXCEPT vendor's: a permanent stale hit.
+ * It now escapes the remainder (`!!x` excludes the literal path `!x`), and
+ * this guard keeps the spelling from reaching it at all.
  *
  * Neither neighbouring guard catches it — `assertNotNegationOnly` sees the
  * positive glob and is satisfied, and `hasParentSegment` strips one `!` before

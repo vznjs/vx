@@ -2945,10 +2945,21 @@ describe.skipIf(!available)('the suggested fix for a file that starts with !', (
       await writeFile(path.join(app, '!notes'), 'N1\n')
       const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
       const build = async () => (await run({ cwd: root, tasks: ['build'], log: quiet })).outcomes[0]
-      const fix = (await build())?.sandboxFix
-      expect(fix).toEqual({ read: ['!notes'], inputs: ['\\!notes'] })
+      // Each step's whole story on a miss: CI failed here twice where no
+      // local run (root or not) did, and showed only the fix.
+      const story = (o: Awaited<ReturnType<typeof build>>) => ({
+        status: o?.status,
+        lines: o?.sandboxViolationLines,
+        output: o?.failedOutput,
+      })
+      const first = await build()
+      const fix = first?.sandboxFix
+      expect([fix, story(first)]).toEqual([
+        { read: ['!notes'], inputs: ['\\!notes'] },
+        expect.objectContaining({ status: 'failed' }),
+      ])
       await writeFile(path.join(app, 'vx.config.mjs'), config(fix!.read!, fix!.inputs!))
-      expect((await build())?.status).toBe('success')
+      expect(story(await build())).toEqual(expect.objectContaining({ status: 'success' }))
       await writeFile(path.join(app, '!notes'), 'N2\n')
       expect((await build())?.status).toBe('success')
       expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('N2\n')

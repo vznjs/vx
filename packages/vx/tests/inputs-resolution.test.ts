@@ -178,28 +178,19 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     expect(seen).toContain(path.join('src', 'b.ts'))
   })
 
-  it('FINDING: `!!glob` INVERTS the input set, dropping every other file', async () => {
-    // FINDING — stale-hit class, currently shipped, loader does not catch it.
-    //
-    // Mechanism: `resolveFiles` strips ONE leading `!` and hands the remainder
-    // to `new Bun.Glob(...)`. Bun.Glob applies its OWN leading-`!` negation, so
-    // the exclude glob built from `'!!vendor/**'` is `Glob('!vendor/**')`,
-    // which matches EVERYTHING EXCEPT vendor. Exclusion is
-    // `excludeGlobs.some(g => g.match(rel))`, so every non-vendor file is
-    // excluded and only `vendor/**` survives — the exact inverse of any reading
-    // of the config, and the inverse of the single-`!` form one character away.
-    //
-    // Impact: `src/a.ts` is no longer in the key. Edit it, and vx reports
-    // `up-to-date` while replaying the old artifact.
-    //
-    // Correct behaviour: reject a leading `!!` at the loader (the remainder is
-    // never a meaningful glob), or escape the stripped remainder before
-    // constructing the Glob so `!!x` means the literal path `!x`.
+  it('`!!glob` excludes the literal path `!glob`, never inverts the set', async () => {
+    // Was a stale hit: one `!` stripped, Bun.Glob read the next as its own
+    // negation, so `!!vendor/**` excluded every file but vendor's. The
+    // remainder is now a literal `!` path, which here names no file.
     expect(await rels(['**/*', '!vendor/**'])).toEqual([
       path.join('src', 'a.ts'),
       path.join('src', 'b.ts'),
     ])
-    expect(await rels(['**/*', '!!vendor/**'])).toEqual([path.join('vendor', 'v.js')])
+    expect(await rels(['**/*', '!!vendor/**'])).toEqual([
+      path.join('src', 'a.ts'),
+      path.join('src', 'b.ts'),
+      path.join('vendor', 'v.js'),
+    ])
   })
 
   it('the loader REFUSES the inverting `!!` form', async () => {
@@ -296,11 +287,9 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     ).not.toThrow()
   })
 
-  it('FINDING: `!!` inverts `workspaceFiles` the same way', async () => {
-    // FINDING — same defect, second call site. `resolveWorkspaceFiles` carries
-    // its own copy of the `startsWith('!')` partition, so a fix applied to only
-    // one of the two leaves this half live. Recorded separately for exactly
-    // that reason.
+  it('`!!` in `workspaceFiles` is the same literal, never an inversion', async () => {
+    // `resolveWorkspaceFiles` partitions on its own; held separately so a fix
+    // to one call site cannot leave the other inverting.
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -309,7 +298,11 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((f) => relPosix(root, f))).toEqual([path.join('pkg', 'vendor', 'v.js')])
+    expect(got.files.map((f) => relPosix(root, f))).toEqual([
+      path.join('pkg', 'src', 'a.ts'),
+      path.join('pkg', 'src', 'b.ts'),
+      path.join('pkg', 'vendor', 'v.js'),
+    ])
   })
 
   it('a negation-only workspaceFiles list contributes nothing, leaving project files intact', async () => {

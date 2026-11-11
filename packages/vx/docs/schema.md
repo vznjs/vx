@@ -1007,7 +1007,9 @@ braces together expand to more than 1024 (`src/{1..100}{1..100}`, ten
 `{a,b}` in a row is 1024 and loads): each is a glob vx compiles, and a
 million took a run gigabytes. A class range that runs backwards
 (`[z-a]`) matches no character and is refused, naming `[a-z]`. A leading `!` is still the negation, so `!(group)/**`
-takes a route group back. This holds for every task glob — `inputs.files`,
+takes a route group back; any other `!` is the character, one that
+starts a name (`out/*/!a`) or a brace alternative (`{x,!a}`) too. A
+negated class never matches a `/`: `gen[!.]*` is not `gen/notes.txt`. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,

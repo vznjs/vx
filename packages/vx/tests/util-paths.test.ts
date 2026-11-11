@@ -23,6 +23,7 @@
 // `relPosix` is on the util CONTRACT, which is the only door its six
 // cross-module callers may use.
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
@@ -660,8 +661,10 @@ describe('a task glob is a standard glob: `[...]` is a class, `\\[` escapes', ()
   })
 
   it("taskGlob's RegExp and anyTaskGlob agree with Bun.Glob on every pattern and path", () => {
-    // A task glob without a brace, escape or leading `!` matches by a RegExp,
-    // and a list of them by one; neither may answer otherwise than Bun.Glob.
+    // A task glob without a brace or escape matches by a RegExp, and a list
+    // of them by one; neither may answer otherwise than Bun.Glob, but for a
+    // leading `!`: a matcher never gets an entry's negation, so it is the
+    // character, which `Bun.Glob` reads only escaped.
     const patterns = [
       '**/node_modules/**',
       '**/.git/**',
@@ -698,6 +701,7 @@ describe('a task glob is a standard glob: `[...]` is a class, `\\[` escapes', ()
       'x^$',
       'dist/{a,b}.txt',
       '!(a).ts',
+      '!a',
       'a!b',
       'app/[id]/**',
       '[ab]',
@@ -749,6 +753,8 @@ describe('a task glob is a standard glob: `[...]` is a class, `\\[` escapes', ()
       'dist/a.txt',
       'b.ts',
       'a!b',
+      '!a',
+      '!(a).ts',
       'app/[id]/page.js',
       'app/i/x',
       'a',
@@ -790,7 +796,7 @@ describe('a task glob is a standard glob: `[...]` is a class, `\\[` escapes', ()
     for (const p of patterns) {
       const g = taskGlob(p)
       const any = anyTaskGlob([p, 'zz/never'])
-      const raw = native(p)
+      const raw = native(p.startsWith('!') ? `\\${p}` : p)
       for (const rel of paths) {
         const want = raw.match(rel)
         if (g.match(rel) !== want) disagree.push(`taskGlob ${p} ${rel}`)
@@ -800,7 +806,7 @@ describe('a task glob is a standard glob: `[...]` is a class, `\\[` escapes', ()
     expect(disagree).toEqual([])
   })
 
-  it('a task glob without a brace, escape or leading ! matches without the native match', () => {
+  it('a task glob without a brace or escape matches without the native match', () => {
     const native = spyOn(Bun.Glob.prototype, 'match')
     try {
       const g = taskGlob('**/node_modules/**')
@@ -1039,5 +1045,96 @@ describe('braceExpansionCount', () => {
     expect(braceExpansionCount('{1..1000}{1..1000}', 1024)).toBe(1025)
     expect(braceExpansionCount('{a,b}'.repeat(60), 1024)).toBe(1025)
     expect(braceExpansionCount('{1..32}{1..32}', 1024)).toBe(1024)
+  })
+})
+
+describe("a task glob's scan finds what its match takes", () => {
+  // The save, the clean and a sandbox grant take a scan's word for what a
+  // glob names; the key, the restore's check and the clean's one-walk path
+  // take the match's. `Bun.Glob`'s scan read a `!` that starts a name as a
+  // negation (`out/*/!a` took every other file, `out/!*` none), and its
+  // match let a negated class take a `/` (`gen[!.]*` took `gen/notes.txt`),
+  // so a clean deleted files no output named and a hit restored nothing.
+  it('agrees on every pattern, whole and from its static prefix', () => {
+    const files = [
+      'd/!a',
+      'd/a',
+      'd/b',
+      'd/!',
+      'd/!!',
+      'd/x!',
+      'd/]a',
+      'e/!b',
+      '!x/y',
+      '!a',
+      'a!',
+      'x',
+      'a/b',
+      'ayb',
+      'axb',
+      'p/a/b',
+      'genA.js',
+      'gen/notes.txt',
+      'gen.js',
+    ]
+    const patterns = [
+      'd/!a',
+      'd/!*',
+      'd/!',
+      '*/!a',
+      '*/!*',
+      '**/!a',
+      'd/x!',
+      'd/![ab]',
+      'd/!{a,b}',
+      '!*',
+      '!x/*',
+      'a[!x]b',
+      'a[^x]b',
+      '**/a[!x]b',
+      'gen[!.]*',
+      'd/[!a]',
+      'd/[!]a]',
+      'a[!x-]b',
+      '{x,!a}',
+      'd/{x,!a}',
+      'd/{a,}!',
+      '{a,}!',
+    ]
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-scan-match-'))
+    try {
+      for (const f of files) {
+        mkdirSync(path.dirname(path.join(dir, f)), { recursive: true })
+        writeFileSync(path.join(dir, f), '')
+      }
+      const all = [...new Bun.Glob('**').scanSync({ cwd: dir, dot: true })].sort()
+      const scan = (glob: string, at: string): string[] => [
+        ...taskGlob(glob).scanSync({ cwd: at, dot: true, onlyFiles: true }),
+      ]
+      const disagree: string[] = []
+      for (const p of patterns) {
+        const matched = all.filter(anyTaskGlob([p]))
+        const own = all.filter((f) => taskGlob(p).match(f))
+        const whole = scan(p, dir).sort()
+        const prefix = staticPrefix(p)
+        // As the save walks it: from the static directory, by the rest.
+        const rooted =
+          prefix === '.' || !p.startsWith(`${prefix}/`)
+            ? whole
+            : scan(p.slice(prefix.length + 1), path.join(dir, prefix))
+                .map((f) => `${prefix}/${f}`)
+                .sort()
+        for (const [what, got] of [
+          ['scan', whole],
+          ['scan from prefix', rooted],
+          ['match', own],
+        ] as const)
+          if (JSON.stringify(got) !== JSON.stringify(matched))
+            disagree.push(`${p} ${what} ${JSON.stringify(got)} vs ${JSON.stringify(matched)}`)
+      }
+      expect(disagree).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
