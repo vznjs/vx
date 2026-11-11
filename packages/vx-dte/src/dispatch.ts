@@ -1249,3 +1249,96 @@ function top(h: Entry[], by: (e: Entry) => number): Entry | undefined {
   }
   return h[0]
 }
+
+/**
+ * The last plan's placing as the run follows it (`Plan.placed`,
+ * `Plan.after`, `Plan.fresh`): where each task goes first, and when one
+ * started late may go. A worker the plan starts is named as one joins:
+ * the first to join takes the plan's first, of its size. Left to any
+ * worker, the tasks of the workers a packing started took each other's
+ * room and ended 69 s past the deadline (sim-theory, 2026-11-11).
+ */
+export class Placing {
+  private placed: ReadonlyMap<string, string> = new Map()
+  /** The names `placed` gives workers, and each joined one's id. */
+  private named = new Set<string>()
+  private bound = new Map<string, string>()
+  /** The workers that joined. */
+  private readonly live = new Set<string>()
+  private fresh: { readonly id: string; readonly size: string }[] = []
+  private after = new Map<string, number>()
+  private asap: ReadonlySet<string> = new Set()
+  private times: number[] = []
+  private head = 0
+  /** Each task goes only where and when the plan placed it (`Plan.exact`). */
+  exact = false
+
+  /** A new plan's, on the run's clock `now`; undefined keeps the last one's. */
+  set(
+    p: {
+      readonly placed?: ReadonlyMap<string, string> | undefined
+      readonly after?: ReadonlyMap<string, number> | undefined
+      readonly asap?: ReadonlySet<string> | undefined
+      readonly fresh?: readonly { readonly id: string; readonly size: string }[] | undefined
+      readonly exact?: boolean | undefined
+    },
+    now: number,
+  ): void {
+    if (p.placed !== undefined) {
+      this.exact = p.exact === true
+      this.placed = p.placed
+      this.named = new Set(p.placed.values())
+      this.bound.clear()
+      this.fresh = [...(p.fresh ?? [])]
+    }
+    if (p.after !== undefined) {
+      this.asap = p.asap ?? new Set()
+      this.after = new Map([...p.after].map(([id, ms]) => [id, now + ms]))
+      this.times = [...this.after.values()].sort((a, b) => a - b)
+      this.head = 0
+    }
+  }
+
+  /**
+   * Worker `id` joined, started as `as` of `size`: the one the plan named
+   * so, or else the plan's first start of its size not joined yet.
+   */
+  joined(id: string, as: string | undefined, size: string | undefined): void {
+    this.live.add(id)
+    if (as !== undefined && this.named.has(as)) {
+      this.bound.set(as, id)
+      return
+    }
+    const i = this.fresh.findIndex((f) => f.size === size)
+    if (i < 0) return
+    this.bound.set(this.fresh[i]!.id, id)
+    this.fresh.splice(i, 1)
+  }
+
+  /** The worker `id` goes to first, if the run has it. */
+  want(id: string): string | undefined {
+    const w = this.placed.get(id)
+    if (w === undefined) return undefined
+    return this.bound.get(w) ?? (w.startsWith('\0') ? undefined : w)
+  }
+
+  /**
+   * Whether `id` may go at `now`, and where: not before its planned
+   * start (sooner if `asap`, to its worker), and while the plan is
+   * exact, only to its worker once that joined. One joining later than planned leaves it to any: waiting
+   * for the planned one, a run of workers the CI started 2.5 s apart
+   * ended 19 s late (tests/sim.test.ts, 2026-11-11).
+   */
+  gate(id: string, now: number): 'wait' | { only?: string } {
+    const w = this.exact ? this.want(id) : undefined
+    const there = w !== undefined && this.live.has(w)
+    if ((this.after.get(id) ?? 0) > now && !(there && this.asap.has(id))) return 'wait'
+    return there ? { only: w } : {}
+  }
+
+  /** When the next task waiting for its start may go, after `now`. */
+  next(now: number): number | undefined {
+    while (this.head < this.times.length && this.times[this.head]! <= now) this.head++
+    return this.times[this.head]
+  }
+}
