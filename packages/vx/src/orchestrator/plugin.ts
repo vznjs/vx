@@ -103,12 +103,14 @@ export interface VxPlugin {
 
   /**
    * One project's validated config, right after it loaded and before the
-   * graph is built. Add, remove or edit tasks. Runs for every loaded project
-   * on every run — a locked config is the user's file, and the hook is
-   * applied on top of it live. A project with NO config file (a
-   * `discover` plugin added it) is loaded too, as `{ tasks: {} }`, so a
-   * plugin can give it tasks; with no `project` plugin such a project is
-   * never visited. Its `name` is fixed by then: a change is refused.
+   * graph is built. Add, remove or edit tasks. Runs under `vx lock` (and
+   * `--check`) only, for every project: the lock records what the hooks
+   * left, and a run reads that record and calls no hook — a run follows
+   * the lock, never what the files say now (2026-11-11). A project with NO
+   * config file (a `discover` plugin added it) is visited too, as
+   * `{ tasks: {} }`, so a plugin can give it tasks; with no `project`
+   * plugin such a project is never visited. Its `name` is fixed by then: a
+   * change is refused.
    */
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
 
@@ -460,10 +462,9 @@ export interface ProjectHookContext extends BaseContext {
    */
   readonly projects: readonly ProjectMeta[]
   /**
-   * True when `vx lock` (or `--check`) visits: the one pass that checks the
-   * configs, so the place to report what a plugin's mapping could not say.
-   * A run checks nothing (the lock model), so such a report there repeats
-   * on every run.
+   * True: the stage runs only when `vx lock` (or `--check`) visits, the one
+   * pass that checks the configs and so the place to report what a
+   * plugin's mapping could not say.
    */
   readonly lock: boolean
 }

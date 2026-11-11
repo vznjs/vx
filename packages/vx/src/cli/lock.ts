@@ -138,11 +138,11 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
 }
 
 /**
- * Projects with tasks and no vx.config: a plugin's tasks, which load live
- * in every run, so both verbs name them — `0 project configs`
- * on a turbo() repo read like an audit of something (2026-09-16). One with
- * no task is left out: solidjs/solid's solid-ssr, which has no script Turbo
- * runs, read as a project whose tasks come live from the plugin `project` stage.
+ * Projects with tasks and no vx.config: a plugin's tasks, which the lock
+ * records from its `project` stage, so both verbs name them — `0 project
+ * configs` on a turbo() repo read like an audit of nothing (2026-09-16).
+ * One with no task is left out: solidjs/solid's solid-ssr, which has no
+ * script Turbo runs.
  */
 function bareProjects(all: readonly ProjectMeta[], tasked: ReadonlySet<string>): string[] {
   return all.filter((m) => m.configPath === null && tasked.has(m.name)).map((m) => m.name)
@@ -244,7 +244,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       const why = m.configPath === null ? ignoredConfigRefusal(root, m) : undefined
       if (why !== undefined) throw new UserError(why, 'VX_E_LOCK')
     }
-    const { projects } = await loadProjects({
+    const { projects, stage } = await loadProjects({
       workspaceRoot: root,
       cacheDir,
       plugins,
@@ -256,6 +256,17 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       lock: true,
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
+    // What the plugin `project` stage left, recorded: a run reads it and
+    // runs no hook, so a mapping is made here and nowhere else.
+    if (stage !== undefined)
+      out.fresh.projectStage = {
+        plugins: plugins.filter((p) => typeof p.project === 'function').map((p) => p.name),
+        configs: Object.fromEntries(
+          [...stage]
+            .map(([dir, config]) => [lockKey(root, dir), config] as const)
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        ),
+      }
     out.loaded = true
     out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)
     checkBracketLiterals(root, projects.values())
@@ -428,7 +439,7 @@ function bareNames(bare: readonly string[]): string {
 }
 
 function bareNote(bare: readonly string[]): string {
-  return bare.length === 0 ? '' : ` (no vx.config, so not locked: ${bareNames(bare)})`
+  return bare.length === 0 ? '' : ` (and the tasks a plugin maps for ${bareNames(bare)})`
 }
 
 interface Review {
@@ -485,11 +496,18 @@ async function writeLock(
     metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config]),
   )
   const reviews = check.reviewFiles ? reviewsOf(metas, check.resolved) : []
-  // The review copies are committed too; a plugin's `project` stage can add
-  // a value the bare config lacks. A place both hold is named once.
+  // The review copies and the `project` stage's record are committed too;
+  // the stage can add a value the bare config lacks. A place both hold is
+  // named once.
   const leaks = secretsIn(projects)
   const named = new Set(leaks.map((l) => l.at))
-  for (const l of secretsIn(Object.fromEntries(reviews.map((r) => [r.name, r.config]))))
+  const nameAt = new Map(check.all.map((m) => [lockKey(root, m.dir), m.name]))
+  const staged = Object.entries(check.fresh.projectStage?.configs ?? {}).map(
+    ([dir, config]) => [nameAt.get(dir) ?? dir, config] as const,
+  )
+  for (const l of secretsIn(
+    Object.fromEntries([...reviews.map((r) => [r.name, r.config] as const), ...staged]),
+  ))
     if (!named.has(l.at)) leaks.push(l)
   if (leaks.length > 0) {
     notWritten('', {
@@ -545,6 +563,51 @@ async function writeLock(
   if (check.reviewFiles)
     for (const file of await strayCopies(check)) sayNotice('warn', 'vx lock', strayLine(root, file))
   return 0
+}
+
+/**
+ * Where the plugin `project` stage, run here, maps a project otherwise than
+ * the lock records: a run follows the record, so an edited turbo.json or
+ * script is drift until `vx lock`. A directory already in `drifted` is
+ * named once.
+ */
+function stageDrift(lock: Lockfile, fresh: Lockfile, drifted: ReadonlySet<string>): string[] {
+  const was = lock.projectStage
+  const now = fresh.projectStage
+  const named = (list: readonly string[]): string => list.map((p) => `'${p}'`).join(', ')
+  if (was === undefined && now === undefined) return []
+  if (was === undefined)
+    return [`the lock holds no \`project\` stage of plugin ${named(now!.plugins)} — run 'vx lock'`]
+  if (now === undefined)
+    return [
+      `the lock holds the \`project\` stage of ${named(was.plugins)}, which no plugin fills now — run 'vx lock'`,
+    ]
+  if (was.plugins.join('\0') !== now.plugins.join('\0'))
+    return [
+      `the lock holds the \`project\` stage of ${named(was.plugins)}, not of ${named(now.plugins)} — run 'vx lock'`,
+    ]
+  const out: string[] = []
+  const what = (dir: string): string => (dir === '.' ? 'the workspace root project' : dir)
+  for (const [dir, config] of Object.entries(now.configs)) {
+    if (drifted.has(dir)) continue
+    const held = Object.hasOwn(was.configs, dir) ? was.configs[dir] : undefined
+    if (held === undefined)
+      out.push(`${what(dir)} is not in the lock's \`project\` stage — run 'vx lock'`)
+    else if (!Bun.deepEquals(config, held, true))
+      out.push(
+        `${what(dir)}: the \`project\` stage maps it differently from the lock here — a file ` +
+          `the plugin reads, or the environment, changed; run 'vx lock'` +
+          configDiff(held, config)
+            .map((d) => `\n  ${maskedLine(d)}`)
+            .join(''),
+      )
+  }
+  for (const dir of Object.keys(was.configs))
+    if (!Object.hasOwn(now.configs, dir))
+      out.push(
+        `the lock's \`project\` stage holds ${what(dir)}, which it does not map now — run 'vx lock'`,
+      )
+  return out
 }
 
 /** The first places (three at most) two evaluated configs differ: `path: locked → now`. */
@@ -716,8 +779,9 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     if (json) {
       const out = {
         upToDate: problems.length === 0,
-        audited: metas.length,
-        notAudited: bare.length,
+        // A plugin's mapping is audited too (`stageDrift`): none is left out.
+        audited: metas.length + bare.length,
+        notAudited: 0,
         problems,
       }
       ui.data('out', `${JSON.stringify(out)}\n`)
@@ -771,6 +835,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       failures.push(
         `the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`,
       )
+  if (check.loaded) failures.push(...stageDrift(lock, check.fresh, drifted))
   if (broken !== null && check.loaded) failures.push(broken)
   // Each config that does not load, as `vx lock` names them: a CI fixing
   // one at a time re-ran the gate once per broken config.
@@ -845,7 +910,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   }
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
-  const skipped = bare.length === 0 ? '' : `; not audited, no vx.config: ${bareNames(bare)}`
-  ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${skipped})`))
+  const mapped = bare.length === 0 ? '' : `; mapped by a plugin: ${bareNames(bare)}`
+  ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${mapped})`))
   return 0
 }

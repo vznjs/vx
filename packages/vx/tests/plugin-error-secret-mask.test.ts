@@ -33,7 +33,7 @@ beforeEach(async () => {
     path.join(dir, 'vx.config.mjs'),
     `export default { tasks: { t: { exec: { command: 'true' } } } }\n`,
   )
-  // Locked before the plugin exists: `vx lock` runs the `project` stage too.
+  // Locked before the plugin exists: `vx lock` runs the plugin's stages too.
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   await lock(root)
 })
@@ -70,8 +70,9 @@ it("run() rejects with a plugin's setup failure masked", async () => {
 }, 30_000)
 
 it("run() rejects with a plugin's stage failure masked", async () => {
-  expect(await refusal(`{ project() { ${THROW} } }`)).toBe(
-    `plugin 'org/p' failed in project: ${SAID}`,
+  // `discover`: a run calls no `project` hook (2026-11-11).
+  expect(await refusal(`{ discover() { ${THROW} } }`)).toBe(
+    `plugin 'org/p' failed in discover: ${SAID}`,
   )
   expect(await refusal(`{ key() { ${THROW} } }`)).toBe(`plugin 'org/p' failed in key: ${SAID}`)
 }, 30_000)

@@ -1,7 +1,8 @@
 // `vx run --dry=json` is a machine's input: stdout carries the plan and
-// nothing else. A `project` stage's warning (turbo() warns there) went
-// through the plan's default logger to stdout ahead of the JSON, and the
-// output did not parse (C-6).
+// nothing else. A plugin stage's warning (turbo() warned in its `project`
+// stage, which only `vx lock` runs since 2026-11-11; `discover` still
+// runs on a run) went through the plan's default logger to stdout ahead
+// of the JSON, and the output did not parse (C-6).
 import { writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -27,7 +28,7 @@ beforeEach(async () => {
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
-      pluginSource('org/warner', `{ project(config, ctx) { ctx.warn('careful: app') } }`),
+      pluginSource('org/warner', `{ discover(ctx) { ctx.warn('careful: app'); return [] } }`),
     ]),
   )
   gitInitCommit(root)
@@ -74,7 +75,7 @@ it('`vx lock` and the run over its lock each print a stage warning once', () => 
     const all = p.stdout.toString() + p.stderr.toString()
     return { code: p.exitCode, warned: all.split('careful: app').length - 1 }
   }
-  // Each loads the plugin once: the lock to stage the configs, the run to stage the locked ones.
+  // Each loads the plugin once: the lock and the run each discover once.
   expect({
     lock: count(['lock']),
     dry: count(['run', 'build', '--all', '--dry']),

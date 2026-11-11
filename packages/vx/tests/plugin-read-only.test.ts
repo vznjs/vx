@@ -117,12 +117,11 @@ it("a project hook cannot move a project into another's directory", async () => 
   const a = await twoProjects(true)
   await run({ cwd: root, tasks: ['build'], projects: ['a'], log, handleSignals: false })
   expect(readFileSync(path.join(a, 'dist/a'), 'utf8')).toBe('a\n')
-  // Past the lock's pass, as a run after `vx lock` meets it.
+  // `vx lock`, the one pass that runs the stage (2026-11-11), meets it.
   await plugins(
     pluginSource(
       'org/mover',
       `{ project(config, ctx) {
-          if (ctx.lock) return
           const a = ctx.projects.find((p) => p.name === 'a')
           const b = ctx.projects.find((p) => p.name === 'b')
           b.dir = a.dir
@@ -130,20 +129,15 @@ it("a project hook cannot move a project into another's directory", async () => 
     ),
   )
   const r = run({ cwd: root, tasks: ['build'], log, handleSignals: false })
-  await expect(r).rejects.toThrow(/^plugin 'org\/mover' failed in project: .*read-?only/i)
+  await expect(r).rejects.toThrow(/plugin 'org\/mover' failed in project: .*read-?only/i)
   expect(readFileSync(path.join(a, 'dist/a'), 'utf8')).toBe('a\n')
 })
 
 it('a project hook cannot empty the project list', async () => {
   await twoProjects(true)
-  await plugins(
-    pluginSource(
-      'org/emptier',
-      `{ project(config, ctx) { if (!ctx.lock) ctx.projects.length = 0 } }`,
-    ),
-  )
+  await plugins(pluginSource('org/emptier', `{ project(config, ctx) { ctx.projects.length = 0 } }`))
   const r = run({ cwd: root, tasks: ['build'], log, handleSignals: false })
-  await expect(r).rejects.toThrow(/^plugin 'org\/emptier' failed in project: /)
+  await expect(r).rejects.toThrow(/plugin 'org\/emptier' failed in project: /)
 })
 
 it("a telemetry sink's edit reaches neither core nor the next sink", async () => {
