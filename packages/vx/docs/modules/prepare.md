@@ -91,8 +91,8 @@ export function unlockedDir(
    `loadWorkspacePlugins` gives the declared plugin list.
 2. **Project config load** — `loadProjects` ([`projects.md`](./projects.md)),
    the load `vx show` shares: scoped to the seeds and their package
-   closure, from the lock, through the plugin
-   `project` stage. A project a `discover` plugin added has no config:
+   closure, from the lock, with the plugin `project` stage as `vx lock`
+   recorded it (no hook runs). A project a `discover` plugin added has no config:
    it is kept in the graph (for its edges) and contributes no tasks
    unless a plugin fills the `project` stage, or the default `build`.
 3. **Package + task structure** — `buildPackageGraph`,

@@ -56,7 +56,8 @@ $ vx run build --all
 ```
 
 A project with no `vx.config.*`, whose tasks come from a plugin like
-`turbo()`, has nothing to lock. Its tasks load on every run.
+`turbo()`, is locked too: `vx lock` records what the plugin maps, and a
+run reads that and maps nothing.
 
 ## The check a file hash can't do
 

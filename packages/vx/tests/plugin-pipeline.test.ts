@@ -1463,7 +1463,7 @@ describe('a reference a plugin keeps past its stage', () => {
       await workspace([
         pluginSource(
           'org/keep',
-          `{ project(c, ctx) { if (ctx.lock) return; if (globalThis.__vxKept === undefined) globalThis.__vxKept = c; else globalThis.__vxKept.tasks.build.exec.command = 42 } }`,
+          `{ project(c) { if (globalThis.__vxKept === undefined) globalThis.__vxKept = c; else globalThis.__vxKept.tasks.build.exec.command = 42 } }`,
         ),
       ])
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
@@ -1674,10 +1674,14 @@ describe('zero cost when absent', () => {
         spy.mockClear()
         await corePlanRun({ cwd: root, tasks: ['build'], log: silent() })
         expect(spy).toHaveBeenCalledTimes(0)
-        // CONTROL: a `project` stage re-validates each config it edits.
+        // CONTROL: `vx lock` runs the `project` stage and re-validates each
+        // config it edits; the run over that lock reads the record (2026-11-11).
         await workspace([pluginSource('org/p', `{ project() {} }`)])
+        await lock(root)
+        expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2)
+        spy.mockClear()
         await corePlanRun({ cwd: root, tasks: ['build'], log: silent() })
-        expect(spy).toHaveBeenCalledTimes(2)
+        expect(spy).toHaveBeenCalledTimes(0)
       } finally {
         spy.mockRestore()
       }

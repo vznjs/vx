@@ -1,6 +1,6 @@
 // Nx → vx mapping over the RESOLVED project graph, shared by the two
 // consumers: `bunx @vzn/vx-migrate --from nx` writes it to files, and the
-// `nx()` plugin runs it live. Static by design: targets that Nx plugins
+// `nx()` plugin runs it at `vx lock`. Static by design: targets that Nx plugins
 // infer at runtime are whatever the graph says. Named inputs expand from
 // nx.json when readable; the graph's dependency edges are ignored (vx's
 // package edges come from a lockfile plugin, which installs what the

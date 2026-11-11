@@ -1,14 +1,11 @@
-// A run stages each locked config ONCE. The CLI's selection pass
-// stages every config when a filter walks the graph (`app...`,
-// `--affected` with a diff) to read the `pkg#task` edges; the run used to
-// load them all again — the `project` stage's cost paid twice, its
-// warnings printed twice (seen on solidjs/solid under `@vzn/vx-migrate`:
-// every "no vx equivalent" line doubled under `--affected`). The staged
-// load now travels into the run (`RunOptions.staged`) and `vx watch`
-// shares its sweep with the watched-set walk, while every cycle after an
-// edit stages again. The counter is a `project` plugin that appends the
-// project's name to a file outside the workspace; `vx lock`'s own staging
-// is cleared before each count.
+// A run calls no `project` hook: `vx lock` runs the stage and records
+// what it left, and every run reads the record (2026-11-11). Before, the
+// stage ran on every run — once per run since the selection pass's load
+// travelled into the run (`RunOptions.staged`), twice before that (seen on
+// solidjs/solid under `@vzn/vx-migrate`: every "no vx equivalent" line
+// doubled under `--affected`). The counter is a `project` plugin that
+// appends the project's name to a file outside the workspace; `vx lock`'s
+// own staging is cleared before each count.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -41,7 +38,7 @@ async function until(
   throw new Error(`timed out waiting for ${what}`)
 }
 
-describe('the project stage runs once per project per run', () => {
+describe('a run calls no project hook', () => {
   let root: string
   let outside: string
   let counter: string
@@ -99,21 +96,16 @@ export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
     return { code, err: await new Response(proc.stderr).text() }
   }
 
-  it("a graph-walking filter stages each config once: the run reuses the selection pass's load", async () => {
-    // Differential: with `staged` not handed from resolveFilters to the
-    // run, each name appears twice.
+  it('a graph-walking filter calls none', async () => {
     const r = await vx('run', 'build', '--filter', 'app...')
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-    expect(await stageCalls(counter)).toEqual(['app', 'lib'])
+    expect(await stageCalls(counter)).toEqual([])
   }, 30_000)
 
-  it('--affected with a root path no project owns stages each config once: the owners walk and the run share the load', async () => {
+  it('--affected with a root path no project owns calls none', async () => {
     // A changed file outside every project is an orphan, and finding
     // which project's `workspaceFiles` glob covers it needs every config
-    // staged (`workspaceGlobOwners`); before this, that was a second load
-    // — the run did not reuse it. Seen on solidjs/solid: a lockfile edit
-    // is an orphan even when a plugin claims it, so every `@vzn/vx-migrate`
-    // warning printed twice under `--affected`.
+    // staged (`workspaceGlobOwners`).
     const git = gitIn(root)
     git('add', '-A')
     git('commit', '-qm', 'base')
@@ -121,16 +113,18 @@ export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
     await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
     const r = await vx('run', 'build', '--affected=HEAD')
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-    expect(await stageCalls(counter)).toEqual(['app', 'lib'])
+    expect(await stageCalls(counter)).toEqual([])
   }, 30_000)
 
-  it('a plain scope stages each config once too (the control: no selection load to reuse)', async () => {
+  it('a plain scope calls none; vx lock calls each once', async () => {
     const r = await vx('run', 'build', '--all')
     expect(r.code).toBe(0)
+    expect(await stageCalls(counter)).toEqual([])
+    expect((await vx('lock')).code).toBe(0)
     expect(await stageCalls(counter)).toEqual(['app', 'lib'])
   }, 30_000)
 
-  it('vx watch shares its sweep with the watched-set walk, and every cycle stages again', async () => {
+  it('vx watch calls none, a cycle after an edit neither', async () => {
     const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', '--filter', 'app'], {
       cwd: root,
       stdout: 'pipe',
@@ -143,16 +137,11 @@ export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
     })()
     try {
       await until(async () => out.includes('watching 2 projects'), 'the watching marker')
-      // The initial run (app + its closure) and the sweep (every config):
-      // two loads. Differential: with the sweep's load not handed to
-      // `watchedProjects`, a third load makes it six.
-      expect(await stageCalls(counter)).toEqual(['app', 'app', 'lib', 'lib'])
+      expect(await stageCalls(counter)).toEqual([])
+      const runs = out.split('lib#build').length
       await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
-      await until(
-        async () => (await stageCalls(counter)).length === 6,
-        'the cycle after the edit to stage again',
-      )
-      expect(await stageCalls(counter)).toEqual(['app', 'app', 'app', 'lib', 'lib', 'lib'])
+      await until(async () => out.split('lib#build').length > runs, 'the cycle after the edit')
+      expect(await stageCalls(counter)).toEqual([])
     } finally {
       proc.kill('SIGTERM')
       await proc.exited

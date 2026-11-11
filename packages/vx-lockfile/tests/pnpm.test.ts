@@ -801,6 +801,10 @@ describe('vx run with pnpm() declared', () => {
 
   it('a warm run reads the memo instead of parsing', async () => {
     // A run keeps the memo; `--dry` writes nothing (docs/modules/plan.md).
+    // Two: the first run's `discover` reads before cache.db exists, and
+    // no `project` hook reads after it since `vx lock` alone runs that
+    // stage (2026-11-11), so the second run keeps it.
+    await statuses()
     await statuses()
     const cacheDir = path.join(root, '.vx', 'cache')
     const memo = readMemo(cacheDir, 'pnpm-lock.yaml')

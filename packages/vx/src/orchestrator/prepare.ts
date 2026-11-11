@@ -730,13 +730,10 @@ export async function prepareRunLocked(
     // for its addition marks.
     const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
     const unproven: Array<[taskId: string, name: string]> = []
-    // Every config is the lock's only when it was read and no `project`
-    // plugin edited one (graph-memo.ts).
+    // Every config is the lock's when it was read: a `project` plugin's
+    // edits are the lock's record too (graph-memo.ts).
     const lock =
-      hashCache.folds !== undefined &&
-      options.staged === undefined &&
-      !allStaged &&
-      !hasHook(plugins, 'project')
+      hashCache.folds !== undefined && options.staged === undefined && !allStaged
         ? lockDigest(await readLock())
         : undefined
     const graphMemo: GraphMemo | undefined =

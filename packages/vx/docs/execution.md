@@ -63,8 +63,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       loadProjectConfigs in one batch: native Bun await import()
  │       with a content-hash query-string bust, every config
  │       evaluated; the loader validates each
- │       TaskConfig shape. Either way the plugin `project` stage runs
- │       on each config with a re-validation after every plugin.
+ │       TaskConfig shape. vx lock runs the plugin `project` stage on
+ │       each config with a re-validation after every plugin and
+ │       records the result; a run reads that record, no hook runs.
  │    8. computeNestedProjectDirs — set of projects rooted inside each
  │       project, computed over EVERY config-bearing project (loaded
  │       or not) for boundary enforcement.

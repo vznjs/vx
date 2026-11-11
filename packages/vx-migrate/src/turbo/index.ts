@@ -3,7 +3,9 @@
 // Fills the `project` stage: every package the workspace discovers is given
 // the tasks turbo.json + its package.json scripts define, mapped by the same
 // mapper `bunx @vzn/vx-migrate` renders files from — so what runs here is
-// what a migration would have written, minus the file. Turbo's global fields
+// what a migration would have written, minus the file. `vx lock` maps and
+// records it; a run reads the lock. An env wildcard expands over the
+// environment `vx lock` runs in. Turbo's global fields
 // are inlined into each task instead of imported from a generated preset.
 // A task the package's own vx.config already declares wins; the plugin never
 // overwrites a user's hand.
@@ -264,7 +266,7 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     spareTracked: true,
     reads: [
       JSON.stringify(dirs),
-      // An env wildcard expands over these; a new name it matches maps afresh.
+      // An env wildcard expands over these; a new name it matches maps afresh at `vx lock`.
       JSON.stringify(envNames),
       process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
       // A framework conditional keys its names on these values (skew protection).

@@ -375,7 +375,7 @@ never branches on layering.
       `discover` stage) →
       package graph → local `Cache` open (the policy's local slice) +
       the claimed root files → **scoped** config loading via
-      `loadProjects`, the `project` stage included (only in-scope
+      `loadProjects`, the `project` stage as `vx lock` recorded it (only in-scope
       projects + their transitive dep closure, loaded from
       `.vx/projects.lock.json` with no evaluation and no staleness check of its
       own — `vx lock --check` is the audit) →

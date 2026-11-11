@@ -2,7 +2,8 @@
 // `prepareRun` (a run, a plan) and `vx show` (introspection). One code
 // path, so what `show` prints is what a run would see — including the
 // plugin `project` stage, which can give tasks to a package that never
-// wrote a `vx.config.ts`.
+// wrote a `vx.config.ts`. `vx lock` runs that stage and records what it
+// left (`Lockfile.projectStage`); every other reader takes the record.
 
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -16,6 +17,7 @@ import {
   NO_LOCK,
   pathName,
   PROJECT_CONFIG_FILENAMES,
+  lockKey,
   readLockfile,
   validateProjectConfig,
   type Lockfile,
@@ -305,7 +307,11 @@ interface LoadProjectsBase {
    */
   configs: () => Promise<Lockfile>
   warn: (message: string) => void
-  /** `vx lock`'s audit: the `project` stage's `ctx.lock`. */
+  /**
+   * `vx lock`'s audit: the one load that runs the `project` stage's hooks
+   * (`ctx.lock`) and returns what they left (`LoadedProjects.stage`).
+   * Every other load reads that from the lock.
+   */
   lock?: boolean
   /**
    * Entries a load in this same process already produced with the same
@@ -326,6 +332,12 @@ export interface LoadedProjects {
    * fills the `project` stage and may give it tasks.
    */
   configured: readonly ProjectMeta[]
+  /**
+   * With `lock` and a `project` plugin: each loaded project's config as the
+   * stage left it, before the default `build`, by directory. What `vx lock`
+   * records (`Lockfile.projectStage`).
+   */
+  stage?: Map<string, ProjectConfig>
 }
 
 /**
@@ -344,21 +356,42 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // A package with no config file declares no tasks — unless a plugin
   // fills the `project` stage, in which case it is a project the stage may
   // give tasks to (the zero-migration shape: `turbo.json` or `package.json`
-  // scripts mapped onto packages that never wrote a `vx.config.ts`). It
-  // then loads as `{ tasks: {} }` — nothing to evaluate, nothing to freeze
-  // — and the stage runs on that like on any loaded config. With no
+  // scripts mapped onto packages that never wrote a `vx.config.ts`). Under
+  // `vx lock` it then loads as `{ tasks: {} }` — nothing to evaluate — and
+  // the stage runs on that like on any loaded config; a run loads what the
+  // lock recorded of it. With no
   // `project` plugin a plain run never seeds a config-less
   // package, but loads one a loaded project's closure reaches: it gets the
   // default `build`, so a dependant bundling its source is keyed on it
   // behind `^build`. Left out, its edit replayed the dependant's stale
   // output as a hit (X-9).
-  const projectStage = hasHook(plugins, 'project')
+  // Only `vx lock` runs the hooks. A run follows the configs they left,
+  // as `vx lock` recorded them, blindly: whatever plugins the workspace
+  // declares now, and reading nothing a mapping reads (2026-11-11: "we
+  // never relock during runs ... it should always follow the lock blindly").
+  const hooks = args.lock === true && hasHook(plugins, 'project')
+  const stage = hooks ? new Map<string, ProjectConfig>() : undefined
+  // Asked only when a config is to be read: a run whose every project the
+  // CLI's selection pass staged never parses the lock.
+  const recorded =
+    !hooks && args.projectMetas.some((m) => args.staged?.get(m.name) === undefined)
+      ? (await lock()).projectStage?.configs
+      : undefined
+  const recordedOf = (meta: ProjectMeta): ProjectConfig | undefined => {
+    if (recorded === undefined) return undefined
+    const dir = lockKey(workspaceRoot, meta.dir)
+    return Object.hasOwn(recorded, dir) ? recorded[dir] : undefined
+  }
   // A hook that set one project's `dir` to another's moved it there: the
   // graph's directory guard read the moved entry, and its outputs clean
   // emptied the other project's.
-  if (projectStage) freezeDeep(args.projectMetas)
+  if (hooks) freezeDeep(args.projectMetas)
   const configured = args.projectMetas.filter(
-    (m) => projectStage || (typeof m.configPath === 'string' && m.configPath.length > 0),
+    (m) =>
+      hooks ||
+      (typeof m.configPath === 'string' && m.configPath.length > 0) ||
+      recordedOf(m) !== undefined ||
+      args.staged?.get(m.name) !== undefined,
   )
   const metaByName = new Map<string, ProjectMeta>(args.projectMetas.map((m) => [m.name, m]))
   const needed = new Set<string>()
@@ -463,8 +496,9 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             'VX_E_LOCK',
           )
     }
+    const fromLock = withFile.filter((m) => recordedOf(m) === undefined)
     const loaded =
-      withFile.length === 0 ? [] : frozenProjectConfigs(await lock(), withFile, workspaceRoot)
+      fromLock.length === 0 ? [] : frozenProjectConfigs(await lock(), fromLock, workspaceRoot)
     let next = 0
     for (const meta of round) {
       const pre = args.staged?.get(meta.name)
@@ -477,12 +511,13 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         continue
       }
       const frozen: ProjectConfig =
-        meta.configPath === null ? { tasks: {} } : (loaded[next++] as ProjectConfig)
+        recordedOf(meta) ??
+        (meta.configPath === null ? { tasks: {} } : (loaded[next++] as ProjectConfig))
       // The lock shares a task, or a part of one, every place declares alike,
       // in this project too: an edit in place works on a copy that shares
       // nothing. `structuredClone` keeps the sharing; the lock is JSON.
-      let config: ProjectConfig = projectStage ? JSON.parse(JSON.stringify(frozen)) : frozen
-      if (projectStage) {
+      let config: ProjectConfig = hooks ? JSON.parse(JSON.stringify(frozen)) : frozen
+      if (hooks) {
         // The `project` stage edits the validated object in place; core
         // re-validates after EACH plugin so a plugin can only produce what
         // the loader accepts from a user, and the refusal names both the
@@ -501,7 +536,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               dir: meta.dir,
               // The view `discover` was handed: nx() keys its graph on its identity.
               projects: readOnly(args.projectMetas),
-              lock: args.lock === true,
+              lock: true,
             },
             discoveredHashes.get(args.projectMetas),
           ),
@@ -522,6 +557,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         // hook) ran a command its key never saw, past the validation above.
         // A copy, not a deep freeze: 1.5 ms of 1,000 projects against 4.4.
         config = JSON.parse(JSON.stringify(config))
+        stage!.set(meta.dir, config)
       }
       const built = withDefaultBuild(config)
       const named = rootName === undefined ? built : rootSpelled(built, rootName)
@@ -532,7 +568,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       }
     }
   }
-  return { projects, configured }
+  return stage === undefined ? { projects, configured } : { projects, configured, stage }
 }
 
 function withDefaultBuild(config: ProjectConfig): ProjectConfig {

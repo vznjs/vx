@@ -90,12 +90,11 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toBe(
-    '✓ vx lock  2 project configs → .vx/projects.lock.json (no vx.config, so not locked: mapped)\n',
+    '✓ vx lock  2 project configs → .vx/projects.lock.json (and the tasks a plugin maps for mapped)\n',
   )
   const check = await vx(root, ['lock', '--check'])
-  expect(check.out).toBe(
-    '✓ vx lock --check  up to date (2 projects; not audited, no vx.config: mapped)\n',
-  )
+  expect(check.out).toBe('✓ vx lock --check  up to date (2 projects; mapped by a plugin: mapped)\n')
   const json = await vx(root, ['lock', '--check', '--format', 'json'])
-  expect(JSON.parse(json.out).notAudited).toBe(1)
+  // The mapping is locked and audited too (2026-11-11).
+  expect(JSON.parse(json.out)).toMatchObject({ audited: 3, notAudited: 0 })
 }, 30_000)

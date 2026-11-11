@@ -2142,14 +2142,22 @@ that file. `vx lock` also writes
 missing, so GitHub collapses the machine lock in a diff; `vx init` does
 too, and an existing one is never edited.
 
-A project with no `vx.config.*` — its tasks from a plugin's `project`
-stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
-to freeze: the lock records nothing for it, `--check` does not audit
-it, and a run still loads its tasks live. Both verbs name such
-projects that have tasks (`0 project configs → .vx/projects.lock.json (no
-vx.config, so not locked: app, lib)`, five names then `and N more`),
-so an empty lock on a plugin-only workspace never reads like an audit.
-One with no task (core's default `build` aside) is not named.
+A plugin's `project` stage (`turbo()` and `nx()` from
+`@vzn/vx-migrate`, `@vzn/vx-lockfile`) runs here and nowhere else: the
+lock records each project's config as the stage left it
+(`projectStage`, with the plugins that filled it), a project with no
+`vx.config.*` included, and a run reads that record and calls no hook.
+So a run never maps: an edited `turbo.json` or `package.json` script
+runs only after the next `vx lock`, and `--check` names the project the
+stage now maps otherwise (``packages/lib: the `project` stage maps it
+differently from the lock here``). A run follows the record blindly,
+whatever plugins the workspace declares now; `--check` names a plugin
+added or dropped since (2026-11-11). Both verbs name the projects
+with no config that the stage gives tasks (`0 project configs →
+.vx/projects.lock.json (and the tasks a plugin maps for app, lib)`, five
+names then `and N more`), so a lock on a plugin-only workspace never
+reads like an audit of nothing. One with no task (core's default
+`build` aside) is not named.
 
 The lock is committed, so `vx lock` refuses to write one that holds a
 secret: a config that evaluated to the value of a secret-named variable
