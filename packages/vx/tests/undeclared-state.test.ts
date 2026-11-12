@@ -94,3 +94,101 @@ it(
   },
   TIMEOUT,
 )
+
+// The rule guards a partial OUTPUT: a task that declares none saves none,
+// so its tool's own state is no reason to withhold its entry
+// (`eslint --cache` rewrites `.eslintcache` on every run; `tsc --noEmit
+// --incremental` rewrites its `.tsbuildinfo` on every edit).
+async function stateOnly(command: string): Promise<{ root: string; app: string }> {
+  const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+  made.push(root)
+  const app = await addProject(root, 'app', {
+    files: { 'src/a.txt': 'a', '.gitignore': '.eslintcache\n' },
+    config: `export default { tasks: { lint: {
+      exec: { command: ${JSON.stringify(command)} },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
+    } } }`,
+  })
+  return { root, app }
+}
+
+it(
+  'a task that declares no outputs saves although it rewrites an undeclared ignored file',
+  async () => {
+    const { root, app } = await stateOnly('date +%s%N > .eslintcache')
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['lint'], log: silentLogger(fx) }
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    expect(fx.log.join('\n')).not.toContain('neither input nor output')
+  },
+  TIMEOUT,
+)
+
+// Two tasks of one project run side by side, lint's write landing inside
+// build's command: the file the other declares as its output is that
+// task's, whenever it is written.
+async function siblings(lintOutputs: string): Promise<{ root: string; app: string }> {
+  const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+  made.push(root)
+  const app = await addProject(root, 'app', {
+    files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n.eslintcache\n' },
+    config: `export default { tasks: {
+      build: {
+        exec: { command: 'sleep 1.5; mkdir -p dist; cp src/a.txt dist/' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      },
+      lint: {
+        exec: { command: 'sleep 0.3; date +%s%N > .eslintcache' },
+        inputs: { files: ['src/**'] }, outputs: { files: ${lintOutputs} }, cache: true,
+      },
+    } }`,
+  })
+  return { root, app }
+}
+
+it(
+  "a sibling's write of its declared output does not withhold the task's save",
+  async () => {
+    const { root, app } = await siblings("['.eslintcache']")
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build', 'lint'], concurrency: 2, log: silentLogger(fx) }
+    await run(opts)
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    const second = await run(opts)
+    expect(
+      Object.fromEntries(second.outcomes.map((o) => [o.node.id, [o.status, o.saved]])),
+    ).toEqual({
+      'app#build': ['success', true],
+      'app#lint': ['success', true],
+    })
+    expect(fx.log.join('\n')).not.toContain('neither input nor output')
+  },
+  TIMEOUT,
+)
+
+// Unsandboxed, a sibling's undeclared write cannot be told from the
+// task's own: the save is withheld, and the warning names the sibling.
+it(
+  "a sibling's undeclared write withholds the save and the warning names the sibling",
+  async () => {
+    const { root, app } = await siblings('[]')
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build', 'lint'], concurrency: 2, log: silentLogger(fx) }
+    await run(opts)
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    const second = await run(opts)
+    expect(
+      Object.fromEntries(second.outcomes.map((o) => [o.node.id, [o.status, o.saved]])),
+    ).toEqual({
+      'app#build': ['success', undefined],
+      'app#lint': ['success', true],
+    })
+    expect(fx.log.join('\n')).toContain(
+      "app#build: .eslintcache changed while the task ran, but git ignores it and the task declares it neither input nor output — the result stands, but is not saved: a tool that reads such a file back (an incremental build's state) builds from it, not from the inputs; app#lint ran alongside and may have written it; declare it in outputs.files ('.eslintcache') of the task that writes it, so a miss starts without it and a hit restores it",
+    )
+  },
+  TIMEOUT,
+)

@@ -363,6 +363,8 @@ export interface ExecuteArgs {
   serversNested?: readonly (readonly string[])[]
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
+  /** Every task of the project at a directory, as its config declares them (undeclared-state.ts). Absent: none. */
+  projectTasks?: (projectDir: string) => readonly TaskConfig[]
   /**
    * A persistent task matched `readyWhen` (or spawned, with none): what it
    * writes from here on is its since-ready output (run.ts holds it until
@@ -1576,6 +1578,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
   // The undeclared state the command may write and read back next run,
   // stamped before it. Only where a save follows on this disk.
+  const stateFrom = Date.now()
   const state =
     willSave && !deferralRequested && args.executor.remote !== true
       ? stampUndeclaredState({
@@ -1584,6 +1587,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           workspaceRoot: args.workspaceRoot,
           nestedProjectDirs: args.nestedProjectDirs,
           gitFilesCache: args.gitFilesCache,
+          projectTasks: args.projectTasks?.(node.projectDir) ?? [],
         })
       : undefined
   for (;;) {
@@ -2030,7 +2034,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   /**
    * The command changed an undeclared ignored file in its project
    * (`undeclared-state.ts`). One a sandbox let it write none of is another
-   * process's.
+   * process's. One another command of the project may have written while
+   * this one ran cannot be told from this one's write: still not saved,
+   * and the warning names that command.
    */
   function noStateWritten(): boolean {
     if (state === undefined || state.size === 0) return true
@@ -2040,12 +2046,23 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         sandboxWrites.some((w) => mayWrite(toRealPath(path.join(node.projectDir, rel)), w)),
     )
     if (changed.length === 0) return true
+    const to = Date.now() + 1
+    let alongside: string | undefined
+    for (const rel of changed) {
+      alongside = args.commandWindows?.writerDuring(
+        node.id,
+        path.join(node.projectDir, rel),
+        stateFrom,
+        to,
+      )
+      if (alongside !== undefined) break
+    }
     warnOf(log)(
       `[vx] ${node.id}: ${changed.map(printable).join(', ')} changed while the task ran, ` +
         `but git ignores ${changed.length === 1 ? 'it' : 'them'} and the task declares ` +
         `${changed.length === 1 ? 'it' : 'them'} neither input nor output — the result stands, but is not saved: ` +
         `a tool that reads such a file back (an incremental build's state) builds from it, not from the inputs` +
-        declareStateHint(changed),
+        declareStateHint(changed, alongside),
     )
     return false
   }

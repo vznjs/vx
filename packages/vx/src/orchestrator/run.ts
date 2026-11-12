@@ -2,7 +2,7 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
-import type { InputStability } from '../config.js'
+import type { InputStability, TaskConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import {
   EMPTY_LOCK,
@@ -1339,6 +1339,7 @@ async function runOnBus(
       deferSave: saveLane.defer,
       deferredSaves,
       commandWindows: windows,
+      projectTasks: projectTasksOf(prepared.projects),
       stopSignal: stop.signal,
       failFast: failFast.signal,
       inputStability,
@@ -2583,6 +2584,20 @@ export function projectNamed(
   if (typed.includes('/')) return undefined
   const scoped = [...projects.keys()].filter((n) => n.startsWith('@') && n.endsWith(`/${typed}`))
   return scoped.length === 1 ? scoped[0] : undefined
+}
+
+/** Each project's tasks by its directory, built on the first ask: a miss beside an ignored file. */
+function projectTasksOf(
+  projects: ReadonlyMap<string, ProjectEntry>,
+): (projectDir: string) => readonly TaskConfig[] {
+  let byDir: Map<string, readonly TaskConfig[]> | undefined
+  return (dir) => {
+    if (byDir === undefined) {
+      byDir = new Map()
+      for (const p of projects.values()) byDir.set(p.dir, Object.values(p.config.tasks ?? {}))
+    }
+    return byDir.get(dir) ?? []
+  }
 }
 
 /**

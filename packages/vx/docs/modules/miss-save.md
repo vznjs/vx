@@ -86,10 +86,11 @@ export function stampUndeclaredState(args: {
   workspaceRoot: string
   nestedProjectDirs: readonly string[]
   gitFilesCache: GitFilesCache | undefined
-}): StateStamps // the ignored files `git status` listed in the project, neither input nor output
+  projectTasks: readonly TaskConfig[]
+}): StateStamps // the ignored files `git status` listed in the project, neither input nor output; none when the task declares no outputs
 export function stateChanged(stamps: StateStamps, projectDir: string): string[] // changed and still there, project-relative
 export function stateLeft(stamps: StateStamps, projectDir: string): string[] // still there, project-relative
-export function declareStateHint(rels: readonly string[]): string // the way out: declare them in outputs.files
+export function declareStateHint(rels: readonly string[], alongside?: string): string // the way out: declare them in outputs.files (of the task that writes them, when `alongside` ran with it)
 ```
 
 `markUnsaved` is step 3 alone, for a miss that ran here and saves
@@ -141,7 +142,15 @@ that matched no files (or no wildcard glob matched) while one is still
 there withhold it too: the tool read it as proof the outputs exist and
 wrote nothing. Both lines name the files and say to declare them in
 `outputs.files`. A file the command creates was not listed, so a first
-build saves (`tests/undeclared-state.test.ts`).
+build saves (`tests/undeclared-state.test.ts`). What is guarded is a
+partial output, so a task that declares no outputs stamps nothing
+(`eslint --cache`, `tsc --noEmit --incremental` rewrite their state every
+run or edit), and a file any task of the project declares as its output
+(`projectTasks`) is that task's, not state. A sibling running at the same
+time may still write an undeclared one, and outside a sandbox that cannot
+be told from the task's own write: the save is withheld anyway, and the
+line names the sibling (`commandWindows.writerDuring`) and says to declare
+the file in the outputs of the task that writes it.
 
 ## Order, and why it is the order
 

@@ -1069,7 +1069,13 @@ stands but is not saved, and the line names the file and the fix:
 declare it in `outputs.files`, so a miss starts without it and a hit
 restores it. A miss costs a stat per such file; a hit, nothing. A file
 the command creates is not listed, so a first build is still saved
-(`tests/undeclared-state.test.ts`).
+(`tests/undeclared-state.test.ts`). The rule guards a partial output, so
+a task that declares no outputs is exempt (`eslint --cache`, `tsc
+--noEmit --incremental`), and a file another task of the project declares
+as its output is that task's. An undeclared file a task of the same
+project running alongside may have written still withholds the save (an
+unsandboxed task's write cannot be told from it); the line names that
+task, and declaring the file in its outputs ends it.
 
 **The outputs are what exists when the task's command exits.** The run
 waits for the command's own process, not for everything it started — a
