@@ -1,0 +1,218 @@
+---
+// Every piece a vx run talks to, wired up, and one CI run's seven steps
+// lighting them in turn (system-map.ts). Static HTML first: with no script
+// or with reduced motion every wire shows and every step is listed.
+import { BOXES, LAYOUTS, STEPS, WIRES, chips, rect, wirePath, type LayoutName } from './system-map.ts'
+
+const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
+const layouts: LayoutName[] = ['wide', 'narrow']
+const play = STEPS.map((s) => ({ boxes: s.boxes, stages: s.stages, wires: s.wires, tone: s.tone }))
+---
+
+<figure class="sysmap" data-steps={JSON.stringify(play)} aria-label="Every piece one vx run talks to, and the order it talks to them">
+  {
+    layouts.map((name) => {
+      const L = LAYOUTS[name]
+      const split = name === 'narrow'
+      return (
+        <svg
+          class="sysmap-svg"
+          data-layout={name}
+          viewBox={`${-L.pad} -6 ${L.width + L.pad * 2} ${L.height + 12}`}
+          role="img"
+          aria-hidden="true"
+        >
+          <defs>
+            <filter id={`glow-${name}`} x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3.5" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <g class="wires">
+            {WIRES.map((w) => (
+              <path class:list={['wire', { dashed: w.dashed }]} data-wire={w.id} d={wirePath(name, w)} />
+            ))}
+          </g>
+          {BOXES.filter((b) => b.id !== 'core').map((b) => {
+            const r = rect(name, b.id)
+            const lines = split ? b.sub.split(' · ') : [b.sub]
+            const small = r.w < 100
+            return (
+              <g class:list={['node', `tone-${b.tone}`]} data-box={b.id}>
+                <rect x={r.x} y={r.y} width={r.w} height={r.h} rx="10" />
+                <text class="node-label" x={r.x + (small ? r.w / 2 : 16)} y={r.y + (split && !small ? 21 : 25)} text-anchor={small ? 'middle' : 'start'}>
+                  {b.label}
+                </text>
+                {lines.map((l, i) => (
+                  <text class="node-sub" x={r.x + (small ? r.w / 2 : 16)} y={r.y + (split && !small ? 38 + i * 14 : 44)} text-anchor={small ? 'middle' : 'start'}>
+                    {l}
+                  </text>
+                ))}
+              </g>
+            )
+          })}
+          {(() => {
+            const c = rect(name, 'core')
+            return (
+              <g class="node tone-core core" data-box="core">
+                <rect x={c.x} y={c.y} width={c.w} height={c.h} rx="16" />
+                <text class="core-label" x={c.x + 22} y={c.y + (split ? 50 : 62)}>
+                  vx
+                </text>
+                <text class="core-sub" x={c.x + (split ? 82 : 96)} y={c.y + (split ? 44 : 54)}>
+                  one run, every stage
+                </text>
+                {chips(name).map((s) => (
+                  <g class="chip" data-stage={s.id}>
+                    <rect x={s.x} y={s.y} width={s.w} height={s.h} rx="6" />
+                    <text x={s.x + s.w / 2} y={s.y + 18} text-anchor="middle">
+                      {s.id}
+                    </text>
+                  </g>
+                ))}
+              </g>
+            )
+          })()}
+          <g class="packets" filter={`url(#glow-${name})`} />
+        </svg>
+      )
+    })
+  }
+  <ol class="sysmap-steps">
+    {
+      STEPS.map((s, i) => (
+        <li class:list={[`tone-${s.tone}`, { on: i === 0 }]} data-step={i}>
+          <button type="button" data-goto={i}>
+            <span class="n">{i + 1}</span>
+            <span class="t">{s.title}</span>
+            <span class="bar" aria-hidden="true" />
+          </button>
+          <p set:html={codeHtml(s.line)} />
+        </li>
+      ))
+    }
+  </ol>
+</figure>
+
+<script>
+  // Plays the run: each step lights its boxes and stages and sends packets
+  // down its wires. Only while the map is on screen, never with reduced motion.
+  interface Play {
+    boxes: string[]
+    stages: string[]
+    wires: string[]
+    tone: string
+  }
+  const STEP_MS = 3400
+  for (const fig of document.querySelectorAll<HTMLElement>('.sysmap')) {
+    const steps = JSON.parse(fig.dataset['steps'] ?? '[]') as Play[]
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+    fig.classList.add('js')
+    fig.style.setProperty('--step-ms', `${STEP_MS}ms`)
+    let at = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let visible = false
+    let packets: { path: SVGPathElement; len: number; back: boolean; t0: number; dot: SVGCircleElement }[] = []
+    let spawner: ReturnType<typeof setInterval> | undefined
+
+    const svg = (): SVGSVGElement | undefined =>
+      [...fig.querySelectorAll<SVGSVGElement>('.sysmap-svg')].find((s) => s.getBoundingClientRect().width > 0)
+
+    const spawn = (s: Play): void => {
+      const root = svg()
+      if (!root) return
+      const layer = root.querySelector('.packets')!
+      s.wires.forEach((w, i) => {
+        const back = w.startsWith('-')
+        const path = root.querySelector<SVGPathElement>(`[data-wire="${back ? w.slice(1) : w}"]`)
+        if (!path) return
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+        dot.setAttribute('r', '5')
+        dot.setAttribute('class', `packet tone-${s.tone}`)
+        layer.appendChild(dot)
+        packets.push({ path, len: path.getTotalLength(), back, t0: performance.now() + i * 140, dot })
+      })
+    }
+
+    const tick = (now: number): void => {
+      const DUR = 1100
+      packets = packets.filter((p) => {
+        const t = (now - p.t0) / DUR
+        if (t > 1) {
+          p.dot.remove()
+          return false
+        }
+        if (t < 0) {
+          p.dot.setAttribute('opacity', '0')
+          return true
+        }
+        const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
+        const pt = p.path.getPointAtLength((p.back ? 1 - e : e) * p.len)
+        p.dot.setAttribute('cx', `${pt.x}`)
+        p.dot.setAttribute('cy', `${pt.y}`)
+        p.dot.setAttribute('opacity', `${Math.min(1, 6 * Math.min(t, 1 - t) + 0.2)}`)
+        return true
+      })
+      if (packets.length > 0 || spawner !== undefined) requestAnimationFrame(tick)
+    }
+
+    const show = (i: number): void => {
+      at = i
+      const s = steps[i]!
+      fig.querySelectorAll('.sysmap-steps li').forEach((li, j) => li.classList.toggle('on', j === i))
+      fig.querySelectorAll<SVGElement>('[data-box]').forEach((n) =>
+        n.classList.toggle('on', n.dataset['box'] === 'core' || s.boxes.includes(n.dataset['box']!)),
+      )
+      fig.querySelectorAll<SVGElement>('[data-stage]').forEach((n) => n.classList.toggle('on', s.stages.includes(n.dataset['stage']!)))
+      const live = new Set(s.wires.map((w) => w.replace(/^-/, '')))
+      fig.querySelectorAll<SVGElement>('[data-wire]').forEach((n) => {
+        n.classList.toggle('live', live.has(n.dataset['wire']!))
+        n.setAttribute('data-tone', s.tone)
+      })
+      if (still) return
+      clearInterval(spawner)
+      spawn(s)
+      spawner = setInterval(() => spawn(s), 900)
+      requestAnimationFrame(tick)
+    }
+
+    const run = (): void => {
+      clearTimeout(timer)
+      if (!visible || still) return
+      timer = setTimeout(() => {
+        show((at + 1) % steps.length)
+        run()
+      }, STEP_MS)
+    }
+
+    fig.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((b) =>
+      b.addEventListener('click', () => {
+        show(Number(b.dataset['goto']))
+        fig.classList.remove('restart')
+        void fig.offsetWidth
+        fig.classList.add('restart')
+        run()
+      }),
+    )
+
+    show(0)
+    new IntersectionObserver(
+      ([e]) => {
+        visible = e!.isIntersecting
+        fig.classList.toggle('playing', visible && !still)
+        if (visible) {
+          show(at)
+          run()
+        } else {
+          clearTimeout(timer)
+          clearInterval(spawner)
+          spawner = undefined
+        }
+      },
+      { threshold: 0.25 },
+    ).observe(fig)
+  }
+</script>

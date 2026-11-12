@@ -1,16 +1,19 @@
 ---
-// vx landing page (2026-10-02: vx is its own tool; Turbo and Nx
-// only through migration): the hero with the newest release, every tool's
-// conformance score, the servers you host for CI, what agents
-// get, what plugins unlock, the benchmark chart and why it is faster, what shipped lately
-// (2026-10-08: "it should look like we are busy"), how to start, then the one diagram with its six callouts, the four pillars
-// and a strip of the feature pages.
-// In the site's one Starlight shell (header, search, theme, phone menu),
-// with its own footer; static, one script for the copy button. The #bench
-// chart and kicker read src/data/bench.json. tests/landing.test.ts holds the rest.
+// vx landing page (2026-11-12: "epic", every piece connected and moving):
+// the hero, the system map (every piece one run talks to, wired up, a CI
+// run's steps playing over it), every tool's conformance score, the
+// benchmark chart, Distributed task execution drawn as a run, every plugin
+// and server, what agents get, what shipped lately, how to start, the one
+// diagram with its six callouts, the four pillars and the feature strip.
+// In the site's one Starlight shell, with its own footer. Static HTML
+// first: each animation is a script on top, off with reduced motion. The
+// #bench chart reads src/data/bench.json and #conformance the suite's
+// results. tests/landing.test.ts holds the rest.
 import Diagram from '../components/guide/diagram/Diagram.astro'
 import FeatureCard from '../components/features/FeatureCard.astro'
 import Footer from '../components/landing/Footer.astro'
+import SystemMap from '../components/landing/SystemMap.astro'
+import DteRun from '../components/landing/DteRun.astro'
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import { FEATURES } from '../features/features.js'
 import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
@@ -18,6 +21,7 @@ import '../styles/landing.css'
 import '../styles/charts.css'
 import '../styles/features.css'
 import '../styles/blog.css'
+import '../styles/landing-motion.css'
 import { parseDuration, renderBars } from '../plugins/data-charts.ts'
 import { coverShowsTitle, formatDate, posts } from '../blog/posts.js'
 import Cover from '../components/blog/Cover.astro'
@@ -122,14 +126,18 @@ const wins = [
   { n: '0', line: 'daemons, accounts or cloud services to run it' },
 ]
 
-// Plugins: what core's seams unlock (2026-10-12: plugins are not
-// core features; the section shows they are examples, not the limit).
+// Every package beside core, each with the tone it has on the system map
+// (2026-10-12: plugins are not core features; they are examples, not the
+// limit). A server is the one its plugin talks to, and you host it.
 const plugins = [
-  { pkg: 'vx-migrate', title: 'Keep the cache you have', line: 'Keep Turbo’s or Nx’s remote cache while you move to native config.' },
-  { pkg: 'vx-otel', title: 'Observability', line: 'Every run and task in any OpenTelemetry backend.' },
-  { pkg: 'vx-ci', title: 'CI results on the PR', line: 'GitHub job summary and Checks.' },
-  { pkg: 'vx-lockfile', title: 'Precise lockfile keys', line: 'Each task keyed on its own dependency closure: pnpm, bun, npm, yarn.' },
-  { pkg: 'vx-reapi', title: 'Bazel remote cache and execution', line: 'For a Bazel REAPI server you already run: NativeLink, BuildBuddy.' },
+  { pkg: 'vx-dte', server: 'vx-dte-server', tone: 'dte', title: 'Distributed task execution', line: 'One run spread over the workers your own CI starts, through a relay that stores nothing.' },
+  { pkg: 'vx-cache', server: 'vx-cache-server', tone: 'remote', title: 'Remote cache', line: 'CI writes and everyone reads, from one bucket on Bun, Docker with S3, or Workers with R2.' },
+  { pkg: 'vx-history', server: 'vx-history-server', tone: 'read', title: 'Shared run history', line: 'Task timings from every CI run, so each run starts the critical path first.' },
+  { pkg: 'vx-lockfile', tone: 'read', title: 'Precise lockfile keys', line: 'Each task keyed on its own dependency closure: pnpm, bun, npm, yarn.' },
+  { pkg: 'vx-otel', tone: 'report', title: 'Observability', line: 'Every run and task in any OpenTelemetry backend.' },
+  { pkg: 'vx-ci', tone: 'report', title: 'CI results on the PR', line: 'GitHub job summary and Checks.' },
+  { pkg: 'vx-reapi', tone: 'remote', title: 'Bazel remote cache and execution', line: 'For a Bazel REAPI server you already run: NativeLink, BuildBuddy.' },
+  { pkg: 'vx-migrate', tone: 'remote', title: 'Keep the cache you have', line: 'Keep Turbo’s or Nx’s remote cache while you move to native config.' },
 ]
 
 // Conformance, the first argument after the hero: every tool's score on
@@ -141,28 +149,7 @@ const conformance = TOOLS.map((t) => {
   return { tool: t, name: toolName(t), pct: percent(all), sup: supports(all), width: (all.pass / all.of) * 100, canWidth: (all.can / all.of) * 100 }
 })
 const caseCount = RESULTS.cases.length
-
-// The servers you host for CI: each a plugin plus the server it talks to.
-const servers = [
-  {
-    pkg: 'vx-dte',
-    server: 'vx-dte-server',
-    title: 'Distributed task execution',
-    line: 'One run spread over the workers your own CI starts, through a relay that stores nothing.',
-  },
-  {
-    pkg: 'vx-cache',
-    server: 'vx-cache-server',
-    title: 'Remote cache',
-    line: 'CI writes and everyone reads, from one bucket on Bun, Docker with S3, or Workers with R2.',
-  },
-  {
-    pkg: 'vx-history',
-    server: 'vx-history-server',
-    title: 'Shared run history',
-    line: 'Task timings from every CI run, so each run starts the critical path first.',
-  },
-]
+const vxAll = RESULTS.scores['vx']!.all!
 
 // Why the overhead stays low: three reasons, one short sentence each.
 const reasons = [
@@ -219,7 +206,7 @@ vx run build         # again: up-to-date, from the cache`
             <span aria-hidden="true">→</span>
           </a>
           <h1>Task orchestration you <span class="phosphor">own</span>.</h1>
-          <p class="lede">vx runs and caches your task graph correctly, and a plugin can fill every stage after that.</p>
+          <p class="lede">One graph with every piece wired in: your cache, history, workers and telemetry, all of it yours to host.</p>
           <ul class="wins">
             {
               wins.map((w) => (
@@ -257,6 +244,17 @@ vx run build         # again: up-to-date, from the cache`
         </div>
       </section>
 
+      <section class="section" id="system">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// one ci run, every piece it talks to</p>
+            <h2>Everything connected. Nothing rented.</h2>
+          </div>
+          <p class="sub">Each box beside core is a plugin and, where it needs one, a server you deploy; press a step to see who talks to whom.</p>
+          <SystemMap />
+        </div>
+      </section>
+
       <section class="section" id="conformance">
         <div class="container">
           <div class="section-head">
@@ -264,6 +262,10 @@ vx run build         # again: up-to-date, from the cache`
             <h2>Correct, case by case.</h2>
           </div>
           <p class="sub">Every test in vx, Turborepo, Nx, Vite Task, Nix and moon, parsed into one suite: each case runs sandboxed against each tool and counts only outcomes.</p>
+          <div class="cfm-hero" aria-hidden="true">
+            <strong class="count-up" data-to={vxAll.pass}>{vxAll.pass}</strong>
+            <span>of {vxAll.of} cases pass on vx</span>
+          </div>
           <ol class="score-board">
             {
               conformance.map((c) => (
@@ -285,23 +287,70 @@ vx run build         # again: up-to-date, from the cache`
         </div>
       </section>
 
-      <section class="section" id="servers">
+      <section class="section" id="bench">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// your ci, your servers</p>
-            <h2>Distributed task execution, a shared cache, shared history. Self-hosted.</h2>
+            <p class="vx-kicker">{fillBench('// %bench.tasks% tasks · %bench.projects% projects · %bench.levels% levels · identical commands, identical concurrency')}</p>
+            <h2>Fast, never at the cost of a correct cache.</h2>
           </div>
-          <p class="sub">Each is a plugin and a server you deploy on Bun, Docker or Cloudflare Workers, with no account and no paid tier.</p>
-          <div class="plugin-grid server-grid">
+          <div class="bench-panel">
+            <Fragment set:html={benchBars} />
+            <p class="bench-formula">{benchFormula}</p>
+            <p class="bench-formula bench-workload">{benchWorkload}</p>
+            <p class="bench-formula bench-workload">{benchRun}</p>
+          </div>
+          <ul class="reasons">
             {
-              servers.map((p) => (
-                <a class="plugin-card server-card" href={href(`plugins/${p.pkg}/`)}>
+              reasons.map((r) => (
+                <li>
+                  <strong>{r.term}</strong> {r.line}
+                </li>
+              ))
+            }
+          </ul>
+          <div class="section-links">
+            <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
+            <a class="section-link" href={href('conformance/')}>Every tool on one suite of cases <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="dte">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// distributed task execution</p>
+            <h2>One run. As many machines as it needs. Not one more.</h2>
+          </div>
+          <p class="sub">Add <code>@vzn/vx-dte</code> and one <code>vx run</code> on CI plans the run, starts workers on your own CI and reports it as one run.</p>
+          <DteRun />
+          <div class="section-links">
+            <a class="section-link" href={href('plugins/vx-dte/')}>Distributed task execution <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="plugins">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// extensibility is king</p>
+            <h2>What vx can do. Not what it is limited to.</h2>
+          </div>
+          <p class="sub">Every box on the map is a separate package on core’s public plugin API, and yours can be too.</p>
+          <div class="plugin-grid">
+            {
+              plugins.map((p) => (
+                <a class:list={['plugin-card', `tone-${p.tone}`]} href={href(`plugins/${p.pkg}/`)}>
                   <h3>{p.title}</h3>
-                  <code class="plugin-pkg">@vzn/{p.pkg} + @vzn/{p.server}</code>
+                  <code class="plugin-pkg">@vzn/{p.pkg}{p.server ? ` + @vzn/${p.server}` : ''}</code>
                   <p>{p.line}</p>
                 </a>
               ))
             }
+            <a class="plugin-card plugin-own" href={href('docs/plugins/')}>
+              <h3>Your own</h3>
+              <code class="plugin-pkg">definePlugin()</code>
+              <p>Fill any of the 15 stages: where tasks run, where the cache lives, who watches, what the terminal draws, which commands exist.</p>
+            </a>
           </div>
         </div>
       </section>
@@ -337,60 +386,6 @@ vx run build         # again: up-to-date, from the cache`
               </ul>
               <a class="section-link" href={href('cli/')}>Every command →</a>
             </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="plugins">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// extensibility is king</p>
-            <h2>What vx can do. Not what it is limited to.</h2>
-          </div>
-          <p class="sub">Every plugin below is a separate package on core’s public plugin API, and yours can be too.</p>
-          <div class="plugin-grid">
-            {
-              plugins.map((p) => (
-                <a class="plugin-card" href={href(`plugins/${p.pkg}/`)}>
-                  <h3>{p.title}</h3>
-                  <code class="plugin-pkg">@vzn/{p.pkg}</code>
-                  <p>{p.line}</p>
-                </a>
-              ))
-            }
-            <a class="plugin-card plugin-own" href={href('docs/plugins/')}>
-              <h3>Your own</h3>
-              <code class="plugin-pkg">definePlugin()</code>
-              <p>Fill any of the 15 stages: where tasks run, where the cache lives, who watches, what the terminal draws, which commands exist.</p>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="bench">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">{fillBench('// %bench.tasks% tasks · %bench.projects% projects · %bench.levels% levels · identical commands, identical concurrency')}</p>
-            <h2>Fast, never at the cost of a correct cache.</h2>
-          </div>
-          <div class="bench-panel">
-            <Fragment set:html={benchBars} />
-            <p class="bench-formula">{benchFormula}</p>
-            <p class="bench-formula bench-workload">{benchWorkload}</p>
-            <p class="bench-formula bench-workload">{benchRun}</p>
-          </div>
-          <ul class="reasons">
-            {
-              reasons.map((r) => (
-                <li>
-                  <strong>{r.term}</strong> {r.line}
-                </li>
-              ))
-            }
-          </ul>
-          <div class="section-links">
-            <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
-            <a class="section-link" href={href('conformance/')}>Every tool on one suite of cases <span class="arr">→</span></a>
           </div>
         </div>
       </section>
@@ -529,7 +524,39 @@ vx run build         # again: up-to-date, from the cache`
   </div>
 
     <script>
-      // The one interaction on the page: the install command copies itself.
+      // Sections rise in, bars grow and the conformance count runs up as each
+      // comes on screen. The HTML already holds every number: the script only
+      // moves it, and never with reduced motion.
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const root = document.querySelector('.vx-landing')
+        root?.classList.add('motion')
+        const count = (el: HTMLElement): void => {
+          const to = Number(el.dataset['to'])
+          const t0 = performance.now()
+          const step = (now: number): void => {
+            const t = Math.min(1, (now - t0) / 1600)
+            el.textContent = String(Math.round(to * (1 - (1 - t) ** 3)))
+            if (t < 1) requestAnimationFrame(step)
+          }
+          requestAnimationFrame(step)
+        }
+        const seen = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (!e.isIntersecting) continue
+              e.target.classList.add('in')
+              e.target.querySelectorAll<HTMLElement>('.count-up').forEach(count)
+              seen.unobserve(e.target)
+            }
+          },
+          { threshold: 0.15 },
+        )
+        document.querySelectorAll('.vx-landing .section').forEach((el) => seen.observe(el))
+      }
+    </script>
+
+    <script>
+      // The install command copies itself.
       const pill = document.querySelector<HTMLButtonElement>('.install-pill')
       pill?.addEventListener('click', async () => {
         const text = pill.dataset['copy'] ?? ''

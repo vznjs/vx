@@ -16,17 +16,19 @@ import { FIGURES } from '../src/bench/data.ts'
 import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
 import { CALLOUTS, oneRun } from '../src/components/landing/one-run.js'
 import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
+import * as map from '../src/components/landing/system-map.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every section below the hero, top to bottom.
 const SECTIONS = [
+  'system',
   'conformance',
-  'servers',
-  'agents',
-  'plugins',
   'bench',
+  'dte',
+  'plugins',
+  'agents',
   'shipping',
   'try',
   'one-run',
@@ -235,7 +237,7 @@ describe('the landing page', () => {
     expect(h1).toHaveLength(1)
     expect(text(h1[0]![1]!)).toBe('Task orchestration you own.')
     expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'vx runs and caches your task graph correctly, and a plugin can fill every stage after that.',
+      'One graph with every piece wired in: your cache, history, workers and telemetry, all of it yours to host.',
     )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
@@ -384,14 +386,49 @@ describe('the landing page', () => {
     expect(cfm).not.toContain('<table')
   })
 
-  // DTE, the remote cache and run history: a plugin and the server it talks to.
-  it('shows the self-hosted servers, each a plugin and its server', () => {
-    const servers = section(html, 'servers')
-    expect(hrefs(servers)).toEqual(
-      ['vx-dte', 'vx-cache', 'vx-history'].map((p) => `${BASE}plugins/${p}/`),
-    )
+  // Every package beside core, a server named beside the plugin that talks to it.
+  it('shows every plugin, each server beside its plugin, and your own', () => {
+    const plugins = section(html, 'plugins')
+    const PKGS = [
+      'vx-dte',
+      'vx-cache',
+      'vx-history',
+      'vx-lockfile',
+      'vx-otel',
+      'vx-ci',
+      'vx-reapi',
+      'vx-migrate',
+    ]
+    expect(hrefs(plugins)).toEqual([
+      ...PKGS.map((p) => `${BASE}plugins/${p}/`),
+      `${BASE}docs/plugins/`,
+    ])
     for (const p of ['vx-dte', 'vx-cache', 'vx-history'])
-      expect(text(servers)).toContain(`@vzn/${p} + @vzn/${p}-server`)
+      expect(text(plugins)).toContain(`@vzn/${p} + @vzn/${p}-server`)
+  })
+
+  // The map: every piece, wide and on a phone, the seven steps listed in
+  // the HTML so the page reads whole with no script.
+  it('draws the system map, both layouts, with every step in the HTML', () => {
+    const sys = section(html, 'system')
+    const svgs = [...sys.matchAll(/<svg\b[^>]*data-layout="(\w+)"/g)].map((m) => m[1])
+    expect(svgs).toEqual(['wide', 'narrow'])
+    for (const b of map.BOXES)
+      expect([...sys.matchAll(new RegExp(`data-box="${b.id}"`, 'g'))]).toHaveLength(2)
+    for (const w of map.WIRES)
+      expect([...sys.matchAll(new RegExp(`data-wire="${w.id}"`, 'g'))]).toHaveLength(2)
+    const steps = [...sys.matchAll(/<li\b[^>]*data-step="\d"[^>]*>([\s\S]*?)<\/li>/g)].map((m) =>
+      text(/<p>([\s\S]*?)<\/p>/.exec(m[1]!)![1]!),
+    )
+    expect(steps).toEqual(map.STEPS.map((s) => s.line.replaceAll('`', '')))
+  })
+
+  it('draws Distributed task execution as a run, its facts beside it', () => {
+    const dte = section(html, 'dte')
+    expect(text(dte)).toContain('Distributed task execution')
+    expect([...dte.matchAll(/class="dte-lane"/g)]).toHaveLength(4)
+    expect([...dte.matchAll(/class="dte-block dte-crit"/g)].length).toBeGreaterThan(0)
+    expect(hrefs(dte)).toEqual([`${BASE}plugins/vx-dte/`])
   })
 
   // Four commands on native config, and Turbo or Nx only as a temporary
@@ -453,6 +490,35 @@ describe('the landing page', () => {
     expect(Object.keys(REMOVED).filter((l) => now.has(l))).toEqual([])
     expect([...now].map(resolves).filter((m) => m !== undefined)).toEqual([])
     expect(allHrefs(html).filter((h) => h.includes('{'))).toEqual([])
+  })
+})
+
+describe('the system map, as data', () => {
+  it('places every box and wire in both layouts, inside the drawing', () => {
+    for (const L of Object.values(map.LAYOUTS)) {
+      for (const b of map.BOXES) {
+        const r = L.boxes[b.id]!
+        expect(r).toBeDefined()
+        expect(r.x + r.w).toBeLessThanOrEqual(L.width)
+        expect(r.y + r.h).toBeLessThanOrEqual(L.height)
+      }
+      for (const w of map.WIRES) expect(L.ends[w.id]).toBeDefined()
+    }
+  })
+
+  it('lights only boxes, stages and wires that exist, each step one sentence', () => {
+    const boxes = new Set(map.BOXES.map((b) => b.id))
+    const wires = new Set(map.WIRES.map((w) => w.id))
+    for (const s of map.STEPS) {
+      expect(s.boxes.filter((b) => !boxes.has(b))).toEqual([])
+      expect(s.stages.filter((x) => !(map.STAGES as readonly string[]).includes(x))).toEqual([])
+      expect(s.wires.map((w) => w.replace(/^-/, '')).filter((w) => !wires.has(w))).toEqual([])
+      expect(s.line.split(/[.!?]\s/)).toHaveLength(1)
+      expect(s.line.length).toBeLessThanOrEqual(200)
+    }
+    // Every piece takes part in the run.
+    const lit = new Set(map.STEPS.flatMap((s) => s.boxes))
+    expect(map.BOXES.filter((b) => b.id !== 'core' && !lit.has(b.id)).map((b) => b.id)).toEqual([])
   })
 })
 

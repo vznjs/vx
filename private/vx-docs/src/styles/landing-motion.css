@@ -1,0 +1,663 @@
+/* The landing's moving parts (2026-11-12): the system map, the
+   Distributed task execution run, and the reveal of each section.
+   Every rule that hides or shrinks something sits under .motion or .js,
+   which only the page's scripts set: with no script, or with reduced
+   motion, the page shows everything at rest. */
+
+.vx-landing {
+  --tone-core: #c6f84e;
+  --tone-read: #5ee0ff;
+  --tone-remote: #ff9d42;
+  --tone-dte: #b794ff;
+  --tone-report: #f472b6;
+}
+.tone-core {
+  --tone: var(--tone-core);
+}
+.tone-read {
+  --tone: var(--tone-read);
+}
+.tone-remote {
+  --tone: var(--tone-remote);
+}
+.tone-dte {
+  --tone: var(--tone-dte);
+}
+.tone-report {
+  --tone: var(--tone-report);
+}
+
+/* ---- hero: a slow aurora behind the words ---- */
+.hero {
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 70vw;
+  height: 70vw;
+  max-width: 900px;
+  max-height: 900px;
+  background:
+    radial-gradient(
+      circle at 30% 40%,
+      color-mix(in srgb, var(--tone-read) 16%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 70% 60%,
+      color-mix(in srgb, var(--tone-dte) 14%, transparent),
+      transparent 55%
+    );
+  filter: blur(20px);
+  pointer-events: none;
+}
+.motion .hero::before {
+  animation: aurora 14s ease-out both;
+}
+@keyframes aurora {
+  to {
+    transform: translate(-12%, 10%) rotate(25deg) scale(1.1);
+  }
+}
+.hero .container {
+  position: relative;
+}
+.hero h1 {
+  font-size: clamp(44px, 6.4vw, 92px);
+  line-height: 1;
+}
+
+/* ---- the system map ---- */
+#system {
+  border-top: 0;
+  padding-top: 24px;
+  background: radial-gradient(
+    ellipse 70% 60% at 50% 55%,
+    color-mix(in srgb, var(--tone-core) 5%, transparent),
+    transparent 70%
+  );
+}
+.sysmap {
+  margin: 36px 0 0;
+}
+.sysmap-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.sysmap-svg[data-layout='narrow'] {
+  display: none;
+}
+@media (max-width: 720px) {
+  .sysmap-svg[data-layout='wide'] {
+    display: none;
+  }
+  .sysmap-svg[data-layout='narrow'] {
+    display: block;
+  }
+}
+.sysmap .wire {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.6;
+  transition:
+    stroke 0.4s,
+    stroke-width 0.4s;
+}
+.sysmap .wire.dashed {
+  stroke-dasharray: 5 6;
+}
+.sysmap .wire.live {
+  stroke-width: 2.4;
+  stroke-dasharray: 2 8;
+  stroke-linecap: round;
+}
+.sysmap .wire.live[data-tone='core'] {
+  stroke: var(--tone-core);
+}
+.sysmap .wire.live[data-tone='read'] {
+  stroke: var(--tone-read);
+}
+.sysmap .wire.live[data-tone='remote'] {
+  stroke: var(--tone-remote);
+}
+.sysmap .wire.live[data-tone='dte'] {
+  stroke: var(--tone-dte);
+}
+.sysmap .wire.live[data-tone='report'] {
+  stroke: var(--tone-report);
+}
+/* Without the script every wire reads as connected. */
+.sysmap:not(.js) .wire {
+  stroke: color-mix(in srgb, var(--tone-core) 45%, var(--line-strong));
+}
+.sysmap .node rect {
+  fill: var(--ink-850);
+  stroke: color-mix(in srgb, var(--tone) 45%, var(--line));
+  stroke-width: 1.4;
+  transition:
+    fill 0.4s,
+    stroke 0.4s;
+}
+.sysmap .node.on rect {
+  fill: color-mix(in srgb, var(--tone) 12%, var(--ink-850));
+  stroke: var(--tone);
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--tone) 45%, transparent));
+}
+.sysmap .node-label {
+  font: 600 15px var(--font-body);
+  fill: var(--text-hi);
+}
+.sysmap .node-sub {
+  font: 400 11.5px var(--font-mono);
+  fill: var(--text-mut);
+}
+.sysmap .node.on .node-sub {
+  fill: var(--tone);
+}
+.sysmap .core rect:first-child {
+  stroke: var(--tone-core);
+  stroke-width: 2;
+  fill: color-mix(in srgb, var(--tone-core) 6%, var(--ink-850));
+}
+.sysmap .core.on > rect:first-child {
+  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--tone-core) 35%, transparent));
+}
+.sysmap .core-label {
+  font: 700 48px var(--font-display);
+  letter-spacing: -0.04em;
+  fill: var(--tone-core);
+}
+.sysmap .core-sub {
+  font: 400 13px var(--font-mono);
+  fill: var(--text-mut);
+}
+.sysmap .chip rect {
+  fill: var(--ink-800);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  filter: none;
+  transition:
+    fill 0.3s,
+    stroke 0.3s;
+}
+.sysmap .chip text {
+  font: 500 11px var(--font-mono);
+  fill: var(--text-mut);
+}
+.sysmap .chip.on rect {
+  fill: var(--tone-core);
+  stroke: var(--tone-core);
+}
+.sysmap .chip.on text {
+  fill: var(--text-on-accent);
+  font-weight: 700;
+}
+.sysmap .packet {
+  fill: var(--tone);
+}
+
+/* The steps: a list at rest; with the script, a row of buttons and the
+   playing step's one line under them. */
+.sysmap-steps {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.sysmap-steps li {
+  margin: 0;
+}
+.sysmap-steps button {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  font: 600 14px/1.2 var(--font-body);
+  color: var(--text-hi);
+}
+.sysmap-steps .n {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font: 700 12px var(--font-mono);
+  color: var(--ink-900);
+  background: var(--tone);
+}
+.sysmap-steps p {
+  margin: 6px 0 0 30px;
+  font: 400 16px/1.5 var(--font-body);
+  color: var(--text-mut);
+}
+.sysmap-steps p code {
+  color: var(--tone);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+.sysmap.js .sysmap-steps {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.sysmap.js .sysmap-steps li {
+  display: contents;
+}
+.sysmap.js .sysmap-steps button {
+  grid-row: 1;
+  padding: 10px 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink-850);
+  color: var(--text-mut);
+  overflow: hidden;
+  transition:
+    border-color 0.3s,
+    color 0.3s,
+    background 0.3s;
+}
+.sysmap.js .sysmap-steps button:hover,
+.sysmap.js .sysmap-steps button:focus-visible {
+  color: var(--text-hi);
+  border-color: var(--line-strong);
+}
+.sysmap.js .sysmap-steps li.on button {
+  color: var(--text-hi);
+  border-color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 10%, var(--ink-850));
+}
+.sysmap.js .sysmap-steps li:not(.on) .n {
+  background: var(--line-strong);
+  color: var(--text-hi);
+}
+.sysmap.js .sysmap-steps .bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: var(--tone);
+}
+.sysmap.js.playing .sysmap-steps li.on .bar {
+  animation: step-bar var(--step-ms, 3400ms) linear forwards;
+}
+.sysmap.js:not(.playing) .sysmap-steps li.on .bar {
+  width: 100%;
+}
+@keyframes step-bar {
+  to {
+    width: 100%;
+  }
+}
+.sysmap.js .sysmap-steps p {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: none;
+  margin: 12px 0 0;
+  min-height: 3em;
+  font-size: 18px;
+  color: var(--text);
+}
+.sysmap.js .sysmap-steps li.on p {
+  display: block;
+  animation: line-in 0.45s var(--ease-out);
+}
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (max-width: 720px) {
+  .sysmap.js .sysmap-steps {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .sysmap.js .sysmap-steps li:nth-child(n + 5) button {
+    grid-row: 2;
+  }
+  .sysmap.js .sysmap-steps p {
+    grid-row: 3;
+    font-size: 16px;
+  }
+  .sysmap.js .sysmap-steps button {
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 4px 10px;
+    font-size: 12px;
+  }
+}
+
+/* ---- conformance: the count ---- */
+.cfm-hero {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 32px 0 8px;
+}
+.cfm-hero strong {
+  font: 700 clamp(64px, 10vw, 128px) / 0.9 var(--font-display);
+  letter-spacing: -0.05em;
+  color: var(--phosphor-bright);
+  text-shadow: var(--text-glow);
+  font-variant-numeric: tabular-nums;
+}
+.cfm-hero span {
+  font: 500 20px/1.3 var(--font-body);
+  color: var(--text-mut);
+}
+
+/* ---- every plugin, with its tone from the map ---- */
+.vx-landing .plugin-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .vx-landing .plugin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .vx-landing .plugin-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.plugin-card[class*='tone-'] {
+  border-top: 3px solid var(--tone);
+  transition:
+    transform 0.25s var(--ease-out),
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+.plugin-card[class*='tone-'] .plugin-pkg {
+  color: var(--tone);
+}
+.plugin-card[class*='tone-']:hover {
+  border-color: var(--tone);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--tone) 50%, transparent);
+}
+
+/* ---- Distributed task execution, drawn ---- */
+.dte-run {
+  margin-top: 36px;
+  --lane-h: 46px;
+  --who: 150px;
+}
+.dte-chart {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ink-850);
+}
+.dte-lane,
+.dte-axis {
+  display: grid;
+  grid-template-columns: var(--who) minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+.dte-lane + .dte-lane {
+  margin-top: 10px;
+}
+.dte-who strong {
+  display: block;
+  font: 600 14px/1.2 var(--font-body);
+  color: var(--text-hi);
+}
+.dte-who span {
+  font: 400 12px/1.3 var(--font-mono);
+  color: var(--text-faint);
+}
+.dte-track {
+  position: relative;
+  height: var(--lane-h);
+  border-radius: 8px;
+  background: repeating-linear-gradient(90deg, var(--line-faint) 0 1px, transparent 1px 10%);
+}
+.dte-block {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: calc(var(--s) * 1%);
+  width: calc((var(--e) - var(--s)) * 1% - 3px);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  transform-origin: left center;
+}
+.dte-name {
+  font: 500 12px/1 var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dte-crit {
+  background: var(--tone-core);
+  color: var(--text-on-accent);
+  box-shadow: 0 0 18px -4px color-mix(in srgb, var(--tone-core) 70%, transparent);
+}
+.dte-task {
+  background: color-mix(in srgb, var(--tone-dte) 30%, var(--ink-800));
+  border: 1px solid var(--tone-dte);
+  color: var(--text-hi);
+}
+.dte-warm {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tone-dte) 35%, transparent) 0 4px,
+    transparent 4px 8px
+  );
+  color: var(--text-mut);
+}
+.dte-hit {
+  background: color-mix(in srgb, var(--tone-remote) 30%, var(--ink-800));
+  border: 1px solid var(--tone-remote);
+  color: var(--text-hi);
+}
+.dte-plan {
+  background: var(--ink-700);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+}
+.dte-stop {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: calc(var(--s) * 1%);
+  width: 2px;
+  background: var(--text-faint);
+}
+.dte-stop::after {
+  content: 'stops';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 400 11px var(--font-mono);
+  color: var(--text-faint);
+}
+.dte-axis {
+  margin-top: 6px;
+}
+.dte-axis .dte-track {
+  height: 22px;
+  background: none;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+.dte-end {
+  position: absolute;
+  right: 0;
+  top: 6px;
+  font: 500 12px var(--font-mono);
+  color: var(--tone-core);
+  white-space: nowrap;
+}
+.dte-cursor {
+  display: none;
+}
+.dte-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 14px 0 0;
+  padding: 0;
+  font: 400 13px var(--font-mono);
+  color: var(--text-mut);
+}
+.dte-legend .sw {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  vertical-align: -1px;
+  border-radius: 3px;
+}
+.dte-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
+}
+/* The sweep: each block draws in as the cursor reaches it. */
+.dte-run.js .dte-chart {
+  position: relative;
+}
+.dte-run.js.go .dte-block {
+  animation: draw calc((var(--e) - var(--s)) * var(--sweep) / 100) linear
+    calc(var(--s) * var(--sweep) / 100) both;
+}
+.dte-run.js.go .dte-stop {
+  animation: pop 0.3s ease-out calc(var(--s) * var(--sweep) / 100) both;
+}
+.dte-run.js.go .dte-end {
+  animation: pop 0.4s ease-out var(--sweep) both;
+}
+.dte-run.js .dte-axis .dte-cursor {
+  display: block;
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  width: 2px;
+  height: calc(4 * (var(--lane-h) + 10px) + 12px);
+  background: linear-gradient(var(--tone-core), transparent);
+  opacity: 0;
+}
+.dte-run.js.go .dte-axis .dte-cursor {
+  animation: sweep var(--sweep) linear both;
+}
+@keyframes draw {
+  from {
+    transform: scaleX(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sweep {
+  0% {
+    left: 0;
+    opacity: 1;
+  }
+  98% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+@media (max-width: 720px) {
+  .dte-run {
+    --who: 64px;
+    --lane-h: 38px;
+  }
+  .dte-chart {
+    padding: 12px;
+  }
+  .dte-lane,
+  .dte-axis {
+    gap: 8px;
+  }
+  .dte-who strong {
+    font-size: 12px;
+  }
+  .dte-who span {
+    display: none;
+  }
+  .dte-name {
+    font-size: 10px;
+  }
+  .dte-block {
+    padding: 0 4px;
+  }
+  .dte-stop::after {
+    display: none;
+  }
+  .dte-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- each section rises in; charts and scores grow ---- */
+.motion .section > .container {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.8s var(--ease-out),
+    transform 0.8s var(--ease-out);
+}
+.motion .section.in > .container {
+  opacity: 1;
+  transform: none;
+}
+.motion #bench .vx-bar-fill,
+.motion #conformance .score-bar span {
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 1.6s var(--ease-out);
+}
+.motion #bench.in .vx-bar-fill,
+.motion #conformance.in .score-bar span {
+  transform: scaleX(1);
+}
+.motion #bench .vx-bars:nth-child(2) .vx-bar-fill {
+  transition-delay: 0.15s;
+}
+.motion #bench .vx-bars:nth-child(3) .vx-bar-fill {
+  transition-delay: 0.3s;
+}
+.motion #bench .vx-bars:nth-child(4) .vx-bar-fill {
+  transition-delay: 0.45s;
+}
+.motion #conformance li:nth-child(2) .score-bar span {
+  transition-delay: 0.1s;
+}
+.motion #conformance li:nth-child(3) .score-bar span {
+  transition-delay: 0.2s;
+}
+.motion #conformance li:nth-child(4) .score-bar span {
+  transition-delay: 0.3s;
+}
+.motion #conformance li:nth-child(5) .score-bar span {
+  transition-delay: 0.4s;
+}
+.motion #conformance li:nth-child(6) .score-bar span {
+  transition-delay: 0.5s;
+}
