@@ -114,7 +114,7 @@ Two tools, and they answer different questions:
   in a dry run `plan` — with
   each stage's own and cumulative time, plus accumulated per-task spans (`cache.get`,
   `output glob`, `output stat` and `task hash` among them;
-  [`modules/timing.md`](./modules/timing.md) lists every one). This is the first thing to
+  [`modules/util.md`](./modules/util.md#srcutiltimingts--vx_debug_timing-stage-table) lists every one). This is the first thing to
   read: it says WHICH stage moved. The per-task spans run under the
   scheduler's concurrency, so they over-count (a span's wall includes
   time yielded to other tasks); compare them to each other, not to the

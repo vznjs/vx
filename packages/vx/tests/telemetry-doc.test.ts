@@ -1,7 +1,7 @@
 // The telemetry records are a 1.0 contract (TELEMETRY_SCHEMA_VERSION):
 // package-api.txt freezes their shapes and contract-versioning-doc holds
 // the kinds. This holds the reference a sink author reads,
-// docs/modules/telemetry.md § Records: each record interface reprinted
+// docs/modules/orchestrator.md § Records: each record interface reprinted
 // with the source's fields and optionality, and each streaming kind's row
 // naming its fields, both ways. A field the source sends that the page
 // leaves out is data nobody knows to read; one the page names that the

@@ -199,7 +199,7 @@ plugin) and `teardown`. Consultation lives in `plugin-host.ts`
 and ships none — running here (`src/exec/local-executor.ts`) and caching
 here (the local `Cache`) are its FLOOR, not plugins: the tail of every
 executor list, and the first layer every cache lookup asks, before each
-remote in declared order (see `docs/modules/plugins.md`);
+remote in declared order (see `docs/modules/orchestrator.md`);
 a workspace that declares none runs and caches, and every plugin is a
 package (`packages/vx-*`) declared in `.vx/workspace.ts`. The hard
 invariant for observe-only plugins: **a workspace whose telemetry plugins
@@ -500,7 +500,7 @@ imports.
 
 A project config's first load is served the bytes the loader already
 read (a `Bun.plugin` onLoad, under its plain path) instead of letting Bun read
-the file again — ESM and UTF-8 only; see `docs/modules/project-loader.md`.
+the file again — ESM and UTF-8 only; see `docs/modules/workspace.md`.
 
 The loader validates each task's shape at load time and surfaces a
 `UserError` (clean output, no stack) on malformed configs. Among the

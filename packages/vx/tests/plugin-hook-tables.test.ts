@@ -40,7 +40,7 @@ const PAGES = [
     column: 1,
     expected: PLUGIN_HOOKS.filter((h) => !LIFECYCLE.includes(h)),
   },
-  { file: 'modules/plugin.md', column: 1, expected: [...PLUGIN_HOOKS] },
+  { file: 'modules/orchestrator.md', column: 1, expected: [...PLUGIN_HOOKS] },
   { file: 'design/pipeline-2026-09.md', column: 2, expected: [...PLUGIN_HOOKS] },
 ]
 

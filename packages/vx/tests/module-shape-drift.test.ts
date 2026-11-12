@@ -150,7 +150,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
-    const doc = read('docs/modules/inputs.md')
+    const doc = read('docs/modules/cache.md')
     const rule = /\*\*Always-ignored\*\* — hard-coded([\s\S]*?)— applied/.exec(doc)
     expect(rule).not.toBeNull()
     expect([...rule![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
@@ -161,7 +161,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const arr = /export const ESSENTIAL_ENV: readonly string\[\] = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)
-    const doc = read('docs/modules/env.md')
+    const doc = read('docs/modules/exec.md')
     const list = /The list:\n\n([\s\S]*?)\n\n/.exec(doc)
     expect(list).not.toBeNull()
     expect([...list![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
@@ -191,7 +191,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     )
     expect(arr).not.toBeNull()
     const providers = [...arr![1]!.matchAll(/\['\w+', '(\w+)'\]/g)].map((m) => m[1]!)
-    const doc = read('docs/modules/run-context.md')
+    const doc = read('docs/modules/orchestrator.md')
     const bullet = /first truthy variable wins[\s\S]*?: ([\s\S]*?)\.\n/.exec(doc)
     expect(bullet).not.toBeNull()
     const named = [...bullet![1]!.matchAll(/`(\w+)`/g)].map((m) => m[1]!).filter((n) => n !== 'CI')
@@ -203,7 +203,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     // the generator became Bun.randomUUIDv7 (item 327, 2026-09-16).
     const id = ulid()
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
-    const doc = read('docs/modules/util-ulid.md')
+    const doc = read('docs/modules/util.md')
     expect(doc).toContain(`a ${id.length}-character UUIDv7`)
     expect(doc).not.toContain('26-character')
   })
@@ -235,7 +235,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
       expect(read(`docs/modules/${page}.md`)).toContain(line![0])
     }
     const settle = /const DEFAULT_TIMEOUT_MS = (\d+)/.exec(read('src/util/settle.ts'))
-    expect(read('docs/modules/util-settle.md')).toContain(`// default ${settle![1]}`)
+    expect(read('docs/modules/util.md')).toContain(`// default ${settle![1]}`)
   })
 
   it("download-policy.md's DownloadMode is the source's union", () => {
@@ -243,11 +243,11 @@ describe('a module page quotes a constant or a regex the module has', () => {
       read('src/orchestrator/download-policy.ts'),
     )
     expect(line).not.toBeNull()
-    expect(read('docs/modules/download-policy.md')).toContain(`${line![0]}\n`)
+    expect(read('docs/modules/orchestrator.md')).toContain(`${line![0]}\n`)
   })
 
   it("cli-cache.md's two regexes are parseDuration's and parseSize's", () => {
-    const doc = read('docs/modules/cli-cache.md')
+    const doc = read('docs/modules/cli.md')
     const quoted = [...doc.matchAll(/```\n(\/[^\n]+\/i?)\n```/g)].map((m) => m[1]!)
     expect(quoted).toHaveLength(2)
     const duration = /export function parseDuration[\s\S]*?input\.match\((\/.*\/i?)\)$/m.exec(
@@ -275,7 +275,7 @@ describe('a module page lists the functions the module exports', () => {
       'diffsOlderRun',
       'upstreamTask',
     ])
-    const doc = read('docs/modules/metrics.md')
+    const doc = read('docs/modules/history.md')
     const block = /```ts\n([\s\S]*?)```/.exec(doc)
     expect(block).not.toBeNull()
     const named = [...block![1]!.matchAll(/^(\w+)\(/gm)].map((m) => m[1]!)
@@ -304,7 +304,7 @@ describe('cli-help.md names every section the help text has', () => {
     const src = read('src/cli/help.ts')
     const headers = [...src.matchAll(/^    '([A-Z][^']*):',$/gm)].map((m) => m[1]!)
     expect(headers.length).toBeGreaterThan(8)
-    const doc = read('docs/modules/cli-help.md')
+    const doc = read('docs/modules/cli.md')
     const section = /## Sections \(current\)\n([\s\S]*?)\n## /.exec(doc)
     expect(section).not.toBeNull()
     const named = [...section![1]!.matchAll(/^- `([^`]+)`/gm)].map((m) => m[1]!)
@@ -314,7 +314,7 @@ describe('cli-help.md names every section the help text has', () => {
 
 describe('a module page shows what a formatter prints', () => {
   it("cli-format.md's byte table is formatBytes, row for row", () => {
-    const doc = read('docs/modules/cli-format.md')
+    const doc = read('docs/modules/cli.md')
     const rows = [...doc.matchAll(/^\| `([^`]+)`\s+\| `([^`]+)`\s+\|$/gm)].map((m) => [
       m[1]!,
       m[2]!,
@@ -338,7 +338,7 @@ describe('a module page lists the errors a parser throws', () => {
     const thrown = new Set(
       [...src.matchAll(/new DependencySpecError\(field, raw, '([^']+)'\)/g)].map((m) => m[1]!),
     )
-    const doc = read('docs/modules/dependency-spec.md')
+    const doc = read('docs/modules/util.md')
     const errors = /Errors:\n\n([\s\S]*?)\n\n/.exec(doc)
     expect(errors).not.toBeNull()
     const named = new Set([...errors![1]!.matchAll(/→ `([^`]+)`/g)].map((m) => m[1]!))
@@ -350,8 +350,8 @@ describe('a module page lists the errors a parser throws', () => {
 describe('a module page names every export the module has', () => {
   const EXPORT_RE = /^export (?:async )?(?:interface|type|const|function) (\w+)/gm
   for (const [page, source, atLeast] of [
-    ['docs/modules/config.md', 'src/config.ts', 12],
-    ['docs/modules/projects.md', 'src/orchestrator/projects.ts', 4],
+    ['docs/modules/index.md', 'src/config.ts', 12],
+    ['docs/modules/orchestrator.md', 'src/orchestrator/projects.ts', 4],
   ] as const) {
     it(`${page}'s surface block names each export of ${source}`, () => {
       const exported = [...read(source).matchAll(EXPORT_RE)].map((m) => m[1]!)
@@ -397,7 +397,7 @@ describe('plugin-host.md names every export of the host', () => {
       (m) => m[1]!,
     )
     expect(exported.length).toBeGreaterThan(10)
-    const section = /## Public surface\n([\s\S]*?)\n## /.exec(read('docs/modules/plugin-host.md'))
+    const section = /## Public surface\n([\s\S]*?)\n## /.exec(read('docs/modules/orchestrator.md'))
     expect(section).not.toBeNull()
     const named = new Set([...section![1]!.matchAll(/`(\w+)/g)].map((m) => m[1]!))
     expect(exported.filter((n) => !named.has(n))).toEqual([])
@@ -412,7 +412,7 @@ describe('a module page lists the tests its suite has', () => {
       ...src.matchAll(/^  it\((?:\n {4})?'(.+)',(?: |\n {4})(?:async )?\(\) => \{$/gm),
     ].map((m) => m[1]!)
     expect(names.length).toBeGreaterThan(10)
-    const doc = read('docs/modules/package-graph.md')
+    const doc = read('docs/modules/workspace.md')
     const section = /## Tests\n\n`tests\/package-graph\.test\.ts`:\n\n([\s\S]*?)\n\n/.exec(doc)
     expect(section).not.toBeNull()
     expect([...section![1]!.matchAll(/^- (.+)$/gm)].map((m) => m[1]!)).toEqual(names)
@@ -421,7 +421,7 @@ describe('a module page lists the tests its suite has', () => {
 
 describe('timing.md lists every mark and span the run path records', () => {
   const section = (): string => {
-    const m = /## Marks and spans \(current\)\n([\s\S]*?)\n## /.exec(read('docs/modules/timing.md'))
+    const m = /## Marks and spans \(current\)\n([\s\S]*?)\n## /.exec(read('docs/modules/util.md'))
     expect(m).not.toBeNull()
     return m![1]!
   }

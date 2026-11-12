@@ -1,5 +1,5 @@
 // The remote-cache seam, end to end: core ships NO wire client
-// (docs/modules/layered-cache.md), so every remote layer here is an injected
+// (docs/modules/cache.md#srccachelayered-cachets--the-local-cache-with-the-declared-remotes-behind-it), so every remote layer here is an injected
 // `RunOptions.remoteCache` — an in-memory RemoteCacheLayer or a stub-HTTP
 // one where observing the wire matters. Coverage carried over from the
 // retired env-hatch (VX_REMOTE_CACHE_*) suites: the remote-hit e2e, the

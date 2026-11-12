@@ -2,7 +2,7 @@
 
 > **Status: shipped in part, superseded in part (read with 2026-09 in
 > hand).** The executor seam itself landed and `@vzn/vx-reapi` ships as
-> the proof of it — that half is current, and `modules/executor.md` cites
+> the proof of it — that half is current, and `modules/exec.md` cites
 > § 4 for the `outputs` discriminator a later design still owes. Three
 > things here did NOT survive the 2026-09 direction. The **local plugins**
 > (`localExecutorPlugin()` / `localCachePlugin()` under `src/plugins/`,

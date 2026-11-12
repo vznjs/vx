@@ -282,7 +282,7 @@ describe('placement in the plan', () => {
   })
 })
 
-describe('docs/modules/plan-format.md shows what the formatters print', () => {
+describe('docs/modules/cli.md shows what the formatters print', () => {
   // The page showed a "no-cache — opts out" row, a group row the text form
   // hides, a four-task plan summed as three, and a DOT document the
   // formatter never wrote (item 313,

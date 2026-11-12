@@ -133,7 +133,7 @@ export interface LentAccess {
  * cache miss, reported to the remote's `onError`). The artifact bytes are the
  * local `<hash>.tar.zst` verbatim. The wires live in plugin packages
  * (`@vzn/vx-migrate`'s `turboCache()` and `nxCache()`, `@vzn/vx-reapi`); see
- * docs/modules/layered-cache.md.
+ * docs/modules/cache.md.
  *
  * Core awaits every call and bounds none: a `get` that never settles
  * holds its task and a `put` the run's upload drain, so each request

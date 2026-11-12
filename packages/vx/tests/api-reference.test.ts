@@ -21,7 +21,7 @@ function page(): string {
     'Every export of `@vzn/vx`, generated from `src/index.ts` by',
     '`tests/api-reference.test.ts`: the declaration (comments dropped, a',
     'function to its signature, a class to its public members) and the doc',
-    'comment above it. [The public surface](modules/index.md) groups the',
+    'comment above it. [The public surface](modules/index.md#srcindexts--public-package-surface) groups the',
     'same names by what they are for; the plugins guide shows them in use.',
     '',
   ]

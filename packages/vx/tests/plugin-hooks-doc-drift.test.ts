@@ -37,8 +37,8 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
     for (const hook of PLUGIN_HOOKS) if (!LIFECYCLE.has(hook)) expect(found).toContain(hook)
   })
 
-  it('modules/plugin.md tabulates every hook', async () => {
-    const found = await tabulatedHooks('modules/plugin.md')
+  it('modules/orchestrator.md tabulates every hook', async () => {
+    const found = await tabulatedHooks('modules/orchestrator.md')
     for (const hook of PLUGIN_HOOKS) expect(found).toContain(hook)
   })
 
@@ -92,7 +92,7 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
   it('CONTROL: a table that lacks a hook is caught', async () => {
     // The extractor sees exactly what the rows say: a table without `admit`
     // fails the check above, so a passing run is evidence, not vacuity.
-    const text = await Bun.file(path.join(DOCS, 'modules/plugin.md')).text()
+    const text = await Bun.file(path.join(DOCS, 'modules/orchestrator.md')).text()
     const without = text.replace(/^\|\s*`admit\(.*$/m, '')
     const out = new Set<string>()
     for (const m of without.matchAll(/^\|\s*`([a-z]+)(?:\(|`)/gm)) out.add(m[1]!)

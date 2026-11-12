@@ -18,18 +18,15 @@ const FALLBACKS = JSON.parse(
 const flat = (rel: string): string => read(rel).split(/\s+/).join(' ')
 
 describe('every page stating the bare --affected base names the base branch', () => {
-  it.each(['docs/modules/cli-run.md', 'docs/modules/affected.md', 'docs/schema.md'])(
-    '%s',
-    (rel) => {
-      const text = flat(rel)
-      expect({
-        branch: text.includes('origin/<baseBranch>'),
-        guess: /(then|else|falls back to) `?HEAD~1/.test(text),
-      }).toEqual({ branch: true, guess: false })
-    },
-  )
+  it.each(['docs/modules/cli.md', 'docs/modules/workspace.md', 'docs/schema.md'])('%s', (rel) => {
+    const text = flat(rel)
+    expect({
+      branch: text.includes('origin/<baseBranch>'),
+      guess: /(then|else|falls back to) `?HEAD~1/.test(text),
+    }).toEqual({ branch: true, guess: false })
+  })
 
-  it.each(['docs/modules/affected.md', 'docs/schema.md'])('%s names the fallbacks', (rel) => {
+  it.each(['docs/modules/workspace.md', 'docs/schema.md'])('%s names the fallbacks', (rel) => {
     const text = flat(rel)
     expect(FALLBACKS.filter((b) => !text.includes(`\`${b}\``))).toEqual([])
   })
