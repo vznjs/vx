@@ -27,7 +27,12 @@
   "engines": {
     "bun": ">=1.4.4"
   },
+  "//": [
+    "@vzn/vx-devtools: checks the GitHub OIDC token that proves a participant of the run, the check vx's servers share.",
+    "@vzn/vx-dte-server: the relay's prover, and the relay the local() adapter serves."
+  ],
   "dependencies": {
+    "@vzn/vx-devtools": "workspace:*",
     "@vzn/vx-dte-server": "workspace:*"
   },
   "devDependencies": {
