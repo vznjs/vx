@@ -895,3 +895,25 @@ failed)` / `failed (output clean failed)` for a miss whose save or clean
   C-77), and one added during it hears the next event.
 - Raw `TaskOutcome`s are NOT serializable (bigint + graph back-refs);
   anything crossing a process boundary goes through `toWireEvent`.
+
+## `src/report/migration.ts` — a migration's report
+
+### Purpose
+
+`applyMigration`, the seam an adoption tool calls (on the façade):
+`workspace`'s `writeMigration` writes the plan and answers with a
+`MigrationReport`; this draws it. Under `--dry`, each file as an excerpt;
+a lock refusal above; then the `from` … `next` rows. Under `--json`, the
+one document on stdout.
+
+### Public surface
+
+```ts
+export function applyMigration(args: ApplyMigrationArgs): Promise<number>
+```
+
+### Tests
+
+`tests/migration.test.ts`, `init-next-task.test.ts`,
+`write-through-link.test.ts`, `cli-json-schemas.test.ts` and vx-migrate's
+suites pin the report and the JSON byte for byte.

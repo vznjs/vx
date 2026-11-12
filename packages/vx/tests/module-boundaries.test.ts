@@ -41,7 +41,7 @@ const ALLOWED: Record<string, readonly string[]> = {
   handoff: ['util', 'ui'],
   // `version`: the lock records which vx validated it.
   // `handoff`: the git top-level, learned once for the hand-off and the root walk.
-  workspace: ['util', 'config', 'version', 'settings', 'handoff', 'ui'],
+  workspace: ['util', 'config', 'version', 'settings', 'handoff'],
   graph: ['util', 'config', 'workspace'],
   // `index-db`: cache.db's one schema, below every module that reads or
   // writes a table of it.
@@ -60,7 +60,8 @@ const ALLOWED: Record<string, readonly string[]> = {
   history: ['util', 'graph', 'cache', 'ui', 'index-db'],
   // `report`: renders the outcomes it is handed; it never runs a task or
   // reads the cache, so it reaches neither orchestrator nor cache.
-  report: ['util', 'settings', 'exec', 'graph', 'ui'],
+  // `workspace`: a migration's report, drawn from what its write answers.
+  report: ['util', 'version', 'settings', 'workspace', 'exec', 'graph', 'ui'],
   orchestrator: [
     'util',
     'config',

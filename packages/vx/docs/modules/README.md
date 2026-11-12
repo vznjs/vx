@@ -126,6 +126,7 @@ here, itself or in a brace group.
 | [`report.md`](./report.md#srcreportsummaryts--end-of-run-summary-lines)          | `src/report/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                |
 | [`report.md`](./report.md#srcreporttallyts--outcome-tally)                       | `src/report/tally.ts` — outcome tally for the end-of-run footer.                                                    |
 | [`report.md`](./report.md#srcreporteventsts--run-event-bus--wire-contract)       | `src/report/events.ts` — run event bus + serializable `WireEvent` contract.                                         |
+| [`report.md`](./report.md#srcreportmigrationts--a-migrations-report)             | `src/report/migration.ts` — `applyMigration`: a migration written by `workspace`, then drawn.                       |
 
 ## History
 

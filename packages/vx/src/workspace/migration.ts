@@ -19,8 +19,6 @@ import {
   UserError,
   writeNoFollow,
 } from '../util/index.js'
-import * as ui from '../ui/index.js'
-import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 
@@ -292,10 +290,41 @@ export interface WorkspacePlugin {
 export type MigrationFormat = 'ts' | 'mjs'
 
 /**
- * Render a plan to files, refuse to overwrite without `force`, write (or
- * print, under `dry`), and report. Returns the process exit code.
+ * What a migration did, for `report` to draw: the files a dry run shows,
+ * the counts and lines of each row, the lock's answer, the next step.
  */
-export async function applyMigration(args: ApplyMigrationArgs): Promise<number> {
+export interface MigrationReport {
+  readonly verb: string
+  readonly source: string
+  readonly dry: boolean
+  /** Under `dry`, each file as it would be written. */
+  readonly shown: readonly { readonly relPath: string; readonly contents: string }[]
+  readonly steps: readonly (readonly [label: string, value: string])[]
+  /** Why the plan holds no task; none when it holds some. */
+  readonly empty: string | undefined
+  readonly clean: number
+  readonly todo: number
+  /** Each TODO reason and the task ids it holds. */
+  readonly todos: readonly (readonly [reason: string, ids: readonly string[]])[]
+  readonly files: readonly string[]
+  readonly kept: readonly string[]
+  readonly replaced: readonly string[]
+  /** The lock step's answer; none under `dry` or with no lock step. */
+  readonly lock?: { readonly code: number; readonly said: string }
+  readonly notes: readonly string[]
+  /** An empty plan's worked example: its label and the config. */
+  readonly example?: readonly [label: string, config: string]
+  readonly next: string
+}
+
+/**
+ * Render a plan to files, refuse to overwrite without `force`, write them
+ * (not under `dry`) and run the lock step. Returns what `report` draws, or
+ * under `json` the one document a dry run prints.
+ */
+export async function writeMigration(
+  args: ApplyMigrationArgs,
+): Promise<MigrationReport | { readonly json: string }> {
   const { root, metas, plan, source, verb, dry, force } = args
   const init = args.init === true
   const format: MigrationFormat = args.format ?? 'ts'
@@ -441,11 +470,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       if (f !== target && !replaced.includes(f) && isStarterConfig(f)) replaced.push(f)
     }
   }
-  if (dry && args.json !== true) {
-    for (const f of files) {
-      ui.print('out', ui.excerpt(f.relPath, f.contents))
-    }
-  } else if (!dry) {
+  if (!dry) {
     for (const f of files) refuseSymlink(f.abs, root)
     for (const f of files) await writeNoFollow(f.abs, f.contents, root)
     for (const f of replaced) await unlink(f)
@@ -508,9 +533,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     ...plan.notes,
   ]
   if (args.json === true) {
-    ui.data(
-      'out',
-      `${JSON.stringify({
+    return {
+      json: `${JSON.stringify({
         dry,
         source,
         files: files.map((f) => ({ path: f.relPath, contents: f.contents })),
@@ -524,71 +548,43 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
         ],
         next,
       })}\n`,
-    )
-    return 0
-  }
-
-  // The lock's own words become a row; a refusal prints above the report.
-  const lock = dry || args.lock === undefined ? undefined : lockAnswer(await args.lock(root))
-  if (lock !== undefined && lock.code !== 0) ui.data('err', lock.said)
-
-  const rows: ui.FieldRow[] = [['from', source]]
-  if (dry) rows.push(['dry run', 'nothing written'])
-  for (const [label, value] of args.steps ?? []) rows.push([label, value])
-  if (empty) {
-    const why =
-      emptyReason ??
-      (args.unmapped === true
-        ? 'no package.json script became a task'
-        : 'no package.json scripts to turn into tasks')
-    rows.push(['tasks', [ui.dim('none'), `: ${why}`]])
-  } else {
-    const parts = [
-      ...(clean > 0 ? [ui.tone('ok', `${clean} clean`)] : []),
-      ...(todo > 0 ? [ui.tone('warn', `${todo} todo`)] : []),
-    ]
-    if (parts.length > 0)
-      rows.push(['tasks', parts.flatMap((p, i) => (i === 0 ? [p] : [ui.dim(' · '), p]))])
-    const todoLines: string[] = []
-    for (const [reason, ids] of todos) {
-      if (ids.length === 1) todoLines.push(`${ids[0]}: ${reason}`)
-      else {
-        const shown = ids.slice(0, TODO_IDS_SHOWN).join(', ')
-        const more = ids.length - TODO_IDS_SHOWN
-        todoLines.push(`${shown}${more > 0 ? ` and ${more} more` : ''}:`, `  ${reason}`)
-      }
     }
-    if (todoLines.length > 0) rows.push(['todo', ...todoLines])
   }
-  if (files.length > 0) rows.push(['files', ...fileLines(files.map((f) => f.relPath))])
-  const keptLines = [
-    ...kept.map((f) => `${f} (has a vx config)`),
-    ...(empty && hasWorkspaceFile ? [workspaceName] : []),
-  ]
-  if (keptLines.length > 0) rows.push(['kept', ...keptLines])
-  if (replaced.length > 0) rows.push(['replaced', ...replaced.map((f) => relPosix(root, f))])
-  if (lock !== undefined) {
-    rows.push([
-      'lock',
-      lock.code === 0
-        ? lock.said.trim().replace(/^✓ vx lock\s+/, '')
-        : ui.tone('error', 'not written'),
-    ])
+
+  const lock = dry || args.lock === undefined ? undefined : lockAnswer(await args.lock(root))
+  return {
+    verb,
+    source,
+    dry,
+    shown: dry ? files.map((f) => ({ relPath: f.relPath, contents: f.contents })) : [],
+    steps: args.steps ?? [],
+    empty: empty
+      ? (emptyReason ??
+        (args.unmapped === true
+          ? 'no package.json script became a task'
+          : 'no package.json scripts to turn into tasks'))
+      : undefined,
+    clean,
+    todo,
+    todos: [...todos],
+    files: files.map((f) => f.relPath),
+    kept: [
+      ...kept.map((f) => `${f} (has a vx config)`),
+      ...(empty && hasWorkspaceFile ? [workspaceName] : []),
+    ],
+    replaced: replaced.map((f) => relPosix(root, f)),
+    ...(lock === undefined ? {} : { lock }),
+    notes,
+    ...(empty && emptyReason === undefined
+      ? {
+          example: [
+            `a ${configName} beside a package.json, with your own command:`,
+            exampleConfig(format).trimEnd(),
+          ] as const,
+        }
+      : {}),
+    next,
   }
-  if (notes.length > 0) rows.push(['note', ...notes])
-  if (empty && emptyReason === undefined) {
-    rows.push([
-      'example',
-      `a ${configName} beside a package.json, with your own command:`,
-      '',
-      exampleConfig(format).trimEnd(),
-    ])
-  }
-  const said =
-    lock === undefined || lock.code === 0 ? next : `fix the above, then vx lock and ${next}`
-  rows.push(null, ['next', said])
-  ui.print('out', ui.report(`${verb} ${VERSION}`, rows))
-  return lock === undefined || lock.code === 0 ? 0 : 1
 }
 
 /**
@@ -635,7 +631,7 @@ function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): s
           `stop ignoring ${[...blocking].join(' and ')} (a ! line cannot re-include a file inside an ignored directory)`,
         ]),
   ]
-  return `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, TODO_IDS_SHOWN).join(', ')}${ignored.length > TODO_IDS_SHOWN ? ', …' : ''}): ${cures.join(', ')}, or commit them with git add -f`
+  return `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, IGNORED_SHOWN).join(', ')}${ignored.length > IGNORED_SHOWN ? ', …' : ''}): ${cures.join(', ')}, or commit them with git add -f`
 }
 
 /** The paths (root-relative) git's ignore rules drop; none outside a work tree. */
@@ -680,17 +676,8 @@ function nextTask(tasks: readonly GeneratedTask[]): string {
   return names.includes('build') ? 'build' : (fit?.name ?? names[0] ?? 'build')
 }
 
-/** Files named one per line; past this, the root's and a count (TanStack form: 97). */
-const FILES_SHOWN = 10
-
-function fileLines(paths: readonly string[]): string[] {
-  if (paths.length <= FILES_SHOWN) return [...paths]
-  const root = paths.filter((p) => !p.includes('/') || p.startsWith('.vx/'))
-  return [...root, `and ${paths.length - root.length} more in package directories`]
-}
-
-/** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */
-const TODO_IDS_SHOWN = 5
+/** Files a .gitignore drops, named in its note. */
+const IGNORED_SHOWN = 5
 
 const EXAMPLE_BODY = `export default {
   tasks: {

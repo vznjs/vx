@@ -59,7 +59,7 @@ migration history live in
 | `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, env composition, the executor contract                                                                                   |
 | `sandbox`      | dir + `index.ts`            | a task's sandbox request in, its result and violations out: `sandboxRequestFor`, `runSandboxed`, `sandboxFix`                                           |
 | `history`      | dir + `index.ts`            | what runs leave: written (`runHistory`, `HistoryStream`) and read back (`LocalHistoryProvider`, flakiness, `vx last` / `vx why`, `createMissExplainer`) |
-| `report`       | dir + `index.ts`            | the run event bus (`createEventBus`, `WireEvent`), `defaultLogger`, the summary and forecast; renders, never runs                                       |
+| `report`       | dir + `index.ts`            | the run event bus (`createEventBus`, `WireEvent`), `defaultLogger`, the summary and forecast, a migration's report; renders, never runs                 |
 | `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts                                                                                            |
 | `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                      |
 
@@ -122,7 +122,7 @@ graph TD
 | **ui**           | ✓    | —   |        |         |          |         |           |       |          |      |       |      |         |         |        |              |     |       |
 | **settings**     | ✓    | ✓   |        |         | —        |         |           |       |          |      |       |      |         |         |        |              |     |       |
 | **handoff**      | ✓    | ✓   |        |         |          | —       |           |       |          |      |       |      |         |         |        |              |     |       |
-| **workspace**    | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | —         |       |          |      |       |      |         |         |        |              |     |       |
+| **workspace**    | ✓    |     | ✓      | ✓       | ✓        | ✓       | —         |       |          |      |       |      |         |         |        |              |     |       |
 | **graph**        | ✓    |     | ✓      |         |          |         | ✓         | —     |          |      |       |      |         |         |        |              |     |       |
 | **index-db**     | ✓    |     |        |         |          |         |           |       | —        |      |       |      |         |         |        |              |     |       |
 | **memo**         | ✓    |     |        |         |          |         |           |       | ✓        | —    |       |      |         |         |        |              |     |       |
@@ -130,14 +130,14 @@ graph TD
 | **exec**         | ✓    |     | ✓      |         |          |         |           |       |          |      |       | —    |         |         |        |              |     |       |
 | **sandbox**      | ✓    |     | ✓      |         |          |         |           | ✓     |          |      | ✓     | ✓    | —       |         |        |              |     |       |
 | **history**      | ✓    | ✓   |        |         |          |         |           | ✓     | ✓        |      | ✓     |      |         | —       |        |              |     |       |
-| **report**       | ✓    | ✓   |        |         | ✓        |         |           | ✓     |          |      |       | ✓    |         |         | —      |              |     |       |
+| **report**       | ✓    | ✓   |        | ✓       | ✓        |         | ✓         | ✓     |          |      |       | ✓    |         |         | —      |              |     |       |
 | **orchestrator** | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓        | ✓    | ✓     | ✓    | ✓       | ✓       | ✓      | —            |     |       |
 | **cli**          | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     |          | ✓    | ✓     |      |         | ✓       | ✓      | ✓            | —   |       |
 | **index**        | ✓    | ✓   | ✓      | ✓       | ✓        |         | ✓         | ✓     |          |      | ✓     | ✓    | ✓       | ✓       | ✓      | ✓            |     | —     |
 | **bin**          | ✓    | ✓   |        | ✓       |          | ✓       |           |       |          |      |       |      |         |         |        |              | ✓   | ✓     |
 
 `util`, `config` and `version` import no module.
-`graph`, `cache`, `exec` and `sandbox` draw nothing: what they have to
+`graph`, `cache`, `exec`, `sandbox` and `workspace` draw nothing: what they have to
 say mid-run is a `Notice` (`util/notice.ts`), and `ui` draws it.
 Composition happens only at `orchestrator` (wires workspace → graph →
 cache → exec → sandbox into a run) and `cli` (wires argv → orchestrator).

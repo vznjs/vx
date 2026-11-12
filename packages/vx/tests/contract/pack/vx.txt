@@ -192,6 +192,7 @@ src/report/forecast.ts
 src/report/framed-output.ts
 src/report/index.ts
 src/report/logger.ts
+src/report/migration.ts
 src/report/plain-output.ts
 src/report/status-line.ts
 src/report/summary.ts
