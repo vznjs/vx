@@ -128,7 +128,8 @@ case it is.
   this run ran beside one too and saved nothing either), or
   the previous run executed and succeeded and no entry holds the key (its
   save failed or was pruned: no row records a failed save, only this
-  trace; a previous policy that wrote nothing is named instead, and so
+  trace; a previous policy that wrote nothing is named instead, ahead of
+  the prune verdict, and so
   is a `blocked_by` that run has no row of: the dependency
   `--exclude-dependencies` left out).
   Only when none applies does it name `--no-cache` / `--force` (item
@@ -139,7 +140,8 @@ case it is.
   hashes and full-outer-joins the two `entry_inputs` fingerprint sets
   over `(kind, name)` — `changed` / `added` / `removed`, unchanged ones
   counted — with no config re-evaluation and no re-hash. A side with no
-  fingerprints is named for why: a run that failed or wrote no cache,
+  fingerprints is named for why: a run that failed, wrote no cache, or
+  passed beside a failed task (`--continue`),
   an entry a remote hit restored (a `cache-hit-remote` row of that key:
   the artifact carries none), and only then a prune. Values are
   digests, never the material (an env value can be a secret), and a

@@ -47,7 +47,7 @@ import {
 } from '../report/index.js'
 import {
   formatElapsed,
-  nearest,
+  nearMatches,
   parseDecimalInt,
   refusal,
   splitTaskId,
@@ -970,11 +970,13 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       if (log === null) {
         // The id's form is hinted only when it lacks one: a task that
         // never ran was told how to spell a task id. A typo of one that
-        // ran is named, as `vx why` names it.
+        // ran is named, as `vx why` names it: by its matcher, which offers
+        // `@w/envy#test` for `envy#test` too.
         const recorded = parsed.log.includes('#')
           ? new LocalHistoryProvider(db).recentTaskIds()
           : []
-        const ran = nearest(parsed.log, recorded)
+        const near = nearMatches(parsed.log, recorded)
+        const ran = near.length === 0 ? undefined : near.join(', ')
         // No near name: what of that project has run, so the next try is a pick.
         const project = parsed.log.slice(0, parsed.log.lastIndexOf('#') + 1)
         const theirs = recorded
