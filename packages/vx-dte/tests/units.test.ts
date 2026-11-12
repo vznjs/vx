@@ -1760,6 +1760,61 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   })
 })
 
+// Main 18a8446: a packing that ended at 130 s where the play ended at
+// 55 s asked 4 workers mid-run, and the rounded marks played back packed
+// it at 54 s. Such a plan marks what it was given, whole.
+it('marks a plan whose packing lost on its end with its whole input', async () => {
+  const h = await harness(new Map([node('t1')]))
+  h.o.spawned('small#1', { size: 'small', cpu: 3, memory: 1e9 })
+  const input = {
+    tasks: [{ id: 'p#a', cores: 1, memory: 0, ms: 5_000, deps: [] }],
+    sizes: [{ name: 'small', cpu: 3, memory: 1e9, max: 2 }],
+    warmUps: new Map([['small', 16_000]]),
+    spreads: new Map([['small', 0]]),
+    limitMs: undefined,
+  }
+  const worker = {
+    id: 'w1',
+    cores: 3,
+    memory: 1e9,
+    at: 0,
+    idle: false,
+    running: [{ id: 'p#x', cores: 1, memory: 0, endsIn: Infinity }],
+    serving: new Map([['p#db', 0.5]]),
+  }
+  for (const unpacked of ['ends 130000 ms, the play 55000', 'holds 9, the play 8'])
+    h.o.planned({
+      start: [],
+      release: ['w9'],
+      tasks: 1,
+      endsInMs: 55_000,
+      boundMs: 60_000,
+      workers: [worker],
+      unpacked,
+      input,
+    })
+  await h.stop()
+  const marks = (
+    h.o.profile() as unknown as { ph: string; name: string; args?: Record<string, unknown> }[]
+  )
+    .filter((e) => e.ph === 'i' && e.name === 'plan')
+    .map((e) => e.args!)
+  expect(marks).toHaveLength(2)
+  expect(JSON.parse(marks[0]!.input as string)).toEqual({
+    ...input,
+    warmUps: { small: 16_000 },
+    spreads: { small: 0 },
+    workers: [
+      {
+        ...worker,
+        running: [{ ...worker.running[0], endsIn: 'Infinity' }],
+        serving: { 'p#db': 0.5 },
+      },
+    ],
+  })
+  expect(marks[1]!.input).toBeUndefined()
+})
+
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
 // behind 46 shards ready at once, and began 47 s in: the run's end.
 it('places the queued task the most of the run waits on first, not the first asked', async () => {

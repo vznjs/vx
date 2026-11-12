@@ -889,7 +889,9 @@ and its save, with its exit code, duration, CPU time and booked cores.
 The `orchestrator` process holds the cache probe, each ask for workers, each
 plan that started or let go of workers with what it saw of each worker
 (one that started workers also with each task's planned time, cores and
-platform and each size's warm-up, so it can be played back),
+platform and each size's warm-up, so it can be played back; one that
+played its work because the packing ended later or left a task out also
+with all `plan()` was given, as `input`),
 stalls, the time each task waited for room, and each restore. Times are
 the orchestrator's: when it heard. Without `--profile` nothing is
 written. On CI, upload the file as an artifact; this repo's `ci.yml`
