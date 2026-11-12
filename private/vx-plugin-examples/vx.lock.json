@@ -40,6 +40,7 @@
           "plugins/**",
           "fingerprint/**",
           "migrators/**",
+          "distribute/**",
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
@@ -110,6 +111,7 @@
           "plugins/**",
           "fingerprint/**",
           "migrators/**",
+          "distribute/**",
           "package.json"
         ]
       },

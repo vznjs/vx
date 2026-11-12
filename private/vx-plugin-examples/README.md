@@ -39,3 +39,11 @@ import { envKey } from '../plugins/key.ts'
 
 export default defineWorkspace({ plugins: [envKey(['NODE_ENV'])] })
 ```
+
+## Distributed task execution
+
+[`distribute/`](distribute/distribute.ts) spreads one run over worker
+processes using only `@vzn/vx`. The executor declares `capabilities`
+and fills the `distribution` hooks. Each worker runs its tasks through
+`workerRuntime()`, as the local floor would. `@vzn/vx-dte` is the full
+one: workers on other machines, files through the cache.
