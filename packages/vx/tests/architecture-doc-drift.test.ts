@@ -149,9 +149,9 @@ describe('architecture.md quotes the module-boundary law', () => {
     const m = /const ALLOWED: Record<string, readonly string\[\]> = (\{[\s\S]*?\n\})\n/.exec(law)
     expect(m).not.toBeNull()
     const allowed = Object.fromEntries(
-      [...m![1]!.replace(/\/\/.*$/gm, '').matchAll(/(\w+): \[([^\]]*)\]/g)].map((e) => [
+      [...m![1]!.replace(/\/\/.*$/gm, '').matchAll(/'?([\w-]+)'?: \[([^\]]*)\]/g)].map((e) => [
         e[1]!,
-        [...e[2]!.matchAll(/'(\w+)'/g)].map((n) => n[1]!),
+        [...e[2]!.matchAll(/'([\w-]+)'/g)].map((n) => n[1]!),
       ]),
     )
     expect(Object.keys(allowed)).toContain('orchestrator')

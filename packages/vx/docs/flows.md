@@ -45,7 +45,7 @@ sequenceDiagram
 
 ## 2. Warm run — local cache hit
 
-Owners: `cache/cache.ts:get`, `orchestrator/hit-restore.ts` (the up-to-date check and the restore), `cache/output-index.ts:isOutputsCurrent`, `cache/archive.ts:extractArtifactStream`.
+Owners: `cache/cache.ts:get`, `orchestrator/hit-restore.ts` (the up-to-date check and the restore), `memo/output-index.ts:isOutputsCurrent`, `cache/archive.ts:extractArtifactStream`.
 
 ```mermaid
 sequenceDiagram

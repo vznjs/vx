@@ -116,21 +116,23 @@ graph TD
 
 ### Allowed dependency matrix (rows import columns, via index only)
 
-|                  | util | ui  | config | version | settings | handoff | workspace | graph | cache | exec | history | report | orchestrator | cli | index |
-| ---------------- | ---- | --- | ------ | ------- | -------- | ------- | --------- | ----- | ----- | ---- | ------- | ------ | ------------ | --- | ----- |
-| **ui**           | ✓    | —   |        |         |          |         |           |       |       |      |         |        |              |     |       |
-| **settings**     | ✓    | ✓   |        |         | —        |         |           |       |       |      |         |        |              |     |       |
-| **handoff**      | ✓    | ✓   |        |         |          | —       |           |       |       |      |         |        |              |     |       |
-| **workspace**    | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | —         |       |       |      |         |        |              |     |       |
-| **graph**        | ✓    | ✓   | ✓      |         |          |         | ✓         | —     |       |      |         |        |              |     |       |
-| **cache**        | ✓    | ✓   | ✓      |         |          |         |           |       | —     |      |         |        |              |     |       |
-| **exec**         | ✓    | ✓   | ✓      |         |          |         |           |       |       | —    |         |        |              |     |       |
-| **history**      | ✓    | ✓   |        |         |          |         |           | ✓     | ✓     |      | —       |        |              |     |       |
-| **report**       | ✓    | ✓   |        |         | ✓        |         |           | ✓     |       | ✓    |         | —      |              |     |       |
-| **orchestrator** | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓     | ✓    | ✓       | ✓      | —            |     |       |
-| **cli**          | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓     |      | ✓       | ✓      | ✓            | —   |       |
-| **index**        | ✓    | ✓   | ✓      | ✓       | ✓        |         | ✓         | ✓     | ✓     | ✓    | ✓       | ✓      | ✓            |     | —     |
-| **bin**          | ✓    | ✓   |        | ✓       |          | ✓       |           |       |       |      |         |        |              | ✓   | ✓     |
+|                  | util | ui  | config | version | settings | handoff | workspace | graph | index-db | memo | cache | exec | history | report | orchestrator | cli | index |
+| ---------------- | ---- | --- | ------ | ------- | -------- | ------- | --------- | ----- | -------- | ---- | ----- | ---- | ------- | ------ | ------------ | --- | ----- |
+| **ui**           | ✓    | —   |        |         |          |         |           |       |          |      |       |      |         |        |              |     |       |
+| **settings**     | ✓    | ✓   |        |         | —        |         |           |       |          |      |       |      |         |        |              |     |       |
+| **handoff**      | ✓    | ✓   |        |         |          | —       |           |       |          |      |       |      |         |        |              |     |       |
+| **workspace**    | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | —         |       |          |      |       |      |         |        |              |     |       |
+| **graph**        | ✓    | ✓   | ✓      |         |          |         | ✓         | —     |          |      |       |      |         |        |              |     |       |
+| **index-db**     | ✓    |     |        |         |          |         |           |       | —        |      |       |      |         |        |              |     |       |
+| **memo**         | ✓    |     |        |         |          |         |           |       | ✓        | —    |       |      |         |        |              |     |       |
+| **cache**        | ✓    | ✓   | ✓      |         |          |         |           |       | ✓        | ✓    | —     |      |         |        |              |     |       |
+| **exec**         | ✓    | ✓   | ✓      |         |          |         |           |       |          |      |       | —    |         |        |              |     |       |
+| **history**      | ✓    | ✓   |        |         |          |         |           | ✓     | ✓        |      | ✓     |      | —       |        |              |     |       |
+| **report**       | ✓    | ✓   |        |         | ✓        |         |           | ✓     |          |      |       | ✓    |         | —      |              |     |       |
+| **orchestrator** | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓        | ✓    | ✓     | ✓    | ✓       | ✓      | —            |     |       |
+| **cli**          | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     |          | ✓    | ✓     |      | ✓       | ✓      | ✓            | —   |       |
+| **index**        | ✓    | ✓   | ✓      | ✓       | ✓        |         | ✓         | ✓     |          |      | ✓     | ✓    | ✓       | ✓      | ✓            |     | —     |
+| **bin**          | ✓    | ✓   |        | ✓       |          | ✓       |           |       |          |      |       |      |         |        |              | ✓   | ✓     |
 
 `util`, `config` and `version` import no module.
 Composition happens only at `orchestrator` (wires workspace → graph →
