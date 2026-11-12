@@ -1802,12 +1802,7 @@ export function plan(
   // spread over workers the run then kept, 21% more than the least that
   // ends at the critical path (lab, 2026-11-11). Known work only: a
   // guessed time packs nothing.
-  if (
-    !blind &&
-    replaceable &&
-    bound < Infinity &&
-    tasks.every((t) => t.servers === undefined || t.servers.length === 0)
-  ) {
+  if (!blind && replaceable && bound < Infinity) {
     // One past its warm-up may join any time: packed as if asked now. Packed
     // on joining at once, workers the CI started 2.5 s apart took work
     // planned on the fleet and the run ended 19 s late, where a play
