@@ -161,6 +161,27 @@ export function plan(
         kept = kept.filter((k) => k !== w)
         release.push(w.id)
       }
+    // An idle joined one takes the work of one the CI has not given a
+    // machine past its warm-up, which is cancelled: planned to join now,
+    // it kept 4 lints waiting 126-147 s while the plan let an idle joined
+    // one go (PR #5271's run, 2026-11-12).
+    const free = run(kept).first
+    const taken = new Set<string>()
+    for (const o of starting.filter((w) => w.overdue === true && kept.includes(w))) {
+      const w = workers.find(
+        (i) =>
+          i.idle &&
+          !taken.has(i.id) &&
+          !free.has(i.id) &&
+          i.platform === o.platform &&
+          i.cores >= o.cores &&
+          i.memory >= o.memory,
+      )
+      if (w === undefined) continue
+      taken.add(w.id)
+      kept = kept.filter((k) => k !== o)
+      release.push(o.id)
+    }
     // Biggest first: a big idle one costs the most to keep. Joined, its
     // warm-up is spent: it goes when the plan gives it no task, not when
     // the run ends within the margin without it (a run let a Mac go

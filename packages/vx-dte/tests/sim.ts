@@ -494,6 +494,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         platform: w.platform,
         size,
         at: Math.max(0, warmUp(size) - (now - w.spawnedAt)),
+        ...(now - w.spawnedAt > warmUp(size) ? { overdue: true as const } : {}),
         idle: false,
         running: [],
         starting: true,

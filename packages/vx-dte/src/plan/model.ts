@@ -101,6 +101,8 @@ export interface PlanWorker {
   readonly idle: boolean
   /** Started and not joined yet: the run may cancel it. */
   readonly starting?: boolean
+  /** Starting past its warm-up: the CI has not given it a machine yet. */
+  readonly overdue?: boolean
   readonly platform?: string | undefined
   /** The size it was started as (`Size.name`): what its warm-up is learned by. */
   readonly size?: string | undefined

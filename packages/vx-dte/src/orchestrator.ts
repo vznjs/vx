@@ -2257,6 +2257,8 @@ export class Orchestrator {
       })
     }
     const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+    const warm = (size: string | undefined): number =>
+      typeof warmUpMs === 'number' ? warmUpMs : warmUpMs(size)
     for (const [id, { at, declared }] of this.spawnedAt)
       if (!joined.has(id) && !this.unstarted.has(id) && !this.cancelled.has(id))
         workers.push({
@@ -2268,10 +2270,8 @@ export class Orchestrator {
           // next plan cancelled it.
           platform: declared.place ?? declared.platform ?? hostPlatform(),
           size: declared.size,
-          at: Math.max(
-            0,
-            (typeof warmUpMs === 'number' ? warmUpMs : warmUpMs(declared.size)) - (now - at),
-          ),
+          at: Math.max(0, warm(declared.size) - (now - at)),
+          ...(now - at > warm(declared.size) ? { overdue: true as const } : {}),
           idle: false,
           running: [],
           // One its adapter could not stop joins whatever the plan says.
