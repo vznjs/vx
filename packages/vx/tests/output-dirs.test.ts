@@ -526,7 +526,8 @@ describe('warm hits through run() with the short-circuit', () => {
   const log = defaultLogger({ enabled: false })
   const runBuild = () => run({ cwd: root, tasks: ['build'], log, handleSignals: false })
   const dist = () => path.join(root, 'packages/a/dist')
-  const db = () => new Cache(path.join(root, '.vx/cache'))
+  // The run's own root: its stamps and snapshots are keyed by it.
+  const db = () => new Cache(path.join(root, '.vx/cache'), undefined, root)
 
   beforeEach(async () => {
     root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-outdirs-run-')))

@@ -149,6 +149,23 @@ describe('the shared store', () => {
     expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
   })
 
+  it('two clones on one named cache dir each stay up to date', async () => {
+    // One index holds both clones' stamps and directory snapshots, keyed
+    // by the clone's root: keyed by the entry and relative path alone, the
+    // last clone's overwrote the other's, and every switch restored.
+    const shared = await mkdtemp(path.join(os.tmpdir(), 'vx-shared-dir-'))
+    made.push(shared)
+    process.env['VX_CACHE_DIR'] = shared
+    const a = await workspace()
+    const b = await workspace()
+    await build(a)
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
+    expect(await build(b)).toEqual({ status: 'cache-hit', restored: true })
+    expect(await build(b)).toEqual({ status: 'cache-hit', restored: false })
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
+    expect(await build(b)).toEqual({ status: 'cache-hit', restored: false })
+  })
+
   it('a different input misses, in either workspace', async () => {
     const a = await workspace('one\n')
     const b = await workspace('two\n')

@@ -1633,7 +1633,10 @@ decide it the same way, the reading ones without making or changing
 anything, so they read the entries runs use. Name a
 cache directory (`--cache-dir`, relative to the working directory; else
 `VX_CACHE_DIR`, else `cache.dir` in .vx/workspace.ts, each relative to the
-workspace root) and it holds everything, shared with no other workspace.
+workspace root) and it holds everything, with no repository store
+beside it. Two clones naming one directory share its entries; each keeps its own
+output stamps and directory snapshots (keyed by its root), so switching
+between them stays up to date instead of restoring every output.
 One under a selected task's declared outputs is refused before any task,
 naming the task: the task's output clean would delete it mid-run. Its layout:
 
@@ -2168,14 +2171,18 @@ CREATE TABLE output_files (
 -- current. Apart from the shared entry: two worktrees overwrote each
 -- other's stamps and every switch restored. No foreign key (the entry
 -- may be the store's); prune and re-save delete what they orphan.
--- v55: and its mtime, since a restore dates a file it writes now.
+-- v55: and its mtime, since a restore dates a file it writes now; and
+-- `root`, a hash of the workspace root's real path in a named cache dir
+-- (0 in a workspace's own index): clones naming one dir share this
+-- index, and overwrote each other's stamps the same way.
 CREATE TABLE output_stamps (
   entry_hash  TEXT NOT NULL,
+  root        INTEGER NOT NULL,
   path        TEXT NOT NULL,
   ino         INTEGER NOT NULL,
   ctime_ms    INTEGER NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  PRIMARY KEY (entry_hash, path)
+  PRIMARY KEY (entry_hash, root, path)
 );
 
 -- Every directory under a whole-subtree output glob, with its mtime as
@@ -2184,9 +2191,10 @@ CREATE TABLE output_stamps (
 -- ingest writes none, and the first hit after it walks and records.
 CREATE TABLE output_dirs (
   entry_hash  TEXT NOT NULL,
+  root        INTEGER NOT NULL,        -- per workspace root, as output_stamps
   path        TEXT NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  PRIMARY KEY (entry_hash, path)       -- no foreign key since v32, as output_stamps
+  PRIMARY KEY (entry_hash, root, path) -- no foreign key since v32, as output_stamps
 );
 
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`

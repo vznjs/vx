@@ -19,7 +19,7 @@ import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement } from './schema.js'
 import { modeMatches } from './umask.js'
 import { stampGrainMs } from './fs-clock.js'
-import { lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs'
+import { lstatSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   OUTPUT_DIRS_CAP,
@@ -94,7 +94,8 @@ function linkCurrent(abs: string, e: { size: number; mtimeMs: number }): boolean
 
 const FILES_SELECT =
   'SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms, s.mtime_ms AS stamp_mtime_ms'
-const FILES_STAMPS = 'LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.path = f.path'
+const FILES_STAMPS =
+  'LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.root = ? AND s.path = f.path'
 const FILES_JOINED = `${FILES_SELECT} FROM json_each(?) q JOIN output_files f ON f.entry_hash = q.value ${FILES_STAMPS}`
 /**
  * A row as this index loads it: with its stamp, the mtime the file carried
@@ -106,7 +107,7 @@ interface StampedRow extends OutputFileRow {
 }
 
 const DIRS_JOINED =
-  'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value'
+  'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value AND d.root = ?'
 
 export class OutputIndex {
   private readonly insertOutputFile: ReturnType<Database['prepare']>
@@ -151,15 +152,19 @@ export class OutputIndex {
    * skip-restore check, which reads these rows, already runs.
    */
   private readonly held = new Map<string, readonly OutputFileRow[]>()
+  private rootKey: number | undefined
 
   /**
    * `memo` false: a cache directory this run cannot write. A restore still
    * serves the hit, but its stamps and directory snapshots are not queued:
    * the next lookup flushed them and failed its task (SQLITE_READONLY).
+   * `sharedRoot`: the workspace root of an index other workspaces may
+   * share (a named cache dir), which keys this one's stamps and snapshots.
    */
   constructor(
     private readonly db: Database,
     private readonly memo = true,
+    private readonly sharedRoot?: string,
   ) {
     this.insertOutputFile = lazyStatement(
       this.db,
@@ -175,19 +180,42 @@ export class OutputIndex {
     this.deleteOutputFiles = lazyStatement(this.db, 'DELETE FROM output_files WHERE entry_hash = ?')
     this.insertOutputDir = lazyStatement(
       this.db,
-      'INSERT INTO output_dirs(entry_hash, path, mtime_ms) VALUES (?, ?, ?)',
+      'INSERT INTO output_dirs(entry_hash, root, path, mtime_ms) VALUES (?, ?, ?, ?)',
     )
-    this.deleteOutputDirs = lazyStatement(this.db, 'DELETE FROM output_dirs WHERE entry_hash = ?')
+    this.deleteOutputDirs = lazyStatement(
+      this.db,
+      'DELETE FROM output_dirs WHERE entry_hash = ? AND root = ?',
+    )
     this.entryExists = lazyStatement(this.db, 'SELECT 1 FROM entries WHERE hash = ?')
     this.stampOutputFile = lazyStatement(
       this.db,
-      'INSERT INTO output_stamps(entry_hash, path, ino, ctime_ms, mtime_ms) VALUES (?, ?, ?, ?, ?) ON CONFLICT(entry_hash, path) DO UPDATE SET ino = excluded.ino, ctime_ms = excluded.ctime_ms, mtime_ms = excluded.mtime_ms',
+      'INSERT INTO output_stamps(entry_hash, root, path, ino, ctime_ms, mtime_ms) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(entry_hash, root, path) DO UPDATE SET ino = excluded.ino, ctime_ms = excluded.ctime_ms, mtime_ms = excluded.mtime_ms',
     )
     this.deleteStamps = lazyStatement(this.db, 'DELETE FROM output_stamps WHERE entry_hash = ?')
   }
 
   /**
-   * Drop this workspace's stamps and snapshots of `hashes`, whose entries
+   * The `root` column of this workspace's stamps and snapshots: clones
+   * naming one cache dir share one index, and the disk each saw is its
+   * own. A hash of the real path, so every spelling of the root agrees;
+   * 0 for an index only this workspace opens. Taken at the first read.
+   */
+  private get root(): number {
+    if (this.rootKey !== undefined) return this.rootKey
+    let real = this.sharedRoot
+    if (real !== undefined) {
+      try {
+        real = realpathSync(real)
+      } catch {
+        // A root gone: its spelling keys it.
+      }
+    }
+    this.rootKey = real === undefined ? 0 : Number(BigInt.asUintN(52, BigInt(Bun.hash(real))))
+    return this.rootKey
+  }
+
+  /**
+   * Drop the stamps and snapshots of `hashes`, every workspace's, whose entries
    * are gone: they live apart from the entry (it may be another database's),
    * so no cascade takes them.
    */
@@ -264,11 +292,11 @@ export class OutputIndex {
     // memory. A flush here committed a transaction per read, and a restore
     // reads its rows twice.
     let sql = FILES_JOINED
-    let params = [distinct!]
+    let params: Array<string | number> = [distinct!, this.root]
     if (distinct === undefined || hashes.length === 1) {
       const where = inHashes(hashes)
       sql = `${FILES_SELECT} FROM output_files f ${FILES_STAMPS} WHERE f.entry_hash ${where.test}`
-      params = where.params
+      params = [this.root, ...where.params]
     }
     const rows = this.db.query(sql).all(...params) as Array<{
       entry_hash: string
@@ -536,7 +564,7 @@ export class OutputIndex {
             // A stamp outlives nothing: an entry pruned since has no rows to vouch for.
             if (this.entryExists.get(hash) === null) continue
             for (const [rel, [ino, ctime, mtime]] of rows)
-              this.stampOutputFile.run(hash, rel, ino, ctime, mtime)
+              this.stampOutputFile.run(hash, this.root, rel, ino, ctime, mtime)
           }
         })
         .immediate()
@@ -546,11 +574,11 @@ export class OutputIndex {
     this.pendingDirs.clear()
     this.db.transaction(() => {
       for (const [hash, rows] of pending) {
-        this.deleteOutputDirs.run(hash)
+        this.deleteOutputDirs.run(hash, this.root)
         // The rows describe the entry: one pruned by another process
         // between the snapshot and this flush has nothing to describe.
         if (rows === null || this.entryExists.get(hash) === null) continue
-        for (const [rel, mtime] of rows) this.insertOutputDir.run(hash, rel, mtime)
+        for (const [rel, mtime] of rows) this.insertOutputDir.run(hash, this.root, rel, mtime)
       }
     })()
   }
@@ -563,11 +591,11 @@ export class OutputIndex {
     // what was snapshotted, not what was flushed.
     this.flushOutputDirs()
     let sql = DIRS_JOINED
-    let params = [distinct!]
+    let params: Array<string | number> = [distinct!, this.root]
     if (distinct === undefined || hashes.length === 1) {
       const where = inHashes(hashes)
-      sql = `SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash ${where.test}`
-      params = where.params
+      sql = `SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE root = ? AND entry_hash ${where.test}`
+      params = [this.root, ...where.params]
     }
     const rows = this.db.query(sql).all(...params) as Array<{
       entry_hash: string

@@ -258,25 +258,30 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- shared and the disk is not: two worktrees on one store overwrote each
     -- other's stamps, and every switch between them restored. No foreign
     -- key (the entry may live in another database); a prune and a re-save
-    -- delete what they orphan.
+    -- delete what they orphan. root: a hash of the workspace root's real
+    -- path in a named cache dir, which clones may share and so overwrote
+    -- each other's stamps the same way; 0 in a workspace's own index.
     CREATE TABLE IF NOT EXISTS main.output_stamps (
       entry_hash  TEXT NOT NULL,
+      root        INTEGER NOT NULL,
       path        TEXT NOT NULL,
       ino         INTEGER NOT NULL,
       ctime_ms    INTEGER NOT NULL,
       mtime_ms    INTEGER NOT NULL,
-      PRIMARY KEY (entry_hash, path)
+      PRIMARY KEY (entry_hash, root, path)
     );
     -- Every directory under a whole-subtree output glob, with its mtime
     -- as of the last save/restore on THIS machine (2026-09-03). On a warm
     -- hit, unchanged mtimes prove the output SET is unchanged, replacing
     -- the glob walk that cost 0.36 ms per hit. Machine-local: a remote
     -- ingest writes none, and the first hit after it walks and records.
+    -- Per workspace root, as output_stamps.
     CREATE TABLE IF NOT EXISTS main.output_dirs (
       entry_hash  TEXT NOT NULL,
+      root        INTEGER NOT NULL,
       path        TEXT NOT NULL,
       mtime_ms    INTEGER NOT NULL,
-      PRIMARY KEY (entry_hash, path)
+      PRIMARY KEY (entry_hash, root, path)
     );
     -- v22 (Tier 3): one header row per vx-run invocation. The runs
     -- table is per-task; this is the per-invocation record that

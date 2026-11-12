@@ -270,6 +270,8 @@ export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
   // workspace root in a run, so it shares the enumeration's `rev-parse`
   // (git-inputs.md). Absent, the directory of the first file hashed.
+  // In a named cache dir it also keys the output stamps and directory
+  // snapshots this handle reads and writes: clones sharing one keep their own.
   // artifactCeiling: the largest artifact, decoded, this cache saves,
   // ingests or restores — 2 GiB; lowered only by a test, through
   // `RunOptions.artifactCeiling` (tests/artifact-ceiling.test.ts).

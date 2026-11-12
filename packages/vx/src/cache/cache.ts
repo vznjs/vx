@@ -1257,7 +1257,11 @@ export class Cache implements CacheLayer {
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
-    /** The workspace root, where the file hasher asks git for the object format (file-hashes.ts). */
+    /**
+     * The workspace root, where the file hasher asks git for the object format
+     * (file-hashes.ts), and whose output stamps and snapshots this handle
+     * reads in a named cache dir.
+     */
     repoDir?: string,
     /**
      * The largest artifact, decoded, this cache saves, ingests or
@@ -1598,7 +1602,12 @@ export class Cache implements CacheLayer {
       hash: (file, seen) => this.guard(() => this.files.hashFile(file, seen)),
       many: (files) => this.hashFiles(files),
     })
-    this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
+    this.outputs = new OutputIndex(
+      this.db,
+      this.writeBlocked === null && !this.inspecting,
+      // The index holds the entries: a named cache dir other clones may name.
+      this.storeDir === undefined ? repoDir : undefined,
+    )
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
     this.remoteHits = new IndexRemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
