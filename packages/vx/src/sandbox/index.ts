@@ -31,4 +31,4 @@ export {
   type WithheldLink,
   type WriteReach,
 } from './request.js'
-export { misrootedWriteHint, perRunWriteHint, sandboxFix } from './fix.js'
+export { misrootedWriteHint, perRunWriteHint, rootFileWriteHint, sandboxFix } from './fix.js'

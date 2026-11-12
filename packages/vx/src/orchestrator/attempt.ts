@@ -30,7 +30,7 @@ import {
   withheldLinkLine,
 } from '../sandbox/index.js'
 import { sandboxFix } from '../sandbox/index.js'
-import { shellVerdict } from './shell-verdict.js'
+import { shellVerdict, unpassedEnv } from './shell-verdict.js'
 import { taskBinDirs } from './task-process.js'
 
 export interface AttemptResult {
@@ -292,6 +292,8 @@ async function classifyExit(
     // The line quotes the command's first word, which a config may have
     // built from a secret: masked as the task's own output is.
     if (verdict !== undefined) log.taskStderr(node, `${stream.nl()}${secrets.text(verdict)}\n`)
+    const unpassed = code === 0 ? undefined : unpassedEnv(stream.tail, m.env, process.env)
+    if (unpassed !== undefined) log.taskStderr(node, `${stream.nl()}${unpassed}\n`)
   }
   return code
 }

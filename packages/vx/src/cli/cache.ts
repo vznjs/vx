@@ -4,6 +4,7 @@ import {
   existsSync,
   lstatSync,
   readdirSync,
+  rmdirSync,
   renameSync,
   rmSync,
 } from 'node:fs'
@@ -483,7 +484,15 @@ async function clearHeld(
           if (aside !== undefined) asides.push(aside)
           else rmSync(e, { recursive: true, force: true })
         }
-        if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
+        // Never recursive: a run that waited on this clear makes its lock
+        // here the moment the old one is gone, and holds it.
+        if (t === named) {
+          try {
+            rmdirSync(t)
+          } catch {
+            // Not empty: the user's files, or that run's.
+          }
+        }
       }
     } finally {
       for (const release of holds) release()

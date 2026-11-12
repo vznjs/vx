@@ -352,6 +352,8 @@ class WatchLoop {
       ...(this.atArm !== undefined
         ? { existedAtArm: this.atArm.listed, trackedAtArm: this.atArm.tracked }
         : {}),
+
+      rereadPending: () => this.reread,
     })
     this.oneStream = process.platform === 'darwin' && !args.poll
     this.treeArms = process.platform === 'linux' && !args.poll

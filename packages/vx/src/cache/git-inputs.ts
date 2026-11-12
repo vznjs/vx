@@ -485,6 +485,18 @@ function ancestorDirs(
   return [...dirs]
 }
 
+/** The first index of sorted `paths` not below `key`. */
+function lowerBoundOf(paths: readonly string[], key: string): number {
+  let lo = 0
+  let hi = paths.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (paths[mid]! < key) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
 export class GitFilesCache extends Map<string, readonly string[]> {
   /**
    * vx's own directories inside the workspace (the run's cache directory),
@@ -627,6 +639,31 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   /** What `git status --ignored=matching` named, root-relative and sorted, and the root. */
   private ignored: IgnoredListing | null = null
+  /** What `git status` named untracked (not ignored), root-relative and sorted, and the root. */
+  private untracked: { root: string; paths: readonly string[] } | null = null
+
+  setUntracked(root: string, paths: readonly string[]): void {
+    this.untracked = { root, paths: [...paths].sort() }
+  }
+
+  /**
+   * The files `git status` named untracked, and not ignored, under `dir`
+   * (absolute), absolute. Empty when no enumeration listed them.
+   */
+  untrackedFilesIn(dir: string): string[] {
+    const u = this.untracked
+    if (u === null || u.paths.length === 0) return []
+    const rel = relPosix(u.root, dir)
+    if (rel.startsWith('../')) return []
+    const under = rel === '' ? '' : `${rel}/`
+    const out: string[] = []
+    for (let i = lowerBoundOf(u.paths, under); i < u.paths.length; i++) {
+      const p = u.paths[i]!
+      if (!p.startsWith(under)) break
+      if (!p.endsWith('/')) out.push(path.join(u.root, p))
+    }
+    return out
+  }
 
   setIgnored(root: string, paths: readonly string[]): void {
     const base =
@@ -2820,6 +2857,7 @@ export async function applyGitEnumeration(
   cache.setWorktreeDirty(enumeration.dirty)
   cache.setGitVars(enumeration.vars)
   cache.setIgnored(workspaceRoot, enumeration.ignored)
+  cache.setUntracked(workspaceRoot, enumeration.untracked ?? [])
   cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
   // Sort once, then each project's files are a contiguous range found

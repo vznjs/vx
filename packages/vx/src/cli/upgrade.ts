@@ -109,6 +109,34 @@ const SILENCE_MS = 30_000
 const silence = (ms: number): Error => new Error(`no answer in ${ms / 1000} s`)
 
 /**
+ * Calls `onSilent` once `ms` passes with no `heard()`, counting only time
+ * vx was awake: one timer across a frozen event loop (a laptop asleep, a
+ * Ctrl-Z, a held main thread) fired on waking, before the bytes already
+ * waiting were read, and refused a registry that had answered. Each tick
+ * counts at most two ticks of wall time.
+ */
+function silenceWatch(ms: number, onSilent: () => void): { heard(): void; stop(): void } {
+  const tick = ms / 10
+  let silent = 0
+  let last = performance.now()
+  const timer = setInterval(() => {
+    const now = performance.now()
+    silent += Math.min(now - last, 2 * tick)
+    last = now
+    if (silent < ms) return
+    clearInterval(timer)
+    onSilent()
+  }, tick)
+  return {
+    heard() {
+      silent = 0
+      last = performance.now()
+    },
+    stop: () => clearInterval(timer),
+  }
+}
+
+/**
  * `fetch` to an unreachable host rejects with Bun's own `TypeError`, printed as
  * an internal error with a stack: one line instead, host and reason. `quiet`
  * aborts after `silenceMs` without headers.
@@ -121,7 +149,7 @@ async function fetchOrRefuse(
   quiet: AbortController,
   silenceMs: number,
 ): Promise<Response> {
-  const timer = setTimeout(() => quiet.abort(silence(silenceMs)), silenceMs)
+  const watch = silenceWatch(silenceMs, () => quiet.abort(silence(silenceMs)))
   try {
     return await fetch(url, { ...init, signal: quiet.signal })
   } catch (err) {
@@ -130,7 +158,7 @@ async function fetchOrRefuse(
       `${verb}: could not reach ${new URL(url).host} to ${what} (${message}) — check the network or the proxy and re-run`,
     )
   } finally {
-    clearTimeout(timer)
+    watch.stop()
   }
 }
 
@@ -148,19 +176,20 @@ async function bodyOrRefuse<T>(
   quiet: AbortController,
   silenceMs: number,
 ): Promise<T> {
+  let watch: ReturnType<typeof silenceWatch> | undefined
   try {
     const parts: Uint8Array[] = []
     const reader = res.body?.getReader()
+    let refuse: ((err: Error) => void) | undefined
+    watch = silenceWatch(silenceMs, () => refuse?.(silence(silenceMs)))
     for (;;) {
       if (reader === undefined) break
-      let timer: Timer | undefined
-      const next = await Promise.race([
-        reader.read(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(silence(silenceMs)), silenceMs)
-        }),
-      ]).finally(() => clearTimeout(timer))
+      const next = await new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
+        refuse = reject
+        reader.read().then(resolve, reject)
+      })
       if (next.done) break
+      watch.heard()
       parts.push(next.value)
     }
     return parse(new Uint8Array(Bun.concatArrayBuffers(parts)))
@@ -170,6 +199,8 @@ async function bodyOrRefuse<T>(
     throw new UserError(
       `${verb}: could not ${what} from ${new URL(url).host} (${message}) — nothing replaced; check the network or the proxy and re-run`,
     )
+  } finally {
+    watch?.stop()
   }
 }
 

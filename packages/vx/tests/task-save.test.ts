@@ -176,7 +176,7 @@ describe('saveVerdict: may this task save', () => {
     try {
       // Stamped absent before the command; there after it.
       const stamp: StateStamp = {
-        state: new Map([[path.join(dir, '.cache/state'), undefined]]),
+        state: new Map([[path.join(dir, '.cache/state'), { at: undefined, ignored: true }]]),
         from: Date.now(),
       }
       mkdirSync(path.join(dir, '.cache'))

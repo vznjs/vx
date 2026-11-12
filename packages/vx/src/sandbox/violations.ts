@@ -529,6 +529,11 @@ export async function parseStraceViolations(
     return false
   }
 
+  const walledReads = (args.config.walled?.reads ?? []).map((p) => toRealPath(absolutize(p)))
+  const walls = args.config.walled?.walls ?? []
+  const walledIn = (abs: string): boolean =>
+    walledReads.some((r) => atOrUnder(abs, r)) && !walls.some((w) => atOrUnder(abs, w))
+
   const seen = new Set<string>()
   const judged = new Set<string>()
   const out: SandboxViolation[] = []
@@ -555,6 +560,12 @@ export async function parseStraceViolations(
     // Skip paths the user explicitly allowed (and their descendants).
     const via = lexical === abs ? undefined : hiddenLink(lexical, abs, mounted, denyAnchors)
     if (isUnderAny(abs, allowAbs) && via === undefined) continue
+    // A grant bound as its children around a wall still grants the
+    // directory: a file missing there is the task's own missing file. A
+    // root project's `read: ['.']` failed every tool that tries an
+    // optional file (`cat .env.local`, esbuild's virtual paths).
+    // One the host has was made after the grant was listed, and is hidden.
+    if (via === undefined && walledIn(abs) && !lstatSync(abs, { throwIfNoEntry: false })) continue
     if (underGlob(abs, pendingWrites)) continue
     if (read === true && !undeclared(abs)) continue
     // A hidden path answers ENOENT, as a missing one does: a probe

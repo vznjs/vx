@@ -356,6 +356,8 @@ export function storedLog(blob: Uint8Array | null): string
 export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] // every entry this machine holds for the task (an additive miss reads their rows)
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
+// `cache.lock` is last, so a clear deletes it last: a waiting run takes a
+// missing lock as the clear's end.
 export function vxCacheEntries(cacheDir: string): string[]
 
 // The four independent cache axes, and the `--cache-policy=<spec>` parser over
@@ -636,7 +638,11 @@ Reads via `get()` are non-blocking thanks to WAL.
   `workspaceRoot/<rel>`, creating parent directories as needed.
 - Pre-existing local files at output paths are **overwritten** — by
   rename, never by a write through a planted link, and never with a
-  moment of absence.
+  moment of absence. A tree entry copies each such file to a temp beside
+  it and renames it over once every copy landed: sent through the tar
+  extractor, a hit over the last build's 20,000 files took 6.5 s, against
+  3 s copied and 1.6 s into an empty tree. A file that already holds
+  the entry's bytes stays, its mtime with it, as the extractor keeps one.
 - Artifacts above 4 MiB compressed are decoded as a stream; smaller
   ones in one call. Same reader, same extractor, same 2 GiB ceiling —
   the one a save refuses past before it packs, so vx never stores an
