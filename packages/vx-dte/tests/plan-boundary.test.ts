@@ -38,3 +38,25 @@ it('nothing outside src/plan reaches past its index', async () => {
   }
   expect(bad).toEqual([])
 })
+
+it('src/plan has no import cycle', async () => {
+  const edges = new Map<string, string[]>()
+  for (const f of await readdir(dir)) {
+    if (!f.endsWith('.ts')) continue
+    const src = await Bun.file(path.join(dir, f)).text()
+    edges.set(
+      f.slice(0, -3),
+      [...src.matchAll(/from\s+'\.\/([\w-]+)\.js'/g)].map((m) => m[1]!),
+    )
+  }
+  const cycles: string[] = []
+  const walk = (at: string, trail: string[]): void => {
+    if (trail.includes(at)) {
+      cycles.push([...trail.slice(trail.indexOf(at)), at].join(' -> '))
+      return
+    }
+    for (const to of edges.get(at) ?? []) walk(to, [...trail, at])
+  }
+  for (const f of edges.keys()) if (f !== 'index') walk(f, [])
+  expect(cycles).toEqual([])
+})
