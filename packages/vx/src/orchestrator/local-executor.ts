@@ -1,9 +1,8 @@
-// Core's own local executor: spawn the task's command here, in this
-// process. Not a plugin — "run it on this machine" is not a capability
-// someone else supplies differently, it is what running MEANS when no
-// plugin claims the task, so it sits at the TAIL of every executor list
-// (2026-09-05). An executor plugin places work ELSEWHERE; its
-// absence is "here".
+// Core's own local executor: spawn the task's command here, in this process.
+// Not a plugin — "run it on this machine" is not a capability someone else
+// supplies differently, it is what running MEANS when no plugin claims the
+// task, so it sits at the TAIL of every executor list. An executor plugin
+// places work ELSEWHERE; its absence is "here".
 import { runCommand, signalExitCode, stopSignal, type TaskExecutor } from '../exec/index.js'
 import { runSandboxed } from '../sandbox/index.js'
 

@@ -222,11 +222,11 @@ export interface Plugin {
 
 /**
  * Every hook a plugin may fill, in pipeline order — THE list. The loader's
- * "must be a function" and "at least one of" checks, the host's stage gate
- * and `vx info`'s seam column all read it, so a stage added here is a stage
- * everywhere: `admit` reached `vx info` a day late (2026-09-12) because
- * that column kept its own copy, and the loader kept a third. The type
- * pin below refuses a list that drifts from `Plugin`'s keys either way.
+ * "must be a function" and "at least one of" checks, the host's stage gate and
+ * `vx info`'s seam column all read it, so a stage added here is a stage
+ * everywhere: `admit` reached `vx info` a day late because that column kept its
+ * own copy, and the loader kept a third. The type pin below refuses a list that
+ * drifts from `Plugin`'s keys either way.
  */
 export const PLUGIN_HOOKS = [
   'config',
@@ -303,13 +303,13 @@ export interface TaskConfig {
   /**
    * Tasks that must complete successfully before this task runs.
    * Turbo/Nx-style micro-syntax:
-   *   - `'name'`       — same-project task named `name`. When authored
+   *   - `'name'` — same-project task named `name`. When authored
    *                      through `defineProject`, a bare entry is
    *                      **type-checked against this config's task keys**
    *                      (a typo is a compile error).
-   *   - `'^name'`      — task `name` in every transitive workspace dep
+   *   - `'^name'` — task `name` in every transitive workspace dep
    *                      (e.g. `'^build'`, `'^all'`); not key-checked.
-   *   - `'pkg#name'`   — specific package's `name` task; not key-checked.
+   *   - `'pkg#name'` — specific package's `name` task; not key-checked.
    */
   dependsOn?: readonly string[]
   /**
@@ -346,17 +346,16 @@ export interface TaskConfig {
  * `node_modules`, and through it the real path of every workspace
  * package linked there.
  *
- * `cache` grants no access in either direction: `inputs` says what
- * INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
- * from the other coupled them both ways — a declaration added for
- * caching silently widened the sandbox, and a path the task needed had
- * to be laundered through the cache key to get it (2026-09-05).
- * A declared `outputs` is NOT a write grant; the request
+ * `cache` grants no access in either direction: `inputs` says what INVALIDATES
+ * a task, `allow` says what it may TOUCH, and deriving one from the other
+ * coupled them both ways — a declaration added for caching silently widened the
+ * sandbox, and a path the task needed had to be laundered through the cache key
+ * to get it. A declared `outputs` is NOT a write grant; the request
  * `sandbox/request.ts` builds carries no write of its own and binds
- * `allow.write` alone. This comment claimed the opposite — here and on
- * both grant fields — while the file beside it and `schema.md` both said
- * the truth, and no test read the bare baseline it described (item 443).
- * That case has a test of its own now.
+ * `allow.write` alone. This comment claimed the opposite — here and on both
+ * grant fields — while the file beside it and `schema.md` both said the truth,
+ * and no test read the bare baseline it described. That case has a test of its
+ * own now.
  *
  * Enforcement anchors at the WORKSPACE ROOT, so a task cannot leave its
  * project whatever it declares here. The full account, including what a
@@ -391,7 +390,7 @@ export interface SandboxConfig {
    * project dir.
    *
    * ```ts
-   * ignore: { write: ['*.bun-build'] }   // bun --compile stages a random
+   * ignore: { write: ['*.bun-build'] } // bun --compile stages a random
    *                                      // temp name in the cwd
    * ```
    *
@@ -590,8 +589,8 @@ export interface PersistentConfig {
    * → ready immediately on spawn (fire-and-forget; downstream still
    * runs but doesn't gate on a signal).
    *
-   * Example: Vite prints `Local:   http://localhost:5173/` when its
-   * dev server is up — `readyWhen: 'Local:'` waits for that line.
+   * Example: Vite prints `Local: http://localhost:5173/` when its dev server is
+   * up — `readyWhen: 'Local:'` waits for that line.
    */
   readyWhen?: string
 }
@@ -707,11 +706,11 @@ export interface InputsConfig {
    * Uses the same Turbo/Nx micro-syntax as `dependsOn`, plus
    * wildcards and negation for filtering:
    *
-   *   - `'*'`         include every same-project upstream
-   *   - `'^*'`        include every dep-workspace upstream
-   *   - `'name'`      include same-project task `name`
-   *   - `'^name'`     include the `name` task in dep workspaces
-   *   - `'pkg#name'`  include the specific package's `name` task
+   *   - `'*'` include every same-project upstream
+   *   - `'^*'` include every dep-workspace upstream
+   *   - `'name'` include same-project task `name`
+   *   - `'^name'` include the `name` task in dep workspaces
+   *   - `'pkg#name'` include the specific package's `name` task
    *   - `'!name'`, `'!^name'`, `'!pkg#name'` — exclude
    *
    * Patterns are applied in order, last write wins, so
@@ -750,7 +749,7 @@ export interface InputsConfig {
 
 /**
  * A valid `dependsOn` entry, given the set of sibling task names `K`:
- *   - `K`                — a same-project task; type-checked against the
+ *   - `K` — a same-project task; type-checked against the
  *                          keys of THIS config's `tasks` (typo → error).
  *   - `` `^${string}` `` — a task in workspace deps (e.g. `'^build'`,
  *                          `'^all'`); the dep's task names aren't known
@@ -783,16 +782,16 @@ type DependsOn<D, K extends string> =
 /**
  * The keys of `T` that `Shape` does not declare, typed `never`. A generic
  * argument skips TypeScript's excess-property check, so a Turbo-shaped
- * `outputs` on a task, or `cwd` in `exec`, type-checked and failed only
- * when vx loaded the config (D-69), as did a typo beside a known key in
- * `defineWorkspace` (D-70); `never` puts the error on that line.
+ * `outputs` on a task, or `cwd` in `exec`, type-checked and failed only when vx
+ * loaded the config, as did a typo beside a known key in `defineWorkspace`;
+ * `never` puts the error on that line.
  */
 type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never }
 
 /** `T[P]` when `T` has it; `unknown` (no keys to check) when it does not. */
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 
-/** The objects inside each task's `exec`, held to their keys as `exec` is (D-156). */
+/** The objects inside each task's `exec`, held to their keys as `exec` is. */
 type KnownExecs<T extends ProjectConfig> = {
   tasks?: {
     [K in keyof NonNullable<T['tasks']>]?: {

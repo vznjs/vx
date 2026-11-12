@@ -1,10 +1,10 @@
 // Content-addressed task cache.
 //
 // On-disk layout:
-//   <cacheDir>/cache.db            — SQLite index (entries + runs + file_hashes)
-//   <cacheDir>/<hash>.tar.zst      — per-entry artifact:
-//                                      stdout             (captured stdout, always present)
-//                                      outputs/           (declared output files, when any)
+//   <cacheDir>/cache.db — SQLite index (entries + runs + file_hashes)
+//   <cacheDir>/<hash>.tar.zst — per-entry artifact:
+//                                      stdout (captured stdout, always present)
+//                                      outputs/ (declared output files, when any)
 //                                      workspace-outputs/ (declared outputs.workspaceFiles,
 //                                                          root-relative, when any)
 //
@@ -208,13 +208,12 @@ function closeStore(ix: StoreIndex): void {
     ix.outputs.flushOutputDirs()
     ix.folds.flush()
   } catch {
-    // `accessed_at` is LRU
-    // bookkeeping, never correctness, and the run's results are
-    // already recorded by the time we get here. Letting it throw also
-    // SKIPPED `db.close()` below, leaking the handle. Reachable when
-    // the cache dir is removed under a live handle (a concurrent
-    // `rm -rf .vx/cache`): macOS answers SQLITE_IOERR_VNODE on a
-    // write to an unlinked file where Linux happily writes on.
+    // `accessed_at` is LRU bookkeeping, never correctness, and the run's
+    // results are already recorded by the time we get here. Letting it throw
+    // also SKIPPED `db.close()` below, leaking the handle. Reachable when the
+    // cache dir is removed under a live handle (a concurrent `rm
+    // -rf.vx/cache`): macOS answers SQLITE_IOERR_VNODE on a write to an
+    // unlinked file where Linux happily writes on.
   }
   if (ix.checkpoints instanceof WalCheckpointer) ix.checkpoints.terminate()
   ix.checkpoints = undefined

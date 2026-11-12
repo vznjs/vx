@@ -250,9 +250,9 @@ const FOLD_PARTS = memoParts<{ head: bigint; files: string }>({
 })
 
 /**
- * A task that runs a command and declares no `inputs`: nothing says what
- * it read, so no key can stand for its outputs, and a key that folds it
- * would replay a stale entry (2026-10-16).
+ * A task that runs a command and declares no `inputs`: nothing says what it
+ * read, so no key can stand for its outputs, and a key that folds it would
+ * replay a stale entry.
  */
 export function isKeyless(task: TaskConfig): boolean {
   return task.exec !== undefined && task.inputs === undefined
@@ -432,26 +432,24 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
 }
 
 /**
- * The first input whose content may no longer be the digest the key folded
- * (item 743), or undefined when every one still is. One `lstat` per file:
- * a file whose ctime is older than its fact (by the racy window, as git
- * judges its index) has not been written since, and one that is not gets
- * hashed again and compared. ctime, because no writer can set it back. A
- * file that is gone has moved. One written after `commandFrom` (read off
- * the file system's clock, `fsClockNow`, just after the describe) has moved
- * whatever it holds now: an input changed and changed BACK while the
- * command ran matched its digest again, and the entry saved the other
- * content's output under the key (item 1015). A write before it — an
- * upstream's — is judged by content, as before. A coarse clock dates a
- * write in `commandFrom`'s own tick at it, before or after: such a ctime is
- * the upstream's when the describe's stat saw it already
- * (`InputFact.ctimeMs`), else the command's.
- * `byBytes` (`inputs.stability.strategy: 'mutable'`) judges a write during
- * the command by content too, when it answers true for that file and its
- * ctime: the task says the same bytes are its own identical rewrite
- * (tsdown's package.json), not an edit undone, unless another command that
- * may write the file ran until then (command-windows.ts). A link's content
- * behind it (`InputFact.behind`) is followed again and compared.
+ * The first input whose content may no longer be the digest the key folded, or
+ * undefined when every one still is. One `lstat` per file: a file whose ctime
+ * is older than its fact (by the racy window, as git judges its index) has not
+ * been written since, and one that is not gets hashed again and compared.
+ * ctime, because no writer can set it back. A file that is gone has moved. One
+ * written after `commandFrom` (read off the file system's clock, `fsClockNow`,
+ * just after the describe) has moved whatever it holds now: an input changed
+ * and changed BACK while the command ran matched its digest again, and the
+ * entry saved the other content's output under the key. A write before it — an
+ * upstream's — is judged by content, as before. A coarse clock dates a write in
+ * `commandFrom`'s own tick at it, before or after: such a ctime is the
+ * upstream's when the describe's stat saw it already (`InputFact.ctimeMs`),
+ * else the command's. `byBytes` (`inputs.stability.strategy: 'mutable'`) judges
+ * a write during the command by content too, when it answers true for that file
+ * and its ctime: the task says the same bytes are its own identical rewrite
+ * (tsdown's package.json), not an edit undone, unless another command that may
+ * write the file ran until then (command-windows.ts). A link's content behind
+ * it (`InputFact.behind`) is followed again and compared.
  */
 export async function movedInput(
   facts: readonly InputFact[],
@@ -500,9 +498,9 @@ export async function movedInput(
 }
 
 /**
- * A task's `filesToken`, as its key's fold memo probe takes it: the fields
- * of `inputsArgs` the token reads, and no more. Built through `inputsArgs`,
- * two spread objects per call were ~3 ms of 3,202 (2026-11-07).
+ * A task's `filesToken`, as its key's fold memo probe takes it: the fields of
+ * `inputsArgs` the token reads, and no more. Built through `inputsArgs`, two
+ * spread objects per call were ~3 ms of 3,202.
  */
 export function taskFilesToken(
   args: Pick<ComputeHashArgs, 'node' | 'workspaceRoot' | 'nestedProjectDirs'> & {
@@ -650,11 +648,11 @@ async function resolveKeyInput(
  * participate because the loader has already baked them into the
  * resolved object before we serialize.
  *
- * A loaded config is JSON data: every load path refuses a value JSON
- * cannot carry (workspace/json-data.ts, item 701), so this JSON is the
- * config as vx reads it. The `hashCache.taskConfig` WeakMap is consulted first —
- * each task's config object is created once per run, so a hit there
- * skips the JSON.stringify + xxh3 entirely.
+ * A loaded config is JSON data: every load path refuses a value JSON cannot
+ * carry (workspace/json-data.ts), so this JSON is the config as vx reads it.
+ * The `hashCache.taskConfig` WeakMap is consulted first — each task's config
+ * object is created once per run, so a hit there skips the JSON.stringify +
+ * xxh3 entirely.
  */
 export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
   if (hashCache) {
@@ -697,30 +695,26 @@ function asRun(cfg: TaskConfig, hashCache: HashCache): TaskConfig {
 }
 
 /**
- * Project the config for hashing: `exec.remote` (and `exec.worker`) is a pure PLACEMENT hint
- * with zero effect on outputs, so it is stripped — pinning a task to this
- * machine never busts a cache. It must not: the whole contract of a remote
- * executor is that the same command over the same inputs produces the
- * same outputs, so a key that moved when placement changed would split a
- * laptop from a worker pool over nothing. (`exec.resources` rode the same
- * rule until 2026-09-12, when reservations left the config for the
- * schedule plugin that learns them; a config never declares them now.) A
- * config that declares no `remote` takes the fast path. That is a
- * SHORTCUT, not the reason the field needed no CACHE_VERSION bump:
- * measured (item 505), the spread path stringifies byte-identically for
- * every config that HAS an `exec`, since a spread keeps an existing key
- * in place. Its one behavioural case is a config with NO `exec`, where
- * the spread would add `exec: {}` — and nothing reaches here that way,
- * proven by throwing on a no-exec config and running the whole suite:
- * a group takes `computeGroupKey`, and a keyed group has no `exec`, so no
- * `remote`. `timeout`/`retries` stay folded — their keys are
- * distinct by design (see the decision log); stripping them retroactively
- * would bump CACHE_VERSION.
+ * Project the config for hashing: `exec.remote` (and `exec.worker`) is a pure
+ * PLACEMENT hint with zero effect on outputs, so it is stripped — pinning a
+ * task to this machine never busts a cache. It must not: the whole contract of
+ * a remote executor is that the same command over the same inputs produces the
+ * same outputs, so a key that moved when placement changed would split a laptop
+ * from a worker pool over nothing. A config that declares no
+ * `remote` takes the fast path. That is a SHORTCUT, not the reason the field
+ * needed no CACHE_VERSION bump: measured, the spread path stringifies
+ * byte-identically for every config that HAS an `exec`, since a spread keeps an
+ * existing key in place. Its one behavioural case is a config with NO `exec`,
+ * where the spread would add `exec: {}` — and nothing reaches here that way,
+ * proven by throwing on a no-exec config and running the whole suite: a group
+ * takes `computeGroupKey`, and a keyed group has no `exec`, so no `remote`.
+ * `timeout`/`retries` stay folded — their keys are distinct by design (see the
+ * decision log); stripping them retroactively would bump CACHE_VERSION.
  */
 function hashableConfig(cfg: TaskConfig): unknown {
-  // Keys sorted: moving `cache` above `exec`, or a `define` in another
-  // order, missed every key of the task, and a `project` or `graph` plugin
-  // writes a config the lock never sorted (2026-10-25).
+  // Keys sorted: moving `cache` above `exec`, or a `define` in another order,
+  // missed every key of the task, and a `project` or `graph` plugin writes a
+  // config the lock never sorted.
   const env = cfg.inputs?.env
   const pass = cfg.exec?.env?.passThrough
   const secret = cfg.exec?.env?.secret

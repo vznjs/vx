@@ -151,9 +151,8 @@ export type ToWorker =
 
 /**
  * What its machine uses now: cores busy over the last second and bytes of
- * memory in use. Each frame a worker sends carries it, so the run places
- * by what is free, not only by what history booked (2026-10-23: "you
- * watch instruments and play most efficient as they go").
+ * memory in use. Each frame a worker sends carries it, so the run places by
+ * what is free, not only by what history booked.
  */
 export interface Load {
   readonly cpu: number
@@ -206,17 +205,16 @@ export type ToOrchestrator =
       load?: Load
     } & Ran)
   /**
-   * Ahead of an `end` too long for one relay frame, some of its lists:
-   * the `end` that follows adds its own to them. One `end` with a sandboxed
-   * task's 9000 violations was over the relay's 1 MiB, and the run waited
-   * for it (2026-10-25).
+   * Ahead of an `end` too long for one relay frame, some of its lists: the
+   * `end` that follows adds its own to them. One `end` with a sandboxed task's
+   * 9000 violations was over the relay's 1 MiB, and the run waited for it.
    */
   | ({ type: 'part'; task: string; load?: Load } & Partial<Pick<WiredResult, PartList>>)
 
 /**
- * A message's JSON in UTF-8 bytes, what a relay frame holds: counted in
- * UTF-16 units, a part of CJK output sealed past the relay's 1 MiB and its
- * result never arrived (2026-10-25).
+ * A message's JSON in UTF-8 bytes, what a relay frame holds: counted in UTF-16
+ * units, a part of CJK output sealed past the relay's 1 MiB and its result
+ * never arrived.
  */
 export const bytesOf = (body: unknown): number => Buffer.byteLength(JSON.stringify(body))
 

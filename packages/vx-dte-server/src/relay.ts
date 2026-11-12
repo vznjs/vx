@@ -92,11 +92,11 @@ export const refusedWith = (status: number): number => 4000 + status
 export const GONE = refusedWith(404)
 
 /**
- * Close `socket` with `code`, said first in a frame (`{ "close": code,
- * "error"? }`, 0 for none): Bun 1.4.4's client fires its close only once
- * the host ends TCP too, and workerd never did, so a lost peer heard
- * 4404 10 s late, at its own redial limit (PR #4171, 2026-10-23). A
- * refusal's code is 4000 plus its HTTP status, its `reason` the error.
+ * Close `socket` with `code`, said first in a frame (`{ "close": code, "error"?
+ * }`, 0 for none): Bun 1.4.4's client fires its close only once the host ends
+ * TCP too, and workerd never did, so a lost peer heard 4404 10 s late, at its
+ * own redial limit. A refusal's code is 4000 plus its HTTP status, its `reason`
+ * the error.
  */
 export function closeSocket(socket: RelaySocket, code?: number, reason?: string): void {
   try {
@@ -218,9 +218,9 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /**
-   * A socket a push failed on is closed, not only let go: left open, its
-   * pings answered, its participant never redialed for what queued (two CI
-   * runs hung 20 min, 2026-10-23).
+   * A socket a push failed on is closed, not only let go: left open, its pings
+   * answered, its participant never redialed for what queued (two CI runs hung
+   * 20 min).
    */
   const unplug = (p: Participant): void => {
     const s = p.socket
@@ -281,10 +281,9 @@ export function createRelay(opts: RelayOptions): Relay {
       deliver(session, p, { from: 'relay', body: { type: 'closed' } }, true)
       drop(session, p, false)
     }
-    // A session is live while its host is, and only a live one is kept:
-    // a peer that comes or calls after it learns it at once
-    // (2026-10-23: "job is live, or it isnt"). Kept closed, or opened by a
-    // peer alone, a session held a late peer's runner ten minutes.
+    // A session is live while its host is, and only a live one is kept: a peer
+    // that comes or calls after it learns it at once. Kept closed, or opened by
+    // a peer alone, a session held a late peer's runner ten minutes.
     forget(session)
   }
 
@@ -596,12 +595,12 @@ export function createRelay(opts: RelayOptions): Relay {
         closeSocket(socket, GONE, 'gone')
         return false
       }
-      // One socket a participant. A host restoring several (a wake, a
-      // redial whose old close it never ran) attached the last; a push
-      // failing on a stale one unplugged it, and the live one, its pings
-      // answered by the host, never heard again: main 32f73ed's
-      // host waited 13 min on results queued here (2026-10-23).
-      // Closed, the other's client dials again and gets what queued.
+      // One socket a participant. A host restoring several (a wake, a redial
+      // whose old close it never ran) attached the last; a push failing on a
+      // stale one unplugged it, and the live one, its pings answered by the
+      // host, never heard again: a main run's host waited 13 min on results
+      // queued here. Closed, the other's client dials again and gets what
+      // queued.
       const earlier = p.socket
       // Plugged first: Bun runs the earlier socket's close handler inside
       // its close(), and that detach lost the participant (a redial on
@@ -626,12 +625,11 @@ export function createRelay(opts: RelayOptions): Relay {
       const p = session?.byId.get(id)
       if (p === undefined || p.socket !== socket) return
       p.socket = undefined
-      // Only `leave` ends a participant at once (2026-10-25): one
-      // whose socket dropped dials again within `graceMs`, and its session,
-      // a host's too, waits. Main 8d0619f's host socket ended 1006 and its
-      // redial 350 ms on found the session closed (2026-10-24). A peer
-      // quiet on a socket that never closed is its peers' to lose (vx-dte
-      // probes it).
+      // Only `leave` ends a participant at once: one whose socket dropped dials
+      // again within `graceMs`, and its session, a host's too, waits. Main
+      // 8d0619f's host socket ended 1006 and its redial 350 ms on found the
+      // session closed. A peer quiet on a socket that never closed is its
+      // peers' to lose (vx-dte probes it).
       p.droppedAt = Date.now()
     },
     frame(key, id, text, socket) {
@@ -666,11 +664,10 @@ export function createRelay(opts: RelayOptions): Relay {
         lapse(found)
         const session = live(key)
         const p = participant(session, id)
-        // It spoke down this socket, so this socket reaches it: one its
-        // host let go or never restored as its own left it deaf while its
-        // pings were answered, and 13baaf6's host heard nothing
-        // for 8 min (2026-10-23). Not closing the other: a host may hand
-        // the same socket as another object.
+        // It spoke down this socket, so this socket reaches it: one its host
+        // let go or never restored as its own left it deaf while its pings were
+        // answered, and 13baaf6's host heard nothing for 8 min. Not closing the
+        // other: a host may hand the same socket as another object.
         if (socket !== undefined && p.socket !== socket) plug(session, p, socket)
         if (body.leave === true) drop(session, p)
         else if (body.remove !== undefined) removePeer(session, p, body.remove)

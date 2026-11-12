@@ -143,8 +143,8 @@ const SIGNATURE_MESSAGE_PREFIX = 'artifact-signature:v2'
 export const MIN_SIGNATURE_KEY_LENGTH = 32
 
 // Bun's own hasher and the global `crypto`, not `node:crypto`: importing that
-// module cost every `@vzn/vx-migrate` user 6.6 ms at startup, remote cache
-// or not (G-121).
+// module cost every `@vzn/vx-migrate` user 6.6 ms at startup, remote cache or
+// not.
 /** A size and a duration as the wire spells them (a header string, a JSON number), kept when they are counts. */
 function infoOf(size: unknown, durationMs: unknown): ArtifactInfo {
   const count = (v: unknown): number | undefined => {
@@ -189,10 +189,10 @@ export async function artifactTag(
 }
 
 /**
- * The temps not yet removed. Core's signal exit is `process.exit`, which
- * awaits nothing, so a Ctrl-C between the download and the last read left
- * the artifact's temp behind (item 848); the process's `exit` event
- * removes what is still listed.
+ * The temps not yet removed. Core's signal exit is `process.exit`, which awaits
+ * nothing, so a Ctrl-C between the download and the last read left the
+ * artifact's temp behind; the process's `exit` event removes what is still
+ * listed.
  */
 const liveTemps = new Set<string>()
 let exitHooked = false
@@ -214,8 +214,7 @@ function trackTemp(file: string): void {
 
 async function removeTemp(file: string): Promise<void> {
   // Listed until the unlink lands: an exit in between would otherwise find
-  // nothing to remove and leave the temp (item 868).
-  // quiet: a temp file already gone
+  // nothing to remove and leave the temp. quiet: a temp file already gone
   await unlink(file).catch(() => undefined)
   liveTemps.delete(file)
 }
@@ -443,10 +442,10 @@ async function boundedText(res: Response, max: number): Promise<string | null> {
 }
 
 /**
- * A signed body is written whole before its tag can be checked, so a
- * server that never ended one filled the temp's disk (L-8). Core refuses
- * an artifact past its 2 GiB ceiling (zstd's bound on it here) anyway, so
- * nothing larger is ever worth keeping.
+ * A signed body is written whole before its tag can be checked, so a server
+ * that never ended one filled the temp's disk. Core refuses an artifact past
+ * its 2 GiB ceiling (zstd's bound on it here) anyway, so nothing larger is ever
+ * worth keeping.
  */
 const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
 
@@ -458,8 +457,8 @@ const NO_BATCH = new Set([404, 405, 501])
 
 /**
  * The most hashes one batch query may carry: Vercel answers more with 400
- * "Too many hashes. Limit is 100." (main f71b377 asked 107 at once, and
- * the run planned as if none were held).
+ * "Too many hashes. Limit is 100." (a run that asked 107 at once planned as
+ * if none were held).
  */
 const BATCH_MAX = 100
 
@@ -667,10 +666,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 
   /**
-   * `undefined` = the token was refused and the refusal is ALREADY
-   * reported, so the caller degrades to its miss value in silence. Only the
-   * first refusal throws, and a run's calls are concurrent: six projects
-   * under a bad token printed five identical lines before this (2026-09-20).
+   * `undefined` = the token was refused and the refusal is ALREADY reported, so
+   * the caller degrades to its miss value in silence. Only the first refusal
+   * throws, and a run's calls are concurrent: six projects under a bad token
+   * printed five identical lines before this.
    */
   private async request(
     method: string,
@@ -785,16 +784,16 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     if (res === undefined) return null
     if (res.status !== 200) {
       // A server with no batch query (404, 405, 501) is asked per hash. Any
-      // other refusal was silent: main f71b377's probe gave no answer and no
-      // one could say why, and DTE sized the run as if every task ran.
+      // other refusal was silent: a main run's probe gave no answer and no one
+      // could say why, and DTE sized the run as if every task ran.
       if (NO_BATCH.has(res.status)) {
         await res.body?.cancel()
         return null
       }
       throw await refusal(res, this.hidden, 'batch query answered ')
     }
-    // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
-    // past this bound is no answer, read no further than the bound (L-9).
+    // An answer per hash is a few hundred bytes of ArtifactInfo; a reply past
+    // this bound is no answer, read no further than the bound.
     const bound = hashes.length * 4096 + 64 * 1024
     const text = await boundedText(res, bound)
     if (text === null) throw new Error(`batch query answered past ${bound} bytes; read no further`)
@@ -816,7 +815,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     }
     // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
     // error entry is not a stored artifact, and it was counted as one (a GET
-    // spent on a 404, item 929).
+    // spent on a 404).
     const held = new Map<string, ArtifactInfo>()
     for (const h of hashes) {
       const v = (info as Record<string, unknown>)[h]
@@ -1077,9 +1076,9 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         warn,
       )
       if (config === undefined) return undefined
-      // A signed download waits in a temp until its tag checks: in vx's
-      // cache directory, which the sandbox walls, not the shared temp dir a
-      // sandboxed task may read (L-45).
+      // A signed download waits in a temp until its tag checks: in vx's cache
+      // directory, which the sandbox walls, not the shared temp dir a sandboxed
+      // task may read.
       const layer = new TurboRemoteCache(config, fetch, ctx.cacheDir)
       layer.reads = readScopes(ctx.refs)
       layer.lent = ctx.lent

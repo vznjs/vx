@@ -423,11 +423,11 @@ function runWritesCache(db: Database, id: string | null): boolean {
 }
 
 /**
- * The endings an UNCHANGED cache key can have. A re-execution is told apart
- * by the evidence the index holds: every one used to blame `--no-cache` /
+ * The endings an UNCHANGED cache key can have. A re-execution is told apart by
+ * the evidence the index holds: every one used to blame `--no-cache` /
  * `--force`, when the previous run on the key had failed (a failure saves
- * nothing) or the entry had been pruned, and the invocation recorded that
- * no flag was passed (item 1009).
+ * nothing) or the entry had been pruned, and the invocation recorded that no
+ * flag was passed.
  */
 function unchangedKeyNote(
   db: Database,
@@ -512,9 +512,9 @@ function unchangedKeyNote(
   }
   // The flags that skip a read were ruled out above whenever the policy was
   // recorded; blaming them here named a flag the policy shows was not passed
-  // when the previous run's save had failed (X-46). No row records a failed
-  // save, only its trace: the previous run executed, succeeded, and no entry
-  // holds the key.
+  // when the previous run's save had failed. No row records a failed save, only
+  // its trace: the previous run executed, succeeded, and no entry holds the
+  // key.
   if (policy === undefined) {
     return 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
   }
@@ -704,9 +704,9 @@ export function diffKeyComponents(
   const entries: InputDiffEntry[] = []
   let unchangedCount = 0
   // A secret env input's hash is its value, unsalted: a short one is
-  // recoverable from a log that printed `vx why` (M-62). The diff says it
-  // changed and never shows the hash. Secret by name, or by the mark a
-  // task's `exec.env.secret` put on its row (M-63).
+  // recoverable from a log that printed `vx why`. The diff says it changed and
+  // never shows the hash. Secret by name, or by the mark a task's
+  // `exec.env.secret` put on its row.
   const shown = (c: TaskInputComponent): string =>
     c.kind === 'env' && (secretNamed(c.name) || c.hash.startsWith(MASKED)) ? MASKED : c.hash
   const keys = new Set<string>([...cur.keys(), ...old.keys()])
@@ -895,8 +895,8 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   // either side's rows are gone, we can name the hash change but not the
   // component-level diff.
   if (cur.length === 0 || old.length === 0) {
-    // A run that did not pass saved no entry, so it kept no fingerprints:
-    // that is the cause to name, not a prune (item 898).
+    // A run that did not pass saved no entry, so it kept no fingerprints: that
+    // is the cause to name, not a prune.
     const unsaved =
       cur.length === 0 && !isPassStatus(this_.status)
         ? `this run ended ${this_.status}`
@@ -912,7 +912,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
                   ? `the previous run did not write the cache (${NO_WRITE})`
                   : null
     // An entry a remote put here arrives with no fingerprints (the artifact
-    // carries none): that is why, not a prune (2026-11-11).
+    // carries none): that is why, not a prune.
     const remote =
       unsaved !== null
         ? null

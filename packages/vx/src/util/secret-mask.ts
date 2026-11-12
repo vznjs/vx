@@ -1,9 +1,9 @@
-// Masking the values of secret-named variables in what vx prints, stores
-// or hands to telemetry (L-11). A task that echoes `$NPM_TOKEN`, or a
-// TS config that interpolates `process.env.API_KEY` into its command,
-// put the value in the terminal, the cached stdout every later hit
-// replays, and the spans a telemetry plugin exports. The masking is
-// GitHub Actions' kind: a known value is replaced wherever it appears.
+// Masking the values of secret-named variables in what vx prints, stores or
+// hands to telemetry. A task that echoes `$NPM_TOKEN`, or a TS config that
+// interpolates `process.env.API_KEY` into its command, put the value in the
+// terminal, the cached stdout every later hit replays, and the spans a
+// telemetry plugin exports. The masking is GitHub Actions' kind: a known value
+// is replaced wherever it appears.
 
 import { ownEnv } from './essential-env.js'
 
@@ -103,12 +103,12 @@ export function secretMask(
   const add = (value: string | undefined): void => {
     if (value === undefined || value.length < MIN_SECRET_CHARS) return
     values.add(value)
-    // A value with a `'` reaches a printed command spelled as shellQuote
-    // spells it (`'\''`), which the plain value does not match (X-45).
+    // A value with a `'` reaches a printed command spelled as shellQuote spells
+    // it (`'\''`), which the plain value does not match.
     if (value.includes("'")) values.add(value.replaceAll("'", `'\\''`))
     // A multi-line value (a PEM key) is also masked line by line, as GitHub
     // Actions does: a tool that indents or reflows it prints no copy of the
-    // whole value, and every line leaked (L-36).
+    // whole value, and every line leaked.
     if (!value.includes('\n')) return
     for (const line of value.split(/\r?\n/)) {
       const trimmed = line.trim()

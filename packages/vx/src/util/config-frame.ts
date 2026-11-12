@@ -7,9 +7,9 @@
 import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
-// `<file>: tasks.<path>[:] …`, `<file>: \`<setting>\` …`, `<file>: task name "<name>" …`,
-// or a top-level `<file> has unknown field …`, from a project's vx.config
-// or the workspace's .vx/workspace.ts.
+// `<file>: tasks.<path>[:] …`, `<file>: \`<setting>\` …`, `<file>: task name
+// "<name>" …`, or a top-level `<file> has unknown field …`, from a project's
+// vx.config or the workspace's.vx/workspace.ts.
 const HEAD =
   /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (?:(tasks\.[^\s:]+)(:?)|`([^`\n]+)`|task name ("(?:[^"\\\n]|\\.)*")))? /
 

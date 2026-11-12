@@ -11,10 +11,10 @@ import type { HistoryWriterIn, HistoryWriterOut } from './history-writer.js'
 const BATCH = 512
 
 /**
- * The hits a run writes before a thread pays for its start: a run with
- * fewer writes them all in its bundle. A warm 1,000-project run took
- * median 170 ms with a thread, 150 without; at 2,500 and 3,000 the two
- * tie or the thread wins by ~10 ms (2026-11-07, compiled binary).
+ * The hits a run writes before a thread pays for its start: a run with fewer
+ * writes them all in its bundle. A warm 1,000-project run took median 170 ms
+ * with a thread, 150 without; at 2,500 and 3,000 the two tie or the thread wins
+ * by ~10 ms (compiled binary).
  */
 const THREAD_FROM = 2048
 

@@ -103,8 +103,8 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const metas = await discoverCliProjects(root)
   const byName = new Map(metas.map((m) => [m.name, m]))
 
-  // `//#task` is Turbo's root package's task: the root project here (D-39),
-  // and `//` alone is that project, as `--filter //` reads it (D-46).
+  // `//#task` is Turbo's root package's task: the root project here, and `//`
+  // alone is that project, as `--filter //` reads it.
   const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
   if (parsed.target === '//' || parsed.target?.startsWith('//#')) {
     if (rootMeta === undefined) {
@@ -216,7 +216,8 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   }
 
   if (bareTask) {
-    // As `vx run <task> --all` takes it: the default build is declared by no one (X-145).
+    // As `vx run <task> --all` takes it: the default build is declared by no
+    // one.
     const declares = (task: TaskConfig | undefined): boolean =>
       task !== undefined && !isDefaultBuild(task)
     const declaring = [...projects.values()].filter((p) =>
@@ -311,7 +312,7 @@ function suggest(
     if (n.includes(q) || q.includes(n)) near.add(c)
   }
   if (near.size > 0) return ` — did you mean ${[...near].map((n) => prefix + n).join(', ')}?`
-  // Nothing near named nothing to pick from (M-57): say what exists.
+  // Nothing near named nothing to pick from: say what exists.
   return candidates.length === 0 ? '' : `; ${label}: ${listed(candidates.map((c) => prefix + c))}`
 }
 
@@ -322,9 +323,8 @@ function projectDir(root: string, meta: ProjectMeta): string {
 
 /**
  * A task as `vx show` prints it: a secret variable's value masked in every
- * string it holds, where a TS config that builds one from `process.env`
- * put it (the command, `env.define`, a runtime probe, `readyWhen`, the
- * description) (L-11).
+ * string it holds, where a TS config that builds one from `process.env` put it
+ * (the command, `env.define`, a runtime probe, `readyWhen`, the description).
  */
 function shownTask(task: TaskConfig): TaskConfig {
   const env = task.exec?.env
@@ -451,7 +451,7 @@ function renderProject(
   const head: ui.FieldRow[] = [
     ['dir', dir],
     ...(tags.length > 0 ? [['tags', tags.join(', ')] as const] : []),
-    // A config-less package a dependant reaches has the default `build` (X-9).
+    // A config-less package a dependant reaches has the default `build`.
     ...(note === null ? [] : [['config', note] as const]),
     ...(tasks.length === 0 && note === null ? [['tasks', 'none declared'] as const] : []),
   ]

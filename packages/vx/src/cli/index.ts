@@ -22,11 +22,10 @@ import * as ui from '../ui/index.js'
 import { sayNotice, refusalNotice } from '../ui/index.js'
 
 // Every verb is imported when invoked, `run` included, and so is the
-// plugin-verb lookup: each pulls in the orchestrator and the workspace
-// loader, 49 ms of a 65 ms `vx --version` (2026-09-30). This file once
-// re-exported the verbs' parsers for tests, which loaded every verb on
-// every start. The specifiers are string literals, so `bun build
-// --compile` still embeds them.
+// plugin-verb lookup: each pulls in the orchestrator and the workspace loader,
+// 49 ms of a 65 ms `vx --version`. This file once re-exported the verbs'
+// parsers for tests, which loaded every verb on every start. The specifiers are
+// string literals, so `bun build --compile` still embeds them.
 const plugins = () => import('./plugin-commands.js')
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -36,10 +35,10 @@ export async function run(argv: readonly string[]): Promise<number> {
   await hideEnvFromTasks()
 
   // `vx <verb> --help` is the universal reflex, and every verb answered
-  // `unknown flag: --help` and exited 1 (walkthrough, 2026-09-04). Only args
-  // BEFORE a `--` count: `vx run build -- --help` forwards it to the task,
-  // which is the one place `--help` is not being asked of vx. Core verbs
-  // only — a plugin verb owns its own arguments, `--help` included.
+  // `unknown flag: --help` and exited 1 (walkthrough). Only args BEFORE a `--`
+  // count: `vx run build -- --help` forwards it to the task, which is the one
+  // place `--help` is not being asked of vx. Core verbs only — a plugin verb
+  // owns its own arguments, `--help` included.
   if (command !== undefined && wantsHelp(command, rest)) {
     await printHelp(await (await plugins()).pluginCommandHelp(), command)
     return 0
@@ -135,9 +134,9 @@ function forwardsNothing(command: string, rest: readonly string[]): boolean {
 }
 
 /**
- * A crash from a hand-broken lock entry is that entry's fault: runs validate
- * no entry, so it surfaced as a raw TypeError (2026-10-14). The lock is
- * read only on the crash path, so a normal run pays nothing.
+ * A crash from a hand-broken lock entry is that entry's fault: runs validate no
+ * entry, so it surfaced as a raw TypeError. The lock is read only on the crash
+ * path, so a normal run pays nothing.
  */
 async function brokenLockNamed(err: unknown): Promise<unknown> {
   if (isUserError(err) || isFsRefusal(err) || isOutOfFds(err)) return err
@@ -329,13 +328,12 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         return unknown(`vx: ${task}\n`)
       }
       if (command === 'serve' || command === 'dev') {
-        // vx core is only a task runner — it has no service layer of its
-        // own. A dashboard, remote cache, distributed execution, etc. are
-        // provided by PLUGINS (declared in .vx/workspace.ts), never by core.
-        // We keep this neutral hint for the common muscle-memory verbs, but
-        // core names no specific plugin package: any package can provide
-        // these. The notice prints a line per fact, so each line is a
-        // whole sentence.
+        // vx core is only a task runner — it has no service layer of its own. A
+        // dashboard, remote cache, distributed execution, etc. are provided by
+        // PLUGINS (declared in.vx/workspace.ts), never by core. We keep this
+        // neutral hint for the common muscle-memory verbs, but core names no
+        // specific plugin package: any package can provide these. The notice
+        // prints a line per fact, so each line is a whole sentence.
         return unknown(
           `vx: \`${command}\` is not a vx core command.\n` +
             `  vx core runs tasks in-process.\n` +
@@ -344,16 +342,14 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         )
       }
       // One line, as a verb's own unknown flag or subcommand gets; the full
-      // help after a typo was a hundred lines past the hint that mattered.
-      // The verbs this workspace's plugins declare are verbs HERE, so they
-      // join the "did you mean" set, and when nothing is close the second
-      // line says where a verb can come from: a typo of a plugin verb read
-      // as a plain unknown command, and a plugin verb before the plugin was
-      // declared said nothing about the file that would declare it
-      // (2026-09-20).
-      // A word that opens with a dash is a flag, and vx itself takes only
-      // --help and --version: "unknown command: --bogus" named the wrong
-      // thing (M-60).
+      // help after a typo was a hundred lines past the hint that mattered. The
+      // verbs this workspace's plugins declare are verbs HERE, so they join the
+      // "did you mean" set, and when nothing is close the second line says
+      // where a verb can come from: a typo of a plugin verb read as a plain
+      // unknown command, and a plugin verb before the plugin was declared said
+      // nothing about the file that would declare it. A word that opens with a
+      // dash is a flag, and vx itself takes only --help and --version: "unknown
+      // command: --bogus" named the wrong thing.
       if (command.startsWith('-')) {
         // `-v` / `-V` is another tool's version flag, far from both names.
         const flag = /^-v$/i.test(command) ? '--version' : nearest(command, ['--help', '--version'])

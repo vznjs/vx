@@ -12,13 +12,13 @@ import type { ColorSupport } from '../ui/index.js'
  * list's grid (what the run would do with it, its usual time, where it
  * would run), then the counts and the predicted time.
  *
- *     Plan 3    status  cache     usual    time   cpu    mem outputs  blocks worker       task
- *              cached  local          —       —     —      —       —       — local        @vzn/vx#lint
- *              cached  remote         —       —     —      —    12MB       — local        @vzn/vx#test
- *              run     miss       ~1.2s       —     —      —       —       — local        @vzn/vx#build
+ *     Plan 3 status cache usual time cpu mem outputs blocks worker task
+ *              cached local — — — — — — local @vzn/vx#lint
+ *              cached remote — — — — 12MB — local @vzn/vx#test
+ *              run miss ~1.2s — — — — — local @vzn/vx#build
  *
- *     tasks      3 planned · 2 cache hits (1 local, 1 remote, 12MB) · 1 would run
- *     predicted  ~1.20s wall · ~1.20s total execution
+ *     tasks 3 planned · 2 cache hits (1 local, 1 remote, 12MB) · 1 would run
+ *     predicted ~1.20s wall · ~1.20s total execution
  */
 export function planReport(plan: RunPlan): ui.Block {
   // A group the platform skip reaches is still a group: it runs nothing.
@@ -191,7 +191,7 @@ function wireReason(r: AffectedReason): AffectedReason {
   return wire
 }
 
-/** A TS config may build the description from `process.env` (L-11). */
+/** A TS config may build the description from `process.env`. */
 function shownDescription(t: RunPlan['tasks'][number]): string | undefined {
   const { description, exec } = t.node.config
   return description === undefined ? undefined : maskedCommand(description, exec?.env)

@@ -93,7 +93,7 @@ export function isPassStatus(status: string): boolean {
  */
 export function isCacheHit(status: string): boolean {
   // No known-status guard: an unknown string falls through the switch to
-  // undefined, which is neither hit source (the guard survived item 654).
+  // undefined, which is neither hit source.
   const source = deriveCacheSource(status as TaskStatus)
   return source === 'local' || source === 'remote'
 }

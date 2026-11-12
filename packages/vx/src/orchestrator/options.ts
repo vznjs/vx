@@ -24,11 +24,11 @@ export interface RunOptions {
   projects?: string[]
   /**
    * `--affected`'s diff: a bare requested task runs only when the change
-   * reaches its `dependsOn` closure (`affected-tasks.ts`; owner,
-   * 2026-10-04). `projects` is the candidate set it narrows.
+   * reaches its `dependsOn` closure (`affected-tasks.ts`; owner). `projects` is
+   * the candidate set it narrows.
    */
   affected?: AffectedChanges
-  /** Worker slots: a positive integer; run() refuses anything else (C-61). */
+  /** Worker slots: a positive integer; run() refuses anything else. */
   concurrency?: number
   /**
    * Cache directory override (`--cache-dir <path>`). Absolute, or relative
@@ -92,19 +92,18 @@ export interface RunOptions {
    * `run.retries` from its flag (`--retries <n>`): max additional attempts
    * after a failed attempt, for tasks that don't declare their own
    * `exec.retries` (explicit config wins, including `retries: 0`); unset,
-   * `VX_RUN_RETRIES`, then the workspace's. Never folded into any cache
-   * key, so the same run with and without `--retries` derives identical keys.
-   * A non-negative integer; run() refuses anything else (C-61).
+   * `VX_RUN_RETRIES`, then the workspace's. Never folded into any cache key, so
+   * the same run with and without `--retries` derives identical keys. A
+   * non-negative integer; run() refuses anything else.
    */
   retries?: number
   /**
-   * `run.timeout` in ms from its flag (`--timeout 30m`), for tasks that
-   * declare no `exec.timeout`; unset, `VX_RUN_TIMEOUT`, then the
-   * workspace's. Per-task `exec.timeout` always wins. Never
-   * folded into any cache key (a timed-out task fails and is never
-   * cached), so a `--timeout` run cache-hits a plain run's entry.
-   * A positive integer of ms up to `2 ** 31 - 1`; run() refuses anything
-   * else (C-61).
+   * `run.timeout` in ms from its flag (`--timeout 30m`), for tasks that declare
+   * no `exec.timeout`; unset, `VX_RUN_TIMEOUT`, then the workspace's. Per-task
+   * `exec.timeout` always wins. Never folded into any cache key (a timed-out
+   * task fails and is never cached), so a `--timeout` run cache-hits a plain
+   * run's entry. A positive integer of ms up to `2 ** 31 - 1`; run() refuses
+   * anything else.
    */
   timeout?: number
   /**
@@ -174,10 +173,8 @@ export interface RunOptions {
    * onto it instead of creating its own — letting a caller subscribe a
    * surface BEFORE the run starts emitting. This IS the surface seam:
    * core ships the bus and the serializable `WireEvent`, and whatever
-   * renders them lives outside. (It used to name a `--ui` devframe dev
-   * server; no such flag exists, and core's devframe adapter was removed
-   * on 2026-08-26 — one consumer's adapter is not core's job.) The terminal renderer is still attached as a subscriber, so
-   * default output is unchanged. Default: a fresh internal bus.
+   * renders them lives outside. The terminal renderer is still attached as a
+   * subscriber, so default output is unchanged. Default: a fresh internal bus.
    */
   bus?: EventBus
   /**
@@ -200,11 +197,10 @@ export interface RunOptions {
    */
   telemetrySinks?: readonly TelemetrySink[]
   /**
-   * The raw command string for the `invocations` row (e.g.
-   * `'vx run build test --all'`). When absent, run() falls back to
-   * `process.argv.slice(1).join(' ')` so programmatic callers still
-   * record something useful. Telemetry sinks get it with what follows
-   * `--` counted, not quoted, as they get the argv (C-67).
+   * The raw command string for the `invocations` row (e.g. `'vx run build test
+   * --all'`). When absent, run() falls back to `process.argv.slice(1).join('
+   * ')` so programmatic callers still record something useful. Telemetry sinks
+   * get it with what follows `--` counted, not quoted, as they get the argv.
    */
   command?: string
   /**
@@ -232,18 +228,17 @@ export interface RunOptions {
  */
 export interface RunHandoff {
   /**
-   * `projects` came from a git diff (`--affected`, a `[ref]` filter), so
-   * which projects hold a bare task name depends on what changed: a name
-   * the changed projects do not declare is not a typo when the workspace
-   * declares it elsewhere, and a run with nothing left to do is clean.
-   * Judged against the scope, a docs-only commit turned
-   * `vx run test --affected` red (item 1024).
+   * `projects` came from a git diff (`--affected`, a `[ref]` filter), so which
+   * projects hold a bare task name depends on what changed: a name the changed
+   * projects do not declare is not a typo when the workspace declares it
+   * elsewhere, and a run with nothing left to do is clean. Judged against the
+   * scope, a docs-only commit turned `vx run test --affected` red.
    */
   selectedByDiff?: boolean
   /**
    * The projects an include other than `--affected` selected (`--filter
-   * other`): every include is a union, so their requested tasks run
-   * whether or not `affected` reaches them (X-10).
+   * other`): every include is a union, so their requested tasks run whether or
+   * not `affected` reaches them.
    */
   selectedOutright?: readonly string[]
   /** Filled with why `--affected` kept each requested task; `planRun` (`--dry`) passes it. */

@@ -377,8 +377,8 @@ class WatchLoop {
     this.links = this.atArm?.links ?? new Set<string>()
     /**
      * `info/exclude` ignores as a `.gitignore` does, and keys are
-     * gitignore-aware (X-136), so its edit is a cycle; the ignore filter drops
-     * every path under `.git/`. Armed once, from the common dir the run's own
+     * gitignore-aware, so its edit is a cycle; the ignore filter drops every
+     * path under `.git/`. Armed once, from the common dir the run's own
      * enumeration asked git for (`repoFacts`, memoised).
      */
     const commonDir = repoFacts(workspaceRoot)?.commonDir
@@ -534,22 +534,21 @@ class WatchLoop {
         } else
           try {
             // A member came or went: armed before the run keys it, an edit in a
-            // new package while its first cycle runs queues like any other; armed
-            // only after, it fell in the gap and ran nothing (X-138). The re-read
+            // new package while its first cycle runs queues like any other;
+            // armed only after, it fell in the gap and ran nothing. The re-read
             // after the run stays, for what the run itself changed.
             lockAtRun = lockStamp(this.workspaceRoot)
             const relocked = lockAtRun !== this.lockSeen
             this.lockSeen = lockAtRun
             if ((await this.runOnce(label!, relocked, judged)) === 'stopped') break
           } catch (err) {
-            // A re-run can fail catastrophically when the workspace
-            // itself moved out from under us — e.g. the user deleted
-            // the project dir, or git lost its repo (the watch loop
-            // outlives its own cwd in test teardown). Surface the
-            // message but DON'T let it crash the watch loop; the next
-            // FS event (if any) will retry. The dispose() on SIGINT
-            // is the canonical exit; we don't unilaterally abort here.
-            // A config's own throw or a plugin's failure may quote a secret (L-11).
+            // A re-run can fail catastrophically when the workspace itself
+            // moved out from under us — e.g. the user deleted the project dir,
+            // or git lost its repo (the watch loop outlives its own cwd in test
+            // teardown). Surface the message but DON'T let it crash the watch
+            // loop; the next FS event (if any) will retry. The dispose() on
+            // SIGINT is the canonical exit; we don't unilaterally abort here. A
+            // config's own throw or a plugin's failure may quote a secret.
             failed = err instanceof Error ? err.message : String(err)
             sayNotice('error', 'vx watch', `cycle failed: ${maskedLine(failed)}`)
           }
@@ -611,9 +610,9 @@ class WatchLoop {
       this.reachOf = undefined
     }
     restartTimings()
-    // On the mtime clock, as the arm is: from `Date.now()` a write the
-    // run made within a tick of it carried an earlier mtime and read as
-    // an edit (WD-20). The end needs no stamp: an mtime never leads it.
+    // On the mtime clock, as the arm is: from `Date.now()` a write the run made
+    // within a tick of it carried an earlier mtime and read as an edit. The end
+    // needs no stamp: an mtime never leads it.
     const start = fsClockNow(this.cacheDir)
     // A server still up whose task is unchanged stays up: the cycle
     // rebuilds what it depends on, and the dev tool's own reload
@@ -821,11 +820,11 @@ class WatchLoop {
       this.rootArm = this.workspaceWide
         ? // workspaceFiles inputs in play: a root-relative glob can name a
           // file anywhere, so one recursive root watcher replaces the
-          // per-project ones (it also covers claimed root files).
-          // `matters` keeps the events a key can see —
-          // project trees, claimed root files, the declared globs — and drops
-          // the rest of the tree; the ignore filter then keeps node_modules
-          // / .git / .vx and declared outputs out of what remains.
+          // per-project ones (it also covers claimed root files). `matters`
+          // keeps the events a key can see — project trees, claimed root files,
+          // the declared globs — and drops the rest of the tree; the ignore
+          // filter then keeps node_modules /.git /.vx and declared outputs out
+          // of what remains.
           this.arm(workspaceRoot, true, (filename) => {
             if (this.oneStream) this.heardInStream(filename)
             this.wideEvent(filename)

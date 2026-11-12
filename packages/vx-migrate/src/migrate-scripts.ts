@@ -7,24 +7,23 @@
 // wait for `build` when the package has one (`lint` does not); a dev-server
 // shaped script becomes persistent. Caching is opt-in and needs declared
 // inputs AND outputs, which a script cannot tell us — so NO task gets a
-// cache block; `build` carries a TODO showing the block to add. Until
-// 2026-09-04 `build` was emitted with whole-project inputs and EMPTY
-// outputs "to fill in": that is not an uncached task but a no-output one —
+// cache block; `build` carries a TODO showing the block to add. A `build`
+// emitted with whole-project inputs and EMPTY outputs "to fill in" would be not an uncached task but a no-output one —
 // it hits on unchanged inputs and skips the build with nothing to restore,
 // so a deleted `dist` stayed deleted under a green `up-to-date` run
 // (reproduced on the init walkthrough). A block that guessed `dist/**`
 // would restore the wrong tree for every package that writes somewhere
 // else, and a wrong restore is the worst failure vx has.
 //
-// Two npm conventions are mapped rather than copied, because copying them
-// loses behaviour: `pre<x>` / `post<x>` hooks, which npm runs around `x`
-// without being named, are folded into `x`'s command in that order (a
-// standalone `prebuild` task is one `vx run build` never runs — and the
-// hook is usually `rimraf dist`); and a script that is nothing but
-// `<pm> run <other>` becomes a GROUP over `<other>`, so the graph sees the
-// dependency instead of a package-manager subprocess it cannot cache.
-// Where the manager runs no such hooks (Yarn 2+, D-31; npm or pnpm told
-// not to, D-33) `prebuild` is a script like any other.
+// Two npm conventions are mapped rather than copied, because copying them loses
+// behaviour: `pre<x>` / `post<x>` hooks, which npm runs around `x` without
+// being named, are folded into `x`'s command in that order (a standalone
+// `prebuild` task is one `vx run build` never runs — and the hook is usually
+// `rimraf dist`); and a script that is nothing but `<pm> run <other>` becomes a
+// GROUP over `<other>`, so the graph sees the dependency instead of a
+// package-manager subprocess it cannot cache. Where the manager runs no such
+// hooks (Yarn 2+; npm or pnpm told not to) `prebuild` is a script like
+// any other.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -71,11 +70,11 @@ const BUILD_OUTPUTS: readonly [RegExp, readonly string[]][] = [
 const OUTPUT_DIR = /^(?:\.\/)?((?![./])[\w@-][\w@./-]*?)\/?$/
 
 /**
- * The directory the command says it writes, when no tool above names one:
- * an out-dir flag (`tsc --outDir lib`, `babel -d lib`), else the
- * directories it cleans first (`del-cli distribution`, `rimraf dist
- * types`). ky's build writes `distribution/`, and the TODO said `dist/**`
- * (D-90). A file (`tsconfig.tsbuildinfo`) and `node_modules` are no output.
+ * The directory the command says it writes, when no tool above names one: an
+ * out-dir flag (`tsc --outDir lib`, `babel -d lib`), else the directories it
+ * cleans first (`del-cli distribution`, `rimraf dist types`). ky's build writes
+ * `distribution/`, and the TODO said `dist/**`. A file (`tsconfig.tsbuildinfo`)
+ * and `node_modules` are no output.
  */
 function namedOutputs(command: string): string[] | undefined {
   const dir = (w: string | undefined): string | undefined => {
@@ -97,8 +96,9 @@ function namedOutputs(command: string): string[] | undefined {
           : -1
     if (at < 0) continue
     const args = words.slice(at).filter((w) => !w.startsWith('-'))
-    // A dir the command makes again (kit's `rm -rf ./missing_ids && mkdir
-    // ./missing_ids && vite build`) is a scratch dir it prepares, not output.
+    // A dir the command makes again (kit's `rm -rf./missing_ids &&
+    // mkdir./missing_ids && vite build`) is a scratch dir it prepares, not
+    // output.
     const made = new Set([...command.matchAll(/\bmkdir\s+(?:-p\s+)?(\S+)/g)].map((m) => dir(m[1])))
     const dirs = args
       .map(dir)
@@ -130,8 +130,8 @@ export function cacheTodo(command: string, buildInfo: readonly string[] = []): s
   return `cache: add \`inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real inputs and outputs — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
 }
 
-// `lint` is not here: a linter reads sources, and an edge to `build`
-// serialises the two for nothing (the init walkthrough, 2026-09-04).
+// `lint` is not here: a linter reads sources, and an edge to `build` serialises
+// the two for nothing (the init walkthrough).
 const AFTER_BUILD = new Set(['test', 'typecheck', 'check', 'e2e'])
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
 
@@ -156,19 +156,19 @@ export function delegatedScript(command: string): string | null {
   const manager = alias === 'pn' ? 'pnpm' : alias
   if (run === 'run-script' && manager !== 'pnpm') return null
   if (manager === 'pnpm' && run === undefined && (name === 't' || name === 'tst')) return 'test'
-  // Bare, the manager's own command wins over a script of that name:
-  // `bun test` is Bun's test runner and `bun build` its bundler, never the
-  // `test` / `build` script, and a group over the script ran the wrong
-  // thing (item 908). `pnpm test` and `yarn test` do run the script.
+  // Bare, the manager's own command wins over a script of that name: `bun test`
+  // is Bun's test runner and `bun build` its bundler, never the `test` /
+  // `build` script, and a group over the script ran the wrong thing. `pnpm
+  // test` and `yarn test` do run the script.
   if (manager !== undefined && run === undefined && OWN_COMMANDS[manager]!.has(name!)) return null
   return name!
 }
 
 /** What `<manager> <name>`, with no `run`, runs as the manager's own command. */
-// Listing a name that runs the script only keeps the command verbatim, so
-// each set leans wide; missing one of the manager's own made a group over
-// a script the manager never runs (D-32: `pnpm docs` opened npm's docs page,
-// `bun deploy` answered "reserved", `yarn check` verified dependencies).
+// Listing a name that runs the script only keeps the command verbatim, so each
+// set leans wide; missing one of the manager's own made a group over a script
+// the manager never runs (`pnpm docs` opened npm's docs page, `bun deploy`
+// answered "reserved", `yarn check` verified dependencies).
 const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
   // `bun --help`, Bun 1.4.2, the short aliases, and the names it reserves
   // or runs itself (probed: `bun lint` runs the script).
@@ -193,11 +193,11 @@ const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
 }
 
 /**
- * Yarn 2+ runs a script in its own shell, where `run <script>` is `yarn
- * run <script>`; vx's shell has no `run`, and 23 of berry's scripts
- * (`run build:zip:worker`, `run test:unit packages/…`) mapped to tasks
- * that failed "command not found" (D-92). Spelled out, at the head of
- * each `&&` / `||` / `;` / `|` segment.
+ * Yarn 2+ runs a script in its own shell, where `run <script>` is `yarn run
+ * <script>`; vx's shell has no `run`, and 23 of berry's scripts (`run
+ * build:zip:worker`, `run test:unit packages/…`) mapped to tasks that failed
+ * "command not found". Spelled out, at the head of each `&&` / `||` / `;` / `|`
+ * segment.
  */
 function berryRun(command: string): string {
   return command.replace(/(^|&&|\|\||[;|(])(\s*)run(?=\s)/g, '$1$2yarn run')
@@ -206,14 +206,13 @@ function berryRun(command: string): string {
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
 
 /**
- * The `$npm_*` variables a command reads. Every manager sets them for a
- * script (probed: npm, pnpm, bun and yarn printed the version, the name
- * and the script's name) and vx sets none, so a migrated `echo
- * $npm_package_version` printed nothing (D-34). The name and version are
- * read from the manifest at evaluation, so a bump reaches them; the event
- * is the script's own name, which a folded hook does not share. A field
- * the manifest lacks is left unset, as npm leaves it: `pkg.version` would
- * be undefined, which `vx lock` refuses.
+ * The `$npm_*` variables a command reads. Every manager sets them for a script
+ * (probed: npm, pnpm, bun and yarn printed the version, the name and the
+ * script's name) and vx sets none, so a migrated `echo $npm_package_version`
+ * printed nothing. The name and version are read from the manifest at
+ * evaluation, so a bump reaches them; the event is the script's own name, which
+ * a folded hook does not share. A field the manifest lacks is left unset, as
+ * npm leaves it: `pkg.version` would be undefined, which `vx lock` refuses.
  */
 function npmEnv(
   command: string,
@@ -238,12 +237,12 @@ function npmEnv(
 }
 
 /**
- * A script that never exits by design (D-40): a `watch` segment in its
- * name (`build:watch`, `watch-css`), a `--watch` flag, `tsc -w` /
- * `rollup -w`, or nodemon. Run as a plain task it held its dependents
- * forever. A bare `-w` elsewhere is not read: `npm run x -w pkg` is a
- * workspace. `--watch=false` / `--watchAll false` turn watching off (CRA's
- * `react-scripts test --watchAll=false`): a run that exits.
+ * A script that never exits by design: a `watch` segment in its name
+ * (`build:watch`, `watch-css`), a `--watch` flag, `tsc -w` / `rollup -w`, or
+ * nodemon. Run as a plain task it held its dependents forever. A bare `-w`
+ * elsewhere is not read: `npm run x -w pkg` is a workspace. `--watch=false` /
+ * `--watchAll false` turn watching off (CRA's `react-scripts test
+ * --watchAll=false`): a run that exits.
  */
 function isWatcher(name: string, command: string): boolean {
   if (name.split(/[:\-_.]/).includes('watch')) return true
@@ -276,11 +275,11 @@ const SERVER_VERBS = new Set(['dev', 'serve', 'start', 'preview'])
 const LAUNCHERS = new Set(['cross-env', 'npx', 'bunx', 'exec', 'dlx'])
 
 /**
- * A command that runs a server (D-91): docusaurus's `serve website` and
- * `netlify dev` mapped as one-shot tasks, so a dependent waited forever and
- * a server that exits on stdin EOF ended at once. Read per `&&` segment,
- * past env assignments and launchers; a quoted string is another tool's
- * argument (`start-server-and-test 'vite preview' …` exits).
+ * A command that runs a server: docusaurus's `serve website` and `netlify dev`
+ * mapped as one-shot tasks, so a dependent waited forever and a server that
+ * exits on stdin EOF ended at once. Read per `&&` segment, past env assignments
+ * and launchers; a quoted string is another tool's argument
+ * (`start-server-and-test 'vite preview' …` exits).
  */
 function servesCommand(command: string): boolean {
   for (const segment of foreground(command.replace(/"[^"]*"|'[^']*'/g, ' '))) {
@@ -298,7 +297,7 @@ function servesCommand(command: string): boolean {
     ) {
       // A launcher's `--package <name>` / `-p <name>` names what to install,
       // not the program: docusaurus's `pnpm dlx --package netlify-cli netlify
-      // dev` read `netlify-cli` as the program (D-112).
+      // dev` read `netlify-cli` as the program.
       i += words[i] === '--package' || words[i] === '-p' ? 2 : 1
     }
     const [program, verb] = [words[i], words[i + 1]]
@@ -325,7 +324,7 @@ function isPersistent(
   seen.add(name)
   if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own) || servesCommand(own)) return true
   // Through a runner too: `concurrently "npm:web" "npm:api"` and `run-p web
-  // api` over two servers mapped as one-shot tasks (D-113).
+  // api` over two servers mapped as one-shot tasks.
   const text = Object.entries(scripts).filter(
     (e): e is [string, string] => typeof e[1] === 'string',
   )
@@ -351,15 +350,14 @@ function scriptsOf(meta: PackageMeta): Record<string, unknown> {
 }
 
 /**
- * A `build` that only delegates (`build: pnpm run compile`) is a group over
- * its target, and the `^build` edge every `build` carries belongs on the
- * task that does the work: the group ran `compile` with no edge at all, so
- * a package compiled before the ones it imports had built (item 907). On
- * the group itself it would not hold — the group waits on both, `compile`
- * on neither. Followed through a chain of groups to the first command,
- * which takes the cache TODO too: a group has no command to cache, and the
- * TODO a delegating `build` never got was the one the header promised
- * (item 1045).
+ * A `build` that only delegates (`build: pnpm run compile`) is a group over its
+ * target, and the `^build` edge every `build` carries belongs on the task that
+ * does the work: the group ran `compile` with no edge at all, so a package
+ * compiled before the ones it imports had built. On the group itself it would
+ * not hold — the group waits on both, `compile` on neither. Followed through a
+ * chain of groups to the first command, which takes the cache TODO too: a group
+ * has no command to cache, and the TODO a delegating `build` never got was the
+ * one the header promised.
  */
 function upstreamBuildOnWorker(
   tasks: GeneratedTask[],
@@ -375,9 +373,9 @@ function upstreamBuildOnWorker(
     at = Array.isArray(deps) ? byName.get(String(deps[0])) : undefined
   }
   if (at === undefined || at.name === 'build' || at.task === null || at.task === undefined) return
-  // The worker IS `build`'s work, and so is every group on the way to it:
-  // a `typecheck` behind `build: npm run typecheck` waited for `build`,
-  // and the run refused the cycle (D-16).
+  // The worker IS `build`'s work, and so is every group on the way to it: a
+  // `typecheck` behind `build: npm run typecheck` waited for `build`, and the
+  // run refused the cycle.
   for (const name of [...seen, at.name]) {
     const t = byName.get(name)!.task!
     if (name !== 'build' && Array.isArray(t['dependsOn'])) {
@@ -392,12 +390,12 @@ function upstreamBuildOnWorker(
 }
 
 /**
- * A root script that runs the members rather than checking the repo:
- * pnpm's `-r` / `--filter` / `-C`, Yarn's `--cwd` (excalidraw's
- * `build:common`) and `yarn workspace <name>` (cal.com's `prisma`), npm's
- * `--prefix`, the workspace flags, Bun's `--filter`,
- * Vite+'s `vp run` (tiptap), and the other runners, vx itself included. Mapped, it ran every member's
- * task again beside the member's own (D-45).
+ * A root script that runs the members rather than checking the repo: pnpm's
+ * `-r` / `--filter` / `-C`, Yarn's `--cwd` (excalidraw's `build:common`) and
+ * `yarn workspace <name>` (cal.com's `prisma`), npm's `--prefix`, the workspace
+ * flags, Bun's `--filter`, Vite+'s `vp run` (tiptap), and the other runners, vx
+ * itself included. Mapped, it ran every member's task again beside the member's
+ * own.
  */
 const RUNS_MEMBERS =
   /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\bworkspaces?\s+(foreach|run)\b|\byarn\s+workspace\s|\bvp\s+run\s/
@@ -407,17 +405,16 @@ const MEMBER_FLAG =
   /^(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace|-w|-C|--dir|--cwd|--prefix|--if-present|--parallel|--stream)(=|$)/
 
 /**
- * The workspace flags are a package manager's: on the program it runs they
- * mean something else, and berry's `bench` (`yarn node -r ./setup.ts …`,
- * node's `--require`) was left out as running the members (D-81). With no
- * manager named, `node <bin> run` is one (npm/cli's own npm), and not
- * `docker run -w` (D-83).
+ * The workspace flags are a package manager's: on the program it runs they mean
+ * something else, and berry's `bench` (`yarn node -r./setup.ts …`, node's
+ * `--require`) was left out as running the members. With no manager named,
+ * `node <bin> run` is one (npm/cli's own npm), and not `docker run -w`.
  */
 function pmRunsMembers(script: string): boolean {
   for (const segment of script.split(/&&|\|\||[;|()]/)) {
     const words = segment.trim().split(/\s+/)
     let i = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
-    // npm/cli runs itself: `node . run test --workspaces`.
+    // npm/cli runs itself: `node. run test --workspaces`.
     if (i < 0) i = words.findIndex((w, j) => w === 'run' && words[j - 2] === 'node')
     if (i < 0) continue
     // `exec`, `dlx` and `x` take the manager's flags up to the program name.
@@ -437,10 +434,10 @@ function pmRunsMembers(script: string): boolean {
 const CD = /(?:^|[\s;&|(])cd\s+("[^"]*"|'[^']*'|(?:\\.|[^\s;&|()\\])+)/g
 
 /**
- * A `cd` into a member's directory, or one holding members, runs that
- * member's work (kit's `cd packages/kit && vitest run`); bun's
- * `typecheck` (`cd test && bun run typecheck`) enters no member and was
- * left out (D-83). A target vx cannot read (`$DIR`, `~`) still counts.
+ * A `cd` into a member's directory, or one holding members, runs that member's
+ * work (kit's `cd packages/kit && vitest run`); bun's `typecheck` (`cd test &&
+ * bun run typecheck`) enters no member and was left out. A target vx cannot
+ * read (`$DIR`, `~`) still counts.
  */
 function cdsToMembers(script: string, rootDir: string, memberDirs: readonly string[]): boolean {
   for (const m of script.matchAll(CD)) {
@@ -502,12 +499,11 @@ const DIR_FLAG = /^(-C|--dir|--cwd|--prefix)(?:=(.*))?$/
 
 /**
  * The part of a member's script that runs another member's work: pinia's
- * online-playground `build` is `pnpm -C ../pinia run build && vite build`,
- * and mapped verbatim it built pinia again beside pinia's own task, writing
- * the dist its siblings read. `yarn workspace <name>`, a runner, `pnpm -r`
- * / `--filter`, and a `cd` / `-C` / `--cwd` / `--prefix` whose innermost
- * member is another one count; a fixture inside the member, or the root,
- * does not.
+ * online-playground `build` is `pnpm -C../pinia run build && vite build`, and
+ * mapped verbatim it built pinia again beside pinia's own task, writing the
+ * dist its siblings read. `yarn workspace <name>`, a runner, `pnpm -r` /
+ * `--filter`, and a `cd` / `-C` / `--cwd` / `--prefix` whose innermost member
+ * is another one count; a fixture inside the member, or the root, does not.
  */
 function siblingRun(script: string, dir: string, others: readonly string[]): string | undefined {
   const inside = (a: string, b: string): boolean => a === b || a.startsWith(b + path.sep)
@@ -539,10 +535,9 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
 }
 
 /**
- * The package globs a `lerna.json` beside a lone root lists (Lerna's
- * default when it names none), or undefined: Lerna-classic repos list
- * their packages there, not in `workspaces`, and vx saw the root alone
- * (D-111).
+ * The package globs a `lerna.json` beside a lone root lists (Lerna's default
+ * when it names none), or undefined: Lerna-classic repos list their packages
+ * there, not in `workspaces`, and vx saw the root alone.
  */
 function lernaPackages(dir: string): string[] | undefined {
   let json: unknown
@@ -588,10 +583,10 @@ const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
 
 /**
- * The scripts a command runs by name: a package manager's (`pnpm x`, `npm
- * run x`), `run-s` / `run-p` / `npm-run-all` (`build:*` is one segment,
- * `build:**` any), and `concurrently "npm:x"`. A root `ci: run-s build:all
- * lint` over `build:all: pnpm -r build` mapped as a root task (D-95).
+ * The scripts a command runs by name: a package manager's (`pnpm x`, `npm run
+ * x`), `run-s` / `run-p` / `npm-run-all` (`build:*` is one segment, `build:**`
+ * any), and `concurrently "npm:x"`. A root `ci: run-s build:all lint` over
+ * `build:all: pnpm -r build` mapped as a root task.
  */
 function scriptRefs(command: string, scripts: readonly (readonly [string, string])[]): string[] {
   const refs = [...command.matchAll(RUNS_SCRIPT)].map((m) => m[1]!)
@@ -660,9 +655,9 @@ function runningMembers(
 }
 
 /**
- * `outside`: the root manifest when the root is no member (pnpm's and
- * Yarn's default), whose own scripts (`lint: eslint .`) went unmapped
- * without a word; `outsideDir` is where it sits.
+ * `outside`: the root manifest when the root is no member (pnpm's and Yarn's
+ * default), whose own scripts (`lint: eslint.`) went unmapped without a word;
+ * `outsideDir` is where it sits.
  */
 export function migrateScripts(
   metas: readonly PackageMeta[],
@@ -672,27 +667,26 @@ export function migrateScripts(
   const projects: GeneratedProject[] = []
   const hookMemo = new Map<string, Owner>()
   const tsc = onceReader()
-  // The workspace root among members: many of its scripts run the
-  // workspace (`npm run build --workspaces`, `pnpm -r build`), and a root
-  // task made of one ran every member's build again under `--all`. Since
-  // D-39 a hand-written root config makes the root a project, and
-  // `--force` replaced it so (D-45). A lone package is its repo's project
-  // and maps.
+  // The workspace root among members: many of its scripts run the workspace
+  // (`npm run build --workspaces`, `pnpm -r build`), and a root task made of
+  // one ran every member's build again under `--all`. A hand-written
+  // root config makes the root a project, and `--force` replaced it so. A lone
+  // package is its repo's project and maps.
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
   const lifecycleBuilds: [string, string, string][] = []
-  // The rest check the whole repo (`lint: oxlint .`, `test: vitest`):
-  // `vx run lint` found no project in remix, wagmi or element-plus. Such a
-  // script maps onto the root, when the root has a name (vx skips a
-  // nameless one's config), no config of its own, and no member declares
-  // the task, so `--all` never runs one check twice.
+  // The rest check the whole repo (`lint: oxlint.`, `test: vitest`): `vx run
+  // lint` found no project in remix, wagmi or element-plus. Such a script maps
+  // onto the root, when the root has a name (vx skips a nameless one's config),
+  // no config of its own, and no member declares the task, so `--all` never
+  // runs one check twice.
   const outsideName =
     typeof outside?.['name'] === 'string' && outside['name'] !== '' ? outside['name'] : undefined
-  // insomnia's root is named as its `packages/insomnia`: a root config made
-  // it a project, and every later run was refused for the duplicate (D-129).
+  // insomnia's root is named as its `packages/insomnia`: a root config made it
+  // a project, and every later run was refused for the duplicate.
   const clash = outsideName === undefined ? undefined : metas.find((m) => m.name === outsideName)
-  // A root with a config of its own is kept as written, and a run of `vx
-  // init` after the one that mapped it keeps it like a member's (X-27).
+  // A root with a config of its own is kept as written, and a run of `vx init`
+  // after the one that mapped it keeps it like a member's.
   const rootKept = root !== undefined && root.configPath !== null
   const rootMeta: PackageMeta | undefined =
     root !== undefined
@@ -711,8 +705,8 @@ export function migrateScripts(
   )
   // The root scripts left out, by why: jest's root `build` (every package's)
   // went unnamed beside the website's, and `vx run build --all` built the
-  // website alone (D-85). A left-out script's `pre` / `post` hook goes with
-  // it where the manager runs hooks: kept, it became a task of its own.
+  // website alone. A left-out script's `pre` / `post` hook goes with it where
+  // the manager runs hooks: kept, it became a task of its own.
   const leftOut = (meta: PackageMeta): { runs: string[]; shared: string[]; out: Set<string> } => {
     const scripts = scriptsOf(meta)
     const runs = runningMembers(
@@ -770,8 +764,8 @@ export function migrateScripts(
       return !LIFECYCLE.test(n) && (base === undefined || !(base in scripts))
     })
   }
-  // Why a root mapped nothing: `eslint .` beside a member's `lint` runs
-  // nothing of the workspace, and the note said it did.
+  // Why a root mapped nothing: `eslint.` beside a member's `lint` runs nothing
+  // of the workspace, and the note said it did.
   const rootLeftOut = (): string => {
     const judged = rootKept ? root : rootMeta
     if (judged === undefined) return 'run the workspace'
@@ -813,9 +807,8 @@ export function migrateScripts(
       `${clash.name} (the workspace root) not mapped: ${relPosix(outsideDir, clash.dir)} has the same "name", and vx names a project by it; rename the root's and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
     )
   } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
-    // react's nameless root: "its scripts run the workspace" was not why,
-    // and 30 of its scripts (`build`, `lint`, `test`) map once it has a
-    // name (D-87).
+    // react's nameless root: "its scripts run the workspace" was not why, and
+    // 30 of its scripts (`build`, `lint`, `test`) map once it has a name.
     const would = unnamedMaps()
     notes.push(
       `package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
@@ -838,10 +831,10 @@ export function migrateScripts(
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
-    // A script whose name no task may carry (`lint#fix`, `^up`) was written
-    // as one, and the next run refused the whole config (item 1033). It is
-    // left out, with a TODO, and a script delegating to it keeps its
-    // command rather than naming it as an edge.
+    // A script whose name no task may carry (`lint#fix`, `^up`) was written as
+    // one, and the next run refused the whole config. It is left out, with a
+    // TODO, and a script delegating to it keeps its command rather than naming
+    // it as an edge.
     const refused = runnable.flatMap((n) => {
       const why = taskNameProblem(n)
       return why === null ? [] : [[n, why] as const]
@@ -874,13 +867,13 @@ export function migrateScripts(
       const todos: string[] = []
       const own = berry ? berryRun(scripts[name] as string) : (scripts[name] as string)
       const delegate = delegatedScript(own)
-      // `npm run pack` runs `prepack` too, as pnpm, Yarn 1 and Bun do: a
-      // script named for a verb folds its hooks like any other (2026-11-11).
+      // `npm run pack` runs `prepack` too, as pnpm, Yarn 1 and Bun do: a script
+      // named for a verb folds its hooks like any other.
       const hook = (h: string): boolean => runsHooks && has(h)
       const hooks = [`pre${name}`, `post${name}`].filter(hook)
-      // A group over a script that is no task (`setup: npm run prepare`)
-      // named a task nothing defines, and the run `vx init` suggested
-      // refused the config (D-12).
+      // A group over a script that is no task (`setup: npm run prepare`) named
+      // a task nothing defines, and the run `vx init` suggested refused the
+      // config.
       if (delegate !== null && isTask(delegate) && delegate !== name && hooks.length === 0) {
         // A group: no exec, the graph runs the target. `npm test` calling
         // `vitest` through `npm run test:unit` is two tasks, not a subprocess.
@@ -915,13 +908,12 @@ export function migrateScripts(
           `\`${sibling}\` runs another member's work outside the graph, again beside that member's own task: name that task under dependsOn (\`<member>#<task>\`) and drop it from the command`,
         )
       }
-      // A chain of this package's own scripts (`check: pnpm run build &&
-      // pnpm run lint`) ran each again inside the command, beside the task
-      // of that name: `vx run check` built twice. The chain's order may
-      // matter, so it is named rather than turned into a group.
-      // Through `run-s` / `run-p` / `npm-run-all` too (`build: run-p
-      // build:*`), each segment naming every task it runs (M-48). A
-      // persistent one has PERSISTENT_TODO.
+      // A chain of this package's own scripts (`check: pnpm run build && pnpm
+      // run lint`) ran each again inside the command, beside the task of that
+      // name: `vx run check` built twice. The chain's order may matter, so it
+      // is named rather than turned into a group. Through `run-s` / `run-p` /
+      // `npm-run-all` too (`build: run-p build:*`), each segment naming every
+      // task it runs. A persistent one has PERSISTENT_TODO.
       const persistent = isPersistent(name, scripts)
       let ranTasks = 0
       const ownRuns = own
@@ -1004,8 +996,8 @@ export function migrateScripts(
   return {
     headerNotes: [
       // Where to add one is the TODO's to say, when there is one: an Nx repo
-      // whose only script is `codegen` read "`build` carries a TODO" over
-      // "0 TODOs" (the first-five-minutes walk, 2026-09-28).
+      // whose only script is `codegen` read "`build` carries a TODO" over "0
+      // TODOs" (the first-five-minutes walk).
       'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got `cache: true`',
     ],
     projects,

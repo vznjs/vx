@@ -1,20 +1,19 @@
 // One run at a time per workspace, on this machine.
 //
 // Two vx processes on one workspace race on every task's OUTPUT TREE: both
-// clean and restore the same `dist/`, and a clean landing while the other
-// run's restore is staging takes its files out from under it (item 215).
-// The cache itself is safe (SQLite waits, and an artifact lands by rename
-// inside its rows' transaction, A-3), across workspaces sharing one
-// `--cache-dir` too (a clean of it waits for their runs, `holdCacheDir`);
-// the tree is not, and a run that finished "green" can
-// have had its restored outputs deleted by the other run's clean a moment
-// later. So a run takes this lock before it schedules and releases it with
-// its cache handle — before a persistent task's wait, so a dev server never
-// holds it.
+// clean and restore the same `dist/`, and a clean landing while the other run's
+// restore is staging takes its files out from under it. The cache itself is
+// safe (SQLite waits, and an artifact lands by rename inside its rows'
+// transaction), across workspaces sharing one `--cache-dir` too (a clean of it
+// waits for their runs, `holdCacheDir`); the tree is not, and a run that
+// finished "green" can have had its restored outputs deleted by the other run's
+// clean a moment later. So a run takes this lock before it schedules and
+// releases it with its cache handle — before a persistent task's wait, so a dev
+// server never holds it.
 //
-// Keyed by the workspace, not the cache directory (`--cache-dir` must not
-// make two runs strangers), and kept in this user's own directory under
-// the temp directory (L-47), so a read-only checkout can take it.
+// Keyed by the workspace, not the cache directory (`--cache-dir` must not make
+// two runs strangers), and kept in this user's own directory under the temp
+// directory, so a read-only checkout can take it.
 //
 // The lock is a directory, HELD exactly while it is not empty. It holds
 // one entry, `h-<pid>-<start>-<n>`, naming the holder and unique to this
@@ -27,34 +26,32 @@
 // behind is free, and goes with a best-effort rmdir that fails on anything
 // holding an entry.
 //
-// It was a bare `mkdir`, then a `pid` file, left as an unlink of the file
-// and then the rmdir, and reclaimed by `rm -r`: visible without its pid
-// for a moment each way, and a waiter that had waited past its grace
-// removed that moment as abandoned. Four processes contending for four
-// seconds held it two at once 22 times, and a release threw ENOENT out of
-// `run()`. Moving a dead holder's lock aside and putting back what was not
-// it only narrowed that: a third run could take the name in between, and
-// with holders killed mid-hold it did in four stress runs of ten (item
-// 759). A `pid` file an older vx wrote is still read and reclaimed; an
-// older vx does not read this entry, so the two versions exclude each
-// other only as far as the older one's own lock did.
+// It was a bare `mkdir`, then a `pid` file, left as an unlink of the file and
+// then the rmdir, and reclaimed by `rm -r`: visible without its pid for a
+// moment each way, and a waiter that had waited past its grace removed that
+// moment as abandoned. Four processes contending for four seconds held it two
+// at once 22 times, and a release threw ENOENT out of `run()`. Moving a dead
+// holder's lock aside and putting back what was not it only narrowed that: a
+// third run could take the name in between, and with holders killed mid-hold it
+// did in four stress runs of ten. A `pid` file an older vx wrote is still read
+// and reclaimed; an older vx does not read this entry, so the two versions
+// exclude each other only as far as the older one's own lock did.
 //
 // A holder's pid can come back: the temp directory outlives a container
 // restart, and the restarted container's vx got the dead run's pid (1) and
-// waited for itself forever (nx#36473 reproduced on vx, 2026-09-24). So a
-// lock naming OUR pid is stale unless this process placed that entry and
-// has not left it (`placed`) — and on Linux the entry also carries the holder's start
-// time, so a pid another process now wears is stale too, and so is a
-// holder procfs shows as a zombie (killed, not yet reaped). Where the lock
-// cannot be made or read for any reason but "held" (a temp directory this
-// user cannot write), the run says so once and proceeds unlocked: the
-// lock is a courtesy between cooperating runs, and refusing to run would
-// be worse than the race. Machines sharing a workspace over a network file
-// system do not share `/tmp`, so they do not share this; nor do two shells
-// whose `TMPDIR` differs (`nix develop` sets its own, item 970). Kept here
-// anyway: under the workspace the lock would outlive a reboot, and off
-// Linux, where an entry names no start time, a reused pid would read as a
-// live holder for good.
+// waited for itself forever (nx#36473 reproduced on vx). So a lock naming OUR
+// pid is stale unless this process placed that entry and has not left it
+// (`placed`) — and on Linux the entry also carries the holder's start time, so
+// a pid another process now wears is stale too, and so is a holder procfs shows
+// as a zombie (killed, not yet reaped). Where the lock cannot be made or read
+// for any reason but "held" (a temp directory this user cannot write), the run
+// says so once and proceeds unlocked: the lock is a courtesy between
+// cooperating runs, and refusing to run would be worse than the race. Machines
+// sharing a workspace over a network file system do not share `/tmp`, so they
+// do not share this; nor do two shells whose `TMPDIR` differs (`nix develop`
+// sets its own). Kept here anyway: under the workspace the lock would outlive a
+// reboot, and off Linux, where an entry names no start time, a reused pid would
+// read as a live holder for good.
 //
 // Runs inside ONE process share the lock: an embedder that runs two at
 // once coordinates them itself (`RunOptions.inflight` joins duplicate
@@ -88,11 +85,10 @@ const placed = new Set<string>()
 const staged = new Set<string>()
 
 /**
- * A signal exit is `process.exit` (signals.ts): no finally runs and nothing
- * is awaited, so a Ctrl-C left this process's entry, and the lock
- * directory, in the temp dir for the next run to reclaim (item 848). The
- * process's own `exit` event is the one step every exit path passes, and
- * it runs synchronously.
+ * A signal exit is `process.exit` (signals.ts): no finally runs and nothing is
+ * awaited, so a Ctrl-C left this process's entry, and the lock directory, in
+ * the temp dir for the next run to reclaim. The process's own `exit` event is
+ * the one step every exit path passes, and it runs synchronously.
  */
 let exitHooked = false
 function releaseOnExit(): void {
@@ -107,8 +103,8 @@ function releaseOnExit(): void {
       }
     }
     for (const [lockDir, entry] of takers) {
-      // The entry may be gone already: a release under way unlinked it and
-      // was still to remove the directory (item 867).
+      // The entry may be gone already: a release under way unlinked it and was
+      // still to remove the directory.
       try {
         unlinkSync(path.join(lockDir, entry))
       } catch {
@@ -169,11 +165,11 @@ export function runLockPath(workspaceRoot: string, dir = userLockRoot(os.tmpdir(
 }
 
 /**
- * This user's own directory for locks under `dir`. A lock named in the
- * shared temp dir itself was anyone's to plant: another local user put a
- * held lock naming a live pid there and every run on the workspace waited
- * on it (L-47). Two users on one checkout no longer exclude each other;
- * the files of one are rarely the other's to write.
+ * This user's own directory for locks under `dir`. A lock named in the shared
+ * temp dir itself was anyone's to plant: another local user put a held lock
+ * naming a live pid there and every run on the workspace waited on it. Two
+ * users on one checkout no longer exclude each other; the files of one are
+ * rarely the other's to write.
  */
 function userLockRoot(dir: string): string {
   const uid = process.getuid?.()
@@ -388,13 +384,12 @@ export async function acquireRunLock(
     const taker = takers.get(lockDir)
     // Leaving: a taking here from now on may reclaim it, as before its unlink.
     if (taker !== undefined) placed.delete(taker)
-    // The unlink of this taking's own entry is the proof no later run
-    // reclaimed the lock: had one, the entry is gone and nothing else is
-    // touched. A run that joined another's taking in this process leaves
-    // through the taker's entry, whichever release comes last. The taker
-    // stays listed until the directory is gone: a signal exit between the
-    // unlink and the rmdir left the directory behind, the exit hook having
-    // nothing to remove (item 867, macOS CI).
+    // The unlink of this taking's own entry is the proof no later run reclaimed
+    // the lock: had one, the entry is gone and nothing else is touched. A run
+    // that joined another's taking in this process leaves through the taker's
+    // entry, whichever release comes last. The taker stays listed until the
+    // directory is gone: a signal exit between the unlink and the rmdir left
+    // the directory behind, the exit hook having nothing to remove (macOS CI).
     try {
       if (taker !== undefined) await leave(lockDir, taker)
     } finally {
@@ -435,7 +430,7 @@ export async function acquireRunLock(
       }
     } catch (err) {
       // The lock lives in the temp directory; one that is missing or not
-      // writable names its knob (a minimal image, 2026-09-16).
+      // writable names its knob (a minimal image).
       const hint = isTmpdirRefusal(err) ? `; ${TMPDIR_HINT}` : ''
       opts.log(
         `[vx] no ${opts.of ?? 'run'} lock for this workspace (${(err as Error).message}${hint}) — another ${what} on it at the same time may race this one`,

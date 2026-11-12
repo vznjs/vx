@@ -90,16 +90,15 @@ let signalOwnsExit = false
 const SELF_SIGNAL_WAIT_MS = 1000
 
 /**
- * Die of `signal`: its listeners off, so Bun restores the default action,
- * the signal sent to this process, and the caller held until it lands. A
- * kill is not always delivered before it returns: a signal another thread
- * takes, or one a tracer holds (the sandbox's `strace -f` sees every
- * signal before the tracee does), lands later, and the `process.exit`
- * after it won: vx exited with the signal's code (130), not of the
- * signal, and a script running it
- * went on (CI, PR #4867). Bounded: the caller's exit code is the fallback
- * should the signal never land. `testTimerMs('SELF_SIGNAL_DELAY')` sends
- * it from a helper that late instead, the window a test widens.
+ * Die of `signal`: its listeners off, so Bun restores the default action, the
+ * signal sent to this process, and the caller held until it lands. A kill is
+ * not always delivered before it returns: a signal another thread takes, or one
+ * a tracer holds (the sandbox's `strace -f` sees every signal before the tracee
+ * does), lands later, and the `process.exit` after it won: vx exited with the
+ * signal's code (130), not of the signal, and a script running it went on (CI).
+ * Bounded: the caller's exit code is the fallback should the signal never land.
+ * `testTimerMs('SELF_SIGNAL_DELAY')` sends it from a helper that late instead,
+ * the window a test widens.
  */
 export function dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void {
   process.removeAllListeners(signal)

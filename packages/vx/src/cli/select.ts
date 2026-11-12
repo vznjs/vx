@@ -64,13 +64,13 @@ import {
 } from './workspace-config.js'
 
 /**
- * The projects whose tasks declare an `inputs.workspaceFiles` glob
- * matching a changed path, one inside another project included (item
- * 954): `--affected` selects them, since the glob is that task's input. Through the run
- * path's staged load, so a glob a `project` plugin gave a config-less
- * package counts; read from the lock as a run does. A load that fails drops to the lock's
- * entries, one by one — a project the lock does not hold does not fail a
- * scoped run, and must not fail its selection either.
+ * The projects whose tasks declare an `inputs.workspaceFiles` glob matching a
+ * changed path, one inside another project included: `--affected` selects them,
+ * since the glob is that task's input. Through the run path's staged load, so a
+ * glob a `project` plugin gave a config-less package counts; read from the lock
+ * as a run does. A load that fails drops to the lock's entries, one by one — a
+ * project the lock does not hold does not fail a scoped run, and must not fail
+ * its selection either.
  */
 export async function workspaceGlobOwners(
   root: string,
@@ -221,10 +221,10 @@ export async function findCwdSelection(
     return best
   }
   // The cwd is a real path (the kernel's), and a member discovery reached
-  // through a link keeps the link's (`packages/b -> ../ext/b`, item 987),
-  // so inside such a member nothing matched and a run from there was "not
-  // inside a project" (item 1025). Only then are the members realpathed:
-  // one syscall each, paid only by a run no plain match could place.
+  // through a link keeps the link's (`packages/b ->../ext/b`), so inside such a
+  // member nothing matched and a run from there was "not inside a project".
+  // Only then are the members realpathed: one syscall each, paid only by a run
+  // no plain match could place.
   const found =
     within((p) => p.dir) ??
     within((p) => {
@@ -404,10 +404,10 @@ export async function resolveFilters(
     await loadWorkspaceProjects(cwd, load)
     return refusalOf(err)
   }
-  // A filter that diffs against git reads its untracked files from the
-  // run's whole-tree walk (one walk where it spawned its own), and the run
-  // reuses it with the discovery (I-26). The walk needs only the root, so
-  // it starts before the workspace config and discovery, not after them.
+  // A filter that diffs against git reads its untracked files from the run's
+  // whole-tree walk (one walk where it spawned its own), and the run reuses it
+  // with the discovery. The walk needs only the root, so it starts before the
+  // workspace config and discovery, not after them.
   const git = parsed.some((f) => f.gitSince !== undefined) ? lazyGitEnumeration(root) : undefined
   void git?.start()
   const discovering =
@@ -552,8 +552,8 @@ export async function resolveFilters(
   const unmatched: string[] = []
   const emptyWalks: string[] = []
   // The `[<since>]` includes whose diff itself matched nothing: only then is
-  // "nothing affected" the fact. A diff that matched, then lost every
-  // project to an exclusion or an empty walk, says which (X-146).
+  // "nothing affected" the fact. A diff that matched, then lost every project
+  // to an exclusion or an empty walk, says which.
   const emptyDiffs = new Set<(typeof parsed)[number]>()
   const selected = applyFilters({
     filters: parsed,
@@ -568,8 +568,8 @@ export async function resolveFilters(
       if (emptyDiff) emptyDiffs.add(f)
       else unmatched.push(f.raw)
     },
-    // A pattern that matched, with nothing on the walk it asked for: the
-    // fact to say, where "no projects matched" read as a typo (item 1030).
+    // A pattern that matched, with nothing on the walk it asked for: the fact
+    // to say, where "no projects matched" read as a typo.
     onEmptyWalk: (f, matched) => {
       if (f.negate) return
       const which = matched.join(', ')
@@ -598,9 +598,9 @@ export async function resolveFilters(
     ) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
-        // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
-        // the branch under test) can never mark anything affected, and this
-        // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
+        // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is the
+        // branch under test) can never mark anything affected, and this exit-0
+        // note was the only sign (CI persona). Say so.
         const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
         // `HEAD` asked by name checks uncommitted work: "HEAD is HEAD itself"
         // read as nonsense for a valid question.
@@ -614,7 +614,7 @@ export async function resolveFilters(
       }
       // The diff matched and a walk or an exclusion left nothing: still the
       // exit-0 outcome (`--affected --filter '!docs'` on a docs-only change
-      // must not red CI), said as what happened (X-146).
+      // must not red CI), said as what happened.
       return {
         empty: `no projects selected: ${emptyWalks.length > 0 ? emptyWalks.join('; ') : excluded}`,
         discovered: { root, projects },
@@ -654,8 +654,8 @@ export async function resolveFilters(
       `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f], projects)) ?? bracedHint(root, parsed, [f], projects, graph) ?? didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
-  // whether or not the `--affected` diff reaches them, and an exclude
-  // still removes it (X-10).
+  // whether or not the `--affected` diff reaches them, and an exclude still
+  // removes it.
   const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
   const outright =
     changes !== undefined && others.some((f) => !f.negate)
@@ -931,7 +931,7 @@ function didYouMeanProject(
   }
   for (const pattern of unmatched) {
     const typed = typedName(pattern)
-    // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
+    // Two edits from any two-letter name: `--filter //` hinted `ui`.
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'
     }

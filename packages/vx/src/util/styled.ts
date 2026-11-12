@@ -6,17 +6,17 @@
  * A style every component and inline token draws with, by the level of
  * what it marks. Five levels, each one look, brightest first:
  *
- *   1 outcome   how a thing went: a tone (`ok` `warn` `error` `info`,
+ *   1 outcome how a thing went: a tone (`ok` `warn` `error` `info`,
  *               `aborted`, `notRun`), its glyph and status word bold
- *   2 name      what it is about: a title (`heading`), an id's hues, a
+ *   2 name what it is about: a title (`heading`), an id's hues, a
  *               command or path to type (`strong`, `term`), where a
  *               cache answer came from (`local`, `remote`)
- *   3 value     the fact itself: a field's value, a table cell, a
+ *   3 value the fact itself: a field's value, a table cell, a
  *               sentence (`value`, a soft light grey: no line of vx
  *               reads plain white)
- *   4 meta      what frames a fact: a label, a unit, a hint, a count
+ *   4 meta what frames a fact: a label, a unit, a hint, a count
  *               (`muted`, `label`)
- *   5 chrome    rules and separators (`border`)
+ *   5 chrome rules and separators (`border`)
  *
  * A component picks the level; a plain string takes the level of where it
  * sits (a value in a field, meta in a title's count).

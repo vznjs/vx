@@ -1,8 +1,8 @@
 // Child-process invocation + resource accounting.
 //
-// Uses Bun.spawn so we get .resourceUsage() (cpuTime, maxRSS) after the
-// process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
-// folded into the v11 `runs` table by the orchestrator.
+// Uses Bun.spawn so we get.resourceUsage() (cpuTime, maxRSS) after the process
+// exits. cpuMs / peakRssBytes are then surfaced on RunResult and folded into
+// the v11 `runs` table by the orchestrator.
 
 import { existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
@@ -63,7 +63,7 @@ export interface RunResult {
   /** Peak resident set size for the child, in bytes. */
   peakRssBytes?: number
   /** `Bun.spawn` threw: no shell ran, so its 127 is vx's and says nothing
-   *  about the command (A-41). */
+   *  about the command. */
   spawnFailed?: true
   /** The shell exited while a process it started still ran: one holding
    *  stdout/stderr past the drain bound (`POST_EXIT_CUT_LINE`), or one left
@@ -182,13 +182,12 @@ export function shellQuote(arg: string): string {
 }
 
 /**
- * One pass over `command` as sh reads it. `comment`: where a comment still
- * open at the end starts, or -1 — a `#` opens one only unquoted and at the
- * start of a word (`a#b`, `$#` and `${#x}` are words), and a newline closes
- * it. `body`: per line, is it a heredoc's body or terminator (`<<X` /
- * `<<-'X'` / `<<\X` … `X`). One scan, because each needs the other: a
- * `<<X` in a comment or quotes opens no heredoc, and a quote in a body
- * opens nothing (X-110).
+ * One pass over `command` as sh reads it. `comment`: where a comment still open
+ * at the end starts, or -1 — a `#` opens one only unquoted and at the start of
+ * a word (`a#b`, `$#` and `${#x}` are words), and a newline closes it. `body`:
+ * per line, is it a heredoc's body or terminator (`<<X` / `<<-'X'` / `<<\X` …
+ * `X`). One scan, because each needs the other: a `<<X` in a comment or quotes
+ * opens no heredoc, and a quote in a body opens nothing.
  */
 function shellShape(command: string): {
   comment: number
@@ -305,16 +304,16 @@ function redirectsAfterCloser(command: string): number {
 const COMPOUND_CLOSER = /(?:^|[^\\])(?:\\\\)*[;&\n][ \t]*(fi|done|esac|\})$/
 
 /**
- * The command a task runs with the args after `--` appended, shell-quoted.
- * They go before a trailing comment: appended after it, `echo args: # show`
- * ran without them and said nothing (item 1060). Trailing blanks go first.
+ * The command a task runs with the args after `--` appended, shell-quoted. They
+ * go before a trailing comment: appended after it, `echo args: # show` ran
+ * without them and said nothing. Trailing blanks go first.
  */
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string {
   if (!args || args.length === 0) return command
-  // A command that ends in a heredoc's body: appended to its terminator,
-  // `X FWD` closed nothing and the args never reached the command (X-12).
-  // They go on the last line that is a command, where `cat <<X FWD` is
-  // still `cat FWD` reading the heredoc.
+  // A command that ends in a heredoc's body: appended to its terminator, `X
+  // FWD` closed nothing and the args never reached the command. They go on the
+  // last line that is a command, where `cat <<X FWD` is still `cat FWD` reading
+  // the heredoc.
   const trimmed = command.trimEnd()
   const lines = trimmed.split('\n')
   const shape = shellShape(trimmed)
@@ -324,9 +323,9 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
     return `${withForwardArgs(lines.slice(0, last + 1).join('\n'), args)}\n${tail}`
   }
   const quoted = args.map(shellQuote).join(' ')
-  // Of the trimmed command: the newline closing a template literal's last
-  // line closed its comment too, and `echo args: # c\n` took the args into
-  // the comment (X-110).
+  // Of the trimmed command: the newline closing a template literal's last line
+  // closed its comment too, and `echo args: # c\n` took the args into the
+  // comment.
   let comment = shape.comment
   if (comment < 0) {
     // A command that ends in a newline (a template literal's closing line)
@@ -531,12 +530,12 @@ const SIGNAL_ALIASES = new Set(['SIGIOT', 'SIGPOLL', 'SIGCLD'])
 const TIMEOUT_SIGKILL_GRACE_MS = 2000
 
 /**
- * Run `fn` one loop turn later, once the child exits already pending are
- * read. A deadline due in the same turn as a child's exit fires BEFORE Bun
- * reaps it: a task that exited 0 inside its timeout, seen late by a busy vx,
- * was SIGTERMed as a zombie and failed as timed out, and a server that died
- * before ready read as a readiness timeout (2026-10-08). A turn later the
- * exit has settled the caller, which clears the returned timer.
+ * Run `fn` one loop turn later, once the child exits already pending are read.
+ * A deadline due in the same turn as a child's exit fires BEFORE Bun reaps it:
+ * a task that exited 0 inside its timeout, seen late by a busy vx, was
+ * SIGTERMed as a zombie and failed as timed out, and a server that died before
+ * ready read as a readiness timeout. A turn later the exit has settled the
+ * caller, which clears the returned timer.
  */
 function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
   return setTimeout(fn, 0)
@@ -565,17 +564,16 @@ function afterRunTime(ms: number, fn: () => void): { clear: () => void } {
 }
 
 /**
- * Arm a SIGTERM timeout on a spawned child. Returns a handle whose
- * `timedOut()` reports whether the timer fired — so the caller can
- * classify the resulting SIGTERM as a real failure rather than a
- * Ctrl-C abort — and `settle()`, awaited once the child has exited:
- * it cancels the timers and, when the timeout fired, waits out the rest
- * of the grace for the child's GROUP and SIGKILLs whoever is left, and
- * `sigkilled()` says whether that SIGKILL found anyone. The
- * shell dying on the SIGTERM is not the tree dying: a backgrounded
+ * Arm a SIGTERM timeout on a spawned child. Returns a handle whose `timedOut()`
+ * reports whether the timer fired — so the caller can classify the resulting
+ * SIGTERM as a real failure rather than a Ctrl-C abort — and `settle()`,
+ * awaited once the child has exited: it cancels the timers and, when the
+ * timeout fired, waits out the rest of the grace for the child's GROUP and
+ * SIGKILLs whoever is left, and `sigkilled()` says whether that SIGKILL found
+ * anyone. The shell dying on the SIGTERM is not the tree dying: a backgrounded
  * process that ignores it lived on under init after vx exited (nx#11782's
- * sibling, reproduced on vx 2026-09-24). A no-op (never fires, nothing
- * to settle) when `timeoutMs` is undefined.
+ * sibling, reproduced on vx). A no-op (never fires, nothing to settle) when
+ * `timeoutMs` is undefined.
  */
 export function armTimeout(
   proc: ReturnType<typeof Bun.spawn>,
@@ -618,11 +616,11 @@ export function armTimeout(
 }
 
 /**
- * The line a task's frame gets when the drain bound cut its pipes. The cut
- * was silent: a backgrounded child's late output vanished from the frame and
- * the cached replay with no word (nx#35302 reproduced on vx, 2026-09-24).
- * The bound stays, since it is what keeps a leftover server from hanging the
- * run; the line makes the loss visible.
+ * The line a task's frame gets when the drain bound cut its pipes. The cut was
+ * silent: a backgrounded child's late output vanished from the frame and the
+ * cached replay with no word (nx#35302 reproduced on vx). The bound stays,
+ * since it is what keeps a leftover server from hanging the run; the line makes
+ * the loss visible.
  */
 export const POST_EXIT_CUT_LINE =
   `[vx] output after the task's shell exited was cut: a process it left running ` +
@@ -639,18 +637,17 @@ export const OPEN_LINE_WAIT_MS = 50
 export const OPEN_LINE_HOLD_CHARS = 64 * 1024
 
 /**
- * A task's two output callbacks, merged a line at a time. They are two
- * pipes, read in the order they arrive, and dash's stderr line written in
- * pieces took a stdout write inside it: `sh: /dev/ttyNO-TTY\n\n` (CI,
- * 2026-10-29). So a chunk on one stream waits while the other's line is
- * open, and goes once that line ends; what of a chunk follows its last
- * newline goes after the held output. Past `OPEN_LINE_WAIT_MS`,
- * `OPEN_LINE_HOLD_CHARS` or `end` it goes as written, the line unbroken:
- * a newline put there became the stream's own text, and a hit replays
- * each stream to its own descriptor (`2> log` read one the task never
- * wrote). `own` breaks the line before vx's own text only. A stream
- * writing alone is never held, so a task that writes one stream pays a
- * comparison per chunk. An absent callback stays absent (nothing decodes).
+ * A task's two output callbacks, merged a line at a time. They are two pipes,
+ * read in the order they arrive, and dash's stderr line written in pieces took
+ * a stdout write inside it: `sh: /dev/ttyNO-TTY\n\n` (CI). So a chunk on one
+ * stream waits while the other's line is open, and goes once that line ends;
+ * what of a chunk follows its last newline goes after the held output. Past
+ * `OPEN_LINE_WAIT_MS`, `OPEN_LINE_HOLD_CHARS` or `end` it goes as written, the
+ * line unbroken: a newline put there became the stream's own text, and a hit
+ * replays each stream to its own descriptor (`2> log` read one the task never
+ * wrote). `own` breaks the line before vx's own text only. A stream writing
+ * alone is never held, so a task that writes one stream pays a comparison per
+ * chunk. An absent callback stays absent (nothing decodes).
  */
 export function lineEnds(
   onStdout?: (chunk: string) => void,
@@ -663,8 +660,8 @@ export function lineEnds(
   /** Lets what waits go: the task's streams ended. */
   end(): void
 } {
-  // A test lengthens it to drive the hold itself on a loaded runner, where
-  // a `sleep` between two writes outlasted 50 ms (macOS CI, PR #4867).
+  // A test lengthens it to drive the hold itself on a loaded runner, where a
+  // `sleep` between two writes outlasted 50 ms (macOS CI).
   const waitMs = testTimerMs('OPEN_LINE_WAIT', OPEN_LINE_WAIT_MS)
   const sinks = [onStdout, onStderr]
   /** The stream whose line is open (0 stdout, 1 stderr). */
@@ -673,9 +670,9 @@ export function lineEnds(
   const held = ['', '']
   /** When what waits began to: the bound counts from there. */
   let heldAt = 0
-  // One timer, re-armed only when it fires early: a hold set and cleared
-  // its own per line, and a task interleaving short lines paid a timer each
-  // (+26 ms of CPU on 20 000 lines, 2026-10-29).
+  // One timer, re-armed only when it fires early: a hold set and cleared its
+  // own per line, and a task interleaving short lines paid a timer each (+26 ms
+  // of CPU on 20 000 lines).
   let timer: ReturnType<typeof setTimeout> | undefined
   const arm = (ms: number): void => {
     timer = setTimeout(due, ms)
@@ -740,8 +737,7 @@ export function lineEnds(
  * `POST_EXIT_CUT_LINE` to the task's stderr. The timer is unref'd so it can
  * never keep the CLI alive after the readers settle (the plugin-flush
  * lesson); it is not cleared, because a late resolve on a race already won
- * by the drain changes nothing (item 636 deleted the clear and nothing
- * reddened).
+ * by the drain changes nothing.
  */
 export async function drainOrAbort(
   streams: Promise<unknown>,
@@ -765,18 +761,18 @@ const READY_MATCH_WINDOW_CHARS = 64 * 1024
 /**
  * Terminal escapes a `readyWhen` pattern is matched without: CSI (colour,
  * cursor), OSC (titles, links), charset picks (`tput sgr0` writes
- * `\x1b(B\x1b[m`) and the two-byte forms. Vite under
- * `FORCE_COLOR` prints `\x1b[1mLocal\x1b[22m:`, which `Local:` never matched
- * (item 1059). The streamed bytes keep them; only the tested text drops them.
+ * `\x1b(B\x1b[m`) and the two-byte forms. Vite under `FORCE_COLOR` prints
+ * `\x1b[1mLocal\x1b[22m:`, which `Local:` never matched. The streamed bytes
+ * keep them; only the tested text drops them.
  */
 const TERMINAL_ESCAPE_RE =
   // eslint-disable-next-line no-control-regex -- ESC is the point
   /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[ -/]+[0-~]|[@-Z\\-_])/g
 
 /**
- * Why a persistent task never became ready — the reason every label and
- * record reads instead of a fabricated exit (item 270). `exitCode` is the
- * child's own when it exited before the pattern matched.
+ * Why a persistent task never became ready — the reason every label and record
+ * reads instead of a fabricated exit. `exitCode` is the child's own when it
+ * exited before the pattern matched.
  */
 export class PersistentReadyError extends Error {
   readonly reason: 'timeout' | 'exited' | 'spawn'
@@ -943,15 +939,14 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     }
   }
 
-  // Stream readers. Each stream owns a pending fragment so a regex
-  // match isn't missed across chunk boundaries. The pattern is tested
-  // against each line on its own — without its break and without terminal
-  // escapes — so `^` and `$` anchor to a line as a user reads it; a whole
-  // fragment holding `booting\nready\n` failed `^ready` and `ready$`
-  // alike (item 1059). `\r` ends a line too: a progress bar's frames are
-  // lines to a reader. The trailing partial line is tested as well —
-  // prompt-style markers ("Listening on :3000" with no newline) would
-  // never resolve ready under complete-lines-only matching.
+  // Stream readers. Each stream owns a pending fragment so a regex match isn't
+  // missed across chunk boundaries. The pattern is tested against each line on
+  // its own — without its break and without terminal escapes — so `^` and `$`
+  // anchor to a line as a user reads it; a whole fragment holding
+  // `booting\nready\n` failed `^ready` and `ready$` alike. `\r` ends a line
+  // too: a progress bar's frames are lines to a reader. The trailing partial
+  // line is tested as well — prompt-style markers ("Listening on:3000" with no
+  // newline) would never resolve ready under complete-lines-only matching.
   const readyLine = (re: RegExp, line: string): boolean =>
     re.test(line.includes('\x1b') ? line.replace(TERMINAL_ESCAPE_RE, '') : line)
   const consumeChunks = async (
@@ -1054,10 +1049,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const giveUp = async (): Promise<void> => {
       if (readyAt !== undefined) return
       gaveUpAt = performance.now()
-      // Listed on the group guard until the SIGKILL: the shell may die on
-      // the SIGTERM and let the group go while the server runs out the
-      // grace, and a vx killed inside it leaves the server to the guard
-      // (kill-tree.ts, item 865).
+      // Listed on the group guard until the SIGKILL: the shell may die on the
+      // SIGTERM and let the group go while the server runs out the grace, and a
+      // vx killed inside it leaves the server to the guard (kill-tree.ts).
       const letGo = holdGroups([child])
       try {
         killTree(child, 'SIGTERM')
@@ -1094,9 +1088,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         new Promise((resolve) => setTimeout(resolve, POST_EXIT_DRAIN_MS).unref?.()),
       ])
     }
-    // A clean exit is ready: a setup step (migrate, seed, a `docker
-    // compose up --wait`) has done its work, and what it started, if
-    // anything, is torn down with the run (2026-10-22).
+    // A clean exit is ready: a setup step (migrate, seed, a `docker compose up
+    // --wait`) has done its work, and what it started, if anything, is torn
+    // down with the run.
     if (code === 0) markReady()
     if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(
@@ -1126,13 +1120,12 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 export const SANDBOXED_TASK = 'sandboxed task'
 
 /**
- * What a task's frame says when `Bun.spawn` itself threw. The text goes
- * through `onStderr` AND onto the result: the orchestrator retains no
- * stderr (execute-task's capture), so a reason that only sat on the result
- * reached nobody — a box without `sh` showed "failed (exit 127)" under a
- * bare `$ <command>` and nothing else (2026-09-16). An ENOENT with the
- * working directory in place is the shell, without it the directory; Bun's
- * own text names the rest.
+ * What a task's frame says when `Bun.spawn` itself threw. The text goes through
+ * `onStderr` AND onto the result: the orchestrator retains no stderr
+ * (execute-task's capture), so a reason that only sat on the result reached
+ * nobody — a box without `sh` showed "failed (exit 127)" under a bare `$
+ * <command>` and nothing else. An ENOENT with the working directory in place is
+ * the shell, without it the directory; Bun's own text names the rest.
  */
 export function spawnFailureText(
   err: unknown,
@@ -1308,9 +1301,9 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     }
 
   opts.liveChildren?.add(proc)
-  // The spawn is awaited (off the thread, or on a spare shell), and the
-  // command runs meanwhile: a stop that landed then swept a live set
-  // without it, and the run waited out the whole command (CI, 2026-11-04).
+  // The spawn is awaited (off the thread, or on a spare shell), and the command
+  // runs meanwhile: a stop that landed then swept a live set without it, and
+  // the run waited out the whole command (CI).
   if (opts.signal?.aborted === true) void stopLate(proc, stopSignal(opts.signal.reason))
   opts.onSpawn?.(proc.pid)
   // Linux: the wait's peak includes vx's own, inherited at exec, so a task
@@ -1395,23 +1388,22 @@ function usageOf(
 }
 
 /**
- * This process's own RSS high-water mark, in bytes: the floor under which
- * a child's `ru_maxrss` says nothing about the child. Linux folds the
- * forking parent's high-water mark into the child's figure at exec (a
- * forked child starts with its parent's pages; `exec_mmap` keeps the old
- * mm's peak), so a task lighter than vx itself reads vx's footprint —
- * `true` read 44 MB through vx while its shell's `VmHWM` was 1.9 MB, and
- * 300 MB allocated in the parent made `true` read 328 MB (2026-09-12).
- * Read after the child exits so it covers the whole task's span (the mark
- * is monotonic). Linux reads `VmHWM`; elsewhere the current RSS is the
- * bound in hand.
+ * This process's own RSS high-water mark, in bytes: the floor under which a
+ * child's `ru_maxrss` says nothing about the child. Linux folds the forking
+ * parent's high-water mark into the child's figure at exec (a forked child
+ * starts with its parent's pages; `exec_mmap` keeps the old mm's peak), so a
+ * task lighter than vx itself reads vx's footprint — `true` read 44 MB through
+ * vx while its shell's `VmHWM` was 1.9 MB, and 300 MB allocated in the parent
+ * made `true` read 328 MB. Read after the child exits so it covers the whole
+ * task's span (the mark is monotonic). Linux reads `VmHWM`; elsewhere the
+ * current RSS is the bound in hand.
  */
 export function ownRssHighWater(): number {
   // `VmHWM`, not getrusage's own peak: that one also holds the peak of the
   // image this process exec'd from, which under vfork is the PARENT's
   // memory — vx spawned from a 300 MB test runner (or node) read a floor
-  // of 300 MB, and a task holding 150 MB reported no peak (I-40's
-  // regression, tests/own-rss-high-water.test.ts).
+  // of 300 MB, and a task holding 150 MB reported no peak
+  // (tests/own-rss-high-water.test.ts).
   if (process.platform === 'linux') {
     try {
       const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync('/proc/self/status', 'utf8'))
@@ -1427,28 +1419,27 @@ export function ownRssHighWater(): number {
 let highWaterSeen = 0
 
 /**
- * The floor for a child's `peak`, read only when the last `VmHWM` cannot
- * decide it: the mark never falls, so a peak within the slack of an older
- * reading is within the slack of the current one, and goes unreported
- * either way. A light task reads vx's own mark as its peak, so after the
- * first such task the rest skip the read, which cost ~35 µs of the
- * scheduler's thread per task (500 cold tasks, 2026-10-07). A current-RSS
- * fallback is not monotonic and is never reused.
+ * The floor for a child's `peak`, read only when the last `VmHWM` cannot decide
+ * it: the mark never falls, so a peak within the slack of an older reading is
+ * within the slack of the current one, and goes unreported either way. A light
+ * task reads vx's own mark as its peak, so after the first such task the rest
+ * skip the read, which cost ~35 µs of the scheduler's thread per task (500 cold
+ * tasks). A current-RSS fallback is not monotonic and is never reused.
  */
 function rssFloorFor(peak: number): number {
   return peak <= highWaterSeen + RSS_FLOOR_SLACK_BYTES ? highWaterSeen : ownRssHighWater()
 }
 
 /**
- * What a task's captured output keeps: the first `CAPTURE_HEAD_CHARS` and
- * the last `CAPTURE_TAIL_CHARS` characters (UTF-16 units: 8 MiB of ASCII),
- * the dropped middle counted in the UTF-8 bytes the task wrote and named
- * where it was. The live stream is never bounded — every byte still
- * reaches the terminal as the task writes it — only the copy vx retains
- * for the cache entry and its replay. Unbounded, a task printing 200 MB
- * cost vx 620 MB of RSS on the miss AND on every hit, and its stdout sat
- * whole in `cache.db` (measured 2026-09-16); a realistic chatty suite is
- * 5–20 MB, so the bound is above what a replay is worth reading anyway.
+ * What a task's captured output keeps: the first `CAPTURE_HEAD_CHARS` and the
+ * last `CAPTURE_TAIL_CHARS` characters (UTF-16 units: 8 MiB of ASCII), the
+ * dropped middle counted in the UTF-8 bytes the task wrote and named where it
+ * was. The live stream is never bounded — every byte still reaches the terminal
+ * as the task writes it — only the copy vx retains for the cache entry and its
+ * replay. Unbounded, a task printing 200 MB cost vx 620 MB of RSS on the miss
+ * AND on every hit, and its stdout sat whole in `cache.db` (measured); a
+ * realistic chatty suite is 5–20 MB, so the bound is above what a replay is
+ * worth reading anyway.
  */
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
@@ -1675,13 +1666,13 @@ export async function streamToString(
 }
 
 /**
- * How far above the parent's own mark a child's `ru_maxrss` must read to
- * count as the child's. A light child inherits the parent's footprint at
- * exec, so its reading sits ON the floor by construction, and the kernel's
- * per-thread RSS counters lag by up to 64 pages between syncs — a `true`
- * spawned from a 300 MB parent read 376 MB against a floor a few pages
- * lower on one CI run in twelve (2026-09-16). Four MiB is above any
- * accounting jitter and below what any reservation resolves (64 MB steps).
+ * How far above the parent's own mark a child's `ru_maxrss` must read to count
+ * as the child's. A light child inherits the parent's footprint at exec, so its
+ * reading sits ON the floor by construction, and the kernel's per-thread RSS
+ * counters lag by up to 64 pages between syncs — a `true` spawned from a 300 MB
+ * parent read 376 MB against a floor a few pages lower on one CI run in twelve.
+ * Four MiB is above any accounting jitter and below what any reservation
+ * resolves (64 MB steps).
  */
 export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
 
@@ -1692,13 +1683,13 @@ const MIN_PLAUSIBLE_PEAK_BYTES = 1024 * 1024
  *
  * Bun >= 1.4 — vx's declared floor — normalizes the kernel's `ru_maxrss`
  * (kilobytes on Linux, bytes on macOS) before handing it over, and this file
- * used to state that as "BYTES on every platform". It is not true of every
- * Bun: 1.3.11 passes the raw kilobytes through, so every peak read 1024×
- * SMALL, fell under the parent floor and recorded nothing. The opposite
- * mistake is in this file's own history — an unconditional ×1024 on Linux
- * made a 64 MB suite read as 64 GB and, once reservations were learned from
- * that history, ran every task alone (2026-09-12). Both directions come from
- * asserting a platform unit instead of deciding it from the number in hand.
+ * used to state that as "BYTES on every platform". It is not true of every Bun:
+ * 1.3.11 passes the raw kilobytes through, so every peak read 1024× SMALL, fell
+ * under the parent floor and recorded nothing. The opposite mistake is in this
+ * file's own history — an unconditional ×1024 on Linux made a 64 MB suite read
+ * as 64 GB and, once reservations were learned from that history, ran every
+ * task alone. Both directions come from asserting a platform unit instead of
+ * deciding it from the number in hand.
  *
  * The number decides it. No process peaks under a megabyte — a bare `true`
  * costs a couple — so a reading below that is not bytes, it is the kernel's
@@ -1711,8 +1702,7 @@ const MIN_PLAUSIBLE_PEAK_BYTES = 1024 * 1024
  * reports kilobytes even where `Subprocess.resourceUsage()` reports bytes, so
  * the ratio read 1024 on a runtime already handing over bytes and doubled the
  * old 64 GB defect. It passed here, where both APIs use kilobytes, and turned
- * CI red on both platforms (2026-09-20). Compare like with like, or do not
- * compare at all.
+ * CI red on both platforms. Compare like with like, or do not compare at all.
  */
 export function peakRssBytes(maxRSS: number): number {
   return maxRSS > 0 && maxRSS < MIN_PLAUSIBLE_PEAK_BYTES ? maxRSS * 1024 : maxRSS

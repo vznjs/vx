@@ -1,5 +1,5 @@
-// The glob grammar Nx and Turbo share and vx's own differ in extglobs;
-// both adapters translate through here (items 914, 1031).
+// The glob grammar Nx and Turbo share and vx's own differ in extglobs; both
+// adapters translate through here.
 
 const EXTGLOB = /([?@+*!])\(([^()]*)\)/g
 
@@ -7,8 +7,7 @@ const EXTGLOB = /([?@+*!])\(([^()]*)\)/g
  * A minimatch-family glob (Nx's minimatch, Turbo's wax) in vx's grammar,
  * or null when it has no safe form. Character classes pass through (vx
  * reads them the same way); vx has no extglobs, so Nx's own default
- * `production` negation, `?(*.)+(spec|test).[jt]s?(x)`, excluded nothing
- * (item 914):
+ * `production` negation, `?(*.)+(spec|test).[jt]s?(x)`, excluded nothing:
  * - `?(a|b)` is `{a,b,}` and `@(a|b)` is `{a,b}`;
  * - `+(a|b)` and `*(a|b)` narrow to one repetition, which only a
  *   NEGATION may do — it then excludes fewer files, never more;

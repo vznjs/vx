@@ -12,7 +12,7 @@
 // map that covers stable HITS and stable MISSES alike. The scheduler
 // (two-tier) and execute-task (probe reuse) consume it:
 //
-//   - hit  → RESTORE-TIER: scheduler makes it ready immediately (LOW
+//   - hit → RESTORE-TIER: scheduler makes it ready immediately (LOW
 //            priority), execute reuses the probed entry → restoreHit
 //            (no second cache.get).
 //   - miss → EXEC-TIER (stable): scheduler runs it dep-gated at normal
@@ -172,8 +172,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
     endKeys()
   }
   // Every stable key is a cacheable task's: deriveStableKeys pushes only
-  // `cacheEnabled && !unstable` (item 640 deleted a second filter here and
-  // nothing reddened).
+  // `cacheEnabled && !unstable`.
   const remoteOnly = args.remoteOnly
   const candidates =
     remoteOnly === undefined || remoteOnly.size === 0
@@ -253,17 +252,16 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
 /**
  * The tasks a workspace-output declaration keeps out of the restore tier.
  *
- * A root-anchored output can land in any project's directory, edge or no
- * edge (`tests/local-shortcircuit.test.ts` § "a workspace-output writer"
- * rows, item 425), so the question is not who depends on the writer but
- * WHERE it can write: each declared glob's static prefix is tested for
- * reach against every project directory, and against every task's own
- * `workspaceFiles` inputs, with the ancestor-or-equal relation
- * `workspaceInputsReach` already uses. A prefix that is the root reaches
- * everything — the graph-wide rule this replaced (item 584). Exclusion then
- * follows the edges DOWN: a dependant's up-front key folds an excluded
- * task's key, which is preliminary, so it cannot restore early either.
- * Cost: one pass over the nodes, no filesystem.
+ * A root-anchored output can land in any project's directory, edge or no edge
+ * (`tests/local-shortcircuit.test.ts` § "a workspace-output writer" rows), so
+ * the question is not who depends on the writer but WHERE it can write: each
+ * declared glob's static prefix is tested for reach against every project
+ * directory, and against every task's own `workspaceFiles` inputs, with the
+ * ancestor-or-equal relation `workspaceInputsReach` already uses. A prefix that
+ * is the root reaches everything — the graph-wide rule this replaced. Exclusion
+ * then follows the edges DOWN: a dependant's up-front key folds an excluded
+ * task's key, which is preliminary, so it cannot restore early either. Cost:
+ * one pass over the nodes, no filesystem.
  */
 export function restoreTierExclusions(
   nodes: Map<string, TaskNode>,
@@ -274,8 +272,7 @@ export function restoreTierExclusions(
   for (const node of nodes.values()) {
     for (const raw of node.config.outputs?.workspaceFiles ?? []) {
       // A `!` entry needs no skip: its prefix (`!gen`) names no directory,
-      // so it excludes nothing (A-44; the `continue` that stood here was
-      // dropped in item 640).
+      // so it excludes nothing.
       const glob = normalizeGlob(raw)
       const prefix = staticPrefix(glob)
       if (prefix === '.' || prefix === '' || prefix === '/') everything = true
@@ -306,7 +303,7 @@ export function restoreTierExclusions(
   }
   // Up the dependant edges on an explicit stack: a chain is as deep as the
   // graph, and a recursion per edge threw `RangeError` at the 50,000 the
-  // builder takes (item 737).
+  // builder takes.
   const stack = [...out]
   while (stack.length > 0) {
     for (const up of dependants.get(stack.pop()!) ?? []) {

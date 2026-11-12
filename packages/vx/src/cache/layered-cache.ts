@@ -1,8 +1,7 @@
 // LayeredCache — the local cache with the declared remotes behind it.
 //
-// Read path:  try local. On miss, ask each readable remote in declared
-// order; the first hit streams its body into local so the next read is a
-// local hit.
+// Read path: try local. On miss, ask each readable remote in declared order;
+// the first hit streams its body into local so the next read is a local hit.
 //
 // Write path: write to local synchronously. Upload the local artifact
 // to every writable remote as a fire-and-forget background task; failures
@@ -519,9 +518,9 @@ export class LayeredCache implements CacheLayer {
     fresh = false,
   ): Promise<boolean | null> {
     const fetchStart = performance.now()
-    // A stopped run waits on no read, as on no upload: a lookup or download
-    // in flight held a Ctrl-C until its last byte (2026-10-17). The
-    // plugin's request is left to the exit, and its body is cancelled.
+    // A stopped run waits on no read, as on no upload: a lookup or download in
+    // flight held a Ctrl-C until its last byte. The plugin's request is left to
+    // the exit, and its body is cancelled.
     const stopped = lane.whenStopped.then((): typeof STOPPED => STOPPED)
     const pending = lane.get(hash, fresh)
     const remoteBody = await Promise.race([pending, stopped])
@@ -547,7 +546,7 @@ export class LayeredCache implements CacheLayer {
       // A layer's number is taken only as a finite non-negative one: a NaN
       // failed the entry row's NOT NULL after the artifact was renamed into
       // place, which threw a valid hit away and orphaned its bytes, and a
-      // negative or infinite one was stored and replayed (item 944).
+      // negative or infinite one was stored and replayed.
       durationMs: durationOf(remoteBody.durationMs),
       ...(ctx?.outputs !== undefined ? { outputs: ctx.outputs } : {}),
     }
@@ -566,14 +565,14 @@ export class LayeredCache implements CacheLayer {
       ingest.catch(() => undefined)
       if ((await Promise.race([ingest, ends])) === STOPPED) return false
     } catch (err) {
-      // The bytes came off the network — a corrupt/truncated remote
-      // artifact must degrade to a cache miss (task re-executes), not
-      // crash the run. A corrupt LOCAL artifact is a miss too, one level
-      // down: `Cache.restoreOutputs` drops it (A-52).
+      // The bytes came off the network — a corrupt/truncated remote artifact
+      // must degrade to a cache miss (task re-executes), not crash the run. A
+      // corrupt LOCAL artifact is a miss too, one level down:
+      // `Cache.restoreOutputs` drops it.
       lane.report('download', hash, err)
-      // Bad bytes there: the re-run's save sends good ones over them, or
-      // every machine rebuilt the task and none repaired it (2026-10-24).
-      // Core's ingest says so, or the layer's own check of its body does.
+      // Bad bytes there: the re-run's save sends good ones over them, or every
+      // machine rebuilt the task and none repaired it. Core's ingest says so,
+      // or the layer's own check of its body does.
       if (isCorruptArtifact(err)) lane.distrust(hash)
       return false
     } finally {

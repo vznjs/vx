@@ -90,15 +90,14 @@ export interface ScheduleOptions {
   settledOf?: (outcome: TaskOutcome) => Promise<TaskOutcome | void> | undefined
   /**
    * A task the caller settles in place: a thunk returning its outcome, or
-   * undefined to dispatch it through `execute`. Asked of a task its lane
-   * has room for, after the skip check; `onStart` hears it, then the thunk
-   * runs (a hit replays its output there), and its outcome lands in the
-   * same tick, holding no slot. An unkeyed group runs nothing, and the
-   * dispatch, the slot and the promise around it were ~10 µs of each of a
-   * warm run's 1,090 groups (X-192); a hit whose tree is current does no
-   * more. A restore-tier task's `upstream` may hold undefined entries.
-   * The thunk's outcome is the scheduler's: its queue time is set on it,
-   * not on a copy (a copy per hit).
+   * undefined to dispatch it through `execute`. Asked of a task its lane has
+   * room for, after the skip check; `onStart` hears it, then the thunk runs (a
+   * hit replays its output there), and its outcome lands in the same tick,
+   * holding no slot. An unkeyed group runs nothing, and the dispatch, the slot
+   * and the promise around it were ~10 µs of each of a warm run's 1,090 groups;
+   * a hit whose tree is current does no more. A restore-tier task's `upstream`
+   * may hold undefined entries. The thunk's outcome is the scheduler's: its
+   * queue time is set on it, not on a copy (a copy per hit).
    */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /**
@@ -116,7 +115,7 @@ export interface ScheduleOptions {
    */
   reprioritize?: (apply: (priorities: ReadonlyMap<string, number>) => void) => void
   /**
-   * The baseline ranking under `priorities` (`schedule` in .vx/workspace.ts).
+   * The baseline ranking under `priorities` (`schedule` in.vx/workspace.ts).
    * Undefined or `most-work` is the reverse-deps count above.
    */
   strategy?: ScheduleStrategy
@@ -379,8 +378,8 @@ class GraphRun {
         : [...nodes.values()]
             .filter((n) => n.config.exec?.persistent !== undefined)
             .map((n) => n.id)
-    // Only a server can die: with none in the graph, no walk (a stack and
-    // a set per dependency of every exec-tier task, X-171).
+    // Only a server can die: with none in the graph, no walk (a stack and a set
+    // per dependency of every exec-tier task).
     this.deadServerVia =
       this.servers.length === 0
         ? (): undefined => undefined
@@ -907,8 +906,8 @@ class GraphRun {
       thrown instanceof OutputsFailed
         ? thrown.error
         : thrown
-    // After the run's stop a rejection is the stop's doing (a probe
-    // it killed, C-65): aborted, as any task it kills, and unsaid.
+    // After the run's stop a rejection is the stop's doing (a probe it killed):
+    // aborted, as any task it kills, and unsaid.
     const stopped = this.aborted()
     const exitCode = thrown instanceof OutputsFailed ? thrown.exitCode : 1
     const durationMs = thrown instanceof OutputsFailed ? thrown.durationMs : 0

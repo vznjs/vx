@@ -41,12 +41,12 @@ import type { CacheFacts, TaskArtifacts } from './task-artifacts.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
- * A vx plugin. Contributes any subset of the run-level capabilities —
- * where work runs (executor), which cache is used (cache), who
- * observes the run (telemetry). It never changes WHAT a task is (the
- * command string — principle #3), only where and how that command is
- * executed. Registered explicitly in .vx/workspace.ts via
- * defineWorkspace({ plugins: [...] }). No auto-discovery.
+ * A vx plugin. Contributes any subset of the run-level capabilities — where
+ * work runs (executor), which cache is used (cache), who observes the run
+ * (telemetry). It never changes WHAT a task is (the command string — principle
+ * #3), only where and how that command is executed. Registered explicitly
+ * in.vx/workspace.ts via defineWorkspace({ plugins: [...] }). No
+ * auto-discovery.
  *
  * Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
  * plain object. The capabilities are consulted by `plugin-host.ts`. Core
@@ -84,36 +84,34 @@ export interface VxPlugin {
   config?(workspace: WorkspaceConfig, ctx: ConfigContext): void | Promise<void>
 
   /**
-   * Projects beyond the directories holding a vx.config, their names, and
-   * edges between projects, as `DiscoveredProject`s (each directory
-   * absolute or relative to the workspace root): a lockfile's importers,
-   * their package names and the dependencies it records; a runner's root
-   * tasks. Runs under `vx lock` (and `--check`) only, before any project
-   * config loads: the lock records what the hooks found, and every other
-   * verb applies that record and calls no hook (2026-11-11). Each
-   * plugin sees the locked projects and the ones earlier plugins added,
-   * without their edges. A directory that is not a project becomes one
-   * (with no config; named by `name`, else its path). A project named by
-   * its path takes `name`; one its config names keeps that name, and a
-   * different name from an earlier plugin is refused, as is a directory
-   * outside the root and the name `//` away from it. Two projects of one name are refused once the stage
-   * ends. `deps` and `reach` from every plugin union then; a target that is
-   * no project is refused.
+   * Projects beyond the directories holding a vx.config, their names, and edges
+   * between projects, as `DiscoveredProject`s (each directory absolute or
+   * relative to the workspace root): a lockfile's importers, their package
+   * names and the dependencies it records; a runner's root tasks. Runs under
+   * `vx lock` (and `--check`) only, before any project config loads: the lock
+   * records what the hooks found, and every other verb applies that record and
+   * calls no hook. Each plugin sees the locked projects and the ones earlier
+   * plugins added, without their edges. A directory that is not a project
+   * becomes one (with no config; named by `name`, else its path). A project
+   * named by its path takes `name`; one its config names keeps that name, and a
+   * different name from an earlier plugin is refused, as is a directory outside
+   * the root and the name `//` away from it. Two projects of one name are
+   * refused once the stage ends. `deps` and `reach` from every plugin union
+   * then; a target that is no project is refused.
    */
   discover?(
     ctx: DiscoverContext,
   ): readonly DiscoveredProject[] | Promise<readonly DiscoveredProject[]>
 
   /**
-   * One project's validated config, right after it loaded and before the
-   * graph is built. Add, remove or edit tasks. Runs under `vx lock` (and
-   * `--check`) only, for every project: the lock records what the hooks
-   * left, and a run reads that record and calls no hook — a run follows
-   * the lock, never what the files say now (2026-11-11). A project with NO
-   * config file (a `discover` plugin added it) is visited too, as
-   * `{ tasks: {} }`, so a plugin can give it tasks; with no `project`
-   * plugin such a project is never visited. Its `name` is fixed by then: a
-   * change is refused.
+   * One project's validated config, right after it loaded and before the graph
+   * is built. Add, remove or edit tasks. Runs under `vx lock` (and `--check`)
+   * only, for every project: the lock records what the hooks left, and a run
+   * reads that record and calls no hook — a run follows the lock, never what
+   * the files say now. A project with NO config file (a `discover` plugin added
+   * it) is visited too, as `{ tasks: {} }`, so a plugin can give it tasks; with
+   * no `project` plugin such a project is never visited. Its `name` is fixed by
+   * then: a change is refused.
    */
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
 
@@ -142,14 +140,13 @@ export interface VxPlugin {
     | Promise<Readonly<Record<string, string>> | undefined>
 
   /**
-   * Workspace-root files this plugin keys on: core folds no root file into
-   * any key, so a plugin that reads one (a lockfile it folds per project
-   * through `key`, `turbo.json` that shapes every task through its
-   * `project` stage) claims it here. `--affected` asks `affected` which
-   * projects a change to it touches (undefined: every project), `vx watch`
-   * re-runs on an edit (item 961), and a task that rewrites one during the
-   * run withholds every later save. A claim is a bare name at the root; a
-   * file has one claimant.
+   * Workspace-root files this plugin keys on: core folds no root file into any
+   * key, so a plugin that reads one (a lockfile it folds per project through
+   * `key`, `turbo.json` that shapes every task through its `project` stage)
+   * claims it here. `--affected` asks `affected` which projects a change to it
+   * touches (undefined: every project), `vx watch` re-runs on an edit, and a
+   * task that rewrites one during the run withholds every later save. A claim
+   * is a bare name at the root; a file has one claimant.
    */
   readonly fingerprint?: FingerprintClaim
 
@@ -365,9 +362,9 @@ export interface PluginCommand {
 export interface CommandContext extends BaseContext {
   /**
    * The worker count a `vx run` here uses unless `--concurrency` says
-   * otherwise: `.vx/workspace`'s `concurrency`, else what the machine allows.
-   * A verb that budgets a run (`vx history`) reads it here; its own
-   * `machineParallelism()` said 4 cores beside `concurrency: 1` (item 1068).
+   * otherwise: `.vx/workspace`'s `concurrency`, else what the machine allows. A
+   * verb that budgets a run (`vx history`) reads it here; its own
+   * `machineParallelism()` said 4 cores beside `concurrency: 1`.
    */
   readonly concurrency: number
   /**
@@ -406,16 +403,14 @@ export interface WorkspaceHookContext {
 }
 
 /**
- * What a CI knows of the run's branch (2026-10-17): `scope`, the
- * cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
- * beats the one git names), and `base`, the commit the branch is compared
- * with (a pull request's base), for a bare `--affected`. `trusted`: the
- * run has no scope, whatever git names (a merge queue's run,
- * 2026-10-18). The scope keys plugin entries only. `refs`: the refs a
- * remote reads, in order (`CacheContext.refs`; 2026-10-25: a pull
- * request its head branch, then its base, then the default branch; a
- * merge queue or train only its base); unset, git's. A later plugin's
- * field wins.
+ * What a CI knows of the run's branch: `scope`, the cache scope
+ * (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it beats the one git
+ * names), and `base`, the commit the branch is compared with (a pull request's
+ * base), for a bare `--affected`. `trusted`: the run has no scope, whatever git
+ * names (a merge queue's run). The scope keys plugin entries only. `refs`: the
+ * refs a remote reads, in order (`CacheContext.refs`: a pull
+ * request its head branch, then its base, then the default branch; a merge
+ * queue or train only its base); unset, git's. A later plugin's field wins.
  */
 export interface BranchFacts {
   scope?: string
@@ -784,8 +779,8 @@ function pluginPackageName(dir: string): string {
       /* not here; look one level up */
     }
     if (text !== undefined) {
-      // A bare JSON.parse reached the user as a SyntaxError and a stack,
-      // naming no file (X-20).
+      // A bare JSON.parse reached the user as a SyntaxError and a stack, naming
+      // no file.
       let pkg: { name?: unknown } | null
       try {
         pkg = JSON.parse(text) as { name?: unknown } | null
@@ -818,10 +813,10 @@ function pluginPackageName(dir: string): string {
 }
 
 /**
- * The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
- * The name is read from the package the calling module belongs to — the
- * nearest `package.json` above it that has a name — and stamped where the workspace loader
- * checks for it, so a plugin cannot be named anything but its package.
+ * The one way to make a plugin: `definePlugin(import.meta, {...hooks })`. The
+ * name is read from the package the calling module belongs to — the nearest
+ * `package.json` above it that has a name — and stamped where the workspace
+ * loader checks for it, so a plugin cannot be named anything but its package.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
   // The hooks are copied by spread, which takes own fields only: a class
@@ -1036,9 +1031,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       ...secrets.for(plugin.name),
       ci: args.ci ?? false,
       branch: args.branch ?? null,
-      // A subscription made past the hooks leaves with the run like a
-      // hook's does: the bus can outlive the run (`RunOptions.bus`), and
-      // one left behind hears every later run on it (item 635).
+      // A subscription made past the hooks leaves with the run like a hook's
+      // does: the bus can outlive the run (`RunOptions.bus`), and one left
+      // behind hears every later run on it.
       bus: {
         emit: (event) => bus.emit(event),
         subscribe(subscriber) {
@@ -1069,8 +1064,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         bus.emit({ kind: 'task:measure', measure: m })
       },
       on(hook, handler) {
-        // A misspelt name ('taskComplete') subscribed a handler that never
-        // ran, and no word of it; a config file has no type-checker (H-16).
+        // A misspelt name ('taskComplete') subscribed a handler that never ran,
+        // and no word of it; a config file has no type-checker.
         if (!Object.hasOwn(HOOK_EVENTS, hook)) {
           throw new Error(
             `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_EVENTS).join(', ')})`,
@@ -1153,7 +1148,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       if (args.signal?.aborted === true) throw err
       throw new PluginSetupError(
         plugin,
-        // Masked at the source, as plugin-host.ts's `safe()` does (L-11).
+        // Masked at the source, as plugin-host.ts's `safe()` does.
         maskedLine(`plugin '${plugin.name}' failed in setup: ${thrownMessage(err)}`),
         // The plugin's own code survives, as `safe()` keeps it.
         errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),

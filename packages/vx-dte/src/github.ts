@@ -46,9 +46,9 @@ const STARTED_FILE = 'vx-dte-started'
 
 /**
  * A dispatched run's jobs are first read this soon, then twice as late each
- * time, up to `WATCH_MAX_MS`. Every job of a repository shares
- * GITHUB_TOKEN's API limit (1000 an hour): at 10 s, a dozen runs at once
- * spent it, and dispatches and cancels were refused (2026-10-28).
+ * time, up to `WATCH_MAX_MS`. Every job of a repository shares GITHUB_TOKEN's
+ * API limit (1000 an hour): at 10 s, a dozen runs at once spent it, and
+ * dispatches and cancels were refused.
  */
 const WATCH_FIRST_MS = 2_000
 const WATCH_MAX_MS = 30_000
@@ -101,10 +101,10 @@ export function github(options: GithubOptions = {}): DteAdapter {
   // (macOS: five a plan) that the next run's workers wait for.
   const runs: string[] = []
   const pending = new Set<Promise<void>>()
-  // A job that fails before its worker joins (checkout, install) told the
-  // run nothing: its worker stayed `starting`, held its size's `max`, and a
-  // run with no other worker waited for the job's timeout (2026-10-22).
-  // Each job is named for its worker; one that ends badly says so.
+  // A job that fails before its worker joins (checkout, install) told the run
+  // nothing: its worker stayed `starting`, held its size's `max`, and a run
+  // with no other worker waited for the job's timeout. Each job is named for
+  // its worker; one that ends badly says so.
   const watched = new Map<string, Map<string, WorkerSpawn>>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
@@ -119,8 +119,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const workerRuns = new Set<string>()
   // Workers the run no longer needs: a run of only these is cancelled.
   const cancelled = new Set<string>()
-  // A poll or cancel that failed is said, each cause once (2026-10-23: no
-  // fault is silent): a job that ended badly went unseen, a run held runners.
+  // A poll or cancel that failed is said, each cause once (no fault is silent):
+  // a job that ended badly went unseen, a run held runners.
   let warn = (m: string): void => ui.say('warn', m)
   const said = new Set<string>()
   const runOf = (run: string): string => `workflow run ${run.slice(run.lastIndexOf('/') + 1)}`
@@ -193,11 +193,10 @@ export function github(options: GithubOptions = {}): DteAdapter {
     return body.jobs.some((j) => j.status === 'in_progress')
   }
   /**
-   * Cancels `run` once none of its workers is still needed and none of its
-   * jobs has a runner. Otherwise it goes on, and each worker let go in it
-   * is left running: it joins, and the run takes it (2026-10-29: small#3,
-   * let go with its job running, joined to be told to exit while two tasks
-   * waited for a core).
+   * Cancels `run` once none of its workers is still needed and none of its jobs
+   * has a runner. Otherwise it goes on, and each worker let go in it is left
+   * running: it joins, and the run takes it (small#3, let go with its job
+   * running, joined to be told to exit while two tasks waited for a core).
    */
   const letGo = (run: string, workers: Map<string, WorkerSpawn>): void => {
     const ids = [...workers.keys()]
@@ -286,8 +285,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
             if (a === undefined || j.status !== 'completed') continue
             workers.delete(j.name)
             if (closed || cancelled.has(j.name)) continue
-            // A success too: a worker that found no live run left at once,
-            // and the run must not wait on it (2026-10-23).
+            // A success too: a worker that found no live run left at once, and
+            // the run must not wait on it.
             const step = j.steps?.find((x) => x.conclusion === 'failure')?.name
             a.exited(`job ${j.conclusion}${step === undefined ? '' : ` at ${step}`}`)
           }
@@ -363,7 +362,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         continue
       }
       if (res.status !== 422 || !text.includes('No ref found') || !refs[++i]) {
-        // GitHub's own words named no fix for the two a first run meets (2026-10-26).
+        // GitHub's own words named no fix for the two a first run meets.
         const fix =
           res.status === 404
             ? `: .github/workflows/${workflow} is not on ${refs[i]} (vx dte init writes it; commit and push it)`
@@ -458,10 +457,10 @@ export function github(options: GithubOptions = {}): DteAdapter {
         pending.add(p)
       })
     },
-    // Before a worker's setup when its job has yet to run: its runner is
-    // free for others (2026-10-23). A run with a worker still needed, or
-    // a job with a runner, goes on; the workers let go in it are left
-    // running. One given up as late is stopped whatever its job holds.
+    // Before a worker's setup when its job has yet to run: its runner is free
+    // for others. A run with a worker still needed, or a job with a runner,
+    // goes on; the workers let go in it are left running. One given up as late
+    // is stopped whatever its job holds.
     cancel(ids, givenUp) {
       if (givenUp === true) for (const id of ids) late.add(id)
       const left = ids.map((id) => new Promise<boolean>((done) => deciding.set(id, done)))

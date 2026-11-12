@@ -230,12 +230,12 @@ export interface PreparedRun {
    *     user's task names were resolved against `projects`. Typically
    *     a typo'd task name; `run()` treats this as a CI footgun and
    *     returns NOT-ok.
-   *   - `'none-affected'`     — as `'no-tasks-declared'`, but the scope
+   *   - `'none-affected'` — as `'no-tasks-declared'`, but the scope
    *     came from a diff and every name is declared somewhere else in the
    *     workspace: nothing changed that runs them, a clean outcome. Also
    *     when `--affected`'s diff reaches no requested task's `dependsOn`
    *     closure (`affected-tasks.ts`).
-   *   - `'empty-graph'`       — `requested` was non-empty but the
+   *   - `'empty-graph'` — `requested` was non-empty but the
    *     graph builder still produced no nodes. Defensive; unreachable
    *     under current `buildTaskGraph` semantics.
    */
@@ -398,10 +398,10 @@ async function startWorkspace(options: CoreRunOptions, log: Logger, planning: bo
   // them afresh.
   const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
-  // The lock is where a run's projects come from, so the read (1.1 MB at
-  // 1,000 projects, ~10 ms to read and parse) starts here and overlaps the
-  // workspace config's evaluation (X-181). A missing or malformed lock
-  // refuses at discovery, after any earlier refusal.
+  // The lock is where a run's projects come from, so the read (1.1 MB at 1,000
+  // projects, ~10 ms to read and parse) starts here and overlaps the workspace
+  // config's evaluation. A missing or malformed lock refuses at discovery,
+  // after any earlier refusal.
   const reused =
     options.handoff?.discovered?.root === workspaceRoot ? options.handoff?.discovered : undefined
   const readLock =
@@ -637,15 +637,13 @@ async function loadScope(
   localCache: Cache,
 ) {
   const { projectMetas, readLock } = ws
-  // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
-  // the configs (`vx lock --check` re-evaluates them; a run does not):
-  // only `vx lock` evaluates.
-  // See docs/design/config-lock-2026-06.md.
-  // Read once, and only when a config is to be read from it: the CLI's
-  // selection pass may have staged every config (`handoff.staged`), and
-  // its load refused a run without a lock. A 1,000-project lock is
-  // 1.1 MB of JSON (I-27); a run with nothing staged started its read
-  // beside discovery, above.
+  // Configs load FROM.vx/projects.lock.json with no evaluation and no check of
+  // the configs (`vx lock --check` re-evaluates them; a run does not): only `vx
+  // lock` evaluates. See docs/design/config-lock-2026-06.md. Read once, and
+  // only when a config is to be read from it: the CLI's selection pass may have
+  // staged every config (`handoff.staged`), and its load refused a run without
+  // a lock. A 1,000-project lock is 1.1 MB of JSON; a run with nothing staged
+  // started its read beside discovery, above.
   const staged = options.handoff?.staged
   const allStaged =
     staged !== undefined &&
@@ -694,8 +692,8 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
   const { tasks } = scope
   const { projects, projectsWithConfigs, everyProject } = load
   // A config the load left out may declare what nothing loaded does. Asked by
-  // name, never by count: a config-less project counts as loaded, so a
-  // scope holding one hid an unloaded declarer (X-129, X-182).
+  // name, never by count: a config-less project counts as loaded, so a scope
+  // holding one hid an unloaded declarer.
   const partialLoad = projectsWithConfigs.some((m) => !projects.has(m.name))
   // Asked on a refusal only: a scope never loads a config-less project
   // nothing configured reaches.
@@ -704,11 +702,10 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
     projectMetas.some((m) => m.name === name) &&
     !projectsWithConfigs.some((m) => m.name === name)
 
-  // Boundary geometry considers every workspace project, loaded or not,
-  // config or not: `--affected` gives a changed path to the deepest project
-  // dir, and a config-less one keys its files under its default `build`, so
-  // a parent's glob that folded (or cleaned) them crossed a boundary the
-  // selection drew (X-57).
+  // Boundary geometry considers every workspace project, loaded or not, config
+  // or not: `--affected` gives a changed path to the deepest project dir, and a
+  // config-less one keys its files under its default `build`, so a parent's
+  // glob that folded (or cleaned) them crossed a boundary the selection drew.
   const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
   const nestedWorkspaces = nestedWorkspacesOf(projectMetas)
   if (nestedWorkspaces.length > 0)
@@ -718,9 +715,9 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
     ? options.projects.filter((p) => projects.has(p))
     : [...projects.keys()]
 
-  // A bare name skips the default `build`: it runs nothing, and matched,
-  // `vx run build` in a project declaring none ran 0 tasks, exit 0 (X-102).
-  // A dependant's `^build` still reaches it, and `lib#build` names it.
+  // A bare name skips the default `build`: it runs nothing, and matched, `vx
+  // run build` in a project declaring none ran 0 tasks, exit 0. A dependant's
+  // `^build` still reaches it, and `lib#build` names it.
   const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
   let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
   // A diff that changed only config-less projects loads none of them: no
@@ -738,10 +735,10 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
       workspaceRoot,
     )
   if (options.handoff?.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
-    // A name a loaded project declares is no typo, whether or not the load
-    // was whole: an unaffected dependency loaded for the closure declared
-    // it, and the run said no project did (C-3). Only what is still
-    // unjudged pays for the rest of the workspace.
+    // A name a loaded project declares is no typo, whether or not the load was
+    // whole: an unaffected dependency loaded for the closure declared it, and
+    // the run said no project did. Only what is still unjudged pays for the
+    // rest of the workspace.
     unresolvedTasks = undeclaredIn(unresolvedTasks, projects)
     if (partialLoad && unresolvedTasks.some((t) => !t.includes('#'))) {
       unresolvedTasks = await declaredNowhere(unresolvedTasks, everyProject)
@@ -841,10 +838,9 @@ async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, st
             : {}),
         })
   } catch (err) {
-    // A cache plugin that throws or returns something off-contract is
-    // refused by name; the local handle opened above must not leak with it,
-    // nor what another plugin's factory opened: the factories have run
-    // (C-4).
+    // A cache plugin that throws or returns something off-contract is refused
+    // by name; the local handle opened above must not leak with it, nor what
+    // another plugin's factory opened: the factories have run.
     await teardownPlugins(plugins, warnOf(log))
     localCache.close()
     throw err
@@ -1233,9 +1229,9 @@ function declaresAny(projects: LoadedProjects['projects']): boolean {
 }
 
 /**
- * The bare names in `unresolved` no project in `projects` declares; `a#b`
- * forms pass through. Every project has a `build`, its default one if
- * nothing declares it, and a bare name does not select that (X-102).
+ * The bare names in `unresolved` no project in `projects` declares; `a#b` forms
+ * pass through. Every project has a `build`, its default one if nothing
+ * declares it, and a bare name does not select that.
  */
 function undeclaredIn(
   unresolved: readonly string[],

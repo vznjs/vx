@@ -48,12 +48,11 @@ export type RemoteOp = 'probe' | 'download' | 'upload'
 const PREPOSITION: Record<RemoteOp, string> = { probe: 'at', download: 'from', upload: 'to' }
 
 /**
- * What a remote layer resolves is a plugin's, so its shape is a boundary
- * (item 252): a `get` that resolved `{ body: 'abc' }` was reported as
- * "corrupt artifact … not a readable archive" — the bytes blamed for the
- * plugin's shape — and a `hasMany` that resolved an array reached the
- * prefetch pass's `.has()`. Named here and degraded to a miss, like every
- * other remote failure.
+ * What a remote layer resolves is a plugin's, so its shape is a boundary: a
+ * `get` that resolved `{ body: 'abc' }` was reported as "corrupt artifact … not
+ * a readable archive" — the bytes blamed for the plugin's shape — and a
+ * `hasMany` that resolved an array reached the prefetch pass's `.has()`. Named
+ * here and degraded to a miss, like every other remote failure.
  */
 function invalidRemoteResult(what: string): Error {
   return new Error(
@@ -151,10 +150,10 @@ export class RemoteLane {
   })
 
   /**
-   * One entry per failure class said: its first line went out, `repeats`
-   * counts the ones held back. A run's requests are concurrent, so an
-   * unreachable server otherwise printed its bare runtime message once per
-   * request (three lines for one task over the Turbo wire, item 749).
+   * One entry per failure class said: its first line went out, `repeats` counts
+   * the ones held back. A run's requests are concurrent, so an unreachable
+   * server otherwise printed its bare runtime message once per request (three
+   * lines for one task over the Turbo wire).
    */
   private readonly reported = new Map<string, { cause: string; repeats: number }>()
 
@@ -453,10 +452,10 @@ export class RemoteLane {
   }
 
   /**
-   * `subject` is the artifact's hash, or the batch for a `hasMany`. The
-   * wire's own message says what went wrong but not on what or where: an
-   * upload deadline read `The operation timed out.` with no upload, hash or
-   * server in it (item 749).
+   * `subject` is the artifact's hash, or the batch for a `hasMany`. The wire's
+   * own message says what went wrong but not on what or where: an upload
+   * deadline read `The operation timed out.` with no upload, hash or server in
+   * it.
    */
   report(op: RemoteOp, subject: string | { batch: string }, err: unknown): void {
     const e = err instanceof Error ? err : new Error(thrownMessage(err))

@@ -6,11 +6,9 @@
 // its parent). A second signal does so at once. Without the forward, a
 // programmatic signal to the vx process alone (CI cancellation,
 // `kill <pid>`) orphans every running child — terminal Ctrl-C only worked
-// via process-group propagation. Without the escalation (added
-// 2026-09-10) a child that traps TERM — a dev server mid-cleanup, a test
+// via process-group propagation. Without the escalation a child that traps TERM — a dev server mid-cleanup, a test
 // runner that ignores it — outlived the run that owned it: vx exited
-// 143 and left it running under init. Split from run.ts on 2026-09-10
-// (pure motion); the registries it reads stay with `run()`, which hands
+// 143 and left it running under init. The registries it reads stay with `run()`, which hands
 // them to the runner around every spawn.
 
 import { signalExitCode } from '../exec/index.js'
@@ -54,14 +52,13 @@ export type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
 export type ForwardedSignal = 'SIGINT' | 'SIGTERM'
 
 /**
- * The signal a stop forwards to every task group: the one vx received.
- * A task runs in its own session, so a terminal's Ctrl-C reaches vx
- * alone; forwarding SIGTERM in its place skipped every SIGINT-only
- * cleanup — a Node SIGINT listener, a shell's `trap … INT`
- * (turborepo#444, #12652, #13097 and nx#23585 reproduced on vx,
- * 2026-09-24). A hang-up forwards SIGTERM: to many servers SIGHUP means
- * "reload", not "stop". Anything else — an embedder's abort reason that
- * names no signal — is a SIGTERM.
+ * The signal a stop forwards to every task group: the one vx received. A task
+ * runs in its own session, so a terminal's Ctrl-C reaches vx alone; forwarding
+ * SIGTERM in its place skipped every SIGINT-only cleanup — a Node SIGINT
+ * listener, a shell's `trap … INT` (turborepo#444, #12652, #13097 and nx#23585
+ * reproduced on vx). A hang-up forwards SIGTERM: to many servers SIGHUP means
+ * "reload", not "stop". Anything else — an embedder's abort reason that names
+ * no signal — is a SIGTERM.
  */
 export function forwardedSignal(received: unknown): ForwardedSignal {
   return received === 'SIGINT' ? 'SIGINT' : 'SIGTERM'
@@ -219,10 +216,10 @@ export function forwardSignals(args: {
    */
   stop: (signal: StopSignal) => void
   /**
-   * Settles when run() has left its `finally`. A signal waits for it
-   * before exiting: `process.exit` runs no `finally`, and plugin.md
-   * promises a plugin its teardown and a sink its flush at the end of
-   * every run — a Ctrl-C skipped both (item 849).
+   * Settles when run() has left its `finally`. A signal waits for it before
+   * exiting: `process.exit` runs no `finally`, and plugin.md promises a plugin
+   * its teardown and a sink its flush at the end of every run — a Ctrl-C
+   * skipped both.
    */
   done: Promise<void>
   /** How long a signal waits for `done` before it exits anyway. */
@@ -276,16 +273,15 @@ export function forwardSignals(args: {
     stopping = signal
     claimExitForSignal()
     // The live region stays: the stop marks its rows `stopping` (run.ts's
-    // onStop), and the run's own end replaces it with the footer. Cleared
-    // at once, it left a blank screen for as long as the stop took (M,
-    // 2026-10-17).
+    // onStop), and the run's own end replaces it with the footer. Cleared at
+    // once, it left a blank screen for as long as the stop took (M).
     args.stop(signal)
     void settleWithin(args.done, args.boundMs)
-      // The run's output may still be in the pipe: `process.exit` drops
-      // what a reader has not taken (CLAUDE.md). An empty `write`'s
-      // callback fired early, and a CI-mode run lost 0.8 of 2 MiB (item
-      // 857); `end`'s waits for the pipe on Bun >= 1.4 (bin.ts). Bounded,
-      // for a reader that has gone and never takes it.
+      // The run's output may still be in the pipe: `process.exit` drops what a
+      // reader has not taken (CLAUDE.md). An empty `write`'s callback fired
+      // early, and a CI-mode run lost 0.8 of 2 MiB; `end`'s waits for the pipe
+      // on Bun >= 1.4 (bin.ts). Bounded, for a reader that has gone and never
+      // takes it.
       .then(() => settleWithin(new Promise<void>((r) => process.stdout.end(() => r())), 2_000))
       .then(() => exit(signal))
     stopActedOn()

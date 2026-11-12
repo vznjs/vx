@@ -62,17 +62,17 @@ export interface SandboxViolation {
   line: string
   timestamp: Date
   /**
-   * What the denial named, and which `ignore` lists could silence it —
-   * filled in by whichever platform produced the record. The filters read
-   * these instead of re-parsing a line whose shape depends on the OS: a
-   * seatbelt `deny(1) file-read-data /x` and a strace
-   * `openat(../x) = -1 ENOENT  [/x]` say the same thing.
+   * What the denial named, and which `ignore` lists could silence it — filled
+   * in by whichever platform produced the record. The filters read these
+   * instead of re-parsing a line whose shape depends on the OS: a seatbelt
+   * `deny(1) file-read-data /x` and a strace `openat(../x) = -1 ENOENT [/x]`
+   * say the same thing.
    */
   target?: string
   /**
-   * vx's own note beside a failure (the cwd it cannot read, a placeholder
-   * the task never wrote, a withheld link), not a denial: shown with the
-   * denials, never counted as one (B-20).
+   * vx's own note beside a failure (the cwd it cannot read, a placeholder the
+   * task never wrote, a withheld link), not a denial: shown with the denials,
+   * never counted as one.
    */
   hint?: true
   /** Absolute, when `target` is a path at all. */
@@ -219,14 +219,14 @@ export interface ExecuteRequest {
    */
   readonly cacheKey?: string
   /**
-   * Core saves no entry under `cacheKey` after this attempt: the run's
-   * policy writes no layer (`--no-cache`, `--cache-policy local:r`), or an
-   * upstream failed under `--continue=always`, ran unkeyed or is keyless.
-   * Also set when a remote layer is composed and the policy writes no
-   * remote (a run off CI): an executor's own record is a remote store.
-   * An executor that saves a task's result for its dependants keeps it off
-   * that key too: a distributed run's worker saved it, and the next run
-   * hit an entry the user had said not to write (2026-10-24).
+   * Core saves no entry under `cacheKey` after this attempt: the run's policy
+   * writes no layer (`--no-cache`, `--cache-policy local:r`), or an upstream
+   * failed under `--continue=always`, ran unkeyed or is keyless. Also set when
+   * a remote layer is composed and the policy writes no remote (a run off CI):
+   * an executor's own record is a remote store. An executor that saves a task's
+   * result for its dependants keeps it off that key too: a distributed run's
+   * worker saved it, and the next run hit an entry the user had said not to
+   * write.
    */
   readonly unsaved?: boolean
   /**
@@ -295,13 +295,12 @@ export interface ExecuteRequest {
   readonly onStderr: (chunk: string) => void
   /**
    * Aborted when the run stops (Ctrl-C, SIGTERM, SIGHUP or an embedder's
-   * `RunOptions.signal`), when `timeoutMs` elapses, or when fail-fast
-   * withdraws a task `running` says is not begun. An executor ends its
-   * work and returns: a child an executor spawned is not one core can
-   * reach (H-10, H-12). One already aborted is work not to start (B-55).
-   * Any exit after the timeout's abort, a 0 included, is a timeout. Core
-   * waits the kill grace (2 s) after the abort, then
-   * settles the attempt without `execute` and abandons it (H-14).
+   * `RunOptions.signal`), when `timeoutMs` elapses, or when fail-fast withdraws
+   * a task `running` says is not begun. An executor ends its work and returns:
+   * a child an executor spawned is not one core can reach. One already aborted
+   * is work not to start. Any exit after the timeout's abort, a 0 included, is
+   * a timeout. Core waits the kill grace (2 s) after the abort, then settles
+   * the attempt without `execute` and abandons it.
    */
   readonly signal?: AbortSignal
   /** See `RunOptions.liveChildren`: the run's SIGINT/SIGTERM registry. */
@@ -422,38 +421,36 @@ export interface ExecutorCapabilities {
    */
   readonly sandbox?: boolean
   /**
-   * A `remote` executor that starts a task's persistent dependencies where
-   * it runs the task (`ExecuteRequest.servers`). It is offered the
-   * dependants of a persistent task with no `exec.sandbox` and no
-   * `exec.remote: false`; that task then runs here only for a dependant
-   * placed here (2026-10-22: nothing runs on a distributed run's
-   * orchestrator).
+   * A `remote` executor that starts a task's persistent dependencies where it
+   * runs the task (`ExecuteRequest.servers`). It is offered the dependants of a
+   * persistent task with no `exec.sandbox` and no `exec.remote: false`; that
+   * task then runs here only for a dependant placed here (nothing runs on a
+   * distributed run's orchestrator).
    */
   readonly servers?: boolean
   /**
    * A `remote` executor that answers a task's `inputs.runtime` and
    * `workspaceRuntime` probes where it runs the task (`answerRuntime`) and
-   * fails it when one answers other than `TaskInputs` says this machine
-   * did. It is offered tasks whose key folds a probe, which otherwise run
-   * here: their key holds this machine's answer (C-2).
+   * fails it when one answers other than `TaskInputs` says this machine did. It
+   * is offered tasks whose key folds a probe, which otherwise run here: their
+   * key holds this machine's answer.
    */
   readonly runtime?: boolean
   /**
-   * A `remote` executor that runs every task of the run, so none runs on
-   * this machine; only cache hits restore here (2026-10-24: "no
-   * task should ever run on the orchestrator"). Nothing is pinned for it:
-   * it is offered `exec.remote: false` and `exec.interactive` tasks too,
-   * and starts every server a dependant needs. A task it cannot take (a
-   * platform it does not offer, one it declines, a server requested on its
-   * own) refuses the run, and a task it gives back fails.
+   * A `remote` executor that runs every task of the run, so none runs on this
+   * machine; only cache hits restore here. Nothing is pinned for it: it is
+   * offered `exec.remote: false` and `exec.interactive` tasks too, and starts
+   * every server a dependant needs. A task it cannot take (a platform it does
+   * not offer, one it declines, a server requested on its own) refuses the run,
+   * and a task it gives back fails.
    */
   readonly exclusive?: boolean
   /**
-   * A `remote` executor that enforces `ExecuteRequest.timeoutMs` where it
-   * runs the command, timed from its start, and reports `timedOut`. Core
-   * then arms no clock of its own: armed at the request, it counted the
-   * wait for a worker still booting and killed a 1 s task with a 3 s
-   * timeout before it began (2026-10-24). The run's stop still aborts.
+   * A `remote` executor that enforces `ExecuteRequest.timeoutMs` where it runs
+   * the command, timed from its start, and reports `timedOut`. Core then arms
+   * no clock of its own: armed at the request, it counted the wait for a worker
+   * still booting and killed a 1 s task with a 3 s timeout before it began. The
+   * run's stop still aborts.
    */
   readonly timeouts?: boolean
   /**
@@ -615,11 +612,11 @@ export interface WorkerAdvice {
 }
 
 /**
- * What a remote executor rejects with when it gives a task back: core runs
- * the same request on the local floor and says `reason` once (a remote that
- * never started it, B-100). A task placed `remote: 'only'` must not run
- * here, so it fails naming `reason` instead. Matched by name, as
- * `isUserError` is: a plugin's `@vzn/vx` can be another copy of this class.
+ * What a remote executor rejects with when it gives a task back: core runs the
+ * same request on the local floor and says `reason` once (a remote that never
+ * started it). A task placed `remote: 'only'` must not run here, so it fails
+ * naming `reason` instead. Matched by name, as `isUserError` is: a plugin's
+ * `@vzn/vx` can be another copy of this class.
  */
 export function executorFallback(reason: string): Error {
   const err = new Error(reason)
@@ -633,10 +630,10 @@ export function isExecutorFallback(err: unknown): err is Error {
 
 /**
  * The result an executor resolves with is a plugin's, so its shape is a
- * boundary: a plugin that resolved `{}` met `res.violations` in core and
- * became "internal error in <task>: TypeError …" — vx's crash, the plugin's
- * bug (2026-09-16). Name the executor and the field instead. The factory's
- * output is checked the same way in `resolveExecutors`.
+ * boundary: a plugin that resolved `{}` met `res.violations` in core and became
+ * "internal error in <task>: TypeError …" — vx's crash, the plugin's bug. Name
+ * the executor and the field instead. The factory's output is checked the same
+ * way in `resolveExecutors`.
  */
 export function assertExecuteResult(
   executor: string,
@@ -657,7 +654,7 @@ export function assertExecuteResult(
     if (typeof r[key] !== 'number') fail(`${key} is ${typeof r[key]} (expected a number)`)
   }
   // NaN passed as a number, printed `failed (exit NaN)` and failed the run
-  // history's NOT NULL write (X-11).
+  // history's NOT NULL write.
   if (!Number.isInteger(r['exitCode']) || (r['exitCode'] as number) < 0)
     fail(`exitCode is ${String(r['exitCode'])} (expected a non-negative integer)`)
   if (!Number.isFinite(r['durationMs']) || (r['durationMs'] as number) < 0)
@@ -729,12 +726,12 @@ export function assertExecuteResult(
 }
 
 /**
- * Place one task: the first executor, in declaration order, that may take
- * it — a `remote` executor is skipped for a `pinnedLocal` task, any one
- * `barred` names is skipped, then `accepts()` decides. Decided once per task before scheduling. The local
- * executor accepts everything, so with it declared the only throw is an
- * `accepts()` that threw: refused as `label` names that executor, where it
- * surfaced as a bare stack naming no plugin (item 1022).
+ * Place one task: the first executor, in declaration order, that may take it —
+ * a `remote` executor is skipped for a `pinnedLocal` task, any one `barred`
+ * names is skipped, then `accepts()` decides. Decided once per task before
+ * scheduling. The local executor accepts everything, so with it declared the
+ * only throw is an `accepts()` that threw: refused as `label` names that
+ * executor, where it surfaced as a bare stack naming no plugin.
  */
 export function selectExecutor(
   executors: readonly TaskExecutor[],
@@ -755,7 +752,7 @@ export function selectExecutor(
         pinned === task.pinnedLocal ? task : { ...task, pinnedLocal: pinned },
       )
       // An `async accepts` answers a Promise: truthy, so the executor took
-      // every task, and a rejection went unheard (the shape of H-16's admit).
+      // every task, and a rejection went unheard.
       if (taken instanceof Promise) {
         taken.catch(() => {})
         throw new Error('returned a Promise; accepts is synchronous')

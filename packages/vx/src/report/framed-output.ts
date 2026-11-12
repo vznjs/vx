@@ -275,12 +275,12 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
   return paintId(node.projectName, node.taskName, colors, opts)
 }
 
-// ── Reported-line grid: status · cache · usual · time · … · name ────────
-// No glyph (2026-11-06): the status word, first at the Summary's value
-// column, is the task axis and the cache word the cache axis, each in
-// its own color. Time is right-aligned in a
-// fixed cell so durations line up and a ticking elapsed never shifts
-// the row. All detail (exit code, output) lives in the framed block.
+// ── Reported-line grid: status · cache · usual · time · … · name ──────── No
+// glyph: the status word, first at the Summary's value column, is the task axis
+// and the cache word the cache axis, each in its own color. Time is
+// right-aligned in a fixed cell so durations line up and a ticking elapsed
+// never shifts the row. All detail (exit code, output) lives in the framed
+// block.
 const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
 const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
@@ -370,11 +370,11 @@ const LOCAL: { word: string; color: Style } = { word: 'local', color: 'local' }
 const REMOTE: { word: string; color: Style } = { word: 'remote', color: 'remote' }
 
 /**
- * One reported task row on the list grid: `<status> <cache> <usual>
- * <time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <name>`, the status at
- * the Summary's value column, no glyph (2026-11-06). Status/cache are raw text + color, padded to their
- * columns; `paintedId` carries identity coloring. `ms = null` blanks the
- * time (a skip never ran); `cache = ''` and an absent cell blank theirs.
+ * One reported task row on the list grid: `<status> <cache> <usual> <time>
+ * <cpu> <mem> <outputs> <blocks> <worker> <mark> <name>`, the status at the
+ * Summary's value column, no glyph. Status/cache are raw text + color, padded
+ * to their columns; `paintedId` carries identity coloring. `ms = null` blanks
+ * the time (a skip never ran); `cache = ''` and an absent cell blank theirs.
  */
 export function formatTaskRow(
   ms: number | null,
@@ -386,7 +386,7 @@ export function formatTaskRow(
   colors: ColorSupport = NO_COLOR,
   cells: RowCells = {},
 ): string {
-  // Every cell says something: one with nothing in it reads `—` (2026-11-06).
+  // Every cell says something: one with nothing in it reads `—`.
   const st = cell(status || UNKNOWN, statusColor, STATUS_COL, colors)
   // `aborting` runs one into the cache cell.
   const ca = cell(
@@ -417,7 +417,7 @@ const UNKNOWN = '\u2014'
 
 /**
  * The critical path's mark, before the task's name: the row's task held the
- * run's end while others ran beside it. One glyph, yellow (2026-11-06).
+ * run's end while others ran beside it. One glyph, yellow.
  */
 const CRITICAL_MARK = '\u25c6'
 
@@ -483,11 +483,10 @@ function coresOf(o: TaskOutcome): number | undefined {
 }
 
 /**
- * The results list's `±usual` cell: how far an executed task ran from its
- * usual time, `+6.0s` red or `−1.4s` green past a fifth of the usual either
- * way, dim within it; `—` (null) with no history for the task, blank
- * (undefined) with no history to ask. A blank within a fifth read as no
- * usual at all (2026-10-29).
+ * The results list's `±usual` cell: how far an executed task ran from its usual
+ * time, `+6.0s` red or `−1.4s` green past a fifth of the usual either way, dim
+ * within it; `—` (null) with no history for the task, blank (undefined) with no
+ * history to ask. A blank within a fifth read as no usual at all.
  */
 export function usualCell(
   ms: number,
@@ -605,11 +604,11 @@ export function formatRecordedRow(
 
 /**
  * A running task's usual duration, fixed while the elapsed time counts up
- * toward it (2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
- * column below 100 minutes.
+ * toward it: `~5.2s`, `~42s`, `~2m 05s`. Fits the cache column below 100
+ * minutes.
  */
 export function formatExpected(ms: number): string {
-  // The tier by the rounded value: 999.6 ms printed `~1000ms` (item 1034's class).
+  // The tier by the rounded value: 999.6 ms printed `~1000ms`.
   if (Math.round(ms) < 1000) return `~${Math.round(ms)}ms`
   if (ms < 9950) return `~${(ms / 1000).toFixed(1)}s`
   const s = Math.round(ms / 1000)
@@ -734,9 +733,9 @@ export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCe
 }
 
 /**
- * The cells every row of a task that reached a machine carries. Assigned,
- * not spread: a warm run builds one per hit, and the spreads, copied again
- * by the caller, were ~4 ms of 8,002 hits' rows (2026-11-07).
+ * The cells every row of a task that reached a machine carries. Assigned, not
+ * spread: a warm run builds one per hit, and the spreads, copied again by the
+ * caller, were ~4 ms of 8,002 hits' rows.
  */
 function ranCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cells: RowCells = {}
@@ -773,14 +772,14 @@ function formatOutcomeRow(
   )
 }
 
-/** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
+/** Where an executor ran the task, when not here, right after its id: `@small#2`. */
 function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
   return o.placement?.where === undefined ? '' : placeNote(o.placement?.where, colors)
 }
 
 /**
- * ` · <where>` after the id: the dot dim, the place in its own hue. Last
- * on the row, as a worker's name has no width to pad to (2026-10-21).
+ * ` · <where>` after the id: the dot dim, the place in its own hue. Last on the
+ * row, as a worker's name has no width to pad to.
  */
 function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
   return `${paint('muted', ' \u00b7', colors)} ${ui.inline(ui.place(where), colors)}`
@@ -873,12 +872,11 @@ export function formatFrameOpen(
 }
 
 /**
- * Sandbox violations get a dedicated section inside the frame so the user
- * sees them in context with the failing task, not as loose status output
- * above the box. Shared by BOTH renderers: the focused/live frame used to
- * omit it, so a single-task run — exactly how someone debugging one task
- * invokes vx — showed a failure with no violations at all
- * (2026-09-05).
+ * Sandbox violations get a dedicated section inside the frame so the user sees
+ * them in context with the failing task, not as loose status output above the
+ * box. Shared by BOTH renderers: the focused/live frame used to omit it, so a
+ * single-task run — exactly how someone debugging one task invokes vx — showed
+ * a failure with no violations at all.
  */
 function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] {
   const vlines = outcome.sandbox?.lines
@@ -891,11 +889,10 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // Verbatim but for control bytes: a denied path is anyone's bytes, and
   // one named `ESC ]0;…` retitled the terminal (the `\xNN` is still exact).
   const body = [...new Set(vlines)].map(printable)
-  // Red, not amber: a violation fails the task, so it reads as a failure.
-  // vx's note, after the evidence: the grants that would have allowed it.
-  // A read the output depends on is a key input too; the sandbox never
-  // adds one (2026-10-09), so the note names the reads no input
-  // glob matches and the user decides.
+  // Red, not amber: a violation fails the task, so it reads as a failure. vx's
+  // note, after the evidence: the grants that would have allowed it. A read the
+  // output depends on is a key input too; the sandbox never adds one, so the
+  // note names the reads no input glob matches and the user decides.
   const fix = outcome.sandbox?.fix
   const line = fix === undefined ? undefined : sandboxFixLine(fix)
   const dim = (text: string): string => paint('muted', text, colors)

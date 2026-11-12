@@ -1,11 +1,11 @@
 // vx cleans a task's declared outputs before it runs (core's rule, kept on
-// purpose: a stale file in an output is a stale artifact). Turbo and Nx
-// never clean, so an output a repo declares over committed files is safe
-// there and destructive here: typescript-eslint's website build caches
-// `data`, which holds the committed `sponsors.json`, and the first vx run
-// deleted it (2026-09-29). Each committed file under a mapped output is taken
-// back with a `!` entry (core's A-44): not cleaned, not saved, not restored,
-// still an input. The task keeps its cache.
+// purpose: a stale file in an output is a stale artifact). Turbo and Nx never
+// clean, so an output a repo declares over committed files is safe there and
+// destructive here: typescript-eslint's website build caches `data`, which
+// holds the committed `sponsors.json`, and the first vx run deleted it. Each
+// committed file under a mapped output is taken back with a `!` entry: not
+// cleaned, not saved, not restored, still an input. The task keeps
+// its cache.
 
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -263,11 +263,10 @@ interface Outputs {
 }
 
 /**
- * Fit a mapped task's outputs to the committed files they cover, in place,
- * and return one `[pkg#task, todo]` per task this leaves uncached. Core
- * never cleans a committed file (2026-10-14), so
- * the outputs keep them; what is left is the readers' `!` that hides one.
- * `tracked` is root-relative.
+ * Fit a mapped task's outputs to the committed files they cover, in place, and
+ * return one `[pkg#task, todo]` per task this leaves uncached. Core never
+ * cleans a committed file, so the outputs keep them; what is left is the
+ * readers' `!` that hides one. `tracked` is root-relative.
  */
 export function spareTrackedOutputs(
   root: string,
@@ -333,8 +332,8 @@ export function spareTrackedOutputs(
       }
       if (hits.length === 0) continue
       // A committed file under these outputs is still a source, and the `!`
-      // entry `excludeSiblingOutputs` gave a reader over the whole output
-      // hides it from that reader's key: such a reader runs uncached (X-54).
+      // entry `excludeSiblingOutputs` gave a reader over the whole output hides
+      // it from that reader's key: such a reader runs uncached.
       const local = hits.flatMap(([key, hit]) => (key === 'files' ? hit : []))
       const rooted = hits.flatMap(([key, hit]) =>
         key === 'files' ? hit.map((f) => (rel === '' ? f : `${rel}/${f}`)) : hit,

@@ -59,7 +59,7 @@ export function starterProject(format: MigrationFormat): string {
  */
 export function isStarterConfig(file: string): boolean {
   try {
-    // By extension: the mjs starter's text in a .ts file is a user's config.
+    // By extension: the mjs starter's text in a.ts file is a user's config.
     return readFileSync(file, 'utf8') === starterProject(file.endsWith('.ts') ? 'ts' : 'mjs')
   } catch {
     return false
@@ -229,13 +229,13 @@ export interface ApplyMigrationArgs {
    */
   json?: boolean
   /**
-   * Run after the files are written (not under `dry`): `vx lock`'s step, so
-   * the migrated workspace has its .vx/projects.lock.json and its graph
-   * rules checked. On success `said` is its line, shown as the
-   * report's `lock` row; a refusal (a graph rule, a plugin not installed
-   * yet) prints above the report, the files stay written, `vx lock` is the
-   * step to re-run, and the exit is 1: a run reads only the lock, so the
-   * migration is not done (as `vx init`'s own path exits).
+   * Run after the files are written (not under `dry`): `vx lock`'s step, so the
+   * migrated workspace has its.vx/projects.lock.json and its graph rules
+   * checked. On success `said` is its line, shown as the report's `lock` row; a
+   * refusal (a graph rule, a plugin not installed yet) prints above the report,
+   * the files stay written, `vx lock` is the step to re-run, and the exit is 1:
+   * a run reads only the lock, so the migration is not done (as `vx init`'s own
+   * path exits).
    */
   lock?: (root: string) => Promise<{ code: number; said: string }>
   /** Rows of what the tool did before the write, e.g. `['ran', 'bun add -d …']`. */
@@ -388,7 +388,7 @@ export async function writeMigration(
   if (!dry && !force) {
     const conflicts = new Set<string>()
     // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
-    // so we never shadow a hand-written config with a fresh .ts.
+    // so we never shadow a hand-written config with a fresh.ts.
     for (const p of projects) {
       const meta = metas.find((m) => m.dir === p.dir)
       if (meta?.configPath) conflicts.add(relPosix(root, meta.configPath))
@@ -435,8 +435,8 @@ export async function writeMigration(
   const formatted =
     dry || args.written === undefined ? [] : args.written(files.map((f) => f.relPath))
 
-  // One reason, its tasks: the same TODO repeated per task reads as noise.
-  // A file .gitignore drops is lost at the first commit, unnoticed.
+  // One reason, its tasks: the same TODO repeated per task reads as noise. A
+  // file.gitignore drops is lost at the first commit, unnoticed.
   const ignored = gitIgnored(
     root,
     files.map((f) => f.relPath),
@@ -544,10 +544,10 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
   return { code: 1, said: 'vx lock: the migration tool answered no result: run `vx lock`\n' }
 }
 /**
- * What to do about written files .gitignore drops. A `!file` line cures a
- * file, but git re-includes nothing inside an ignored directory: an
- * old-layout `/.vx/` line (when `.vx` held only the cache) hides the
- * workspace config and lock, so that advice names the directory instead.
+ * What to do about written files.gitignore drops. A `!file` line cures a file,
+ * but git re-includes nothing inside an ignored directory: an old-layout
+ * `/.vx/` line (when `.vx` held only the cache) hides the workspace config and
+ * lock, so that advice names the directory instead.
  */
 function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): string {
   const ancestors = (f: string): string[] =>
@@ -615,7 +615,7 @@ function nextTask(tasks: readonly GeneratedTask[]): string {
   return names.includes('build') ? 'build' : (fit?.name ?? names[0] ?? 'build')
 }
 
-/** Files a .gitignore drops, named in its note. */
+/** Files a.gitignore drops, named in its note. */
 const IGNORED_SHOWN = 5
 
 const EXAMPLE_BODY = `export default {

@@ -124,9 +124,9 @@ export async function subscribeTelemetry(
     // check sits INSIDE the try so a throwing `wants` getter is caught too.
     let accepted: TelemetrySink[]
     try {
-      // Bounded as flush and teardown are: a hook that never settles held
-      // the run before its first task, forever or until the loop drained
-      // and Bun exited 0 (item 921).
+      // Bounded as flush and teardown are: a hook that never settles held the
+      // run before its first task, forever or until the loop drained and Bun
+      // exited 0.
       let result: Awaited<ReturnType<NonNullable<VxPlugin['telemetry']>>> | undefined
       const ms = teardownTimeoutMs()
       const arrived = await settleWithin(
@@ -160,7 +160,7 @@ export async function subscribeTelemetry(
     ...(nodes !== undefined ? { nodes } : {}),
   })
   // The bus's unsubscribe is idempotent, so it is the handle's dispose as
-  // is (a once-flag here survived item 654).
+  // is.
   const dispose = bus.subscribe(source.subscriber)
   return {
     emitSummary: (summary) => source.emitSummary(summary),

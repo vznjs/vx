@@ -1,8 +1,8 @@
 // What the server keeps: one row per issuer, repository, ref and task
-// definition, already the numbers a scheduler asks for (2026-10-25: a
-// history, not a log). Each report folds into its row in one statement, so
-// racing jobs lose nothing. Every column is plain (2026-10-27): the
-// server is the user's own, and a hash only hid its rows from them.
+// definition, already the numbers a scheduler asks for (a history, not a log).
+// Each report folds into its row in one statement, so racing jobs lose nothing.
+// Every column is plain: the server is the user's own, and a hash only hid its
+// rows from them.
 
 /** A SQLite database, as bun:sqlite and D1 both serve one. */
 export interface Db {
@@ -73,18 +73,18 @@ export interface Repo {
   readonly repository: string
 }
 
-// 2026-10-27: rows were keyed by hashes of these; nothing that table
-// holds can be read by plain values.
+// Rows were keyed by hashes of these; nothing that table holds can be read by
+// plain values.
 const DROP_OLD = 'DROP TABLE IF EXISTS task_timings'
 const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, slow_ms INTEGER, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
 // A table made before `slow_ms` gains it; its rows read their duration as
 // their slow one until a report sets it.
 const ADD_SLOW = 'ALTER TABLE timings ADD COLUMN slow_ms INTEGER'
 
-// The flaky record (2026-11-06): a row only for a task definition and
-// cache key that failed, and whether it flaked since. A pass with no row
-// writes nothing: passes are most outcomes. Kept by repository, not by
-// ref: a key is the same inputs on every branch.
+// The flaky record: a row only for a task definition and cache key that failed,
+// and whether it flaked since. A pass with no row writes nothing: passes are
+// most outcomes. Kept by repository, not by ref: a key is the same inputs on
+// every branch.
 const OUTCOMES = `CREATE TABLE IF NOT EXISTS outcomes (issuer TEXT NOT NULL, repository TEXT NOT NULL, hash TEXT NOT NULL, key TEXT NOT NULL, flaky INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, hash, key)) WITHOUT ROWID`
 
 // When the database was last swept, by whichever node: a Worker runs many

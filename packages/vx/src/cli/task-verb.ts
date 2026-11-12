@@ -27,7 +27,7 @@ export async function taskVerbHint(
   const projects = await workspaceProjects(cwd)
   if (projects === null) return null
   const tasks = new Set<string>()
-  // The default build is no task `vx run` takes by name (X-145).
+  // The default build is no task `vx run` takes by name.
   const declared = (task: TaskConfig | undefined): boolean =>
     task !== undefined && !isDefaultBuild(task)
   for (const p of projects.values())

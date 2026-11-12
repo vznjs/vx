@@ -1,10 +1,9 @@
-// A plugin's own entries in the cache the workspace declares (`ctx.cache`,
-// 2026-10-14): the local store first, then each remote in declared
-// order, under the run's policy and scope. The plugin speaks names; core
-// derives the key, so no plugin reaches another's entries or a task's. An
-// entry is written once and never replaced (the cache is immutable). Every
-// failure is an absent answer, never a warning (M: no extra runtime
-// warnings): what a plugin keeps here is a hint.
+// A plugin's own entries in the cache the workspace declares (`ctx.cache`): the
+// local store first, then each remote in declared order, under the run's policy
+// and scope. The plugin speaks names; core derives the key, so no plugin
+// reaches another's entries or a task's. An entry is written once and never
+// replaced (the cache is immutable). Every failure is an absent answer, never a
+// warning (M: no extra runtime warnings): what a plugin keeps here is a hint.
 
 import type { Database } from 'bun:sqlite'
 import { thrownMessage, xxh3hex } from '../util/index.js'
@@ -55,9 +54,9 @@ function entryKey(plugin: string, name: string): string {
 }
 
 /**
- * A remote body's bytes; null past the cap (read no further than it) and for
- * an empty or odd body, which kept would hide every later good one: an entry
- * is written once (Security, #3580).
+ * A remote body's bytes; null past the cap (read no further than it) and for an
+ * empty or odd body, which kept would hide every later good one: an entry is
+ * written once (Security).
  */
 async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint8Array | null> {
   if (body instanceof Blob) {
@@ -90,18 +89,17 @@ async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint
 }
 
 /**
- * `plugin`'s view of the cache. The local store never knows a scope
- * (2026-10-17): it keeps every entry under its name's key. A scoped
- * run writes a remote only under the scope's key, and reads one key: the
- * scope's, or with `scoped` false the default (2026-10-18: no request
- * twice).
+ * `plugin`'s view of the cache. The local store never knows a scope: it keeps
+ * every entry under its name's key. A scoped run writes a remote only under the
+ * scope's key, and reads one key: the scope's, or with `scoped` false the
+ * default (no request twice).
  */
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache {
   const { db, policy, scope } = host
-  // A plugin's entries are not task artifacts: a policy that reads no
-  // remote artifact (a cold run, `--force`) still reads them, so the run is
-  // planned on the default branch's timings. A cold CI run asked workers
-  // for 128 tasks with 0 measured, at 25% of their cores (2026-10-23).
+  // A plugin's entries are not task artifacts: a policy that reads no remote
+  // artifact (a cold run, `--force`) still reads them, so the run is planned on
+  // the default branch's timings. A cold CI run asked workers for 128 tasks
+  // with 0 measured, at 25% of their cores.
   const readers = host.remotes.filter((r) => r.read || r.write)
   const writers = host.remotes.filter((r) => r.write)
   // Each remote's fault said once per kind: unsaid, a remote down left DTE

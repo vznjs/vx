@@ -40,8 +40,8 @@ export function github(options: GithubPluginOptions = {}): VxPlugin | undefined 
   // Its options were checked by index.ts's github(), the only caller.
   return definePlugin(import.meta, {
     commands: {
-      // Kept where actions/cache can save it: a hit installs the
-      // packages from it, no index fetch (14 to 52 s, 2026-10-22).
+      // Kept where actions/cache can save it: a hit installs the packages from
+      // it, no index fetch (14 to 52 s).
       setup: {
         description: 'github: install and prove the sandbox runtime on this runner',
         run: async (argv) =>

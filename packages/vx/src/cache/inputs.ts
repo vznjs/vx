@@ -7,14 +7,14 @@
 // `inputs.env` is the cache-tracking axis for env vars; it's
 // independent of `exec.env`, which controls what reaches the child.
 //
-// File enumeration defers to git — same as Turbo and Nx. git-inputs.ts
-// asks for the tracked set with `git ls-files -s -v` (index OIDs and the
-// skip-worktree flag in the same spawn) and for the dirty and untracked
-// paths with `git status -uall`, with nested .gitignore, .git/info/exclude
-// and the global excludes applied because git already does the cascade.
-// The user's `inputs.files` globs are then matched as a *filter* on top
-// of that file set. vx requires git to be installed and the workspace to
-// be a git work tree; non-git environments are not supported.
+// File enumeration defers to git — same as Turbo and Nx. git-inputs.ts asks for
+// the tracked set with `git ls-files -s -v` (index OIDs and the skip-worktree
+// flag in the same spawn) and for the dirty and untracked paths with `git
+// status -uall`, with nested.gitignore,.git/info/exclude and the global
+// excludes applied because git already does the cascade. The user's
+// `inputs.files` globs are then matched as a *filter* on top of that file set.
+// vx requires git to be installed and the workspace to be a git work tree;
+// non-git environments are not supported.
 
 import path from 'node:path'
 import {
@@ -91,25 +91,24 @@ export {
 // would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
 // cache is a leaf module and must not import from workspace.)
 //
-// Relative to the project, so only where vx writes them: its root's `.vx`
-// and the `vx.lock.json` beside its config. Matched at any depth, a
-// project's own `src/.vx/tmp/*` or `src/sub/vx.lock.json` keyed nothing,
-// and an edit to one was a hit (2026-10-17).
+// Relative to the project, so only where vx writes them: its root's `.vx` and
+// the `vx.lock.json` beside its config. Matched at any depth, a project's own
+// `src/.vx/tmp/*` or `src/sub/vx.lock.json` keyed nothing, and an edit to one
+// was a hit.
 //
 // `node_modules` is not here: the enumeration drops an untracked file
 // under one (`isInstalledPath`), and a tracked one is a source.
 const ALWAYS_IGNORE = [
-  // Defense in depth, and measured as exactly that (item 497): git never
-  // reports a path under `.git`, so dropping this line changes NOTHING on
-  // any route into the input set. Probed three ways with the pattern in
-  // and out — a tracked `**/*` glob, an UNTRACKED one, and a literal
-  // `inputs.files: ['.git/HEAD']` (refused by the git-reports-it check,
-  // not by this list) — all identical, while the control in the same
-  // fixture showed an untracked ORDINARY file does enter the set. So the
-  // enumeration is the live guard and this is the backstop; every other
-  // member of this list is load-bearing and has a row that fails without
-  // it. Kept: the day an enumeration stops going through git, this is
-  // what keeps a repository's object store out of a cache key.
+  // Defense in depth, and measured as exactly that: git never reports a path
+  // under `.git`, so dropping this line changes NOTHING on any route into the
+  // input set. Probed three ways with the pattern in and out — a tracked `**/*`
+  // glob, an UNTRACKED one, and a literal `inputs.files: ['.git/HEAD']`
+  // (refused by the git-reports-it check, not by this list) — all identical,
+  // while the control in the same fixture showed an untracked ORDINARY file
+  // does enter the set. So the enumeration is the live guard and this is the
+  // backstop; every other member of this list is load-bearing and has a row
+  // that fails without it. Kept: the day an enumeration stops going through
+  // git, this is what keeps a repository's object store out of a cache key.
   '.git/**',
   // vx's machine-local state; the workspace config beside it is a source.
   '.vx/cache/**',
@@ -187,17 +186,16 @@ export interface ResolveInputsArgs {
   workspaceRuntimeCache?: Map<string, Promise<string>>
   /**
    * Answer this task's probes apart from every other task's, in both memos
-   * above: the probes may read what its upstream wrote this run, so an
-   * answer another task took before that write is not this task's (X-34).
-   * The task id.
+   * above: the probes may read what its upstream wrote this run, so an answer
+   * another task took before that write is not this task's. The task id.
    */
   runtimeScope?: string
   /**
-   * Run-scoped memo for `inputs.workspaceFiles`, keyed by the
-   * declaration and valid for one enumeration snapshot. A Turbo-mapped
-   * workspace gives every task the same `globalDependencies`, and
-   * resolving one literal against medusa's 24k-file enumeration per task
-   * was 930 ms of a 3.0 s warm no-op (159 scans, 2026-09-11).
+   * Run-scoped memo for `inputs.workspaceFiles`, keyed by the declaration and
+   * valid for one enumeration snapshot. A Turbo-mapped workspace gives every
+   * task the same `globalDependencies`, and resolving one literal against
+   * medusa's 24k-file enumeration per task was 930 ms of a 3.0 s warm no-op
+   * (159 scans).
    */
   workspaceFilesCache?: WorkspaceFilesCache
   /** Per-run memo for `inputs.files`; see `ProjectFilesCache`. */
@@ -212,12 +210,11 @@ export type WorkspaceFilesCache = Map<
 >
 
 /**
- * Per-run memo of `inputs.files` resolution, keyed by the project and
- * the DECLARATION — tasks of one project that declare the same inputs and
- * the same outputs resolve to the same list, and this repo's own config is
- * the shape that pays for it: twelve shard tasks, each declaring the same
- * whole-tree glob over the same three thousand files (measured 1.2 ms of
- * resolution per task, 2026-09-20).
+ * Per-run memo of `inputs.files` resolution, keyed by the project and the
+ * DECLARATION — tasks of one project that declare the same inputs and the same
+ * outputs resolve to the same list, and this repo's own config is the shape
+ * that pays for it: twelve shard tasks, each declaring the same whole-tree glob
+ * over the same three thousand files (measured 1.2 ms of resolution per task).
  *
  * Reuse is gated on the git snapshot being the SAME ARRAY the entry was
  * built from, not on equal contents: a mid-run re-enumeration replaces it
@@ -399,8 +396,8 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     // it must contribute to the key exactly once.
     if (wsFiles.length > 0) files = mergeSorted(projectFiles, wsFiles)
   }
-  // Two awaited empty resolutions per task were ~3 ms of a 1000-task warm
-  // run (profiled 2026-09-09); a task declaring neither skips the fan-out.
+  // Two awaited empty resolutions per task were ~3 ms of a 1000-task warm run
+  // (profiled); a task declaring neither skips the fan-out.
   const runtimeDecl = args.inputs?.runtime ?? []
   const wsRuntimeDecl = args.inputs?.workspaceRuntime ?? []
   const [runtimeValues, workspaceRuntimeValues] =
@@ -466,8 +463,8 @@ function resolveWorkspaceFiles(args: {
   }
   if (positive.length === 0) return undefined
 
-  // A path the task's own outputs take back with `!` is no output, so it
-  // stays an input (A-44).
+  // A path the task's own outputs take back with `!` is no output, so it stays
+  // an input.
   const ownOutput = outputMatcher(args.ownWorkspaceOutputs)
   // Its project outputs too, which a root-anchored glob can reach as well:
   // left in, the task's own build moved its key, and no run was ever saved.
@@ -517,11 +514,11 @@ function resolveWorkspaceFiles(args: {
     nested: () => false,
     ...reachOf(positive),
   }
-  // Two levels: the declaration's files over the snapshot, shared by every
-  // task that declares it, then the task's own outputs taken out. A
-  // Turbo-mapped repo gives two thousand tasks one 400-entry list, and a
-  // memo keyed by the project too scanned, resolved and sorted the 4,000
-  // files it matched once per task (astro, 2026-10-09).
+  // Two levels: the declaration's files over the snapshot, shared by every task
+  // that declares it, then the task's own outputs taken out. A Turbo-mapped
+  // repo gives two thousand tasks one 400-entry list, and a memo keyed by the
+  // project too scanned, resolved and sorted the 4,000 files it matched once
+  // per task (astro).
   const declared = JSON.stringify([positive, negative])
   let base: Promise<string[]> | undefined
   const hit = args.memo?.get(declared)
@@ -583,11 +580,10 @@ async function resolveWorkspaceFilesOver(
 }
 
 /**
- * The sorted union of two path lists, each once. Both sides arrive sorted
- * and distinct, so one merge does what a Set and a sort of the
- * concatenation did: 3.7 s of an astro plan, where 2,000 tasks each joined
- * a few project files to the same 4,000 workspace files (2026-10-09). A
- * side out of order takes the general path.
+ * The sorted union of two path lists, each once. Both sides arrive sorted and
+ * distinct, so one merge does what a Set and a sort of the concatenation did:
+ * 3.7 s of an astro plan, where 2,000 tasks each joined a few project files to
+ * the same 4,000 workspace files. A side out of order takes the general path.
  */
 function mergeSorted(a: readonly string[], b: readonly string[]): string[] {
   if (a.length === 0 && isStrictlySorted(b)) return b as string[]
@@ -666,9 +662,9 @@ function isInputOnDisk(abs: string): boolean {
 }
 
 /**
- * `isInputOnDisk` from the run's stat of the path (`statOf`): each
- * declaration naming a file the index vouches no OID for stat'ed it again,
- * seven times a run for each of vueuse's core sources (2026-11-11).
+ * `isInputOnDisk` from the run's stat of the path (`statOf`): each declaration
+ * naming a file the index vouches no OID for stat'ed it again, seven times a
+ * run for each of vueuse's core sources.
  */
 function inputOnDisk(abs: string, run: GitFilesCache | undefined): boolean {
   if (run === undefined) return isInputOnDisk(abs)
@@ -764,9 +760,9 @@ function resolveEnvValues(
  * command) alone; see `runtimeCache`.
  *
  * Its PATH does lead with the task's own `node_modules/.bin` directories
- * (`binDirs`), as the task's does: `tsc --version` otherwise keyed the
- * global tsc while the task ran the workspace's, and a changed local tool
- * replayed the old output (item 996).
+ * (`binDirs`), as the task's does: `tsc --version` otherwise keyed the global
+ * tsc while the task ran the workspace's, and a changed local tool replayed the
+ * old output.
  */
 async function runRuntimeCommand(
   command: string,
@@ -786,9 +782,9 @@ async function runRuntimeCommand(
     .join(path.delimiter)
   let proc
   try {
-    // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks
-    // a bare name up on the child's PATH, which leads with the project's
-    // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
+    // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks a
+    // bare name up on the child's PATH, which leads with the project's
+    // `node_modules/.bin`, so a dependency's `sh` bin ran every probe.
     proc = Bun.spawn(shellArgv(command), {
       cwd,
       env: { ...probeEnv(), PATH },
@@ -800,8 +796,8 @@ async function runRuntimeCommand(
       detached: true,
     })
   } catch (err) {
-    // The probe runs through `sh -c` like a task: a box without sh names
-    // the shell, not the command (item 244).
+    // The probe runs through `sh -c` like a task: a box without sh names the
+    // shell, not the command.
     if (isExecutableMissing(err)) {
       throw new UserError(
         `${probe} could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
@@ -885,13 +881,13 @@ function probeOutput(stdout: string, stderr: string): string {
 }
 
 /**
- * Runtime probes still running. A probe that outlives its answer's need — a
- * run stopped by Ctrl-C, or ended by a refusal, while `node -e …` or a hung
- * `git` still ran — was left behind: vx exited and the probe's shell and
- * what it started ran on under init (A-9). Every probe is its own group, and
- * the ones still listed when vx exits are SIGKILLed with their trees. A
- * `kill -9` of vx runs no exit hook; that residual is the task groups' guard's
- * (exec/kill-tree.ts), which probes are not on.
+ * Runtime probes still running. A probe that outlives its answer's need — a run
+ * stopped by Ctrl-C, or ended by a refusal, while `node -e …` or a hung `git`
+ * still ran — was left behind: vx exited and the probe's shell and what it
+ * started ran on under init. Every probe is its own group, and the ones still
+ * listed when vx exits are SIGKILLed with their trees. A `kill -9` of vx runs
+ * no exit hook; that residual is the task groups' guard's (exec/kill-tree.ts),
+ * which probes are not on.
  */
 const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
@@ -904,11 +900,11 @@ const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
 
 /**
  * Kill every runtime probe still running that these memos (one run's
- * `runtimeCache` and `workspaceRuntimeCache`) started, with its tree. A
- * run's stop asks this: a Ctrl-C while a probe ran waited for the probe,
- * or for the signal handler's bound, about 7 s, before vx exited (C-65).
- * Its answer is no longer needed; its caller sees it fail and the run
- * reads it aborted. Another run in the process keeps its own.
+ * `runtimeCache` and `workspaceRuntimeCache`) started, with its tree. A run's
+ * stop asks this: a Ctrl-C while a probe ran waited for the probe, or for the
+ * signal handler's bound, about 7 s, before vx exited. Its answer is no longer
+ * needed; its caller sees it fail and the run reads it aborted. Another run in
+ * the process keeps its own.
  */
 export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
   for (const memo of memos) {
@@ -996,9 +992,9 @@ async function resolveRuntimeValues(
 }
 
 /**
- * What a walk of output globs leaves out: `outputExcluded` (`**\/*.js`
- * meant the build's files, and the clean before each run deleted every
- * installed `.js` under `node_modules` with them, A-13) and the `!` entries.
+ * What a walk of output globs leaves out: `outputExcluded` (`**\/*.js` meant
+ * the build's files, and the clean before each run deleted every installed
+ * `.js` under `node_modules` with them) and the `!` entries.
  */
 function outputExcludes(
   positive: readonly string[],
@@ -1018,9 +1014,9 @@ export interface OwnInputs {
 }
 
 /**
- * Resolve declared output globs (project-relative) to actual produced files.
- * An output directory linked out of the project is refused by name (X-88):
- * dropping its files silently saved an empty entry under a green run.
+ * Resolve declared output globs (project-relative) to actual produced files. An
+ * output directory linked out of the project is refused by name: dropping its
+ * files silently saved an empty entry under a green run.
  */
 export async function resolveOutputs(args: {
   projectDir: string
@@ -1139,11 +1135,10 @@ async function scanOutputs(
 }
 
 /**
- * Whether git tracks a file under `dir`. No clean deletes a committed (or
- * `git add`ed) file an output glob reaches (2026-10-14: "never
- * delete committed file"); the task may rewrite it and a restore writes the
- * bytes it left. It stays in the task's key, so those bytes follow from
- * the key. Turbo and Nx never clean an output at all.
+ * Whether git tracks a file under `dir`. No clean deletes a committed (or `git
+ * add`ed) file an output glob reaches; the task may rewrite it and a restore
+ * writes the bytes it left. It stays in the task's key, so those bytes follow
+ * from the key. Turbo and Nx never clean an output at all.
  */
 export function committedFiles(
   cache: GitFilesCache | undefined,
@@ -1153,17 +1148,16 @@ export function committedFiles(
 }
 
 /**
- * The literal head of each output glob, walked: the scan follows a link
- * there (`dist -> ../elsewhere` for `dist/**`) and only there. A link
- * below it is an output, kept as the link (`archive.ts`). One into `.git`
- * or `.vx` is refused in either scope: for the root project and for
- * workspace outputs those are inside, and the clean deleted the
- * repository through `dist -> .git`. One out of the root is refused in
- * either scope too: a workspace output's every file was dropped as outside
- * and an empty entry saved, while the project twin refused the task (M-65).
- * So is one holding an entry of the task's own `inputs`, in either scope:
- * X-55 read through the link, as `dist -> src` under `src/**` had the
- * clean delete every untracked source.
+ * The literal head of each output glob, walked: the scan follows a link there
+ * (`dist ->../elsewhere` for `dist/**`) and only there. A link below it is an
+ * output, kept as the link (`archive.ts`). One into `.git` or `.vx` is refused
+ * in either scope: for the root project and for workspace outputs those are
+ * inside, and the clean deleted the repository through `dist ->.git`. One out
+ * of the root is refused in either scope too: a workspace output's every file
+ * was dropped as outside and an empty entry saved, while the project twin
+ * refused the task. So is one holding an entry of the task's own `inputs`, in
+ * either scope: read through the link, `dist -> src` under `src/**` would have
+ * the clean delete every untracked source.
  */
 function refuseDirLinkedOut(
   root: string,
@@ -1270,7 +1264,7 @@ function reachesBelow(segments: readonly string[], dir: readonly string[]): bool
 /**
  * Whether `real`, under `realRoot`, is in a `.git` there (`writableUnder`'s
  * rule) or in its `.vx`. Asked only of where a link landed: a build's own
- * `dist/.git/**` is an output (2026-10-17).
+ * `dist/.git/**` is an output.
  */
 function inMetadata(real: string, realRoot: string): boolean {
   if (!writableUnder(real, realRoot)) return true
@@ -1296,10 +1290,10 @@ function realOr(p: string): string {
  *
  * Lexical alone was sufficient only while `Bun.Glob.scan` refused to descend
  * into symlinked directories, which this repo pinned as a deliberate tripwire
- * on a DEPENDENCY's behaviour. **Bun 1.4.0 tripped it**: with `dist ->
- * ../victim` the scan now yields `dist/precious.txt`, a path that is lexically
- * inside the project while the file it names is not — and the caller rm()s
- * whatever this returns. Measured on 1.4.0 before this guard: a plain
+ * on a DEPENDENCY's behaviour. **Bun 1.4.0 tripped it**: with `dist
+ * ->../victim` the scan now yields `dist/precious.txt`, a path that is
+ * lexically inside the project while the file it names is not — and the caller
+ * rm()s whatever this returns. Measured on 1.4.0 before this guard: a plain
  * `outputs.files: ['dist/**']` deleted a file outside the project.
  *
  * DIRECTORIES are what matter, not files: `rm` on a symlinked FILE unlinks the
@@ -1325,9 +1319,8 @@ function containedIn(root: string, paths: readonly string[]): string[] {
     lexDirs.push(path.dirname(p))
   }
   if (lexical.length === 0) return []
-  // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the
-  // promise round trip per call was most of this function's cost on every
-  // miss (B, 2026-09-30).
+  // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the promise
+  // round trip per call was most of this function's cost on every miss (B).
   const realRoot = realOrNull(root) ?? root
   const uniqueDirs = [...new Set(lexDirs)]
   const resolved = uniqueDirs.map(realOrNull)
@@ -1341,10 +1334,10 @@ function containedIn(root: string, paths: readonly string[]): string[] {
 
 /**
  * `committed`, also asked by each path's real directory: the output walk
- * follows a link at a glob's head that stays inside `root` (X-88), so
- * `public/logo.txt` may be `static/logo.txt`, the only name git lists.
- * Asked by the lexical name alone, an untracked `public -> static` link
- * let the clean delete a committed file. One realpath per directory.
+ * follows a link at a glob's head that stays inside `root`, so
+ * `public/logo.txt` may be `static/logo.txt`, the only name git lists. Asked by
+ * the lexical name alone, an untracked `public -> static` link let the clean
+ * delete a committed file. One realpath per directory.
  */
 function committedPastLinks(
   root: string,
@@ -1371,8 +1364,8 @@ function committedPastLinks(
 
 /**
  * Drop the files whose real directory is in a nested project: a link at a
- * glob's head that stays in the project is followed (X-88), and the
- * lexical nested-project filter cannot see where it lands.
+ * glob's head that stays in the project is followed, and the lexical
+ * nested-project filter cannot see where it lands.
  */
 function outsideNested(nestedDirs: readonly string[], files: string[]): string[] {
   if (nestedDirs.length === 0 || files.length === 0) return files
@@ -1416,10 +1409,9 @@ export async function cleanOutputs(args: {
   inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
   /**
-   * What `resolveOutputs` returned for these same arguments, when the
-   * caller walked the tree with no await since: a hit that found its tree
-   * stale walked it to say so, and a second walk here was half the
-   * restore's tree work (X-161).
+   * What `resolveOutputs` returned for these same arguments, when the caller
+   * walked the tree with no await since: a hit that found its tree stale walked
+   * it to say so, and a second walk here was half the restore's tree work.
    */
   resolved?: readonly string[] | undefined
   /**
@@ -1468,14 +1460,13 @@ export async function cleanOutputs(args: {
 }
 
 /**
- * Remove the restore temps (`.vx-tmp-<pid>-<n>`, archive.ts) a killed run
- * left beside an exact-file output. A restore stages in `.vx/tmp/` and
- * writes one beside its target only where the target is on another
- * filesystem (EXDEV); a glob over the directory takes it with the outputs,
- * but `out/a.txt` reaches no sibling, and a partial temp stayed in `out/`
- * through every later run (Growth's SIGKILL probe, 2026-10-16). A temp
- * whose writer is alive, this process included, is left: it may be
- * mid-restore.
+ * Remove the restore temps (`.vx-tmp-<pid>-<n>`, archive.ts) a killed run left
+ * beside an exact-file output. A restore stages in `.vx/tmp/` and writes one
+ * beside its target only where the target is on another filesystem (EXDEV); a
+ * glob over the directory takes it with the outputs, but `out/a.txt` reaches no
+ * sibling, and a partial temp stayed in `out/` through every later run
+ * (Growth's SIGKILL probe). A temp whose writer is alive, this process
+ * included, is left: it may be mid-restore.
  */
 export function sweepRestoreTemps(
   base: string,
@@ -1544,9 +1535,9 @@ function writerAlive(pid: number): boolean {
 
 /**
  * Remove exactly these project-relative paths — the recorded rows of an
- * ADDITIVE task's own artifact (item 588), never a glob: the glob would
- * take the upstream's files the task adds beside. Emptied directories are
- * pruned as `cleanOutputs` prunes them, only inside the declared `outputs`
+ * ADDITIVE task's own artifact, never a glob: the glob would take the
+ * upstream's files the task adds beside. Emptied directories are pruned as
+ * `cleanOutputs` prunes them, only inside the declared `outputs`
  * (`pruneScope`), and stop at one the upstream still fills.
  */
 export async function cleanOutputPaths(args: {
@@ -1572,9 +1563,9 @@ export async function cleanOutputPaths(args: {
 
 /**
  * A file's identity for the additive diff: what the hit path's
- * `isOutputsCurrent` trusts too. Size and mtime alone missed a rewrite to
- * bytes of the same length with the mtime stamped back; the inode and
- * ctime are what no task sets (item 886).
+ * `isOutputsCurrent` trusts too. Size and mtime alone missed a rewrite to bytes
+ * of the same length with the mtime stamped back; the inode and ctime are what
+ * no task sets.
  */
 export interface OutputStamp {
   size: number
@@ -1584,9 +1575,9 @@ export interface OutputStamp {
 }
 
 /**
- * The stamps of every file the declared outputs currently select — taken
- * BEFORE an additive task runs, so what it added or changed can be told
- * from what it found (item 588).
+ * The stamps of every file the declared outputs currently select — taken BEFORE
+ * an additive task runs, so what it added or changed can be told from what it
+ * found.
  */
 export async function stampOutputs(args: {
   projectDir: string
@@ -1597,7 +1588,7 @@ export async function stampOutputs(args: {
   return stampFiles(await resolveOutputs(args))
 }
 
-/** `stampOutputs` for root-anchored `outputs.workspaceFiles` (A-43). */
+/** `stampOutputs` for root-anchored `outputs.workspaceFiles`. */
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
@@ -1671,7 +1662,7 @@ export async function ownOutputsSince(
   return changedSince(await resolveOutputs(args), before, mine)
 }
 
-/** `ownOutputsSince` for root-anchored `outputs.workspaceFiles` (A-43). */
+/** `ownOutputsSince` for root-anchored `outputs.workspaceFiles`. */
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
@@ -1813,13 +1804,12 @@ function giveBack(reopened: Reopened): void {
 }
 
 /**
- * The paths whose directory resolves inside `root`. A link inside the
- * project is followed, as the save follows it (turborepo#13042): a clean
- * that skipped `dist -> real-out` left the last run's files for the next
- * entry to save (X-88). One that leaves the project is never deleted
- * through (X-5); `cleanOutputPaths` takes recorded rows, not the resolver's
- * contained set, so the check is here too, and so is the one into
- * `.git` or `.vx`.
+ * The paths whose directory resolves inside `root`. A link inside the project
+ * is followed, as the save follows it (turborepo#13042): a clean that skipped
+ * `dist -> real-out` left the last run's files for the next entry to save. One
+ * that leaves the project is never deleted through; `cleanOutputPaths` takes
+ * recorded rows, not the resolver's contained set, so the check is here too,
+ * and so is the one into `.git` or `.vx`.
  */
 function insideRoot(files: readonly string[], root: string): string[] {
   // Resolved only once a directory exists to compare: after a clean pruned
@@ -1936,14 +1926,14 @@ interface PruneScope {
 }
 
 /**
- * Where a clean, before a miss or a restore, may prune: only the trees the
- * task declared. A directory above a glob's root or holding a literal
- * output (`out` for `out/a.txt`) stays: a sibling task running beside this
- * one may have just made it and not yet written into it, and pruning it
- * failed that task "Directory nonexistent". A glob's root stays: the task
- * writes under it, and a remove there bought only an rmdir and the task's
- * mkdir (B-49). A literal's own path goes: the entry or the task may need
- * a file there. A glob rooted at the project prunes nothing.
+ * Where a clean, before a miss or a restore, may prune: only the trees the task
+ * declared. A directory above a glob's root or holding a literal output (`out`
+ * for `out/a.txt`) stays: a sibling task running beside this one may have just
+ * made it and not yet written into it, and pruning it failed that task
+ * "Directory nonexistent". A glob's root stays: the task writes under it, and a
+ * remove there bought only an rmdir and the task's mkdir. A literal's own path
+ * goes: the entry or the task may need a file there. A glob rooted at the
+ * project prunes nothing.
  */
 function pruneScope(base: string, outputs: readonly string[]): PruneScope {
   const scope: PruneScope = { below: [], atOrBelow: [] }
@@ -2089,20 +2079,18 @@ function realOrNull(p: string): string | null {
   }
 }
 
-// The literal-is-a-tree rule moved to `util/paths.ts` (item 442): it
-// decides what a clean deletes as well as what a key folds, and the
-// graph's overlapping-output refusal — which may not import `cache` —
-// has to read the same one. Re-exported here so the cache contract is
-// unchanged.
+// The literal-is-a-tree rule moved to `util/paths.ts`: it decides what a clean
+// deletes as well as what a key folds, and the graph's overlapping-output
+// refusal — which may not import `cache` — has to read the same one.
+// Re-exported here so the cache contract is unchanged.
 export { asTrees } from '../util/index.js'
 
 /**
- * The literals no path in `files` answers; a literal is answered by the
- * path itself or by anything under it. Git lists in order, so a binary
- * search finds the answer; a listing out of code-unit order (git sorts
- * bytes) can hide one from it, so only a walk says a literal is
- * unanswered. Testing every literal against every file was ~1.5 ms of a
- * 1,800-file all-cached run (2026-10-06).
+ * The literals no path in `files` answers; a literal is answered by the path
+ * itself or by anything under it. Git lists in order, so a binary search finds
+ * the answer; a listing out of code-unit order (git sorts bytes) can hide one
+ * from it, so only a walk says a literal is unanswered. Testing every literal
+ * against every file was ~1.5 ms of a 1,800-file all-cached run.
  */
 function unanswered(
   literals: readonly string[],
@@ -2180,11 +2168,11 @@ function lowerBound(files: readonly string[], key: string): number {
 
 /**
  * The entries a declaration names outright that git answers nothing for: a
- * literal, or a glob's fixed prefix (`dist` of `dist/**`), with no listed
- * path at or under it. Such a path is gitignored or absent, and naming it
- * is asking for it (2026-10-16), so {@link ignoredInputs} reads it
- * from disk. A broad glob (`**`, or `src/**` over a listed `src`) reaches
- * no ignored file: `node_modules` is never walked.
+ * literal, or a glob's fixed prefix (`dist` of `dist/**`), with no listed path
+ * at or under it. Such a path is gitignored or absent, and naming it is asking
+ * for it, so {@link ignoredInputs} reads it from disk. A broad glob (`**`, or
+ * `src/**` over a listed `src`) reaches no ignored file: `node_modules` is
+ * never walked.
  */
 function ignoredReach(
   reach: { prefixes: readonly string[]; literals: readonly string[] },
@@ -2233,18 +2221,17 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
 }
 
 /**
- * The files on disk under the {@link ignoredReach} entries that `accept`
- * keeps, sorted and absolute. A file is hashed from disk like any untracked
- * one; nothing here is stored or restored. `node_modules` is no special
- * case (2026-10-16): an ignored path named outright is an input,
- * a generated client (`node_modules/.prisma/client/**`) too; skipping
- * installs here folded such an entry to nothing, silently. lstat, not
- * `exists()`: that answers false for a directory. Never memoized: a
- * dependency writes these mid-run. Nothing under `vxDirs` (the run's cache
- * directory) is read: an ignored prefix over a `cache.dir` there walked the
- * index each run writes, and the task never hit. The walk does not follow
- * links, so a link to a directory a glob may reach below (`linked`) is an
- * input itself, as a listed one is (`dirLinkInput`).
+ * The files on disk under the {@link ignoredReach} entries that `accept` keeps,
+ * sorted and absolute. A file is hashed from disk like any untracked one;
+ * nothing here is stored or restored. `node_modules` is no special case: an
+ * ignored path named outright is an input, a generated client
+ * (`node_modules/.prisma/client/**`) too; skipping installs here folded such an
+ * entry to nothing, silently. lstat, not `exists()`: that answers false for a
+ * directory. Never memoized: a dependency writes these mid-run. Nothing under
+ * `vxDirs` (the run's cache directory) is read: an ignored prefix over a
+ * `cache.dir` there walked the index each run writes, and the task never hit.
+ * The walk does not follow links, so a link to a directory a glob may reach
+ * below (`linked`) is an input itself, as a listed one is (`dirLinkInput`).
  */
 function ignoredInputs(
   root: string,
@@ -2369,12 +2356,11 @@ interface FilesPlan {
   verdicts: Map<string, boolean>
   /**
    * Whether a path is under the task's own outputs and not vx's own
-   * (`ALWAYS_IGNORE`): one git tracks is an input (`committedFiles`) whether
-   * or not a positive glob reaches it, since a hit writes the artifact's
-   * copy over it. A `!` entry does not take it back: `!dist/**` names the
-   * outputs to keep the build's own writes out, and dropped the committed
-   * `dist/LICENSE` with them, so a committed edit hit and the restore wrote
-   * the old bytes over it (2026-11-10).
+   * (`ALWAYS_IGNORE`): one git tracks is an input (`committedFiles`) whether or
+   * not a positive glob reaches it, since a hit writes the artifact's copy over
+   * it. A `!` entry does not take it back: `!dist/**` names the outputs to keep
+   * the build's own writes out, and dropped the committed `dist/LICENSE` with
+   * them, so a committed edit hit and the restore wrote the old bytes over it.
    */
   ownOnly: Map<string, boolean>
   isIgnored: (rel: string) => boolean
@@ -2382,10 +2368,10 @@ interface FilesPlan {
 
 /**
  * Compiled once per declaration for the life of the process: a workspace
- * declares a handful of `files` lists over thousands of tasks, and
- * splitting, normalizing and compiling them per task was ~6 ms of a
- * 1,000-task warm run (I-29). A refused declaration is never stored, so it
- * throws for every task that carries it.
+ * declares a handful of `files` lists over thousands of tasks, and splitting,
+ * normalizing and compiling them per task was ~6 ms of a 1,000-task warm run. A
+ * refused declaration is never stored, so it throws for every task that carries
+ * it.
  */
 const filesPlans = new Map<string, FilesPlan | null>()
 
@@ -2414,8 +2400,8 @@ function filesPlan(
           positive,
           negative,
           isExcluded: anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)]),
-          // A path the task's own outputs take back with `!` is no output, so it
-          // stays an input: a tracked file under `dist` the build reads (A-44).
+          // A path the task's own outputs take back with `!` is no output, so
+          // it stays an input: a tracked file under `dist` the build reads.
           ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
           isPositive: throughLinks(positive, anyTaskGlob(asTrees(positive))),
@@ -2430,19 +2416,19 @@ function filesPlan(
 }
 
 /**
- * `isPositive`, and each path a glob's static directory passes through:
- * git lists a linked directory as one path, the link, so `lib/**` over
- * `lib -> ../shared` matched nothing, and an edit behind it kept the key
- * the task's last bytes were saved under (2026-10-25). The link is then
- * an input, and its key includes every file behind it.
+ * `isPositive`, and each path a glob's static directory passes through: git
+ * lists a linked directory as one path, the link, so `lib/**` over `lib
+ * ->../shared` matched nothing, and an edit behind it kept the key the task's
+ * last bytes were saved under. The link is then an input, and its key includes
+ * every file behind it.
  */
 function throughLinks(
   positive: readonly string[],
   isPositive: (rel: string) => boolean,
 ): (rel: string) => boolean {
   const through = new Set<string>()
-  // Each brace alternative by its own prefix: whole, `{lib,src}/**` has
-  // none, and a file behind `lib -> ../shared` was no input.
+  // Each brace alternative by its own prefix: whole, `{lib,src}/**` has none,
+  // and a file behind `lib ->../shared` was no input.
   for (const g of positive.flatMap(braceAlternatives)) {
     const prefix = staticPrefix(g)
     if (prefix === '.' || prefix === '' || path.isAbsolute(prefix)) continue
@@ -2453,13 +2439,13 @@ function throughLinks(
 }
 
 /**
- * Whether a positive glob may match a path under `rel`, by each
- * alternative's fixed prefix and depth (a `**` reaches any depth). A link
- * below a glob's fixed prefix is listed as one path too: `src/**\/*.txt`
- * over `src/v -> ../shared` matched the link's name, not what the task
- * read through it, and an edit there was a hit (2026-10-28). Such a path
- * that is a link to a directory is an input (`dirLinkInput`). Generous on
- * purpose: a wrong yes costs one lookup, and folds a linked directory.
+ * Whether a positive glob may match a path under `rel`, by each alternative's
+ * fixed prefix and depth (a `**` reaches any depth). A link below a glob's
+ * fixed prefix is listed as one path too: `src/**\/*.txt` over `src/v
+ * ->../shared` matched the link's name, not what the task read through it, and
+ * an edit there was a hit. Such a path that is a link to a directory is an
+ * input (`dirLinkInput`). Generous on purpose: a wrong yes costs one lookup,
+ * and folds a linked directory.
  *
  * Asked of every path no glob takes, so the prefixes are a map walked by
  * the path's own `/`s: a scan of every prefix per path was 8,000 globs ×
@@ -2512,11 +2498,10 @@ const BENEATH = '\0'
 /**
  * Whether the `!` entries take back every path under `rel`, a link to a
  * directory: a negation applies to the files behind it, as under a real
- * directory, never to the link's own name. `!src/**\/*.skip` matched the
- * name of `src/l.skip -> ../top` and dropped every file behind it, where
- * under a real `src/d.skip/` it drops none, so an edit there was a hit
- * (2026-11-10). Two depths, so `!l/*` alone, which leaves `l/a/b` an
- * input, keeps the link.
+ * directory, never to the link's own name. `!src/**\/*.skip` matched the name
+ * of `src/l.skip ->../top` and dropped every file behind it, where under a real
+ * `src/d.skip/` it drops none, so an edit there was a hit. Two depths, so
+ * `!l/*` alone, which leaves `l/a/b` an input, keeps the link.
  */
 function excludedBeneath(isExcluded: (rel: string) => boolean, rel: string): boolean {
   return isExcluded(`${rel}/${BENEATH}`) && isExcluded(`${rel}/${BENEATH}/${BENEATH}`)
@@ -2538,11 +2523,12 @@ function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined
 }
 
 /**
- * Whether a changed path is one of a task's declared file inputs:
- * `projectRel` (the path relative to the project that owns it) against
- * `files`, `workspaceRel` (relative to the workspace root) against
- * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a tracked path
- * under the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
+ * Whether a changed path is one of a task's declared file inputs: `projectRel`
+ * (the path relative to the project that owns it) against `files`,
+ * `workspaceRel` (relative to the workspace root) against `workspaceFiles`;
+ * null skips that half, by the globs and `!` exclusions (a tracked path under
+ * the task's own outputs counts: a committed one is keyed). `--affected` seeds
+ * a task with it.
  */
 export function declaresInput(
   task: TaskConfig,
@@ -2669,9 +2655,9 @@ async function resolveFiles(
   // Its root-anchored outputs that land in the project, as `files` sees them.
   const ownWsOutput = inProject(args.projectRel, outputMatcher(args.ownWorkspaceOutputs))
 
-  // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
-  // files, .git/info/exclude, and global excludes all participate
-  // correctly because git applies the cascade for us.
+  // Defer to git for the file set (Turbo / Nx parity). Nested.gitignore
+  // files,.git/info/exclude, and global excludes all participate correctly
+  // because git applies the cascade for us.
   //
   // Per-run memo: each project's git ls-files output is asked for once
   // per task (build + test + lint + …). Spawning git N times for the
@@ -2731,14 +2717,13 @@ async function resolveFiles(
   //
   // The reason it has to be tracked at all: the user's globs FILTER the set git
   // reports, and a filter can only remove. So naming a gitignored file by hand
-  // folds NOTHING — silently. The task then reports `up-to-date` while replaying
-  // an artifact built from an older version of a file the config explicitly
-  // claims as an input. See the refusal below for why this is not simply
-  // honoured instead.
-  // First pass: glob-filter to candidate absolute paths (no I/O). Git
-  // prints normalized relative paths, so under an absolute, normalized
-  // project dir a join is a concatenation: `path.resolve` per file was
-  // ~27 ms of a 900-task, 12,000-file warm run (I-30).
+  // folds NOTHING — silently. The task then reports `up-to-date` while
+  // replaying an artifact built from an older version of a file the config
+  // explicitly claims as an input. See the refusal below for why this is not
+  // simply honoured instead. First pass: glob-filter to candidate absolute
+  // paths (no I/O). Git prints normalized relative paths, so under an absolute,
+  // normalized project dir a join is a concatenation: `path.resolve` per file
+  // was ~27 ms of a 900-task, 12,000-file warm run.
   const base =
     path.sep === '/' &&
     path.isAbsolute(args.projectDir) &&
@@ -2941,9 +2926,9 @@ export interface InputListing {
 }
 
 function reachOf(entries: readonly string[]): { prefixes: string[]; literals: string[] } {
-  // Each alternative names what it would alone: `{gen/a.txt,gen/b.txt}`
-  // names both files, as `gen/{a,b}.txt` does; whole, it had no fixed
-  // prefix and named nothing (Growth's parity, 2026-10-17).
+  // Each alternative names what it would alone: `{gen/a.txt,gen/b.txt}` names
+  // both files, as `gen/{a,b}.txt` does; whole, it had no fixed prefix and
+  // named nothing (Growth's parity).
   const positive = entries.flatMap(braceAlternatives)
   const prefixes = new Set<string>()
   for (const p of asTrees(positive)) {
@@ -3069,22 +3054,15 @@ const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
  * path). Bun.Glob takes a single pattern per instance, so we iterate.
  *
  * Yields SYMLINKS (never followed, never descended): a task that emits
- * `dist/out -> ../src/x` has produced an output, so the save must capture it
- * (as its target's bytes, `planArtifact`) and the clean must remove it — a
- * link the clean leaves standing blocks the directory a later entry restores
- * there. Bun's `onlyFiles` walk drops every symlink, so this lists everything
- * and sorts by `lstat`.
+ * `dist/out ->../src/x` has produced an output, so the save must capture it (as
+ * its target's bytes, `planArtifact`) and the clean must remove it — a link the
+ * clean leaves standing blocks the directory a later entry restores there.
+ * Bun's `onlyFiles` walk drops every symlink, so this lists everything and
+ * sorts by `lstat`.
  *
- * Sync scan. The async walk was chosen on 2026-09-02, when a warm HIT globbed
- * its outputs and the thread pool overlapped a thousand of them; the directory
- * short-circuit took the glob off the hit path, and what is left runs on the
- * MISS path twice per task (clean, then resolve), where the walk is CPU-bound
- * and each async chunk costs a main-thread round trip. Measured 2026-09-09 on
- * a 1,000-task cold run (see STATUS).
- *
- * A second `mode: 'files'` branch lived here until item 566, defaulted to and
- * reached by NOTHING — both call sites pass `'outputs'`. Its `dot: true` could
- * be deleted with the whole suite green for the plainest reason there is.
+ * Sync scan: this runs on the MISS path twice per task (clean, then resolve),
+ * where the walk is CPU-bound and each async chunk costs a main-thread round
+ * trip (measured on a 1,000-task cold run).
  */
 async function scanUnion(
   positive: readonly string[],
@@ -3154,9 +3132,9 @@ async function scanUnion(
       }
     }
   }
-  // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
-  // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
-  // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
+  // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a `/`:
+  // `{dist,lib/esm}/**` saved an empty artifact, and a hit restored nothing
+  // over a cleaned tree. Expanded here, as discovery does.
   const patterns = positive.flatMap(slashBraceExpansions)
   if (special !== undefined) {
     special.find = () => {
@@ -3168,11 +3146,10 @@ async function scanUnion(
       return [...into]
     }
   }
-  // A leading `**` walks the whole project whatever else is listed, so the
-  // list is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three,
-  // ~2 ms of a warm hit on solid.
-  // Not where a static head passes through a link: the one walk does not
-  // follow links, and the per-pattern scan enters them (X-88).
+  // A leading `**` walks the whole project whatever else is listed, so the list
+  // is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three, ~2 ms of
+  // a warm hit on solid. Not where a static head passes through a link: the one
+  // walk does not follow links, and the per-pattern scan enters them.
   if (
     patterns.length > 1 &&
     patterns.some((p) => p.startsWith('**')) &&
@@ -3285,14 +3262,13 @@ function headLinked(cwd: string, pattern: string): boolean {
 }
 
 /**
- * Where `pattern`'s scan can start: its static directory, with the rest of
- * the pattern to match there. `Bun.Glob` walks the whole of `cwd` whatever
- * the prefix: `out/d1/**` beside 9000 sibling dirs cost 2.3 ms a scan, twice
- * per miss (2026-10-25). Null when the prefix is a file, which nothing lies
- * under (a literal's `<file>/**` tree). Undefined (scan from `cwd`) for no
- * prefix, an escape, or a prefix that does not stat (a dangling link, a
- * cycle), whose refusals the walk from `cwd` names. A prefix through a
- * link is entered either way.
+ * Where `pattern`'s scan can start: its static directory, with the rest of the
+ * pattern to match there. `Bun.Glob` walks the whole of `cwd` whatever the
+ * prefix: `out/d1/**` beside 9000 sibling dirs cost 2.3 ms a scan, twice per
+ * miss. Null when the prefix is a file, which nothing lies under (a literal's
+ * `<file>/**` tree). Undefined (scan from `cwd`) for no prefix, an escape, or a
+ * prefix that does not stat (a dangling link, a cycle), whose refusals the walk
+ * from `cwd` names. A prefix through a link is entered either way.
  */
 function scanRoot(
   cwd: string,
@@ -3345,13 +3321,13 @@ function globFor(pattern: string): Bun.Glob {
 }
 
 /**
- * Whether a project-relative path lies inside a nested project: its
- * ancestor directories looked up in a set, O(depth). One `<nested>/**` glob
- * per nested project matched every file against every one, O(files ×
- * nested): 320 ms of astro's 834 ms warm no-op, 4,003 files against 330
- * fixture projects (I's log, A-11). A glob also read `*`, `?` or `{` in a
- * nested directory's NAME as syntax, so a project at `pkg*` took its
- * sibling `pkg-b`'s files out of the key; a name is a name.
+ * Whether a project-relative path lies inside a nested project: its ancestor
+ * directories looked up in a set, O(depth). One `<nested>/**` glob per nested
+ * project matched every file against every one, O(files × nested): 320 ms of
+ * astro's 834 ms warm no-op, 4,003 files against 330 fixture projects (I's
+ * log). A glob also read `*`, `?` or `{` in a nested directory's NAME as
+ * syntax, so a project at `pkg*` took its sibling `pkg-b`'s files out of the
+ * key; a name is a name.
  */
 function inNestedProject(projectDir: string, nestedDirs: string[]): (rel: string) => boolean {
   if (nestedDirs.length === 0) return () => false

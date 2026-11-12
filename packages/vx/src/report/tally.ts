@@ -49,12 +49,12 @@ function emptyTally(): Tally {
  * a group that ran nothing).
  *
  * Status bucket rules:
- *   `success`            → +successful
- *   `cache-hit`          → +successful, +cachedLocal
- *   `cache-hit-remote`   → +successful, +cachedRemote
- *   `failed`             → +failed
- *   `skipped`            → +skipped
- *   `aborted`            → +aborted only (no bucket, no total)
+ *   `success` → +successful
+ *   `cache-hit` → +successful, +cachedLocal
+ *   `cache-hit-remote` → +successful, +cachedRemote
+ *   `failed` → +failed
+ *   `skipped` → +skipped
+ *   `aborted` → +aborted only (no bucket, no total)
  */
 export function tallyOutcomes(outcomes: readonly TaskOutcome[]): Tally {
   const t = emptyTally()

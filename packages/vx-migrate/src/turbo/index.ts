@@ -288,10 +288,9 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
 }
 
 /**
- * The mapping indexed by package name. The stage visits every package and
- * each visit looked its package up with a linear scan over the mapping —
- * a million comparisons on a 1,000-package workspace, a third of the
- * stage's cost there (2026-09-10).
+ * The mapping indexed by package name. The stage visits every package and each
+ * visit looked its package up with a linear scan over the mapping — a million
+ * comparisons on a 1,000-package workspace, a third of the stage's cost there.
  */
 async function mapAll(
   root: string,

@@ -227,9 +227,9 @@ export async function save(
   // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
   // want to re-materialize on a cache hit:
   //
-  //   stdout                      — captured stdout (ALWAYS present, may be empty)
-  //   outputs/<rel>               — declared output files (omitted when none)
-  //   workspace-outputs/<rel>     — declared outputs.workspaceFiles,
+  //   stdout — captured stdout (ALWAYS present, may be empty)
+  //   outputs/<rel> — declared output files (omitted when none)
+  //   workspace-outputs/<rel> — declared outputs.workspaceFiles,
   //                                 rel to the WORKSPACE ROOT (omitted when none)
   //
   // Metadata (command, exitCode, durationMs, storedAt) lives in

@@ -49,9 +49,9 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
 export async function infoCmd(args: readonly string[]): Promise<number> {
   const parsed = parseInfoArgs(args)
   if (parsed.error) return refuse('info', args, parsed.error, 'VX_E_USAGE')
-  // `collectInfo` takes a resolved directory, where one
-  // not made yet is a workspace that never ran; the flag is the user's,
-  // and a directory it names that is not there is a typo (item 900).
+  // `collectInfo` takes a resolved directory, where one not made yet is a
+  // workspace that never ran; the flag is the user's, and a directory it names
+  // that is not there is a typo.
   if (parsed.cacheDir !== undefined) namedCacheDir(parsed.cacheDir)
   const facts = await collectInfo(process.cwd(), {
     ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
@@ -176,7 +176,7 @@ function describeSandbox(s: InfoFacts['sandbox']): string {
   return `unavailable — ${s.reason}; ${declared}${s.declared > 0 ? ' and will fail' : ''}`
 }
 
-/** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — .vx/workspace.ts (4 cores)`. */
+/** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 —.vx/workspace.ts (4 cores)`. */
 export function describeWorkers(w: InfoFacts['workers']): string {
   const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
   const cores = `${w.cores} core${w.cores === 1 ? '' : 's'}`

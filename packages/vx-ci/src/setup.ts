@@ -78,7 +78,7 @@ export async function setup(o: SetupOptions): Promise<number> {
       await run(['rm', '-f', '/var/lib/man-db/auto-update'])
       // Only the distribution's own index is needed: a third-party source
       // (Chrome, Microsoft on GitHub's images) serving a stale index fails
-      // `apt-get update` before vx runs at all (2026-09-09).
+      // `apt-get update` before vx runs at all.
       if (existsSync('/etc/apt/sources.list.d/ubuntu.sources'))
         await run([
           'find',
@@ -114,11 +114,11 @@ export async function setup(o: SetupOptions): Promise<number> {
     }
   }
   // Ubuntu 24+ lets a program make user namespaces only under an AppArmor
-  // profile granting `userns` (discourse.ubuntu.com/t/58007). Ubuntu 26
-  // ships bwrap-userns-restrict instead, which strips the capabilities of
-  // the namespace nested in bwrap's, where the sandbox applies seccomp:
-  // every sandboxed task failed "nested userns is capability-restricted"
-  // (2026-10-23). bwrap gets the plain profile in its place.
+  // profile granting `userns` (discourse.ubuntu.com/t/58007). Ubuntu 26 ships
+  // bwrap-userns-restrict instead, which strips the capabilities of the
+  // namespace nested in bwrap's, where the sandbox applies seccomp: every
+  // sandboxed task failed "nested userns is capability-restricted". bwrap gets
+  // the plain profile in its place.
   if ((o.restricted ?? userns)()) {
     if (existsSync('/etc/apparmor.d/bwrap-userns-restrict')) {
       await run(['apparmor_parser', '-R', '/etc/apparmor.d/bwrap-userns-restrict'])
@@ -177,8 +177,8 @@ function readdir(dir: string): string[] {
 /**
  * The key to save fetched packages under: this runner image's, after the
  * `vx-setup-debs-<runner.os>-<runner.arch>-` a job restores by. Led by the
- * image alone, no restore ever matched it and every worker fetched again
- * (main, 2026-10-23: 6-55 s of each worker's start).
+ * image alone, no restore ever matched it and every worker fetched again (main:
+ * 6-55 s of each worker's start).
  */
 export function debsKey(env: Record<string, string | undefined>): string {
   return `vx-setup-debs-${env['RUNNER_OS'] ?? ''}-${env['RUNNER_ARCH'] ?? ''}-${env['ImageOS'] ?? ''}-${env['ImageVersion'] ?? ''}`
@@ -191,7 +191,7 @@ export async function runSetup(
   defaultDebs: string,
 ): Promise<number> {
   const usage = `Usage: vx setup ${ci} [--debs <dir>]`
-  // Asked for, the usage is an answer: `vx setup --help` exited 1 (2026-10-26).
+  // Asked for, the usage is an answer: `vx setup --help` exited 1.
   if (argv.includes('--help') || argv.includes('-h')) {
     ui.say('info', usage, 'out')
     return 0

@@ -7,17 +7,17 @@
 import type { TaskNode } from './task-graph.js'
 
 /**
- * `computeReverseDepCount` for a run with a restore tier (item 754). A
- * restore-tier task is a confirmed hit that never waits on its deps, so it
- * blocks only the exec-tier tasks that depend on it: an exec-tier task's
- * count is taken over the exec tier, an edge through a restore it holds
- * back counted too, and a restore's
- * is the sum over its direct exec-tier dependents of one plus theirs, plus
- * the weight of each restore that depends on it, so a restore that feeds
- * pending work, directly or through other restores, still goes first. A warm run's exec tier
- * is its group tasks with no edges among them, and the closure over the
- * whole graph (476 packages: 1,428 nodes, 12.8k edges of 45-word bitsets)
- * was 6 ms of the run-graph stage for a ranking the restores never needed.
+ * `computeReverseDepCount` for a run with a restore tier. A restore-tier task
+ * is a confirmed hit that never waits on its deps, so it blocks only the
+ * exec-tier tasks that depend on it: an exec-tier task's count is taken over
+ * the exec tier, an edge through a restore it holds back counted too, and a
+ * restore's is the sum over its direct exec-tier dependents of one plus theirs,
+ * plus the weight of each restore that depends on it, so a restore that feeds
+ * pending work, directly or through other restores, still goes first. A warm
+ * run's exec tier is its group tasks with no edges among them, and the closure
+ * over the whole graph (476 packages: 1,428 nodes, 12.8k edges of 45-word
+ * bitsets) was 6 ms of the run-graph stage for a ranking the restores never
+ * needed.
  */
 export function tieredReverseDepCount(
   nodes: Map<string, TaskNode>,
@@ -39,10 +39,10 @@ export function tieredReverseDepCount(
     return zeros
   }
   // A restore releases its dependents only once its own deps have settled
-  // (scheduler.ts, item 963), so an exec task under a restore blocks what
-  // that restore feeds: e1 → r → e2 held e2 until e1 ran, and e1 ranked 0
-  // behind every idle task. The exec tier is counted with each restore dep
-  // replaced by the exec tasks it waits on, through restores.
+  // (scheduler.ts), so an exec task under a restore blocks what that restore
+  // feeds: e1 → r → e2 held e2 until e1 ran, and e1 ranked 0 behind every idle
+  // task. The exec tier is counted with each restore dep replaced by the exec
+  // tasks it waits on, through restores.
   const view = execThroughRestores(nodes, exec, restoreTier)
   // An exec tier with no edge inside it (a warm run's groups) counts 0
   // everywhere: no closure to build.
@@ -66,14 +66,13 @@ export function tieredReverseDepCount(
   }
   for (const id of restoreTier) if (nodes.has(id) && !counts.has(id)) counts.set(id, 0)
   if (!feeds) return counts
-  // A restore's dependents are released only once its own deps have
-  // settled (scheduler.ts, item 963), so a restore under another restore
-  // blocks whatever that one blocks: r1 → r2 → e held e until r1 restored,
-  // and r1 ranked 0 behind every idle restore (C-51). Each restore hands
-  // its weight to its restore deps, dependents first (Kahn over the
-  // restore tier's reversed edges). A diamond counts twice; the order
-  // among restores is a heuristic, and this pass stays linear. A run with
-  // no restore feeding an exec task (every task a hit) skips it.
+  // A restore's dependents are released only once its own deps have settled
+  // (scheduler.ts), so a restore under another restore blocks whatever that one
+  // blocks: r1 → r2 → e held e until r1 restored, and r1 ranked 0 behind every
+  // idle restore. Each restore hands its weight to its restore deps, dependents
+  // first (Kahn over the restore tier's reversed edges). A diamond counts
+  // twice; the order among restores is a heuristic, and this pass stays linear.
+  // A run with no restore feeding an exec task (every task a hit) skips it.
   const above = new Map<string, number>()
   for (const id of restoreTier) {
     for (const dep of nodes.get(id)?.deps ?? []) {
@@ -143,13 +142,12 @@ function execThroughRestores(
 }
 
 /**
- * Compute, for each task in the graph, how many OTHER tasks are
- * transitively blocked on it. Tasks with the highest count are the
- * most valuable to schedule first — finishing them unlocks the most
- * downstream work and minimizes worker idle time at the end of the
- * run. Nx's schedule sort ranks by the same idea but counts DIRECT
- * dependents only (`calculateReverseDeps` in
- * `packages/nx/src/tasks-runner/utils.ts`, read 2026-09-24).
+ * Compute, for each task in the graph, how many OTHER tasks are transitively
+ * blocked on it. Tasks with the highest count are the most valuable to schedule
+ * first — finishing them unlocks the most downstream work and minimizes worker
+ * idle time at the end of the run. Nx's schedule sort ranks by the same idea
+ * but counts DIRECT dependents only (`calculateReverseDeps` in
+ * `packages/nx/src/tasks-runner/utils.ts`, read).
  */
 export function computeReverseDepCount(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -160,9 +158,9 @@ export function computeReverseDepCount(
 }
 
 /**
- * `computeReverseDepCount` once per entry of `counted`, from ONE closure:
- * the closure is the cost (~100 ms at 11k nodes, 2026-10-29), each count
- * one popcount pass over it.
+ * `computeReverseDepCount` once per entry of `counted`, from ONE closure: the
+ * closure is the cost (~100 ms at 11k nodes), each count one popcount pass over
+ * it.
  */
 function reverseDepCountsOver(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -237,12 +235,12 @@ function reverseDepCountsOver(
     return mask
   })
 
-  // Reverse-topo sweeps, one per block of `span` words: every node's
-  // closure restricted to the block's positions, its count summed over
-  // the blocks. All N rows of all words (9,603 tasks: 11.5 MB) missed
-  // the cache on nearly every OR, and the first call, the only one a run
-  // makes, took 77 ms; a block of ~256 KB took 37 (2026-10-29). A
-  // dependent past the block holds no bit in it, so its edge is skipped.
+  // Reverse-topo sweeps, one per block of `span` words: every node's closure
+  // restricted to the block's positions, its count summed over the blocks. All
+  // N rows of all words (9,603 tasks: 11.5 MB) missed the cache on nearly every
+  // OR, and the first call, the only one a run makes, took 77 ms; a block of
+  // ~256 KB took 37. A dependent past the block holds no bit in it, so its edge
+  // is skipped.
   const span = Math.max(1, Math.min(words, Math.floor(65536 / Math.max(1, tail))))
   const totals = masks.map(() => new Int32Array(tail))
   const closure = new Uint32Array(tail * span)
@@ -289,7 +287,7 @@ function reverseDepCountsOver(
 
 /**
  * The ready-queue baseline a workspace may pick in place of the default
- * (`schedule` in .vx/workspace.ts). Each ranks with no timings; a `schedule`
+ * (`schedule` in.vx/workspace.ts). Each ranks with no timings; a `schedule`
  * plugin's weights still sort above it, and it breaks their ties.
  *   - `most-work`: transitive dependents (`computeReverseDepCount`), the default.
  *   - `critical-path`: steps on the longest chain of dependents below a task.

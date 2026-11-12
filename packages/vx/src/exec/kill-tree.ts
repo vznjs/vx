@@ -1,14 +1,13 @@
 // Signal a task and everything it forked. Every task child is spawned
-// `detached` — its own session and process group — so the group IS the
-// task's tree: the shell, what the shell backgrounded (`server &`), a
-// test runner's workers. Signalling the child alone left all of that
-// alive: a timed-out `sh -c "x & y"` killed the shell and orphaned `x`,
-// and a Ctrl-C did the same for every compound command (2026-09-16). A
-// group signal reaches a member whose parent already died, too — the
-// group outlives its leader — so the order of death does not matter.
-// What still escapes is a daemon that calls setsid itself (the residual
-// every non-cgroup runner shares); under a sandbox the pid namespace
-// takes even that.
+// `detached` — its own session and process group — so the group IS the task's
+// tree: the shell, what the shell backgrounded (`server &`), a test runner's
+// workers. Signalling the child alone left all of that alive: a timed-out `sh
+// -c "x & y"` killed the shell and orphaned `x`, and a Ctrl-C did the same for
+// every compound command. A group signal reaches a member whose parent already
+// died, too — the group outlives its leader — so the order of death does not
+// matter. What still escapes is a daemon that calls setsid itself (the residual
+// every non-cgroup runner shares); under a sandbox the pid namespace takes even
+// that.
 
 import { closeSync, readdirSync, readFileSync, writeSync } from 'node:fs'
 import { helperEnv, procfsIsOwn, taskShell } from '../util/index.js'
@@ -16,12 +15,12 @@ import { helperEnv, procfsIsOwn, taskShell } from '../util/index.js'
 export type Child = ReturnType<typeof Bun.spawn>
 
 /**
- * A child whose polite signals go down a pipe instead of to its group: a
- * Linux sandboxed task. The group there is bwrap's, whose monitor dies of
- * a SIGTERM and takes the namespace down with SIGKILL (`--die-with-parent`),
- * so the command's own cleanup never ran; a shell inside reads the
- * signal's name off the pipe and signals the command's group (item 752).
- * SIGKILL still goes to the group: bwrap's death is the hard stop.
+ * A child whose polite signals go down a pipe instead of to its group: a Linux
+ * sandboxed task. The group there is bwrap's, whose monitor dies of a SIGTERM
+ * and takes the namespace down with SIGKILL (`--die-with-parent`), so the
+ * command's own cleanup never ran; a shell inside reads the signal's name off
+ * the pipe and signals the command's group. SIGKILL still goes to the group:
+ * bwrap's death is the hard stop.
  */
 const channels = new Map<Child, number>()
 
@@ -64,11 +63,11 @@ export function closeSignalChannel(child: Child): void {
  */
 let guardFd: number | null | undefined
 
-// Three lists: groups (`+`/`-`), single pids (`=`/`_`) and paths to
-// remove (`@`/`!`), killed and removed in that order at EOF. A
-// group is listed once however often its line arrives: a `-` strikes
-// one entry, and a shell that keeps a failed printf buffered (bash as
-// macOS's sh, B-10) sends the line again with its retry.
+// Three lists: groups (`+`/`-`), single pids (`=`/`_`) and paths to remove
+// (`@`/`!`), killed and removed in that order at EOF. A group is listed once
+// however often its line arrives: a `-` strikes one entry, and a shell that
+// keeps a failed printf buffered (bash as macOS's sh) sends the line again with
+// its retry.
 const GUARD_SCRIPT = [
   "g=' ' k=' ' f=' '",
   'while IFS= read -r l; do',
@@ -121,8 +120,8 @@ function startGuard(): void {
     process.once('exit', flushGuard)
     // A guard that has died (killed, the OOM killer) is handed to no later
     // spawn: its pipe is broken, and a shell whose printf buffers (bash as
-    // macOS's sh) flushed the failed `+<pgid>` line into the task's own
-    // stdout, cached replay included (B-10).
+    // macOS's sh) flushed the failed `+<pgid>` line into the task's own stdout,
+    // cached replay included.
     void guard.exited.then(() => {
       if (guardFd === fd) stopGuard()
     })
@@ -172,12 +171,12 @@ function guardWrite(line: string): void {
 }
 
 /**
- * Lines waiting for this turn's one write: strikes, and the listings of
- * spare shells. Each line was a write of its own and a wake of the
- * guard's shell: on a cold run of 500 tasks, 38 ms of vx's main thread
- * for the strikes and 140 ms of the guard's CPU (2026-11-03). If vx dies
- * in the turn a task ended, what that task left in the background dies
- * with it, as when vx dies a moment before the task ends.
+ * Lines waiting for this turn's one write: strikes, and the listings of spare
+ * shells. Each line was a write of its own and a wake of the guard's shell: on
+ * a cold run of 500 tasks, 38 ms of vx's main thread for the strikes and 140 ms
+ * of the guard's CPU. If vx dies in the turn a task ended, what that task left
+ * in the background dies with it, as when vx dies a moment before the task
+ * ends.
  */
 let pending = ''
 let pendingTimer: ReturnType<typeof setImmediate> | undefined
@@ -209,16 +208,16 @@ export function listGroup(pid: number): void {
 }
 
 /**
- * Spawn a task child whose group the guard kills if vx dies holding it.
- * The CHILD lists its own group, before it runs anything: vx wrote the
- * line after the spawn returned, and under load the child ran first, so a
- * `kill -9` of vx in between left its group unlisted and alive (4 of 40
- * runs at tenfold load; B-9). `spawn` gets the guard's pipe, to hand the
- * child at some descriptor `n`, and runs `guardLine(n)` in the child's
- * shell first. The child holds the pipe until it has written, so the
- * guard cannot reach EOF before the line: vx's death alone no longer
- * races it. The guard starts BEFORE the spawn, so there is a pipe to hand.
- * `undefined` when the guard could not start: nothing lists anything.
+ * Spawn a task child whose group the guard kills if vx dies holding it. The
+ * CHILD lists its own group, before it runs anything: vx wrote the line after
+ * the spawn returned, and under load the child ran first, so a `kill -9` of vx
+ * in between left its group unlisted and alive (4 of 40 runs at tenfold load).
+ * `spawn` gets the guard's pipe, to hand the child at some descriptor `n`, and
+ * runs `guardLine(n)` in the child's shell first. The child holds the pipe
+ * until it has written, so the guard cannot reach EOF before the line: vx's
+ * death alone no longer races it. The guard starts BEFORE the spawn, so there
+ * is a pipe to hand. `undefined` when the guard could not start: nothing lists
+ * anything.
  */
 export function spawnGuarded<C = Child>(spawn: (guard: number | undefined) => C): C {
   startGuard()
@@ -302,12 +301,12 @@ export function guardSession(pids: readonly number[], paths: readonly string[]):
 const holds = new Map<number, { count: number; released: boolean }>()
 
 /**
- * Keep `children`'s groups on the guard's list until the returned
- * function runs. A teardown signals a group and waits out a grace for it,
- * and the runner lets a group go when its LEADER exits: a shell that died
- * on the signal while a child that ignores it ran on released the group
- * mid-grace, and a `kill -9` of vx there left that child to nobody (item
- * 865). The caller lets go once its SIGKILL sweep has settled.
+ * Keep `children`'s groups on the guard's list until the returned function
+ * runs. A teardown signals a group and waits out a grace for it, and the runner
+ * lets a group go when its LEADER exits: a shell that died on the signal while
+ * a child that ignores it ran on released the group mid-grace, and a `kill -9`
+ * of vx there left that child to nobody. The caller lets go once its SIGKILL
+ * sweep has settled.
  */
 export function holdGroups(children: readonly Child[]): () => void {
   const pids = children.map((c) => c.pid).filter((pid) => pid > 0)
@@ -328,13 +327,12 @@ export function holdGroups(children: readonly Child[]): () => void {
 }
 
 /**
- * Children whose group was empty when their leader exited. Its number is
- * free from then on, and the kernel hands it to the next process that
- * needs it: a persistent server stays in the run's registry after it
- * exits (keep-alive reports it), and a teardown that signalled `-pid`
- * there could reach whatever group holds the number now (item 874). A
- * group that still had a member keeps its number reserved, and is
- * signalled as before.
+ * Children whose group was empty when their leader exited. Its number is free
+ * from then on, and the kernel hands it to the next process that needs it: a
+ * persistent server stays in the run's registry after it exits (keep-alive
+ * reports it), and a teardown that signalled `-pid` there could reach whatever
+ * group holds the number now. A group that still had a member keeps its number
+ * reserved, and is signalled as before.
  */
 const goneGroups = new WeakSet<Child>()
 
@@ -459,14 +457,13 @@ export async function untilGroupsGone(
 }
 
 /**
- * Does any process of the child's group still run? `kill(-pgid, 0)`
- * answers for the group but counts a zombie, and an orphaned member that
- * died on the SIGTERM waits as one until init reaps it — 1 to 2 s under a
- * container's init (measured 2026-09-24) — so on Linux a group the kernel
- * still knows is read from /proc, where a zombie says so — when /proc is
- * this namespace's. One mounted for another reads as no member at all,
- * and a group that ignored the SIGTERM went un-killed; there the group
- * signal is the answer and the grace ends the wait.
+ * Does any process of the child's group still run? `kill(-pgid, 0)` answers for
+ * the group but counts a zombie, and an orphaned member that died on the
+ * SIGTERM waits as one until init reaps it — 1 to 2 s under a container's init
+ * (measured) — so on Linux a group the kernel still knows is read from /proc,
+ * where a zombie says so — when /proc is this namespace's. One mounted for
+ * another reads as no member at all, and a group that ignored the SIGTERM went
+ * un-killed; there the group signal is the answer and the grace ends the wait.
  */
 export function groupAlive(child: Child): boolean {
   if (!(child.pid > 0) || goneGroups.has(child)) return false

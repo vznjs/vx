@@ -1,9 +1,8 @@
-// What a project is (2026-10-14): a directory holding a
-// `vx.config.*`. `vx lock` finds them (`findProjectConfigs`) and records
-// each by directory; a run takes them from the lock (`lockedProjects`) and
-// never walks. A project is named by `name` in its config, else by a
-// `discover` plugin, else by its root-relative path, `//` for the root.
-// Design: docs/design/language-agnostic-core-2026-10.md.
+// What a project is: a directory holding a `vx.config.*`. `vx lock` finds them
+// (`findProjectConfigs`) and records each by directory; a run takes them from
+// the lock (`lockedProjects`) and never walks. A project is named by `name` in
+// its config, else by a `discover` plugin, else by its root-relative path, `//`
+// for the root. Design: docs/design/language-agnostic-core-2026-10.md.
 import { type Dirent, lstatSync, realpathSync } from 'node:fs'
 import { lstat, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -60,19 +59,18 @@ export const PROJECT_CONFIG_FILENAMES = [
   'vx.config.js',
   'vx.config.mjs',
   // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
-  // was ignored without a word (D-86).
+  // was ignored without a word.
   'vx.config.cts',
   'vx.config.cjs',
 ]
 
 /**
  * The workspace root for `start`: the directory holding the first
- * `.vx/workspace.*` from `start` up to the git top-level, or up to `/`
- * outside git ({@link workspaceFile}, shared with the hand-off). Nothing
- * else decides it (2026-10-13: "Workspace file is the ultimate"):
- * not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
- * `VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add`
- * when a sparse checkout left the git top-level's out.
+ * `.vx/workspace.*` from `start` up to the git top-level, or up to `/` outside
+ * git ({@link workspaceFile}, shared with the hand-off). Nothing else decides
+ * it: not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
+ * `VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add` when
+ * a sparse checkout left the git top-level's out.
  *
  * Outside git, a file another user owns is refused (root aside): a
  * `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
@@ -169,8 +167,8 @@ async function refuseNotAFile(file: string): Promise<never> {
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
   const env = process.env['VX_CACHE_DIR']
-  // `cache.dir: '   '` is refused at load (X-22); the variable made the same
-  // directory named in spaces at the root (D-160).
+  // `cache.dir: ' '` is refused at load; the variable made the same directory
+  // named in spaces at the root.
   if (env !== undefined && env !== '' && env.trim() === '') {
     throw new UserError('VX_CACHE_DIR is only whitespace — name a directory, or unset it')
   }
@@ -181,8 +179,8 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
   // `'~/.cache/vx'` made a directory named `~` in the workspace.
   const dir =
     rel === '~' || rel.startsWith('~/') ? path.join(home, rel.slice(1)) : path.resolve(root, rel)
-  // The cache writes a `*` .gitignore beside its index: a bare `~` made a
-  // directory named `~`, and expanded it would land in home itself (D-153).
+  // The cache writes a `*`.gitignore beside its index: a bare `~` made a
+  // directory named `~`, and expanded it would land in home itself.
   if (path.resolve(dir) === path.resolve(home)) {
     const source = fromEnv ? 'VX_CACHE_DIR' : 'cache.dir'
     throw new UserError(
@@ -193,12 +191,12 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 }
 
 /**
- * Where this repository's shared store lives: `~/.vx/<repo id>/cache`, as
- * Nx 23 keeps `~/.nx/<id>/cache` (2026-10-06), so every checkout of
- * the repository hits what another saved and no other repository shares
- * it (`repoIdOf`). Null when the workspace names its cache (`cache.dir`,
- * `VX_CACHE_DIR`): that directory then holds everything, as one
- * workspace's alone. Null with no repository identity or no home.
+ * Where this repository's shared store lives: `~/.vx/<repo id>/cache`, as Nx 23
+ * keeps `~/.nx/<id>/cache`, so every checkout of the repository hits what
+ * another saved and no other repository shares it (`repoIdOf`). Null when the
+ * workspace names its cache (`cache.dir`, `VX_CACHE_DIR`): that directory then
+ * holds everything, as one workspace's alone. Null with no repository identity
+ * or no home.
  */
 export async function resolveStoreRoot(
   root: string,
@@ -539,9 +537,10 @@ async function gitConfigs(root: string): Promise<string[]> {
   const gitlinks = index
     .filter((e) => e.startsWith('160000 '))
     .map((e) => e.slice(e.indexOf('\t') + 1))
-  // A linked worktree of this repository made inside it (`git worktree add
-  // .worktrees/x`) is this tree checked out again, no nested repository:
-  // recorded as a nested workspace, it failed `--check` on every other checkout.
+  // A linked worktree of this repository made inside it (`git worktree
+  // add.worktrees/x`) is this tree checked out again, no nested repository:
+  // recorded as a nested workspace, it failed `--check` on every other
+  // checkout.
   const common = (dir: string): string | null => {
     const at = locateGitDir(dir)?.commonDir
     return at === undefined ? null : realpathSync(at)
@@ -568,9 +567,9 @@ async function gitConfigs(root: string): Promise<string[]> {
 }
 
 /**
- * An install is no project, tracked or not, as the walk outside git skips
- * it: a repo whose .gitignore does not name `node_modules` listed each
- * installed package's vx.config as one.
+ * An install is no project, tracked or not, as the walk outside git skips it: a
+ * repo whose.gitignore does not name `node_modules` listed each installed
+ * package's vx.config as one.
  */
 const NOT_INSTALLS = ':(exclude,glob)**/node_modules/**'
 

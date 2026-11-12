@@ -60,8 +60,8 @@ export { mergeBaseWith } from './workspace/index.js'
 // Programmatic engine API: run / plan / prepare (docs/cli.md § Programmatic
 // API). The graph primitives, the cache-key hashing seam and the git / host
 // context capture used to sit beside these for a distributed submitter that
-// left the repo (2026-08); they went with it (2026-09-10) — a seam with no
-// consumer is re-added when one appears, shaped by its use.
+// left the repo (2026-08); they went with it — a seam with no consumer is
+// re-added when one appears, shaped by its use.
 export { run, planRun, prepareRun } from './orchestrator/index.js'
 // The per-task duration history a `schedule` plugin learns from
 // (`@vzn/vx-history` does; a plugin package reaches core only
@@ -81,9 +81,9 @@ export type { PreparedRun } from './orchestrator/index.js'
 // `RunOptions.affected`: what `--affected`'s diff changed, per project.
 export type { AffectedChanges } from './workspace/index.js'
 // `planRun` returns these, and an embedder that cannot NAME a return type
-// cannot hold it: `run` and `prepareRun` both had theirs here from the
-// start, so the omission read as "planRun is not really public" while
-// docs/cli.md § Programmatic API listed all three (item 387, 2026-09-19).
+// cannot hold it: `run` and `prepareRun` both had theirs here from the start,
+// so the omission read as "planRun is not really public" while docs/cli.md §
+// Programmatic API listed all three.
 export type { RunPlan, PlannedTask } from './orchestrator/index.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
 export type { CacheFlags, CachePolicy, RunOptions, RunSummary } from './orchestrator/index.js'
@@ -173,14 +173,14 @@ export type {
   RawExpr,
 } from './workspace/index.js'
 
-// Plugin API — the run-level extension points. Behavior capabilities
-// (executor / cache) change WHAT/HOW work runs; the observe-only `telemetry`
-// capability is the canonical data-export path and cannot change behavior.
-// A plugin is declared in .vx/workspace.ts via defineWorkspace({ plugins }).
-// See docs/design/observability-architecture-2026-06.md.
-// The claimant's shell for a lockfile plugin of any ecosystem: the claim,
-// the per-project key, the memo and the `--affected` diff around a parser;
-// `reachDigests` is the Merkle-over-components digest a parser may use.
+// Plugin API — the run-level extension points. Behavior capabilities (executor
+// / cache) change WHAT/HOW work runs; the observe-only `telemetry` capability
+// is the canonical data-export path and cannot change behavior. A plugin is
+// declared in.vx/workspace.ts via defineWorkspace({ plugins }). See
+// docs/design/observability-architecture-2026-06.md. The claimant's shell for a
+// lockfile plugin of any ecosystem: the claim, the per-project key, the memo
+// and the `--affected` diff around a parser; `reachDigests` is the
+// Merkle-over-components digest a parser may use.
 export {
   lockfileClaim,
   reachDigests,
@@ -225,11 +225,10 @@ export type {
 } from './orchestrator/index.js'
 export type { Measure, RunStartInfo } from './report/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
-// (`runCommand` / `runSandboxed`, the local executor's own primitives, left
-// the façade 2026-09-10: no executor plugin built on them — `@vzn/vx-reapi`
-// speaks a wire — and a seam with no consumer is a special case in waiting.)
-// A remote executor gives a task back to the local floor by rejecting with
-// this (B-100): core runs it here and says why once.
+// The local executor's own primitives stay off the façade: a seam with no
+// consumer is a special case in waiting. A remote
+// executor gives a task back to the local floor by rejecting with this: core
+// runs it here and says why once.
 export { executorFallback, hostPlatform, type TreeUsage } from './exec/index.js'
 // How the local executor puts the args after `--` on a command, for an
 // executor that runs `ExecuteRequest.command` itself.

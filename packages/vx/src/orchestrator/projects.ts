@@ -234,10 +234,9 @@ function lockedProject(root: string, name: string, dir: string): string {
 }
 
 /**
- * The refusal for a locked project whose directory is gone (X-144): a
- * config-less one has no config file for the load to find missing, so it
- * is asked only when a spawn into the directory failed, and a run pays no
- * stat per project.
+ * The refusal for a locked project whose directory is gone: a config-less one
+ * has no config file for the load to find missing, so it is asked only when a
+ * spawn into the directory failed, and a run pays no stat per project.
  */
 export function lockedDirGone(root: string, name: string, dir: string): string {
   return `${LOCKFILE_NAME} locks ${lockedProject(root, name, dir)}, but its directory is gone — run \`vx lock\``
@@ -269,12 +268,11 @@ export function ignoredConfigRefusal(
 }
 
 /**
- * The workspace's projects: the directories the lock records (a run never
- * walks for configs), with what the plugin `discover` stage added, named
- * and linked as `vx lock` recorded it (`Lockfile.discoverStage`). No hook
- * runs, whatever plugins the workspace declares now (2026-11-11: "it
- * should always follow the lock blindly"). Sorted by name; two projects of
- * one name are refused.
+ * The workspace's projects: the directories the lock records (a run never walks
+ * for configs), with what the plugin `discover` stage added, named and linked
+ * as `vx lock` recorded it (`Lockfile.discoverStage`). No hook runs, whatever
+ * plugins the workspace declares now. Sorted by name; two projects of one name
+ * are refused.
  */
 export async function discoverProjects(
   workspaceRoot: string,
@@ -421,8 +419,8 @@ function lockedDiscovery(
       projects,
       read.nestedWorkspaces.map((rel) => path.join(workspaceRoot, rel)),
     )
-  // An `--affected` selection reads its untracked files from this walk,
-  // and the run reuses it (I-26).
+  // An `--affected` selection reads its untracked files from this walk, and the
+  // run reuses it.
   discoveredGit.set(projects, git)
   discoveredLock.set(projects, lock)
   discoveredHashes.set(projects, new Map())
@@ -501,22 +499,19 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   const { plugins, workspaceRoot } = args
   const lock = args.configs
   const graph = args.closure ? args.packageGraph : null
-  // A package with no config file declares no tasks — unless a plugin
-  // fills the `project` stage, in which case it is a project the stage may
-  // give tasks to (the zero-migration shape: `turbo.json` or `package.json`
-  // scripts mapped onto packages that never wrote a `vx.config.ts`). Under
-  // `vx lock` it then loads as `{ tasks: {} }` — nothing to evaluate — and
-  // the stage runs on that like on any loaded config; a run loads what the
-  // lock recorded of it. With no
-  // `project` plugin a plain run never seeds a config-less
-  // package, but loads one a loaded project's closure reaches: it gets the
-  // default `build`, so a dependant bundling its source is keyed on it
-  // behind `^build`. Left out, its edit replayed the dependant's stale
-  // output as a hit (X-9).
-  // Only `vx lock` runs the hooks. A run follows the configs they left,
-  // as `vx lock` recorded them, blindly: whatever plugins the workspace
-  // declares now, and reading nothing a mapping reads (2026-11-11: "we
-  // never relock during runs ... it should always follow the lock blindly").
+  // A package with no config file declares no tasks — unless a plugin fills the
+  // `project` stage, in which case it is a project the stage may give tasks to
+  // (the zero-migration shape: `turbo.json` or `package.json` scripts mapped
+  // onto packages that never wrote a `vx.config.ts`). Under `vx lock` it then
+  // loads as `{ tasks: {} }` — nothing to evaluate — and the stage runs on that
+  // like on any loaded config; a run loads what the lock recorded of it. With
+  // no `project` plugin a plain run never seeds a config-less package, but
+  // loads one a loaded project's closure reaches: it gets the default `build`,
+  // so a dependant bundling its source is keyed on it behind `^build`. Left
+  // out, its edit replayed the dependant's stale output as a hit. Only `vx
+  // lock` runs the hooks. A run follows the configs they left, as `vx lock`
+  // recorded them, blindly: whatever plugins the workspace declares now, and
+  // reading nothing a mapping reads.
   const hooks = args.lock === true && hasHook(plugins, 'project')
   const stage = hooks ? new Map<string, ProjectConfig>() : undefined
   // Asked only when a config is to be read: a run whose every project the
@@ -544,9 +539,9 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   const metaByName = new Map<string, ProjectMeta>(args.projectMetas.map((m) => [m.name, m]))
   const needed = new Set<string>()
   const pending: ProjectMeta[] = []
-  // Counted, not read off `pending`: a round empties `pending`, and a guard
-  // on its length let every cross edge after the first round walk its
-  // whole closure again (1,500 walks at 300 projects, item 932).
+  // Counted, not read off `pending`: a round empties `pending`, and a guard on
+  // its length let every cross edge after the first round walk its whole
+  // closure again (1,500 walks at 300 projects).
   let neededConfigured = 0
   const consider = (name: string): void => {
     if (needed.has(name)) return
@@ -609,9 +604,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       (m): m is ProjectMeta & { configPath: string } =>
         typeof m.configPath === 'string' && args.staged?.get(m.name) === undefined,
     )
-    // A locked project whose config file is gone ran as locked, green,
-    // though nothing declares it any more (X-144): asked only of the
-    // configs this run reads.
+    // A locked project whose config file is gone ran as locked, green, though
+    // nothing declares it any more: asked only of the configs this run reads.
     const present = await Promise.all(withFile.map((m) => Bun.file(m.configPath).exists()))
     const goneAll = withFile.filter((_, i) => !present[i])
     const gone = goneAll[0]

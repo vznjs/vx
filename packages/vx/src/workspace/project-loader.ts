@@ -37,8 +37,8 @@ const loadedConfigs = new Set<string>()
 
 function assertDefaultObject(mod: unknown, kind: string, configPath: string): void {
   if (!mod || typeof mod !== 'object') {
-    // Vite's `defineConfig(() => ({ … }))` shape: vx reads the object, and
-    // the bare refusal did not say what was there instead (D-110).
+    // Vite's `defineConfig(() => ({ … }))` shape: vx reads the object, and the
+    // bare refusal did not say what was there instead.
     throw new UserError(
       `${kind} config at ${configPath} did not export a default object` +
         (typeof mod === 'function'
@@ -51,12 +51,12 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
 }
 
 /**
- * The source a load already holds, by the specifier it imports it under.
- * Bun's loader would open and read a project config a second time; the
+ * The source a load already holds, by the specifier it imports it under. Bun's
+ * loader would open and read a project config a second time; the
  * `vx-config-bytes` plugin hands it this instead, so the evaluation runs
- * exactly the bytes the import gate saw. It is also the cheaper load:
- * 1,000 configs imported this way took 80–100 ms against 180 ms read by
- * Bun (measured 2026-09-24).
+ * exactly the bytes the import gate saw. It is also the cheaper load: 1,000
+ * configs imported this way took 80–100 ms against 180 ms read by Bun
+ * (measured).
  *
  * Handed over as a string: `onLoad` reads a byte array as Latin-1, and a
  * `ü` in a description came back as `Ã¼`. So only UTF-8 is served, and
@@ -66,12 +66,11 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
  * format as it always did. The two paths carry different queries because
  * `onLoad` cannot decline a path it matched.
  *
- * The workspace config is never served. Proving it ESM is the parser's
- * first use in a warm run, ~0.27 ms, and serving the one file saves less
- * than that: `loadWorkspaceConfig` measured 0.3 ms slower served (40
- * interleaved runs, 2026-09-24). Bun reads it a second time instead.
+ * The workspace config is never served. Proving it ESM is the parser's first
+ * use in a warm run, ~0.27 ms, and serving the one file saves less than that:
+ * `loadWorkspaceConfig` measured 0.3 ms slower served (40 interleaved runs).
+ * Bun reads it a second time instead.
  */
-//
 // Held by the bytes' hash, not the specifier: Bun hands `onLoad` the path
 // it RESOLVED, which is the real path, so a config reached through a
 // symlinked directory (macOS's `/var` → `/private/var`, every temp root
@@ -152,8 +151,8 @@ const heldPaths = new Map<string, Held>()
 
 const PLAIN_CONFIG = /[\\/]vx\.config\.[cm]?[jt]s$/
 
-// A realpath for every config was 7–10 ms on 1,000 (2026-10-28); only a
-// path reached through a link misses, so only a miss pays it.
+// A realpath for every config was 7–10 ms on 1,000; only a path reached through
+// a link misses, so only a miss pays it.
 function heldByRealPath(real: string): Held | undefined {
   for (const [configPath, held] of heldPaths) {
     if (held.real === undefined) {
@@ -181,11 +180,11 @@ function servableSource(bytes: Uint8Array, loader: 'ts' | 'js'): string | null {
   return !COMMONJS_HINT.test(source) || hasEsmExport(source, loader) ? source : null
 }
 
-// What makes Bun run a file as CommonJS is one of these names at the top
-// level (an escaped `\u006dodule` too, so any backslash counts), or
-// TypeScript's `export =`, which spells none of them. Source
-// with none of them runs as a module whichever path loads it, so it skips
-// the parse: 16–20 µs a config, 1,000 cold configs (2026-10-03).
+// What makes Bun run a file as CommonJS is one of these names at the top level
+// (an escaped `\u006dodule` too, so any backslash counts), or TypeScript's
+// `export =`, which spells none of them. Source with none of them runs as a
+// module whichever path loads it, so it skips the parse: 16–20 µs a config,
+// 1,000 cold configs.
 const COMMONJS_HINT =
   /\b(?:module|exports|require|this|__dirname|__filename)\b|\\|\bexport\s*=(?!=)/
 
@@ -194,7 +193,7 @@ const BUST_QUERY = /\?vx-(?:bust|held|literal)=[^'"\s]*/g
 
 // Bun has native TS / ESM execution — no transpiler dep needed. We fold
 // a short content hash into the import URL as a cache-bust key so that:
-//   same content   → same URL → Bun's module cache hits (fast)
+//   same content → same URL → Bun's module cache hits (fast)
 //   changed content → new URL → fresh re-evaluation (correct)
 // mtime would be cheaper but Bun's stat().mtimeNs is currently undefined
 // on Linux/macOS, and ms-resolution mtime misses rapid edits in tests.
@@ -213,11 +212,10 @@ async function loadDefaultExport(
 ): Promise<unknown> {
   const text = new TextDecoder().decode(bytes)
   if (!checked) refuseUnprovided(text, configPath, configPath, kind)
-  // No random bust for `vx lock`: a project config reaches this import
-  // only on its FIRST load in the process, so nothing is cached under the
-  // URL yet, and a repeat load (the one that could replay an evaluation
-  // made under earlier env values) re-evaluates in a worker instead
-  // (`loadedConfigs`, item 678).
+  // No random bust for `vx lock`: a project config reaches this import only on
+  // its FIRST load in the process, so nothing is cached under the URL yet, and
+  // a repeat load (the one that could replay an evaluation made under earlier
+  // env values) re-evaluates in a worker instead (`loadedConfigs`).
   const literal = /[\\?]/.test(configPath)
   const source =
     kind === 'Project' || literal
@@ -245,14 +243,12 @@ async function loadDefaultExport(
     // the user sees is the source's.
     compiled =
       literal || compiledRoot === undefined ? null : tryCompiled(compiledRoot, configPath, bytes)
-    // Awaited here: a default that is a rejected Promise is the config's
-    // throw too, and passed out unawaited it reached bin.ts as a vx
-    // defect (2026-10-28).
+    // Awaited here: a default that is a rejected Promise is the config's throw
+    // too, and passed out unawaited it reached bin.ts as a vx defect.
     if (compiled) return await withinBudget(defaultOf(compiled, kind, configPath), kind, configPath)
     if (compiled === undefined) loaded = loadedModules(compiledRoot!)
-    // The worker's budget, here too: a top-level await that never settled
-    // while a timer kept the loop alive hung `vx run` for good, silently
-    // (D-66).
+    // The worker's budget, here too: a top-level await that never settled while
+    // a timer kept the loop alive hung `vx run` for good, silently.
     if (!checked) await refuseUnprovidedClosure(text, configPath, kind, reads)
     ns = (await withinBudget(
       plain === null
@@ -344,11 +340,10 @@ function tryCompiled(
 }
 
 /**
- * A config's `process.exit` ended vx mid-load: `exit(0)` was a green run
- * that ran nothing and printed nothing (D-65). While any config evaluates
- * in process it throws instead, at the config's line. vx's own exit is
- * signal forwarding's, which a run installs after its load and removes
- * when it ends.
+ * A config's `process.exit` ended vx mid-load: `exit(0)` was a green run that
+ * ran nothing and printed nothing. While any config evaluates in process it
+ * throws instead, at the config's line. vx's own exit is signal forwarding's,
+ * which a run installs after its load and removes when it ends.
  */
 let evaluating = 0
 let ownExit: typeof process.exit = process.exit
@@ -389,9 +384,9 @@ function refuseUnprovided(source: string, file: string, configPath: string, kind
   const what = own
     ? `cannot find '${missing[0]}'`
     : `${file} imports '${missing[0]}', which no node_modules above it provides`
-  // Under Yarn Plug'n'Play the dependencies ARE installed, into a
-  // `.pnp.cjs` Bun does not read: "install them first" sent the user to a
-  // `yarn install` that changed nothing (D-109).
+  // Under Yarn Plug'n'Play the dependencies ARE installed, into a `.pnp.cjs`
+  // Bun does not read: "install them first" sent the user to a `yarn install`
+  // that changed nothing.
   if (pnpAbove(path.dirname(file))) {
     throw new UserError(
       `${kind} config ${configPath}: ${what} — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set \`nodeLinker: node-modules\` in .yarnrc.yml and run \`yarn install\``,
@@ -408,7 +403,7 @@ const SCRIPT = /\.[cm]?[jt]sx?$/
 /**
  * The same refusal for each script the config reaches by relative import:
  * a preset's bare import was installed and run where the config's own was
- * refused (L-22; `--no-install` holds only the shebang, not `bun src/bin.ts`
+ * refused (`--no-install` holds only the shebang, not `bun src/bin.ts`
  * or an embedder). Only a source evaluation pays: a fresh bundle resolved
  * every import it holds. `reads` keeps each file's text for the load's other
  * configs: a preset a thousand configs share is read once. `statics` gets
@@ -467,15 +462,15 @@ const NAMED_FRAME = /\n\s+at .*[\\/]/
 export function configLoadError(err: unknown, configPath: string, kind: string): UserError | null {
   // Matched on SHAPE, not `instanceof Error`. Bun's `BuildMessage` is not an
   // Error subclass on every build — on 1.3.11 its prototype chain is
-  // `BuildMessage → Object` — and an `instanceof` guard there hands the user
-  // a raw transpile object for a missing brace in their own config, which is
-  // the defect `isFsRefusal` exists to prevent one layer down. The two names
-  // below are Bun's own and nothing else answers to them, so this is
-  // narrower than it looks: every other throw still passes through (2026-09-20).
+  // `BuildMessage → Object` — and an `instanceof` guard there hands the user a
+  // raw transpile object for a missing brace in their own config, which is the
+  // defect `isFsRefusal` exists to prevent one layer down. The two names below
+  // are Bun's own and nothing else answers to them, so this is narrower than it
+  // looks: every other throw still passes through.
   if (err === null || typeof err !== 'object') return null
   const { name, message, errors } = err as { name?: unknown; message?: unknown; errors?: unknown }
-  // Two syntax errors arrive as one `AggregateError` of `BuildMessage`s,
-  // which printed a stack and no position (X-6). The first is where to look.
+  // Two syntax errors arrive as one `AggregateError` of `BuildMessage`s, which
+  // printed a stack and no position. The first is where to look.
   if (name === 'AggregateError' && Array.isArray(errors) && errors.length > 0) {
     return configLoadError(errors[0], configPath, kind)
   }
@@ -495,8 +490,8 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
     const what = spec === undefined ? message.replace(BUST_QUERY, '') : `cannot find '${spec}'`
-    // The package the specifier names (`@vzn/vx-otel/x` → `@vzn/vx-otel`):
-    // a missing plugin was told to install core (J-59).
+    // The package the specifier names (`@vzn/vx-otel/x` → `@vzn/vx-otel`): a
+    // missing plugin was told to install core.
     const hint =
       spec?.startsWith('@vzn/vx') === true
         ? `; install it in the workspace: bun add -d ${spec.split('/').slice(0, 2).join('/')}`
@@ -521,10 +516,10 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
 }
 
 /**
- * What a failed load throws: always a user error. A config's own throw, or
- * a plugin factory's it called, is the config's to fix, not a vx defect:
- * passed through, it printed a stack under VX_E_INTERNAL, whose fix is to
- * report a vx bug (2026-10-28). Its line stands in for the stack.
+ * What a failed load throws: always a user error. A config's own throw, or a
+ * plugin factory's it called, is the config's to fix, not a vx defect: passed
+ * through, it printed a stack under VX_E_INTERNAL, whose fix is to report a vx
+ * bug. Its line stands in for the stack.
  */
 function loadFailure(err: unknown, configPath: string, kind: string): unknown {
   const user = configLoadError(err, configPath, kind)
@@ -774,7 +769,7 @@ export async function loadProjectConfigs(
           ...restoreBuiltins(builtins, overlapping),
           // Overlapping, the env is checked once at the round's end, as most
           // built-ins are: reading all of it after every load was 15–25 µs a
-          // config (149 variables, compiled, 2026-10-03).
+          // config (149 variables, compiled).
           ...(overlapping ? [] : restoreEnv(env)),
           ...restoreCwd(cwd),
           // Alone in the round: nothing else reads the umask now. Beside
@@ -782,9 +777,9 @@ export async function loadProjectConfigs(
           // `currentUmask`).
           ...(overlapping ? [] : restoreUmask(umask)),
         ]
-    // Loads overlap, so another config's change can surface after this
-    // one: named here, the refusal blamed the wrong file (D-119). The round
-    // finds the one that made it.
+    // Loads overlap, so another config's change can surface after this one:
+    // named here, the refusal blamed the wrong file. The round finds the one
+    // that made it.
     if (changed.length > 0) {
       throw overlapping ? new ChangedInRound(changed) : builtinsChanged(changed, configPath)
     }
@@ -793,11 +788,10 @@ export async function loadProjectConfigs(
     // would drop it unseen.
     const [nonJson] = nonJsonPaths(mod)
     if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
-    // A tree of its own, as the lock hands out. The module object shares
-    // what the config shares: one preset's task in two configs, one `exec`
-    // in two tasks. A `project` hook that edits in place then edited them
-    // all (item 967). A config is JSON data (config-schema.ts), so the copy
-    // loses nothing.
+    // A tree of its own, as the lock hands out. The module object shares what
+    // the config shares: one preset's task in two configs, one `exec` in two
+    // tasks. A `project` hook that edits in place then edited them all. A
+    // config is JSON data (config-schema.ts), so the copy loses nothing.
     const copy = JSON.parse(JSON.stringify(mod)) as ProjectConfig
     // Validation runs on the copy, the object every reader gets, so a
     // malformed config reports the identical UserError whether it was
@@ -811,11 +805,11 @@ export async function loadProjectConfigs(
   const endRound = beginEvalRound()
   try {
     // Loaded LOAD_WIDTH at a time: one import after another put 1,000 cold
-    // configs at ~160 ms of imports where 64 at once take ~60 (D-68), and
-    // 128 took `load configs` from 432 to 411 ms more; the width bounds the
-    // files a module load may hold open, so it stays under macOS's default
-    // 256-descriptor limit. A failure stops nothing; the error thrown is
-    // the first in order, as the serial loop's was.
+    // configs at ~160 ms of imports where 64 at once take ~60, and 128 took
+    // `load configs` from 432 to 411 ms more; the width bounds the files a
+    // module load may hold open, so it stays under macOS's default
+    // 256-descriptor limit. A failure stops nothing; the error thrown is the
+    // first in order, as the serial loop's was.
     const results: Array<ProjectConfig | { failed: unknown }> = []
     if (prepared.length > 0) {
       unredirect = stdoutToStderr()
@@ -908,10 +902,10 @@ export async function loadProjectConfigs(
 }
 
 /**
- * Every route to fd 1 sent to stderr while configs evaluate in this
- * process; returns the release. A verb's stdout is its output (`vx show
- * --format json`), and a config's `console.log` came out ahead of the
- * JSON. The worker does the same for a repeat load (D-64). Taken before a round's built-in snapshot and released
+ * Every route to fd 1 sent to stderr while configs evaluate in this process;
+ * returns the release. A verb's stdout is its output (`vx show --format json`),
+ * and a config's `console.log` came out ahead of the JSON. The worker does the
+ * same for a repeat load. Taken before a round's built-in snapshot and released
  * after its check, so the guard sees no change of vx's own.
  *
  * Counted, because rounds overlap (`--affected`'s per-file sweep loads each
@@ -1067,16 +1061,16 @@ function installRedirect(): () => void {
 }
 
 /**
- * The built-in prototypes a config's object is read through. A config that
- * set `Object.prototype.exec` gave every other project's task that
- * command, and the key, which folds each config's own JSON, never saw it:
- * a hit replayed under a key that did not name what ran (D-74). A first
- * load runs in this process, so the round compares them before and after,
- * puts back what changed (a failed load too) and refuses.
+ * The built-in prototypes a config's object is read through. A config that set
+ * `Object.prototype.exec` gave every other project's task that command, and the
+ * key, which folds each config's own JSON, never saw it: a hit replayed under a
+ * key that did not name what ran. A first load runs in this process, so the
+ * round compares them before and after, puts back what changed (a failed load
+ * too) and refuses.
  */
-// `Bun` and `Bun.hash` are what vx itself runs on: `Bun.hash.xxHash3 = ()
-// => 7n` gave every task the key 00000000, and a changed command replayed
-// the old output (D-75).
+// `Bun` and `Bun.hash` are what vx itself runs on: `Bun.hash.xxHash3 = () =>
+// 7n` gave every task the key 00000000, and a changed command replayed the old
+// output.
 const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILTIN_NAMES.map(
   (name) =>
     [
@@ -1090,12 +1084,12 @@ const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILT
     ] as const,
 )
 
-// The check reads through these, taken when a round's snapshot is, before
-// any of its configs runs: a config that set `Reflect.ownKeys = () => []`
-// blinded it, and its `Object.prototype.exec` ran in another project's
-// task (D-124). Each round keeps its own, so an overlapping round cannot
-// hand it a replaced one. The compare and put-back use indexed loops only
-// (a replaced `Array.prototype.forEach` skipped them).
+// The check reads through these, taken when a round's snapshot is, before any
+// of its configs runs: a config that set `Reflect.ownKeys = () => []` blinded
+// it, and its `Object.prototype.exec` ran in another project's task. Each round
+// keeps its own, so an overlapping round cannot hand it a replaced one. The
+// compare and put-back use indexed loops only (a replaced
+// `Array.prototype.forEach` skipped them).
 interface Primitives {
   ownKeys: typeof Reflect.ownKeys
   descriptorOf: typeof Object.getOwnPropertyDescriptor
@@ -1118,13 +1112,12 @@ interface BuiltinSnapshot {
 }
 
 /**
- * The members of `Bun` vx reads, which the workspace config's guard checks;
- * of the rest it keeps the keys and their order, not their descriptors.
- * Some members are built on their first read (`postgres` loaded `bun:sql`,
- * 3.4 ms), and the guard runs on every warm run, where its full read of
- * `Bun` was 4.4–5 ms of a 45 ms no-op (compiled, 2026-10-03). A project
- * config's guard reads them all. Held to every `Bun.<name>` in `src/` by
- * tests/workspace-guard-bun.test.ts.
+ * The members of `Bun` vx reads, which the workspace config's guard checks; of
+ * the rest it keeps the keys and their order, not their descriptors. Some
+ * members are built on their first read (`postgres` loaded `bun:sql`, 3.4 ms),
+ * and the guard runs on every warm run, where its full read of `Bun` was 4.4–5
+ * ms of a 45 ms no-op (compiled). A project config's guard reads them all. Held
+ * to every `Bun.<name>` in `src/` by tests/workspace-guard-bun.test.ts.
  */
 const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'Archive',
@@ -1258,12 +1251,12 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
 }
 
 /**
- * The built-ins checked after each of several overlapping loads: the ones
- * the loader itself reads through between loads (its promises, maps, sets,
- * JSON and keys). The rest are checked once, at the round's end: all of
- * them after every load was ~73 µs a config, a quarter of a cold load of
- * 1,000 (2026-10-03). A lone load checks them all. By index, decided at
- * module load: a lookup through a `Set` is one a config can replace (D-124).
+ * The built-ins checked after each of several overlapping loads: the ones the
+ * loader itself reads through between loads (its promises, maps, sets, JSON and
+ * keys). The rest are checked once, at the round's end: all of them after every
+ * load was ~73 µs a config, a quarter of a cold load of 1,000. A lone load
+ * checks them all. By index, decided at module load: a lookup through a `Set`
+ * is one a config can replace.
  */
 const EVERY_LOAD: readonly boolean[] = WATCHED_BUILTINS.map(([name]) =>
   [
@@ -1317,11 +1310,10 @@ function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = fa
 }
 
 /**
- * A first load's `process.env.X = …` gave every other project's task that
- * value through `passThrough` and reached vx's own `VX_*` reads, while a
- * repeat load, in a worker, left both unchanged: one config, two
- * environments, by load order (D-76). Assigned back, not defined:
- * `process.env` refuses `defineProperty`.
+ * A first load's `process.env.X = …` gave every other project's task that value
+ * through `passThrough` and reached vx's own `VX_*` reads, while a repeat load,
+ * in a worker, left both unchanged: one config, two environments, by load
+ * order. Assigned back, not defined: `process.env` refuses `defineProperty`.
  */
 function restoreEnv(before: Readonly<Record<string, string | undefined>>): string[] {
   const changed: string[] = []
@@ -1342,9 +1334,9 @@ function restoreEnv(before: Readonly<Record<string, string | undefined>>): strin
 }
 
 /**
- * A config's `process.chdir()` moved the whole process: every relative path
- * vx resolves after it, its own and a plugin's, read from the config's
- * choice (D-120). Put back, and named as the change.
+ * A config's `process.chdir()` moved the whole process: every relative path vx
+ * resolves after it, its own and a plugin's, read from the config's choice. Put
+ * back, and named as the change.
  */
 function restoreCwd(before: string): string[] {
   const proc = globalThis.process
@@ -1355,8 +1347,8 @@ function restoreCwd(before: string): string[] {
 
 /**
  * A config's `process.umask()` set the mode of every file vx and its tasks
- * wrote after it: a cache artifact and a task's outputs landed `000`, which
- * a user other than root could not read back (D-125). Put back, and named.
+ * wrote after it: a cache artifact and a task's outputs landed `000`, which a
+ * user other than root could not read back. Put back, and named.
  */
 function currentUmask(): number {
   const proc = globalThis.process as { umask?: (mask?: number) => number }
@@ -1375,7 +1367,7 @@ function restoreUmask(before: number): string[] {
 
 function sameDescriptor(p: Primitives, a: PropertyDescriptor, b: PropertyDescriptor): boolean {
   return (
-    // `globalThis.NaN` is watched (D-122), and NaN !== NaN.
+    // `globalThis.NaN` is watched, and NaN !== NaN.
     p.same(a.value, b.value) &&
     a.get === b.get &&
     a.set === b.set &&
@@ -1394,13 +1386,13 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 const workspaceLoadedAt = new Map<string, number>()
 
 /**
- * A repeat load in one process (`vx watch`'s every cycle, a plugin verb's
- * every call) busts the workspace config's own URL, but Bun answers what it
- * imports from the module registry: an edited local plugin kept its first
- * version and its old tasks were served with no word (item 1046).
- * Bun cannot evaluate an imported module again, so the load is refused,
- * naming the file, as `vx watch` already says when it sees the edit. Only
- * a repeat load pays for the walk; a CLI verb loads once.
+ * A repeat load in one process (`vx watch`'s every cycle, a plugin verb's every
+ * call) busts the workspace config's own URL, but Bun answers what it imports
+ * from the module registry: an edited local plugin kept its first version and
+ * its old tasks were served with no word. Bun cannot evaluate an imported
+ * module again, so the load is refused, naming the file, as `vx watch` already
+ * says when it sees the edit. Only a repeat load pays for the walk; a CLI verb
+ * loads once.
  */
 async function refuseStaleWorkspaceImports(configPath: string, since: number): Promise<void> {
   for (const file of await configImports(configPath)) {
@@ -1460,10 +1452,10 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     const startedAt = Date.now()
     // The same guard a project config's first load has: the workspace config
     // runs in this process too, and its `Object.prototype.exec` ran in a
-    // project's task under a key that never saw it (D-126). Its globals are
-    // left out: it loads first in every run, filtered or not, so none
-    // depends on what else loaded (D-122's case), and plugins' tests and
-    // tools hand state through them.
+    // project's task under a key that never saw it. Its globals are left out:
+    // it loads first in every run, filtered or not, so none depends on what
+    // else loaded, and plugins' tests and tools hand state
+    // through them.
     const unredirect = stdoutToStderr()
     const builtins = builtinSnapshot('globalThis', true)
     const env = { ...process.env }
@@ -1492,9 +1484,8 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
       if (changed.length > 0) throw builtinsChanged(changed, configPath)
     }
     // Checked again once awaited, as a project config is: a Promise default
-    // passed the first check, and `Promise.resolve(null)` crashed the
-    // validator with a stack while `Promise.resolve(42)` loaded as no
-    // config at all (D-6).
+    // passed the first check, and `Promise.resolve(null)` crashed the validator
+    // with a stack while `Promise.resolve(42)` loaded as no config at all.
     assertDefaultObject(mod, 'Workspace', configPath)
     validateWorkspace(mod, configPath)
     if (mod.plugins?.some(isSkippedPlugin) === true)

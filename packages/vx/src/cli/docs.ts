@@ -1,8 +1,7 @@
-// `vx docs <query> [--limit N] [--format pretty|json]` — search vx's
-// reference as this version wrote it: packages/vx/docs at its git tag on
-// GitHub, read online (2026-10-17: nothing is embedded). Each page is
-// cut at its headings, and the sections holding every query word print
-// whole, best first.
+// `vx docs <query> [--limit N] [--format pretty|json]` — search vx's reference
+// as this version wrote it: packages/vx/docs at its git tag on GitHub, read
+// online (nothing is embedded). Each page is cut at its headings, and the
+// sections holding every query word print whole, best first.
 
 import { VERSION } from '../version.js'
 import { parseDecimalInt } from '../util/index.js'

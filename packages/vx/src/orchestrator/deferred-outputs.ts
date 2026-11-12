@@ -86,9 +86,9 @@ export class DeferredOutputs {
     if (this.entries.size === 0) return
     const needed: string[] = []
     const seen = new Set<string>()
-    // Pre-order on an explicit stack of dependency lists: a closure is as
-    // deep as the graph, and a recursion per edge threw `RangeError` at the
-    // 50,000 the builder takes (item 737).
+    // Pre-order on an explicit stack of dependency lists: a closure is as deep
+    // as the graph, and a recursion per edge threw `RangeError` at the 50,000
+    // the builder takes.
     const stack: Array<[deps: readonly string[], next: number]> = [
       [this.args.nodes.get(node.id)?.deps ?? [], 0],
     ]
@@ -136,16 +136,15 @@ export class DeferredOutputs {
       committed: committedFiles(this.args.gitFilesCache, producer.projectDir),
     }
 
-    // Mirror `restoreHit`'s sequencing so the two paths cannot drift: wipe
-    // the declared outputs, write, then tell the git snapshot what moved.
-    // The wipe is a rule (a straggler in the declared tree is gone after
-    // the fetch); the two marks are the mirror's cost, not a rule: no
-    // reader of these outputs can be in the run — `deferralEligibility`
-    // keeps every same-project reader and every workspaceFiles reader
-    // eager — so deleting the post-fetch mark survives the whole core
-    // suite (item 643). In a window, as a hit's restore (hit-restore.ts):
-    // without one, `vx watch` took the fetched outputs for the user's edit
-    // and ran one more cycle.
+    // Mirror `restoreHit`'s sequencing so the two paths cannot drift: wipe the
+    // declared outputs, write, then tell the git snapshot what moved. The wipe
+    // is a rule (a straggler in the declared tree is gone after the fetch); the
+    // two marks are the mirror's cost, not a rule: no reader of these outputs
+    // can be in the run — `deferralEligibility` keeps every same-project reader
+    // and every workspaceFiles reader eager — so deleting the post-fetch mark
+    // survives the whole core suite. In a window, as a hit's restore
+    // (hit-restore.ts): without one, `vx watch` took the fetched outputs for
+    // the user's edit and ran one more cycle.
     const closeWindow =
       this.args.commandWindows?.open(taskId, producer.projectDir, 'project') ?? (() => {})
     try {

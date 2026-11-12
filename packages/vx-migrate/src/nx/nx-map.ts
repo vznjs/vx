@@ -110,7 +110,7 @@ export function parseNxGraph(text: string, label: string): NxGraph {
     throw new UserError(`failed to parse ${label}: ${msg}`)
   }
   // `?.`: a file of `null` is JSON, and read as an object it threw a bare
-  // TypeError instead of naming the shape it wanted (item 811).
+  // TypeError instead of naming the shape it wanted.
   const g = ((parsed as { graph?: unknown } | null)?.graph ?? parsed) as {
     nodes?: unknown
     dependencies?: unknown
@@ -168,8 +168,8 @@ async function rootDependencies(root: string): Promise<ReadonlySet<string>> {
 /**
  * The shape of every node field the mapper reads, refused by name. A
  * number where the graph holds a list reached the mapper's loops as a
- * TypeError: `"dependsOn": true` threw `true is not iterable` (fuzzed,
- * L-15, as turbo.json's reader did).
+ * TypeError: `"dependsOn": true` threw `true is not iterable`, as
+ * turbo.json's reader did.
  */
 function checkNxNodes(nodes: Record<string, unknown>, label: string): void {
   const refuse = (at: string, what: string): never => {
@@ -338,12 +338,12 @@ function nxTags(node: NxNode | undefined): string[] {
 }
 
 /**
- * The outputs of every project whose input Nx never hashes: git tracks
- * nothing under it and ignores it, as Nx's file map skips gitignored files
- * (a changed `dist` file is a hit under Nx 23.3, YL-1). One untracked but
- * not ignored is in Nx's file map, so an input under it is hashed: taken
- * for ignored, `build` keyed on no file and a generated source's edit
- * replayed (stale hit). One `git check-ignore` per mapping.
+ * The outputs of every project whose input Nx never hashes: git tracks nothing
+ * under it and ignores it, as Nx's file map skips gitignored files (a changed
+ * `dist` file is a hit under Nx 23.3). One untracked but not ignored is in Nx's
+ * file map, so an input under it is hashed: taken for ignored, `build` keyed on
+ * no file and a generated source's edit replayed (stale hit). One `git
+ * check-ignore` per mapping.
  */
 async function ignoredOutputs(
   root: string,
@@ -486,8 +486,8 @@ export async function mapNxWorkspace(
     return v.name !== target && Object.hasOwn(others, v.name) ? null : v.name
   }
 
-  // Once per project, not per task and variant: `path.relative` was a
-  // fifth of the mapping at 1,000 projects (item 608).
+  // Once per project, not per task and variant: `path.relative` was a fifth of
+  // the mapping at 1,000 projects.
   const relOf = new Map<PackageMeta, string>()
   for (const meta of allMetas) {
     if (nodeByMeta.get(meta)?.data?.targets) relOf.set(meta, normRel(relPosix(root, meta.dir)))
@@ -588,12 +588,11 @@ export async function mapNxWorkspace(
     else mapped.push({ meta, tasks: list })
   }
 
-  // Nx gives `^name` no edges when no project runs the target; core refuses
-  // a `^name` no project declares as a typo, so such an edge is dropped
-  // before the shared-output rule reads which tasks have a `^` edge.
-  // Counted over the projects that will carry tasks: a target only the
-  // unattached root declares kept its `^` edge, and core refused the run
-  // (item 1051).
+  // Nx gives `^name` no edges when no project runs the target; core refuses a
+  // `^name` no project declares as a typo, so such an edge is dropped before
+  // the shared-output rule reads which tasks have a `^` edge. Counted over the
+  // projects that will carry tasks: a target only the unattached root declares
+  // kept its `^` edge, and core refused the run.
   const emitted = new Set<string>()
   const emittedIds = new Set<string>()
   for (const { meta, tasks } of mapped) {
@@ -622,8 +621,8 @@ export async function mapNxWorkspace(
     return r
   }
   // What vx's `^` already reaches: a manifest path (the lockfile plugin's
-  // edges), direct or through another project, orders `^x` and folds its
-  // key (item 931). Built once, on the first `^` edge.
+  // edges), direct or through another project, orders `^x` and folds its key.
+  // Built once, on the first `^` edge.
   let pkgGraph: ManifestGraph | undefined
   const packageGraph = () => (pkgGraph ??= manifestGraph(metas))
   let reach: ((name: string) => ReadonlySet<string>) | undefined
@@ -788,13 +787,13 @@ interface NxJsonFacts {
 }
 
 /**
- * `nx.json` as Nx reads it: an `extends` base (a path or a package,
- * resolved from the file's directory) merged shallowly under it, the base's
- * own `extends` first. Only the raw file was read, so named inputs a base
- * declared fell back to `{projectRoot}/**` with no word and a `sharedGlobals`
- * edit re-ran nothing (item 1050). `files` lists every file read, which the
- * graph snapshot's freshness stats. Null when `nx.json` is absent; a file
- * that does not parse throws.
+ * `nx.json` as Nx reads it: an `extends` base (a path or a package, resolved
+ * from the file's directory) merged shallowly under it, the base's own
+ * `extends` first. Only the raw file was read, so named inputs a base declared
+ * fell back to `{projectRoot}/**` with no word and a `sharedGlobals` edit
+ * re-ran nothing. `files` lists every file read, which the graph snapshot's
+ * freshness stats. Null when `nx.json` is absent; a file that does not parse
+ * throws.
  */
 export async function readNxJson(
   root: string,
@@ -987,8 +986,8 @@ function buildTask(
     options,
   )
   // Nx draws no edge from a task to itself (`task.id !== selfTaskId`): a
-  // `projects: "*"` or a tag the project carries named it, and vx refused
-  // the workspace as a cycle (2026-10-28).
+  // `projects: "*"` or a tag the project carries named it, and vx refused the
+  // workspace as a cycle.
   for (const own of [variant.name, `${meta.name}#${variant.name}`]) {
     for (let i = deps.indexOf(own); i !== -1; i = deps.indexOf(own)) deps.splice(i, 1)
   }
@@ -999,19 +998,17 @@ function buildTask(
     if (!deps.includes(edge)) deps.push(edge)
   }
 
-  // Nx's rule, not a guess: a target is cached when it says `cache: true`
-  // (Nx ≥ 17 writes it into the graph from `cacheableOperations` too —
-  // refine's `build` carries it, its `dev` does not) or its name is in the
-  // legacy `cacheableOperations` list. Until item 591 a target with
-  // outputs and no `cache` was cached anyway, so refine's 204 persistent
-  // `dev` targets (tsup --watch, outputs `dist`) were cached and then
-  // made uncached only by the shared-output rule (2026-09-22).
+  // Nx's rule, not a guess: a target is cached when it says `cache: true` (Nx ≥
+  // 17 writes it into the graph from `cacheableOperations` too — refine's
+  // `build` carries it, its `dev` does not) or its name is in the legacy
+  // `cacheableOperations` list. Caching every target with outputs would
+  // cache refine's 204 persistent `dev` targets (tsup --watch, outputs `dist`).
   const readyWhen = mapped?.readyWhen
   const persistent = readyWhen !== undefined || persistentTarget(target)
   // vx cleans outputs before a run and Nx never does. With git's file list
   // known, a wildcard-first output (`**/*.d.ts`) stays cached: core never
-  // cleans a committed file, so what the clean removes is what the task
-  // writes (2026-10-03). Without it, the sources cannot be told apart.
+  // cleans a committed file, so what the clean removes is what the task writes.
+  // Without it, the sources cannot be told apart.
   const wild =
     opts.tracked === undefined
       ? (wildcardOutput(outFiles) ?? wildcardOutput(wsOutFiles))
@@ -1019,11 +1016,11 @@ function buildTask(
   if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
   // The manifest or config an output covers is taken back, so core loads it.
   if (wild === undefined) outFiles.push(...ownFileTakeBacks(outFiles, opts.ownConfig?.(projectRel)))
-  // Nx keys the outputs of the tasks this one depends on, and vx their
-  // keys through `dependsOn`. With no such edge left (the producer is a
-  // project vx did not migrate: nx-examples' .NET ProductsApi), the key
-  // saw nothing the task reads, and a changed document replayed the old
-  // generated client (Growth, 2026-10-16).
+  // Nx keys the outputs of the tasks this one depends on, and vx their keys
+  // through `dependsOn`. With no such edge left (the producer is a project vx
+  // did not migrate: nx-examples'.NET ProductsApi), the key saw nothing the
+  // task reads, and a changed document replayed the old generated client
+  // (Growth).
   const orphanReader =
     inputs.dependentOutputs.length > 0 && !deps.some((d) => !d.includes('#inputs:'))
   if (orphanReader && cacheWanted && !persistent) {
@@ -1051,10 +1048,9 @@ function buildTask(
   // dependant reads upstream its own `^` inputs already name, and twins
   // for the uncached one's `^` inputs would key nothing new.
   if (mapped !== null) {
-    // No `inputs` is Nx's `default` and `^default`: the project's
-    // `default` named input (its whole tree unless declared) and each
-    // dependency's. No gap to report (487 lines per run on refine,
-    // 2026-09-22).
+    // No `inputs` is Nx's `default` and `^default`: the project's `default`
+    // named input (its whole tree unless declared) and each dependency's. No
+    // gap to report (487 lines per run on refine).
     if (target.inputs === undefined)
       expandNxInputs(
         cacheEnabled ? ['default', '^default'] : ['default'],
@@ -1090,13 +1086,13 @@ function buildTask(
   // and core refuses it in passThrough; the key still reads it.
   const passThrough = inputs.envNames.filter((n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n))
   if (passThrough.length > 0) env.passThrough = passThrough
-  // Nx hands every task its target (`getNxEnvVariablesForTask`), and
-  // `nx exec -- <cmd>`, a package script's way to run under Nx, reads it:
-  // unset, it booted Nx's own task runner, which ran the target and its
-  // dependencies again. `LERNA_PACKAGE_NAME` is the project too: Lerna
-  // runs on Nx's runner and documents it to scripts. Only a command that
-  // still runs Nx or Lerna gets them: a native task names no other runner
-  // (2026-10-22). A run-commands `env` still wins, as in Nx.
+  // Nx hands every task its target (`getNxEnvVariablesForTask`), and `nx exec
+  // -- <cmd>`, a package script's way to run under Nx, reads it: unset, it
+  // booted Nx's own task runner, which ran the target and its dependencies
+  // again. `LERNA_PACKAGE_NAME` is the project too: Lerna runs on Nx's runner
+  // and documents it to scripts. Only a command that still runs Nx or Lerna
+  // gets them: a native task names no other runner. A run-commands `env` still
+  // wins, as in Nx.
   const define = {
     ...(RUNS_NX.test(mapped.command)
       ? {
@@ -1123,10 +1119,10 @@ function buildTask(
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
   const keyed: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
-  // Nx hashes the root TypeScript config into every task (its
-  // TsConfiguration input, other projects' `paths` left out): a
-  // compilerOptions edit re-ran Nx's tests and replayed vx's (Growth,
-  // 2026-10-16). The whole file here: a `paths` edit re-keys every task.
+  // Nx hashes the root TypeScript config into every task (its TsConfiguration
+  // input, other projects' `paths` left out): a compilerOptions edit re-ran
+  // Nx's tests and replayed vx's (Growth). The whole file here: a `paths` edit
+  // re-keys every task.
   if (opts.rootTsConfig !== undefined && !inputs.wsFiles.includes(opts.rootTsConfig))
     inputs.wsFiles.push(opts.rootTsConfig)
   // With no `{ externalDependencies }` of its own, Nx 24 hashes every
@@ -1221,12 +1217,11 @@ function keyUncachedProducerOutputs(
       for (const [id, filter] of edgesOf(p.name, t.task['dependsOn'])) {
         const producer = byId.get(id)?.task
         if (producer === undefined) continue
-        // `transitive: true` reads the outputs of every task below, not
-        // only the direct ones: an uncached `fetch` behind an `nx:noop`
-        // `prep` hid its schema, and the reader replayed the old one (hunt,
-        // 2026-11-08). A key folding the edge answers the probe before the
-        // fetch ran, so the edge is left out and every output below it,
-        // cached or not, is keyed by the probe.
+        // `transitive: true` reads the outputs of every task below, not only
+        // the direct ones: an uncached `fetch` behind an `nx:noop` `prep` hid
+        // its schema, and the reader replayed the old one (hunt). A key folding
+        // the edge answers the probe before the fetch ran, so the edge is left
+        // out and every output below it, cached or not, is keyed by the probe.
         const below: GeneratedTask[] = []
         if (reader.transitive.length > 0) {
           const seen = new Set<string>([id])
@@ -1285,8 +1280,7 @@ function orphanReaderTodo(globs: readonly string[], dependsOn: unknown): string 
  * Nx links a producer vx carries no task for, keyed nothing the task reads
  * (Growth, nx-codegen-dropped-producer.sh). With none linked, Nx hashes
  * nothing there either: a leaf library's inferred `build` (`^build`,
- * @nx/js/typescript) ran uncached every time where Nx caches it (hunt,
- * 2026-11-08).
+ * @nx/js/typescript) ran uncached every time where Nx caches it.
  */
 function reachesProducer(
   t: GeneratedTask,
@@ -1310,12 +1304,12 @@ function reachesProducer(
 }
 
 /**
- * The `$npm_*` variables a script body reads, which Nx's `<pm> run <name>`
- * sets and an inlined body does not: `echo $npm_package_version` printed
- * nothing under `nx()`. The name and version are the manifest's (a bump
- * re-maps: the mapping keys on every manifest), the event the script's
- * own name unless hooks are folded beside it (each has its own); any
- * other is a todo, as core's `vx init` does it (D-34).
+ * The `$npm_*` variables a script body reads, which Nx's `<pm> run <name>` sets
+ * and an inlined body does not: `echo $npm_package_version` printed nothing
+ * under `nx()`. The name and version are the manifest's (a bump re-maps: the
+ * mapping keys on every manifest), the event the script's own name unless hooks
+ * are folded beside it (each has its own); any other is a todo, as core's `vx
+ * init` does it.
  */
 function npmScriptEnv(
   command: string,
@@ -1441,12 +1435,12 @@ function mapCommand(
     const script = typeof options.script === 'string' ? options.script : targetName
     // package.json is a boundary: a script value is whatever the file holds.
     // This read used to be typed `Record<string, string>`, so `body.length`
-    // type-checked on a value that need not be a string at all (item 446).
+    // type-checked on a value that need not be a string at all.
     const raw = scripts[script]
     const body = typeof raw === 'string' ? raw : undefined
     // An empty script is a target Nx lists and `pnpm run` runs as nothing
-    // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
-    // that refuses to load, so it is the placeholder with its todo.
+    // (novu's `test:watch: ""`); as a command it is a config that refuses to
+    // load, so it is the placeholder with its todo.
     if (body !== undefined && body.length > 0) {
       // Nx runs `<pm> run <script>`: the hooks fold only where the manager runs them.
       const command = scriptCommand(script, body, scripts, pnp, hooks)

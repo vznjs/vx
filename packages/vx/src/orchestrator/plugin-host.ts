@@ -127,13 +127,12 @@ function reading<T>(plugin: VxPlugin, hook: string, read: () => T): T {
 }
 
 function pluginFailure(plugin: VxPlugin, hook: string, err: unknown): UserError {
-  // Masked here, not by whoever prints it: an embedder of `run()` and
-  // a plugin's verb print it as they get it, and the throw quotes what the
-  // plugin was told (a remote's reply, a header) (L-11).
-  // A plugin's own code survives (cli.md § Error codes): an agent
-  // branches on it.
-  // A plugin's bug (a TypeError, not a message it chose to throw) names
-  // where it threw: the message alone left its author no file or line.
+  // Masked here, not by whoever prints it: an embedder of `run()` and a
+  // plugin's verb print it as they get it, and the throw quotes what the plugin
+  // was told (a remote's reply, a header). A plugin's own code survives (cli.md
+  // § Error codes): an agent branches on it. A plugin's bug (a TypeError, not a
+  // message it chose to throw) names where it threw: the message alone left its
+  // author no file or line.
   const at = isBug(err) ? pluginThrowSite(err) : undefined
   return new UserError(
     maskedLine(
@@ -335,9 +334,9 @@ export async function applyGraphHooks(
 }
 
 /**
- * A hook writes the graph as plain JS: `deps = null` surfaced as "null is
- * not an object", naming no task (X-15). Checked per plugin, before its
- * edits are read, so the refusal names the plugin that wrote them.
+ * A hook writes the graph as plain JS: `deps = null` surfaced as "null is not
+ * an object", naming no task. Checked per plugin, before its edits are read, so
+ * the refusal names the plugin that wrote them.
  */
 function checkNodeShapes(nodes: Map<string, TaskNode>): void {
   const what = (v: unknown): string => (v === null ? 'null' : typeof v)
@@ -437,10 +436,10 @@ export async function applyKeyHooks(
         a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0
       parts.sort(byName)
       // A plugin's name is its package's, and one package may define two
-      // plugins (`@vzn/vx-migrate`'s `turbo()` and `turboCache()`): two
-      // parts named alike folded both values under one name, and `vx why`
-      // could not say which moved (item 1028). The repeats take `#2`, `#3`
-      // in value order, so declaration order still keys nothing.
+      // plugins (`@vzn/vx-migrate`'s `turbo()` and `turboCache()`): two parts
+      // named alike folded both values under one name, and `vx why` could not
+      // say which moved. The repeats take `#2`, `#3` in value order, so
+      // declaration order still keys nothing.
       let previous = ''
       let n = 0
       for (const [i, [name, value]] of parts.entries()) {
@@ -792,15 +791,13 @@ function scheduleWeights(
 }
 
 /**
- * `admit` stage, built once per run into the predicate the scheduler asks
- * at every local dispatch: every plugin that answers must admit. A plugin
- * that throws is reported once and admits from then on — a policy never
- * breaks a run — and one that refuses while nothing local is running is
- * overridden with a word, since only a completion asks again: that
- * refusal stalled the run for good (item 1023). So the predicate is never
- * the reason a task hangs.
- * Undefined when no plugin answers, which keeps the scheduler on its
- * count-only path.
+ * `admit` stage, built once per run into the predicate the scheduler asks at
+ * every local dispatch: every plugin that answers must admit. A plugin that
+ * throws is reported once and admits from then on — a policy never breaks a run
+ * — and one that refuses while nothing local is running is overridden with a
+ * word, since only a completion asks again: that refusal stalled the run for
+ * good. So the predicate is never the reason a task hangs. Undefined when no
+ * plugin answers, which keeps the scheduler on its count-only path.
  */
 export function buildAdmission(
   plugins: readonly VxPlugin[],
@@ -813,10 +810,9 @@ export function buildAdmission(
   const broken = new Set<VxPlugin>()
   const overridden = new Set<VxPlugin>()
   return (id, running) => {
-    // The scheduler asks only about ids in this same map, so the lookup
-    // always lands: an unknown-id arm here was deleted with the whole core
-    // suite green (item 651).
-    // Read-only: the key is derived, and a hook's edit ran under it.
+    // The scheduler asks only about ids in this same map, so the lookup always
+    // lands: an unknown-id arm here was deleted with the whole core suite
+    // green. Read-only: the key is derived, and a hook's edit ran under it.
     const task = readOnly(nodes.get(id)!)
     const ctx = {
       running: [...running].flatMap((r) => {
@@ -829,9 +825,9 @@ export function buildAdmission(
       if (broken.has(plugin)) continue
       try {
         const verdict: unknown = plugin.admit!(task, ctx)
-        // An `async admit` answers a Promise: truthy, so it admitted every
-        // task and its policy never ran, and its rejection was unhandled and
-        // ended the run with a stack (H-16). Named once, admitting after.
+        // An `async admit` answers a Promise: truthy, so it admitted every task
+        // and its policy never ran, and its rejection was unhandled and ended
+        // the run with a stack. Named once, admitting after.
         if (verdict instanceof Promise) {
           verdict.catch(() => {})
           throw new Error('returned a Promise; admit is synchronous')
@@ -874,12 +870,12 @@ export interface CacheHost extends CacheContext {
 }
 
 /**
- * Collect every plugin's remote (`cache` hook) in declaration order and
- * layer each over the local store: a lookup asks the local store first,
- * then each remote in order (2026-10-13), and a save reaches every
- * remote. The run's policy alone gates each remote (2026-10-16: a
- * plugin moves bytes, it never decides reads or writes); a remote's throw is a miss and a warning naming its plugin. No
- * remote → the local store alone.
+ * Collect every plugin's remote (`cache` hook) in declaration order and layer
+ * each over the local store: a lookup asks the local store first, then each
+ * remote in order, and a save reaches every remote. The run's policy alone
+ * gates each remote (a plugin moves bytes, it never decides reads or writes); a
+ * remote's throw is a miss and a warning naming its plugin. No remote → the
+ * local store alone.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
@@ -929,14 +925,13 @@ const executorPlugin = new WeakMap<TaskExecutor, string>()
 const failedOn = new WeakMap<object, string>()
 
 /**
- * A plugin executor's throw from `execute`, named as every other hook's
- * is: `plugin 'p' (executor 'e') failed in execute: …`. It read `internal
- * error in <task>: pool down`, naming neither (C-63). A refusal, as
- * `safe()` makes every stage's throw: the plugin is named, so it is not
- * vx's bug, and an `internal error` line said it was (C-85). A fresh error
- * with the plugin's as its cause, never the plugin's own renamed: one
- * error an executor rejects every task with was named once per task
- * (C-74). The floor's own throw is vx's and stays as it is.
+ * A plugin executor's throw from `execute`, named as every other hook's is:
+ * `plugin 'p' (executor 'e') failed in execute: …`. It read `internal error in
+ * <task>: pool down`, naming neither. A refusal, as `safe()` makes every
+ * stage's throw: the plugin is named, so it is not vx's bug, and an `internal
+ * error` line said it was. A fresh error with the plugin's as its cause, never
+ * the plugin's own renamed: one error an executor rejects every task with was
+ * named once per task. The floor's own throw is vx's and stays as it is.
  */
 export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unknown {
   if (!executorPlugin.has(executor)) return err
@@ -993,11 +988,10 @@ const NO_DEMAND: ExecutorDemand = {
  * ONLY for executors that asked: with none declared there is no map, no
  * set, and every call does nothing.
  *
- * The SAME set is handed back every time, narrowed in place: a consumer
- * reading it later sees the truth rather than a stale snapshot. A hint,
- * as `admit` is: one that throws is named once and asked no more, where
- * it surfaced as a bare stack, or mid-run from the completion path
- * (item 1022).
+ * The SAME set is handed back every time, narrowed in place: a consumer reading
+ * it later sees the truth rather than a stale snapshot. A hint, as `admit` is:
+ * one that throws is named once and asked no more, where it surfaced as a bare
+ * stack, or mid-run from the completion path.
  */
 export function executorDemand(
   placed: ReadonlyMap<string, TaskExecutor>,
@@ -1206,15 +1200,14 @@ export async function resolveExecutors(
 
 /**
  * End-of-run plugin lifecycle: each plugin's optional `teardown()`, in
- * declaration order, a plugin that supplies a remote cache after every
- * other: a teardown may write through the cache (`RunReport`), and one
- * that revoked its token first refused the write (main 7bdbf01: the
- * schedule's timings, put after the Vercel token's revoke). Crash-isolated — a throwing teardown is logged and
- * skipped, never propagated — and each call is time-bounded by
- * {@link teardownTimeoutMs}. Runs on every exit of a run once its plugins'
- * factories ran, and of a plan (item 1021); the finally-path disposers
- * just unsubscribe. (Telemetry sinks flush before this, in
- * telemetry-host.ts, with the same reporting rule.)
+ * declaration order, a plugin that supplies a remote cache after every other: a
+ * teardown may write through the cache (`RunReport`), and one that revoked its
+ * token first refused the write (the schedule's timings, put after the Vercel
+ * token's revoke). Crash-isolated — a throwing teardown is logged and skipped,
+ * never propagated — and each call is time-bounded by {@link
+ * teardownTimeoutMs}. Runs on every exit of a run once its plugins' factories
+ * ran, and of a plan; the finally-path disposers just unsubscribe. (Telemetry
+ * sinks flush before this, in telemetry-host.ts, with the same reporting rule.)
  *
  * The bound is PER CALL and the calls are sequential, so the worst case
  * composes: measured at the 3s default, 1/2/3 simultaneously-hung plugins

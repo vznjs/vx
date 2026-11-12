@@ -5,7 +5,7 @@
 // `{ runtime }` map to their vx twins, `{ json }` to its whole file; `^x` is recorded for the mapper to
 // resolve over the project graph (nx-upstream.ts). What vx folds through `dependsOn` already
 // (`dependentTasksOutputFiles`) is nothing; `externalDependencies` is a todo saying
-// so. Extracted from `buildTask` in item 606.
+// so.
 
 import { nxWorkspacePath, underProject, withProjectDir } from './nx-outputs.js'
 import {
@@ -22,11 +22,11 @@ export interface NxInputs {
   readonly envNames: string[]
   /**
    * Nx's `{ runtime: "<cmd>" }` hashes the command's output, run at the
-   * WORKSPACE ROOT (`hash_runtime.rs`): `inputs.workspaceRuntime`.
-   * It was mapped to `runtime`, which runs in the project dir, so
-   * `cat tools/version.txt` failed the run and a command that runs in both
-   * hashed a different fact (item 913). It was once reported "not
-   * representable in vx" (walked the Nx path, 2026-09-20).
+   * WORKSPACE ROOT (`hash_runtime.rs`): `inputs.workspaceRuntime`. It was
+   * mapped to `runtime`, which runs in the project dir, so `cat
+   * tools/version.txt` failed the run and a command that runs in both hashed a
+   * different fact. It was once reported "not representable in vx" (walked the
+   * Nx path).
    */
   readonly runtimeCmds: string[]
   /**
@@ -62,8 +62,8 @@ export function emptyNxInputs(): NxInputs {
 /**
  * A runtime command with its path tokens written in, as the paths from the
  * workspace root it runs at. Nx runs the command as written and hashes its
- * output whatever it exits, so `cat {workspaceRoot}/v.txt` keyed on cat's
- * error there and failed the task here (Growth, 2026-10-16).
+ * output whatever it exits, so `cat {workspaceRoot}/v.txt` keyed on cat's error
+ * there and failed the task here (Growth).
  *
  * vx's probe fails the task on a non-zero exit, so a failing command runs
  * in a subshell and prints its exit code instead: the key holds the error
@@ -118,16 +118,16 @@ export function expandNxInputs(
         return
       }
       if (s.includes('{')) {
-        // A token anywhere, as Nx interpolates it (item 912).
+        // A token anywhere, as Nx interpolates it.
         const p = nxWorkspacePath(s, at.rel, at.name)
         if (p === null) {
           todos.push(`input ${JSON.stringify(entry)} uses a token vx does not support`)
           return
         }
         // Nx's file map skips gitignored files, so it hashes nothing here
-        // either: a changed `dist` file is a cache hit under Nx 23.3 (YL-1).
-        // An output git tracks (a generator writing into `src`) is hashed,
-        // and dropping it keyed `build` on no file (stale hit, 2026-10-28).
+        // either: a changed `dist` file is a cache hit under Nx 23.3. An output
+        // git tracks (a generator writing into `src`) is hashed, and dropping
+        // it keyed `build` on no file (stale hit).
         const lit = withProjectDir(p, at.rel, false)
         const ignored = (o: string): boolean => at.ignoredOutputs?.has(o) ?? true
         if (
@@ -207,9 +207,8 @@ export function expandNxInputs(
       }
       if (typeof o.json === 'string') {
         // `{ json, fields }` hashes only those fields; the whole file is a
-        // superset. Reported and dropped, a `compilerOptions` edit to the
-        // root tsconfig.json was a hit where Nx re-ran (@nx/vitest infers
-        // it, 2026-09-28).
+        // superset. Reported and dropped, a `compilerOptions` edit to the root
+        // tsconfig.json was a hit where Nx re-ran (@nx/vitest infers it).
         expand(o.json.includes('{') ? o.json : `{workspaceRoot}/${o.json}`, seen)
         return
       }
@@ -235,11 +234,11 @@ export function expandNxInputs(
         )
         return
       }
-      // Nx hashes the outputs of the tasks this one depends on; vx folds
-      // those tasks' keys (their inputs, transitively) through `dependsOn`,
-      // and an output follows from its inputs. Nothing to map, and the todo
-      // it was sat on 881 tasks of three real Nx repos (G-49).
-      // The mapper checks an edge is left to carry them.
+      // Nx hashes the outputs of the tasks this one depends on; vx folds those
+      // tasks' keys (their inputs, transitively) through `dependsOn`, and an
+      // output follows from its inputs. Nothing to map, and the todo it was sat
+      // on 881 tasks of three real Nx repos. The mapper checks an edge is left
+      // to carry them.
       if (o.dependentTasksOutputFiles !== undefined) {
         const g = o.dependentTasksOutputFiles
         const glob = typeof g === 'string' ? g : JSON.stringify(g)
@@ -319,8 +318,8 @@ export function expandNxInputs(
   // Nx matches a project fileset with no positive glob against every project
   // file, the negations taken out: nx-recipes' `noMarkdown` is
   // `["!{projectRoot}/**/*.md"]`, and a `.tsx` edit re-runs its build while a
-  // `.md` edit hits (nx 17.1.3, 2026-10-01). Mapped as written, core refused
-  // the negation-only list and no task of the workspace ran.
+  // `.md` edit hits (nx 17.1.3). Mapped as written, core refused the
+  // negation-only list and no task of the workspace ran.
   if (into.files.length > 0 && into.files.every((f) => f.startsWith('!')))
     into.files.unshift('**/*')
 }

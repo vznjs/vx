@@ -8,16 +8,16 @@ import { relPosix } from '../paths.js'
 /** Turbo's name for the workspace root in `//#task` and `extends`. */
 export const ROOT = '//'
 
-// Turbo 2's framework inference: a package that depends on a framework
-// has its variables hashed into its tasks and passed to them, with
-// nothing in turbo.json saying so. vx env names are explicit, so the
-// variables were stripped in silence and a build that inlines them
-// (Next's `NEXT_PUBLIC_*`) read empty values (item 940). A live mapping
-// (`envNames`) infers them as Turbo does; the migrate CLI lists the names
-// the package's own files spell (`sourceNames`) and says so in a note.
-// Turbo's own table (`packages/turbo-types/src/json/frameworks.json`),
-// in its order: a package takes the FIRST framework it matches, `all`
-// needing every dependency and `some` any one.
+// Turbo 2's framework inference: a package that depends on a framework has its
+// variables hashed into its tasks and passed to them, with nothing in
+// turbo.json saying so. vx env names are explicit, so the variables were
+// stripped in silence and a build that inlines them (Next's `NEXT_PUBLIC_*`)
+// read empty values. A live mapping (`envNames`) infers them as Turbo does; the
+// migrate CLI lists the names the package's own files spell (`sourceNames`) and
+// says so in a note. Turbo's own table
+// (`packages/turbo-types/src/json/frameworks.json`), in its order: a package
+// takes the FIRST framework it matches, `all` needing every dependency and
+// `some` any one.
 const NITRO_ENV = [
   'NITRO_*',
   'SERVER_*',
@@ -96,8 +96,8 @@ export const ENV_CONDITION_KEYS: readonly string[] = FRAMEWORK_ENV.flatMap((f) =
   (f.conditionals ?? []).map((c) => c.key),
 )
 
-// Turbo's own env, from crates/turborepo-env (2026-10-27, edace4621): the
-// promise is a Turbo repo run unchanged, so these mirror it exactly.
+// Turbo's own env, from crates/turborepo-env (edace4621): the promise is a
+// Turbo repo run unchanged, so these mirror it exactly.
 /** `DEFAULT_ENV_VARS`: hashed into every task as if listed in `globalEnv` (a `!` there takes them back). */
 export const TURBO_DEFAULT_ENV: readonly string[] = ['VERCEL_ANALYTICS_ID', 'VERCEL_TARGET_ENV']
 /** `BUILTIN_PASS_THROUGH_ENV`: passed to every task, never hashed. */
@@ -207,8 +207,8 @@ export function envNamesThatMap(configs: readonly string[], names: readonly stri
 /**
  * A directory's Turbo config: `turbo.json`, else `turbo.jsonc` (Turbo 2.5+
  * reads either). Only `turbo.json` was looked for, so a `turbo.jsonc` root
- * failed the run with ENOENT and a package's `turbo.jsonc` overlay was
- * skipped in silence — its `inputs` then keyed nothing (item 938).
+ * failed the run with ENOENT and a package's `turbo.jsonc` overlay was skipped
+ * in silence — its `inputs` then keyed nothing.
  */
 export async function turboConfigFile(dir: string): Promise<string | null> {
   for (const name of ['turbo.json', 'turbo.jsonc']) {

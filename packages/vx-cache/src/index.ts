@@ -2,7 +2,7 @@
 // the vx-cache protocol (`@vzn/vx-cache-server`, its PROTOCOL.md, /v1).
 // Nothing is on by default: declare it in `.vx/workspace.ts` with the
 // server's URL, the CI issuer and the repository, which every request
-// names by their hashes (2026-10-25: the user names them, nothing
+// names by their hashes (the user names them, nothing
 // guesses). A CI job's requests carry its OIDC token and write; with no
 // token it reads only, from a server with `READ_ACCESS=public`. Every read
 // names exact scopes: the run's branch, then the branches it reads after it.
@@ -31,11 +31,11 @@ export interface VxCacheOptions {
   /** … and for an upload (default 60 s): its bytes must leave at 1 MiB a second over each, then its answer come within one. */
   uploadTimeoutMs?: number
   /**
-   * Headers every request to the server carries, for a proxy in front of
-   * it (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
-   * Access service token, 2026-10-25). An unset value is left out;
-   * `authorization`, `content-type`, `content-length` and the `vx-*` names
-   * the request sets are refused.
+   * Headers every request to the server carries, for a proxy in front of it (`{
+   * 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an Access
+   * service token). An unset value is left out; `authorization`,
+   * `content-type`, `content-length` and the `vx-*` names the request sets are
+   * refused.
    */
   headers?: Record<string, string | undefined>
 }
@@ -103,11 +103,11 @@ function proxyHeaders(
   return out
 }
 
-/** An issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (2026-10-25). */
+/** An issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value. */
 const hashOf = (text: string): string =>
   new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
 
-/** A ref's scope on the wire: the ref, percent-encoded, its folder's name on the server (2026-11-03). */
+/** A ref's scope on the wire: the ref, percent-encoded, its folder's name on the server. */
 const scopeOf = (ref: string): string => encodeURIComponent(ref)
 
 /** The longest scope a server takes (PROTOCOL.md § Keys), so a folder's name fits a bucket's key. */
@@ -154,9 +154,9 @@ const SMALL_ANSWER_BYTES = 64 * 1024
 const CHECK_BYTES_PER_HASH = 1024
 
 /**
- * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
- * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
- * overwrote the line before (core's `printable`, L-31).
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words reach
+ * the terminal, and an `ESC ]` or `\r` in them retitled it or overwrote the
+ * line before (core's `printable`).
  */
 const printable = (s: string): string =>
   // oxlint-disable-next-line no-control-regex
@@ -237,9 +237,8 @@ const SLICE_BYTES = 64 * 1024
 /**
  * At least `FLOOR_BYTES_PER_S` over each `ms`, or `controller` aborts
  * naming the pace. A whole-body deadline failed a big artifact still
- * arriving at a steady pace (a 30 s cut, CI 2026-10-25); a gap-only one
- * let a trickle hold a run 19 minutes (a byte now and then reset it, CI
- * 2026-10-28).
+ * arriving at a steady pace (a 30 s cut on CI); a gap-only one
+ * let a trickle hold a run 19 minutes (a byte now and then reset it).
  */
 function pace(
   controller: AbortController,
@@ -416,11 +415,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
   /** The ref a check found each hash under, which its download names. */
   private readonly found = new Map<string, string>()
   /**
-   * The limits the server's last answer named; none before its first.
-   * Nothing is guessed, nor asked apart: a check before any answer goes
-   * whole, and one refused for its size is sent again in the chunks its
-   * refusal names (`/v1/capabilities` cost every run a request, one
-   * round-trip before its first check, 2026-11-06).
+   * The limits the server's last answer named; none before its first. Nothing
+   * is guessed, nor asked apart: a check before any answer goes whole, and one
+   * refused for its size is sent again in the chunks its refusal names
+   * (`/v1/capabilities` cost every run a request, one round-trip before its
+   * first check).
    */
   private limits: Limits | undefined
   /** Where the layer says what is no failure of a request: core's `ctx.warn`. */
@@ -485,8 +484,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (this.idToken !== undefined && Date.now() < this.idToken.exp - marginMs) {
       return this.idToken.jwt
     }
-    // One ask for the requests that need it at once: each asked its own,
-    // a check and two uploads three (2026-10-26).
+    // One ask for the requests that need it at once: each asked its own, a
+    // check and two uploads three.
     this.asking ??= this.askGithub().finally(() => (this.asking = undefined))
     return this.asking
   }
@@ -809,11 +808,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /**
-   * The scope a check found it under, else every ref's in order in one
-   * request, the first holding it answering: one by one, a branch's run
-   * paid a round-trip and a 404 for its own scope before each download of
-   * main's (2026-11-06). More refs than the server's `maxCheckHashes` go
-   * in several, in order.
+   * The scope a check found it under, else every ref's in order in one request,
+   * the first holding it answering: one by one, a branch's run paid a
+   * round-trip and a 404 for its own scope before each download of main's. More
+   * refs than the server's `maxCheckHashes` go in several, in order.
    */
   get(hash: string): Promise<{ body: Response; durationMs: undefined } | null | undefined> {
     return this.guard(this.download(hash))
@@ -898,22 +896,21 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /**
-   * One artifact by `PUT`, its bytes reaching the bucket untouched
-   * (2026-10-25: no batch upload; a batch passes through the server's code,
-   * which on Workers costs CPU by the byte, and a 40 MB one ran out of it).
-   * The server answers one its scope holds before reading the bytes. As
-   * many at once as core sends (`cache.concurrency.upload`): a cap of four
-   * here held a 1,500-task cold run 11 s past its last task on a remote
-   * 40 ms away, the setting unheard.
+   * One artifact by `PUT`, its bytes reaching the bucket untouched (no batch
+   * upload; a batch passes through the server's code, which on Workers costs
+   * CPU by the byte, and a 40 MB one ran out of it). The server answers one its
+   * scope holds before reading the bytes. As many at once as core sends
+   * (`cache.concurrency.upload`): a cap of four here held a 1,500-task cold run
+   * 11 s past its last task on a remote 40 ms away, the setting unheard.
    */
   private async upload(item: { hash: string; body: Blob }): Promise<void | false> {
     // Queued before the remote or its writes were turned off.
     if (this.disabled || this.writesRefused) return false
     // Sent again after a 5xx, a 429 or a reset connection, up to three tries,
     // as the token's ask: the server failing to read GitHub's keys once, and
-    // one ECONNRESET, each lost a DTE worker's entry (2026-10-29). A PUT
-    // names its hash, so a second one stores the same bytes. A deadline is
-    // not retried: the upload already had its time.
+    // one ECONNRESET, each lost a DTE worker's entry. A PUT names its hash, so
+    // a second one stores the same bytes. A deadline is not retried: the upload
+    // already had its time.
     for (let attempt = 1; ; attempt++) {
       let res: Response | undefined
       try {
@@ -1080,7 +1077,7 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
       const config = resolveVxCacheConfig(options)
       if (config === undefined) return undefined
       const lent = ctx.lent?.() !== undefined
-      // A GitLab job with no `id_tokens` entry read only, unsaid (2026-10-26).
+      // A GitLab job with no `id_tokens` entry read only, unsaid.
       if (
         !hasCiToken(Bun.env, lent) &&
         (Bun.env.GITHUB_ACTIONS === 'true' || Bun.env.GITLAB_CI === 'true')

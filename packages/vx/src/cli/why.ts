@@ -152,8 +152,8 @@ function suggest(query: string, ids: readonly string[], invoked: boolean): strin
 /**
  * Resolve a positional target to a full `project#task` id against the runs
  * table. A `pkg#task` form is used as-is; a bare task name matches every
- * project that ran it — unique → resolved, several → the project the cwd
- * sits in, as `vx run build` there picks (X-18), else an error listing them.
+ * project that ran it — unique → resolved, several → the project the cwd sits
+ * in, as `vx run build` there picks, else an error listing them.
  */
 async function resolveTarget(
   cache: Cache,
@@ -255,11 +255,11 @@ function restoredWord(r: { restored: boolean | null }): string {
 }
 
 /**
- * One run of the task, the same for `this run` and `previous`. A hit's
- * status (`cache-hit`, `cache-hit-remote`) already names it and its tier,
- * and `up-to-date` / `restored` says what it did to the disk; only an
- * executed run needs the word. A skipped task never ran and has no key: it
- * read `skipped · executed · key ` (item 898).
+ * One run of the task, the same for `this run` and `previous`. A hit's status
+ * (`cache-hit`, `cache-hit-remote`) already names it and its tier, and
+ * `up-to-date` / `restored` says what it did to the disk; only an executed run
+ * needs the word. A skipped task never ran and has no key: it read `skipped ·
+ * executed · key `.
  */
 function runFacts(r: {
   startedAt: number
@@ -302,7 +302,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     let runId: string | null
     if (parsed.runId !== undefined) {
       runId = resolveRunId(db, parsed.runId, 'vx why')
-      // An unknown id read as a known run missing the task (X-18).
+      // An unknown id read as a known run missing the task.
       if (runId === null) {
         throw new UserError(
           `vx why: no recorded run ${parsed.runId} (vx last --list shows recent runs)`,
@@ -525,9 +525,9 @@ const CHAIN_SHOWN = 6
 const PIECE_BYTES = 1 << 20
 
 /**
- * `{ ...head, roots, writers }` as one `JSON.stringify` of it gives, in
- * pieces: every root carries its whole chain, so a 20,000-task chain's
- * roots hold 2×10⁸ ids, more than one string holds.
+ * `{...head, roots, writers }` as one `JSON.stringify` of it gives, in pieces:
+ * every root carries its whole chain, so a 20,000-task chain's roots hold 2×10⁸
+ * ids, more than one string holds.
  */
 function* jsonPieces(
   head: object,

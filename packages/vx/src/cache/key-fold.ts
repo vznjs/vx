@@ -1,146 +1,127 @@
 // The cache key, derived: `foldKey` is the whole of what `Cache.key` computes,
 // with the two things it read off the class (the file hasher and the
-// workspace-relative path) passed in. Nothing here touches a store, so the
-// fold runs wherever xxh3 does: the CLI and a remote layer (item 691).
+// workspace-relative path) passed in. Nothing here touches a store, so the fold
+// runs wherever xxh3 does: the CLI and a remote layer.
 
 import { xxh3, xxh3hex } from '../util/index.js'
 import type { CacheKeyInput } from './layer.js'
 
-// v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
-// Local and remote layers transport the SAME tar.zst bytes — no
-// separate stage/meta.json/tar.gz dance for remote, no
-// `cache-archive.ts`. stderr is no longer cached: we only cache
-// successful runs and stderr is rarely meaningful on success.
-// v19: '^task' dependsOn expansion switched from transitive-deps to
-// nearest-holder frontier — upstream-hash sets shrink, so keys change.
-// v20: input-file content hashes switched from xxh3 to git blob OIDs
-// (Turbo parity). Clean tracked files take their OID straight from
-// the index (harvested by the bulk `git ls-files -s`); dirty /
-// untracked files get the identical OID computed in-process. Every
-// file's hash bytes change → bump. SCHEMA_VERSION moves with it:
-// pre-v20 `file_hashes.content_hash` rows hold xxh3 digests that
-// must not leak into the OID domain via the mtime+size memo.
-// v22: reverted the v21 output-fold "early cutoff". Downstream keys
-// fold the upstream's INPUT key (its task hash) again — pure-input
-// transitive hashing (Turbo/Nx model). No output content participates
-// in any cache key. SCHEMA v21 drops the now-unused outputs_hash
-// column. Early cutoff removed (an upstream that re-emits identical
-// output still re-runs dependents) — rare, not worth the cascade.
-// v23: fold inputs.runtime / workspaceRuntime command output into
-// the key (two namespaced sections after env-values). Command strings
-// live in the resolved config (frozen by `vx lock`); the OUTPUT is
-// resolved live every run, so it stays correct under the lock. No
-// SCHEMA bump — only Cache.key derivation changed.
-// v24: .vx/projects.lock.json added to the always-ignored input set (cache/
-// inputs.ts ALWAYS_IGNORE). A task whose globs matched the root
-// lockfile (broad `**/*` on the root project) drops it from the hashed
-// file set, so those keys change; tasks that never matched it are
-// byte-identical. No SCHEMA bump — only the input file set changed.
+// v17: artifact carries only logs + outputs (stdout + outputs/<rel>). Local and
+// remote layers transport the SAME tar.zst bytes — no separate
+// stage/meta.json/tar.gz dance for remote, no `cache-archive.ts`. stderr is no
+// longer cached: we only cache successful runs and stderr is rarely meaningful
+// on success. v19: '^task' dependsOn expansion switched from transitive-deps to
+// nearest-holder frontier — upstream-hash sets shrink, so keys change. v20:
+// input-file content hashes switched from xxh3 to git blob OIDs (Turbo parity).
+// Clean tracked files take their OID straight from the index (harvested by the
+// bulk `git ls-files -s`); dirty / untracked files get the identical OID
+// computed in-process. Every file's hash bytes change → bump. SCHEMA_VERSION
+// moves with it: pre-v20 `file_hashes.content_hash` rows hold xxh3 digests that
+// must not leak into the OID domain via the mtime+size memo. v22: reverted the
+// v21 output-fold "early cutoff". Downstream keys fold the upstream's INPUT key
+// (its task hash) again — pure-input transitive hashing (Turbo/Nx model). No
+// output content participates in any cache key. SCHEMA v21 drops the now-unused
+// outputs_hash column. Early cutoff removed (an upstream that re-emits
+// identical output still re-runs dependents) — rare, not worth the cascade.
+// v23: fold inputs.runtime / workspaceRuntime command output into the key (two
+// namespaced sections after env-values). Command strings live in the resolved
+// config (frozen by `vx lock`); the OUTPUT is resolved live every run, so it
+// stays correct under the lock. No SCHEMA bump — only Cache.key derivation
+// changed. v24:.vx/projects.lock.json added to the always-ignored input set
+// (cache/ inputs.ts ALWAYS_IGNORE). A task whose globs matched the root
+// lockfile (broad `**/*` on the root project) drops it from the hashed file
+// set, so those keys change; tasks that never matched it are byte-identical. No
+// SCHEMA bump — only the input file set changed.
 //
-// CACHE_VERSION stays v24 through the Tier-3 schema roll (SCHEMA v22).
-// Tier 3 persists the very components already fed to `Cache.key()` —
-// it adds nothing to, reorders nothing in, and reweights nothing
-// inside the key fold (the new `captureInto` sink is a pure
-// side-channel). A task's hash is byte-identical before and after, so
-// existing artifacts stay valid and there is no cache-version bump.
-// v25: the ARTIFACT BYTES are wrong in every existing entry, while the
-// key that addresses them is unchanged — the one situation a version
-// bump exists for. Two defects: (a) `packArtifact` staged outputs with
-// `Bun.write`, which does not carry the source mode, so every artifact
-// records 0644 and a cache hit strips the executable bit off any binary
-// or generated script; (b) it packed `--format=ustar`, which splits a
-// name over 100 bytes into prefix+name, and the reader read only `name`
-// — so those entries lost their `outputs/` prefix and were silently
-// dropped from both the restore and the output_files index. Neither is
-// self-healing: the stored bytes/headers are already wrong, so without a
-// new namespace the fixed code would keep replaying them forever.
-// v26: same situation, different producer. A task whose child was killed by
-// a shutdown signal reported `aborted`, but `aborted` did not propagate to
-// dependents — so a dependent ran against PARTIAL outputs, succeeded, and
-// cached what it built. The fold takes the upstream's INPUT key, which a
-// signal does not change, so that entry sits under exactly the key a healthy
-// run derives and replays forever as a green hit. Fixing the propagation
-// stops new poison but cannot reach entries already written, and a
+// CACHE_VERSION stays v24 through the Tier-3 schema roll (SCHEMA v22). Tier 3
+// persists the very components already fed to `Cache.key()` — it adds nothing
+// to, reorders nothing in, and reweights nothing inside the key fold (the new
+// `captureInto` sink is a pure side-channel). A task's hash is byte-identical
+// before and after, so existing artifacts stay valid and there is no
+// cache-version bump. v25: the ARTIFACT BYTES are wrong in every existing
+// entry, while the key that addresses them is unchanged — the one situation a
+// version bump exists for. Two defects: (a) `packArtifact` staged outputs with
+// `Bun.write`, which does not carry the source mode, so every artifact records
+// 0644 and a cache hit strips the executable bit off any binary or generated
+// script; (b) it packed `--format=ustar`, which splits a name over 100 bytes
+// into prefix+name, and the reader read only `name` — so those entries lost
+// their `outputs/` prefix and were silently dropped from both the restore and
+// the output_files index. Neither is self-healing: the stored bytes/headers are
+// already wrong, so without a new namespace the fixed code would keep replaying
+// them forever. v26: same situation, different producer. A task whose child was
+// killed by a shutdown signal reported `aborted`, but `aborted` did not
+// propagate to dependents — so a dependent ran against PARTIAL outputs,
+// succeeded, and cached what it built. The fold takes the upstream's INPUT key,
+// which a signal does not change, so that entry sits under exactly the key a
+// healthy run derives and replays forever as a green hit. Fixing the
+// propagation stops new poison but cannot reach entries already written, and a
 // `LayeredCache` uploads them, so the reach is a whole team's shared cache
-// rather than one developer's disk. Pre-alpha, so one cold rebuild is the
-// cheap side of that trade.
-// v28: the same shape again (item 667). An output glob over a bracket route
-// directory (`app/[id]/page.js`) was read as a character class, so its
-// entries saved nothing (or the class's namesakes) under a key the fix
-// leaves unchanged: the glob text is what folds. Read literally, the first
-// hit on such an entry cleaned the route and restored nothing, green.
-// v29: every key moves (item 682). The seed-chained fold carried only 32
-// bits of state (Bun's xxHash3 reads the low half of its seed), so two
-// input sets could share a key; `xxh3` now feeds the seed forward. The
-// old keys were wrong, not their bytes, so this is self-healing; the bump
-// is for the first run's notice, since every entry misses once.
-// v30: stored bytes wrong under an unchanged key (item 720). npm and Yarn
-// link every workspace package at the root, the task's own included, and
-// the sandbox granted that link's target whole: a sandboxed task read an
-// undeclared file of its own project unreported and saved what it built.
-// The fix withholds the self-link, but the key never saw the file, so an
-// entry saved before it hits forever when only that file changes.
-// v31: the same shape for a sibling (item 726). A cached sandboxed task was
-// granted every linked workspace package, so it read a sibling its key
-// never folded and saved what it built. The fix withholds that link unless
-// the key answers for the package, but an entry saved before it still hits
-// after the sibling changes (probed: the old output replayed).
-// v32: an artifact saved before non-UTF-8 names were refused lacks that
-// output under an unchanged key (item 739).
-// v33: an entry saved after an input changed under a running task sits
-// under the key the fixed code derives once the tree is back (item 743).
-// v34: the same for an in-run lockfile rewrite (item 750).
-// v35: the sidecar records the key and ingest refuses a mismatch; a v34
-// artifact records none (item 943).
-// v36: each artifact ends in a `.vx-sum` CRC-32 of its entries, checked on
-// scan and restore; a v35 artifact has none (L-19).
-// v37: an entry saved while `git status` hid a deletion (paired as an
-// unmerged path's rename source) holds output built without a file its key
-// folds (A-59).
-// v38: an entry saved while the key folded a filtered LF blob for CRLF
-// bytes on disk, the filter since removed, holds the CRLF build (A-60).
-// v39: an entry saved while a gitlink without `.git` held files the key
-// never listed sits under the key of that directory empty (A-61).
-// v42: the stored output is both streams in order (orchestrator/output-log.ts);
-// a v41 entry holds stdout alone and replays no stderr.
-// v43: a scoped run stores under the scope's key locally too (F4,
-// 2026-10-14); a v42 entry a scoped run left locally sits under the default key.
-// v43 stays when core stopped folding package files (2026-10-14): the
-// `workspace:` and `pkg:` parts left the chain, so every key moved and no
-// unchanged key holds wrong bytes.
-// v44: the sidecar lists the empty directories under the outputs; a v43
-// artifact holds none and a hit left them out (Growth's parity, 2026-10-16).
-// v45: the sidecar lists the symlinks under the outputs and a hit makes
-// them; a v44 artifact holds a link as a copy of its target (2026-10-16).
-// v46: vx's names are reserved only at the project root; a v45 artifact
-// left out a build's own `dist/.git/**`, `dist/.vx/**` and nested
-// `vx.lock.json` (Growth's parity, 2026-10-17).
-// v47: the local store keeps plain files (`cache.store`).
-// v48: a task glob is standard again (2026-10-18): `app/[id]/page.js` is
-// a class, and a v47 entry under its unchanged key holds the literal route.
-// v49: each brace alternative is read alone (2026-10-28): a v48 entry for
-// `outputs: ['{dist,lib}']` under its unchanged key holds nothing.
-// v49, on another branch at once: the sidecar keeps the mode of an output
-// directory that withholds a permission 0755 grants, and a hit makes it so;
-// a v48 artifact keeps none, and a hit gave `chmod 700 dist/keys` back as 0755.
-// v50: both v49 changes in one build (2026-10-29): a v49 entry was written
-// by a vx that had only one of them.
-// v54: an additive task's entry holds what it found as its own save or
-// restore left it (item 588); a v53 one an incremental emitter saved
-// lacks the files it did not rewrite.
-// v55: a run that removed a committed file under its outputs saves nothing
-// (2026-11-11); a v54 entry of one holds no removal, and its hit left the
-// file standing.
-// v56: an entry keeps a task's output bytes that are not UTF-8 as written
-// (2026-11-12); a v55 one holds U+FFFD for them, and its hit replayed that.
+// rather than one developer's disk. Pre-alpha, so one cold rebuild is the cheap
+// side of that trade. v28: the same shape again. An output glob over a bracket
+// route directory (`app/[id]/page.js`) was read as a character class, so its
+// entries saved nothing (or the class's namesakes) under a key the fix leaves
+// unchanged: the glob text is what folds. Read literally, the first hit on such
+// an entry cleaned the route and restored nothing, green. v29: every key moves.
+// The seed-chained fold carried only 32 bits of state (Bun's xxHash3 reads the
+// low half of its seed), so two input sets could share a key; `xxh3` now feeds
+// the seed forward. The old keys were wrong, not their bytes, so this is
+// self-healing; the bump is for the first run's notice, since every entry
+// misses once. v30: stored bytes wrong under an unchanged key. npm and Yarn
+// link every workspace package at the root, the task's own included, and the
+// sandbox granted that link's target whole: a sandboxed task read an undeclared
+// file of its own project unreported and saved what it built. The fix withholds
+// the self-link, but the key never saw the file, so an entry saved before it
+// hits forever when only that file changes. v31: the same shape for a sibling.
+// A cached sandboxed task was granted every linked workspace package, so it
+// read a sibling its key never folded and saved what it built. The fix
+// withholds that link unless the key answers for the package, but an entry
+// saved before it still hits after the sibling changes (probed: the old output
+// replayed). v32: an artifact saved before non-UTF-8 names were refused lacks
+// that output under an unchanged key. v33: an entry saved after an input
+// changed under a running task sits under the key the fixed code derives once
+// the tree is back. v34: the same for an in-run lockfile rewrite. v35: the
+// sidecar records the key and ingest refuses a mismatch; a v34 artifact records
+// none. v36: each artifact ends in a `.vx-sum` CRC-32 of its entries, checked
+// on scan and restore; a v35 artifact has none. v37: an entry saved while `git
+// status` hid a deletion (paired as an unmerged path's rename source) holds
+// output built without a file its key folds. v38: an entry saved while the key
+// folded a filtered LF blob for CRLF bytes on disk, the filter since removed,
+// holds the CRLF build. v39: an entry saved while a gitlink without `.git` held
+// files the key never listed sits under the key of that directory empty. v42:
+// the stored output is both streams in order (orchestrator/output-log.ts); a
+// v41 entry holds stdout alone and replays no stderr. v43: a scoped run stores
+// under the scope's key locally too (F4); a v42 entry a scoped run left locally
+// sits under the default key. v43 stays when core stopped folding package
+// files: the `workspace:` and `pkg:` parts left the chain, so every key moved
+// and no unchanged key holds wrong bytes. v44: the sidecar lists the empty
+// directories under the outputs; a v43 artifact holds none and a hit left them
+// out (Growth's parity). v45: the sidecar lists the symlinks under the outputs
+// and a hit makes them; a v44 artifact holds a link as a copy of its target.
+// v46: vx's names are reserved only at the project root; a v45 artifact left
+// out a build's own `dist/.git/**`, `dist/.vx/**` and nested `vx.lock.json`
+// (Growth's parity). v47: the local store keeps plain files (`cache.store`).
+// v48: a task glob is standard again: `app/[id]/page.js` is a class, and a v47
+// entry under its unchanged key holds the literal route. v49: each brace
+// alternative is read alone: a v48 entry for `outputs: ['{dist,lib}']` under
+// its unchanged key holds nothing. v49, on another branch at once: the sidecar
+// keeps the mode of an output directory that withholds a permission 0755
+// grants, and a hit makes it so; a v48 artifact keeps none, and a hit gave
+// `chmod 700 dist/keys` back as 0755. v50: both v49 changes in one build: a v49
+// entry was written by a vx that had only one of them. v54: an additive task's
+// entry holds what it found as its own save or restore left it; a v53 one an
+// incremental emitter saved lacks the files it did not rewrite. v55: a run that
+// removed a committed file under its outputs saves nothing; a v54 entry of one
+// holds no removal, and its hit left the file standing. v56: an entry keeps a
+// task's output bytes that are not UTF-8 as written; a v55 one holds U+FFFD for
+// them, and its hit replayed that.
 export const CACHE_VERSION = 'vx-cache-v56'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its
- * hash: an upstream task that deletes a file its dependant's globs matched
- * (a `clean` ahead of a `build`) failed the dependant as an internal error on
- * every run (A-55). Not an identity any file has, so a run that finds the
- * file keys apart from one that does not.
+ * hash: an upstream task that deletes a file its dependant's globs matched (a
+ * `clean` ahead of a `build`) failed the dependant as an internal error on
+ * every run. Not an identity any file has, so a run that finds the file keys
+ * apart from one that does not.
  */
 export const ABSENT_INPUT = 'absent'
 
@@ -162,9 +143,8 @@ export async function foldKey(
   hashFile: (file: string) => Promise<string>,
   relOf: (file: string) => string,
   /**
-   * The digest a value-bearing capture row holds. `Cache` keys it with a
-   * salt of its own (L-4); the default is for a caller that persists and
-   * prints nothing.
+   * The digest a value-bearing capture row holds. `Cache` keys it with a salt
+   * of its own; the default is for a caller that persists and prints nothing.
    */
   digestValue: (value: string) => string = xxh3hex,
   /**
@@ -177,12 +157,12 @@ export async function foldKey(
   const cap = input.captureInto
   let h = foldHead(input, digestValue)
 
-  // `resolveFiles` already returns its paths sorted, and a copy-and-sort
-  // of three thousand strings per task is not free: 7.4 ms of a 44-task
-  // run here (2026-09-20). A linear order check costs one comparison per
-  // file instead of n log n, and a caller that hands over an unsorted set
-  // — a plugin's own input list — still gets one. `>` on strings compares
-  // UTF-16 code units, which is what a comparator-less `sort` does.
+  // `resolveFiles` already returns its paths sorted, and a copy-and-sort of
+  // three thousand strings per task is not free: 7.4 ms of a 44-task run here.
+  // A linear order check costs one comparison per file instead of n log n, and
+  // a caller that hands over an unsorted set — a plugin's own input list —
+  // still gets one. `>` on strings compares UTF-16 code units, which is what a
+  // comparator-less `sort` does.
   let sortedInputs: readonly string[] = input.inputFiles
   for (let i = 1; i < sortedInputs.length; i++) {
     if (sortedInputs[i - 1]! > sortedInputs[i]!) {
@@ -268,24 +248,23 @@ export function foldHead(
   h = xxh3(`task:${input.taskId}`, h)
   h = xxh3(`config:${input.taskConfigHash}`, h)
   if (cap) {
-    // Recorded so `vx why` can name a key that moved only because vx
-    // keys differently now (an upgrade): unrecorded, every task's miss
-    // read as "inputs differ" with no input changed (X-142).
+    // Recorded so `vx why` can name a key that moved only because vx keys
+    // differently now (an upgrade): unrecorded, every task's miss read as
+    // "inputs differ" with no input changed.
     cap.push({ kind: 'format', name: 'cache-version', hash: CACHE_VERSION })
     cap.push({ kind: 'config', name: 'config', hash: input.taskConfigHash })
   }
 
-  // NOTE on `cap` (entry_inputs capture): the `hash` field stores a
-  // DIGEST of each component, never the raw value. For value-bearing kinds
-  // (env, runtime, ws-runtime, forward) the payload is a secret or
-  // sensitive string (API keys via inputs.env, runtime-command
-  // output, args after `--`), so we push `digestValue(v)` — the diff
-  // consumer only needs to know whether a component CHANGED, which a
-  // digest preserves losslessly. cache.db must never hold plaintext
-  // secrets at rest, and `vx why` prints the digest, so it is salted: an
-  // unkeyed 64-bit xxh3 in a public CI log gave a short secret away to a
-  // brute force (L-4). The cache KEY (`h`) folds the plaintext separately below and is
-  // unaffected.
+  // NOTE on `cap` (entry_inputs capture): the `hash` field stores a DIGEST of
+  // each component, never the raw value. For value-bearing kinds (env, runtime,
+  // ws-runtime, forward) the payload is a secret or sensitive string (API keys
+  // via inputs.env, runtime-command output, args after `--`), so we push
+  // `digestValue(v)` — the diff consumer only needs to know whether a component
+  // CHANGED, which a digest preserves losslessly. cache.db must never hold
+  // plaintext secrets at rest, and `vx why` prints the digest, so it is salted:
+  // an unkeyed 64-bit xxh3 in a public CI log gave a short secret away to a
+  // brute force. The cache KEY (`h`) folds the plaintext separately below and
+  // is unaffected.
   const forwarded = input.forwardArgs ?? []
   h = xxh3(`forward-args:${forwarded.length}`, h)
   for (const a of forwarded) h = xxh3(a, h)

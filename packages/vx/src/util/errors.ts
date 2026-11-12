@@ -143,12 +143,11 @@ export function thrownMessage(err: unknown): string {
 /**
  * `instanceof UserError`, plus the same class arriving from ANOTHER COPY of
  * core. A compiled `vx` binary carries core inside it while a plugin in the
- * workspace imports `@vzn/vx` from node_modules, so a plugin's `UserError`
- * is a different class object and `instanceof` is false — a plugin verb's
- * "bad flag --x" printed as `UserError: bad flag --x` with a stack, and a
- * REAPI refusal would have read as an "internal error" (reproduced through
- * the real binary, 2026-09-03). The name is the contract that survives the
- * copy boundary.
+ * workspace imports `@vzn/vx` from node_modules, so a plugin's `UserError` is a
+ * different class object and `instanceof` is false — a plugin verb's "bad flag
+ * --x" printed as `UserError: bad flag --x` with a stack, and a REAPI refusal
+ * would have read as an "internal error" (reproduced through the real binary).
+ * The name is the contract that survives the copy boundary.
  */
 export function isUserError(err: unknown): err is UserError {
   return err instanceof UserError || (err instanceof Error && err.name === 'UserError')
@@ -237,9 +236,9 @@ export function isExecutableMissing(err: unknown): boolean {
 
 /**
  * The one refusal for a git that is not on PATH, wherever vx needed it — a
- * `--affected` base, the input enumeration. A minimal
- * image without git met a stack from `defaultAffectedBase` before
- * (2026-09-16); the enumeration had this line and the others did not.
+ * `--affected` base, the input enumeration. A minimal image without git met a
+ * stack from `defaultAffectedBase` before; the enumeration had this line and
+ * the others did not.
  */
 export function gitSpawnRefusal(cwd: string): UserError {
   return new UserError(
@@ -249,9 +248,9 @@ export function gitSpawnRefusal(cwd: string): UserError {
 }
 
 /**
- * The one refusal for a directory git does not track, wherever vx needed
- * it: `--affected` named a missing base there, as a shallow clone, while
- * a plain run already said this (X-52).
+ * The one refusal for a directory git does not track, wherever vx needed it:
+ * `--affected` named a missing base there, as a shallow clone, while a plain
+ * run already said this.
  */
 export function notAWorkTree(cwd: string, stderr = ''): UserError {
   return new UserError(
@@ -262,10 +261,10 @@ export function notAWorkTree(cwd: string, stderr = ''): UserError {
 }
 
 /**
- * A git that ran in `cwd` and failed: no repository there is
- * `notAWorkTree`, anything else (a corrupt index, a missing object) is git's
- * own failure, `VX_E_GIT`. Every failed `ls-files` read as "not a work
- * tree", telling a user with a broken index to `git init` (2026-10-28).
+ * A git that ran in `cwd` and failed: no repository there is `notAWorkTree`,
+ * anything else (a corrupt index, a missing object) is git's own failure,
+ * `VX_E_GIT`. Every failed `ls-files` read as "not a work tree", telling a user
+ * with a broken index to `git init`.
  */
 export function gitFailure(cwd: string, args: string, exitCode: number, stderr: string): UserError {
   if (/not a git repository/i.test(stderr)) return notAWorkTree(cwd, stderr)
@@ -278,12 +277,12 @@ export function gitFailure(cwd: string, args: string, exitCode: number, stderr: 
 export const TMPDIR_HINT = 'point TMPDIR at a writable directory'
 
 /**
- * A temp-directory refusal: the path is under `os.tmpdir()` and the error
- * says it is missing, a file, or not writable. The knob is TMPDIR, and a
- * line that names the path should name the knob — a minimal image's
- * sandboxed task said "EACCES … mkdtemp '/tmp/…/srt-obs-…'" and nothing
- * else (2026-09-16). Only for a site whose path IS the temp directory by
- * construction: a workspace under /tmp would pass the path test too.
+ * A temp-directory refusal: the path is under `os.tmpdir()` and the error says
+ * it is missing, a file, or not writable. The knob is TMPDIR, and a line that
+ * names the path should name the knob — a minimal image's sandboxed task said
+ * "EACCES … mkdtemp '/tmp/…/srt-obs-…'" and nothing else. Only for a site whose
+ * path IS the temp directory by construction: a workspace under /tmp would pass
+ * the path test too.
  */
 export function isTmpdirRefusal(err: unknown): err is NodeJS.ErrnoException {
   if (!(err instanceof Error)) return false

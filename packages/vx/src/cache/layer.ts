@@ -254,11 +254,11 @@ export interface CacheGetContext {
   taskId: string
   command: string
   /**
-   * The task's declared `outputs`. A remote artifact is ingested
-   * only when every file it carries is one of them: bytes off the network
-   * named `outputs/src/in.txt` or `workspace-outputs/.git/hooks/…` wrote
-   * an input and a git hook on a green `cache-hit-remote` (item 942).
-   * Absent, the names are not checked.
+   * The task's declared `outputs`. A remote artifact is ingested only when
+   * every file it carries is one of them: bytes off the network named
+   * `outputs/src/in.txt` or `workspace-outputs/.git/hooks/…` wrote an input and
+   * a git hook on a green `cache-hit-remote`. Absent, the names are not
+   * checked.
    */
   outputs?: DeclaredOutputs
 }
@@ -312,14 +312,14 @@ export function isCorruptArtifact(err: unknown): boolean {
 }
 
 /**
- * `restoreOutputs` found no artifact where the probe found one: another
- * process removed or replaced it in between — a prune or a clean for a
- * workspace sharing the cache directory, a re-save of the key. The
- * bytes are not wrong, they are gone, so the entry is a MISS and the task
- * runs (execute-task.ts); nothing about the cache needs throwing away.
- * Also thrown, with its `reason`, for an artifact whose bytes ARE wrong
- * (`CorruptArtifactError` at restore): the entry is dropped and it is a
- * miss the same way, so the task's save stores it again (A-52).
+ * `restoreOutputs` found no artifact where the probe found one: another process
+ * removed or replaced it in between — a prune or a clean for a workspace
+ * sharing the cache directory, a re-save of the key. The bytes are not wrong,
+ * they are gone, so the entry is a MISS and the task runs (execute-task.ts);
+ * nothing about the cache needs throwing away. Also thrown, with its `reason`,
+ * for an artifact whose bytes ARE wrong (`CorruptArtifactError` at restore):
+ * the entry is dropped and it is a miss the same way, so the task's save stores
+ * it again.
  */
 export class ArtifactVanishedError extends Error {
   constructor(
@@ -630,10 +630,10 @@ export interface CacheLayer {
 }
 
 /**
- * Convenience alias for the `save()` args. Used by `LayeredCache` to
- * forward call args without redeclaring the structural shape — NOT
- * part of the conceptual cache contract; consumers should call
- * `CacheLayer.save({ ... })` directly.
+ * Convenience alias for the `save()` args. Used by `LayeredCache` to forward
+ * call args without redeclaring the structural shape — NOT part of the
+ * conceptual cache contract; consumers should call `CacheLayer.save({... })`
+ * directly.
  *
  * @internal
  */

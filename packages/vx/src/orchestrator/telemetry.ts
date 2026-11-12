@@ -135,8 +135,8 @@ export interface TaskTelemetry {
    *  Additive-optional, no schema bump (the `attempts` precedent). */
   where?: string
   /** A persistent task each dependant's executor started where that ran:
-   *  part of those runs, never an execution of its own (2026-10-23:
-   *  nothing runs on a distributed run's orchestrator). Additive-optional. */
+   *  part of those runs, never an execution of its own (nothing
+   *  runs on a distributed run's orchestrator). Additive-optional. */
   carried?: true
   /** `'deferred'` when the outputs stayed remote (`--cache-download=none`).
    *  Additive-optional, same no-bump precedent as `where`. */
@@ -276,7 +276,7 @@ export interface RunSummaryRecord {
   /**
    * Tasks a shutdown signal or an embedder's abort killed once started (v3),
    * each in `tasks` as `aborted`: without the count a stopped run read as a
-   * failure with nothing failed (item 851).
+   * failure with nothing failed.
    */
   abortedCount: number
   /**
@@ -439,11 +439,11 @@ export interface TelemetrySink {
    * `run()` never returns, so the cache never closes and `vx` exits 0 on a
    * failed run.
    *
-   * `signal` aborts at that deadline. Abandoning a flush does not end its
-   * I/O: a request still in flight keeps the event loop, and so the
-   * process, alive after the run has returned — a hanging GitHub API held
-   * `vx run` open until the CI job's own timeout (item 1055). A sink passes
-   * the signal to its `fetch` (or closes its socket on it).
+   * `signal` aborts at that deadline. Abandoning a flush does not end its I/O:
+   * a request still in flight keeps the event loop, and so the process, alive
+   * after the run has returned — a hanging GitHub API held `vx run` open until
+   * the CI job's own timeout. A sink passes the signal to its `fetch` (or
+   * closes its socket on it).
    */
   flush?(signal: AbortSignal): Promise<void>
 }
@@ -539,8 +539,8 @@ export function createTelemetrySource(args: {
 }): TelemetrySource {
   const { sinks, run, warn } = args
   const runId = run.runId
-  // `name` is optional, and a nameless sink was reported as 'undefined'
-  // (item 1027): it goes by its plugin's name, else its place in the list.
+  // `name` is optional, and a nameless sink was reported as 'undefined': it
+  // goes by its plugin's name, else its place in the list.
   const label = (sink: TelemetrySink): string =>
     sink.name ?? args.owners?.get(sink) ?? `#${sinks.indexOf(sink) + 1}`
   // A sink is disabled the first time it throws — its name (or index) goes
@@ -549,12 +549,11 @@ export function createTelemetrySource(args: {
   // stopped being fed records at the moment it threw, so the export would look
   // like a run that simply had fewer tasks.
   const disabled = new Set<TelemetrySink>()
-  // Never silently. The standing rule is that a never-fail path must still
-  // WARN — telemetry that vanishes without a word is indistinguishable from
-  // telemetry nobody configured.
-  // Every hook call site skips a disabled sink first (item 654), but an
-  // async hook's rejections land later, several records' worth of them
-  // after the first: those are said once too.
+  // Never silently. The standing rule is that a never-fail path must still WARN
+  // — telemetry that vanishes without a word is indistinguishable from
+  // telemetry nobody configured. Every hook call site skips a disabled sink
+  // first, but an async hook's rejections land later, several records' worth of
+  // them after the first: those are said once too.
   const disable = (sink: TelemetrySink, hook: string, err: unknown): void => {
     if (disabled.has(sink)) return
     disabled.add(sink)
@@ -651,8 +650,8 @@ export function createTelemetrySource(args: {
       const kinds = sink.wants ?? DEFAULT_KINDS
       if (!kinds.includes(record.kind)) continue
       try {
-        // Typed `void`, yet an `async onRecord` rejects where no one
-        // listened: an unhandled rejection killed the run (C-101).
+        // Typed `void`, yet an `async onRecord` rejects where no one listened:
+        // an unhandled rejection killed the run.
         const ret: unknown = sink.onRecord(record)
         if (ret instanceof Promise) ret.catch((err) => disable(sink, 'onRecord', err))
       } catch (err) {
@@ -815,7 +814,7 @@ export function createTelemetrySource(args: {
       // Bounded, for the same reason plugin teardown is bounded in
       // plugin-host.ts: run() awaits this BEFORE closeCache() and before it
       // returns, and bin.ts exits with run()'s code once it returns (through
-      // stdout's end callback since 2026-09-15; the code is still that). A sink whose
+      // stdout's end callback). A sink whose
       // flush never settles therefore drains the event loop with no exit code
       // pending — Bun exits 0 and a FAILED run reports green, with the cache's
       // accessed_at bumps and every later plugin's teardown lost with it.
@@ -876,7 +875,7 @@ function commandDeps(node: TaskNode, nodes: ReadonlyMap<string, TaskNode> | unde
  * `task.end` record and the summary's `tasks[]` alike. Two copies drifted:
  * `task.end` dropped `blockedBy`, `timedOut`, `sandboxViolations` and
  * `notReady`, so a streaming sink saw a timed-out or blocked task as a plain
- * failure or skip (item 660).
+ * failure or skip.
  */
 export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   const t: TaskTelemetry = {

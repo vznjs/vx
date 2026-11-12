@@ -344,17 +344,16 @@ export class StoreIndex {
   ) {
     this.inspecting = mode !== 'open'
     this.read = localPolicy.read
-    // The directory exists before the DB opens — bun:sqlite won't create
-    // parent dirs for us. A directory this user cannot write into is a
-    // read-only cache for every reader (`vx show`, `why`, `last`, the
-    // doctor, the watch sweep): the write axis goes off, so the file-hash
-    // memo skips its upserts instead of dying in SQLite on the first miss (an unprivileged user on
-    // a root-owned `.vx`). A run wants more than a quiet
-    // read-only cache — `assertWritable()`.
-    // A reading verb over a directory with no index yet reads an empty one
-    // in memory and makes nothing on disk: `vx last --cache-dir .vx/cahce`
-    // created the typo's directory, a `.gitignore` and a database, then
-    // said "no recorded runs yet".
+    // The directory exists before the DB opens — bun:sqlite won't create parent
+    // dirs for us. A directory this user cannot write into is a read-only cache
+    // for every reader (`vx show`, `why`, `last`, the doctor, the watch sweep):
+    // the write axis goes off, so the file-hash memo skips its upserts instead
+    // of dying in SQLite on the first miss (an unprivileged user on a
+    // root-owned `.vx`). A run wants more than a quiet read-only cache —
+    // `assertWritable()`. A reading verb over a directory with no index yet
+    // reads an empty one in memory and makes nothing on disk: `vx last
+    // --cache-dir.vx/cahce` created the typo's directory, a `.gitignore` and a
+    // database, then said "no recorded runs yet".
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
     let absent = mode !== 'open' && !existsSync(dbFile)

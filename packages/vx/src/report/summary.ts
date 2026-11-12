@@ -137,16 +137,15 @@ const REMOTE_RANK: Record<RemoteState, number> = { uploaded: 0, uploading: 1, re
 type Buckets = Record<CacheBucket | RemoteState, number>
 
 /**
- * The cache bar's segments, each task in one (2026-10-15). With layers
- * named, a saved task leaves the misses, and a task with remote traffic
- * leaves its own bucket for its strongest remote state: a failed read or
- * write, then an upload still running, then one that landed. Without, the
- * plain legend's buckets.
+ * The cache bar's segments, each task in one. With layers named, a saved task
+ * leaves the misses, and a task with remote traffic leaves its own bucket for
+ * its strongest remote state: a failed read or write, then an upload still
+ * running, then one that landed. Without, the plain legend's buckets.
  */
 function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets {
   const saved = layers === undefined ? 0 : (stats.saved ?? 0)
-  // Its own yellow segment, as its legend count is: in the misses' red it
-  // was a cell with no count under it (2026-10-21).
+  // Its own yellow segment, as its legend count is: in the misses' red it was a
+  // cell with no count under it.
   const notSaved = layers === undefined ? 0 : (stats.notSaved ?? 0)
   const b: Buckets = {
     miss: stats.miss - saved - notSaved,
@@ -263,9 +262,9 @@ export function formatSummarySection(
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
   const join = (parts: string[]): string => parts.join(` ${dim('\u00b7')} `)
 
-  // Tasks meter + numbers, fixed order: failed · success · skipped ·
-  // aborted · not run, then a dim total, last on its line. Every task in
-  // the run counts, each state its own segment (2026-10-14).
+  // Tasks meter + numbers, fixed order: failed · success · skipped · aborted ·
+  // not run, then a dim total, last on its line. Every task in the run counts,
+  // each state its own segment.
   const runTotal = stats.total + aborted + notRun
   const taskParts: string[] = []
   if (stats.failed > 0) taskParts.push(paint('error', `${stats.failed} failed`, colors, true))
@@ -358,10 +357,10 @@ export function formatSummarySection(
     )
     const cacheParts: string[] = []
     if (layers !== undefined) {
-      // Per layer (2026-10-15): `✓` fresh (outputs already on disk, from
-      // either layer) and `∅` no cache, both local; `↓` restored from a
-      // layer, `↑` saved to it; `✗` a remote read or write failed, `⇡` still
-      // uploading. Each count is its bar segment's, glyph and number in its colour.
+      // Per layer: `✓` fresh (outputs already on disk, from either layer) and
+      // `∅` no cache, both local; `↓` restored from a layer, `↑` saved to it;
+      // `✗` a remote read or write failed, `⇡` still uploading. Each count is
+      // its bar segment's, glyph and number in its colour.
       const n = (count: number, glyph: string, color: Style): string[] =>
         count > 0 ? [paint(color, `${count}${glyph}`, colors)] : []
       const local = [
@@ -370,7 +369,7 @@ export function formatSummarySection(
         ...(layers.local ? n(b.restoredLocal, '\u2193', 'local') : []),
         ...(layers.localWrite ? n(b.saved, '\u2191', 'local') : []),
       ]
-      // The layer words are dim; only the counts carry colour (2026-10-15).
+      // The layer words are dim; only the counts carry colour.
       if (local.length > 0) cacheParts.push(`${dim('local')} ${local.join(' ')}`)
       // Each transfer count is followed by its bytes, dim: what the
       // remote moved is the cost a hit or an upload paid.
@@ -404,16 +403,15 @@ export function formatSummarySection(
     }
     // Skipped tasks ride the bar, yellow like the tasks meter, and failed
     // restores red, so the two bars fill alike; their counts are the tasks
-    // legend's alone (the footer never says a fact twice, 2026-10-14).
+    // legend's alone (the footer never says a fact twice).
     lines.push(row('cache', cacheBar))
     if (cacheParts.length > 0) lines.push(legend(cacheParts))
   }
 
-  // Cache-miss duration spread (owner: hits' restore times polluted
-  // it — only tasks that actually executed count). Dim: context.
-  // A value already on the row is not said again: one executed task read
-  // as its own max, avg and min (2026-10-14). Tasks that all took the
-  // same time have no spread to show.
+  // Cache-miss duration spread (owner: hits' restore times polluted it — only
+  // tasks that actually executed count). Dim: context. A value already on the
+  // row is not said again: one executed task read as its own max, avg and min.
+  // Tasks that all took the same time have no spread to show.
   const total = formatElapsed(totalMs)
   const said = new Set([total])
   const spreadParts: string[] = []
@@ -467,11 +465,11 @@ export function formatSummarySection(
               : 'no cache',
     )
     if (context.cacheScope !== undefined) info.push(`scope ${context.cacheScope}`)
-    // The plugin's hand on the run: a task a policy held with a worker
-    // free would otherwise have started; without the line nothing says
-    // the policy acted. The duration is the waits summed, task-seconds
-    // — 85 held tasks read `4783s` beside a 160 s run on TanStack/router
-    // (2026-09-15), so the line says it is a sum.
+    // The plugin's hand on the run: a task a policy held with a worker free
+    // would otherwise have started; without the line nothing says the policy
+    // acted. The duration is the waits summed, task-seconds — 85 held tasks
+    // read `4783s` beside a 160 s run on TanStack/router, so the line says it
+    // is a sum.
     if (stats.held !== undefined && stats.held.count > 0) {
       info.push(
         `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatElapsed(stats.held.sumMs)} in all`,
@@ -500,11 +498,11 @@ export function formatSummarySection(
 }
 
 /**
- * A long run scrolls its warnings (a remote cache's 403, a plugin's
- * failed flush) out of sight, and the footer read as a clean run
- * (2026-10-27). The footer counts the distinct ones; it does not repeat
- * them, so a warning stays one line in a log (a refused token costs
- * ONE line, tests/remote-cache-degrade.test.ts in @vzn/vx-migrate).
+ * A long run scrolls its warnings (a remote cache's 403, a plugin's failed
+ * flush) out of sight, and the footer read as a clean run. The footer counts
+ * the distinct ones; it does not repeat them, so a warning stays one line in a
+ * log (a refused token costs ONE line, tests/remote-cache-degrade.test.ts in
+ * @vzn/vx-migrate).
  */
 function warnRows(
   warnings: readonly string[],
@@ -615,9 +613,9 @@ export function formatRunSummary(
   context?: RunContext,
 ): string[] {
   // Counted here, not in the Tally: a task without `cache: true` never
-  // consulted the cache, so it is not a miss. One with no key ran nothing
-  // and is `keyFailed`'s: counted in both, the misses went negative and the
-  // bar threw (2026-11-10).
+  // consulted the cache, so it is not a miss. One with no key ran nothing and
+  // is `keyFailed`'s: counted in both, the misses went negative and the bar
+  // threw.
   const noCache = outcomes.filter(
     (o) =>
       !isGroupTask(o.node) &&
@@ -711,9 +709,9 @@ function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, TaskBucket> {
 }
 
 /**
- * An `aborted` outcome the stop reached before dispatch. The scheduler gives
- * it an invented exit 1; only a started task carries a wall-clock start, so
- * that is what tells "never ran" from "killed" (item 1062).
+ * An `aborted` outcome the stop reached before dispatch. The scheduler gives it
+ * an invented exit 1; only a started task carries a wall-clock start, so that
+ * is what tells "never ran" from "killed".
  */
 export function neverStarted(o: TaskOutcome): boolean {
   return o.status === 'aborted' && o.timing?.startNs === undefined

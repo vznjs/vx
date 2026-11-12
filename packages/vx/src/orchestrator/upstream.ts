@@ -33,8 +33,8 @@ export function dependedOn(nodes: Iterable<TaskNode>): Set<string> {
 }
 
 /**
- * A server's key is read only by a dependant (A-17), so with none in the
- * run it derives none (`noDependants`), and the plan must not show one.
+ * A server's key is read only by a dependant, so with none in the run it
+ * derives none (`noDependants`), and the plan must not show one.
  */
 export function keylessServer(node: TaskNode, depended: ReadonlySet<string>): boolean {
   return node.config.exec?.persistent !== undefined && !depended.has(node.id)
@@ -96,11 +96,11 @@ export function filterUpstreamHashes(
  * none of what `install` chains.
  *
  * Groups may nest, as deep as the graph (the builder takes a 50,000-deep
- * chain, item 737), so the walk keeps its own stack; and a group reached
- * along two paths (a group `build` whose `^build` meets a package diamond)
- * is expanded once, or the walk doubles per layer. Only what the FILTER
- * already selected is passed in, so a group excluded from a task's
- * `inputs.tasks` brings no members with it.
+ * chain), so the walk keeps its own stack; and a group reached along two paths
+ * (a group `build` whose `^build` meets a package diamond) is expanded once, or
+ * the walk doubles per layer. Only what the FILTER already selected is passed
+ * in, so a group excluded from a task's `inputs.tasks` brings no members with
+ * it.
  */
 export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[] {
   const out: TaskOutcome[] = []

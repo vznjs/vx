@@ -128,10 +128,10 @@ export interface AffectedArgs {
    */
   fingerprintClaims?: () => Promise<FingerprintClaims>
   /**
-   * The untracked files, workspace-relative, from a walk the caller shares
-   * with the run (`GitEnumeration.untracked`); null or absent spawns `git
-   * ls-files --others` here. The selection's own walk was a second one the
-   * run then paid again (I-26).
+   * The untracked files, workspace-relative, from a walk the caller shares with
+   * the run (`GitEnumeration.untracked`); null or absent spawns `git ls-files
+   * --others` here. The selection's own walk was a second one the run then paid
+   * again.
    */
   untracked?: () => Promise<readonly string[] | null>
   /**
@@ -258,10 +258,9 @@ export async function affectedChanges(
     const wholeBy = new Map([...all].map((n) => [n, file]))
     return { projects: all, changed, paths: new Map(), whole: all, wholeBy, wide: true }
   }
-  // The workspace config's plugins shape every project's resolved config,
-  // so its edit can re-key any task and selection cannot tell which (item
-  // 953). No key folds the file; selection is not hashed, so widening here
-  // changes no key.
+  // The workspace config's plugins shape every project's resolved config, so
+  // its edit can re-key any task and selection cannot tell which. No key folds
+  // the file; selection is not hashed, so widening here changes no key.
   const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
   if (wsConfig !== undefined) return everything(wsConfig)
   const extrasBy = await claimedExtras(args, diff)
@@ -1547,9 +1546,9 @@ export async function defaultAffectedBase(
 }
 
 /**
- * Why a base cannot resolve before any ref is to blame: no work tree, or
- * no commit yet. Asked only once a base has failed, so a run that finds
- * one spawns nothing more (X-52).
+ * Why a base cannot resolve before any ref is to blame: no work tree, or no
+ * commit yet. Asked only once a base has failed, so a run that finds one spawns
+ * nothing more.
  */
 function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
   const tree = spawnGitSync(['rev-parse', '--is-inside-work-tree'], workspaceRoot, 'pipe')
@@ -2071,11 +2070,11 @@ function projectsContaining(
   // project count, which is what a big --affected diff on a 1000-project repo
   // pays for.
   const dirToName = dirIndex(projects)
-  // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
+  // A member linked in from elsewhere in the tree (`pkgs/b ->../ext/b`) is
   // indexed by its link, and git reports its files at their real place
-  // (`ext/b/src/a.txt`), which resolved to no project: an edit there
-  // selected nothing. Its real place under the root is indexed
-  // too. One realpath per member, and only on an --affected run.
+  // (`ext/b/src/a.txt`), which resolved to no project: an edit there selected
+  // nothing. Its real place under the root is indexed too. One realpath per
+  // member, and only on an --affected run.
   const realRoot = realpathOr(workspaceRoot)
   for (const p of projects) {
     const real = realDirs.get(p.dir) ?? p.dir

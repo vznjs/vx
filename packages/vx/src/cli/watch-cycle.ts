@@ -1,9 +1,9 @@
-// One watch cycle's run, stoppable on its own. A cycle whose dev server
-// never prints its `readyWhen` line and has no `exec.timeout` never ended,
-// so every later edit (the fix included) waited behind it for good (WD-15).
-// While nothing but persistent tasks is in flight, an edit stops the cycle
-// as Ctrl-C would and the loop starts the next one; a cycle running any
-// other work is never stopped.
+// One watch cycle's run, stoppable on its own. A cycle whose dev server never
+// prints its `readyWhen` line and has no `exec.timeout` never ended, so every
+// later edit (the fix included) waited behind it for good. While nothing but
+// persistent tasks is in flight, an edit stops the cycle as Ctrl-C would and
+// the loop starts the next one; a cycle running any other work is never
+// stopped.
 
 import { CYCLE_INTERRUPT, type CoreRunOptions } from '../orchestrator/index.js'
 import { createEventBus } from '../report/index.js'

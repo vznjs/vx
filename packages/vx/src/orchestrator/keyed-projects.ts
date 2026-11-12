@@ -18,7 +18,7 @@ import { foldedDeps, isGroupTask, type FoldCandidate, type TaskNode } from '../g
  *   - a group folds every dependency (`computeGroupKey`); a keyed one
  *     (`inputs`, the default `build`) folds its project's files as a task
  *     does;
- *   - a persistent task is keyed as any task with no `cache` (A-17).
+ *   - a persistent task is keyed as any task with no `cache`.
  *
  * Every exec task reached contributes its project, cached or not: its key
  * folds its own project's files through its `inputs`, and one with no
@@ -35,9 +35,9 @@ export function keyedProjects(
   const nodeOf = (id: string): TaskNode => nodes.get(id) ?? keyOnly.get(id)!
   const below = new Map<string, ReadonlySet<string>>()
   // Post-order on an explicit stack: a fold is as deep as the graph, and a
-  // recursion per edge threw `RangeError` at the 50,000 the builder takes
-  // (item 737). A frame's folded dependencies are listed when it is first
-  // reached and combined once each has its set.
+  // recursion per edge threw `RangeError` at the 50,000 the builder takes. A
+  // frame's folded dependencies are listed when it is first reached and
+  // combined once each has its set.
   return (root) => {
     const stack: Array<[node: TaskNode, deps: FoldCandidate[] | undefined]> = [[root, undefined]]
     while (stack.length > 0) {

@@ -5,12 +5,12 @@ import type { PackageGraph } from './package-graph.js'
 
 /**
  * `run.rules.dependencies`, held to each project's direct workspace
- * dependencies (`PackageGraph.directDeps`: the manifest's and the
- * cross-project `dependsOn` edges). A rule constrains the projects its
- * `from` selects: each dependency must match an `allow` selector when
- * `allow` is given, and no `deny` one. Every rule that selects a project
- * applies, so a deny beats any allow. Checked by `vx lock` only (owner,
- * 2026-10-13); every broken edge is named in one refusal.
+ * dependencies (`PackageGraph.directDeps`: the manifest's and the cross-project
+ * `dependsOn` edges). A rule constrains the projects its `from` selects: each
+ * dependency must match an `allow` selector when `allow` is given, and no
+ * `deny` one. Every rule that selects a project applies, so a deny beats any
+ * allow. Checked by `vx lock` only (owner); every broken edge is named in one
+ * refusal.
  */
 export function checkDependencyRules(
   rules: readonly DependencyRule[],

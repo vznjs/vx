@@ -192,25 +192,25 @@ export interface FoldCandidate {
  * The dependencies a task's key folds, per its `inputs.tasks`.
  *
  * Patterns (Turbo/Nx micro-syntax + filter extensions):
- *   '*'         all same-project upstream
- *   '^*'        all dep-workspace upstream
- *   'name'      same-project task `name`
- *   '^name'     `name` task in every dep workspace
- *   'pkg#name'  specific package's `name` task
- *   'name.*'    patterns — EITHER half of any form above may contain `*`
+ *   '*' all same-project upstream
+ *   '^*' all dep-workspace upstream
+ *   'name' same-project task `name`
+ *   '^name' `name` task in every dep workspace
+ *   'pkg#name' specific package's `name` task
+ *   'name.*' patterns — EITHER half of any form above may contain `*`
  *               (same glob as dependsOn patterns), including the project
  *               half of `pkg#name`. A filter that matched literally here
  *               would silently select ZERO upstream hashes and decouple the
  *               task from its dependencies — a stale-hit trap, so every
  *               name is matched through the shared glob.
- *   '!<form>'   exclude — any of the above with a leading `!`
+ *   '!<form>' exclude — any of the above with a leading `!`
  *
  * Patterns are applied in order; last write wins, so
  * `['*', '^*', '!^noisy']` reads as "all minus deps' noisy".
  *
  * Defaults:
  *   - `filter === undefined` → every candidate, as given.
- *   - `filter === []`        → none (fully decoupled).
+ *   - `filter === []` → none (fully decoupled).
  *
  * Otherwise deduped by `unit`, first selected candidate kept. The unit is
  * the fold's own identity, not the task's: two groups over the same members

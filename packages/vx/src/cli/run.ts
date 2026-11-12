@@ -48,9 +48,8 @@ export interface RunArgs {
   filters: string[]
   all: boolean
   /**
-   * `'all'`  → skip every `dependsOn` edge (run just the requested task).
-   * `[]`     → no exclusion (default).
-   * `[...names]` → drop only these specific dep names.
+   * `'all'` → skip every `dependsOn` edge (run just the requested task). `[]` →
+   * no exclusion (default). `[...names]` → drop only these specific dep names.
    */
   excludeDependencies: 'all' | string[]
   /**
@@ -93,7 +92,7 @@ export interface RunArgs {
   error?: string
 }
 
-// The camelCase spelling the flag shipped with (retired 2026-09-10): two
+// The camelCase spelling the flag once had: two
 // edits past the suggester's reach, so it is named outright. A regex, not a
 // quoted literal, so the doc-drift test does not count it as an accepted flag.
 const RETIRED_EXCLUDE_DEPENDENCIES = /^--excludeDependencies(=|$)/
@@ -133,7 +132,7 @@ const SETTING_OPTIONS = [
 ] as const satisfies readonly (readonly [string, keyof CoreRunOptions])[]
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
- * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
+ * its flag hints named `vx run`. The caller appends the help pointer. */
 export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const { forwarded: _, ...out } = parse(args, verb)
   return out
@@ -187,7 +186,8 @@ function parse(
     const a = before[i]
     if (a === '--filter' || a?.startsWith('--filter=')) {
       const v = a === '--filter' ? before[++i] : a.slice('--filter='.length)
-      // `--filter --dry` took `--dry` as the pattern (X-13); no filter opens with `--`.
+      // `--filter --dry` took `--dry` as the pattern; no filter opens with
+      // `--`.
       if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
@@ -410,8 +410,7 @@ function parse(
   out.cache = applyCacheFlags(cachePolicy, flags)
   if (!cacheFlag && envSpec === undefined) out.cacheFlags = flags
 
-  // A profile is about a run: the planning branch returns before it is
-  // written (item 992).
+  // A profile is about a run: the planning branch returns before it is written.
   if (out.dry !== undefined && out.profile !== undefined) {
     return { ...out, error: '--dry skips execution; --profile needs a real run' }
   }
@@ -443,16 +442,15 @@ async function scopeFilters(
 ): Promise<
   { filterStrings: string[]; affected?: AffectedFilter } | { error: string; code?: string }
 > {
-  // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the
-  // changed projects AND their dependents — what a CI gate must run, what
-  // the flag's name says, what the guides promised while the sugar was the
-  // changed-only `[<base>]` (item 287). `--filter '[<base>]'` stays the
-  // "only what I touched" form. Merging it into the filter list means the
-  // same code path handles plain filter use, --affected alone, and the combo.
-  // Its place does not change the selection: `applyFilters` takes every
-  // include before any exclude (item 979), so `--affected --filter '!app'`
-  // drops app from either side (item 955 had put it first for that). First
-  // it stays, so a message naming the filters names it first.
+  // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the changed
+  // projects AND their dependents — what a CI gate must run, what the flag's
+  // name says, what the guides promised while the sugar was the changed-only
+  // `[<base>]`. `--filter '[<base>]'` stays the "only what I touched" form.
+  // Merging it into the filter list means the same code path handles plain
+  // filter use, --affected alone, and the combo. Its place does not change the
+  // selection: `applyFilters` takes every include before any exclude, so
+  // `--affected --filter '!app'` drops app from either side. First it stays, so a message naming the filters names
+  // it first.
   const filterStrings = [...parsed.filters]
   let affected: AffectedFilter | undefined
   if (parsed.affected !== undefined) {
@@ -590,8 +588,8 @@ export async function resolveRunOptions(
 
   const handoff: RunHandoff = {
     ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
-    // A laptop reads the shared cache and never writes it (owner,
-    // 2026-10-03); naming the remote in `--cache-policy` is asking to.
+    // A laptop reads the shared cache and never writes it (owner); naming the
+    // remote in `--cache-policy` is asking to.
     ...(!parsed.remoteRequested && !onCI(process.env['CI'])
       ? { remoteReadOnlyByDefault: true }
       : {}),
@@ -742,7 +740,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       ? unknownTask(resolved.error)
       : refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
   // `--dry=json` prints a plan even when there is nothing to run: a script
-  // reading stdout broke exactly then (Growth, 2026-10-16).
+  // reading stdout broke exactly then (Growth).
   const nothingToRun = (): 0 => {
     if (parsed.dry === 'json') ui.data('out', formatPlanJson({ tasks: [] }, scopeOut.affectedBase))
     return 0
@@ -773,8 +771,8 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       )
     }
     if (plan.tasks.length === 0) {
-      // The run's own line: a dry run that guessed from the scope alone
-      // said no affected project declared a task one did (X-141).
+      // The run's own line: a dry run that guessed from the scope alone said no
+      // affected project declared a task one did.
       if (plan.noneAffected !== undefined) {
         sayLine('info', plan.noneAffected, 'vx run')
         return nothingToRun()
@@ -819,9 +817,9 @@ export async function spacedHint(parsed: RunArgs, cwd: string): Promise<string> 
 }
 
 /**
- * Why `--profile` cannot write `target`, or undefined. Asked before the
- * run: a directory named as the file died with EISDIR only after it. A
- * missing parent is no fault: the write makes it (item 993).
+ * Why `--profile` cannot write `target`, or undefined. Asked before the run: a
+ * directory named as the file died with EISDIR only after it. A missing parent
+ * is no fault: the write makes it.
  */
 function profileProblem(cwd: string, target: string): string | undefined {
   if (statSync(path.resolve(cwd, target), { throwIfNoEntry: false })?.isDirectory() === true)

@@ -127,11 +127,10 @@ export async function migrateTurbo(
 }
 
 /**
- * The workspace root as a project when turbo.json declares `//#` tasks and
- * no glob lists the root: the `vx.config.ts` written there is what makes
- * core read it as one (D-39), as `turbo()`'s `discover` hook does live.
- * Five of eleven real Turbo repos had root
- * tasks, and 36 edges to them were dropped (G-49).
+ * The workspace root as a project when turbo.json declares `//#` tasks and no
+ * glob lists the root: the `vx.config.ts` written there is what makes core read
+ * it as one, as `turbo()`'s `discover` hook does live. Five of eleven real
+ * Turbo repos had root tasks, and 36 edges to them were dropped.
  */
 async function withRootProject(
   root: string,

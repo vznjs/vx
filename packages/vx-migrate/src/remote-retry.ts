@@ -21,19 +21,17 @@ export class Cooldown {
 }
 
 /**
- * One request with Turbo's retry rule (`turborepo-api-client/src/retry.rs`):
- * a 5xx other than 501, or a request that never connected, is sent again
- * after 2 s, `retries` times. A 429 opens the remote's `cooldown` for its
- * `Retry-After` (capped at 10 s a wait, 2 s without one or for a `0`
- * after the first), and the request
- * is resent once it ends, as often as fits in 20 s from its first 429: a
- * limit longer than one capped wait lost every hit before (Growth's
- * parity run, 2026-10-16). A spent deadline is not retried, unlike
- * Turbo's reads: it has already cost its wait, and a hung server would
- * cost it twice. Every request both wires make is idempotent
- * (content-addressed, and Nx's second write is a 409 the caller takes as
- * done), so a resend applies nothing twice. Shared by `turboCache()` and
- * `nxCache()`.
+ * One request with Turbo's retry rule (`turborepo-api-client/src/retry.rs`): a
+ * 5xx other than 501, or a request that never connected, is sent again after 2
+ * s, `retries` times. A 429 opens the remote's `cooldown` for its `Retry-After`
+ * (capped at 10 s a wait, 2 s without one or for a `0` after the first), and
+ * the request is resent once it ends, as often as fits in 20 s from its first
+ * 429: a limit longer than one capped wait lost every hit before (Growth's
+ * parity run). A spent deadline is not retried, unlike Turbo's reads: it has
+ * already cost its wait, and a hung server would cost it twice. Every request
+ * both wires make is idempotent (content-addressed, and Nx's second write is a
+ * 409 the caller takes as done), so a resend applies nothing twice. Shared by
+ * `turboCache()` and `nxCache()`.
  */
 export async function withRetry(
   send: () => Promise<Response>,

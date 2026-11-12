@@ -56,7 +56,7 @@ export interface Env {
  * R2's answers that ask to be sent again: 10001 "internal error, please
  * try again" and 10058 "reduce your rate of simultaneous reads on the
  * same object". Each failed a check, a download or an upload's skip 502
- * (2026-11-01 to 11-06: 57 in the dashboard's Issues), so the client lost
+ * (57 in six days), so the client lost
  * a hit or sent its bytes again.
  */
 const AGAIN = /\((10001|10058)\)$/
@@ -142,9 +142,9 @@ export function r2Blobs(
         return null
       }
       mark(name, o.size, o.uploaded.getTime())
-      // The copy is R2 read again, never a tee of the client's body: a tee
-      // on Workers reads at its slower branch's pace, and the cache write
-      // held a download for 19 minutes (main, 2026-10-28).
+      // The copy is R2 read again, never a tee of the client's body: a tee on
+      // Workers reads at its slower branch's pace, and the cache write held a
+      // download for 19 minutes (main).
       ctx.waitUntil(
         (async () => {
           const copy = await again(() => bucket.get(name))
@@ -155,22 +155,21 @@ export function r2Blobs(
           }
           await (await cache).put(key, new Response(copy.body, { headers }))
         })().catch((err: unknown) =>
-          // The client has its bytes; only the copy failed. Thrown, it was
-          // an uncaught exception in the dashboard's Issues (2026-11-01).
+          // The client has its bytes; only the copy failed. Thrown, it was an
+          // uncaught exception in the dashboard's Issues.
           console.warn(`vx-cache-server: the data center's copy of ${name}: ${String(err)}`),
         ),
       )
       return { body: o.body, size: o.size }
     },
-    // R2 answers whether it holds an object (a check, a HEAD and a PUT's
-    // skip), or a mark it made: never the data center's copy of the bytes,
-    // which outlives R2's (expiry, a wipe), so a writer told "held" there
-    // skipped its upload and a reader in another data center found nothing
-    // (2026-10-27: a DTE worker's save, then the run's read, a 404).
-    // A PUT's skip asks R2 alone: a mark outlives a deletion by hand, and
-    // the upload it answered was dropped until the mark's expiry. It costs
-    // no head a mark saved: a client checks first and uploads only what
-    // the check missed, which no mark holds.
+    // R2 answers whether it holds an object (a check, a HEAD and a PUT's skip),
+    // or a mark it made: never the data center's copy of the bytes, which
+    // outlives R2's (expiry, a wipe), so a writer told "held" there skipped its
+    // upload and a reader in another data center found nothing (a DTE worker's
+    // save, then the run's read, a 404). A PUT's skip asks R2 alone: a mark
+    // outlives a deletion by hand, and the upload it answered was dropped until
+    // the mark's expiry. It costs no head a mark saved: a client checks first
+    // and uploads only what the check missed, which no mark holds.
     size: async (name, fromBucket) => {
       if (expiryDays !== undefined && fromBucket !== true) {
         const held = await (await cache).match(heldOf(name))
@@ -185,19 +184,18 @@ export function r2Blobs(
 }
 
 /**
- * A check's lookups by default: a Worker request has 6 calls waiting on R2
- * at once and queues the rest, so a check of 6 answers in one round and a
- * client sends many at once (measured, 2026-10-25: 6 heads 64 ms, 24 341
- * ms, 134 1.1-1.4 s; from a GitHub runner, 134 hashes, half held: 23
- * checks of 6 at once 168-216 ms median, 134 single lookups 246-349 ms,
- * one check of 134 1.9 s). A list is no way round it: a scope may hold
- * billions.
+ * A check's lookups by default: a Worker request has 6 calls waiting on R2 at
+ * once and queues the rest, so a check of 6 answers in one round and a client
+ * sends many at once (measured: 6 heads 64 ms, 24 341 ms, 134 1.1-1.4 s; from a
+ * GitHub runner, 134 hashes, half held: 23 checks of 6 at once 168-216 ms
+ * median, 134 single lookups 246-349 ms, one check of 134 1.9 s). A list is no
+ * way round it: a scope may hold billions.
  */
 const CHECK_LOOKUPS = 6
 
 /**
  * The limits as set, unclamped: a plan's limits are the operator's to set
- * (2026-10-25: never optimize for the free plan).
+ * (never optimize for the free plan).
  */
 function workerLimits(env: Env): Limits {
   return { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }
@@ -224,7 +222,7 @@ let made:
 
 /**
  * The issuer's keys through the data center's cache: a fresh isolate read
- * GitHub on its first token, and one slow answer failed it 502 (2026-10-29).
+ * GitHub on its first token, and one slow answer failed it 502.
  * `caches.default` is read at each call, as the bucket is per request.
  */
 const edgeKeys = cachedFetchJson({

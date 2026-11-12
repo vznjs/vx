@@ -145,19 +145,19 @@ export interface DefaultLogger extends Logger {
  * from (in priority order) the explicit `--output-logs` override, a
  * truthy `CI` env, and the CLI-detected flow:
  *
- *   full        — frames for executed work, one-liners for quiet hits.
+ *   full — frames for executed work, one-liners for quiet hits.
  *                 Today's CI behavior; also the programmatic default.
  *   errors-only — only failed tasks print.
- *   none        — no per-task output at all.
- *   hash-only   — one line per task: outcome word, task id, cache key.
+ *   none — no per-task output at all.
+ *   hash-only — one line per task: outcome word, task id, cache key.
  *                 No frames, no log replay (Turbo `--output-logs
  *                 hash-only` parity); the end-of-run summary still
  *                 renders. The line is the run's audit trail: which key
  *                 each task resolved to, without any build output.
- *   focused     — requested nodes stream raw output live (running the
+ *   focused — requested nodes stream raw output live (running the
  *                 task should feel like running the command directly);
  *                 dependency-pulled nodes are silent unless they fail.
- *   broad       — news only: one `success` line per executed task,
+ *   broad — news only: one `success` line per executed task,
  *                 full frames for failures, silence for cache hits.
  *
  * `gha` (on GitHub Actions, any mode): task output is fenced from
@@ -244,7 +244,7 @@ export function resolveOutputView(
 const FORECAST_AFTER_MS = 1000
 /** A run shorter than this ends without a desktop notification. */
 const NOTIFY_AFTER_MS = 10_000
-// A step of vx's own quicker than this shows nowhere (2026-10-15).
+// A step of vx's own quicker than this shows nowhere.
 const STEP_SHOWN_MS = 150
 
 /** A frame this long is written in pieces, never copied into one string. */
@@ -398,11 +398,11 @@ export function defaultLogger(
   let skippedCount = 0
   // Each finished task's cache bucket by its key, with a remote: its traffic moves it.
   const buckets = new Map<string, TaskBucket>()
-  // The graph is done and vx's own closing steps run: the region stays,
-  // footer and step rows, until the footer replaces it (2026-10-15).
+  // The graph is done and vx's own closing steps run: the region stays, footer
+  // and step rows, until the footer replaces it.
   let tail = false
-  // The run was stopped: the region stays, its running rows say
-  // `aborting`, and nothing is forecast or held (2026-10-17).
+  // The run was stopped: the region stays, its running rows say `aborting`, and
+  // nothing is forecast or held.
   let stopping = false
   // Counted live once the run is stopping, as the footer counts them.
   let stopped = 0
@@ -449,11 +449,11 @@ export function defaultLogger(
     { node: TaskNode; outcome?: TaskOutcome; out: Tail; err: Tail }
   >()
   let flushedPersistent = false
-  // After that flush nothing prints a tail again, yet a kept server writes
-  // for as long as vx holds it: `vx run dev --all` showed none of its
-  // servers' logs while it ran (C-56). So a ready server's output streams
-  // from then on, a line at a time under its id; the partial line each
-  // holds waits for its newline, a status line, a second runEnd, or `settle`.
+  // After that flush nothing prints a tail again, yet a kept server writes for
+  // as long as vx holds it: `vx run dev --all` showed none of its servers' logs
+  // while it ran. So a ready server's output streams from then on, a line at a
+  // time under its id; the partial line each holds waits for its newline, a
+  // status line, a second runEnd, or `settle`.
   const KEPT_LINE_CAP = 64 * 1024
   const keptLines = new Map<string, { node: TaskNode; rest: string }>()
   const streamKept = (node: TaskNode, chunk: string): void => {
@@ -657,19 +657,18 @@ export function defaultLogger(
     writer.clearStatus()
   }
 
-  // The task log opens with one blank line before its first row, on a
-  // terminal and off one (2026-10-14). A note vx prints before it is
-  // no task row (`status`). Without a footer, the caller frames the log
-  // (`vx watch` opens each cycle with its own line).
+  // The task log opens with one blank line before its first row, on a terminal
+  // and off one. A note vx prints before it is no task row (`status`). Without
+  // a footer, the caller frames the log (`vx watch` opens each cycle with its
+  // own line).
   let logOpened = opts.footer === false
   // The log ends on a blank line (a block's own): a blank status line
   // after it (the footer's) would make two; one blank line apart is the rule.
   let endsBlank = false
-  // A live-streamed task's partial line, and any colour it left on, end
-  // before anything of vx's own: a row or a block written after it (a step
-  // that ends while the task streams, another task's failure, a kept
-  // server's line) was glued to it, `building...      time status  cache
-  // task`, and took its colour.
+  // A live-streamed task's partial line, and any colour it left on, end before
+  // anything of vx's own: a row or a block written after it (a step that ends
+  // while the task streams, another task's failure, a kept server's line) was
+  // glued to it, `building... time status cache task`, and took its colour.
   let streamStyled = false
   const endStreamLine = (): void => {
     const end = (streamStyled ? STYLE_END : '') + (streamMidLine ? '\n' : '')
@@ -704,11 +703,11 @@ export function defaultLogger(
     taskWrite(`${line}\n`)
     lineEmitted = true
   }
-  // The open panel: rows of one kind share one box, the Tasks list on the
-  // log's stream and the Warnings on stderr; anything else said closes it
-  // first, and the next row opens it again. Painted, a box; plain on a
-  // terminal, the Tasks rule and header over the rows, as the live region
-  // heads its own (2026-10-21); piped, the bare rows a script reads.
+  // The open panel: rows of one kind share one box, the Tasks list on the log's
+  // stream and the Warnings on stderr; anything else said closes it first, and
+  // the next row opens it again. Painted, a box; plain on a terminal, the Tasks
+  // rule and header over the rows, as the live region heads its own; piped, the
+  // bare rows a script reads.
   const panels = colors.enabled || writer.enabled
   let panelOpen: 'Tasks' | 'Warnings' | undefined
   let inPanel = false
@@ -950,17 +949,16 @@ export function defaultLogger(
         slotQueue.length = 0
         refresh(true)
       } else if (!tail) killStatus()
-      // Persistent tails first: they are context for whatever ran against
-      // the server, so they read above the failures they explain. `none`
-      // prints no per-task output and `errors-only` only failed tasks: a
-      // server that died on its own before the run stopped it is failed by
-      // now (run.ts sets its outcome in place), and under `errors-only` its
-      // tail was dropped with the healthy ones', so the crash read only as a
-      // count (WD-25). The rest is still captured and bounded. Guarded
-      // like the failures below: run() calls runEnd twice on the success
-      // path (once before the summary, once in its finally), and though the
-      // bus delivers `run:end` once (`busLogger`), a renderer an embedder
-      // drives directly may hear both.
+      // Persistent tails first: they are context for whatever ran against the
+      // server, so they read above the failures they explain. `none` prints no
+      // per-task output and `errors-only` only failed tasks: a server that died
+      // on its own before the run stopped it is failed by now (run.ts sets its
+      // outcome in place), and under `errors-only` its tail was dropped with
+      // the healthy ones', so the crash read only as a count. The rest is still
+      // captured and bounded. Guarded like the failures below: run() calls
+      // runEnd twice on the success path (once before the summary, once in its
+      // finally), and though the bus delivers `run:end` once (`busLogger`), a
+      // renderer an embedder drives directly may hear both.
       if (flushedPersistent) flushKept()
       if (!flushedPersistent) {
         flushedPersistent = true
@@ -1084,8 +1082,7 @@ export function defaultLogger(
         if (isGroupTask(node)) return
         // What it printed while it stopped (a trap's cleanup) still reaches
         // the terminal where a frame would have: a task that traps Ctrl-C
-        // and exits 0 is aborted since item 962, and its frame was dropped
-        // with the count. A task that never started opened no frame.
+        // and exits 0 is aborted, and its frame is dropped with the count. A task that never started opened no frame.
         // A list view prints a failure's output; a killed task's partial
         // output is what tells where a run hung, so it prints too.
         const framed =
@@ -1350,12 +1347,11 @@ export function defaultLogger(
           }
           return
         case 'full': {
-          // Cache hits with nothing to replay compress to ONE line —
-          // every task stays visible, but at 2000+ tasks the two-line
-          // frames would drown what actually happened. Hits WITH
-          // replayed stdout keep their frame (the output is the
-          // point); misses/failures are always framed. One-liners
-          // stay outside ::group:: — there's nothing to collapse.
+          // Cache hits with nothing to replay compress to ONE line — every task
+          // stays visible, but at 2000+ tasks the two-line frames would drown
+          // what actually happened. Hits WITH replayed stdout keep their frame
+          // (the output is the point); misses/failures are always framed.
+          // One-liners stay outside::group:: — there's nothing to collapse.
           if (isHit && output.every((c) => c.text.trim().length === 0)) {
             emitRow(
               formatTaskHitLine(node, outcome, colors, onPath.has(node.id), blocksOf(node.id)),
@@ -1381,8 +1377,8 @@ export function defaultLogger(
             // prints `::endgroup::` can't close vx's group early and an
             // `::error` line in its output can't become a real annotation.
             const [open, close] = ghaFenceEnds(ghaToken)
-            // Failed tasks stay pre-expanded in the Actions viewer:
-            // an ::error annotation instead of a collapsed group.
+            // Failed tasks stay pre-expanded in the Actions viewer: an::error
+            // annotation instead of a collapsed group.
             if (outcome.status === 'failed') {
               // The message is ours (a literal, an integer and a signal
               // name); only the title carries user input.

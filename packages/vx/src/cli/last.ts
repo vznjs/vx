@@ -1,7 +1,6 @@
 // `vx last [RUNID]` — replay a recorded run's summary from the terminal,
-// without re-executing anything. Comparison gap #12: with the dashboard's
-// run-detail page gone (the 2026-08-23 cloud removal), the local run
-// history in cache.db is the only replay surface, and this verb reads it.
+// without re-executing anything. The local run history in cache.db is the
+// only replay surface, and this verb reads it.
 // Read-only — no config evaluation, no re-hash, no cache probe; `--stats`
 // reads the lock only for each task's definition.
 
@@ -105,11 +104,11 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
     if (a === '--list' || a.startsWith('--list=')) {
-      // `--list 5` is the count, like every other value flag's space form:
-      // it read as a run id, which `--list` then ignored, and ten runs came
-      // back (item 899). The next argument is the count unless it is a flag
-      // or has a run id's shape: `1.5`, `-3` and `abc` read as run ids and
-      // were told a run id does not combine with --list (X-29).
+      // `--list 5` is the count, like every other value flag's space form: it
+      // read as a run id, which `--list` then ignored, and ten runs came back.
+      // The next argument is the count unless it is a flag or has a run id's
+      // shape: `1.5`, `-3` and `abc` read as run ids and were told a run id
+      // does not combine with --list.
       const next = args[i + 1]
       const spaced =
         a === '--list' &&
@@ -765,8 +764,8 @@ const OTHER_PLATFORM = 'needs another platform'
 const HITS_SHOWN = 16
 
 /**
- * The steps the run did not wait on (`vx:prefetch`), which its own output
- * never showed (2026-10-16): here for debugging, marked `internal`.
+ * The steps the run did not wait on (`vx:prefetch`), which its own output never
+ * showed: here for debugging, marked `internal`.
  */
 function formatStepRows(steps: readonly RunStep[]): ui.Block | undefined {
   if (steps.length === 0) return undefined
@@ -782,12 +781,12 @@ function formatStepRows(steps: readonly RunStep[]): ui.Block | undefined {
 }
 
 /**
- * The per-task rows: failures first, then what executed or was skipped,
- * then cache hits. Hits are the noise of a warm run — 996 of a thousand
- * rows on a red run put the failure a screen's height above the prompt
- * (item 280) — so past `HITS_SHOWN` they fold into one line with their
- * count; the ones shown are the slowest restores, the one thing a hit's
- * row tells. `--format json` lists every row.
+ * The per-task rows: failures first, then what executed or was skipped, then
+ * cache hits. Hits are the noise of a warm run — 996 of a thousand rows on a
+ * red run put the failure a screen's height above the prompt — so past
+ * `HITS_SHOWN` they fold into one line with their count; the ones shown are the
+ * slowest restores, the one thing a hit's row tells. `--format json` lists
+ * every row.
  */
 
 export function formatTaskRows(
@@ -1066,8 +1065,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         : parsed.failed === true
           ? (failedInvocations(db, 1)[0] ?? null)
           : (listInvocations(db, { limit: 1 })[0] ?? null)
-    // A run with rows and no header is one a stop ended (item 854): `vx why`
-    // printed its id, so it is named, not called unrecorded.
+    // A run with rows and no header is one a stop ended: `vx why` printed its
+    // id, so it is named, not called unrecorded.
     if (named !== null && (inv === null || inv === undefined)) {
       throw new UserError(
         `vx last: run ${named} was stopped before it finished, so vx kept its tasks but no summary: \`vx last ${named} --log <task>\` prints one's output`,

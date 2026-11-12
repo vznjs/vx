@@ -1,7 +1,7 @@
 // A plugin's mapping, kept under the cache dir and keyed on everything it
-// reads, for the next `vx lock` or `--check` (no run maps, 2026-11-11):
-// nx() ~55 ms cold on refine (206 projects), turbo() ~43 ms on astro
-// (553). A hit costs the key's reads and one JSON parse.
+// reads, for the next `vx lock` or `--check` (no run maps): nx() ~55 ms cold on
+// refine (206 projects), turbo() ~43 ms on astro (553). A hit costs the key's
+// reads and one JSON parse.
 //
 // The key is the plugin's own list of what its mapping read, plus this
 // package's sources and the core helpers the mappers call: a new
@@ -37,9 +37,9 @@ export function codeId(): Promise<string> {
     const files: string[] = []
     for await (const f of new Bun.Glob('**/*.{ts,cjs}').scan(import.meta.dir)) files.push(f)
     files.sort()
-    // Size and mtime, not bytes: reading the 650 kB of sources cost ~10 ms
-    // on every run, more than the mapping hit it guards saves on a small
-    // repo (solid, 2026-10-22). An edit moves both.
+    // Size and mtime, not bytes: reading the 650 kB of sources cost ~10 ms on
+    // every run, more than the mapping hit it guards saves on a small repo
+    // (solid). An edit moves both.
     for (const f of files) {
       const s = statSync(path.join(import.meta.dir, f))
       parts.push(f, `${s.size}:${s.mtimeMs}`)

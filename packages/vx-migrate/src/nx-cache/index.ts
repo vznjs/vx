@@ -136,10 +136,10 @@ export class NxRemoteCache implements RemoteCacheLayer {
   }
 
   /**
-   * `undefined` = the token was refused and the refusal is ALREADY
-   * reported, so the caller degrades to its miss value in silence. Only the
-   * first refusal throws, and a run's calls are concurrent: six projects
-   * under a bad token printed five identical lines before this (2026-09-20).
+   * `undefined` = the token was refused and the refusal is ALREADY reported, so
+   * the caller degrades to its miss value in silence. Only the first refusal
+   * throws, and a run's calls are concurrent: six projects under a bad token
+   * printed five identical lines before this.
    */
   private async request(
     method: 'GET' | 'PUT',

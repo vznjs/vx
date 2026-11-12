@@ -1,10 +1,10 @@
-// The live list's `cpu` and `mem`: each running task's process tree's
-// average cores since it started and its peak memory so far, the values
-// its results row shows once it ends (2026-10-29: the live row showed the
-// last half second's, and a task's row changed meaning as it finished).
-// Looked at on a timer only once the list asks for a row, so a run with
-// no live list (a pipe, CI) registers pids and reads nothing.
-// The look is async and off the dispatch path: a slow one skips a tick.
+// The live list's `cpu` and `mem`: each running task's process tree's average
+// cores since it started and its peak memory so far, the values its results row
+// shows once it ends (the live row showed the last half second's, and a task's
+// row changed meaning as it finished). Looked at on a timer only once the list
+// asks for a row, so a run with no live list (a pipe, CI) registers pids and
+// reads nothing. The look is async and off the dispatch path: a slow one skips
+// a tick.
 
 import { sampleTrees, type TreeUsage } from '../exec/index.js'
 import type { LiveUsage } from '../report/index.js'

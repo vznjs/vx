@@ -101,7 +101,7 @@ export function parseLockfile(text: string): Lockfile {
     })
   }
   // Root `overrides` are not folded: what an override forced is the entry a
-  // workspace reaches, and npm 10 does not write them here at all (D-142).
+  // workspace reaches, and npm 10 does not write them here at all.
   const global = JSON.stringify({ lockfileVersion: version })
   const fileDirs = new Set<string>()
   for (const e of packages.values()) {
@@ -140,11 +140,11 @@ function workspaceMatcher(root: unknown): (p: string) => boolean {
 
 /**
  * Node's walk: `p/node_modules/name`, then the same under each ancestor
- * directory that is not itself a `node_modules`, then `node_modules/name`.
- * A workspace nested in another's directory (`packages/a/packages/n`)
- * resolves through `packages/a/node_modules`, where npm nests what only it
- * needs; stepping from one `/node_modules/` boundary to the next skipped
- * that directory, and `n` was keyed on its spec alone (D-139).
+ * directory that is not itself a `node_modules`, then `node_modules/name`. A
+ * workspace nested in another's directory (`packages/a/packages/n`) resolves
+ * through `packages/a/node_modules`, where npm nests what only it needs;
+ * stepping from one `/node_modules/` boundary to the next skipped that
+ * directory, and `n` was keyed on its spec alone.
  */
 export function resolve(
   lock: { readonly packages: { has(p: string): boolean } },
@@ -178,8 +178,8 @@ export function importerDigests(
   const { index, material, edges } = g
   const digests = reachDigests({ material, edges })
   const out = new Map<string, string>()
-  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
-  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32 bits
+  // of a seed, so two lockfiles' globals could share one.
   const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
   for (const [p, e] of lock.packages) {
     if (p !== '' && !e.isWorkspace) continue
@@ -204,10 +204,10 @@ function buildGraph(
   const edges: number[][] = []
   for (const [p, e] of lock.packages) {
     index.set(p, material.length)
-    // An installed package is its install name and what it is, not where
-    // it sits: a re-hoist of one version re-keyed every project reaching it
-    // (D-140). Where it sits decides what it resolves; that is the edges.
-    // The root and a workspace keep their path, which is who they are.
+    // An installed package is its install name and what it is, not where it
+    // sits: a re-hoist of one version re-keyed every project reaching it. Where
+    // it sits decides what it resolves; that is the edges. The root and a
+    // workspace keep their path, which is who they are.
     material.push(
       p === '' || e.isWorkspace
         ? `${p}\0${e.resolution}\nsections\0${e.sections}`

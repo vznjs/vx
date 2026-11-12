@@ -370,8 +370,8 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         )
       }
       seenAt.set(p, i)
-      // A misspelled hook (`excutor`, `setUp`) was never called and never
-      // said: tasks ran here with the plugin's executor unheard (X-19).
+      // A misspelled hook (`excutor`, `setUp`) was never called and never said:
+      // tasks ran here with the plugin's executor unheard.
       for (const key of Object.keys(plug)) {
         if (key === 'name' || (PLUGIN_HOOKS as readonly string[]).includes(key)) continue
         const near = nearest(key, PLUGIN_HOOKS)
@@ -412,17 +412,17 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
               `${configPath}: \`plugins[${i}].commands.${verb}\` of plugin '${pkg}' must be { description: string, run: function }`,
             )
           }
-          // A verb the dispatcher would never reach is refused, not left
-          // dead: core verbs are matched first, and two plugins on one verb
-          // would run the first declared and hide the second. Here, in the
-          // schema, so every loader of the file — a run, a reading verb, the
-          // plugin-verb lookup — refuses it the same way. The owner is the
-          // package: two plugins one package exports (`bun()` and `pnpm()`
-          // both carry `prune`) are one owner, and the first declared runs.
-          // `vx --version` and `vx ''` never reach a plugin: a flag is
-          // core's, and an empty word is no verb (X-21). `vx completions`
-          // writes verbs unquoted into a shell script, so a space or a `$(`
-          // in one would break or inject into the user's rc.
+          // A verb the dispatcher would never reach is refused, not left dead:
+          // core verbs are matched first, and two plugins on one verb would run
+          // the first declared and hide the second. Here, in the schema, so
+          // every loader of the file — a run, a reading verb, the plugin-verb
+          // lookup — refuses it the same way. The owner is the package: two
+          // plugins one package exports (`bun()` and `pnpm()` both carry
+          // `prune`) are one owner, and the first declared runs. `vx --version`
+          // and `vx ''` never reach a plugin: a flag is core's, and an empty
+          // word is no verb. `vx completions` writes verbs unquoted into a
+          // shell script, so a space or a `$(` in one would break or inject
+          // into the user's rc.
           if (!/^[A-Za-z0-9][A-Za-z0-9:._-]*$/.test(verb)) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' declares command '${verb}', which is not a word — a verb is a letter or digit, then letters, digits, ':', '.', '_' or '-'`,
@@ -506,14 +506,14 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
 }
 
 /**
- * Runtime validation for the user-authored config. TypeScript checks
- * shape at edit-time, but `vx run` may load configs that were never
- * typechecked (plain .js, or TS with errors ignored). Catch the worst
- * shape problems early with a clear message rather than letting them
- * crash deeper in the orchestrator. Also applied to configs loaded
- * back from `.vx/projects.lock.json` (a hand-editable file — same boundary).
- * `ownConfig` is the config file outputs may not cover (null: none), apart
- * from `configPath` when that is a label (`<path> (after plugin 'x')`).
+ * Runtime validation for the user-authored config. TypeScript checks shape at
+ * edit-time, but `vx run` may load configs that were never typechecked
+ * (plain.js, or TS with errors ignored). Catch the worst shape problems early
+ * with a clear message rather than letting them crash deeper in the
+ * orchestrator. Also applied to configs loaded back from
+ * `.vx/projects.lock.json` (a hand-editable file — same boundary). `ownConfig`
+ * is the config file outputs may not cover (null: none), apart from
+ * `configPath` when that is a label (`<path> (after plugin 'x')`).
  */
 export function validateProjectConfig(
   config: ProjectConfig,
@@ -1022,8 +1022,8 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
     if (list !== undefined) {
       if (
         !Array.isArray(list) ||
-        // Whitespace alone ran as a no-op probe that folds nothing, as
-        // a blank `exec.command` did (X-22).
+        // Whitespace alone ran as a no-op probe that folds nothing, as a blank
+        // `exec.command` did.
         list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
       ) {
         throw new UserError(
@@ -1102,8 +1102,8 @@ function validateOutputs(
           `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
       )
     }
-    // A `!` entry takes a path back from the outputs (A-44): it is not
-    // cleaned, saved or restored, and it stays an input.
+    // A `!` entry takes a path back from the outputs: it is not cleaned, saved
+    // or restored, and it stays an input.
     assertNotDoubleNegated(g, `${where}.outputs.files`)
     // Taken back by a `!`, the file is never cleaned or restored.
     const own = g.startsWith('!')
@@ -1255,7 +1255,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       env: '`tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
-  // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace.
+  // Turbo's turbo.json and Nx's nx.json keys, written into.vx/workspace.
   [
     WORKSPACE_FIELDS,
     {
@@ -1275,9 +1275,8 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       defaultBase: '`baseBranch`',
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
-      // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
-      // pasted into .vx/workspace: refused with no word on where vx reads
-      // them.
+      // pnpm-workspace.yaml's, Lerna's and the package.json's own keys pasted
+      // into.vx/workspace: refused with no word on where vx reads them.
       packages: 'a `vx.config` in each project directory: a project is a directory holding one',
       workspaces: 'a `vx.config` in each project directory: a project is a directory holding one',
       projects: 'a `vx.config` in each project directory: a project is a directory holding one',
@@ -1620,14 +1619,14 @@ function namesDirItself(glob: string): boolean {
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
   // A brace alternative is a segment too: `{../shared,src}/**` splits on `/`
-  // into `{..`, so it passed, and its `..` arm matched nothing — an input
-  // that silently left the key (M-64).
+  // into `{..`, so it passed, and its `..` arm matched nothing — an input that
+  // silently left the key.
   return g.split(/[/{},]/).some((seg) => seg === '..')
 }
 
 /**
  * True when a glob is absolute, or a brace alternative in it is:
- * `{/etc,dist}/*` matched nothing outside and said so nowhere (M-64).
+ * `{/etc,dist}/*` matched nothing outside and said so nowhere.
  */
 function isAbsoluteGlob(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
@@ -1652,7 +1651,7 @@ function hasBackslashSeparator(body: string): boolean {
 
 /**
  * A Windows spelling (`src\**`, `C:/src/**`) loaded with only a "matched no
- * files" warning, and a task keyed on it never saw its source (X-67).
+ * files" warning, and a task keyed on it never saw its source.
  */
 function assertPosixGlob(glob: string, where: string, base: string): void {
   const neg = glob.startsWith('!') ? '!' : ''
@@ -1801,13 +1800,12 @@ function specForm(spec: string): SpecForm {
 }
 
 /**
- * A name an environment can hold. An `=` splits at the first one, so
- * `define: { 'A=B': 'x' }` gave the child `A` with the value `B=x`; `''`
- * was dropped; a NUL failed the spawn with a hint about exit 127 (item
- * 999). And the task runs under `sh -c`, whose dash (Linux) drops a
- * variable whose name is no shell identifier: `my.var` reached a task
- * under macOS's bash and nothing on Linux. Refused at load, where the
- * config is named.
+ * A name an environment can hold. An `=` splits at the first one, so `define: {
+ * 'A=B': 'x' }` gave the child `A` with the value `B=x`; `''` was dropped; a
+ * NUL failed the spawn with a hint about exit 127. And the task runs under `sh
+ * -c`, whose dash (Linux) drops a variable whose name is no shell identifier:
+ * `my.var` reached a task under macOS's bash and nothing on Linux. Refused at
+ * load, where the config is named.
  */
 function assertShellName(name: string, field: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
@@ -1945,8 +1943,8 @@ function assertNoLiteralTakenBack(
 }
 
 /**
- * `negation: false` for OUTPUT globs: a `!` entry takes a path back (A-44),
- * and a list of only negations selects nothing and is refused.
+ * `negation: false` for OUTPUT globs: a `!` entry takes a path back, and a list
+ * of only negations selects nothing and is refused.
  */
 function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): void {
   if (!Array.isArray(v)) {
@@ -1990,7 +1988,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
 
 /**
  * An output list of only `!` entries selects nothing: the task saves and
- * restores nothing while it reads as if it declared outputs (A-44).
+ * restores nothing while it reads as if it declared outputs.
  */
 const OUTPUT_LOST = 'the file is never saved or restored'
 

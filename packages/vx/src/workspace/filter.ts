@@ -1,19 +1,19 @@
 // Filter DSL — pnpm-style selectors for `--filter`.
 //
-//   <pattern>        name glob, `*` = any characters (e.g. foo, @scope/*)
-//   ./<dir>          the package at <dir>, else the packages under it (relative to workspace root)
-//   {<dir>}          same as ./<dir>
-//   //               the workspace-root project only (Turbo's name for the root)
-//   tag:<pattern>    the projects whose config `tags` hold a match (Nx's `tag:`)
-//   <dir>/<glob>     a name with a `/` outside a scope that names no project:
+//   <pattern> name glob, `*` = any characters (e.g. foo, @scope/*)
+//   ./<dir> the package at <dir>, else the packages under it (relative to workspace root)
+//   {<dir>} same as./<dir>
+//   // the workspace-root project only (Turbo's name for the root)
+//   tag:<pattern> the projects whose config `tags` hold a match (Nx's `tag:`)
+//   <dir>/<glob> a name with a `/` outside a scope that names no project:
 //                    ./<dir>/<glob> (Nx's `--projects 'apps/*'`)
-//   <pattern>...     pattern + its transitive workspace dependencies
-//   ...<pattern>     pattern + its transitive workspace dependents
-//   <pattern>^...    only the transitive deps of pattern (excluding the matched package)
-//   ...^<pattern>    only the transitive dependents of pattern (excluding the matched package)
-//   !<pattern>       exclude packages matching pattern from the selection
-//   [<since>]        projects affected since the given git ref; after a name
-//                    or {dir} selector, the selected ones only (D-44)
+//   <pattern>... pattern + its transitive workspace dependencies
+//   ...<pattern> pattern + its transitive workspace dependents
+//   <pattern>^... only the transitive deps of pattern (excluding the matched package)
+//   ...^<pattern> only the transitive dependents of pattern (excluding the matched package)
+//   !<pattern> exclude packages matching pattern from the selection
+//   [<since>] projects affected since the given git ref; after a name
+//                    or {dir} selector, the selected ones only
 //                    (Turbo-style; resolved upstream of applyFilters via
 //                    `affectedProjects` since it needs FS + git access)
 //
@@ -39,10 +39,10 @@ export interface ParsedFilter {
   /** Glob pattern (for name match) or absolute path (for path match). */
   matcher: string
   /**
-   * When non-undefined, this filter is a git-relative `[<since>]`
-   * selector: bare (`matcher` empty), or narrowing a name or `{dir}`
-   * selector (`@scope/*[main]`, D-44). The CLI resolves the ref to a
-   * concrete set of project names before calling applyFilters.
+   * When non-undefined, this filter is a git-relative `[<since>]` selector:
+   * bare (`matcher` empty), or narrowing a name or `{dir}` selector
+   * (`@scope/*[main]`). The CLI resolves the ref to a concrete set of project
+   * names before calling applyFilters.
    */
   gitSince?: string
   /**
@@ -53,7 +53,7 @@ export interface ParsedFilter {
   sinceViaDeps?: true
   /** A path form carrying a glob (`./packages/*`): matched over the root-relative project dir. */
   pathGlob?: Bun.Glob
-  /** `./a/**`'s `a`: a trailing `**` matches zero dirs, and `Bun.Glob` does not (D-84). */
+  /** `./a/**`'s `a`: a trailing `**` matches zero dirs, and `Bun.Glob` does not. */
   pathGlobBase?: Bun.Glob
   /** `./**`: the one path glob that reaches the root project (zero dirs). */
   pathGlobRoot?: true
@@ -92,7 +92,7 @@ export function parseFilter(
   const withDependents = s.startsWith('...')
   if (withDependents) s = s.slice(3)
   // `...^a`: cli.md listed it, and the `^` stayed in the name glob, so it
-  // matched no package and the run refused (item 890).
+  // matched no package and the run refused.
   const onlyDependents = withDependents && s.startsWith('^')
   if (onlyDependents) s = s.slice(1)
 
@@ -122,9 +122,9 @@ export function parseFilter(
     }
   }
 
-  // `<selector>[<since>]`: the selected packages that changed since the
-  // ref (D-44). Turbo and pnpm read `@scope/*[HEAD]` and `{./apps/*}[main]`
-  // so; vx read the whole as one name glob and matched nothing.
+  // `<selector>[<since>]`: the selected packages that changed since the ref.
+  // Turbo and pnpm read `@scope/*[HEAD]` and `{./apps/*}[main]` so; vx read the
+  // whole as one name glob and matched nothing.
   let gitSince: string | undefined
   // An unbraced path keeps its brackets: `./packages/[abc]` is a glob
   // class, and Turbo takes a directory with a ref only as `{dir}[ref]`.
@@ -150,10 +150,10 @@ export function parseFilter(
     }
   }
 
-  // `...`, `!`, `^...`: the operators with no project between them. An
-  // empty name glob matched nothing and was hinted "Did you mean a?", and
-  // an empty exclude (`!$UNSET`) excluded nothing, so every project ran
-  // with one warning line (item 1030).
+  // `...`, `!`, `^...`: the operators with no project between them. An empty
+  // name glob matched nothing and was hinted "Did you mean a?", and an empty
+  // exclude (`!$UNSET`) excluded nothing, so every project ran with one warning
+  // line.
   if (s === '') throw new UserError(`filter "${raw}" names no project`)
 
   // `//` is Turbo's name for the root package (`--filter=//`, `//...`,
@@ -325,10 +325,10 @@ function matchSelector(
   if (filter.isPath) {
     // A path naming a project's own directory is that project, as Turbo and
     // pnpm read it: `.` is the root project, never every project under the
-    // root, and `./packages/app` leaves the examples nested in it (D-43).
-    // A directory that is no project keeps the "at or under" reading.
-    // A link to a project's directory (`./widgets/a -> ../submodules/a`)
-    // names that project, which discovery holds at its real directory.
+    // root, and `./packages/app` leaves the examples nested in it. A directory
+    // that is no project keeps the "at or under" reading. A link to a project's
+    // directory (`./widgets/a ->../submodules/a`) names that project, which
+    // discovery holds at its real directory.
     let exact = projects.find((p) => p.dir === filter.matcher)
     if (exact === undefined && filter.pathRoot !== undefined) {
       const real = canonicalDir(filter.pathRoot, filter.matcher)
@@ -363,9 +363,9 @@ function matchSelector(
     }
     return out
   }
-  // A `*`-free name compiles to an exact anchored match, so a bare name
-  // needs no branch of its own: the one this had was deleted with the
-  // whole core suite green (item 649).
+  // A `*`-free name compiles to an exact anchored match, so a bare name needs
+  // no branch of its own: the one this had was deleted with the whole core
+  // suite green.
   const re = compileNameGlob(filter.matcher)
   for (const p of projects) {
     if (re.test(p.name)) out.push(p.name)
@@ -420,8 +420,8 @@ export interface ApplyFiltersOptions {
   onNoMatch?: (filter: ParsedFilter, emptyDiff: boolean) => void
   /**
    * Called once per filter whose pattern matched projects but whose walk
-   * selected none (`...^c` for a `c` nothing depends on), with what it
-   * matched. Reported as a no-match, it read as a typo (item 1030).
+   * selected none (`...^c` for a `c` nothing depends on), with what it matched.
+   * Reported as a no-match, it read as a typo.
    */
   onEmptyWalk?: (filter: ParsedFilter, matched: readonly string[]) => void
 }
@@ -433,8 +433,8 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
 
   // Every include before any exclude, as pnpm does: applied in argv order,
   // `--filter '!b' --filter 'a...'` let the later include add back what the
-  // exclude had removed, and b ran (item 979). The expansions are still
-  // taken in argv order, so `onNoMatch` names the filters as typed.
+  // exclude had removed, and b ran. The expansions are still taken in argv
+  // order, so `onNoMatch` names the filters as typed.
   const excludes: Set<string>[] = []
   for (const f of opts.filters) {
     const matched = matchProjects(f, opts.projects, opts.affectedByFilter, opts.graph, opts.tags)

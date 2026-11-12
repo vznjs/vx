@@ -37,8 +37,8 @@ async function main(): Promise<void> {
           Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs'),
         )
     if (local !== null) await handOff(local, argv)
-    // `vx --version` needs one leaf module; the dispatcher and the util
-    // barrel it pulled in were 20 ms of its 28 (2026-10-01).
+    // `vx --version` needs one leaf module; the dispatcher and the util barrel
+    // it pulled in were 20 ms of its 28.
     if (argv.length === 1 && (argv[0] === '--version' || argv[0] === 'version')) {
       // Handed off, it says which vx ran and which one handed it the call.
       const from = process.env['VX_HANDED_OFF'] || undefined
@@ -65,10 +65,10 @@ async function main(): Promise<void> {
     // never cut by the exit below with its temp dir left behind.
     const { settleBeforeExit } = await import('./util/index.js')
     const code = await run(argv).finally(settleBeforeExit)
-    // Not `process.exit` here: Bun drops what a pipe has not yet taken
-    // when it follows a large write (300 KB written, 64 KiB delivered;
-    // `vx history --format json` was cut mid-string, 2026-09-15). The code
-    // is set, and `exitOnceFlushed` exits after both streams have ended.
+    // Not `process.exit` here: Bun drops what a pipe has not yet taken when it
+    // follows a large write (300 KB written, 64 KiB delivered; `vx history
+    // --format json` was cut mid-string). The code is set, and
+    // `exitOnceFlushed` exits after both streams have ended.
     process.exitCode = code
   } catch (err) {
     const ui = await import('./ui/index.js')
@@ -84,14 +84,13 @@ async function main(): Promise<void> {
       OUT_OF_FDS_HINT,
       wantsJson,
     } = await import('./util/index.js')
-    // A plugin's failure quotes what it was told (a remote's reply, a
-    // header), and a config's own throw is its author's text: a secret in
-    // either reached stderr whole (L-11).
+    // A plugin's failure quotes what it was told (a remote's reply, a header),
+    // and a config's own throw is its author's text: a secret in either reached
+    // stderr whole.
     const say = (line: string): void => ui.say('error', maskedLine(line))
-    // UserError (workspace not found, cycle, config invalid, ...) —
-    // print the message only; the stack is noise the user can't act
-    // on. Everything else gets the full stack so internal bugs are
-    // debuggable.
+    // UserError (workspace not found, cycle, config invalid,...) — print the
+    // message only; the stack is noise the user can't act on. Everything else
+    // gets the full stack so internal bugs are debuggable.
     if (isUserError(err)) {
       // A message that names its verb (`vx why: …`, a plugin's `vx dte
       // worker: …`) is that verb's; any other is the verb typed. A config
@@ -177,11 +176,11 @@ function withCauses(err: unknown): string {
   return out
 }
 
-// The loop drained while the verb was still pending: something it awaits
-// can never settle (a plugin hook whose promise is never resolved), and
-// with no exit code set Bun exits 0 — a run whose task failed reported
-// green, and its task had not even run (item 921). An exit that no
-// verdict reached is a failure, and says so.
+// The loop drained while the verb was still pending: something it awaits can
+// never settle (a plugin hook whose promise is never resolved), and with no
+// exit code set Bun exits 0 — a run whose task failed reported green, and its
+// task had not even run. An exit that no verdict reached is a failure, and says
+// so.
 process.on('beforeExit', () => {
   if (settled) return
   settled = true
@@ -208,13 +207,12 @@ function cwdGone(err: unknown): boolean {
 
 // A reader that leaves is not the run's failure. `vx run build | head -1`
 // closes the pipe after one line; every later write gets EPIPE, which Bun
-// raises as an `error` event on the stream, and an `error` nobody listens
-// for is an uncaught exception: the run died with a stack after its task
-// had succeeded, exit 1, its lock directory left behind (2026-09-16). With
-// a listener the write returns false, the run finishes, saves, releases,
-// and exits with its own verdict; what was going to the reader goes
-// nowhere. Same for stderr (`2>&1 | head`). Here and not in the logger:
-// an embedder's streams are the embedder's.
+// raises as an `error` event on the stream, and an `error` nobody listens for
+// is an uncaught exception: the run died with a stack after its task had
+// succeeded, exit 1, its lock directory left behind. With a listener the write
+// returns false, the run finishes, saves, releases, and exits with its own
+// verdict; what was going to the reader goes nowhere. Same for stderr (`2>&1 |
+// head`). Here and not in the logger: an embedder's streams are the embedder's.
 // Set up past `--version`, which never touches the Node streams.
 function listenForReadersGone(): void {
   for (const stream of [process.stdout, process.stderr]) {

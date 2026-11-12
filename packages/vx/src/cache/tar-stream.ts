@@ -1,8 +1,8 @@
 // A streaming tar reader for the restore path. `Bun.Archive` needs the whole
 // tar in memory and `.files()` copies every entry, so restoring a 150 MiB
-// artifact peaked at 3.2× its size (measured 2026-09-03). This reads the
-// tar as it streams out of the zstd decoder and hands each entry's body to
-// the caller as chunks, so memory is bounded by one chunk, not the archive.
+// artifact peaked at 3.2× its size (measured). This reads the tar as it streams
+// out of the zstd decoder and hands each entry's body to the caller as chunks,
+// so memory is bounded by one chunk, not the archive.
 //
 // Dialect: what libarchive (Bun.Archive) writes — ustar with the name/prefix
 // split, pax extended headers (`x`: path, size) past ustar's limits — plus
@@ -31,11 +31,11 @@ export class TarFormatError extends Error {
 
 const BLOCK = 512
 /**
- * An extended header's body is read whole, so its size is a claim on
- * memory the stream has not paid for: a 1 GiB pax header zstd-compresses
- * to ~32 KB and cost 2 GiB of RSS where a regular entry of that size
- * streams in 32 MiB (L-1). A real one holds a path (≤ PATH_MAX) and a few
- * numbers; a MiB is far past any writer's.
+ * An extended header's body is read whole, so its size is a claim on memory the
+ * stream has not paid for: a 1 GiB pax header zstd-compresses to ~32 KB and
+ * cost 2 GiB of RSS where a regular entry of that size streams in 32 MiB. A
+ * real one holds a path (≤ PATH_MAX) and a few numbers; a MiB is far past any
+ * writer's.
  */
 const MAX_EXTENDED_HEADER = 1024 * 1024
 /** The largest millisecond count a Date holds (ECMA-262 §21.4.1.1). */
@@ -68,10 +68,10 @@ function octal(h: Uint8Array, off: number, len: number): number {
 }
 
 /**
- * The field every writer emits — octal digits between ASCII spaces, ended
- * by a NUL or the field's end — read off the bytes; null for anything
- * else, which `octal` reads the slow way. Three fields a header through a
- * decoder and a regex were most of a small artifact's read (2026-10-02).
+ * The field every writer emits — octal digits between ASCII spaces, ended by a
+ * NUL or the field's end — read off the bytes; null for anything else, which
+ * `octal` reads the slow way. Three fields a header through a decoder and a
+ * regex were most of a small artifact's read.
  */
 function plainOctal(h: Uint8Array, off: number, len: number): number | null {
   const end = off + len
@@ -238,8 +238,8 @@ class TarDecoder {
     // such a Date after the renames before it had landed.
     if (mtimeMs > DATE_MAX_MS) throw new TarFormatError(`header mtime past what a Date holds`)
     const padded = Math.ceil(size / BLOCK) * BLOCK
-    // POSIX `ustar\0` only: old GNU's `ustar  ` keeps atime and ctime at
-    // 345, and `-G` fills them, so a prefix read there named every entry
+    // POSIX `ustar\0` only: old GNU's `ustar ` keeps atime and ctime at 345,
+    // and `-G` fills them, so a prefix read there named every entry
     // `<atime>…/<name>`.
     const prefix = field(h, 257, 6) === 'ustar' ? field(h, 345, 155) : ''
     const rawName = field(h, 0, 100)

@@ -48,14 +48,14 @@ export function zstdContentSize(b: Uint8Array): bigint | null {
 }
 
 /**
- * Whether `b` is exactly ONE zstd frame: its header, its blocks by their
- * own sizes (RFC 8878 §3.1.1.2), the checksum when the header asks for one,
- * and not a byte after. `zstdContentSize` reads the first frame alone, and
+ * Whether `b` is exactly ONE zstd frame: its header, its blocks by their own
+ * sizes (RFC 8878 §3.1.1.2), the checksum when the header asks for one, and not
+ * a byte after. `zstdContentSize` reads the first frame alone, and
  * `Bun.zstdDecompress` decodes every frame there is: a 100-byte frame with a
- * second one appended passed a 64 MiB ceiling and expanded to 2 GiB of
- * memory from a 32 KB remote body before the result's length was checked
- * (A-5). Anything but one whole frame decodes as a stream, under the running
- * count. A few header reads per block, on bytes already in memory.
+ * second one appended passed a 64 MiB ceiling and expanded to 2 GiB of memory
+ * from a 32 KB remote body before the result's length was checked. Anything but
+ * one whole frame decodes as a stream, under the running count. A few header
+ * reads per block, on bytes already in memory.
  */
 function isOneFrame(b: Uint8Array): boolean {
   if (b.length < 6) return false
@@ -100,10 +100,9 @@ async function zstdDecompressBounded(
   // UNREACHABLE as written, and kept deliberately. `assertDeclaredSize`
   // above refuses any frame DECLARING more than the cap, Bun refuses a
   // frame whose declaration disagrees with its body ("Decompression
-  // failed" on a forged Frame_Content_Size, measured item 487), and only
+  // failed" on a forged Frame_Content_Size), and only
   // ONE whole frame comes here (`isOneFrame`) — so what gets here declared
-  // <= cap and produced exactly that. Before A-5 a second frame appended
-  // after the first reached it, past the whole expansion. The only way it
+  // <= cap and produced exactly that. The only way it
   // fires again is a decoder that stops validating the declaration.
   if (out.length > cap) {
     throw new CorruptArtifactError(hash, `decompressed to ${out.length} bytes (> ${cap} cap)`)
@@ -181,10 +180,7 @@ export async function decodedTar(
   /**
    * The decompression ceiling: `Cache` passes its `artifactCeiling`, whose
    * default IS this module's. Reaching the real one needs an artifact that
-   * expands past 2 GiB, which no test can produce — so before item 487 the
-   * sizeless-bomb defense this module's comments promise had nothing
-   * asserting it, while the declared-size half was pinned by a forged
-   * header costing 20 bytes.
+   * expands past 2 GiB, which no test can produce.
    */
   cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
 ): Promise<ReadableStream<Uint8Array>> {

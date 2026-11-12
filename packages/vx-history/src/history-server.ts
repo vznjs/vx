@@ -89,8 +89,8 @@ export function timingOf(o: TaskOutcome): ServerTiming | undefined {
 /**
  * How long it would have taken alone, as core's local history stores it
  * (`run-history.ts` aloneMs): on a crowded DTE worker (`cpuShare` < 1) each
- * thread waited for a core. Sent as it ran, every crowded run raised the
- * shared number a forecast reads (2026-10-26).
+ * thread waited for a core. Sent as it ran, every crowded run raised the shared
+ * number a forecast reads.
  */
 function aloneMs(o: TaskOutcome): number {
   const d = o.durationMs
@@ -108,9 +108,9 @@ const deadline = (stop?: AbortSignal): AbortSignal => {
 }
 
 /**
- * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
- * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
- * overwrote the line before (core's `printable`, L-31).
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words reach
+ * the terminal, and an `ESC ]` or `\r` in them retitled it or overwrote the
+ * line before (core's `printable`).
  */
 const printable = (s: string): string =>
   // oxlint-disable-next-line no-control-regex
@@ -319,9 +319,9 @@ export class HistoryServer {
 
   /**
    * One answer, asked again while `again(status)` (`undefined`: no answer)
-   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at the run's end,
-   * and one 503 there, or from GitHub's OIDC endpoint (as vx-cache asks
-   * it, #4571), lost the run's timings.
+   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at
+   * the run's end, and one 503 there, or from GitHub's OIDC endpoint (as
+   * vx-cache asks it), lost the run's timings.
    */
   private async tried(
     send: () => Promise<Response>,
@@ -403,7 +403,7 @@ export class HistoryServer {
     )
     if (res.status >= 300 && res.status < 400) throw await redirected(res, url)
     if (res.status === 401 && bearer === '') {
-      // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
+      // Off CI: the bare 401 said nothing of why or what to do.
       const err = await refusal(res, this.hidden)
       const fix =
         this.env.GITHUB_ACTIONS === 'true'
@@ -434,10 +434,10 @@ export class HistoryServer {
 
   /**
    * `items` in requests of `send`, whole until an answer names the limit
-   * (`vx-max-*`): one refused for its size is sent again in parts of the
-   * limit it names, each a smaller one than the last. Nothing is asked apart: `/v1/capabilities` cost
-   * every run a request, and the query a round-trip (2026-11-06). A query
-   * sends its parts at once; an upload one after another, so a refused
+   * (`vx-max-*`): one refused for its size is sent again in parts of the limit
+   * it names, each a smaller one than the last. Nothing is asked apart:
+   * `/v1/capabilities` cost every run a request, and the query a round-trip. A
+   * query sends its parts at once; an upload one after another, so a refused
    * part resends no part the server folded.
    */
   private async parts<T, R>(

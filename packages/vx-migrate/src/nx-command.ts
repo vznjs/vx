@@ -3,11 +3,11 @@
 // run-commands.impl.ts and the two runners in running-tasks.ts, read from
 // nx 22.7 and 23.2, where they agree — rendered as ONE POSIX sh line.
 //
-// Where: Nx runs the commands from the WORKSPACE ROOT unless `options.cwd`
-// says otherwise; vx runs every command from the project dir and has no
-// per-task cwd, so the line starts with the `cd` that gets there —
-// `cd ../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`
-// is exactly what storybook's `compile` does (2026-09-11).
+// Where: Nx runs the commands from the WORKSPACE ROOT unless `options.cwd` says
+// otherwise; vx runs every command from the project dir and has no per-task
+// cwd, so the line starts with the `cd` that gets there — `cd../.. &&
+// node./scripts/build/build-package.ts --cwd code/lib/cli` is exactly what
+// storybook's `compile` does.
 //
 // How: Nx runs each command in a shell of its own, and `commands` run in
 // PARALLEL unless `parallel: false` (the schema's default is `true`): all

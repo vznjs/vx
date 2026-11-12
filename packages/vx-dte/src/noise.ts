@@ -113,8 +113,8 @@ export class CipherState {
 
 /**
  * A handshake of `NN` or `NNpsk0`, initiator or responder:
- *   NN:      -> e          <- e, ee
- *   NNpsk0:  -> psk, e     <- e, ee
+ *   NN: -> e <- e, ee
+ *   NNpsk0: -> psk, e <- e, ee
  * Two messages; then `split()` gives what each side sends and receives with.
  */
 export class Handshake {

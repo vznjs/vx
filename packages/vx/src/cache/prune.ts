@@ -267,10 +267,10 @@ async function pruneIndex(
   } catch (err) {
     if (!isIndexFull(err)) throw err
   }
-  // History and memo rows a month old go with a prune, never a run's
-  // close: five DELETEs on every run's exit was its slowest step
-  //. `invocations` shares the window with `runs`, or `vx last`
-  // would list a run whose task rows are gone.
+  // History and memo rows a month old go with a prune, never a run's close:
+  // five DELETEs on every run's exit was its slowest step. `invocations` shares
+  // the window with `runs`, or `vx last` would list a run whose task rows are
+  // gone.
   const orphans = await reapOrphans(ix, picked.files)
   // An evicted entry's deleted pages (an inline artifact, a row and a
   // stamp per output file) go to SQLite's free list and the file keeps its

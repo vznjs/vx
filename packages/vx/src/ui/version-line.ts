@@ -11,11 +11,11 @@ function versionLine(version: string, where: string, on: boolean): string {
 }
 
 /**
- * Write the line to stdout. Colour is decided here, not by `detectColors`:
- * fd 1 as a character device is the TTY answer, and a CI's log is not
- * painted for this one line. `Bun.stdout`, not `process.stdout`: the Node
- * stream's first touch is ~7 ms, half of this verb (2026-10-02). A reader
- * gone (EPIPE) is no failure of the line.
+ * Write the line to stdout. Colour is decided here, not by `detectColors`: fd 1
+ * as a character device is the TTY answer, and a CI's log is not painted for
+ * this one line. `Bun.stdout`, not `process.stdout`: the Node stream's first
+ * touch is ~7 ms, half of this verb. A reader gone (EPIPE) is no failure of the
+ * line.
  */
 export async function printVersion(version: string, where: string): Promise<void> {
   const env = process.env

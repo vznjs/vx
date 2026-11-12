@@ -53,14 +53,14 @@ const POLL_INTERVAL_MS = 250
  * `node_modules` is the difference between a cheap fallback and one that
  * re-stats 40 000 files four times a second.
  *
- * That justification is exactly `isIgnoredDir`, so this IS that test.
- * It used to carry a fourth name, `dist`, which the justification does NOT
- * cover: `dist` is dropped only when a project DECLARES it as an output, and
- * a project that does not declare it had its `dist/` sources silently
- * invisible to `vx watch` on every host the poller exists for — a macOS
- * sandbox, a network mount, a container bind — while the native watcher
- * delivered them. Two watchers disagreeing about what an edit is (item 482).
- * The real per-project answer is the caller's `skipDir`, below.
+ * That justification is exactly `isIgnoredDir`, so this IS that test. It used
+ * to carry a fourth name, `dist`, which the justification does NOT cover:
+ * `dist` is dropped only when a project DECLARES it as an output, and a project
+ * that does not declare it had its `dist/` sources silently invisible to `vx
+ * watch` on every host the poller exists for — a macOS sandbox, a network
+ * mount, a container bind — while the native watcher delivered them. Two
+ * watchers disagreeing about what an edit is. The real per-project answer is
+ * the caller's `skipDir`, below.
  */
 
 /**
@@ -68,12 +68,11 @@ const POLL_INTERVAL_MS = 250
  *
  * `fs.watch` on macOS is FSEvents, which needs `mach-lookup` on
  * `com.apple.FSEvents`; inside a sandbox that does not grant it the call
- * SUCCEEDS and then never fires (measured 2026-09-05: 0 events recursive,
- * 0 non-recursive, against 3 and 2 for the same writes outside — while
- * `fs.watchFile` polling delivered in both). A network filesystem or a
- * container bind mount fails the same way. Polling is slower and coarser,
- * and it is the difference between `vx watch` working there and silently
- * doing nothing.
+ * SUCCEEDS and then never fires (measured: 0 events recursive, 0 non-recursive,
+ * against 3 and 2 for the same writes outside — while `fs.watchFile` polling
+ * delivered in both). A network filesystem or a container bind mount fails the
+ * same way. Polling is slower and coarser, and it is the difference between `vx
+ * watch` working there and silently doing nothing.
  */
 export function pollWatcher(
   dir: string,
@@ -203,14 +202,13 @@ function byteNamed(dir: string): Map<string, string> {
 
 /**
  * `fs.watch` plus proof of delivery. On macOS a recursive watcher is an
- * FSEvents stream that another thread schedules AFTER the call returns, and
- * a change landing in that gap is never delivered — MEASURED 2026-09-03: a
- * write made immediately after `fs.watch` was lost 5 times in 30 under CPU
- * load (0 in 30 idle, 0 in 30 after a 50 ms pause). The gap has no fixed
- * width, so no pause is the answer and no timeout on the waiting side ever
- * was (the e2e flake this closes had one of 45 s). A probe file written
- * under the watcher and waited for is: once ITS event arrives, the stream
- * is live for everything after it.
+ * FSEvents stream that another thread schedules AFTER the call returns, and a
+ * change landing in that gap is never delivered — MEASURED: a write made
+ * immediately after `fs.watch` was lost 5 times in 30 under CPU load (0 in 30
+ * idle, 0 in 30 after a 50 ms pause). The gap has no fixed width, so no pause
+ * is the answer and no timeout on the waiting side ever was (the e2e flake this
+ * closes had one of 45 s). A probe file written under the watcher and waited
+ * for is: once ITS event arrives, the stream is live for everything after it.
  *
  * `onEvent` never sees the probe (create or unlink), and the probe is
  * removed before `ready` resolves.
@@ -240,10 +238,9 @@ export function armWatcher(
       return
     }
     // Another arm's probe, seen by this recursive watcher under a nested
-    // directory (a nested project's, a member base inside a project): no
-    // key sees it, and passing it on ran a cycle, and restarted a dev
-    // server, with no edit made (item 1016). Only the watcher's own probe
-    // proves this stream live.
+    // directory (a nested project's, a member base inside a project): no key
+    // sees it, and passing it on ran a cycle, and restarted a dev server, with
+    // no edit made. Only the watcher's own probe proves this stream live.
     if (path.basename(filename) === WATCH_PROBE) return
     onEvent(filename)
   }
@@ -253,11 +250,11 @@ export function armWatcher(
       : fs.watch(dir, { recursive, persistent: true }, (_event, filename) => listener(filename))
   const probe = path.join(dir, WATCH_PROBE)
   const ready = (async (): Promise<boolean> => {
-    // The probe is subject to the very race it detects: a write that lands
-    // in the gap is lost like any other (1 in 20 under a full gate's load,
-    // measured 2026-09-03, with every delivered event under 60 ms). So it is
-    // re-written on a short backoff until its event arrives — the first write
-    // after the stream goes live is the one that proves it.
+    // The probe is subject to the very race it detects: a write that lands in
+    // the gap is lost like any other (1 in 20 under a full gate's load,
+    // measured, with every delivered event under 60 ms). So it is re-written on
+    // a short backoff until its event arrives — the first write after the
+    // stream goes live is the one that proves it.
     const deadline = performance.now() + timeoutMs
     let ok = false
     let step = 50
@@ -269,9 +266,9 @@ export function armWatcher(
       }
       const remaining = deadline - performance.now()
       if (remaining <= 0) {
-        // The write itself can outlast the budget (a loaded macOS runner:
-        // 261 ms against 100, E-87), and the loop has not yielded yet: let
-        // an event already queued in before giving up on it.
+        // The write itself can outlast the budget (a loaded macOS runner: 261
+        // ms against 100), and the loop has not yielded yet: let an event
+        // already queued in before giving up on it.
         await new Promise((resolve) => setTimeout(resolve, 0))
         ok = arrived
         break
@@ -420,12 +417,12 @@ function treeWatcher(
 /** True when `abs` was last modified before `t` (epoch ms); false when it cannot be read. */
 export function modifiedBefore(abs: string, t: number): boolean {
   try {
-    // The later of the two clocks: `mv`, `cp -p`, `rsync -a` and `tar x`
-    // carry a file's OLD mtime onto the new one, and judged by mtime alone
-    // such an edit was "before the arm" and never ran (item 945). No
-    // process can set a ctime, and a rename or a write moves it.
-    // The link's own times, not its target's: a link made after the arm
-    // to an old file is a new input, and followed it read as the target's.
+    // The later of the two clocks: `mv`, `cp -p`, `rsync -a` and `tar x` carry
+    // a file's OLD mtime onto the new one, and judged by mtime alone such an
+    // edit was "before the arm" and never ran. No process can set a ctime, and
+    // a rename or a write moves it. The link's own times, not its target's: a
+    // link made after the arm to an old file is a new input, and followed it
+    // read as the target's.
     const st = fs.lstatSync(abs)
     return Math.max(st.mtimeMs, st.ctimeMs) < t
   } catch {

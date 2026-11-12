@@ -17,12 +17,11 @@ import type { TaskNode } from '../graph/index.js'
 import { parseDuration } from '../util/index.js'
 
 /**
- * Drop the run's facts about files a task may have written without
- * declaring them (`undeclaredWriteReach`): the project's git snapshot and
- * its index OIDs. The next reader
- * re-enumerates the project (one `git ls-files`) and hashes its files by
- * content; the per-declaration file-list memos are keyed on the snapshot
- * array, so they miss with it (item 743).
+ * Drop the run's facts about files a task may have written without declaring
+ * them (`undeclaredWriteReach`): the project's git snapshot and its index OIDs.
+ * The next reader re-enumerates the project (one `git ls-files`) and hashes its
+ * files by content; the per-declaration file-list memos are keyed on the
+ * snapshot array, so they miss with it.
  */
 export function forgetUndeclaredWrites(
   node: TaskNode,

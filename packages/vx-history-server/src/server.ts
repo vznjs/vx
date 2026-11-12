@@ -45,7 +45,7 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     maxQueryRefs: MAX_QUERY_REFS,
   }
 
-  // The fold is one upsert, a few ms for a thousand tasks: done inline (2026-10-25).
+  // The fold is one upsert, a few ms for a thousand tasks: done inline.
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
     if (access?.write === undefined) throw new Refusal(403, 'this request reads only')
@@ -134,8 +134,8 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
 
   return async (req) => {
     const res = await answer(req)
-    // Every /v1/timings answer, a refusal too: a client learns the limits
-    // from its first request, and was asked none apart (2026-11-06).
+    // Every /v1/timings answer, a refusal too: a client learns the limits from
+    // its first request, and was asked none apart.
     if (new URL(req.url).pathname.startsWith('/v1/timings/'))
       for (const [header, value] of limitHeaders) res.headers.set(header, value)
     return res

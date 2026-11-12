@@ -56,10 +56,10 @@ export async function runWorker(opts: {
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
   artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
 }): Promise<number> {
-  // The tracked files as they are, as the run snapshots its own: HEAD's
-  // tree let in a checkout whose prepare rewrote a tracked file, and the
-  // task built from it was saved under the clean key (2026-10-25).
-  // Its files first as the commit holds them, as the run's key read them.
+  // The tracked files as they are, as the run snapshots its own: HEAD's tree
+  // let in a checkout whose prepare rewrote a tracked file, and the task built
+  // from it was saved under the clean key. Its files first as the commit holds
+  // them, as the run's key read them.
   await unfilter(opts.root)
   const base = await snapshot(opts.root)
   const tree = base.tree
@@ -89,10 +89,10 @@ export async function runWorker(opts: {
     )
   } catch (err) {
     if (err instanceof RelayError && err.status === 410) {
-      // The run ended before this worker came up: nothing is left for it,
-      // and its CI job is no failure. One started by hand may have come
-      // before its run, so it says so: an exit with no word left the run
-      // waiting on nobody (2026-10-25).
+      // The run ended before this worker came up: nothing is left for it, and
+      // its CI job is no failure. One started by hand may have come before its
+      // run, so it says so: an exit with no word left the run waiting on
+      // nobody.
       if (opts.id === undefined) {
         ui.print(
           'err',
@@ -190,10 +190,10 @@ export async function runWorker(opts: {
   const leaving = new AbortController()
   const quitCode = (): number => 128 + constants.signals[quit.signal.reason as 'SIGINT' | 'SIGTERM']
   /**
-   * The run is over for this worker (410), its job no failure. An end on
-   * the orchestrator's silence stops what runs here, and is said: three
-   * workers' every task stopped in one second, each job green and silent,
-   * and the cause was found only in the run's profile (CI, 2026-10-29).
+   * The run is over for this worker (410), its job no failure. An end on the
+   * orchestrator's silence stops what runs here, and is said: three workers'
+   * every task stopped in one second, each job green and silent, and the cause
+   * was found only in the run's profile (CI).
    */
   const ended = (err: RelayError): number => {
     if (err.message === ORCHESTRATOR_SILENT)
@@ -218,8 +218,8 @@ export async function runWorker(opts: {
   ): Promise<void> => {
     // Stopped by a signal, or by this worker leaving (its orchestrator went
     // silent): its end would fail the task in the run, which runs it again
-    // elsewhere once this worker leaves. One such end reached the
-    // orchestrator and failed the run (2026-11-05).
+    // elsewhere once this worker leaves. One such end reached the orchestrator
+    // and failed the run.
     if (quit.signal.aborted || leaving.signal.aborted) return
     const { output, ...result } = res
     // Forced: the key keeps an entry it holds, so the run's machines restore
@@ -251,7 +251,7 @@ export async function runWorker(opts: {
     } catch (err) {
       // Its outputs refused (a link out of its project): the task fails, as
       // core fails it, not this worker. Taken as a fault, it failed every
-      // worker it reached and the run with them (2026-10-24).
+      // worker it reached and the run with them.
       if (bare || !isUserError(err)) throw err
       return reply(
         m,
@@ -286,8 +286,8 @@ export async function runWorker(opts: {
     for (const part of parts(end)) await say(part)
   }
 
-  // A message the relay would not take is said, each kind once (2026-10-23):
-  // a lost `ran` or `held` left the run waiting on this worker for nothing.
+  // A message the relay would not take is said, each kind once: a lost `ran` or
+  // `held` left the run waiting on this worker for nothing.
   const said = new Set<string>()
   const unsent = (what: string): ((err: unknown) => void) =>
     unsentBy(
@@ -346,7 +346,7 @@ export async function runWorker(opts: {
         // The task's own error (a sandbox this machine cannot host, an
         // `exec.sandbox` it refuses) fails it, as core fails it. Taken as a
         // fault, each worker it reached left the run, and unsandboxed tasks
-        // failed with no worker left (docker(), 2026-10-25).
+        // failed with no worker left (docker()).
         if (isUserError(err)) {
           ui.print('err', ui.status('error', m.task, err.message))
           const res = { exitCode: 1, durationMs: 0, violations: [] }
@@ -377,7 +377,7 @@ export async function runWorker(opts: {
       // Its checkout root read as the run's: a path under it names the same
       // file there, as the task's env does. Compared raw, a probe of a
       // workspace tool's path failed every task on a worker checked out
-      // elsewhere (2026-10-25).
+      // elsewhere.
       const mine = swapRoots(await p, [[opts.root, root]])
       if (mine !== r.output)
         return `\`${r.command}\` answers ${JSON.stringify(mine)} on this worker, ${JSON.stringify(r.output)} on the run's machine, whose answer its key holds`
@@ -423,8 +423,8 @@ export async function runWorker(opts: {
           await got
         } catch (err) {
           // No worker reads it either: the task fails, naming it. Taken as a
-          // fault, each worker it reached was dropped and the run waited on
-          // a worker that never came (2026-10-24).
+          // fault, each worker it reached was dropped and the run waited on a
+          // worker that never came.
           if (!isUserError(err)) throw err
           ui.print('err', ui.status('error', m.task, err.message))
           const res = { exitCode: 1, durationMs: 0, violations: [], unread: [d.key] }
@@ -438,20 +438,20 @@ export async function runWorker(opts: {
           return
         }
       }
-      // An earlier task's files under these outputs would ship as this one's.
-      // A tracked file or a nested project's is none of them: cleared, a
-      // committed file under `gen/**` was gone for the task's dependants
-      // (2026-10-24). Nor is a dependency's: an additive task (outputs over
-      // its upstream's tree) found the files it builds on gone.
+      // An earlier task's files under these outputs would ship as this one's. A
+      // tracked file or a nested project's is none of them: cleared, a
+      // committed file under `gen/**` was gone for the task's dependants. Nor
+      // is a dependency's: an additive task (outputs over its upstream's tree)
+      // found the files it builds on gone.
       const upstream = m.deps.map((d) => names(d.project, d.outputs))
       const under = await outputFiles(opts.root, m.project, m.outputs)
       const { cleared, held: upstreams, committed } = leftUnder(under, tracked, m.nested, upstream)
       // An upstream's file it leaves as it found it is not its entry's: one
-      // saved there replayed the upstream's old bytes over its new ones on
-      // a hit that did not fold the upstream's key (2026-10-24).
+      // saved there replayed the upstream's old bytes over its new ones on a
+      // hit that did not fold the upstream's key.
       const found = await stamps(upstreams.map((f) => path.join(opts.root, f)))
-      // A committed file under its outputs it deletes is gone here, not
-      // there: no restore removes one (2026-11-10).
+      // A committed file under its outputs it deletes is gone here, not there:
+      // no restore removes one.
       const mine = committed.map((f) => path.join(opts.root, f))
       for (const [key, held] of holds)
         if (cleared.some(held)) {
@@ -515,11 +515,11 @@ export async function runWorker(opts: {
               })),
             }),
       })
-      // An untracked file under its project is one the orchestrator's key
-      // never read (it refuses one it keys), yet the command may: one a
-      // checkout left built into the output saved under the clean key, and
-      // every later run restored it (2026-11-07). Listed before the command,
-      // so a file the task writes is not taken for one it read.
+      // An untracked file under its project is one the orchestrator's key never
+      // read (it refuses one it keys), yet the command may: one a checkout left
+      // built into the output saved under the clean key, and every later run
+      // restored it. Listed before the command, so a file the task writes is
+      // not taken for one it read.
       const strays = await untrackedUnder(opts.root, m, [names(m.project, m.outputs), ...upstream])
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
@@ -540,9 +540,9 @@ export async function runWorker(opts: {
         crowd,
         res.cpuMs === undefined || !(res.durationMs > 0) ? undefined : res.cpuMs / res.durationMs,
       )
-      // Its command is done: saving its outputs to the cache is the
-      // network's time, and its cores are the next task's (main,
-      // 2026-10-23: workers booked 3.7 cores and used 2.4).
+      // Its command is done: saving its outputs to the cache is the network's
+      // time, and its cores are the next task's (main: workers booked 3.7 cores
+      // and used 2.4).
       free()
       const took = ui.dim(`${Math.round(res.durationMs)}ms`)
       ui.print(
@@ -551,9 +551,8 @@ export async function runWorker(opts: {
           ? ui.status('ok', m.task, took)
           : ui.status('error', m.task, [`exit ${res.exitCode} `, took]),
       )
-      // A bind the task never wrote is not its output. By size alone, an
-      // empty stamp the task wrote was taken too and saved as no file
-      // (2026-10-24).
+      // A bind the task never wrote is not its output. By size alone, an empty
+      // stamp the task wrote was taken too and saved as no file.
       await prepared.sweep()
       // Its violations name the orchestrator's paths. As JSON first: the swap
       // round-trips them through JSON, which leaves a Date a string.
@@ -566,20 +565,18 @@ export async function runWorker(opts: {
       )
       // Only a success the sandbox found nothing wrong with is the task's
       // entry; anything else is kept where no lookup finds it. A 0 past the
-      // timeout (a trapped SIGTERM) failed, and saved under the key the
-      // next run hit it green (2026-10-24). A process it left running may
-      // still write its outputs: core saves no entry, nor does this. Nor for
-      // one the run cancelled: a trapped SIGTERM's 0 was a stopped run's
-      // half-done task, and the next run hit it (2026-10-24).
-      // A tracked file it changed under its project (a formatter's input)
-      // is one the orchestrator's disk never shows: its key read the file
-      // as checked out, and the entry built from the rewrite was the next
-      // run's hit (2026-10-24). Core withholds its own save if the key read
-      // it; this entry is withheld for any. Nor for an additive task that
-      // removed an upstream's file: a hit left the file in place, and core
-      // saves none once this machine removes it too (2026-10-24). Nor for
-      // one that removed a committed file under its outputs: a hit leaves
-      // that in place too (2026-11-10).
+      // timeout (a trapped SIGTERM) failed, and saved under the key the next
+      // run hit it green. A process it left running may still write its
+      // outputs: core saves no entry, nor does this. Nor for one the run
+      // cancelled: a trapped SIGTERM's 0 was a stopped run's half-done task,
+      // and the next run hit it. A tracked file it changed under its project (a
+      // formatter's input) is one the orchestrator's disk never shows: its key
+      // read the file as checked out, and the entry built from the rewrite was
+      // the next run's hit. Core withholds its own save if the key read it;
+      // this entry is withheld for any. Nor for an additive task that removed
+      // an upstream's file: a hit left the file in place, and core saves none
+      // once this machine removes it too. Nor for one that removed a committed
+      // file under its outputs: a hit leaves that in place too.
       const changed = [
         ...(await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))),
         ...strays,
@@ -796,21 +793,19 @@ export function crowdShare(stat: string, cores: number): number | undefined {
 }
 
 /**
- * This machine's load, sampled each second: the cores busy over the last
- * one, from the CPUs' times, and the memory in use. Also how crowded its
- * CPU is, read every `CROWD_EVERY_MS`: a task on a crowded machine uses
- * only its share, and the run learns its need from what it used. With no
- * /proc/stat (macOS), the load average says it: six test shards on a
- * 3-core Mac reported no share, so the run learned their crowded use as
- * their need and packed them as tight again: 66-78 s each (main 1e19c00,
- * 2026-10-23). Lagging a minute, it fits the long tasks a
- * crowd stretches. A load average of 0 (Windows) is none. It counts
- * more than the threads that wait for a core: a GitHub macOS runner
- * read 49 with two test shards on 3 cores and a core idle, and the run
- * learned each shard needed the whole machine (main 8fa3c98). So a
- * machine whose cores were not all busy since the last look is not
- * crowded: Linux's run queue read a share of 0.67 on machines 83% busy,
- * and the run booked tasks 1.5 times the CPU they used (2026-11-07).
+ * This machine's load, sampled each second: the cores busy over the last one,
+ * from the CPUs' times, and the memory in use. Also how crowded its CPU is,
+ * read every `CROWD_EVERY_MS`: a task on a crowded machine uses only its share,
+ * and the run learns its need from what it used. With no /proc/stat (macOS),
+ * the load average says it: six test shards on a 3-core Mac reported no share,
+ * so the run learned their crowded use as their need and packed them as tight
+ * again: 66-78 s each. Lagging a minute, it fits the long tasks a crowd
+ * stretches. A load average of 0 (Windows) is none. It counts more than the
+ * threads that wait for a core: a GitHub macOS runner read 49 with two test
+ * shards on 3 cores and a core idle, and the run learned each shard needed the
+ * whole machine. So a machine whose cores were not all busy since the last look
+ * is not crowded: Linux's run queue read a share of 0.67 on machines 83% busy,
+ * and the run booked tasks 1.5 times the CPU they used.
  */
 export function loadMeter(
   read: () => string | undefined = procStat,
@@ -875,11 +870,11 @@ export function loadMeter(
       }
     },
     mark: () => ({ ...crowd, times: times() }),
-    // Its mean share over the looks since `from`; none (a task shorter
-    // than a look, or no /proc) is no correction. A task that used `used`
-    // cores beside cores left free wanted at most both: six test shards
-    // on a 3-core Mac used 2.3 cores, read a share of 0.22 from its load
-    // average, and the next run booked each 2.2 cores (main 3917881).
+    // Its mean share over the looks since `from`; none (a task shorter than a
+    // look, or no /proc) is no correction. A task that used `used` cores beside
+    // cores left free wanted at most both: six test shards on a 3-core Mac used
+    // 2.3 cores, read a share of 0.22 from its load average, and the next run
+    // booked each 2.2 cores.
     shareSince: (from, used) => {
       if (crowd.n <= from.n) return undefined
       let share = (crowd.sum - from.sum) / (crowd.n - from.n)
@@ -902,11 +897,10 @@ export function loadMeter(
 const TREE_EVERY_MS = 1_000
 
 /**
- * The cores each running task's whole process tree uses, read every
- * second, summed: beside the machine's busy cores, the rest is no task's
- * (the worker's own restores and saves, the OS). A Mac whose tasks'
- * exits said 1.8 cores ran them at half their share (main fd9afe0,
- * 2026-10-24), and nothing said where the rest went.
+ * The cores each running task's whole process tree uses, read every second,
+ * summed: beside the machine's busy cores, the rest is no task's (the worker's
+ * own restores and saves, the OS). A Mac whose tasks' exits said 1.8 cores ran
+ * them at half their share, and nothing said where the rest went.
  */
 export function treeMeter(
   sample: (roots: readonly number[]) => Promise<ReadonlyMap<number, TreeUsage>>,
@@ -1031,8 +1025,8 @@ export async function changedTracked(
       '--name-only',
       '-z',
       // Paths as the run names them: repo-relative, a workspace in a
-      // subdirectory matched no keyed file, and core saved the rewrite
-      // under its key (2026-10-25).
+      // subdirectory matched no keyed file, and core saved the rewrite under
+      // its key.
       '--relative',
       '--no-renames',
       base,
