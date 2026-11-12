@@ -1417,12 +1417,19 @@ function fresh(
  * 2 cores at half speed while 8-core sizes went unasked, 59% late on
  * graphs of 2- to 16-core sizes (2026-11-11), and a 25 GB one was
  * advised a 16 GB worker. Bigger is more cores when every size with
- * the cores has the memory, else more memory.
+ * the cores has the memory, else more memory. Only `platform`'s sizes
+ * count: against all, a 3.6-core lint on 4-core Linux sizes asked for a
+ * bigger one, as a 4-core ARM size fit it, and was packed onto no new
+ * worker (main a234741, 2026-11-12).
  */
-export function sized(need: Need, sizes: readonly Size[]): Need {
+export function sized(
+  need: Need,
+  sizes: readonly Size[],
+  platform: string | undefined = need.platform,
+): Need {
   if (need.above !== undefined || need.ask !== undefined || !Number.isFinite(need.cores))
     return need
-  const of = sizes.filter((s) => need.platform === undefined || s.platform === need.platform)
+  const of = sizes.filter((s) => platform === undefined || s.platform === platform)
   const roomy = (s: Size): boolean => s.cpu >= need.cores - 1e-9 && s.memory >= need.memory
   const fit = of.filter(roomy).length
   if (fit === 0 || fit === of.length) return need

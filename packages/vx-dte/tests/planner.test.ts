@@ -65,9 +65,9 @@ it('plans main’s run on four workers: only its misses are work, never a group 
   const p = plan(work, [], candidates([small], new Map(), [], work.length), WARM)
   // Two end it on its longest chain, its slack packed beside the chain
   // (2026-11-11); played as soon as there was room, it took three. The
-  // second asked 14 s in, its work in its slack: the same end on less.
+  // second asked 15 s in, its work in its slack: the same end on less.
   expect(p.start).toEqual([small])
-  expect(p.later.map((l) => [l.size, Math.round(l.inMs / 1000)])).toEqual([[small, 14]])
+  expect(p.later.map((l) => [l.size, Math.round(l.inMs / 1000)])).toEqual([[small, 15]])
   expect(p.release).toEqual([])
   // How busy it keeps them is tests/sim.test.ts's to judge.
   // The longest chain, vx-docs's import, build and test, after the warm-up.
@@ -579,6 +579,17 @@ it('starts workers needed at once as one sized to them all', () => {
   const p = plan(tasks, [], candidates(sizes, new Map(), [], tasks.length), 20_000)
   expect(p.start.map((s) => s.name)).toEqual(['c8'])
   expect(p.endsInMs).toBe(80_000)
+})
+
+it('sizes a need against its own platform’s sizes only', () => {
+  const sizes: Size[] = [
+    { name: 'small', max: 9, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+    { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' },
+    { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+  ]
+  expect(sized({ cores: 3.6, memory: 1e9 }, sizes, 'linux-x64').above).toBeUndefined()
+  // CONTROL: against every platform's, the mac is too small for it.
+  expect(sized({ cores: 3.6, memory: 1e9 }, sizes).above).toBeDefined()
 })
 
 it('keeps a need to the sizes with room for all of it', () => {

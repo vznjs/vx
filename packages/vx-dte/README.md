@@ -1004,8 +1004,10 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     With every task's time known, the plan packs the work instead, when
     that holds less CPU and ends as soon (`src/pack.ts`): each task, in
     order of its latest start, goes where a worker has room for it
-    between its ready time and its latest start, on the worker whose
-    time it lengthens least; a new worker, of the smallest size it fits,
+    between its ready time and its latest start less 15% of its chain
+    (a margin for a run slower than its history), on the worker whose
+    time it lengthens least; with no such room, where one has room by
+    its latest start; a new worker, of the smallest size it fits,
     starts for a task none has room for by then, or when keeping a worker
     idle until it costs more than a new one's warm-up (two warm-ups for a
     worker the run has; never while one sits idle that could take it),

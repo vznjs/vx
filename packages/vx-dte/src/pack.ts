@@ -137,6 +137,15 @@ function first(
   return undefined
 }
 
+/**
+ * The share of its chain a task's room leaves spare before the deadline,
+ * as runs take up to a third more or less than their history: placed at
+ * its latest start, a task 30% slow ended the run late. With ±30% noise,
+ * graph families ended 2-8% past their chain, not 5-11%, on 0-2% more
+ * worker time (tests/sim-theory.test.ts, 2026-11-12).
+ */
+const HEDGE = 0.15
+
 /** Whether a task may run on `bay`: its platform, and its whole need in the worker's size (`Infinity` cores: the whole worker). */
 const suits = (bay: Bay, t: PlanTask): boolean =>
   bay.open &&
@@ -248,6 +257,8 @@ export function pack(
     }
   }
   const latest = (i: number): number => deadline - tail[i]!
+  // Room is sought by a start that leaves its chain a margin (`HEDGE`).
+  const hedged = (i: number, r: number): number => Math.max(r, deadline - tail[i]! * (1 + HEDGE))
   const rank = noise === undefined ? latest : (i: number): number => latest(i) + noise[i]!
   // A server runs on each worker that started it until no task left
   // needs it (`Orchestrator.unneeded`): booked there from then on, until
@@ -400,7 +411,7 @@ export function pack(
         if (!suits(bay, t)) continue
         const more = again(bay.id)
         const len = t.ms! + more
-        const at = first(bay, r, latest(i) - more, len, need(bay), t.memory)
+        const at = first(bay, r, hedged(i, r) - more, len, need(bay), t.memory)
         if (at === undefined || !stretch(bay, at, len)) continue
         if (bay.end === 0 && bay.given.length === 0) idle = true
         const cost = bay.cores * Math.max(0, at + len - bay.end)
@@ -412,8 +423,25 @@ export function pack(
           bestMs = len
         }
       }
+      // None by the hedged start: its room by its latest start, as cheap
+      // as a new worker must beat. A worker asked only for the margin cost
+      // a 120 s run a second worker for 5 s of it (tests/pack.test.ts).
+      if (best === undefined)
+        for (const bay of bays) {
+          if (!suits(bay, t)) continue
+          const more = again(bay.id)
+          const len = t.ms! + more
+          const at = first(bay, r, latest(i) - more, len, need(bay), t.memory)
+          if (at === undefined || at >= bestAt || !stretch(bay, at, len)) continue
+          if (bay.end === 0 && bay.given.length === 0) idle = true
+          real = bay.size === undefined
+          best = bay
+          bestAt = at
+          bestMs = len
+          bestCost = bay.cores * Math.max(0, at + len - bay.end)
+        }
       const fresh = t.ms! + again('')
-      const by = latest(i) - (fresh - t.ms!)
+      const by = hedged(i, r) - (fresh - t.ms!)
       ms = fresh
       // A new one, the smallest it fits, joining as the task is ready (or
       // later, as `late` asks): taken when none has room by its latest start,
