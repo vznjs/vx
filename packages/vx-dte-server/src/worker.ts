@@ -5,16 +5,18 @@
 // participant.
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
-import { createVerifier, parseAllow, TokenError, type VerifiedToken } from './oidc.js'
+import { cachedFetchJson, parseAllow, Refusal } from '@vzn/vx-devtools'
 import {
   closeSocket,
   createRelay,
+  createVerifier,
   GONE,
   negotiate,
   refusedWith,
   sessionKey,
   type Kept,
   type Relay,
+  type VerifiedToken,
 } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
@@ -56,26 +58,12 @@ export interface Env {
 
 const SESSION = /^\/v1\/sessions\/([^/]+)\//
 
-/** How long the data center's cache holds an issuer's keys for the next isolate. */
-const KEYS_TTL_S = 600
-
 /**
  * An issuer's keys, read through the data center's cache: each run is its
- * own object, often in a fresh isolate, and each read the issuer twice per
- * join (2026-10-22). A key it does not hold is read past the cache.
+ * own object, often in a fresh isolate, and each read the issuer per join.
  */
-async function fetchJson(url: string, fresh: boolean): Promise<unknown> {
-  const hit = fresh ? undefined : await caches.default.match(url)
-  if (hit !== undefined) return hit.json()
-  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
-  if (!res.ok) throw new Error(`${url}: ${res.status}`)
-  const body = await res.text()
-  await caches.default.put(
-    url,
-    new Response(body, { headers: { 'cache-control': `max-age=${KEYS_TTL_S}` } }),
-  )
-  return JSON.parse(body)
-}
+const fetchJson = (url: string, fresh: boolean): Promise<unknown> =>
+  cachedFetchJson(caches.default)(url, fresh)
 
 /** What is wrong with an ALLOW, read once per value. */
 let allowChecked: { allow: string | undefined; why: string | undefined } | undefined
@@ -175,7 +163,7 @@ export default {
     try {
       run = await verifierOf(env, req)(token)
     } catch (err) {
-      if (!(err instanceof TokenError)) throw err
+      if (!(err instanceof Refusal)) throw err
       return refuse(req, err.status, err.message)
     }
     const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, run)))

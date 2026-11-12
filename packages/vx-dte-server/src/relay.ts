@@ -6,7 +6,7 @@
 // It knows as little as routing needs: a session is a hash, bodies and a
 // peer's info are its peers' ciphertext, and no body is ever stored.
 
-import { TokenError, type VerifiedToken } from './oidc.js'
+import { type Admits, oidcClaims, Refusal } from '@vzn/vx-devtools'
 import { importKey, PROOF_HEADER, proofText, verifyProof } from './proof.js'
 
 export interface RelayOptions {
@@ -177,7 +177,7 @@ class HttpError extends Error {
   }
 }
 
-const errorBody = (err: HttpError | TokenError): object => ({ error: err.message })
+const errorBody = (err: HttpError | Refusal): object => ({ error: err.message })
 
 export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 2_000
@@ -469,7 +469,7 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /** Refusals of socket requests, by the id their host attaches the socket as. */
-  const refusals = new Map<string, HttpError | TokenError>()
+  const refusals = new Map<string, HttpError | Refusal>()
 
   /**
    * A participant speaks only over its socket, and joins as it opens one
@@ -567,7 +567,7 @@ export function createRelay(opts: RelayOptions): Relay {
       try {
         return await handle(req, protocol, version)
       } catch (err) {
-        if (!(err instanceof HttpError || err instanceof TokenError)) throw err
+        if (!(err instanceof HttpError || err instanceof Refusal)) throw err
         // A failed upgrade tells a client nothing it can read: a socket
         // request is let in, and its socket closed saying why.
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
@@ -779,6 +779,50 @@ export async function sessionKey(
   const name = token === undefined ? sessionId : [token.iss, ...token.run, sessionId].join('\0')
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name))
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** A token the relay accepted: its issuer and the values of its run claims. */
+export interface VerifiedToken {
+  iss: string
+  run: readonly string[]
+}
+
+export interface OidcOptions {
+  /** Whose tokens the relay takes (`parseAllow`); an entry's unset parts admit any. */
+  allow: readonly Admits[]
+  /** The `aud` a token must name. */
+  audience: string
+  /** Run claims by issuer; an issuer not named here uses `runClaimsOf`. */
+  runClaims?: Readonly<Record<string, readonly string[]>>
+  /** Reads a URL as JSON; tests serve keys without a network. `fresh`: a reload, which must reach the issuer. */
+  fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
+  /** Seconds since the epoch; tests move the clock. */
+  now?: () => number
+}
+
+const GITHUB = 'https://token.actions.githubusercontent.com'
+
+/**
+ * The claims a run binds: its repository, GitHub's or GitLab's. Not the
+ * pipeline: workers run in another one (a GitLab pipeline the run triggers,
+ * a GitHub workflow it dispatches), and the run's own key admits them.
+ */
+export function runClaimsOf(iss: string): readonly string[] {
+  return iss === GITHUB ? ['repository_id'] : ['project_id']
+}
+
+/** The relay's `verify`: @vzn/vx-devtools' check, then the token's run claims. */
+export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
+  const check = oidcClaims(opts)
+  return async (token) => {
+    const { iss, claims } = await check(token, opts.audience)
+    const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {
+      const v = claims[c]
+      if (typeof v !== 'string' && typeof v !== 'number') throw new Refusal(403, `no ${c} claim`)
+      return String(v)
+    })
+    return { iss, run }
+  }
 }
 
 async function authorize(

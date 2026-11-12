@@ -1,7 +1,8 @@
 // The relay client through a relay's faults, and each send delivered once.
 
 import { afterEach, expect, it } from 'bun:test'
-import { createRelay, serveRelay, TokenError } from '@vzn/vx-dte-server'
+import { Refusal } from '@vzn/vx-devtools'
+import { createRelay, serveRelay } from '@vzn/vx-dte-server'
 import { join, RelayError, unsent, type RelayMessage } from '../src/wire.js'
 import { joinOffLoop } from '../src/wire-thread.js'
 import { answer, servedRelay } from './served-relay.js'
@@ -247,15 +248,14 @@ it('joins again after its socket is refused 5xx', async () => {
   await o.leave()
 })
 
-// A run its relay did not admit fails at once, naming the relay
-// (2026-10-23), with its status and message as every remote error; a
+// A run its relay did not admit fails at once, naming the relay, with its status and message as every remote error; a
 // refusal is never waited out as a fault is.
 it('does not join again after a 4xx, and names the relay that refused it', async () => {
   let asked = 0
   const s = sockets(undefined, {
     verify: async () => {
       asked++
-      throw new TokenError("repository o/r is not in this relay's ALLOW", 403)
+      throw new Refusal(403, "repository o/r is not in this relay's ALLOW")
     },
   })
   await expect(join(s.url, R, 'worker', null, 'token')).rejects.toThrow(

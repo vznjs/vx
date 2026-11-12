@@ -10,7 +10,7 @@
 # tokens are bearer tokens.
 services:
   dte:
-    build: ../../packages/vx-dte-server
+    build: { context: ../.., dockerfile: packages/vx-dte-server/Dockerfile }
     environment:
       - ALLOW=${DTE_ALLOW:-}
       - AUDIENCE=${DTE_AUDIENCE:-}

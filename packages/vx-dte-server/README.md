@@ -8,8 +8,9 @@ and its workers all dial out to a relay, which passes their messages on.
 It admits only CI OIDC tokens of the repositories it names, and binds
 each run to the repository that started it.
 
-The relay is one package whose one runtime dependency is `jose`, which checks
-the CI tokens; not even vx itself. It speaks the
+The relay is one package whose one runtime dependency is
+[`@vzn/vx-devtools`](../vx-devtools/README.md), the CI token check every vx
+server shares (it imports only `jose`); not even vx itself. It speaks the
 [Switchboard protocol](./PROTOCOL.md) (`switchboard.v1`): one host, the
 run's orchestrator, and its peers, the workers, behind one relay. Any
 server that speaks it can take its place, and any tool can use it.
@@ -144,24 +145,15 @@ The same relay as a `fetch` handler, to mount in a server of your own
   `{ key, proof(method, path, body) }`: `key` is what its `join` names,
   and `proof` is the value of the `PROOF_HEADER` (`relay-proof`) header of
   each request as the host.
-- `createVerifier(options: OidcOptions)` returns that `verify`.
-  `OidcOptions` is
+- `createVerifier(options: OidcOptions)` returns that `verify`:
+  `@vzn/vx-devtools`' `oidcClaims`, then the run claims. `OidcOptions` is
   `{ allow, audience, runClaims?, fetchJson?, now? }`: who may take part,
-  `Allowed`s `{ issuer, repository?, workflow? }` (an unset part admits
-  any; a token's `repositoryClaimOf(iss)` and `workflowClaimOf(iss)` up to
-  its `@` are matched without case), the `aud` a token must name, run claims per issuer (default
-  `runClaimsOf(iss)`), and a key reader and clock for tests. It
-  resolves a `VerifiedToken`, `{ iss, run }`, or rejects with a
-  `TokenError` carrying the `status` (401 or 403) the relay answers.
-- `parseAllow(list)` reads `ALLOW`'s entries into `Allowed`s, each
-  `issuer:owner/repo:workflow` read from the right (an issuer holds `:`s),
-  or throws naming the entry it cannot read. An issuer is `https://`, or
-  plain `http://` only to `127.0.0.1`, as the cache and history servers read it.
+  devtools' `Admits`, `{ issuer, repository?, workflow? }` (an unset part
+  admits any; `parseAllow` from devtools reads `ALLOW` into them), the
+  `aud` a token must name, run claims per issuer (default
+  `runClaimsOf(iss)`), and a key reader and clock for tests. It resolves a
+  `VerifiedToken`, `{ iss, run }`, or rejects with devtools' `Refusal`
+  carrying the `status` (401, 403, or 502 when the issuer's keys cannot be
+  read) the relay answers.
 - `runClaimsOf(iss)` names the claims that bind a run: `repository_id`
   for GitHub Actions, `project_id` otherwise.
-- `repositoryClaimOf(iss)` names the claim that names a token's
-  repository: `repository` for GitHub Actions, `project_path` otherwise.
-- `workflowClaimOf(iss)` names the claim that names the workflow a
-  token's job is defined in: `job_workflow_ref` for GitHub Actions,
-  `ci_config_ref_uri` otherwise. The relay matches it up to its last `@`,
-  before the ref or SHA.

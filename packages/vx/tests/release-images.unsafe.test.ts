@@ -37,7 +37,7 @@ describe('release.images', () => {
       'ghcr.io/vznjs/vx-dte-server:latest',
       '--file',
       path.join(ROOT, 'packages/vx-dte-server/Dockerfile'),
-      path.join(ROOT, 'packages/vx-dte-server'),
+      ROOT,
     ])
   })
 
