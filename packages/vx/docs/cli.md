@@ -3324,7 +3324,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `measures`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
-  that declines a task at run time still lists its seam here.
+  that declines a task at run time still lists its seam here (`otel()` with
+  no endpoint). A factory that returned `undefined` (`github()` off
+  Actions) declared no plugin, so it is not listed.
 - `workers` is the count a run defaults to and where it comes from:
   `VX_RUN_CONCURRENCY` when set, else `.vx/workspace.ts`'s `run.concurrency`, else the cores this
   process may use — the CPU count, capped by the cgroup CPU quota a
