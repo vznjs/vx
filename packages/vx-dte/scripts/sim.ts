@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import path from 'node:path'
-import { DEFAULT_STRATEGY, STRATEGIES, type Strategy } from '../src/strategy.js'
+import { DEFAULT_STRATEGY, STRATEGIES, type Strategy } from '../src/plan/strategy.js'
 import { bestMs, simulate, type SimTask } from '../tests/sim.js'
 
 const { values, positionals } = parseArgs({

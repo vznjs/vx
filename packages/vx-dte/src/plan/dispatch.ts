@@ -1,8 +1,9 @@
 // Which worker each waiting task goes to now: one rule for the live run
-// (`Orchestrator.pump`) and for the plan's play-out (`planner.ts`), so the
+// (`Orchestrator.pump`) and for the plan's play-out (`play.ts`), so the
 // plan sizes the run the way the run packs it.
 
 import type { Strategy } from './strategy.js'
+import type { Need } from './model.js'
 
 /**
  * `ids` (waiting, in the order they got ready) in the order `how` takes
@@ -17,7 +18,7 @@ export function ordered(
 ): string[] {
   if (how === 'fifo') return [...ids]
   // Each one's key read once: a comparator that read the tails read them
-  // q log q times at each event, most of a 10 000-task sim (2026-11-05).
+  // q log q times at each event, most of a 10 000-task sim.
   const tails = ids.map(tail)
   if (how === 'critical-path') return byKey(ids, tails)
   // Troublesome: within a quarter of the longest chain, or half a worker wide.
@@ -77,14 +78,14 @@ export interface Dispatching {
    * With `soon`: the tasks about to be ready once task `id` is given,
    * held for as it is, before the rest of the pass takes their room. Held
    * only from the next pass, a chain's next step found its worker filled
-   * by fillers given beside its first (lab, 2026-11-11).
+   * by fillers given beside its first.
    */
   readonly next?: (id: string) => readonly Soon[]
   /**
    * The worker the last plan gave task `id` (`Plan.placed`): of those it
    * fits now, that one first. Placed by locality, a chain's next step took
    * the empty worker the plan kept for a 4-core task, which waited 3
-   * minutes past its latest start (lab, 2026-11-11).
+   * minutes past its latest start.
    */
   readonly want?: (id: string) => string | undefined
 }
@@ -93,7 +94,7 @@ export interface Dispatching {
  * Where the `waiting` tasks go now: ordered (`ordered`), gated, and placed
  * (`assign`). The one rule of the live run and of the sims, which keep
  * their waiting tasks in a `Queue` placing as this does: each kept its
- * own, and the sims passed while runs placed otherwise (2026-11-05).
+ * own, and the sims passed while runs placed otherwise.
  * `left`: the ones that stay waiting, in order.
  */
 export function dispatch<B extends Bin>(
@@ -112,7 +113,7 @@ export function dispatch<B extends Bin>(
           bins.reduce((n, b) => Math.max(n, b.cores), 1),
         )
   // The least any ask needs: once no worker takes it, the pass ends. Each
-  // pump read every queued task, 8000 of them a pump (2026-10-25).
+  // pump read every queued task, 8000 of them a pump.
   const floor = { cores: Infinity, memory: Infinity }
   const needs: Need[] = []
   for (const id of queue) {
@@ -123,11 +124,11 @@ export function dispatch<B extends Bin>(
   }
   // Asks are made as the pass reads them: it ends at the first no worker
   // takes, and making every queued one's at each event was most of a
-  // 5000-task sim (2026-11-05).
+  // 5000-task sim.
   const read: string[] = []
   // The bins' bounds as assign keeps them: an ask no bin can take or hold
   // for is not made. Each such ask read every bin, and a full run's queue
-  // of them at each event was most of a 10 000-task sim (2026-11-05).
+  // of them at each event was most of a 10 000-task sim.
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   let i = 0
   const kept = new Set<string>()
@@ -173,31 +174,9 @@ export function dispatch<B extends Bin>(
  * The most workers a task is scored on, of those it fits, as Kubernetes
  * scores a share of its nodes: scoring every one cost the orchestrator
  * 15% more CPU at 200 workers, and the sims ended within 0.4% sampling
- * even 2 (2026-11-05).
+ * even 2.
  */
 const SAMPLE = 16
-
-/** What a task asks of a worker: its history's cores and peak memory. */
-export interface Need {
-  readonly cores: number
-  readonly memory: number
-  /** It filled a machine this big last time: only a bigger one takes it, if any worker is. */
-  readonly above?: { readonly cores: number; readonly memory: number } | undefined
-  /** The platform it runs on (`ExecuteRequest.platform`): only a worker of it takes it. */
-  readonly platform?: string | undefined
-  /**
-   * What it counts for when the plan sizes the run, when that is not what
-   * it books: an unmeasured task books next to nothing, so it goes to any
-   * free core, but a run of only such tasks still asks enough workers.
-   */
-  readonly ask?: { readonly cores: number; readonly memory: number } | undefined
-  /**
-   * Its persistent dependencies' bases, cores (`server-fit.ts`): a worker
-   * not running one yet books its base once beside the task, and keeps it
-   * booked while it serves.
-   */
-  readonly servers?: readonly { readonly id: string; readonly cores: number }[] | undefined
-}
 
 /** A worker as dispatch sees it: its size and what is in use on it now. */
 export interface Bin {
@@ -225,8 +204,7 @@ export interface Bin {
  * from now, `cores` and `memory`, for a task of `rank` (its chain). A
  * task of lower rank that would still run at `at` goes there only if
  * both fit then: a worker started for a critical task joined early, was
- * filled by short ones, and the critical task waited a minute
- * (2026-11-10: "Critical path should never have to wait for availability").
+ * filled by short ones, and the critical task waited a minute.
  */
 export interface Hold {
   readonly at: number
@@ -280,7 +258,7 @@ function holdOne(bins: readonly Bin[], s: Soon, ready?: true): void {
     if (s.need.platform !== undefined && b.platform !== s.need.platform) continue
     // Nor one it may not go to: held on a 2-core worker it fit only
     // empty, a 3-core task left the 8-core one to tasks of no rank and
-    // waited past its latest start (lab, 2026-11-11).
+    // waited past its latest start.
     if (above !== undefined && b.cores <= above.cores && b.memory <= above.memory) continue
     // None frees it sooner than at once: most holds found one free at once.
     if (s.at >= bestAt) break
@@ -305,8 +283,7 @@ function holdOne(bins: readonly Bin[], s: Soon, ready?: true): void {
  * What a bin holds through time: each change (an end, a hold's start or
  * end) in order, and what it holds after it. Kept while its ends and use
  * are the ones it read, a hold added in place: a read of the bin at each
- * end it might free, for each hold, was most of a plan of 3,800 tasks
- * (2026-11-11).
+ * end it might free, for each hold, was most of a plan of 3,800 tasks.
  */
 interface Sweep {
   ends: Bin['ends']
@@ -429,8 +406,7 @@ function firstFree(b: Bin, need: Need, from: number, before: number): number {
 /**
  * Keeps room for a ready task no worker fits now where it first frees, a
  * worker's count of them a pass: skipped unheld, smaller tasks of lower
- * rank took each core as it freed and the critical path waited 6 s (main
- * 2163fff, 2026-11-10).
+ * rank took each core as it freed and the critical path waited 6 s.
  */
 function holdReady(
   bins: readonly Bin[],
@@ -560,7 +536,7 @@ export interface Ask {
   /**
    * Its direct dependencies: a worker holding most is preferred. One holds
    * what was sent with each, so the direct ones say enough: counting every
-   * upstream for every worker read thousands an ask (2026-11-05).
+   * upstream for every worker read thousands an ask.
    */
   readonly up?: readonly string[]
   /** Names its need: asks of one kind fit and fail alike (`kindOf`). */
@@ -590,7 +566,7 @@ function coresOn(bin: Bin, need: Need): number {
 /**
  * Whether `need` fits on `bin` now: alone on an empty one, whatever it
  * asks; beside others only in full, cores and memory. Beside others on a
- * free core alone, main's workers booked 4.3 of 4 (2026-10-23).
+ * free core alone, main's workers booked 4.3 of 4.
  */
 export function fits(bin: Bin, need: Need): boolean {
   if (need.platform !== undefined && bin.platform !== need.platform) return false
@@ -610,7 +586,7 @@ export function fits(bin: Bin, need: Need): boolean {
  * fall idle and leave. A task bigger than every bin's last size goes to a
  * bigger one only, unless none is or `waits(above, platform)` says one of its platform is coming.
  * The first that fits nowhere but an empty bin holds the one using least: no task after it goes there, or later tasks fill it again and
- * again (check.bun, the gate of 56 tasks, waited 50 s on main 871ffba).
+ * again (check.bun, the gate of 56 tasks, waited 50 s).
  * Bins' `used` and `running` count what is given. `all`, what the asks
  * need all told (the least of each, and how many kinds), ends the pass
  * once no bin takes the least or every kind failed since the last given:
@@ -650,7 +626,7 @@ export function assign<B extends Bin>(
   // Ready asks given room ahead this pass.
   let waiting = 0
   // Asks no bin took that changed nothing (`Kept`): each read every bin,
-  // a billion reads in a sim of 3,800 tasks, a plan of 15 s (2026-11-11).
+  // a billion reads in a sim of 3,800 tasks, a plan of 15 s.
   const kept = all?.kept ?? []
   kept.length = 0
   for (const ask of asks) {
@@ -658,7 +634,7 @@ export function assign<B extends Bin>(
       all !== undefined &&
       (spent.size >= all.kinds ||
         // Its bounds, kept as it gives, say it: a read of every bin an ask
-        // was most of a plan's play (2026-11-05).
+        // was most of a plan's play.
         (bounds !== undefined
           ? bounds.done
           : !bins.some((b) => !held.has(b) && fits(b, all.floor))))
@@ -707,7 +683,7 @@ export function assign<B extends Bin>(
       // A task of no history books next to nothing but may use any share:
       // where most is free, it has room to be bigger than it booked. Best-fit
       // stacked them on one worker, which they overran: 4.47% late to 3.95%
-      // on graphs a third unmeasured, 1% more worker time (lab, 2026-11-10).
+      // on graphs a third unmeasured, 1% more worker time.
       const score: [number, number, number] = [
         b.id === want ? 1 : 0,
         has,
@@ -794,7 +770,7 @@ export function assign<B extends Bin>(
  * The bins not held, as an ask `dead` reads them: one asked of nowhere
  * fits it and holds nothing, so `assign` only spends its kind. With every
  * task its own kind, a pass read each ready one to learn that: 2.4 million
- * asks for a plan of 9000 (2026-10-25).
+ * asks for a plan of 9000.
  */
 export interface Bounds {
   /** None takes the least any ask needs: the pass is over. */
@@ -894,7 +870,7 @@ function fit(b: Bin, need: Need, place: Strategy['place'], index: number): numbe
  * cores' class: a pass places exactly as `dispatch` over the whole list,
  * but passes a group whole while no worker has room for any of it, where
  * each pass ordered and read every waiting task, a fifth of a 10 000-task
- * sim (2026-11-06). `graphene` ranks by the longest waiting tail, which
+ * sim. `graphene` ranks by the longest waiting tail, which
  * moves as tasks leave: it keeps the list and `dispatch`.
  */
 export class Queue {
@@ -960,8 +936,7 @@ export class Queue {
    * ties in the order they stood. A rank is read once, as a task joins:
    * on CI the roots join before the default branch's timings land, each
    * at an unknown task's 30 s, and every test shard ready later ranked
-   * above them, so `test.wire` (73 s) waited 129 s for a worker (main
-   * 1c91c9d, 2026-11-07). `graphene` reads ranks at each pass.
+   * above them, so `test.wire` (73 s) waited 129 s for a worker. `graphene` reads ranks at each pass.
    */
   rerank(): void {
     if (this.list !== undefined) return
@@ -1256,7 +1231,7 @@ function top(h: Entry[], by: (e: Entry) => number): Entry | undefined {
  * started late may go. A worker the plan starts is named as one joins:
  * the first to join takes the plan's first, of its size. Left to any
  * worker, the tasks of the workers a packing started took each other's
- * room and ended 69 s past the deadline (sim-theory, 2026-11-11).
+ * room and ended 69 s past the deadline.
  */
 export class Placing {
   private placed: ReadonlyMap<string, string> = new Map()
@@ -1327,7 +1302,7 @@ export class Placing {
    * start (sooner if `asap`, to its worker), and while the plan is
    * exact, only to its worker once that joined. One joining later than planned leaves it to any: waiting
    * for the planned one, a run of workers the CI started 2.5 s apart
-   * ended 19 s late (tests/sim.test.ts, 2026-11-11).
+   * ended 19 s late (tests/sim.test.ts).
    */
   gate(id: string, now: number): 'wait' | { only?: string } {
     const w = this.exact ? this.want(id) : undefined

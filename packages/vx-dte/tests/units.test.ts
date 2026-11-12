@@ -37,10 +37,12 @@ import {
   ui,
 } from '@vzn/vx'
 import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
-import { assign, dispatch, fits, type Need, ordered } from '../src/dispatch.js'
+import { assign, dispatch, fits, ordered } from '../src/plan/dispatch.js'
+import type { Need } from '../src/plan/model.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { plan, planTasks, tailsMs } from '../src/planner.js'
+import { planTasks, tailsMs } from '../src/plan/model.js'
+import { plan } from '../src/plan/plan.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { DepOrder, RunOrder, SentOrder, ToWorker, WiredResult } from '../src/messages.js'
@@ -4943,8 +4945,8 @@ it('a run that is not distributed loads none of it', async () => {
   const probe = `
 const seen = []
 Bun.plugin({ name: 'seen', setup(b) {
-  b.onLoad({ filter: /(vx-dte|vx-dte-server)\\/src\\/[^/]+\\.ts$/ }, async (a) => {
-    seen.push(a.path.split('/').slice(-3).join('/'))
+  b.onLoad({ filter: /(vx-dte|vx-dte-server)\\/src\\/(plan\\/)?[^/]+\\.ts$/ }, async (a) => {
+    seen.push(a.path.slice(a.path.lastIndexOf('/vx-dte') + 1))
     return { contents: await Bun.file(a.path).text(), loader: 'ts' }
   })
 } })
@@ -4964,9 +4966,9 @@ console.log(JSON.stringify(seen.sort()))
     'vx-dte/src/gitlab.ts',
     'vx-dte/src/index.ts',
     'vx-dte/src/local.ts',
+    'vx-dte/src/plan/strategy.ts',
     'vx-dte/src/plugin.ts',
     'vx-dte/src/printable.ts',
-    'vx-dte/src/strategy.ts',
   ])
 })
 

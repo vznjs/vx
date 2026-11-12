@@ -1,12 +1,12 @@
 // How a run schedules, as `dte({ scheduler })` names it: loaded with the
 // plugin, so it holds only the names and the booking rule.
 
-import type { Need } from './dispatch.js'
+import type { Need } from './model.js'
 
 /**
  * How a distributed run schedules, one choice per layer, so each can be
  * compared on the same runs (tests/sim.test.ts) and a workspace can pick
- * another (2026-10-23):
+ * another:
  * - `order`, which waiting task goes first: `critical-path` (longest
  *   chain after it, HEFT's rank), `graphene` (the long and the wide
  *   first, then by chain, Grandl OSDI'16), `fifo` (as they got ready);
@@ -16,7 +16,7 @@ import type { Need } from './dispatch.js'
  * - `book`, what a task holds: `measured` (its history), `margin`
  *   (history and a fifth more, Borg's), `whole` (a worker each);
  * - `scale`, how many workers: `plan` (the fewest that end the known
- *   work near its best, `planner.ts`), `backlog` (enough cores for what
+ *   work near its best, `plan.ts`), `backlog` (enough cores for what
  *   is ready or running, of each platform, Spark's dynamic allocation).
  */
 export interface Strategy {

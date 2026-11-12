@@ -971,7 +971,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did, and
     every uncached task, which runs every time; groups and hits need no worker. The run plays
-    that work out on its workers and on N more (`src/planner.ts`), each new
+    that work out on its workers and on N more (`src/plan/`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and the best end is the one with all N. A worker counts its cores
@@ -1002,7 +1002,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     later. The big one leaves once its running tasks end. While a task
     with no history is left, this happens only for the run's last work.
     With every task's time known, the plan packs the work instead, when
-    that holds less CPU and ends as soon (`src/pack.ts`): each task, in
+    that holds less CPU and ends as soon (`src/plan/pack.ts`): each task, in
     order of its latest start, goes where a worker has room for it
     between its ready time and its latest start less 15% of its chain
     (a margin for a run slower than its history), on the worker whose
@@ -1022,7 +1022,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     it: once on each worker that starts it, from its first dependant
     there until its last dependant anywhere ends. It then packs again in other orders, up to 64 times (fewer
     past 100 tasks, none past 6400), each new worker's task a random way
-    into its slack, and keeps the one holding least by the same end. It
+    into its slack, and keeps the one holding least by the same end. How far that is from the least
+    a run can hold: `scripts/optimum.ts` plays small graphs and
+    `scripts/optimum.py` solves each exactly (CP-SAT). It
     packs the whole run, past the window. Each next new
     worker of a size is counted as joining later by the spread this run's
     joins of it showed (the slowest less the fastest, over the joins

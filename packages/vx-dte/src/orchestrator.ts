@@ -56,10 +56,10 @@ import {
   type Size,
   spreadMs,
   type WarmUp,
-} from './planner.js'
+} from './plan/index.js'
 import { Usage, type UsageStats } from './usage.js'
-import { type Need, Placing, Queue, type Soon } from './dispatch.js'
-import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
+import { type Need, Placing, Queue, type Soon } from './plan/index.js'
+import { DEFAULT_STRATEGY, type Strategy } from './plan/index.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
@@ -2207,7 +2207,7 @@ export class Orchestrator {
   }
 
   /**
-   * The workers the plan places on (`planner.ts`): each online, what it
+   * The workers the plan places on (`plan/`): each online, what it
    * runs and how long that has left by `ms`, and each still starting,
    * joining after its size's `warmUpMs` from its ask. With them, the tasks they run.
    */

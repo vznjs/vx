@@ -5,17 +5,9 @@
  * worker only for a task none has room for by then. Started as soon as
  * there was room, tasks with slack spread over workers the run then kept:
  * 21% more CPU than the least that ends at the critical path, on graphs
- * of 12 to 20 tasks solved exactly (lab, 2026-11-11).
+ * of 12 to 20 tasks solved exactly.
  */
-import type { PlanTask, PlanWorker, Size } from './planner.js'
-
-/**
- * What a running task has left: past its time, as long again as it is
- * over, not none. Counted as ending now, a filler running three times its
- * history kept the room a critical task was held, the plan started no
- * worker for it, and it waited 100 s (2026-11-10).
- */
-export const leftMs = (endsIn: number): number => (endsIn >= 0 ? endsIn : -endsIn)
+import { leftMs, type PlanTask, type PlanWorker, type Size } from './model.js'
 
 /** A worker of the packing: what it holds through time. */
 interface Bay {
@@ -73,7 +65,7 @@ export interface PackOptions {
 /**
  * The index of a change at `t`, split from the one before it. Levels, not
  * deltas: a running total rebuilt to the end on each insert made a
- * 9000-task pack 3.7 s (2026-11-11).
+ * 9000-task pack 3.7 s.
  */
 function split(bay: Bay, t: number): number {
   const i = before(bay, t)
@@ -142,7 +134,7 @@ function first(
  * as runs take up to a third more or less than their history: placed at
  * its latest start, a task 30% slow ended the run late. With ±30% noise,
  * graph families ended 2-8% past their chain, not 5-11%, on 0-2% more
- * worker time (tests/sim-theory.test.ts, 2026-11-12).
+ * worker time (tests/sim-theory.test.ts).
  */
 const HEDGE = 0.15
 
@@ -187,8 +179,8 @@ export function pack(
   const { noise, late, strict = false } = options
   // A task booking more cores than any worker of its platform has takes a
   // whole one, as the run books it: left out, a lint at 3.5 cores on
-  // workers planned at 3 turned the packing off, and main asked 10 workers
-  // where 5 ended as soon (cc6cd1a, 2026-11-12). So does one that asks
+  // workers planned at 3 turned the packing off, and a run asked 10 workers
+  // where 5 ended as soon. So does one that asks
   // for a bigger worker than any (`above`, read against the declared
   // sizes, not the planned ones).
   const fits = new Map<string | undefined, { cores: number; memory: number }[]>()
@@ -212,8 +204,7 @@ export function pack(
     // Over every size it could start, it takes any worker whole: held to
     // the biggest running one, at 3.2 cores of the sizes' 3.1, the lints
     // at 3.5 fit only that one, queued 12 deep there, and the packing
-    // ended at 113 s where the play ended at 65 s (main 440f9dc,
-    // 2026-11-12).
+    // ended at 113 s where the play ended at 65 s.
     const sized = fresh.filter((f) => t.platform === undefined || f.platform === t.platform)
     const cap = (sized.length > 0 ? sized.map((f) => ({ cores: f.cpu })) : of).reduce(
       (most, k) => Math.max(most, k.cores),
@@ -365,7 +356,7 @@ export function pack(
       const reads = t.reads
       // On a worker other than the one holding an upstream's files, that
       // upstream runs again first: main's deploy ran its 25 s build again
-      // when the build's worker left (2026-11-11).
+      // when the build's worker left.
       const again = (bay: string): number => {
         if (reads === undefined) return 0
         let more = 0
