@@ -84,7 +84,7 @@ export interface ExecuteArgs {
    * The run's stop (a process signal or the embedder's abort). An attempt
    * that ends while it is aborted is `aborted`, whatever its exit: a task
    * that traps the forwarded SIGINT and exits 0 did not finish on its own
-   * terms (item 962).
+   * terms.
    */
   stopSignal?: AbortSignal
   /** `continueMode: 'never'` stopped dispatch: no further attempt starts. */
@@ -230,7 +230,7 @@ export interface ExecuteArgs {
   /**
    * No task in the run depends on this one, so none is ordered after it to
    * read what it wrote: a miss that saves nothing marks nothing (the output
-   * walk cost 1,000 read-only misses 1.62 → 1.78 s, item 750).
+   * walk cost 1,000 read-only misses 1.62 → 1.78 s).
    */
   noDependants?: true
   /** The task holds vx's terminal (`terminalHolders`): its stdio is vx's own. */
@@ -279,7 +279,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (args.node.config.exec?.persistent !== undefined) return executePersistentTask(args)
   // A probed hit needs none of the run path's set-up: the upstream folding,
   // timers and closures `executeCachedTask` builds on entry were ~15 µs of
-  // each of a warm run's hits (X-193). The same branch there handles it
+  // each of a warm run's hits. The same branch there handles it
   // when this one does not apply.
   const probed = args.preProbed
   if (probed?.hit != null && readsCache(args) && args.remoteOnlyNoop !== true) {
