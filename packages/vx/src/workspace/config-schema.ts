@@ -1,6 +1,6 @@
 // What a config may SAY — the schema validators for `vx.config.*` and
 // `.vx/workspace.*`, split from the loader (which decides HOW a file is
-// evaluated) on 2026-09-10. Every object level refuses a key it does not
+// evaluated). Every object level refuses a key it does not
 // know (tests/schema-unknown-keys), every message names the level and what
 // it accepts, and `validateProjectConfig` is the one boundary the loader,
 // the lockfile's frozen path and the plugin `project` stage all cross.
@@ -79,7 +79,7 @@ function isBaseBranch(value: unknown): value is string {
 
 /**
  * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
- * branch and a laptop on it reads (2026-10-17). The repository's
+ * branch and a laptop on it reads. The repository's
  * identity, not a remote's local name, so a clone whose `origin` is a fork
  * names the fork. A name may hold characters a scope may not; each
  * becomes `_`.
@@ -170,7 +170,7 @@ function validateSettingsAt(value: unknown, at: string, configPath: string): voi
   if (fields !== undefined) {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       if (at === 'cache')
-        // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx (D-98).
+        // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx.
         throw new UserError(
           `${where} must be an object like { dir, policy }; a task caches through its own \`cache\` in its project's vx.config`,
         )
@@ -345,7 +345,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       // the one boundary every plugin crosses.
       const pkg = (p as Record<symbol, unknown>)[PLUGIN_PACKAGE]
       // An async factory called without `await` was told its plugin did not
-      // come from definePlugin — it had (D-159).
+      // come from definePlugin — it had.
       if (pkg === undefined && typeof (p as { then?: unknown }).then === 'function') {
         throw new UserError(
           `${configPath}: \`plugins[${i}]\` is a Promise — await the factory that returns the plugin`,
@@ -465,7 +465,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         for (const file of claim.files as unknown[]) {
           // A bare name at the workspace root the plugin reads: a lockfile it
           // folds, or a file its stages read (`turbo.json`; `--affected` and
-          // `vx watch` ask the claimant about it, item 961). A path is
+          // `vx watch` ask the claimant about it). A path is
           // refused: the root arm `vx watch` keeps is not recursive.
           if (
             typeof file !== 'string' ||
@@ -480,7 +480,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           }
           const owner = fileClaimants.get(file)
           // One package twice (`plugins: [bun(), bun()]`) read "plugins 'x'
-          // and 'x' both claim" (D-158).
+          // and 'x' both claim".
           if (owner !== undefined && owner.name === plug.name) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' claims fingerprint file '${file}' twice (plugins[${owner.at}] and plugins[${i}]) — a file has one claimant; declare the plugin once`,
@@ -692,13 +692,13 @@ function validateExec(exec: unknown, where: string, cache: unknown): void {
   const sandbox = (exec as { sandbox?: unknown }).sandbox
   if (sandbox !== undefined) validateSandbox(sandbox, `${where}.exec`)
   const command = (exec as { command?: unknown }).command
-  // Whitespace alone ran as a shell no-op, green and cached (item 1099).
+  // Whitespace alone ran as a shell no-op, green and cached.
   if (typeof command !== 'string' || command.trim().length === 0) {
     throw new UserError(`${where}.exec.command must be a non-empty string`)
   }
   // No argv can carry a NUL: the spawn refused it and the task failed
   // as exit 127, "not on this task's PATH", with the NUL printed as a
-  // space (D-4), as an env name with one did before item 999.
+  // space, as an env name with one did.
   if (command.includes('\0')) {
     throw new UserError(`${where}.exec.command holds a NUL, which no command line can carry`)
   }
@@ -715,8 +715,7 @@ function validateExec(exec: unknown, where: string, cache: unknown): void {
     throw new UserError(`${where}.exec.remote must be a boolean or 'only' (or omitted)`)
   }
   // Documented and never held: an uncached 'only' task loaded, and the
-  // REAPI executor refused it at run time for want of described inputs
-  // (item 1001).
+  // REAPI executor refused it at run time for want of described inputs.
   if (remote === 'only' && cache !== true) {
     throw new UserError(
       `${where}.exec.remote 'only' needs \`cache: true\`: its inputs are what a worker reproduces ` +
@@ -770,7 +769,7 @@ function validateExecEnv(env: unknown, where: string): void {
     )
   }
   // `env: { set: {...} }` loaded and defined nothing — the one level
-  // without this check until 2026-09-10 (tests/schema-unknown-keys).
+  // without this check once (tests/schema-unknown-keys).
   assertKnownFields(env, ENV_FIELDS, `${where}.exec.env`)
   const passThrough = (env as { passThrough?: unknown }).passThrough
   if (passThrough !== undefined) {
@@ -784,7 +783,7 @@ function validateExecEnv(env: unknown, where: string): void {
     }
     // `VITE_*` passed nothing through and loaded clean (Turbo's
     // passThroughEnv expands it), where `inputs.env` refused the
-    // same text below: one refusal for the class (item 1090).
+    // same text below: one refusal for the class.
     assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
     const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
     if (wild !== undefined) {
@@ -874,7 +873,7 @@ function validateLongRunning(exec: object, where: string, cache: unknown, retrie
       throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
     }
     // Compiled here as the runner compiles it: an unbalanced `(` loaded
-    // and then failed the task as "internal error" (item 998).
+    // and then failed the task as "internal error".
     if (readyWhen !== undefined) {
       try {
         new RegExp(readyWhen)
@@ -966,7 +965,7 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
     }
     // A negated absolute path subtracts nothing (the positive globs are
     // project-relative), so it would sit in the config as a silent no-op;
-    // `workspaceFiles` refuses both spellings the same way (item 679).
+    // `workspaceFiles` refuses both spellings the same way.
     if (g.startsWith('!/')) {
       throw new UserError(
         `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
@@ -1024,7 +1023,7 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
       if (
         !Array.isArray(list) ||
         // Whitespace alone ran as a no-op probe that folds nothing, as
-        // a blank `exec.command` did before item 1099 (X-22).
+        // a blank `exec.command` did (X-22).
         list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
       ) {
         throw new UserError(
@@ -1164,7 +1163,7 @@ const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
 
 /**
  * Another runner's spelling of a field vx has under another name, by the
- * level that meets it (D-37): a Turbo `outputs: [...]` or Nx `command` on
+ * level that meets it: a Turbo `outputs: [...]` or Nx `command` on
  * a task was refused as an unknown field that named neither the field
  * nor where vx keeps it.
  */
@@ -1188,7 +1187,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       options: '`exec.command` (a run-commands `options.command`) and `exec.env`',
       outputLogs: 'the `--output-logs` flag of `vx run`',
       // Turbo's `interactive` / `with`, Nx's `cwd` / `parallelism` /
-      // `configurations`: refused with no word on where they went (D-89).
+      // `configurations`: refused with no word on where they went.
       interactive: '`exec.interactive: true`',
       with: '`dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
       cwd: '`cd <dir> && …` in `exec.command`: a task runs in its project directory',
@@ -1204,7 +1203,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       cmd: '`command`',
       script: '`command`',
       // Nx run-commands' options and shell-runner habits, refused with no
-      // word on where they go (D-100).
+      // word on where they go.
       cwd: '`cd <dir> && …` in `command`: a task runs in its project directory',
       args: 'the arguments written into `command`, or after `--` on `vx run`',
       commands: 'one `command` (`a && b`, or `a & b; wait` to run them at once), or one task each',
@@ -1231,7 +1230,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     },
   ],
   // A package's turbo.json and Nx's project.json keys, written into a
-  // project's vx.config (D-56).
+  // project's vx.config.
   [
     PROJECT_FIELDS,
     {
@@ -1239,7 +1238,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       extends: 'an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
       implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
       // A package.json's, turbo.json's and project.json's keys, and a
-      // task's fields one level too high (D-99).
+      // task's fields one level too high.
       scripts:
         "`tasks` (a script is a task's `exec.command`; `vx init` writes them from package.json)",
       pipeline: '`tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
@@ -1256,8 +1255,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       env: '`tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
-  // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace
-  // (D-38).
+  // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace.
   [
     WORKSPACE_FIELDS,
     {
@@ -1279,7 +1277,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
       // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
       // pasted into .vx/workspace: refused with no word on where vx reads
-      // them (D-98).
+      // them.
       packages: 'a `vx.config` in each project directory: a project is a directory holding one',
       workspaces: 'a `vx.config` in each project directory: a project is a directory holding one',
       projects: 'a `vx.config` in each project directory: a project is a directory holding one',
@@ -1366,7 +1364,7 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
 /**
  * The project's config file if an output glob would take it. `outputs:
  * ['**']` loaded, and the clean before the run deleted the project's
- * source and `vx.config` while the run reported success (item 1002); the
+ * source and `vx.config` while the run reported success; the
  * message for `'.'` had even suggested `**`. Core names no other project
  * file: a file a plugin keys on is an input, and an output takes it out of
  * the input set like any other.
@@ -1387,8 +1385,8 @@ function takenBack(globs: readonly unknown[], file: string): boolean {
 }
 
 /**
- * Turbo's and Nx's glob tokens, pasted from turbo.json or project.json
- * (D-50). vx expands none of them, so each is a literal that matches no
+ * Turbo's and Nx's glob tokens, pasted from turbo.json or project.json.
+ * vx expands none of them, so each is a literal that matches no
  * file: an input list of `$TURBO_DEFAULT$` keyed the task on nothing and
  * replayed a stale output after its source changed.
  */
@@ -1484,7 +1482,7 @@ function backwardClassRange(glob: string): [number, string, string] | null {
 }
 
 function assertNoForeignToken(glob: string, where: string): void {
-  // `^production`: Nx's named input of the dependencies (D-51). No file
+  // `^production`: Nx's named input of the dependencies. No file
   // starts with `^` in practice, while a bare `default` can be a directory,
   // so only the upstream form is refused; the bare one keeps the warning.
   if ((glob.startsWith('!') ? glob.slice(1) : glob).startsWith('^')) {
@@ -1592,7 +1590,7 @@ function assertNoBraceRange(glob: string, where: string): void {
  * `./src/**
  * Turbo's `!NAME` takes a name back out of a wildcard (`env`,
  * `passThroughEnv`). vx has no wildcards, so the entry was a variable
- * named `!NAME`: nothing excluded, nothing said (D-53).
+ * named `!NAME`: nothing excluded, nothing said.
  */
 function assertNoEnvNegation(names: readonly string[], where: string): void {
   const neg = names.find((n) => n.startsWith('!'))
@@ -1751,7 +1749,7 @@ function assertNotDoubleNegated(glob: string, where: string): void {
  * reach the same node, exactly or by that entry's own `*` pattern. The form
  * matters: `build` selects this project's `build` and `^build` only other
  * projects', so `['build']` against `dependsOn: ['^build']` folded nothing
- * and served a stale hit (item 994). A `pkg#task` entry may name this
+ * and served a stale hit. A `pkg#task` entry may name this
  * project or a dependency, which the schema cannot tell apart, so it pairs
  * with any form whose task half matches. `[]` is the explicit way to
  * decouple.
@@ -1774,7 +1772,7 @@ function assertFilterNamesDeclaredDeps(
     })
   for (const raw of filters) {
     // `*` and `^*` need no arm of their own: their task half is `*`, which
-    // the wildcard skip below takes (item 678).
+    // the wildcard skip below takes.
     if (raw.startsWith('!')) continue
     const f = specForm(raw)
     if (f.task.includes('*') || named(f)) continue
@@ -1828,7 +1826,7 @@ function isEnvName(name: unknown): name is string {
  * refused shape loaded and could not be referenced: `x#y` read as project
  * `x`, `^gen` as every dependency's `gen`, a `*` as a pattern, `''` ran
  * under `--all` as `a#` and `vx run a#` refused it, `-x` as a flag, and a
- * padded name was trimmed away by the reader (item 1000).
+ * padded name was trimmed away by the reader.
  */
 function assertTaskName(name: string, configPath: string): void {
   const why = taskNameProblem(name)
@@ -1839,7 +1837,7 @@ function assertTaskName(name: string, configPath: string): void {
   )
 }
 
-/** Why `name` cannot be a task name, or null; `vx init` skips such a script (item 1033). */
+/** Why `name` cannot be a task name, or null; `vx init` skips such a script. */
 export function taskNameProblem(name: string): string | null {
   return name.trim().length === 0
     ? 'is empty'
@@ -2150,7 +2148,7 @@ function validateSandbox(sandbox: unknown, where: string): void {
     // Only these reach the report's filter (`matchesIgnore`): a denial is
     // classed read, write, systemInfo or network, and nothing else. Every
     // grant name loaded here once, so `ignore.machLookup` silenced nothing
-    // and said so nowhere (D-4).
+    // and said so nowhere.
     assertKnownFields(ignore, IGNORE_FIELDS, `${where}.sandbox.ignore`)
     const g = ignore as Record<string, unknown>
     // Patterns, not prefixes — `ignore` is vx's own filter over lines it

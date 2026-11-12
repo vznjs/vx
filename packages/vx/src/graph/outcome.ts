@@ -211,7 +211,7 @@ export interface TaskOutcome {
    * failed (or aborted) upstream, followed through any chain of skips
    * between. Absent when the skip was fail-fast's (no upstream failed).
    * The footer, the telemetry record and the run row all
-   * read this one field (item 267).
+   * read this one field.
    */
   blockedBy?: string
   /**
@@ -231,7 +231,7 @@ export interface TaskOutcome {
   /**
    * On a `failed` outcome: vx's own `timeout` killed the final attempt.
    * The exit is the shell's 143, and every label says "timed out" instead
-   * of reading it as a signal (item 268).
+   * of reading it as a signal.
    */
   timedOut?: true
   /**

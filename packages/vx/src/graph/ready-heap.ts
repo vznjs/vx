@@ -69,7 +69,7 @@ export class ReadyHeap {
    * push that follows takes a later seq — so fresh seqs handed out in
    * parked order reproduce the same ranking. Measured over 800 randomized
    * scenarios (random DAGs, costs, budgets, concurrency, failures, all
-   * three continue modes): zero order differences, item 493. Kept because
+   * three continue modes): zero order differences. Kept because
    * it holds without that argument.
    */
   push(id: string, seq: number = this.next++): void {

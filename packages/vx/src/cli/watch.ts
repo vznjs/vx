@@ -103,8 +103,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // controller aborts with the signal's name as the reason, the in-flight
   // cycle forwards it to its children (a SIGINT as SIGINT, the rest as
   // SIGTERM; grace, SIGKILL) and returns, and the loop resolves 0.
-  // Installed BEFORE the initial run: until 2026-09-10 the handlers went
-  // in with the loop, so a SIGTERM during the initial run took Bun's
+  // Installed BEFORE the initial run: with the loop, the handlers went
+  // in too late, so a SIGTERM during the initial run took Bun's
   // default (exit 143) and left the cycle's children running under init.
   const stop = new AbortController()
   const opts: RunOptions = {
@@ -173,7 +173,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         ? undefined
         : new Set([...opts.projects, ...anchored])
   // `//#check` is the root project's task, under the name the run gives
-  // it (prepare.ts, D-39): taken literally, no project was in scope and
+  // it (prepare.ts): taken literally, no project was in scope and
   // the watch exited 1 after a green run. Resolved per discovery: started
   // with no lock, the root has no name until `vx lock` writes one.
   const rootDir = path.resolve(workspaceRoot)
@@ -216,7 +216,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // A run that throws (a config that does not parse) is a failed cycle, as
   // it is once the loop runs: watch keeps watching, so the fix re-runs.
   // Uncaught, it ended watch at start while the same break mid-watch did
-  // not (item 1017).
+  // not.
   let refusedToStart = false
   /** A task whose inputs the user edited while the initial run ran it: no watcher heard the edit. */
   let drifted: string | undefined
@@ -338,7 +338,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       },
       // Every cycle's configs are the lock's, so a re-lock is
       // the one edit that changes what a cycle runs; unheard, the loop ran
-      // the old lock until a restart (item 971).
+      // the old lock until a restart.
       claimedRootFiles: claimsOf(ws.plugins),
       extraFiles: lockedExtras(workspaceRoot),
       // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.

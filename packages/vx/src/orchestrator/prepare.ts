@@ -287,7 +287,7 @@ export async function prepareRunLocked(
   // From here the plugins' factories have run and the cache is open: a
   // throw (a stage hook, a `^name` nobody declares, a cycle, an unknown
   // exclude name) closed neither and tore nothing down, once per failed
-  // cycle under `vx watch` (item 1029). run() owns both only once this
+  // cycle under `vx watch`. run() owns both only once this
   // returns. A hook here that never settles strands the process, which
   // tears the plugins down before it ends (bin.ts).
   const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
@@ -423,7 +423,7 @@ async function startWorkspace(options: RunOptions, log: Logger, planning: boolea
   // A `discover` hook that reads the worktree (nx()'s graph key) starts the
   // whole-tree enumeration a scoped run would otherwise scope later, here or
   // in the CLI's selection pass; the run reuses it instead of walking the
-  // tree twice (G-75).
+  // tree twice.
   const git =
     (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
     lazyGitEnumeration(workspaceRoot)
@@ -509,7 +509,7 @@ function scopeOf(options: RunOptions, ws: Workspace) {
   // anchors alone are the scope and nothing else needs its config
   // evaluated.
   // `vx run //#lint` is Turbo's `turbo run //#lint`: the root project's
-  // task, under the name it has when something names it (D-39).
+  // task, under the name it has when something names it.
   const root = path.resolve(ws.workspaceRoot)
   const rootName = projectMetas.find((m) => path.resolve(m.dir) === root)?.name
   const tasks =
@@ -526,7 +526,7 @@ function scopeOf(options: RunOptions, ws: Workspace) {
   const seeds: 'all' | string[] =
     options.projects !== undefined ? [...options.projects, ...anchored] : hasBare ? 'all' : anchored
   // Its own mark: the package graph is the bulk of what used to be charged
-  // to `open cache` (measured on a 1,000-project tree, 2026-09-20 — the
+  // to `open cache` (measured on a 1,000-project tree — the
   // graph 3-8 ms against the cache open's ~1 ms and the root files' ~0.3),
   // so a reader profiling that stage was sent to the wrong code.
   mark('package graph')
@@ -552,7 +552,7 @@ async function openStore(
   const asked =
     options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags)
   // A laptop reads the shared cache and does not write it unless a policy
-  // names the remote (2026-10-03; Security F1, 2026-10-14): a key
+  // names the remote: a key
   // holds only declared inputs, so a laptop's write could be replayed on CI.
   // A workspace policy naming the remote asks to write it, as `--cache-policy` does.
   const readOnly =
@@ -568,7 +568,7 @@ async function openStore(
   // leaves (`'preview'`), and upserts no file-hash memo. One with a remote
   // keeps the hits its probe finds, for the `vx run` that follows (an
   // index made for them if need be): that run GETs them before its own
-  // probe answers (2026-10-23).
+  // probe answers.
   const planReadOnly =
     planning &&
     (!wanted.remoteRead ||
@@ -617,7 +617,7 @@ async function openStore(
   dependenciesLock?.catch(() => {})
   // A whole-tree run's blob-size check starts with the cache it reads its
   // verdict from, beside the config load and graph build: after them, a cold
-  // 100-package run waited 40-50 ms on it before its first task (2026-11-03).
+  // 100-package run waited 40-50 ms on it before its first task.
   if (git.started !== undefined) {
     localCache.memo.holdBlobSizes()
     git.started.then((e) => checkBlobSizes(e, localCache.memo)).catch(() => {})
@@ -638,7 +638,7 @@ async function loadScope(
   const { projectMetas, readLock } = ws
   // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
   // the configs (`vx lock --check` re-evaluates them; a run does not):
-  // only `vx lock` evaluates (2026-10-14).
+  // only `vx lock` evaluates.
   // See docs/design/config-lock-2026-06.md.
   // Read once, and only when a config is to be read from it: the CLI's
   // selection pass may have staged every config (`options.staged`), and
@@ -839,7 +839,7 @@ async function openLayer(options: RunOptions, log: Logger, ws: Workspace, store:
     // A cache plugin that throws or returns something off-contract is
     // refused by name; the local handle opened above must not leak with it,
     // nor what another plugin's factory opened: the factories have run
-    // (C-4, item 1029's contract).
+    // (C-4).
     await teardownPlugins(plugins, warnOf(log))
     localCache.close()
     throw err
@@ -880,7 +880,7 @@ async function buildGraph(
   // by a config the scope left out, so the builder hands it back instead of
   // refusing it, and the rest decide.
   // A run never checks the graph rules: `vx lock` and `vx lock --check`
-  // do (2026-10-14). `exclusiveOutputs: false` still asks the walk
+  // do. `exclusiveOutputs: false` still asks the walk
   // for its addition marks.
   const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
   const unproven: Array<[taskId: string, name: string]> = []
@@ -962,7 +962,7 @@ async function buildGraph(
   }
   if (unproven.length > 0) await refuseUndeclaredDeps(unproven, everyProject)
   // An `--exclude-dependencies` name no project declares drops nothing:
-  // `=biuld` planned the whole chain and ran it, exit 0 (item 1026). Every
+  // `=biuld` planned the whole chain and ran it, exit 0. Every
   // other name the user types must resolve; so must this one. After the
   // graph, so a config error (`^biuld` nobody declares) is named first.
   const excludeNames = options.excludeDependencies
@@ -987,7 +987,7 @@ async function buildGraph(
   // projects, then the plugins' stages (graph, key, schedule). Separate
   // rows, so a plugin's key stage reads as its own cost and not as graph
   // building — a lockfile plugin's 1000 stats per run hid inside one
-  // `prepare (graph)` row until 2026-09-10.
+  // `prepare (graph)` row.
   mark('build graph')
   return { nodes, graphRules, hasGraphHook, hooksFirst, graphStage }
 }
@@ -1056,7 +1056,7 @@ async function enumerateGit(
   )
   // The dependents count while the blob-size check's `cat-file` runs: the
   // thread waited ~80 ms on it in a cold 8,002-task run, and counting
-  // after it, before the first task, took 40 ms (2026-11-07). Only when
+  // after it, before the first task, took 40 ms. Only when
   // nothing below edits the nodes: a graph or key hook, or
   // `--exclude-dependencies`.
   const dependents =

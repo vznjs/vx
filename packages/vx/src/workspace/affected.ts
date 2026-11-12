@@ -42,8 +42,8 @@ import { inVxDir, PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from
 /**
  * Every git call here goes through these two: a git that is not on PATH
  * is one refusal naming the install (util `gitSpawnRefusal`), never the
- * `ENOENT` stack `defaultAffectedBase` showed a minimal image
- * (2026-09-16). A git that ran and failed is each caller's to read.
+ * `ENOENT` stack `defaultAffectedBase` showed a minimal image.
+ * A git that ran and failed is each caller's to read.
  */
 function spawnGitSync(
   args: string[],
@@ -109,8 +109,8 @@ export interface AffectedArgs {
    * something changed. It is asked about EVERY changed path, the ones a
    * project owns included: the glob may name a file inside another project
    * (`schema.md` allows it), and asking only the paths no project owns
-   * left the declaring project out of a run its key called stale
-   * (item 954). The `--affected` sugar's graph walk has already staged every
+   * left the declaring project out of a run its key called stale.
+   * The `--affected` sugar's graph walk has already staged every
    * config, so there it costs nothing more.
    */
   workspaceGlobOwners?: (
@@ -202,7 +202,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
 }
 
 /**
- * What `--affected` seeds its tasks from (2026-10-04): the changed
+ * What `--affected` seeds its tasks from: the changed
  * projects, each one's changed paths relative to it, and the projects a
  * change reaches as a whole — every task in one is affected whatever its
  * inputs say, because the reason was no path of its own (a lockfile claim,
@@ -323,8 +323,8 @@ export async function affectedChanges(
 async function diffBase(args: AffectedArgs) {
   // Turbo's CI spelling, `[origin/main...HEAD]`, is the base alone here:
   // vx already diffs from the merge base (three dots' meaning), and the
-  // working tree it diffs to holds HEAD (D-117). Its two-dot `[A..HEAD]`
-  // diffs from A itself (G-145). Any other range is refused.
+  // working tree it diffs to holds HEAD. Its two-dot `[A..HEAD]`
+  // diffs from A itself. Any other range is refused.
   const headRange = HEAD_RANGE.exec(args.since)
   const since = headRange?.[1] ?? args.since
   const fromMergeBase = headRange?.[2] !== '..'
@@ -425,7 +425,7 @@ async function changedPaths(
     // `--ignore-submodules=none` because a repository may ask git to hide its
     // submodules (`diff.ignoreSubmodules`, `submodule.<name>.ignore`), and
     // then an edit inside one, or a committed bump, was no change here while
-    // the task's key moved (item 951).
+    // the task's key moved.
     //
     // `--raw` for each path's mode: a gitlink (160000) is a nested
     // repository, one path standing for every file in it (`nested` below).
@@ -1501,7 +1501,7 @@ async function gitConfigFacts(
  * The base a bare `--affected` compares with: the merge base of HEAD and
  * the base branch (`origin/<baseBranch>`, or the local branch in a clone
  * with no remote; its tip when they share no history). On the base branch
- * itself there is none (2026-10-17): what a push to main changed
+ * itself there is none: what a push to main changed
  * is the last good commit's to say (`--affected=<sha>`), and `HEAD~1`
  * guessed it wrong after any multi-commit push.
  */
@@ -1767,8 +1767,7 @@ async function gitMergeBase(workspaceRoot: string, ref: string): Promise<string 
 /**
  * A shallow clone (CI's checkout fetches one commit) lacks the base, or
  * the history between it and HEAD: this fetches from origin what the
- * merge base needs and nothing more (2026-10-24: "we only need
- * current commit and branch out commit"). The base's tip at depth 1, then
+ * merge base needs and nothing more. The base's tip at depth 1, then
  * both tips deepened 1, 2, 4… commits until git finds the merge base;
  * commits and trees only, as `--name-only` reads no blob. A pull request's
  * merge checkout has its base as HEAD's parent, so it needs one fetch.
@@ -2075,7 +2074,7 @@ function projectsContaining(
   // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
   // indexed by its link, and git reports its files at their real place
   // (`ext/b/src/a.txt`), which resolved to no project: an edit there
-  // selected nothing (item 1079). Its real place under the root is indexed
+  // selected nothing. Its real place under the root is indexed
   // too. One realpath per member, and only on an --affected run.
   const realRoot = realpathOr(workspaceRoot)
   for (const p of projects) {

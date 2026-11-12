@@ -128,7 +128,7 @@ interface WatchLoopArgs {
   workspaceConfigImports: readonly string[]
   /**
    * Root files a plugin claims (`VxPlugin.fingerprint`): a lockfile, or a
-   * file its stages read (`turbo.json`, item 961). The workspace config is
+   * file its stages read (`turbo.json`). The workspace config is
    * loaded once per process, so the set is fixed for the loop.
    */
   claimedRootFiles: ReadonlySet<string>
@@ -662,12 +662,11 @@ class WatchLoop {
     }
     // A re-lock since this cycle began: the re-arm can close the watcher
     // its event was still on its way to (FSEvents' latency, a poller's
-    // tick), and the new lock ran nothing until the next edit (macOS CI,
-    // 2026-10-23). A cycle that read the lock mid-write failed on it, and
+    // tick), and the new lock ran nothing until the next edit (macOS CI).
+    // A cycle that read the lock mid-write failed on it, and
     // is the same case. Asked after the re-arm, not when the run ends: a
     // lock written in between was the re-arm's to read, its new pollers
-    // took it as their baseline, and it was never an event (macOS CI,
-    // 2026-11-06).
+    // took it as their baseline, and it was never an event (macOS CI).
     if (lockAtRun !== undefined && lockStamp(this.workspaceRoot) !== lockAtRun)
       this.rootFileEvent(LOCKFILE_NAME)
   }
@@ -703,7 +702,7 @@ class WatchLoop {
   // while it is down is lost to every watch, the proved root stream
   // included, and a close proves nothing after it. A re-arm that swapped
   // `apps/`'s arms lost `apps/` made again, and the edit after it, for good
-  // (macOS CI, 2026-11-04). So inside the root the one stream serves the
+  // (macOS CI). So inside the root the one stream serves the
   // ancestor and import arms too, and a re-arm there opens or closes none.
   /** Whether the one stream hears `dir`'s children: under the root by its real path. */
   private inStream(dir: string): boolean {
@@ -874,7 +873,7 @@ class WatchLoop {
   /**
    * A config's imports from outside the watched projects: a shared preset
    * (`../../shared/preset.mjs`) changed what a run evaluates and no arm
-   * saw it (item 949). One non-recursive arm per directory holding one.
+   * saw it. One non-recursive arm per directory holding one.
    * A project config's import re-reads and runs; a workspace config's is
    * loaded once per process (Bun keeps the module), so its edit is named
    * with the restart it needs instead of a cycle that would run stale.
@@ -1097,8 +1096,8 @@ class WatchLoop {
     )
     if (next.workspaceWide !== this.workspaceWide || modulesRenamed) {
       // A task started or stopped declaring `workspaceFiles`: the other
-      // arm's shape. Until item 891 the choice was made once, at start, and
-      // a root file a config newly named was never an event.
+      // arm's shape. Made once, at start, the choice left a root file a
+      // config newly named no event.
       this.dropMode()
       this.workspaceWide = next.workspaceWide
       this.armMode(next.projects)
@@ -1137,7 +1136,7 @@ class WatchLoop {
     // A project directory still the one its arm holds is no change:
     // its arm judges what is in it. macOS reports the directory's
     // mtime here on every write at its top level, and a cycle's own
-    // write started the next (solid's `types`, 2026-10-15).
+    // write started the next (solid's `types`).
     if (this.heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
     this.reread = true
     this.trigger(path.relative(this.workspaceRoot, abs), abs)
@@ -1272,7 +1271,7 @@ export function lockStamp(workspaceRoot: string): string {
  * label is what the cycle announces.
  *
  * A branch, not a race: extracted so it can be pinned at all. Deleting the
- * arming left every green test in the repo green (2026-09-20) — the e2e
+ * arming left every green test in the repo green — the e2e
  * watch fixture spawns a real `vx watch`, so it cannot deliver an event at
  * that instant, and the suites that could are the ones this repo's cloud
  * container already fails for timing reasons. What this pins is the

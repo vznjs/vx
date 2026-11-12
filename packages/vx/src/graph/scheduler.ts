@@ -97,7 +97,7 @@ export interface ScheduleOptions {
    * warm run's 1,090 groups (X-192); a hit whose tree is current does no
    * more. A restore-tier task's `upstream` may hold undefined entries.
    * The thunk's outcome is the scheduler's: its queue time is set on it,
-   * not on a copy (a copy per hit, 2026-11-07).
+   * not on a copy (a copy per hit).
    */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /**
@@ -506,7 +506,7 @@ class GraphRun {
     // the order `dependsOn` states: they are released once its own deps
     // have settled too. Released at its own finish, an `e2e` ran beside
     // the `db:migrate` two edges up whenever the middle task was a hit,
-    // and ran green after that dep failed (item 963).
+    // and ran green after that dep failed.
     if (this.inRestoreTier(id) && (this.pending.get(id) ?? 0) > 0) {
       this.heldRelease.add(id)
       return
@@ -656,7 +656,7 @@ class GraphRun {
     // lands (`leave()` precedes `finishOne` in both arms, and a skip
     // takes none), so a task still holding one has no outcome yet, and
     // the lane counters could add nothing — deleting both from this
-    // condition survived the whole core suite (item 644).
+    // condition survived the whole core suite.
     if (this.outcomes.size + this.settledIdle === this.nodes.size) {
       this.resolved = true
       this.stopListening()
@@ -675,14 +675,14 @@ class GraphRun {
     // No pools and a full exec lane: nothing on the exec queue can be
     // admitted, so it is not scanned — an admit policy only narrows
     // the count gate, never widens it (scanning under one cost the
-    // history plugin's cold bench run 10 s, 2026-10-09) — scanning it
+    // history plugin's cold bench run 10 s) — scanning it
     // would pop and re-park every ready exec task on every tick, and
     // with a wide frontier that is O(R) per tick, O(R²) per run (the
     // 6,000-task scale pin went 0.5 s → 28 s when the restore lane's
-    // first cut let the scan run past a full exec lane, 2026-09-10).
+    // first cut let the scan run past a full exec lane).
     // This is the legacy O(1) gate, kept per lane. Every pool full is
     // the same: a remote pool of 6 slots before 2000 ready tasks
-    // re-popped them all on each end (DTE, 2026-10-25).
+    // re-popped them all on each end (DTE).
     const execAdmissible =
       this.options.poolOf === undefined
         ? lanes.execRoom()
@@ -847,8 +847,8 @@ class GraphRun {
     // `active` releases twice — and a double release wedges the count
     // gate. NOT `onFinish`, which this comment used to cite: it is
     // isolated inside `finishOne`, so it never reaches here (which is
-    // why the row named for it cannot tell the two shapes apart —
-    // item 560). What is left unisolated is the caller's
+    // why the row named for it cannot tell the two shapes apart).
+    // What is left unisolated is the caller's
     // `settledOf`, and under THIS shape a throw there strands the
     // task's outcome and hangs the run rather than double-releasing.
     // The two-arm form is still the correct choice; there is simply
@@ -946,7 +946,7 @@ class GraphRun {
       const text = thrown instanceof KeyFailed ? `cache key not derived: ${said}` : said
       // In a task's own output block, in full: that block is read
       // alone, and "as <task> above" named one printed elsewhere or
-      // not at all (2026-10-22). On bare stderr the first is above.
+      // not at all. On bare stderr the first is above.
       const first = this.options.onError === undefined ? this.refusedBy.get(text) : undefined
       if (!this.refusedBy.has(text)) this.refusedBy.set(text, id)
       line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`

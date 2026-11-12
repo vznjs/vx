@@ -6,10 +6,10 @@
  * filesystem round trips and no CPU — so it gets its own lane, twice
  * the exec cap: on the 1,000-project bench with every task a restore,
  * 4 → 8 workers cut the run-graph stage 683–754 → 556–595 ms and 16 was
- * no better (2026-09-10). Exec-tier work keeps the CPU-shaped cap; the
+ * no better. Exec-tier work keeps the CPU-shaped cap; the
  * two lanes never wait on each other. `--concurrency 1` stays serial:
  * the two lanes share its one slot, where a lane each let an 80 MB
- * restore run inside another task's execution (item 1103).
+ * restore run inside another task's execution.
  */
 export class Lanes {
   active = 0
