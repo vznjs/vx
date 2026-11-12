@@ -2063,6 +2063,20 @@ export class Orchestrator {
     sizes?: readonly { readonly name: string; readonly cpu: number }[]
     /** Why it played the work rather than packed it (`Plan.unpacked`). */
     unpacked?: string
+    /**
+     * What `plan()` was given, whole: marked as `input` when the packing
+     * ended past the play or left a task out. A packing that ended at 130 s
+     * where the play ended at 55 s asked 4 workers mid-run (main 18a8446,
+     * 2026-11-12), and the marks above, rounded and without each running
+     * task's id, packed it at 54 s when played back.
+     */
+    input?: {
+      readonly tasks: readonly PlanTask[]
+      readonly sizes: readonly Size[]
+      readonly warmUps: ReadonlyMap<string, number>
+      readonly spreads: ReadonlyMap<string, number>
+      readonly limitMs: number | undefined
+    }
   }): void {
     const work = p.work?.map(
       (t) =>
@@ -2085,6 +2099,13 @@ export class Orchestrator {
         ? {}
         : { sizes: p.sizes.map((s) => `${s.name} ${Math.round(s.cpu * 100) / 100}c`).join(' · ') }),
       ...(p.unpacked === undefined ? {} : { unpacked: p.unpacked }),
+      ...(p.input === undefined || !/^(ends|left out) /.test(p.unpacked ?? '')
+        ? {}
+        : {
+            input: JSON.stringify({ ...p.input, workers: p.workers }, (_k, v: unknown) =>
+              v instanceof Map ? Object.fromEntries(v) : v === Infinity ? 'Infinity' : v,
+            ),
+          }),
       ...(p.warmUps === undefined
         ? {}
         : {

@@ -897,6 +897,21 @@ export function dte(options: DteOptions = {}) {
                 }
               : {}),
             ...(p.unpacked === undefined ? {} : { unpacked: p.unpacked }),
+            ...(p.played === undefined
+              ? {}
+              : {
+                  input: {
+                    tasks: p.tasks,
+                    ...p.played,
+                    warmUps: new Map(sizes.map((s) => [s.name, warmUp(s.name)])),
+                    spreads: new Map(
+                      sizes.map((s) => [
+                        s.name,
+                        spreads.get(s.name) ?? learned.spreads.get(s.name) ?? 0,
+                      ]),
+                    ),
+                  },
+                }),
           })
         const { tasks } = p
         // At the end the relay closing ends them all.

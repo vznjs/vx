@@ -2098,7 +2098,11 @@ export function decide(input: {
    * 2026-11-11).
    */
   readonly spreadMs?: ((size: string) => number) | undefined
-}): Plan & { readonly tasks: readonly PlanTask[] } {
+}): Plan & {
+  readonly tasks: readonly PlanTask[]
+  /** What `plan()` was given besides the tasks and workers, where it played (`Plan.unpacked`). */
+  readonly played?: { readonly sizes: readonly Size[]; readonly limitMs: number | undefined }
+} {
   const how = input.how ?? DEFAULT_STRATEGY
   const now = input.now ?? 0
   const had = input.last?.forecast
@@ -2146,14 +2150,15 @@ export function decide(input: {
     return { ...backlog(tasks, input.workers, sizes, input.warmUpMs, how), tasks }
   const step = had === undefined ? undefined : follow(had, tasks, input, sizes, now)
   if (step !== undefined && step !== 'full') return shown(input.last!, had!, step, now, tasks)
+  // New work moves the deadline; work done or known already does not.
+  const limitMs = tasks.every((t) => input.known?.has(t.id) === true) ? input.limitMs : undefined
   const { freeInMs, given, later, started, untilInMs, ...p } = plan(
     tasks,
     input.workers,
     sizes,
     input.warmUpMs,
     input.replaceable,
-    // New work moves the deadline; work done or known already does not.
-    tasks.every((t) => input.known?.has(t.id) === true) ? input.limitMs : undefined,
+    limitMs,
     how,
     input.spreadMs,
   )
@@ -2165,7 +2170,7 @@ export function decide(input: {
       input,
       now,
     )
-  return { ...p, tasks }
+  return { ...p, tasks, ...(p.unpacked === undefined ? {} : { played: { sizes, limitMs } }) }
 }
 
 /**
