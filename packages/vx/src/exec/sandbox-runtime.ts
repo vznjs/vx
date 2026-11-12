@@ -2986,6 +2986,7 @@ async function runSandboxedOnce(
         baselines.denyRead,
         args.reportWithin,
         [...violations.map((v) => v.path), ...hidden, ...(git === undefined ? [] : [git.dir])],
+        args.keyRoot,
       )
       if (named !== undefined) violations.push(named)
     }
@@ -3063,13 +3064,29 @@ export function outsideWritesHint(
   // Granting a system temp directory opens it to every write of the task;
   // the task already has a temp directory of its own. A workspace kept
   // under one is the workspace, and its directory is the grant.
+  // A home kept under one (a CI container's, an agent's) is home: a tool
+  // writes its store there whatever $TMPDIR says.
+  const temps = hostTempRoots()
+  const inHome = (p: string): boolean => atOrUnder(p, home) && !temps.includes(home)
   const scratchTemp = (p: string): boolean =>
-    hostTempRoots().some((t) => atOrUnder(p, t)) && !walls.some((w) => atOrUnder(p, w))
+    temps.some((t) => atOrUnder(p, t)) && !walls.some((w) => atOrUnder(p, w)) && !inHome(p)
   const isDir = (p: string): boolean =>
     made.has(p) || statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  // A tool's cache under `~/.cache` is its own directory there: `go build`
+  // writes `~/.cache/go-build/ab/<hash>-d`, and `ab/` alone failed the next
+  // build on another subdirectory.
+  const homeCache = path.join(home, '.cache')
+  const toolCache = (p: string): string | undefined => {
+    if (!atOrUnder(p, homeCache) || p === homeCache) return undefined
+    const tool = p.slice(homeCache.length + 1).split('/')[0]
+    return `${homeCache}/${tool}`
+  }
   // Never home or above it: a tool's own `~/.cache` (or `~/.npmrc`) is the grant.
-  const grantOf = (p: string): string =>
-    isDir(p) ? `${p}/` : atOrUnder(home, path.dirname(p)) ? p : `${path.dirname(p)}/`
+  const grantOf = (p: string): string => {
+    const cache = toolCache(p)
+    if (cache !== undefined && (cache !== p || isDir(p))) return `${cache}/`
+    return isDir(p) ? `${p}/` : atOrUnder(home, path.dirname(p)) ? p : `${path.dirname(p)}/`
+  }
   const grants = [...new Set(paths.filter((p) => !scratchTemp(p)).map(grantOf))].filter(
     (g, _, all) =>
       !all.some(
@@ -3197,7 +3214,11 @@ function hiddenGitHint(
 }
 
 /** An output line that may name a file its tool found missing (`statedHiddenHint`). */
-const NOT_FOUND = /does not exist|not found|no such file|cannot find|can't find|ENOENT|missing/i
+const NOT_FOUND =
+  /does not exist|not found|no such file|cannot find|can't find|could not find|no makefile found|no rule to make target|ENOENT|missing/i
+
+/** The names GNU make looks for, in its order. */
+const MAKEFILES = ['GNUmakefile', 'makefile', 'Makefile']
 
 /**
  * The hint for a failed task whose last output calls missing a path the
@@ -3214,13 +3235,17 @@ function statedHiddenHint(
   walled: readonly string[],
   within: string,
   named: readonly (string | undefined)[],
+  keyRoot: string | undefined,
 ): SandboxViolation | undefined {
   const deny = walled.map(toRealPath)
   const grants = granted.map(toRealPath)
   const seen = new Set<string>()
   const found: string[] = []
   for (const line of lines) {
-    for (const word of line.split(/[\s'"`,:()]+/)) {
+    const words = line.split(/[\s'"`,:()]+/)
+    // make names no file when it found none: the ones it looks for.
+    if (/no makefile found/i.test(line)) words.push(...MAKEFILES)
+    for (const word of words) {
       const w = word.replace(/\.+$/, '')
       if (w === '' || w.startsWith('-') || w.length > 4096) continue
       const abs = path.resolve(cwd, w)
@@ -3228,7 +3253,9 @@ function statedHiddenHint(
       seen.add(abs)
       if (!lstatSync(abs, { throwIfNoEntry: false })) continue
       const real = toRealPath(abs)
-      if (!deny.some((d) => atOrUnder(real, d)) || grants.some((g) => atOrUnder(real, g))) continue
+      // A directory holding a grant is listable (bwrap builds the path to
+      // the bind): cargo names its cwd in "could not find `Cargo.toml`".
+      if (!deny.some((d) => atOrUnder(real, d)) || readableUnder(real, grants)) continue
       if (named.some((n) => n !== undefined && atOrUnder(real, n))) continue
       if (!found.includes(real)) found.push(real)
     }
@@ -3247,8 +3274,29 @@ function statedHiddenHint(
       grantable === undefined
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
-          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`.`,
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`` +
+          `${keyEntryHint(grantable, within, keyRoot)}.`,
   }
+}
+
+/**
+ * For a cached task (`keyRoot`), the input entry that keys a path a hint
+ * grants: the grant alone, applied as given, read it unkeyed, and an edit
+ * there replayed the old bytes (`replace … => ../golib` in a cached `go
+ * build`). The project's own `inputs.files` in it, else
+ * `inputs.workspaceFiles`; a directory whole. Nothing outside the
+ * workspace: no glob can name it.
+ */
+function keyEntryHint(p: string, within: string, keyRoot: string | undefined): string {
+  if (keyRoot === undefined) return ''
+  const root = toRealPath(keyRoot)
+  if (!atOrUnder(p, root)) return ''
+  const project = toRealPath(within)
+  const [field, base] = atOrUnder(p, project) ? ['files', project] : ['workspaceFiles', root]
+  const rel = relPosix(base, p)
+  const dir = statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  const glob = rel === '' ? '**' : dir ? `${taskGlobOf(rel)}/**` : taskGlobOf(rel)
+  return `, and, if the output depends on it, key it: \`inputs: { ${field}: [${jsString(glob)}] }\``
 }
 
 /**
@@ -3287,12 +3335,6 @@ function hiddenReadsHint(
   const said =
     `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
     `not reported as violations: ${shown}${more}.`
-  const root = keyRoot === undefined ? undefined : toRealPath(keyRoot)
-  const key =
-    grantable === undefined || root === undefined || !atOrUnder(grantable, root)
-      ? ''
-      : `, and, if the output depends on it, key it: ` +
-        `\`inputs: { workspaceFiles: [${jsString(taskGlobOf(relPosix(root, grantable)))}] }\``
   return {
     timestamp: new Date(),
     hint: true,
@@ -3300,7 +3342,8 @@ function hiddenReadsHint(
       grantable === undefined
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
-          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`${key}.`,
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`` +
+          `${keyEntryHint(grantable, within, keyRoot)}.`,
   }
 }
 

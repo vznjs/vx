@@ -343,6 +343,13 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         // enters the artifact, so a link to a file the task could not
         // read packs nothing of it (L-23).
         const to = await readlinkOf(abs)
+        // A venv's `bin/python -> /usr/local/bin/python3` names no checkout:
+        // told so, its fix read as "make it relative", which is not one.
+        if (path.isAbsolute(to) && args.root !== undefined && !inside(to, args.root)) {
+          throw new UserError(
+            `${shown} is a symlink to ${to}, an absolute path outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there (a copy, e.g. \`python -m venv --copies\`), or take it back with a '!' entry`,
+          )
+        }
         if (path.isAbsolute(to)) {
           throw new UserError(
             `${shown} is a symlink to an absolute path (${to}): vx restores a link as written, and an absolute one names this machine's checkout — make it relative, or take it back with a '!' entry`,

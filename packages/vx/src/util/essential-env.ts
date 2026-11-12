@@ -31,6 +31,19 @@ export const ESSENTIAL_ENV: readonly string[] = [
   // manager (offline or sandboxed: fails) and pnpm loses its global dir.
   'COREPACK_HOME',
   'PNPM_HOME',
+  // Where rustup, cargo and go keep their toolchains and stores, by the same
+  // reasoning: the rust image sets RUSTUP_HOME and CARGO_HOME away from
+  // home, and stripped, cargo failed "rustup could not choose a version",
+  // in a task and in an `inputs.runtime` probe alike (a probe sees these
+  // only). GOROOT is not one: go finds it from its own path, and a value
+  // that picks the toolchain (it, GOTOOLCHAIN, RUSTUP_TOOLCHAIN) is for
+  // the task to name and key. Nor is a proxy: a setting, and it may hold a
+  // login a replayed log would show.
+  'RUSTUP_HOME',
+  'CARGO_HOME',
+  'GOPATH',
+  'GOMODCACHE',
+  'GOCACHE',
   // The XDG base directories, machine paths as HOME is. Stripped, a task
   // resolved other homes than the shell did: pnpm used another store, and
   // a CLI keeping its login there ran signed out (vercel/turborepo#13145).

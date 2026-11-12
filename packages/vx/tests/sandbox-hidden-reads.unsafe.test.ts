@@ -319,4 +319,87 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
   it('CONTROL: a path the host lacks too is not named', async () => {
     expect(await outcome(tsc('tsconfig.other.json'))).toEqual(['failed', []])
   })
+
+  // cargo and make say neither "not found" nor "no such file": their
+  // failures named no hidden path.
+  it.each([
+    ['cargo', 'Cargo.toml', 'error: could not find `Cargo.toml` in `.` or any parent directory'],
+    [
+      'make, no makefile',
+      'Makefile',
+      'make: *** No targets specified and no makefile found.  Stop.',
+    ],
+    [
+      'make, no rule',
+      'gen.mk',
+      "make: *** No rule to make target 'gen.mk', needed by 'all'.  Stop.",
+    ],
+  ])('%s is named too', async (_, file, said) => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { t: { exec: {
+        command: ${JSON.stringify(`[ -e ${file} ] || { cat src/said >&2; exit 2; }`)},
+        sandbox: { allow: { read: ['src/'] } },
+      } } } }\n`,
+      // Read from a file: the shell would run cargo's backquotes.
+      files: { [file]: '', 'src/said': `${said}\n` },
+    })
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+      `If the task reads one, grant it, e.g. \`allow: { read: ['${file}'] }\`.`,
+    )
+  })
+
+  // `replace example.com/golib => ../golib` in a cached `go build`: the
+  // hint named only the read grant, and the grant applied as given read
+  // ../golib unkeyed, so an edit there replayed the old binary.
+  it('beside a cached task names the key entry too, and the two applied re-run on an edit', async () => {
+    await mkdir(path.join(root, 'packages', 'golib'), { recursive: true })
+    await writeFile(path.join(root, 'packages', 'golib', 'lib.go'), 'v1\n')
+    const cached = (read: string[], files: string[], workspaceFiles: string[]) =>
+      `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(
+          '[ -d ../golib ] || { echo "go: example.com/golib: replacement directory ../golib does not exist" >&2; exit 1; }; cat ../golib/lib.go > out.txt',
+        )},
+          sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out.txt'] } } },
+        cache: true,
+        inputs: { files: ${JSON.stringify(files)}, workspaceFiles: ${JSON.stringify(workspaceFiles)} },
+        outputs: { files: ['out.txt'] },
+      } } }\n`
+    const app = await addProject(root, 'app', {
+      config: cached(['src/'], ['src/**'], []),
+      files: { 'src/a': '' },
+    })
+    const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
+    expect((await t())?.sandboxViolationLines?.[0]).toEndWith(
+      "If the task reads one, grant it, e.g. `allow: { read: ['../golib'] }`, and, if the " +
+        "output depends on it, key it: `inputs: { workspaceFiles: ['packages/golib/**'] }`.",
+    )
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      cached(['src/', '../golib'], ['src/**'], ['packages/golib/**']),
+    )
+    expect((await t())?.status).toBe('success')
+    await writeFile(path.join(root, 'packages', 'golib', 'lib.go'), 'v2\n')
+    expect((await t())?.status).toBe('success')
+    expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('v2\n')
+  })
+
+  // In the project the key entry is the task's own `inputs.files`.
+  it('beside a cached task names an in-project key entry as inputs.files', async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(tsc('tsconfig.json'))},
+          sandbox: { allow: { read: ['src/'] } } },
+        cache: true,
+        inputs: { files: ['src/**'] },
+        outputs: { files: [] },
+      } } }\n`,
+      files: { 'tsconfig.json': '{}\n', 'src/a.ts': '' },
+    })
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+      "grant it, e.g. `allow: { read: ['tsconfig.json'] }`, and, if the output depends on it, " +
+        "key it: `inputs: { files: ['tsconfig.json'] }`.",
+    )
+  })
 })

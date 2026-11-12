@@ -40,6 +40,27 @@ describe('the refused outside writes hint', () => {
     )
   })
 
+  // `go build` writes `~/.cache/go-build/ab/<hash>-d`: the hint granted
+  // `~/.cache/go-build/ab/`, and the next build failed on another subdir.
+  it("grants a tool's cache directory under ~/.cache whole", () => {
+    expect(hint([`${home}/.cache/go-build/ab/abcd-d`], [])).toEndWith(
+      "If the task needs one, grant its directory, e.g. `allow: { write: ['~/.cache/go-build/'] }`.",
+    )
+  })
+
+  // A home under the host temp root (a CI container's, an agent's) is
+  // still home: `go build` was told to write under $TMPDIR, which go
+  // never does unless GOCACHE says so, and no grant was named.
+  it('a home under the host temp root names the grant, not $TMPDIR', () => {
+    const tmpHome = path.join(os.tmpdir(), `vx-home-${process.pid}`)
+    spyOn(os, 'homedir').mockReturnValue(tmpHome)
+    const line = hint([`${tmpHome}/.cache/go-build/ab/abcd-d`], [])
+    expect(line).not.toContain('$TMPDIR')
+    expect(line).toEndWith(
+      "If the task needs one, grant its directory, e.g. `allow: { write: ['~/.cache/go-build/'] }`.",
+    )
+  })
+
   it('CONTROL: one refused write names one grant', () => {
     expect(hint([`${home}/.cache/tool/f`], [])).toEndWith(
       "If the task needs one, grant its directory, e.g. `allow: { write: ['~/.cache/tool/'] }`.",

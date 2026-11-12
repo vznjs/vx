@@ -2499,6 +2499,14 @@ moat.
   under the lock. Avoid baking versions via
   `define: { X: execSync(...) }` — that value freezes into the config
   object at lock time and goes stale.
+- **Another language's manifests and lockfiles.** A lockfile plugin
+  keys JS dependencies only; name the rest in `inputs.files`: Go's
+  `go.mod` and `go.sum`, Rust's `Cargo.toml` and `Cargo.lock`, Python's
+  `pyproject.toml`, `uv.lock` and `requirements*.txt`. A sibling a
+  `replace … => ../golib` or a path dependency reads is
+  `inputs.workspaceFiles: ['golib/**']` beside its read grant. `go build`
+  stamps the commit (`vcs.revision`) into the binary, which no input
+  holds, so a hit replays the old one: build with `-buildvcs=false`.
 - **`.vx/projects.lock.json`** — globally excluded (v24); also filtered out of
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,

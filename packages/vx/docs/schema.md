@@ -709,7 +709,8 @@ highest priority:
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
    `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   `COREPACK_HOME`, `PNPM_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+   `COREPACK_HOME`, `PNPM_HOME`, `RUSTUP_HOME`, `CARGO_HOME`, `GOPATH`,
+   `GOMODCACHE`, `GOCACHE`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
    `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `XDG_RUNTIME_DIR`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
@@ -2072,8 +2073,16 @@ tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
 and, for a cached task, the `inputs.workspaceFiles` entry that keys it
-(`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`; a grant alone leaves an edit there a stale hit):
-the tool said only "not found". A cached task whose key holds a file
+(`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`, a directory `'golib/**'`; a grant alone leaves an edit there a stale hit):
+the tool said only "not found". On Linux so is a path a failed task's
+output calls missing ("does not exist", cargo's "could not find", make's
+"No rule to make target") that the wall hides and the host has: a stat
+is not traced, so no violation names it. A cached task is told the key
+entry beside that grant too: `inputs.files` for a path in the project,
+`inputs.workspaceFiles` for one elsewhere in the workspace. A refused
+write under `~/.cache` names the tool's own directory there
+(`'~/.cache/go-build/'`), as a home kept under the host's temp
+directory does. A cached task whose key holds a file
 outside the project that no grant reaches (`inputs.workspaceFiles:
 ['.oxlintrc.json']` beside `read: ['.']`) fails before it runs, on Linux and macOS alike, with the
 read to grant: oxlint without its `.oxlintrc.json` passes on its

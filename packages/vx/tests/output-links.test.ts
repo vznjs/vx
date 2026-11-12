@@ -146,6 +146,13 @@ it.skipIf(process.platform === 'win32')(
     )
     const r2 = await build(abs.root)
     expect(r2.out + r2.err).toMatch(/output dist\/x is a symlink to an absolute path/)
+    // A venv's `bin/python -> /usr/local/bin/python3` was told it named
+    // this machine's checkout: it names a path outside the workspace.
+    const sys = await workspace('rm -rf dist && mkdir -p dist && ln -s /usr/bin/env dist/python')
+    const venv = await build(sys.root)
+    expect(venv.out + venv.err).toMatch(
+      /output dist\/python is a symlink to \/usr\/bin\/env, an absolute path outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there \(a copy, e\.g\. `python -m venv --copies`\), or take it back with a '!' entry/,
+    )
     // Every restore refuses a link into .git, so a save that kept one
     // stored an entry no machine could hit.
     const git = await workspace(
@@ -555,7 +562,10 @@ it.skipIf(process.platform === 'win32')(
         '../../../../x',
         /output dist\/libu\.so\.1 is a symlink to \.\.\/\.\.\/\.\.\/\.\.\/x, outside the workspace/,
       ],
-      ['/etc/hostname', /output dist\/libu\.so\.1 is a symlink to an absolute path/],
+      [
+        '/etc/hostname',
+        /output dist\/libu\.so\.1 is a symlink to \/etc\/hostname, an absolute path outside the workspace/,
+      ],
     ] as const) {
       const { root } = await workspace(
         `rm -rf dist && mkdir -p dist && ln -s ${hop} dist/libu.so.1 && ln -s libu.so.1 dist/libu.so`,
