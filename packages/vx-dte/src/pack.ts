@@ -168,7 +168,7 @@ export function pack(
   options: PackOptions,
 ): Packing | undefined
 export function pack(
-  tasks: readonly PlanTask[],
+  work: readonly PlanTask[],
   workers: readonly PlanWorker[],
   fresh: readonly Size[],
   warm: (size: string, nth: number) => number,
@@ -176,6 +176,21 @@ export function pack(
   options: PackOptions = {},
 ): Packing | undefined {
   const { noise, late, strict = false } = options
+  // A task booking more cores than any worker of its platform has takes a
+  // whole one, as the run books it: left out, a lint at 3.5 cores on
+  // workers planned at 3 turned the packing off, and main asked 10 workers
+  // where 5 ended as soon (cc6cd1a, 2026-11-12).
+  const most = new Map<string | undefined, number>()
+  const room = (platform: string | undefined, cores: number): void => {
+    most.set(platform, Math.max(most.get(platform) ?? 0, cores))
+    most.set(undefined, Math.max(most.get(undefined) ?? 0, cores))
+  }
+  for (const w of workers) if (w.drainIn === undefined) room(w.platform, w.cores)
+  for (const f of fresh) room(f.platform, f.cpu)
+  const tasks = work.map((t) => {
+    const cap = most.get(t.platform) ?? Infinity
+    return t.cores > cap && t.above === undefined ? { ...t, cores: cap } : t
+  })
   const n = tasks.length
   const index = new Map(tasks.map((t, i) => [t.id, i]))
   const after: number[][] = tasks.map(() => [])

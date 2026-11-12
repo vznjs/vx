@@ -115,11 +115,15 @@ const cases: Case[] = [
     measured: true,
     failing: ['utilization'],
   },
+  // Its lints booked over 4 cores, and were packed once over-core tasks
+  // took a whole worker (2026-11-12). Its misses show only as their
+  // upstreams end: packed onto the busy worker, the one that reveals them
+  // ended 1 s later, the idle one went, and the next plan asked 10.
   {
     name: 'main a09b987, history 40% high on cores',
     graph: load(a09, (r) => ({ ...r, cores: r.cores * 1.4 })),
     measured: true,
-    failing: ['utilization', 'makespan'],
+    failing: ['utilization', 'makespan', 'churn'],
   },
   // Each unmeasured task on a free core, the run sized as if each held 2
   // (2026-10-23): it ends at 174 s where a whole worker each took 350 s.

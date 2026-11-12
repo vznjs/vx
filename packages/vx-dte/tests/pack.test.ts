@@ -223,3 +223,19 @@ it('packs a run with a server’s dependant on no worker more than without', () 
   expect(served.start.length + served.later.length).toBe(plain.start.length + plain.later.length)
   expect(served.start.length).toBe(1)
 })
+
+// Main cc6cd1a planned its 4-core workers at 3 (the rest busy outside
+// tasks), its lints booked 3.5: none fit, the packing was dropped, and the
+// play asked 10 workers where 5 ended as soon.
+it('packs a task booking more cores than any worker has onto a whole one', () => {
+  const tasks = [
+    task('a', 60_000),
+    task('b', 60_000, ['a']),
+    task('lint', 4_000, [], 3.5),
+    ...Array.from({ length: 6 }, (_, i) => task(`f${i}`, 30_000, [], 1)),
+  ]
+  const sizes = candidates([{ ...size('w', 3), max: 9 }], new Map(), [], tasks.length)
+  const p = plan(tasks, [], sizes, WARM)
+  expect(p.exact).toBe(true)
+  expect(p.endsInMs).toBe(WARM + 120_000)
+})

@@ -1006,7 +1006,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     asked to join as that task gets ready. The plan packs to the longest
     chain from now first, then past it by a warm-up, then to the best
     end; a packing that leaves out a task fits no worker and is not
-    used. A task reading files an uncached upstream left on its worker
+    used. A task booking more cores than any worker of its platform has
+    is packed onto a whole one, as the run books it. A task reading files an uncached upstream left on its worker
     is packed there, or anywhere else with that upstream's time added, as
     the run makes it again first; the worker holding them stays while it
     has such a task to come. A server's base is packed as the run books
