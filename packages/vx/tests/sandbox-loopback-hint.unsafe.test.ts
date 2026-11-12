@@ -90,6 +90,17 @@ describe.skipIf(!available || process.platform !== 'linux')(
       30_000,
     )
 
+    // A pipe may cut one line in three chunks (CI, Ubuntu 26.04): the tail
+    // kept two, and lost the port.
+    it('a refusal written in three chunks names the grant', async () => {
+      const r = await run(
+        `printf 'curl: (7) Failed to connect to localhost por' >&2; sleep 0.2; ` +
+          `printf 't ${port} after 0 ms: Could' >&2; sleep 0.2; ` +
+          `printf ' not connect to server\\n' >&2; exit 7`,
+      )
+      expect([r.exitCode, hints(r)]).toEqual([7, [hintFor(port)]])
+    }, 30_000)
+
     it('no hint for a port nothing listens on, a granted port, or a task that passed', async () => {
       const other = freePort()
       const refused = (p: number) => `connect ECONNREFUSED 127.0.0.1:${p}`

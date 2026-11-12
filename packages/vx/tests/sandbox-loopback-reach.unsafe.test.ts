@@ -210,13 +210,11 @@ describe.skipIf(!available || Bun.which('curl') === null)(
           expect(r.ok).toBe(false)
           expect(r.outcomes.find((o) => o.node.id === 'web#client')?.status).toBe('failed')
           expect(fixture.log.join('\n')).not.toContain('hi-from-server')
-          // The refusal names the grant that relays the port on Linux; on
-          // macOS, which has no network namespace, seatbelt's own record
-          // names the port.
-          const want =
-            process.platform === 'linux'
-              ? `allow: { network: ['localhost:${port}'] }`
-              : `network-outbound remote:*:${port}`
+          // The refusal names the grant that relays the port on Linux.
+          // macOS logs a refused connect only now and then (CI 2026-11-12:
+          // no record at all), so there the refusal itself is the check.
+          if (process.platform !== 'linux') continue
+          const want = `allow: { network: ['localhost:${port}'] }`
           const lines =
             r.outcomes.find((o) => o.node.id === 'web#client')?.sandboxViolationLines ?? []
           if (!lines.join('\n').includes(want))

@@ -2841,17 +2841,19 @@ async function runSandboxedOnce(
   let gitNoRepo = false
   // The same for `grantRemovalHint`: a run captures no output.
   const readOnlyLines: string[] = []
-  // And for `statedHiddenHint`: the last two chunks of each stream, kept
-  // by reference, read on a failure only.
-  let outTail = ['', '']
-  let errTail = ['', '']
+  // And for `statedHiddenHint` and `refusedLoopbackHint`: the last 16 KiB
+  // of each stream, chunks kept by reference, read on a failure only. Two
+  // chunks were kept, and a pipe that split curl's one refusal line in
+  // three (CI, 2026-11-12) left the port out of the tail.
+  const outTail = new Tail()
+  const errTail = new Tail()
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
     streamToString(
       out,
       (chunk) => {
-        outTail = [outTail[1]!, chunk]
+        outTail.push(chunk)
         ends.onStdout?.(chunk)
       },
       ac.signal,
@@ -2869,7 +2871,7 @@ async function runSandboxedOnce(
         if (lines.some((l) => GIT_NO_REPO.test(l))) gitNoRepo = true
         for (const l of lines)
           if (readOnlyLines.length < 64 && READ_ONLY_FS.test(l)) readOnlyLines.push(l)
-        errTail = [errTail[1]!, chunk]
+        errTail.push(chunk)
         ends.onStderr?.(chunk)
       },
       ac.signal,
@@ -3045,7 +3047,7 @@ async function runSandboxedOnce(
         [
           ...readOnlyLines,
           ...outTail
-            .join('')
+            .text()
             .split('\n')
             .filter((l) => READ_ONLY_FS.test(l))
             .slice(-64),
@@ -3099,7 +3101,7 @@ async function runSandboxedOnce(
     if (process.platform === 'linux') {
       // tsc prints its errors on stdout.
       const named = statedHiddenHint(
-        `${outTail.join('')}\n${errTail.join('')}`
+        `${outTail.text()}\n${errTail.text()}`
           .split('\n')
           .filter((l) => NOT_FOUND.test(l))
           .slice(-64),
@@ -3118,7 +3120,7 @@ async function runSandboxedOnce(
       )
       if (named !== undefined) violations.push(named)
       const refused = refusedLoopbackHint(
-        `${outTail.join('')}\n${errTail.join('')}`.split('\n').slice(-64),
+        `${outTail.text()}\n${errTail.text()}`.split('\n').slice(-64),
         [...loopbackPorts(args.config.network), ...bridgedPorts(args.config)],
       )
       if (refused !== undefined) violations.push(refused)
@@ -3344,6 +3346,22 @@ function hiddenGitHint(
         ? `${said} Grant it: \`allow: { read: [${jsString(path.relative(toRealPath(within), git))}] }\`.`
         : `${said} Its data lies outside the workspace, walled on purpose, so vx suggests no grant.`,
     },
+  }
+}
+
+/** The last `TAIL_BYTES` (or a little more) of a stream, as its chunks. */
+const TAIL_BYTES = 16_384
+class Tail {
+  private chunks: string[] = []
+  private size = 0
+  push(chunk: string): void {
+    this.chunks.push(chunk)
+    this.size += chunk.length
+    while (this.chunks.length > 1 && this.size - this.chunks[0]!.length >= TAIL_BYTES)
+      this.size -= this.chunks.shift()!.length
+  }
+  text(): string {
+    return this.chunks.join('')
   }
 }
 

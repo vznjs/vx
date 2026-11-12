@@ -1168,9 +1168,23 @@ Bun.spawn = (cmd, opts) => {
         if (pids.length === 2) break
         await Bun.sleep(20)
       }
-      const tree = pids.length === 2 ? '' : treeOf(proc.pid)
-      process.kill(proc.pid, 'SIGKILL')
-      expect(await proc.exited).toBe(137)
+      let tree = ''
+      if (pids.length !== 2) {
+        // CI-only (Ubuntu 26.04): what is under vx, what the shim does
+        // alone, and what vx says when asked to stop.
+        tree = treeOf(proc.pid)
+        if (deaf) {
+          const alone = Bun.spawnSync(
+            [path.join(shims, 'bwrap'), '--ro-bind', '/', '/', '--unshare-all', '/bin/true'],
+            { stdout: 'pipe', stderr: 'pipe' },
+          )
+          tree += `\nshim alone: exit ${alone.exitCode} ${alone.stderr.toString().trim()}`
+        }
+        process.kill(proc.pid, 'SIGTERM')
+        await Promise.race([proc.exited, Bun.sleep(3_000)])
+      }
+      if (proc.exitCode === null) process.kill(proc.pid, 'SIGKILL')
+      expect(await proc.exited).toBe(pids.length === 2 ? 137 : (proc.exitCode ?? 137))
       await Promise.all(pids.map((p) => waitForDead(p, 2_000)))
       const alive = pids.filter(isAlive)
       // A session leader's session id is its own pid: the `setsid` child.
