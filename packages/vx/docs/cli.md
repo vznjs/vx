@@ -3919,7 +3919,7 @@ passed, so a replayed failure that is already fixed says so. A
 sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`
-(none for a per-run temp name such as `*.bun-build`, whose `ignore` glob a hint line names);
+(none for a per-run temp name such as `*.bun-build` or `.bun-pack.*.tmp`, whose `ignore` glob a hint line names);
 `withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`), and, for
 a cached task, `inputs` the reads of its project no `inputs.files`
 glob matches and `workspaceFiles` its reads elsewhere in the workspace no

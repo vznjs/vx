@@ -291,9 +291,13 @@ the wall is no violation. A project file is left to the trace: an open
 of it is a violation, and a key may hold one the task never reads.
 
 A write refused at a per-run temp name (`bun build --compile`'s
-`.<hex>-<n>.bun-build`) gets no `sandboxFix` grant, which the next run's
-name would miss: the outcome's violation lines gain a hint naming the
+`.<hex>-<n>.bun-build`, `bun pm pack`'s `.bun-pack.<hex>-<n>.tmp`) gets
+no `sandboxFix` grant, which the next run's name would miss: the
+outcome's violation lines gain a hint naming the
 `ignore: { write: ['*.bun-build'] }` glob instead (`perRunWriteHint`).
+A file refused at the project's top, which vx would make empty before
+the next run for its literal grant, is granted `'.'` when the task's
+`allow.read` lets it list the project: a pack read the empty file.
 A write refused in an installed package's files or its store under the
 project, which a directory above holds too, gets none: the tool took the
 project for its root, missing a lockfile the sandbox hides, so the fix

@@ -1777,9 +1777,34 @@ exec: {
 }
 ```
 
-A write to such a per-run temp name (`.<hex>-<n>.bun-build`) gets no
-`fix:` grant, which the next run's new name would miss; the failure
-names this `ignore` glob instead.
+A write to a temp name Bun makes anew each run (`.<hex>-<n>.bun-build`,
+`bun pm pack`'s `.bun-pack.<hex>-<n>.tmp`) gets no `fix:` grant, which
+the next run's new name would miss; the failure names its `ignore` glob
+(`*.bun-build`, `.bun-pack.*.tmp`) instead.
+
+`bun pm pack` reads its project whole and writes the tarball into it,
+so the grant is the project itself, `'.'`:
+
+```ts
+pack: {
+  exec: { command: 'bun pm pack', sandbox: { allow: { read: ['.', '~/.bun'], write: ['.'] } } },
+  cache: true,
+  inputs: { files: ['src/**', 'package.json', 'CHANGELOG.md'] },
+  outputs: { files: ['*.tgz'] },
+}
+```
+
+Not `write: ['*.tgz']`: on Linux a write glob covers only what exists
+when the task starts, and the tarball does not. Not the tarball's name
+either: vx makes an empty file for a literal grant before the run (see
+a write grant's shape below), and the pack packed it,
+`package/x-1.0.0.tgz` at 0 bytes, under a green run, as would any tool
+that archives or copies its directory. So when a task that may list its
+project (a read grant of `.`, `./**` or above) is refused a file at the
+project's top that vx would make empty, the `fix:` line names `'.'`,
+never the file. `'.'` makes the sources writable too;
+`bun pm pack --destination dist` with `write: ['dist/']` and
+`outputs: { files: ['dist/*.tgz'] }` keeps them read-only.
 
 **Home.** In `allow` and `ignore`, `~` and `~/…` are the home
 directory; `~user/…` is refused when the config loads, naming the entry:

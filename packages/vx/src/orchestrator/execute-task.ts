@@ -2314,6 +2314,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
               upstreamOutputs,
               cfg.outputs,
               args.nestedProjectDirs,
+              cfg.exec?.sandbox?.allow?.read,
             ),
           ),
         }

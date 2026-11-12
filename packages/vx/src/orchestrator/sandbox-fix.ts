@@ -147,6 +147,27 @@ function keyedBy(globs: readonly string[]): (rel: string) => boolean {
   return (rel) => take.some((g) => g.match(rel)) && !drop.some((g) => g.match(rel))
 }
 
+/**
+ * Whether a literal grant of the project file `abs` has vx make an empty
+ * one before the run (`prepareOutputsForBind`): it is not there, or it is
+ * a declared output, which the clean before the run takes. A task that
+ * lists its project reads that file: `bun pm pack` packed an empty
+ * `package/s-alpha-1.1.0.tgz` under a green run. Its grant is then the
+ * project, `'.'`, which makes no empty file: on Linux it is the bind the
+ * file grant made anyway, and a glob is none (a write glob covers only
+ * what exists when the task starts).
+ */
+function placeheld(abs: string, output: (rel: string) => boolean): boolean {
+  return lstatSync(abs, { throwIfNoEntry: false }) === undefined || output(path.basename(abs))
+}
+
+/** Whether read grant `g`, as written, covers directory `dir` whole: `.`, `./**`, `..`. */
+function readsWhole(g: string, dir: string): boolean {
+  const at = g.replace(/(?:^|\/)\*\*(?:\/\*)?$/, '') || '.'
+  if (!isLiteralPattern(at) || at.startsWith('~')) return false
+  return atOrUnder(dir, toRealPath(path.resolve(dir, at)))
+}
+
 /** The task proxy's refusals an `allow.network` entry cannot lift (task-proxy.ts). */
 const REFUSED_ANYWAY = /\((?:host is on the deny list|malformed host)\)$/
 
@@ -190,6 +211,8 @@ export function sandboxFix(
    * for `inputs.workspaceFiles`.
    */
   nested: readonly string[] = [],
+  /** The task's `allow.read` grants, as written: whether it may list its project (`placeheld`). */
+  reads: readonly string[] = [],
 ): SandboxFix | undefined {
   const fix: Record<keyof SandboxFix, Set<string>> = {
     read: new Set(),
@@ -203,6 +226,8 @@ export function sandboxFix(
   // Canonical, as a violation's path is: macOS holds `/var` for `/private/var`.
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
   const outDirs = outputDirs(outputs, dirs)
+  const listsProject = reads.some((g) => readsWhole(g, dirs.project))
+  const output = keyedBy(outputs?.files ?? [])
   let markers: string[] | undefined
   const keyed =
     inputs === undefined
@@ -231,7 +256,7 @@ export function sandboxFix(
         const wsRel = relPosix(dirs.root, v.path)
         if (!keyed.workspaceFiles(wsRel)) fix.workspaceFiles.add(taskGlobOf(wsRel))
       }
-    } else if (isPerRunTemp(v.path)) continue
+    } else if (isPerRunTemp(v)) continue
     else if (upstream.some((u) => atOrUnder(v.path!, toRealPath(u)))) continue
     else if (misrooted(v.path, dirs) !== undefined) {
       // No write grant: the files belong where the tool missed its root.
@@ -250,7 +275,12 @@ export function sandboxFix(
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
-      fix.write.add(writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs))
+      const grant = writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs)
+      fix.write.add(
+        !isDir && listsProject && path.dirname(v.path) === dirs.project && placeheld(v.path, output)
+          ? '.'
+          : grant,
+      )
     }
   }
   // A refused `mkdir` and the file the task then failed to open under it
@@ -259,16 +289,31 @@ export function sandboxFix(
     const dirsNamed = [...fix[k]].filter((g) => g.endsWith('/'))
     for (const g of fix[k]) if (dirsNamed.some((d) => d !== g && g.startsWith(d))) fix[k].delete(g)
   }
+  // The project named whole (`placeheld`) covers every write grant in it.
+  if (fix.write.has('.'))
+    for (const g of fix.write) if (g !== '.' && inProject(g)) fix.write.delete(g)
   const out: SandboxFix = {}
   for (const k of Object.keys(fix) as (keyof SandboxFix)[])
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-// `bun build --compile` stages `.<16 hex>-<n>.bun-build` in its cwd, a new
-// name each run: a grant naming one failed the next run on another, and a
-// Linux grant is a mount, so a glob grant covers no file made later.
-const isPerRunTemp = (abs: string): boolean => abs.endsWith('.bun-build')
+// Bun names a temp `.<prefix><hash in hex>-<8 hex>.<ext>`, a new name each run:
+// `bun build --compile`'s `.<hex>-<n>.bun-build`, `bun pm pack`'s
+// `.bun-pack.<hex>-<n>.tmp`. A grant naming one failed the next run on
+// another, and a Linux grant is a mount, so a glob grant covers no file
+// made later. Not a directory: `bun build --compile` extracts a runtime
+// into `.<hex>-<n>.tmp/`, which the task must write (schema.md grants
+// `.*.tmp/**`). Group 1 is the name before the hash (`bun-pack.`), 2 the extension.
+const BUN_TEMP = /^\.((?:[\w-]+\.)?)[0-9a-f]{12,16}-[0-9a-fA-F]{8}(\.[\w-]+)$/
+const isPerRunTemp = (v: SandboxViolation): boolean =>
+  v.path !== undefined && !v.line.startsWith('mkdir') && BUN_TEMP.test(path.basename(v.path))
+
+/** The `ignore` glob for a per-run temp's name: `*.bun-build`, `.bun-pack.*.tmp`. */
+function perRunGlob(base: string): string {
+  const [, prefix, ext] = BUN_TEMP.exec(base)!
+  return `${prefix === '' ? '' : `.${prefix}`}*${ext}`
+}
 
 // A name holding a millisecond clock (13 digits, until 2286) is new each
 // run, as vite's `vite.config.ts.timestamp-<ms>-<hex>.mjs`: granted by
@@ -304,9 +349,11 @@ export function perRunWriteHint(
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
   const globs = new Set<string>()
   for (const v of violations)
-    if (v.hint !== true && v.path !== undefined && isPerRunTemp(v.path) && kindOf(v) === 'write') {
-      const dir = path.posix.dirname(grantPath(v.path, dirs))
-      globs.add(dir === '.' ? '*.bun-build' : `${dir}/*.bun-build`)
+    if (v.hint !== true && v.path !== undefined && isPerRunTemp(v) && kindOf(v) === 'write') {
+      const rel = grantPath(v.path, dirs)
+      const dir = path.posix.dirname(rel)
+      const glob = perRunGlob(path.posix.basename(rel))
+      globs.add(dir === '.' ? glob : `${dir}/${glob}`)
     }
   if (globs.size === 0) return undefined
   const list = [...globs].sort().map((g) => `'${g.replace(/[\\']/g, '\\$&')}'`)
@@ -314,7 +361,8 @@ export function perRunWriteHint(
     timestamp: new Date(),
     hint: true,
     line:
-      `vx: a temp file named anew each run (bun build --compile's) cannot be granted; ` +
+      `vx: a temp file Bun names anew each run (bun build --compile's, bun pm pack's) ` +
+      `cannot be granted; ` +
       `ignore it instead: \`sandbox: { ignore: { write: [${list.join(', ')}] } }\`.`,
   }
 }

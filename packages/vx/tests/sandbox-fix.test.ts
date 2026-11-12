@@ -351,6 +351,42 @@ describe('sandboxFix', () => {
     expect(hint?.line).toContain("ignore: { write: ['*.bun-build', 'sub/*.bun-build'] }")
     expect(perRunWriteHint(denied.slice(2), dir, dir)).toBeUndefined()
   })
+  // `bun pm pack` stages `.bun-pack.<hex>-<n>.tmp` beside its tarball: the
+  // fix granted that one name, which the next run's misses.
+  it('knows bun pack’s per-run temp as one, and names its ignore glob', () => {
+    const t = '.bun-pack.cace8122e1f2fbdf-00000000.tmp'
+    const denied = [v(`openat(${t}) = a write no grant covers`, ['write'], path.join(dir, t))]
+    expect(sandboxFix(denied, dir, dir)).toBeUndefined()
+    // CONTROL: `bun build --compile`'s extraction directory is written, not ignored.
+    const x = '.cace8122e1f2fbdf-00000000.tmp'
+    expect(
+      sandboxFix([v(`mkdir(${x}) = -1 EROFS`, ['write'], path.join(dir, x))], dir, dir),
+    ).toEqual({ write: [`${x}/`] })
+    expect(perRunWriteHint(denied, dir, dir)?.line).toContain(
+      "ignore: { write: ['.bun-pack.*.tmp'] }",
+    )
+  })
+  // `bun pm pack` reads its project whole and writes its tarball there: the
+  // literal grant the fix named made vx create an empty one before the run,
+  // and bun packed it, `package/s-alpha-1.1.0.tgz` at 0 bytes, under a green run.
+  it('grants a file the task makes in the project it lists the project, never the file', () => {
+    const tgz = 's-alpha-1.1.0.tgz'
+    const denied = [
+      v(`openat(${tgz}) = a write no grant covers`, ['write'], path.join(dir, tgz)),
+      v('mkdir(out) = -1 EROFS', ['write'], path.join(dir, 'out')),
+    ]
+    const fix = (reads: string[], outputs?: { files: string[] }) =>
+      sandboxFix(denied, dir, dir, undefined, undefined, [], outputs, [], reads)?.write
+    for (const reads of [['.', '~/.bun'], ['./'], ['**'], ['./**/*'], ['..']])
+      expect(fix(reads)).toEqual(['.'])
+    // CONTROL: the task may not list the project, so the empty file is unseen.
+    expect(fix(['src/', 'package.json'])).toEqual(['out/', tgz])
+    expect(fix([])).toEqual(['out/', tgz])
+    // CONTROL: the file is there and no output clean takes it, so no empty one is made.
+    writeFileSync(path.join(dir, tgz), 'x')
+    expect(fix(['.'])).toEqual(['out/', tgz])
+    expect(fix(['.'], { files: ['*.tgz'] })).toEqual(['.'])
+  })
   // `next build` found its tracing root by the lockfile, which the sandbox
   // hid, and copied `node_modules/.bun/next@…` under the app: the fix
   // granted that write, and the green, cached build's server could not start.
