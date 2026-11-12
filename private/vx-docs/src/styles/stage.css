@@ -12,10 +12,10 @@
   --tone-dte: #b794ff;
   --tone-report: #f472b6;
   --void: #05060a;
-  --sun-1: #ffd36e;
-  --sun-2: #ff8a3d;
-  --sun-3: #ff4f8b;
-  --sun-4: #b26bff;
+  --sun-1: #f4ff9a;
+  --sun-2: #c6f84e;
+  --sun-3: #3fe0a0;
+  --sun-4: #22b8d6;
   --panel: rgba(16, 19, 26, 0.72);
   --hair: rgba(148, 170, 200, 0.14);
   --nav-h: var(--sl-nav-height, 4rem);
@@ -37,7 +37,7 @@
   --tone: var(--tone-report);
 }
 :root:has(.vx-stage-page) header.header {
-  background: #06051a;
+  background: #040b08;
 }
 /* The stage and the bands run edge to edge, under the nav. */
 :root:has(.vx-stage-page) main .content-panel {
@@ -82,12 +82,12 @@
 .stage {
   position: relative;
   background: linear-gradient(
-    #06051a 0%,
-    #120a2e 30%,
-    #3a1146 52%,
-    #6b1d4f 58%,
-    #0b0616 58.2%,
-    #05040c 100%
+    #040b08 0%,
+    #07170f 30%,
+    #0d2e1c 52%,
+    #17502d 58%,
+    #030805 58.2%,
+    #020503 100%
   );
 }
 .stage-pin {
@@ -103,8 +103,8 @@
   position: absolute;
   inset: 40% -50% -20%;
   background-image:
-    linear-gradient(rgba(255, 79, 139, 0.3) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 79, 139, 0.3) 1px, transparent 1px);
+    linear-gradient(rgba(120, 245, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 245, 150, 0.3) 1px, transparent 1px);
   background-size: 64px 64px;
   transform: perspective(500px) rotateX(62deg);
   transform-origin: 50% 0;
@@ -170,7 +170,7 @@
   max-width: 34em;
   margin: 28px 0 0;
   font: 400 clamp(17px, 1.6vw, 21px) / 1.5 var(--font-body);
-  color: #e4dbe8;
+  color: #dbe8de;
 }
 .stage-actions {
   display: flex;
