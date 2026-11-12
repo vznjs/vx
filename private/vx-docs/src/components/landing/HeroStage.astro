@@ -1,9 +1,9 @@
 ---
-// The hero is the system graph: every piece one CI run talks to, gently
-// tilted before a retro sunset, a striped sun sinking into an endless grid.
-// Scrolling stands the graph up, then plays the run one step at a time.
-// At rest (no script, reduced motion) it is a plain section: the copy, the
-// graph tilted once, and every step listed.
+// The hero is the system graph: every piece one CI run talks to, before a
+// retro sunset, a striped sun sinking into an endless grid. The graph rises
+// in, then plays one CI run on its own, a step every few seconds; the rail
+// jumps to a step. At rest (no script, reduced motion) it is a plain
+// section: the copy, the graph, and every step listed.
 import SystemMap from './SystemMap.astro'
 import { STEPS } from './system-map.ts'
 
@@ -77,7 +77,6 @@ const specs = [
         ))}
       </nav>
     </div>
-    <p class="stage-hint" aria-hidden="true">Scroll to run it</p>
   </div>
 </section>
 
@@ -102,11 +101,7 @@ const specs = [
   function boot(stage: HTMLElement): void {
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches
     const steps = JSON.parse(stage.dataset['steps'] ?? '[]') as Play[]
-    const INTRO = 0.14
-    const tilt = stage.querySelector<HTMLElement>('.stage-tilt')!
-    const copy = stage.querySelector<HTMLElement>('.stage-copy')!
     const story = stage.querySelector<HTMLElement>('.stage-story')!
-    const hint = stage.querySelector<HTMLElement>('.stage-hint')!
     const canvas = stage.querySelector<HTMLCanvasElement>('.stage-sky')!
     const ctx = canvas.getContext('2d')
     const clamp = (x: number, a = 0, b = 1): number => Math.min(b, Math.max(a, x))
@@ -198,70 +193,28 @@ const specs = [
       })
     }
 
-    // ---- scroll: the graph stands up, then the steps play ----
-    let speedBoost = 0
-    // How far the intro has played: the sun rises with the graph.
+    // ---- the run plays on its own, a step every few seconds ----
+    const STEP_MS = 3800
+    const born = performance.now()
+    // How far the entrance has played: the sun rises with the graph.
     let rise = 0
-    let lastY = scrollY
-    const narrow = (): boolean => matchMedia('(max-width: 720px)').matches
-    // Where the graph sits at both ends of the intro, measured once per
-    // size: under the copy, then above the step panel. The graph only
-    // slides and scales (no 3D), so the scroll stays on the compositor.
-    let fit: { drop: number; s0: number; s1: number; lift: number } | null = null
-    addEventListener('resize', () => (fit = null))
-    const place = (ty: number, sc: number): DOMRect => {
-      tilt.style.transform = `translate(-50%, -50%) translateY(${ty}px) scale(${sc})`
-      return tilt.getBoundingClientRect()
+    let shownAt = 0
+    const show = (i: number, now: number): void => {
+      light((i + steps.length) % steps.length)
+      shownAt = now
     }
-    const shift = (want: number, sc: number, floor: number): number =>
-      Math.max(floor, want - (place(0, sc).top - tilt.parentElement!.getBoundingClientRect().top))
-    const measure = (): NonNullable<typeof fit> => {
-      const s0 = narrow() ? 1.12 : 1.02
-      const drop = shift(copy.offsetTop + copy.offsetHeight + 28, s0, 0)
-      // The tallest step panel sets the room the standing graph gets.
-      const items = [...story.querySelectorAll<HTMLElement>('.story-steps li')]
-      const was = items.map((li) => li.classList.contains('on'))
-      let panelTop = Infinity
-      for (const li of items) {
-        items.forEach((x) => x.classList.toggle('on', x === li))
-        panelTop = Math.min(panelTop, story.offsetTop)
-      }
-      items.forEach((x, i) => x.classList.toggle('on', was[i]))
-      const room = panelTop - 20 - 12
-      const s1 = Math.min(s0 - 0.1, (s0 - 0.1) * (room / place(0, s0 - 0.1).height))
-      const lift = shift(12, s1, -Infinity)
-      return { drop, s0, s1, lift }
-    }
-    const layout = (): void => {
-      const total = stage.offsetHeight - innerHeight
-      const p = clamp(-stage.getBoundingClientRect().top / Math.max(1, total))
-      const a = ease(clamp(p / INTRO))
-      rise = a
-      fit ??= measure()
-      const sc = fit.s0 + (fit.s1 - fit.s0) * a
-      const ty = fit.drop * (1 - a) + fit.lift * a
-      tilt.style.transform = `translate(-50%, -50%) translateY(${ty}px) scale(${sc})`
-      copy.style.opacity = `${clamp(1 - a * 1.6)}`
-      copy.style.transform = `translateY(${-60 * a}px)`
-      copy.style.pointerEvents = a > 0.6 ? 'none' : ''
-      hint.style.opacity = `${clamp(1 - a * 4)}`
-      story.style.opacity = `${clamp((a - 0.75) * 4)}`
-      light(p < INTRO ? -1 : Math.min(steps.length - 1, Math.floor(((p - INTRO) / (1 - INTRO)) * steps.length)))
-      const dy = scrollY - lastY
-      lastY = scrollY
-      speedBoost = Math.min(40, speedBoost + Math.abs(dy) * 0.05)
-    }
-    const goto = (i: number, smooth = true): void => {
-      const total = stage.offsetHeight - innerHeight
-      const p = INTRO + ((i + 0.5) / steps.length) * (1 - INTRO)
-      scrollTo({ top: stage.offsetTop + p * total, behavior: smooth ? 'smooth' : 'instant' })
+    const autoplay = (now: number): void => {
+      rise = ease(clamp((now - born) / 1600))
+      if (step < 0) {
+        if (now - born > 2200) show(0, now)
+      } else if (now - shownAt > STEP_MS) show(step + 1, now)
     }
     stage.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((b) =>
-      b.addEventListener('click', () => goto(Number(b.dataset['goto']))),
+      b.addEventListener('click', () => show(Number(b.dataset['goto']), performance.now())),
     )
     // An old link to a step's anchor lands on that step.
     const landed = steps.findIndex((s) => s.anchor !== '' && `#${s.anchor}` === location.hash)
-    if (landed >= 0) requestAnimationFrame(() => goto(landed, false))
+    if (landed >= 0) show(landed, born)
 
     // ---- the sky: a retro sunset, a striped sun sinking into the grid ----
     // Everything still (sky, stars, floor, the grid's long lines) is painted
@@ -271,8 +224,10 @@ const specs = [
     let H = 0
     const back = document.createElement('canvas')
     const sunCanvas = document.createElement('canvas')
-    const horizon = (): number => H * 0.58
-    const sunR = (): number => Math.min(W * 0.2, H * 0.3)
+    const world = stage.querySelector<HTMLElement>('.stage-world')!
+    // The horizon runs behind the graph's lower part, the sun centred on it.
+    const horizon = (): number => world.offsetTop + world.offsetHeight * 0.74
+    const sunR = (): number => Math.min(W * 0.2, world.offsetHeight * 0.42)
     const size = (): void => {
       // One pixel per CSS pixel: the sky is soft, and a 2x canvas quadruples each frame's fill.
       const dpr = 1
@@ -365,8 +320,7 @@ const specs = [
       ctx.restore()
       ctx.fillStyle = 'rgba(255,170,120,0.9)'
       ctx.fillRect(0, hy - 0.5, W, 1.2)
-      const speed = 0.9 + speedBoost * 0.12
-      speedBoost *= Math.pow(0.05, dt)
+      const speed = 0.9
       travel = (travel + speed * dt) % 1
       const f = H * 0.9
       ctx.lineWidth = 1
@@ -393,6 +347,7 @@ const specs = [
       last = now
       // The sky moves slowly: 30 frames a second is enough, and halves its cost.
       if ((tick = (tick + 1) % 2) === 0) draw(dt * 2)
+      autoplay(now)
       spawn(now)
       movePackets(now)
       requestAnimationFrame(frame)
@@ -408,12 +363,8 @@ const specs = [
     }
     new IntersectionObserver(([e]) => (e!.isIntersecting ? start() : stop())).observe(stage)
     document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()))
-    addEventListener('scroll', () => requestAnimationFrame(layout), { passive: true })
-    addEventListener('resize', () => {
-      size()
-      layout()
-    })
+    // The sky follows the graph, so repaint its still layer whenever the stage resizes.
+    new ResizeObserver(size).observe(stage)
     size()
-    layout()
   }
 </script>

@@ -426,16 +426,7 @@
   display: none;
 }
 
-/* ---- with the script: a pinned stage you scroll through ---- */
-.stage.js {
-  height: 560vh;
-}
-.stage.js .stage-pin {
-  position: sticky;
-  top: var(--nav-h);
-  height: calc(100svh - var(--nav-h));
-  padding-block: 0;
-}
+/* ---- with the script: the sky moves and the run plays on its own ---- */
 .stage.js .stage-sky {
   display: block;
   position: absolute;
@@ -444,56 +435,48 @@
   height: 100%;
 }
 .stage.js .stage-copy {
-  position: absolute;
-  inset: clamp(24px, 6vh, 72px) max(16px, env(safe-area-inset-right, 0px)) auto
-    max(16px, env(safe-area-inset-left, 0px));
-  margin: 0 auto;
-  will-change: transform, opacity;
+  position: relative;
+  z-index: 3;
 }
 .stage.js .stage-world {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  max-width: none;
+  max-width: 1180px;
+  margin: 40px auto 0;
+  animation: rise-in 1.2s var(--ease-out) 0.15s backwards;
 }
-.stage.js .stage-tilt {
-  position: absolute;
-  left: 50%;
-  top: 56%;
-  width: min(1180px, 92vw);
-  transform: translate(-50%, -50%) translateY(22%) scale(1.02);
-  will-change: transform;
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(48px);
+  }
 }
 .stage.js .stage-story {
-  position: absolute;
-  left: max(16px, env(safe-area-inset-left, 0px));
-  right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: max(20px, env(safe-area-inset-bottom, 0px));
-  margin: 0 auto;
-  opacity: 0;
+  max-width: 1180px;
+  margin: 28px auto 0;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  pointer-events: none;
 }
 .stage.js .story-kicker {
   display: none;
 }
+/* Every step sits in one cell, so the panel is as tall as the tallest and
+   the page never jumps as the steps change. */
 .stage.js .story-steps {
-  display: block;
-  max-width: 640px;
+  display: grid;
+  grid-template-columns: minmax(0, 640px);
 }
 .stage.js .story-steps li {
-  display: none;
-}
-.stage.js .story-steps li.on {
-  display: block;
+  grid-area: 1 / 1;
+  visibility: hidden;
   padding: 18px 22px;
   border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
   border-left: 3px solid var(--tone);
   border-radius: 10px;
   background: rgba(8, 10, 14, 0.92);
+}
+.stage.js .story-steps li.on {
+  visibility: visible;
   animation: step-in 0.45s var(--ease-out);
 }
 .stage.js .story-title {
@@ -512,7 +495,6 @@
 .stage.js .story-rail {
   display: flex;
   gap: 6px;
-  pointer-events: auto;
 }
 .story-rail button {
   all: unset;
@@ -527,34 +509,7 @@
   background: var(--tone);
   box-shadow: 0 0 10px var(--tone);
 }
-.stage.js .stage-hint {
-  display: block;
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  margin: 0;
-  transform: translateX(-50%);
-  font: 500 11px var(--font-mono);
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: #7f8a85;
-}
-.stage.js .stage-story,
-.stage.js .stage-story * {
-  pointer-events: none;
-}
-.stage.js .story-rail,
-.stage.js .story-rail button {
-  pointer-events: auto;
-}
 @media (max-width: 720px) {
-  .stage.js {
-    height: 520vh;
-  }
-  .stage.js .stage-tilt {
-    width: min(92vw, calc((100svh - var(--nav-h)) * 0.5));
-    top: 50%;
-  }
   .stage h1 .l2 {
     padding-left: 0;
   }
@@ -562,7 +517,7 @@
     flex-direction: column;
     align-items: stretch;
   }
-  .stage.js .story-steps li.on {
+  .stage.js .story-steps li {
     padding: 14px 16px;
   }
   .stage.js .specs {
