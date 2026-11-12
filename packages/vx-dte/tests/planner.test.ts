@@ -996,3 +996,36 @@ it('plays new workers a join spread apart, as it packs them', () => {
   expect(p.start).toEqual([])
   expect(p.endsInMs).toBeLessThanOrEqual(p.boundMs)
 })
+
+// Main 98088da: the run's first plan packed its work and said nothing of
+// what it was given, so the profile had no input to play it back.
+it('says what plan() was given, packed or played', () => {
+  const ids = ['a', 'b', ...Array.from({ length: 10 }, (_, i) => `f${i}`)]
+  const nodes = new Map(
+    ids.map((id) => [
+      id,
+      {
+        id,
+        deps: id === 'b' ? ['a'] : [],
+        config: { exec: { command: 'x' }, cache: true },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const p = decide({
+    remaining: ids,
+    nodes,
+    executed: new Set(ids),
+    need: () => ({ cores: 1, memory: 1e9 }),
+    durationMs: (id) => (id.startsWith('f') ? 30_000 : 60_000),
+    workers: [],
+    running: new Set(),
+    sizes: [{ ...small, max: 9 }],
+    started: new Map(),
+    final: false,
+    warmUpMs: WARM,
+    replaceable: true,
+    now: 0,
+  })
+  expect(p.unpacked).toBeUndefined()
+  expect(new Set(p.played?.sizes.map((s) => s.name))).toEqual(new Set(['small']))
+})
