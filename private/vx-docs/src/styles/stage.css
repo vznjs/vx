@@ -764,7 +764,7 @@
 }
 .lane {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 40px 84px;
+  grid-template-columns: 84px minmax(0, 1fr) 64px 84px;
   align-items: center;
   gap: 12px;
   height: 34px;
@@ -1634,7 +1634,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .lane {
-    grid-template-columns: 70px minmax(0, 1fr) 30px 64px;
+    grid-template-columns: 70px minmax(0, 1fr) 52px 64px;
     gap: 8px;
   }
   .lane-name,

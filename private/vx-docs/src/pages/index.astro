@@ -45,7 +45,6 @@ const RACERS = [
   ['nx', 'Nx'],
   ['vt', 'Vite Task'],
 ] as const
-const LAP_S = 12
 const races = (
   [
     ['warm', 'Nothing changed'],
@@ -56,12 +55,12 @@ const races = (
 ).map(([k, title]) => {
   const lanes = RACERS.map(([r, name]) => ({ r, name, value: bench(`${r}.${k}`), ms: parseDuration(bench(`${r}.${k}`))! }))
   const max = Math.max(...lanes.map((l) => l.ms))
-  // Live, every tool runs the same track at its measured pace: the slowest
-  // takes LAP_S a lap, the rest lap it as often as they are faster.
+  // Live, every tool runs the same track in real time: one lap takes the
+  // time it measured.
   return {
     k,
     title,
-    lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, lap: (l.ms / max) * LAP_S })),
+    lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, lap: l.ms / 1000 })),
   }
 })
 const scope0 = SCOPE[0]!
@@ -173,7 +172,7 @@ const startCommands = [
             ))
           }
         </div>
-        <p class="fine race-note">Every tool runs the same track at its measured pace, and × counts its laps while the slowest finishes one.</p>
+        <p class="fine race-note">Every tool runs the same track in real time: one lap takes the time it measured.</p>
         <p class="fine">{benchFormula}</p>
         <p class="fine">{benchWorkload}</p>
         <p class="fine">{benchRun}</p>
@@ -386,8 +385,7 @@ const startCommands = [
       document.querySelectorAll('.band').forEach((el) => seen.observe(el))
       // The race runs only while it is in view, and costs nothing out of it
       // (tests/motion-budget.test.ts): sixteen transform-only runners, each
-      // lapping at its measured pace. Laps count against the slowest, and
-      // start over when it finishes one.
+      // lapping in real time, one lap as long as the time it measured.
       const speed = document.getElementById('speed')!
       const fields = [...speed.querySelectorAll<HTMLElement>('.race')].map((race) =>
         [...race.querySelectorAll<HTMLElement>('.lane')].map((lane) => {
@@ -401,11 +399,9 @@ const startCommands = [
       )
       const tally = (): void => {
         for (const lanes of fields) {
-          const lap = Math.max(...lanes.map((l) => l.ms))
-          const into = Number(lanes[0]!.run.currentTime ?? 0) % lap
           for (const l of lanes) {
-            const n = Math.floor(into / l.ms)
-            l.laps.textContent = n > 0 ? `×${n + 1}` : ''
+            const n = Math.floor(Number(l.run.currentTime ?? 0) / l.ms)
+            l.laps.textContent = n === 1 ? '1 lap' : `${n} laps`
           }
         }
       }
