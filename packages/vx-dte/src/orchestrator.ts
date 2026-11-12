@@ -386,6 +386,8 @@ export class Orchestrator {
   private readonly cancelledAt = new Map<string, number>()
   /** When each worker a plan drained stops taking tasks (`drain`). */
   private readonly drainAt = new Map<string, number>()
+  /** Whether a plan's whole input was marked (`planned`). */
+  private inputMarked = false
   /** Where and when the last plan gave each task (`place`). */
   private readonly placing = new Placing()
   /** The pump at the next planned start (`Placing.next`). */
@@ -2068,7 +2070,8 @@ export class Orchestrator {
      * ended past the play or left a task out. A packing that ended at 130 s
      * where the play ended at 55 s asked 4 workers mid-run (main 18a8446,
      * 2026-11-12), and the marks above, rounded and without each running
-     * task's id, packed it at 54 s when played back.
+     * task's id, packed it at 54 s when played back. The run's first is
+     * marked too: where it placed what ran last is the tail's why.
      */
     input?: {
       readonly tasks: readonly PlanTask[]
@@ -2099,7 +2102,7 @@ export class Orchestrator {
         ? {}
         : { sizes: p.sizes.map((s) => `${s.name} ${Math.round(s.cpu * 100) / 100}c`).join(' · ') }),
       ...(p.unpacked === undefined ? {} : { unpacked: p.unpacked }),
-      ...(p.input === undefined || !/^(ends|left out) /.test(p.unpacked ?? '')
+      ...(p.input === undefined || (this.inputMarked && !/^(ends|left out) /.test(p.unpacked ?? ''))
         ? {}
         : {
             input: JSON.stringify({ ...p.input, workers: p.workers }, (_k, v: unknown) =>
@@ -2114,6 +2117,7 @@ export class Orchestrator {
               .join(' · '),
           }),
     })
+    if (p.input !== undefined) this.inputMarked = true
   }
 
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
