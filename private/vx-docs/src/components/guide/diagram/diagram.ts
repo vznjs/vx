@@ -1,7 +1,6 @@
 // A picture as data: boxes, arrows between them, loose notes and dashed
 // frames around groups, in a viewBox about 600 × 260. A page keeps its
-// pictures as values of `Picture` in a module of their own (the landing's
-// is `src/components/landing/one-run.ts`); `Diagram.astro` draws any of
+// pictures as values of `Picture` in a module of their own; `Diagram.astro` draws any of
 // them, and the page's rows read the same values, so a picture is held to
 // what the page says it shows. The look (fonts, strokes, colours) is
 // `diagram.css` alone.
@@ -87,10 +86,6 @@ export interface Layout {
   frames?: Frame[]
 }
 
-/** The widest a phone layout may be: a 360-pixel phone's column is about 340
- *  pixels, so a layout this wide draws at about nine tenths of its size. */
-export const NARROW = 360
-
 /** A picture's phone layout as a picture of its own, named apart so its
  *  arrowheads' ids do not collide with the wide one's. */
 export function narrowOf(p: Picture): Picture | undefined {
@@ -102,7 +97,7 @@ export function narrowOf(p: Picture): Picture | undefined {
 const BOX = { w: 130, h: 52, hSub: 60 }
 
 /** The type sizes `diagram.css` sets, in the picture's own units. */
-export const FONT = { label: 15, sub: 13, note: 14, arrow: 13, frame: 13 }
+const FONT = { label: 15, sub: 13, note: 14, arrow: 13, frame: 13 }
 
 /** A string's width in the diagram's mono face (IBM Plex Mono advances 0.6em). */
 export function textWidth(text: string, size: number): number {

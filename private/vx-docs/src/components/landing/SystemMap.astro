@@ -1,0 +1,79 @@
+---
+// The system graph as two SVG layouts (wide, phone) from system-map.ts:
+// every box with a lit edge under it for depth, every wire, the core's
+// stages, and an empty layer the hero's script fills with packets.
+import { BOXES, LAYOUTS, WIRES, chips, rect, wirePath, type LayoutName } from './system-map.ts'
+
+const layouts: LayoutName[] = ['wide', 'narrow']
+---
+
+{
+  layouts.map((name) => {
+    const L = LAYOUTS[name]
+    const split = name === 'narrow'
+    const c = rect(name, 'core')
+    return (
+      <svg
+        class="map-svg"
+        data-layout={name}
+        viewBox={`${-L.pad} -6 ${L.width + L.pad * 2} ${L.height + 20}`}
+        aria-hidden="true"
+      >
+        <defs>
+          <filter id={`map-glow-${name}`} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <g class="wires">
+          {WIRES.map((w) => (
+            <path class:list={['wire', { dashed: w.dashed }]} data-wire={w.id} d={wirePath(name, w)} />
+          ))}
+        </g>
+        {BOXES.filter((b) => b.id !== 'core').map((b) => {
+          const r = rect(name, b.id)
+          const lines = split ? b.sub.split(' · ') : [b.sub]
+          const small = r.w < 100
+          const tx = r.x + (small ? r.w / 2 : 16)
+          const anchor = small ? 'middle' : 'start'
+          return (
+            <g class:list={['node', `tone-${b.tone}`]} data-box={b.id}>
+              <rect class="edge" x={r.x} y={r.y + 7} width={r.w} height={r.h} rx="10" />
+              <rect class="face" x={r.x} y={r.y} width={r.w} height={r.h} rx="10" />
+              <text class="node-label" x={tx} y={r.y + (split && !small ? 21 : 25)} text-anchor={anchor}>
+                {b.label}
+              </text>
+              {lines.map((l, i) => (
+                <text class="node-sub" x={tx} y={r.y + (split && !small ? 38 + i * 14 : 44)} text-anchor={anchor}>
+                  {l}
+                </text>
+              ))}
+            </g>
+          )
+        })}
+        <g class="node tone-core core" data-box="core">
+          <rect class="edge" x={c.x} y={c.y + 10} width={c.w} height={c.h} rx="16" />
+          <rect class="face" x={c.x} y={c.y} width={c.w} height={c.h} rx="16" />
+          <text class="core-label" x={c.x + 22} y={c.y + (split ? 50 : 62)}>
+            vx
+          </text>
+          <text class="core-sub" x={c.x + (split ? 82 : 96)} y={c.y + (split ? 44 : 54)}>
+            one run, every stage
+          </text>
+          {chips(name).map((s) => (
+            <g class="chip" data-stage={s.id}>
+              <rect x={s.x} y={s.y} width={s.w} height={s.h} rx="6" />
+              <text x={s.x + s.w / 2} y={s.y + 18} text-anchor="middle">
+                {s.id}
+              </text>
+            </g>
+          ))}
+        </g>
+        <g class="packets" filter={`url(#map-glow-${name})`} />
+      </svg>
+    )
+  })
+}

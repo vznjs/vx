@@ -1,0 +1,146 @@
+---
+// Distributed task execution, drawn: one run on CI, its workers as lanes,
+// the critical path on the biggest worker from the start, the others
+// starting when the plan needs them and stopping when their work is done.
+// An illustration of how the plan behaves, not a measurement. Static
+// first; the sweep plays only on screen and never with reduced motion.
+
+interface Block {
+  name: string
+  s: number
+  e: number
+  kind: 'task' | 'crit' | 'warm' | 'hit' | 'plan'
+}
+interface Lane {
+  name: string
+  sub: string
+  blocks: Block[]
+  /** Where the lane's machine stops, in % of the run. */
+  stop?: number
+}
+
+const lanes: Lane[] = [
+  {
+    name: 'your CI job',
+    sub: 'plans, reports',
+    blocks: [
+      { name: 'plan', s: 0, e: 7, kind: 'plan' },
+      { name: 'hits', s: 7, e: 14, kind: 'hit' },
+      { name: 'report', s: 93, e: 100, kind: 'plan' },
+    ],
+  },
+  {
+    name: 'worker 1',
+    sub: '8 cores',
+    stop: 93,
+    blocks: [
+      { name: 'start', s: 2, e: 10, kind: 'warm' },
+      { name: 'ui#build', s: 10, e: 33, kind: 'crit' },
+      { name: 'app#build', s: 33, e: 62, kind: 'crit' },
+      { name: 'app#test', s: 62, e: 92, kind: 'crit' },
+    ],
+  },
+  {
+    name: 'worker 2',
+    sub: '4 cores',
+    stop: 68,
+    blocks: [
+      { name: 'start', s: 4, e: 12, kind: 'warm' },
+      { name: 'lint', s: 12, e: 25, kind: 'task' },
+      { name: 'api#build', s: 25, e: 46, kind: 'task' },
+      { name: 'ui#test', s: 46, e: 67, kind: 'task' },
+    ],
+  },
+  {
+    name: 'worker 3',
+    sub: '2 cores',
+    stop: 89,
+    blocks: [
+      { name: 'start', s: 38, e: 46, kind: 'warm' },
+      { name: 'api#test', s: 46, e: 70, kind: 'task' },
+      { name: 'docs#build', s: 70, e: 88, kind: 'task' },
+    ],
+  },
+]
+
+const facts = [
+  { term: 'Critical path first.', line: 'The longest chain starts first and never waits for a machine.' },
+  { term: 'No idle machines.', line: 'A worker starts when the plan needs it and stops when its work is done.' },
+  { term: 'Files go through the cache.', line: 'The relay carries only orders; outputs travel under each task’s key.' },
+  { term: 'No stored secret.', line: 'The relay admits only your CI’s short-lived OIDC tokens.' },
+]
+const T = 8 // seconds per sweep
+---
+
+<div class="dte-run" style={`--sweep: ${T}s`}>
+  <div class="dte-chart" role="img" aria-label="Illustration: one run over three workers; the critical path runs on worker 1 from the start, workers 2 and 3 stop when their tasks end, and the run ends with the critical path.">
+    {
+      lanes.map((l) => (
+        <div class="dte-lane">
+          <div class="dte-who">
+            <strong>{l.name}</strong>
+            <span>{l.sub}</span>
+          </div>
+          <div class="dte-track">
+            {l.blocks.map((b) => (
+              <span
+                class:list={['dte-block', `dte-${b.kind}`]}
+                style={`--s:${b.s}; --e:${b.e}`}
+              >
+                <span class="dte-name">{b.name}</span>
+              </span>
+            ))}
+            {l.stop !== undefined && <span class="dte-stop" style={`--s:${l.stop}`} title="stops" />}
+          </div>
+        </div>
+      ))
+    }
+    <div class="dte-axis">
+      <span class="dte-who" />
+      <div class="dte-track">
+        <span class="dte-cursor" aria-hidden="true" />
+        <span class="dte-end" style="--s:100">run ends with the critical path</span>
+      </div>
+    </div>
+  </div>
+  <ul class="dte-legend" aria-hidden="true">
+    <li><span class="sw dte-crit"></span>critical path</li>
+    <li><span class="sw dte-task"></span>task</li>
+    <li><span class="sw dte-warm"></span>worker starting</li>
+    <li><span class="sw dte-hit"></span>cache hits</li>
+  </ul>
+  <ul class="dte-facts">
+    {
+      facts.map((f) => (
+        <li>
+          <strong>{f.term}</strong> {f.line}
+        </li>
+      ))
+    }
+  </ul>
+</div>
+
+<script>
+  // One sweep across the run each time the chart comes on screen, then again
+  // every few seconds while it stays there.
+  for (const el of document.querySelectorAll<HTMLElement>('.dte-run')) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) continue
+    el.classList.add('js')
+    const sweep = parseFloat(getComputedStyle(el).getPropertyValue('--sweep')) * 1000
+    let loop: ReturnType<typeof setInterval> | undefined
+    const go = (): void => {
+      el.classList.remove('go')
+      void el.offsetWidth
+      el.classList.add('go')
+    }
+    new IntersectionObserver(
+      ([e]) => {
+        clearInterval(loop)
+        if (!e!.isIntersecting) return
+        go()
+        loop = setInterval(go, sweep + 2500)
+      },
+      { threshold: 0.35 },
+    ).observe(el)
+  }
+</script>
