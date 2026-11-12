@@ -28,7 +28,7 @@ for (const remote of [true, false]) {
               ? [
                   pluginSource(
                     'org/far',
-                    `{ executor() { return { name: 'far', remote: true, sandbox: true, execute: async () => (${RESULT}) } } }`,
+                    `{ executor() { return { name: 'far', capabilities: { remote: true, sandbox: true }, execute: async () => (${RESULT}) } } }`,
                   ),
                 ]
               : [],

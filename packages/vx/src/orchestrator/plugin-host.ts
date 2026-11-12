@@ -1005,7 +1005,7 @@ export function executorDemand(
 ): ExecutorDemand {
   const demandOf = new Map<TaskExecutor, Set<string>>()
   for (const [id, executor] of placed) {
-    if (executor.demand === undefined) continue
+    if (executor.distribution?.demand === undefined) continue
     let remaining = demandOf.get(executor)
     if (remaining === undefined) demandOf.set(executor, (remaining = new Set()))
     remaining.add(id)
@@ -1023,7 +1023,7 @@ export function executorDemand(
       // An `async demand` that rejects did so where no one listened: an
       // unhandled rejection, a stack, the run killed. Its rejection is a
       // throw like any other.
-      const ret: unknown = executor.demand!(remaining, missed)
+      const ret: unknown = executor.distribution!.demand!(remaining, missed)
       if (ret instanceof Promise) ret.catch(failed)
     } catch (err) {
       failed(err)
@@ -1065,9 +1065,10 @@ export function executorDemand(
   }
 }
 
+const EXECUTOR_KEYS = ['name', 'capabilities', 'accepts', 'execute', 'distribution']
 const EXECUTOR_FLAGS = ['remote', 'sandbox', 'servers', 'runtime', 'exclusive', 'timeouts'] as const
-const EXECUTOR_HOOKS = [
-  'accepts',
+const CAPABILITY_KEYS: readonly string[] = [...EXECUTOR_FLAGS, 'platforms', 'capacity']
+const DISTRIBUTION_HOOKS = [
   'demand',
   'footer',
   'machines',
@@ -1077,6 +1078,33 @@ const EXECUTOR_HOOKS = [
   'running',
   'unneeded',
 ] as const
+const DISTRIBUTION_KEYS: readonly string[] = [...DISTRIBUTION_HOOKS, 'workers']
+
+/** `object`'s keys outside `known`, refused naming where the key lives now, if it moved. */
+function refuseUnknownKeys(
+  owner: string,
+  object: object,
+  known: readonly string[],
+  where: string,
+): void {
+  for (const key of Object.keys(object)) {
+    if (known.includes(key)) continue
+    const now = CAPABILITY_KEYS.includes(key)
+      ? `; it is capabilities.${key}`
+      : DISTRIBUTION_KEYS.includes(key)
+        ? `; it is distribution.${key}`
+        : ''
+    throw new UserError(`${owner} declares ${JSON.stringify(key)}, not ${where} key${now}`)
+  }
+}
+
+/** `value` is absent or a plain object, else refused naming `field`. */
+function groupOf(owner: string, value: unknown, field: string): object | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new UserError(`${owner} has ${field} ${describeValue(value)}: it must be an object`)
+  return value
+}
 
 /**
  * Collect every plugin's `executor`, in declaration order, with core's
@@ -1098,23 +1126,29 @@ export async function resolveExecutors(
       if (typeof executor.name !== 'string' || executor.name.length === 0) {
         throw new UserError(`plugin '${plugin.name}' returned an executor with no name`)
       }
+      const owner = `plugin '${plugin.name}' returned executor '${executor.name}'`
+      refuseUnknownKeys(owner, executor, EXECUTOR_KEYS, 'an executor')
+      const caps = groupOf(owner, executor.capabilities, 'capabilities')
+      if (caps !== undefined) refuseUnknownKeys(owner, caps, CAPABILITY_KEYS, 'a capabilities')
+      const dist = groupOf(owner, executor.distribution, 'distribution')
+      if (dist !== undefined) refuseUnknownKeys(owner, dist, DISTRIBUTION_KEYS, 'a distribution')
       // The pool's room is `active < capacity`: 0 or NaN parks its tasks for good.
-      const capacity: unknown = executor.capacity
+      const capacity: unknown = executor.capabilities?.capacity
       if (capacity !== undefined && !(Number.isInteger(capacity) && (capacity as number) > 0)) {
         throw new UserError(
-          `plugin '${plugin.name}' returned executor '${executor.name}' with capacity ${typeof capacity === 'number' ? String(capacity) : JSON.stringify(capacity)}: it must be a positive integer`,
+          `plugin '${plugin.name}' returned executor '${executor.name}' with capabilities.capacity ${typeof capacity === 'number' ? String(capacity) : JSON.stringify(capacity)}: it must be a positive integer`,
         )
       }
       // Read as `=== true`: `remote: 'yes'` ran a remote executor as a local one.
       for (const flag of EXECUTOR_FLAGS) {
-        const v: unknown = executor[flag]
+        const v: unknown = (caps as Record<string, unknown> | undefined)?.[flag]
         if (v !== undefined && typeof v !== 'boolean') {
           throw new UserError(
-            `plugin '${plugin.name}' returned executor '${executor.name}' with ${flag} ${typeof v === 'string' ? JSON.stringify(v) : typeof v === 'object' && v !== null ? describeValue(v) : String(v as number)}: it must be true or false`,
+            `plugin '${plugin.name}' returned executor '${executor.name}' with capabilities.${flag} ${typeof v === 'string' ? JSON.stringify(v) : typeof v === 'object' && v !== null ? describeValue(v) : String(v as number)}: it must be true or false`,
           )
         }
       }
-      const platforms: unknown = executor.platforms
+      const platforms: unknown = executor.capabilities?.platforms
       if (
         platforms !== undefined &&
         !(
@@ -1124,10 +1158,10 @@ export async function resolveExecutors(
         )
       ) {
         throw new UserError(
-          `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
+          `plugin '${plugin.name}' returned executor '${executor.name}' with capabilities.platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
         )
       }
-      const workers: unknown = executor.workers
+      const workers: unknown = executor.distribution?.workers
       if (workers !== undefined) {
         const offered = (platforms ?? []) as readonly unknown[]
         const names = new Set<unknown>()
@@ -1147,14 +1181,16 @@ export async function resolveExecutors(
           )
         if (!ok)
           throw new UserError(
-            `plugin '${plugin.name}' returned executor '${executor.name}' with workers ${JSON.stringify(workers)}: it must be a non-empty array of distinct [name, platforms] pairs, each platform one of its platforms`,
+            `plugin '${plugin.name}' returned executor '${executor.name}' with distribution.workers ${JSON.stringify(workers)}: it must be a non-empty array of distinct [name, platforms] pairs, each platform one of its platforms`,
           )
       }
-      for (const hook of EXECUTOR_HOOKS) {
-        const v: unknown = executor[hook]
+      if (executor.accepts !== undefined && typeof executor.accepts !== 'function')
+        throw new UserError(`${owner} with accepts that is not a function`)
+      for (const hook of DISTRIBUTION_HOOKS) {
+        const v: unknown = (dist as Record<string, unknown> | undefined)?.[hook]
         if (v !== undefined && typeof v !== 'function')
           throw new UserError(
-            `plugin '${plugin.name}' returned executor '${executor.name}' with ${hook} that is not a function`,
+            `plugin '${plugin.name}' returned executor '${executor.name}' with distribution.${hook} that is not a function`,
           )
       }
     })

@@ -174,3 +174,10 @@ export {
 export { resolveRunId, shortRunId } from './run-id.js'
 export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'
 export { localFloor, type LocalFloor } from './local-floor.js'
+export {
+  workerRuntime,
+  type PreparedTask,
+  type WorkerRuntime,
+  type WorkerSandbox,
+  type WorkerTask,
+} from './worker-runtime.js'

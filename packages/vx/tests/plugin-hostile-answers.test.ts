@@ -75,13 +75,17 @@ describe('a hostile hook answer is refused naming the plugin', () => {
       )
     expect([
       await resolved(() => ({
-        get remote(): never {
-          return trap()
+        capabilities: {
+          get remote(): never {
+            return trap()
+          },
         },
       })),
       await resolved(() => ({
-        get platforms(): never {
-          return trap()
+        capabilities: {
+          get platforms(): never {
+            return trap()
+          },
         },
       })),
     ]).toEqual([

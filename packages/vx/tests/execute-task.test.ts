@@ -427,7 +427,9 @@ describe('execute-task — what the outcome and the request carry', () => {
       const seen: Array<boolean | undefined> = []
       const recorder = {
         name: 'org/recorder',
-        remote: true,
+        capabilities: {
+          remote: true,
+        },
         execute: async (req: ExecuteRequest) => {
           seen.push(req.unsaved)
           return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
@@ -462,7 +464,9 @@ describe('execute-task — what the outcome and the request carry', () => {
       const seen: Array<[boolean | undefined, boolean | undefined]> = []
       const recorder = {
         name: 'org/recorder',
-        remote: true,
+        capabilities: {
+          remote: true,
+        },
         execute: async (req: ExecuteRequest) => {
           seen.push([req.refresh, req.unsaved])
           return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
@@ -520,7 +524,9 @@ describe('execute-task — what the outcome and the request carry', () => {
       const elsewhere = (changed: string[]) =>
         ({
           name: 'org/elsewhere',
-          remote: true,
+          capabilities: {
+            remote: true,
+          },
           execute: async () => ({
             exitCode: 0,
             durationMs: 1,
@@ -558,7 +564,9 @@ describe('execute-task — what the outcome and the request carry', () => {
       const elsewhere = (changed: string[]) =>
         ({
           name: 'org/elsewhere',
-          remote: true,
+          capabilities: {
+            remote: true,
+          },
           execute: async () => ({
             exitCode: 0,
             durationMs: 1,
@@ -826,7 +834,9 @@ describe('execute-task — what the clean and the fetch must NOT skip', () => {
       } as never
       const remote = {
         name: 'org/remote',
-        remote: true,
+        capabilities: {
+          remote: true,
+        },
         execute: async () => ({
           exitCode: 0,
           durationMs: 1,
@@ -1738,7 +1748,9 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     }
     const far: TaskExecutor = {
       name: 'far',
-      remote: true,
+      capabilities: {
+        remote: true,
+      },
       async execute(req: ExecuteRequest) {
         await writeFile(path.join(req.cwd, 'out.txt'), 'far\n')
         return {
@@ -1799,7 +1811,9 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
       const calls: string[] = []
       const far: TaskExecutor = {
         name: 'far-side',
-        remote: true,
+        capabilities: {
+          remote: true,
+        },
         async execute(req: ExecuteRequest) {
           calls.push(req.taskId)
           return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
@@ -2931,8 +2945,10 @@ describe('execute-task edges', () => {
     let timeoutMs: number | undefined
     const own: TaskExecutor = {
       name: 'own',
-      remote: true,
-      timeouts: true,
+      capabilities: {
+        remote: true,
+        timeouts: true,
+      },
       execute: async (req: ExecuteRequest) => {
         await Bun.sleep(150)
         aborted = req.signal!.aborted

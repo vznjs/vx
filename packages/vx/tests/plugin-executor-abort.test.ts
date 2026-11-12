@@ -240,8 +240,8 @@ it('fail-fast withdraws a task its executor holds unstarted; one begun finishes'
           })
           const done = (exitCode, extra = {}) =>
             ({ exitCode, durationMs: 0, stdout: '', stderr: '', violations: [], ...extra })
-          return { name: 'holder', capacity: 4,
-            running: (id) => (held.has(id) ? null : begun.has(id) ? 'm1' : undefined),
+          return { name: 'holder', capabilities: { capacity: 4 },
+            distribution: { running: (id) => (held.has(id) ? null : begun.has(id) ? 'm1' : undefined) },
             async execute(req) {
               if (req.taskId === 'app#fail') {
                 await until(() => held.size + begun.size === 2)

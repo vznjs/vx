@@ -41,7 +41,7 @@ async function fixture(remote: 'only' | undefined, exclusive = false): Promise<v
           `{ executor() {
              return {
                name: 'gives-back',
-               remote: true,${exclusive ? '\n               exclusive: true,' : ''}
+               capabilities: { remote: true${exclusive ? ', exclusive: true' : ''} },
                async execute() {
                  throw executorFallback('no worker started it')
                },

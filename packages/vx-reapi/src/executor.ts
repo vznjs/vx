@@ -655,8 +655,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   const ranHere = new Map<string, Digest | null>()
   const executor: TaskExecutor = {
     name: 'vx/reapi',
-    remote: true,
-    ...(opts.capacity === undefined ? {} : { capacity: opts.capacity }),
+    capabilities: {
+      remote: true,
+      ...(opts.capacity === undefined ? {} : { capacity: opts.capacity }),
+    },
     accepts: acceptsTask,
     async execute(req: ExecuteRequest): Promise<ExecuteResult> {
       const started = Bun.nanoseconds()

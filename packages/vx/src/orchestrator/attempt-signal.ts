@@ -54,9 +54,10 @@ export class AttemptSignal {
     // `--continue=never` starts nothing after a failure: a task a plugin
     // executor still holds for a machine is not yet started.
     const failFast = args.run.failFast
-    if (!local && failFast !== undefined && args.executor.running !== undefined) {
+    if (!local && failFast !== undefined && args.executor.distribution?.running !== undefined) {
       const withdraw = (): void => {
-        if (stop.signal.aborted || args.executor.running?.(args.node.id) !== null) return
+        if (stop.signal.aborted || args.executor.distribution?.running?.(args.node.id) !== null)
+          return
         this.unbegun = true
         stop.abort(new Error('fail-fast'))
       }
@@ -71,7 +72,7 @@ export class AttemptSignal {
     clearTimeout(this.timer)
     this.timeoutFired = false
     const timeout = this.timeout
-    if (timeout !== undefined && !local && args.executor.timeouts !== true) {
+    if (timeout !== undefined && !local && args.executor.capabilities?.timeouts !== true) {
       this.timer = setTimeout(() => {
         this.timeoutFired = true
         stop.abort(new Error(`timed out after ${timeout}ms`))

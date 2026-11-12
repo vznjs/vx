@@ -15,7 +15,7 @@ import {
   poolOfPlacement,
 } from '../src/orchestrator/placement.js'
 import type { Placements } from '../src/orchestrator/placement.js'
-import type { TaskExecutor, TaskPlacement } from '../src/exec/executor.js'
+import type { ExecutorCapabilities, TaskExecutor, TaskPlacement } from '../src/exec/executor.js'
 import { localExecutor } from '../src/orchestrator/local-executor.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -204,13 +204,12 @@ describe('placeTasks (item 650)', () => {
 // `servers` executor takes a server's dependants and starts the server
 // where each runs, so the server is never spawned here.
 describe('placeTasks — a servers executor carries persistent dependencies', () => {
-  const remote = (name: string, fields: Partial<TaskExecutor> = {}): TaskExecutor => ({
+  const remote = (name: string, capabilities: ExecutorCapabilities = {}): TaskExecutor => ({
     name,
-    remote: true,
+    capabilities: { remote: true, ...capabilities },
     execute: () => {
       throw new Error('never runs')
     },
-    ...fields,
   })
   const floor = localExecutor()
   const where = (p: Placements, id: string): string | undefined => p.executors.get(id)?.name
@@ -317,12 +316,14 @@ describe('placeTasks — an exclusive executor leaves this machine nothing', () 
   const floor = localExecutor()
   const dte: TaskExecutor = {
     name: 'dte',
-    remote: true,
-    exclusive: true,
-    servers: true,
-    runtime: true,
-    sandbox: true,
-    platforms: ['linux-x64'],
+    capabilities: {
+      remote: true,
+      exclusive: true,
+      servers: true,
+      runtime: true,
+      sandbox: true,
+      platforms: ['linux-x64'],
+    },
     execute: () => {
       throw new Error('never runs')
     },
@@ -362,9 +363,9 @@ describe('placeTasks — an exclusive executor leaves this machine nothing', () 
     expect(refuses([node('a#x', {})], [{ ...dte, accepts: () => false }, floor])).toThrow(
       'it declined the task',
     )
-    expect(refuses([probed], [{ ...dte, runtime: false }, floor])).toThrow(
-      'its key includes a runtime probe, which it does not check',
-    )
+    expect(
+      refuses([probed], [{ ...dte, capabilities: { ...dte.capabilities, runtime: false } }, floor]),
+    ).toThrow('its key includes a runtime probe, which it does not check')
     const dev = { ...node('s#dev', { persistent: {} }), requested: true } as TaskNode
     expect(refuses([dev])).toThrow(
       "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it",
@@ -427,7 +428,7 @@ describe('placeTasks — what an executor is offered, and where a task lands', (
 
   it("an 'only' task is remote-only where a remote executor took it, a noop elsewhere", () => {
     const remote = taker('remote', {
-      remote: true,
+      capabilities: { remote: true },
       accepts: (t) => t.taskId !== 'a#declined',
     })
     const p = placeTasks(
@@ -439,7 +440,10 @@ describe('placeTasks — what an executor is offered, and where a task lands', (
       ),
       [
         remote,
-        taker('declared-local', { remote: false, accepts: (t) => t.taskId !== 'a#declined' }),
+        taker('declared-local', {
+          capabilities: { remote: false },
+          accepts: (t) => t.taskId !== 'a#declined',
+        }),
         taker('local', {}),
       ],
     )
@@ -463,8 +467,10 @@ describe('placeTasks — what an executor is offered, and where a task lands', (
 describe('a remote executor that enforces the sandbox', () => {
   const remote = (sandbox: boolean): TaskExecutor => ({
     name: sandbox ? 'sandboxing' : 'plain',
-    remote: true,
-    sandbox,
+    capabilities: {
+      remote: true,
+      sandbox,
+    },
     execute: () => {
       throw new Error('never runs')
     },
@@ -500,7 +506,9 @@ describe('a sandboxed task goes only to an executor that enforces the sandbox', 
   const floor = localExecutor()
   const here = (sandbox: boolean): TaskExecutor => ({
     name: sandbox ? 'boxing' : 'shell',
-    sandbox,
+    capabilities: {
+      sandbox,
+    },
     execute: () => {
       throw new Error('never runs')
     },
@@ -523,7 +531,7 @@ describe('a sandboxed task goes only to an executor that enforces the sandbox', 
   })
 
   it('an exclusive one without it refuses the run', () => {
-    const sole: TaskExecutor = { ...here(false), remote: true, exclusive: true }
+    const sole: TaskExecutor = { ...here(false), capabilities: { remote: true, exclusive: true } }
     expect(() => placeTasks(g(), [sole, floor])).toThrow(
       "a#build would run on this machine, and executor 'shell' runs every task elsewhere: it does not enforce exec.sandbox",
     )
@@ -536,8 +544,10 @@ describe('a sandboxed task goes only to an executor that enforces the sandbox', 
 describe('a remote executor that checks runtime probes', () => {
   const remote = (runtime: boolean): TaskExecutor => ({
     name: runtime ? 'probing' : 'plain',
-    remote: true,
-    runtime,
+    capabilities: {
+      remote: true,
+      runtime,
+    },
     execute: () => {
       throw new Error('never runs')
     },
@@ -573,7 +583,7 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
       execute: () => {
         throw new Error('not called')
       },
-      ...(capacity === undefined ? {} : { capacity }),
+      ...(capacity === undefined ? {} : { capabilities: { capacity } }),
     }) as TaskExecutor
 
   it('a list is pooled when any executor declares a capacity', () => {
@@ -651,7 +661,7 @@ describe('locallyPlaced — "not remote", not "declared local"', () => {
       execute: () => {
         throw new Error('not called')
       },
-      ...(remote === undefined ? {} : { remote }),
+      ...(remote === undefined ? {} : { capabilities: { remote } }),
     }) as TaskExecutor
 
   const placements = (entries: [string, TaskExecutor][]): Placements => ({

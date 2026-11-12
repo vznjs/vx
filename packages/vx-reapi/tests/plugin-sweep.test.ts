@@ -173,7 +173,7 @@ describe.if(CHUNKING_SUPPORTED)(
           await p.teardown?.()
           return executor
         })
-        expect(value?.capacity).toBe(7)
+        expect(value?.capabilities?.capacity).toBe(7)
         expect(closes).toBe(1)
       })
     })

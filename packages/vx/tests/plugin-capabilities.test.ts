@@ -323,7 +323,9 @@ describe('plugin-host — capability consultation + fallbacks', () => {
         testPlugin('org/pool', {
           executor: () => ({
             name: 'pool',
-            capacity: capacity as number,
+            capabilities: {
+              capacity: capacity as number,
+            },
             execute: () => Promise.reject(new Error('unused')),
           }),
         }),
@@ -344,7 +346,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
       ['2', '"2"'],
     ] as const) {
       expect(await said(bad)).toBe(
-        `plugin 'org/pool' returned executor 'pool' with capacity ${shown}: it must be a positive integer`,
+        `plugin 'org/pool' returned executor 'pool' with capabilities.capacity ${shown}: it must be a positive integer`,
       )
     }
     expect(await said(1)).toBe('ok')
@@ -361,7 +363,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
             testPlugin('org/pool', {
               executor: () => ({
                 name: 'pool',
-                ...flags,
+                capabilities: flags,
                 execute: () => Promise.reject(new Error('unused')),
               }),
             }),
@@ -379,9 +381,9 @@ describe('plugin-host — capability consultation + fallbacks', () => {
       await said({ remote: true, sandbox: null }),
       await said({ remote: true, servers: true, runtime: false, timeouts: true }),
     ]).toEqual([
-      `plugin 'org/pool' returned executor 'pool' with remote "yes": it must be true or false`,
-      `plugin 'org/pool' returned executor 'pool' with exclusive 1: it must be true or false`,
-      `plugin 'org/pool' returned executor 'pool' with sandbox null: it must be true or false`,
+      `plugin 'org/pool' returned executor 'pool' with capabilities.remote "yes": it must be true or false`,
+      `plugin 'org/pool' returned executor 'pool' with capabilities.exclusive 1: it must be true or false`,
+      `plugin 'org/pool' returned executor 'pool' with capabilities.sandbox null: it must be true or false`,
       'ok',
     ])
   })
@@ -409,19 +411,59 @@ describe('plugin-host — capability consultation + fallbacks', () => {
         (e: Error) => e.message,
       )
     expect([
-      await said({ remote: 'yes' }),
-      await said({ sandbox: 1 }),
-      await said({ exclusive: null }),
+      await said({ capabilities: { remote: 'yes' } }),
+      await said({ capabilities: { sandbox: 1 } }),
+      await said({ capabilities: { exclusive: null } }),
       await said({ accepts: true }),
-      await said({ demand: 'all' }),
-      await said({ remote: true, sandbox: false, accepts: () => true }),
+      await said({ distribution: { demand: 'all' } }),
+      await said({ capabilities: { remote: true, sandbox: false }, accepts: () => true }),
     ]).toEqual([
-      "plugin 'org/pool' returned executor 'pool' with remote \"yes\": it must be true or false",
-      "plugin 'org/pool' returned executor 'pool' with sandbox 1: it must be true or false",
-      "plugin 'org/pool' returned executor 'pool' with exclusive null: it must be true or false",
+      "plugin 'org/pool' returned executor 'pool' with capabilities.remote \"yes\": it must be true or false",
+      "plugin 'org/pool' returned executor 'pool' with capabilities.sandbox 1: it must be true or false",
+      "plugin 'org/pool' returned executor 'pool' with capabilities.exclusive null: it must be true or false",
       "plugin 'org/pool' returned executor 'pool' with accepts that is not a function",
-      "plugin 'org/pool' returned executor 'pool' with demand that is not a function",
+      "plugin 'org/pool' returned executor 'pool' with distribution.demand that is not a function",
       'ok',
+    ])
+  })
+
+  // A plugin written for the flat shape set `remote: true` beside `name`.
+  // Ignored, core read a remote executor as a local one and offered it
+  // tasks pinned to this machine; it is refused, naming where the key is.
+  it('resolveExecutors: a key outside the executor contract is refused', async () => {
+    const said = async (executor: Record<string, unknown>): Promise<string> =>
+      resolveExecutors(
+        [
+          testPlugin('org/pool', {
+            executor: () =>
+              ({
+                name: 'pool',
+                execute: () => Promise.reject(new Error('unused')),
+                ...executor,
+              }) as never,
+          }),
+        ],
+        { ...baseCtx, concurrency: 1 },
+      ).then(
+        () => 'ok',
+        (e: Error) => e.message,
+      )
+    expect([
+      await said({ remote: true }),
+      await said({ footer: () => [] }),
+      await said({ speed: 1 }),
+      await said({ capabilities: { footer: () => [] } }),
+      await said({ distribution: { remote: true } }),
+      await said({ capabilities: true }),
+      await said({ distribution: [] }),
+    ]).toEqual([
+      `plugin 'org/pool' returned executor 'pool' declares "remote", not an executor key; it is capabilities.remote`,
+      `plugin 'org/pool' returned executor 'pool' declares "footer", not an executor key; it is distribution.footer`,
+      `plugin 'org/pool' returned executor 'pool' declares "speed", not an executor key`,
+      `plugin 'org/pool' returned executor 'pool' declares "footer", not a capabilities key; it is distribution.footer`,
+      `plugin 'org/pool' returned executor 'pool' declares "remote", not a distribution key; it is capabilities.remote`,
+      `plugin 'org/pool' returned executor 'pool' has capabilities a boolean: it must be an object`,
+      `plugin 'org/pool' returned executor 'pool' has distribution an array: it must be an object`,
     ])
   })
 
@@ -620,10 +662,9 @@ describe('executor capability — end-to-end via run()', () => {
                    return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [],
                      where: 'small#1', machine: { cores: 2, memoryBytes: 8e9 } }
                  },
-                 machines: () => [{ name: 'small#1', status: 'online', cores: 2, memoryBytes: 8e9,
+                 distribution: { machines: () => [{ name: 'small#1', status: 'online', cores: 2, memoryBytes: 8e9,
                    done: 1, failed: 0, onlineMs: 10, busyMs: 1, cpuPeak: 1, cpuAvg: 0.1,
-                   memoryPeakBytes: 1, memoryAvgBytes: 1, utilization: 0.05 }],
-                 idealMs: () => 1234.4,
+                   memoryPeakBytes: 1, memoryAvgBytes: 1, utilization: 0.05 }], idealMs: () => 1234.4 },
                }
              },
              telemetry() { return { onRunSummary(s) { globalThis.__vxFleet = s } } },
@@ -672,8 +713,7 @@ describe('executor capability — end-to-end via run()', () => {
                  async execute() {
                    return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
                  },
-                 machines() { throw new Error('machines broke') },
-                 idealMs() { throw new Error('ideal broke') },
+                 distribution: { machines() { throw new Error('machines broke') }, idealMs() { throw new Error('ideal broke') } },
                }
              },
              telemetry() { return { onRunSummary(s) { globalThis.__vxFleet = s } } },
@@ -1068,7 +1108,7 @@ describe('executor capability — end-to-end via run()', () => {
             `{ executor() {
                return {
                  name: 'remote-spy',
-                 remote: true,
+                 capabilities: { remote: true },
                  accepts(task) { (globalThis.__vxOffered ??= []).push(task.taskId + ':' + task.pinnedLocal); return true },
                  async execute(req) {
                    (globalThis.__vxRemoteRan ??= []).push(req.taskId)
@@ -1116,8 +1156,7 @@ describe('executor capability — end-to-end via run()', () => {
             `{ executor() {
                return {
                  name: 'pool',
-                 remote: true,
-                 capacity: 6,
+                 capabilities: { remote: true, capacity: 6 },
                  async execute(req) {
                    globalThis.__vxInflight = (globalThis.__vxInflight ?? 0) + 1
                    globalThis.__vxPeak = Math.max(globalThis.__vxPeak ?? 0, globalThis.__vxInflight)
@@ -1164,8 +1203,7 @@ describe('executor capability — end-to-end via run()', () => {
       const pool = (low: boolean): string => `{ executor() {
                return {
                  name: 'pool',
-                 remote: true,
-                 capacity: 2,
+                 capabilities: { remote: true, capacity: 2 },
                  accepts: (p) => (Number(p.taskId.slice(-1)) < 4) === ${low},
                  async execute(req) {
                    globalThis.__vxInflight = (globalThis.__vxInflight ?? 0) + 1
@@ -1227,9 +1265,7 @@ describe('executor capability — end-to-end via run()', () => {
                globalThis.__vxDemand = []
                return {
                  name: 'demand-spy',
-                 remote: true,
-                 capacity: 1,
-                 demand(remaining) { globalThis.__vxDemand.push(remaining.size) },
+                 capabilities: { remote: true, capacity: 1 }, distribution: { demand(remaining) { globalThis.__vxDemand.push(remaining.size) } },
                  async execute() {
                    return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
                  },
@@ -1278,9 +1314,7 @@ describe('executor capability — end-to-end via run()', () => {
             `{ executor() {
                return {
                  name: 'demand-spy',
-                 remote: true,
-                 capacity: 1,
-                 demand(remaining, missed) { globalThis.__vxDemand.push([remaining.size, missed.size]) },
+                 capabilities: { remote: true, capacity: 1 }, distribution: { demand(remaining, missed) { globalThis.__vxDemand.push([remaining.size, missed.size]) } },
                  async execute() {
                    return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
                  },
@@ -1343,7 +1377,7 @@ describe('executor capability — end-to-end via run()', () => {
             `{ executor() {
                return {
                  name: 'spy-remote',
-                 remote: true,
+                 capabilities: { remote: true },
                  async execute() { throw new Error('plan mode must not execute') },
                }
              },
@@ -1429,7 +1463,7 @@ describe('executor capability — end-to-end via run()', () => {
             `{ executor() {
                return {
                  name: 'picky-remote',
-                 remote: true,
+                 capabilities: { remote: true },
                  // declines install, takes hello — so one plan shows all
                  // three label states at once
                  accepts(task) { return task.taskId !== 'pkg-a#install' },
@@ -1477,7 +1511,7 @@ describe('executor capability — end-to-end via run()', () => {
             `{ executor() {
                return {
                  name: 'pool',
-                 remote: true,
+                 capabilities: { remote: true },
                  async execute() { throw new Error('plan mode must not execute') },
                }
              },
@@ -1535,7 +1569,7 @@ describe('executor capability — end-to-end via run()', () => {
                ctx.warn('ctx concurrency ' + ctx.concurrency)
                return {
                  name: 'ctx-remote',
-                 remote: true,
+                 capabilities: { remote: true },
                  async execute() { throw new Error('plan mode must not execute') },
                }
              },
@@ -1755,7 +1789,7 @@ describe('executor capability — end-to-end via run()', () => {
             `{ executor() {
                return {
                  name: 'remote-spy',
-                 remote: true,
+                 capabilities: { remote: true },
                  async execute(req) {
                    globalThis.__vxRemoteOnlyReq = {
                      remoteOnly: req.remoteOnly, cacheKey: req.cacheKey, taskId: req.taskId,
@@ -1841,7 +1875,7 @@ describe('TaskOutcome.where — executor placement attribution', () => {
             `{ executor() {
                return {
                  name: 'spy-remote',
-                 remote: true,
+                 capabilities: { remote: true },
                  async execute() {
                    return {
                      exitCode: 0,

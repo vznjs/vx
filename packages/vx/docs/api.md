@@ -60,24 +60,6 @@ export interface AffectedChanges {
 }
 ```
 
-## `answerRuntime`
-
-function · `src/cache/inputs.ts`
-
-One runtime probe answered on this machine as a key folds it: an
-`inputs.runtime` command run in `projectDir`, or with `workspace` a
-`workspaceRuntime` one run in `workspaceRoot`. For an executor that
-checks a task's probes where it runs it (`TaskExecutor.runtime`).
-
-```ts
-export function answerRuntime(
-  command: string,
-  projectDir: string,
-  workspaceRoot: string,
-  workspace = false,
-): Promise<string>
-```
-
 ## `applyMigration`
 
 function · `src/orchestrator/migration.ts`
@@ -165,32 +147,6 @@ export interface ArtifactTask {
   }
   readonly nestedProjectDirs?: readonly string[]
   readonly others?: ReadonlySet<string>
-}
-```
-
-## `BoundedCapture`
-
-class · `src/exec/runner.ts`
-
-A head-and-tail accumulator: the head fills once, the tail is a ring
-of chunks trimmed from the front, so memory is bounded by the two
-limits plus one chunk whatever the task prints. Each chunk keeps its
-stream, so one capture can hold both in the order they arrived.
-
-```ts
-export class BoundedCapture {
-  constructor(
-    private readonly headChars = CAPTURE_HEAD_CHARS,
-    private readonly tailChars = CAPTURE_TAIL_CHARS,
-  ) {}
-  push(text: string, err = false): void
-  rebound(
-    headChars: number,
-    tailChars: number,
-    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
-  ): BoundedCapture
-  chunks(): CapturedChunk[]
-  text(): string
 }
 ```
 
@@ -669,6 +625,29 @@ export interface DiscoveredProject {
 }
 ```
 
+## `Distribution`
+
+type · `src/exec/executor.ts`
+
+The distribution contract: the hooks core asks of an executor that
+spreads one run over machines it starts (Distributed task execution).
+Each is optional; a throw or a bad shape is left out with one warning
+and never breaks the run.
+
+```ts
+export interface Distribution {
+  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
+  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
+  running?(taskId: string): string | null | undefined
+  unneeded?(taskId: string): void
+  footer?(): readonly (readonly [label: string, text: Inline])[]
+  machines?(): readonly MachineReport[]
+  idealMs?(): number | undefined
+  advice?(): readonly WorkerAdvice[]
+  profile?(): readonly Record<string, unknown>[]
+}
+```
+
 ## `Duration`
 
 type · `src/config.ts`
@@ -791,6 +770,25 @@ export interface ExecuteSandbox {
   readonly keyNested?: readonly string[]
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
+}
+```
+
+## `ExecutorCapabilities`
+
+type · `src/exec/executor.ts`
+
+What an executor declares it can do; core offers it tasks by these.
+
+```ts
+export interface ExecutorCapabilities {
+  readonly remote?: boolean
+  readonly sandbox?: boolean
+  readonly servers?: boolean
+  readonly runtime?: boolean
+  readonly exclusive?: boolean
+  readonly timeouts?: boolean
+  readonly platforms?: readonly string[]
+  readonly capacity?: number
 }
 ```
 
@@ -1244,39 +1242,6 @@ export async function loadResolvedProjects(
   workspaceRoot: string,
   opts: { scope?: 'all' | readonly string[]; warn?: (message: string) => void } = {},
 ): Promise<Map<string, ProjectEntry>>
-```
-
-## `localFloor`
-
-function · `src/orchestrator/local-floor.ts`
-
-`sandboxes`, in a process that is no run, are the `exec.sandbox` configs
-of every sandboxed task the run holds: the runtime's proxy and its
-unix-socket filter are one per process, set from their union before the
-first sandboxed task (`prepareSandbox`). A request that carries a
-`signal` but no `liveChildren` has its children stopped here when it
-aborts, the way a run's stop ends its own. `onServer` hears each
-server's pid as it spawns, and `undefined` as `stop` ends it: a worker
-meters what its servers use.
-
-```ts
-export function localFloor(
-  sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
-  onServer?: (taskId: string, pid: number | undefined) => void,
-): LocalFloor
-```
-
-## `LocalFloor`
-
-type · `src/orchestrator/local-floor.ts`
-
-```ts
-export interface LocalFloor {
-  execute(req: ExecuteRequest): Promise<ExecuteResult>
-  rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
-  stop(taskId: string): Promise<void>
-  close(): Promise<void>
-}
 ```
 
 ## `localHistory`
@@ -1850,19 +1815,6 @@ export interface OutputView {
 }
 ```
 
-## `packageManagerPath`
-
-function · `src/exec/env.ts`
-
-The executable of the workspace's package manager: the root
-package.json's `packageManager`, else its lockfile, found on the root's
-`node_modules/.bin` and PATH. Learned once per root; null when the root
-names none or this machine has none.
-
-```ts
-export function packageManagerPath(root: string): string | null
-```
-
 ## `PERSISTENT_TODO`
 
 const · `src/workspace/migration.ts`
@@ -2142,6 +2094,19 @@ export interface PreparedRun {
   hashCache: HashCache
   dependents?: ReadonlyMap<string, number>
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
+}
+```
+
+## `PreparedTask`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+A task whose sandbox is built: its placeholders exist until `sweep`.
+
+```ts
+export interface PreparedTask {
+  run(): Promise<ExecuteResult & { readonly output: CapturedChunk[] }>
+  sweep(): Promise<void>
 }
 ```
 
@@ -2693,19 +2658,6 @@ export interface RunSummaryRecord {
 }
 ```
 
-## `sampleTrees`
-
-function · `src/exec/proc-sample.ts`
-
-Each root's tree usage; a root no longer alive has no entry.
-
-```ts
-export async function sampleTrees(
-  roots: readonly number[],
-  skip?: ReadonlySet<string>,
-): Promise<Map<number, TreeUsage>>
-```
-
 ## `SandboxConfig`
 
 type · `src/config.ts`
@@ -2800,68 +2752,6 @@ export interface SandboxGrants {
   pty?: boolean
   gitConfig?: boolean
 }
-```
-
-## `SandboxRequest`
-
-type · `src/sandbox/request.ts`
-
-The sandbox half of the request, plus the empty files vx created so a
-literal write grant had something to bind (`placeholders`). They are
-vx's, not the task's, until the task writes them: `sweepPlaceholders`
-takes back the ones it never touched. `withheld` names the linked
-dependencies a cached task was denied, for the hint a denial under one
-earns (`withheldLinkLine`).
-
-```ts
-export interface SandboxRequest {
-  sandbox: NonNullable<ExecuteRequest['sandbox']>
-  placeholders: Placeholder[]
-  withheld: WithheldLink[]
-}
-```
-
-## `sandboxRequestFor`
-
-function · `src/sandbox/request.ts`
-
-The sandbox half of an `ExecuteRequest` for one task, shared by the
-cached path (through the executor) and the persistent path (spawned here).
-
-The user's grants derive NOTHING from `cache` (2026-09-05). Those
-are two different questions: `inputs` says what INVALIDATES the
-task, `sandbox.allow` says what it may TOUCH. Deriving one from the other
-coupled them in both directions — a declaration added for caching
-silently widened the sandbox, and a path the task needed had to be
-laundered through the cache key to get it. A sandboxed task declares
-its own reads and writes.
-
-`node_modules` is the one grant core still makes: it is where the task's
-own PATH gets its `.bin` entries, and denying it made the sandbox
-unusable for anything that imports a dependency (`bun build --compile`
-died with only `error: An unknown error occurred (Unexpected)`; owner
-call 2026-09-04). Declaring `cache` may NARROW that grant, never widen
-anyone's (2026-09-24): `keyed` is the set of project directories the
-task's key answers for (keyed-projects.ts), and `undefined` for a task
-with no `cache`, which has no key to be stale.
-
-The other is the outputs of the tasks its key folds
-(`dependencyOutputs`, 2026-11-06): an edge the user drew, whose files
-this key already answers for, so the read can replay nothing stale —
-only the files the outputs take, never what lies beside them.
-
-```ts
-export async function sandboxRequestFor(
-  node: Pick<TaskNode, 'projectDir'>,
-  sandbox: NonNullable<ExecConfig['sandbox']>,
-  workspaceRoot: string,
-  keyed: ReadonlySet<string> | undefined,
-  nested: readonly string[] = [],
-  cacheDir?: string,
-  dependencyOutputs: readonly string[] = [],
-  dependencyReported: readonly string[] = [],
-  nestedOf: (projectDir: string) => readonly string[] = () => [],
-): Promise<SandboxRequest>
 ```
 
 ## `ScheduleHookContext`
@@ -2999,21 +2889,6 @@ export interface SucceededOutcome
 }
 ```
 
-## `sweepPlaceholders`
-
-function · `src/sandbox/request.ts`
-
-Remove the placeholder files the task never wrote — still empty, mtime
-untouched — and return their paths. What the task wrote is its output
-and stays; what it did not is vx's own litter, and litter under a
-declared output would be archived as the task's (an empty `dist/vx`
-saved as a build) or, as a file where the task wanted a directory,
-would fail every later run the same way.
-
-```ts
-export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
-```
-
 ## `TaskArtifacts`
 
 type · `src/orchestrator/task-artifacts.ts`
@@ -3061,25 +2936,10 @@ type · `src/exec/executor.ts`
 ```ts
 export interface TaskExecutor {
   readonly name: string
-  readonly remote?: boolean
-  readonly sandbox?: boolean
-  readonly servers?: boolean
-  readonly runtime?: boolean
-  readonly exclusive?: boolean
-  readonly timeouts?: boolean
-  readonly platforms?: readonly string[]
-  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
-  readonly capacity?: number
+  readonly capabilities?: ExecutorCapabilities
   accepts?(task: TaskPlacement): boolean
-  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
-  footer?(): readonly (readonly [label: string, text: Inline])[]
-  machines?(): readonly MachineReport[]
-  idealMs?(): number | undefined
-  advice?(): readonly WorkerAdvice[]
-  profile?(): readonly Record<string, unknown>[]
-  running?(taskId: string): string | null | undefined
-  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+  readonly distribution?: Distribution
 }
 ```
 
@@ -3632,6 +3492,60 @@ export interface WorkerAdvice {
     size?: string
   }[]
 }
+```
+
+## `workerRuntime`
+
+function · `src/orchestrator/worker-runtime.ts`
+
+```ts
+export function workerRuntime(opts: {
+  readonly root: string
+  readonly onServer?: (taskId: string, pid: number | undefined) => void
+}): WorkerRuntime
+```
+
+## `WorkerRuntime`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+```ts
+export interface WorkerRuntime {
+  prepare(task: WorkerTask): Promise<PreparedTask>
+  probe(command: string, dir: string, workspace: boolean): Promise<string>
+  packageManager(): string | null
+  sample(roots: readonly number[]): Promise<ReadonlyMap<number, TreeUsage>>
+  rearm(sandboxes: readonly SandboxConfig[]): Promise<void>
+  stop(taskId: string): Promise<void>
+  close(): Promise<void>
+}
+```
+
+## `WorkerSandbox`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+A task's `exec.sandbox` as a worker receives it: built into walls on this machine.
+
+```ts
+export interface WorkerSandbox {
+  readonly config: SandboxConfig
+  readonly keyed?: readonly string[]
+  readonly reads?: readonly string[]
+  readonly reported?: readonly string[]
+}
+```
+
+## `WorkerTask`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+A task to run here: the request core would build, with its sandbox not yet built.
+
+```ts
+export interface WorkerTask extends Omit<
+  ExecuteRequest,
+  'sandbox' | 'capture' | 'onStdout' | 'onStderr' | 'workspaceRoot'
 ```
 
 ## `WorkspaceConfig`

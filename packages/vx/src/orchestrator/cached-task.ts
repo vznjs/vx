@@ -234,7 +234,8 @@ async function fetchDeferredUpstream(
   hash: string,
   taskStartNs: bigint,
 ): Promise<TaskOutcome | undefined> {
-  if (args.executor.remote === true || args.run.deferred === undefined) return undefined
+  if (args.executor.capabilities?.remote === true || args.run.deferred === undefined)
+    return undefined
   try {
     await args.run.deferred.materializeFor(args.node)
     return undefined
@@ -258,7 +259,7 @@ function stampState(m: MissRun): StateStamp {
   const { args, policy } = m
   const from = Date.now()
   const state =
-    policy.save && !policy.deferred && args.executor.remote !== true
+    policy.save && !policy.deferred && args.executor.capabilities?.remote !== true
       ? stampUndeclaredState({
           config: args.node.config,
           projectDir: args.node.projectDir,

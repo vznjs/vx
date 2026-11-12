@@ -824,7 +824,7 @@ async function runOnBus(
   // worked, and the usual cause (no `cache: true`, so no executor can
   // describe its inputs to a worker) cannot be read off the outcome.
   if (placements.remoteOnlyNoop.size > 0) {
-    const anyRemote = executors.some((e) => e.remote === true)
+    const anyRemote = executors.some((e) => e.capabilities?.remote === true)
     for (const id of placements.remoteOnlyNoop) {
       const why = !anyRemote
         ? 'no remote executor is declared'
@@ -1096,8 +1096,8 @@ async function runOnBus(
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
     const fault = executorFaults(warnOf(log))
-    const footers = executors.filter((e) => e.footer !== undefined)
-    const placers = executors.filter((e) => e.running !== undefined)
+    const footers = executors.filter((e) => e.distribution?.footer !== undefined)
+    const placers = executors.filter((e) => e.distribution?.running !== undefined)
     // The scheduler's dependents count, and every row's `blocks` (the live
     // list's and the results'): one closure over the graph, counted by
     // `prepareRun` beside git when it could, else on the first that asks.
@@ -1573,7 +1573,9 @@ async function runOnBus(
       options.handoff?.holdPersistent === true
         ? undefined
         : unneededServers(nodes, options.log === undefined && (options.handleSignals ?? true))
-    const serving = executors.filter((e) => e.servers === true && e.unneeded !== undefined)
+    const serving = executors.filter(
+      (e) => e.capabilities?.servers === true && e.distribution?.unneeded !== undefined,
+    )
     const released = new Set<string>()
     const stopping: Promise<void>[] = []
     // A server stops after the servers using it (`serverUsers`), which this
@@ -1588,7 +1590,7 @@ async function runOnBus(
         // Copies an executor started beside the dependants it ran.
         for (const e of serving)
           try {
-            e.unneeded!(s)
+            e.distribution!.unneeded!(s)
           } catch {
             // Its copies stop at its teardown, as before.
           }
@@ -2714,7 +2716,7 @@ function executorFaults(warn: (line: string) => void): ExecutorFault {
 /** An executor's footer rows; a plugin's throw or bad shape shows none. */
 function executorFooter(e: TaskExecutor, fault: ExecutorFault): (readonly [string, ui.Inline])[] {
   try {
-    const rows = e.footer?.()
+    const rows = e.distribution?.footer?.()
     if (!Array.isArray(rows)) return []
     return rows.filter(
       (r): r is readonly [string, ui.Inline] =>
@@ -2734,7 +2736,7 @@ function executorProfile(
   fault: ExecutorFault,
 ): readonly Record<string, unknown>[] {
   try {
-    const events = e.profile?.()
+    const events = e.distribution?.profile?.()
     return Array.isArray(events)
       ? events.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
       : []
@@ -2746,7 +2748,7 @@ function executorProfile(
 
 function executorMachines(e: TaskExecutor, fault: ExecutorFault): readonly MachineReport[] {
   try {
-    const m = e.machines?.()
+    const m = e.distribution?.machines?.()
     return Array.isArray(m) ? m : []
   } catch (err) {
     fault(e, 'machines', err)
@@ -2756,7 +2758,7 @@ function executorMachines(e: TaskExecutor, fault: ExecutorFault): readonly Machi
 
 function executorAdvice(e: TaskExecutor, fault: ExecutorFault): readonly WorkerAdvice[] {
   try {
-    const a = e.advice?.()
+    const a = e.distribution?.advice?.()
     return Array.isArray(a) ? a : []
   } catch (err) {
     fault(e, 'advice', err)
@@ -2766,7 +2768,7 @@ function executorAdvice(e: TaskExecutor, fault: ExecutorFault): readonly WorkerA
 
 function executorIdeal(e: TaskExecutor, fault: ExecutorFault): number | undefined {
   try {
-    const ms = e.idealMs?.()
+    const ms = e.distribution?.idealMs?.()
     return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : undefined
   } catch (err) {
     fault(e, 'idealMs', err)
@@ -2781,7 +2783,7 @@ function executorWhere(
   fault: ExecutorFault,
 ): string | null | undefined {
   try {
-    const w = e.running?.(id)
+    const w = e.distribution?.running?.(id)
     if (w === null) return null
     return typeof w === 'string' && w !== '' ? w : undefined
   } catch (err) {

@@ -40,9 +40,11 @@ export async function runAttempts(
   // Pass or fail, the command may have written where its project's run-start
   // facts describe; a remote executor wrote on its own disk.
   const writeReach =
-    args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.run.workspaceRoot)
+    args.executor.capabilities?.remote === true
+      ? 'none'
+      : undeclaredWriteReach(node, args.run.workspaceRoot)
   const writesFingerprint =
-    args.executor.remote !== true &&
+    args.executor.capabilities?.remote !== true &&
     mayWriteFingerprint(node, args.run.workspaceRoot, args.run.fingerprintWatch?.names ?? [])
   let maxAttempts = policy.maxAttempts
   let prior: { result: ExecuteResult; exitCode: number } | undefined

@@ -141,7 +141,6 @@ describe('package boundaries', () => {
     const mod = (await import('../src/index.js')) as Record<string, unknown>
     const actual = Object.keys(mod).sort()
     const expected = [
-      'BoundedCapture',
       'Cache',
       // Widened 2026-11-06: a remote layer that checks its bytes (vx-reapi's
       // digest) refuses them with it, so the re-run's save repairs the key.
@@ -160,8 +159,6 @@ describe('package boundaries', () => {
       'TaskLogBuffer',
       'UserError',
       'VERSION',
-      // Widened 2026-10-22: `@vzn/vx-dte` checks a task's runtime probes on its worker.
-      'answerRuntime',
       'applyMigration',
       'branchCacheScope',
       'criticalPath',
@@ -186,8 +183,6 @@ describe('package boundaries', () => {
       'isUserError',
       'loadProjectConfig',
       'loadResolvedProjects',
-      // Widened 2026-10-21: `@vzn/vx-dte` runs tasks itself, sandbox included.
-      'localFloor',
       // 2026-10-29: run history reaches a plugin as rows, never as a handle on cache.db.
       'localHistory',
       'lockfileClaim',
@@ -206,7 +201,6 @@ describe('package boundaries', () => {
       // outputs reach, as core's save does.
       'outputDirPrefixes',
       'outputsOverlap',
-      'packageManagerPath',
       'planRun',
       'prepareRun',
       'pruneOrphanPersistentNotes',
@@ -219,17 +213,10 @@ describe('package boundaries', () => {
       // through core's restore gate, so both refuse the same names.
       'restorableOutput',
       'run',
-      // Widened 2026-10-24: a DTE worker reads its running tasks' trees
-      // with core's own sampler, where no telemetry plugin asks for it.
-      'sampleTrees',
-      // Widened 2026-10-22: a DTE worker builds a task's sandbox on its own OS.
-      'sandboxRequestFor',
       // Widened 2026-10-28: `@vzn/vx-dte`'s github() refuses to hand a
       // worker, as a shown dispatch input, a value core would mask.
       'secretNamed',
       'splitTaskId',
-      // Widened 2026-10-24: a DTE worker takes back the placeholders as core does.
-      'sweepPlaceholders',
       // Widened 2026-10-23: a plugin reading history reads only the rows
       // of each task as it is now (M: a changed command is a new task).
       'taskDefinitions',
@@ -243,6 +230,9 @@ describe('package boundaries', () => {
       // args after `--` on their own, and lost them where the local
       // executor kept them (a trailing comment).
       'withForwardArgs',
+      // A distributed executor's worker runs a task as the local floor
+      // would: sandbox, capture, probes and package manager of its machine.
+      'workerRuntime',
     ]
     expect(actual).toEqual(expected)
   })

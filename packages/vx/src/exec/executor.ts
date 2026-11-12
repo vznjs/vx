@@ -395,6 +395,21 @@ export interface TaskPlacement {
 export interface TaskExecutor {
   /** Shown in errors; `'local'` for core's own. */
   readonly name: string
+  /** What it can be offered. Absent: a local executor that takes what `accepts` allows. */
+  readonly capabilities?: ExecutorCapabilities
+  /**
+   * Per-task opt-out at placement time. Absent = accepts every task it is
+   * offered. `false` or `undefined` declines; any other non-boolean is
+   * refused, naming the plugin.
+   */
+  accepts?(task: TaskPlacement): boolean
+  execute(req: ExecuteRequest): Promise<ExecuteResult>
+  /** Filled only by an executor that spreads one run over machines it starts (a DTE). */
+  readonly distribution?: Distribution
+}
+
+/** What an executor declares it can do; core offers it tasks by these. */
+export interface ExecutorCapabilities {
   /** Runs the command somewhere else. Never offered a `pinnedLocal` task. */
   readonly remote?: boolean
   /**
@@ -449,6 +464,22 @@ export interface TaskExecutor {
    */
   readonly platforms?: readonly string[]
   /**
+   * How many tasks this executor runs at once. Its tasks then occupy a pool
+   * of this size instead of the local worker slots, so a remote pool is not
+   * throttled by the local CPU count. A positive integer; anything else
+   * is refused when the executor is resolved. Absent = the local pool.
+   */
+  readonly capacity?: number
+}
+
+/**
+ * The distribution contract: the hooks core asks of an executor that
+ * spreads one run over machines it starts (Distributed task execution).
+ * Each is optional; a throw or a bad shape is left out with one warning
+ * and never breaks the run.
+ */
+export interface Distribution {
+  /**
    * Its worker types in order of preference, each with the platforms its
    * machines run (`@vzn/vx-dte`'s `workers`). A task naming `exec.worker`
    * is offered it only when it has that type on one of the task's
@@ -456,19 +487,6 @@ export interface TaskExecutor {
    * `ExecuteRequest.worker`. Its `platforms` must list every one of them.
    */
   readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
-  /**
-   * How many tasks this executor runs at once. Its tasks then occupy a pool
-   * of this size instead of the local worker slots, so a remote pool is not
-   * throttled by the local CPU count. A positive integer; anything else
-   * is refused when the executor is resolved. Absent = the local pool.
-   */
-  readonly capacity?: number
-  /**
-   * Per-task opt-out at placement time. Absent = accepts every task it is
-   * offered. `false` or `undefined` declines; any other non-boolean is
-   * refused, naming the plugin.
-   */
-  accepts?(task: TaskPlacement): boolean
   /**
    * The tasks placed here that will run and have NOT finished yet — called
    * first once the run's cache has said which placed tasks it holds (those
@@ -490,6 +508,21 @@ export interface TaskExecutor {
    * change). The same set each call, changed in place.
    */
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
+  /**
+   * Where a task it was handed runs (`small#2`), for the live row; asked
+   * per frame. `null` while it holds the task for a machine to begin it:
+   * the row says `waiting`, and its clock starts when a machine begins it.
+   * Under `--continue=never` a failure aborts the `signal` of each task it
+   * answers `null` for, and the task is skipped, never started.
+   */
+  running?(taskId: string): string | null | undefined
+  /**
+   * A `servers` executor's: no task left in the run uses persistent task
+   * `taskId`, so each copy it started beside a dependant stops now, not at
+   * teardown. Core asks once, as the run stops its own copy (`schema.md`,
+   * "Stopped once nothing needs it"). A throw is ignored.
+   */
+  unneeded?(taskId: string): void
   /**
    * Rows the run's footer shows for this executor, `[label, text]`, the
    * text plain or a `ui` inline (a tone colors it): what only it knows, such as the machines it ran tasks on. Asked on every
@@ -524,22 +557,6 @@ export interface TaskExecutor {
    * the run moves past its own process. A throw adds none.
    */
   profile?(): readonly Record<string, unknown>[]
-  /**
-   * Where a task it was handed runs (`small#2`), for the live row; asked
-   * per frame. `null` while it holds the task for a machine to begin it:
-   * the row says `waiting`, and its clock starts when a machine begins it.
-   * Under `--continue=never` a failure aborts the `signal` of each task it
-   * answers `null` for, and the task is skipped, never started.
-   */
-  running?(taskId: string): string | null | undefined
-  /**
-   * A `servers` executor's: no task left in the run uses persistent task
-   * `taskId`, so each copy it started beside a dependant stops now, not at
-   * teardown. Core asks once, as the run stops its own copy (`schema.md`,
-   * "Stopped once nothing needs it"). A throw is ignored.
-   */
-  unneeded?(taskId: string): void
-  execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 
 /** One machine an executor ran tasks on, as the run summary reports it. */
@@ -730,7 +747,7 @@ export function selectExecutor(
 ): TaskExecutor {
   for (const executor of executors) {
     const pinned = pinnedFor(executor)
-    if ((pinned && executor.remote === true) || barred(executor)) continue
+    if ((pinned && executor.capabilities?.remote === true) || barred(executor)) continue
     if (executor.accepts === undefined) return executor
     let taken: unknown
     try {

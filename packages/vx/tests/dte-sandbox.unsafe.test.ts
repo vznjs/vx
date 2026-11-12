@@ -1,5 +1,5 @@
 // A sandboxed task runs on a `@vzn/vx-dte` worker inside the worker's own
-// sandbox (`TaskExecutor.sandbox`, `localFloor`): its writes land there and
+// sandbox (`capabilities.sandbox`, `workerRuntime`): its writes land there and
 // come back, and a read outside its grants fails it with the violation in
 // this checkout's paths. Unsafe: it runs a sandbox, which cannot nest inside
 // a sandboxed shard (A-24).

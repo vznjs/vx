@@ -132,11 +132,11 @@ export async function runAttempt(
       // A remote that gives the task back (it never started it): run it on
       // the local floor with a request of its own, so its timeout counts
       // from now. `remote: 'only'` keeps it off this machine: refused.
-      if (isExecutorFallback(raw) && args.executor.remote === true) {
+      if (isExecutorFallback(raw) && args.executor.capabilities?.remote === true) {
         const why = secrets.text(raw.message)
         if (policy.remoteOnly) {
           raw = new UserError(`${why}, and remote: 'only' keeps it off this machine`)
-        } else if (args.executor.exclusive === true) {
+        } else if (args.executor.capabilities?.exclusive === true) {
           raw = new UserError(`${why}, and ${args.executor.name} runs no task on this machine`)
         } else {
           warnOf(log)(

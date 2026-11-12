@@ -213,7 +213,7 @@ describe('exec.platforms', () => {
       localWorkspaceSource([
         pluginSource(
           'org/router',
-          `{ executor() { return { name: 'router', remote: true, platforms: ['${OTHER}'],
+          `{ executor() { return { name: 'router', capabilities: { remote: true, platforms: ['${OTHER}'] },
             accepts: (t) => t.taskId === 'app#other',
             execute(req) {
               require('node:fs').writeFileSync(require('node:path').join(req.cwd, 'routed.txt'), req.platform)
@@ -237,7 +237,7 @@ describe('exec.platforms', () => {
       localWorkspaceSource([
         pluginSource(
           'org/router',
-          `{ executor() { return { name: 'router', remote: true, platforms: ['${HOST}'],
+          `{ executor() { return { name: 'router', capabilities: { remote: true, platforms: ['${HOST}'] },
             execute() { return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] } } } } }`,
         ),
       ]),
@@ -260,7 +260,7 @@ describe('exec.platforms', () => {
       localWorkspaceSource([
         pluginSource(
           'org/router',
-          `{ executor() { return { name: 'router', platforms: ['win32-x64'], execute() {} } } }`,
+          `{ executor() { return { name: 'router', capabilities: { platforms: ['win32-x64'] }, execute() {} } } }`,
         ),
       ]),
     )
@@ -270,7 +270,7 @@ describe('exec.platforms', () => {
       (e: Error) => e.message,
     )
     expect(said).toBe(
-      `plugin 'org/router' returned executor 'router' with platforms ["win32-x64"]: it must be a non-empty array of linux-x64, linux-arm64, darwin-x64, darwin-arm64`,
+      `plugin 'org/router' returned executor 'router' with capabilities.platforms ["win32-x64"]: it must be a non-empty array of linux-x64, linux-arm64, darwin-x64, darwin-arm64`,
     )
   })
 
@@ -296,8 +296,8 @@ describe('exec.worker', () => {
     localWorkspaceSource([
       pluginSource(
         'org/typed',
-        `{ executor() { return { name: 'typed', remote: true, exclusive: true,
-          platforms: ['${HOST}', '${OTHER}'], workers: ${types},
+        `{ executor() { return { name: 'typed', capabilities: { remote: true, exclusive: true,
+          platforms: ['${HOST}', '${OTHER}'] }, distribution: { workers: ${types} },
           execute(req) {
             require('node:fs').writeFileSync(require('node:path').join(req.cwd, req.taskId.split('#')[1] + '.txt'), req.worker + ' ' + (req.platform ?? '-'))
             return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
@@ -383,7 +383,7 @@ describe('exec.worker', () => {
       localWorkspaceSource([
         pluginSource(
           'org/typed',
-          `{ executor() { return { name: 'typed', platforms: ['${HOST}'], workers: [['mac', ['${OTHER}']]], execute() {} } } }`,
+          `{ executor() { return { name: 'typed', capabilities: { platforms: ['${HOST}'] }, distribution: { workers: [['mac', ['${OTHER}']]] }, execute() {} } } }`,
         ),
       ]),
     )
@@ -392,7 +392,7 @@ describe('exec.worker', () => {
       () => 'ran',
       (e: Error) => e.message,
     )
-    expect(said).toContain(`plugin 'org/typed' returned executor 'typed' with workers`)
+    expect(said).toContain(`plugin 'org/typed' returned executor 'typed' with distribution.workers`)
   })
 
   it('refuses a worker that is not a name at lock time', async () => {

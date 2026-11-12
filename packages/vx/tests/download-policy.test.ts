@@ -470,7 +470,7 @@ async function fixture(
         `{ executor() {
            return {
              name: 'fake-remote',
-             remote: true,
+             capabilities: { remote: true },
              accepts: (t) => t.taskId.endsWith('#gen'),
              async execute(req) {
                const fake = (globalThis.__vxDownload ??= { executed: [], materialized: [] })
@@ -1085,7 +1085,7 @@ async function sameProjectFixture(
         `{ executor() {
            return {
              name: 'fake-remote',
-             remote: true,
+             capabilities: { remote: true },
              accepts: (t) => t.taskId.endsWith('#gen'),
              async execute(req) {
                const write = async () => {

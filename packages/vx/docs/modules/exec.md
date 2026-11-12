@@ -460,7 +460,69 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ### Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); advice?(); profile?(); running?(id); unneeded?(id); execute(req) }`
+- `TaskExecutor { name; capabilities?; accepts?(task); execute(req); distribution? }`
+  — `capabilities` says what it may be offered, `distribution` is filled
+  only by an executor that spreads one run over machines it starts. Any
+  other key, at the top or inside either group, refuses the run, naming
+  where a moved key lives now; either group that is not an object does
+  too.
+- `ExecutorCapabilities { remote?; sandbox?; servers?; runtime?; exclusive?; timeouts?; platforms?; capacity? }`
+  — `remote: true` declares that the executor runs the command somewhere
+  else (so it is never offered a `pinnedLocal` task); `sandbox: true`
+  says it enforces `req.sandbox` where it runs and returns the
+  violations: only such an executor is offered a task that declares
+  `exec.sandbox`, here or remote (one that ran it unsandboxed passed a
+  boundary it never checked, and cached the output), and for a remote one
+  a sandboxed task's dependants are not pinned either (a worker runs
+  them through `workerRuntime`, which also stops a request's children
+  when its `signal` aborts and no run holds them); a cached task's
+  `req.sandbox.keyed` lists the project directories its key answers
+  for, so such an executor can build the request again on its own
+  machine (`WorkerRuntime.prepare`);
+  `servers: true` says a remote one starts a task's persistent
+  dependencies where it runs the task (`req.servers`, each a `ServerSpec
+{ taskId; command; cwd; env; readyWhen?; timeoutMs?; sandbox? }`, in dependency
+  order), so their dependants are not pinned for it; the worker runtime starts
+  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops one on `stop(id)` (core calls the executor's `distribution.unneeded(id)` once no task left in the run uses it) or all on `close()`; its `onServer` hears each server's pid as it spawns and stops (a worker meters its servers),
+  and a server that never became ready, or crashed after it was, fails the task with why,
+  and a stop of the request ends its wait on one; `runtime: true`
+  says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
+  probes where it runs the task (`WorkerRuntime.probe`) and fails it when one
+  answers otherwise than `req.inputs` says this machine did, so a task
+  whose key folds a probe is not pinned for it; `platforms` (a non-empty
+  list of `PLATFORMS`, else the run is refused) are the machines it runs
+  tasks on: a task naming `exec.platforms` is offered only to it when one
+  is shared, and to no other remote executor; `capacity` is how
+  many tasks it runs at once (a positive integer, else the run is
+  refused), which makes its tasks a POOL of that size instead of local
+  worker slots. Each flag (`remote`, `sandbox`, `servers`, `runtime`,
+  `exclusive`, `timeouts`) is `true`, `false` or absent, else the run is
+  refused: core reads it as `=== true`.
+- `Distribution { workers?; demand?(remaining, missed); running?(id); unneeded?(id); footer?(); machines?(); idealMs?(); advice?(); profile?() }`
+  — the distribution contract: what core asks of an executor that
+  spreads one run over machines it starts (Distributed task execution).
+  Each is optional; a throw or a bad shape is left out and warned once
+  per executor and method, never failing the run.
+  — `workers` (distinct `[name, platforms]` pairs, each platform one of
+  its `capabilities.platforms`, else the run is refused) are its worker
+  types in order of preference: a task naming `exec.worker` is offered it
+  only when it has that type on one of the task's platforms, and any task
+  it takes carries its type in `req.worker`
+  — `demand(remaining, missed)` is the placed tasks still to run, after
+  the up-front probe and each completion
+  — `running(id)` says where a task it was handed runs, for the live row, or `null` while
+  it holds the task for a machine (no row; the tasks line counts it `scheduled`;
+  under `--continue=never` a failure aborts its `signal` and it is skipped)
+  — `footer()` returns `[label, text]` rows the run's footer shows, live
+  and at the end (a bad shape shows none); `ExecuteResult.where`
+  is shown on the task's row and frame after its id, as `<id>@<where>`
+  — `machines()` returns a `MachineReport` per machine it ran tasks on
+  (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
+cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
+  once at the end for the run summary when a telemetry sink is on;
+  `ExecuteResult.machine` (`{ cores; memoryBytes; cpuShare? }`) is the size of the
+  machine `where` names, which the run history keeps, and the share of a
+  core the task's threads got there (history divides its CPU by it)
   — `idealMs()` is the run's end had it placed its tasks perfectly, from
   the run's start, replayed from what each took (the run summary's
   `idealMs`, shown beside the real time)
@@ -469,55 +531,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 endMs; workers: { count; cores; memoryBytes; platform?; size? }[] }`):
   the fewest of the sizes it may start, more than their max when that
   ends sooner, and one shape of any cores (the run summary's `advice`)
-  — `machines()` returns a `MachineReport` per machine it ran tasks on
-  (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
-cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
-  once at the end for the run summary when a telemetry sink is on;
-  `ExecuteResult.machine` (`{ cores; memoryBytes; cpuShare? }`) is the size of the
-  machine `where` names, which the run history keeps, and the share of a
-  core the task's threads got there (history divides its CPU by it)
-  — `footer()` returns `[label, text]` rows the run's footer shows, live
-  and at the end (a bad shape shows none; a throw from any of these
-  reports leaves it out and is warned once per executor and method); `ExecuteResult.where`
-  is shown on the task's row and frame after its id, as `<id>@<where>`; `running(id)`
-  says where a task it was handed runs, for the live row, or `null` while
-  it holds the task for a machine (no row; the tasks line counts it `scheduled`;
-  under `--continue=never` a failure aborts its `signal` and it is skipped)
-  — `remote: true` declares that the executor runs the command somewhere
-  else (so it is never offered a `pinnedLocal` task); `sandbox: true`
-  says it enforces `req.sandbox` where it runs and returns the
-  violations: only such an executor is offered a task that declares
-  `exec.sandbox`, here or remote (one that ran it unsandboxed passed a
-  boundary it never checked, and cached the output), and for a remote one
-  a sandboxed task's dependants are not pinned either (`@vzn/vx-dte`'s workers run them through `localFloor`, which also stops
-  a request's children when its `signal` aborts and no run holds them);
-  a cached task's `req.sandbox.keyed` lists the project directories its
-  key answers for, so such an executor can build the request again on
-  its own machine (`sandboxRequestFor`);
-  `servers: true` says a remote one starts a task's persistent
-  dependencies where it runs the task (`req.servers`, each a `ServerSpec
-{ taskId; command; cwd; env; readyWhen?; timeoutMs?; sandbox? }`, in dependency
-  order), so their dependants are not pinned for it; `localFloor` starts
-  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops one on `stop(id)` (core calls the executor's `unneeded(id)` once no task left in the run uses it) or all on `close()`; its `onServer` hears each server's pid as it spawns and stops (a worker meters its servers),
-  and a server that never became ready, or crashed after it was, fails the task with why,
-  and a stop of the request ends its wait on one; `runtime: true`
-  says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
-  probes where it runs the task (`answerRuntime`) and fails it when one
-  answers otherwise than `req.inputs` says this machine did, so a task
-  whose key folds a probe is not pinned for it; `platforms` (a non-empty
-  list of `PLATFORMS`, else the run is refused) are the machines it runs
-  tasks on: a task naming `exec.platforms` is offered only to it when one
-  is shared, and to no other remote executor; `workers` (distinct
-  `[name, platforms]` pairs, each platform one of its `platforms`, else
-  the run is refused) are its worker types in order of preference: a
-  task naming `exec.worker` is offered it only when it has that type on
-  one of the task's platforms, and any task it takes carries its type
-  in `req.worker`; `capacity` is how
-  many tasks it runs at once (a positive integer, else the run is
-  refused), which makes its tasks a POOL of that size instead of local
-  worker slots. Each flag (`remote`, `sandbox`, `servers`, `runtime`,
-  `exclusive`, `timeouts`) is `true`, `false` or absent, else the run is
-  refused: core reads it as `=== true`.
+  — `profile()` adds its own Chrome-trace events under `--profile`
 - `TaskPlacement { taskId; projectName; projectDir; command; pinnedLocal;
 cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   before scheduling, so it cannot depend on anything resolved per attempt.

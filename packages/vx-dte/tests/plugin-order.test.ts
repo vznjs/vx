@@ -63,7 +63,9 @@ it('asks for no worker before schedule has read history', async () => {
       concurrency: 1,
       artifacts: {},
       cacheFacts: () => ({}),
-    } as never)) as { demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void }
+    } as never))!.distribution as {
+      demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void
+    }
     const ids = new Set(graph.keys())
     ex.demand(ids, ids)
     await Bun.sleep(50)
@@ -144,7 +146,9 @@ it('numbers workers within their size', async () => {
       concurrency: 1,
       artifacts: {},
       cacheFacts: () => ({}),
-    } as never)) as { demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void }
+    } as never))!.distribution as {
+      demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void
+    }
     const ids = new Set(graph.keys())
     ex.demand(ids, ids)
     await plugin.schedule!(graph, {
@@ -220,7 +224,7 @@ it('takes an adapter spawn that throws as a worker that could not start', async 
           concurrency: 1,
           artifacts: {},
           cacheFacts: () => ({}),
-        } as never)) as {
+        } as never))!.distribution as {
           demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void
         }
         await plugin.schedule!(graph, {
@@ -305,7 +309,9 @@ it('counts a worker its adapter left running against its size again', async () =
       concurrency: 1,
       artifacts: {},
       cacheFacts: () => ({}),
-    } as never)) as { demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void }
+    } as never))!.distribution as {
+      demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void
+    }
     await plugin.schedule!(graph, {
       workspaceRoot: root,
       cacheDir: root,
@@ -380,7 +386,7 @@ it('hands every ready task over, whatever its machines hold', async () => {
       concurrency: 1,
       artifacts: {},
       cacheFacts: () => ({}),
-    } as never)) as { capacity?: number }
+    } as never))!.capabilities as { capacity?: number }
     expect(ex.capacity).toBe(Number.MAX_SAFE_INTEGER)
   } finally {
     await plugin.teardown?.({} as never)
