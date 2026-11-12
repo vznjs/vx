@@ -31,7 +31,7 @@ import {
   resetSandbox,
   toRealPath,
   untracedReason,
-} from '../exec/index.js'
+} from '../sandbox/index.js'
 import {
   findWorkspaceRoot,
   lockfilePath,
@@ -310,7 +310,7 @@ async function collectWorkspaceInfo(
   const statusCache = gitStatusCache(root)
   const probed = await probing
   // The host's runtime may start, but no sandboxed task runs here (a run
-  // refuses each one, sandbox-request.ts).
+  // refuses each one, sandbox/request.ts).
   const sandbox = replacedBySandbox(toRealPath(root))
     ? {
         available: false,

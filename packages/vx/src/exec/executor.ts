@@ -15,9 +15,81 @@
 
 import type { SandboxConfig } from '../config.js'
 import type { CaptureConfig, RunResult } from './runner.js'
-import type { ResolvedSandboxConfig, SandboxViolation } from './sandbox-runtime.js'
 import { thrownMessage, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
+
+/**
+ * Sandbox config with all path fields resolved to absolute paths.
+ * Produced by `resolveSandboxConfig`. The shape mirrors `SandboxConfig`
+ * but every string in a path list is guaranteed absolute.
+ */
+export interface ResolvedSandboxConfig {
+  /** Readable path prefixes, absolute. */
+  allowRead: readonly string[]
+  /** Writable path prefixes, absolute. */
+  allowWrite: readonly string[]
+  /**
+   * Linux: the write globs that matched nothing when the task started, so
+   * no mount holds them. `scratchWrites` decides which still cover a write.
+   */
+  pendingWrites?: readonly string[]
+  /** Linux: write grants spelled through a link in the project, bound there too (`linkedWriteBinds`). */
+  linkedWrites?: readonly { readonly link: string; readonly target: string }[]
+  network?: true | readonly string[]
+  denyNetwork?: readonly string[]
+  systemInfo?: readonly string[]
+  unixSockets?: true | readonly string[]
+  localBinding?: boolean | readonly number[]
+  machLookup?: readonly string[]
+  pty?: boolean
+  gitConfig?: boolean
+  weakerWhenNested?: boolean
+  weakerNetworkIsolation?: boolean
+  /** Reads outside the workspace are refused too (`hermeticReads`). */
+  hermetic?: boolean
+  /** macOS: the walls a glob grant reaches, by kind (`darwinWallRules`). */
+  wallsReached?: { read: readonly string[]; write: readonly string[] }
+  ignore?: {
+    read?: readonly string[]
+    write?: readonly string[]
+    systemInfo?: readonly string[]
+    network?: readonly string[]
+  }
+}
+
+export interface SandboxViolation {
+  /** Raw log line from SRT. Format differs between macOS / Linux. */
+  line: string
+  timestamp: Date
+  /**
+   * What the denial named, and which `ignore` lists could silence it —
+   * filled in by whichever platform produced the record. The filters read
+   * these instead of re-parsing a line whose shape depends on the OS: a
+   * seatbelt `deny(1) file-read-data /x` and a strace
+   * `openat(../x) = -1 ENOENT  [/x]` say the same thing.
+   */
+  target?: string
+  /**
+   * vx's own note beside a failure (the cwd it cannot read, a placeholder
+   * the task never wrote, a withheld link), not a denial: shown with the
+   * denials, never counted as one (B-20).
+   */
+  hint?: true
+  /** Absolute, when `target` is a path at all. */
+  path?: string
+  /**
+   * Linux: the directory holding a link on the path the task opened, not
+   * in the sandbox, so the link was not there: a grant of `path` alone
+   * leaves it hidden.
+   */
+  via?: string
+  /**
+   * Linux: what a refused `openat`'s flags asked for; for an `openat2`,
+   * whose flags no record names, a read.
+   */
+  opened?: 'read' | 'write'
+  ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
+}
 
 /** Sandbox baselines + the user's resolved sandbox block, when the task is sandboxed. */
 export interface ExecuteSandbox {

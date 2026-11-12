@@ -7,10 +7,11 @@ import { lstatSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { InputsConfig, TaskOutputs } from '../config.js'
-import { atOrUnder, MOUNT_WILDCARDS, toRealPath, type SandboxViolation } from '../exec/index.js'
+import type { SandboxViolation } from '../exec/index.js'
+import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from './paths.js'
 import type { TaskOutcome } from '../graph/index.js'
 import { grantPrefix, isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
-import { credentialStorePaths } from './sandbox-request.js'
+import { credentialStorePaths } from './request.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
 type SandboxFix = NonNullable<TaskOutcome['sandboxFix']>
@@ -48,7 +49,7 @@ function grantPath(abs: string, dirs: Dirs): string {
  * escaped, since `pages/[id].tsx` is a class that grants `pages/i.tsx`,
  * and applying the fix failed the run again on the same read. A path no
  * grant can name alone (a `*`, `?` or backslash; on Linux a write with a
- * bracket too: sandbox-binds.ts) is granted as the directory above it.
+ * bracket too: sandbox/binds.ts) is granted as the directory above it.
  */
 function grantFor(abs: string, dirs: Dirs, kind: 'read' | 'write'): string {
   return spell(grantPath(abs, dirs), kind)

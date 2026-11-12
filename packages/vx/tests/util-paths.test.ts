@@ -580,7 +580,7 @@ describe('staticPrefix and an ABSOLUTE grant — the root is a prefix', () => {
     // so an absolute grant is a supported shape and reaches here unfiltered.
     //
     // Both root forms trim to the empty string under a plain trailing-slash
-    // strip, and `sandbox-request.ts` feeds this straight to `expandHome`
+    // strip, and `sandbox/request.ts` feeds this straight to `expandHome`
     // as a read path — where an empty string is not the root, it is
     // whatever the cwd makes of it.
     expect(staticPrefix('/')).toBe('/')

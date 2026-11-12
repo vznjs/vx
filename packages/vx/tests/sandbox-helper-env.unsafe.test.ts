@@ -7,7 +7,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox } from '../src/exec/index.js'
+import { initSandbox, resetSandbox } from '../src/sandbox/runtime.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const linux = process.platform === 'linux'
@@ -59,7 +59,7 @@ describe.skipIf(!available)('the sandbox runtime’s host bridge', () => {
   it('is made again for an init after its wrapper was removed', () => {
     const tmp = mkdtempSync(path.join(os.tmpdir(), 'vx-socat-remake-'))
     try {
-      const src = path.join(import.meta.dir, '../src/exec/index.js')
+      const src = path.join(import.meta.dir, '../src/sandbox/runtime.js')
       const script = `
         import { rmSync } from 'node:fs'
         import os from 'node:os'

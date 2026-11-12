@@ -14,7 +14,7 @@ import type { MissRun } from '../src/orchestrator/miss-run.js'
 import { missOutcome } from '../src/orchestrator/miss-outcome.js'
 import { taskPolicy } from '../src/orchestrator/task-policy.js'
 import { TaskSecrets } from '../src/orchestrator/task-secrets.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 
 const cached: TaskConfig = {
   exec: { command: 'build' },

@@ -14,7 +14,7 @@ import {
   resetSandbox,
   resolveSandboxConfig,
   wrapSandboxedCommand,
-} from '../src/exec/sandbox-runtime.js'
+} from '../src/sandbox/runtime.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'

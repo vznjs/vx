@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
 import { executedCells, flakyNote, formatTaskExecutedLine } from '../src/report/framed-output.js'
 import { formatFailureLine } from '../src/report/status-line.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import { REMOTE_CACHE_METHODS } from '../src/orchestrator/plugin-host.js'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
@@ -858,11 +858,11 @@ describe.each([
 describe('the sandboxing guide says what gitConfig grants', () => {
   it('the flag reaches the wrap per task, and the guide does not call it inert', () => {
     const runtime = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'),
       'utf8',
     )
     const binds = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-binds.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'binds.ts'),
       'utf8',
     )
     expect(binds).toContain('allowGitConfig: c.gitConfig')
@@ -881,9 +881,9 @@ describe('the sandboxing guide says what gitConfig grants', () => {
 // (item 381, 2026-09-19). Found rather than listed, and each binary is
 // satisfied by either spelling — a negative grep is a claim about every one.
 describe('every page naming the Linux sandbox binaries names all three', () => {
-  it('each is the set sandbox-runtime.ts checks for, in either spelling', () => {
+  it('each is the set sandbox/runtime.ts checks for, in either spelling', () => {
     const runtime = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'),
       'utf8',
     )
     const m = /'the sandbox runtime needs ([^']*) on PATH'/.exec(runtime)
@@ -1913,7 +1913,7 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(src('orchestrator/attempt.ts')).toContain(
       'if (policy.sandboxed && violations.some((v) => v.hint !== true) && code === 0) code = 1',
     )
-    expect(src('orchestrator/sandbox-request.ts')).toContain('reportWithin: node.projectDir')
+    expect(src('sandbox/request.ts')).toContain('reportWithin: node.projectDir')
     const post = readFileSync(path.join(DOCS, 'blog', 'the-sandbox.md'), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -2300,11 +2300,11 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
   // refused write outside the project names the directory to grant (J2-32).
   it('the hint names $TMPDIR there, and both pages say so', () => {
     const core = path.resolve(import.meta.dir, '..')
-    expect(readFileSync(path.join(core, 'src', 'exec', 'sandbox-runtime.ts'), 'utf8')).toContain(
+    expect(readFileSync(path.join(core, 'src', 'sandbox', 'runtime.ts'), 'utf8')).toContain(
       'The task has its own temp directory, empty at its start: write under',
     )
     const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
-    expect(flat(path.join(core, 'docs', 'modules', 'exec.md'))).toContain(
+    expect(flat(path.join(core, 'docs', 'modules', 'sandbox.md'))).toContain(
       "or, for a path under the host's shared temp directory",
     )
     expect(flat(path.join(DOCS, 'docs', 'sandboxing.mdx'))).toContain(

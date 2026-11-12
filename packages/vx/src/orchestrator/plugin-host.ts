@@ -17,7 +17,8 @@ import {
   type PluginCache,
   type ResolvedRemote,
 } from '../cache/index.js'
-import { localExecutor, type TaskExecutor } from '../exec/index.js'
+import { type TaskExecutor } from '../exec/index.js'
+import { localExecutor } from './local-executor.js'
 import {
   errorCode,
   hookStarted,

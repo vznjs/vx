@@ -7,19 +7,17 @@
 
 import type { ExecConfig } from '../config.js'
 import {
-  localExecutor,
   PersistentReadyError,
-  releaseBridges,
-  resetSandbox,
   runPersistent,
   signalExitCode,
   type ExecuteRequest,
   type ExecuteResult,
   type ServerSpec,
-  wrapSandboxedCommand,
 } from '../exec/index.js'
+import { releaseBridges, resetSandbox, wrapSandboxedCommand } from '../sandbox/index.js'
+import { localExecutor } from './local-executor.js'
 import { stopServer } from './persistent.js'
-import { placeholderSweeper, prepareSandbox, sandboxRequestFor } from './sandbox-request.js'
+import { placeholderSweeper, prepareSandbox, sandboxRequestFor } from '../sandbox/index.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 
 /** How much of a server's output before ready a failure to start quotes. */

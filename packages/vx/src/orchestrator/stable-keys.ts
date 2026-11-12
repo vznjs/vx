@@ -35,7 +35,7 @@ import {
   grantedWriteGlobs,
   mayWriteFingerprint,
   undeclaredWriteReach,
-} from './sandbox-request.js'
+} from '../sandbox/index.js'
 import {
   computeGroupHash,
   computeTaskHash,

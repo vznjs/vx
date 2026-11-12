@@ -19,7 +19,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run } from './orchestrator.js'
-import { probeSandbox } from '../../src/exec/index.js'
+import { probeSandbox } from '../../src/sandbox/runtime.js'
 import { localWorkspaceSource } from './local-workspace.js'
 
 const ITERATIONS = Number(process.argv[2] ?? 20)

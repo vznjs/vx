@@ -103,10 +103,10 @@ const SHAPES: ReadonlyArray<[source: string, name: string]> = [
   ['cli/plugin-commands.ts', 'ResolvedPluginCommand'],
   ['cli/plugin-commands.ts', 'UnresolvedPluginCommand'],
   ['orchestrator/admission.ts', 'AdmissionArgs'],
-  ['orchestrator/sandbox-request.ts', 'SandboxArmer'],
-  ['orchestrator/sandbox-request.ts', 'SandboxRequest'],
-  ['orchestrator/sandbox-request.ts', 'Placeholder'],
-  ['orchestrator/sandbox-request.ts', 'SandboxRunUnion'],
+  ['sandbox/request.ts', 'SandboxArmer'],
+  ['sandbox/request.ts', 'SandboxRequest'],
+  ['sandbox/request.ts', 'Placeholder'],
+  ['sandbox/request.ts', 'SandboxRunUnion'],
   ['cache/git-inputs.ts', 'GitEnumeration'],
   ['cli/upgrade.ts', 'SignedRelease'],
   ['cli/upgrade.ts', 'ManagedInstall'],
@@ -169,7 +169,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
   })
 
   it("schema.md's credential stores are CREDENTIAL_STORES", () => {
-    const src = read('src/orchestrator/sandbox-request.ts')
+    const src = read('src/sandbox/request.ts')
     const arr = /export const CREDENTIAL_STORES = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)

@@ -50,6 +50,9 @@ const ALLOWED: Record<string, readonly string[]> = {
   memo: ['util', 'index-db'],
   cache: ['util', 'config', 'ui', 'index-db', 'memo'],
   exec: ['util', 'config', 'ui'],
+  // `sandbox`: a task's request in, its result plus violations out. Above
+  // `exec`, whose process primitives it runs the task with.
+  sandbox: ['util', 'config', 'ui', 'exec', 'cache', 'graph'],
   // `history`: what runs leave behind, written (the run's rows, on a thread
   // or at its end) and read back (`vx last`, `vx why`, the duration table).
   // It never runs or renders a run.
@@ -69,6 +72,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'memo',
     'index-db',
     'exec',
+    'sandbox',
     'history',
     'report',
     'ui',
@@ -98,6 +102,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'graph',
     'cache',
     'exec',
+    'sandbox',
     'history',
     'orchestrator',
     'report',
@@ -117,6 +122,7 @@ const CONTRACTED: readonly string[] = [
   'memo',
   'cache',
   'exec',
+  'sandbox',
   'util',
   'workspace',
   'graph',
@@ -225,6 +231,44 @@ describe('module boundaries', () => {
     expect(
       violations.map((v) => `${v.from} → ${v.specifier} (must import ${v.toModule}/index)`),
     ).toEqual([])
+  })
+})
+
+// `exec` exports the process primitives the sandbox runs a task with as
+// one group at the end of its index. They are not exec's contract for
+// anyone else: only `sandbox` may import them.
+describe('the sandbox primitives', () => {
+  it('only src/sandbox/ imports the group exec exports for it', async () => {
+    const index = await Bun.file(path.join(SRC, 'exec', 'index.ts')).text()
+    const at = index.indexOf('// The process primitives the sandbox runs a task with.')
+    expect(at).toBeGreaterThan(-1)
+    const group = new Set(
+      [...index.slice(at).matchAll(/export \{([^}]*)\}/g)].flatMap((m) =>
+        m[1]!
+          .split(',')
+          .map((n) => n.replace(/^\s*type\s+/, '').trim())
+          .filter((n) => n !== ''),
+      ),
+    )
+    expect(group.size).toBeGreaterThan(0)
+    const readers: string[] = []
+    for (const rel of new Bun.Glob('**/*.ts').scanSync({ cwd: SRC })) {
+      const norm = rel.split(path.sep).join('/')
+      if (norm.startsWith('exec/') || norm.startsWith('sandbox/')) continue
+      const text = await Bun.file(path.join(SRC, rel)).text()
+      for (const m of text.matchAll(
+        /import[^'"]*?\{([^}]*)\}\s*from\s+['"][^'"]*exec\/index\.js['"]/g,
+      )) {
+        for (const n of m[1]!.split(',')) {
+          const name = n
+            .replace(/^\s*type\s+/, '')
+            .split(' as ')[0]!
+            .trim()
+          if (group.has(name)) readers.push(`${norm}: ${name}`)
+        }
+      }
+    }
+    expect(readers).toEqual([])
   })
 })
 

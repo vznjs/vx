@@ -647,7 +647,7 @@ spaces.txt` must not break hashing or the dry run.
   a 15 s timeout and asserts the task printed `stdin bytes=0`, i.e. it saw EOF
   rather than blocking.
 - **vx equivalent**: `src/exec/runner.ts:289` and `:440`, and
-  `src/exec/sandbox-runtime.ts:97`/`:323`, all pass `stdin: 'ignore'` — the
+  `src/sandbox/runtime.ts:97`/`:323`, all pass `stdin: 'ignore'` — the
   correct, hang-free choice.
 - **Existing vx coverage**: NONE — `grep stdin tests/runner.test.ts` is empty.
 - **Proposed test**: a task whose command is `cat; echo "bytes=$?"` (or

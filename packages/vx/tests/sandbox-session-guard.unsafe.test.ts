@@ -174,7 +174,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       'leaves no bridge socat running',
       async () => {
         const script = path.join(root, 'cut.ts')
-        const exec = path.resolve(import.meta.dir, '../src/exec/index.ts')
+        const exec = path.resolve(import.meta.dir, '../src/sandbox/runtime.ts')
         await writeFile(
           script,
           `

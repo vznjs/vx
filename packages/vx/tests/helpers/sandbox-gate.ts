@@ -29,7 +29,7 @@
 // platform SRT does not support or a container without user namespaces,
 // and an unrunnable suite gets ignored rather than fixed.
 
-import { probeSandbox } from '../../src/exec/index.js'
+import { probeSandbox } from '../../src/sandbox/runtime.js'
 import { envFlag } from './env.js'
 
 const required = (): boolean => envFlag('VX_REQUIRE_SANDBOX')

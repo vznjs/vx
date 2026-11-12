@@ -12,9 +12,10 @@ import {
   MOUNT_WILDCARDS,
   toRealPath,
   unique,
-} from './sandbox-paths.js'
-import { shellQuote } from './runner.js'
-import type { ResolvedSandboxConfig, SandboxedRunArgs } from './sandbox-runtime.js'
+} from './paths.js'
+import { shellQuote } from '../exec/index.js'
+import type { ResolvedSandboxConfig } from '../exec/index.js'
+import type { SandboxedRunArgs } from './runtime.js'
 import * as ui from '../ui/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')

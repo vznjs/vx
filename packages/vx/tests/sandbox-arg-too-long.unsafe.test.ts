@@ -6,7 +6,12 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
+import {
+  initSandbox,
+  resetSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+} from '../src/sandbox/runtime.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox arg-too-long test')
@@ -37,6 +42,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
         config: resolveSandboxConfig({}, dir),
       })
       expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
+      // Measured on the run's clock: Date.now() less it read as decades.
+      expect(r.durationMs).toBeLessThan(60_000)
       expect(r.stderr).toContain('E2BIG')
       expect(r.stderr).toMatch(
         /the command, with the args after -- and the sandbox's wrap, is \d+ KiB, and one argument to sh -c may hold at most 128 KiB on Linux/,

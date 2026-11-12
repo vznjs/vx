@@ -7,8 +7,13 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
-import { deniedCalls } from '../src/exec/sandbox-violations.js'
+import {
+  initSandbox,
+  resetSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+} from '../src/sandbox/runtime.js'
+import { deniedCalls } from '../src/sandbox/violations.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 describe('deniedCalls › a directory descriptor whose path holds a quote', () => {

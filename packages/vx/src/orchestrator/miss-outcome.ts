@@ -7,7 +7,7 @@ import type { Attempts } from './attempts.js'
 import type { KeyCheck } from './input-recheck.js'
 import type { MissRun } from './miss-run.js'
 import { failedOutputLog } from './output-log.js'
-import { misrootedWriteHint, perRunWriteHint, sandboxFix } from './sandbox-fix.js'
+import { misrootedWriteHint, perRunWriteHint, sandboxFix } from '../sandbox/index.js'
 
 export function missOutcome(
   m: MissRun,

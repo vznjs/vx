@@ -40,7 +40,6 @@ import {
 import { VERSION } from '../version.js'
 import {
   hostPlatform,
-  resetSandbox,
   signalExitCode,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
@@ -48,6 +47,7 @@ import {
   type TaskExecutor,
   type WorkerAdvice,
 } from '../exec/index.js'
+import { resetSandbox } from '../sandbox/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
@@ -93,7 +93,7 @@ function printTimings(): void {
 }
 import { detectColors, type ColorSupport } from '../ui/index.js'
 import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
-import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
+import { commandWriteReach, prepareSandbox } from '../sandbox/index.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
 import { settleProbedHit, unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'

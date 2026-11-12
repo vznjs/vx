@@ -8,8 +8,8 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { buildCustomConfig } from '../src/exec/sandbox-binds.js'
-import { pendingWriteGrants, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
+import { buildCustomConfig } from '../src/sandbox/binds.js'
+import { pendingWriteGrants, resolveSandboxConfig } from '../src/sandbox/runtime.js'
 
 describe.skipIf(process.platform !== 'linux')('the empty write grant report', () => {
   let root = ''

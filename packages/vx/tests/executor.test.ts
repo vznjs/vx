@@ -9,7 +9,7 @@ import {
   type TaskExecutor,
   type TaskPlacement,
 } from '../src/exec/index.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 
 function req(over: Partial<ExecuteRequest> = {}): ExecuteRequest {
   return {

@@ -2,7 +2,8 @@
 // executor's `exec.timeout`, and fail-fast withdrawing an attempt its
 // executor has not yet begun. One per attempt; settled when it ends.
 
-import { isLocalExecutor, signalExitCode, type ExecuteResult } from '../exec/index.js'
+import { signalExitCode, type ExecuteResult } from '../exec/index.js'
+import { isLocalExecutor } from './local-executor.js'
 import { killGraceMs } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { executorLabel } from './plugin-host.js'

@@ -348,7 +348,7 @@ describe("the sandboxing guide's failures", () => {
   })
 
   it('the write record is the one the sandbox writes', () => {
-    expect(readFileSync(path.join(SRC, 'exec', 'sandbox-violations.ts'), 'utf8')).toContain(
+    expect(readFileSync(path.join(SRC, 'sandbox', 'violations.ts'), 'utf8')).toContain(
       'line: `${syscall}(${raw}) = a write no grant covers  [${abs}]`',
     )
   })

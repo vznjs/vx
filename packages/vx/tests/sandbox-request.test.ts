@@ -33,7 +33,7 @@ import {
   sweepPlaceholders,
   untouchedPlaceholderLine,
   withheldLinkLine,
-} from '../src/orchestrator/sandbox-request.js'
+} from '../src/sandbox/request.js'
 import type { ExecConfig } from '../src/config.js'
 
 let root: string
@@ -667,7 +667,7 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
     },
   )
 
-  // The sweep of sandbox-binds.ts (B-7): `punchWalls` could lose the
+  // The sweep of sandbox/binds.ts (B-7): `punchWalls` could lose the
   // separator in its "under" test with the suite green. A wall that only
   // shares a grant's name prefix is not under it, and the grant stays whole.
   it.skipIf(process.platform !== 'linux')(

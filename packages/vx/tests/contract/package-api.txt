@@ -418,7 +418,7 @@ export async function sampleTrees(
   roots: readonly number[],
   skip?: ReadonlySet<string>,
 ): Promise<Map<number, TreeUsage>>
-== function sandboxRequestFor (src/orchestrator/sandbox-request.ts)
+== function sandboxRequestFor (src/sandbox/request.ts)
 export async function sandboxRequestFor(
   node: Pick<TaskNode, 'projectDir'>,
   sandbox: NonNullable<ExecConfig['sandbox']>,
@@ -442,7 +442,7 @@ export function section(title: string, ...rest: (Block | Inline)[]): Block
 export function splitTaskId(id: string): [project: string, task: string]
 == function status (src/ui/components.ts)
 export function status(t: Tone, verb: string, headline: Inline): Block
-== function sweepPlaceholders (src/orchestrator/sandbox-request.ts)
+== function sweepPlaceholders (src/sandbox/request.ts)
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 == function table (src/ui/components.ts)
 export function table(columns: readonly Column[], rows: readonly (readonly Inline[])[]): Block
@@ -1318,7 +1318,7 @@ export interface OutputView {
 export interface PersistentConfig {
   readyWhen?: string
 }
-== type Placeholder (src/orchestrator/sandbox-request.ts)
+== type Placeholder (src/sandbox/request.ts)
 export interface Placeholder {
   path: string
   mtimeMs: number
@@ -1572,7 +1572,7 @@ export interface ResolvedRemote {
   write: boolean
   readonly onError?: (err: Error) => void
 }
-== type ResolvedSandboxConfig (src/exec/sandbox-runtime.ts)
+== type ResolvedSandboxConfig (src/exec/executor.ts)
 export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
   allowWrite: readonly string[]
@@ -1885,13 +1885,13 @@ export interface SandboxIgnore {
   systemInfo?: readonly string[]
   network?: readonly string[]
 }
-== type SandboxRequest (src/orchestrator/sandbox-request.ts)
+== type SandboxRequest (src/sandbox/request.ts)
 export interface SandboxRequest {
   sandbox: NonNullable<ExecuteRequest['sandbox']>
   placeholders: Placeholder[]
   withheld: WithheldLink[]
 }
-== type SandboxViolation (src/exec/sandbox-runtime.ts)
+== type SandboxViolation (src/exec/executor.ts)
 export interface SandboxViolation {
   line: string
   timestamp: Date
@@ -2384,7 +2384,7 @@ export interface VxPlugin {
 export interface WatchSettings {
   poll?: boolean
 }
-== type WithheldLink (src/orchestrator/sandbox-request.ts)
+== type WithheldLink (src/sandbox/request.ts)
 export interface WithheldLink {
   dir: string
   name: string
@@ -2448,7 +2448,7 @@ export interface WorkspaceRules {
   exclusiveOutputs?: boolean
   dependencies?: readonly DependencyRule[]
 }
-== type WriteReach (src/orchestrator/sandbox-request.ts)
+== type WriteReach (src/sandbox/request.ts)
 export type WriteReach = 'none' | 'project' | 'workspace'
 == runtime values
 LOG_WIRE_VERSION = 1

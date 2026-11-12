@@ -3,7 +3,7 @@
 // (`forwardedSignal`), so one never spawned read 129 (SIGHUP) where its
 // spawned sibling read 143 under the same stop (2026-10-02).
 import { describe, expect, it } from 'bun:test'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import { forwardedSignal } from '../src/orchestrator/signals.js'
 
 const stopped = (reason: string) => {

@@ -804,7 +804,7 @@ a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
 proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
-`modules/exec.md` § The environment SRT sets). This
+`modules/sandbox.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
 - **Cache stability.** If every host env var entered the key, every

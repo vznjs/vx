@@ -9,7 +9,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { Cache, LayeredCache } from '../src/cache/index.js'
 import { resolveCache, resolveExecutors } from '../src/orchestrator/index.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import { testPlugin } from './helpers/plugin.js'
 
 const baseCtx = {
