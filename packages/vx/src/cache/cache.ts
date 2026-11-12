@@ -90,6 +90,8 @@ import {
   span,
   splitTaskId,
   xxh3hex,
+  decodeRaw,
+  rawEncode,
 } from '../util/index.js'
 import {
   ArchiveSecurityError,
@@ -865,7 +867,6 @@ function ensurePrivateDir(dir: string, make: boolean): string | null {
 // enumeration on the bench workspace before its generator ignored `.vx`. An
 // ignored directory is skipped by the walk entirely. Only written when
 // absent, so a user's own file wins.
-const utf8 = new TextEncoder()
 
 /**
  * The ignore file that keeps `cacheDir` out of git, and its text. The
@@ -3739,8 +3740,7 @@ export class Cache implements CacheLayer {
     }
     // Compressed before the write lock is taken: logs are most of what the
     // index held as text (v52).
-    const stdoutBlob =
-      scanned.stdout === '' ? null : await zstdCompress(utf8.encode(scanned.stdout))
+    const stdoutBlob = scanned.stdout === '' ? null : await zstdCompress(rawEncode(scanned.stdout))
 
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()
@@ -4680,15 +4680,13 @@ function inTree(p: string | undefined, tree: string): boolean {
   return p !== undefined && (p === tree || p.startsWith(`${tree}/`))
 }
 
-const utf8Decode = new TextDecoder('utf-8', { ignoreBOM: true })
-
 /**
  * An `entry_stdout` row's log (v52): a zstd frame of its UTF-8, which keeps
  * a leading U+FEFF a bound string loses. Null, no row, reads as ''. The
  * index is vx's own, so the frame is trusted, as a tree's files are.
  */
 export function storedLog(blob: Uint8Array | null): string {
-  return blob === null ? '' : utf8Decode.decode(Bun.zstdDecompressSync(blob))
+  return blob === null ? '' : decodeRaw(Bun.zstdDecompressSync(blob))
 }
 
 /**

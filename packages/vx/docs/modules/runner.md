@@ -242,8 +242,14 @@ held to its start; at the exit, `end` lets everything go; and an
   unescaped `;` or `&`, so they do not run as a command; one scan reads quotes,
   comments and heredoc bodies together, as sh does. The sandbox wrapper and the
   persistent path build the line the same way.
-- **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
-  bytes are corrupted.
+- **Encoding:** UTF-8 via `RawUtf8Decoder` (`src/util/raw-utf8.ts`), a
+  sequence split across reads held for the next. A byte that is not
+  UTF-8 is kept as a lone surrogate U+DC80+byte, which the terminal
+  writer (`ui/live-region.ts`) and the stored log (`cache/archive.ts`,
+  `entry_stdout`) turn back into the byte (`rawBytes` / `rawEncode`), so
+  the terminal and a hit's replay get the bytes the task wrote, not
+  U+FFFD (`tests/raw-output-bytes.test.ts`). Valid UTF-8 costs one
+  native decode, as before.
 
 The promise from `runCommand` always resolves (never rejects) with a
 `RunResult`:

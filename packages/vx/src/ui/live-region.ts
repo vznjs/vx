@@ -4,13 +4,14 @@
 // erases the region first, writes its content, then redraws, so the region
 // never interleaves with what scrolls above it.
 
+import { rawBytes } from '../util/index.js'
 import { dumbTerminal } from './theme.js'
 
 /** Erase the current line and return the cursor to column 0. */
 const CLEAR = '\x1b[2K\r'
 
 export interface StatusStream {
-  write(chunk: string): unknown
+  write(chunk: string | Uint8Array): unknown
   isTTY?: boolean
   /**
    * Terminal width in columns. Read fresh on every draw — `process.stdout`
@@ -103,10 +104,10 @@ function writeSliced(stream: StatusStream, text: string): void {
     // Never between the halves of a surrogate pair.
     const c = text.charCodeAt(end - 1)
     if (c >= 0xd800 && c <= 0xdbff) end--
-    stream.write(text.slice(at, end))
+    stream.write(rawBytes(text.slice(at, end)))
     at = end
   }
-  stream.write(at === 0 ? text : text.slice(at))
+  stream.write(rawBytes(at === 0 ? text : text.slice(at)))
 }
 
 export function createOutputWriter(
@@ -266,7 +267,7 @@ export function createOutputWriter(
       const lines = fitted(current!)
       const region = lines.join('\n')
       if (shown && region === shownText) {
-        if (text !== '') stream.write(text)
+        if (text !== '') stream.write(rawBytes(text))
         lastDraw = now()
         return
       }
@@ -275,7 +276,7 @@ export function createOutputWriter(
       shownRows = regionRows(lines)
       shownText = region
     }
-    if (text !== '') stream.write(text)
+    if (text !== '') stream.write(rawBytes(text))
     lastDraw = now()
   }
   /**
@@ -357,7 +358,7 @@ export function createOutputWriter(
       // Held stdout is older than this chunk.
       flushHeld()
       if (!enabled) {
-        target.write(chunk)
+        target.write(rawBytes(chunk))
         return
       }
       // What this stream holds is older than the chunk: it lands first,
@@ -369,8 +370,8 @@ export function createOutputWriter(
         shown = false
         shownRows = 0
       }
-      if (text !== '') stream.write(text)
-      target.write(chunk)
+      if (text !== '') stream.write(rawBytes(text))
+      target.write(rawBytes(chunk))
       if (!dead && current !== null && atLineStart && holds === 0) draw()
     },
     setStatus(line, o = {}) {
@@ -396,7 +397,7 @@ export function createOutputWriter(
         shown = false
         shownRows = 0
       }
-      if (text !== '') stream.write(text)
+      if (text !== '') stream.write(rawBytes(text))
     },
     hold() {
       if (!enabled || dead) return () => undefined
@@ -409,7 +410,7 @@ export function createOutputWriter(
         shown = false
         shownRows = 0
       }
-      if (text !== '') stream.write(text)
+      if (text !== '') stream.write(rawBytes(text))
       let released = false
       return () => {
         if (released) return

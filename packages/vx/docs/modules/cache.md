@@ -698,7 +698,7 @@ SQLite stores metadata, and the small artifacts above:
   `run_id` and `created_at` name the run that wrote the entry as it stands and when (v54).
 - **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
   so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
-  UTF-8 (v52), as text the logs outweighed every inline artifact.
+  bytes as the task wrote them (v52, `rawEncode`), as text the logs outweighed every inline artifact.
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at, run, …)`.
   `run` is the run's row in **`run_ids`** `(id, run_id)` (v53): the

@@ -76,7 +76,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { ignoreDir, UserError, writableUnder } from '../util/index.js'
+import { decodeRaw, ignoreDir, rawEncode, UserError, writableUnder } from '../util/index.js'
 import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import { LINK_MODE } from './output-index.js'
 import {
@@ -440,7 +440,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
     )
     if (modes !== undefined) meta.dirModes = modes
   }
-  const stdout = new TextEncoder().encode(args.stdout)
+  const stdout = rawEncode(args.stdout)
   const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
   const inputs: TarInput[] = [
     { name: STDOUT_ENTRY, size: stdout.byteLength, body: stdout },
@@ -607,7 +607,7 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
   for (const i of plan.inputs) {
     if (i.name === META_ENTRY) continue
     assertSafeName(i.name)
-    if (i.name === STDOUT_ENTRY) fold.stdout = utf8.decode(i.body as Uint8Array)
+    if (i.name === STDOUT_ENTRY) fold.stdout = decodeRaw(i.body as Uint8Array)
     fold.entry(i.name, i.size, times[i.name]?.[1] ?? 0)
   }
   // A stdout-only entry writes no file to make the directory.
@@ -656,7 +656,7 @@ export function planOfTree(
 ): ArtifactPlan {
   const meta: MetaFile = { version: 1, key, files: {} }
   if (exec !== undefined) meta.exec = exec
-  const out = new TextEncoder().encode(stdout)
+  const out = rawEncode(stdout)
   const inputs: TarInput[] = [{ name: STDOUT_ENTRY, size: out.byteLength, body: out }]
   const nameOf = (rel: string): string =>
     rel.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rel : `outputs/${rel}`
@@ -798,7 +798,7 @@ export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<Art
       continue
     }
     assertSafeName(e.name)
-    if (e.name === STDOUT_ENTRY) fold.stdout = await textOf(body)
+    if (e.name === STDOUT_ENTRY) fold.stdout = decodeRaw(await bytesOf(body))
     else await drain(body)
     fold.entry(e.name, e.size, e.mtimeMs)
   }
@@ -830,7 +830,7 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
     assertSafeName(e.name)
     const body = e.body()
     check.add(body)
-    if (e.name === STDOUT_ENTRY) fold.stdout = utf8.decode(body)
+    if (e.name === STDOUT_ENTRY) fold.stdout = decodeRaw(body)
     fold.entry(e.name, e.size, e.mtimeMs)
   }
   check.done()
@@ -1151,7 +1151,8 @@ export async function extractArtifactStream(
       fold?.entry(e.name, e.size, e.mtimeMs)
       const dest = x.destFor(e.name)
       if (dest === null || dest.rel.length === 0) {
-        if (fold !== undefined && e.name === STDOUT_ENTRY) fold.stdout = await textOf(body)
+        if (fold !== undefined && e.name === STDOUT_ENTRY)
+          fold.stdout = decodeRaw(await bytesOf(body))
         else await drain(body)
         continue
       }
