@@ -238,7 +238,7 @@ export function answerRuntime(
   workspaceRoot: string,
   workspace = false,
 ): Promise<string>
-== function applyMigration (src/workspace/migration.ts)
+== function applyMigration (src/orchestrator/migration.ts)
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
 == function branchCacheScope (src/workspace/config-schema.ts)
 export function branchCacheScope(repo: string, branch: string): string
@@ -1029,7 +1029,7 @@ export interface IngestMeta {
   inputComponents?: readonly TaskInputRow[]
   outputs?: DeclaredOutputs
 }
-== type Inline (src/ui/components.ts)
+== type Inline (src/util/styled.ts)
 export type Inline = string | Token | readonly Inline[]
 == type InputChanges (src/graph/outcome.ts)
 export interface InputChanges {
@@ -2083,7 +2083,7 @@ export interface StoreOptions {
 }
 == type StreamName (src/ui/terminal.ts)
 export type StreamName = 'out' | 'err'
-== type Style (src/ui/theme.ts)
+== type Style (src/util/styled.ts)
 export type Style =
   | 'ok'
   | 'warn'
@@ -2139,7 +2139,7 @@ export interface TaskExecutor {
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
-  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  footer?(): readonly (readonly [label: string, text: Inline])[]
   machines?(): readonly MachineReport[]
   idealMs?(): number | undefined
   advice?(): readonly WorkerAdvice[]
@@ -2370,13 +2370,13 @@ export interface TelemetrySink {
   onRunSummary?(summary: RunSummaryRecord): void
   flush?(signal: AbortSignal): Promise<void>
 }
-== type Token (src/ui/components.ts)
-interface Token {
+== type Token (src/util/styled.ts)
+export interface Token {
   readonly style: Style | 'id'
   readonly text: string
   readonly bold?: boolean
 }
-== type Tone (src/ui/theme.ts)
+== type Tone (src/util/styled.ts)
 export type Tone = 'ok' | 'warn' | 'error' | 'info'
 == type TreeUsage (src/exec/proc-sample.ts)
 export interface TreeUsage {

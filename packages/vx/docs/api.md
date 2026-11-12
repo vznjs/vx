@@ -80,7 +80,7 @@ export function answerRuntime(
 
 ## `applyMigration`
 
-function · `src/workspace/migration.ts`
+function · `src/orchestrator/migration.ts`
 
 Render a plan to files, refuse to overwrite without `force`, write (or
 print, under `dry`), and report. Returns the process exit code.
@@ -3114,7 +3114,7 @@ export interface TaskExecutor {
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
-  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  footer?(): readonly (readonly [label: string, text: Inline])[]
   machines?(): readonly MachineReport[]
   idealMs?(): number | undefined
   advice?(): readonly WorkerAdvice[]
