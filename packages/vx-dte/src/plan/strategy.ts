@@ -1,7 +1,7 @@
 // How a run schedules, as `dte({ scheduler })` names it: loaded with the
 // plugin, so it holds only the names and the booking rule.
 
-import type { Need } from './dispatch.js'
+import type { Need } from './model.js'
 
 /**
  * How a distributed run schedules, one choice per layer, so each can be

@@ -1,6 +1,8 @@
 import { expect, it } from 'bun:test'
 import { assign, ordered, type Bin } from '../src/plan/dispatch.ts'
-import { plan, simulate, type PlanTask, type PlanWorker, type Size } from '../src/plan/planner.ts'
+import type { PlanTask, PlanWorker, Size } from '../src/plan/model.ts'
+import { plan } from '../src/plan/plan.ts'
+import { simulate } from '../src/plan/play.ts'
 import { STRATEGIES, type Strategy } from '../src/plan/strategy.ts'
 
 const UNKNOWN_MS = 30_000

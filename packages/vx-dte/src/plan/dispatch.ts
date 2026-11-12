@@ -3,6 +3,7 @@
 // plan sizes the run the way the run packs it.
 
 import type { Strategy } from './strategy.js'
+import type { Need } from './model.js'
 
 /**
  * `ids` (waiting, in the order they got ready) in the order `how` takes
@@ -176,28 +177,6 @@ export function dispatch<B extends Bin>(
  * even 2 (2026-11-05).
  */
 const SAMPLE = 16
-
-/** What a task asks of a worker: its history's cores and peak memory. */
-export interface Need {
-  readonly cores: number
-  readonly memory: number
-  /** It filled a machine this big last time: only a bigger one takes it, if any worker is. */
-  readonly above?: { readonly cores: number; readonly memory: number } | undefined
-  /** The platform it runs on (`ExecuteRequest.platform`): only a worker of it takes it. */
-  readonly platform?: string | undefined
-  /**
-   * What it counts for when the plan sizes the run, when that is not what
-   * it books: an unmeasured task books next to nothing, so it goes to any
-   * free core, but a run of only such tasks still asks enough workers.
-   */
-  readonly ask?: { readonly cores: number; readonly memory: number } | undefined
-  /**
-   * Its persistent dependencies' bases, cores (`server-fit.ts`): a worker
-   * not running one yet books its base once beside the task, and keeps it
-   * booked while it serves.
-   */
-  readonly servers?: readonly { readonly id: string; readonly cores: number }[] | undefined
-}
 
 /** A worker as dispatch sees it: its size and what is in use on it now. */
 export interface Bin {

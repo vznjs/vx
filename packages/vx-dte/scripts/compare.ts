@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { assign, ordered } from '../src/plan/dispatch.js'
-import type { PlanTask } from '../src/plan/planner.js'
+import type { PlanTask } from '../src/plan/model.js'
 import { DEFAULT_STRATEGY, type Strategy } from '../src/plan/strategy.js'
 import { simulate, type SimTask } from '../tests/sim.js'
 

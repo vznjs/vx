@@ -1,20 +1,16 @@
 import { expect, it } from 'bun:test'
 import type { TaskNode } from '@vzn/vx'
+import { advise } from '../src/plan/advise.js'
 import {
-  advise,
-  candidates,
-  decide,
-  type Forecast,
   knownMisses,
   missedWork,
-  plan,
   planTasks,
-  simulate,
-  sized,
   type PlanTask,
   type PlanWorker,
   type Size,
-} from '../src/plan/planner.js'
+} from '../src/plan/model.js'
+import { candidates, decide, type Forecast, plan } from '../src/plan/plan.js'
+import { simulate, sized } from '../src/plan/play.js'
 import replay from './fixtures/main-run-2026-10-23.json'
 import input89 from './fixtures/plan-input-bf52a3e.json'
 

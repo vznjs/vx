@@ -7,15 +7,7 @@
  * 21% more CPU than the least that ends at the critical path, on graphs
  * of 12 to 20 tasks solved exactly (lab, 2026-11-11).
  */
-import type { PlanTask, PlanWorker, Size } from './planner.js'
-
-/**
- * What a running task has left: past its time, as long again as it is
- * over, not none. Counted as ending now, a filler running three times its
- * history kept the room a critical task was held, the plan started no
- * worker for it, and it waited 100 s (2026-11-10).
- */
-export const leftMs = (endsIn: number): number => (endsIn >= 0 ? endsIn : -endsIn)
+import { leftMs, type PlanTask, type PlanWorker, type Size } from './model.js'
 
 /** A worker of the packing: what it holds through time. */
 interface Bay {
