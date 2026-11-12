@@ -1573,7 +1573,17 @@ export function plan(
   spreadMs: (size: string) => number = () => 0,
 ): Plan & Ahead {
   const warm = warmOf(warmUpMs)
-  const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
+  // Each next one of a size joins a spread later, as packed: joining at
+  // once, a play of six new workers ended 13 s before any packing could,
+  // and the run asked six for one 4 s lint each (main bf52a3e, 2026-11-12).
+  const nth = new Map<string, number>()
+  for (const w of workers)
+    if (w.starting === true && w.size !== undefined) nth.set(w.size, (nth.get(w.size) ?? 0) + 1)
+  const added = candidates.map((s, i) => {
+    const k = nth.get(s.name) ?? 0
+    nth.set(s.name, k + 1)
+    return fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name) + k * spreadMs(s.name))
+  })
   // Two warm-ups ahead: a worker asked now joins after one, and the next
   // plan, a warm-up on, sees the one after.
   const horizon =

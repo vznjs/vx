@@ -16,6 +16,7 @@ import {
   type Size,
 } from '../src/planner.js'
 import replay from './fixtures/main-run-2026-10-23.json'
+import input89 from './fixtures/plan-input-bf52a3e.json'
 
 const small: Size = { name: 'small', max: 12, cpu: 4, memory: 16e9 }
 const WARM = 20_000
@@ -964,4 +965,34 @@ it('books a server’s base once per worker, beside each dependant’s own cores
   const serving = worker('w', { serving: new Map([['s#db', 2]]) })
   expect(simulate(tasks, [serving])).toBe(2_000)
   expect(simulate(tasks.slice(0, 2), [serving])).toBe(1_000)
+})
+
+// Main bf52a3e at 89 s: 18 tasks left, 12 of them lints that each take a
+// whole worker. Its play started six new workers as if all joined at
+// once, ended 13 s before any packing, and the run asked six workers for
+// one lint each. Joining a spread apart, as asked workers do, the
+// packing ends within the bound on the workers the run has.
+it('plays new workers a join spread apart, as it packs them', () => {
+  const inp = JSON.parse(JSON.stringify(input89), (_k, v) => (v === 'Infinity' ? Infinity : v))
+  const map = (o: object | undefined) => new Map(Object.entries(o ?? {}))
+  const workers = inp.workers.map((w: PlanWorker & { serving?: object; holds?: object }) => ({
+    ...w,
+    ...(w.serving === undefined ? {} : { serving: map(w.serving) }),
+    ...(w.holds === undefined ? {} : { holds: map(w.holds) }),
+  }))
+  const warm = map(inp.warmUps) as Map<string, number>
+  const spreads = map(inp.spreads) as Map<string, number>
+  const p = plan(
+    inp.tasks,
+    workers,
+    inp.sizes,
+    (s) => warm.get(s ?? '') ?? 20_000,
+    true,
+    inp.limitMs ?? Infinity,
+    undefined,
+    (s) => spreads.get(s) ?? 0,
+  )
+  expect(p.unpacked).toBeUndefined()
+  expect(p.start).toEqual([])
+  expect(p.endsInMs).toBeLessThanOrEqual(p.boundMs)
 })
