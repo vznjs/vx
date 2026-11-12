@@ -3,8 +3,7 @@
 // orchestrator would place it. The best end is all N's; one of the N
 // starts only when a task reaches its latest start for that end with no
 // room elsewhere. The run plays again at each event: a miss
-// found, a task done, a worker joined, history read (2026-10-23: "its
-// a TETRIS game. every time we get new data we refine next step").
+// found, a task done, a worker joined, history read.
 
 import {
   assign,
@@ -44,7 +43,7 @@ interface Wake {
 /**
  * `t`'s time on `s`: on fewer cores than it asks, it shares them, as
  * on a worker. Counted whole, a plan let the last 4-core worker go and
- * ran 4-core tasks on 2 cores at half pace, 6% late (lab, 2026-11-11).
+ * ran 4-core tasks on 2 cores at half pace, 6% late.
  */
 const msOn = (t: PlanTask, s: { readonly cores: number }): number =>
   (t.ms ?? UNKNOWN_MS) * (Number.isFinite(t.cores) ? Math.max(1, t.cores / s.cores) : 1)
@@ -56,8 +55,7 @@ const RISK = 2
  * How many times its chain a task's latest start leaves before the end:
  * history is a guess, and a task with slack that waits on it ran late
  * when tasks took up to 3 times theirs. Counted once, 0.5 to 3 times off
- * ended 2.2% late against 1.1% for starting at once; three times, 0.7%
- * (lab, 2026-11-10: "Wall time > efficiency").
+ * ended 2.2% late against 1.1% for starting at once; three times, 0.7%.
  */
 const CHAIN_TIMES = 3
 /** Lanes a core: what a play's claims count room in. */
@@ -108,15 +106,12 @@ export function play(
   workers: readonly PlanWorker[],
   how: Strategy,
   // Played no further: past it the rest ends no sooner than its longest
-  // chain from there (2026-11-05: "We can plan as we go till next level";
-  // "it can look ahead 2 warmups").
+  // chain from there.
   horizon = Infinity,
   // Given, a worker is started only when a ready task needs it: none
   // started or running has room for it before its latest start (this
   // less its chain), so a task with slack waits for room the run pays
-  // for anyway, and the critical path never waits (2026-11-10: "start
-  // them when economically the best ... Otherwise we spawn as soon as
-  // possible").
+  // for anyway, and the critical path never waits.
   deadline?: number,
   // Read for its wakes only: it ends once no dormant one is left to start.
   wakesOnly = false,
@@ -140,7 +135,7 @@ export function play(
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) runningIds.add(r.id)
   const { byId, after, afterAt, indexOf, waitedAt, tailOf, tailAt, riskAt, blindAt, kinds } =
     shapeOf(tasks, runningIds)
-  // By place, not id: maps keyed by id were a 5000-task play's most time (2026-11-05).
+  // By place, not id: maps keyed by id were a 5000-task play's most time.
   const waits = waitedAt.slice()
   // Econ plays keep room for tasks about to be ready (`holdFor`): each
   // task's dependencies not started yet, and when the last started ends.
@@ -184,14 +179,14 @@ export function play(
   })
   // Ready tasks, ordered again only once one joins (`graphene`: or
   // leaves): each step sorted every ready task, and a run of 9000 spent
-  // its orchestrator planning (2026-10-25).
+  // its orchestrator planning.
   const ready = new Ready(tasks, kinds)
   let joining = tasks.filter((_, i) => waits[i] === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
   const kept: Kept[] = []
   // Proved to fail, as `assign` would skip it: yielded to it, each ask was
-  // most of a plan of 3,800 tasks (2026-11-11).
+  // most of a plan of 3,800 tasks.
   const proved: Proof = {
     one: (place) =>
       unstarted !== undefined &&
@@ -204,7 +199,7 @@ export function play(
   // least of these, and a pass ends once no slot takes that.
   const needs = new Map<string, { cores: number; memory: number; n: number }>()
   // Their least, read again only once a kind on it leaves: each step read
-  // every kind, and 9000 kinds made it quadratic (2026-10-25).
+  // every kind, and 9000 kinds made it quadratic.
   let floor: { cores: number; memory: number } | undefined
   const count = (t: PlanTask, by: number): void => {
     const k = ready.kindOf(t.id)
@@ -300,7 +295,7 @@ export function play(
   /**
    * The dormant ones it started, in order, after those still joining
    * with nothing given: a task late before any joined took a new one
-   * over one already asked (2026-11-10).
+   * over one already asked.
    */
   const woken: Slot[] =
     deadline === undefined
@@ -368,12 +363,12 @@ export function play(
       )
     // A new one only when it gives sooner than the room the play already
     // pays for: past its latest start, a task of no history woke one
-    // each, at 7.6 times the least worker time (2026-11-10).
+    // each, at 7.6 times the least worker time.
     const s = dormant.find((x) => suits(x, t))
     const fresh = s === undefined ? Infinity : Math.max(s.warm, r)
     if (into === undefined || intoAt > Math.max(latest, now) + 1e-6) {
       // None to start: assign gives it room as it frees, not a lane of
-      // the future (a 6000-task plan claimed those for 21 s, 2026-11-10).
+      // the future.
       if (s === undefined) return false
       if (into !== undefined && intoAt <= fresh) return (giveAt(t, into, intoAt), true)
       s.dormant = false
@@ -394,7 +389,7 @@ export function play(
    * first task got ready; else a dormant one starts for it. Ranked by
    * chain, the waiting at their latest start come first, so a step reads
    * only those: each waiting one checked against each worker at each
-   * step planned 9000 in a minute (2026-11-10). Whether it gave or
+   * step planned 9000 in a minute. Whether it gave or
    * started one now.
    */
   const wake = (by: number): boolean => {
@@ -408,8 +403,7 @@ export function play(
       changed = true
     }
     // With no worker left to start, a task takes only room that frees by
-    // its latest start, never past `by`: with none such, none is read
-    // (9000 ready tasks, each read at each step past the end, 2026-11-10).
+    // its latest start, never past `by`: with none such, none is read.
     const room = dormant.length > 0 || woken.some((x) => x.lanes![0]! <= Math.max(by, now) + 1e-6)
     // Unset, not Infinity: a whole worker is asked as Infinity cores.
     let failed: number | undefined
@@ -436,7 +430,7 @@ export function play(
     if (joining.length > 0 || ready.stale) {
       // By the longest chain, those still ready keep their order and the
       // joining are merged in: sorted again with each join, a 9000-task
-      // tree sorted 17 million a plan (2026-10-25).
+      // tree sorted 17 million a plan.
       const merge = how.order === 'critical-path' && !ready.stale
       const order = ordered(
         (merge ? joining : [...ready.live(), ...joining]).map((t) => t.id),
@@ -467,10 +461,10 @@ export function play(
         if (s.drainAt !== undefined && s.drainAt > now) nextJoin = Math.min(nextJoin, s.drainAt)
       }
     }
-    // With none ready nothing is given: a third of a sim's steps (2026-11-05).
+    // With none ready nothing is given: a third of a sim's steps.
     // Nor with no worker room for the least ready: holds keep room only
     // from the asks, which `assign` then reads none of. Each step held for
-    // a worker's count of tasks on full workers (2026-11-11).
+    // a worker's count of tasks on full workers.
     if (
       unstarted !== undefined &&
       readyCount > 0 &&
@@ -491,7 +485,7 @@ export function play(
       // A play read only for its wakes holds for the first few: for four
       // a worker, the plan of 3,800 tasks spent 1.4 s of its 1.5 there.
       // With eight, 0.4 s, the same workers woken on the lab's graphs,
-      // its run 2% sooner (2026-11-11). None woke a worker for each
+      // its run 2% sooner. None woke a worker for each
       // task a filler blocked: 15 asked where 3 do.
       holdFor(joined, soon.slice(0, wakesOnly ? 8 : 4 * joined.length + 8))
     }
@@ -576,7 +570,7 @@ export function play(
       const h = ready.first()
       // Read from its chain first, as `wake` reads it: past that, by its
       // risk alone, a guessed chain whose risk was past and chain was not
-      // started no worker, and the play never ended (2026-11-11).
+      // started no worker, and the play never ended.
       if (h !== undefined) {
         const chain = deadline - tailOf(h.id) * CHAIN_TIMES
         const latest = deadline - riskAt(indexOf.get(h.id)!) * CHAIN_TIMES
@@ -595,7 +589,7 @@ export function play(
         if (s.platform !== undefined) cores.set(s.platform, (cores.get(s.platform) ?? 0) + s.cores)
       }
       // A running task's rest on its own platform too: counted on all
-      // alone, a Mac fewer read the Linux end later (2026-11-07).
+      // alone, a Mac fewer read the Linux end later.
       for (const e of ends.all()) {
         const w = e.cores * (e.at - now)
         work.set(undefined, (work.get(undefined) ?? 0) + w)
@@ -606,7 +600,7 @@ export function play(
       for (const [p, w] of work) end = Math.max(end, now + w / Math.max(cores.get(p) ?? 0, 1e-9))
       // A ready task had no room this step: none before the next change.
       // Counted from now, a 4-core one behind a 2-core task to 122 s read
-      // as ending in time, and no worker was asked for it (lab, 2026-11-11).
+      // as ending in time, and no worker was asked for it.
       for (const t of ready.live()) end = Math.max(end, next + tailOf(t.id))
       for (const e of ends.all())
         for (const d of (e.place >= 0 ? afterAt(e.place) : after.get(e.id!)) ?? [])
@@ -658,8 +652,7 @@ interface End {
 
 /**
  * A play's ends to come, soonest first, ties in the order given: a scan
- * of every running task at each step was most of a 20 000-task play
- * (2026-11-05).
+ * of every running task at each step was most of a 20 000-task play.
  */
 class Ends {
   private readonly heap: End[] = []
@@ -739,7 +732,7 @@ interface Shape {
 /**
  * `tasks`' shape, made once while what runs stays the same: a plan plays
  * them 20 to 40 times, and each play made it again, its tails and kinds
- * too (2026-11-05).
+ * too.
  */
 function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shape {
   const runs = [...running].sort().join('\0')
@@ -760,7 +753,7 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
   let indexOf: { get(id: string): number | undefined }
   if (num !== undefined) {
     // By the run's numbers, not ids: a map of a million ids, made and
-    // read at each plan, was most of its time (2026-11-06).
+    // read at each plan, was most of its time.
     const place = new Int32Array(num.ids.length).fill(-1)
     for (let i = 0; i < tasks.length; i++) place[tasks[i]!.n!] = i
     // Indexed: iterators over a million tasks' deps were a third of the shape.
@@ -777,7 +770,7 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
     }
   } else {
     // One map by id, the rest by place: a map of each by id made a
-    // 10 000-task plan's shape a third of its time (2026-11-05).
+    // 10 000-task plan's shape a third of its time.
     const of = new Map<string, number>()
     for (let i = 0; i < tasks.length; i++) of.set(tasks[i]!.id, i)
     let e = 0
@@ -785,7 +778,7 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
     indexOf = of
   }
   // Each task's dependants in one array, by place: an array each, pushed
-  // to, was most of a million-task shape (2026-11-06).
+  // to, was most of a million-task shape.
   const start = new Int32Array(tasks.length + 1)
   for (let e = 0, i = 0; i < tasks.length; i++) {
     const deps = tasks[i]!.deps
@@ -864,11 +857,11 @@ interface Kinds {
 /**
  * Each task's kind, made as a play first reads it: made for every task,
  * a million float-to-string keys were a fifth of a plan, and a play
- * windowed to two warm-ups reads few of them (2026-11-06).
+ * windowed to two warm-ups reads few of them.
  */
 function lazyKinds(tasks: readonly PlanTask[]): (place: number) => string {
   // Packed: an array of holes filled by place read as a dictionary, most
-  // of a 3,800-task plan of varied needs (2026-11-11). No kind is empty.
+  // of a 3,800-task plan of varied needs. No kind is empty.
   const kinds = Array.from<string>({ length: tasks.length }).fill('')
   return (i) => kinds[i] || (kinds[i] = kindOf(tasks[i]!))
 }
@@ -894,7 +887,7 @@ export function chainMs(tasks: readonly PlanTask[], workers: readonly PlanWorker
   let most = 0
   for (const w of workers) for (const r of w.running) most = Math.max(most, leftMs(r.endsIn))
   // From the running tasks' dependants: each task's deps read by id was
-  // most of a million-task plan's bound (2026-11-06).
+  // most of a million-task plan's bound.
   const from = new Float64Array(tasks.length)
   for (const [id, ds] of after)
     for (const i of ds) from[i] = Math.max(from[i]!, endsAt.get(id) ?? 0)
@@ -912,14 +905,13 @@ type Played = ReturnType<typeof play>
  * `kept` less each of `added` (its last ones, in the order the run would
  * start them) the run ends as soon without, tried last first. Sizes come in
  * turns, so a prefix holds ones it ends as soon without: a second Mac the
- * plan needed came after a second Linux worker it did not, and main e118ccf
- * cancelled that one unjoined (2026-10-24). Dropped when the end moves no
+ * plan needed came after a second Linux worker it did not, and the run
+ * cancelled that one unjoined. Dropped when the end moves no
  * later and its platform's moves no further than the margin, or still ends
  * two warm-ups before the run: room for runners the CI queues. To the run's
  * end alone, a 110 s guess of an unmeasured chain cut every other platform
  * to it; to its platform's alone, 4 Macs started for work 2 ended 40 s
- * before the Linux work (main a1950a2, 2026-11-07: "we optimize for total
- * wall time"). The live plan and the footer's advice both trim by it.
+ * before the Linux work. The live plan and the footer's advice both trim by it.
  */
 export function dropSpare(
   added: readonly PlanWorker[],
@@ -932,7 +924,7 @@ export function dropSpare(
     const w = added[i]!
     // Its twin after it stayed, and nothing moved since: without this
     // one the play is that one's again, so it stays too. Each was a
-    // play of the whole run (2026-11-05).
+    // play of the whole run.
     if (i < added.length - 1 && !dropped && twins(w, added[i + 1]!)) continue
     const without = out.filter((k) => k !== w)
     // Given no task in a whole play, the play without it is the same.
@@ -977,12 +969,12 @@ export function fresh(
  * `need`, kept to the sizes with room for all of it when some sizes have
  * none: alone on an empty worker any task fits, so a 4-core task ran on
  * 2 cores at half speed while 8-core sizes went unasked, 59% late on
- * graphs of 2- to 16-core sizes (2026-11-11), and a 25 GB one was
+ * graphs of 2- to 16-core sizes, and a 25 GB one was
  * advised a 16 GB worker. Bigger is more cores when every size with
  * the cores has the memory, else more memory. Only `platform`'s sizes
  * count: against all, a 3.6-core lint on 4-core Linux sizes asked for a
  * bigger one, as a 4-core ARM size fit it, and was packed onto no new
- * worker (main a234741, 2026-11-12).
+ * worker.
  */
 export function sized(
   need: Need,
@@ -1138,10 +1130,10 @@ const BLOCK = 1 << BLOCK_BITS
 /**
  * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
  * reads them in that order, a kind it found spent skipped in one jump,
- * where it read every ready task each step (2026-10-25). A task is its
+ * where it read every ready task each step. A task is its
  * place in the play's tasks, and its rank (`before`) is fixed once it
  * joins: rebuilt with each join, a 9000-task tree hashed every ready
- * task 17 million times a plan (2026-10-25).
+ * task 17 million times a plan.
  */
 class Ready {
   private readonly at: Kinds['at']
@@ -1165,7 +1157,7 @@ class Ready {
   private readonly classSpan = new Map<number, [number, number, number]>()
   /** Each kind's first task not taken. */
   private readonly head = new Map<string, number>()
-  /** No task before this place in `order` is left: a pass began at 0 and read 9000 taken ones (2026-10-25). */
+  /** No task before this place in `order` is left: a pass began at 0 and read 9000 taken ones. */
   private lo = 0
   /** Order it again before the next step. */
   stale = false
@@ -1332,7 +1324,7 @@ class Ready {
       }
     }
     // Only the kinds it joins: each join read every kind and every ready
-    // task, and a 6000-task tree spent 2 s of a 5 s plan on it (2026-11-05).
+    // task, and a 6000-task tree spent 2 s of a 5 s plan on it.
     for (const [k, q] of by) {
       const had = this.kinds.get(k)
       if (had === undefined) {
@@ -1388,7 +1380,7 @@ class Ready {
       yield* this.byClass(spent, bounds, kinds, skip)
       return
     }
-    // Arrays, not the maps: the scan below is most of a sim's time (2026-11-05).
+    // Arrays, not the maps: the scan below is most of a sim's time.
     const ks: string[] = []
     const qs: (readonly number[])[] = []
     for (const [k, q] of this.kinds) {
@@ -1412,7 +1404,7 @@ class Ready {
         if (p === q.length) continue
         // A kind no bin fits or holds for is spent here, as `assign` would
         // spend it once read: yielded, each cost a sim of 300 tasks a
-        // pass over the bins (2026-11-05). Bounds only shrink until a
+        // pass over the bins. Bounds only shrink until a
         // bin is given, which clears `spent`.
         if (bounds !== undefined && dead(this.tasks[q[p]!]!, bounds)) {
           spent.add(k)
@@ -1436,7 +1428,7 @@ class Ready {
    * As a read of every ready task in rank order, past each taken, spent
    * or `dead` one, but jumping across the cores' classes: a class whose
    * every task no bin fits, by the span its tasks asked, is passed whole. Read one by one, the ready
-   * tasks of a 5000-task play were most of its time (2026-11-05). A task
+   * tasks of a 5000-task play were most of its time. A task
    * found dead stays dead until a bin is given, and a give only shrinks
    * the bins' room, so the read goes past it for the rest of the pass.
    */
@@ -1456,7 +1448,7 @@ class Ready {
     // Each class's first not taken nor spent, as last read: `spent` only
     // grows until a give clears it, so the read goes on from there. Read
     // again from `at` each step, the spent ones were most of a plan of
-    // varied needs (2026-11-11).
+    // varied needs.
     const unspent = new Int32Array(cs.length)
     // Each class's next to yield this step, or -1.
     const cand = new Int32Array(cs.length)
@@ -1506,7 +1498,7 @@ class Ready {
       cursor = next
       // Past each skipped one, only its class reads on: the others' next
       // stand while `spent` does. Read again across every class, a plan of
-      // varied needs spent most of its time here (2026-11-11).
+      // varied needs spent most of its time here.
       let again = false
       while (skip?.one(next) === true) {
         // As a step reads its class: past the dead, then past the spent.
@@ -1546,7 +1538,7 @@ class Ready {
   /**
    * Past each block of `q` from `r` that `proof` proves fails whole: one
    * by one, the ready tasks read past were most of a plan of varied needs
-   * (2026-11-11). A dead one passed so stays unspent, and its kind's next
+   *. A dead one passed so stays unspent, and its kind's next
    * is dead alike, so spent then.
    */
   private leap(q: readonly number[], r: number, proof: Proof): number {

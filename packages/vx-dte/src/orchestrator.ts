@@ -2207,7 +2207,7 @@ export class Orchestrator {
   }
 
   /**
-   * The workers the plan places on (`planner.ts`): each online, what it
+   * The workers the plan places on (`plan/`): each online, what it
    * runs and how long that has left by `ms`, and each still starting,
    * joining after its size's `warmUpMs` from its ask. With them, the tasks they run.
    */

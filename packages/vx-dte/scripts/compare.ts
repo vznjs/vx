@@ -134,7 +134,7 @@ function stack(bars: Bar[]): Bar[] {
 }
 
 /**
- * The planner's ideal packer (`planner.ts` simulate), each task kept: the
+ * The planner's ideal packer (`plan/play.ts` simulate), each task kept: the
  * tasks on machines that are up at `ups`, from `t0`, as each fits.
  */
 function lay(

@@ -8,7 +8,7 @@ export type Home = string | ((node: TaskNode) => string | undefined)
  * no history starts workers for its work rather than one for all of it.
  */
 export const UNKNOWN_MS = 30_000
-/** A worker's warm-up before one has joined: CI's took 15 to 23 s (main, 2026-10-23). */
+/** A worker's warm-up before one has joined: CI's took 15 to 23 s. */
 export const WARM_UP_MS = 20_000
 /** How much later than the best a plan may end: a few seconds, or 5%. */
 export const MARGIN_MS = 5_000
@@ -148,7 +148,7 @@ export interface Plan {
    * When the plan starts each task, from now: none is given before, so
    * it runs where the plan has room for it then. Ready sooner than played
    * (its upstream a hit), one took the room planned for a shard and the
-   * run ended 7 s late (tests/sim.test.ts, 2026-11-11). Undefined: the
+   * run ended 7 s late (tests/sim.test.ts). Undefined: the
    * last one's stands.
    */
   readonly after?: ReadonlyMap<string, number>
@@ -156,7 +156,7 @@ export interface Plan {
    * Of `after`, those the plan starts as they get ready: one ready sooner
    * goes to its worker at once, if that joined. Held to its planned start,
    * a chain's next step waited 11 s past an upstream of no history that
-   * ended sooner than guessed (lab, 2026-11-11).
+   * ended sooner than guessed.
    */
   readonly asap?: ReadonlySet<string>
   /** The workers `placed` names that the run starts, of each size, in the order they join. */
@@ -221,8 +221,7 @@ const SLOWDOWN_MS = 20_000
  * `forecast` ms), at least 1, once they had 20 s of history: the plan
  * stretches what is left by it. A task past its forecast was planned to
  * end now, so a run whose tasks took twice theirs planned 27 s left for
- * 100 s, asked a worker, cancelled it as not needed, and asked again (PR
- * #4192, 2026-10-23).
+ * 100 s, asked a worker, cancelled it as not needed, and asked again.
  */
 export function slowdown(done: Iterable<{ took: number; forecast: number | undefined }>): number {
   let took = 0
@@ -277,8 +276,7 @@ export function planTasks(
   home?: Home,
 ): PlanTask[] {
   // The graph is the run's, fixed: each task is numbered and its deps
-  // walked once a run, not at each plan (2026-11-05: a 5000-task sim
-  // spent a quarter here), and read by one lookup (2026-11-06).
+  // walked once a run, not at each plan, and read by one lookup.
   let num = numbers.get(nodes)
   if (num === undefined) {
     const of = new Map<string, Node>()
@@ -295,7 +293,7 @@ export function planTasks(
     e.deps = []
     // Each once: a group's deps joined as lists held a task once per path
     // to it, and a diamond of groups 380 projects deep listed 2e9 for
-    // one task's 570; the first plan never returned (2026-11-11).
+    // one task's 570; the first plan never returned.
     const out = new Set<string>()
     for (const d of e.node.deps) {
       const x = of.get(d)
@@ -353,10 +351,10 @@ export function planTasks(
  * one that did, its key folding that one's. An uncached task runs every
  * time, so it is work before it is handed over, and changes no dependant's
  * key (check.bun, under every install). Counted only once handed over,
- * main e38d1d2's first plan missed check.build-cold behind its install and
- * asked one Mac for a 37 s lane that ran to 120 s (2026-10-24).
+ * a first plan missed check.build-cold behind its install and
+ * asked one Mac for a 37 s lane that ran to 120 s.
  * Groups and hits are no work: counted, 85 hits of 109 tasks asked 6
- * workers where 2 did (main, 2026-10-23).
+ * workers where 2 did.
  */
 export function missedWork(
   remaining: Iterable<string>,
@@ -392,7 +390,7 @@ export function missedWork(
  * while a task of that platform has not ended (`left`). A hit core's probe
  * found can still miss when its restore fails, and only a worker of its
  * platform runs it: main let its one arm worker go, check.binary.linux-arm64
- * came back as a miss, and the run waited out its timeout (2026-11-06).
+ * came back as a miss, and the run waited out its timeout.
  */
 export function keepLast(
   workers: readonly PlanWorker[],
@@ -427,8 +425,8 @@ export function keepLast(
  * The tasks a plan counts as missed: those handed over to run, the
  * misses core's probe found, and of the commit's forecast (`likely`) only
  * those still `remaining`. One the probe found held left `remaining`, and
- * kept in the forecast its dependants counted as work: main e3c76a2 asked
- * workers for 121 tasks, and 16 ran (2026-10-23).
+ * kept in the forecast its dependants counted as work: a run asked
+ * workers for 121 tasks, and 16 ran.
  */
 export function knownMisses(
   likely: ReadonlySet<string>,
@@ -466,6 +464,6 @@ export interface Need {
  * What a running task has left: past its time, as long again as it is
  * over, not none. Counted as ending now, a filler running three times its
  * history kept the room a critical task was held, the plan started no
- * worker for it, and it waited 100 s (2026-11-10).
+ * worker for it, and it waited 100 s.
  */
 export const leftMs = (endsIn: number): number => (endsIn >= 0 ? endsIn : -endsIn)

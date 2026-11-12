@@ -59,7 +59,7 @@ export function advise(
 ): Advice {
   if (ran.length === 0) return {}
   // A task goes only where its peak memory fits: alone on an empty worker
-  // any task fits, and a 25 GB one was advised a 16 GB worker (2026-11-11).
+  // any task fits, and a 25 GB one was advised a 16 GB worker.
   const tasks = ran.map((t) => ({ ...t, ...sized(t, sizes) }))
   // First a worker each of them fits, as the live plan starts one.
   const bigger = tasks.flatMap((t) =>
@@ -158,7 +158,7 @@ export function advise(
     if (got === undefined) continue
     // Each held from its ask to its last task's end, warm-up and idle
     // cores counted: charged to the run's end, one small task's worker
-    // cost as much as the busiest (2026-11-11).
+    // cost as much as the busiest.
     tried.push({ fleets: got.fleets, coreMs: got.held, workers: got.kept.length })
   }
   let any: Fleets | undefined

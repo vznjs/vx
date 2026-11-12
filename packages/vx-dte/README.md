@@ -971,7 +971,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did, and
     every uncached task, which runs every time; groups and hits need no worker. The run plays
-    that work out on its workers and on N more (`src/plan/planner.ts`), each new
+    that work out on its workers and on N more (`src/plan/`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and the best end is the one with all N. A worker counts its cores

@@ -829,7 +829,7 @@ export function dte(options: DteOptions = {}) {
       let again: ReturnType<typeof setTimeout> | undefined
       // The workers the run's known work needs to end as soon as all
       // would, each started when a task needs it, played out
-      // (`planner.ts`); idle ones it does without leave. Again at each miss, finish, join and history read.
+      // (`plan/`); idle ones it does without leave. Again at each miss, finish, join and history read.
       const shape = (remaining: ReadonlySet<string>): void => {
         // This run's for the size, else an earlier run's, else any size's
         // this run, else the default.
