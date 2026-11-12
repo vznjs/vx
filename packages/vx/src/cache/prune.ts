@@ -195,7 +195,7 @@ async function pruneIndex(
   // Before any entry is deleted, so a kept entry's pending snapshot is on
   // disk whatever the eviction does next. A pruned hash's snapshot cannot
   // orphan rows in either order: landed first, the cascade takes them;
-  // landed after, the flush's own entry check drops them (item 628).
+  // landed after, the flush's own entry check drops them.
   ix.outputs.flushOutputDirs()
   const { olderThanMs, maxBytes, dry = false } = options
   if (olderThanMs === undefined && maxBytes === undefined) {
@@ -204,8 +204,8 @@ async function pruneIndex(
 
   // Rows whose artifact is gone (deleted by hand, or by a disk cleaner):
   // never a hit, and their bytes are on no disk, but `--max-size` counted
-  // them and evicted real entries to make room for them (item 975). None
-  // is evicted or freed, whatever its age (item 1081); the ones past the
+  // them and evicted real entries to make room for them. None
+  // is evicted or freed, whatever its age; the ones past the
   // grace window are dropped.
   const { phantoms, stale, rows, inline } = await phantomRows(ix)
   const picked = pickVictims(
@@ -236,7 +236,7 @@ async function pruneIndex(
     // Artifacts first: a row whose artifact is gone reads as a miss, so the
     // order is safe, and on a full disk the delete's own journal needs the
     // space the unlinks free. Rows-first failed there before any file went,
-    // and the one verb meant to free a full disk freed nothing (A-14). An
+    // and the one verb meant to free a full disk freed nothing. An
     // inline artifact goes with its rows, in their transaction.
     await Promise.all(
       hashes
@@ -269,7 +269,7 @@ async function pruneIndex(
   }
   // History and memo rows a month old go with a prune, never a run's
   // close: five DELETEs on every run's exit was its slowest step
-  // (2026-10-18). `invocations` shares the window with `runs`, or `vx last`
+  //. `invocations` shares the window with `runs`, or `vx last`
   // would list a run whose task rows are gone.
   const orphans = await reapOrphans(ix, picked.files)
   // An evicted entry's deleted pages (an inline artifact, a row and a

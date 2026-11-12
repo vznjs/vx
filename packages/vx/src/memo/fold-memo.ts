@@ -3,7 +3,7 @@
 // records and the declaration that picks among them (`filesToken`). Equal
 // probes are equal folds, so a warm task's key is read back instead of
 // resolving and folding its files again: ~300 ms of a 5,000-project warm
-// run (2026-10-17). One row per task, rewritten when its probe moves; a
+// run. One row per task, rewritten when its probe moves; a
 // pure memo, so a lost or swept row is one fold more.
 
 import type { Database } from 'bun:sqlite'
@@ -39,7 +39,7 @@ export class IndexFoldMemo implements FoldMemo {
   }
 
   // A page SQLite cannot read reached `vx run` as a raw `SQLiteError` and a
-  // stack (2026-11-11). A memo it cannot read is no memo: every fold is
+  // stack. A memo it cannot read is no memo: every fold is
   // made afresh, and the entries' own reads refuse the file by name.
   private readable(taskId: string): FoldMemoRow | null | undefined {
     try {

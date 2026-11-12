@@ -145,7 +145,7 @@ function inTree(p: string | undefined, tree: string): boolean {
  * the save could have packed it (`restorableOutput`: a `!` take-back, vx's
  * own files and an unnamed `node_modules` are none). Asked at ingest and
  * again at every restore, so an entry that reached the local store by any
- * route still writes nothing it should not (2026-10-16).
+ * route still writes nothing it should not.
  */
 export function declaredName(declared: DeclaredOutputs): (name: string, dir?: boolean) => boolean {
   const isFile = restorableOutput(declared.files)
@@ -189,7 +189,7 @@ export async function restoreOutputs(
       }
     }
     // Bad bytes under a good key failed the task on every run until
-    // `--force`, since nothing rewrote them (J's lead, nx#30338). The
+    // `--force`, since nothing rewrote them. The
     // entry goes, and the caller runs the task, whose save stores it
     // again; running is always correct, only slower than a hit.
     if (ix.write && !(await dropUnchanged(ix, hash, used.rows)))
@@ -315,7 +315,7 @@ export function treePlan(
  * and every directory on the way either is a real directory or is absent
  * and made here. solid's build outputs `store/dist/**` beside the sources
  * in `store/`; asking that each output's TOP be absent sent every such
- * restore through the tar extractor, ~25 ms a task (2026-10-22). The
+ * restore through the tar extractor, ~25 ms a task. The
  * files of each absent top directory are copied into the workspace's
  * `.vx/tmp/` (`copyStaging`) and the directory renamed in once, so a
  * reader finds it complete or not at all; one staging cannot rename into
@@ -358,7 +358,7 @@ async function copyTree(
   // anything else (a file, a link), which the extractor's rules decide.
   // Synchronous: the walk before this one looked these paths up, so each
   // answer is a cached dentry, and the async form cost a 1,600-restore run
-  // ~40 ms of its main thread in promises (2026-11-07).
+  // ~40 ms of its main thread in promises.
   const standing = new Map<string, 'dir' | 'absent' | 'other'>()
   const at = (rel: string): 'dir' | 'absent' | 'other' => {
     let known = standing.get(rel)
@@ -422,7 +422,7 @@ async function copyTree(
   // once, as the extractor does: copied in place, a reader met its files
   // empty, then short. A file missing from a directory that stands is
   // copied straight to its place: a temp renamed in cost such a restore
-  // a fifth to a third more (tmpfs, 3,000 files, 2026-11-06).
+  // a fifth to a third more (tmpfs, 3,000 files).
   if (roots.length === 0 && placed.length === 0) return true
   // A restore into a project directory not there yet makes it, as the
   // copy in place did.
@@ -460,11 +460,10 @@ async function copyTree(
   }
   // Per file, not `fs.promises.cp` of the tree (14.5 ms for vueuse's 92
   // tree files against 1.9; `cpSync` 3.5), nor a Worker: the copies are
-  // 1.9 ms of a 25 ms restore, and one Worker's start is 1.5–2.4 ms
-  // (2026-11-11).
+  // 1.9 ms of a 25 ms restore, and one Worker's start is 1.5–2.4 ms.
   // A tree file is asked its type first: a FIFO at its place (damage at
   // rest) blocked the copy's open for a writer that never came, and the
-  // run hung (2026-11-11). An lstat, not an open of our own handed to Bun:
+  // run hung. An lstat, not an open of our own handed to Bun:
   // Bun clones only from a path, and a link there is damage too.
   const copy = async (to: string, from: string, rel: string): Promise<number> => {
     if (lstatSync(from, { throwIfNoEntry: false })?.isFile() === false)
@@ -624,10 +623,10 @@ async function restoreOutputsOnce(
   // What the `ENOENT` mapping in that catch carries alone is the CLASS,
   // and the two ask for opposite answers — a prune raced this run (run
   // the task) versus the cache holds bad bytes (fail, and say so). The
-  // roundtrip row asserts the class (item 481); a row that only asserts
-  // "the restore fails" passes with the mapping deleted. It was a
-  // separate `exists()` probe until item 627: one thread-pool round trip
-  // per restore, spent to learn what the read reports itself.
+  // roundtrip row asserts the class; a row that only asserts
+  // "the restore fails" passes with the mapping deleted. A separate
+  // `exists()` probe would cost one thread-pool round trip per restore, to
+  // learn what the read reports itself.
   const endRows = span('restore: rows')
   // The index says exactly which files this entry materializes. If the
   // archive cannot produce one of them, restoring "successfully" leaves a
@@ -639,7 +638,7 @@ async function restoreOutputsOnce(
   // An inline artifact and its rows are read in one read transaction, so
   // one snapshot: a re-save of the key in another process replaces both
   // in one commit, and two reads could pair its rows with the old bytes.
-  // The probe's held rows (X-162) serve only while the blob carries the
+  // The probe's held rows serve only while the blob carries the
   // `at` the probe saw: a re-save or a renewal since moves it, and then
   // the rows are read again in the blob's snapshot. A file artifact's
   // re-save is caught after, by its rows (`restoreOutputs`).
@@ -650,7 +649,7 @@ async function restoreOutputsOnce(
   // moves the tree aside in the commit that adds its blob, and one moved
   // aside mid-copy is the race `copyTree` catches); an inline one is the
   // blob read alone, its own snapshot. The blob read and its transaction
-  // cost a 1,600-restore run ~70 ms of its main thread (2026-11-07).
+  // cost a 1,600-restore run ~70 ms of its main thread.
   const held = fresh ? undefined : ix.outputs.heldRowsOf(hash)
   const heldAt = ix.heldInlineAt.get(hash)
   let treeIno: number | undefined
@@ -706,7 +705,7 @@ async function restoreOutputsOnce(
   // One tar reader and one extractor either way; only the decode differs
   // by size. A large artifact is decoded and read as it streams, so the
   // restore costs a chunk of memory, not 4× the artifact (measured
-  // 2026-09-03 on 150 MiB: +644 MiB in memory, +49 MiB streamed, same
+  // on 150 MiB: +644 MiB in memory, +49 MiB streamed, same
   // wall time). A small one is decoded in one call: the stream setup
   // costs ~35 µs per artifact, which is 4% of the headline restore row
   // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
@@ -718,7 +717,7 @@ async function restoreOutputsOnce(
   try {
     // Every step here is an async filesystem call on purpose: a
     // synchronous restore of a small artifact is 2× faster ALONE (1.25 →
-    // 0.62 ms sequential, 2026-09-10) and 30% slower in the run, where
+    // 0.62 ms sequential) and 30% slower in the run, where
     // four workers overlap their round trips and a blocking one stalls
     // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
     const accept = outputs === undefined ? undefined : declaredName(outputs)
@@ -772,23 +771,23 @@ async function restoreOutputsOnce(
     // unsafe now is damaged or tampered bytes: a long name's pax record
     // has no header checksum, and the name is judged before the CRC at
     // the end is read. Thrown as is, it failed the task on every run with
-    // the entry kept (X-115).
+    // the entry kept.
     if (err instanceof ArchiveSecurityError) throw new CorruptArtifactError(hash, err.message, err)
     // What is on disk, not what is in the archive: a directory standing
     // where the entry holds a file, or a file where it needs a directory.
     // The restore removes the FILES the output globs select that block it
     // and the directories that removal emptied, so this is a path it left: one
     // the globs do not cover, or an empty directory where a file goes,
-    // which `dist/**` covers and the clean does not take (item 1094).
+    // which `dist/**` covers and the clean does not take.
     // Named as such, not as a corrupt artifact. A
     // link on the way never lands here: the extractor writes through one
     // that stays in the project, dangling or not, and names one that
-    // leaves it or loops (item 748).
+    // leaves it or loops.
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'EISDIR' || code === 'ENOTDIR' || code === 'EEXIST' || code === 'ENOTEMPTY') {
       // Bun's message already opens with the code: `EEXIST: EEXIST: …` read
       // as a stutter. EEXIST and ENOTDIR are a FILE in a directory's
-      // place; the told-backwards sentence named only the reverse (X-7).
+      // place; the told-backwards sentence named only the reverse.
       const msg = (err as Error).message
       const what =
         code === 'EISDIR' || code === 'ENOTEMPTY'
@@ -801,7 +800,7 @@ async function restoreOutputsOnce(
     }
     // A legal name under a destination deep enough that the two together
     // pass PATH_MAX: the artifact is fine, the workspace's location is
-    // not (the parity audit's last open archive row, item 670).
+    // not.
     if (code === 'ENAMETOOLONG') {
       throw new UserError(
         `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${(err as Error).message}). ` +
@@ -812,7 +811,7 @@ async function restoreOutputsOnce(
     // `dist/` another user owns, a read-only checkout, a full disk: the
     // artifact is intact, the tree is not the process's to change.
     // A refusal to READ the artifact is the cache directory's, not the
-    // outputs': the old line sent the reader to the wrong tree (A-40).
+    // outputs': the old line sent the reader to the wrong tree.
     // A tree copy's error can name its source; no read fails ENOSPC.
     if (
       isFsRefusal(err) &&
@@ -845,7 +844,7 @@ async function restoreOutputsOnce(
       )
     }
     // The process is out of descriptors: the artifact is fine, and
-    // calling it corrupt sent the reader after the cache (A-39).
+    // calling it corrupt sent the reader after the cache.
     if (isOutOfFds(err)) {
       throw new UserError(
         `restore of ${hash} into ${projectDir} could not open a file (${err.message}) — ${OUT_OF_FDS_HINT}`,
@@ -871,7 +870,7 @@ async function restoreOutputsOnce(
     // A staged file the restore itself just wrote is gone before its
     // commit: another process cleaned the same outputs under us (two runs
     // on one workspace, a `vx watch` beside a `vx run` — a clean landing
-    // 4–32 ms into a 2,000-file restore reproduces it, 2026-09-16). The
+    // 4–32 ms into a 2,000-file restore reproduces it). The
     // artifact is intact; the tree was not ours alone.
     if (code === 'ENOENT' && /\.vx-tmp-|[\\/]\.vx[\\/]tmp[\\/]/.test((err as Error).message)) {
       throw new UserError(

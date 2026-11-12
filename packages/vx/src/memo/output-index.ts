@@ -113,7 +113,7 @@ export class OutputIndex {
    * the rows land in one transaction at the first read, at prune, at
    * stats or at close — the way `accessed_at` bumps do — instead of one
    * commit per task: 1,000 of them were the whole `output dir snapshots`
-   * stage, 47–72 ms at run end (item 622).
+   * stage, 47–72 ms at run end.
    */
   private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
   /**
@@ -121,7 +121,7 @@ export class OutputIndex {
    * lstat'ed, by absolute path: the `isOutputsCurrent` a hit asks next, in
    * the same synchronous check, reads an ancestor's mode here, not from a
    * second stat of the same directory (1,600 of a 9,603-task warm run's
-   * stats, 2026-11-10). Taken by that call whatever it asks, so a mode is
+   * stats). Taken by that call whatever it asks, so a mode is
    * never read past it.
    */
   private dirModes: Map<string, number> | undefined
@@ -134,7 +134,7 @@ export class OutputIndex {
   /**
    * The rows the last batched probe loaded, by hash: a hit's restore and
    * the stamps after it read their rows here instead of the index, twice
-   * a restore (X-162). Read for path, size, mode and mtime only; a stamp
+   * a restore. Read for path, size, mode and mtime only; a stamp
    * taken since is the overlay `loadOutputFilesBatch` adds. Dropped when
    * an entry's rows are replaced, and replaced by the next probe; rows
    * held for an entry since pruned serve a restore that finds no artifact.
@@ -268,7 +268,7 @@ export class OutputIndex {
    * `distinct`: `hashes` as a JSON array with no hash twice, which the probe
    * has to hand. The rows are then joined from it, not filtered by an `IN`
    * that builds a lookup of every hash first: ~1.5 ms of 8,002 hits, and as
-   * much again for `loadOutputDirsBatch` (2026-11-07). A repeated hash
+   * much again for `loadOutputDirsBatch`. A repeated hash
    * would repeat its rows, hence the caller's promise.
    */
   loadOutputFilesBatch(hashes: readonly string[], distinct?: string): Map<string, OutputFileRow[]> {
@@ -333,12 +333,12 @@ export class OutputIndex {
     const known = this.dirModes
     this.dirModes = undefined
     if (expected.length === 0) return true
-    // statSync, deliberately. The async form measured faster on 2026-09-02,
-    // when a hit walked its whole output tree; since the directory
+    // statSync, deliberately. The async form measured faster when a hit
+    // walked its whole output tree; since the directory
     // short-circuit (`outputDirsCurrent`) a warm hit stats a handful of
     // paths, and each async stat costs a thread-pool round trip the
     // scheduler cannot overlap away (its concurrency is the worker count).
-    // Re-measured 2026-09-09, 1,000 warm hits, interleaved A/B: the run
+    // Re-measured on 1,000 warm hits, interleaved A/B: the run
     // graph stage 100 → 54 ms, the whole process 422 → 368 ms.
     const results = expected.map((e) => {
       try {
@@ -363,9 +363,9 @@ export class OutputIndex {
           // entry: two entries whose outputs carry one fixed mtime (a
           // `tar -x`, `cp -p`, SOURCE_DATE_EPOCH) and one size matched
           // each other's rows, and a hit left the other entry's bytes in
-          // place under a green run (item 886). No task sets a ctime; the
+          // place under a green run. No task sets a ctime; the
           // inode is weaker than it looks, since ext4 gives a restore's new
-          // file the inode the clean freed (item 941). A row without a stamp
+          // file the inode the clean freed. A row without a stamp
           // (an ingest, a changed file at stamping) is never current. The
           // residual: a same-size rewrite, in place or as a new file on the
           // same inode, inside the coarse clock tick of the stamp, with the
@@ -395,7 +395,7 @@ export class OutputIndex {
    * tree that equals the entry's set. The run takes it at run end, when
    * the directories are past the racy window, and by then another task or
    * process may have written into them: `holds` is asked with the files
-   * the walk saw, and a tree it refuses records nothing (item 1087).
+   * the walk saw, and a tree it refuses records nothing.
    * Symlinked directories are not descended (the output walk refuses them
    * too). Over `OUTPUT_DIRS_CAP` directories the one row left says so; on
    * any error the rows are cleared. Either way the next hit keeps the walk.
@@ -413,7 +413,7 @@ export class OutputIndex {
     // Synchronous, like the stats of `isOutputsCurrent`: an async lstat and
     // readdir per directory are two thread-pool round trips, and a
     // root-anchored glob's snapshot of solid's 47 directories took 4 ms of
-    // the run's end that way (2026-10-22).
+    // the run's end that way.
     const walk = (rel: string, isPrefix = false): boolean => {
       const abs = path.join(projectDir, rel)
       let st
@@ -424,7 +424,7 @@ export class OutputIndex {
         // `dist/**`, medusa's `.medusa/**`) is recorded ABSENT: the check
         // then asks that it still not exist. Refusing the snapshot instead
         // made every such task re-glob its outputs on every warm hit — all
-        // 83 of medusa's, 210 ms of a 2.5 s no-op (2026-09-11).
+        // 83 of medusa's, 210 ms of a 2.5 s no-op.
         if (isPrefix) {
           rows.push([rel, ABSENT_DIR_MTIME])
           return true
@@ -433,7 +433,7 @@ export class OutputIndex {
       }
       if (!st.isDirectory()) {
         // A literal output naming a file walked its glob on every hit: two
-        // of this repo's site tasks, ~6 ms of each warm run (U-5).
+        // of this repo's site tasks, ~6 ms of each warm run.
         if (!isPrefix || !st.isFile()) return false
         rows.push([rel, FILE_PREFIX_MTIME])
         files.push(rel)
@@ -533,7 +533,7 @@ export class OutputIndex {
   /** Land every pending stamp and snapshot in one transaction each; a null snapshot clears its rows. */
   flushOutputDirs(): void {
     // A memo either way: on a full disk the pending rows are dropped (the
-    // next hit walks, or restores), never a failed run (A-14).
+    // next hit walks, or restores), never a failed run.
     try {
       this.flushPending()
     } catch (err) {
@@ -682,7 +682,7 @@ export interface OutputDirRow {
  * nothing, keep the walk. 256 refused payload's `@payloadcms/ui#build`
  * (535 directories, 4,069 files), which then paid the refused snapshot's
  * walk AND the output glob on every warm no-op — 65 ms of a 320 ms run
- * (2026-09-11). Rows are 60 bytes each and the check is one stat per
+ *. Rows are 60 bytes each and the check is one stat per
  * directory, so the cap is a bound on pathological trees, not a budget.
  */
 export const OUTPUT_DIRS_CAP = 8192
@@ -700,7 +700,7 @@ export const OUTPUT_DIRS_OVER_CAP = -3
  * (a kernel tick, up to 10 ms), so a write landing in the same tick as the
  * one that made the directory's recorded mtime leaves the mtime unchanged
  * and the change invisible — git's index distrusts stats this young for
- * the same reason (a stray survived a hit on the ubuntu job, 2026-09-03).
+ * the same reason (a stray survived a hit on a Linux CI job).
  * The next hit walks, and once the tree is older than the window it is
  * recorded for good.
  */

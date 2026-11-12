@@ -44,7 +44,7 @@ export function stampGrainMs(stampMs: number): number {
  * "Now" as the file system will stamp the next write, not as `Date.now()`
  * reads it: a stamp read off a file written in `dir` (the run's cache
  * dir), and every later write's mtime and ctime is at or after it. Linux before 6.13 stamps from its coarse clock, a tick behind the
- * fine clock `Date.now()` reads — on the Linux bench box 2026-09-11, 2 of
+ * fine clock `Date.now()` reads — on a Linux box, 2 of
  * 3,000 tight writes carried an mtime 5.8 ms EARLIER than a `Date.now()`
  * taken before the write, and more under CPU load. That lag is under the
  * one `measureFsClockLag` applies, so a window that asks "written after
@@ -65,14 +65,14 @@ const BYTE = new Uint8Array(1)
  * The stamp of a one-byte write to a file held open in `dir` and unlinked
  * at once, so nothing is left there and a later call is a write and an
  * fstat. A file made, stat'ed and removed per call cost every cached task
- * 91 us of the main thread on a cold 9,603-task run (0.9 s, 2026-11-11):
+ * 91 us of the main thread on a cold 9,603-task run (0.9 s):
  * a create and an unlink take the directory's lock beside the tasks'
  * writes. One fd for the last dir asked: a process that runs many
  * workspaces (a test file) holds no more. Undefined when `dir` cannot take
  * the file. Since 6.13 Linux stamps a file whose times were read since its
  * last change from its fine clock, as this one's are, and raises the floor
  * of every coarse stamp after it to that: no later write to another file
- * was stamped before it (0 of 20,000 on 6.18, 2026-11-11).
+ * was stamped before it (0 of 20,000 on 6.18).
  */
 function stampIn(dir: string): number | undefined {
   try {
@@ -123,12 +123,12 @@ export const FILE_HASH_RACY_MS = 50
  * some NFS mounts) stamps a write at 12:00:00.900 as 12:00:00, so a write
  * later in that second keeps the stamp, and a stat 120 ms after the first
  * write passed a 50 ms window: the memo served the first bytes' digest for
- * a same-size rewrite 120 ms on (A-2, reproduced on an ext2 mount). A stamp
+ * a same-size rewrite 120 ms on (reproduced on an ext2 mount). A stamp
  * with no sub-second part is read as such a second and widens the window by
  * it, as git judges racy entries at its index's own granularity. FAT32
  * keeps even seconds, so an even stamp widens by two: a hash 1.2 s after
  * one passed the single second and a rewrite later in the pair kept every
- * field (A-38). Pass the UNFLOORED stamp: a kernel's nanosecond stamp lands
+ * field. Pass the UNFLOORED stamp: a kernel's nanosecond stamp lands
  * on a whole second about once in 10^9, one set through a millisecond
  * `utimes` once in a thousand, and either is then trusted up to two seconds
  * later — never wrongly. And every window is widened by how far the file

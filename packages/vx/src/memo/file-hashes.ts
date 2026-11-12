@@ -76,7 +76,7 @@ export class FileHashStore {
   knownBlobSizes(oids: readonly string[]): Map<string, number> {
     const out = new Map<string, number>()
     // An empty memo (a cold cache) answers nothing: 40,030 lookups there
-    // cost a 9,603-task run 57 ms before its first task (2026-11-01).
+    // cost a 9,603-task run 57 ms before its first task.
     if (this.db.query('SELECT 1 FROM blob_sizes LIMIT 1').get() === null) return out
     for (let i = 0; i < oids.length; i += 900) {
       const chunk = oids.slice(i, i + 900)
@@ -224,7 +224,7 @@ export class FileHashStore {
   /**
    * `hashFile` for many paths at once, with ONE memo query. The per-file
    * form costs a SQLite point lookup each; a warm config load keys 1,000
-   * closures that way (7.7 ms of `get` in a 2026-09-09 profile), where one
+   * closures that way (7.7 ms of `get` in a profile), where one
    * `IN` query over all of them costs well under a millisecond. Same stat
    * fields, same racy-clean rule, same digest. A path that cannot be
    * stat'ed is absent from the result (the caller decides what a missing
@@ -397,7 +397,7 @@ export class FileHashStore {
  * mode unless that is a plain file's (100644). A blob OID holds no mode, so
  * a `chmod +x` or a symlink swapped for a file of its target's bytes kept
  * the key while `git status` and `--affected` saw the change, and the task
- * replayed the old output (item 887). The plain mode stays unprefixed, so
+ * replayed the old output. The plain mode stays unprefixed, so
  * only executables and symlinks moved key. `hashFile` spells it the same
  * way from a stat.
  */

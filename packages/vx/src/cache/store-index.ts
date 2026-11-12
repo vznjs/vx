@@ -57,7 +57,7 @@ export interface SchemaReset {
   to: string
 }
 
-/** The refusal for an index SQLite cannot read, at the open or at any later read or write (A-8). */
+/** The refusal for an index SQLite cannot read, at the open or at any later read or write. */
 function unreadableIndexError(dbFile: string, err: unknown): UserError {
   return new UserError(
     `the cache index ${dbFile} is not a database SQLite can read (${(err as Error).message}) — ` +
@@ -72,7 +72,7 @@ const SQLITE_PATH_MAX = 512 - '-journal'.length
 /**
  * SQLite reports a descriptor it could not get as `SQLITE_CANTOPEN`, never
  * `EMFILE`, so an open under a low `ulimit -n` reached the user as a bare
- * `vx: SQLiteError: unable to open database file` (D's lead, A-56). One
+ * `vx: SQLiteError: unable to open database file`. One
  * open of a file that exists says which it was. Any other `CANTOPEN` is
  * the path itself.
  */
@@ -89,7 +89,7 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
     )
   }
   // SQLite's unix VFS opens no path past 512 bytes, the `-journal` it may
-  // add counted: a long one was blamed on permissions (2026-11-10).
+  // add counted: a long one was blamed on permissions.
   const bytes = Buffer.byteLength(path.resolve(dbFile))
   if (bytes > SQLITE_PATH_MAX) {
     return new UserError(
@@ -100,7 +100,7 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
     )
   }
   // Any other: a directory, or a file this user may not open, where the
-  // index goes. It reached every verb as a stack (2026-10-28).
+  // index goes. It reached every verb as a stack.
   return new UserError(
     `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ` +
       'it is not a file this user can open; move it away and re-run (vx rebuilds the index)',
@@ -208,7 +208,7 @@ export const DEFAULT_STORE: StoreOptions = {
 }
 
 /**
- * An `entry_stdout` row's log (v52): a zstd frame of its UTF-8, which keeps
+ * An `entry_stdout` row's log: a zstd frame of its UTF-8, which keeps
  * a leading U+FEFF a bound string loses. Null, no row, reads as ''. The
  * index is vx's own, so the frame is trusted, as a tree's files are.
  */
@@ -294,8 +294,7 @@ export class StoreIndex {
   /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
    * and dropped every table. The next open sees the current version and
-   * reports null. vx prints nothing for it: the cache is vx's to keep
-   * (2026-10-06).
+   * reports null. vx prints nothing for it: the cache is vx's to keep.
    */
   readonly schemaReset: SchemaReset | null = null
 
@@ -329,8 +328,7 @@ export class StoreIndex {
      * the index: a schema it cannot read is refused, named, and left as it
      * was. `'preview'`: a dry prune or a `--dry` plan, which reads such an
      * index as the reset the real prune or run does first leaves it, empty,
-     * with the store still reached, so it names what that prune takes
-     * (item 1083).
+     * with the store still reached, so it names what that prune takes.
      */
     mode: 'open' | 'inspect' | 'preview' = 'open',
     /**
@@ -351,12 +349,12 @@ export class StoreIndex {
     // read-only cache for every reader (`vx show`, `why`, `last`, the
     // doctor, the watch sweep): the write axis goes off, so the file-hash
     // memo skips its upserts instead of dying in SQLite on the first miss (an unprivileged user on
-    // a root-owned `.vx`, 2026-09-16). A run wants more than a quiet
+    // a root-owned `.vx`). A run wants more than a quiet
     // read-only cache — `assertWritable()`.
     // A reading verb over a directory with no index yet reads an empty one
     // in memory and makes nothing on disk: `vx last --cache-dir .vx/cahce`
     // created the typo's directory, a `.gitignore` and a database, then
-    // said "no recorded runs yet" (item 900).
+    // said "no recorded runs yet".
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
     let absent = mode !== 'open' && !existsSync(dbFile)
@@ -377,7 +375,7 @@ export class StoreIndex {
     // A directory this user cannot write with no index in it yet: SQLite
     // cannot make one, and its `unable to open database file` stack reached
     // the user before `assertWritable` could name the directory (a
-    // read-only mount, Growth's parity run 2026-10-16). Nothing there to
+    // read-only mount). Nothing there to
     // read, so an empty index in memory, as a reader's typo gets.
     const memory = absent || (this.writeBlocked !== null && !existsSync(dbFile))
     this.empty = memory
@@ -393,11 +391,11 @@ export class StoreIndex {
     // pragma takes a lock of its own, and set after it the timeout did not
     // cover it — two CLI runs opening one cache at the same instant met
     // `database is locked` right here, on macOS's slower disk first
-    // (2026-09-16, the run lock's own e2e; the lock is taken after the
+    // (the lock is taken after the
     // cache opens, so the open is the one moment two runs still overlap).
     // A file SQLite cannot read as a database answers the first statement
     // that reads it, and reached every verb as `SQLiteError: file is not a
-    // database` and a stack, `vx run` and the doctor included (item 1005).
+    // database` and a stack, `vx run` and the doctor included.
     const readable = <T>(read: () => T): T => {
       try {
         return read()
@@ -427,14 +425,14 @@ export class StoreIndex {
       // index otherwise deletes them, and a cache directory this user may
       // not write (a CI cache restored read-only) cannot make them again:
       // every open there failed `attempt to write a readonly database`
-      // before the not-writable refusal could name the directory (O-10).
+      // before the not-writable refusal could name the directory.
       if (!absent) this.db.fileControl(SQLITE_FCNTL_PERSIST_WAL, 1)
       // Any non-negative limit makes the last clean close truncate a
       // persistent `-wal` to zero bytes once it is checkpointed (SQLite's
       // walClose). At the default (-1) it kept every frame, so each later
       // connection recovered them at open and copied them into the
       // database again at its close: 738 frames, 4.5 MB, on a 1,000-project
-      // cache. The file stays (O-10 above); 64 MiB is far above what a run
+      // cache. The file stays; 64 MiB is far above what a run
       // writes, so the limit never trims a WAL mid-run.
       this.db.exec('PRAGMA journal_size_limit = 67108864')
       this.db.exec('PRAGMA synchronous = NORMAL')
@@ -448,7 +446,7 @@ export class StoreIndex {
     })
 
     // Schema-version gate runs BEFORE the rest of the schema lands so
-    // a column rename (e.g. v15's `sha256` → `content_hash`) actually
+    // a column rename (e.g. `sha256` → `content_hash`) actually
     // takes effect on stale DBs. Pre-alpha: no migrations, just drop
     // and recreate. Artifacts on disk become orphans: a lookup never
     // sees them (rows first, then the file), the next save of the same
@@ -457,7 +455,7 @@ export class StoreIndex {
     //
     // The write half runs under the write lock and reads the row again: two
     // processes opening one NEW cache both read no row, and the second
-    // insert died on the primary key (upstream survey, nx#28608). A warm
+    // insert died on the primary key. A warm
     // open reads the current version and takes no lock.
     const readVersion = (): string | undefined =>
       (
@@ -466,8 +464,7 @@ export class StoreIndex {
           | undefined
       )?.value
     // Any other schema is reset by an opener that may write it: the index is
-    // an inventory the artifacts rebuild, whichever vx wrote it
-    // (2026-10-06; a newer one used to be refused, item 896). A reading verb
+    // an inventory the artifacts rebuild, whichever vx wrote it. A reading verb
     // leaves it as it was.
     const refuseUnreadable = (found: string): void => {
       if (mode !== 'open') {
@@ -524,7 +521,7 @@ export class StoreIndex {
       }
     }
 
-    // Where the entry tables live (v32): `store_dir` names the shared store
+    // Where the entry tables live: `store_dir` names the shared store
     // this index was last opened with; absent, the index holds them itself.
     const recorded = readable(
       () =>
@@ -674,8 +671,8 @@ export class StoreIndex {
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
     // after an upgrade misses everything, in silence: the cache is vx's to
-    // keep (2026-10-06). The version is recorded for whoever reads the
-    // index by hand; a reading verb writes nothing (item 1080).
+    // keep. The version is recorded for whoever reads the
+    // index by hand; a reading verb writes nothing.
     const format = this.db
       .prepare("SELECT value FROM schema_meta WHERE key = 'cache_version'")
       .get() as { value: string } | null
@@ -692,10 +689,10 @@ export class StoreIndex {
 /**
  * Run `op` against the index, mapping SQLite's "not a database" — a page
  * corrupt past the ones the open reads — to the open's own refusal. The
- * open reads the header and `schema_meta` alone (item 1005), so a file
+ * open reads the header and `schema_meta` alone, so a file
  * corrupt deeper answered the first lookup that reached the bad page: every
  * task of a run failed as an "internal error", and `vx cache clean` printed
- * a stack (A-8). Every other error passes through as it was.
+ * a stack. Every other error passes through as it was.
  */
 export function guard<T>(ix: StoreIndex, op: () => T): T {
   const refuse = (err: unknown): never => {
@@ -866,7 +863,7 @@ function attachStore(
 /**
  * The store is an inventory of the artifacts beside it, and only this vx
  * reads it: a store another `SCHEMA_VERSION` wrote has its tables dropped
- * (2026-10-06), the artifacts kept. Each is indexed again from its
+ *, the artifacts kept. Each is indexed again from its
  * own bytes on its next hit (`adopt`). A reading verb reads such a store
  * as empty and changes nothing. Creates the store's tables either way.
  */
@@ -993,7 +990,7 @@ function matchArtifactLayout(ix: StoreIndex, schema: 'main' | 'store'): void {
  * args after `--`): xxh3 under a random salt this store keeps. `vx why`
  * and its JSON print it, and an unkeyed xxh3 in
  * a public CI log let anyone confirm or brute-force a short secret
- * (L-4). Salted, a digest still says whether a value changed, and says
+ *. Salted, a digest still says whether a value changed, and says
  * nothing without this cache's `schema_meta`. Asked for on a miss only.
  */
 export function digestValue(ix: StoreIndex, value: string): string {
@@ -1070,7 +1067,7 @@ export function flushAccessed(ix: StoreIndex): void {
   const inline = [...ix.staleInline]
   ix.staleInline.clear()
   // LRU bookkeeping: on a full disk the bumps are dropped, never the prune
-  // or the stats that asked for them (A-14).
+  // or the stats that asked for them.
   try {
     if (inline.length > 0) {
       const { test, params } = inHashes(inline)

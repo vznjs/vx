@@ -39,7 +39,7 @@ function withIndex<T>(cacheDir: string, use: (db: Database) => T): T | undefined
   }
   try {
     // As `Cache` opens it: wait for another run's write, and keep `-wal`
-    // and `-shm` when this is the last connection to close (O-10).
+    // and `-shm` when this is the last connection to close.
     db.exec('PRAGMA busy_timeout = 5000')
     db.fileControl(SQLITE_FCNTL_PERSIST_WAL, 1)
     db.exec('PRAGMA journal_size_limit = 67108864')

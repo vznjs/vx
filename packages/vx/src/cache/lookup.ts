@@ -38,7 +38,7 @@ const ADOPT_STATS = 64
  * close, ~30 ms of it. So `accessed_at` trails the last use by at most
  * this much, and the prune policy reads it plus this as the last use:
  * an entry used within the limit is never pruned, and one may stay up to
- * this long past it (2026-10-08).
+ * this long past it.
  */
 export const ACCESS_REFRESH_MS = 60 * 60 * 1000
 
@@ -78,7 +78,7 @@ function entryOf(
 ): CacheEntry {
   // Assigned, not spread, and the date formatted only when read: a warm
   // run's probe builds one per hit and reads neither (~4 ms of 8,002
-  // entries, 2026-11-07).
+  // entries).
   const entry: CacheEntry = {
     hash: row.hash,
     taskId: `${row.project}#${row.task}`,
@@ -119,7 +119,7 @@ export async function get(
 /**
  * Index an artifact the index does not know, from its own bytes: the
  * artifact is the record, the index only an inventory of it
- * (2026-10-06). A reset index (a `SCHEMA_VERSION` change, a `cache.db` or
+ *. A reset index (a `SCHEMA_VERSION` change, a `cache.db` or
  * `store.db` deleted) loses nothing a task asks for again. The artifact
  * is checked as an ingest checks a remote's (its recorded key, its names
  * against the declared outputs); one that fails is a miss, and the run

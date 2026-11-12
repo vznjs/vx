@@ -31,7 +31,7 @@ import {
  * `foldKey` prints (16 lowercase hex) and the temp `tempPath` makes of
  * one. `cacheDir` is the user's to point anywhere (`build/`, a shared
  * directory), and the sweep once took any `*.tar.zst` an hour old there,
- * the user's own release tarball included (item 968).
+ * the user's own release tarball included.
  */
 export const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.(?:tar\.zst|tree)(\.tmp-\d+-\d+-[0-9a-z]*)?$/
 
@@ -49,7 +49,7 @@ const VX_CACHE_NAMES = new Set([
 /**
  * The entries of `cacheDir` vx wrote: the index, its artifacts, run
  * history, and the `*` ignore file unless the user changed it. A clear of
- * a directory the user named deletes these and nothing else (item 968).
+ * a directory the user named deletes these and nothing else.
  */
 export function vxCacheEntries(cacheDir: string): string[] {
   let names: string[]
@@ -75,7 +75,7 @@ export function vxCacheEntries(cacheDir: string): string[] {
  * artifacts) and `cache.db`, when it exists, must take pages. The file
  * system's answer, not a trial write — under WAL a rolled-back write never
  * reaches the disk, so `BEGIN IMMEDIATE … ROLLBACK` passes on a handle
- * SQLite opened read-only (proven as an unprivileged user, 2026-09-16).
+ * SQLite opened read-only (proven as an unprivileged user).
  *
  * Every verb opens the cache, so each question here is one call whose
  * failure is another question's answer: `access` on the directory is also
@@ -186,7 +186,7 @@ function ensurePrivateDir(dir: string, make: boolean): string | null {
   if ((st.mode & 0o022) !== 0) return `${dir} is writable by other users`
   // The user's own directory open to others (a `~/.vx` made at the
   // default umask, 0755) is vx's to close: refusing it left the store
-  // unused on a stock macOS home (2026-10-06: "you should own it").
+  // unused on a stock macOS home.
   if (make && (st.mode & 0o077) !== 0) {
     try {
       chmodSync(dir, 0o700)
@@ -200,7 +200,7 @@ function ensurePrivateDir(dir: string, make: boolean): string | null {
 /**
  * The ignore file that keeps `cacheDir` out of git, and its text. The
  * default `.vx/cache` is named by `.vx/.gitignore` (`/cache`), committed
- * beside the workspace config and the lock (2026-10-14); any other
+ * beside the workspace config and the lock; any other
  * cache directory holds a `*` one of its own. Written only when missing:
  * an existing file is the user's.
  */
@@ -225,7 +225,7 @@ function ignoreFileFor(cacheDir: string): [string, string] {
  * the workspace or a project (`cacheDir: ''`, `'.'`, `'packages/a'`): the
  * `*` ignore file above hid every file in it from git, so its inputs
  * matched nothing and a changed source replayed the old output, and the
- * artifacts landed among the sources (item 997). A directory that holds
+ * artifacts landed among the sources. A directory that holds
  * projects (`'packages'`) or the workspace (`'..'`, `'/'`) does the same
  * one level up. Asked only when there is no index yet, so an open cache
  * pays nothing for it.

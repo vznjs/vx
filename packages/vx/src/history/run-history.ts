@@ -60,8 +60,7 @@ function insertRunsSql(kept: readonly number[], n: number): string {
 
 /**
  * Bound variables per INSERT: within 999, the oldest default ceiling. A
- * statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
- * (2026-10-03).
+ * statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4.
  */
 const VARIABLES_PER_INSERT = 999
 
@@ -105,8 +104,7 @@ export const branchSource = (branch: string | null): string => `branch:${branch 
  * (`cpuShare` < 1) each runnable thread waited for a core. A task that
  * kept `n` cores busy lost its CPU's wait spread over them, under one
  * core all of it. vx-dte#test (20 s CPU in 75 s) took 81-102 s beside
- * test shards and the plan, reading those, said 118 s for a 92 s run
- * (main fd5c72e, 2026-10-23).
+ * test shards and the plan, reading those, said 118 s for a 92 s run.
  */
 function aloneMs(r: Pick<RunRecord, 'durationMs' | 'cpuMs' | 'cpuShare'>): number {
   const { durationMs: d, cpuMs: c, cpuShare: s } = r
@@ -119,7 +117,7 @@ export class RunHistory {
 
   constructor(
     private readonly db: Database,
-    /** The store's salted value digest (L-4). */
+    /** The store's salted value digest. */
     private readonly digestValue: (value: string) => string,
   ) {
     this.insertInvocation = lazyStatement(
@@ -145,7 +143,7 @@ export class RunHistory {
   }
 
   /**
-   * Rows with no `invocations` header (a stopped run, item 854). `head` is
+   * Rows with no `invocations` header (a stopped run). `head` is
    * the commit the run ran on: its timings file under that branch, as a
    * finished run's do, or the branch's forecast never reads them.
    */
@@ -279,7 +277,7 @@ export class RunHistory {
    * Only the columns some row fills are bound: a hit leaves half of them
    * NULL, and binding 18 of 36 took the 8,002 rows of a warm run from
    * 31.7 to 24.0 ms alone, the whole record stage 86.8 to 83.3 ms (median
-   * of 15 interleaved runs, 2026-11-06).
+   * of 15 interleaved runs).
    */
   private insertRuns(runs: readonly RunRecord[]): void {
     const digests = new Map<string, string>()
@@ -387,7 +385,7 @@ function bindRun(
     run.durationMs,
     // A digest, as entry_inputs keeps: args after `--` carry tokens
     // (`--token=…`), and cache.db holds no plaintext secret at rest; nothing
-    // reads the column but for whether the args changed (item 1091).
+    // reads the column but for whether the args changed.
     run.forwardArgs ? digestValue(JSON.stringify(run.forwardArgs)) : null,
     run.startedAt,
     run.endedAt,
@@ -491,7 +489,7 @@ export interface RunRecord {
   cacheHit?: boolean // convenience for flamegraph color; derivable from status
   /**
    * On a hit: whether outputs were written (`true`) or the disk already
-   * matched the entry (`false`, up-to-date). Absent on other statuses (v31).
+   * matched the entry (`false`, up-to-date). Absent on other statuses.
    */
   restored?: boolean
   attempts?: number // >1 when the task retried; the direct within-run flaky signal
@@ -513,18 +511,18 @@ export interface RunRecord {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
-  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined (v40). */
+  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined. */
   remoteError?: string
-  /** The sampled peak cores and mean resident memory of the run (v43). */
+  /** The sampled peak cores and mean resident memory of the run. */
   peakCores?: number
   avgRssBytes?: number
-  /** Where an executor ran it (`small#1`); absent = here (v44). */
+  /** Where an executor ran it (`small#1`); absent = here. */
   placement?: string
-  /** The task with no `inputs` its key folded, so it never read or saved (v46). */
+  /** The task with no `inputs` its key folded, so it never read or saved. */
   keylessBy?: string
-  /** The task's definition (`taskDefinition`): what its history is kept under (v48). */
+  /** The task's definition (`taskDefinition`): what its history is kept under. */
   def?: string
-  /** That machine's cores and memory (v44). */
+  /** That machine's cores and memory. */
   placementCores?: number
   placementMemoryBytes?: number
   /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
@@ -533,7 +531,7 @@ export interface RunRecord {
   queuedMs?: number
   /** Its output files' bytes (`TaskOutcome.outputBytes`, v51). */
   outputBytes?: number
-  /** The tasks and groups downstream of it in the run, the scheduler's count (v51). */
+  /** The tasks and groups downstream of it in the run, the scheduler's count. */
   blocks?: number
   /** The flaky record its row's note quoted (`TaskOutcome.flaky`, v51). */
   flakyPasses?: number
@@ -563,7 +561,7 @@ export interface InvocationRecord {
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
-  /** Hits that restored nothing, and hits that restored outputs per layer (v31); they sum to `hitCount`. */
+  /** Hits that restored nothing, and hits that restored outputs per layer; they sum to `hitCount`. */
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number

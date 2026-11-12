@@ -55,7 +55,7 @@ import {
 const WAL_AUTOCHECKPOINT = 1000
 
 /**
- * An entry's key components as its one `entry_inputs` row (v34): JSON
+ * An entry's key components as its one `entry_inputs` row: JSON
  * `[kind, name, hash]` triples in (kind, name) code-unit order, the first
  * of a repeated (kind, name) kept, as the per-component primary key did.
  */
@@ -83,7 +83,7 @@ export async function treeBytes(dir: string): Promise<number> {
   let n = diskBytes(await lstat(dir).catch(() => none))
   const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])
   // A batch at once: one awaited at a time was 736 ms of a 1,020 ms save
-  // of 20k files; batched, ~35 ms (2026-11-12). Batched, not all at once,
+  // of 20k files; batched, ~35 ms. Batched, not all at once,
   // so a huge tree never holds every Stats.
   for (let i = 0; i < entries.length; i += TREE_STAT_BATCH) {
     const batch = entries.slice(i, i + TREE_STAT_BATCH)
@@ -108,7 +108,7 @@ interface SavedTree {
  * them. Both reached the tree before: `outputs/out.txt` beside
  * `outputs/out.txt/x` failed every later run from the local copy, blaming
  * what was on disk, and an undeclared name overwrote an input or planted a
- * git hook under a green remote hit (item 942). Thrown at ingest, so the
+ * git hook under a green remote hit. Thrown at ingest, so the
  * bytes never reach the local store and the remote read is a miss.
  */
 function assertArtifactNames(
@@ -223,7 +223,7 @@ export async function save(
     /** See `CacheLayer.save`. */
   },
 ): Promise<void> {
-  // Layout (v17, extended additively for workspaceFiles): one
+  // Layout: one
   // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
   // want to re-materialize on a cache hit:
   //
@@ -257,11 +257,11 @@ export async function save(
   // The cache directory is the constructor's (`mkdirSync`, with a
   // refusal recorded for `assertWritable`); re-creating it here and
   // again in `writeArtifactAndIndex` cost every save two thread-pool
-  // round trips for an EEXIST and a stat (item 630).
+  // round trips for an EEXIST and a stat.
   const endPack = span('save: pack')
   const packed = await packForSave(ix, args).catch((err: unknown) => {
     // A save that could not open an output names the limit, not only
-    // the file, which is fine (A-39).
+    // the file, which is fine.
     if (isOutOfFds(err)) {
       throw new UserError(
         `save of ${args.hash} could not open a file (${err.message}) — ${OUT_OF_FDS_HINT}`,
@@ -339,7 +339,7 @@ export async function ingest(
   const tmpPath = tempPath(ix, hash)
   // The compressed bytes are bounded too, before the decode's ceiling ever
   // sees them: a remote body that never ends (a hostile or broken server)
-  // was written to the temp until the disk was full (L-5). No artifact
+  // was written to the temp until the disk was full. No artifact
   // under the ceiling compresses past zstd's own bound on it.
   const cap = ix.artifactCeiling + (ix.artifactCeiling >> 8) + 64 * 1024
   const past = (): CorruptArtifactError =>
@@ -497,7 +497,7 @@ export async function planWithin(
 /**
  * Pack for the local save. A large artifact is read from disk as it is
  * written and compressed as a stream straight into the temp, so it
- * never sits in memory (measured 2026-09-03 on a 150 MiB output: +705
+ * never sits in memory (measured on a 150 MiB output: +705
  * MiB before). The streamed compressor is ~2.4× the one-call cost per
  * byte and a stream costs ~35 µs to set up, so a small artifact is
  * packed in memory and compressed in one call — returned as bytes,
@@ -614,9 +614,9 @@ export async function writeArtifactAndIndex(
     // (measured on 150 MiB: +151 MiB and 33 ms against +0 and 21 ms).
     const endWrite = span('save: write temp')
     // A write that fails part-way (a full disk) leaves the temp behind,
-    // and a fresh one is an orphan only an hour on (A-14).
+    // and a fresh one is an orphan only an hour on.
     // Off this thread even when small: a file's creation on the main
-    // thread cost more CPU and wall than the round trip (A/B, 2026-10-04).
+    // thread cost more CPU and wall than the round trip (A/B).
     await writeFile(temp, compressed).catch(async (err: unknown) => {
       await unlink(temp).catch(() => undefined)
       throw err
@@ -668,7 +668,7 @@ export async function writeArtifactAndIndex(
       scanned = await scanArtifact(await decodedTar(source, hash, ix.artifactCeiling))
     }
     endScan()
-    // v17 invariant: every artifact carries a `stdout` entry. Its
+    // Invariant: every artifact carries a `stdout` entry. Its
     // absence means the bytes decompressed but aren't a vx artifact.
     if (scanned.stdout === null) {
       throw new CorruptArtifactError(hash, 'missing stdout entry')
@@ -782,7 +782,7 @@ export async function writeArtifactAndIndex(
     ])
   }
   // Compressed before the write lock is taken: logs are most of what the
-  // index held as text (v52).
+  // index held as text.
   const stdoutBlob = scanned.stdout === '' ? null : await zstdCompress(rawEncode(scanned.stdout))
 
   const [project, task] = splitTaskId(meta.taskId)
@@ -808,7 +808,7 @@ export async function writeArtifactAndIndex(
   // beside the previous save's rows, and two writers of one key (two
   // workspaces on one `--cache-dir`) could pair one's bytes with the
   // other's rows: every later hit failed the task on an artifact
-  // "missing" a recorded output (A-3). POSIX rename replaces the
+  // "missing" a recorded output. POSIX rename replaces the
   // destination atomically, so a reader holding the old file reads it
   // whole. A commit that fails after the rename takes the artifact back
   // out: the old rows then name no artifact, which a probe reads as a
@@ -817,7 +817,7 @@ export async function writeArtifactAndIndex(
   // A previous artifact is moved aside first, never renamed over: ext4
   // flushes the incoming file's delayed blocks when a rename replaces a
   // file, 0.55 ms against 0.04 on the main thread with the write lock
-  // held (a `--force` run, 2026-10-02). A reader probing between the two
+  // held (a `--force` run). A reader probing between the two
   // renames finds no artifact, a miss (`ArtifactVanishedError`); one
   // holding the old file still reads it whole. The aside name is a temp
   // name, so a crash before its unlink leaves an orphan the sweep takes.
@@ -915,7 +915,7 @@ export async function writeArtifactAndIndex(
  * its own error (its savepoint rolled back) or the commit's. A cold run's
  * saves land a few per turn, and a transaction each spent half its index
  * time on BEGIN and COMMIT on the main thread, the run's busiest
- * (2026-11-03: 81 of 164 ms over 500 saves).
+ * (81 of 164 ms over 500 saves).
  */
 export function indexInBatch(ix: StoreIndex, write: () => void): Promise<void> {
   return new Promise((resolve, reject) => {

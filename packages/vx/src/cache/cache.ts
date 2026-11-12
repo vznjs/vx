@@ -20,7 +20,7 @@
 // for the user to see — but on a cache hit there's nothing to replay
 // (the original run was successful and stderr typically empty).
 //
-// With a shared store (v32, the default: `docs/design/shared-store-2026-10.md`)
+// With a shared store (the default: `docs/design/shared-store-2026-10.md`)
 // the entries and their artifacts live in `<store>/store.db` and
 // `<store>/<hash>.tar.zst`, attached to the workspace's own `cache.db`,
 // which keeps the history and the memos: every workspace of one user hits
@@ -115,7 +115,7 @@ export function hashFileSeen(
  * Each of `files` by `memo.hashFile`'s answer, with one memo query for
  * them all when the memo is core's own (`hashFiles`), where one
  * point query per file took the lock each time: 10 of vueuse's 45 ms of
- * keys (2026-11-11). A file that cannot be hashed is absent: the caller
+ * keys. A file that cannot be hashed is absent: the caller
  * asks `hashFile` for it, and its error is that call's.
  */
 export async function hashFilesOf(
@@ -143,7 +143,7 @@ function ownHasher(memo: TaskMemo): memo is LocalMemo {
 /**
  * The hashes of every entry this machine's index holds for `taskId`: an
  * additive task's miss reads their rows to tell the files a save or
- * restore of its own left from what it found (item 588). A function, not
+ * restore of its own left from what it found. A function, not
  * a layer method, so the package's API is unchanged; a layer with no
  * local index (a test double) answers none.
  */
@@ -173,7 +173,7 @@ export function historyFiles(cache: Cache): { index: string; store?: string } | 
 /**
  * The cache's `bun:sqlite` handle, for core's own readers (`vx last`, `vx
  * why`, the history provider). A function, not a member: the façade hands
- * `Cache` to plugins and no plugin touches cache.db (2026-10-29). Callers
+ * `Cache` to plugins and no plugin touches cache.db. Callers
  * never close it — `Cache.close()` owns the lifetime.
  */
 export function indexDb(cache: Cache): Database {
@@ -401,7 +401,7 @@ export class Cache implements CacheLayer {
 
   /**
    * The subset of `hashes` this store holds, `has` for each: the prefetch
-   * pass asks the remote only about the rest (2026-10-15).
+   * pass asks the remote only about the rest.
    */
   async localHasMany(hashes: readonly string[]): Promise<Set<string>> {
     return lookup.localHasMany(this.ix, hashes)
@@ -447,7 +447,7 @@ export class Cache implements CacheLayer {
 
   /**
    * A run over a cache directory it cannot write: one holding entries
-   * serves its hits and saves nothing (2026-10-16), and the line this
+   * serves its hits and saves nothing, and the line this
    * returns says so; an empty one has nothing to serve and refuses.
    */
   readOnlyNotice(): string | null {
