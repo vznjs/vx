@@ -4403,7 +4403,6 @@
       "inputs": {
         "files": [
           "src/**",
-          "index.ts",
           "tsconfig.json",
           "package.json"
         ]
@@ -4468,7 +4467,6 @@
       "inputs": {
         "files": [
           "src/**",
-          "index.ts",
           "package.json",
           "scripts/check-binary.ts",
           "scripts/binary-launch.ts"
@@ -4523,7 +4521,6 @@
       "inputs": {
         "files": [
           "src/**",
-          "index.ts",
           "package.json",
           "scripts/check-binary.ts",
           "scripts/binary-launch.ts"
@@ -4578,7 +4575,6 @@
       "inputs": {
         "files": [
           "src/**",
-          "index.ts",
           "package.json",
           "scripts/check-binary.ts",
           "scripts/binary-launch.ts"

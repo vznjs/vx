@@ -132,30 +132,14 @@ export async function emitPlatformPackages(args: {
   }
 }
 
-/**
- * The entries the published `@vzn/vx` copies out of `packages/vx`, in the
- * order its `files` lists them. Derived from the exports map, never spelled
- * out: the compiled binary resolves an on-disk package by directory
- * (`<pkg>/<subpath>/index.ts`) and ignores `exports`, so every non-"."
- * subpath must ship its twin — and a hand-written list drifts. `plugins`
- * was on that list for two days after the last plugin subpath left core,
- * and the first release to run this script died on the missing directory
- * (v0.0.19, 2026-09-12).
- */
-export function coreEntries(exports: Readonly<Record<string, unknown>>): readonly string[] {
-  const subs = new Set<string>()
-  for (const sub of Object.keys(exports)) {
-    if (sub === '.') continue
-    const top = sub.replace(/^\.\//, '').split('/')[0]
-    if (top !== undefined && top !== '') subs.add(top)
-  }
-  return ['index.ts', 'src', ...[...subs].sort()]
-}
+// The compiled binary serves `@vzn/vx` and `@vzn/vx/config` from its own
+// copy (registerCoreAlias), so the package needs no root or subpath shims.
+const CORE_ENTRIES = ['src'] as const
 
 const PACKAGE_DATA = ['schemas'] as const
 
 /**
- * Emit the primary `@vzn/vx` package — library source, the root shims, the
+ * Emit the primary `@vzn/vx` package — library source, the
  * Node launcher and the manifest — into `<outDir>/vx`. Exported so the tree
  * can be assembled (and pinned) without the four cross-compiled binaries the
  * platform packages need.
@@ -172,8 +156,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
 
   const mainDir = join(outDir, 'vx')
   await mkdir(mainDir, { recursive: true })
-  const entries = coreEntries(corePkg.exports)
-  for (const entry of entries) {
+  for (const entry of CORE_ENTRIES) {
     const src = join(CORE, entry)
     if (!existsSync(src)) {
       throw new Error(`@vzn/vx would ship ${entry}, but ${src} does not exist`)
@@ -197,8 +180,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     description: corePkg.description,
     type: 'module',
     // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
-    // The same exports map the workspace package declares; `coreEntries`
-    // ships a directory twin for every subpath it names.
+    // The same exports map the workspace package declares.
     exports: corePkg.exports,
     types: './src/index.ts',
     // The CLI: a sh launcher that execs the matching platform binary, with
@@ -210,7 +192,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     // its own copy). Mirrors the workspace root so versions never drift.
     dependencies: corePkg.dependencies ?? {},
     files: [
-      ...entries,
+      ...CORE_ENTRIES,
       ...PACKAGE_DATA,
       'skills',
       'launcher.sh',
