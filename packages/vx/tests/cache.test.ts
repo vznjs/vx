@@ -23,6 +23,7 @@ import { run } from './helpers/orchestrator.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
+import * as saving from '../src/cache/save.js'
 
 /** How many key components `entry_inputs` holds (one row per entry, v34). */
 const COMPONENT_COUNT = 'SELECT COUNT(*) AS n FROM entry_inputs, json_each(entry_inputs.components)'
@@ -535,8 +536,7 @@ describe('Cache.key', () => {
     // env / runtime output / argv must not land in cache.db — and a digest
     // under this store's salt, never a bare xxh3 anyone can brute-force from
     // `vx why`'s output (L-4).
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as Database
+    const db = indexDb(cache)
     const salt = (
       db.query("SELECT value FROM store_meta WHERE key = 'value_salt'").get() as {
         value: string
@@ -1748,8 +1748,7 @@ describe('Cache storage (v10)', () => {
     // "older THAN" excludes equality, and the entry touched at the very
     // instant of the cutoff is the one a user racing a prune expects to
     // keep.
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
+    const db = indexDb(cache)
     const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, 1, ?)`,
@@ -1784,8 +1783,7 @@ describe('Cache storage (v10)', () => {
     // Sizes and timestamps go in directly: the artifacts compress to
     // sizes that differ run to run (see the maxBytes row above), and the
     // arithmetic this pins is exact.
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
+    const db = indexDb(cache)
     const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, 1, ?)`,
@@ -1812,8 +1810,7 @@ describe('Cache storage (v10)', () => {
     // not). The 559 shape — the storage layer answering for the sort. So
     // the rows go in LAST-used-first, which is the one order a rowid scan
     // gets wrong.
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
+    const db = indexDb(cache)
     const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, 1, ?)`,
@@ -1845,8 +1842,7 @@ describe('Cache storage (v10)', () => {
     //   correct:  evict h-stale (TTL) + h-warm-a (LRU) → evicted 2, freed 200
     //   mutated:  h-stale counted twice → evicted 1, freed 300, 200 bytes
     //             still on disk under a 100-byte cap
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
+    const db = indexDb(cache)
     const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, 1, ?)`,
@@ -2022,8 +2018,7 @@ describe('Cache storage (v10)', () => {
     // artifact: a row whose artifact is gone is dropped, not evicted
     // (item 975). Exercises the
     // multi-chunk DELETE path plus the JS-side victims filter.
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
+    const db = indexDb(cache)
     const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, 1, 1)`,
@@ -2041,8 +2036,7 @@ describe('Cache storage (v10)', () => {
   it('prune() by size passes over an older row whose artifact is gone (A-34)', async () => {
     // LRU order reaches the phantom first; it is no candidate, so the one
     // real entry is what goes, and the phantom row is left to its grace.
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
+    const db = indexDb(cache)
     const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, 1, ?)`,
@@ -2065,8 +2059,7 @@ describe('Cache storage (v10)', () => {
     // A row whose artifact was deleted by hand is never a hit, and its
     // bytes are on no disk; `--max-size` counted them and evicted the one
     // real entry to make room for them.
-    // @ts-expect-error: private member access for testing
-    const db = cache.db as import('bun:sqlite').Database
+    const db = indexDb(cache)
     const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, 1, ?)`,
@@ -2137,17 +2130,15 @@ describe('Cache storage (v10)', () => {
       TAR_STORE,
     )
     let swept: { orphans: number } | undefined
-    const target = cache as unknown as {
-      writeArtifactAndIndex: (...args: unknown[]) => Promise<void>
-    }
-    const index = target.writeArtifactAndIndex.bind(cache)
-    spyOn(target, 'writeArtifactAndIndex').mockImplementation(async (...args) => {
+    const index = saving.writeArtifactAndIndex
+    const spy = spyOn(saving, 'writeArtifactAndIndex').mockImplementation(async (...args) => {
       swept = await other.prune({ olderThanMs: 365 * 24 * 60 * 60 * 1000 })
       return index(...args)
     })
     try {
       expect(await cache.get(hash, ctx)).not.toBeNull()
     } finally {
+      spy.mockRestore()
       other.close()
     }
     expect(swept?.orphans).toBe(0)
@@ -2298,8 +2289,7 @@ describe('Cache storage (v10)', () => {
     })
     // Read back via the underlying DB to confirm the columns were stored.
     // Reaches past the public API on purpose — this is a schema test.
-    // @ts-expect-error: private member access for testing
-    const row = cache.db.query('SELECT * FROM runs WHERE hash = ?').get('h-v11') as {
+    const row = indexDb(cache).query('SELECT * FROM runs WHERE hash = ?').get('h-v11') as {
       run_id: string
       cpu_ms: number
       peak_rss_bytes: number
@@ -2322,8 +2312,7 @@ describe('Cache storage (v10)', () => {
       startedAt: Date.now(),
       endedAt: Date.now() + 1,
     })
-    // @ts-expect-error: private member access for testing
-    const row = cache.db.query('SELECT * FROM runs WHERE hash = ?').get('h-v11-null') as {
+    const row = indexDb(cache).query('SELECT * FROM runs WHERE hash = ?').get('h-v11-null') as {
       run_id: unknown
       cpu_ms: unknown
       cache_hit: unknown
@@ -2561,8 +2550,7 @@ describe('Cache storage (v10)', () => {
       runId: '01ABCDEFG',
       cacheHit: true,
     })
-    // @ts-expect-error: private member access for testing
-    const row = cache.db.query('SELECT * FROM runs WHERE hash = ?').get('h-remote') as {
+    const row = indexDb(cache).query('SELECT * FROM runs WHERE hash = ?').get('h-remote') as {
       status: string
       cache_hit: number
       run_id: string

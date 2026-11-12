@@ -16,6 +16,7 @@ schemas/why.json
 skills/vx/SKILL.md
 src/bin.ts
 src/cache/archive.ts
+src/cache/cache-dir.ts
 src/cache/cache.ts
 src/cache/checkpointer.ts
 src/cache/git-inputs.ts
@@ -25,11 +26,16 @@ src/cache/key-fold.ts
 src/cache/layer.ts
 src/cache/layered-cache.ts
 src/cache/linked-inputs.ts
+src/cache/lookup.ts
 src/cache/plugin-cache.ts
 src/cache/policy.ts
+src/cache/prune.ts
 src/cache/remote-lane.ts
+src/cache/restore.ts
 src/cache/run-store.ts
+src/cache/save.ts
 src/cache/scoped-cache.ts
+src/cache/store-index.ts
 src/cache/tar-stream.ts
 src/cache/zstd.ts
 src/cli/cache.ts

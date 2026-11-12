@@ -19,23 +19,25 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
-  runId: string | undefined
-  readonly remoteHits: RemoteHits
-  readonly storeDir: string | undefined
-  readonly schemaReset: SchemaReset | null
-  readonly storeReset: SchemaReset | null
-  get memo(): StoreMemo
   static inspect(cacheDir: string): Cache
   constructor(
-    private readonly cacheDir: string,
+    cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
-    private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+    artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
-    private readonly store: StoreOptions = DEFAULT_STORE,
+    store: StoreOptions = DEFAULT_STORE,
   )
+  get runId(): string | undefined
+  set runId(runId: string | undefined)
+  get remoteHits(): RemoteHits
+  get storeDir(): string | undefined
+  get schemaReset(): SchemaReset | null
+  get storeReset(): SchemaReset | null
+  get memo(): StoreMemo
   key(input: CacheKeyInput): Promise<string>
+  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
   getSaved(hash: string): Promise<CacheEntry | null>
@@ -46,7 +48,6 @@ export class Cache implements CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async localHasMany(hashes: readonly string[]): Promise<Set<string>>
-  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
   kept(hash: string): boolean
@@ -74,10 +75,6 @@ export class Cache implements CacheLayer {
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }>
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-    | { compressed: Uint8Array; tar: Uint8Array }
-    | { tmpPath: string }
-    | { plan: true; saved: SavedTree }
-  >
   checkpointOffThread(): void
   async stopCheckpoints(): Promise<void>
   stats(opts: CacheStatsOptions = {}): CacheStats
@@ -1907,12 +1904,6 @@ export interface SandboxViolation {
 }
 == type SaveArgs (src/cache/layer.ts)
 export type SaveArgs = Parameters<CacheLayer['save']>[0]
-== type SavedTree (src/cache/cache.ts)
-interface SavedTree {
-  tree: string
-  scan: Awaited<ReturnType<typeof scanArtifact>>
-  bytes: number
-}
 == type ScheduleHookContext (src/orchestrator/plugin.ts)
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
@@ -1933,7 +1924,7 @@ export interface ScheduleRun {
   readonly refined?: (merged: ReadonlyMap<string, number>) => void
   readonly flaky?: (taskIds: Iterable<string>) => void
 }
-== type SchemaReset (src/cache/cache.ts)
+== type SchemaReset (src/cache/store-index.ts)
 export interface SchemaReset {
   from: string
   to: string
@@ -1983,7 +1974,7 @@ export interface StoreMemo {
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
 }
-== type StoreOptions (src/cache/cache.ts)
+== type StoreOptions (src/cache/store-index.ts)
 export interface StoreOptions {
   embeddings: number
   decompress: boolean

@@ -54,12 +54,12 @@ function tables(sql: string): Map<string, string[]> {
   return out
 }
 
-describe('caching.md § SQLite tables follows the schema cache.ts and schema.ts create', () => {
+describe('caching.md § SQLite tables follows the schema store-index.ts and schema.ts create', () => {
   // The block documented five of ten tables until 2026-09-16 (item 298):
   // nothing read it against the source.
   it('documents every table with exactly its columns', () => {
     const source = tables(
-      ['cache/cache.ts', 'index-db/schema.ts']
+      ['cache/store-index.ts', 'index-db/schema.ts']
         .map((f) => readFileSync(path.join(import.meta.dir, '..', 'src', f), 'utf8'))
         .join('\n'),
     )

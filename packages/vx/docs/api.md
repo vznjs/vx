@@ -225,23 +225,25 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
-  runId: string | undefined
-  readonly remoteHits: RemoteHits
-  readonly storeDir: string | undefined
-  readonly schemaReset: SchemaReset | null
-  readonly storeReset: SchemaReset | null
-  get memo(): StoreMemo
   static inspect(cacheDir: string): Cache
   constructor(
-    private readonly cacheDir: string,
+    cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
-    private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+    artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
-    private readonly store: StoreOptions = DEFAULT_STORE,
+    store: StoreOptions = DEFAULT_STORE,
   )
+  get runId(): string | undefined
+  set runId(runId: string | undefined)
+  get remoteHits(): RemoteHits
+  get storeDir(): string | undefined
+  get schemaReset(): SchemaReset | null
+  get storeReset(): SchemaReset | null
+  get memo(): StoreMemo
   key(input: CacheKeyInput): Promise<string>
+  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
   getSaved(hash: string): Promise<CacheEntry | null>
@@ -252,7 +254,6 @@ export class Cache implements CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async localHasMany(hashes: readonly string[]): Promise<Set<string>>
-  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
   kept(hash: string): boolean
@@ -280,10 +281,6 @@ export class Cache implements CacheLayer {
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }>
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-    | { compressed: Uint8Array; tar: Uint8Array }
-    | { tmpPath: string }
-    | { plan: true; saved: SavedTree }
-  >
   checkpointOffThread(): void
   async stopCheckpoints(): Promise<void>
   stats(opts: CacheStatsOptions = {}): CacheStats

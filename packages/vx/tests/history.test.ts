@@ -119,7 +119,7 @@ describe('LocalHistoryProvider', () => {
       expect(existsSync(path.join(cacheDir, 'cache.db-wal'))).toBe(true)
       const second = new Cache(cacheDir)
       try {
-        const db = (second as unknown as { db: Database }).db
+        const db = indexDb(second)
         const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')
         expect(entry?.runs).toBe(1)
       } finally {
@@ -191,7 +191,7 @@ describe('LocalHistoryProvider', () => {
         }),
       ]
       runHistory(cache).recordRuns(rows)
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['pkg#test'])
       const entry = table.get('pkg#test')
       expect(entry).toBeDefined()
@@ -229,7 +229,7 @@ describe('LocalHistoryProvider', () => {
           attempts: 2,
         },
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#test'])).get('pkg#test')
       expect(entry!.failureMode).not.toBe('stable')
     } finally {
@@ -308,7 +308,7 @@ describe('LocalHistoryProvider', () => {
         }),
       ]
       runHistory(cache).recordRuns(rows)
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['pkg#build', 'pkg#test'])
       const build = table.get('pkg#build')!
       const test = table.get('pkg#test')!
@@ -357,7 +357,7 @@ describe('LocalHistoryProvider', () => {
           }),
         ),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')!
       expect(entry.p50DurationMs).toBe(100)
       expect(entry.p99DurationMs).toBe(100)
@@ -394,7 +394,7 @@ describe('LocalHistoryProvider', () => {
           }),
         ),
       )
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')!
       // The forecast is the median of the last five recorded (evens 10..2);
       // p99 is sorted[floor(0.99 * 100)] of 1..100.
@@ -439,7 +439,7 @@ describe('LocalHistoryProvider', () => {
           attempts: 2,
         },
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const table = await new LocalHistoryProvider(db).loadFor(['pkg#once', 'pkg#twice'])
       expect(table.get('pkg#once')!.failureMode).toBe('stable')
       // The control: the column IS reaching the query, so the row above is a
@@ -498,7 +498,7 @@ describe('LocalHistoryProvider', () => {
           startedAt: 5000,
         }),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const windowed = (await new LocalHistoryProvider(db, 3).loadFor(['pkg#test'])).get(
         'pkg#test',
       )!
@@ -579,7 +579,7 @@ describe('LocalHistoryProvider', () => {
           startedAt: 4000,
         }),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       expect(
         (await new LocalHistoryProvider(db, 2).loadFor(['pkg#test'])).get('pkg#test')!.failureMode,
       ).toBe('stable')
@@ -622,7 +622,7 @@ describe('LocalHistoryProvider', () => {
           startedAt: 3000,
         }),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const table = await new LocalHistoryProvider(db, 10).loadFor([
         'pkg#build',
         'other#build',
@@ -1053,7 +1053,7 @@ describe('LocalHistoryProvider', () => {
   it('returns nothing for tasks with no prior runs', async () => {
     const cache = makeCache()
     try {
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['nope#nada'])
       expect(table.size).toBe(0)
     } finally {
@@ -1077,7 +1077,7 @@ describe('LocalHistoryProvider', () => {
         }),
       )
       runHistory(cache).recordRuns(rows)
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['pkg#lint'])
       expect(table.get('pkg#lint')!.failureMode).toBe('stable')
     } finally {

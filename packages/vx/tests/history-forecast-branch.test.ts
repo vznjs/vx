@@ -174,7 +174,8 @@ it('worktrees recording in parallel on one store lose no timing, never fail busy
   const script = path.join(dir, 'writer.ts')
   await Bun.write(
     script,
-    `import { Cache, runHistory } from ${JSON.stringify(path.join(import.meta.dir, '../src/cache/index.js'))}
+    `import { Cache } from ${JSON.stringify(path.join(import.meta.dir, '../src/cache/index.js'))}
+import { runHistory } from ${JSON.stringify(path.join(import.meta.dir, '../src/history/index.js'))}
 const [cacheDir, store, w, runs] = process.argv.slice(2)
 const cache = new Cache(cacheDir, undefined, undefined, undefined, 'open', store)
 // Now-ish times: the history's 30-day retention runs at close.

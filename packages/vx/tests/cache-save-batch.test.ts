@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { indexDb, Cache } from '../src/cache/index.js'
+import { indexInBatch } from '../src/cache/save.js'
 
 let root: string
 let cacheDir: string
@@ -82,7 +83,7 @@ describe('saves in one turn', () => {
       const db = indexDb(cache)
       db.exec('CREATE TABLE t (n INTEGER)')
       const queue = (n: number) =>
-        cache['indexInBatch'](() => db.run('INSERT INTO t VALUES (?)', [n]))
+        indexInBatch(cache['ix'], () => db.run('INSERT INTO t VALUES (?)', [n]))
       await Promise.all([queue(1), queue(2), queue(3)])
       expect([begun.n, db.query('SELECT n FROM t ORDER BY n').values()]).toEqual([
         1,
