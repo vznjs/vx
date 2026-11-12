@@ -16,7 +16,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import { indexDb, Cache, KEYED_RUNS_SQL, type RunRecord, runHistory } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { KEYED_RUNS_SQL } from '../src/index-db/index.js'
+import { type RunRecord, runHistory } from '../src/history/index.js'
 import {
   classifyFailureMode,
   detectFlaky,

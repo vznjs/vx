@@ -7,7 +7,7 @@
 // pure memo, so a lost or swept row is one fold more.
 
 import type { Database } from 'bun:sqlite'
-import { unreadableIndex } from './schema.js'
+import { unreadableIndex } from '../index-db/index.js'
 
 export interface FoldMemoRow {
   probe: string

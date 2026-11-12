@@ -3,10 +3,10 @@
 // cache.db's `failures` (cache/run-notes.ts), the newest 50 failed runs kept.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, type Cache, keepRunNotes, keptFailures, storedLog } from '../cache/index.js'
+import { indexDb, type Cache, storedLog } from '../cache/index.js'
+import { keepRunNotes, keptFailures, PASS_STATUSES } from '../history/index.js'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
-import { PASS_STATUSES } from '../history/index.js'
 import { maskedLine, splitTaskId, stripEscapes } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from '../ui/index.js'
 

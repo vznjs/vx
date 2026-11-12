@@ -643,7 +643,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-linux-x64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-linux-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -666,7 +666,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-linux-arm64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-linux-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -689,7 +689,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-darwin-x64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-darwin-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -712,7 +712,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-darwin-arm64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-darwin-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],

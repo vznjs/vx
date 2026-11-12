@@ -6,14 +6,13 @@ import { Database } from 'bun:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
-  indexDb,
-  Cache,
   type InvocationRecord,
   type RunRecord,
   runHistory,
-} from '../src/cache/index.js'
-import { LocalHistoryProvider } from '../src/history/index.js'
+  LocalHistoryProvider,
+} from '../src/history/index.js'
 
 let dir: string
 /** The shared store: `~/.vx/<id>/cache`, each level owner-only. */

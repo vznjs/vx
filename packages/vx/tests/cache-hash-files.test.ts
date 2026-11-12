@@ -8,7 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { statSync } from 'node:fs'
-import { indexDb, Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
 
 let dir: string
 let cache: Cache

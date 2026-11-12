@@ -5,8 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { indexDb, Cache, runHistory } from '../src/cache/index.js'
-import type { InvocationRecord, RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { runHistory, type InvocationRecord, type RunRecord } from '../src/history/index.js'
 
 const run = (i: number, runId: string): RunRecord => {
   const r: RunRecord = {

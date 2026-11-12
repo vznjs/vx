@@ -2227,7 +2227,7 @@ describe('the pages say where an entry stdout lives', () => {
   // page, optimizations.md and two posts still put it in the row (J2-26).
   it('the schema keeps stdout apart, and each page says so', () => {
     const core = path.resolve(import.meta.dir, '..')
-    const schema = readFileSync(path.join(core, 'src', 'cache', 'schema.ts'), 'utf8')
+    const schema = readFileSync(path.join(core, 'src', 'index-db', 'schema.ts'), 'utf8')
     const entries = /CREATE TABLE IF NOT EXISTS \$\{store\}\.entries \(([^;]*?)\n {4}\);/.exec(
       schema,
     )?.[1]

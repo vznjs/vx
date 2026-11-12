@@ -520,3 +520,196 @@ export function pruneHistoryRows(db: Database, cutoff: number): number {
   dropped += db.prepare('DELETE FROM remote_hits WHERE seen_at < ?').run(cutoff).changes
   return dropped
 }
+
+// SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
+//   v20: file_hashes.content_hash (git blob OIDs).
+//   v21: dropped the unused outputs_hash column (pure-input hashing).
+//   v22: Tier-3 dashboard tables — `invocations` (one header row per
+//        `vx run` with git/CI/host context + tags) and `entry_inputs`
+//        (one row per cache-key component, keyed by the cache-entry
+//        HASH, the input-fingerprint moat). `entry_inputs` is written
+//        INSIDE the entry-save transaction (only on a miss/save), so a
+//        warm all-cache-hit run writes nothing to it — the warm path
+//        does zero extra work. `invocations` is still recorded once per
+//        run via `recordRunBundle`. The cache KEY is unchanged
+//        (CACHE_VERSION not bumped) — these tables persist analytics
+//        derived from the same `CacheKeyInput` the key already consumes.
+//   v23: runs.attempts — the number of attempts a retried task took (>1),
+//        the DIRECT within-run flaky signal (a task that failed then
+//        passed under identical inputs is nondeterministic by definition;
+//        no cross-run inference needed). Nullable; NULL for a once-run
+//        task. Analytics-only — the cache KEY is unchanged.
+//   v24: file_hashes.ctime_ms + .ino — the stat memo's guard against a
+//        content change that PRESERVES mtime (`tar -x`, `cp -p`,
+//        `rsync --times`, SOURCE_DATE_EPOCH). (mtime, size) alone
+//        returned the previous run's digest for different bytes, i.e. a
+//        stale cache hit. `utimes` cannot suppress ctime unprivileged
+//        and an atomic write-then-rename changes the inode, so the two
+//        together close it; git's index keys on ctime+ino+dev for the
+//        same reason. Both come free from the stat already taken. The
+//        cache KEY derivation is unchanged (CACHE_VERSION not bumped) —
+//        the memo simply stops answering wrongly, so an affected task's
+//        key moves from a WRONG value to the right one: it misses once,
+//        re-runs, re-caches. Self-healing, never a wrong hit.
+//   v25: runs.cached — whether the task declared `cache: true`. An
+//        uncached task's row looked like any executed miss, so `vx why`
+//        headlined "cache key changed (inputs differ)" for a task that
+//        runs every time by design, and `vx last` could not mark it the
+//        way the terminal summary does (`no-cache`). Analytics-only —
+//        the cache KEY is unchanged.
+//   v26: entries.cpu_ms / peak_rss_bytes — what the producing execution
+//        used, read out of the artifact's sidecar at save and ingest
+//        alike, so a hit (a remote one on a fresh runner above all) can
+//        tell the history what the task needs. The cache KEY and the
+//        artifact container are unchanged (no CACHE_VERSION bump: an
+//        artifact without the field reads as before).
+//   v28: output_files.ino + .ctime_ms — the skip-restore check's guard
+//        against another entry's bytes. Two entries whose outputs carry
+//        one fixed mtime (`tar -x`, `cp -p`, SOURCE_DATE_EPOCH) and one
+//        size matched each other's (size, mode, mtime) rows, so a hit left
+//        the last entry's bytes on disk under a green run (item 886). A row
+//        is current only with the inode and ctime recorded after the save
+//        or restore that wrote it. The cache KEY is unchanged.
+//   v29: entries.stdout moved to entry_stdout. SQLite rewrites a whole
+//        record on UPDATE, so the run-end `accessed_at` bump rewrote each
+//        hit's stored stdout (up to 16 MB) with its overflow pages: 200
+//        hits of 1 MB cost the close 125-150 ms. The cache KEY is
+//        unchanged.
+//   v30: blob_verdicts — the blob-size check's verdict by a hash of the
+//        index file (A-60), so a warm run reads one row. The cache KEY is
+//        unchanged.
+//   v31: runs.restored and invocations' up_to_date / restored_local /
+//        restored_remote counts — a hit that restored outputs apart from
+//        one that found them in place, for every reader after the run.
+//        The cache KEY is unchanged.
+//   v32: the entry tables (entries, entry_stdout, output_files,
+//        entry_inputs) may live in a shared store attached as `store`;
+//        output_files' ino + ctime_ms moved to the workspace's own
+//        output_stamps, output_dirs lost its foreign key, and the value
+//        salt moved to store_meta. The cache KEY is unchanged.
+//   v33: an artifact of at most 32 KiB compressed lives in the
+//        store's `artifacts` table, written in its rows' transaction, and
+//        every entry read joins it. The artifact bytes and the cache KEY are
+//        unchanged (CACHE_VERSION not bumped).
+//   v34: entry_inputs holds one row per entry, its key components as one
+//        JSON array, not a row per component. The cache KEY is unchanged.
+//   v35: config_evals and config_closures are gone: runs read configs from
+//        the lock, and `vx lock` evaluates every one. The cache KEY is
+//        unchanged.
+//   v36: the store's task_durations: each executed success's time, tagged
+//        by branch, read by the forecast. The cache KEY is unchanged.
+//   v37: the store's plugin_blobs (a plugin's `ctx.cache`) and one
+//        'remote' task_durations row per (sha, task). The cache KEY is
+//        unchanged.
+//   v38: blob_sizes moved to the store, and the store's task_outcomes
+//        holds the flaky record, so worktrees share both. The cache KEY is
+//        unchanged.
+//   v39: invocations drops `tags` (`--tag` is gone). The cache KEY is
+//        unchanged.
+//   v40: runs.remote_error — each remote read or write of a task's key that
+//        failed, for `vx last`. The cache KEY is unchanged.
+//   v41: the artifacts table is a rowid table (layout a2). The cache KEY
+//        is unchanged.
+//   v42: fold_memo — each task's last key by its fold up to the files and
+//        a token of their git records. The cache KEY is unchanged.
+//   v43: runs.peak_cores / avg_rss_bytes — what a sampled run burned at
+//        its peak and held on average. The cache KEY is unchanged.
+//   v44: runs.placement — where an executor ran the task. The cache KEY
+//        is unchanged.
+//   v45: a 'remote' task_durations row also carries the task's measured
+//        cores, memory and saturation, for a run with no local history.
+//        The cache KEY is unchanged.
+//   v46: runs.keyless_by — the task with no inputs a key folded, so
+//        `vx why` names it. The cache KEY is unchanged.
+//   v47: the store's remote_hits — what a remote's hasMany said it holds,
+//        hits only, so another process trusts it. The cache KEY is
+//        unchanged.
+//   v48: runs.def and task_durations.def — the task's definition
+//        (taskDefinition), so a task whose command changed under the same
+//        name reads none of the old one's timings. The cache KEY is
+//        unchanged.
+//   v49: runs.cpu_share — the share of a core each runnable thread got
+//        where the task ran, so a crowded run's CPU reads as need. The
+//        cache KEY is unchanged.
+//   v50: steps, warnings, failures and lockfile_memos — what a run said
+//        and a lockfile claimant parsed, files under the cache dir until
+//        now (if it can be in the DB, it is). The cache KEY is unchanged.
+//   v51: runs.queued_ms, output_bytes, blocks, flaky_passes and
+//        flaky_failures — the rest of what a results row shows, so `vx
+//        last --sql` reads it. The cache KEY is unchanged.
+//   v52: entry_stdout.stdout is a zstd frame of the log's UTF-8, not its
+//        text: stored logs were half a store's bytes, more than every
+//        inline artifact. The cache KEY is unchanged.
+//   v53: a runs row names its run by its row in run_ids, not by the
+//        36-char text; a TEMP view `runs` shows run_id as before. An
+//        all-hit run of 500 tasks added 115 KB to the index. The cache
+//        KEY is unchanged.
+//   v54: entries.run_id — the run that wrote the entry, so `vx last
+//        --log` tells a run's own output from another run's under the same
+//        key. The cache KEY is unchanged.
+//   v55: output_stamps.mtime_ms — the mtime the file carried when
+//        stamped. A restore dates each file it writes now, as the task's
+//        write would, not with the entry's saved mtime: a make-style
+//        dependant took a restored upstream as older than its own output
+//        and saved bytes built from another upstream. The cache KEY and
+//        the stored artifact are unchanged.
+//   v56: output_stamps and output_dirs carry root, in their primary key:
+//        clones sharing a named cache dir overwrote each other's stamps.
+//        A v55 index has no such column, so every statement on it failed;
+//        the reset drops it. entry_stdout holds output bytes that are not
+//        UTF-8 as written, which CACHE_VERSION v56 keys apart.
+export const SCHEMA_VERSION = 'v56'
+
+/**
+ * SQL predicate selecting `runs` rows that record an EXECUTION.
+ *
+ * Every non-group, non-aborted outcome of a run gets a row, so the header's
+ * `task_count` matches `COUNT(*)` and the run-detail timeline is complete.
+ * But a `skipped` row is a task the run never executed — its upstream failed,
+ * so it has no exit of its own, no duration, and made no cache decision.
+ * Counting it in a RATE or a MEAN dilutes that figure with a non-event: a
+ * task skipped as often as it succeeds reads 50% success, and a zero-duration
+ * row drags every average toward zero.
+ *
+ * Lives here, beside the schema, because the same figure is computed in more
+ * than one place (`Cache.stats` and the run-history queries both answer
+ * "runs in the last 24h") and two copies of a rule are how they drift apart.
+ */
+export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
+
+/**
+ * SQL predicate selecting `runs` rows that recorded a cache key. `hash` is
+ * `''` for an outcome that never derived one (see {@link RunRecord.hash}),
+ * and `''` is not a key: it can neither corroborate flakiness nor say the
+ * inputs changed. Mirrors the `hash <> ''` guards in the cloud analytics copy.
+ */
+export const KEYED_RUNS_SQL = "hash <> ''"
+
+/**
+ * Close for real. A plain `close()` leaves the connection open while any
+ * statement from `db.prepare()` lives (bun:sqlite 1.4.2 defers it, as
+ * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
+ * open after `Cache.close()`: a leaked descriptor per run for an embedder
+ * (O-10).
+ * `close(true)` finalizes them and closes. Below the Bun floor (1.3.14) it
+ * does not finalize: it answers SQLITE_BUSY, "database is locked", and every
+ * `vx run` exited 1 with that stack after its tasks had passed (M-44). There
+ * the deferred close is the one that closes.
+ */
+export function closeDb(db: Database): void {
+  try {
+    db.close(true)
+  } catch {
+    db.close()
+  }
+}
+
+/**
+ * SQLite's answer when the disk under the index is full. It is a code on
+ * the `SQLiteError` (`SQLITE_FULL`), never an `ENOSPC` errno, so
+ * `isDiskFull` does not see it: a memo write, a snapshot flush or a prune's
+ * delete on a full disk reached the user as a stack (A-14).
+ */
+export function isIndexFull(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === 'SQLITE_FULL'
+}

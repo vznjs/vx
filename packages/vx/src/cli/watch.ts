@@ -16,13 +16,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
-import {
-  FILE_HASH_RACY_MS,
-  fsClockNow,
-  namedIgnoredReach,
-  racyWindowMs,
-  repoFacts,
-} from '../cache/index.js'
+import { FILE_HASH_RACY_MS, fsClockNow, racyWindowMs } from '../memo/index.js'
+import { namedIgnoredReach, repoFacts } from '../cache/index.js'
 import {
   type CommandWindows,
   commandWindows,

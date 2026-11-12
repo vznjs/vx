@@ -6,12 +6,12 @@
 // applies the same group/aborted filter, a second copy of the rule that
 // tests/run-records.test.ts holds to this one.
 
-import { type Cache, type InvocationRecord, type RunRecord, runHistory } from '../cache/index.js'
-import { isGroupTask, taskDefinition, type TaskOutcome } from '../graph/index.js'
+import { type Cache } from '../cache/index.js'
+import { type InvocationRecord, type RunRecord, runHistory } from '../history/index.js'
+import { isGroupTask, taskDefinition, type TaskOutcome, isCacheHit } from '../graph/index.js'
 import { VERSION } from '../version.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
 import { taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
-import { isCacheHit } from '../graph/index.js'
 import { neverStarted } from '../report/index.js'
 
 export interface RunRecordsInput {

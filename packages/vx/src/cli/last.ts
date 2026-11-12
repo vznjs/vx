@@ -6,17 +6,11 @@
 // reads the lock only for each task's definition.
 
 import type { Database } from 'bun:sqlite'
+import { indexDb, indexError, Cache } from '../cache/index.js'
 import {
-  indexDb,
-  indexError,
-  Cache,
   keptSteps,
   keptWarnings,
   type RunStep,
-} from '../cache/index.js'
-import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
-import {
   type FailureMode,
   getInvocation,
   getRun,
@@ -25,6 +19,8 @@ import {
   LocalHistoryProvider,
   type RunSummaryRow,
 } from '../history/index.js'
+import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
+import { flagHint, formatValue, seeHelp } from './help.js'
 import {
   applyGraphStage,
   currentBranch,

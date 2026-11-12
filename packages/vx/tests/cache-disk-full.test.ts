@@ -14,7 +14,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { indexDb, Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 let root: string

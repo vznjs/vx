@@ -44,9 +44,9 @@ import {
   startGitEnumeration,
   checkBlobSizes,
   lazyGitEnumeration,
-  measureFsClockLag,
   DEFAULT_STORE,
 } from '../cache/index.js'
+import { measureFsClockLag } from '../memo/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,

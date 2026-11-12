@@ -17,7 +17,8 @@ import { planRun as planFromLock } from '../src/orchestrator/index.js'
 import { lock, prepareRun, run } from './helpers/orchestrator.js'
 import { workspaceWith, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
-import { indexDb, Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { OUTPUT_DIRS_RACY_MS } from '../src/memo/output-index.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 

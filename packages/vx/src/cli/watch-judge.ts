@@ -4,7 +4,8 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { FILE_HASH_RACY_MS, filesBehind, racyWindowMs } from '../cache/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../memo/index.js'
+import { filesBehind } from '../cache/index.js'
 import { commandWindows, type CommandWindows } from '../orchestrator/index.js'
 import { printable, xxh3 } from '../util/index.js'
 import * as ui from '../ui/index.js'

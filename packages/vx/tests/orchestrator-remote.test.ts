@@ -21,7 +21,7 @@ import {
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
 import { indexDb, Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
-import { LocalMemo } from '../src/cache/local-memo.js'
+import { LocalMemo } from '../src/memo/index.js'
 import { ownRssHighWater } from '../src/exec/runner.js'
 import { type RunSummaryRecord, type TelemetryRecord } from '../src/orchestrator/index.js'
 import { cacheKeyDiff, latestRunId, LocalHistoryProvider } from '../src/history/index.js'
@@ -29,7 +29,7 @@ import { planRun, run } from './helpers/orchestrator.js'
 import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
-import { RunHistory } from '../src/cache/run-history.js'
+import { RunHistory } from '../src/history/run-history.js'
 
 /**
  * A stub HTTP artifact ENDPOINT + the RemoteCacheLayer speaking to it —

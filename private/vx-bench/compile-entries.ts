@@ -7,6 +7,6 @@ import path from 'node:path'
  * base older than an entry has none to name.
  */
 export function vxCompileEntries(bin: string): string[] {
-  const writer = path.join(path.dirname(bin), 'cache', 'history-writer.ts')
+  const writer = path.join(path.dirname(bin), 'history', 'history-writer.ts')
   return existsSync(writer) ? [bin, writer] : [bin]
 }

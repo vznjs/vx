@@ -32,8 +32,8 @@ import type {
   PlanPrediction,
   RunPlan,
 } from '../src/orchestrator/index.js'
-import type { RunStep } from '../src/cache/index.js'
 import type {
+  RunStep,
   CacheKeyDiff,
   CacheKeyExplanation,
   FlakyTask,

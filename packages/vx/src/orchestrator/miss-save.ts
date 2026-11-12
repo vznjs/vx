@@ -17,8 +17,9 @@ import {
   resolveOutputs,
   resolveWorkspaceOutputs,
   resolveWorkspaceOutputTree,
-  WORKSPACE_OUTPUT_PREFIX,
+  type TaskInputComponent,
 } from '../cache/index.js'
+import { WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import type { TaskNode } from '../graph/index.js'
 import {
   anyTaskGlob,
@@ -32,7 +33,6 @@ import {
   taskGlob,
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
-import type { TaskInputComponent } from '../cache/index.js'
 import { declareStateHint, stateLeft, type StateStamps } from './undeclared-state.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */

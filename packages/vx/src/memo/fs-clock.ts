@@ -21,7 +21,7 @@ const FS_CLOCK_TICK_MS = 20
 let lagMs = 0
 
 /** The lag every racy window is widened by: 0 unless measured past the tick. */
-export function fsClockLag(): number {
+function fsClockLag(): number {
   return lagMs
 }
 
@@ -112,4 +112,28 @@ export function measureFsClockLag(dir: string): void {
   const at = stampIn(dir)
   if (at !== undefined) ms = Date.now() - at - stampGrainMs(at)
   setFsClockLag(ms)
+}
+
+/** The stat memo's twin of `OUTPUT_DIRS_RACY_MS`: a file changed within this window of the stat is not memoised. */
+export const FILE_HASH_RACY_MS = 50
+
+/**
+ * The racy window for one timestamp. `windowMs` assumes a clock finer than
+ * itself; a file system that keeps whole seconds (ext3, HFS+, FAT/exFAT,
+ * some NFS mounts) stamps a write at 12:00:00.900 as 12:00:00, so a write
+ * later in that second keeps the stamp, and a stat 120 ms after the first
+ * write passed a 50 ms window: the memo served the first bytes' digest for
+ * a same-size rewrite 120 ms on (A-2, reproduced on an ext2 mount). A stamp
+ * with no sub-second part is read as such a second and widens the window by
+ * it, as git judges racy entries at its index's own granularity. FAT32
+ * keeps even seconds, so an even stamp widens by two: a hash 1.2 s after
+ * one passed the single second and a rewrite later in the pair kept every
+ * field (A-38). Pass the UNFLOORED stamp: a kernel's nanosecond stamp lands
+ * on a whole second about once in 10^9, one set through a millisecond
+ * `utimes` once in a thousand, and either is then trusted up to two seconds
+ * later — never wrongly. And every window is widened by how far the file
+ * system's clock runs behind this process's (`fsClockLag`, fs-clock.ts).
+ */
+export function racyWindowMs(stampMs: number, windowMs: number): number {
+  return windowMs + stampGrainMs(stampMs) + fsClockLag()
 }

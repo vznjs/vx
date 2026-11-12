@@ -8,8 +8,8 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
-import { OutputIndex } from '../src/cache/output-index.js'
-import { createTables } from '../src/cache/schema.js'
+import { OutputIndex } from '../src/memo/index.js'
+import { createTables } from '../src/index-db/index.js'
 import { cpuClock } from './helpers/cpu-clock.js'
 
 const N = 20_000

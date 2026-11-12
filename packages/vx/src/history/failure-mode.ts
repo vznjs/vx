@@ -9,7 +9,7 @@
 // judges a key on what all of them saw.
 
 import type { Database } from 'bun:sqlite'
-import { KEYED_RUNS_SQL } from '../cache/index.js'
+import { KEYED_RUNS_SQL } from '../index-db/index.js'
 import { isCacheHit, TASK_STATUSES } from '../graph/index.js'
 
 // SQL hit set derived from the predicate — never a hand-typed list and never

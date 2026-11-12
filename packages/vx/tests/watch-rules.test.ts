@@ -20,7 +20,7 @@ import {
   makeWatchIgnore,
 } from '../src/cli/watch-filter.js'
 import { armWatcher, modifiedBefore, pollWatcher, WATCH_PROBE } from '../src/cli/watch-fs.js'
-import { fsClockNow } from '../src/cache/index.js'
+import { fsClockNow } from '../src/memo/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { lock } from './helpers/orchestrator.js'

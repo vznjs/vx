@@ -28,7 +28,7 @@ import { streamOf } from './helpers/stream.js'
 import { Cache } from '../src/cache/cache.js'
 import { xxh3, xxh3hex } from '../src/util/hash.js'
 import { withSum } from './helpers/artifact-sum.js'
-import { runHistory } from '../src/cache/index.js'
+import { runHistory } from '../src/history/index.js'
 
 // CI auto-scales budgets ~3× to cover shared-runner variance; dev
 // runs the calibration-tight values unless VX_PERF_SCALE is set

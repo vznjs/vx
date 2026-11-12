@@ -44,7 +44,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
+import { FILE_HASH_RACY_MS, fileIdentity, racyWindowMs } from '../memo/index.js'
 
 /** A name no ignore rule names, standing for a file a task may create. */
 const FRESH_NAME = '__vx_probe__'
@@ -1453,19 +1453,6 @@ function walkFiles(dir: string, rel = ''): string[] {
     else out.push(r)
   }
   return out
-}
-
-/**
- * A file's identity as the key folds it: its blob OID, prefixed by its git
- * mode unless that is a plain file's (100644). A blob OID holds no mode, so
- * a `chmod +x` or a symlink swapped for a file of its target's bytes kept
- * the key while `git status` and `--affected` saw the change, and the task
- * replayed the old output (item 887). The plain mode stays unprefixed, so
- * only executables and symlinks moved key. `hashFile` spells it the same
- * way from a stat.
- */
-export function fileIdentity(mode: string, oid: string): string {
-  return mode === '100644' ? oid : `${mode}:${oid}`
 }
 
 // Each `ls-files -s -v` record is `[<flag> ]<mode> <oid> <stage>\t<path>` —

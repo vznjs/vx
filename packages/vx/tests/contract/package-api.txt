@@ -938,7 +938,7 @@ export interface FingerprintDigests {
   readonly projects: Readonly<Record<string, string>>
   readonly extras?: readonly string[]
 }
-== type FoldMemo (src/cache/fold-memo.ts)
+== type FoldMemo (src/memo/fold-memo.ts)
 export interface FoldMemo {
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
@@ -1040,7 +1040,7 @@ export interface InputStability {
   strategy?: 'immutable' | 'mutable' | 'unchecked'
   severity?: 'warn' | 'error'
 }
-== type InvocationRecord (src/cache/layer.ts)
+== type InvocationRecord (src/history/run-history.ts)
 export interface InvocationRecord {
   runId: string
   command: string
@@ -1297,12 +1297,12 @@ export interface OutputContext extends BaseContext {
   readonly isTTY: boolean
   readonly ci: boolean
 }
-== type OutputDirRow (src/cache/layer.ts)
+== type OutputDirRow (src/memo/output-index.ts)
 export interface OutputDirRow {
   path: string
   mtimeMs: number
 }
-== type OutputFileRow (src/cache/layer.ts)
+== type OutputFileRow (src/memo/output-index.ts)
 export interface OutputFileRow {
   path: string
   size: number
@@ -1540,12 +1540,12 @@ export interface RemoteCacheLayer {
   put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   missing?(hash: string): void
 }
-== type RemoteHit (src/cache/remote-hits.ts)
+== type RemoteHit (src/memo/remote-hits.ts)
 export interface RemoteHit {
   readonly size?: number
   readonly durationMs?: number
 }
-== type RemoteHits (src/cache/remote-hits.ts)
+== type RemoteHits (src/memo/remote-hits.ts)
 export interface RemoteHits {
   get(hashes: readonly string[]): Map<string, RemoteHit>
   record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now?: number): void
@@ -1731,7 +1731,7 @@ export interface RunPlan {
   noneAffected?: string
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
-== type RunRecord (src/cache/layer.ts)
+== type RunRecord (src/history/run-history.ts)
 export interface RunRecord {
   hash?: string
   project: string
@@ -1959,7 +1959,7 @@ export interface ServerSpec {
   readonly timeoutMs?: number
   readonly sandbox?: { readonly config: SandboxConfig; readonly nested: readonly string[] }
 }
-== type StoreMemo (src/cache/local-memo.ts)
+== type StoreMemo (src/memo/local-memo.ts)
 export interface StoreMemo {
   hashFile(filePath: string): Promise<string>
   hashBytes(bytes: Uint8Array, nearPath: string): string

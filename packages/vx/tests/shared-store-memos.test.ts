@@ -7,8 +7,8 @@ import { Database } from 'bun:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { indexDb, Cache, type RunRecord, runHistory } from '../src/cache/index.js'
-import { detectFlaky, flakyTasks } from '../src/history/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { type RunRecord, runHistory, detectFlaky, flakyTasks } from '../src/history/index.js'
 
 let dir: string
 let store: string

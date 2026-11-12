@@ -6,9 +6,13 @@
 
 import { Database } from 'bun:sqlite'
 import { expect, it } from 'bun:test'
-import { IndexFoldMemo } from '../src/cache/fold-memo.js'
-import { computeReverseDepCount, runGraph } from '../src/graph/index.js'
-import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import { IndexFoldMemo } from '../src/memo/index.js'
+import {
+  computeReverseDepCount,
+  runGraph,
+  type TaskNode,
+  type TaskOutcome,
+} from '../src/graph/index.js'
 import { graphCounts } from '../src/orchestrator/graph-memo.js'
 import { createForecast } from '../src/report/index.js'
 

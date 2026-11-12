@@ -6,7 +6,7 @@
 import { Database } from 'bun:sqlite'
 import { expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
-import { IndexFoldMemo } from '../src/cache/fold-memo.js'
+import { IndexFoldMemo } from '../src/memo/index.js'
 import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
 import { standInsOf } from '../src/graph/stand-ins.js'
 import { memoGraph, type GraphMemo } from '../src/orchestrator/graph-memo.js'

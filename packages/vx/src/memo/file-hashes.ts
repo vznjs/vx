@@ -7,11 +7,11 @@
 // the store's handle; `Cache` delegates.
 
 import type { Database } from 'bun:sqlite'
-import { lazyStatement } from './schema.js'
+import { lazyStatement, isIndexFull } from '../index-db/index.js'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
-import { fileIdentity } from './git-inputs.js'
-import { FILE_HASH_RACY_MS, isIndexFull, racyWindowMs } from './layer.js'
+
+import { FILE_HASH_RACY_MS, racyWindowMs } from './fs-clock.js'
 import { isPermissionError, UserError } from '../util/index.js'
 
 export class FileHashStore {
@@ -390,4 +390,17 @@ export class FileHashStore {
     this.objectFormat = detected
     return detected
   }
+}
+
+/**
+ * A file's identity as the key folds it: its blob OID, prefixed by its git
+ * mode unless that is a plain file's (100644). A blob OID holds no mode, so
+ * a `chmod +x` or a symlink swapped for a file of its target's bytes kept
+ * the key while `git status` and `--affected` saw the change, and the task
+ * replayed the old output (item 887). The plain mode stays unprefixed, so
+ * only executables and symlinks moved key. `hashFile` spells it the same
+ * way from a stat.
+ */
+export function fileIdentity(mode: string, oid: string): string {
+  return mode === '100644' ? oid : `${mode}:${oid}`
 }

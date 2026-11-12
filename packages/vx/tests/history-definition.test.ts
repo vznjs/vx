@@ -7,16 +7,15 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
-  indexDb,
-  Cache,
   type InvocationRecord,
   type RunRecord,
   runHistory,
-} from '../src/cache/index.js'
+  LocalHistoryProvider,
+} from '../src/history/index.js'
 import { taskDefinition, taskDefinitions } from '../src/graph/definition.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { LocalHistoryProvider } from '../src/history/index.js'
 import { xxh3hex } from '../src/util/index.js'
 
 const node = (config: object): TaskNode =>

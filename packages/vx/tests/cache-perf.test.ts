@@ -2,17 +2,14 @@
 // the `cache-hit-perf` PR. Each test targets one specific behavior
 // rather than asserting wall-clock time (which is too flaky for CI).
 
-import { indexDb, runHistory } from '../src/cache/index.js'
+import { indexDb } from '../src/cache/index.js'
+import { runHistory, type RunRecord } from '../src/history/index.js'
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, utimes, stat, rename } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  ArtifactVanishedError,
-  Cache,
-  type RunRecord,
-  FILE_HASH_RACY_MS,
-} from '../src/cache/cache.js'
+import { ArtifactVanishedError, Cache } from '../src/cache/cache.js'
+import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
 import { isInline, storedArtifact } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 

@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { historyFiles, indexDb, Cache, HistoryStream, type RunRecord } from '../src/cache/index.js'
+import { historyFiles, indexDb, Cache } from '../src/cache/index.js'
+import { HistoryStream, type RunRecord } from '../src/history/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -202,7 +203,7 @@ it('names every thread entry in each binary build', () => {
     ...readFileSync(path.join(pkg, 'vx.config.ts'), 'utf8').matchAll(/'bun build --compile[^']*'/g),
   ].map((m) => m[0])
   const check = readFileSync(path.join(pkg, 'scripts/check-binary.ts'), 'utf8')
-  expect(entries).toEqual(['src/cache/history-writer.ts'])
+  expect(entries).toEqual(['src/history/history-writer.ts'])
   expect(builds.length).toBe(4)
   for (const entry of entries) {
     expect(builds.filter((b) => !b.includes(` ${entry} `))).toEqual([])

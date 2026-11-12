@@ -15,11 +15,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   Cache,
   type CacheLayer,
-  FILE_HASH_RACY_MS,
   GitFilesCache,
   applyGitEnumeration,
   startGitEnumeration,
 } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 import type { RunSummary } from '../src/orchestrator/index.js'
 import type { Logger } from '../src/report/index.js'

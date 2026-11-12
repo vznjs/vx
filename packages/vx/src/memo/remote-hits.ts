@@ -5,7 +5,7 @@
 // keys it asked, and a GET that finds nothing forgets its key.
 
 import type { Database } from 'bun:sqlite'
-import { inHashes } from './schema.js'
+import { inHashes } from '../index-db/index.js'
 
 export interface RemoteHit {
   readonly size?: number

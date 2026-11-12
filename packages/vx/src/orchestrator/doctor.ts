@@ -7,13 +7,8 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import {
-  cachePolicyEnvRefusal,
-  indexDb,
-  Cache,
-  CACHE_VERSION,
-  SCHEMA_VERSION,
-} from '../cache/index.js'
+import { cachePolicyEnvRefusal, indexDb, Cache, CACHE_VERSION } from '../cache/index.js'
+import { SCHEMA_VERSION } from '../index-db/index.js'
 import { PLUGIN_HOOKS, type WorkspaceConfig } from '../config.js'
 import {
   cgroupCpuQuota,

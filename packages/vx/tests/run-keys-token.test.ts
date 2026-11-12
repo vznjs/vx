@@ -2,7 +2,8 @@
 // nodes it is given: these cases build it in-process, without a run.
 
 import { expect, it, spyOn } from 'bun:test'
-import { GitFilesCache, type FoldMemo } from '../src/cache/index.js'
+import { GitFilesCache } from '../src/cache/index.js'
+import { type FoldMemo } from '../src/memo/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { readRunKeys, runKeysToken, writeRunKeys } from '../src/orchestrator/run-keys.js'
 import { createHashCache } from '../src/orchestrator/task-hash.js'

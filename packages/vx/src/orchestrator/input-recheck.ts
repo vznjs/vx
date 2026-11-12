@@ -4,13 +4,8 @@
 
 import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
-import {
-  ABSENT_INPUT,
-  type CacheLayer,
-  declaresInput,
-  racyWindowMs,
-  stampGrainMs,
-} from '../cache/index.js'
+import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
+import { racyWindowMs, stampGrainMs } from '../memo/index.js'
 import { atOrUnder, type ExecuteResult, MOUNT_WILDCARDS, toRealPath } from '../exec/index.js'
 import { printable, relPosix, span, taskGlobOf } from '../util/index.js'
 import { warnOf } from '../report/index.js'

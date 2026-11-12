@@ -6,8 +6,7 @@ import path from 'node:path'
 import { relPosix } from '../util/index.js'
 import type { FileHashStore } from './file-hashes.js'
 import type { FoldMemo } from './fold-memo.js'
-import type { OutputDirRow, OutputFileRow } from './layer.js'
-import type { OutputIndex } from './output-index.js'
+import type { OutputDirRow, OutputFileRow, OutputIndex } from './output-index.js'
 
 // About 1.3 ms of inserts per turn: a task's exit waits at most that.
 const HELD_SLICE = 250

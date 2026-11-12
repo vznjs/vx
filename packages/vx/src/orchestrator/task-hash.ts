@@ -1,8 +1,16 @@
 import { lstatSync } from 'node:fs'
 import path from 'node:path'
 import type { InputStability, TaskConfig } from '../config.js'
-import type { FoldMemo, ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
+  type FoldMemo,
+  FILE_HASH_RACY_MS,
+  racyWindowMs,
+  stampGrainMs,
+  WORKSPACE_OUTPUT_PREFIX,
+} from '../memo/index.js'
+import {
+  type ProjectFilesCache,
+  type WorkspaceFilesCache,
   ABSENT_INPUT,
   absentOr,
   addedInput,
@@ -14,14 +22,10 @@ import {
   type InputListing,
   type CacheKeyInput,
   type CacheLayer,
-  FILE_HASH_RACY_MS,
-  racyWindowMs,
   resolveInputs,
-  stampGrainMs,
   type ResolveInputsArgs,
   type GitFilesCache,
   type TaskInputComponent,
-  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import {

@@ -1,4 +1,5 @@
-import { indexDb, runHistory } from '../src/cache/index.js'
+import { indexDb } from '../src/cache/index.js'
+import { runHistory, type InvocationRecord } from '../src/history/index.js'
 import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -10,7 +11,6 @@ import {
   type CacheKeyInput,
   CorruptArtifactError,
   FULL_CACHE_POLICY,
-  type InvocationRecord,
   formatCachePolicy,
   parseCachePolicy,
   zstdContentSize,

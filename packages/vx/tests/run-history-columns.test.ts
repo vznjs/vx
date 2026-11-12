@@ -12,13 +12,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  indexDb,
-  Cache,
-  type InvocationRecord,
-  type RunRecord,
-  runHistory,
-} from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { type InvocationRecord, type RunRecord, runHistory } from '../src/history/index.js'
 import { xxh3hex } from '../src/util/index.js'
 
 // Now-relative: `close()` prunes history older than 30 days (retention).

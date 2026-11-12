@@ -6,14 +6,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
-  indexDb,
-  Cache,
   type InvocationRecord,
   type RunRecord,
   runHistory,
-} from '../src/cache/index.js'
-import { LocalHistoryProvider, type TaskResources } from '../src/history/index.js'
+  LocalHistoryProvider,
+  type TaskResources,
+} from '../src/history/index.js'
 
 const STATUSES: RunRecord['status'][] = ['success', 'cache-hit', 'failed', 'skipped', 'success']
 

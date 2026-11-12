@@ -26,13 +26,12 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
-  indexDb,
-  Cache,
   OUTPUT_DIRS_CAP,
   OUTPUT_DIRS_OVER_CAP,
   OUTPUT_DIRS_RACY_MS,
-} from '../src/cache/index.js'
+} from '../src/memo/output-index.js'
 import { run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/report/logger.js'
 import { outputDirPrefixes, wholeSubtreePrefixes } from '../src/util/index.js'

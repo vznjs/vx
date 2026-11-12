@@ -29,19 +29,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
-  indexDb,
-  Cache,
   type InvocationRecord,
   type RunRecord,
   runHistory,
-} from '../src/cache/index.js'
-import type { Logger } from '../src/report/index.js'
-import {
   cacheKeyDiff,
   LocalHistoryProvider,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from '../src/history/index.js'
+import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 
 const TIMEOUT = 30_000

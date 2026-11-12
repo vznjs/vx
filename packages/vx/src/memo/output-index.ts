@@ -16,21 +16,11 @@ const ABSENT_DIR_MTIME = -1
 const FILE_PREFIX_MTIME = -2
 
 import type { Database } from 'bun:sqlite'
-import { inHashes, lazyStatement } from './schema.js'
-import { modeMatches } from './umask.js'
-import { stampGrainMs } from './fs-clock.js'
+import { inHashes, lazyStatement, isIndexFull } from '../index-db/index.js'
+import { modeMatches } from '../util/index.js'
+import { stampGrainMs, racyWindowMs } from './fs-clock.js'
 import { lstatSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
-import {
-  OUTPUT_DIRS_CAP,
-  OUTPUT_DIRS_OVER_CAP,
-  OUTPUT_DIRS_RACY_MS,
-  type OutputDirRow,
-  isIndexFull,
-  racyWindowMs,
-  type OutputFileRow,
-  WORKSPACE_OUTPUT_PREFIX,
-} from './layer.js'
 
 /**
  * The mode a symlink output's row carries (S_IFLNK): its size is the
@@ -639,3 +629,79 @@ export class OutputIndex {
     return current
   }
 }
+
+/**
+ * Artifact + `output_files` namespace prefix for workspace-root-
+ * anchored outputs (`outputs.workspaceFiles`). Project outputs
+ * keep their bare project-relative `path` rows; workspace rows store
+ * the full `workspace-outputs/<rel-to-root>` tar entry name as the
+ * discriminator — least-invasive row format, no schema change. A
+ * project output dir literally named `workspace-outputs/` would
+ * collide with the namespace; the name is reserved, and a project
+ * output glob under it is refused at load (config-schema.ts), a file
+ * another glob reaches there at save (`planArtifact`).
+ */
+export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
+
+/**
+ * Per-output-file fingerprint, scoped by the cache entry that
+ * produced it. Batch-loaded once at the top of a run via
+ * `loadOutputFilesBatch(hashes)` so the orchestrator's "is this
+ * tree already current?" probe becomes an in-memory Map lookup
+ * plus N parallel stat calls.
+ *
+ * `path` is project-relative (e.g. `dist/index.js`), matching how
+ * outputs are addressed under `<projectDir>/` — except workspace
+ * outputs, which carry the full `workspace-outputs/<rel-to-root>`
+ * tar entry name (see `WORKSPACE_OUTPUT_PREFIX`); callers split on
+ * the prefix and anchor those at the workspace root.
+ */
+export interface OutputFileRow {
+  path: string
+  size: number
+  mode: number
+  mtimeMs: number
+  /**
+   * The inode and ctime THIS machine saw the file carry after the save or
+   * restore that left it equal to the entry (`recordOutputStamps`).
+   * Absent until then, and from any ingest: a row without them is never
+   * current.
+   */
+  ino?: number
+  ctimeMs?: number
+}
+
+/** One directory under a whole-subtree output glob, as it stood after the last save or restore on THIS machine. */
+export interface OutputDirRow {
+  path: string
+  mtimeMs: number
+}
+
+/**
+ * More directories than this under a task's output prefixes: record
+ * nothing, keep the walk. 256 refused payload's `@payloadcms/ui#build`
+ * (535 directories, 4,069 files), which then paid the refused snapshot's
+ * walk AND the output glob on every warm no-op — 65 ms of a 320 ms run
+ * (2026-09-11). Rows are 60 bytes each and the check is one stat per
+ * directory, so the cap is a bound on pathological trees, not a budget.
+ */
+export const OUTPUT_DIRS_CAP = 8192
+
+/**
+ * `mtime_ms` of the one row a snapshot over `OUTPUT_DIRS_CAP` leaves: never
+ * current, so the hit walks, and it tells the hit not to snapshot again.
+ * Cleared rows sent every hit through the walk AND a capped snapshot.
+ */
+export const OUTPUT_DIRS_OVER_CAP = -3
+
+/**
+ * A directory whose mtime lies within this many ms of the snapshot is RACY
+ * and the whole snapshot is dropped. File timestamps are coarse on Linux
+ * (a kernel tick, up to 10 ms), so a write landing in the same tick as the
+ * one that made the directory's recorded mtime leaves the mtime unchanged
+ * and the change invisible — git's index distrusts stats this young for
+ * the same reason (a stray survived a hit on the ubuntu job, 2026-09-03).
+ * The next hit walks, and once the tree is older than the window it is
+ * recorded for good.
+ */
+export const OUTPUT_DIRS_RACY_MS = 50

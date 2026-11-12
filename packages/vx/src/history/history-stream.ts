@@ -4,7 +4,7 @@
 // while it runs. What does not land (no thread, a refused batch) is
 // handed back and goes in the run's own bundle, as before.
 
-import type { RunRecord } from './layer.js'
+import type { RunRecord } from './run-history.js'
 import type { HistoryWriterIn, HistoryWriterOut } from './history-writer.js'
 
 /** Rows per batch: one transaction on the thread. */

@@ -1054,7 +1054,7 @@ export interface InputStability {
 
 ## `InvocationRecord`
 
-type · `src/cache/layer.ts`
+type · `src/history/run-history.ts`
 
 One header row per `vx run` invocation (the `invocations` table). All
 fields mirror the columns; nullable VCS/host columns are `null` when
@@ -2441,7 +2441,7 @@ export interface RunPlan {
 
 ## `RunRecord`
 
-type · `src/cache/layer.ts`
+type · `src/history/run-history.ts`
 
 ```ts
 export interface RunRecord {

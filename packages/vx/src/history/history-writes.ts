@@ -1,9 +1,14 @@
 // A run's history writes into an open cache's index: `RunHistory` over the
 // handle the cache exposes, gated as the cache's own writes are.
 
-import type { InvocationRecord, MeasureRecord, RunRecord } from './layer.js'
-import { type Cache, indexDb, indexError, indexWritable, valueDigest } from './cache.js'
-import { RunHistory, type RunHead } from './run-history.js'
+import {
+  type InvocationRecord,
+  type MeasureRecord,
+  type RunRecord,
+  RunHistory,
+  type RunHead,
+} from './run-history.js'
+import { type Cache, indexDb, indexError, indexWritable, valueDigest } from '../cache/index.js'
 
 /** A run's history writes into a cache's index. */
 export interface HistoryWrites {

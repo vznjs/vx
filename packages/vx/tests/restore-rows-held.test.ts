@@ -9,7 +9,7 @@ import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
-import { OutputIndex } from '../src/cache/output-index.js'
+import { OutputIndex } from '../src/memo/index.js'
 import { isInline } from './helpers/stored-artifact.js'
 
 const HASH = '0123456789abcdef'

@@ -12,7 +12,6 @@ import {
   cleanWorkspaceOutputs,
   committedFiles,
   committedMoved,
-  type OutputFileRow,
   type OutputStamp,
   ownOutputsSince,
   ownWorkspaceOutputsSince,
@@ -22,8 +21,8 @@ import {
   stampOutputs,
   stampWorkspaceOutputs,
   taskEntryHashes,
-  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
+import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import { OutputsFailed } from '../graph/index.js'
 import { relPosix, span } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'

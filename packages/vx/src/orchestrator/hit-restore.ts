@@ -13,13 +13,12 @@ import {
   type CacheEntry,
   cleanOutputPaths,
   committedFiles,
-  OUTPUT_DIRS_OVER_CAP,
   outputWalkTakes,
   resolveOutputTree,
   resolveWorkspaceOutputTree,
   sweepRestoreTemps,
-  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
+import { OUTPUT_DIRS_OVER_CAP, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import {
   asTrees,

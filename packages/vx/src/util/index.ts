@@ -167,3 +167,4 @@ export {
   type DependencySpec,
 } from './dependency-spec.js'
 export { stripEscapes } from './plain-text.js'
+export { modeMatches, readUmask, restoredMode } from './umask.js'

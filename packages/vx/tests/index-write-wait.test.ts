@@ -9,13 +9,8 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import {
-  indexDb,
-  Cache,
-  type InvocationRecord,
-  type RunRecord,
-  runHistory,
-} from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { type InvocationRecord, type RunRecord, runHistory } from '../src/history/index.js'
 
 let dir: string
 beforeEach(async () => {

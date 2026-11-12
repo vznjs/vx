@@ -6,7 +6,7 @@
 
 import type { Cache } from './cache.js'
 import type { ArtifactInfo } from './layered-cache.js'
-import { fsClockLag, stampGrainMs } from './fs-clock.js'
+import type { OutputDirRow, OutputFileRow } from '../memo/index.js'
 
 export interface CacheKeyInput {
   taskId: string
@@ -162,127 +162,6 @@ export interface CacheEntry {
   fetchMs?: number
 }
 
-export interface RunRecord {
-  /**
-   * The task's cache key. ABSENT when the outcome never derived one — a
-   * `skipped` task (its upstream failed, so it never probed) or a
-   * `persistent` one (a dev server is never cached). Such a row is still a
-   * task of the run and must be recorded, so the column keeps a `''`
-   * sentinel rather than going nullable: `''` is impossible for a real key
-   * (`Cache.key` returns 16 hex chars), the reads that must not treat it as
-   * a key already guard it, and it matches what the cloud `task_runs.hash`
-   * column has stored for the same concept since its first migration.
-   */
-  hash?: string
-  project: string
-  task: string
-  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
-  exitCode: number
-  durationMs: number
-  forwardArgs?: readonly string[]
-  startedAt: number // ms-epoch wall clock
-  endedAt: number // ms-epoch wall clock
-  /**
-   * Optional analytics columns. Populated by the orchestrator/runner;
-   * stored as NULL on rows from older runs. Surfaced via `vx info`
-   * and consumable from CI by reading cache.db directly.
-   */
-  runId?: string // ULID shared across every task in one `vx run` invocation
-  cpuMs?: number // sum of user + system CPU time for the child process
-  peakRssBytes?: number // peak resident set size of the child process
-  wallclockStartNs?: bigint // hrtime span relative to run t=0
-  wallclockEndNs?: bigint
-  cacheHit?: boolean // convenience for flamegraph color; derivable from status
-  /**
-   * On a hit: whether outputs were written (`true`) or the disk already
-   * matched the entry (`false`, up-to-date). Absent on other statuses (v31).
-   */
-  restored?: boolean
-  attempts?: number // >1 when the task retried; the direct within-run flaky signal
-  /**
-   * Whether the task declared `cache: true`. An uncached task executes
-   * on every run and its key exists only for dependents to fold, so a
-   * reader (`vx why`, `vx last`) must not present its re-run as a cache
-   * decision. Absent on rows written before the column existed.
-   */
-  cached?: boolean
-  /**
-   * Why the task failed or was skipped, as the run's own footer said it
-   * (v27 columns; NULL on older rows and where the reason does not apply):
-   * a skip's root blocker (or the one a task that ran behind a failure ran
-   * behind), vx's own timeout, the sandbox's violation count,
-   * and why a persistent task never became ready.
-   */
-  blockedBy?: string
-  timedOut?: true
-  sandboxViolations?: number
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined (v40). */
-  remoteError?: string
-  /** The sampled peak cores and mean resident memory of the run (v43). */
-  peakCores?: number
-  avgRssBytes?: number
-  /** Where an executor ran it (`small#1`); absent = here (v44). */
-  placement?: string
-  /** The task with no `inputs` its key folded, so it never read or saved (v46). */
-  keylessBy?: string
-  /** The task's definition (`taskDefinition`): what its history is kept under (v48). */
-  def?: string
-  /** That machine's cores and memory (v44). */
-  placementCores?: number
-  placementMemoryBytes?: number
-  /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
-  cpuShare?: number
-  /** How long it waited ready for a slot (`TaskOutcome.queuedMs`, v51). */
-  queuedMs?: number
-  /** Its output files' bytes (`TaskOutcome.outputBytes`, v51). */
-  outputBytes?: number
-  /** The tasks and groups downstream of it in the run, the scheduler's count (v51). */
-  blocks?: number
-  /** The flaky record its row's note quoted (`TaskOutcome.flaky`, v51). */
-  flakyPasses?: number
-  flakyFailures?: number
-}
-
-/**
- * One header row per `vx run` invocation (the `invocations` table). All
- * fields mirror the columns; nullable VCS/host columns are `null` when
- * the probe failed (not a git repo, hostname unavailable). Recorded
- * once per run inside the same transaction as the per-task `runs` rows.
- */
-export interface InvocationRecord {
-  runId: string
-  command: string
-  /** JSON-serialized `string[]` of the requested task names. */
-  requestedTasks: string
-  /** The `--cache-policy` spec, e.g. `'local:rw,remote:r'` (a flag omitted = off). */
-  cachePolicy: string
-  concurrency: number
-  flow: 'focused' | 'broad' | null
-  startedAt: number
-  endedAt: number
-  totalDurationMs: number
-  taskCount: number
-  failedCount: number
-  hitCount: number
-  hitLocalCount: number
-  hitRemoteCount: number
-  /** Hits that restored nothing, and hits that restored outputs per layer (v31); they sum to `hitCount`. */
-  upToDateCount: number
-  restoredLocalCount: number
-  restoredRemoteCount: number
-  exitOk: boolean
-  commitSha: string | null
-  branch: string | null
-  dirty: boolean | null
-  ci: boolean
-  ciProvider: string | null
-  host: string | null
-  os: string | null
-  arch: string | null
-  vxVersion: string
-}
-
 /**
  * One cache-key component as `key()` folded it, the `captureInto` row.
  * Persisted on a miss (`TaskInputRow`) so a later run can diff its inputs
@@ -365,106 +244,6 @@ export interface PruneResult {
 }
 
 /**
- * Artifact + `output_files` namespace prefix for workspace-root-
- * anchored outputs (`outputs.workspaceFiles`). Project outputs
- * keep their bare project-relative `path` rows; workspace rows store
- * the full `workspace-outputs/<rel-to-root>` tar entry name as the
- * discriminator — least-invasive row format, no schema change. A
- * project output dir literally named `workspace-outputs/` would
- * collide with the namespace; the name is reserved, and a project
- * output glob under it is refused at load (config-schema.ts), a file
- * another glob reaches there at save (`planArtifact`).
- */
-export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
-
-/**
- * Per-output-file fingerprint, scoped by the cache entry that
- * produced it. Batch-loaded once at the top of a run via
- * `loadOutputFilesBatch(hashes)` so the orchestrator's "is this
- * tree already current?" probe becomes an in-memory Map lookup
- * plus N parallel stat calls.
- *
- * `path` is project-relative (e.g. `dist/index.js`), matching how
- * outputs are addressed under `<projectDir>/` — except workspace
- * outputs, which carry the full `workspace-outputs/<rel-to-root>`
- * tar entry name (see `WORKSPACE_OUTPUT_PREFIX`); callers split on
- * the prefix and anchor those at the workspace root.
- */
-export interface OutputFileRow {
-  path: string
-  size: number
-  mode: number
-  mtimeMs: number
-  /**
-   * The inode and ctime THIS machine saw the file carry after the save or
-   * restore that left it equal to the entry (`recordOutputStamps`).
-   * Absent until then, and from any ingest: a row without them is never
-   * current.
-   */
-  ino?: number
-  ctimeMs?: number
-}
-
-/** One directory under a whole-subtree output glob, as it stood after the last save or restore on THIS machine. */
-export interface OutputDirRow {
-  path: string
-  mtimeMs: number
-}
-
-/**
- * More directories than this under a task's output prefixes: record
- * nothing, keep the walk. 256 refused payload's `@payloadcms/ui#build`
- * (535 directories, 4,069 files), which then paid the refused snapshot's
- * walk AND the output glob on every warm no-op — 65 ms of a 320 ms run
- * (2026-09-11). Rows are 60 bytes each and the check is one stat per
- * directory, so the cap is a bound on pathological trees, not a budget.
- */
-export const OUTPUT_DIRS_CAP = 8192
-
-/**
- * `mtime_ms` of the one row a snapshot over `OUTPUT_DIRS_CAP` leaves: never
- * current, so the hit walks, and it tells the hit not to snapshot again.
- * Cleared rows sent every hit through the walk AND a capped snapshot.
- */
-export const OUTPUT_DIRS_OVER_CAP = -3
-
-/**
- * A directory whose mtime lies within this many ms of the snapshot is RACY
- * and the whole snapshot is dropped. File timestamps are coarse on Linux
- * (a kernel tick, up to 10 ms), so a write landing in the same tick as the
- * one that made the directory's recorded mtime leaves the mtime unchanged
- * and the change invisible — git's index distrusts stats this young for
- * the same reason (a stray survived a hit on the ubuntu job, 2026-09-03).
- * The next hit walks, and once the tree is older than the window it is
- * recorded for good.
- */
-export const OUTPUT_DIRS_RACY_MS = 50
-
-/** The stat memo's twin of `OUTPUT_DIRS_RACY_MS`: a file changed within this window of the stat is not memoised. */
-export const FILE_HASH_RACY_MS = 50
-
-/**
- * The racy window for one timestamp. `windowMs` assumes a clock finer than
- * itself; a file system that keeps whole seconds (ext3, HFS+, FAT/exFAT,
- * some NFS mounts) stamps a write at 12:00:00.900 as 12:00:00, so a write
- * later in that second keeps the stamp, and a stat 120 ms after the first
- * write passed a 50 ms window: the memo served the first bytes' digest for
- * a same-size rewrite 120 ms on (A-2, reproduced on an ext2 mount). A stamp
- * with no sub-second part is read as such a second and widens the window by
- * it, as git judges racy entries at its index's own granularity. FAT32
- * keeps even seconds, so an even stamp widens by two: a hash 1.2 s after
- * one passed the single second and a rewrite later in the pair kept every
- * field (A-38). Pass the UNFLOORED stamp: a kernel's nanosecond stamp lands
- * on a whole second about once in 10^9, one set through a millisecond
- * `utimes` once in a thousand, and either is then trusted up to two seconds
- * later — never wrongly. And every window is widened by how far the file
- * system's clock runs behind this process's (`fsClockLag`, fs-clock.ts).
- */
-export function racyWindowMs(stampMs: number, windowMs: number): number {
-  return windowMs + stampGrainMs(stampMs) + fsClockLag()
-}
-
-/**
  * Context passed to `get()`. Optional, but required when the lookup
  * may resolve through the remote layer — the local SQL row inserted on
  * remote-hit needs `taskId` + `command` to be queryable later (the
@@ -506,16 +285,6 @@ export interface IngestMeta {
   inputComponents?: readonly TaskInputRow[]
   /** See `CacheGetContext.outputs`: the names the artifact may carry. */
   outputs?: DeclaredOutputs
-}
-
-/**
- * SQLite's answer when the disk under the index is full. It is a code on
- * the `SQLiteError` (`SQLITE_FULL`), never an `ENOSPC` errno, so
- * `isDiskFull` does not see it: a memo write, a snapshot flush or a prune's
- * delete on a full disk reached the user as a stack (A-14).
- */
-export function isIndexFull(err: unknown): boolean {
-  return (err as { code?: unknown } | null)?.code === 'SQLITE_FULL'
 }
 
 /**
@@ -869,11 +638,3 @@ export interface CacheLayer {
  * @internal
  */
 export type SaveArgs = Parameters<CacheLayer['save']>[0]
-
-/** A plugin's measure kept as a task's timing (`PluginSetupContext.measure`): `id` is `<plugin>#<name>`. */
-export interface MeasureRecord {
-  readonly id: string
-  readonly def: string
-  readonly durationMs: number
-  readonly cores?: number
-}

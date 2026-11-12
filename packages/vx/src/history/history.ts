@@ -12,10 +12,11 @@
 // (zero-config); the interface is the seam a plugin fills for any other.
 
 import type { Database } from 'bun:sqlite'
-import { branchSource, type Cache, EXECUTED_RUNS_SQL, indexDb } from '../cache/index.js'
+import { branchSource } from './run-history.js'
+import { type Cache, indexDb } from '../cache/index.js'
+import { EXECUTED_RUNS_SQL } from '../index-db/index.js'
 import { isMeasure, splitTaskId } from '../util/index.js'
-import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
-import type { FailureMode } from './failure-mode.js'
+import { failureModeOf, mixedOutcomeKeysSql, type FailureMode } from './failure-mode.js'
 import { isPassStatus, TASK_STATUSES } from '../graph/index.js'
 
 const DEFAULT_RECENT = 50

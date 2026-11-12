@@ -19,40 +19,26 @@ export {
   type CachePolicy,
   cachePolicyEnvRefusal,
   cachesNothing,
-  EXECUTED_RUNS_SQL,
   historyFiles,
   holdCacheDir,
   holdStore,
   indexDb,
   indexError,
+  indexWritable,
+  valueDigest,
   formatCachePolicy,
   FULL_CACHE_POLICY,
-  type InvocationRecord,
-  type MeasureRecord,
-  KEYED_RUNS_SQL,
   parseCachePolicy,
-  type RunRecord,
   type TaskInputComponent,
   type TaskInputRow,
-  WORKSPACE_OUTPUT_PREFIX,
-  type OutputDirRow,
-  type OutputFileRow,
-  OUTPUT_DIRS_CAP,
-  OUTPUT_DIRS_OVER_CAP,
-  FILE_HASH_RACY_MS,
-  OUTPUT_DIRS_RACY_MS,
-  racyWindowMs,
   hashFileSeen,
   hashFilesOf,
   type SchemaReset,
-  SCHEMA_VERSION,
   storedLog,
   taskEntryHashes,
   vxCacheEntries,
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
-export type { FoldMemo } from './fold-memo.js'
-export { fsClockNow, measureFsClockLag, setFsClockLag, stampGrainMs } from './fs-clock.js'
 export { behindLink, filesBehind } from './linked-inputs.js'
 export {
   addedInput,
@@ -120,16 +106,3 @@ export {
   type PluginCache,
 } from './plugin-cache.js'
 export { packRunOutputs, putRunEntry, runEntryName, writesRunStore } from './run-store.js'
-export { branchSource } from './run-history.js'
-export { type HistoryWrites, runHistory } from './history-writes.js'
-export { HistoryStream } from './history-stream.js'
-export {
-  type KeptFailure,
-  keepRunNotes,
-  keptFailures,
-  keptSteps,
-  keptWarnings,
-  type RunNotes,
-  type RunStep,
-} from './run-notes.js'
-export { readLockfileMemo, writeLockfileMemo, type LockfileMemo } from './lockfile-memo.js'

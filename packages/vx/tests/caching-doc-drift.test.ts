@@ -3,7 +3,8 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { CACHE_VERSION } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/index-db/index.js'
 
 const doc = readFileSync(path.join(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
 
@@ -24,9 +25,7 @@ describe('the docs quote the current CACHE_VERSION and SCHEMA_VERSION', () => {
   })
 
   it('caching.md heads its schema block with the current SCHEMA_VERSION', () => {
-    expect(doc).toContain(
-      `-- src/cache/schema.ts (SCHEMA_VERSION = '${SCHEMA_VERSION}', in cache.ts)`,
-    )
+    expect(doc).toContain(`-- src/index-db/schema.ts (SCHEMA_VERSION = '${SCHEMA_VERSION}')`)
   })
 
   it('modules/cache.md quotes both constants as they are', () => {
@@ -60,8 +59,8 @@ describe('caching.md § SQLite tables follows the schema cache.ts and schema.ts 
   // nothing read it against the source.
   it('documents every table with exactly its columns', () => {
     const source = tables(
-      ['cache.ts', 'schema.ts']
-        .map((f) => readFileSync(path.join(import.meta.dir, '..', 'src', 'cache', f), 'utf8'))
+      ['cache/cache.ts', 'index-db/schema.ts']
+        .map((f) => readFileSync(path.join(import.meta.dir, '..', 'src', f), 'utf8'))
         .join('\n'),
     )
     const block = /```sql\n([\s\S]*?)```/.exec(doc)

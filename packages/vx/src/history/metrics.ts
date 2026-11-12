@@ -15,7 +15,8 @@ import { statSync } from 'node:fs'
 import path from 'node:path'
 // The keyed-run predicate lives beside the schema in cache/cache.ts, so a
 // rule written once cannot drift.
-import { KEYED_RUNS_SQL, type TaskInputComponent } from '../cache/index.js'
+import { KEYED_RUNS_SQL } from '../index-db/index.js'
+import { type TaskInputComponent } from '../cache/index.js'
 import { isPassStatus, splitTaskId } from '../graph/index.js'
 import { clampInt, MASKED, secretNamed } from '../util/index.js'
 

@@ -105,9 +105,8 @@ export type {
   LentAccess,
   RemoteCacheLayer,
   RemoteOpenContext,
-  RunRecord,
-  InvocationRecord,
 } from './cache/index.js'
+export type { RunRecord, InvocationRecord } from './history/index.js'
 // A plugin's keychain (`ctx.secret` on `setup` and a remote's `open`), the
 // guard that tells a missing secret from a fault, and the names whose values
 // vx masks, for a plugin that must not send one where it is shown.

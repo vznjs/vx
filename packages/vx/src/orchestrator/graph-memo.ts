@@ -11,7 +11,7 @@
 // scoped load hands undeclared `^name`s back instead of refusing them, so
 // it is never remembered.
 
-import type { FoldMemo } from '../cache/index.js'
+import type { FoldMemo } from '../memo/index.js'
 import {
   buildTaskGraph,
   computeReverseDepCount,

@@ -24,11 +24,11 @@ import path from 'node:path'
 import { readdir, realpath, stat } from 'node:fs/promises'
 import {
   FILE_HASH_RACY_MS,
-  type LockfileMemo,
   racyWindowMs,
+  type LockfileMemo,
   readLockfileMemo,
   writeLockfileMemo,
-} from '../cache/index.js'
+} from '../memo/index.js'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {

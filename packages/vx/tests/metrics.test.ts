@@ -3,14 +3,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
-  indexDb,
   type InvocationRecord,
-  Cache,
   type RunRecord,
   runHistory,
-} from '../src/cache/index.js'
-import {
   cacheKeyDiff,
   type CacheKeyDiff,
   inputWriters,
