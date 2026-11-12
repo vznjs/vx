@@ -16,16 +16,12 @@ const REGISTRY = 'ghcr.io/vznjs'
 export interface Image {
   name: string
   dockerfile: string
-  /** Build context, relative to the root: the relay copies its own files; the others bundle @vzn/vx-devtools. */
+  /** Build context, relative to the root: each server bundles @vzn/vx-devtools from it. */
   context: string
 }
 
 export const IMAGES: readonly Image[] = [
-  {
-    name: 'vx-dte-server',
-    dockerfile: 'packages/vx-dte-server/Dockerfile',
-    context: 'packages/vx-dte-server',
-  },
+  { name: 'vx-dte-server', dockerfile: 'packages/vx-dte-server/Dockerfile', context: '.' },
   { name: 'vx-cache-server', dockerfile: 'packages/vx-cache-server/Dockerfile', context: '.' },
   { name: 'vx-history-server', dockerfile: 'packages/vx-history-server/Dockerfile', context: '.' },
 ]

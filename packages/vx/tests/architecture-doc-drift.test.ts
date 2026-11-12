@@ -35,8 +35,8 @@ describe('architecture.md follows the source it describes', () => {
     expect([...named].sort()).toEqual(files.sort())
   })
 
-  it('quotes the current TELEMETRY_SCHEMA_VERSION, as does modules/telemetry.md', () => {
-    for (const file of ['architecture.md', 'modules/telemetry.md']) {
+  it('quotes the current TELEMETRY_SCHEMA_VERSION, as does modules/orchestrator.md', () => {
+    for (const file of ['architecture.md', 'modules/orchestrator.md']) {
       const text = readFileSync(path.join(pkg, 'docs', file), 'utf8')
       const m = /`TELEMETRY_SCHEMA_VERSION = (\d+)`/.exec(text)
       expect(m).not.toBeNull()
@@ -54,7 +54,7 @@ describe('architecture.md follows the source it describes', () => {
   })
 
   it('the runs-column table lists every column of the runs view (rowid aside)', () => {
-    const src = readFileSync(path.join(pkg, 'src', 'cache', 'schema.ts'), 'utf8')
+    const src = readFileSync(path.join(pkg, 'src', 'index-db', 'schema.ts'), 'utf8')
     // Readers and `vx last --sql` see `runs` as the view; its select list
     // is the documented shape (the stored table names its run by integer).
     const block = /CREATE TEMP VIEW IF NOT EXISTS runs AS\s+SELECT ([\s\S]*?)\s+FROM /.exec(src)
@@ -90,7 +90,7 @@ describe('architecture.md follows the source it describes', () => {
 // is the first thing to rot when a module lands (item 355's "five layers"
 // above a six-row table, one page over). Item 363, 2026-09-19.
 describe('architecture.md counts the modules that are on disk', () => {
-  it('eleven modules and three root files, and the table has a row each', async () => {
+  it('fourteen modules and three root files, and the table has a row each', async () => {
     const src = path.join(import.meta.dir, '..', 'src')
     const entries = readdirSync(src, { withFileTypes: true })
     const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name)
@@ -100,7 +100,7 @@ describe('architecture.md counts the modules that are on disk', () => {
     // `config` is the root file the page counts as a module: it is the user
     // schema every other module consumes, not plumbing like bin/index/version.
     const modules = [...dirs, 'config'].sort()
-    expect(modules.length).toBe(11)
+    expect(modules.length).toBe(14)
     const doc = await Bun.file(path.join(import.meta.dir, '..', 'docs', 'architecture.md')).text()
     const WORDS = [
       'zero',
@@ -115,6 +115,9 @@ describe('architecture.md counts the modules that are on disk', () => {
       'nine',
       'ten',
       'eleven',
+      'twelve',
+      'thirteen',
+      'fourteen',
     ]
     expect(doc).toContain(
       `Core is organised as **${WORDS[modules.length]} modules** plus ` +
@@ -124,7 +127,7 @@ describe('architecture.md counts the modules that are on disk', () => {
     const start = doc.indexOf('| Module         | Form')
     expect(start).toBeGreaterThan(-1)
     const table = doc.slice(start, doc.indexOf('\n\n', start))
-    const named = [...table.matchAll(/^\| `(\w+)`/gm)].map((m) => m[1] as string)
+    const named = [...table.matchAll(/^\| `([\w-]+)`/gm)].map((m) => m[1] as string)
     expect(named.sort()).toEqual(modules)
   })
 })
@@ -138,5 +141,41 @@ describe("architecture.md's absent-JS-tasks bullet names every hook", () => {
       .split(/\n- \*\*/)[0]!
       .replace(/\s+/g, ' ')
     expect(PLUGIN_HOOKS.filter((h) => !bullet.includes(`\`${h}\``))).toEqual([])
+  })
+})
+
+describe('architecture.md quotes the module-boundary law', () => {
+  it('the dependency matrix is exactly ALLOWED in tests/module-boundaries.test.ts', () => {
+    const law = readFileSync(path.join(pkg, 'tests', 'module-boundaries.test.ts'), 'utf8')
+    const m = /const ALLOWED: Record<string, readonly string\[\]> = (\{[\s\S]*?\n\})\n/.exec(law)
+    expect(m).not.toBeNull()
+    const allowed = Object.fromEntries(
+      [...m![1]!.replace(/\/\/.*$/gm, '').matchAll(/'?([\w-]+)'?: \[([^\]]*)\]/g)].map((e) => [
+        e[1]!,
+        [...e[2]!.matchAll(/'([\w-]+)'/g)].map((n) => n[1]!),
+      ]),
+    )
+    expect(Object.keys(allowed)).toContain('orchestrator')
+    const rows = section('### Allowed dependency matrix')
+      .split('\n')
+      .filter((l) => l.startsWith('|'))
+      .map((l) =>
+        l
+          .slice(1, -1)
+          .split('|')
+          .map((c) => c.trim()),
+      )
+    const cols = rows[0]!.slice(1)
+    const documented = Object.fromEntries(
+      rows
+        .slice(2)
+        .map((r) => [r[0]!.replace(/\*/g, ''), cols.filter((_, i) => r[i + 1] === '✓').sort()]),
+    )
+    const expected = Object.fromEntries(
+      Object.entries(allowed)
+        .filter(([, to]) => to.length > 0)
+        .map(([from, to]) => [from, [...to].sort()]),
+    )
+    expect(documented).toEqual(expected)
   })
 })

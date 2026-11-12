@@ -1,9 +1,7 @@
-// The migration seam: what any adoption tool needs once it has a plan —
-// the plan's shape, TS emission, the overwrite guard, the writes and the
-// report. `@vzn/vx-migrate` (package.json scripts, Turbo, Nx) and any
-// other adoption tool share it, so a generated config reads the same
-// whichever tool wrote it. Core knows no source format here: a mapper returns a
-// `MigrationPlan` and this file does the rest.
+// The migration seam: what any adoption tool needs once it has a plan (shape,
+// TS emission, the overwrite guard, writes, report), so a generated config
+// reads the same whoever wrote it. Core knows no source format: a mapper
+// returns a `MigrationPlan` and this does the rest.
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
@@ -19,8 +17,6 @@ import {
   UserError,
   writeNoFollow,
 } from '../util/index.js'
-import * as ui from '../ui/index.js'
-import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 
@@ -49,7 +45,7 @@ function linkOut(
   }
 }
 
-/** The root config `vx init` writes outside a Turbo or Nx repo: no task yet. */
+/** The root config `vx init` writes when no migrator maps the workspace: no task yet. */
 export function starterProject(format: MigrationFormat): string {
   return format === 'ts'
     ? "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default { tasks: {} } satisfies ProjectConfig\n"
@@ -62,7 +58,7 @@ export function starterProject(format: MigrationFormat): string {
  */
 export function isStarterConfig(file: string): boolean {
   try {
-    // By extension: the mjs starter's text in a .ts file is a user's config.
+    // By extension: the mjs starter's text in a.ts file is a user's config.
     return readFileSync(file, 'utf8') === starterProject(file.endsWith('.ts') ? 'ts' : 'mjs')
   } catch {
     return false
@@ -74,12 +70,8 @@ export function isStarterConfig(file: string): boolean {
 const CONTROL = /[\x00-\x1f\x7f-\x9f]/g
 
 /**
- * Escape an arbitrary string into a single-quoted TS literal. Escapes
- * backslash + quote AND raw newlines/CR — a value with an embedded newline
- * (legal JSON, e.g. a script `"echo a\necho b"`, or a glob with a `'`) would
- * otherwise splice into a single-quoted literal as an unterminated / malformed
- * string that fails to load (generated files must round-trip through the
- * loader).
+ * A string as a single-quoted TS literal, escaping backslash, quote and raw
+ * newlines/CR, so values with newlines or quotes round-trip through the loader.
  */
 export function quoteTsLiteral(s: string): string {
   return `'${s
@@ -92,44 +84,6 @@ export function quoteTsLiteral(s: string): string {
     .replace(CONTROL, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)}'`
 }
 
-/**
- * A package.json script with the `pre<name>` / `post<name>` hooks npm runs
- * around it, as ONE sh command. Each part runs in its own subshell, so a
- * `;` or an `exit` in one ends that part alone, and the chain stops at the
- * first that fails, as npm stops. The parts sit in a function the
- * forwarded `--` args are appended to, and only the body takes them, as
- * npm appends them to the script and never to its hooks. A plain ` && `
- * join handed them to the post hook, and `test -f x && echo A; echo B` ran
- * `echo B` after a failed pre hook and went green (item 905). npm appends
- * them as TEXT: no part sees them as `$1`…, so the function quotes them
- * into `vx_a`, clears its positional parameters, and evals the body with
- * `vx_a` after it; `"$@"` on the body made a script's `$1` the first
- * forwarded arg and its `$*` print them twice. Each part ends on its own
- * line, so a trailing `# comment` cannot swallow the paren. A script with
- * no hooks is its body, verbatim.
- */
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string {
-  if (pre === undefined && post === undefined) return body
-  const quoted = `'${body.replaceAll("'", `'\\''`)}'`
-  const parts = [
-    ...(pre === undefined ? [] : [`(${pre}\n)`]),
-    `(eval ${quoted}"$vx_a"\n)`,
-    ...(post === undefined ? [] : [`(${post}\n)`]),
-  ]
-  return `vx_script() {\n${QUOTE_ARGS}\nset --\n${parts.join(' && ')}\n}\nvx_script`
-}
-
-/** Each argument single-quoted into `vx_a`, in sh alone (no spawn per arg). */
-const QUOTE_ARGS =
-  `vx_q="'" vx_a=\n` +
-  `for vx_s in "$@"; do vx_r=; while :; do case $vx_s in *"$vx_q"*) ` +
-  `vx_r="$vx_r\${vx_s%%"$vx_q"*}'\\''"; vx_s=\${vx_s#*"$vx_q"};; *) break;; esac; done; ` +
-  `vx_a="$vx_a '$vx_r$vx_s'"; done`
-
 const isCacheTodo = (todo: string): boolean => todo.startsWith('cache: add `inputs: {')
 
 /** The one wording every mapper emits for a task it made persistent. */
@@ -137,13 +91,9 @@ export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
 
-// The readiness note a persistent task carries ("add `readyWhen` to gate
-// dependents") is moot for a task nothing depends on: no one waits for it,
-// so there is nothing to gate. refine printed it for 375 `dev` and `start`
-// tasks on every run, none of them anyone's dependency (item 602), and
-// `vx init` wrote it on hoppscotch's 24 `dev`-shaped scripts. Every mapper
-// runs this last, over the whole mapping, since a dependent may sit in
-// another package.
+// The readiness note on a persistent task is moot when nothing depends on it.
+// Every mapper runs this last, over the whole mapping, since a dependent may be
+// in another project.
 
 /** Strips the note from every persistent task no `dependsOn` in the mapping names. */
 export function pruneOrphanPersistentNotes(
@@ -185,7 +135,7 @@ export interface RawExpr {
 
 export interface GeneratedTask {
   name: string
-  /** Rendered as `// TODO(vx-migrate): …` above the task + listed in the report. */
+  /** Rendered as `// TODO(<verb>): …` above the task + listed in the report. */
   todos: string[]
   /** TaskConfig-shaped object; arrays may contain RawExpr splices.
    *  null = target has no vx representation (skipped; todos explain). */
@@ -193,12 +143,12 @@ export interface GeneratedTask {
 }
 
 export interface GeneratedProject {
-  /** package.json name */
+  /** The project's name. */
   name: string
   /** absolute project dir */
   dir: string
   importLines: string[]
-  /** The project's `tags` (an Nx project's); none written when empty. */
+  /** The project's `tags`; none written when empty. */
   tags?: readonly string[]
   /** Writes `name`: no manifest names the project, so its path would. */
   writeName?: boolean
@@ -211,56 +161,56 @@ export interface MigrationPlan {
   projects: GeneratedProject[]
   /** extra root-relative files (e.g. the preset) */
   extraFiles: { relPath: string; contents: string }[]
-  /** trailing report lines (e.g. what a turbo.json holds that vx has no place for) */
+  /** trailing report lines (e.g. what the source holds that vx has no place for) */
   notes: string[]
 }
 
-/**
- * A project the adoption tool found: its name, directory and the vx config
- * it already has. `packageJson.type` picks `vx.config.mts` for a CommonJS
- * TypeScript package.
- */
+/** A project the adoption tool found: its name, directory and the vx config it already has. */
 export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  /**
+   * Whether tsc reads a `.ts` in `dir` as ESM. Where a `tsconfig.json` sits
+   * beside it and not, the config is written as `vx.config.mts`.
+   */
+  readonly esModule?: boolean
 }
 
 export interface ApplyMigrationArgs {
   root: string
   metas: readonly MigrationMember[]
   plan: MigrationPlan
-  /** Named in the report and the generated header, e.g. `turbo.json`. */
+  /** What the plan was read from, named in the report, e.g. `turbo.json`. */
   source: string
-  /** The command the user typed, e.g. `vx init` — named in the report. */
+  /** The tool's name: the report's title and each task's `TODO(<verb>)`. */
   verb: string
   dry: boolean
   force: boolean
   /**
-   * A scripts migration (what `vx init` hands over) on a workspace with no
-   * scripts still has a job (the workspace file, and a worked example); a
-   * migration with nothing to convert is an error. Default false.
+   * A migration `vx init` hands over still has work on an empty workspace (the
+   * workspace file, an example); any other migration with nothing to convert is
+   * an error. Default false.
    */
   init?: boolean
   /** The report's `note` lines (e.g. "turbo.json found and not read"). */
   notes?: readonly string[]
   /**
-   * Scripts exist but no project can carry them (a member without a
-   * `name`): the empty report said "no package.json scripts" of a repo full
-   * of them (M-59).
-   */
-  unmapped?: boolean
-  /**
-   * Why an `init` plan is empty, when the tool knows (members its globs
-   * never reach): the report's one line in place of the example config.
+   * Why the plan is empty: the `tasks` row of an `init` report, or another
+   * migration's refusal. Default `no tasks in <source>`.
    */
   emptyReason?: string
+  /** An empty `init` plan's report shows a worked example config. Default: when `emptyReason` is unset. */
+  example?: boolean
   /**
-   * `ts` (default) writes `vx.config.ts` with the type-only import and
-   * `satisfies`; `mjs` writes `vx.config.mjs` — the same object, untyped —
-   * for a package whose own `tsc --build` includes every `.ts` under it
-   * and compiled the config into its dist (TanStack/query, 2026-09-11).
+   * Run after the files are written (not under `dry`), with their paths: a
+   * tool's own step, such as the repo's formatter. Its lines join the notes.
+   */
+  written?: (relPaths: readonly string[]) => readonly string[]
+  /**
+   * `ts` (default) writes `vx.config.ts` typed with `satisfies`; `mjs` the same
+   * object untyped, for a project whose `tsc --build` would compile the config
+   * into its output.
    */
   format?: MigrationFormat
   /**
@@ -269,18 +219,15 @@ export interface ApplyMigrationArgs {
    */
   json?: boolean
   /**
-   * Run after the files are written (not under `dry`): `vx lock`'s step, so
-   * the migrated workspace has its .vx/projects.lock.json and its graph rules checked
-   * (2026-10-14). On success `said` is its line, shown as the
-   * report's `lock` row; a refusal (a graph rule, a plugin not installed
-   * yet) prints above the report, the files stay written, `vx lock` is the
-   * step to re-run, and the exit is 1: a run reads only the lock, so the
-   * migration is not done (as `vx init`'s own path exits).
+   * Run after the files are written (not under `dry`): `vx lock`, so the
+   * workspace gets its lock and graph checks. Success is the report's `lock`
+   * row; a refusal prints above, the files stay, and the exit is 1: a run reads
+   * only the lock, so the migration is not done.
    */
   lock?: (root: string) => Promise<{ code: number; said: string }>
   /** Rows of what the tool did before the write, e.g. `['ran', 'bun add -d …']`. */
   steps?: readonly (readonly [label: string, value: string])[]
-  /** What the written workspace file declares, e.g. `pnpm()` from `@vzn/vx-lockfile`. */
+  /** The plugins the written workspace file declares. */
   plugins?: readonly WorkspacePlugin[]
 }
 
@@ -292,25 +239,52 @@ export interface WorkspacePlugin {
 export type MigrationFormat = 'ts' | 'mjs'
 
 /**
- * Render a plan to files, refuse to overwrite without `force`, write (or
- * print, under `dry`), and report. Returns the process exit code.
+ * What a migration did, for `report` to draw: the files a dry run shows,
+ * the counts and lines of each row, the lock's answer, the next step.
  */
-export async function applyMigration(args: ApplyMigrationArgs): Promise<number> {
+export interface MigrationReport {
+  readonly verb: string
+  readonly source: string
+  readonly dry: boolean
+  /** Under `dry`, each file as it would be written. */
+  readonly shown: readonly { readonly relPath: string; readonly contents: string }[]
+  readonly steps: readonly (readonly [label: string, value: string])[]
+  /** Why the plan holds no task; none when it holds some. */
+  readonly empty: string | undefined
+  readonly clean: number
+  readonly todo: number
+  /** Each TODO reason and the task ids it holds. */
+  readonly todos: readonly (readonly [reason: string, ids: readonly string[]])[]
+  readonly files: readonly string[]
+  readonly kept: readonly string[]
+  readonly replaced: readonly string[]
+  /** The lock step's answer; none under `dry` or with no lock step. */
+  readonly lock?: { readonly code: number; readonly said: string }
+  readonly notes: readonly string[]
+  /** An empty plan's worked example: its label and the config. */
+  readonly example?: readonly [label: string, config: string]
+  readonly next: string
+}
+
+/**
+ * Render a plan, refuse to overwrite without `force`, write (not under `dry`)
+ * and lock. Returns what `report` draws, or under `json` the dry run's
+ * document.
+ */
+export async function writeMigration(
+  args: ApplyMigrationArgs,
+): Promise<MigrationReport | { readonly json: string }> {
   const { root, metas, plan, source, verb, dry, force } = args
   const init = args.init === true
   const format: MigrationFormat = args.format ?? 'ts'
   const configName = `vx.config.${format}`
   const workspaceName = `.vx/workspace.${format}`
   const empty = plan.projects.length === 0
-  // An `init` migration never overwrites a member's config: a half-adopted workspace
-  // keeps each one it has, by name, and gets the rest (M-52). It refused
-  // the whole workspace, and `--force` would have replaced the hand-written
-  // file; `--force` still replaces, as asked.
+  // An `init` migration never overwrites a member's config; `--force` still
+  // replaces.
   const kept: string[] = []
-  // Every project gets a config, a task-less one too (2026-10-14:
-  // "no skips. every project gets a config"): solidjs/solid's solid-ssr,
-  // with no script Turbo runs, was left with none and read as a project
-  // whose tasks are not locked.
+  // Every project gets a config, a task-less one too: one left with none
+  // reads as a project whose tasks are not locked.
   const planned = new Set(plan.projects.map((p) => p.dir))
   const unplanned: GeneratedProject[] = metas
     .filter((m) => !planned.has(m.dir))
@@ -324,10 +298,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     kept.push(relPosix(root, existing))
     return false
   })
-  // A plan never maps a workspace root that has a config (D-45), even
-  // under `--force`; its file stays, so it is named with the rest (X-27).
+  // A plan never maps a workspace root that has a config, even under
+  // `--force`; its file stays, so it is named with the rest.
   const rootConfig = metas.find((m) => m.dir === root)?.configPath
-  // A one-package repo's root is a mapped member too: the filter kept it already.
+  // A one-project workspace's root is a mapped member too: the filter kept it already.
   if (
     init &&
     rootConfig &&
@@ -337,9 +311,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     kept.push(relPosix(root, rootConfig))
   }
   if (empty && !init) {
-    throw new UserError(
-      `nothing to migrate: no ${source === 'package.json scripts' ? 'package.json scripts in any workspace member' : 'tasks in ' + source}`,
-    )
+    throw new UserError(`nothing to migrate: ${args.emptyReason ?? `no tasks in ${source}`}`)
   }
 
   const names = new Map(projects.map((p) => [p.dir, projectConfigName(p.dir, metas, format)]))
@@ -349,20 +321,19 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     files.push({
       relPath: relPosix(root, abs),
       abs,
-      contents: renderConfigFile(ownConfigNamed(p, names.get(p.dir)!, format), format),
+      contents: renderConfigFile(ownConfigNamed(p, names.get(p.dir)!, format), format, verb),
     })
   }
   for (const f of plan.extraFiles) {
     files.push({ relPath: f.relPath, abs: path.join(root, f.relPath), contents: f.contents })
   }
-  // A migrated workspace must declare its executor and cache — nothing is
-  // applied by default. Emit the workspace file unless the repo already has
-  // one in any extension the loader reads: a hand-written `.mts` was missed,
-  // and the `.ts` written beside it won by load order (item 1033).
+  // A migrated workspace must declare its executor and cache. Emit the
+  // workspace file unless one exists in any extension: a `.ts` beside a
+  // hand-written `.mts` would win by load order.
   const hasWorkspaceFile = (
     await Promise.all(WORKSPACE_CONFIG_FILENAMES.map((n) => Bun.file(path.join(root, n)).exists()))
   ).some(Boolean)
-  // A plan may bring its own (vx-migrate declares the plugins it detects).
+  // A plan may bring its own.
   if (!hasWorkspaceFile && !plan.extraFiles.some((f) => f.relPath === workspaceName)) {
     const abs = path.join(root, workspaceName)
     files.push({
@@ -378,12 +349,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     files.push({ relPath: '.vx/.gitignore', abs: dotVxIgnore, contents: DOT_VX_GITIGNORE })
   }
 
-  // A plan is a mapper's reading of the repo's own files (an Nx node's
-  // `root`, a workspace glob): one that names `../x` wrote outside it.
-  // A member directory linked out of the root is spelled inside it, so the
-  // real directory is asked too: core's discovery never loads a config
-  // there. `.vx` is not a project: its files are refused outside the
-  // root at the write (`refuseSymlink`).
+  // A plan is a mapper's reading of the repo (a declared root, a member glob):
+  // one naming `../x` wrote outside it. A member linked out of the root is
+  // checked by its real dir too: core never loads a config there. `.vx` outside
+  // the root is refused at the write (`refuseSymlink`).
   const realRoot = realpathSync(root)
   for (const f of files) {
     const rel = relPosix(root, f.abs)
@@ -402,15 +371,14 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   if (!dry && !force) {
     const conflicts = new Set<string>()
     // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
-    // so we never shadow a hand-written config with a fresh .ts.
+    // so we never shadow a hand-written config with a fresh.ts.
     for (const p of projects) {
       const meta = metas.find((m) => m.dir === p.dir)
       if (meta?.configPath) conflicts.add(relPosix(root, meta.configPath))
     }
-    // ALSO stat every actual write target. A SYNTHESIZED project (e.g. the Nx
-    // workspace-root node, dir === root) has no discovered meta, so the meta
-    // scan alone would miss an existing vx.config.ts at that path and clobber
-    // it. This also covers the extraFiles (vx-preset.ts).
+    // Also stat every write target: a synthesized project (dir === root) has no
+    // meta, so the meta scan would clobber an existing config there. Covers
+    // extraFiles too.
     for (const f of files) {
       if ((await Bun.file(f.abs).exists()) && !isStarterConfig(f.abs)) conflicts.add(f.relPath)
     }
@@ -422,18 +390,15 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     }
   }
 
-  // Under --force a project's config of another extension is REPLACED: the
-  // new one was written beside it, the loader read one of the two by its
-  // order, and the report said "written" for a file the run never loaded
-  // (item 1033).
+  // Under --force a project's config of another extension is REPLACED:
+  // beside the new one, the loader would read one of the two by its order.
   const replaced: string[] = []
   for (const p of projects) {
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
     if (existing && existing !== path.join(p.dir, names.get(p.dir)!)) replaced.push(existing)
   }
-  // `vx init`'s starter is mapped as no config, so no meta names it: one of
-  // another extension stayed beside the root's new config, and the loader
-  // read the starter, not the root's tasks.
+  // `vx init`'s starter is mapped as no config: one of another extension stayed
+  // beside the new config and the loader read it instead.
   if (projects.some((p) => p.dir === root)) {
     const target = path.join(root, names.get(root)!)
     for (const n of PROJECT_CONFIG_FILENAMES) {
@@ -441,30 +406,18 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       if (f !== target && !replaced.includes(f) && isStarterConfig(f)) replaced.push(f)
     }
   }
-  if (dry && args.json !== true) {
-    for (const f of files) {
-      ui.print('out', ui.excerpt(f.relPath, f.contents))
-    }
-  } else if (!dry) {
+  if (!dry) {
     for (const f of files) refuseSymlink(f.abs, root)
     for (const f of files) await writeNoFollow(f.abs, f.contents, root)
     for (const f of replaced) await unlink(f)
     // The lock that follows loads its plugins from the file just written.
     workspaceFileWritten()
   }
-  const formatted = dry
-    ? []
-    : formatWritten(
-        root,
-        // A formatter has no parser for `.vx/.gitignore`.
-        files.map((f) => f.relPath).filter((f) => /\.[cm]?[jt]s$/.test(f)),
-      )
+  const formatted =
+    dry || args.written === undefined ? [] : args.written(files.map((f) => f.relPath))
 
-  // One reason, its tasks: on a Turbo template the same two-line cache TODO
-  // printed five times and the persistent one eight (the first-five-minutes
-  // walk, 2026-09-28), and the list read as noise.
-  // A file .gitignore drops is lost at the first commit, unnoticed: vueuse
-  // ignores `packages/**/*.mjs`, so `--mjs` wrote configs git never saw.
+  // One reason, its tasks: the same TODO repeated per task reads as noise. A
+  // file.gitignore drops is lost at the first commit, unnoticed.
   const ignored = gitIgnored(
     root,
     files.map((f) => f.relPath),
@@ -485,14 +438,11 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     }
   }
   const firstTask = nextTask(plan.projects.flatMap((p) => p.tasks))
-  // The line is the next thing to type, so it names what that run would
-  // refuse without: a git work tree (vx keys inputs on git's view) and,
-  // with no scripts mapped, a task to run.
-  // `vx init` installs vx globally first: the line names vx alone, never
-  // a package manager's runner (2026-10-22: vx owns the command).
+  // The line is the next thing to type, naming what that run would refuse
+  // without: a git work tree and, with nothing mapped, a task.
   const run = `vx run ${firstTask} --all`
   // A run reads configs only from the lock; with no lock step here
-  // (`--no-install`), that run stopped with "no lock: run `vx lock`".
+  // that run would stop with "no lock: run `vx lock`".
   const steps = [
     ...(inGitWorkTree(root) ? [] : ['git init']),
     ...(empty ? [`declare a task as the example shows`] : []),
@@ -500,6 +450,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   ]
   const next = steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`
   const emptyReason = empty ? args.emptyReason : undefined
+  const example = empty && (args.example ?? emptyReason === undefined)
   const notes = [
     ...(args.notes ?? []),
     ...ignoredNote,
@@ -508,9 +459,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     ...plan.notes,
   ]
   if (args.json === true) {
-    ui.data(
-      'out',
-      `${JSON.stringify({
+    return {
+      json: `${JSON.stringify({
         dry,
         source,
         files: files.map((f) => ({ path: f.relPath, contents: f.contents })),
@@ -518,83 +468,49 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
         replaced: replaced.map((f) => relPosix(root, f)),
         todos: [...todos].map(([reason, tasks]) => ({ reason, tasks })),
         notes: [
-          ...(emptyReason === undefined ? [] : [emptyReason]),
+          ...(emptyReason === undefined || example ? [] : [emptyReason]),
           ...(args.steps ?? []).map(([label, value]) => `${label}: ${value}`),
           ...notes,
         ],
         next,
       })}\n`,
-    )
-    return 0
-  }
-
-  // The lock's own words become a row; a refusal prints above the report.
-  const lock = dry || args.lock === undefined ? undefined : lockAnswer(await args.lock(root))
-  if (lock !== undefined && lock.code !== 0) ui.data('err', lock.said)
-
-  const rows: ui.FieldRow[] = [['from', source]]
-  if (dry) rows.push(['dry run', 'nothing written'])
-  for (const [label, value] of args.steps ?? []) rows.push([label, value])
-  if (empty) {
-    const why =
-      emptyReason ??
-      (args.unmapped === true
-        ? 'no package.json script became a task'
-        : 'no package.json scripts to turn into tasks')
-    rows.push(['tasks', [ui.dim('none'), `: ${why}`]])
-  } else {
-    const parts = [
-      ...(clean > 0 ? [ui.tone('ok', `${clean} clean`)] : []),
-      ...(todo > 0 ? [ui.tone('warn', `${todo} todo`)] : []),
-    ]
-    if (parts.length > 0)
-      rows.push(['tasks', parts.flatMap((p, i) => (i === 0 ? [p] : [ui.dim(' · '), p]))])
-    const todoLines: string[] = []
-    for (const [reason, ids] of todos) {
-      if (ids.length === 1) todoLines.push(`${ids[0]}: ${reason}`)
-      else {
-        const shown = ids.slice(0, TODO_IDS_SHOWN).join(', ')
-        const more = ids.length - TODO_IDS_SHOWN
-        todoLines.push(`${shown}${more > 0 ? ` and ${more} more` : ''}:`, `  ${reason}`)
-      }
     }
-    if (todoLines.length > 0) rows.push(['todo', ...todoLines])
   }
-  if (files.length > 0) rows.push(['files', ...fileLines(files.map((f) => f.relPath))])
-  const keptLines = [
-    ...kept.map((f) => `${f} (has a vx config)`),
-    ...(empty && hasWorkspaceFile ? [workspaceName] : []),
-  ]
-  if (keptLines.length > 0) rows.push(['kept', ...keptLines])
-  if (replaced.length > 0) rows.push(['replaced', ...replaced.map((f) => relPosix(root, f))])
-  if (lock !== undefined) {
-    rows.push([
-      'lock',
-      lock.code === 0
-        ? lock.said.trim().replace(/^✓ vx lock\s+/, '')
-        : ui.tone('error', 'not written'),
-    ])
+
+  const lock = dry || args.lock === undefined ? undefined : lockAnswer(await args.lock(root))
+  return {
+    verb,
+    source,
+    dry,
+    shown: dry ? files.map((f) => ({ relPath: f.relPath, contents: f.contents })) : [],
+    steps: args.steps ?? [],
+    empty: empty ? (emptyReason ?? `no tasks in ${source}`) : undefined,
+    clean,
+    todo,
+    todos: [...todos],
+    files: files.map((f) => f.relPath),
+    kept: [
+      ...kept.map((f) => `${f} (has a vx config)`),
+      ...(empty && hasWorkspaceFile ? [workspaceName] : []),
+    ],
+    replaced: replaced.map((f) => relPosix(root, f)),
+    ...(lock === undefined ? {} : { lock }),
+    notes,
+    ...(example
+      ? {
+          example: [
+            `a ${configName} in a project directory, with your own command:`,
+            exampleConfig(format).trimEnd(),
+          ] as const,
+        }
+      : {}),
+    next,
   }
-  if (notes.length > 0) rows.push(['note', ...notes])
-  if (empty && emptyReason === undefined) {
-    rows.push([
-      'example',
-      `a ${configName} beside a package.json, with your own command:`,
-      '',
-      exampleConfig(format).trimEnd(),
-    ])
-  }
-  const said =
-    lock === undefined || lock.code === 0 ? next : `fix the above, then vx lock and ${next}`
-  rows.push(null, ['next', said])
-  ui.print('out', ui.report(`${verb} ${VERSION}`, rows))
-  return lock === undefined || lock.code === 0 ? 0 : 1
 }
 
 /**
  * The lock step's answer, checked: the tool calling this seam is another
- * package and may be another version (vx-migrate 0.0.637's answered its
- * exit code, which crashed the report).
+ * package and may be another version, answering another shape.
  */
 function lockAnswer(answer: unknown): { code: number; said: string } {
   const a = answer as { code?: unknown; said?: unknown } | null
@@ -608,10 +524,9 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
   return { code: 1, said: 'vx lock: the migration tool answered no result: run `vx lock`\n' }
 }
 /**
- * What to do about written files .gitignore drops. A `!file` line cures a
- * file, but git re-includes nothing inside an ignored directory: an
- * old-layout `/.vx/` line (when `.vx` held only the cache) hides the
- * workspace config and lock, so that advice names the directory instead.
+ * What to do about written files `.gitignore` drops. A `!file` line cures a
+ * file, but git re-includes nothing inside an ignored directory: an old `/.vx/`
+ * line hides config and lock, so that advice names the directory.
  */
 function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): string {
   const ancestors = (f: string): string[] =>
@@ -635,7 +550,7 @@ function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): s
           `stop ignoring ${[...blocking].join(' and ')} (a ! line cannot re-include a file inside an ignored directory)`,
         ]),
   ]
-  return `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, TODO_IDS_SHOWN).join(', ')}${ignored.length > TODO_IDS_SHOWN ? ', …' : ''}): ${cures.join(', ')}, or commit them with git add -f`
+  return `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, IGNORED_SHOWN).join(', ')}${ignored.length > IGNORED_SHOWN ? ', …' : ''}): ${cures.join(', ')}, or commit them with git add -f`
 }
 
 /** The paths (root-relative) git's ignore rules drop; none outside a work tree. */
@@ -666,8 +581,7 @@ const NOT_A_TRY = /^(clean|reset|nuke|release|publish|deploy|version|format|fix)
 
 /**
  * The task the `next:` line runs: `build`, else the first task that
- * neither serves nor changes anything, else the first. react-navigation, whose
- * packages build in `prepack`, was told `vx run clean --all` (D-105).
+ * neither serves nor changes anything, else the first.
  */
 function nextTask(tasks: readonly GeneratedTask[]): string {
   const names = tasks.filter((t) => t.task !== null).map((t) => t.name)
@@ -680,17 +594,8 @@ function nextTask(tasks: readonly GeneratedTask[]): string {
   return names.includes('build') ? 'build' : (fit?.name ?? names[0] ?? 'build')
 }
 
-/** Files named one per line; past this, the root's and a count (TanStack form: 97). */
-const FILES_SHOWN = 10
-
-function fileLines(paths: readonly string[]): string[] {
-  if (paths.length <= FILES_SHOWN) return [...paths]
-  const root = paths.filter((p) => !p.includes('/') || p.startsWith('.vx/'))
-  return [...root, `and ${paths.length - root.length} more in package directories`]
-}
-
-/** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */
-const TODO_IDS_SHOWN = 5
+/** Files a.gitignore drops, named in its note. */
+const IGNORED_SHOWN = 5
 
 const EXAMPLE_BODY = `export default {
   tasks: {
@@ -710,11 +615,9 @@ function exampleConfig(format: MigrationFormat): string {
 
 // ─── TS emission ──────────────────────────────────────────────────────
 
-// Type-only import + `satisfies`, like the project configs: Bun erases it,
-// so the file loads with nothing installed, and a user's tsc checks it
-// against config.ts alone, where `@vzn/vx` walks core's Bun-only sources
-// (527 errors, J-94). `vx init` writes the same file.
-// No explanatory comment: the file is the user's (2026-10-06).
+// Type-only import plus `satisfies`: Bun erases it, so the file loads with
+// nothing installed, and tsc checks it against config.ts alone. `vx init`
+// writes the same. No explanatory comment: the file is the user's.
 export function renderWorkspace(
   format: MigrationFormat,
   plugins: readonly WorkspacePlugin[],
@@ -734,9 +637,8 @@ function isRawExpr(v: unknown): v is RawExpr {
 
 function renderValue(v: unknown, indent: string): string {
   if (isRawExpr(v)) return v.raw
-  // `Object.entries(null)` throws, which would abort the whole migration
-  // with a raw stack mid-write. Mappers no longer produce a null, but a
-  // literal is a readable thing to leave behind if one ever does.
+  // `Object.entries(null)` would abort mid-write with a raw stack; mappers
+  // produce none, but a literal is a readable leftover if one ever does.
   if (v === null) return 'null'
   if (typeof v === 'string') return quoteTsLiteral(v)
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
@@ -750,13 +652,10 @@ function renderValue(v: unknown, indent: string): string {
   return `{\n${body.join('\n')}\n${indent}}`
 }
 
-function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string {
-  // A type-only import: the editor type-checks against the installed
-  // package, and Bun erases it, so the config loads in a workspace that
-  // runs the vx binary without the package installed. `mjs` is the same
-  // object with nothing to erase.
-  // No "generated by" header: the file is the user's from here
-  // (2026-10-06), and each TODO(vx-migrate) sits on its own task.
+function renderConfigFile(p: GeneratedProject, format: MigrationFormat, verb: string): string {
+  // A type-only import: the editor checks against the installed package and Bun
+  // erases it, so the config loads without it. `mjs` is the same object. No
+  // "generated by" header: the file is the user's.
   const lines: string[] = []
   if (format === 'ts') lines.push("import type { ProjectConfig } from '@vzn/vx/config'")
   if (p.importLines.length > 0) lines.push(...p.importLines)
@@ -766,16 +665,15 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
   if (p.tags !== undefined && p.tags.length > 0) lines.push(`  tags: ${renderValue(p.tags, '  ')},`)
   lines.push(p.tasks.length === 0 ? '  tasks: {},' : '  tasks: {')
   for (const t of p.tasks) {
-    // A reason can quote a manifest's own text (an Nx `env` key), and a
-    // line break there ended the comment: the rest was code in the file
-    // the next run evaluates (D-21). Each line stays inside the comment.
+    // A reason can quote a manifest's text, and a line break ended the comment,
+    // leaving code the next run evaluates. Each line stays commented.
     for (const todo of t.todos) {
       const [first, ...rest] = todo.split(/\r\n|[\n\r\u2028\u2029]/)
-      lines.push(`    // TODO(vx-migrate): ${first}`, ...rest.map((l) => `    //   ${l}`))
+      lines.push(`    // TODO(${verb}): ${first}`, ...rest.map((l) => `    //   ${l}`))
     }
     if (t.task === null) continue // skipped target — the TODO above explains
     // `__proto__: {…}` in a literal SETS the prototype, quoted or not, and
-    // the run refused the config (item 1033); a computed key is a property.
+    // the run refuses the config; a computed key is a property.
     const key =
       t.name === '__proto__'
         ? `[${quoteTsLiteral(t.name)}]`
@@ -799,9 +697,9 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
 }
 
 /**
- * `vx.config.mts` in a TypeScript package that is CommonJS: tsc (node16 /
- * nodenext) reads a `.ts` there as CommonJS, and its type-only import of
- * the ESM `@vzn/vx/config` fails (TS1479, TS1541: medusa's plugin builds).
+ * `vx.config.mts` beside a `tsconfig.json` where tsc reads `.ts` as CommonJS
+ * (node16/nodenext): its type-only import of ESM `@vzn/vx/config` fails there
+ * (TS1479, TS1541).
  */
 function projectConfigName(
   dir: string,
@@ -809,15 +707,13 @@ function projectConfigName(
   format: MigrationFormat,
 ): string {
   if (format !== 'ts' || !existsSync(path.join(dir, 'tsconfig.json'))) return `vx.config.${format}`
-  const meta = metas.find((m) => m.dir === dir)
-  const manifest = (meta?.packageJson as { type?: unknown } | undefined) ?? readManifest(dir)
-  return manifest?.type === 'module' ? 'vx.config.ts' : 'vx.config.mts'
+  return metas.find((m) => m.dir === dir)?.esModule === true ? 'vx.config.ts' : 'vx.config.mts'
 }
 
 /**
- * The plan takes the config back from an output as `!vx.config.<format>`;
- * where the file written is the `.mts`, the take-back names it, or a `*`
- * output covers it and `vx lock` refuses the config (medusa, 80 of 84).
+ * The plan takes the config back from an output as `!vx.config.<format>`; for
+ * `.mts` the take-back names it, or a `*` output covers it and `vx lock`
+ * refuses.
  */
 function ownConfigNamed(
   p: GeneratedProject,
@@ -835,50 +731,4 @@ function ownConfigNamed(
       return { ...t, task: { ...t.task, outputs: { ...outputs, files } } }
     }),
   }
-}
-
-function readManifest(dir: string): { type?: unknown } | undefined {
-  try {
-    // A byte-order mark is stripped, as npm strips it.
-    return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8').replace(/^﻿/, '')) as {
-      type?: unknown
-    }
-  } catch {
-    return undefined
-  }
-}
-
-/** The formatters a repo installs at its root, each with its write command. */
-const FORMATTERS: readonly (readonly [string, readonly string[]])[] = [
-  ['prettier', ['--write']],
-  ['biome', ['format', '--write']],
-  ['oxfmt', []],
-  ['dprint', ['fmt']],
-]
-
-/**
- * Runs the repo's own formatter over the files just written, as Nx's
- * generators do: create-t3-turbo's `prettier --check` failed on the quotes
- * of a config vx wrote. Returns the report's note.
- */
-function formatWritten(root: string, relPaths: readonly string[]): string[] {
-  if (relPaths.length === 0) return []
-  for (const [name, args] of FORMATTERS) {
-    const bin = path.join(root, 'node_modules', '.bin', name)
-    if (!existsSync(bin)) continue
-    const r = Bun.spawnSync({
-      cmd: [bin, ...args, ...relPaths],
-      cwd: root,
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-      timeout: 60_000,
-    })
-    if (r.exitCode === 0) {
-      return [`formatted ${relPaths.length} file${relPaths.length === 1 ? '' : 's'} with ${name}`]
-    }
-    const why = (r.stderr.toString() || r.stdout.toString()).trim().split('\n')[0] ?? ''
-    return [`${name} did not format the written files (exit ${r.exitCode ?? 'signal'}): ${why}`]
-  }
-  return []
 }

@@ -185,7 +185,7 @@ describe('the save lane in a run', () => {
           taskComplete() {},
         },
       })
-      expect(r.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', undefined]])
+      expect(r.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', undefined]])
       expect(lines.join('\n')).toContain('[vx] cache save failed: a#build: disk said no')
     } finally {
       failing.mockRestore()

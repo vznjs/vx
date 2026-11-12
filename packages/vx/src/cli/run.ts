@@ -4,10 +4,11 @@ import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
 import {
-  planRun,
-  run as runOrchestrator,
+  planCore,
+  runCore as runOrchestrator,
   shellQuote,
-  type RunOptions,
+  type CoreRunOptions,
+  type RunHandoff,
 } from '../orchestrator/index.js'
 import { type ContinueMode, isKeyFailed } from '../graph/index.js'
 import {
@@ -38,18 +39,15 @@ export interface RunArgs {
   /** Failure propagation (`--continue[=never|deps-ok|always]`). */
   continueMode?: ContinueMode
   /**
-   * Positional task names. Each entry is either a bare task (`'build'`)
-   * — applied across the resolved project scope — or anchored as
-   * `'pkg#task'` to target a specific project directly. Multiple
-   * entries run in one orchestrator invocation with a shared graph.
+   * Positional task names: bare (`'build'`) across the resolved scope, or
+   * anchored `'pkg#task'`. All run in one invocation with a shared graph.
    */
   tasks: string[]
   filters: string[]
   all: boolean
   /**
-   * `'all'`  → skip every `dependsOn` edge (run just the requested task).
-   * `[]`     → no exclusion (default).
-   * `[...names]` → drop only these specific dep names.
+   * `'all'` → skip every `dependsOn` edge (run just the requested task). `[]` →
+   * no exclusion (default). `[...names]` → drop only these specific dep names.
    */
   excludeDependencies: 'all' | string[]
   /**
@@ -78,23 +76,20 @@ export interface RunArgs {
   dry: 'pretty' | 'json' | undefined
   profile: string | undefined
   /**
-   * `--affected[=<base>]`. When undefined the flag wasn't passed.
-   * Empty string means "use the default base" (resolved later via
-   * `defaultAffectedBase`). Any other string is an explicit git ref.
+   * `--affected[=<base>]`: undefined when absent; empty means the default base
+   * (`defaultAffectedBase`); else a git ref.
    */
   affected: string | undefined
   /**
-   * A bare `--affected` or `--profile` followed by a word: the word is read
-   * as a task, and when no project declares it the refusal names the `=`
-   * form the user likely meant.
+   * A bare `--affected` or `--profile` followed by a word reads the word as a
+   * task; when no project declares it, the refusal names the `=` form meant.
    */
   spaced?: { flag: '--affected' | '--profile'; value: string }
   error?: string
 }
 
-// The camelCase spelling the flag shipped with (retired 2026-09-10): two
-// edits past the suggester's reach, so it is named outright. A regex, not a
-// quoted literal, so the doc-drift test does not count it as an accepted flag.
+// The flag's old camelCase spelling, past the suggester's reach, so named
+// outright. A regex, so the doc-drift test does not count it as accepted.
 const RETIRED_EXCLUDE_DEPENDENCIES = /^--excludeDependencies(=|$)/
 
 /** `name` when `a` is it, bare or with `=`. */
@@ -117,7 +112,7 @@ function settingFlagOf(a: string): { s: Setting; name: string } | undefined {
   return undefined
 }
 
-/** Each setting a flag sets, and the RunOptions field it lands in. */
+/** Each setting a flag sets, and the CoreRunOptions field it lands in. */
 const SETTING_OPTIONS = [
   ['run.concurrency', 'concurrency'],
   ['run.schedule', 'schedule'],
@@ -129,10 +124,10 @@ const SETTING_OPTIONS = [
   ['cache.concurrency.download', 'downloadConcurrency'],
   ['cache.concurrency.upload', 'uploadConcurrency'],
   ['cache.concurrency.restore', 'restoreConcurrency'],
-] as const satisfies readonly (readonly [string, keyof RunOptions])[]
+] as const satisfies readonly (readonly [string, keyof CoreRunOptions])[]
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
- * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
+ * its flag hints named `vx run`. The caller appends the help pointer. */
 export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const { forwarded: _, ...out } = parse(args, verb)
   return out
@@ -166,10 +161,9 @@ function parse(
   const before = sepIdx === -1 ? args : args.slice(0, sepIdx)
   out.forwardArgs = sepIdx === -1 ? [] : args.slice(sepIdx + 1)
 
-  // Cache policy is resolved AFTER the loop in precedence order:
-  // start all-true → apply each `--cache-policy` spec → `--no-cache` forces
-  // all false → `--force` forces both reads false. So `--no-cache`
-  // beats `--force`, and `--cache-policy` is the base both may override.
+  // Cache policy after the loop, in precedence: all on, then each
+  // `--cache-policy`, then `--no-cache` (all off), then `--force` (reads off).
+  // `--no-cache` beats `--force`; `--cache-policy` is the base.
   let cachePolicy: CachePolicy = { ...FULL_CACHE_POLICY }
   let cacheSpecError: string | undefined
   let cacheFlag = false
@@ -186,7 +180,8 @@ function parse(
     const a = before[i]
     if (a === '--filter' || a?.startsWith('--filter=')) {
       const v = a === '--filter' ? before[++i] : a.slice('--filter='.length)
-      // `--filter --dry` took `--dry` as the pattern (X-13); no filter opens with `--`.
+      // `--filter --dry` took `--dry` as the pattern; no filter opens with
+      // `--`.
       if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
@@ -204,12 +199,9 @@ function parse(
       out.excludeDependencies = 'all'
     } else if (a?.startsWith('--exclude-dependencies=')) {
       const raw = a.slice('--exclude-dependencies='.length)
-      // An empty value is genuinely ambiguous — "drop every edge" (the
-      // bare flag) and "drop none" (an empty list) are equally defensible
-      // readings, and silently picking either does the opposite of what
-      // half the callers mean. Reject and name both explicit forms; the
-      // sibling value flags (--retries=, --timeout=, --cache-dir=)
-      // reject an empty `=` value the same way.
+      // An empty value is ambiguous (drop every edge, or none), so both
+      // explicit forms are named instead, as other value flags reject an empty
+      // `=`.
       const names = raw
         .split(',')
         .map((s) => s.trim())
@@ -230,11 +222,9 @@ function parse(
       // Whitespace named a directory in spaces; `VX_CACHE_DIR` and `cache.dir` refuse it.
       if (v === undefined || v.trim() === '')
         return { ...out, error: `--cache-dir requires a path` }
-      // Unlike every other value flag, a cache dir is an arbitrary
-      // string — nothing about its shape rejects a swallowed flag. An
-      // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
-      // otherwise create a directory literally named `--force` and drop
-      // the flag. A path starting with `-` needs the `=` form.
+      // A cache dir is any string, so nothing rejects a swallowed flag:
+      // `--cache-dir $EMPTY --force` made a directory named `--force`. A path
+      // starting with `-` needs `=`.
       if (a === '--cache-dir' && v.startsWith('-')) {
         return {
           ...out,
@@ -251,11 +241,9 @@ function parse(
           ...out,
           error: `${name} requires a value: a spec like local:r, local:rw, remote:, or local:,remote:rw`,
         }
-      // A spec with no segment at all applies NOTHING, so `--cache-policy=`
-      // (an empty shell var, or someone reaching for "no cache") left
-      // all four axes ON — the opposite of the intent. Reject it; an
-      // empty flag list for a NAMED layer (`local:`) stays valid and
-      // means that layer off.
+      // A spec with no segment applies nothing, so `--cache-policy=` left every
+      // axis on, the opposite of the intent. Refused; an empty list for a named
+      // layer (`local:`) means that layer off.
       if (!v.split(',').some((seg) => seg.trim().length > 0)) {
         return {
           ...out,
@@ -273,10 +261,8 @@ function parse(
     } else if (a === '--force') {
       forceFlag = true
     } else if (a === '--continue') {
-      // Bare --continue = 'always' (the Turbo convention). Its mode comes
-      // with '=' only: `--continue never` would read `never` as a TASK, and
-      // the run would then say "No projects declare task(s): never" — true,
-      // and no help at all.
+      // Bare --continue = 'always' (the Turbo convention). Its mode takes `=`
+      // only: `--continue never` would read `never` as a task.
       const next = before[i + 1]
       if (next === 'never' || next === 'deps-ok' || next === 'always') {
         return { ...out, error: `--continue takes its mode with '=': --continue=${next}` }
@@ -324,10 +310,8 @@ function parse(
       out.profile = 'profile.json'
       spacedValue('--profile', before[i + 1])
     } else if (a?.startsWith('--profile=')) {
-      // An optional-value flag: an empty `=` means "no value given", so it
-      // takes the same documented default as the bare form. Resolving ''
-      // against cwd would name the cwd DIRECTORY and die with EISDIR after
-      // the whole run.
+      // An empty `=` takes the bare form's default; resolved against cwd it
+      // named the cwd directory and failed with EISDIR after the run.
       out.profile = a.slice('--profile='.length) || 'profile.json'
     } else if (a === '--affected') {
       out.affected = ''
@@ -355,16 +339,14 @@ function parse(
       if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
       out.settings[set.path] = value
     } else if (a !== undefined && a.startsWith('-')) {
-      // vx takes no short flag, so one no hint claims (`vx run test -t
-      // adds`) is the task's: it goes after `--`, the words from it on
-      // moved. A long one far from any vx flag gets no guess: a typo of
-      // vx's own sent to the task would be ignored there unseen.
+      // vx takes no short flag, so one no hint claims (`vx run test -t adds`)
+      // is the task's: it goes after `--`. A long one far from any vx flag gets
+      // no guess: a vx typo sent to the task would be ignored unseen.
       const own = flagHint(verb, a)
       if (own !== '' || !/^-[^-]/.test(a)) return { ...out, error: `unknown flag: ${a}${own}` }
-      // Only the flag and the words it took move: `-j 1 --all` moved vx's
-      // `--all` too, and the line was refused `not inside a project`. The
-      // line is parsed again so a later task flag moves as well, and a line
-      // vx would refuse is not suggested.
+      // Only the flag and its words move (`-j 1 --all` moved `--all` too). The
+      // line is parsed again so a later task flag moves as well, and a refused
+      // line is not suggested.
       let end = i + 1
       while (end < before.length && !before[end]!.startsWith('-')) end++
       const rest = [...before.slice(0, i), ...before.slice(end)]
@@ -409,8 +391,7 @@ function parse(
   out.cache = applyCacheFlags(cachePolicy, flags)
   if (!cacheFlag && envSpec === undefined) out.cacheFlags = flags
 
-  // A profile is about a run: the planning branch returns before it is
-  // written (item 992).
+  // A profile is about a run: the planning branch returns before it is written.
   if (out.dry !== undefined && out.profile !== undefined) {
     return { ...out, error: '--dry skips execution; --profile needs a real run' }
   }
@@ -418,12 +399,9 @@ function parse(
 }
 
 /**
- * Classify the run's intent from its selection flags. BROAD iff the
- * invocation used `--all` / `--filter` / `--affected` — the user asked
- * about a swath of the workspace and wants news, not output. Everything
- * else is FOCUSED — the user is running "their" task and wants to see
- * it. Owner decision: cwd and task count are irrelevant ("when just run
- * no --all etc then single. cwd does not matter").
+ * The run's intent from its selection flags: broad iff `--all` / `--filter` /
+ * `--affected` (news, not output); else focused ("their" task, shown). Cwd and
+ * task count do not matter.
  */
 export function detectFlow(
   parsed: Pick<RunArgs, 'all' | 'filters' | 'affected'>,
@@ -442,16 +420,11 @@ async function scopeFilters(
 ): Promise<
   { filterStrings: string[]; affected?: AffectedFilter } | { error: string; code?: string }
 > {
-  // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the
-  // changed projects AND their dependents — what a CI gate must run, what
-  // the flag's name says, what the guides promised while the sugar was the
-  // changed-only `[<base>]` (item 287). `--filter '[<base>]'` stays the
-  // "only what I touched" form. Merging it into the filter list means the
-  // same code path handles plain filter use, --affected alone, and the combo.
-  // Its place does not change the selection: `applyFilters` takes every
-  // include before any exclude (item 979), so `--affected --filter '!app'`
-  // drops app from either side (item 955 had put it first for that). First
-  // it stays, so a message naming the filters names it first.
+  // `--affected[=<base>]` is `--filter '...[<base>]'`: the changed projects and
+  // their dependents, what a CI gate must run. `--filter '[<base>]'` is
+  // changed-only. One code path for filters, --affected and both.
+  // `applyFilters` takes includes before excludes, so `--affected --filter
+  // '!app'` drops app either way. First, so messages name it first.
   const filterStrings = [...parsed.filters]
   let affected: AffectedFilter | undefined
   if (parsed.affected !== undefined) {
@@ -471,19 +444,12 @@ async function scopeFilters(
 }
 
 /**
- * Resolve parsed `vx run` argv into the `RunOptions` the orchestrator
- * consumes. Shared between `runCmd` and `watchCmd` so both subcommands
- * honor the same selection semantics (cwd / `--all` / `--filter` /
- * `--affected` / anchored positionals).
+ * Resolve parsed `vx run` argv into `RunOptions`, shared by `run` and `watch`
+ * so both select alike.
  *
- * Returns the resolved options, an error message, or `nothingSelected` —
- * the selection legitimately resolved to zero projects (nothing changed
- * since the `--affected` base), which is a clean exit, not a failure. The
- * caller prefixes messages with its subcommand name (`vx run: <msg>` /
- * `vx watch: <msg>`).
- *
- * Assumes the caller has already populated `parsed.tasks` (e.g. via
- * the interactive picker for `vx run`).
+ * Returns options, an error, or `nothingSelected` (nothing changed since the
+ * base: a clean exit). The caller prefixes messages with its verb. Expects
+ * `parsed.tasks` filled (the picker, for `vx run`).
  */
 export async function resolveRunOptions(
   parsed: RunArgs,
@@ -492,7 +458,7 @@ export async function resolveRunOptions(
   verb: 'run' | 'watch' = 'run',
   /** Given, it learns the ref `--affected` diffed from (`--dry=json` states it). */
   scopeOut?: { affectedBase?: string },
-): Promise<RunOptions | { error: string; code?: string } | { nothingSelected: string }> {
+): Promise<CoreRunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     // A blank name (`vx run --all ''`) otherwise reached the orchestrator,
     // which refuses it in the embedder API's words.
@@ -526,10 +492,10 @@ export async function resolveRunOptions(
   const bareTasks = tasks.filter((t) => !t.includes('#'))
   const anchoredTasks = tasks.filter((t) => t.includes('#'))
   let projects: string[] | undefined
-  let staged: RunOptions['staged']
-  let discovered: RunOptions['discovered']
+  let staged: RunHandoff['staged']
+  let discovered: RunHandoff['discovered']
   let selectedByDiff = false
-  let affected: RunOptions['affected']
+  let affected: CoreRunOptions['affected']
   let outright: string[] | undefined
   // Resolved even when every task is anchored and the scope goes unused:
   // a filter or ref the user typed is judged, as it is beside a bare task.
@@ -548,11 +514,8 @@ export async function resolveRunOptions(
     projects = undefined
   } else if (resolved !== undefined) {
     if ('empty' in resolved) {
-      // "Nothing changed" is a clean exit for the BARE tasks the filter
-      // scopes — but it must never cancel an explicitly anchored
-      // `pkg#task`, which resolves to its own project regardless of
-      // scope. An empty project list keeps the bare tasks unselected
-      // while the anchored ones still run.
+      // "Nothing changed" ends the bare tasks the filter scopes, never an
+      // anchored `pkg#task`, which resolves regardless of scope.
       const typo = await undeclaredTasks(bareTasks, cwd, resolved.discovered)
       if (typo !== undefined) return { error: typo, code: 'VX_E_UNKNOWN_TASK' }
       if (anchoredTasks.length === 0) return { nothingSelected: resolved.empty }
@@ -587,25 +550,28 @@ export async function resolveRunOptions(
     discovered = cwdProject.discovered
   }
 
-  const opts: RunOptions = {
+  const handoff: RunHandoff = {
+    ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
+    // A laptop reads the shared cache and never writes it (owner); naming the
+    // remote in `--cache-policy` is asking to.
+    ...(!parsed.remoteRequested && !onCI(process.env['CI'])
+      ? { remoteReadOnlyByDefault: true }
+      : {}),
+    ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
+  }
+  const opts: CoreRunOptions = {
     cwd,
     tasks: [...tasks],
     ...(parsed.cacheFlags !== undefined
       ? { cacheFlags: parsed.cacheFlags }
       : { cache: parsed.cache }),
-    ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
-    // A laptop reads the shared cache and never writes it (owner,
-    // 2026-10-03); naming the remote in `--cache-policy` is asking to.
-    ...(!parsed.remoteRequested && !onCI(process.env['CI'])
-      ? { remoteReadOnlyByDefault: true }
-      : {}),
     flow: detectFlow(parsed),
-    ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
     // isatty, not process.stdin: touching the stream opens it, and a config
     // that throws then reports an extra native stack frame.
     ...(isatty(0) ? { tty: true } : {}),
+    handoff,
   }
   if (parsed.excludeDependencies === 'all') {
     opts.excludeDependencies = 'all'
@@ -613,11 +579,11 @@ export async function resolveRunOptions(
     opts.excludeDependencies = parsed.excludeDependencies
   }
   if (projects !== undefined) opts.projects = projects
-  if (selectedByDiff) opts.selectedByDiff = true
+  if (selectedByDiff) handoff.selectedByDiff = true
   if (affected !== undefined) opts.affected = affected
-  if (outright !== undefined) opts.selectedOutright = outright
-  if (staged !== undefined) opts.staged = staged
-  if (discovered !== undefined) opts.discovered = discovered
+  if (outright !== undefined) handoff.selectedOutright = outright
+  if (staged !== undefined) handoff.staged = staged
+  if (discovered !== undefined) handoff.discovered = discovered
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
   for (const [path, field] of SETTING_OPTIONS) {
     if (parsed.settings[path] !== undefined) Object.assign(opts, { [field]: parsed.settings[path] })
@@ -647,14 +613,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   let tasks = [...parsed.tasks]
   let picked: string | undefined
 
-  // No positionals → interactive picker (TTY only). Yields a single
-  // anchored pkg#task; the rest of the pipeline treats it like any
-  // explicit anchored positional.
+  // No positionals: the interactive picker (TTY only), yielding one anchored
+  // pkg#task.
   if (tasks.length === 0) {
     const load = parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}
     // `--filter` / `--affected` scope the menu and the list, as they scope a
-    // bare task: the menu listed every project and the anchored pick ran
-    // outside it; the list named the cwd's tasks.
+    // bare task.
     const selection = async (): Promise<
       { only?: ReadonlySet<string> } | { error: string; code?: string } | { empty: string }
     > => {
@@ -738,7 +702,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       ? unknownTask(resolved.error)
       : refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
   // `--dry=json` prints a plan even when there is nothing to run: a script
-  // reading stdout broke exactly then (Growth, 2026-10-16).
+  // reading stdout broke exactly then (Growth).
   const nothingToRun = (): 0 => {
     if (parsed.dry === 'json') ui.data('out', formatPlanJson({ tasks: [] }, scopeOut.affectedBase))
     return 0
@@ -748,10 +712,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return nothingToRun()
   }
   const opts = resolved
-  // The raw invocation, recorded on the `invocations` row so dashboards
-  // show what was actually run. `args` is everything after `run`, quoted
-  // so `vx last` replays one paste-able line; a picked task is named in
-  // it, or the line would open the picker again.
+  // The raw invocation for the `invocations` row. `args` is everything after
+  // `run`, quoted so `vx last` replays one pasteable line; a picked task is
+  // named, or the line would reopen the picker.
   opts.command = [
     'vx',
     'run',
@@ -761,7 +724,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 
   // Planning short-circuits execution: the full task graph + a cache probe.
   if (parsed.dry !== undefined) {
-    const plan = await planRun(opts)
+    const plan = await planCore(opts)
     // Refused as a run refuses: `--dry=json` gets the error document.
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
       return unknownTask(
@@ -769,13 +732,13 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       )
     }
     if (plan.tasks.length === 0) {
-      // The run's own line: a dry run that guessed from the scope alone
-      // said no affected project declared a task one did (X-141).
+      // The run's own line: a dry run that guessed from the scope alone said no
+      // affected project declared a task one did.
       if (plan.noneAffected !== undefined) {
         sayLine('info', plan.noneAffected, 'vx run')
         return nothingToRun()
       }
-      if (opts.selectedByDiff === true) {
+      if (opts.handoff?.selectedByDiff === true) {
         sayNotice('info', 'vx run', `no affected project declares task(s): ${tasks.join(', ')}`)
         return nothingToRun()
       }
@@ -790,10 +753,8 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return isKeyFailed(plan) ? 1 : 0
   }
 
-  // A run executes in THIS process, always. Where an individual task's
-  // command runs is the `executor` capability's business (per task, with
-  // the scheduler, cache, retries and telemetry unchanged above it); there
-  // is no whole-run delegation seam to consult.
+  // A run executes in this process. Where each task's command runs is the
+  // `executor` capability's; there is no whole-run delegation.
   const summary = await runOrchestrator(opts)
   if (summary.refused !== undefined) {
     return summary.refused.startsWith('no projects declare')
@@ -815,9 +776,8 @@ export async function spacedHint(parsed: RunArgs, cwd: string): Promise<string> 
 }
 
 /**
- * Why `--profile` cannot write `target`, or undefined. Asked before the
- * run: a directory named as the file died with EISDIR only after it. A
- * missing parent is no fault: the write makes it (item 993).
+ * Why `--profile` cannot write `target`, asked before the run (a directory died
+ * with EISDIR only after). A missing parent is made by the write.
  */
 function profileProblem(cwd: string, target: string): string | undefined {
   if (statSync(path.resolve(cwd, target), { throwIfNoEntry: false })?.isDirectory() === true)

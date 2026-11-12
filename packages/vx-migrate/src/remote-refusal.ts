@@ -40,12 +40,11 @@ export async function hidingErrors<T>(
 }
 
 /**
- * A remote's refusal, named by its status and its own words: "HTTP 500"
- * alone said nothing, and a batch query Vercel refused with 400 "Too many
- * hashes. Limit is 100." read as no answer and was never seen (main
- * f71b377, 2026-10-23). One line of the body, bounded: it is remote text,
- * each token `hide` knows written `***` before the cut, so none is left in
- * part. Shared by `turboCache()` and `nxCache()`.
+ * A remote's refusal, named by its status and its own words: "HTTP 500" alone
+ * said nothing, and a batch query Vercel refused with 400 "Too many hashes.
+ * Limit is 100." read as no answer and was never seen. One line of the body,
+ * bounded: it is remote text, each token `hide` knows written `***` before the
+ * cut, so none is left in part. Shared by `turboCache()` and `nxCache()`.
  */
 export async function refusal(
   res: Response,
@@ -72,7 +71,8 @@ export async function refusal(
   } catch {
     // quiet: the status alone still names the refusal
   }
-  // Each control as `\xNN`: an `ESC ]` in the server's words retitled the terminal (L-31).
+  // Each control as `\xNN`: an `ESC ]` in the server's words retitled the
+  // terminal.
   const line = said
     .slice(0, 200)
     // oxlint-disable-next-line no-control-regex

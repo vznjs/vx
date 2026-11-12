@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { canScopeDenyScan, scopedMandatoryDenies } from '../src/exec/sandbox-deny-scan.js'
+import { canScopeDenyScan, scopedMandatoryDenies } from '../src/sandbox/deny-scan.js'
 
 describe('scopedMandatoryDenies', () => {
   let root = ''

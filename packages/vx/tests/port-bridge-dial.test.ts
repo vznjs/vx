@@ -8,7 +8,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { PORT_DIAL_SCRIPT, PROXY_BRIDGE_WAIT } from '../src/exec/sandbox-runtime.js'
+import { PORT_DIAL_SCRIPT, PROXY_BRIDGE_WAIT } from '../src/sandbox/runtime.js'
 
 const HEAD =
   '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n'

@@ -2,7 +2,7 @@
 
 The question this answers: **when is vx feature complete, and what is left
 before a 1.0?** Before this page the repo had no definition of either. The
-only "done" it stated was `plan-2026-09-22.md`'s "an empty Next list with a
+only "done" it stated was "an empty Next list with a
 green main and a shipped release", and the README says "Pre-alpha" with no
 back-compat.
 

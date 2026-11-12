@@ -152,7 +152,7 @@ cacophony vectors (`packages/vx-dte/src/noise.ts`).
 
 Only misses need workers. A run the cache answers whole starts none.
 
-- **How many workers:** the planner (`packages/vx-dte/src/planner.ts`)
+- **How many workers:** the planner (`packages/vx-dte/src/plan/`)
   starts a worker only when a task would otherwise miss the best end.
   Tasks with slack wait for room on workers already running. Idle
   workers leave.
@@ -163,7 +163,7 @@ Only misses need workers. A run the cache answers whole starts none.
   gets one free core.
 
 Each is a layer you swap with `dte({ scheduler })`
-(`packages/vx-dte/src/strategy.ts`):
+(`packages/vx-dte/src/plan/strategy.ts`):
 
 | Layer   | Choices (default first)                                                                                   |
 | ------- | --------------------------------------------------------------------------------------------------------- |

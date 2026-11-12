@@ -1,10 +1,9 @@
-// End-to-end wiring: discover workspace -> load configs -> build graph ->
-// run with caching. Each step delegates to a single-purpose sibling file
-// so the layers can be swapped without touching the others.
+// End-to-end wiring: discover, load configs, build the graph, run with caching.
+// Each step is a sibling file.
 
 import type { InputStability, TaskConfig } from '../config.js'
-import type { ProjectEntry } from '../workspace/index.js'
 import {
+  type ProjectEntry,
   EMPTY_LOCK,
   findProjectConfigs,
   inputStabilityEnv,
@@ -23,24 +22,34 @@ import {
   cachesNothing,
   formatCachePolicy,
   holdCacheDir,
-  HistoryStream,
   networkConcurrency,
-  keepRunNotes,
   stopRuntimeProbes,
   sweepStaging,
 } from '../cache/index.js'
+import {
+  HistoryStream,
+  runHistory,
+  keepRunNotes,
+  createMissExplainer,
+  detectFlaky,
+  type FlakyCandidate,
+  knownFlaky,
+  LocalHistoryProvider,
+} from '../history/index.js'
 import { VERSION } from '../version.js'
 import {
   hostPlatform,
-  resetSandbox,
   signalExitCode,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
+  type MachineReport,
+  type TaskExecutor,
+  type WorkerAdvice,
 } from '../exec/index.js'
+import { resetSandbox } from '../sandbox/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
-import type { MachineReport, TaskExecutor, WorkerAdvice } from '../exec/index.js'
 import {
   deadServerBehind,
   declaredTask,
@@ -49,8 +58,12 @@ import {
   markSurfacedDeps,
   runGraph,
   taskDefinitions,
+  type AbortedOutcome,
+  type SucceededOutcome,
   type TaskNode,
   type TaskOutcome,
+  isDefaultBuild,
+  isPassStatus,
 } from '../graph/index.js'
 import { graphCounts } from './graph-memo.js'
 import {
@@ -81,12 +94,21 @@ function printTimings(): void {
 }
 import { detectColors, type ColorSupport } from '../ui/index.js'
 import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
-import { isDefaultBuild } from '../graph/index.js'
-import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
-import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
+import { commandWriteReach, prepareSandbox } from '../sandbox/index.js'
+import {
+  recordOutputDirSnapshots,
+  type OutputDirSnapshot,
+  type SaveFacts,
+  withSaveFacts,
+} from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import { settleProbedHit, unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
-import { executeArgsOf, type RunScope } from './execute-args.js'
+import {
+  settleProbedHit,
+  unkeyedGroupOutcome,
+  type ExecuteArgs,
+  type RunContext,
+} from './execute-task.js'
+import { executeArgsOf } from './execute-args.js'
 import { excludedTaint } from './excluded-keys.js'
 import { dependedOn, keyUpstream } from './upstream.js'
 import { createLiveUsage } from './live-usage.js'
@@ -124,9 +146,7 @@ import { createSteps } from './steps.js'
 import { liveSocketOf, serveLive } from './run-live.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
-import { assembleRunSummary } from './telemetry.js'
-import { isPassStatus } from '../graph/index.js'
-import type { RunContextRecord } from './telemetry.js'
+import { assembleRunSummary, type RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
 import {
@@ -172,6 +192,7 @@ import { askRemote, serversToHold } from './held-servers.js'
 import { writeRunFailures } from './run-failures.js'
 import {
   assembleRunRecords,
+  foldOutcomes,
   recordLateRemoteErrors,
   type RecordedOutcome,
   runRecordOf,
@@ -194,14 +215,7 @@ import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
-import {
-  createMissExplainer,
-  detectFlaky,
-  type FlakyCandidate,
-  knownFlaky,
-  LocalHistoryProvider,
-} from '../history/index.js'
-import type { HeldPersistent, RunOptions, RunSummary } from './options.js'
+import type { CoreRunOptions, HeldPersistent, RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
 import { cacheFacts, taskArtifacts } from './task-artifacts.js'
 import { resolveSetting } from '../settings.js'
@@ -217,36 +231,22 @@ const emptyShortCircuit = (): ShortCircuit => ({
 })
 
 /**
- * The policy that will actually govern the run. The remote axes are inert
- * without a remote layer to serve them: a `remote:w` policy over a bare
- * local cache writes NOWHERE, yet the write axis reads as on. Normalising
- * here — the ONE place both `run()` and `planRun()` derive it from — is
- * what keeps `--dry` describing the run you are about to get: reading the
- * raw request made the plan label `--cache-policy=local:,remote:rw` "cache miss —
- * would exec" (a result that will be stored) for a run in which caching is
- * entirely off.
+ * The policy that governs the run: the remote axes are inert without a remote
+ * layer. Normalised here, the one place `run()` and `planRun()` read it, so
+ * `--dry` describes the run you get (a raw `local:,remote:rw` was labelled
+ * "would exec" in a run with caching off).
  */
 function effectiveCachePolicy(requested: CachePolicy, hasRemoteLayer: boolean): CachePolicy {
   return hasRemoteLayer ? requested : { ...requested, remoteRead: false, remoteWrite: false }
 }
 
 /**
- * The perf firewall for the local short-circuit. Always-on; the only
- * gates are correctness/no-op gates:
- *   - the policy reads locally (a `--no-cache`/`--force`/`--cache-policy=local:`
- *     run reads nothing locally → nothing to restore → skip);
- *   - there is at least one task.
- * A remote layer does not close it: the local cache sits in front of every
- * remote (#3619), so the classify probes that local store alone and a local
- * hit runs ahead of its dependencies as it does with no remote; the remote
- * GETs stay on `startRemotePrefetch`'s fire-and-forget path (M's solid
- * run, 2026-10-16: a local hit waited 18 s on a dependency it never read).
- * A flat graph has no ordering to bypass, but the classify pass is worth
- * paying for anyway: it probes every stable key through ONE batched
- * `getMany` instead of a `cache.get` per task inside the run, which
- * measured 84 → 78 ms on 100 dep-free tasks and 249 → 237 ms on 1000
- * (2026-09-03, interleaved arms). The per-task correctness gates (stable
- * key, no workspace-outputs in graph) live in `startLocalShortCircuit`.
+ * Gates for the local short-circuit, correctness only: the policy reads
+ * locally, and there is a task. A remote does not close it: the local store
+ * sits in front, so a local hit still runs ahead of its deps while remote GETs
+ * prefetch in the background (else a local hit waited 18 s on a dep it never
+ * read). A flat graph gains too: one batched `getMany` beats a `cache.get` per
+ * task (1,000 tasks: 249 to 237 ms).
  */
 export function shouldShortCircuit(nodes: Map<string, TaskNode>, policy: CachePolicy): boolean {
   if (!policy.localRead) return false
@@ -254,10 +254,9 @@ export function shouldShortCircuit(nodes: Map<string, TaskNode>, policy: CachePo
 }
 
 /**
- * The run's own secrets: vx's environment and every selected task's
- * `define` and `exec.env.secret`, as each task's output masks them. With
- * the environment's alone, a secret only a config names reached the stored
- * line `vx last` prints in full.
+ * The run's secrets: vx's environment plus every selected task's `define` and
+ * `exec.env.secret`. With the environment's alone, a secret only a config named
+ * reached the stored line `vx last` prints.
  */
 function invocationMask(nodes: Iterable<TaskNode>): (command: string) => string {
   const sources: Array<Readonly<Record<string, string>>> = [process.env as Record<string, string>]
@@ -272,10 +271,9 @@ function invocationMask(nodes: Iterable<TaskNode>): (command: string) => string 
 }
 
 /**
- * The command line a run hands to its telemetry sinks, with what follows
- * `--` counted, not quoted. Those are the task's arguments,
- * often a token (`-- --token=…`), and the line reached an OTLP span and
- * the GitHub job summary verbatim (item 1057). Local history (`vx last`) keeps the whole line, on this machine.
+ * The command line handed to telemetry sinks, with what follows `--` counted,
+ * not quoted: those are the task's arguments, often a token. Local history
+ * keeps the whole line.
  */
 export function invocationCommand(line: readonly string[] | string): string {
   // A line is shell-quoted (the CLI's): its words as written, so `'a b'`
@@ -291,17 +289,13 @@ export function invocationCommand(line: readonly string[] | string): string {
 }
 
 /**
- * The bounds the CLI and the workspace config already hold, at the façade
- * (C-61): a `concurrency` of 0, a negative or NaN left no worker slot and
- * the run waited for good; a `retries` of NaN retried a failing task
- * without end; a `timeout` of 0, a negative, NaN or past the timer's range
- * killed every task at once. And the words and shapes the CLI parses
- * (C-86): a `continueMode` of `'sometimes'` ran as `deps-ok`, so a typo
- * lost fail-fast without a word; a string `excludeDependencies` dropped
- * nothing; a `projects` string or a `signal` that is no AbortSignal died
- * a TypeError inside the run.
+ * The bounds the CLI and workspace config already hold, enforced at the façade:
+ * a `concurrency` of 0 or NaN left no slot and the run waited forever; a NaN
+ * `retries` retried without end; a `timeout` of 0, NaN or out of range killed
+ * every task. A misspelled `continueMode` silently lost fail-fast; wrong-typed
+ * `excludeDependencies`, `projects` or `signal` failed inside the run.
  */
-function refuseRunOptions(options: RunOptions): void {
+function refuseRunOptions(options: CoreRunOptions): void {
   const refuse = (name: string, value: unknown, rule: string): never => {
     const shown =
       typeof value === 'string'
@@ -319,7 +313,7 @@ function refuseRunOptions(options: RunOptions): void {
   }
   const names = (v: unknown): boolean => Array.isArray(v) && v.every((s) => typeof s === 'string')
   if (!names(options.tasks)) refuse('tasks', options.tasks, 'an array of task names')
-  // No task named read "No projects declare task(s): ." (C-61).
+  // No task named read "No projects declare task(s):.".
   if (options.tasks.length === 0 || options.tasks.includes(''))
     throw new UserError(`RunOptions.tasks names no task: give at least one task name`)
   if (options.projects !== undefined && !names(options.projects))
@@ -362,21 +356,20 @@ function refuseRunOptions(options: RunOptions): void {
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
+  return runCore(options)
+}
+
+/** `run` as vx's CLI calls it, with its hand-off. */
+export async function runCore(options: CoreRunOptions): Promise<RunSummary> {
   refuseRunOptions(options)
-  // Color decision: a custom logger (tests, embedders) handles its
-  // own formatting and asserts on plain strings, so we suppress
-  // ANSI escapes for them. Only the defaultLogger (real terminal
-  // output) gets colors, gated by NO_COLOR / FORCE_COLOR / isTTY.
+  // A custom logger formats its own output and asserts on plain strings, so
+  // only the default logger gets colour, gated by NO_COLOR / FORCE_COLOR /
+  // isTTY.
   const colors = options.log ? { enabled: false } : detectColors()
-  // The concrete renderer (default terminal logger, or a custom embedder
-  // logger) no longer receives orchestrator calls directly — it SUBSCRIBES
-  // to the run event bus as the always-on, in-process terminal surface.
-  // Every existing `log.X(...)` call site emits a RunEvent through
-  // `busLogger`, so the same output flows through the event stream and
-  // future off-thread surfaces (web devtool, TUI, MCP) attach as
-  // additional subscribers. The fan-out is synchronous and order-
-  // preserving, so terminal output is byte-identical to a direct call.
-  // See docs/design/event-stream-2026-06.md.
+  // The renderer subscribes to the run event bus like any surface: every
+  // `log.X(...)` emits a RunEvent through `busLogger`. The fan-out is
+  // synchronous and order-preserving, so terminal output is unchanged. See
+  // docs/design/event-stream-2026-06.md.
   const terminal =
     options.log === undefined
       ? defaultLogger(colors, resolveOutputView(options), process.stdout, {
@@ -387,10 +380,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         })
       : null
   const sink = options.log ?? terminal!
-  // An injected bus already has surfaces subscribed; we add the terminal
-  // renderer for this run and take it off again on every way out: the bus
-  // outlives the run, and a renderer left behind reported the next run on
-  // it twice (item 635). Otherwise a fresh internal bus.
+  // An injected bus outlives the run: the terminal renderer is added for this
+  // run and taken off on every way out, or it reported the next run twice.
   const bus = options.bus ?? createEventBus()
   // Tasks run with colour forced (exec/env.ts); where the terminal prints
   // plain, their escapes are stripped. A custom logger gets the task's
@@ -405,10 +396,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const detach = (): void => {
     unsubscribeTerminal()
     unsubscribeWarned()
-    // A run refused or thrown before its tasks (an unknown task, a plugin
-    // stage that threw) never reached the end that takes the live region
-    // down: a load slow enough to show its step left `vx:load running`
-    // on screen, and the CLI's refusal was written onto its last line.
+    // A run refused or thrown before its tasks never reached the end that takes
+    // the live region down: a slow load left `vx:load running` on screen and
+    // the refusal was written over it.
     terminal?.runDone?.()
     terminal?.settle()
   }
@@ -440,9 +430,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       takeOutput,
     )
     if (summary.persistent === undefined) return summary
-    // Servers handed back still running still write: `vx watch dev` printed
-    // none of its server's log while it idled, the renderer gone with this
-    // return (C-57). It stays until the caller stops them.
+    // Servers handed back still running still write: the renderer stays until
+    // the caller stops them, or `vx watch dev` printed none of its server's
+    // log.
     held = true
     return { ...summary, persistent: detachOnStop(summary.persistent, detach) }
   } finally {
@@ -456,11 +446,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 }
 
 /**
- * The hand-back whose stop also takes the run's renderer off the bus. Once
- * stopped it lets go of the run: the next cycle's run keeps it
- * (`RunOptions.keep`) and every closure of an async `run()` keeps all of
- * that run, its own `keep` too, so `vx watch dev` held every cycle's run
- * from the latest (~13 statements, maps and closures a cycle).
+ * The hand-back whose stop also takes the renderer off the bus. Once stopped it
+ * lets go of the run, or `vx watch dev` held every cycle's run through its
+ * closures.
  */
 function detachOnStop(held: HeldPersistent, detach: () => void): HeldPersistent {
   let live: { stop: HeldPersistent['stop']; detach: () => void } | undefined = {
@@ -480,7 +468,7 @@ function detachOnStop(held: HeldPersistent, detach: () => void): HeldPersistent 
 }
 
 async function runOnBus(
-  options: RunOptions,
+  options: CoreRunOptions,
   bus: EventBus,
   warned: readonly string[],
   colors: ColorSupport,
@@ -493,11 +481,11 @@ async function runOnBus(
   const steps = createSteps(log, showsSteps)
   const { step, stepSync } = steps
   // A server's output goes through a cell of its own: a later watch cycle
-  // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
+  // that keeps the server points it at that cycle's bus (`RunHandoff.keep`).
   const serverOuts = new Map<string, { bus: EventBus }>()
-  // What a server writes from ready until its outcome is logged: renderers
-  // keep output before the outcome for its frame, which a ready server's
-  // row never prints, so its first lines since ready were lost.
+  // What a server writes between ready and its logged outcome: renderers keep
+  // pre-outcome output for a frame a ready server never prints, so its first
+  // lines were lost.
   const sinceReady = new Map<string, RunEvent[]>()
   const serverLog = (id: string): Logger => {
     const out = { bus }
@@ -521,10 +509,9 @@ async function runOnBus(
     for (const event of held) out.bus.emit(event)
   }
 
-  // Taken before the cache opens, never after: a run that held the store
-  // while it waited here, and a `vx cache clean` that holds this lock while
-  // it waits for every process with the store open, waited on each other
-  // for ever; and a clear deleted the store under a run opening it.
+  // Taken before the cache opens: a run holding the store while waiting here,
+  // and a `vx cache clean` holding this lock while waiting for open stores,
+  // deadlocked; a clear also deleted the store under a run opening it.
   let heldLock: RunLockRelease | undefined
   const takeRunLock = async (root: string, sharedCacheDir: string | undefined): Promise<void> => {
     // A nested run is refused below with its own reason, holding nothing.
@@ -576,12 +563,9 @@ async function runOnBus(
     await releaseRunLock()
   }
   mark('plugin stages')
-  // Every exit from here tears the plugins down: their capability
-  // factories ran in prepareRun, and teardown is what releases what those
-  // opened (a client, a channel). Until item 1021 only the normal end did,
-  // so an early return, a refused setup or a throw left them held — once
-  // per cycle under `vx watch`. A plugin whose own setup threw set up
-  // nothing, and is the one left out.
+  // Every exit from here tears the plugins down: their capability factories ran
+  // in prepareRun, and teardown releases what they opened. A plugin whose own
+  // setup threw set up nothing and is left out.
   let tornDown = false
   // A hook that never settles strands the run with no exit of its own:
   // bin.ts tears the plugins down before the process ends.
@@ -594,9 +578,8 @@ async function runOnBus(
     await teardownPlugins(plugins, warnOf(log), report, step)
   }
   unowe = owedIfStranded(() => teardown())
-  // The setting variables are read before any task, so a bad value is
-  // refused here, not mid-run; an embedder's (the CLI refuses it first)
-  // threw past the teardown and the cache close.
+  // Setting variables are read before any task, so a bad value is refused here,
+  // not mid-run, and never throws past the teardown and cache close.
   let inputStability: { run: InputStability; workspace?: InputStability }
   let cleanOutputs: boolean | undefined
   try {
@@ -614,16 +597,12 @@ async function runOnBus(
     await closeUnrun()
     throw err
   }
-  // A task whose command re-enters `vx run` in the workspace running it
-  // is refused. When the inner run reaches this task again it forks a run
-  // per run until the machine gives out; when it does not (`ci` shelling
-  // out to `vx run lint`) it is a nested run the outer graph cannot see —
-  // its tasks escape the schedule, the concurrency budget and this task's
-  // cache key. The markers `taskEnv` sets on every child (exec/env.ts)
-  // name the task; the check is on the root so both shapes are caught.
-  // Compared canonical: a root reached through a symlink (`run({ cwd })`,
-  // macOS's /var/folders) and the inner vx's realpath'd cwd are one tree.
-  // Empty is unset: resolved, '' named the cwd.
+  // A task whose command re-enters `vx run` in this workspace is refused:
+  // reaching the same task again forks runs until the machine gives out, and
+  // otherwise (`ci` shelling out to `vx run lint`) the nested run escapes the
+  // schedule, the concurrency budget and the task's key. The markers `taskEnv`
+  // sets on every child name the task. Roots compare canonical (symlinked cwd,
+  // macOS /var/folders); empty is unset.
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
@@ -632,14 +611,10 @@ async function runOnBus(
       `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
     )
   }
-  // A requested name that matched no project is a typo (or a stray
-  // positional from an `=`-only flag written with a space). Failing the
-  // whole run — even when OTHER requested tasks resolved — is the point:
-  // a CI job that renames a task must go red, not silently stop running
-  // it. When EVERY name is unresolved this is the `no-tasks-declared`
-  // case too; the message is identical, so that branch stays below.
-  // A refusal is the caller's to print (on stderr, as `vx run:`): as a
-  // status line it went to stdout, into whatever a script piped there.
+  // A requested name that matched no project fails the whole run, even when
+  // others resolved: a CI job that renames a task must go red, not silently
+  // stop running it. The caller prints the refusal on stderr; as a status line
+  // it reached stdout and whatever a script piped there.
   if (prepared.unresolvedTasks.length > 0) {
     const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects)}`
     await teardown()
@@ -653,10 +628,8 @@ async function runOnBus(
     return { ok: true, outcomes: [] }
   }
   if (prepared.empty !== null) {
-    // `no-tasks-declared` is almost always a typo in CI; we surface
-    // a clear message and return NOT-ok so the script exits 1.
-    // `empty-graph` is defensive — unreachable under current
-    // buildTaskGraph semantics but logged just in case.
+    // `no-tasks-declared` is almost always a CI typo: a clear message and exit
+    // 1. `empty-graph` is defensive, unreachable today.
     const refused =
       prepared.empty === 'no-tasks-declared'
         ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere, true, options.projects, prepared.projects)}${await initHint(prepared)}`
@@ -665,15 +638,11 @@ async function runOnBus(
     await closeUnrun()
     return { ok: false, outcomes: [], refused }
   }
-  // Install user plugins as additional bus subscribers BEFORE the run
-  // starts emitting events. `installPlugins` runs each plugin's optional
-  // `setup` hook and fails fast on a throw with a clean UserError naming
-  // the plugin. A plugin without `setup` subscribes nothing.
+  // Plugins subscribe before the run emits. A throwing `setup` fails fast with
+  // a UserError naming the plugin.
   let disposePlugins: (() => void) | undefined
   let telemetry: TelemetryHandle | undefined
-  // One run-id per `vx run` invocation. Every task in the resulting graph
-  // carries it so analytics queries can group by invocation; plugins get it
-  // in their teardown's `RunReport`.
+  // One run id per invocation, on every task, so analytics can group by run.
   const runId = ulid()
   prepared.localCache.runId = runId
   // A killed run's restore staging (`.vx/tmp/<pid>-0`), once per run.
@@ -757,13 +726,12 @@ async function runOnBus(
   } = prepared
   const maskInvocation = invocationMask(nodes.values())
   const concurrency = options.concurrency ?? machineParallelism()
-  // An earlier cycle's servers: the ones this graph starts again unchanged
-  // stay up; the others go now, before anything binds their ports. A stop
-  // that lands meanwhile ends the run here, having run nothing: an aborted
-  // graph printed a `not run` row and a footer above `stopped` (WD-22).
-  const heldBefore = takeHeldServers(options.keep?.servers, nodes, options.forwardArgs)
+  // An earlier cycle's servers: those this graph starts again unchanged stay
+  // up; the rest go now, before anything binds their ports. A stop meanwhile
+  // ends the run here, having run nothing.
+  const heldBefore = takeHeldServers(options.handoff?.keep?.servers, nodes, options.forwardArgs)
   const keyedHeld: ReadonlySet<string> =
-    options.holdPersistent === true ? keyedServers(nodes) : new Set()
+    options.handoff?.holdPersistent === true ? keyedServers(nodes) : new Set()
   for (const server of heldBefore.kept.values()) server.out.bus = bus
   if (heldBefore.stale.length > 0) {
     await terminateChildren(() => heldBefore.stale)
@@ -775,9 +743,9 @@ async function runOnBus(
     }
   }
 
-  // Resolved ONCE per run, in declaration order, the local executor last.
-  // A broken factory aborts here, before any task starts, and a held
-  // signal ends the wait on one that never settles.
+  // Resolved once per run, in declaration order, the local executor last. A
+  // broken factory aborts before any task; a held signal ends the wait on one
+  // that never settles.
   const executors: readonly TaskExecutor[] = await abandoning(() =>
     unlessStopped(
       resolveExecutors(prepared.plugins, {
@@ -791,20 +759,17 @@ async function runOnBus(
       signals.held?.signal,
     ),
   )
-  // Placement: decided ONCE per task, before scheduling, so the scheduler
-  // can admit a remote-pooled task against its pool instead of a local
-  // worker slot. Group tasks run nothing; persistent tasks never reach an
-  // executor (local by construction) — both stay off the map.
+  // Placement, decided once per task before scheduling, so a remote-pooled task
+  // is admitted against its pool, not a local slot. Groups and persistent tasks
+  // stay off the map.
   const placements = await abandoning(() => placeTasks(nodes, executors))
   const holders = await abandoning(() => terminalHolders(nodes, options.tty === true))
-  // A `remote: 'only'` task nobody takes succeeds WITHOUT running. That is
-  // deliberate — on a machine with no remote pool the ambient state already
-  // is what the task would have produced — but it must not be SILENT: a task
-  // reporting success while doing nothing is indistinguishable from one that
-  // worked, and the usual cause (no `cache: true`, so no executor can
-  // describe its inputs to a worker) cannot be read off the outcome.
+  // A `remote: 'only'` task nobody takes succeeds without running (with no
+  // remote pool the ambient state is its result), but not silently: a no-op
+  // success looks like one that worked, and the usual cause (no `cache: true`,
+  // so no executor can describe its inputs) is invisible in the outcome.
   if (placements.remoteOnlyNoop.size > 0) {
-    const anyRemote = executors.some((e) => e.remote === true)
+    const anyRemote = executors.some((e) => e.capabilities?.remote === true)
     for (const id of placements.remoteOnlyNoop) {
       const why = !anyRemote
         ? 'no remote executor is declared'
@@ -829,9 +794,9 @@ async function runOnBus(
       : {
           node,
           status: 'skipped',
-          exitCode: 0,
           durationMs: 0,
           otherPlatform: { needs, host: hostPlatform() },
+          platform: true,
         }
   }
   // Demand: what each executor still has left to run (`executorDemand`),
@@ -872,16 +837,12 @@ async function runOnBus(
     },
   })
   const { liveChildren, persistentRegistry } = stop
-  // The cache handle must be released on EVERY exit path, not just the
-  // happy one: `close()` is also where the run's deferred `accessed_at`
-  // bumps are flushed, so a throw between opening the cache and the
-  // normal close leaked the SQLite handle (it matters in a long-lived
-  // host) AND lost this run's touch record, after which an LRU
-  // `vx cache clean` can evict entries the run just hit. Once-only
-  // because the normal path closes before the persistent-task wait —
-  // holding the handle open for a dev server's whole lifetime would be
-  // worse.
+  // The cache handle closes on every exit: `close()` also flushes the run's
+  // deferred `accessed_at` bumps, so a throw leaked the SQLite handle and lost
+  // the touch record, and LRU `vx cache clean` could evict entries the run just
+  // hit. Once only: the normal path closes before a persistent task's wait.
   let live: ReturnType<typeof serveLive> | undefined
+  let unfold = (): void => {}
   let cacheClosed = false
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
@@ -889,13 +850,9 @@ async function runOnBus(
     await prepared.localCache.stopCheckpoints()
     cache.close()
     live?.unlisten()
-    // Released with the handle: before a persistent task's wait, on every
-    // exit path (see run-lock.ts for why a run holds one at all). AWAITED:
-    // fired and forgotten, the release lost the race with the CLI's exit —
-    // `bin.ts` ends the process as soon as run() resolves — and every CLI
-    // run left its lock directory in the temp dir (658 of them after one
-    // day's gates, 2026-09-16); the next run reclaimed it, so nothing
-    // waited, but a directory per run is litter the box never sheds.
+    // Released with the handle, on every exit (see run-lock.ts). Awaited:
+    // fire-and-forget lost the race with the CLI's exit and left a lock
+    // directory per run in the temp dir.
     await releaseRunLock()
   }
   // Answers `vx last --live` while the lock is held (run-live.ts).
@@ -914,14 +871,12 @@ async function runOnBus(
     // Every remote turned off by its `open` is no remote: a task must not clean
     // its outputs for a save that goes nowhere.
     const remoteCacheEnabled = prepared.hasRemoteLayer && !remotesClosed
-    // Normalised ONCE so every consumer — execute-task, the dedup
-    // predicate, the recorded invocation row — reads the policy that
-    // actually governed the run. Reading the raw request here made tasks
-    // clean their outputs before every exec for a save that never
+    // Normalised once, so every consumer reads the policy that governed the
+    // run: the raw request made tasks clean outputs for a save that never
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
     warnNoRemote(prepared, options, log)
-    const windows = options.commandWindows ?? commandWindows()
+    const windows = options.handoff?.commandWindows ?? commandWindows()
     const deferredOutputs = new DeferredOutputs({
       nodes,
       cache,
@@ -933,12 +888,9 @@ async function runOnBus(
       commandWindows: windows,
     })
 
-    // Per-run context for the Tier-3 `invocations` header row. Captured
-    // ONCE (git is ONE spawn for commit+branch, behind try/catch; never
-    // fails a run). `dirty` reuses the `git status --porcelain` the
-    // GitFilesCache populate already ran for input enumeration — no
-    // second status spawn.
-    // `run.branch` names the branch over git's (`prepared.branch`).
+    // Context for the `invocations` header row, captured once: one git spawn
+    // for commit and branch, never failing the run; `dirty` reuses the
+    // populate's `git status`. `run.branch` overrides git's.
     const gitContext = {
       ...head,
       dirty: gitFilesCache.worktreeDirty,
@@ -946,29 +898,20 @@ async function runOnBus(
     }
     const hostContext = captureHostContext()
 
-    // The canonical run-context record — the same git/CI/host data the
-    // invocation header uses, shaped as the telemetry export contract.
-    // Built + consulted ONLY when a plugin CONTRIBUTES `telemetry`, and
-    // BEFORE run:start is emitted so a sink
-    // catches the whole stream.
-    // subscribeTelemetry returns undefined when no sink is contributed (no
-    // telemetry plugin, or all declined — e.g. otel() with no OTLP endpoint),
-    // so a plain run does ZERO extra work: no record allocation, no bus
-    // subscriber, no summary building. The hot path stays off-limits.
+    // The run-context record shaped as the telemetry contract, built only when
+    // a plugin contributes `telemetry`, before run:start so a sink sees the
+    // whole stream. No sink: no record, no subscriber, no summary.
     let runContextRecord: RunContextRecord | undefined
-    // Gate on a plugin that can actually CONTRIBUTE a sink, not on declaring
-    // any plugin at all: a cache-only plugin has no telemetry hook to
-    // consult, so paying for the record (2 git spawns + a `.vx/cache/workspace-id`
-    // write on a remote-less repo) buys nothing. A plugin that has the hook
-    // but declines still pays — its answer is only knowable by asking.
+    // Gated on a plugin that can contribute a sink, not on any plugin: a
+    // cache-only plugin has nothing to consult, and the record costs two git
+    // spawns and a workspace-id write. A plugin with the hook that declines
+    // still pays: only asking tells.
     const hasTelemetryPlugin = prepared.plugins.some((p) => p.telemetry !== undefined)
     if (hasTelemetryPlugin || options.telemetrySinks !== undefined) {
       runContextRecord = telemetryRunContext({
         runId,
-        // An embedder's `command` is redacted as the argv is: it passed a
-        // token after `--` to every sink verbatim (C-67).
-        // Masked as the stored line is: a flag's secret value sits before
-        // the `--` the count covers (L-44).
+        // An embedder's `command` is redacted and masked as the argv is: a
+        // flag's secret value can sit before the `--`.
         command: maskInvocation(invocationCommand(options.command ?? process.argv.slice(1))),
         requestedTasks: options.tasks,
         cachePolicy: formatCachePolicy(policy),
@@ -991,19 +934,17 @@ async function runOnBus(
     }
 
     const sandboxArmer = prepareSandbox(nodes.values())
-    // The probe is ~220 ms of spawns, paid by the first sandboxed task to
-    // execute. A task no cache can answer (no `cache`, reads off, or
-    // persistent) is sure to: start it now, under the classify and the
-    // upstream work. The task's own `arm()` rethrows a refusal, and the
-    // end of the run waits for it: one that landed after the reset left
-    // SRT's proxies holding the process open.
+    // The sandbox probe is ~220 ms of spawns, paid by the first sandboxed task.
+    // A task no cache can answer is sure to run, so start the probe now, under
+    // the classify. The task's `arm()` rethrows a refusal, and the run's end
+    // awaits it: one landing after the reset left SRT's proxies holding the
+    // process open.
     const surelyRuns = (n: TaskNode): boolean =>
       n.config.exec?.persistent !== undefined ||
       n.config.cache !== true ||
       !(policy.localRead || policy.remoteRead)
     // Only what runs here arms this machine's sandbox: a `sandbox` executor
-    // enforces it where it runs the task, so a distributed run's
-    // orchestrator needs none (2026-10-22).
+    // enforces it where it runs.
     const sandboxed =
       sandboxArmer === null
         ? []
@@ -1022,11 +963,9 @@ async function runOnBus(
     const keyed = keyedProjects(nodes, prepared.keyOnly)
     const readable = readableDeps(nodes, prepared.keyOnly)
     const outputDirSnapshots: OutputDirSnapshot[] = []
-    // Saves run off the execution slot, twice the cap at once (memory:
-    // each pack holds an artifact's bytes); a failed save is a miss next
-    // time, said once — the task's work ran. A full disk fails every save
-    // after the first the same way: the first is said with its task, the
-    // rest named once the graph ends.
+    // Saves run off the execution slot, at twice the cap (each pack holds an
+    // artifact's bytes). A failed save is said once, with its task (the work
+    // ran); a full disk fails every save after, named once the graph ends.
     const unsaved: string[] = []
     const saveLane = createSaveLane(2 * concurrency, (err, taskId) => {
       if (unsaved.push(taskId) > 1) return
@@ -1044,19 +983,15 @@ async function runOnBus(
       windows.open(id, node.projectDir, commandWriteReach(node, workspaceRoot))
     }
 
-    // Focused flow: a requested GROUP has no output of its own, so
-    // surface the same-project, non-group tasks it chains (one level)
-    // for display. Marks `node.surfaced`; never touches `requested`.
+    // A requested group has no output of its own: surface its same-project
+    // non-group tasks (one level) for display, marking `node.surfaced` without
+    // touching `requested`.
     markSurfacedDeps(nodes)
 
-    // Header counts: unique projects with a real (non-group) task in the
-    // graph (including dependsOn-pulled deps, not just the user-requested
-    // set; a `^build` placeholder in a project with no build is not one),
-    // and the total number of real task executions. Mirrors the
-    // count the end-of-run summary reports under "total". The
-    // requested count drives the focused logger's live-vs-buffered
-    // decision, so surfaced nodes count toward it too — they display
-    // like requested tasks.
+    // Header counts: projects with a real task in the graph (deps included; a
+    // `^build` placeholder is not one), and real task executions, matching the
+    // summary's total. Surfaced nodes count as requested for the
+    // live-vs-buffered choice: they display alike.
     const packagesInScope = new Set<string>()
     let taskCount = 0
     let requestedCount = 0
@@ -1067,26 +1002,25 @@ async function runOnBus(
         if (node.requested || node.surfaced === true) requestedCount++
       }
     }
-    // Admission over the worker count is a plugin's (`admit`): built once
-    // into the predicate the scheduler asks at every local dispatch. No
-    // plugin answers → undefined → the count-only path, byte for byte.
+    // Admission over the worker count is a plugin's (`admit`), built once into
+    // the predicate the scheduler asks at each local dispatch. No plugin: count
+    // only.
     const admit = buildAdmission(prepared.plugins, nodes, concurrency, warnOf(log))
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
     const fault = executorFaults(warnOf(log))
-    const footers = executors.filter((e) => e.footer !== undefined)
-    const placers = executors.filter((e) => e.running !== undefined)
+    const footers = executors.filter((e) => e.distribution?.footer !== undefined)
+    const placers = executors.filter((e) => e.distribution?.running !== undefined)
     // The scheduler's dependents count, and every row's `blocks` (the live
     // list's and the results'): one closure over the graph, counted by
     // `prepareRun` beside git when it could, else on the first that asks.
     let counted: ReadonlyMap<string, number> | undefined = prepared.dependents
     const blocksNow = (): ReadonlyMap<string, number> =>
       (counted ??= graphCounts(nodes, hashCache.folds, hashCache.graph))
-    // Every row's `usual` and the forecast's timings: history read once, on
-    // the first row that asks, so a run that executes nothing never reads
-    // it. It was read only a second into a live run, so rows before that,
-    // a short run's and every log's showed none (2026-10-29).
+    // Every row's `usual` and the forecast's timings: history read once, on the
+    // first row that asks, so a run that executes nothing never reads it, and
+    // early rows are not left without one.
     let p50s: ReadonlyMap<string, number> | undefined
     const p50sNow = (): ReadonlyMap<string, number> => {
       if (p50s !== undefined) return p50s
@@ -1135,7 +1069,7 @@ async function runOnBus(
       },
       concurrency,
       workspaceProjectCount,
-      // Live too: a long run is read while it runs (2026-10-21).
+      // Live too: a long run is read while it runs.
       runId,
       warnings: () => warned,
     }
@@ -1152,9 +1086,8 @@ async function runOnBus(
       if (claimed !== undefined) takeOutput(claimed)
     }
 
-    // Lifecycle hooks drive the default logger's dynamic status line
-    // (TTY-only); custom loggers may ignore them.
-    // The status line starts here: a prompt now would be drawn over.
+    // Lifecycle hooks drive the default logger's TTY status line; it starts
+    // here, so a prompt now would be drawn over.
     secrets.closePrompts()
     log.runStart?.({
       total: taskCount,
@@ -1163,21 +1096,16 @@ async function runOnBus(
       context: runContext,
       startedAtMs: endedAtMsAtStart,
     })
-    // The live region's forecast: the graph's from the first free row, and
-    // history's only if the region is still up a second in, so a warm run
-    // never reads history.
+    // The live forecast: the graph's from the first free row, history's only if
+    // the region is still up a second in, so a warm run never reads history.
     terminal?.forecast(
       () => createForecast(nodes, new Map(), concurrency, blocksNow()),
       async () => createForecast(nodes, p50sNow(), concurrency, blocksNow()),
     )
 
-    // Remote-only: kick off background prefetches so remote-GET latency
-    // overlaps execution. Fire-and-forget — execution starts on the next
-    // line; the layer ingests hits into local and de-dups so
-    // execute-task's cache.get awaits the in-flight promise (one remote
-    // GET per key). Gated entirely on a remote layer being configured;
-    // local-only runs never reach here, so their behavior + perf is
-    // unchanged (no upfront key pass, no local probing).
+    // Remote only: background prefetches overlap remote-GET latency with
+    // execution. The layer ingests hits locally and dedups, so execute-task's
+    // `cache.get` awaits the in-flight promise (one GET per key).
     let prefetchDone: Promise<void> = Promise.resolve()
     /** `--profile`'s run events beside the tasks: the cache probe's. */
     const runSpans: Record<string, unknown>[] = []
@@ -1209,18 +1137,13 @@ async function runOnBus(
       )
     }
 
-    // Local cache short-circuit (default-on). Up-front classify: derive
-    // every stable+cacheable+local-read task's key and probe local ONCE.
-    // The result drives two-tier scheduling — confirmed hits become a
-    // restore-tier the scheduler runs ahead of their deps but only as
-    // worker-slot backfill (misses own the pool) — and execute reuses
-    // each probe, so there is no second cache.get. Gated by
-    // shouldShortCircuit (local reads on, no remote layer); when off, both
-    // maps are empty and the run is byte-identical.
+    // Local short-circuit: derive every stable, cacheable, locally-read task's
+    // key and probe local once. Confirmed hits become the restore tier, run
+    // ahead of their deps as slot backfill; execute reuses each probe. Off:
+    // both maps are empty.
     let shortCircuit: ShortCircuit = emptyShortCircuit()
-    // An empty local cache answers every probe with a miss: each task
-    // derives its key as it starts instead (~100 ms before a cold 1,090-
-    // package run's first spawn), and every sandboxed task runs.
+    // An empty local cache misses every probe: each task derives its key as it
+    // starts instead (~100 ms before a cold 1,090-package run's first spawn).
     const remote = cache.hasRemote === true
     const coldLocal =
       shouldShortCircuit(nodes, policy) && (remote || cache === prepared.localCache)
@@ -1274,29 +1197,25 @@ async function runOnBus(
       }
     }
 
-    // Whether this task runs behind a failure (`continueMode: 'always'`
-    // only) or on the key of a dependency `--exclude-dependencies` kept
-    // from running — its save is withheld and the taint propagates; see
-    // admission.ts.
+    // Whether this task runs behind a failure (`continueMode: 'always'`) or on
+    // the key of a dep `--exclude-dependencies` kept from running: its save is
+    // withheld and the taint propagates (admission.ts).
     const excluded = excludedTaint(nodes)
     if (excluded.unsaved > 0) {
       warnOf(log)(
         `[vx] --exclude-dependencies: ${excluded.unsaved} cached task(s) build on a skipped dependency; what they build is not saved`,
       )
     }
-    // A server that ended on its own is failed (the end of the run says
-    // so); what has not yet started hears it before it dispatches (C-88).
+    // A server that ended on its own is failed (the end of the run says so);
+    // what has not yet started hears it before it dispatches.
     const serverDied = (id: string): boolean => {
       const child = persistentRegistry.get(id)
       return child !== undefined && hasEnded(child) && child.exitCode !== 0
     }
-    // Under `always` a task that starts while a server it depends on is
-    // dead runs on a failure the outcomes do not hold yet (the server's
-    // says `success` until the run ends), so it is seeded here, at its
-    // dispatch, and the tracker carries it to what is built on it.
-    // A server can also die under a task that is running (`serverDiedUnder`),
-    // which seeds it then, and so does a task that left a process running
-    // (`leftRunning`).
+    // Under `always`, a task starting while a server it depends on is dead runs
+    // on a failure the outcomes do not hold yet (the server's says `success`
+    // until the end), so it is seeded at dispatch. `serverDiedUnder` seeds a
+    // death during the task, as does a leftover process (`leftRunning`).
     const taintSeeds = new Set(excluded.seeds)
     const hasServers = [...nodes.values()].some((n) => n.config.exec?.persistent !== undefined)
     const continueAlways = options.continueMode === 'always'
@@ -1317,7 +1236,7 @@ async function runOnBus(
     const failFast = new AbortController()
     // Tasks a plugin's shared record names flaky (`ctx.flaky`).
     const sharedFlaky = new Set<string>()
-    const scope: RunScope = {
+    const scope: RunContext = {
       workspaceRoot,
       cache,
       cachePolicy: policy,
@@ -1355,9 +1274,8 @@ async function runOnBus(
           return undefined
         }
         let dead = behind(serverDied)
-        // A server that died just before the task ended may be heard after
-        // it: both exits can land in one turn of the event loop, the task's
-        // handled first and its save decided in that turn's microtasks. The
+        // A server that died just before the task ended may be heard after it:
+        // both exits can land in one event-loop turn, the task's first. The
         // next turn has handled the rest.
         if (dead === undefined && behind((id) => persistentRegistry.has(id)) !== undefined) {
           await new Promise<void>((resolve) => setImmediate(resolve))
@@ -1401,7 +1319,7 @@ async function runOnBus(
     }
     if (explainMiss !== undefined) scope.explainMiss = explainMiss
     if (keepRun !== undefined) scope.keepRun = keepRun
-    if (options.watch === true) scope.watch = true
+    if (options.handoff?.watch === true) scope.watch = true
     if (sandboxArmer !== null) scope.armSandbox = () => sandboxArmer.arm()
     if (demand.any) scope.executing = demand.executing
     const argsOf = executeArgsOf(scope, {
@@ -1448,10 +1366,9 @@ async function runOnBus(
     })
 
     mark('classify + probe')
-    // A run whose every task is a confirmed local hit dispatches only
-    // restores, which no weight orders: the `schedule` stage is not asked.
-    // A plugin's later weights (`ctx.refine`) re-rank the ready queues
-    // while the graph runs; any that land before it starts, at its start.
+    // A run of only confirmed local hits dispatches only restores, which no
+    // weight orders, so the `schedule` stage is not asked. A plugin's later
+    // weights (`ctx.refine`) re-rank the queues while the graph runs.
     let reprioritize: ((weights: ReadonlyMap<string, number>) => void) | undefined
     let refinedEarly: ReadonlyMap<string, number> | undefined
     let graphOver = false
@@ -1470,10 +1387,10 @@ async function runOnBus(
           },
         })
     mark('schedule')
-    // Judged as each task finishes, against the history BEFORE this run's
-    // rows land, so the row that prints next carries the verdict: nothing
-    // prints below the footer. A hit or a skip asks nothing; a green miss
-    // is one probe of the failed-row index.
+    // Judged as each task finishes, against history before this run's rows
+    // land, so the row carries the verdict and nothing prints below the footer.
+    // A hit or skip asks nothing; a green miss is one probe of the failed-row
+    // index.
     const historyDb = indexDb(prepared.localCache)
     const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
@@ -1482,12 +1399,12 @@ async function runOnBus(
       try {
         const found = detectFlaky(historyDb, candidates)[0]
         if (found === undefined) return
-        o.flaky = { passes: found.passes, failures: found.failures }
+        ;(o.attempts ??= {}).flaky = { passes: found.passes, failures: found.failures }
       } catch {
         // History is observability: an unreadable one judges nothing.
       }
     }
-    const keepServer = (node: TaskNode): TaskOutcome | undefined => {
+    const keepServer = (node: TaskNode): SucceededOutcome | undefined => {
       const server = heldBefore.kept.get(node.id)
       if (server === undefined) return undefined
       heldBefore.kept.delete(node.id)
@@ -1502,16 +1419,15 @@ async function runOnBus(
         status: 'success',
         exitCode: 0,
         durationMs: 0,
-        wallclockStartNs: at,
-        wallclockEndNs: at,
+        timing: { startNs: at, endNs: at },
       }
     }
     let lockBroken: boolean | undefined
-    prepared.localCache.storeHeldBlobSizes()
+    prepared.localCache.memo.storeHeldBlobSizes()
     prepared.localCache.checkpointOffThread()
-    // A hit's row is whole when it finishes, so it is written while the
-    // graph runs (history-stream.ts); every other row waits for the bundle.
-    // A row with forward args is the bundle's too: only it digests them.
+    // A hit's row is whole when it finishes, so it is written while the graph
+    // runs (history-stream.ts); other rows, and any with forward args (only the
+    // bundle digests them), wait for the bundle.
     const historyAt = historyFiles(prepared.localCache)
     let expectedHits = 0
     for (const probe of shortCircuit.preProbed.values()) if (probe.hit !== null) expectedHits++
@@ -1521,7 +1437,7 @@ async function runOnBus(
     const streamHit = (o: TaskOutcome): void => {
       if (stream === undefined || isGroupTask(o.node)) return
       if (!isCacheHit(o.status)) return
-      if (o.wallclockStartNs === undefined || o.wallclockEndNs === undefined) return
+      if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
       if (forwards && o.node.requested) return
       stream.add(
         o,
@@ -1534,14 +1450,27 @@ async function runOnBus(
         }),
       )
     }
-    // A dependency-only server stops once no task left uses it, not at the
-    // end of the graph: it held a worker's cores for nothing. Not under a
-    // hold, whose next cycle may reuse it.
+    // History, the kept bytes and the report read the graph's outcomes
+    // from the stream, as every other surface does.
+    const fold = foldOutcomes(
+      nodes,
+      keeper === undefined && stream === undefined
+        ? undefined
+        : (o) => {
+            keeper?.taskDone(o)
+            streamHit(o)
+          },
+    )
+    unfold = bus.subscribe(fold.subscriber)
+    // A dependency-only server stops once no task left uses it, freeing its
+    // cores; not under a hold, whose next cycle may reuse it.
     const unneeded =
-      options.holdPersistent === true
+      options.handoff?.holdPersistent === true
         ? undefined
         : unneededServers(nodes, options.log === undefined && (options.handleSignals ?? true))
-    const serving = executors.filter((e) => e.servers === true && e.unneeded !== undefined)
+    const serving = executors.filter(
+      (e) => e.capabilities?.servers === true && e.distribution?.unneeded !== undefined,
+    )
     const released = new Set<string>()
     const stopping: Promise<void>[] = []
     // A server stops after the servers using it (`serverUsers`), which this
@@ -1556,7 +1485,7 @@ async function runOnBus(
         // Copies an executor started beside the dependants it ran.
         for (const e of serving)
           try {
-            e.unneeded!(s)
+            e.distribution!.unneeded!(s)
           } catch {
             // Its copies stop at its teardown, as before.
           }
@@ -1585,7 +1514,7 @@ async function runOnBus(
       concurrency,
       restoreConcurrency: options.restoreConcurrency ?? 2 * concurrency,
       reverseDeps: blocksNow,
-      settledOf: (o) => deferredSaves.get(o.node.id),
+      settledOf: (o) => deferredSaves.get(o.node.id)?.then((facts) => withSaveFacts(o, facts)),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(holders.size > 0 ? { exclusive: holders } : {}),
@@ -1600,19 +1529,17 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
-        if (thrownOn.size > 0 && o.where === undefined) {
+        if (thrownOn.size > 0 && o.placement?.where === undefined) {
           const where = thrownOn.get(o.node.id)
-          if (where !== undefined) o.where = where
+          if (where !== undefined) (o.placement ??= {}).where = where
         }
-        if (cacheOff) o.cacheOff = true
+        if (cacheOff) (o.cache ??= {}).off = true
         const root = taintedRan.get(o.node.id)
         if (root !== undefined && o.blockedBy === undefined) o.taintedBy = root
         taint.settled(o)
         judgeFlaky(o)
-        keeper?.taskDone(o)
         log.taskComplete(o.node, o)
         if (sinceReady.size > 0) releaseSinceReady(o.node.id)
-        streamHit(o)
         demand.finished(o.node.id)
         release(o.node.id)
         // A server that dies while the graph runs is no longer running:
@@ -1660,8 +1587,7 @@ async function runOnBus(
         })
       },
       // An unkeyed group runs nothing, and a restore-tier hit whose tree is
-      // current restores nothing: settled in place, unless a taint may ride
-      // it, which `buildExecuteArgs` records on dispatch.
+      // current restores nothing: settled in place, unless a taint may ride it.
       ...(options.continueMode !== 'always' && taintSeeds.size === 0
         ? {
             settleNow: (node: TaskNode, upstream: TaskOutcome[]) => {
@@ -1690,9 +1616,8 @@ async function runOnBus(
       },
       // The baseline under them; `most-work` when the workspace names none.
       ...(options.schedule !== undefined ? { strategy: options.schedule } : {}),
-      // Local short-circuit: confirmed stable local hits the scheduler
-      // runs ahead of their deps as low-priority worker-slot backfill.
-      // Empty when the short-circuit didn't fire → byte-identical.
+      // Confirmed stable local hits the scheduler runs ahead of their deps as
+      // slot backfill. Empty when the short-circuit did not fire.
       restoreTier: shortCircuit.restoreTier,
       ...(askForServers
         ? {
@@ -1717,17 +1642,15 @@ async function runOnBus(
       )
     }
 
-    // Which persistent children outlive the graph, and the bounded SIGTERM
-    // of the rest, before the summary prints. Scoped to the real CLI
-    // foreground: `options.log === undefined` means the default logger (a
-    // `vx run` invocation), and `handleSignals` excludes watch mode (own
-    // signal loop) and embedders that manage lifecycle themselves — both
-    // expect run() to return, not block on a server.
+    // Which persistent children outlive the graph, and the bounded SIGTERM of
+    // the rest, before the summary. Only in the CLI foreground (`options.log
+    // === undefined`, signals handled): watch mode and embedders expect run()
+    // to return.
     const foreground = options.log === undefined && (options.handleSignals ?? true)
     // An aborted run's children are already being torn down: nothing to
     // hold, but the servers a `CYCLE_INTERRUPT` spared.
     const hold =
-      options.holdPersistent === true &&
+      options.handoff?.holdPersistent === true &&
       (!stop.signal.aborted || stop.signal.reason === CYCLE_INTERRUPT)
     // A stop already signalled every server once and waits out its grace:
     // a SIGTERM here, while a server ran its cleanup, cut it short.
@@ -1745,13 +1668,14 @@ async function runOnBus(
     })
 
     // Every batch the stream sent has answered: what landed is not written again.
+    unfold()
     const streamed = await stream?.finish()
     const landed = new Set(streamed?.landed.map((s) => s.item))
     mark('run graph')
 
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
-    const list = [...outcomes.values()]
+    const list = fold.outcomes
     // A platform skip, and a skip it blocked, is no failure: the task is not this machine's.
     const ok = list.every(
       (o) =>
@@ -1761,32 +1685,27 @@ async function runOnBus(
             (o.blockedBy !== undefined && placements.otherPlatform.has(o.blockedBy)))),
     )
 
-    // The summary + artifact writers + recordRun pass all exclude group
-    // tasks via the shared tallyOutcomes helper. We pass the full
-    // outcome list and let each consumer apply the same filter.
+    // The summary, artifacts and history all exclude groups through
+    // `tallyOutcomes`, so each gets the full list.
     const endedAtMs = Date.now()
     const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
-    // Foreground dev mode: between the task frame and the footer, list
-    // the persistent tasks still running (see the keep-alive block below).
-    // Only the ones still up: a requested server that crashed while its
-    // dependants ran is dead, and the wait below says so.
+    // Foreground dev mode: list the persistent tasks still up between the task
+    // frames and the footer. A requested server that crashed meanwhile is dead,
+    // and the wait below says so.
     const stillUp = keepAlive.nodes.filter((_, i) => !hasEnded(keepAlive.children[i]!))
     if (stillUp.length > 0) {
       for (const line of formatPersistentList(stillUp, colors)) log.status(line)
     }
-    // A dependency-only server that died before the end of the graph
-    // stopped it: the footer below counts it failed, this says why.
-    // A signal death is named as its exit code, as the keep-alive wait
-    // names it: `code SIGTERM` read beside `code 143` for one event (item
-    // 1102).
+    // A dependency-only server that died before the graph's end stopped it: the
+    // footer counts it failed, this says why. A signal death is named as its
+    // exit code, as the keep-alive wait names it.
     for (const c of crashedPersistent) {
       const code = typeof c.code === 'number' ? c.code : signalExitCode(c.code)
       warnOf(log)(`vx: ${c.id} exited with code ${code} before the run stopped it`)
       for (const line of takeExitNotes(persistentRegistry.get(c.id), code)) warnOf(log)(line)
     }
-    // Outputs that never came home are not an error, but a silent `dist/`
-    // that is empty-or-stale would be: name every task whose bytes are
-    // still remote.
+    // Outputs that never came home are not an error, but a silently empty or
+    // stale `dist/` would be: name every task whose bytes are still remote.
     const stillDeferred = deferredOutputs.pending()
     if (stillDeferred.length > 0) {
       log.status(
@@ -1794,10 +1713,9 @@ async function runOnBus(
       )
     }
 
-    // Optional artifacts. Errors are surfaced to the user but don't
-    // change the run's exit code — the run already happened.
-    // Written again after the keep-alive wait: a kept server's crash or a
-    // Ctrl-C there is the process's exit, and the first write said ok.
+    // Optional artifacts: errors are shown but never change the exit code.
+    // Written again after the keep-alive wait, whose crash or Ctrl-C is the
+    // process's real exit.
     const profile = options.profile
     if (profile !== undefined) {
       try {
@@ -1817,13 +1735,10 @@ async function runOnBus(
         warnOf(log)(`vx: failed to write profile: ${msg}`)
       }
     }
-    // Record each task to the run history in a single SQLite transaction
-    // (one fsync instead of N), with the invocation header row alongside,
-    // atomically via recordRunBundle. The Tier-3 input-fingerprint rows
-    // (entry_inputs) are NOT built here — they're persisted inside each
-    // entry's save transaction (miss path only), so a warm all-cache-hit
-    // run does no extra recording work. The telemetry mirror is built in
-    // the same pass, only when a sink is active.
+    // Record the run in one SQLite transaction (one fsync), with the invocation
+    // header (`recordRunBundle`). The input-fingerprint rows are saved inside
+    // each miss's save transaction, so an all-hit run records nothing extra.
+    // The telemetry mirror is built in the same pass, only with a sink.
     const recordsOf = (final: TaskOutcome[], runOk: boolean) =>
       assembleRunRecords({
         outcomes: final,
@@ -1832,9 +1747,8 @@ async function runOnBus(
         endedAtMs,
         totalMs,
         ok: runOk,
-        // The invocation is stored and `vx last` prints it: a secret passed
-        // after `--` (`-- --token=$NPM_TOKEN`) is masked here as the task's
-        // own output masks it, so cache.db holds no plaintext value.
+        // `vx last` prints the stored invocation: a secret after `--` is masked
+        // here as task output masks it, so cache.db holds no plaintext.
         command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
         requestedTasks: options.tasks,
         cachePolicy: formatCachePolicy(policy),
@@ -1854,17 +1768,15 @@ async function runOnBus(
       try {
         write()
       } catch (err) {
-        // History is observability: a full cache disk at the very end must
-        // not turn a finished run's verdict into a stack and exit 1 (seen as
-        // an unprivileged user on a 2 MiB disk, 2026-09-16). The run said
-        // what happened; `vx last` and the flaky list will not know this one.
+        // History is observability: a full disk at the very end must not turn a
+        // finished run into a stack trace and exit 1.
         const message = err instanceof Error ? err.message : String(err)
         warnOf(log)(`[vx] run history not recorded: ${message} — the verdict above stands`)
       }
     }
-    // A server kept in the foreground can still fail the run after the
-    // cache closes: its history is written once the wait has decided, or it
-    // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
+    // A foreground server can still fail the run after the cache closes: its
+    // history is written once the wait decides, or it recorded `ok` over exit 1
+    // and fed the flaky list a pass.
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
     // The servers this run is done with end now; the kept ones once the wait decides.
     telemetry?.endServers(
@@ -1883,41 +1795,36 @@ async function runOnBus(
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
-        recordHistory(() => cache.recordRunBundle(records))
-        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
+        recordHistory(() => runHistory(prepared.localCache).recordRunBundle(records))
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
+        )
         recordFailures(list)
       })
     } else if (stop.stoppedBy !== undefined) {
-      // Stopped: not a run `vx last` lists (item 854), but what finished is
-      // measured, or the next run knows none of it (2026-10-21).
+      // Stopped: not a run `vx last` lists, but what finished is measured, or
+      // the next run knows none of it.
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
-        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordRuns(recordsOf(ended, false).runs, head),
+        )
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
+        )
         recordFailures(ended)
       })
     }
     mark('record history')
-    // Drain any still-in-flight background prefetches before closing the
-    // cache handle — a prefetch ingesting into a closed SQLite DB would
-    // throw. Tasks that resolved as local hits never awaited their
-    // prefetch, so some may still be running here. (The local
-    // short-circuit's probes are awaited inside startLocalShortCircuit
-    // before scheduling, so nothing of its is in flight here.) The
-    // background write-through uploads queued by LayeredCache.save
-    // settle here for the same reason.
+    // Drain in-flight prefetches and write-through uploads before closing the
+    // cache: a prefetch ingesting into a closed database throws, and local hits
+    // never awaited theirs.
     //
-    // BEFORE teardownPlugins, and that order is load-bearing: the drain
-    // pushes bytes through a layer a PLUGIN provided, so a plugin that
-    // releases its client in `teardown()` would otherwise have the
-    // channel shut from under the upload — silently losing every remote
-    // write with nothing but a warning. The seam's contract is that a
-    // cache layer stays usable until the run's uploads have settled.
-    // Every deferred save has settled by here: the scheduler finishes a
-    // task only once its `settledOf` promise (the lane's `landed`) has,
-    // so `runGraph` resolved with every save in the cache. A second
-    // drain of the lane stood here until item 634; deleting it changed
-    // nothing the suite could see, because this gate is the rule.
+    // Before teardownPlugins: the drain pushes bytes through a plugin's layer,
+    // and a plugin releasing its client in `teardown()` would silently lose
+    // every remote write. A cache layer stays usable until the run's uploads
+    // settle. Deferred saves have all settled: the scheduler finishes a task
+    // only once its save landed.
     await step('vx:uploads', async () => {
       await prefetchDone
       await Promise.all([cache.drainUploads?.(), keeper?.settled()])
@@ -1953,23 +1860,23 @@ async function runOnBus(
             reportOf(list, { runId, commit: head.commitSha, ciRun: ciContext, ok }, keeper),
           )
         : undefined
-    // Hand the per-run summary to the telemetry sinks + drain them. Only
-    // when a sink is active (telemetry !== undefined) — otherwise this
-    // whole block is skipped and the run is byte-identical to before.
-    // emitSummary/flush are crash-isolated, so a faulty sink can't fail
-    // the run; flush is the sink's last chance to ship buffered records.
-    // After the drain, so the summary says what the uploads moved; a live
-    // sink's task records went out as each task ended.
+    // Hand the summary to the telemetry sinks and drain them, only with a sink.
+    // Crash-isolated, so a faulty sink cannot fail the run. After the upload
+    // drain, so the summary says what uploads moved.
     const sinks = telemetry
+    // At the graph's end, or with `after` once a kept server's wait has
+    // decided: its outcome changed in place, so its records are built again.
     const summarize = async (
       final: TaskOutcome[],
       runOk: boolean,
-      timed?: typeof step,
-      ended = { at: endedAtMs, totalMs },
+      after?: { at: number; totalMs: number },
     ): Promise<void> => {
       if (sinks === undefined || runContextRecord === undefined) return
       sinks.endServers(final)
-      const tasks = final === list ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
+      const ended = after ?? { at: endedAtMs, totalMs }
+      const timed = after === undefined ? step : undefined
+      const tasks =
+        after === undefined ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
       const summary = assembleRunSummary(runContextRecord, tasks, {
         startedAt: endedAtMsAtStart,
         endedAt: ended.at,
@@ -1987,20 +1894,16 @@ async function runOnBus(
       sinks.emitSummary(summary)
       await sinks.flush(timed)
     }
-    // A kept server can still fail the run in the wait below: its summary
-    // goes out once the wait has decided, as its history does, or every
-    // sink (vx-ci's job summary) read a pass over the exit 1.
-    if (!historyAfterWait) await summarize(list, ok, step)
-    // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
-    // + time-bounded inside teardownPlugins, so a faulty plugin can neither
-    // fail nor hang the run. Here on the normal path, after the drains
-    // above; every other exit takes it through `teardown` too.
-    // The miss path's output-directory snapshots first (miss-save.ts).
+    // A kept server can still fail the run in the wait below: its summary goes
+    // out once the wait decides, or sinks read a pass over exit 1.
+    if (!historyAfterWait) await summarize(list, ok)
+    // Each plugin's teardown, crash-isolated and time-bounded, after the drains
+    // above; other exits reach it through `teardown`. Output-directory
+    // snapshots first (miss-save.ts).
     await step('vx:snapshots', () => recordOutputDirSnapshots(cache, outputDirSnapshots))
     mark('output dir snapshots')
-    // A plugin hears the run until its teardown and nothing after: released
-    // only in the finally, its handlers heard a kept server through the
-    // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
+    // A plugin hears the run until its teardown and nothing after, or its
+    // handlers heard a kept server through the whole wait. Idempotent.
     disposePlugins?.()
     telemetry?.dispose()
     await teardown(undefined, report)
@@ -2008,9 +1911,8 @@ async function runOnBus(
     mark('close')
     printTimings()
 
-    // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
-    // no task was sandboxed; otherwise SRT keeps proxy servers alive and
-    // the next vx run would init on top of stale state.
+    // Tear down SRT's network bridge and (macOS) log monitor, or the next run
+    // inits on stale proxies. No-op with no sandboxed task.
     await step('vx:sandbox', async () => {
       await prewarming
       if (sandboxArmer?.armed) {
@@ -2023,14 +1925,12 @@ async function runOnBus(
       }
     })
 
-    // The footer is the run's last word (2026-10-06): it prints once
-    // the run's own work is done, history, uploads, plugin teardown and the
-    // sandbox reset included, so any warning they raise lands above it. A
-    // task's own facts (flaky, blocked) ride its row. Only a kept server's
-    // own output follows.
-    // The footer replaces the live region in place.
+    // The footer is the run's last word, printed once history, uploads,
+    // teardown and the sandbox reset are done, so their warnings land above it.
+    // Only a kept server's output follows. It replaces the live region in
+    // place.
     log.runDone?.()
-    if (options.summaryTable === true)
+    if (options.handoff?.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
     // A run a signal stopped records nothing `vx last` opens: no id to copy.
     const footerContext =
@@ -2038,20 +1938,13 @@ async function runOnBus(
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 
-    // Edge case the summary already reported: the user requested a
-    // persistent task (dev server / watcher). The run is "done" in every
-    // bookkeeping sense — summary printed, the cache closed — but the
-    // server is still up and that's the point. Stay in the foreground
-    // until ONE of them exits: Ctrl-C hits the whole process group (the
-    // server dies; our SIGINT handler also exits 130), and a crash ends
-    // the session — the others are torn down (SIGTERM, grace, SIGKILL)
-    // and a non-zero exit makes the run not ok, so `vx run dev` in a
-    // script fails when the server it started fell over. Until
-    // 2026-09-10 this waited for EVERY server, so the SIGTERM after it
-    // was dead code and a crashed server left the rest running under a
-    // run that never returned. One status line names the server that
-    // ended the session and its code — the summary above said `success`
-    // for it, and an exit 1 with no word about why is a mystery in a log.
+    // A requested persistent task (dev server, watcher): the run is done in
+    // every bookkeeping sense but the server is the point, so stay in the
+    // foreground until one of them exits. Ctrl-C hits the process group; a
+    // crash ends the session, the others are torn down (SIGTERM, grace,
+    // SIGKILL), and a non-zero exit fails the run, so `vx run dev` in a script
+    // fails when its server fell over. One line names the server that ended it
+    // and its code: the summary said `success`.
     if (keepAlive.children.length > 0 && hold) {
       return {
         ok,
@@ -2067,11 +1960,10 @@ async function runOnBus(
       const first = await sessionEnd(keepAlive)
       const node = keepAlive.nodes[first.i]!
       // Only the ones still up are stopped: a kept server already dead was
-      // counted as one (WD-11).
+      // counted as one.
       const others = keepAlive.children.filter((c, j) => j !== first.i && !hasEnded(c)).length
-      // Not when the run was stopped: the server ended because the user
-      // stopped it, and "exited with code 130" read as a crash after every
-      // Ctrl-C once a stop let run() finish its own path (item 852).
+      // Not when the run was stopped: the user ended the server, and "exited
+      // with code 130" read as a crash.
       if (!stop.signal.aborted) {
         warnOf(log)(
           `vx: ${node.id} exited with code ${first.code}` +
@@ -2081,66 +1973,59 @@ async function runOnBus(
         )
         for (const line of takeExitNotes(keepAlive.children[first.i], first.code)) warnOf(log)(line)
       }
-      // Under a stop the abort is already taking them down with the stop's
-      // signal; a second SIGTERM in its grace cut short the graceful
-      // shutdown of a server that reads it as "quit now" (WD-16).
+      // Under a stop the abort is already sending its signal: a second SIGTERM
+      // in the grace cut short a graceful shutdown.
       if (stop.signal.aborted) await stop.aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
       // The server that ended the session on its own, not cleanly, failed.
       // A stop's own kill is no crash: the user ended the session.
       const crashed = !stop.signal.aborted && first.code !== 0
       if (crashed) failServer(outcomes, node.id, first.code)
-      const final = [...outcomes.values()]
       if (historyAfterWait) {
         recordHistory(() => {
           // A writer's open: another vx version may have reset the index
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle(recordsOf(final, ok && !crashed))
-            local.recordMeasures([...measured.values()], head)
-            recordFailures(final, local)
+            runHistory(local).recordRunBundle(recordsOf(list, ok && !crashed))
+            runHistory(local).recordMeasures([...measured.values()], head)
+            recordFailures(list, local)
           } finally {
             local.close()
           }
         })
-        // After the footer and the plugins' teardown: no step line there.
-        // The run ended with the session, not with the summary above. A stop
-        // reads as one, as a stop anywhere else does: the servers it took
-        // down are aborted there. The history keeps them as a dev session's
-        // usual end (item 854).
+        // After the footer and teardown: no step line. A stop reads as one
+        // anywhere: the servers it took down are aborted; history keeps them as
+        // a dev session's usual end.
         const stopped = stop.signal.aborted
         const told = stopped
-          ? final.map((o) =>
+          ? list.map((o) =>
               keepAlive.nodes.some((n) => n.id === o.node.id) && isPassStatus(o.status)
-                ? {
+                ? ({
                     ...o,
-                    status: 'aborted' as const,
+                    status: 'aborted',
                     exitCode:
                       typeof first.code === 'number' ? first.code : signalExitCode(first.code),
-                  }
+                  } as AbortedOutcome)
                 : o,
             )
-          : final
-        await summarize(told, ok && !crashed && !stopped, undefined, {
+          : list
+        await summarize(told, ok && !crashed && !stopped, {
           at: Date.now(),
           totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
         })
       }
-      return { ok: ok && !crashed, outcomes: final }
+      return { ok: ok && !crashed, outcomes: list }
     }
 
     return { ok, outcomes: list }
   } finally {
-    // Idempotent. The status-line ticker starts in runStart, and every
-    // call between it and the success path's runEnd is crash-isolated
-    // today (admit, the observers, execute's rejection arm, the
-    // short-circuit, the prefetch, killTree; the bus swallows a
-    // subscriber's throw, so even a logger's own runStart cannot reach
-    // here), so deleting this line reddens nothing (item 635). It is the
-    // floor for a throw a later change adds, not a path a row can drive.
+    // Idempotent. Every call between the ticker's start and runEnd is
+    // crash-isolated today, so this is the floor for a throw a later change
+    // adds.
     log.runEnd?.()
     log.runDone?.()
+    unfold()
     live?.dispose()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
@@ -2149,11 +2034,10 @@ async function runOnBus(
     telemetry?.dispose()
     // No-op after the normal path's teardown; on a throw, the only one.
     await teardown()
-    // No-op after the normal path's close. On a throw this is the only
-    // close there is, and it must not itself throw — that would replace
-    // the run's real error with a teardown one. Background uploads are
-    // NOT drained here: they hold no database state, and awaiting a
-    // wedged remote would turn a failing run into a hanging one.
+    // No-op after the normal close. On a throw this is the only close, and it
+    // must not throw itself, or it replaces the real error. Uploads are not
+    // drained: they hold no database state, and a wedged remote would turn a
+    // failing run into a hanging one.
     try {
       await closeCache()
     } catch {
@@ -2166,7 +2050,7 @@ async function runOnBus(
 }
 
 /** Why an `--affected` run has nothing to run, said alike by the run and its `--dry` plan. */
-function noneAffected(prepared: PreparedRun, options: RunOptions): string {
+function noneAffected(prepared: PreparedRun, options: CoreRunOptions): string {
   // A changed project declares the task, so `--affected`'s task walk is
   // what left nothing (affected-tasks.ts), not the scope.
   const inScope = new Set(options.projects ?? [])
@@ -2182,14 +2066,13 @@ function noneAffected(prepared: PreparedRun, options: RunOptions): string {
 }
 
 /**
- * One line when a policy names the remote cache and no plugin supplies
- * one; a plan (`--dry`) gets it as the run does. The workspace's
- * `cache.policy` asks as a flag does: it was the one source never told.
+ * One line when a policy (flag or workspace `cache.policy`) names the remote
+ * cache and no plugin supplies one; `--dry` gets it too.
  */
-function warnNoRemote(prepared: PreparedRun, options: RunOptions, log: Logger): void {
+function warnNoRemote(prepared: PreparedRun, options: CoreRunOptions, log: Logger): void {
   if (prepared.hasRemoteLayer) return
   const remoteNamed =
-    options.remoteRequested ??
+    options.handoff?.remoteRequested ??
     (options.cache === undefined &&
     options.cacheFlags?.noCache !== true &&
     namesRemote(prepared.workspaceConfig?.cache?.policy)
@@ -2202,26 +2085,27 @@ function warnNoRemote(prepared: PreparedRun, options: RunOptions, log: Logger): 
 }
 
 /**
- * Planning mode. Same setup as `run()` — workspace discovery, config
- * load, package graph, task graph — but stops short of execution.
- * Returns a `RunPlan` predicting the cache hit/miss outcome of every
- * task. Used by `--dry`.
+ * Planning mode (`--dry`): the same setup as `run()`, stopping short of
+ * execution, returning a `RunPlan` predicting each task's hit or miss.
  *
- * Side-effects are limited to running `inputs.runtime` probe commands,
- * which key derivation requires: with no remote the local cache opens to
- * read only (`prepareRunLocked`'s `planning`); with one, the remote hits
- * found are kept in the index for the run after. Probing is the
- * byte-free `cache.has()` existence check — no artifact download, no
- * ingest, no accessed_at bump.
+ * Side effects: only `inputs.runtime` probes, which keys need. With no remote
+ * the cache opens read-only; with one, remote hits found are kept for the next
+ * run. Probing is the byte-free `cache.has()`: no download, ingest or
+ * `accessed_at` bump.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
+  return planCore(options)
+}
+
+/** `planRun` as vx's CLI calls it, with its hand-off. */
+export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
   refuseRunOptions(options)
-  // The plan is the product and goes to stdout (`--dry=json` is parsed):
-  // what a stage says on the way goes to stderr (C-6).
+  // The plan is the product and goes to stdout (`--dry=json` is parsed): what a
+  // stage says on the way goes to stderr.
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
   const prepared = await prepareRunLocked(
-    { ...options, affectedReasons: reasons },
+    { ...options, handoff: { ...options.handoff, affectedReasons: reasons } },
     log,
     undefined,
     false,
@@ -2255,9 +2139,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     // The plan orders nothing, but it refuses what the run would refuse.
     await prepared.priorities()
     terminalHolders(prepared.nodes, options.tty === true)
-    // Its own mark: a dry run's plan (every task's hash, the cache lookups,
-    // the history p50s) was booked under `close`, the next mark, and read
-    // as 105 ms of closing a cache at 1,000 projects (item 601).
+    // Its own mark: the plan's work was booked under `close` and read as 105 ms
+    // of closing a cache.
     const policy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
     const planned = await plan({
       nodes: prepared.nodes,
@@ -2268,22 +2151,18 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,
       hashCache: prepared.hashCache,
-      // Plan-time duration prediction (dev-scenarios S2): the same local
-      // history the predictive scheduler reads, folded into the plan as
-      // per-task p50s + a predicted wall-clock. `--dry` is an explicit
-      // inspection command, so the history read's cost is fine here even
-      // though it stays OFF the default run path.
+      // The same history p50s the predictive scheduler reads, folded into the
+      // plan with a predicted wall clock. `--dry` is an explicit inspection, so
+      // the read is fine here.
       history: new LocalHistoryProvider(
         indexDb(prepared.localCache),
         undefined,
         prepared.branch(),
         taskDefinitions(prepared.nodes.values()),
       ),
-      // Placement, by the same rules the run applies. Only worth showing
-      // when there is a choice to show — with one declared executor every
-      // line would carry the same label. Resolving the executors here is
-      // the same plugin-factory call `prepareRun` already makes for the
-      // cache capability, so plan mode gains no new class of side effect.
+      // Placement by the run's rules, shown only with more than one executor.
+      // Resolving executors is the factory call `prepareRun` already makes, so
+      // planning gains no new side effect.
       ...(await planExecutorOf(prepared, log, options.download ?? 'all', detectCi(process.env).ci)),
       ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
@@ -2294,24 +2173,21 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     }
     return planned
   } finally {
-    // The plan called the cache and executor factories; teardown releases
-    // what they opened, as a run's end does (item 1021).
+    // The plan called the cache and executor factories; teardown releases what
+    // they opened, as a run's end does.
     await teardownPlugins(prepared.plugins, warnOf(log))
     prepared.cache.close()
-    // The same table a run prints: a dry run is how the prepare stages
-    // (discovery, config load, the git enumeration) get profiled on a
-    // real repo that has no install and no cache to run against.
+    // The same table a run prints: a dry run profiles the prepare stages on a
+    // repo with no install or cache.
     mark('close')
     printTimings()
   }
 }
 
 /**
- * What the run's short-circuit would restore ahead of its deps, so the plan
- * can tell a server nobody needs from one that starts: `--dry` called a
- * server every dependant of which was a local hit `would exec`, and the run
- * never spawned it. The run's own gates (`shouldShortCircuit`, stable keys,
- * workspace-output reach), asked only when a server could idle.
+ * What the run's short-circuit would restore, so the plan can tell a server
+ * nobody needs (every dependant a local hit, never spawned) from one that
+ * starts. The run's own gates, asked only when a server could idle.
  */
 async function planRestorable(
   prepared: PreparedRun,
@@ -2358,9 +2234,8 @@ function elsewhereHint(
 }
 
 /**
- * Why a selected project `vx show` lists with a build does not run it: its
- * build is the default one, which no bare name takes (X-145). A quickstart
- * root read `1 task, default build` and `vx run build` there refused.
+ * Why a selected project with a build does not run it: the build is the default
+ * one, which no bare name takes.
  */
 function ownDefaultBuild(
   names: readonly string[],
@@ -2421,11 +2296,9 @@ async function unresolvedHint(
 }
 
 /**
- * The first-run case, told apart from a typo: the lock holds no project,
- * so no name could have resolved. Said of the lock, the only thing a run
- * reads: "no directory holds a vx.config" was false beside configs never
- * locked. A config written after the lock is no first run: its fix is
- * `vx lock`. Reached only on the error path.
+ * The first run, told apart from a typo: the lock holds no project. Said of the
+ * lock, the one thing a run reads; a config written after the lock is no first
+ * run, its fix is `vx lock`. Error path only.
  */
 async function initHint(prepared: {
   anyProjectConfig: boolean
@@ -2451,11 +2324,9 @@ const NO_TASK =
   'No project declares a task yet: add one under `tasks` in a vx.config, then run `vx lock`.'
 
 /**
- * A typo's nearest declared name, when one is within two edits — the
- * message names the fix instead of only the mistake. A bare name is
- * matched against every declared task; `pkg#task` against the project
- * names first (the task kept) and then against that project's tasks, so
- * the hint is a spec the user can run.
+ * A typo's nearest declared name within two edits, so the message names the
+ * fix. A bare name matches every declared task; `pkg#task` matches project
+ * names first, then that project's tasks, so the hint runs.
  */
 function didYouMean(
   unresolved: readonly string[],
@@ -2464,9 +2335,8 @@ function didYouMean(
   taskless: (name: string) => boolean,
   root: string,
 ): string {
-  // A default `build` is no declared task (X-102): neither a bare name's
-  // match nor a menu item or hint for `p#typo`, which led to `p#build`
-  // and its refusal ("p declares no build").
+  // A default `build` is no declared task: no match, menu item or hint
+  // (`p#build` would be refused).
   const tasksOf = (p: ProjectEntry | undefined): string[] =>
     Object.entries(p?.config.tasks ?? {})
       .filter(([, c]) => !isDefaultBuild(c))
@@ -2475,8 +2345,8 @@ function didYouMean(
   for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
-  // A typo past two edits named nothing to pick from (M-56): with no near
-  // name, say what exists instead.
+  // A typo past two edits named nothing to pick from: with no near name, say
+  // what exists instead.
   const lists = new Set<string>()
   for (const spec of unresolved) {
     const at = spec.indexOf('#')
@@ -2495,7 +2365,7 @@ function didYouMean(
       continue
     }
     const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
-    // `//` is two edits from any two-letter name: it hinted `ui#build` (X-13).
+    // `//` is two edits from any two-letter name: it hinted `ui#build`.
     if (proj === '//') {
       lists.add(
         '`//` is the workspace root, which is no project here: add a vx.config there with that task and run `vx lock`.',
@@ -2572,9 +2442,8 @@ export function nxProjectTarget(
 }
 
 /**
- * The project a typed name means: itself, else the one project whose
- * scoped name ends in it. Nx names nx-examples' `@nx-example/cart` `cart`,
- * and `nx run cart:build` is what its users type.
+ * The project a typed name means: itself, else the one project whose scoped
+ * name ends in it (`nx run cart:build` for `@nx-example/cart`).
  */
 export function projectNamed(
   typed: string,
@@ -2619,21 +2488,19 @@ function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
   const out: FlakyCandidate[] = []
   for (const o of outcomes) {
     if (o.status !== 'success' && o.status !== 'failed') continue
-    // "Same inputs, failed after passing" is a claim only a task with declared
-    // inputs can make: a task without `cache: true` keys on its config alone
-    // and runs every time, so one bad network day would read as a flake for
-    // thirty days. Groups do no work.
+    // "Same inputs, failed after passing" needs declared inputs: a task without
+    // `cache: true` runs every time, and one bad network day would read as a
+    // flake for thirty days. Groups do no work.
     if (o.hash === undefined || o.node.config.cache !== true || isGroupTask(o.node)) continue
-    // Behind a failed dependency the outcome is not the key's: a failure is
-    // the dependency's, and a pass built on bytes the key never named, so a
-    // later failure relapsed from it and read as a flake for thirty days.
+    // Behind a failed dependency the outcome is not the key's: a later failure
+    // relapsing from it would read as a flake.
     if (o.taintedBy !== undefined) continue
     out.push({
       project: o.node.projectName,
       task: o.node.taskName,
       hash: o.hash,
       status: o.status,
-      attempts: o.attempts ?? 1,
+      attempts: o.attempts?.count ?? 1,
     })
   }
   return out
@@ -2668,7 +2535,7 @@ function executorFaults(warn: (line: string) => void): ExecutorFault {
 /** An executor's footer rows; a plugin's throw or bad shape shows none. */
 function executorFooter(e: TaskExecutor, fault: ExecutorFault): (readonly [string, ui.Inline])[] {
   try {
-    const rows = e.footer?.()
+    const rows = e.distribution?.footer?.()
     if (!Array.isArray(rows)) return []
     return rows.filter(
       (r): r is readonly [string, ui.Inline] =>
@@ -2688,7 +2555,7 @@ function executorProfile(
   fault: ExecutorFault,
 ): readonly Record<string, unknown>[] {
   try {
-    const events = e.profile?.()
+    const events = e.distribution?.profile?.()
     return Array.isArray(events)
       ? events.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
       : []
@@ -2700,7 +2567,7 @@ function executorProfile(
 
 function executorMachines(e: TaskExecutor, fault: ExecutorFault): readonly MachineReport[] {
   try {
-    const m = e.machines?.()
+    const m = e.distribution?.machines?.()
     return Array.isArray(m) ? m : []
   } catch (err) {
     fault(e, 'machines', err)
@@ -2710,7 +2577,7 @@ function executorMachines(e: TaskExecutor, fault: ExecutorFault): readonly Machi
 
 function executorAdvice(e: TaskExecutor, fault: ExecutorFault): readonly WorkerAdvice[] {
   try {
-    const a = e.advice?.()
+    const a = e.distribution?.advice?.()
     return Array.isArray(a) ? a : []
   } catch (err) {
     fault(e, 'advice', err)
@@ -2720,7 +2587,7 @@ function executorAdvice(e: TaskExecutor, fault: ExecutorFault): readonly WorkerA
 
 function executorIdeal(e: TaskExecutor, fault: ExecutorFault): number | undefined {
   try {
-    const ms = e.idealMs?.()
+    const ms = e.distribution?.idealMs?.()
     return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : undefined
   } catch (err) {
     fault(e, 'idealMs', err)
@@ -2735,7 +2602,7 @@ function executorWhere(
   fault: ExecutorFault,
 ): string | null | undefined {
   try {
-    const w = e.running?.(id)
+    const w = e.distribution?.running?.(id)
     if (w === null) return null
     return typeof w === 'string' && w !== '' ? w : undefined
   } catch (err) {

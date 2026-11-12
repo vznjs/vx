@@ -25,7 +25,6 @@ import {
   UserError,
   type DiscoveredProject,
   type LockfileClaimHooks,
-  type LockfileImporter,
   type PluginOptionKinds,
   type ProjectMeta,
   definePlugin,
@@ -33,6 +32,7 @@ import {
   reachDigests,
   type VxPlugin,
 } from '@vzn/vx'
+import type { LockfileImporter } from './graph.js'
 
 // Each parser loads when first used: every run evaluates
 // `.vx/workspace.ts`, and the four parsers were ~2.5 ms of it for a
@@ -339,11 +339,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   const manifests = manager.manifests ?? ['package.json']
   const guardedFor = (file: string) => {
     // The parsers name their own file, so prefixing unconditionally said it
-    // twice — "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
-    // Prefix only what does not already name it, and say what fixes it: a
-    // lockfile vx cannot read is an install away from readable, and the
-    // alternative to reading it is a WRONG key, so the run refuses rather
-    // than guessing.
+    // twice — "bun.lock: bun.lock: Failed to parse JSONC". Prefix only what
+    // does not already name it, and say what fixes it: a lockfile vx cannot
+    // read is an install away from readable, and the alternative to reading it
+    // is a WRONG key, so the run refuses rather than guessing.
     const refused = (err: unknown): Error => {
       const message = err instanceof Error ? err.message : String(err)
       const named = message.startsWith(`${file}:`) ? message : `${file}: ${message}`
@@ -364,9 +363,13 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         }
       }
   }
-  const claimOf = (file: string, root: string, affected: boolean): LockfileClaimHooks => {
+  const claimOf = (
+    file: string,
+    root: string,
+    affected: boolean,
+  ): LockfileClaimHooks<LockfileImporter> => {
     const guarded = guardedFor(file)
-    return lockfileClaim({
+    return lockfileClaim<LockfileImporter>({
       file,
       part: manager.name,
       version: digestVersion(),
@@ -375,7 +378,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       // load and the config's bytecode bundle.
       identity: `@vzn/vx-lockfile/${manager.name}@${digestVersion()}`,
       scope,
-      importers: guarded((text: string) => manager.importers(text)),
+      links: guarded((text: string) => manager.importers(text)),
       recorded: guarded((text: string) => {
         const recorded = new Map<string, readonly string[]>(
           [...manager.recorded(text)].map(([i, deps]) => [i, [...deps.keys()]]),
@@ -384,7 +387,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         return recorded
       }),
       // Read before `digest` on the key path: a malformed bun.lock refused
-      // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
+      // there as a bare "JSONC Parse error", no file named (fuzzed).
       ...(extraFiles !== undefined
         ? { extraFiles: guarded((text: string) => extraFiles(text, root, affected)) }
         : {}),
@@ -398,12 +401,15 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   // read a root settings file. `--affected` reads its claims with no root
   // for links: a path under a workspace is its project's change there,
   // never a lockfile's.
-  const rooted = new Map<string, { file: string; claim: LockfileClaimHooks }[]>()
-  const rootless = new Map<string, { file: string; claim: LockfileClaimHooks }[]>()
+  const rooted = new Map<string, { file: string; claim: LockfileClaimHooks<LockfileImporter> }[]>()
+  const rootless = new Map<
+    string,
+    { file: string; claim: LockfileClaimHooks<LockfileImporter> }[]
+  >()
   const claimsAt = (
     root: string,
     affected = false,
-  ): { file: string; claim: LockfileClaimHooks }[] => {
+  ): { file: string; claim: LockfileClaimHooks<LockfileImporter> }[] => {
     const memo = affected ? rootless : rooted
     let at = memo.get(root)
     if (at === undefined) {
@@ -430,7 +436,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     { importers: ReadonlyMap<string, LockfileImporter>; file: string | undefined } | undefined
   > => {
     for (const { file, claim } of claimsAt(ctx.workspaceRoot)) {
-      const importers = await claim.importers(ctx)
+      const importers = await claim.links(ctx)
       if (importers === undefined) continue
       if (importers.size > 0 || manager.manifestImporters === undefined) return { importers, file }
       const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
@@ -547,12 +553,12 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       const { file } = read
       let { importers } = read
       // A lockfile older than the manifests drops edges: a workspace it does
-      // not list yet (a renamed folder, lerna's 31 added Nx projects) is
-      // named by its path with none, and a dependency added to package.json
-      // before the install orders nothing. Either ran a package beside what
-      // it builds on and hit with old content (Growth, 2026-10-16), so the
-      // lock refuses until the install, as a key from a stale lockfile names
-      // an install that is not on disk.
+      // not list yet (a renamed folder, lerna's 31 added Nx projects) is named
+      // by its path with none, and a dependency added to package.json before
+      // the install orders nothing. Either ran a package beside what it builds
+      // on and hit with old content (Growth), so the lock refuses until the
+      // install, as a key from a stale lockfile names an install that is not on
+      // disk.
       if (file !== undefined) {
         const recorded = new Map(
           await claimsAt(ctx.workspaceRoot)
@@ -1032,19 +1038,18 @@ async function withManifestLinks(
 }
 
 /**
- * One entry per importer with a `package.json` (core reads none): a
- * directory that is no project yet becomes one, the root aside, which is
- * a project only by its own vx config, as it was a member only by one
- * (D-39). Its name is the
- * manifest's `name` when no other importer shares it (core refuses two
- * projects of one name, so a shared one names neither); its `deps` the
- * importers it installs, its peers on importers, the importers its packages
- * install, and the importers the root installs. A peer, package-installed
- * or root-installed importer orders a build unless it would close a cycle
- * through the order edges, then it is `reach` only, in name order so the
- * edge kept is stable. An edge to an importer with no manifest stands when
- * core already has a project there (`projects`, importer paths): a sparse
- * checkout left it out, and its dependants must not run or key without it.
+ * One entry per importer with a `package.json` (core reads none): a directory
+ * that is no project yet becomes one, the root aside, which is a project only
+ * by its own vx config, as it was a member only by one. Its name is the
+ * manifest's `name` when no other importer shares it (core refuses two projects
+ * of one name, so a shared one names neither); its `deps` the importers it
+ * installs, its peers on importers, the importers its packages install, and the
+ * importers the root installs. A peer, package-installed or root-installed
+ * importer orders a build unless it would close a cycle through the order
+ * edges, then it is `reach` only, in name order so the edge kept is stable. An
+ * edge to an importer with no manifest stands when core already has a project
+ * there (`projects`, importer paths): a sparse checkout left it out, and its
+ * dependants must not run or key without it.
  */
 async function discovered(
   root: string,
@@ -1078,8 +1083,8 @@ async function discovered(
     const [x, y] = [label(a), label(b)]
     return x < y ? -1 : x > y ? 1 : 0
   }
-  // Installed at the root `node_modules`, so every project resolves it
-  // whatever its own manifest declares (Turbo #8364, #8465).
+  // Installed at the root `node_modules`, so every project resolves it whatever
+  // its own manifest declares (Turbo #8364).
   const rootLinked = Object.values(importers.get('.')?.deps ?? {}).filter(
     (t) => t !== '.' && linked(t),
   )

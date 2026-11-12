@@ -20,7 +20,8 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { packArtifact } from '../src/cache/archive.js'
-import { CACHE_VERSION, Cache, SCHEMA_VERSION } from '../src/cache/index.js'
+import { CACHE_VERSION, Cache } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/index-db/index.js'
 import { tarEntries } from '../src/cache/tar-stream.js'
 
 const RECORD = path.join(import.meta.dir, 'contract', 'stored-format.json')

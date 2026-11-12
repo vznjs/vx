@@ -3,6 +3,10 @@
 // module and every plugin composes these (tests/ui-only-output.unsafe.test.ts).
 // Design: docs/design/ui-2026-11.md.
 
+import { onNotice } from '../util/index.js'
+import { sayLine } from './refusal.js'
+import { say } from './terminal.js'
+
 // The façade's `ui`: the kit a plugin may draw with.
 import * as ui from './kit.js'
 export { ui }
@@ -79,3 +83,8 @@ export {
 } from './terminal-signals.js'
 export { fileLocations, fileMemo, linkPaths, type OutputLocation } from './links.js'
 export { lineNotice, messageParts, refusalNotice, sayLine, sayNotice } from './refusal.js'
+
+// The notices of the modules below the terminal (util/notice.ts) are drawn
+// from the moment ui loads: every vx entry loads it before a run
+// (tests/notice.test.ts).
+onNotice((n) => (n.kind === 'line' ? say(n.tone, n.text) : sayLine(n.tone, n.text)))

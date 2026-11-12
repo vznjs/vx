@@ -27,12 +27,13 @@ export interface KeepAlive {
 /**
  * A persistent task the user REQUESTED (or one surfaced for display) is the
  * run's whole purpose — it is left running and blocked on at the very end,
- * after the summary. So is every persistent task a requested group stands
- * for, and every one a kept one depends on, directly or through groups: `vx run dev --filter app` stopped the api#dev
- * its app#dev was started against (C-46). A one-shot's persistent deps are
- * not kept on its account; it has finished with them. Only in the real CLI
- * foreground: a custom logger or `handleSignals: false` (watch mode,
- * embedders) expects `run()` to return, not to sit on a server.
+ * after the summary. So is every persistent task a requested group stands for,
+ * and every one a kept one depends on, directly or through groups: `vx run dev
+ * --filter app` stopped the api#dev its app#dev was started against. A
+ * one-shot's persistent deps are not kept on its account; it has finished with
+ * them. Only in the real CLI foreground: a custom logger or `handleSignals:
+ * false` (watch mode, embedders) expects `run()` to return, not to sit on a
+ * server.
  */
 export function selectKeepAlive(
   registry: ReadonlyMap<string, Child>,
@@ -55,9 +56,9 @@ function keptServers(
   nodes: ReadonlyMap<string, TaskNode>,
   isServer: (id: string) => boolean,
 ): Set<string> {
-  // A requested GROUP is a requested server's stand-in: `vx run app#dev`
-  // over `dev: { dependsOn: ['^dev'] }` started every server and exited 0
-  // at the end of the graph, stopping them all (C-52).
+  // A requested GROUP is a requested server's stand-in: `vx run app#dev` over
+  // `dev: { dependsOn: ['^dev'] }` started every server and exited 0 at the end
+  // of the graph, stopping them all.
   const stack: string[] = []
   for (const [id, n] of nodes) {
     if (!n.requested && n.surfaced !== true) continue
@@ -114,8 +115,8 @@ export function unneededServers(
   foreground: boolean,
 ): (id: string) => string[] {
   const isServer = (n: TaskNode): boolean => n.config.exec?.persistent !== undefined
-  // No server, nothing to stop: a dependents map of the whole graph was
-  // ~7 ms of a 9,603-task warm run (2026-11-10).
+  // No server, nothing to stop: a dependents map of the whole graph was ~7 ms
+  // of a 9,603-task warm run.
   if (!someNode(nodes, isServer)) return () => NONE
   const kept = foreground ? keptServers(nodes, (id) => isServer(nodes.get(id)!)) : new Set<string>()
   const dependents = new Map<string, string[]>()
@@ -217,13 +218,12 @@ export async function stopServer(
 
 /**
  * SIGTERM every persistent child not kept alive and wait for them, bounded:
- * SIGTERM gives well-behaved servers (vite, next, esbuild --watch) a moment
- * to clean up; past the grace every group with a member left is SIGKILLed,
- * so the run's normal completion cannot hang on one that traps the signal.
- * The GROUP, not the leader: a `server & wait` shell dies on the SIGTERM
- * while a server that ignores it lives on, holding the task's pipe, and
- * vx printed its summary and never exited (nx#8286 reproduced on vx,
- * 2026-09-24).
+ * SIGTERM gives well-behaved servers (vite, next, esbuild --watch) a moment to
+ * clean up; past the grace every group with a member left is SIGKILLed, so the
+ * run's normal completion cannot hang on one that traps the signal. The GROUP,
+ * not the leader: a `server & wait` shell dies on the SIGTERM while a server
+ * that ignores it lives on, holding the task's pipe, and vx printed its summary
+ * and never exited (nx#8286 reproduced on vx).
  */
 export async function shutdownPersistent(
   registry: ReadonlyMap<string, Child>,
@@ -270,9 +270,7 @@ export async function shutdownPersistent(
 /**
  * A dependency-only persistent task that ended on its own, not by the stop
  * at the end of the graph, and not cleanly. Its dependants may still have
- * passed, and until item 892 the run did too: the server was reported
- * `success` and its crash was said nowhere, while a requested server's
- * crash failed the run.
+ * passed; the run fails, as a requested server's crash does.
  */
 export interface CrashedPersistent {
   id: string
@@ -364,11 +362,11 @@ export function takeHeldServers(
 }
 
 /**
- * The kept server whose exit ends a foreground session, and its code. A
- * server kept only as a dependency that exits 0 is a daemon that forked
- * and returned (schema.md), not the end of the session: a
- * `db: 'docker compose up -d'` under `app#dev` stopped the dev server
- * right after the summary (WD-3). It ends the wait only as the last.
+ * The kept server whose exit ends a foreground session, and its code. A server
+ * kept only as a dependency that exits 0 is a daemon that forked and returned
+ * (schema.md), not the end of the session: a `db: 'docker compose up -d'` under
+ * `app#dev` stopped the dev server right after the summary. It ends the wait
+ * only as the last.
  */
 export function sessionEnd(keepAlive: KeepAlive): Promise<{ code: number; i: number }> {
   return new Promise((resolve) => {
@@ -398,7 +396,7 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
   // keep-alive says it: `vx watch` sat on "watching" over a dead dev
   // server. The holder's own stop() is not such a death.
   const state = { stopping: false }
-  // Taken by a later run (`RunOptions.keep`): kept or stopped there.
+  // Taken by a later run (`RunHandoff.keep`): kept or stopped there.
   const handed = new Set<Child>()
   return {
     ids: keepAlive.nodes.map((n) => n.id),
@@ -414,7 +412,7 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
  * Apart from `holdServers`, and in a loop, so that no closure the
  * hand-back keeps sees `args`: its `outOf` reads the run that held it,
  * which the next cycle's run keeps through this hand-back
- * (`RunOptions.keep`).
+ * (`RunHandoff.keep`).
  */
 function heldServerMap(
   keepAlive: KeepAlive,
@@ -461,13 +459,12 @@ function sayHeldExit(
 }
 
 /**
- * A server that died on its own before the stop failed, whatever its
- * outcome said when it became ready: the footer counted it a success over
- * the run's red exit (item 1071). Its code is its own, or the shell's
- * report of the signal that took it. In place: the renderer holds this
- * outcome (events carry live refs) and closes the server's output block
- * from it at runEnd, where a copy left it reading `running` under its exit
- * line (WD-10).
+ * A server that died on its own before the stop failed, whatever its outcome
+ * said when it became ready: the footer counted it a success over the run's red
+ * exit. Its code is its own, or the shell's report of the signal that took it.
+ * In place: the renderer holds this outcome (events carry live refs) and closes
+ * the server's output block from it at runEnd, where a copy left it reading
+ * `running` under its exit line.
  */
 export function failServer(
   outcomes: ReadonlyMap<string, TaskOutcome>,
@@ -496,17 +493,16 @@ function holdAll(
 }
 
 /**
- * The end of the graph for its servers: which stay up (`selectKeepAlive`,
- * or every one under a hold),
- * the bounded shutdown of the rest, and each one that died on its own
- * failed. A run that failed elsewhere keeps nothing: `vx run dev --all`
- * with one server that never became ready sat on the others for good, so
- * a script hung, and the Ctrl-C that ended it read 130 over the failure
- * (C-60). A kept server's own crash ends the keep-alive wait as before,
- * and `--continue=always` asked to keep going, and does. The watch loop
- * (`hold`) still holds: a failing test in a cycle stopped the dev server
- * the next change would restart anyway. A kept server that has already
- * died fails too; the keep-alive wait names it.
+ * The end of the graph for its servers: which stay up (`selectKeepAlive`, or
+ * every one under a hold), the bounded shutdown of the rest, and each one that
+ * died on its own failed. A run that failed elsewhere keeps nothing: `vx run
+ * dev --all` with one server that never became ready sat on the others for
+ * good, so a script hung, and the Ctrl-C that ended it read 130 over the
+ * failure. A kept server's own crash ends the keep-alive wait as before, and
+ * `--continue=always` asked to keep going, and does. The watch loop (`hold`)
+ * still holds: a failing test in a cycle stopped the dev server the next change
+ * would restart anyway. A kept server that has already died fails too; the
+ * keep-alive wait names it.
  */
 export async function disposeServers(args: {
   registry: ReadonlyMap<string, Child>

@@ -8,14 +8,13 @@ import { isOutOfFds, realPath } from '../util/index.js'
 const realRoots = new Map<string, string>()
 
 /**
- * `dir` at the directory it leads to, spelled under `root` as given (a
- * root reached through a link, as macOS's temp dir is, keeps its
- * spelling); `dir` itself when that directory lies outside the root; null
- * when `dir` is not there. A workspace glob over linked packages (pnpm's
- * `widgets/**`, `widgets/a -> ../submodules/a`) names the link, and git
- * lists the config at the real directory: matched by spelling, one
- * directory was two projects, the config-less twin at the link taking
- * every edge.
+ * `dir` at the directory it leads to, spelled under `root` as given (a root
+ * reached through a link, as macOS's temp dir is, keeps its spelling); `dir`
+ * itself when that directory lies outside the root; null when `dir` is not
+ * there. A workspace glob over linked packages (pnpm's `widgets/**`, `widgets/a
+ * ->../submodules/a`) names the link, and git lists the config at the real
+ * directory: matched by spelling, one directory was two projects, the
+ * config-less twin at the link taking every edge.
  */
 export function canonicalDir(root: string, dir: string): string | null {
   const real = realOrNull(dir)

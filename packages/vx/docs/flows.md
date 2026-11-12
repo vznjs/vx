@@ -45,7 +45,7 @@ sequenceDiagram
 
 ## 2. Warm run — local cache hit
 
-Owners: `cache/cache.ts:get`, `orchestrator/hit-restore.ts` (the up-to-date check and the restore), `cache/output-index.ts:isOutputsCurrent`, `cache/archive.ts:extractArtifactStream`.
+Owners: `cache/cache.ts:get`, `orchestrator/hit-restore.ts` (the up-to-date check and the restore), `memo/output-index.ts:isOutputsCurrent`, `cache/archive.ts:extractArtifactStream`.
 
 ```mermaid
 sequenceDiagram
@@ -245,7 +245,7 @@ stateDiagram-v2
 
 ## 7. Sandboxed task — violation → failure
 
-Owner: `exec/sandbox-runtime.ts` (SRT wrapper). Activation is
+Owner: `sandbox/runtime.ts` (SRT wrapper). Activation is
 per-task (`exec.sandbox`), no workspace inheritance. Baseline policy:
 read and write nothing, deny-read = workspace root; core adds
 `node_modules` and the workspace packages linked there (never a link to

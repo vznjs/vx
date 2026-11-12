@@ -4,7 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { applyMigration, type GeneratedTask } from '../src/workspace/migration.js'
+import { applyMigration } from '../src/orchestrator/index.js'
+import type { GeneratedTask } from '../src/workspace/migration.js'
 
 const exec = (command: string, persistent = false) => ({
   exec: persistent ? { command, persistent: {} } : { command },

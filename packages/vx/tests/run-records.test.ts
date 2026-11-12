@@ -7,9 +7,14 @@
 
 import { describe, expect, it } from 'bun:test'
 import { taskDefinition } from '../src/graph/definition.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { assembleRunRecords, type RunRecordsInput } from '../src/orchestrator/run-records.js'
+import {
+  assembleRunRecords,
+  foldOutcomes,
+  type RunRecordsInput,
+} from '../src/orchestrator/run-records.js'
+import { type Notice, onNotice } from '../src/util/notice.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { VERSION } from '../src/version.js'
 
@@ -28,7 +33,7 @@ function outcome(
     exitCode: 0,
     durationMs: 100,
     ...extra,
-  }
+  } as TaskOutcome
 }
 
 function input(outcomes: TaskOutcome[], over: Partial<RunRecordsInput> = {}): RunRecordsInput {
@@ -58,10 +63,9 @@ describe('assembleRunRecords', () => {
       input([
         outcome('a#build', 'success', {
           hash: 'h1',
-          wallclockStartNs: 1_500_400_000n,
-          wallclockEndNs: 2_600_600_000n,
-          attempts: 2,
-          sandboxViolations: 3,
+          timing: { startNs: 1_500_400_000n, endNs: 2_600_600_000n },
+          sandbox: { violations: 3 },
+          attempts: { count: 2 },
         }),
         outcome('b#build', 'skipped', { durationMs: 250, blockedBy: 'a#build' }),
       ]),
@@ -89,7 +93,8 @@ describe('assembleRunRecords', () => {
         project: 'b',
         task: 'build',
         status: 'skipped',
-        exitCode: 0,
+        // A skip behind a failure has no exit of its own: the record's is 1.
+        exitCode: 1,
         durationMs: 250,
         startedAt: 1_004_750,
         endedAt: 1_005_000,
@@ -129,9 +134,9 @@ describe('assembleRunRecords', () => {
   it('writes the header row from the run, its context and its counts', () => {
     const { invocation } = assembleRunRecords(
       input([
-        outcome('a#build', 'cache-hit', { restored: true }),
+        outcome('a#build', 'cache-hit', { cache: { restored: true } }),
         outcome('b#build', 'cache-hit-remote'),
-        outcome('c#build', 'cache-hit-remote', { restored: true }),
+        outcome('c#build', 'cache-hit-remote', { cache: { restored: true } }),
         outcome('d#build', 'failed', { exitCode: 1 }),
         outcome('e#build', 'success'),
       ]),
@@ -183,9 +188,9 @@ describe('assembleRunRecords', () => {
   it('counts the same tasks in the header, the terminal and telemetry', () => {
     const outcomes = [
       outcome('ws#all', 'success', {}, {}),
-      outcome('a#build', 'cache-hit', { restored: true }),
-      outcome('b#build', 'cache-hit', { restored: false }),
-      outcome('c#build', 'cache-hit-remote', { restored: true }),
+      outcome('a#build', 'cache-hit', { cache: { restored: true } }),
+      outcome('b#build', 'cache-hit', { cache: { restored: false } }),
+      outcome('c#build', 'cache-hit-remote', { cache: { restored: true } }),
       outcome('d#build', 'aborted', { exitCode: 130 }),
       outcome('e#build', 'failed', { exitCode: 1 }),
       outcome('f#build', 'skipped', { blockedBy: 'e#build' }),
@@ -199,6 +204,28 @@ describe('assembleRunRecords', () => {
     const totals = formatRunSummary(outcomes, 10).filter((l) => l.includes(' total'))
     expect(totals).toStrictEqual([
       '            1 failed · 4 success · 1 skipped · 1 not run · 7 total',
+    ])
+  })
+})
+
+describe('foldOutcomes', () => {
+  it('keeps the outcome and says the fault when what it hands a task to throws', () => {
+    const said: Notice[] = []
+    onNotice((n) => said.push(n))
+    const a = outcome('a#build', 'success')
+    const b = outcome('b#build', 'success')
+    const nodes = new Map([
+      [a.node.id, a.node],
+      [b.node.id, b.node],
+    ])
+    const fold = foldOutcomes(nodes, (o) => {
+      if (o === a) throw new Error('disk full')
+    })
+    fold.subscriber({ kind: 'task:complete', node: a.node, outcome: a })
+    fold.subscriber({ kind: 'task:complete', node: b.node, outcome: b })
+    expect(fold.outcomes).toEqual([a, b])
+    expect(said).toEqual([
+      { kind: 'line', tone: 'warn', text: '[vx] onFinish observer threw for a#build: disk full\n' },
     ])
   })
 })

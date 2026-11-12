@@ -1,6 +1,8 @@
-# `src/ui/` — the UI kit
+# `src/ui/` — one look for every surface
 
-## Purpose
+## `src/ui/` — the UI kit
+
+### Purpose
 
 The only module that draws. Every line vx prints is built from its
 components: a verb, the run screen and every plugin compose `Block`s and
@@ -10,6 +12,11 @@ reads with `data`. Nothing else writes to a stream, prints with
 (`tests/ui-only-output.unsafe.test.ts`). Design:
 [`docs/design/ui-2026-11.md`](../design/ui-2026-11.md).
 
+The modules below the terminal (cache, exec, graph, sandbox, workspace)
+draw nothing: a warning they give is a `Notice` (`util/notice.ts`).
+`index.ts`, loaded, draws each one: a `line` as `say`, a `notice` as
+`sayLine`.
+
 The screen looks like a TUI and is not one: panels stacked top to
 bottom, written into the scrollback line by line. A panel is its title
 rule `─ Title ───` and its lines, with no box. Nothing is hidden, cut,
@@ -17,9 +24,9 @@ scrolled or placed side by side. Any CI gets the same coloured panels
 (only the live redraw is gone). A plain pipe gets the same layout off
 colour, the bytes a test or `grep` reads.
 
-## Files
+### Files
 
-- `theme.ts`: the tokens. `Style`, `Tone`, `SYMBOL`, `INDENT`, the hues,
+- `theme.ts`: the tokens. `Style`, `Tone` (types kept in `util/styled.ts`), `SYMBOL`, `INDENT`, the hues,
   `paint`, `detectColors`, `dumbTerminal`, `barWidth`, `ruleWidth`.
 - `components.ts`: inline tokens and blocks, the panel rule, `wrap`,
   `render`.
@@ -38,7 +45,7 @@ colour, the bytes a test or `grep` reads.
   `lineNotice`, `messageParts`, `sayNotice`, `sayLine`).
 - `version-line.ts`: `vx --version`, imported alone (`printVersion`).
 
-## Public surface
+### Public surface
 
 ```ts
 type Style = Tone | 'aborted' | 'notRun' | 'local' | 'remote' | 'heading' | 'term'
@@ -125,7 +132,7 @@ export function sayNotice(tone: Tone, verb: string, message: string): void // a 
 export function sayLine(tone: Tone, line: string, verb?: string): void // lineNotice, on stderr
 ```
 
-## Rules
+### Rules
 
 - Tones: `ok` ✓ green, `warn` ! yellow, `error` ✗ red, `info` › cyan.
   `id` paints a `project#task` in each half's own hue (`identityHue`),
@@ -148,7 +155,7 @@ export function sayLine(tone: Tone, line: string, verb?: string): void // lineNo
 - Task output is never boxed: a failure's frame keeps its own rules, and
   the bytes the task wrote stay copyable.
 
-## Colour detection
+### Colour detection
 
 | Env                                                                                                                                        | Result                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
@@ -165,7 +172,7 @@ provides a custom `log`; when the default renderer's colours are off,
 (`report/plain-output.ts`). Hues are truecolor (`Bun.color(…, 'ansi-16m')`),
 memoized per hue.
 
-## Tests
+### Tests
 
 - `tests/ui.test.ts`: each component plain and coloured.
 - `tests/ui-only-output.unsafe.test.ts`: nothing outside `src/ui` writes,

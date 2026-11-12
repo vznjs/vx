@@ -3,21 +3,11 @@
 // task object renders. `vx init` and `@vzn/vx-migrate` reach it through
 // their mappers; these rows hold the seam itself.
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import {
-  applyMigration,
-  foldScriptHooks,
   isStarterConfig,
   quoteTsLiteral,
   starterProject,
@@ -25,8 +15,8 @@ import {
   type GeneratedTask,
   type MigrationPlan,
 } from '../src/workspace/index.js'
+import { applyMigration } from '../src/orchestrator/index.js'
 import { UserError } from '../src/util/index.js'
-import { withForwardArgs } from '../src/exec/index.js'
 
 /** The cache TODO a mapper writes (vx-migrate's wording), suggesting `outputs`. */
 const cacheTodo = (outputs: string): string =>
@@ -122,10 +112,41 @@ describe('applyMigration', () => {
     expect(stdout).toContain('not written')
   })
 
-  it('a plan with nothing in it names its source', async () => {
+  it('a plan with nothing in it names its source, or the reason its tool gives', async () => {
     expect(await refusal(() => apply(plan([])))).toBe('nothing to migrate: no tasks in turbo.json')
-    expect(await refusal(() => apply(plan([]), { source: 'package.json scripts' }))).toBe(
-      'nothing to migrate: no package.json scripts in any workspace member',
+    expect(
+      await refusal(() =>
+        apply(plan([]), { source: 'moon.yml', emptyReason: 'no task in any moon.yml' }),
+      ),
+    ).toBe('nothing to migrate: no task in any moon.yml')
+  })
+
+  it('an empty init plan says why, and shows the example unless the reason replaces it', async () => {
+    const tasksRow = () => stdout.split('\n').find((l) => l.startsWith('  tasks'))
+    expect(await apply(plan([]), { source: 'Cargo.toml', init: true })).toBe(0)
+    expect(tasksRow()).toBe('  tasks     none: no tasks in Cargo.toml')
+    expect(stdout).toContain(
+      '  example   a vx.config.ts in a project directory, with your own command:',
+    )
+    stdout = ''
+    rmSync(path.join(root, '.vx'), { recursive: true })
+    expect(await apply(plan([]), { init: true, emptyReason: 'members out of reach' })).toBe(0)
+    expect(tasksRow()).toBe('  tasks     none: members out of reach')
+    expect(stdout).not.toContain('  example ')
+    stdout = ''
+    rmSync(path.join(root, '.vx'), { recursive: true })
+    expect(
+      await apply(plan([]), { init: true, emptyReason: 'no script to map', example: true }),
+    ).toBe(0)
+    expect(tasksRow()).toBe('  tasks     none: no script to map')
+    expect(stdout).toContain('  example   ')
+  })
+
+  it('marks each TODO with the tool that wrote it', async () => {
+    const t = task('build', exec('cargo build'), ['cache: declare inputs'])
+    expect(await apply(plan([['app', [t]]]), { verb: 'moon-migrate' })).toBe(0)
+    expect(readFileSync(path.join(root, 'app', 'vx.config.ts'), 'utf8')).toContain(
+      '    // TODO(moon-migrate): cache: declare inputs\n',
     )
   })
 
@@ -185,7 +206,6 @@ describe('applyMigration', () => {
     const metas = ['app', 'empty'].map((name) => ({
       name,
       dir: path.join(root, name),
-      packageJson: { name },
       configPath: path.join(root, name, 'vx.config.mjs'),
     }))
     expect(
@@ -344,7 +364,6 @@ describe('applyMigration', () => {
       {
         name: 'app',
         dir: path.join(root, 'app'),
-        packageJson: { name: 'app' },
         configPath: existing,
       },
     ]
@@ -395,49 +414,44 @@ describe('applyMigration', () => {
 // where a `.ts` type-imports the ESM `@vzn/vx/config` and fails (TS1479 /
 // TS1541); create-t3-turbo's `prettier --check` flagged the file's quotes.
 describe('a written config passes the repo’s own checks', () => {
-  const pkg = (name: string, manifest: Record<string, unknown>, tsconfig = true) => {
+  const member = (name: string, esModule: boolean | undefined, tsconfig = true) => {
     const dir = path.join(root, name)
     mkdirSync(dir, { recursive: true })
-    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name, ...manifest }))
     if (tsconfig) writeFileSync(path.join(dir, 'tsconfig.json'), '{}')
-    return { name, dir, packageJson: { name, ...manifest }, configPath: null }
+    return { name, dir, configPath: null, ...(esModule === undefined ? {} : { esModule }) }
   }
 
-  it('a TypeScript CommonJS package gets vx.config.mts, which tsc reads as ESM', async () => {
-    const metas = [pkg('cjs', {}), pkg('esm', { type: 'module' }), pkg('plain', {}, false)]
+  it('beside a tsconfig.json tsc reads as CommonJS, the config is vx.config.mts', async () => {
+    const metas = [
+      member('cjs', false),
+      member('esm', true),
+      member('plain', false, false),
+      member('unknown', undefined),
+    ]
     expect(
       await apply(
         plan([
           ['cjs', []],
           ['esm', []],
           ['plain', []],
+          ['unknown', []],
         ]),
         { metas },
       ),
     ).toBe(0)
     expect(
-      ['cjs/vx.config.mts', 'esm/vx.config.ts', 'plain/vx.config.ts'].map((f) =>
-        existsSync(path.join(root, f)),
+      ['cjs/vx.config.mts', 'esm/vx.config.ts', 'plain/vx.config.ts', 'unknown/vx.config.mts'].map(
+        (f) => existsSync(path.join(root, f)),
       ),
-    ).toEqual([true, true, true])
+    ).toEqual([true, true, true, true])
     expect(existsSync(path.join(root, 'cjs', 'vx.config.ts'))).toBe(false)
     expect(stdout).toContain('  files     cjs/vx.config.mts\n            esm/vx.config.ts\n')
   })
 
-  it('a package.json read from disk opens with a byte-order mark: its type still counts', async () => {
-    const { packageJson: _, ...esm } = pkg('esm', {})
-    writeFileSync(path.join(esm.dir, 'package.json'), '﻿{"name":"esm","type":"module"}')
-    expect(await apply(plan([['esm', []]]), { metas: [esm] })).toBe(0)
-    expect(
-      ['esm/vx.config.ts', 'esm/vx.config.mts'].map((f) => existsSync(path.join(root, f))),
-    ).toEqual([true, false])
-  })
-
-  // medusa: the mapping takes the config back as `!vx.config.ts`, and a
-  // `*` output then covered the `.mts` written: `vx lock` refused 80 of
-  // 84 configs (Growth, 2026-10-14).
+  // A `*` output covered the `.mts` written while the plan took back
+  // `!vx.config.ts`, and `vx lock` refused the config.
   it('the take-back of the own config names the file written', async () => {
-    const metas = [pkg('cjs', {})]
+    const metas = [member('cjs', false)]
     const build = task('build', {
       exec: { command: 'tsc', env: {} },
       inputs: { files: ['src/**'] },
@@ -450,37 +464,23 @@ describe('a written config passes the repo’s own checks', () => {
     expect(file).not.toContain("'!vx.config.ts'")
   })
 
-  it('runs the repo’s formatter over what it wrote, and says so', async () => {
-    const bin = path.join(root, 'node_modules', '.bin')
-    mkdirSync(bin, { recursive: true })
-    writeFileSync(path.join(bin, 'prettier'), `#!/bin/sh\necho "$@" > "${root}/.prettier-args"\n`)
-    chmodSync(path.join(bin, 'prettier'), 0o755)
-    expect(await apply(plan([['a', [task('build', { exec: { command: 'x' } })]]]))).toBe(0)
-    expect(readFileSync(path.join(root, '.prettier-args'), 'utf8').trim()).toBe(
-      '--write a/vx.config.ts .vx/workspace.ts',
-    )
-    expect(stdout).toContain('  note      formatted 2 files with prettier\n')
+  it('hands the files written to the tool’s own step, and reports its lines', async () => {
+    const seen: (readonly string[])[] = []
+    const written = (paths: readonly string[]) => {
+      seen.push(paths)
+      expect(existsSync(path.join(root, 'a', 'vx.config.ts'))).toBe(true)
+      return ['formatted with fmt']
+    }
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]), { written })).toBe(0)
+    expect(seen).toEqual([['a/vx.config.ts', '.vx/workspace.ts', '.vx/.gitignore']])
+    expect(stdout).toContain('  note      formatted with fmt\n')
   })
 
-  it('a dry run formats nothing', async () => {
-    const bin = path.join(root, 'node_modules', '.bin')
-    mkdirSync(bin, { recursive: true })
-    writeFileSync(path.join(bin, 'prettier'), `#!/bin/sh\ntouch "${root}/.prettier-ran"\n`)
-    chmodSync(path.join(bin, 'prettier'), 0o755)
-    expect(await apply(plan([['a', [task('build', null)]]]), { dry: true })).toBe(0)
-    expect(existsSync(path.join(root, '.prettier-ran'))).toBe(false)
-  })
-
-  it('a formatter that fails leaves the files as written and names the error', async () => {
-    const bin = path.join(root, 'node_modules', '.bin')
-    mkdirSync(bin, { recursive: true })
-    writeFileSync(path.join(bin, 'prettier'), '#!/bin/sh\necho "no parser" >&2\nexit 2\n')
-    chmodSync(path.join(bin, 'prettier'), 0o755)
-    expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)
-    expect(existsSync(path.join(root, 'a', 'vx.config.ts'))).toBe(true)
-    expect(stdout).toContain(
-      '  note      prettier did not format the written files (exit 2): no parser\n',
-    )
+  it('a dry run calls no step after the write', async () => {
+    let called = false
+    const written = () => ((called = true), [])
+    expect(await apply(plan([['a', [task('build', null)]]]), { dry: true, written })).toBe(0)
+    expect(called).toBe(false)
   })
 })
 
@@ -508,56 +508,6 @@ describe('a root .gitignore that drops .vx', () => {
     expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)
     expect(stdout).toContain('add !vx.config.ts to .gitignore')
     expect(stdout).not.toContain('stop ignoring')
-  })
-})
-
-describe('foldScriptHooks runs the hooks as npm does', () => {
-  const run = async (command: string, args: string[] = []) => {
-    const full = withForwardArgs(command, args)
-    const p = Bun.spawn(['sh', '-c', full], { stdout: 'pipe', stderr: 'ignore' })
-    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
-    return { code, out: out.trim().split('\n') }
-  }
-
-  it('hands the forwarded args to the body alone, not the post hook', async () => {
-    expect(
-      await run(foldScriptHooks('echo PRE', 'echo BODY', 'echo POST'), ['--flag', 'a b']),
-    ).toEqual({ code: 0, out: ['PRE', 'BODY --flag a b', 'POST'] })
-  })
-
-  it('stops at a failing pre hook even when the body holds a `;`', async () => {
-    expect(await run(foldScriptHooks('false', 'echo A; echo B', 'echo POST'))).toEqual({
-      code: 1,
-      out: [''],
-    })
-  })
-
-  it('runs no post hook after a failing body, and keeps the body’s code', async () => {
-    expect(await run(foldScriptHooks(undefined, 'echo A; exit 3', 'echo POST'))).toEqual({
-      code: 3,
-      out: ['A'],
-    })
-  })
-
-  it('survives a trailing comment in any part', async () => {
-    expect(await run(foldScriptHooks('echo PRE # c', 'echo BODY # c', 'echo POST # c'))).toEqual({
-      code: 0,
-      out: ['PRE', 'BODY', 'POST'],
-    })
-  })
-
-  it('appends the args as text, as npm does: no part sees them as $1 (hunt 8)', async () => {
-    const fold = foldScriptHooks('echo pre:$1:$#', 'echo body:$1:$#: "$*"', 'echo post:$1:$#')
-    expect(await run(fold, ['foo', "it's", 'a b', '$HOME'])).toEqual({
-      code: 0,
-      out: ['pre::0', "body::0:  foo it's a b $HOME", 'post::0'],
-    })
-    const npm = await run('echo body:$1:$#: "$*"', ['foo', "it's", 'a b', '$HOME'])
-    expect(npm.out[0]).toBe("body::0:  foo it's a b $HOME")
-  })
-
-  it('CONTROL: a script with no hooks is its body, verbatim', () => {
-    expect(foldScriptHooks(undefined, 'tsc -b && echo x', undefined)).toBe('tsc -b && echo x')
   })
 })
 

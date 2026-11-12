@@ -108,7 +108,7 @@ it('a task a stop aborts keeps where its executor ran it', async () => {
   while (g.__vxElsewhereStarted !== true) await Bun.sleep(10)
   ac.abort()
   const r = await running
-  expect(r.outcomes.map((o) => [o.node.id, o.status, o.where])).toEqual([
+  expect(r.outcomes.map((o) => [o.node.id, o.status, o.placement?.where])).toEqual([
     ['app#slow', 'aborted', 'worker-1'],
   ])
 }, 30_000)
@@ -240,8 +240,8 @@ it('fail-fast withdraws a task its executor holds unstarted; one begun finishes'
           })
           const done = (exitCode, extra = {}) =>
             ({ exitCode, durationMs: 0, stdout: '', stderr: '', violations: [], ...extra })
-          return { name: 'holder', capacity: 4,
-            running: (id) => (held.has(id) ? null : begun.has(id) ? 'm1' : undefined),
+          return { name: 'holder', capabilities: { capacity: 4 },
+            distribution: { running: (id) => (held.has(id) ? null : begun.has(id) ? 'm1' : undefined) },
             async execute(req) {
               if (req.taskId === 'app#fail') {
                 await until(() => held.size + begun.size === 2)
@@ -329,9 +329,9 @@ describe('an executor that ignores the signal', () => {
       handleSignals: false,
     })
     // Its row names the executor it was placed on, not this machine.
-    expect(r.outcomes.map((o) => [o.node.id, o.status, o.timedOut === true, o.where])).toEqual([
-      ['app#slow', 'failed', true, 'deaf'],
-    ])
+    expect(
+      r.outcomes.map((o) => [o.node.id, o.status, o.timedOut === true, o.placement?.where]),
+    ).toEqual([['app#slow', 'failed', true, 'deaf']])
     expect(Date.now() - started).toBeLessThan(10_000)
     // On its own line: the executor's last output ended mid-line.
     expect(stderr.join('')).toStartWith(
@@ -441,7 +441,7 @@ it('a thrown executor names itself as where the task was placed', async () => {
     log: silent,
     handleSignals: false,
   })
-  expect(r.outcomes.map((o) => [o.node.id, o.status, o.where])).toEqual([
+  expect(r.outcomes.map((o) => [o.node.id, o.status, o.placement?.where])).toEqual([
     ['app#t', 'failed', 'thrower'],
   ])
 }, 30_000)

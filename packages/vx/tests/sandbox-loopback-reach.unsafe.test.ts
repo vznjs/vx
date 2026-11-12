@@ -215,8 +215,7 @@ describe.skipIf(!available || Bun.which('curl') === null)(
           // no record at all), so there the refusal itself is the check.
           if (process.platform !== 'linux') continue
           const want = `allow: { network: ['localhost:${port}'] }`
-          const lines =
-            r.outcomes.find((o) => o.node.id === 'web#client')?.sandboxViolationLines ?? []
+          const lines = r.outcomes.find((o) => o.node.id === 'web#client')?.sandbox?.lines ?? []
           if (!lines.join('\n').includes(want))
             throw new Error(
               `no line names ${want} (client${client}); sandbox:\n${lines.join('\n')}\ntask output:\n${fixture.log.join('\n')}\n${listeners(port)}`,

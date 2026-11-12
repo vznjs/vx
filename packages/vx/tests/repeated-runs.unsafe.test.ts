@@ -14,7 +14,7 @@ import { rm } from 'node:fs/promises'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
-import { probeSandbox } from '../src/exec/index.js'
+import { probeSandbox } from '../src/sandbox/runtime.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const silent: Logger = {
@@ -76,7 +76,7 @@ it('twenty runs in one process hold their descriptors and listeners steady', asy
       tasks: sandboxed ? ['a#t', 'a#sb'] : ['a#t'],
       log: silent,
       handleSignals: i % 2 === 0,
-      holdPersistent: i % 3 === 0,
+      handoff: { holdPersistent: i % 3 === 0 },
     })
     expect(r.ok).toBe(true)
     await r.persistent?.stop()

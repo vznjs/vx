@@ -1,6 +1,6 @@
 // LayeredCache over the RemoteCacheLayer seam — a plain in-memory stub
 // layer (core ships no wire client; the wire is a plugin concern, see
-// docs/modules/layered-cache.md). The stub throws like a real client would;
+// docs/modules/cache.md#srccachelayered-cachets--the-local-cache-with-the-declared-remotes-behind-it). The stub throws like a real client would;
 // LayeredCache owns dedup, provenance, and never-fail degradation.
 
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
@@ -9,10 +9,13 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
-import { indexDb, networkConcurrency, type InvocationRecord } from '../src/cache/index.js'
+import { indexDb, networkConcurrency } from '../src/cache/index.js'
+import { runHistory, type InvocationRecord } from '../src/history/index.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
 import { TAR_STORE } from './helpers/tar-store.js'
+// ui draws the notices the modules under test say (util/notice.ts), as in vx.
+import '../src/ui/index.js'
 
 /** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
 function invocation(runId: string): InvocationRecord {
@@ -1249,9 +1252,9 @@ describe('LayeredCache', () => {
     expect(await layered.has('h-has-err')).toBe(null)
   })
 
-  it('stats() / recordRunBundle() / prune() delegate to local', async () => {
+  it('stats() / prune() delegate to local', async () => {
     const layered = makeLayered()
-    layered.recordRunBundle({
+    runHistory(local).recordRunBundle({
       runs: [
         {
           hash: 'h-rec',

@@ -804,7 +804,7 @@ a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
 proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
-`modules/sandbox-runtime.md` § The environment SRT sets). This
+`modules/sandbox.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
 - **Cache stability.** If every host env var entered the key, every
@@ -815,7 +815,7 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
 This is hygiene, not a boundary: an unsandboxed task runs as you, so it
 can read your files. vx hides its own environment from a task
-(`modules/util-hide-env.md`), not your files. Only `exec.sandbox` keeps them out (`security.md` § What the sandbox stops).
+(`modules/util.md`), not your files. Only `exec.sandbox` keeps them out (`security.md` § What the sandbox stops).
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
@@ -2499,14 +2499,14 @@ interface CacheSettings {
   default), runs off CI (`'local'`), or both (`'always'`). Only a run
   whose policy writes a remote keeps any, and it always keeps the log of
   a task that saved no entry. `ctx.cache.getRun` reads them
-  (`docs/modules/plugin.md` § Run report and run bytes).
+  (`docs/modules/orchestrator.md` § Run report and run bytes).
 
 - **`cache.scope`** (`VX_CACHE_SCOPE` only, 2026-10-17) — the branch
   scope plugins key their own entries under (`ctx.cache`, run records),
   named `<owner>/<repo>:<branch>` (letters, digits, `. _ - / @ :`, at
   most 128). Task keys never carry it (2026-10-20): every remote sees
   the plain key, and which branch a read may see is the remote's call
-  (`turboCache()`'s `scope`, `docs/modules/layered-cache.md`). The local
+  (`turboCache()`'s `scope`, `docs/modules/cache.md`). The local
   cache never knows a scope. Not a config key and not a flag: a plugin
   names it in its `config` stage (`ctx.setBranch({ scope })`; `github()`
   does on Actions), else a checkout with a cache plugin derives it from

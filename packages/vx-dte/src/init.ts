@@ -186,11 +186,11 @@ const SETUP_BUN = 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # 
 const SETUP_PNPM = 'pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0'
 
 /**
- * The worker's first step. A run that ended without cancelling its workers
- * (its API limit spent, a kill) left them queued, each to hold a runner
- * through its setup for no one (2026-10-28): one that starts after its run
- * cancels its own workflow run, its queued fellows with it. An API that
- * answers nothing leaves it to the relay, which turns it away.
+ * The worker's first step. A run that ended without cancelling its workers (its
+ * API limit spent, a kill) left them queued, each to hold a runner through its
+ * setup for no one: one that starts after its run cancels its own workflow run,
+ * its queued fellows with it. An API that answers nothing leaves it to the
+ * relay, which turns it away.
  */
 const LEAVE_IF_OVER = `      - name: Leave if the run is over
         if: inputs.parent != ''

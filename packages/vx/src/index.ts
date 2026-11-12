@@ -60,8 +60,8 @@ export { mergeBaseWith } from './workspace/index.js'
 // Programmatic engine API: run / plan / prepare (docs/cli.md § Programmatic
 // API). The graph primitives, the cache-key hashing seam and the git / host
 // context capture used to sit beside these for a distributed submitter that
-// left the repo (2026-08); they went with it (2026-09-10) — a seam with no
-// consumer is re-added when one appears, shaped by its use.
+// left the repo (2026-08); they went with it — a seam with no consumer is
+// re-added when one appears, shaped by its use.
 export { run, planRun, prepareRun } from './orchestrator/index.js'
 // The per-task duration history a `schedule` plugin learns from
 // (`@vzn/vx-history` does; a plugin package reaches core only
@@ -81,9 +81,9 @@ export type { PreparedRun } from './orchestrator/index.js'
 // `RunOptions.affected`: what `--affected`'s diff changed, per project.
 export type { AffectedChanges } from './workspace/index.js'
 // `planRun` returns these, and an embedder that cannot NAME a return type
-// cannot hold it: `run` and `prepareRun` both had theirs here from the
-// start, so the omission read as "planRun is not really public" while
-// docs/cli.md § Programmatic API listed all three (item 387, 2026-09-19).
+// cannot hold it: `run` and `prepareRun` both had theirs here from the start,
+// so the omission read as "planRun is not really public" while docs/cli.md §
+// Programmatic API listed all three.
 export type { RunPlan, PlannedTask } from './orchestrator/index.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
 export type { CacheFlags, CachePolicy, RunOptions, RunSummary } from './orchestrator/index.js'
@@ -93,7 +93,24 @@ export type { Logger, OutputView } from './report/index.js'
 // consumers roll their own `split('#', 2)` and drift from the graph, which
 // splits on the FIRST '#'.
 export { criticalPath, outputsOverlap, splitTaskId, taskDefinitions } from './graph/index.js'
-export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
+// TaskOutcome is a union by status; its facts are grouped by concern.
+export type {
+  AbortedOutcome,
+  FailedOutcome,
+  InputChanges,
+  OutcomeAttempts,
+  OutcomeCache,
+  OutcomePlacement,
+  OutcomeSandbox,
+  OutcomeTiming,
+  OutcomeUsage,
+  SandboxFix,
+  SkippedOutcome,
+  SucceededOutcome,
+  TaskNode,
+  TaskOutcome,
+  TaskStatus,
+} from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency).
 // A remote layer errors a body it refuses with `CorruptArtifactError`.
@@ -105,9 +122,8 @@ export type {
   LentAccess,
   RemoteCacheLayer,
   RemoteOpenContext,
-  RunRecord,
-  InvocationRecord,
 } from './cache/index.js'
+export type { RunRecord, InvocationRecord } from './history/index.js'
 // A plugin's keychain (`ctx.secret` on `setup` and a remote's `open`), the
 // guard that tells a missing secret from a fault, and the names whose values
 // vx masks, for a plugin that must not send one where it is shown.
@@ -135,18 +151,16 @@ export type { ProjectMeta } from './workspace/index.js'
 export { loadResolvedProjects } from './orchestrator/index.js'
 export type { ProjectEntry } from './workspace/index.js'
 // The migration seam: how a generated config is planned, rendered, guarded
-// and written. `@vzn/vx-migrate` (package.json scripts, Turbo, Nx) and any
-// other adoption tool use it from here; `taskNameProblem` is why a name
-// cannot be a task's, so a mapper leaves such a script out.
+// and written. Every migrator uses it from here; `taskNameProblem` is why a
+// name cannot be a task's, so a mapper leaves such a source task out.
 export {
-  applyMigration,
-  foldScriptHooks,
   isStarterConfig,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,
   quoteTsLiteral,
   taskNameProblem,
 } from './workspace/index.js'
+export { applyMigration } from './orchestrator/index.js'
 // Output components: a plugin draws its lines with core's, so they look alike.
 export { ui } from './ui/index.js'
 export type {
@@ -159,20 +173,19 @@ export type {
   RawExpr,
 } from './workspace/index.js'
 
-// Plugin API — the run-level extension points. Behavior capabilities
-// (executor / cache) change WHAT/HOW work runs; the observe-only `telemetry`
-// capability is the canonical data-export path and cannot change behavior.
-// A plugin is declared in .vx/workspace.ts via defineWorkspace({ plugins }).
-// See docs/design/observability-architecture-2026-06.md.
-// The claimant's shell for a lockfile plugin (`@vzn/vx-lockfile`):
-// the claim, the per-project key, the memo and the `--affected` diff around
-// a parser; `reachDigests` is the Merkle-over-components digest both use.
+// Plugin API — the run-level extension points. Behavior capabilities (executor
+// / cache) change WHAT/HOW work runs; the observe-only `telemetry` capability
+// is the canonical data-export path and cannot change behavior. A plugin is
+// declared in.vx/workspace.ts via defineWorkspace({ plugins }). See
+// docs/design/observability-architecture-2026-06.md. The claimant's shell for a
+// lockfile plugin of any ecosystem: the claim, the per-project key, the memo
+// and the `--affected` diff around a parser; `reachDigests` is the
+// Merkle-over-components digest a parser may use.
 export {
   lockfileClaim,
   reachDigests,
   type LockfileClaimHooks,
   type LockfileClaimOptions,
-  type LockfileImporter,
   type ReachGraph,
 } from './orchestrator/index.js'
 export type {
@@ -212,37 +225,30 @@ export type {
 } from './orchestrator/index.js'
 export type { Measure, RunStartInfo } from './report/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
-// (`runCommand` / `runSandboxed`, the local executor's own primitives, left
-// the façade 2026-09-10: no executor plugin built on them — `@vzn/vx-reapi`
-// speaks a wire — and a seam with no consumer is a special case in waiting.)
-// A remote executor gives a task back to the local floor by rejecting with
-// this (B-100): core runs it here and says why once.
-export { executorFallback, hostPlatform, sampleTrees, type TreeUsage } from './exec/index.js'
+// The local executor's own primitives stay off the façade: a seam with no
+// consumer is a special case in waiting. A remote
+// executor gives a task back to the local floor by rejecting with this: core
+// runs it here and says why once.
+export { executorFallback, hostPlatform, type TreeUsage } from './exec/index.js'
 // How the local executor puts the args after `--` on a command, for an
-// executor that runs `ExecuteRequest.command` itself: `@vzn/vx-reapi` and
-// the `vx init --plugin executor` example each joined their own, and a
-// trailing comment or a template literal's closing newline lost the args
-// there while the local floor kept them (X-112).
+// executor that runs `ExecuteRequest.command` itself.
 export { withForwardArgs } from './exec/index.js'
-// The `npm_execpath` core gives a local task: a `@vzn/vx-dte` worker gives
-// its tasks the same, its own machine's, not what launched it.
-export { packageManagerPath } from './exec/index.js'
-// A task's output both streams in the order written, bounded as core's
-// capture is: what a worker saves through `TaskArtifacts` (`@vzn/vx-dte`).
-export { BoundedCapture, type CapturedChunk } from './exec/index.js'
-// Core's local executor, sandbox included, for a plugin that runs tasks
-// itself: `@vzn/vx-dte`'s orchestrator and its workers.
-export { localFloor, type LocalFloor } from './orchestrator/index.js'
-// A task's sandbox request built where a worker runs it: the paths and the
-// walls are that machine's (`@vzn/vx-dte`, an orchestrator of another OS).
-// Its sweep takes back each placeholder the task never wrote, as core does.
-export { sandboxRequestFor, sweepPlaceholders, type SandboxRequest } from './orchestrator/index.js'
-// A runtime probe answered where a `runtime` executor runs the task.
-export { answerRuntime } from './cache/index.js'
+export type { CapturedChunk } from './exec/index.js'
+// What a distributed executor's worker runs a task through: the local
+// floor, sandbox, capture, probes and package manager of its own machine.
+export {
+  workerRuntime,
+  type PreparedTask,
+  type WorkerRuntime,
+  type WorkerSandbox,
+  type WorkerTask,
+} from './orchestrator/index.js'
 export type {
+  Distribution,
   ExecuteRequest,
   ExecuteResult,
   ExecuteSandbox,
+  ExecutorCapabilities,
   MachineReport,
   ResolvedSandboxConfig,
   ServerSpec,

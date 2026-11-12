@@ -3,8 +3,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { indexDb, type InvocationRecord, Cache, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
+  type InvocationRecord,
+  type RunRecord,
+  runHistory,
   cacheKeyDiff,
   type CacheKeyDiff,
   inputWriters,
@@ -110,7 +113,7 @@ function withCache(fn: (cache: Cache) => void) {
 describe('listRuns', () => {
   it('orders newest recorded first and applies limit', () => {
     withCache((cache) => {
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         mkRun({ hash: 'h1', project: 'pkg', task: 'build', startedAt: 1000 }),
         mkRun({ hash: 'h2', project: 'pkg', task: 'build', startedAt: 2000 }),
         mkRun({ hash: 'h3', project: 'pkg', task: 'build', startedAt: 3000 }),
@@ -124,7 +127,7 @@ describe('listRuns', () => {
 
   it('filters by project + task + runId', () => {
     withCache((cache) => {
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-1' }),
         mkRun({ hash: 'h2', project: 'pkg', task: 'test', runId: 'r-1' }),
         mkRun({ hash: 'h3', project: 'other', task: 'build', runId: 'r-2' }),
@@ -138,7 +141,7 @@ describe('listRuns', () => {
 
   it('clamps the limit, so 0 is not "no rows" and -1 is not "every row"', () => {
     withCache((cache) => {
-      cache.recordRuns(
+      runHistory(cache).recordRuns(
         Array.from({ length: 12 }, (_, i) =>
           mkRun({ hash: `h${i}`, project: 'pkg', task: 'build', startedAt: 1000 + i }),
         ),
@@ -154,7 +157,9 @@ describe('listRuns', () => {
 
   it('reads a pre-column NULL as null, and a bigint back as a decimal string', () => {
     withCache((cache) => {
-      cache.recordRuns([mkRun({ hash: 'h1', project: 'pkg', task: 'build', startedAt: 1000 })])
+      runHistory(cache).recordRuns([
+        mkRun({ hash: 'h1', project: 'pkg', task: 'build', startedAt: 1000 }),
+      ])
       // `cacheHit`/`cached` are documented as null on rows older than the
       // column. Boolean(null) is false — which reads as "this task declares
       // a cache block and missed", a claim the row does not make.
@@ -181,7 +186,7 @@ describe('listRuns', () => {
   describe('the reason columns (v27)', () => {
     it('round-trip each reason, and read null where none applies', () => {
       withCache((cache) => {
-        cache.recordRuns([
+        runHistory(cache).recordRuns([
           mkRun({ hash: '', project: 'p', task: 'skip', status: 'skipped', blockedBy: 'p#lib' }),
           mkRun({
             hash: 'h1',
@@ -229,7 +234,7 @@ describe('listRuns', () => {
 describe('listInvocations', () => {
   it('reads the invocations table newest-first with the richer detail shape', () => {
     withCache((cache) => {
-      cache.recordRunBundle({
+      runHistory(cache).recordRunBundle({
         runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-1' })],
         invocation: mkInvocation({
           runId: 'r-1',
@@ -240,7 +245,7 @@ describe('listInvocations', () => {
           totalDurationMs: 300,
         }),
       })
-      cache.recordRunBundle({
+      runHistory(cache).recordRunBundle({
         runs: [mkRun({ hash: 'h3', project: 'pkg', task: 'build', runId: 'r-2' })],
         invocation: mkInvocation({
           runId: 'r-2',
@@ -269,7 +274,7 @@ describe('listInvocations', () => {
   it('caps the list at its limit', () => {
     withCache((cache) => {
       for (let i = 0; i < 5; i++) {
-        cache.recordRunBundle({
+        runHistory(cache).recordRunBundle({
           runs: [mkRun({ hash: `h${i}`, project: 'pkg', task: 'build', runId: `r-${i}` })],
           invocation: mkInvocation({ runId: `r-${i}`, startedAt: 1000 + i }),
         })
@@ -282,7 +287,7 @@ describe('listInvocations', () => {
 describe('getInvocation', () => {
   it('round-trips a recorded invocation, camelCased with parsed booleans/JSON', () => {
     withCache((cache) => {
-      cache.recordRunBundle({
+      runHistory(cache).recordRunBundle({
         runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'build', runId: 'r-1' })],
         invocation: mkInvocation({
           runId: 'r-1',
@@ -315,7 +320,7 @@ describe('cacheKeyDiff', () => {
   it('names the changed / added / removed components vs the previous run', () => {
     withCache((cache) => {
       // Previous run of pkg#test → hash hPrev
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hPrev', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
       seedEntryInputs(cache, 'hPrev', [
@@ -325,7 +330,7 @@ describe('cacheKeyDiff', () => {
         { kind: 'env', name: 'OLD_ONLY', hash: 'gone' },
       ])
       // This run of pkg#test → hash hCur
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hCur', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       seedEntryInputs(cache, 'hCur', [
@@ -376,7 +381,7 @@ describe('cacheKeyDiff', () => {
 
   it('first run of a task → found, no previous, empty diff', () => {
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hOnly', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
       seedEntryInputs(cache, 'hOnly', [{ kind: 'file', name: 'src/a.ts', hash: 'oid' }])
@@ -389,10 +394,10 @@ describe('cacheKeyDiff', () => {
 
   it('same hash across two runs → found, empty diff (nothing changed)', () => {
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hSame', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hSame', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       seedEntryInputs(cache, 'hSame', [{ kind: 'file', name: 'src/a.ts', hash: 'oid' }])
@@ -419,11 +424,11 @@ describe('cacheKeyDiff', () => {
     // branch and answer "same inputs" for two runs that never had a key —
     // and nothing held it. Two copies of one rule, one of them free.
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hA', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
       // A skipped row in between: recorded, but with no key.
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({
           hash: '',
           project: 'pkg',
@@ -433,7 +438,7 @@ describe('cacheKeyDiff', () => {
           startedAt: 2000,
         }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hB', project: 'pkg', task: 'test', runId: 'r-3', startedAt: 3000 }),
       )
       seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x1' }])
@@ -455,10 +460,10 @@ describe('cacheKeyDiff', () => {
     // replaces the other; concatenated without a separator, `kind:'fil'
     // name:'ex'` and `kind:'file' name:'x'` are the same key.
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hO', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hN', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       seedEntryInputs(cache, 'hO', [
@@ -483,10 +488,10 @@ describe('cacheKeyDiff', () => {
 
   it('orders entries by kind, then name', () => {
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hO2', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hN2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       // MIXED CASE on purpose: the order a reader of `vx why` sees is
@@ -517,10 +522,10 @@ describe('cacheKeyDiff', () => {
     // The row above holds the kind order; this one the name order within a
     // kind, which it never reaches (its kinds are distinct).
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hO3', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hN3', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       seedEntryInputs(cache, 'hO3', [
@@ -590,10 +595,10 @@ describe('cacheKeyDiff', () => {
     // task hash differs — the key folds things `entry_inputs` does not
     // record. The note is the only thing that tells a reader that.
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hSame1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hSame2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       seedEntryInputs(cache, 'hSame1', [{ kind: 'file', name: 'a.ts', hash: 'same' }])
@@ -613,10 +618,10 @@ describe('cacheKeyDiff', () => {
     // reader than "the entry was pruned". Its key is its `inputs` (#3671),
     // not every file in its project.
     withCache((cache) => {
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hK1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hK2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       // Only the PREVIOUS side keeps its rows.
@@ -633,10 +638,10 @@ describe('cacheKeyDiff', () => {
   it('degrades gracefully when fingerprint rows were pruned', () => {
     withCache((cache) => {
       // Two runs with different hashes but no entry_inputs rows recorded.
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hP', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
-      cache.recordRun(
+      runHistory(cache).recordRun(
         mkRun({ hash: 'hC', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
@@ -656,7 +661,7 @@ describe('cacheKeyDiff', () => {
     const note = (failed: 'this' | 'previous') => {
       let out = ''
       withCache((cache) => {
-        cache.recordRun(
+        runHistory(cache).recordRun(
           mkRun({
             hash: 'hA',
             project: 'pkg',
@@ -666,7 +671,7 @@ describe('cacheKeyDiff', () => {
             ...(failed === 'previous' ? { status: 'failed', exitCode: 1 } : {}),
           }),
         )
-        cache.recordRun(
+        runHistory(cache).recordRun(
           mkRun({
             hash: 'hB',
             project: 'pkg',
@@ -693,7 +698,7 @@ describe('cacheKeyDiff', () => {
     // pass (hA) → fail (hB, no entry) → pass (hC): the fix is named against hA.
     withCache((cache) => {
       const run = (hash: string, runId: string, startedAt: number, failed = false) =>
-        cache.recordRun(
+        runHistory(cache).recordRun(
           mkRun({
             hash,
             project: 'pkg',
@@ -731,7 +736,7 @@ describe('cacheKeyDiff', () => {
   it('diffs against the last run that saved an entry when the previous one ran beside a failure', () => {
     withCache((cache) => {
       const run = (hash: string, runId: string, startedAt: number, failedCount = 0) =>
-        cache.recordRunBundle({
+        runHistory(cache).recordRunBundle({
           runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
           invocation: mkInvocation({
             runId,
@@ -758,7 +763,7 @@ describe('cacheKeyDiff', () => {
         ['hB', 'r-2', 2000, 1],
         ['hC', 'r-3', 3000, 0],
       ] as const) {
-        cache.recordRunBundle({
+        runHistory(cache).recordRunBundle({
           runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
           invocation: mkInvocation({
             runId,
@@ -782,7 +787,7 @@ describe('cacheKeyDiff', () => {
         ['hA', 'r-1', 1000, 0],
         ['hB', 'r-2', 2000, 1],
       ] as const) {
-        cache.recordRunBundle({
+        runHistory(cache).recordRunBundle({
           runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
           invocation: mkInvocation({
             runId,
@@ -802,7 +807,7 @@ describe('cacheKeyDiff', () => {
   // note blamed a prune for it.
   it('names a run that did not write the cache, not a prune', () => {
     const run = (cache: Cache, hash: string, runId: string, startedAt: number, policy: string) =>
-      cache.recordRunBundle({
+      runHistory(cache).recordRunBundle({
         runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
         invocation: mkInvocation({ runId, startedAt, cachePolicy: policy }),
       })
@@ -852,7 +857,7 @@ describe('getRun', () => {
 
   it('returns run-level start/end derived from tasks', () => {
     withCache((cache) => {
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         mkRun({
           hash: 'h1',
           project: 'pkg',
@@ -892,7 +897,7 @@ describe('getRun', () => {
           endedAt: 1001 + i,
         }),
       )
-      cache.recordRuns(runs)
+      runHistory(cache).recordRuns(runs)
       const detail = getRun(indexDb(cache), 'big')!
       expect(detail.tasks.length).toBe(700)
       expect(detail.tasks.some((t) => t.project === 'pkg-000')).toBe(true)
@@ -903,7 +908,9 @@ describe('getRun', () => {
 describe('explainCacheKeyQuery', () => {
   it('returns the most recent entries row for a (project, task)', () => {
     withCache((cache) => {
-      cache.recordRun(mkRun({ hash: 'h1', project: 'pkg', task: 'build', status: 'success' }))
+      runHistory(cache).recordRun(
+        mkRun({ hash: 'h1', project: 'pkg', task: 'build', status: 'success' }),
+      )
       const explained = explainCacheKeyQuery(indexDb(cache), 'pkg#build')
       expect(explained.taskId).toBe('pkg#build')
       expect(explained.project).toBe('pkg')
@@ -919,12 +926,12 @@ describe('explainCacheKeyQuery', () => {
 describe('the newest recorded run is the latest, whatever the clock said', () => {
   it('latest, previous, the diff and both lists follow recording order', () => {
     withCache((cache) => {
-      cache.recordRunBundle({
+      runHistory(cache).recordRunBundle({
         runs: [mkRun({ hash: 'h1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 5000 })],
         invocation: mkInvocation({ runId: 'r-1', startedAt: 5000 }),
       })
       // The clock stepped back before the second run.
-      cache.recordRunBundle({
+      runHistory(cache).recordRunBundle({
         runs: [mkRun({ hash: 'h2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 1000 })],
         invocation: mkInvocation({ runId: 'r-2', startedAt: 1000 }),
       })
@@ -959,7 +966,7 @@ describe('vx why at scale', () => {
   })
   function seedChain(cache: Cache, windowAt: number): CacheKeyDiff['entries'] {
     const db = indexDb(cache)
-    cache.recordRuns(
+    runHistory(cache).recordRuns(
       Array.from({ length: N }, (_, i) =>
         mkRun({
           hash: `B${i}`,
@@ -1081,7 +1088,7 @@ describe('inputWriters', () => {
       try {
         mkdirSync(path.join(ws, 'a'))
         writeFileSync(path.join(ws, 'a/x.txt'), 'x')
-        cache.recordRuns([
+        runHistory(cache).recordRuns([
           mkRun({
             hash: 'h1',
             project: 'a',
@@ -1135,7 +1142,7 @@ describe('inputWriters', () => {
 describe('whyDidThisRerunQuery', () => {
   it('compares hash between this and previous run', () => {
     withCache((cache) => {
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         mkRun({ hash: 'h1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
         mkRun({ hash: 'h2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       ])
@@ -1165,7 +1172,7 @@ describe('whyDidThisRerunQuery', () => {
       (() => {
         let note = ''
         withCache((cache) => {
-          cache.recordRunBundle({
+          runHistory(cache).recordRunBundle({
             runs: [
               mkRun({
                 hash: 'h',
@@ -1196,7 +1203,7 @@ describe('whyDidThisRerunQuery', () => {
               ...(setup.prevPolicy === undefined ? {} : { cachePolicy: setup.prevPolicy }),
             }),
           })
-          cache.recordRunBundle({
+          runHistory(cache).recordRunBundle({
             runs: [
               mkRun({ hash: 'h', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
             ],

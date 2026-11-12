@@ -470,7 +470,7 @@ async function fixture(
         `{ executor() {
            return {
              name: 'fake-remote',
-             remote: true,
+             capabilities: { remote: true },
              accepts: (t) => t.taskId.endsWith('#gen'),
              async execute(req) {
                const fake = (globalThis.__vxDownload ??= { executed: [], materialized: [] })
@@ -538,7 +538,7 @@ describe('--cache-download end to end', () => {
         handleSignals: false,
       })
       expect(eager.outcomes[0]!.hash).toBe(deferred.outcomes[0]!.hash)
-      expect(deferred.outcomes[0]!.outputs).toBe('deferred')
+      expect(deferred.outcomes[0]!.cache?.deferred).toBe(true)
     } finally {
       a.cleanup()
     }
@@ -655,7 +655,7 @@ describe('--cache-download end to end', () => {
         tasks: ['use'],
         projects: ['pkg-b'],
         download: 'none',
-        commandWindows: windows,
+        handoff: { commandWindows: windows },
         log: silent(),
         handleSignals: false,
       })
@@ -990,7 +990,7 @@ describe('--cache-download end to end', () => {
         handleSignals: false,
       })
       expect(r.ok).toBe(true)
-      expect(r.outcomes[0]!.outputs).toBeUndefined()
+      expect(r.outcomes[0]!.cache?.deferred).toBeUndefined()
       expect(fake().materialized).toEqual([])
       expect(await readFile(path.join(a.root, 'packages', 'pkg-a', 'out', 'gen.txt'), 'utf8')).toBe(
         'GENERATED',
@@ -1021,7 +1021,7 @@ describe('--cache-download end to end', () => {
         handleSignals: false,
       })
       expect(r.ok).toBe(true)
-      expect(r.outcomes[0]!.outputs).toBe('deferred')
+      expect(r.outcomes[0]!.cache?.deferred).toBe(true)
       expect(lines.filter((l) => l.includes('left outputs remote'))).toEqual([
         '  Deferred: left outputs remote: pkg-a#gen',
       ])
@@ -1085,7 +1085,7 @@ async function sameProjectFixture(
         `{ executor() {
            return {
              name: 'fake-remote',
-             remote: true,
+             capabilities: { remote: true },
              accepts: (t) => t.taskId.endsWith('#gen'),
              async execute(req) {
                const write = async () => {

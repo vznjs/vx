@@ -60,7 +60,7 @@ run(
     '--bytecode',
     `--target=bun-${host}`,
     'src/bin.ts',
-    'src/cache/history-writer.ts',
+    'src/history/history-writer.ts',
     '--outfile',
     out,
   ],
@@ -228,9 +228,11 @@ if (resolved.exitCode !== 0 || got2 !== 'via-main,via-exports') {
 }
 console.log(`${path.relative(root, out)} resolves a package's main and exports`)
 
-// A workspace written the way the docs show it: bare `@vzn/vx` and a
-// plugin package resolved through node_modules (symlinks into this repo,
-// as a workspace install makes them). The plugin's own `@vzn/vx` import
+// A workspace written the way the docs show it: bare `@vzn/vx`,
+// `@vzn/vx/config` and a plugin package resolved through node_modules
+// (symlinks into this repo, as a workspace install makes them). Core has
+// no root `index.ts` or `config/index.ts`: the binary answers both
+// specifiers from its own copy. The plugin's own `@vzn/vx` import
 // is a second copy of core beside the binary's, and its `schedule` hook
 // runs across the two. The second run must restore the first run's
 // output bytes (the command writes a fresh stamp) through the binary's
@@ -249,7 +251,7 @@ writeFileSync(path.join(bare, 'packages', 'a', 'package.json'), JSON.stringify({
 writeFileSync(path.join(bare, 'packages', 'a', 'src', 'x.js'), 'x\n')
 writeFileSync(
   path.join(bare, 'packages', 'a', 'vx.config.mjs'),
-  `import { defineProject } from '@vzn/vx'
+  `import { defineProject } from '@vzn/vx/config'
 export default defineProject({ name: 'a', tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } })
 `,
 )

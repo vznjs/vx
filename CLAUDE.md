@@ -57,23 +57,28 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         stage applied, cache dir, staged projects); select.ts is what a run
                         is asked to run (filters, --affected owners, cwd project, picker)
   src/orchestrator/     run() pipeline, placement (where a task runs), signals, admission (dedup +
-                        continue-taint), execute-task (+ miss-save,
-                        sandbox-request), task-hash,
+                        continue-taint), execute-task (+ miss-save),
+                        local-executor (the floor), task-hash,
                         projects.ts (the staged config load every reader shares), plugin
                         stages + seams, doctor.ts (the facts `vx info` reports)
   src/report/           the run event stream + terminal output: logger, frames, status line, summary,
                         forecast, plain output (renders outcomes; never runs or reads the cache)
-  src/history/          what runs leave behind, read back (read-only SQL): the duration table, flakiness,
-                        the `vx last` / `vx why` queries, a miss's key diff
+  src/history/          what runs leave behind: written (the run's rows, at its end or on a thread) and
+                        read back (the duration table, flakiness, `vx last` / `vx why`, a miss's key diff)
   src/workspace/        discovery, config eval, config-schema.ts (what a config
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
                         plan → files seam @vzn/vx-migrate writes through)
   src/graph/            task graph + two-tier scheduler
-  src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs (glob
-                        resolution, boundaries) + git-inputs (the git enumeration it trusts)
-  src/exec/             runner (Bun.spawn), env isolation, sandbox, local-executor (the floor)
+  src/cache/            the local store (cache.ts over store-index, lookup, restore, save, prune),
+                        layered/chained remote seam, inputs (glob resolution, boundaries) +
+                        git-inputs (the git enumeration it trusts)
+  src/memo/             what a warm run remembers: file hashes, folds, lockfile parses, output stamps,
+                        remote hits
+  src/index-db/         cache.db's one schema and SQLite helpers, below cache, memo and history
+  src/exec/             runner (Bun.spawn), env isolation, kill tree, the executor contract
+  src/sandbox/          a task's sandbox: request in (grants, binds), run under bwrap/seatbelt,
+                        result plus violations out; the grants a failure needed (fix.ts)
   src/util/             incl. timing.ts (`VX_DEBUG_TIMING=1` stage table)
-  index.ts              root shim (Bun's compiled binary ignores the exports map)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-ci      GitHub Actions job summary plugin
@@ -93,7 +98,7 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
 packages/vx-cache-server  a cache server anyone hosts (PROTOCOL.md, /v1): one bucket, no database; Bun or Docker + S3,
                         or Workers + R2, one handler, one conformance suite
 packages/vx-devtools    code vx's servers and plugins share, never core (2026-10-25: core has nothing to do with
-                        OIDC): first the CI OIDC token check (ALLOW, oidcAuth), only jose
+                        OIDC): first the one CI OIDC token check (ALLOW, oidcClaims) every server and vx-dte use, only jose
 packages/vx-history-server  the task timings vx-history reads, one folded row per task (PROTOCOL.md, /v1): Bun +
                         SQLite, Workers + D1, or Docker
 packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire
@@ -101,7 +106,7 @@ private/vx-docs         Astro Starlight site; packages/vx/docs is imported by sc
 packages/vx-dte         distributed task execution: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees)
 packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
-                        OIDC tokens; imports only jose, not even core
+                        OIDC tokens; imports only @vzn/vx-devtools, not even core
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 private/vx-conformance  one neutral suite of task-runner outcomes (cases/), run sandboxed against vx, Turbo, Nx,
                         Vite Task and Nix through thin adapters; `conformance` (on demand, not in `ci`) writes the results the
@@ -110,7 +115,7 @@ private/vx-servers      compose.yaml: the dte, cache and history servers' images
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
                         `metadata.internal`, so that command offers nothing else; tests/skills-install.unsafe.test.ts)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
-                        history/ holds the shipped record STATUS moved out (read it only when an item's why matters)
+                        history/lessons.md holds the rules learned the hard way
 ```
 
 `packages/` holds what ships to npm; `private/` holds what never ships (the site,

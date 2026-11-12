@@ -1,25 +1,24 @@
-// Every run evaluates `.vx/workspace.ts`, and with it every plugin package
-// it imports: Bun parses and compiles that TypeScript on each run, and a
-// plugin's functions compile again on their first call, while core itself
-// runs from the binary's bytecode. On a solid-sized workspace that was
-// ~4 ms of a ~60 ms warm run (the `discover` stage alone 9 → 5 ms,
-// 2026-10-22). So the config's module graph is bundled once into CommonJS
-// with Bun's bytecode under `.vx/cache/compiled/`, and a later run whose
-// every input still has the bytes it was built from requires that instead.
+// Every run evaluates `.vx/workspace.ts`, and with it every plugin package it
+// imports: Bun parses and compiles that TypeScript on each run, and a plugin's
+// functions compile again on their first call, while core itself runs from the
+// binary's bytecode. On a solid-sized workspace that was ~4 ms of a ~60 ms warm
+// run (the `discover` stage alone 9 → 5 ms). So the config's module graph is
+// bundled once into CommonJS with Bun's bytecode under `.vx/cache/compiled/`,
+// and a later run whose every input still has the bytes it was built from
+// requires that instead.
 //
-// The bundle is built from the bytes it records, file by file, and is used
-// only while each recorded file still hashes the same and each import still
-// resolves to the file it did (a relative one too: `./preset` finds a new
-// `preset.ts` before the bundled `preset.js`); anything else loads the
-// source as before and builds again. A graph the bundle could run differently is
-// never built: an `import.meta` field beyond its location, a `require` or
-// `import()` of a computed specifier (relative to the bundle, not the
-// file), top-level await, a CommonJS config, a file this process already
-// evaluated (a bundled copy would be a second state; run from source, core
-// itself). The bundle goes
-// into `.vx/cache` only once a run made it, so a reading verb on a fresh
-// workspace writes nothing (item 900). `.vx/cache` is trusted as the rest
-// of the cache is: what it holds is restored into the tree too.
+// The bundle is built from the bytes it records, file by file, and is used only
+// while each recorded file still hashes the same and each import still resolves
+// to the file it did (a relative one too: `./preset` finds a new `preset.ts`
+// before the bundled `preset.js`); anything else loads the source as before and
+// builds again. A graph the bundle could run differently is never built: an
+// `import.meta` field beyond its location, a `require` or `import()` of a
+// computed specifier (relative to the bundle, not the file), top-level await, a
+// CommonJS config, a file this process already evaluated (a bundled copy would
+// be a second state; run from source, core itself). The bundle goes into
+// `.vx/cache` only once a run made it, so a reading verb on a fresh workspace
+// writes nothing. `.vx/cache` is trusted as the rest of the cache is: what it
+// holds is restored into the tree too.
 
 import {
   existsSync,
@@ -34,7 +33,7 @@ import {
 import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { beforeExit, refuseForeignCacheDir, xxh3hex } from '../util/index.js'
+import { beforeExit, memoParts, refuseForeignCacheDir, xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
 const COMPILED_VERSION = 3
@@ -65,8 +64,14 @@ function compiledDir(root: string): string {
   return path.join(root, '.vx', 'cache', 'compiled')
 }
 
+/** A bundle's name: the config by path and bytes; its imports are checked by the manifest. */
+const NAME_PARTS = memoParts<{ configPath: string; bytes: Uint8Array }>({
+  configPath: (configPath) => configPath,
+  bytes: (bytes) => xxh3hex(bytes),
+})
+
 function nameOf(configPath: string, bytes: Uint8Array): string {
-  return `workspace-${xxh3hex(`${COMPILED_VERSION}\0${Bun.revision}\0${configPath}\0${xxh3hex(bytes)}`)}`
+  return `workspace-${NAME_PARTS.token(`${COMPILED_VERSION}\0${Bun.revision}`, { configPath, bytes })!}`
 }
 
 function fresh(manifest: Manifest, configPath: string): boolean {
@@ -159,14 +164,14 @@ function loaderOf(file: string): 'ts' | 'tsx' | 'js' | 'jsx' | null {
 let builds = 0
 
 /**
- * Bundle the workspace config's graph for the next run, off the run's
- * path: awaited here, the build was ~30 ms of `workspace config` on the
- * run after a cold one, which had no `.vx/cache` yet and so built nothing
- * (solid's restore 100 ms after a cold run against 67 after a restore,
- * 2026-11-11). It starts now when `.vx/cache` is there, overlapping the
- * run, and otherwise once the verb has answered, if the run made it.
- * Either way the process waits for it before exiting (`beforeExit`). A
- * speed-up only: every failure leaves the next run loading the source.
+ * Bundle the workspace config's graph for the next run, off the run's path:
+ * awaited here, the build was ~30 ms of `workspace config` on the run after a
+ * cold one, which had no `.vx/cache` yet and so built nothing (solid's restore
+ * 100 ms after a cold run against 67 after a restore). It starts now when
+ * `.vx/cache` is there, overlapping the run, and otherwise once the verb has
+ * answered, if the run made it. Either way the process waits for it before
+ * exiting (`beforeExit`). A speed-up only: every failure leaves the next run
+ * loading the source.
  */
 export function buildCompiled(
   root: string,
@@ -188,7 +193,7 @@ export function buildCompiled(
     return
   }
   beforeExit(async () => {
-    // A reading verb makes no `.vx/cache`, so it still writes nothing (item 900).
+    // A reading verb makes no `.vx/cache`, so it still writes nothing.
     if (!existsSync(cacheDir)) return
     try {
       refuseForeignCacheDir(cacheDir, root)

@@ -83,10 +83,10 @@ export class Usage {
   }
 
   /**
-   * A task it finished, as it ends: on it `from` its send (else its
-   * command's duration), its CPU time spread over that. Its command alone
-   * left the restore of its dependencies and its save idle: a worker
-   * busy all along read 10 s idle (2026-10-24).
+   * A task it finished, as it ends: on it `from` its send (else its command's
+   * duration), its CPU time spread over that. Its command alone left the
+   * restore of its dependencies and its save idle: a worker busy all along read
+   * 10 s idle.
    */
   record(
     r: {

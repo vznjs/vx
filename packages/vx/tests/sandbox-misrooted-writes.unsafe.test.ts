@@ -61,8 +61,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
       async (_, write) => {
         const o = await build(write)
         expect(o?.status).toBe('failed')
-        expect(o?.sandboxFix).toEqual({ read: ['../../bun.lock'], workspaceFiles: ['bun.lock'] })
-        expect(o?.sandboxViolationLines?.at(-1)).toMatch(
+        expect(o?.sandbox?.fix).toEqual({ read: ['../../bun.lock'], workspaceFiles: ['bun.lock'] })
+        expect(o?.sandbox?.lines?.at(-1)).toMatch(
           /^vx: the task wrote installed packages' files under the project \(node_modules\/\.bun.*\), which \.\.\/\.\.\/node_modules\/\.bun holds: it took the project for its root, .* grant what it looks for: `allow: \{ read: \['\.\.\/\.\.\/bun\.lock'\] \}`\.$/,
         )
       },
@@ -70,7 +70,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     it('applied as given, the copy lands where it belongs', async () => {
       const o = await build(['.next/**', 'next-env.d.ts'], ['.', '../../bun.lock'])
-      expect([o?.status, o?.sandboxViolationLines ?? []]).toEqual(['success', []])
+      expect([o?.status, o?.sandbox?.lines ?? []]).toEqual(['success', []])
       const copied = path.join(
         root,
         'packages/web/.next/standalone/node_modules/.bun/next@1/node_modules/next/dist/x.js',

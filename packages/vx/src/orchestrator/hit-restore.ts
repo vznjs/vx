@@ -5,22 +5,20 @@
 // built. There is ONE restore path: `executeCachedTask` and the local
 // short-circuit (a stable hit restored ahead of its deps) both come here,
 // so the two cannot drift. Stale-hit-critical: a line moved here changes
-// which bytes a green run replays. Moved out of execute-task.ts
-// 2026-09-10 as pure code motion, the mirror of miss-save.ts.
+// which bytes a green run replays. The mirror of miss-save.ts.
 
 import path from 'node:path'
 import {
   type CacheEntry,
   cleanOutputPaths,
   committedFiles,
-  OUTPUT_DIRS_OVER_CAP,
   outputWalkTakes,
   resolveOutputTree,
   resolveWorkspaceOutputTree,
   sweepRestoreTemps,
-  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
-import type { TaskOutcome } from '../graph/index.js'
+import { OUTPUT_DIRS_OVER_CAP, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
+import type { OutcomeCache, OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import {
   asTrees,
   relPosix,
@@ -70,7 +68,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           ...given,
           hit: {
             ...given.hit,
-            outputRows: args.cache.loadOutputFilesBatch([hash]).get(hash) ?? [],
+            outputRows: args.run.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? [],
           },
         }
       : given
@@ -79,17 +77,17 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   if (now !== undefined) return now()
   // The directories the positive globs cover whole. A `!` entry inside one
   // leaves the snapshot sound: a file added or removed there still bumps a
-  // recorded directory, and the walk that follows applies the `!` (A-46).
-  // Asked only of a task that declares outputs: most hits declare none,
-  // and a warm run of 1,000 such hits paid this set-up for each.
+  // recorded directory, and the walk that follows applies the `!`. Asked only
+  // of a task that declares outputs: most hits declare none, and a warm run of
+  // 1,000 such hits paid this set-up for each.
   const dirPrefixes = anyOutputs ? dirPrefixesOf(outputs) : null
-  // The two sides of an overlapping pair (item 588). An ADDITIVE task owns
-  // only its recorded rows: its glob also selects the upstream's files it
-  // adds beside, so "no strays" is not a claim it can make, and its clean
-  // takes the rows, never the glob. The UPSTREAM ignores what its
-  // dependants declare they add when it judges its own tree current — an
-  // addition below is not a stray — while its glob clean still takes them:
-  // the dependant restores or runs after it, by the edge.
+  // The two sides of an overlapping pair. An ADDITIVE task owns only its
+  // recorded rows: its glob also selects the upstream's files it adds beside,
+  // so "no strays" is not a claim it can make, and its clean takes the rows,
+  // never the glob. The UPSTREAM ignores what its dependants declare they add
+  // when it judges its own tree current — an addition below is not a stray —
+  // while its glob clean still takes them: the dependant restores or runs after
+  // it, by the edge.
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   const addedGlobs =
     anyOutputs && node.outputsAddedToBy !== undefined
@@ -98,7 +96,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   const isAddition = (rel: string): boolean => addedGlobs.some((g) => g.match(rel))
   const ownInputs = {
     projectDir: node.projectDir,
-    workspaceRoot: args.workspaceRoot,
+    workspaceRoot: args.run.workspaceRoot,
     declared: node.config.inputs,
   }
 
@@ -110,22 +108,19 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   // (size, mode, mtime) matches the stored fingerprint. Any
   // divergence falls through to a real clean + restore.
   //
-  // The output-file fingerprints can't be batch-loaded at
-  // prepareRun time — non-leaf task hashes depend on upstream
-  // outputs that haven't been written yet, so hashes are
-  // necessarily computed mid-run. The short-circuit's batched probe
-  // loads the rows with the entry (`hit.outputRows`); only the lazy
-  // path pays one SELECT here. Either beats reading the manifest from
-  // the tar (decompress + parse) at the same point.
-  // A task with no declared outputs has nothing to clean or restore: its
-  // output replays from the row (`hit.stdout`), and its artifact holds
-  // only logs. Extracting it anyway cost an `exists` + a tar read per hit
-  // — 1.7 ms each on a four-task real repo whose `link` and `element`
-  // tasks declare `outputs: []` (2026-09-10, `VX_DEBUG_TIMING`).
+  // The output-file fingerprints can't be batch-loaded at prepareRun time —
+  // non-leaf task hashes depend on upstream outputs that haven't been written
+  // yet, so hashes are necessarily computed mid-run. The short-circuit's
+  // batched probe loads the rows with the entry (`hit.outputRows`); only the
+  // lazy path pays one SELECT here. Either beats reading the manifest from the
+  // tar (decompress + parse) at the same point. A task with no declared outputs
+  // has nothing to clean or restore: its output replays from the row
+  // (`hit.stdout`), and its artifact holds only logs. Extracting it anyway cost
+  // an `exists` + a tar read per hit — 1.7 ms each on a four-task real repo
+  // whose `link` and `element` tasks declare `outputs: []` (`VX_DEBUG_TIMING`).
   let skipRestore = !anyOutputs
-  // The walk that found the tree stale, handed to the clean when nothing
-  // was awaited between them: the clean's own walk would only repeat it
-  // (X-161).
+  // The walk that found the tree stale, handed to the clean when nothing was
+  // awaited between them: the clean's own walk would only repeat it.
   let walked: { proj: Tree; ws: Tree } | undefined
   if (anyOutputs) {
     const expected = hit.outputRows ?? []
@@ -148,7 +143,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         clearing: true,
       })
       const wsTree = await resolveWorkspaceOutputTree({
-        workspaceRoot: args.workspaceRoot,
+        workspaceRoot: args.run.workspaceRoot,
         outputs: wsOutputs,
         inputs: ownInputs,
         special: 'later',
@@ -186,12 +181,12 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         .map((p) => relPosix(node.projectDir, p))
         .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
       const actualWsRels = actualWsAbs
-        .map((p) => relPosix(args.workspaceRoot, p))
+        .map((p) => relPosix(args.run.workspaceRoot, p))
         .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
       const actualDirRels = dirRels(node.projectDir, projTree.emptyDirs).filter(
         (rel) => expectedRels.has(rel) || !isAddition(rel.slice(0, -1)),
       )
-      const actualWsDirRels = dirRels(args.workspaceRoot, wsTree.emptyDirs).filter(
+      const actualWsDirRels = dirRels(args.run.workspaceRoot, wsTree.emptyDirs).filter(
         (rel) => expectedWsRels.has(rel) || !isAddition(rel.slice(0, -1)),
       )
       const rowsPresent = (
@@ -209,8 +204,8 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       if (treeMatches) {
         const endStat = span('output stat')
         skipRestore =
-          args.cache.isOutputsCurrent(node.projectDir, projExpected) &&
-          args.cache.isOutputsCurrent(args.workspaceRoot, wsExpected)
+          args.run.cache.memo.isOutputsCurrent(node.projectDir, projExpected) &&
+          args.run.cache.memo.isOutputsCurrent(args.run.workspaceRoot, wsExpected)
         endStat()
         // The walk ran and proved the tree current (rows absent, or a
         // directory had moved — a benign touch): snapshot the directories
@@ -220,22 +215,25 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           dirPrefixes !== null &&
           hit.outputDirRows?.some((r) => r.mtimeMs === OUTPUT_DIRS_OVER_CAP) !== true
         ) {
-          // Held to the rows like the run-end snapshot (item 1087): a stray
-          // written since the walk listed its directory, more than a racy
-          // window before this, is not the entry's.
+          // Held to the rows like the run-end snapshot: a stray written since
+          // the walk listed its directory, more than a racy window before this,
+          // is not the entry's.
           const holds = entryHolds(node, outputWalkTakes(node.projectDir, outputs, outputNested))
-          await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes, (files) =>
-            holds(files, expected),
+          await args.run.cache.memo.recordOutputDirs?.(
+            hash,
+            node.projectDir,
+            dirPrefixes,
+            (files) => holds(files, expected),
           )
         }
       }
     }
   }
-  // An entry with NO rows (its declared outputs matched nothing at save
-  // time, the warned case) is current exactly when the globs still match
-  // nothing: then the empty artifact has nothing to put back and the read
-  // of the tar is spared. A stray under the glob still falls through to
-  // the clean, as strict ownership requires (item 589).
+  // An entry with NO rows (its declared outputs matched nothing at save time,
+  // the warned case) is current exactly when the globs still match nothing:
+  // then the empty artifact has nothing to put back and the read of the tar is
+  // spared. A stray under the glob still falls through to the clean, as strict
+  // ownership requires.
   if (anyOutputs && !skipRestore) {
     const expected = hit.outputRows ?? []
     if (expected.length === 0) {
@@ -249,7 +247,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         clearing: true,
       })
       const actualWs = await resolveWorkspaceOutputTree({
-        workspaceRoot: args.workspaceRoot,
+        workspaceRoot: args.run.workspaceRoot,
         outputs: wsOutputs,
         inputs: ownInputs,
         special: 'later',
@@ -268,26 +266,26 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       outputs,
       nestedProjectDirs: outputNested,
       inputs: ownInputs,
-      committed: committedFiles(args.gitFilesCache, node.projectDir),
+      committed: committedFiles(args.run.gitFilesCache, node.projectDir),
     }
     const wsCleanArgs = {
-      workspaceRoot: args.workspaceRoot,
+      workspaceRoot: args.run.workspaceRoot,
       outputs: wsOutputs,
       inputs: ownInputs,
-      committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
+      committed: committedFiles(args.run.gitFilesCache, args.run.workspaceRoot),
     }
     const heldRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
     const heldWsRels = hit.outputFiles
       .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length))
-    // In place, never clean-then-restore: each file is renamed over the one
-    // it replaces, so a reader of the tree never finds a declared output
-    // missing, and a restore that fails before its renames (a full disk,
-    // a damaged entry) leaves the outputs it found as they were. Only what blocks a rename
-    // goes first; what the entry does not hold goes after. The clean used
-    // to run first: a reader polling a 64 MB output while ten hits restored
-    // met ENOENT on 153,336 of 204,411 reads (2026-10-16). An ADDITIVE task
-    // owns only its rows (item 588), and the restore rewrites exactly those.
+    // In place, never clean-then-restore: each file is renamed over the one it
+    // replaces, so a reader of the tree never finds a declared output missing,
+    // and a restore that fails before its renames (a full disk, a damaged
+    // entry) leaves the outputs it found as they were. Only what blocks a
+    // rename goes first; what the entry does not hold goes after. The clean
+    // used to run first: a reader polling a 64 MB output while ten hits
+    // restored met ENOENT on 153,336 of 204,411 reads. An ADDITIVE task owns
+    // only its rows, and the restore rewrites exactly those.
     const walkArgs = { special: 'later', clearing: true } as const
     let foundRels: string[] = []
     let foundWsRels: string[] = []
@@ -300,7 +298,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     // none, a hit's restore started one more cycle whenever the next
     // command opened its window more than a racy window later (CI stalls).
     const closeWindow =
-      args.commandWindows?.open(
+      args.run.commandWindows?.open(
         node.id,
         node.projectDir,
         wsOutputs.length > 0 ? 'workspace' : 'project',
@@ -308,7 +306,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     try {
       if (!additive) {
         sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
-        sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
+        sweepRestoreTemps(args.run.workspaceRoot, wsOutputs, wsCleanArgs.committed)
         if (outputs.length > 0) {
           const tree = walked?.proj ?? (await resolveOutputTree({ ...walkArgs, ...cleanArgs }))
           // A FIFO, socket or device is found too: one the entry does not hold
@@ -334,15 +332,15 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           const tree =
             walked?.ws ?? (await resolveWorkspaceOutputTree({ ...walkArgs, ...wsCleanArgs }))
           foundWsRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
-            relPosix(args.workspaceRoot, f),
+            relPosix(args.run.workspaceRoot, f),
           )
           const blocking = inTheWay(foundWsRels, heldWsRels)
           staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
-          const dirs = splitDirs(args.workspaceRoot, tree.emptyDirs, heldWsRels)
+          const dirs = splitDirs(args.run.workspaceRoot, tree.emptyDirs, heldWsRels)
           staleWsDirs = dirs.stale
           if (blocking.size > 0 || dirs.blocking.length > 0) {
             await cleanOutputPaths({
-              projectDir: args.workspaceRoot,
+              projectDir: args.run.workspaceRoot,
               rels: [...blocking],
               outputs: wsOutputs,
               committed: wsCleanArgs.committed,
@@ -351,7 +349,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           }
         }
       }
-      await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
+      await args.run.cache.restoreOutputs(hash, node.projectDir, args.run.workspaceRoot, {
         files: outputs,
         workspaceFiles: wsOutputs,
       })
@@ -373,7 +371,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       }
       if (staleWsRels.length > 0 || staleWsDirs.length > 0) {
         await cleanOutputPaths({
-          projectDir: args.workspaceRoot,
+          projectDir: args.run.workspaceRoot,
           rels: staleWsRels,
           emptyDirs: staleWsDirs,
           outputs: wsOutputs,
@@ -381,26 +379,24 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           keep: new Set(
             heldWsRels
               .filter((r) => r.endsWith('/'))
-              .map((r) => path.join(args.workspaceRoot, r.slice(0, -1))),
+              .map((r) => path.join(args.run.workspaceRoot, r.slice(0, -1))),
           ),
         })
       }
     } finally {
       closeWindow()
     }
-    // The tree now holds this entry's bytes: stamp them for the next hit
-    // (item 886).
-    args.cache.recordOutputStamps?.(hash, node.projectDir, args.workspaceRoot)
-    // The directory snapshot behind the NEXT hit's skip-restore, taken at
-    // run end from the run's list (as the miss path does, see
-    // miss-save.ts): the restore renamed into these directories
-    // microseconds ago, inside the snapshot's racy window, so a snapshot
-    // taken here was refused and the first warm run after every restore
-    // walked its output trees — 41 of payload's 45 tasks, 14,430 files,
-    // ~75 ms of the no-op's CPU (2026-09-11). A caller with no list gets
-    // no snapshot (item 637: recording here was that same refusal).
-    if (dirPrefixes !== null && args.outputDirSnapshots !== undefined) {
-      args.outputDirSnapshots.push({
+    // The tree now holds this entry's bytes: stamp them for the next hit.
+    args.run.cache.memo.recordOutputStamps?.(hash, node.projectDir, args.run.workspaceRoot)
+    // The directory snapshot behind the NEXT hit's skip-restore, taken at run
+    // end from the run's list (as the miss path does, see miss-save.ts): the
+    // restore renamed into these directories microseconds ago, inside the
+    // snapshot's racy window, so a snapshot taken here was refused and the
+    // first warm run after every restore walked its output trees — 41 of
+    // payload's 45 tasks, 14,430 files, ~75 ms of the no-op's CPU. A caller
+    // with no list gets no snapshot (recording here was that same refusal).
+    if (dirPrefixes !== null && args.run.outputDirSnapshots !== undefined) {
+      args.run.outputDirSnapshots.push({
         hash,
         projectDir: node.projectDir,
         prefixes: dirPrefixes,
@@ -416,10 +412,10 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     // unconditional drop (an executed task may write undeclared
     // files only git can see).
     if (outputs.length > 0) {
-      args.gitFilesCache?.markOutputsChanged(node.projectDir, [...foundRels, ...heldRels])
+      args.run.gitFilesCache?.markOutputsChanged(node.projectDir, [...foundRels, ...heldRels])
     }
     if (wsOutputs.length > 0) {
-      args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, [
+      args.run.gitFilesCache?.markWorkspaceOutputsChanged(args.run.workspaceRoot, [
         ...foundWsRels,
         ...heldWsRels,
       ])
@@ -444,22 +440,24 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
   if ((node.config.outputs?.workspaceFiles?.length ?? 0) > 0) return undefined
   if (outputs.length > 0) {
     const dirPrefixes = dirPrefixesOf(outputs)
-    if (dirPrefixes === null || args.cache.outputDirsCurrent === undefined) return undefined
-    const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    if (dirPrefixes === null || args.run.cache.memo.outputDirsCurrent === undefined)
+      return undefined
+    const expected =
+      hit.outputRows ?? args.run.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? []
     if (expected.length === 0) return undefined
     // Loaded with the entry (batched by getMany, or with the lazy get).
     const dirRows = hit.outputDirRows ?? []
     // Rows are recorded for these same prefixes under this same key (the
-    // outputs are folded into it), so this cannot fail today (item 638).
-    // Kept: a row set that shrank would otherwise vouch for a tree it never
-    // saw, and the failure it would let through is a skipped restore.
+    // outputs are folded into it), so this cannot fail today. Kept: a row set
+    // that shrank would otherwise vouch for a tree it never saw, and the
+    // failure it would let through is a skipped restore.
     if (!dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))) return undefined
     // No workspace output is declared, so every row is the project's.
     if (expected.some((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))) return undefined
     // Asked back to back: the second reads the directories' modes the first
     // lstat'ed (`OutputIndex.dirModes`).
-    if (!args.cache.outputDirsCurrent(node.projectDir, dirRows)) return undefined
-    if (!args.cache.isOutputsCurrent(node.projectDir, expected)) return undefined
+    if (!args.run.cache.memo.outputDirsCurrent(node.projectDir, dirRows)) return undefined
+    if (!args.run.cache.memo.isOutputsCurrent(node.projectDir, expected)) return undefined
   }
   return () => hitOutcome(restore, false)
 }
@@ -472,7 +470,7 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   const stored = hit.stdout
   if (stored) {
     // An entry saved before masking, or by another machine, can hold a
-    // secret-named variable's value (L-11). Asked only of a hit that prints.
+    // secret-named variable's value. Asked only of a hit that prints.
     const secrets = secretMask(
       [process.env, node.config.exec?.env?.define],
       node.config.exec?.env?.secret,
@@ -485,37 +483,38 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   }
   const status =
     hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
-  // `restored` distinguishes "we just wrote files to disk" from
-  // "disk already matched the cached snapshot". Drives the
-  // "up-to-date" vs "local-cache" / "remote-cache" label in the
-  // framed block. A hit the remote answered is never up to date: up to
-  // date is fresh here, and a remote hit waited on the network and
-  // downloaded its entry, outputs or none (2026-10-24: "Up to date is
-  // a fresh. It should not require any cache").
-  // Assigned, not spread: one outcome per hit, and five conditional
-  // spreads were ~3 ms of an 8,002-hit warm run (2026-11-07).
+  // `restored` distinguishes "we just wrote files to disk" from "disk already
+  // matched the cached snapshot". Drives the "up-to-date" vs "local-cache" /
+  // "remote-cache" label in the framed block. A hit the remote answered is
+  // never up to date: up to date is fresh here, and a remote hit waited on the
+  // network and downloaded its entry, outputs or none. Assigned, not spread:
+  // one outcome per hit, and five conditional spreads were ~3 ms of an
+  // 8,002-hit warm run.
+  const skipped: NonNullable<OutcomeCache['stored']> = { durationMs: hit.durationMs }
+  if (hit.cpuMs !== undefined) skipped.cpuMs = hit.cpuMs
+  if (hit.peakRssBytes !== undefined) skipped.peakRssBytes = hit.peakRssBytes
+  const cache: OutcomeCache = { stored: skipped, restored: restored || hit.source === 'remote' }
+  if (hit.sizeBytes !== undefined) cache.artifactBytes = hit.sizeBytes
+  if (hit.outputRows !== undefined) {
+    let bytes = 0
+    for (const r of hit.outputRows) bytes += r.size
+    cache.outputBytes = bytes
+  }
+  const timing: OutcomeTiming = {
+    startNs: taskStartNs,
+    endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+  }
+  if (hit.fetchMs !== undefined) timing.fetchMs = hit.fetchMs
   const outcome: TaskOutcome = {
     node,
     status,
     exitCode: hit.exitCode,
-    // What THIS run spent: probe + restore. NOT the stored exec time — see
-    // `storedDurationMs`, which is what the hit skipped.
+    // What THIS run spent: probe + restore. `cache.stored` is what the hit skipped.
     durationMs: Math.round(performance.now() - cacheOpStart),
-    storedDurationMs: hit.durationMs,
     hash,
-    restored: restored || hit.source === 'remote',
-    wallclockStartNs: taskStartNs,
-    wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    cache,
+    timing,
   }
-  if (hit.cpuMs !== undefined) outcome.storedCpuMs = hit.cpuMs
-  if (hit.peakRssBytes !== undefined) outcome.storedPeakRssBytes = hit.peakRssBytes
-  if (hit.sizeBytes !== undefined) outcome.artifactBytes = hit.sizeBytes
-  if (hit.outputRows !== undefined) {
-    let bytes = 0
-    for (const r of hit.outputRows) bytes += r.size
-    outcome.outputBytes = bytes
-  }
-  if (hit.fetchMs !== undefined) outcome.fetchMs = hit.fetchMs
   return outcome
 }
 

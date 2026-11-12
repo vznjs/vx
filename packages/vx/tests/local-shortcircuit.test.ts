@@ -220,7 +220,7 @@ describe('local cache short-circuit', () => {
       })
       expect(
         warm.outcomes
-          .map((o) => [o.node.id, o.status, o.restored])
+          .map((o) => [o.node.id, o.status, o.cache?.restored])
           .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
       ).toEqual([
         ['solo#edit', 'cache-hit', true],

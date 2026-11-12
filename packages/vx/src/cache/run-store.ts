@@ -1,9 +1,9 @@
-// What core keeps of a run that writes a remote (2026-10-15): a failed
-// task's log and the files its outputs left, an uncached task's log. Names
-// come from the run id and task (`run/<id>/<task>/log`); each key is derived
-// in a namespace no task key or plugin entry shares. Remote only: locally
-// `vx last --log` and the working tree already hold them. No size cap (M:
-// the cache is free). Plugins read them by name (`ctx.cache.getRun`).
+// What core keeps of a run that writes a remote: a failed task's log and the
+// files its outputs left, an uncached task's log. Names come from the run id
+// and task (`run/<id>/<task>/log`); each key is derived in a namespace no task
+// key or plugin entry shares. Remote only: locally `vx last --log` and the
+// working tree already hold them. No size cap (M: the cache is free). Plugins
+// read them by name (`ctx.cache.getRun`).
 
 import { xxh3hex } from '../util/index.js'
 import { sayRemoteFault, type ResolvedRemote } from './remote-lane.js'

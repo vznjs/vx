@@ -730,7 +730,7 @@ describe('the lifecycle is reached on a run that never started', () => {
   it('an executor whose demand() throws is named once, and the run goes on (item 1022)', async () => {
     await withPlugins(
       `executor() { return { name: 'x', execute: async () => ({ exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }),
-         demand() { globalThis.__vxAbort.push('demand'); throw new Error('demand boom') } } },`,
+         distribution: { demand() { globalThis.__vxAbort.push('demand'); throw new Error('demand boom') } } } },`,
     )
     const lines: string[] = []
     const summary = await run({

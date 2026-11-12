@@ -69,15 +69,15 @@ async function rewriteInOneSecond(
 describe('a whole-second stamp', () => {
   it('keeps a file written 120 ms before its hash out of the memo', async () => {
     stamp = SECOND
-    expect(await rewriteInOneSecond((f) => cache.hashFile(f))).toBe(true)
+    expect(await rewriteInOneSecond((f) => cache.memo.hashFile(f))).toBe(true)
     // Control: the same age on a sub-second stamp is memoised, and the memo
     // is what answers the rewrite (its stat did not move).
     stamp = SECOND + 7
-    expect(await rewriteInOneSecond((f) => cache.hashFile(f))).toBe(false)
+    expect(await rewriteInOneSecond((f) => cache.memo.hashFile(f))).toBe(false)
   })
 
   it('does the same in the batched hash', async () => {
-    const batch = async (f: string) => (await cache.hashFiles([f])).get(f)!
+    const batch = async (f: string) => (await cache.memo.hashFiles([f])).get(f)!
     stamp = SECOND
     expect(await rewriteInOneSecond(batch)).toBe(true)
     stamp = SECOND + 7
@@ -90,8 +90,8 @@ describe('a whole-second stamp', () => {
   // stamp is an even second that is not a multiple of four, and the hash sits
   // near the pair's end, so a narrower rule or widening is caught too.
   it('keeps a file written 1.99 s before its hash out of the memo on an even second', async () => {
-    const one = (f: string) => cache.hashFile(f)
-    const batch = async (f: string) => (await cache.hashFiles([f])).get(f)!
+    const one = (f: string) => cache.memo.hashFile(f)
+    const batch = async (f: string) => (await cache.memo.hashFiles([f])).get(f)!
     stamp = SECOND + 2000
     expect([stamp % 2000, stamp % 4000]).toEqual([0, 2000])
     expect(await rewriteInOneSecond(one, 1990, 1995)).toBe(true)
@@ -107,7 +107,7 @@ describe('a whole-second stamp', () => {
     writeFileSync(f, 'AAAA')
     stamp = SECOND
     setSystemTime(new Date(SECOND + 500))
-    const fact = { path: f, digest: await cache.hashFile(f), since: SECOND + 500 }
+    const fact = { path: f, digest: await cache.memo.hashFile(f), since: SECOND + 500 }
     // Rewritten later in the same second: the stamp stays SECOND, 500 ms
     // before the fact, outside a 50 ms window.
     writeFileSync(f, 'BBBB')
@@ -123,7 +123,7 @@ describe('a whole-second stamp', () => {
     writeFileSync(f, 'AAAA')
     stamp = SECOND
     setSystemTime(new Date(SECOND + 300))
-    const digest = await cache.hashFile(f)
+    const digest = await cache.memo.hashFile(f)
     // Edited and edited back while the command ran (item 1015): the content
     // matches, only the stamp says it was written, and it reads 300 ms
     // before the command began.
@@ -147,8 +147,8 @@ describe('a whole-second stamp', () => {
     const snapshotAt = async (mtime: number): Promise<number> => {
       utimesSync(path.join(proj, 'dist'), mtime / 1000, mtime / 1000)
       setSystemTime(new Date(mtime + 120))
-      await cache.recordOutputDirs('h1', proj, ['dist'])
-      return (cache.loadOutputDirsBatch(['h1']).get('h1') ?? []).length
+      await cache.memo.recordOutputDirs('h1', proj, ['dist'])
+      return (cache.memo.loadOutputDirsBatch(['h1']).get('h1') ?? []).length
     }
     expect(await snapshotAt(SECOND)).toBe(0)
     expect(await snapshotAt(SECOND + 7)).toBe(1)
@@ -177,9 +177,9 @@ describe('a whole-second stamp', () => {
         entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
       })
       setSystemTime(new Date(stamp + 120))
-      cache.recordOutputStamps(hash, proj, root)
+      cache.memo.recordOutputStamps(hash, proj, root)
       writeFileSync(out, 'BBBB')
-      return cache.isOutputsCurrent(proj, cache.loadOutputFilesBatch([hash]).get(hash)!)
+      return cache.memo.isOutputsCurrent(proj, cache.memo.loadOutputFilesBatch([hash]).get(hash)!)
     }
     try {
       stamp = SECOND

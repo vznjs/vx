@@ -98,17 +98,16 @@ export function local(options: LocalOptions = {}): DteAdapter {
         const dir = path.join(await base, String(a.index))
         if (closed) return
         // The run's own snapshot: one taken here, after a hit restored a
-        // committed file, was another tree, and every worker was refused
-        // (2026-10-25).
+        // committed file, was another tree, and every worker was refused.
         const add = await run(
           ['git', 'worktree', 'add', '-q', '--detach', dir, a.commit],
           a.workspaceRoot,
           { ...repoEnv(a.workspaceRoot), GIT_INDEX_FILE: undefined },
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
-        // The workspace's own place in the checkout: from the worktree's
-        // root, a workspace in a subdirectory of its repository had no
-        // `.vx/workspace` above, and every worker exited (2026-10-25).
+        // The workspace's own place in the checkout: from the worktree's root,
+        // a workspace in a subdirectory of its repository had no
+        // `.vx/workspace` above, and every worker exited.
         const prefix = Bun.spawn(['git', 'rev-parse', '--show-prefix'], {
           cwd: a.workspaceRoot,
           env: repoEnv(a.workspaceRoot),
@@ -155,13 +154,12 @@ export function local(options: LocalOptions = {}): DteAdapter {
       relay?.stop()
       relay = undefined
       for (const p of helpers) group(p, 'SIGTERM')
-      // A detached shell waits for what this run started, kills what is
-      // left after 5 s, then removes the worktrees, after vx exits:
-      // removing ones an install filled took seconds after a Ctrl-C
-      // (2026-10-21), and a 300k-file tree 2.7 s. Spawned first: core stops
-      // waiting on a teardown after 3 s, and a worker slow to leave kept
-      // close from spawning it before vx exited, so every worktree stayed
-      // (2026-11-08). `prune` then drops git's record of each.
+      // A detached shell waits for what this run started, kills what is left
+      // after 5 s, then removes the worktrees, after vx exits: removing ones an
+      // install filled took seconds after a Ctrl-C, and a 300k-file tree 2.7 s.
+      // Spawned first: core stops waiting on a teardown after 3 s, and a worker
+      // slow to leave kept close from spawning it before vx exited, so every
+      // worktree stayed. `prune` then drops git's record of each.
       if (base !== undefined) {
         const dir = await base
         base = undefined
@@ -208,11 +206,11 @@ const OWN_BASE = new RegExp(`^${BASE_PREFIX}[A-Za-z0-9]{6}$`)
 
 /**
  * The worktrees a run whose vx was killed (SIGKILL, a lost machine) left in
- * `root`'s repository, removed: each under a base whose owner process is
- * gone. A killed run's close never ran, and they stayed for good
- * (2026-11-06). One `git worktree list`, off the run's path. So are this
- * machine's other bases whose owner is gone: one of a repository no run
- * comes back to (a test's, deleted) stayed for good too (2026-11-11).
+ * `root`'s repository, removed: each under a base whose owner process is gone.
+ * A killed run's close never ran, and they stayed for good. One `git worktree
+ * list`, off the run's path. So are this machine's other bases whose owner is
+ * gone: one of a repository no run comes back to (a test's, deleted) stayed for
+ * good too.
  */
 async function reclaim(root: string): Promise<void> {
   try {
@@ -305,11 +303,11 @@ export function reasons(): (what: string, id: string, err: string) => Promise<st
 }
 
 /**
- * The line of a process's stderr that says what went wrong: vx's own `✗`
- * line with the facts core prints below it (up to three lines; a
- * `.vx/workspace.ts` that failed to load is named only there), else the
- * first naming an error or git's `fatal:`, else the last. The last alone
- * was often a hint (`fix  vx run …`) that hid the error above it.
+ * The line of a process's stderr that says what went wrong: vx's own `✗` line
+ * with the facts core prints below it (up to three lines; a `.vx/workspace.ts`
+ * that failed to load is named only there), else the first naming an error or
+ * git's `fatal:`, else the last. The last alone was often a hint (`fix vx run
+ * …`) that hid the error above it.
  */
 export function errorLine(text: string): string {
   const all = Bun.stripANSI(text)
@@ -366,12 +364,12 @@ const GIT_REPO_ENV = [
 ]
 
 /**
- * The env for a git in `cwd`: a hook's `GIT_DIR` dropped when git finds
- * that repository from `cwd` anyway, as core's own git env does. A linked
- * worktree's hook exports its gitdir and no `GIT_WORK_TREE`, and git took
- * `cwd`, a workspace in a subdirectory, for the checkout's top: the
- * snapshot held no workspace config there, and the run was refused
- * (2026-11-11). A `GIT_DIR` naming another repository is kept.
+ * The env for a git in `cwd`: a hook's `GIT_DIR` dropped when git finds that
+ * repository from `cwd` anyway, as core's own git env does. A linked worktree's
+ * hook exports its gitdir and no `GIT_WORK_TREE`, and git took `cwd`, a
+ * workspace in a subdirectory, for the checkout's top: the snapshot held no
+ * workspace config there, and the run was refused. A `GIT_DIR` naming another
+ * repository is kept.
  */
 export function repoEnv(cwd: string): Record<string, string | undefined> {
   const dir = process.env['GIT_DIR']

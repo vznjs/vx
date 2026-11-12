@@ -1,7 +1,7 @@
-// vx-cache v1 (PROTOCOL.md) over any `Blobs` bucket: one fetch handler
-// the Bun server, the Worker and the Docker image all serve. No database:
-// an artifact is one object, named by its issuer, repository name, scope and
-// hash, and a read names the exact scope it wants (2026-10-25).
+// vx-cache v1 (PROTOCOL.md) over any `Blobs` bucket: one fetch handler the Bun
+// server, the Worker and the Docker image all serve. No database: an artifact
+// is one object, named by its issuer, repository name, scope and hash, and a
+// read names the exact scope it wants.
 
 import { type Access, type Authorize, errorJson, notAllowed, Refusal } from '@vzn/vx-devtools'
 import { isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
@@ -54,7 +54,7 @@ export function limitsFrom(env: object): Partial<Limits> {
   return out
 }
 
-/** A held artifact's bytes never change (2026-10-25). */
+/** A held artifact's bytes never change. */
 const IMMUTABLE = 'private, max-age=31536000, immutable'
 
 /**
@@ -66,9 +66,9 @@ const cacheOf = (at: number): string => (at === 0 ? IMMUTABLE : 'private, no-cac
 
 /**
  * A scope on the wire: a ref (`refs/…`), percent-encoded as
- * `encodeURIComponent` does, its folder's name (2026-11-03). One spelling
- * per ref, so no two scopes name one folder; at most 512 characters, so
- * a name stays under a bucket's 1024-byte key.
+ * `encodeURIComponent` does, its folder's name. One spelling per ref, so no two
+ * scopes name one folder; at most 512 characters, so a name stays under a
+ * bucket's 1024-byte key.
  */
 const SCOPE_MAX = 512
 const isScope = (scope: string): boolean => {
@@ -156,10 +156,10 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   /**
-   * An artifact under the first scope named that holds it, each asked in
-   * turn: a run on a branch reads its own scope, then main's, and a client
-   * asking each by its own request paid a round-trip for every scope
-   * before the one that held it (2026-11-06).
+   * An artifact under the first scope named that holds it, each asked in turn:
+   * a run on a branch reads its own scope, then main's, and a client asking
+   * each by its own request paid a round-trip for every scope before the one
+   * that held it.
    */
   async function artifact(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
@@ -221,11 +221,11 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   /**
-   * An upload: one artifact, its bytes the whole body (Turbo's
-   * `PUT /v8/artifacts/<hash>`), stored in the token's scope. They reach
-   * the bucket without passing through this code, so a large one costs
-   * no CPU here (2026-10-25: no batch upload; a batch is split by this
-   * code, and on Workers a 40 MB one ran out of CPU).
+   * An upload: one artifact, its bytes the whole body (Turbo's `PUT
+   * /v8/artifacts/<hash>`), stored in the token's scope. They reach the bucket
+   * without passing through this code, so a large one costs no CPU here (no
+   * batch upload; a batch is split by this code, and on Workers a 40 MB one ran
+   * out of CPU).
    */
   async function put(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')

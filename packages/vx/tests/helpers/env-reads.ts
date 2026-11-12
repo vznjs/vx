@@ -32,7 +32,7 @@ export function readInSource(): Set<string> {
   const names = new Set<string>(SETTINGS.filter((s) => s.env !== false).map((s) => envName(s.path)))
   for (const src of sources) {
     // `Bun.env` is the other spelling; core reads none through it today
-    // (exec/sandbox-runtime.ts says why), and a negative is a claim about
+    // (sandbox/runtime.ts says why), and a negative is a claim about
     // every spelling (item 618).
     for (const m of src.matchAll(/(?:process|Bun)\.env(?:\.|\[')(VX_[A-Z0-9_]+)/g)) names.add(m[1]!)
     for (const m of src.matchAll(/(?:process|Bun)\.env\[(\w+_ENV)\]/g)) {

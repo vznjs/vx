@@ -9,8 +9,8 @@ import { chmodSync, realpathSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { resolveSandboxConfig } from '../src/exec/index.js'
-import { refusedConnections, reportableViolations } from '../src/exec/sandbox-violations.js'
+import { resolveSandboxConfig } from '../src/sandbox/runtime.js'
+import { refusedConnections, reportableViolations } from '../src/sandbox/violations.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -97,19 +97,13 @@ describe.skipIf(!available)('a refused connection, run for real', () => {
   it('fails a task that survived it, naming the host', async () => {
     await addApp(root)
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
-      'failed',
-      [DENY],
-    ])
+    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines]).toEqual(['failed', [DENY]])
   })
 
   it('CONTROL: ignore.network naming the host passes it', async () => {
     await addApp(root, `, ignore: { network: ['example.com:443'] }`)
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]).toEqual([
-      'success',
-      [],
-    ])
+    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines ?? []]).toEqual(['success', []])
   })
 })
 

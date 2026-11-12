@@ -8,7 +8,6 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { formatTaskBlock } from '../src/report/framed-output.js'
 
@@ -319,10 +318,8 @@ describe("the sandboxing guide's failures", () => {
         status: 'failed',
         exitCode: 1,
         durationMs: 12,
-        sandboxViolations: 1,
-        sandboxViolationLines: [record],
-        sandboxFix: fix,
-      } as TaskOutcome,
+        sandbox: { violations: 1, lines: [record], fix },
+      },
       { output: [{ text: `${stderr}\n`, err: true }] },
     ).trimEnd()
   const page = readFileSync(path.join(GUIDES, '..', 'docs', 'sandboxing.mdx'), 'utf8')
@@ -348,7 +345,7 @@ describe("the sandboxing guide's failures", () => {
   })
 
   it('the write record is the one the sandbox writes', () => {
-    expect(readFileSync(path.join(SRC, 'exec', 'sandbox-violations.ts'), 'utf8')).toContain(
+    expect(readFileSync(path.join(SRC, 'sandbox', 'violations.ts'), 'utf8')).toContain(
       'line: `${syscall}(${raw}) = a write no grant covers  [${abs}]`',
     )
   })

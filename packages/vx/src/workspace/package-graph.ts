@@ -16,13 +16,13 @@ export interface PackageGraph {
 
 /**
  * `taskEdges`: project → the projects its tasks name in a cross-project
- * `dependsOn` (`e2e` → `app` from `dependsOn: ['app#build']`). A dependent
- * no plugin edge names but the task graph does; without it
- * `--filter '...app'` never selected `e2e`, and a CI that runs "what
- * changed and everything depending on it" silently left it out
- * (2026-09-10). Selection, `vx watch` and the dependency rules pass them;
- * the graph a run or `vx lock` resolves `^task` against does not (it is
- * built before configs load), so a task edge never widens a `^task` walk.
+ * `dependsOn` (`e2e` → `app` from `dependsOn: ['app#build']`). A dependent no
+ * plugin edge names but the task graph does; without it `--filter '...app'`
+ * never selected `e2e`, and a CI that runs "what changed and everything
+ * depending on it" silently left it out. Selection, `vx watch` and the
+ * dependency rules pass them; the graph a run or `vx lock` resolves `^task`
+ * against does not (it is built before configs load), so a task edge never
+ * widens a `^task` walk.
  */
 export function buildPackageGraph(
   projects: ProjectMeta[],
@@ -160,16 +160,15 @@ export function buildPackageGraph(
     return [...seen].sort()
   }
 
-  // The closures are built on the FIRST query, not here: an unscoped run
-  // seeds every project and never asks for a transitive set, and neither
-  // does a `^task` walk (it reads `directDeps`). Building both closures
-  // eagerly was 12 ms of a 240 ms warm run at 1000 projects × 30 deps
-  // (profiled 2026-09-09) for answers nobody read.
-  // A scoped run asks one or two seeds' closures: a search from each over
-  // the REACH lists it visits answers them without every project's list
-  // and the whole graph's bitsets (8–13 ms at 1,000 projects for one
-  // `--filter`). The same set, in the same name order; past a few asks
-  // the bitsets are cheaper per question.
+  // The closures are built on the FIRST query, not here: an unscoped run seeds
+  // every project and never asks for a transitive set, and neither does a
+  // `^task` walk (it reads `directDeps`). Building both closures eagerly was 12
+  // ms of a 240 ms warm run at 1000 projects × 30 deps (profiled) for answers
+  // nobody read. A scoped run asks one or two seeds' closures: a search from
+  // each over the REACH lists it visits answers them without every project's
+  // list and the whole graph's bitsets (8–13 ms at 1,000 projects for one
+  // `--filter`). The same set, in the same name order; past a few asks the
+  // bitsets are cheaper per question.
   const EARLY_SEARCHES = 8
   const searchDeps = (name: string): string[] => {
     const seen = new Set<string>()

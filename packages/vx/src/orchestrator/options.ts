@@ -23,47 +23,12 @@ export interface RunOptions {
   tasks: readonly string[]
   projects?: string[]
   /**
-   * `projects` came from a git diff (`--affected`, a `[ref]` filter), so
-   * which projects hold a bare task name depends on what changed: a name
-   * the changed projects do not declare is not a typo when the workspace
-   * declares it elsewhere, and a run with nothing left to do is clean.
-   * Judged against the scope, a docs-only commit turned
-   * `vx run test --affected` red (item 1024).
-   */
-  selectedByDiff?: boolean
-  /**
    * `--affected`'s diff: a bare requested task runs only when the change
-   * reaches its `dependsOn` closure (`affected-tasks.ts`; owner,
-   * 2026-10-04). `projects` is the candidate set it narrows.
+   * reaches its `dependsOn` closure (`affected-tasks.ts`; owner). `projects` is
+   * the candidate set it narrows.
    */
   affected?: AffectedChanges
-  /**
-   * The projects an include other than `--affected` selected (`--filter
-   * other`): every include is a union, so their requested tasks run
-   * whether or not `affected` reaches them (X-10).
-   */
-  selectedOutright?: readonly string[]
-  /** Filled with why `--affected` kept each requested task; `planRun` (`--dry`) passes it. */
-  affectedReasons?: Map<string, AffectedReason>
-  /**
-   * Configs a selection pass in this same process already loaded and
-   * staged with the same `cacheDir` (the CLI walks every
-   * `pkg#task` edge for `--filter 'app...'` and `--affected`). The run
-   * seeds and scopes as it always does and reuses these entries instead
-   * of evaluating and staging them again. One run only — never carry a
-   * map across runs, a config can change between them (`vx watch` drops
-   * it per cycle).
-   */
-  staged?: ReadonlyMap<string, ProjectEntry>
-  /**
-   * The projects a selection pass in this same process discovered under
-   * `root` (`--filter`, `--affected`, the project a run from inside one
-   * is in). The run takes them instead of
-   * walking the workspace again when its root is the same. One run only,
-   * as `staged` is.
-   */
-  discovered?: { root: string; projects: ProjectMeta[] }
-  /** Worker slots: a positive integer; run() refuses anything else (C-61). */
+  /** Worker slots: a positive integer; run() refuses anything else. */
   concurrency?: number
   /**
    * Cache directory override (`--cache-dir <path>`). Absolute, or relative
@@ -84,43 +49,22 @@ export interface RunOptions {
    * off), applied over the workspace's `cache.policy`.
    */
   cacheFlags?: CacheFlags
-  /**
-   * The setting that asked for a remote axis by name (`'--cache-policy'` for
-   * `--cache-policy=remote:rw`), named in the warning. With no cache plugin
-   * supplying a remote layer the axes are inert, and a CI job that believes
-   * it is filling a shared cache deserves one line saying it is not.
-   */
-  remoteRequested?: string
   /** This run's cache scope, above `VX_CACHE_SCOPE`, a plugin's and the branch's (an embedder's). */
   cacheScope?: string
   /**
-   * The default policy's remote write is off (`remote:r`): the CLI passes it
-   * off CI (`CI` unset, `0` or `false`) unless `--cache-policy` or
-   * `VX_CACHE_POLICY` names the remote. Dropped when the workspace's
-   * `cache.policy` names the remote.
-   */
-  remoteReadOnlyByDefault?: boolean
-  /**
-   * Explicit per-task output volume for the default logger. ALWAYS
-   * overrides the flow default. 'full': frames for work + one-liners
-   * for quiet hits. 'errors-only': only failed tasks print.
-   * 'hash-only': one line per task — outcome, id, cache key — with no
-   * log output (Turbo parity). 'none':
-   * no per-task output at all. Status lines (header, summary) always
-   * print.
+   * Per-task output volume for the default logger; overrides the flow
+   * default. 'full': frames for work, one-liners for quiet hits.
+   * 'errors-only': only failures print. 'hash-only': one line per task
+   * (outcome, id, key), no logs. 'none': nothing per task. Header and
+   * summary always print.
    */
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   /**
-   * Where a REMOTELY-executed task's outputs land. 'all' (default):
-   * every task's outputs are downloaded to this machine as it completes
-   * — today's behaviour, byte for byte. 'toplevel': only the tasks you
-   * REQUESTED land here; intermediates stay remote. 'none': outputs stay
-   * in the remote CAS and are fetched lazily, only when a locally-placed
-   * task in the run actually needs them (Bazel's "build without the
-   * bytes").
-   * Pure transfer tuning: it can never change what a command produces,
-   * so it is NEVER folded into a cache key: it is a RunOption, not config.
-   * Locally-placed tasks always write in place and ignore this.
+   * Where a remote task's outputs land. 'all' (default): each one's, as it
+   * completes. 'toplevel': only requested tasks'. 'none': they stay remote,
+   * fetched only when a local task needs them. Transfer tuning that cannot
+   * change what a command produces, so never in a key. Local tasks ignore
+   * it.
    */
   download?: 'all' | 'toplevel' | 'none'
   /** Remote downloads at once (`cache.concurrency.download`). */
@@ -130,39 +74,32 @@ export interface RunOptions {
   /** Local hits restoring at once (`cache.concurrency.restore`); twice `concurrency` unset. */
   restoreConcurrency?: number
   /**
-   * Run intent, derived by the CLI from selection flags: 'broad' iff
-   * `--all` / `--filter` / `--affected` was passed, else 'focused'.
-   * Drives the default logger's per-task output policy when neither
-   * `outputLogs` nor a truthy CI env overrides it. Undefined
-   * (programmatic callers) behaves like today's 'full'.
+   * 'broad' iff `--all` / `--filter` / `--affected` was passed, else
+   * 'focused'. Picks the default logger's per-task output when neither
+   * `outputLogs` nor CI overrides it. Undefined (programmatic callers) acts
+   * as 'full'.
    */
   flow?: 'focused' | 'broad'
   /**
-   * `run.retries` from its flag (`--retries <n>`): max additional attempts
-   * after a failed attempt, for tasks that don't declare their own
-   * `exec.retries` (explicit config wins, including `retries: 0`); unset,
-   * `VX_RUN_RETRIES`, then the workspace's. Never folded into any cache
-   * key, so the same run with and without `--retries` derives identical keys.
-   * A non-negative integer; run() refuses anything else (C-61).
+   * `--retries <n>`: extra attempts after a failure, for tasks without their
+   * own `exec.retries` (config wins, `retries: 0` too); unset,
+   * `VX_RUN_RETRIES`, then the workspace's. Never in a key. A non-negative
+   * integer; run() refuses anything else.
    */
   retries?: number
   /**
-   * `run.timeout` in ms from its flag (`--timeout 30m`), for tasks that
-   * declare no `exec.timeout`; unset, `VX_RUN_TIMEOUT`, then the
-   * workspace's. Per-task `exec.timeout` always wins. Never
-   * folded into any cache key (a timed-out task fails and is never
-   * cached), so a `--timeout` run cache-hits a plain run's entry.
-   * A positive integer of ms up to `2 ** 31 - 1`; run() refuses anything
-   * else (C-61).
+   * `--timeout 30m` in ms, for tasks without `exec.timeout`; unset,
+   * `VX_RUN_TIMEOUT`, then the workspace's. Never in a key (a timed-out task
+   * is never cached), so a `--timeout` run hits a plain run's entry. A
+   * positive integer up to `2 ** 31 - 1`; run() refuses anything else.
    */
   timeout?: number
   /**
-   * Failure propagation: 'never' stops dispatch on the first failure
-   * (in-flight tasks finish; everything queued skips), 'deps-ok'
-   * (default) skips only a failure's dependents, 'always' runs
-   * dependents even when an upstream failed — sound under pure-input
-   * hashing (failed outcomes carry the upstream's input key). CLI:
-   * `--continue[=never|deps-ok|always]`; bare `--continue` = 'always'.
+   * 'never' stops dispatch on the first failure (in-flight tasks finish,
+   * queued ones skip), 'deps-ok' (default) skips only a failure's
+   * dependents, 'always' runs them anyway, sound under pure-input hashing (a
+   * failed outcome carries the upstream's input key). Bare `--continue` =
+   * 'always'.
    */
   continueMode?: ContinueMode
   /** `--branch`; unset, `VX_RUN_BRANCH`, then git's, then the CI provider's. */
@@ -190,34 +127,124 @@ export interface RunOptions {
    */
   profile?: string
   /**
-   * Install SIGINT/SIGTERM handlers for the run's duration: forward the
-   * signal received to every live child's group (a SIGHUP as SIGTERM),
-   * close the cache, exit 128+signo (130/143). Default true. The watch loop disables this — it owns
-   * signal disposition for its whole lifetime and a cycle must never
-   * exit the process out from under it.
+   * Install SIGINT/SIGTERM handlers for the run: forward the signal to every
+   * live child's group (SIGHUP as SIGTERM), close the cache, exit 128+signo.
+   * Default true. The watch loop turns it off: it owns signals for its
+   * lifetime, and a cycle must never exit the process under it.
    */
   handleSignals?: boolean
   /**
-   * Abort the run from outside. On `abort` every live and persistent
-   * child is sent SIGINT when the abort reason is `'SIGINT'` (a Ctrl-C
-   * the embedder received), SIGTERM otherwise, given the kill grace,
-   * then SIGKILLed; nothing
-   * further is dispatched; run() returns with the killed tasks and the
-   * never-started ones `aborted`. The seam for an embedder that owns its
-   * process's lifetime instead of `handleSignals` — the watch loop aborts
-   * its in-flight cycle on SIGINT/SIGTERM this way, so a cancellation
-   * never orphans a cycle's children. A reason naming a signal
-   * (`'SIGINT'`, `'SIGTERM'`, `'SIGHUP'`) is a stop as vx's own handler
-   * makes one: the run records no history, only what finished.
+   * Abort the run from outside: live and persistent children get SIGINT for
+   * reason `'SIGINT'`, SIGTERM otherwise, then SIGKILL after the kill grace;
+   * nothing more is dispatched; killed and never-started tasks return
+   * `aborted`. For an embedder owning its process instead of `handleSignals`
+   * (the watch loop), so a cancel never orphans children. A reason naming a
+   * signal is a stop as vx's own handler makes one: no history, only what
+   * finished.
    */
   signal?: AbortSignal
   /**
-   * Hand every persistent task still running, a dependency-only one too
-   * when it declares `inputs.files`, back on `RunSummary.persistent`
-   * instead of stopping them when the graph ends.
-   * The caller owns them from then on and stops them with its `stop()`.
-   * The watch loop sets this: a dev server stays up while watch idles and
-   * is replaced only when the next cycle starts.
+   * vx's stdin is a terminal: each `exec.interactive` task is handed it,
+   * alone (placement.ts `terminalHolders`). The CLI sets it from
+   * `isatty(0)`; absent, an interactive task runs as any task.
+   */
+  tty?: boolean
+  log?: Logger
+  /**
+   * The run's event bus. Given, the orchestrator emits onto it, so a caller
+   * can subscribe before the run emits: the surface seam (the bus and
+   * serializable `WireEvent` ship; renderers live outside). The terminal
+   * renderer still subscribes. Default: a fresh bus.
+   */
+  bus?: EventBus
+  /**
+   * Shared in-flight registry keyed by task hash, from a long-lived embedder
+   * (a daemon on the façade; core ships none), so concurrent runs dedup: a
+   * task executing for one run is awaited by another, which restores the
+   * saved artifact. `vx run` passes none.
+   */
+  inflight?: Map<string, Promise<void>>
+  /**
+   * Observe-only telemetry sinks merged with the plugins': a host running
+   * others' runs attaches one without a workspace plugin. Undefined costs
+   * nothing; with no sinks from either source the zero-sink invariant holds.
+   */
+  telemetrySinks?: readonly TelemetrySink[]
+  /**
+   * The command string for the `invocations` row (`'vx run build test
+   * --all'`). Absent: `process.argv.slice(1).join(' ')`. Sinks get it with
+   * what follows `--` counted, not quoted.
+   */
+  command?: string
+  /**
+   * An injected remote cache layer, as `telemetrySinks`: a host already
+   * holding a wire client passes it and run() composes `LayeredCache(local,
+   * injected)`. It wins over the plugin `cache` capability, which avoids
+   * wrapping twice.
+   */
+  remoteCache?: RemoteCacheLayer
+  /**
+   * The largest artifact, decoded, the local cache saves, ingests or
+   * restores; default 2 GiB. A seam for a test, which cannot produce 2 GiB
+   * of output to prove the refusal: the CLI never sets it, and no config
+   * or variable reaches it.
+   */
+  artifactCeiling?: number
+}
+
+/**
+ * What only vx's own CLI hands run(): what its selection pass already
+ * learned, and `vx watch`'s plumbing. Not on the façade's RunOptions.
+ */
+export interface RunHandoff {
+  /**
+   * `projects` came from a git diff (`--affected`, a `[ref]` filter): a task
+   * name the changed projects lack is not a typo when the workspace declares
+   * it elsewhere, and a run with nothing to do is clean. Otherwise a
+   * docs-only commit turned `vx run test --affected` red.
+   */
+  selectedByDiff?: boolean
+  /**
+   * The projects an include other than `--affected` selected (`--filter
+   * other`): every include is a union, so their requested tasks run whether or
+   * not `affected` reaches them.
+   */
+  selectedOutright?: readonly string[]
+  /** Filled with why `--affected` kept each requested task; `planRun` (`--dry`) passes it. */
+  affectedReasons?: Map<string, AffectedReason>
+  /**
+   * Configs a selection pass in this process already loaded and staged with
+   * the same `cacheDir` (the CLI walks edges for `--filter 'app...'` and
+   * `--affected`), reused instead of evaluated again. One run only: a config
+   * can change between runs (`vx watch` drops it per cycle).
+   */
+  staged?: ReadonlyMap<string, ProjectEntry>
+  /**
+   * The projects a selection pass in this same process discovered under
+   * `root` (`--filter`, `--affected`, the project a run from inside one
+   * is in). The run takes them instead of
+   * walking the workspace again when its root is the same. One run only,
+   * as `staged` is.
+   */
+  discovered?: { root: string; projects: ProjectMeta[] }
+  /**
+   * The setting that asked for a remote axis (`'--cache-policy'`), named in
+   * the warning: with no cache plugin the axes are inert, and a CI job that
+   * thinks it fills a shared cache deserves one line saying it does not.
+   */
+  remoteRequested?: string
+  /**
+   * The default policy's remote write is off (`remote:r`): the CLI passes it
+   * off CI (`CI` unset, `0` or `false`) unless `--cache-policy` or
+   * `VX_CACHE_POLICY` names the remote. Dropped when the workspace's
+   * `cache.policy` names the remote.
+   */
+  remoteReadOnlyByDefault?: boolean
+  /**
+   * Hand every persistent task still running (a dependency-only one too when
+   * it declares `inputs.files`) back on `RunSummary.persistent` instead of
+   * stopping it; the caller stops it with `stop()`. The watch loop sets
+   * this: a dev server stays up while watch idles.
    */
   holdPersistent?: boolean
   /**
@@ -226,15 +253,12 @@ export interface RunOptions {
    */
   watch?: boolean
   /**
-   * The servers an earlier `holdPersistent` run handed back. Each one still
-   * up whose task this run would start again, with the same resolved
-   * config (and, for a dependency-only one, the same key), is kept running and reported ready instead of restarted; what
-   * it writes reaches this run's renderer from then on. The rest are
-   * stopped before the graph starts, so a new one never meets the old
-   * one's port. The watch loop sets it: `vx watch dev` rebuilds what the
-   * server depends on and leaves the server up. The caller still stops
-   * the earlier hand-back afterwards; that stops only what this run did
-   * not take.
+   * Servers an earlier `holdPersistent` run handed back. One still up that
+   * this run would start again with the same resolved config (and,
+   * dependency-only, the same key) is kept and reported ready; its output
+   * reaches this run's renderer. The rest stop before the graph starts, so a
+   * new one never meets the old one's port. The caller still stops the
+   * earlier hand-back; that stops only what this run did not take.
    */
   keep?: HeldPersistent
   /**
@@ -249,68 +273,11 @@ export interface RunOptions {
    * footer is the run's last word, so the caller cannot print it after.
    */
   summaryTable?: boolean
-  /**
-   * vx's stdin is a terminal: each `exec.interactive` task is handed it,
-   * alone (placement.ts `terminalHolders`). The CLI sets it from
-   * `isatty(0)`; absent, an interactive task runs as any task.
-   */
-  tty?: boolean
-  log?: Logger
-  /**
-   * Inject the run's event bus. When provided, the orchestrator emits
-   * onto it instead of creating its own — letting a caller subscribe a
-   * surface BEFORE the run starts emitting. This IS the surface seam:
-   * core ships the bus and the serializable `WireEvent`, and whatever
-   * renders them lives outside. (It used to name a `--ui` devframe dev
-   * server; no such flag exists, and core's devframe adapter was removed
-   * on 2026-08-26 — one consumer's adapter is not core's job.) The terminal renderer is still attached as a subscriber, so
-   * default output is unchanged. Default: a fresh internal bus.
-   */
-  bus?: EventBus
-  /**
-   * Shared in-flight execution registry, keyed by task hash. Supplied by a
-   * long-lived embedder (a daemon built on the façade; core ships none) so
-   * concurrent runs DEDUP work: a task
-   * already executing for one run is awaited by another (which then
-   * restores the just-saved artifact from cache) instead of re-running.
-   * A stateless `vx run` passes none and is byte-identical to before.
-   */
-  inflight?: Map<string, Promise<void>>
-  /**
-   * Additional observe-only telemetry sinks, merged with whatever the
-   * workspace plugins contribute. The embedder seam: a host executing
-   * runs on behalf of others (a daemon recording delegated runs
-   * into its own store) attaches a sink without needing a workspace
-   * plugin. Undefined → zero cost, identical to before; the telemetry
-   * host's zero-sink invariant still applies when both sources are
-   * empty.
-   */
-  telemetrySinks?: readonly TelemetrySink[]
-  /**
-   * The raw command string for the `invocations` row (e.g.
-   * `'vx run build test --all'`). When absent, run() falls back to
-   * `process.argv.slice(1).join(' ')` so programmatic callers still
-   * record something useful. Telemetry sinks get it with what follows
-   * `--` counted, not quoted, as they get the argv (C-67).
-   */
-  command?: string
-  /**
-   * An injected remote cache layer — the embedder seam mirroring
-   * `telemetrySinks`: a host that already holds a wire client (a
-   * distribution agent, a daemon executing on behalf of a submitter)
-   * passes it here and run() composes `LayeredCache(local, injected)`.
-   * Explicit injection WINS over the plugin `cache` capability (the
-   * host knows best; prevents double-wrapping when the workspace also
-   * declares a cache plugin). Undefined → identical to before.
-   */
-  remoteCache?: RemoteCacheLayer
-  /**
-   * The largest artifact, decoded, the local cache saves, ingests or
-   * restores; default 2 GiB. A seam for a test, which cannot produce 2 GiB
-   * of output to prove the refusal: the CLI never sets it, and no config
-   * or variable reaches it.
-   */
-  artifactCeiling?: number
+}
+
+/** run()'s argument inside vx: the public options and the CLI's hand-off. */
+export interface CoreRunOptions extends RunOptions {
+  handoff?: RunHandoff
 }
 
 export interface RunSummary {

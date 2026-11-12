@@ -4,15 +4,10 @@
 import { nearest, UserError } from '../util/index.js'
 
 /**
- * Independent read/write control over the two cache layers (local +
- * remote). Replaces the old single `noCache` boolean: each axis can be
- * toggled on its own so `--force` (re-execute but still refresh the
- * cache) is distinct from `--no-cache` (disable everything).
- *
- * The task-artifact get/save path is gated, and the local axes also gate
- * the local store's file-hash writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
- * prefetch-ingest are never affected — they are bookkeeping/analytics
- * that a run policy has no business disabling.
+ * Independent read/write control of the local and remote layers, so `--force`
+ * (re-run, still refresh) differs from `--no-cache`. It gates the artifact
+ * get/save path and the local file-hash writes; bookkeeping (`recordRun`,
+ * stats, prune, key derivation, prefetch-ingest) never.
  */
 export interface CachePolicy {
   localRead: boolean
@@ -35,20 +30,13 @@ export function cachesNothing(p: CachePolicy): boolean {
 }
 
 /**
- * Parse a `--cache-policy=<spec>` value into a `CachePolicy`, starting from a
- * base (defaults to {@link FULL_CACHE_POLICY}). The spec is a
- * comma-separated list of `layer:flags` segments where `layer` is
- * `local` or `remote` and `flags` is any subset of `r` (read) and `w`
- * (write), order-independent and possibly empty.
+ * Parse a `--cache-policy=<spec>` value over a base (default {@link
+ * FULL_CACHE_POLICY}): comma-separated `layer:flags`, `layer` `local` or
+ * `remote`, flags any subset of `r` and `w`. A mentioned layer is set EXACTLY
+ * to its flags; others keep the base. `remote:` turns the remote off.
  *
- * A mentioned layer is set EXACTLY to its flags (read = includes `r`,
- * write = includes `w`); an unmentioned layer keeps its base value.
- * So `local:rw,remote:r` = remote read-only, `remote:` = remote fully
- * off, `local:r` = local read-only with remote untouched.
- *
- * Throws a {@link UserError}, whose message the caller prefixes with the
- * spec's source (`--cache-policy`, `VX_CACHE_POLICY`, `cache.policy`), on an unknown layer, an unknown flag, a
- * duplicated flag, a missing colon, or a repeated layer.
+ * Throws a {@link UserError}, which the caller prefixes with the spec's source,
+ * on an unknown layer or flag, a repeated flag or layer, or a missing colon.
  */
 export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_POLICY): CachePolicy {
   const out: CachePolicy = { ...base }
@@ -95,9 +83,8 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
 }
 
 /**
- * Why `VX_CACHE_POLICY`'s value `spec` is refused, or null when it parses.
- * Its grammar is this module's, which the settings table may not import,
- * so the setting is typed a string there and checked here, before any verb.
+ * Why `VX_CACHE_POLICY`'s value is refused, or null. The settings table may not
+ * import this grammar, so it is checked here, before any verb.
  */
 export function cachePolicyEnvRefusal(spec: string): string | null {
   if (!spec.split(',').some((seg) => seg.trim().length > 0))

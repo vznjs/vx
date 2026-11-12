@@ -1,10 +1,9 @@
-// An Nx target's `dependsOn` as vx edges. Nx separates a specific
-// project's target with a COLON (`ui:build`); vx's separator is `#`.
-// Passed through, the string form read as a task named `ui:build` in the
-// DEPENDENT's own project and the migrated workspace refused to run —
-// "depends on web#ui:build but no such task is declared", from a config
-// vx-migrate itself wrote (walked the Nx path, 2026-09-20). Extracted from
-// `buildTask` in item 606; the rules are unchanged.
+// An Nx target's `dependsOn` as vx edges. Nx separates a specific project's
+// target with a COLON (`ui:build`); vx's separator is `#`. Passed through, the
+// string form read as a task named `ui:build` in the DEPENDENT's own project
+// and the migrated workspace refused to run — "depends on web#ui:build but no
+// such task is declared", from a config vx-migrate itself wrote (walked the Nx
+// path).
 
 import type { PackageMeta } from '../packages.js'
 
@@ -96,12 +95,11 @@ export function matchNxProjects(
 const TARGET_GLOB = /[*|{}()[]/
 
 /**
- * Nx (19.5+) expands a target glob in `dependsOn` over every target name
- * in the workspace (`expandWildcardTargetConfiguration`), after reading a
- * `project:` head, and keeps the edge where the project has the target.
- * Read as `project:target`, TanStack/router's `test:e2e--*` named project
- * `test` and each of 140 aggregators lost the modes it fans out to
- * (2026-09-28).
+ * Nx (19.5+) expands a target glob in `dependsOn` over every target name in the
+ * workspace (`expandWildcardTargetConfiguration`), after reading a `project:`
+ * head, and keeps the edge where the project has the target. Read as
+ * `project:target`, TanStack/router's `test:e2e--*` named project `test` and
+ * each of 140 aggregators lost the modes it fans out to.
  */
 function expandTargetGlobs(
   entries: readonly unknown[],
@@ -183,11 +181,11 @@ export function mapNxDeps(
       const project = d.slice(0, colon)
       const rest = d.slice(colon + 1)
       const m = metaByNode.get(project)
-      // Nx splits at the colon only when the head names a project; else
-      // the whole string is a target of this project (`test:unit`, as
-      // script-inferred targets are named). It was read as project `test`
-      // and the edge dropped (item 915). This project's own target ranks
-      // first (`splitTargetFromNodes`).
+      // Nx splits at the colon only when the head names a project; else the
+      // whole string is a target of this project (`test:unit`, as
+      // script-inferred targets are named). It was read as project `test` and
+      // the edge dropped. This project's own target ranks first
+      // (`splitTargetFromNodes`).
       if (ownTarget(d)) {
         deps.push(named(self, d))
         continue
@@ -224,8 +222,8 @@ export function mapNxDeps(
       // `ignore` is Nx's default; only `forward` asks for something vx lacks.
       if (o.params === 'forward') forwards.params = true
       const raw = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
-      // Nx reads a lone string as a one-entry list (`projects: "b"`); it
-      // was not representable here, and the edge dropped (item 1053).
+      // Nx reads a lone string as a one-entry list (`projects: "b"`); it was
+      // not representable here, and the edge dropped.
       const projects =
         typeof raw === 'string' && raw !== 'self' && raw !== 'dependencies' ? [raw] : raw
       if (projects === undefined || projects === 'self') {

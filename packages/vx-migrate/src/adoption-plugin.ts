@@ -1,11 +1,10 @@
 // The one shape both adoption plugins have: a `project`-stage plugin over a
-// mapping of the whole workspace, computed once per pass on the first
-// package the stage visits and shared by the rest (turbo.json and the Nx
-// graph are one source for every package, and a `dependsOn` is only valid
-// against all of them at once). Only `vx lock` runs the stage: the lock
-// records what it maps, and a run reads that and maps nothing
-// (2026-11-11). `turbo()` and `nx()` each carried this skeleton until
-// item 592; what differs is only how the mapping is made.
+// mapping of the whole workspace, computed once per pass on the first package
+// the stage visits and shared by the rest (turbo.json and the Nx graph are one
+// source for every package, and a `dependsOn` is only valid against all of them
+// at once). Only `vx lock` runs the stage: the lock records what it maps, and a
+// run reads that and maps nothing. `turbo()` and `nx()` share this
+// skeleton; what differs is only how the mapping is made.
 
 import { definePlugin, type ProjectHookContext, type VxPlugin } from '@vzn/vx'
 import { type AdoptionMapping, cachedMapping, codeId } from './mapping-cache.js'
@@ -53,9 +52,9 @@ export interface AdoptionRun {
 }
 
 /**
- * `mapRun` sees the first visit's context: the workspace root, the cache
- * dir and every package core discovered (`ctx.projects` — walking the
- * workspace again cost a 1,000-package run a second discovery, 2026-09-10).
+ * `mapRun` sees the first visit's context: the workspace root, the cache dir
+ * and every package core discovered (`ctx.projects` — walking the workspace
+ * again cost a 1,000-package run a second discovery).
  */
 export function adoptionPlugin(
   meta: ImportMeta,
@@ -66,11 +65,11 @@ export function adoptionPlugin(
   // `discover`: a project the tool has that no member glob lists.
   stages: Pick<VxPlugin, 'config' | 'discover'> = {},
 ): VxPlugin {
-  // One mapping per pass (`vx lock`, `--check`), not per process: the
-  // workspace module — and so this plugin instance — can outlive a pass,
-  // and a mapping memoized for the process mapped a package.json script
-  // edit to the old command (2026-09-10). `ctx.projects` is one array per
-  // pass, so its identity is the pass's.
+  // One mapping per pass (`vx lock`, `--check`), not per process: the workspace
+  // module — and so this plugin instance — can outlive a pass, and a mapping
+  // memoized for the process mapped a package.json script edit to the old
+  // command. `ctx.projects` is one array per pass, so its identity is the
+  // pass's.
   let mappedFor: ProjectHookContext['projects'] | undefined
   let mapping: Promise<AdoptionMapping> | undefined
   let warned = false
@@ -108,17 +107,16 @@ export function adoptionPlugin(
         // The user's own declaration wins — the plugin fills, never overwrites.
         // The mapping's own object, not a copy: the mapping is made per pass
         // (above), so nothing outlives the pass that fills from it, and core
-        // only reads a stage-given task after validating it. The copy was
-        // the per-process memo's guard and cost 10 ms at 1,000 projects,
-        // 3,000 clones (item 609).
+        // only reads a stage-given task after validating it. The copy was the
+        // per-process memo's guard and cost 10 ms at 1,000 projects, 3,000
+        // clones.
         if (!Object.hasOwn(config.tasks, t.name)) config.tasks[t.name] = t.task
       }
     },
     // The root files the mapping reads (`turbo.json`, `nx.json`) shape every
     // task and belong to no project: claimed, so `--affected` selects every
-    // project on an edit (item 961). Which tasks an edit moved would take
-    // mapping both sides; every project is the answer a claimant gives
-    // when it cannot tell.
+    // project on an edit. Which tasks an edit moved would take mapping both
+    // sides; every project is the answer a claimant gives when it cannot tell.
     ...(reads.length > 0 ? { fingerprint: { files: reads, affected: () => undefined } } : {}),
     ...stages,
   })

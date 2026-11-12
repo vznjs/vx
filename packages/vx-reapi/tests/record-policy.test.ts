@@ -52,7 +52,7 @@ const quiet = {
 
 /** One run of `pkg#gen` on a fresh local cache: the key, what ran, the bytes left. */
 async function gen(
-  options: { cache?: CachePolicy; remoteReadOnlyByDefault?: boolean },
+  options: { cache?: CachePolicy; handoff?: { remoteReadOnlyByDefault: boolean } },
   cacheDir: string,
 ): Promise<{ key: string | undefined; executed: number; out: string }> {
   const before = executes()
@@ -122,7 +122,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record follows the run policy', (
 
   it('a run off CI writes no record a later run replays', async () => {
     answer('LAPTOP\n')
-    const laptop = await gen({ remoteReadOnlyByDefault: true }, 'c1')
+    const laptop = await gen({ handoff: { remoteReadOnlyByDefault: true } }, 'c1')
     expect(laptop).toMatchObject({ executed: 1, out: 'LAPTOP\n' })
     expect(fake.actions.has(execDigestFor(laptop.key!).hash)).toBe(false)
 
@@ -131,7 +131,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record follows the run policy', (
     expect(ci).toMatchObject({ key: laptop.key, executed: 1, out: 'CI\n' })
     expect(fake.actions.has(execDigestFor(ci.key!).hash)).toBe(true)
     // Off CI what CI wrote is read (control).
-    expect(await gen({ remoteReadOnlyByDefault: true }, 'c3')).toMatchObject({
+    expect(await gen({ handoff: { remoteReadOnlyByDefault: true } }, 'c3')).toMatchObject({
       executed: 0,
       out: 'CI\n',
     })

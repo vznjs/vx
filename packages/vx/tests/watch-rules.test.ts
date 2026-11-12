@@ -11,7 +11,8 @@ import fs, { chmodSync, existsSync, statSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
-import { pendingAfterCycle, watchCmd } from '../src/cli/watch.js'
+import { watchCmd } from '../src/cli/watch.js'
+import { pendingAfterCycle } from '../src/cli/watch-loop.js'
 import { sweepConfigs } from '../src/cli/watch-set.js'
 import { discoverCliProjects } from '../src/cli/workspace-config.js'
 import {
@@ -20,7 +21,7 @@ import {
   makeWatchIgnore,
 } from '../src/cli/watch-filter.js'
 import { armWatcher, modifiedBefore, pollWatcher, WATCH_PROBE } from '../src/cli/watch-fs.js'
-import { fsClockNow } from '../src/cache/index.js'
+import { fsClockNow } from '../src/memo/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { lock } from './helpers/orchestrator.js'

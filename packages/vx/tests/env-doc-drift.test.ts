@@ -80,8 +80,8 @@ describe('every page stating the PATH prefix states all of it', () => {
     'execution.md',
     'schema.md',
     'architecture.md',
-    'modules/env.md',
-    'modules/execute-task.md',
+    'modules/exec.md',
+    'modules/orchestrator.md',
   ]
 
   it.each(PAGES)("%s names the workspace root's bin beside the project's", (rel) => {
@@ -91,7 +91,7 @@ describe('every page stating the PATH prefix states all of it', () => {
       expect(b).toMatch(/<workspaceRoot>\/node_modules\/\.bin|(?:WORKSPACE ROOT|workspace root)'s/)
   })
 
-  it.each(['execution.md', 'schema.md', 'modules/env.md'])(
+  it.each(['execution.md', 'schema.md', 'modules/exec.md'])(
     '%s says a bin directory holding the delimiter is left out',
     (rel) => {
       expect(prefixBlocks(rel).join(' ')).toMatch(/delimiter.{0,40} (?:is )?left out/)

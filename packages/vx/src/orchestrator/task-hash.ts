@@ -1,8 +1,16 @@
 import { lstatSync } from 'node:fs'
 import path from 'node:path'
 import type { InputStability, TaskConfig } from '../config.js'
-import type { FoldMemo, ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
+  type FoldMemo,
+  FILE_HASH_RACY_MS,
+  racyWindowMs,
+  stampGrainMs,
+  WORKSPACE_OUTPUT_PREFIX,
+} from '../memo/index.js'
+import {
+  type ProjectFilesCache,
+  type WorkspaceFilesCache,
   ABSENT_INPUT,
   absentOr,
   addedInput,
@@ -14,14 +22,10 @@ import {
   type InputListing,
   type CacheKeyInput,
   type CacheLayer,
-  FILE_HASH_RACY_MS,
-  racyWindowMs,
   resolveInputs,
-  stampGrainMs,
   type ResolveInputsArgs,
   type GitFilesCache,
   type TaskInputComponent,
-  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import {
@@ -35,6 +39,7 @@ import { GROUP_VIA } from '../history/index.js'
 import {
   isUserError,
   keysSorted,
+  memoParts,
   relPosix,
   secretMask,
   span,
@@ -45,18 +50,10 @@ import { outputsLeft } from './run-report.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 /**
- * Per-run memoization caches for what doesn't change across tasks within
- * one run:
- *   - `projectFiles`: keyed by the project and its input DECLARATION.
- *     Tasks of one project that declare the same inputs and outputs
- *     resolve the same file list; see `ProjectFilesCache`.
- *   - `taskConfig`: keyed by the resolved-config object reference.
- *     Each task's config is created once at prepareRun time; the
- *     JSON.stringify + xxh3 of it is deterministic. WeakMap so
- *     entries free when the orchestrator is done.
- *
- * The whole memo is optional — the helpers fall back to computing
- * fresh when it is missing.
+ * Per-run memos for what does not change across tasks:
+ * - `projectFiles`: by project and input declaration (`ProjectFilesCache`).
+ * - `taskConfig`: by resolved-config identity; a WeakMap, freed with the run.
+ *   Optional: the helpers compute fresh without it.
  */
 export interface HashCache {
   taskConfig: WeakMap<TaskConfig, string>
@@ -74,10 +71,9 @@ export interface HashCache {
 }
 
 /**
- * `.vx/workspace`'s `outputs.clean`, after the config stage, by the run's
- * hash cache: a task without its own runs under it, so its key folds it
- * (`hashableConfig`). Beside `HashCache`, not on it: that type is the
- * package's surface.
+ * The workspace `outputs.clean` after the config stage: a task without its own
+ * runs under it, so its key folds it (`hashableConfig`). Beside `HashCache`,
+ * which is the package's surface.
  */
 const workspaceClean = new WeakMap<HashCache, boolean>()
 
@@ -87,10 +83,9 @@ export function workspaceCleanOf(hashCache: HashCache): boolean | undefined {
 }
 
 /**
- * The `inputs.stability.strategy` of `VX_INPUTS_STABILITY_STRATEGY` (`run`,
- * beating a task's own) and of `.vx/workspace` (beaten by it), by the run's
- * hash cache: it decides which saves are kept, so a key folds the one a
- * task runs under (`hashableConfig`). Beside `HashCache` as the clean is.
+ * The `inputs.stability.strategy` from `VX_INPUTS_STABILITY_STRATEGY` (beating
+ * the task's) and the workspace (beaten by it): it decides which saves are
+ * kept, so a key folds the one the task runs under.
  */
 const inputStrategies = new WeakMap<HashCache, InputStrategies>()
 
@@ -131,11 +126,8 @@ export interface ComputeHashArgs {
   gitFilesCache?: GitFilesCache
   hashCache?: HashCache
   /**
-   * When provided, the resolved `CacheKeyInput` components are pushed
-   * here (one per key contribution) so the caller can persist them.
-   * No effect on the returned hash — pure capture of values `key()`
-   * already folds. The push happens inside `cache.key()` at each fold
-   * site, so the recorded set can't drift from the key.
+   * When provided, each `CacheKeyInput` component is pushed here as
+   * `cache.key()` folds it, so the persisted set cannot drift from the key.
    */
   captureInto?: TaskInputComponent[]
   /**
@@ -156,15 +148,12 @@ export async function keyOf(derived: Promise<string>): Promise<string> {
 }
 
 /**
- * Resolve every input the cache key depends on (file content, env
- * values, upstream hashes, config bytes, forwardArgs) and ask the cache layer to combine them. Used by both
- * `executeTask` for the real run and `plan()` for `--dry`
- * previews.
+ * Resolve every input the key depends on (files, env, upstream hashes, config,
+ * forwardArgs) and have the cache layer combine them. Used by `executeTask` and
+ * `plan()`.
  *
- * Caller is responsible for handling the group-task case before
- * calling this — an unkeyed group has no `exec` and no `inputs`, so the
- * key-derivation steps below would all fall back to defaults.
- * `computeGroupKey` is exported for that purpose.
+ * The caller handles groups first with `computeGroupKey`: an unkeyed group has
+ * no `exec` or `inputs`.
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   if (isKeyless(args.node.config)) return keylessHash(args.node.id)
@@ -182,7 +171,7 @@ async function taskHash(args: ComputeHashArgs): Promise<string> {
     // The files fold last, so a fold up to them seeded into their token
     // names the key the whole fold would: the files go unresolved.
     const head = foldHead((await resolveKeyInput(args, true)).input)
-    const probe = xxh3hex(`${FOLD_MEMO_VERSION}\0${token}`, head)
+    const probe = FOLD_PARTS.token(FOLD_MEMO_VERSION, { head, files: token })!
     const known = folds.get(args.node.id, probe)
     if (known !== undefined) return known
     const key = await args.cache.key(
@@ -196,12 +185,10 @@ async function taskHash(args: ComputeHashArgs): Promise<string> {
 }
 
 /**
- * `input` with every file the index vouches no OID for named by the
- * identity the run already learned for it (`identityOf`), so a file many
- * tasks read is stat'ed and looked up once, not once per task. The map is
- * the fold's fast path and nothing more (`CacheKeyInput.fileHashes`): each
- * answer is `hashFile`'s own, so the key is the one the fold would derive.
- * A file whose hash fails is left out, and the fold asks for it itself.
+ * `input` with each file the index vouches no OID for named by the identity the
+ * run already learned (`identityOf`), so a file many tasks read is stat'ed
+ * once. A fast path only: each answer is `hashFile`'s own. A file whose hash
+ * fails is left for the fold to ask.
  */
 async function knownIdentities(
   args: ComputeHashArgs,
@@ -226,7 +213,7 @@ async function knownIdentities(
     else ask.push(f)
   }
   const epoch = run.factsEpoch
-  const learned = await hashFilesOf(args.cache, ask)
+  const learned = await hashFilesOf(args.cache.memo, ask)
   run.learnIdentities(learned, epoch)
   for (const [f, id] of learned) known.set(f, id)
   return { ...input, fileHashes: known }
@@ -238,10 +225,16 @@ async function knownIdentities(
  */
 const FOLD_MEMO_VERSION = 'fold-memo-v1'
 
+/** A task's fold up to its files (`foldHead`) and the token of the files it would resolve. */
+const FOLD_PARTS = memoParts<{ head: bigint; files: string }>({
+  head: (head) => head.toString(36),
+  files: (files) => files,
+})
+
 /**
- * A task that runs a command and declares no `inputs`: nothing says what
- * it read, so no key can stand for its outputs, and a key that folds it
- * would replay a stale entry (2026-10-16).
+ * A task that runs a command and declares no `inputs`: nothing says what it
+ * read, so no key can stand for its outputs, and a key that folds it would
+ * replay a stale entry.
  */
 export function isKeyless(task: TaskConfig): boolean {
   return task.exec !== undefined && task.inputs === undefined
@@ -260,10 +253,9 @@ function keylessHash(taskId: string): string {
 }
 
 /**
- * One file the key folded: the digest it folded, and since when (ms since
- * the epoch) that digest is known to be the file's content — the
- * enumeration's start for an index OID (`git status` vouched for it then),
- * the describe's start for a digest hashed from the file.
+ * One folded file: its digest, and since when (epoch ms) that digest is known
+ * to be its content: the enumeration's start for an index OID, the describe's
+ * start for a hashed one.
  */
 export interface InputFact {
   path: string
@@ -284,13 +276,10 @@ export interface InputFact {
 }
 
 /**
- * The key AND the structured input set behind it, for the executor seam.
- * Miss path only: it re-runs the (memoized) resolution `computeTaskHash`
- * did for the probe and retains the VALUES the key folded — env, runtime
- * output, per-file digests — which `captureInto` deliberately reduces to
- * digests because its rows are persisted. Per-file digests come from the
- * same sources as the fold: the index-OID map for clean tracked files,
- * else `hashFile`'s stat memo (already warm after `key()`).
+ * The key and the input set behind it, for the executor seam, miss path only:
+ * it re-runs the memoized resolution and keeps the values the key folded (env,
+ * runtime output, per-file digests), which `captureInto` reduces to digests.
+ * Per-file digests come from the same sources as the fold.
  */
 export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   hash: string
@@ -310,13 +299,13 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     sorted.map(
       (f) =>
         input.fileHashes?.get(f) ??
-        hashFileSeen(args.cache, f, (c) => ctimes.set(f, c)).catch(absentOr),
+        hashFileSeen(args.cache.memo, f, (c) => ctimes.set(f, c)).catch(absentOr),
     ),
   )
   // Learned BEFORE the key folds it: an edit in between then reads as a
   // move at the re-check (a withheld save), never as content the key
   // did not fold matching it (a stale entry).
-  const hashFile = (f: string): Promise<string> => args.cache.hashFile(f)
+  const hashFile = (f: string): Promise<string> => args.cache.memo.hashFile(f)
   const behind = new Map<string, string>()
   await Promise.all(
     sorted.map(async (f, i) => {
@@ -349,24 +338,19 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     if (linked !== undefined) fact.behind = linked
     return fact
   })
-  // Groups expanded: this list describes the INPUT ROOT, not the key, and a
-  // group produces nothing of its own (see `CacheKeyInput.upstreamGraft`).
-  // Sorted by hash so the list — and any action digest derived from it — is
-  // independent of dependency declaration order.
+  // Groups expanded: this describes the input root, not the key, and a group
+  // produces nothing (`CacheKeyInput.upstreamGraft`). Sorted by hash, so it is
+  // independent of declaration order.
   const graft = [...(input.upstreamGraft ?? [])].sort((a, b) =>
     a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0,
   )
-  // Output lists come from the local index — one SELECT for every upstream
-  // entry. A non-cacheable upstream keeps no entry: its list is its
-  // declared outputs as they are on disk now (`readUpstream`), as it ran
-  // here and a local dependant reads them here. Left empty, a remote
-  // executor shipped the dependant without them and its result was saved
-  // under the key.
-  // Read on first access: the local floor never reads it, and its every
-  // miss paid a query over the whole closure (execute-task reads it up
-  // front for a plugin executor).
+  // Output lists from the local index, one SELECT for every upstream entry. A
+  // non-cacheable upstream has no entry: its list is its declared outputs on
+  // disk now (`readUpstream`); left empty, a remote executor shipped the
+  // dependant without them and saved the result. Read on first access: the
+  // local floor never reads it.
   const listUpstream = (onDisk?: ReadonlyMap<string, string[]>): TaskInputs['upstream'] => {
-    const rows = args.cache.loadOutputFilesBatch(graft.map((g) => g.hash))
+    const rows = args.cache.memo.loadOutputFilesBatch(graft.map((g) => g.hash))
     return graft.map((g) => {
       const outputs =
         onDisk?.get(g.taskId) ??
@@ -421,26 +405,19 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
 }
 
 /**
- * The first input whose content may no longer be the digest the key folded
- * (item 743), or undefined when every one still is. One `lstat` per file:
- * a file whose ctime is older than its fact (by the racy window, as git
- * judges its index) has not been written since, and one that is not gets
- * hashed again and compared. ctime, because no writer can set it back. A
- * file that is gone has moved. One written after `commandFrom` (read off
- * the file system's clock, `fsClockNow`, just after the describe) has moved
- * whatever it holds now: an input changed and changed BACK while the
- * command ran matched its digest again, and the entry saved the other
- * content's output under the key (item 1015). A write before it — an
- * upstream's — is judged by content, as before. A coarse clock dates a
- * write in `commandFrom`'s own tick at it, before or after: such a ctime is
- * the upstream's when the describe's stat saw it already
- * (`InputFact.ctimeMs`), else the command's.
- * `byBytes` (`inputs.stability.strategy: 'mutable'`) judges a write during
- * the command by content too, when it answers true for that file and its
- * ctime: the task says the same bytes are its own identical rewrite
- * (tsdown's package.json), not an edit undone, unless another command that
- * may write the file ran until then (command-windows.ts). A link's content
- * behind it (`InputFact.behind`) is followed again and compared.
+ * The first input whose content may no longer be the folded digest, or
+ * undefined. One `lstat` per file: a ctime older than its fact (by the racy
+ * window, as git judges its index) is unwritten since (no writer can set ctime
+ * back); otherwise it is hashed and compared. A gone file has moved. One
+ * written after `commandFrom` (the file system's clock) has moved whatever it
+ * holds: an input changed and changed back during the command matched its
+ * digest, and the entry saved the other content's output. A write before it (an
+ * upstream's) is judged by content. A coarse clock's same-tick ctime is the
+ * upstream's if the describe already saw it (`InputFact.ctimeMs`), else the
+ * command's. `byBytes` (`strategy: 'mutable'`) judges a mid-command write by
+ * content when it answers true: the task's own identical rewrite (tsdown's
+ * package.json), unless another writer ran until then (command-windows.ts). A
+ * link's target (`InputFact.behind`) is followed again.
  */
 export async function movedInput(
   facts: readonly InputFact[],
@@ -476,12 +453,12 @@ export async function movedInput(
     if (ctimeMs >= f.since - racyWindowMs(ctimeMs, FILE_HASH_RACY_MS)) suspects.push(f)
   }
   for (const f of suspects) {
-    const now = await cache.hashFile(f.path).catch(() => undefined)
+    const now = await cache.memo.hashFile(f.path).catch(() => undefined)
     if (now !== f.digest) return f.path
   }
   // What a link points to changes without touching the link: each is
   // followed again (links are rare, so a task without one pays nothing).
-  const hashFile = (file: string): Promise<string> => cache.hashFile(file)
+  const hashFile = (file: string): Promise<string> => cache.memo.hashFile(file)
   for (const f of facts) {
     if (f.behind !== undefined && (await behindLink(f.path, hashFile)) !== f.behind) return f.path
   }
@@ -489,9 +466,9 @@ export async function movedInput(
 }
 
 /**
- * A task's `filesToken`, as its key's fold memo probe takes it: the fields
- * of `inputsArgs` the token reads, and no more. Built through `inputsArgs`,
- * two spread objects per call were ~3 ms of 3,202 (2026-11-07).
+ * A task's `filesToken`, as its key's fold memo probe takes it: the fields of
+ * `inputsArgs` the token reads, and no more. Built through `inputsArgs`, two
+ * spread objects per call were ~3 ms of 3,202.
  */
 export function taskFilesToken(
   args: Pick<ComputeHashArgs, 'node' | 'workspaceRoot' | 'nestedProjectDirs'> & {
@@ -563,10 +540,9 @@ async function resolveKeyInput(
   const upstreamHashes = upstreamPairs.map(([, hash]) => hash)
   // hash → upstream task id, for capture-row naming only (not folded).
   const upstreamIds = new Map(upstreamPairs.map(([id, hash]) => [hash, id]))
-  // A group records no run and keeps no fingerprints, so `vx why` could not
-  // see past one: each folded group's members are captured as rows of their
-  // own, named through it. Rows only, never folded: the group's hash already
-  // folds theirs.
+  // A group keeps no fingerprints, so `vx why` could not see past one: its
+  // members are captured as rows named through it. Rows only: the group's hash
+  // already folds theirs.
   if (args.captureInto !== undefined) {
     const folded = new Set(upstreamPairs.map(([id]) => id))
     for (const g of args.upstream) {
@@ -581,23 +557,17 @@ async function resolveKeyInput(
       }
     }
   }
-  // The DEPENDENCY closure, groups expanded — for the executor's input root.
-  // Deliberately NOT the filtered set above: `inputs.tasks` says which
-  // upstream KEYS this task's key folds, and what a task may READ is
-  // `dependsOn`. Locally every dependency's outputs are on disk before the
-  // command runs however the filter is written, so an executor that ships the
-  // input closure has to ship the same thing or the task sees less remotely
-  // than it does here. Not folded — see `upstreamGraft`.
+  // The dependency closure, groups expanded, for the executor's input root. Not
+  // the filtered set: `inputs.tasks` says which keys fold, `dependsOn` what a
+  // task may read, and locally every dependency's outputs are on disk, so a
+  // remote must ship the same. Not folded (`upstreamGraft`).
   const upstreamGraft = expandGroupUpstream(args.upstream)
     .filter((u) => u.hash !== undefined)
     .map((u) => ({ taskId: u.node.id, hash: u.hash!, projectDir: u.node.projectDir }))
-  // Trusted index-OID map for this project (populated by the run's
-  // bulk `git ls-files -s` + `git status` pass). Mapped files skip
-  // hashFile entirely; everything else falls back to the identical
-  // in-process blob-OID computation. Tasks declaring workspaceFiles
-  // also merge the workspace-wide partition's OIDs (keyed by abs
-  // path, so the two maps agree wherever they overlap).
-  // A fold that stops short of the files reads no OID: asking built the map.
+  // This project's trusted index-OID map (the run's bulk `git ls-files -s` +
+  // `git status`): mapped files skip hashFile, the rest compute the same blob
+  // OID in process. A workspaceFiles task merges the workspace partition's OIDs
+  // (by absolute path). A fold that stops short of files reads no OID.
   let fileHashes = skipFiles ? undefined : args.gitFilesCache?.oidsFor(args.node.projectDir)
   if (!skipFiles && (cfg.inputs?.workspaceFiles?.length ?? 0) > 0) {
     const wsOids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
@@ -633,17 +603,10 @@ async function resolveKeyInput(
 }
 
 /**
- * Hash the resolved task config. Folds every config-time decision
- * (command, env names, dependsOn, cache directives, outputs,
- * passThroughEnv list, etc.) into the cache key. Imported values
- * participate because the loader has already baked them into the
- * resolved object before we serialize.
- *
- * A loaded config is JSON data: every load path refuses a value JSON
- * cannot carry (workspace/json-data.ts, item 701), so this JSON is the
- * config as vx reads it. The `hashCache.taskConfig` WeakMap is consulted first —
- * each task's config object is created once per run, so a hit there
- * skips the JSON.stringify + xxh3 entirely.
+ * Hash the resolved task config: every config-time decision folds into the key,
+ * imported values included (the loader baked them in). Every load path refuses
+ * non-JSON values (workspace/json-data.ts), so this JSON is the config as vx
+ * reads it. The WeakMap memo skips stringify and xxh3 on a repeat.
  */
 export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
   if (hashCache) {
@@ -658,15 +621,13 @@ export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
 
 /**
  * The config as the task runs it, where a run-level value changes what is
- * saved: folded as the task's own field would be, and only then, so every
- * key that never ran under one stays.
+ * saved: folded as the task's own field would be, and only then, so keys that
+ * never ran under one stay.
  *
- * A workspace `outputs.clean: false` saves whatever the outputs held before
- * the command, a leftover included: a key that missed it hit that entry
- * once the clean was back on. An `inputs.stability.strategy` other than
- * `'immutable'` keeps a save the check withholds (`'unchecked'`, one whose
- * input moved under the command): unfolded, that entry was hit once the
- * check was back on, and a formatter it covered never ran.
+ * Workspace `outputs.clean: false` saves leftovers: a key that missed it hit
+ * that entry once the clean was back. A non-`'immutable'` strategy keeps a save
+ * the check would withhold: unfolded, that entry was hit once the check was
+ * back.
  */
 function asRun(cfg: TaskConfig, hashCache: HashCache): TaskConfig {
   let out = cfg
@@ -686,30 +647,17 @@ function asRun(cfg: TaskConfig, hashCache: HashCache): TaskConfig {
 }
 
 /**
- * Project the config for hashing: `exec.remote` (and `exec.worker`) is a pure PLACEMENT hint
- * with zero effect on outputs, so it is stripped — pinning a task to this
- * machine never busts a cache. It must not: the whole contract of a remote
- * executor is that the same command over the same inputs produces the
- * same outputs, so a key that moved when placement changed would split a
- * laptop from a worker pool over nothing. (`exec.resources` rode the same
- * rule until 2026-09-12, when reservations left the config for the
- * schedule plugin that learns them; a config never declares them now.) A
- * config that declares no `remote` takes the fast path. That is a
- * SHORTCUT, not the reason the field needed no CACHE_VERSION bump:
- * measured (item 505), the spread path stringifies byte-identically for
- * every config that HAS an `exec`, since a spread keeps an existing key
- * in place. Its one behavioural case is a config with NO `exec`, where
- * the spread would add `exec: {}` — and nothing reaches here that way,
- * proven by throwing on a no-exec config and running the whole suite:
- * a group takes `computeGroupKey`, and a keyed group has no `exec`, so no
- * `remote`. `timeout`/`retries` stay folded — their keys are
- * distinct by design (see the decision log); stripping them retroactively
- * would bump CACHE_VERSION.
+ * Project the config for hashing: `exec.remote` and `exec.worker` are placement
+ * only, so they are stripped: the same command over the same inputs gives the
+ * same outputs wherever it runs, and a key moving with placement would split a
+ * laptop from a pool. A config with no `remote` takes the fast path; the spread
+ * is byte-identical for any config with an `exec`, and none without one reaches
+ * here. `timeout`/`retries` stay folded by design.
  */
 function hashableConfig(cfg: TaskConfig): unknown {
-  // Keys sorted: moving `cache` above `exec`, or a `define` in another
-  // order, missed every key of the task, and a `project` or `graph` plugin
-  // writes a config the lock never sorted (2026-10-25).
+  // Keys sorted: moving `cache` above `exec`, or a `define` in another order,
+  // missed every key of the task, and a `project` or `graph` plugin writes a
+  // config the lock never sorted.
   const env = cfg.inputs?.env
   const pass = cfg.exec?.env?.passThrough
   const secret = cfg.exec?.env?.secret
@@ -762,11 +710,9 @@ export interface UpfrontGroupKey {
 }
 
 /**
- * Derive a stable hash for a group task (no `exec`) from its upstream
- * outcomes. Lets downstream tasks that filter `inputs.tasks` to
- * include a group still invalidate naturally when anything beneath
- * the group changes. Sorted so the hash is order-independent. Empty
- * group (no upstream) yields a fixed sentinel hash.
+ * A group's hash (no `exec`) from its upstream outcomes, so a dependent folding
+ * the group invalidates when anything beneath it changes. Sorted,
+ * order-independent; an empty group gets a fixed sentinel.
  */
 export function computeGroupHash(upstream: TaskOutcome[]): string {
   const ids = upstream

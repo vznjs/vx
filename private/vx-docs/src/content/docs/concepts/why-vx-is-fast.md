@@ -129,7 +129,7 @@ $ VX_DEBUG_TIMING=1 vx run @demo/app#build
 ```
 
 Rows under 1 ms are cut here. See
-[Timing](../../modules/timing/) for the full table.
+[Timing](../../modules/util/#srcutiltimingts--vx_debug_timing-stage-table) for the full table.
 
 ## Go deeper
 

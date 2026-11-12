@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { runGraph } from '../src/graph/scheduler.js'
+import { type TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
@@ -14,13 +15,18 @@ function node(id: string, deps: string[] = []): TaskNode {
   }
 }
 
-const outcome = (n: TaskNode, status: TaskOutcome['status'] = 'success'): TaskOutcome => ({
-  node: n,
-  status,
-  exitCode: status === 'success' ? 0 : 1,
-  durationMs: 0,
-  hash: `h-${n.id}`,
-})
+const outcome = (
+  n: TaskNode,
+  status: TaskOutcome['status'] = 'success',
+  hash = `h-${n.id}`,
+): TaskOutcome =>
+  ({
+    node: n,
+    status,
+    exitCode: status === 'success' ? 0 : 1,
+    durationMs: 0,
+    hash,
+  }) as TaskOutcome
 
 function graph(...ns: TaskNode[]): Map<string, TaskNode> {
   return new Map(ns.map((n) => [n.id, n]))
@@ -48,7 +54,7 @@ describe('ScheduleOptions.settleNow (X-192)', () => {
         asked.push(n.id)
         if (n.id !== 'a#group') return undefined
         expect(upstream.map((u) => u.node.id)).toEqual(['a#build'])
-        return () => ({ ...outcome(n), hash: 'settled' })
+        return () => outcome(n, 'success', 'settled')
       },
       onStart: (n) => started.push(n.id),
       onFinish: (o) => finished.push(o.node.id),
@@ -114,7 +120,7 @@ describe('ScheduleOptions.settleNow (X-192)', () => {
       settleNow: (n) => () => {
         events.push(`thunk ${n.id}`)
         if (n.id === 'b#build') throw new Error('boom')
-        return { ...outcome(n), hash: 'settled' }
+        return outcome(n, 'success', 'settled')
       },
       onStart: (n) => events.push(`start ${n.id}`),
       onFinish: (o) => events.push(`finish ${o.node.id}`),
@@ -146,11 +152,11 @@ describe('ScheduleOptions.settleNow (X-192)', () => {
       },
       settleNow: (n) => {
         if (n.id !== 'b#build') return undefined
-        return () => (settled = { ...outcome(n), hash: 'settled' })
+        return () => (settled = outcome(n, 'success', 'settled'))
       },
       onFinish: (o) => heard.set(o.node.id, o),
     })
     expect(heard.get('b#build')).toBe(settled!)
-    expect(settled!.queuedMs).toBeGreaterThan(0)
+    expect(settled!.timing?.queuedMs).toBeGreaterThan(0)
   })
 })

@@ -28,13 +28,13 @@ export class GithubSummarySink implements TelemetrySink {
     const markdown = renderJobSummary(this.summary, this.title)
     // Reported, not thrown: a telemetry sink may never break a run.
     try {
-      // Clamped: past GitHub's 1 MiB cap the runner drops the summary whole,
-      // so a bounded page beats none. The cap covers the step's whole file,
-      // and a page clamped to 1 MiB after another writer's output lost both
-      // (F-42): the room is what is left.
+      // Clamped: past GitHub's 1 MiB cap the runner drops the summary whole, so
+      // a bounded page beats none. The cap covers the step's whole file, and a
+      // page clamped to 1 MiB after another writer's output lost both: the room
+      // is what is left.
       const used = await this.sizeOf(this.file)
-      // After another writer the page starts on its own line: one that left
-      // no final newline ran vx's heading into its paragraph (F-51).
+      // After another writer the page starts on its own line: one that left no
+      // final newline ran vx's heading into its paragraph.
       const lead = used > 0 ? '\n' : ''
       const page = clampJobSummary(markdown, MAX_JOB_SUMMARY_BYTES - used - lead.length)
       if (page === '') {

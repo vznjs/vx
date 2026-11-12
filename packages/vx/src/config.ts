@@ -35,12 +35,11 @@ export interface WorkspaceConfig {
   lock?: LockSettings
   watch?: WatchSettings
   /**
-   * Plugins registered for this workspace, consulted in this order once
-   * per `vx run`: each fills any of the pipeline stages and capabilities
-   * below, and core's own executor and cache store sit at the tail of
-   * every list. See `docs/design/pipeline-2026-09.md`. An `undefined`,
-   * `null` or `false` entry is skipped, so a factory that declines
-   * (`github()` off Actions) or `cond && plugin()` needs no filter.
+   * Plugins for this workspace, consulted in this order once per `vx run`:
+   * each fills any of the stages and capabilities below, with core's
+   * executor and cache store at the tail of every list
+   * (`docs/design/pipeline-2026-09.md`). An `undefined`, `null` or `false`
+   * entry is skipped, so `cond && plugin()` needs no filter.
    */
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
@@ -59,9 +58,8 @@ export interface RunSettings {
    */
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   /**
-   * A task's time limit, for tasks without their own `exec.timeout` (which
-   * beats every run-level source). A runaway-process guard: a timed-out
-   * task fails and is never cached. Omitted → no limit.
+   * A task's time limit, for tasks without their own `exec.timeout`. A
+   * timed-out task fails and is never cached. Omitted → no limit.
    */
   timeout?: Duration
   /** Re-runs of a failed task, for tasks without their own `exec.retries`. Omitted → 0. */
@@ -110,9 +108,9 @@ export interface CacheSettings {
   /** Which remote hits land on disk: `all` (the default), only the requested tasks' (`toplevel`), or `none`. */
   download?: 'all' | 'toplevel' | 'none'
   /**
-   * Which runs keep a failed task's log and the files its outputs left in
-   * the remote: CI runs (`'ci'`, the default), runs off CI (`'local'`), or
-   * both (`'always'`). Only a run whose policy writes a remote keeps any.
+   * Which runs keep a failed task's log and leftover outputs in the
+   * remote: `'ci'` (default), `'local'` or `'always'`. Only a run whose
+   * policy writes a remote keeps any.
    */
   upload?: { failures?: 'ci' | 'local' | 'always' }
   /**
@@ -179,25 +177,20 @@ export interface DependencyRule {
 }
 
 /**
- * The runtime brand `definePlugin` stamps on a plugin: the name of the
- * package it was defined in. The workspace loader accepts a plugin only
- * when this is present and equals `name`, so a plugin's name is its
- * package name and nothing else — no field to set, no override. A
- * registry symbol on purpose: a plugin package imports its own copy of
- * `@vzn/vx` beside a compiled binary's, and the two copies must stamp
- * and check the same key.
+ * The brand `definePlugin` stamps on a plugin: its package's name. The
+ * loader accepts a plugin only when this equals `name`, so a plugin's name
+ * is its package name, with no override. A registry symbol: a plugin
+ * package's own copy of `@vzn/vx` and a compiled binary's must share the
+ * key.
  */
 export const PLUGIN_PACKAGE: unique symbol = Symbol.for('vx.plugin.package')
 
 /**
- * Structural plugin shape — any subset of the pipeline stages
- * (`config`/`project`/`graph`/`key`/`schedule`), run-level capabilities
- * (`cache`/`executor`/`telemetry`/`output`) and CLI `commands`, plus optional
- * `setup`/`teardown`. The fully-typed `VxPlugin` lives in
- * `src/orchestrator/plugin.ts` and is what users import; this is a
- * re-declaration with opaque function types so `config.ts` stays a leaf
- * module (no orchestrator import). The orchestrator casts to `VxPlugin`
- * before consulting capabilities.
+ * Structural plugin shape: any subset of the stages, capabilities
+ * (`cache`/`executor`/`telemetry`/`output`) and `commands`, plus
+ * `setup`/`teardown`. The typed `VxPlugin` (src/orchestrator/plugin.ts) is
+ * what users import; this re-declaration with opaque function types keeps
+ * `config.ts` a leaf module.
  */
 export interface Plugin {
   /** The package name — set by `definePlugin`, never by the plugin. */
@@ -221,12 +214,10 @@ export interface Plugin {
 }
 
 /**
- * Every hook a plugin may fill, in pipeline order — THE list. The loader's
- * "must be a function" and "at least one of" checks, the host's stage gate
- * and `vx info`'s seam column all read it, so a stage added here is a stage
- * everywhere: `admit` reached `vx info` a day late (2026-09-12) because
- * that column kept its own copy, and the loader kept a third. The type
- * pin below refuses a list that drifts from `Plugin`'s keys either way.
+ * Every hook a plugin may fill, in pipeline order: the one list the
+ * loader's checks, the host's stage gate and `vx info` read, so a stage
+ * added here is added everywhere. The type pin below refuses a list that
+ * drifts from `Plugin`'s keys.
  */
 export const PLUGIN_HOOKS = [
   'config',
@@ -279,37 +270,25 @@ export interface ProjectConfig {
 
 export interface TaskConfig {
   /**
-   * Optional one-line description of what this task does. Surfaced in
-   * the interactive task picker and the `--dry` text view so users
-   * can grep for what each task does without opening every config.
-   *
-   * No effect on scheduling or execution. It DOES participate in the
-   * cache key, because the key hashes the whole resolved task config
-   * (`docs/caching.md`, step 5) — deliberate: editing a description
-   * isn't a correctness change, but a one-off re-run costs little and
-   * carving exceptions out of the resolved object is what invites
-   * stale hits.
+   * Optional one-line description, shown in the task picker and `--dry`.
+   * No effect on scheduling, but it is in the key, since the key hashes
+   * the whole resolved config (`docs/caching.md`): carving exceptions out
+   * of it invites stale hits.
    */
   description?: string
   /**
-   * Shell command + optional env. One command per task. Omit `exec` to
-   * declare a **group task** — a no-op that exists only to chain
-   * `dependsOn`. Running a group is equivalent to running its
-   * dependencies; nothing else happens (no spawn, no I/O, no cache
-   * read/write). Useful for "install" / "ci" umbrella tasks that fan
-   * out to per-package work.
+   * Shell command and optional env; one command per task. Omit `exec` for
+   * a group task, which only chains `dependsOn`: no spawn, no I/O, no
+   * cache. Useful for umbrella tasks like `ci`.
    */
   exec?: ExecConfig
   /**
-   * Tasks that must complete successfully before this task runs.
-   * Turbo/Nx-style micro-syntax:
-   *   - `'name'`       — same-project task named `name`. When authored
-   *                      through `defineProject`, a bare entry is
-   *                      **type-checked against this config's task keys**
-   *                      (a typo is a compile error).
-   *   - `'^name'`      — task `name` in every transitive workspace dep
-   *                      (e.g. `'^build'`, `'^all'`); not key-checked.
-   *   - `'pkg#name'`   — specific package's `name` task; not key-checked.
+   * Tasks that must succeed before this one runs:
+   * - `'name'`: a same-project task; through `defineProject`, type-checked
+   *   against this config's task keys.
+   * - `'^name'`: task `name` in every transitive workspace dep; not
+   *   checked.
+   * - `'pkg#name'`: one package's task; not checked.
    */
   dependsOn?: readonly string[]
   /**
@@ -331,42 +310,28 @@ export interface TaskConfig {
 }
 
 /**
- * What a sandboxed task may do, declared as CAPABILITIES.
+ * What a sandboxed task may do, declared as capabilities. You say what the
+ * task may touch; vx decides how each is enforced, and one the platform
+ * cannot express is an error, not a silent no-op.
  *
- * One shape for the whole policy. You say what the task is allowed to
- * touch; vx decides how each capability is realised — some become sandbox
- * runtime config, some become rules in the OS policy, and one the platform
- * cannot express is an error rather than a silent no-op. None of that
- * reaches the config.
+ * The baseline (`sandbox: {}`) grants almost nothing: no reads, no writes,
+ * no network, not even the project directory, which is why `allow: { read:
+ * ['.'] }` opens most real blocks. The one implicit grant is dependencies:
+ * `node_modules` and the real paths of the workspace packages linked
+ * there.
  *
- * The baseline (`sandbox: {}`) grants almost nothing: the task reads
- * nothing, writes nothing and reaches no network — NOT EVEN ITS OWN
- * PROJECT DIRECTORY, which is why `allow: { read: ['.'] }` opens almost
- * every real block. The one grant vx makes for you is dependencies:
- * `node_modules`, and through it the real path of every workspace
- * package linked there.
+ * Caching grants nothing: `inputs` says what invalidates a task, `allow`
+ * what it may touch, and declared `outputs` are no write grant (only
+ * `allow.write` binds).
  *
- * `cache` grants no access in either direction: `inputs` says what
- * INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
- * from the other coupled them both ways — a declaration added for
- * caching silently widened the sandbox, and a path the task needed had
- * to be laundered through the cache key to get it (2026-09-05).
- * A declared `outputs` is NOT a write grant; the request
- * `sandbox-request.ts` builds carries no write of its own and binds
- * `allow.write` alone. This comment claimed the opposite — here and on
- * both grant fields — while the file beside it and `schema.md` both said
- * the truth, and no test read the bare baseline it described (item 443).
- * That case has a test of its own now.
+ * Enforcement anchors at the workspace root, so a task cannot leave its
+ * project whatever it declares. `docs/schema.md` § `exec.sandbox` has the
+ * full account.
  *
- * Enforcement anchors at the WORKSPACE ROOT, so a task cannot leave its
- * project whatever it declares here. The full account, including what a
- * write grant costs on Linux, is in `docs/schema.md` under
- * `exec.sandbox`.
- *
- * Paths are project-relative, absolute, or `~`-expanded, and may be
- * globs: macOS matches the pattern in the policy, Linux expands it when
- * the task starts (a mount cannot hold a pattern), so a file created
- * later is not covered there — grant its directory.
+ * Paths are project-relative, absolute or `~`-expanded, and may be globs:
+ * macOS matches the pattern, Linux expands it at start (a mount cannot
+ * hold a pattern), so a file created later is not covered there; grant its
+ * directory.
  */
 export interface SandboxConfig {
   /** Capabilities granted on top of the task's own declarations. */
@@ -377,26 +342,19 @@ export interface SandboxConfig {
    */
   deny?: SandboxDenials
   /**
-   * Denials to leave out of the report, in the same shape as `allow`.
+   * Denials to leave out of the report, shaped like `allow`. This permits
+   * nothing: the OS still denies, and a command that needs it still fails.
+   * It says the denial does not affect this task's output.
    *
-   * This does NOT permit anything: the OS still denies the operation, and
-   * a command that cannot proceed without it still fails. It says "I know,
-   * and it does not affect this task's output" — for a denial you cannot
-   * grant away and do not want failing the run.
-   *
-   * Unlike `allow`, the values are GLOB PATTERNS, and they work the same
-   * on every platform: `allow` has to be expressible by the OS sandbox
-   * (bwrap mounts a path; it cannot mount a pattern), while `ignore` only
-   * has to match a line vx already holds. Relative patterns anchor at the
+   * Unlike `allow`, values are glob patterns, the same on every platform:
+   * `ignore` only matches report lines. Relative patterns anchor at the
    * project dir.
    *
    * ```ts
-   * ignore: { write: ['*.bun-build'] }   // bun --compile stages a random
-   *                                      // temp name in the cwd
+   * ignore: { write: ['*.bun-build'] } // bun --compile stages a random temp name in the cwd
    * ```
    *
-   * A denial is classed read, write, systemInfo or network, so those four
-   * are what can be ignored.
+   * A denial is classed read, write, systemInfo or network.
    */
   ignore?: SandboxIgnore
   /**
@@ -432,19 +390,16 @@ export interface SandboxGrants {
    */
   read?: readonly string[]
   /**
-   * Writable paths or globs. The task can write NOTHING without these:
-   * declaring `outputs.files` grants no write, and a task whose
-   * only declaration is its outputs writes into a tmpfs that evaporates
-   * (vx then warns that `outputs` matched no files).
+   * Writable paths or globs. Without these the task writes nothing:
+   * `outputs.files` grants no write, and a task declaring only outputs
+   * writes into a tmpfs that evaporates (vx warns that `outputs` matched
+   * no files).
    */
   write?: readonly string[]
   /**
-   * Reachable domains, `['*.example.com']` a pattern. The proxy is the
-   * run's: it filters every sandboxed task against the union of the lists
-   * the run's tasks declare, so `true` adds no domain and reaches only
-   * those (none in a run with no list). Omitted adds none either.
-   * `'localhost:4173'` reaches that port of a server on this machine (a
-   * dependency's `vite preview`), and no other loopback port.
+   * Reachable domains (`['*.example.com']`). The proxy filters every
+   * sandboxed task against the union of the run's lists, so `true` adds no
+   * domain. `'localhost:4173'` reaches that local port alone.
    */
   network?: true | readonly string[]
   /**
@@ -456,12 +411,9 @@ export interface SandboxGrants {
   /** Unix socket paths the task may connect to. `true` allows any. */
   unixSockets?: true | readonly string[]
   /**
-   * Bind and reach localhost ports — a test that boots a server for
-   * itself. A port LIST additionally makes those ports reachable from
-   * outside the sandbox (a dev server another task or the developer
-   * talks to): on Linux, where a sandboxed task lives in its own network
-   * namespace, each listed port is bridged out to the host's loopback;
-   * on macOS the host already sees them and the list means `true`.
+   * Bind and reach localhost ports (a test booting its own server). A port
+   * list also exposes those ports outside the sandbox: on Linux each is
+   * bridged to the host's loopback; on macOS the host already sees them.
    */
   localBinding?: boolean | readonly number[]
   /** macOS: Mach service names the task may look up. */
@@ -481,127 +433,96 @@ export interface ExecConfig {
   /** Shell command to run, from the project's directory. */
   command: string
   /**
-   * `false` pins the task to this machine: it is never offered to a remote
-   * executor (it talks to a local daemon, the network, Docker, …). Default
-   * `true`. Tasks that are persistent, or depend on one, are pinned
-   * regardless — a worker cannot reach a port on the submitter.
+   * `false` pins the task to this machine (it needs a local daemon, the
+   * network, Docker). Default `true`. Persistent tasks and their
+   * dependents are pinned regardless.
    *
-   * `'only'` is the inverse pin: the task exists to produce a REMOTE input
-   * tree (the canonical case is `pnpm install` feeding remote workers) and is
-   * a NO-OP on this machine — never executed locally, its declared outputs
-   * never cleaned or restored on this disk. With no remote executor declared
-   * the task succeeds without running and dependents use whatever ambient
-   * state the machine has, exactly as they did before the field existed.
+   * `'only'`: the task produces a remote input tree (`pnpm install`
+   * feeding remote workers) and is a no-op here: never run locally, its
+   * outputs never cleaned or restored on this disk. With no remote
+   * executor it succeeds without running.
    */
   remote?: boolean | 'only'
   /**
-   * The machines this task can run on, any of them. On one that is not
-   * listed the task is skipped, never failed, and so are its dependants;
-   * an executor that routes by platform (`TaskExecutor.platforms`) runs
-   * it on a worker that is. Omitted → anywhere.
+   * The machines this task can run on. On another the task and its
+   * dependants are skipped, never failed; an executor routing by platform
+   * (`TaskExecutor.platforms`) runs it on one that fits. Omitted →
+   * anywhere.
    */
   platforms?: readonly Platform[]
   /**
-   * The worker type to run it on, by name (`'ubuntu'`), when an executor
-   * that names worker types (`TaskExecutor.workers`, `@vzn/vx-dte`'s
-   * `workers`) runs it: only that type's machines take it, and a run
-   * whose executor has no such type, or none on one of `platforms`, is
-   * refused before it starts. Placement only: not in the key, and a run
-   * on this machine ignores it. Omitted → the first type that fits.
+   * The worker type to run it on (`'ubuntu'`), for an executor that names
+   * types (`TaskExecutor.workers`): only that type's machines take it, and
+   * a run with no such type is refused before it starts. Placement only:
+   * not in the key, ignored locally. Omitted → the first type that fits.
    */
   worker?: string
   /** Environment exposed to the child process. */
   env?: ExecEnv
   /**
    * Upper bound before vx SIGTERMs the child (`'10m'`), beating
-   * `run.timeout` and its flag and variable. A normal task that
-   * runs longer is killed and reported `failed` (timed out) — never
+   * `run.timeout`. A task that runs longer fails as timed out and is never
    * cached. Omitted → no limit.
    *
-   * For a `persistent` task this bounds the READINESS wait instead: if
-   * `readyWhen` hasn't matched within the window the child is SIGTERMed
-   * and the task fails — without it a server that prints an unexpected
-   * banner would hang the run forever. A persistent task that's ready
-   * on spawn (no `readyWhen`) becomes ready before the timer can fire,
-   * so the timeout is a no-op for it.
+   * For a `persistent` task it bounds the readiness wait: if `readyWhen`
+   * has not matched in time the task fails, instead of an unexpected
+   * banner hanging the run.
    */
   timeout?: Duration
   /**
-   * Max ADDITIONAL attempts after a failed attempt. `retries: 2` means
-   * up to 3 executions total. 0 / omitted → no retries (today's
-   * behavior: fail on the first non-zero exit). A retry fires after ANY
-   * failure, timeout kills included; a Ctrl-C teardown (`aborted`) is
-   * never retried. Declared outputs are re-cleaned before each retry so
-   * a failed attempt's partial outputs can't leak into the next. The
-   * final outcome (and the cached artifact) is the last attempt's.
-   * Not allowed with `persistent` — a persistent task has no exit to
-   * retry. Beats `run.retries` and its flag and variable, including
-   * `retries: 0`.
+   * Additional attempts after a failure: `retries: 2` means up to 3 runs.
+   * A retry follows any failure, timeouts included, never a Ctrl-C abort.
+   * Outputs are cleaned before each retry, and the last attempt's outcome
+   * is the result. Not allowed with `persistent`. Beats `run.retries`, `0`
+   * included.
    */
   retries?: number
   /**
-   * Long-running / continuous task (dev server, watcher, daemon).
-   * When present, the task is spawned but the runner does NOT wait
-   * for it to exit. Instead it considers the task "ready" — either
-   * immediately on spawn (no `readyWhen`) or once the readiness
-   * pattern matches a line of stdout/stderr. Downstream tasks unblock
-   * on ready, not on exit. The orchestrator SIGTERMs every persistent
-   * subprocess once the rest of the graph has finished.
-   *
-   * `cache` is rejected on a persistent task — there's no exit code
-   * to cache and the work continues after vx's run notion of "done".
+   * A long-running task (dev server, watcher, daemon): spawned without
+   * waiting for exit, ready at spawn or once `readyWhen` matches a line.
+   * Dependents unblock on ready. vx SIGTERMs persistent tasks once the
+   * rest of the graph finishes. `cache` is refused: there is no exit to
+   * cache.
    */
   persistent?: PersistentConfig
   /**
-   * The task reads the terminal: a prompt, a REPL, a watch mode's keys.
-   * When vx's stdin is a TTY the task gets vx's stdin, stdout and stderr
-   * as they are, and no other task starts while it runs (a persistent one:
-   * until it is spawned). It runs in its own session, so `/dev/tty` still
-   * cannot be opened. Off a TTY (CI) it runs as any task. Always on this
-   * machine, never cached; not allowed with `cache`, `sandbox` or
-   * `persistent.readyWhen`.
+   * The task reads the terminal (a prompt, a REPL, watch-mode keys). On a
+   * TTY it gets vx's stdio as is, and no other task starts while it runs
+   * (a persistent one: until spawned). Its own session, so `/dev/tty`
+   * still cannot be opened. Off a TTY it runs as any task. Never cached;
+   * not allowed with `cache`, `sandbox` or `persistent.readyWhen`.
    */
   interactive?: boolean
   /**
    * Confine this task's process: what it may read, write and reach.
-   * Nothing is confined unless this is present.
+   * Nothing is confined unless present. In `exec` because it shapes the
+   * same spawn `env` does.
    *
-   * It sits in `exec` because it constrains the same spawn `env` does —
-   * the environment the child gets, the filesystem and network it gets.
-   * A group task has no process,
-   * so the field cannot be reached from one.
+   * Fail on violation: an undeclared touch of the project's own files
+   * fails the task, and a failed task is never cached. Reaching outside
+   * the project is denied but not reported: that is the wall working.
    *
-   * **Policy: fail on violation.** An undeclared touch of the project's own
-   * files fails the task, and a failed task is never cached. Reaching
-   * OUTSIDE the project is denied but not reported — that is the wall
-   * doing its job, not a finding.
-   *
-   * A persistent task is confined the same way but never REPORTED on: the
-   * violation report reads the trace after the process exits, and a server
-   * exits at teardown. Enforced, not reported.
+   * A persistent task is confined but never reported on: the report reads
+   * the trace after exit, and a server exits at teardown.
    */
   sandbox?: SandboxConfig
 }
 
 export interface PersistentConfig {
   /**
-   * Regex pattern (string) matched against stdout/stderr line-by-line.
-   * The task is marked "ready" the first time a line matches. Omitted
-   * → ready immediately on spawn (fire-and-forget; downstream still
-   * runs but doesn't gate on a signal).
-   *
-   * Example: Vite prints `Local:   http://localhost:5173/` when its
-   * dev server is up — `readyWhen: 'Local:'` waits for that line.
+   * A regex tested against each stdout/stderr line; the task is ready on
+   * the first match. Omitted → ready at spawn. Vite's dev server prints
+   * `Local: http://localhost:5173/`, so `readyWhen: 'Local:'` waits for
+   * it.
    */
   readyWhen?: string
 }
 
 export interface ExecEnv {
   /**
-   * Names of env vars whose values are taken from the host (parent
-   * `process.env`) and forwarded to the child. Their values are NOT
-   * folded into the cache key — for things like CI flags, regional
-   * vars, secrets that change between machines without affecting output.
+   * Env vars forwarded from the host to the child, their values not folded
+   * into the key: CI flags, regional vars, secrets that differ by machine
+   * without changing output.
    */
   passThrough?: readonly string[]
   /**
@@ -612,9 +533,9 @@ export interface ExecEnv {
   define?: Record<string, string>
   /**
    * Names whose values are masked (`***`) wherever vx prints, stores or
-   * exports the task's output or command, whatever the name. Names that
-   * hold `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL`
-   * are masked without it; this reaches `GH_PAT`, `NPM_AUTH`.
+   * exports the task's output or command. Names holding `TOKEN`, `SECRET`,
+   * `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` are masked anyway; this
+   * reaches `GH_PAT`, `NPM_AUTH`.
    */
   secret?: readonly string[]
 }
@@ -640,22 +561,18 @@ export interface InputStability {
 
 export interface TaskOutputs {
   /**
-   * Files produced by this task, as project-relative globs. Pass `[]`
-   * when the task has no files to capture (e.g. `lint`, `typecheck`).
-   * Outputs are not filtered through gitignore — typical artifact dirs
-   * like `dist/` and `coverage/` are captured normally even when ignored.
+   * Files this task produces, as project-relative globs; `[]` when none
+   * (`lint`, `typecheck`). Not filtered through gitignore, so ignored dirs
+   * like `dist/` are captured.
    */
   files: readonly string[]
   /**
-   * Files produced OUTSIDE the project dir, as workspace-root-relative
-   * globs (the Turbo `$TURBO_ROOT$` / Nx `{workspaceRoot}` escape
-   * hatch). NO project-boundary rule applies: these globs may capture
-   * files anywhere in the workspace, including inside other projects'
-   * directories. Deliberate escape hatch — prefer project-relative
-   * `files` whenever the task can write inside its own dir. Two tasks
-   * whose workspace outputs provably overlap are refused at graph build,
-   * like overlapping `files` (vx cleans declared outputs before a run
-   * and before a restore, so the second would delete the first's).
+   * Files produced outside the project, as workspace-root globs (Turbo's
+   * `$TURBO_ROOT$`, Nx's `{workspaceRoot}`). No boundary applies: they may
+   * capture files in other projects. Prefer `files` when the task can
+   * write inside its own dir. Two tasks whose workspace outputs overlap
+   * are refused, as overlapping `files` are (each run cleans declared
+   * outputs).
    */
   workspaceFiles?: readonly string[]
   /**
@@ -670,73 +587,51 @@ export interface TaskOutputs {
 
 export interface InputsConfig {
   /**
-   * Project-relative globs. Each entry is a positive glob, or a negation
-   * prefixed with `!`. Required: pass a recursive glob to mean "all
-   * project files" (gitignore-aware), or narrow as needed. An empty
-   * array means no file inputs at all.
-   *
-   * Declared outputs (both `outputs` fields) and any nested-project
-   * files are excluded automatically — a task cannot invalidate itself,
-   * and cannot read across project boundaries.
+   * Project-relative globs, each positive or a `!` negation. Required: a
+   * recursive glob means all project files (gitignore-aware); an empty
+   * array means no file inputs. Declared outputs and nested projects'
+   * files are excluded automatically.
    */
   files: readonly string[]
   /**
-   * Workspace-root-relative globs (the Turbo `$TURBO_ROOT$` / Nx
-   * `{workspaceRoot}` equivalent), for inputs that live outside the
-   * project dir — a root tsconfig, shared codegen output, etc. Same
-   * syntax as `files` (`!` negation supported), resolved against the
-   * workspace-wide git file set (gitignored files are invisible).
-   *
-   * NO project-boundary rule applies: these globs may match files
-   * inside other projects' directories. Deliberate escape hatch —
-   * prefer project-relative `files` declarations where possible.
-   * Declared outputs (both `outputs` fields) are excluded
-   * automatically (a task cannot invalidate itself).
+   * Workspace-root globs (Turbo's `$TURBO_ROOT$`, Nx's `{workspaceRoot}`)
+   * for inputs outside the project: a root tsconfig, shared codegen. Same
+   * syntax as `files`, over the workspace-wide git file set (ignored files
+   * are invisible). No boundary applies; prefer `files` where possible.
+   * Declared outputs are excluded.
    */
   workspaceFiles?: readonly string[]
   /**
-   * Env var names whose runtime values from parent `process.env` are
-   * folded into the cache key. **Independent of `exec.env`** — declaring
-   * a name here does not forward it to the child; it only affects cache
-   * invalidation. To both forward AND track, list the name in both
-   * `exec.env.passThrough` and here.
+   * Env var names whose values are folded into the key. Independent of
+   * `exec.env`: this does not forward them. To forward and track, list a
+   * name in both.
    */
   env?: readonly string[]
   /**
-   * Which upstream tasks' cache keys participate in this task's key.
-   * Uses the same Turbo/Nx micro-syntax as `dependsOn`, plus
-   * wildcards and negation for filtering:
+   * Which upstream tasks' keys this task's key folds, in `dependsOn`
+   * syntax plus wildcards and negation:
+   * - `'*'` every same-project upstream
+   * - `'^*'` every dep-workspace upstream
+   * - `'name'` same-project task `name`
+   * - `'^name'` task `name` in dep workspaces
+   * - `'pkg#name'` one package's task
+   * - `'!name'`, `'!^name'`, `'!pkg#name'` exclude
    *
-   *   - `'*'`         include every same-project upstream
-   *   - `'^*'`        include every dep-workspace upstream
-   *   - `'name'`      include same-project task `name`
-   *   - `'^name'`     include the `name` task in dep workspaces
-   *   - `'pkg#name'`  include the specific package's `name` task
-   *   - `'!name'`, `'!^name'`, `'!pkg#name'` — exclude
-   *
-   * Patterns are applied in order, last write wins, so
-   * `['*', '^*', '!^noisy']` reads as "all upstream except deps' noisy".
-   *
-   * Defaults:
-   * - omitted entirely → all upstream contribute (same as `['*', '^*']`).
-   * - `[]` → fully decoupled; no upstream contributes.
+   * Applied in order, last wins: `['*', '^*', '!^noisy']` is all but deps'
+   * noisy. Omitted → all upstream (`['*', '^*']`); `[]` → none.
    */
   tasks?: readonly string[]
   /**
-   * Shell commands run in the PROJECT dir at hash time; their combined,
-   * trimmed (stdout + stderr) output is folded into the cache key.
-   * Deduped per (projectDir, command) within a run. A non-zero exit
-   * fails the run. Modeled on `env`: the COMMANDS are frozen in the
-   * lock, the OUTPUT is resolved live every run. Use for
-   * project-specific runtime probes.
+   * Shell commands run in the project dir at hash time; their trimmed
+   * stdout and stderr fold into the key. Deduped per (dir, command) per
+   * run; a non-zero exit fails the run. The commands are locked, the
+   * output read live each run.
    */
   runtime?: readonly string[]
   /**
-   * Like `runtime`, but commands run at the WORKSPACE ROOT and are
-   * deduped GLOBALLY per command across the whole run — a `node -v`
-   * declared in 500 projects spawns exactly once. The runtime-input
-   * analog of `workspaceFiles`: per-task, root-anchored. Use for global
-   * tool versions, OS info, etc.
+   * Like `runtime`, but run at the workspace root and deduped across the
+   * run: `node -v` in 500 projects spawns once. For tool versions, OS
+   * info.
    */
   workspaceRuntime?: readonly string[]
   /**
@@ -749,18 +644,12 @@ export interface InputsConfig {
 }
 
 /**
- * A valid `dependsOn` entry, given the set of sibling task names `K`:
- *   - `K`                — a same-project task; type-checked against the
- *                          keys of THIS config's `tasks` (typo → error).
- *   - `` `^${string}` `` — a task in workspace deps (e.g. `'^build'`,
- *                          `'^all'`); the dep's task names aren't known
- *                          here, so any `^`-prefixed string is allowed.
- *   - `` `${string}#${string}` `` — a specific package's task
- *                          (`'pkg#build'`); cross-project, not key-checked.
- *   - `` `${string}*${string}` `` — a task-name pattern (`'build.*'`);
- *                          expands at graph build, so it can't be
- *                          key-checked (a bare `'*'` still fails at
- *                          runtime — bare wildcards are filter-only).
+ * A valid `dependsOn` entry, given sibling task names `K`:
+ * - `K`: a same-project task, checked against this config's `tasks`.
+ * - `` `^${string}` ``: a task in workspace deps; not checked.
+ * - `` `${string}#${string}` ``: one package's task; not checked.
+ * - `` `${string}*${string}` ``: a task-name pattern, expanded at graph
+ *   build (a bare `'*'` still fails at runtime).
  */
 type DependsOnEntry<K extends string> =
   | K
@@ -769,9 +658,8 @@ type DependsOnEntry<K extends string> =
   | `${string}*${string}`
 
 /**
- * The entries a task's `dependsOn` may hold. Literal entries are held to the
- * task keys `K`; a list typed `string[]` (a preset annotated `TaskConfig`)
- * has no literals to check, and refusing it refused every such preset.
+ * What `dependsOn` may hold: literals are held to `K`; a `string[]` list
+ * (a preset typed `TaskConfig`) has none to check.
  */
 type DependsOn<D, K extends string> =
   NonNullable<D> extends readonly (infer E)[]
@@ -781,18 +669,17 @@ type DependsOn<D, K extends string> =
     : readonly DependsOnEntry<K>[]
 
 /**
- * The keys of `T` that `Shape` does not declare, typed `never`. A generic
- * argument skips TypeScript's excess-property check, so a Turbo-shaped
- * `outputs` on a task, or `cwd` in `exec`, type-checked and failed only
- * when vx loaded the config (D-69), as did a typo beside a known key in
- * `defineWorkspace` (D-70); `never` puts the error on that line.
+ * The keys of `T` that `Shape` does not declare, typed `never`: a generic
+ * argument skips the excess-property check, so a Turbo-shaped `outputs` or
+ * `cwd` in `exec` failed only at load. `never` puts the error on that
+ * line.
  */
 type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never }
 
 /** `T[P]` when `T` has it; `unknown` (no keys to check) when it does not. */
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 
-/** The objects inside each task's `exec`, held to their keys as `exec` is (D-156). */
+/** The objects inside each task's `exec`, held to their keys as `exec` is. */
 type KnownExecs<T extends ProjectConfig> = {
   tasks?: {
     [K in keyof NonNullable<T['tasks']>]?: {
@@ -812,11 +699,9 @@ type KnownExec<E> = {
 }
 
 /**
- * Identity function — exists only so TypeScript narrows literal types
- * and, crucially, **validates `dependsOn` against this project's own
- * task names**. A bare entry that isn't a declared task key is a compile
- * error; `^name` / `pkg#name` forms reference other projects and stay
- * free strings. Runtime behavior is unchanged (it returns its input).
+ * Identity function, so TypeScript narrows literals and checks `dependsOn`
+ * against this project's own task names: a bare entry naming no task is a
+ * compile error; `^name` and `pkg#name` stay free strings.
  */
 export function defineProject<const T extends ProjectConfig>(
   config: T &

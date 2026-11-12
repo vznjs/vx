@@ -6,9 +6,9 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { resolveSandboxConfig } from '../src/exec/index.js'
-import { parseStraceViolations, refusedWrites } from '../src/exec/sandbox-violations.js'
-import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import { resolveSandboxConfig } from '../src/sandbox/runtime.js'
+import { parseStraceViolations, refusedWrites } from '../src/sandbox/violations.js'
+import { sandboxFix } from '../src/sandbox/fix.js'
 
 let dir: string
 beforeEach(() => {

@@ -49,7 +49,7 @@ describe.skipIf(!available)("a sandboxed task's timeout starts at its spawn", ()
     })
     const r = await run({ cwd: root, tasks: ['build'], projects: ['p'], log: silent })
     const o = r.outcomes[0]!
-    return [o.status, o.attempts ?? 1, existsSync(path.join(dir, 'marker.txt'))]
+    return [o.status, o.attempts?.count ?? 1, existsSync(path.join(dir, 'marker.txt'))]
   }
 
   it('a wrap slower than the timeout does not time the task out', async () => {

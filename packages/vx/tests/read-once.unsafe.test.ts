@@ -218,7 +218,7 @@ const claim = lockfileClaim({
   file: 'custom.lock',
   version: 1,
   extraFiles: () => ['vendor/dep'],
-  importers: () => new Map(),
+  links: () => new Map(),
   digest: (_text, files) => new Map([['packages/a', files.get('vendor/dep')]]),
 })
 export default {
@@ -227,7 +227,7 @@ export default {
       fingerprint: claim.fingerprint,
       key: claim.key,
       async discover(ctx) {
-        await claim.importers(ctx)
+        await claim.links(ctx)
         return []
       },
     }),

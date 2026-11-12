@@ -7,19 +7,17 @@
 
 import type { ExecConfig } from '../config.js'
 import {
-  localExecutor,
   PersistentReadyError,
-  releaseBridges,
-  resetSandbox,
   runPersistent,
   signalExitCode,
   type ExecuteRequest,
   type ExecuteResult,
   type ServerSpec,
-  wrapSandboxedCommand,
 } from '../exec/index.js'
+import { releaseBridges, resetSandbox, wrapSandboxedCommand } from '../sandbox/index.js'
+import { localExecutor } from './local-executor.js'
 import { stopServer } from './persistent.js'
-import { placeholderSweeper, prepareSandbox, sandboxRequestFor } from './sandbox-request.js'
+import { placeholderSweeper, prepareSandbox, sandboxRequestFor } from '../sandbox/index.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 
 /** How much of a server's output before ready a failure to start quotes. */
@@ -89,8 +87,8 @@ export function localFloor(
         return swept()
       }
     }
-    // Its output until ready, the tail kept: a server that dies first says
-    // why (`docker run` exiting 125 said nothing on CI, 2026-10-26).
+    // Its output until ready, the tail kept: a server that dies first says why
+    // (`docker run` exiting 125 said nothing on CI).
     let heard: string | undefined = ''
     const hear = (t: string): void => {
       if (heard !== undefined) heard = (heard + t).slice(-HEARD_BYTES)
@@ -174,8 +172,8 @@ export function localFloor(
           const why = err instanceof Error ? err.message : String(err)
           const text = `${spec.taskId}, which ${req.taskId} depends on, did not start: ${why}\n`
           // Through `onStderr` too, as a spawn failure's text goes: a worker
-          // ships only what its callbacks heard, and a dependant failed
-          // "exit 1, 0ms" with no word of why (CI, 2026-10-25).
+          // ships only what its callbacks heard, and a dependant failed "exit
+          // 1, 0ms" with no word of why (CI).
           req.onStderr(text)
           return { exitCode: 1, durationMs: 0, stdout: '', stderr: text, violations: [] }
         }

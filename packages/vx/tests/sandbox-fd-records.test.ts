@@ -6,7 +6,7 @@ import { closeSync, mkdtempSync, openSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { refusedWrites } from '../src/exec/sandbox-violations.js'
+import { refusedWrites } from '../src/sandbox/violations.js'
 
 describe.skipIf(process.platform !== 'linux')('a write record naming a descriptor', () => {
   const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-fd-rec-')))

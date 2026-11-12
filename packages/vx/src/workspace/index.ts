@@ -85,17 +85,17 @@ export {
 export type { LoadReads } from './load-reads.js'
 // The migration seam (see migration.ts).
 export {
-  applyMigration,
-  foldScriptHooks,
   isStarterConfig,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,
   quoteTsLiteral,
   renderWorkspace,
   starterProject,
+  writeMigration,
   type ApplyMigrationArgs,
   type MigrationFormat,
   type MigrationMember,
+  type MigrationReport,
   type GeneratedProject,
   type GeneratedTask,
   type MigrationPlan,

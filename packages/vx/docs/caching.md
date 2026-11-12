@@ -170,7 +170,7 @@ over (in order):
    rewrite restored a build made against the old install, and a save
    filed a build against the new install under the old lockfile's key,
    replayed whenever the tree went back (item 750,
-   [`modules/fingerprint-watch.md`](./modules/fingerprint-watch.md)).
+   [`modules/orchestrator.md`](./modules/orchestrator.md#srcorchestratorfingerprint-watchts--has-a-task-rewritten-the-lockfile)).
    With nothing claimed, no root file is read or watched.
 
 10. **Task platform** — the platform core placed a task naming
@@ -1093,7 +1093,7 @@ files` line), and the next hit's restore removes what the
 descendant wrote and restores the saved entry in its place (upstream
 survey, turborepo#12786). vx does not wait for it and cannot see it: a
 process that left the task's session is outside the process group vx
-tracks and signals ([kill-tree](./modules/kill-tree.md)). So a command
+tracks and signals ([kill-tree](./modules/exec.md#srcexeckill-treets--a-task-dies-with-everything-it-forked)). So a command
 finishes writing its outputs before it exits — `wait` for what it
 backgrounds, or do not detach it.
 
@@ -2040,7 +2040,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v56', in cache.ts)
+-- src/index-db/schema.ts (SCHEMA_VERSION = 'v56')
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2175,7 +2175,7 @@ CREATE TABLE file_hashes (
 
 -- v42: each task's last key by a probe of the fold up to its files and
 -- its files' git records, so a warm task's key is read back, not folded
--- again (src/cache/fold-memo.ts). A pure memo: rows unwritten for 30 days
+-- again (src/memo/fold-memo.ts). A pure memo: rows unwritten for 30 days
 -- go with a prune.
 CREATE TABLE fold_memo (
   task_id TEXT PRIMARY KEY,
@@ -2931,7 +2931,7 @@ breaking footer).
 - **SCHEMA v21 → v22 (no `CACHE_VERSION` bump)**: Tier-3 dashboard
   tables — `invocations` (one header row per `vx run` with command,
   git/CI/host context, and run-level counts, recorded with `runs`
-  via `Cache.recordRunBundle`) and `entry_inputs` (one row per cache-key
+  via `runHistory(cache).recordRunBundle`) and `entry_inputs` (one row per cache-key
   component, keyed by the cache-ENTRY hash — the input-fingerprint
   moat). `entry_inputs` is written **inside the entry-save transaction,
   only on a cache miss** (`INSERT OR IGNORE`), so a warm all-cache-hit
@@ -3072,7 +3072,7 @@ breaking footer).
   until 2026-09-09, when the fallback started hashing a link the way
   the index does). A clean
   tree's key derivation does zero reads / stats / SQLite per file.
-  Everything else falls back to `Cache.hashFile`, which now computes
+  Everything else falls back to `Cache.memo.hashFile`, which now computes
   the identical blob OID in-process (object format auto-detected via
   `git rev-parse --show-object-format`, sha1 default) behind the
   existing mtime+size memo. `SCHEMA_VERSION` bumps to `v18` in the

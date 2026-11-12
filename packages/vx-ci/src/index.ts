@@ -1,6 +1,6 @@
 // Public API for @vzn/vx-ci — the GitHub Actions and GitLab CI plugins.
 //
-// Usage in .vx/workspace.ts:
+// Usage in.vx/workspace.ts:
 //   import { defineWorkspace } from '@vzn/vx'
 //   import { github } from '@vzn/vx-ci'
 //   export default defineWorkspace({ plugins: [github()] })
@@ -27,8 +27,8 @@ export type { GithubPluginOptions, GitlabPluginOptions }
 // factories are synchronous.
 const load = createRequire(import.meta.url)
 
-// Options are checked here, on CI or not: a typo checked only on CI passed
-// on a laptop and failed the first CI run (2026-10-28).
+// Options are checked here, on CI or not: a typo checked only on CI passed on a
+// laptop and failed the first CI run.
 const GITHUB_KEYS: PluginOptionKinds<GithubPluginOptions> = {
   summaryFile: 'string',
   title: 'string',

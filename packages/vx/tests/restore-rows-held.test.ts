@@ -9,7 +9,7 @@ import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
-import { OutputIndex } from '../src/cache/output-index.js'
+import { OutputIndex } from '../src/memo/index.js'
 import { isInline } from './helpers/stored-artifact.js'
 
 const HASH = '0123456789abcdef'
@@ -47,7 +47,7 @@ it('a probed hit restores and stamps without reading its rows again (X-162)', as
     read.mockClear()
     const out = path.join(root, 'out')
     await cache.restoreOutputs(HASH, out)
-    cache.recordOutputStamps(HASH, out, root)
+    cache.memo.recordOutputStamps(HASH, out, root)
     // Read before the restore of the spy, which clears what it recorded.
     expect(read.mock.calls).toEqual([])
     expect(readFileSync(path.join(out, 'a.txt'), 'utf8')).toBe('a')

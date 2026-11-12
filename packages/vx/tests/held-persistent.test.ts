@@ -58,7 +58,7 @@ it("a held server's output reaches the run's logger until it is stopped", async 
     projects: ['app'],
     log,
     handleSignals: false,
-    holdPersistent: true,
+    handoff: { holdPersistent: true },
   })
   expect(r.persistent?.ids).toEqual(['app#srv'])
   writeFileSync(path.join(dir, 'go'), '')
@@ -90,7 +90,7 @@ it('a held run hands its server back though another task failed', async () => {
     projects: ['app'],
     log: quiet,
     handleSignals: false,
-    holdPersistent: true,
+    handoff: { holdPersistent: true },
   })
   try {
     expect([r.ok, r.persistent?.ids]).toEqual([false, ['app#srv']])
@@ -134,8 +134,7 @@ it('a later run keeps an unchanged held server, rebuilds its deps, and replaces 
         taskComplete() {},
       },
       handleSignals: false,
-      holdPersistent: true,
-      ...(keep !== undefined ? { keep } : {}),
+      handoff: { holdPersistent: true, ...(keep !== undefined ? { keep } : {}) },
     })
   const r1 = (await cycle(0)).persistent!
   const child = r1.servers.get('app#dev')!.child
@@ -196,8 +195,7 @@ it("a kept server's key still reaches its cached dependant", async () => {
       projects: ['app'],
       log: quiet,
       handleSignals: false,
-      holdPersistent: true,
-      ...(keep !== undefined ? { keep } : {}),
+      handoff: { holdPersistent: true, ...(keep !== undefined ? { keep } : {}) },
     })
   const runs = (): number =>
     readFileSync(path.join(root, 'e2e.log'), 'utf8').split('\n').filter(Boolean).length
@@ -233,7 +231,7 @@ it('a cycle interrupted on readiness keeps the servers it was handed', async () 
       projects: ['app'],
       log: quiet,
       handleSignals: false,
-      holdPersistent: true,
+      handoff: { holdPersistent: true },
     })
   ).persistent!
   const api = first.servers.get('app#api')!.child
@@ -245,8 +243,7 @@ it('a cycle interrupted on readiness keeps the servers it was handed', async () 
     projects: ['app'],
     log: interruptOnReady(interrupt, 'app#api'),
     handleSignals: false,
-    holdPersistent: true,
-    keep: first,
+    handoff: { holdPersistent: true, keep: first },
     signal: interrupt.signal,
   })
   await first.stop()
@@ -285,7 +282,7 @@ it("a server's lines after its ready line, in the same write, show once", async 
     projects: ['app'],
     log,
     handleSignals: false,
-    holdPersistent: true,
+    handoff: { holdPersistent: true },
   })
   try {
     const deadline = Date.now() + 5_000
@@ -323,7 +320,7 @@ it('a run interrupted on readiness keeps the servers it made ready', async () =>
     projects: ['app'],
     log: interruptOnReady(interrupt, 'app#api'),
     handleSignals: false,
-    holdPersistent: true,
+    handoff: { holdPersistent: true },
     signal: interrupt.signal,
   })
   const api = r.persistent?.servers.get('app#api')?.child
@@ -353,8 +350,7 @@ it("a server kept over many cycles does not keep the earlier cycles' runs", asyn
         projects: ['app'],
         log,
         handleSignals: false,
-        holdPersistent: true,
-        ...(keep !== undefined ? { keep } : {}),
+        handoff: { holdPersistent: true, ...(keep !== undefined ? { keep } : {}) },
       })
     ).persistent!
   }
@@ -406,8 +402,7 @@ it('a held run keeps a dependency-only server while its key is unchanged', async
       projects: ['app'],
       log: quiet,
       handleSignals: false,
-      holdPersistent: true,
-      ...(keep !== undefined ? { keep } : {}),
+      handoff: { holdPersistent: true, ...(keep !== undefined ? { keep } : {}) },
     })
     // As the watch loop does: what this cycle did not take goes.
     await keep?.stop()

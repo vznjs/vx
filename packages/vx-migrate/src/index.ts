@@ -3,9 +3,9 @@
 // wire. The CLI (`bunx @vzn/vx-migrate`) is `migrate.ts`; mappers and
 // cache clients are internal (1.0 freezes what this file exports).
 //
-// Each factory loads its module on first call: a workspace evaluates this
-// file on every run, and a Turbo repo paid ~4 ms per run transpiling nx()
-// and both cache clients it never calls (solid, 2026-10-22).
+// Each factory loads its module on first call: a workspace evaluates this file
+// on every run, and a Turbo repo paid ~4 ms per run transpiling nx() and both
+// cache clients it never calls (solid).
 import type { VxPlugin } from '@vzn/vx'
 import type * as Turbo from './turbo/index.js'
 import type { TurboPluginOptions } from './turbo/index.js'

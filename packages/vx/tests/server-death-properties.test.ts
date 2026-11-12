@@ -11,7 +11,8 @@
 
 import { expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/index.js'
-import { deadServerBehind, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { deadServerBehind, runGraph } from '../src/graph/scheduler.js'
+import { type TaskOutcome } from '../src/graph/outcome.js'
 import { rng } from './helpers/rng.js'
 
 it('a dead server stops what depends on it, over random graphs', async () => {

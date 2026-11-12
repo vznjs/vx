@@ -1,17 +1,17 @@
-// The files the plugins claim (`VxPlugin.fingerprint`) are read once per
-// run, before any task, and every key folds what their claimant takes
-// from them (a lockfile plugin's per-project parts). A task in the root
-// project may rewrite one of those files — `pnpm install` without `--frozen-lockfile` — and every key taken
-// before it then names a lockfile the tree no longer holds: a save under
-// one filed bytes built against the new install under the old lockfile's
-// key, replayed whenever the tree went back (item 750). The watch answers
-// "has a claimed file moved since the run read it", re-learning the
-// fact only after a task that may have written one ran (`wrote`), so a run
-// with no such task never touches the files again.
+// The files the plugins claim (`VxPlugin.fingerprint`) are read once per run,
+// before any task, and every key folds what their claimant takes from them (a
+// lockfile plugin's per-project parts). A task in the root project may rewrite
+// one of those files — `pnpm install` without `--frozen-lockfile` — and every
+// key taken before it then names a lockfile the tree no longer holds: a save
+// under one filed bytes built against the new install under the old lockfile's
+// key, replayed whenever the tree went back. The watch answers "has a claimed
+// file moved since the run read it", re-learning the fact only after a task
+// that may have written one ran (`wrote`), so a run with no such task never
+// touches the files again.
 
 import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { FILE_HASH_RACY_MS, racyWindowMs } from '../cache/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../memo/index.js'
 import { type Logger, warnOf } from '../report/index.js'
 
 export class FingerprintWatch {
@@ -36,14 +36,14 @@ export class FingerprintWatch {
   }
 
   /**
-   * The claimed files that no longer hold what the run read, or
-   * undefined. Once one has, the run stays moved: every key already taken
-   * folded the old bytes. One `stat` per claimed file after each writer; a
-   * file written since the read (by ctime, with git's racy window) is read
-   * and compared. The stat follows a link as both reads do: a lockfile
-   * that is a symlink, rewritten through it, moves its target's ctime and
-   * never the link's, and an `lstat` here skipped it once the link had
-   * aged past the window — a stale hit on every later run (item 760).
+   * The claimed files that no longer hold what the run read, or undefined. Once
+   * one has, the run stays moved: every key already taken folded the old bytes.
+   * One `stat` per claimed file after each writer; a file written since the
+   * read (by ctime, with git's racy window) is read and compared. The stat
+   * follows a link as both reads do: a lockfile that is a symlink, rewritten
+   * through it, moves its target's ctime and never the link's, and an `lstat`
+   * here skipped it once the link had aged past the window — a stale hit on
+   * every later run.
    */
   moved(): readonly string[] | undefined {
     if (this.movedFiles !== undefined || !this.pending) return this.movedFiles
@@ -59,8 +59,8 @@ export class FingerprintWatch {
         if (before !== undefined) moved.push(f)
         continue
       }
-      // A whole-second stamp widens the window by that second (A-2): a
-      // rewrite 400 ms after the read was stamped before it (C-59).
+      // A whole-second stamp widens the window by that second: a rewrite 400 ms
+      // after the read was stamped before it.
       if (before !== undefined && ctimeMs < this.at - racyWindowMs(ctimeMs, FILE_HASH_RACY_MS))
         continue
       let now: Uint8Array | undefined

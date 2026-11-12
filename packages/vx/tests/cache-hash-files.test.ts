@@ -8,7 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { statSync } from 'node:fs'
-import { indexDb, Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
 
 let dir: string
 let cache: Cache
@@ -37,10 +38,10 @@ describe('Cache.hashFiles', () => {
     const b = path.join(dir, 'b.txt')
     await aged(a, 'alpha\n')
     await aged(b, 'beta\n')
-    const single = await cache.hashFile(a)
-    const batch = await cache.hashFiles([a, b, path.join(dir, 'missing.txt'), a])
+    const single = await cache.memo.hashFile(a)
+    const batch = await cache.memo.hashFiles([a, b, path.join(dir, 'missing.txt'), a])
     expect(batch.get(a)).toBe(single)
-    expect(batch.get(b)).toBe(await cache.hashFile(b))
+    expect(batch.get(b)).toBe(await cache.memo.hashFile(b))
     expect(batch.has(path.join(dir, 'missing.txt'))).toBe(false)
     expect(batch.size).toBe(2)
     // Both paths are memoised now (b by the batch): a row each.
@@ -53,14 +54,14 @@ describe('Cache.hashFiles', () => {
   it('hashBytes is hashFile of a file holding the bytes, and writes no memo row', async () => {
     const a = path.join(dir, 'bytes.txt')
     await aged(a, 'from bytes\n')
-    const fromBytes = cache.hashBytes(new TextEncoder().encode('from bytes\n'), a)
+    const fromBytes = cache.memo.hashBytes(new TextEncoder().encode('from bytes\n'), a)
     const rowsBefore = indexDb(cache).query('SELECT COUNT(*) AS n FROM file_hashes').get() as {
       n: number
     }
     expect(rowsBefore.n).toBe(0)
-    expect(fromBytes).toBe(await cache.hashFile(a))
+    expect(fromBytes).toBe(await cache.memo.hashFile(a))
     // CONTROL: other bytes are another identity.
-    expect(cache.hashBytes(new TextEncoder().encode('other\n'), a)).not.toBe(fromBytes)
+    expect(cache.memo.hashBytes(new TextEncoder().encode('other\n'), a)).not.toBe(fromBytes)
   })
 
   it('agrees on a symlink too — the blob of the link text, not the target bytes', async () => {
@@ -81,14 +82,14 @@ describe('Cache.hashFiles', () => {
     await symlink('d', toDir)
     const dangling = path.join(dir, 'dangling')
     await symlink('nowhere.txt', dangling)
-    const batch = await cache.hashFiles([toFile, toDir, dangling, target])
+    const batch = await cache.memo.hashFiles([toFile, toDir, dangling, target])
     for (const link of [toFile, toDir, dangling]) {
-      expect([link, batch.get(link)]).toEqual([link, await cache.hashFile(link)])
+      expect([link, batch.get(link)]).toEqual([link, await cache.memo.hashFile(link)])
     }
     // CONTROL: a link is NOT its target — that is the whole point of
     // folding the link text, and it is what following the link lost.
     expect(batch.get(toFile)).not.toBe(batch.get(target))
-    expect(batch.get(target)).toBe(await cache.hashFile(target))
+    expect(batch.get(target)).toBe(await cache.memo.hashFile(target))
     // A symlink is never memoised: the row would key on the link's own
     // stat, not its target's.
     const rows = indexDb(cache).query('SELECT path FROM file_hashes ORDER BY path').all() as Array<{
@@ -100,11 +101,11 @@ describe('Cache.hashFiles', () => {
   it('a rewrite is seen — the memo keys on the stat, never on the path alone', async () => {
     const a = path.join(dir, 'a.txt')
     await aged(a, 'one\n')
-    const before = (await cache.hashFiles([a])).get(a)
+    const before = (await cache.memo.hashFiles([a])).get(a)
     await aged(a, 'two — a different size\n')
-    const after = (await cache.hashFiles([a])).get(a)
+    const after = (await cache.memo.hashFiles([a])).get(a)
     expect(after).not.toBe(before)
-    expect(after).toBe(await cache.hashFile(a))
+    expect(after).toBe(await cache.memo.hashFile(a))
   })
 
   it('sees a rewrite that preserves BOTH mtime and size — ctime is what makes the memo safe', async () => {
@@ -119,7 +120,7 @@ describe('Cache.hashFiles', () => {
     for (const viaBatch of [false, true]) {
       const f = path.join(dir, `same-size-${String(viaBatch)}.txt`)
       const hash = async (): Promise<string | undefined> =>
-        viaBatch ? (await cache.hashFiles([f])).get(f) : await cache.hashFile(f)
+        viaBatch ? (await cache.memo.hashFiles([f])).get(f) : await cache.memo.hashFile(f)
       await aged(f, 'AAAAA\n')
       const before = await hash()
       const st = statSync(f)
@@ -145,7 +146,7 @@ describe('Cache.hashFiles', () => {
     it(`a memo row whose ${field} disagrees is not trusted, by either form`, async () => {
       const f = path.join(dir, 'f.txt')
       await aged(f, 'real\n')
-      const truth = await cache.hashFile(f)
+      const truth = await cache.memo.hashFile(f)
       const st = statSync(f)
       const planted = {
         mtime_ms: Math.floor(st.mtimeMs),
@@ -168,13 +169,13 @@ describe('Cache.hashFiles', () => {
             f,
           )
       plant()
-      expect(await cache.hashFile(f)).toBe(truth)
+      expect(await cache.memo.hashFile(f)).toBe(truth)
       plant()
-      expect((await cache.hashFiles([f])).get(f)).toBe(truth)
+      expect((await cache.memo.hashFiles([f])).get(f)).toBe(truth)
       // CONTROL: the same row with every field agreeing is trusted.
       planted[field] -= 1
       plant()
-      expect(await cache.hashFile(f)).not.toBe(truth)
+      expect(await cache.memo.hashFile(f)).not.toBe(truth)
     })
   }
 
@@ -182,10 +183,10 @@ describe('Cache.hashFiles', () => {
     const x = path.join(dir, 'x.sh')
     await aged(x, 'echo\n')
     await chmod(x, 0o755)
-    const single = await cache.hashFile(x)
-    expect((await cache.hashFiles([x])).get(x)).toBe(single)
+    const single = await cache.memo.hashFile(x)
+    expect((await cache.memo.hashFiles([x])).get(x)).toBe(single)
     await chmod(x, 0o644)
-    expect(await cache.hashFile(x)).not.toBe(single)
+    expect(await cache.memo.hashFile(x)).not.toBe(single)
   })
 
   it('a read-only store hashes a miss but remembers nothing', async () => {
@@ -200,8 +201,8 @@ describe('Cache.hashFiles', () => {
       const b = path.join(dir, 'ro-b.txt')
       await aged(a, 'alpha\n')
       await aged(b, 'beta\n')
-      expect(await ro.hashFile(a)).toBe(await cache.hashFile(a))
-      expect((await ro.hashFiles([b])).get(b)).toBe(await cache.hashFile(b))
+      expect(await ro.memo.hashFile(a)).toBe(await cache.memo.hashFile(a))
+      expect((await ro.memo.hashFiles([b])).get(b)).toBe(await cache.memo.hashFile(b))
       const rows = indexDb(ro).query('SELECT COUNT(*) AS n FROM file_hashes').get() as {
         n: number
       }
@@ -220,8 +221,8 @@ describe('Cache.hashFiles', () => {
     const b = path.join(dir, 'int-b.txt')
     await aged(a, 'alpha\n')
     await aged(b, 'beta\n')
-    await cache.hashFile(a)
-    await cache.hashFiles([b])
+    await cache.memo.hashFile(a)
+    await cache.memo.hashFiles([b])
     const rows = indexDb(cache)
       .query('SELECT path, mtime_ms, ctime_ms FROM file_hashes ORDER BY path')
       .all() as Array<{ path: string; mtime_ms: number; ctime_ms: number }>
@@ -241,7 +242,7 @@ describe('Cache.hashFiles', () => {
     // stat, the digest and the memo query.
     const warm = path.join(dir, 'warm.txt')
     await aged(warm, 'warm\n')
-    await cache.hashFiles([warm])
+    await cache.memo.hashFiles([warm])
     // The claim holds only while the calls complete inside the window of
     // the write — on a loaded CI runner one attempt can take longer (seen
     // 2026-09-09: 417 ms on ubuntu, the row memoised). The clock decides
@@ -252,8 +253,8 @@ describe('Cache.hashFiles', () => {
       const a = path.join(dir, `fresh-${attempt}.txt`)
       const t0 = Date.now()
       await writeFile(a, 'fresh\n')
-      const batch = (await cache.hashFiles([a])).get(a)
-      const single = await cache.hashFile(a)
+      const batch = (await cache.memo.hashFiles([a])).get(a)
+      const single = await cache.memo.hashFile(a)
       const elapsed = Date.now() - t0
       expect(batch).toBe(single)
       if (elapsed >= FILE_HASH_RACY_MS) continue

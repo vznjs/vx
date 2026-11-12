@@ -1,34 +1,33 @@
 // The claimant's shell: what every lockfile plugin needs around its
-// parser. A plugin that keys each project on its own dependency closure
-// from a lockfile (`@vzn/vx-lockfile`) claims the file
-// (`VxPlugin.fingerprint`), folds one digest per project through `key`,
-// and answers `--affected` by digesting both sides of a change. Only the
-// parser differs per package manager; the memo, the per-run gate, the
-// fallback for a project the file does not list and the `--affected`
-// diff are one implementation here, so a third lockfile is a parser.
+// parser, for any ecosystem's lockfile (`bun.lock`, `Cargo.lock`,
+// `uv.lock`, `go.sum`). A plugin that keys each project on its own
+// dependency closure claims the file (`VxPlugin.fingerprint`), folds one
+// digest per project through `key`, and answers `--affected` by digesting
+// both sides of a change. Only the parser differs per lockfile; the memo,
+// the per-run gate, the fallback for a project the file does not list and
+// the `--affected` diff are one implementation here.
 //
 // A run's key reads each project's digest from `.vx/dependencies.lock.json`
 // (`KeyHookContext.locked`), never the file: only `vx lock` and
-// `--affected` digest it, and a run whose extra file (a `link:` directory,
-// edited with no install) moved since the lock, as the record is stale
-// for it then. What the `discover` and `project` stages read
-// (the edges, the recorded names) is memoised in cache.db
+// `--affected` digest it, and a run whose extra file (a local path
+// dependency, edited with no install) moved since the lock, as the record
+// is stale for it then. What the `discover` and `project` stages read
+// (the links, the recorded names) is memoised in cache.db
 // (`lockfile_memos`, one row per lockfile and claimant) by the file's xxh3,
 // so a warm run pays one read + hash + one row read, never a parse; within
 // one process (a run, a watch cycle) the file's size, mtime, ctime and
-// inode gate even the read. A run's read leaves the digests out (most of a
-// parse: 9-25 ms on this repo's bun.lock, against 4-13 for the text), and
-// `vx lock` adds them to the memo.
+// inode gate even the read. A run's read leaves the digests out (most of
+// a parse), and `vx lock` adds them to the memo.
 
 import path from 'node:path'
 import { readdir, realpath, stat } from 'node:fs/promises'
 import {
   FILE_HASH_RACY_MS,
-  type LockfileMemo,
   racyWindowMs,
+  type LockfileMemo,
   readLockfileMemo,
   writeLockfileMemo,
-} from '../cache/index.js'
+} from '../memo/index.js'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
@@ -38,11 +37,11 @@ import type {
   KeyHookContext,
 } from './plugin.js'
 
-export interface LockfileClaimOptions {
+export interface LockfileClaimOptions<L = unknown> {
   /** The lockfile's name at the workspace root. */
   readonly file: string
   /**
-   * Every project's digest from the file's text: importer directory
+   * Every workspace member's digest from the file's text: member directory
    * (root-relative POSIX, `.` for the root) → digest. Called once per
    * distinct content; must be deterministic and throw on a file it
    * cannot read (the plugin's name heads the error).
@@ -50,12 +49,11 @@ export interface LockfileClaimOptions {
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   /**
    * Root-relative files the lockfile names whose BYTES the install uses but
-   * the lockfile does not pin (bun.lock's `patchedDependencies` names a patch
-   * file and records no hash of it). Their content hashes ('' when absent; unreadable refuses)
-   * reach `digest` as `files` and join the memo's identity, so an edited
-   * patch moves the key (item 1014). A directory (a `file:` dependency the
-   * install copies) hashes every file under it but `node_modules` and
-   * `.git`. Called only when the memo misses.
+   * the lockfile does not pin (a patch file it names and records no hash
+   * of). Their content hashes ('' when absent; unreadable refuses) reach
+   * `digest` as `files` and join the memo's identity, so an edited patch
+   * moves the key. A directory (a local path dependency) hashes every file
+   * under it but `node_modules` and `.git`. Called only when the memo misses.
    */
   readonly extraFiles?: (text: string) => readonly string[]
   /** Folded into the memo's identity: bump when `digest` folds differently. */
@@ -65,8 +63,7 @@ export interface LockfileClaimOptions {
    * text, which is not stable: the same plugin loaded from source and
    * from the workspace config's bytecode bundle prints differently (the
    * compiled binary's loader writes `throw Error(`, the bundle `throw new
-   * Error(`), so each switch missed the memo and parsed the lockfile again
-   * (~25 ms on solid's pnpm-lock.yaml). Give a value that changes
+   * Error(`), so each switch would miss the memo and parse again. Give a value that changes
    * whenever the functions do, such as a hash of their source files; two
    * claimants of one file must not share it.
    */
@@ -77,78 +74,62 @@ export interface LockfileClaimOptions {
    */
   readonly scope?: 'project' | 'workspace'
   /**
-   * The key part's name, as `vx why` shows it under the plugin's name
-   * (`@vzn/vx-lockfile/pnpm`). Default `'deps'`.
+   * The key part's name, as `vx why` shows it under the plugin's name.
+   * Default `'deps'`.
    */
   readonly part?: string
   /**
-   * Each importer's links to other importers, from the same text, kept in
-   * the memo beside the digests so a `discover` hook reads them without a
-   * parse. Called once per distinct content, under either scope.
+   * Each member's links to other members, from the same text, kept in the
+   * memo beside the digests so a `discover` hook reads them without a
+   * parse. Core stores each value as JSON and never reads it: its shape is
+   * the plugin's. Called once per distinct content, under either scope.
    */
-  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly links?: (text: string) => ReadonlyMap<string, L>
   /**
-   * Each importer's recorded dependency names, from the same text, kept in
+   * Each member's recorded dependency names, from the same text, kept in
    * the memo so a staleness check reads them without a parse. Called once
    * per distinct content.
    */
   readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
 }
 
-/**
- * What a lockfile records of one importer's links to the workspace's other
- * importers: dependency name → importer directory (root-relative POSIX,
- * `.` for the root).
- */
-export interface LockfileImporter {
-  /** The entries it installs that resolve to an importer. */
-  readonly deps: Readonly<Record<string, string>>
-  /** Its peers that resolve to an importer, each with no installed entry of the same name. */
-  readonly peers: Readonly<Record<string, string>>
-  /**
-   * The importers it reaches only through installed packages, sorted: a
-   * registry package's dependency the install resolved to a workspace.
-   */
-  readonly transitive?: readonly string[]
-}
-
-/** What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `importers` for its own stages. */
-export interface LockfileClaimHooks {
+/** What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `links` for its own stages. */
+export interface LockfileClaimHooks<L = unknown> {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
   /**
-   * `importers`' answer for the file as it is now, through the same memo
+   * `links`' answer for the file as it is now, through the same memo
    * and gates as `key`; undefined when the file is absent. Not a hook: a
    * plugin calls it from its own `discover` or `project`.
    */
-  importers(ctx: {
+  links(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
-  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
-  /** `recorded`'s answer for the file as it is now, as `importers` reads it; undefined when the file is absent or `recorded` is unset. */
+  }): Promise<ReadonlyMap<string, L> | undefined>
+  /** `recorded`'s answer for the file as it is now, as `links` reads it; undefined when the file is absent or `recorded` is unset. */
   recorded(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
   }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 
-interface Digests {
+interface Digests<L> {
   /** xxh3 of the lockfile bytes and the extra files' hashes; '' when the file is absent. */
   readonly lock: string
   /** xxh3 of the lockfile bytes alone. */
   readonly bytes: string
   /** The extra files the digests read. */
   readonly extras: readonly string[]
-  /** Each importer's digest; undefined when the read that made this left them out. */
-  readonly importers: ReadonlyMap<string, string> | undefined
-  readonly edges: ReadonlyMap<string, LockfileImporter>
+  /** Each member's digest; undefined when the read that made this left them out. */
+  readonly members: ReadonlyMap<string, string> | undefined
+  readonly links: ReadonlyMap<string, L>
   readonly recorded: ReadonlyMap<string, ReadonlySet<string>> | undefined
 }
 
 /**
  * A root-relative extra file's content hash, '' when absent. A path above
- * the root is read too: a `file:` or `link:` directory beside the checkout
- * is what a task imports, and left unread an edit in it moved no key. One
+ * the root is read too: a path dependency beside the checkout is what a
+ * task reads, and left unread an edit in it would move no key. One
  * there but unreadable (EACCES, a symlink loop) refuses, as a settings file
  * does: folded as '', it keyed as no file at all.
  */
@@ -171,8 +152,8 @@ export function hashExtra(
 
 /**
  * One run's hash of each extra file, by absolute path: `--affected`, the
- * `discover` read and the key all ask for a `file:` directory, and each
- * walked and read all of it (four walks a run, six when one had moved).
+ * `discover` read and the key all ask for a path dependency's directory,
+ * and each would walk and read all of it.
  * A run hashes before any task starts, so no task's write falls between.
  */
 export type ExtraHashes = Map<string, Promise<string>>
@@ -211,9 +192,8 @@ function unreadable(rel: string, err: unknown): UserError {
  * lines in sorted order. Links are followed: a linked file is what a task
  * reads, and the scan skipped it, so an edit to its target moved no key.
  * The walk never enters `node_modules` or `.git`: a glob of `**` that
- * dropped them after listed every file under them (30k files there: a warm
- * run 307 → 183 ms, min of 10). A linked directory that is one of its own
- * ancestors is not entered again.
+ * dropped them after would list every file under them. A linked directory
+ * that is one of its own ancestors is not entered again.
  */
 async function hashDir(dir: string): Promise<string> {
   const rels: string[] = []
@@ -246,7 +226,7 @@ async function hashDir(dir: string): Promise<string> {
 }
 
 /**
- * A file's identity for the in-process gate, as `Cache.hashFile`'s memo
+ * A file's identity for the in-process gate, as `LocalMemo.hashFile`'s memo
  * keys one: size and mtime alone kept the digests of a lockfile or patch
  * replaced by another of the same size with its mtime kept (`cp -p`,
  * `tar -x`), and no task sets a ctime. Given `readAt` (taken before the
@@ -300,16 +280,19 @@ async function hashExtras(
   return { hashes, stats }
 }
 
-export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks {
+export function lockfileClaim<L = unknown>(
+  options: LockfileClaimOptions<L>,
+): LockfileClaimHooks<L> {
   const { file, digest, version } = options
   const scope = options.scope ?? 'project'
   const part = options.part ?? 'deps'
   // `version` is one claimant's counter, and another claimant of the file
   // at the same number read this one's memo: one that named no extra file
-  // left the other's patch edits out of its key (X-130). The functions'
+  // left the other's patch edits out of its key. The functions'
   // source stands for the claimant, or the `identity` the plugin gives for
   // it; a rebuild that changes it is a miss.
-  // The scope too: a workspace-scope memo holds no digests.
+  // The scope too: a workspace-scope memo holds no digests. The `links`
+  // token keeps its old spelling, so the memo outlives the option's rename.
   const claimant = xxh3hex(
     [
       part,
@@ -318,13 +301,13 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         ? [
             `identity:${options.identity}`,
             options.extraFiles === undefined ? '' : 'extraFiles',
-            options.importers === undefined ? '' : 'importers',
+            options.links === undefined ? '' : 'importers',
             options.recorded === undefined ? '' : 'recorded',
           ]
         : [
             String(digest),
             String(options.extraFiles ?? ''),
-            String(options.importers ?? ''),
+            String(options.links ?? ''),
             String(options.recorded ?? ''),
           ]),
     ].join('\0'),
@@ -340,33 +323,33 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       identity: string
       extras: readonly string[]
       extraStats: Readonly<Record<string, string>>
-      digests: Digests
+      digests: Digests<L>
       /** The memo a run found no index to keep in (a discover before the first run's open). */
       unsaved?: LockfileMemo
     }
   >()
   // Workspace scope with nothing else to keep has nothing a memo saves.
   const memoises =
-    scope === 'project' || options.importers !== undefined || options.recorded !== undefined
+    scope === 'project' || options.links !== undefined || options.recorded !== undefined
   const readMemo = (cacheDir: string, lock: string) => {
     const memo = readLockfileMemo(cacheDir, file, claimant)
     if (memo === undefined || memo.version !== version || memo.lock !== lock) return undefined
     return memo
   }
   // Per run: every `key` call of one run gets the same context object.
-  const perRun = new WeakMap<object, Promise<Digests>>()
+  const perRun = new WeakMap<object, Promise<Digests<L>>>()
   const lockedPerRun = new WeakMap<
     object,
     Promise<((dir: string) => string | undefined) | undefined>
   >()
 
-  /** `withDigests`: each importer's digest too, which only `vx lock` and `--affected` read. */
+  /** `withDigests`: each member's digest too, which only `vx lock` and `--affected` read. */
   const load = async (
     workspaceRoot: string,
     cacheDir: string,
     withDigests: boolean,
     run: ExtraHashes | undefined,
-  ): Promise<Digests> => {
+  ): Promise<Digests<L>> => {
     const full = path.join(workspaceRoot, file)
     let identity: string
     let stamped: string
@@ -376,12 +359,12 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       identity = identityOf(st)
       stamped = identityOf(st, readAt)
     } catch {
-      const digests: Digests = {
+      const digests: Digests<L> = {
         lock: '',
         bytes: '',
         extras: [],
-        importers: new Map(),
-        edges: new Map(),
+        members: new Map(),
+        links: new Map(),
         recorded: undefined,
       }
       seen.set(workspaceRoot, { identity: 'gone', extras: [], extraStats: {}, digests })
@@ -391,7 +374,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     if (
       last !== undefined &&
       last.identity === identity &&
-      (!withDigests || last.digests.importers !== undefined)
+      (!withDigests || last.digests.members !== undefined)
     ) {
       const now = await statsOf(workspaceRoot, last.extras, run)
       if (now.every((s, i) => s === last.extraStats[last.extras[i]!])) {
@@ -410,8 +393,8 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     const memo = memoises ? (readMemo(cacheDir, lockHash) ?? kept) : undefined
     let extras: Record<string, string> = {}
     let extraStats: Record<string, string> = {}
-    let importers: ReadonlyMap<string, string> | undefined
-    let edges: ReadonlyMap<string, LockfileImporter> = new Map()
+    let members: ReadonlyMap<string, string> | undefined
+    let links: ReadonlyMap<string, L> = new Map()
     let recorded: ReadonlyMap<string, readonly string[]> | undefined
     let unsaved: LockfileMemo | undefined
     let served = false
@@ -421,8 +404,8 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         served = true
         extras = memo.extras
         extraStats = now.stats
-        importers = memo.importers === null ? undefined : new Map(Object.entries(memo.importers))
-        edges = new Map(Object.entries(memo.edges as Record<string, LockfileImporter>))
+        members = memo.importers === null ? undefined : new Map(Object.entries(memo.importers))
+        links = new Map(Object.entries(memo.edges as Record<string, L>))
         recorded = memo.recorded === undefined ? undefined : new Map(Object.entries(memo.recorded))
         if (memo === kept && !writeLockfileMemo(cacheDir, file, claimant, memo)) unsaved = memo
       }
@@ -433,21 +416,21 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       const now = await hashExtras(workspaceRoot, rels, run)
       extras = now.hashes
       extraStats = now.stats
-      importers =
+      members =
         scope === 'workspace'
           ? new Map<string, string>()
           : withDigests
             ? digest(text, new Map(Object.entries(extras)))
             : undefined
-      edges = options.importers?.(text) ?? new Map()
+      links = options.links?.(text) ?? new Map()
       recorded = options.recorded?.(text)
       if (memoises) {
         const kept: LockfileMemo = {
           version,
           lock: lockHash,
           extras,
-          importers: importers === undefined ? null : Object.fromEntries(importers),
-          edges: Object.fromEntries(edges),
+          importers: members === undefined ? null : Object.fromEntries(members),
+          edges: Object.fromEntries(links),
           ...(recorded !== undefined ? { recorded: Object.fromEntries(recorded) } : {}),
         }
         if (!writeLockfileMemo(cacheDir, file, claimant, kept)) unsaved = kept
@@ -458,12 +441,12 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       rels.length === 0
         ? lockHash
         : xxh3hex([lockHash, ...rels.map((r) => `${r}\0${extras[r]}`)].join('\0'))
-    const digests: Digests = {
+    const digests: Digests<L> = {
       lock,
       bytes: lockHash,
       extras: rels,
-      importers,
-      edges,
+      members,
+      links,
       recorded:
         recorded === undefined
           ? undefined
@@ -498,14 +481,14 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
           return (dir: string) => rec.digest(dir)
         }
         const digests = await load(ctx.workspaceRoot, ctx.cacheDir, true, run)
-        const importers = digests.importers!
-        return (dir: string) => digestFor(importers, importerOf(ctx.workspaceRoot, dir))
+        const members = digests.members!
+        return (dir: string) => digestFor(members, memberOf(ctx.workspaceRoot, dir))
       })()
       lockedPerRun.set(ctx, p)
     }
     return p
   }
-  const loadOnce = (ctx: KeyHookContext): Promise<Digests> => {
+  const loadOnce = (ctx: KeyHookContext): Promise<Digests<L>> => {
     let p = perRun.get(ctx)
     if (p === undefined) {
       p = load(ctx.workspaceRoot, ctx.cacheDir, false, extraHashesOf(ctx))
@@ -519,13 +502,12 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       files: [file],
       affected(change: FingerprintChange, ctx: FingerprintContext) {
         // One side absent: the file appeared or went — every project's
-        // installed tree is in question.
+        // installed dependencies are in question.
         if (change.before === null || change.after === null) return undefined
         if (scope === 'workspace') return undefined
         // WHICH side failed is the whole difference between "your
         // lockfile is broken" and "the base commit's is" — a migration
-        // commit hits the second, and the bare parser message named
-        // neither (2026-09-20).
+        // commit hits the second, and the bare parser message names neither.
         // A changed extra file is folded by its content on each side; one
         // left out is the same on both, so it moves no digest either way.
         const extrasOf = (pick: 'before' | 'after'): Map<string, string> => {
@@ -551,8 +533,8 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         const after = sideOf(change.after, 'after', `in the working tree`)
         const names: string[] = []
         for (const p of ctx.projects) {
-          const importer = importerOf(ctx.workspaceRoot, p.dir)
-          if (digestFor(before, importer) !== digestFor(after, importer)) names.push(p.name)
+          const member = memberOf(ctx.workspaceRoot, p.dir)
+          if (digestFor(before, member) !== digestFor(after, member)) names.push(p.name)
         }
         return names
       },
@@ -562,13 +544,13 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         if (scope === 'workspace') return undefined
         const digests = await load(ctx.workspaceRoot, ctx.cacheDir, true, extraHashesOf(ctx))
         if (digests.lock === '') return undefined
-        const importers = digests.importers!
+        const members = digests.members!
         return {
           hash: digests.bytes,
           projects: Object.fromEntries(
             ctx.projects.map((p) => [
               p.name,
-              digestFor(importers, importerOf(ctx.workspaceRoot, p.dir)),
+              digestFor(members, memberOf(ctx.workspaceRoot, p.dir)),
             ]),
           ),
           ...(digests.extras.length > 0 ? { extras: digests.extras } : {}),
@@ -597,9 +579,9 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       const digests = await loadOnce(ctx)
       return digests.lock === '' ? undefined : { [part]: digests.lock }
     },
-    async importers(ctx) {
+    async links(ctx) {
       const digests = await load(ctx.workspaceRoot, ctx.cacheDir, false, extraHashesOf(ctx))
-      return digests.lock === '' ? undefined : digests.edges
+      return digests.lock === '' ? undefined : digests.links
     },
     async recorded(ctx) {
       const digests = await load(ctx.workspaceRoot, ctx.cacheDir, false, extraHashesOf(ctx))
@@ -609,33 +591,30 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 }
 
 /**
- * A project's digest: its own importer's AND the root importer's. The
- * root package's dependencies reach every task — their bins through the
- * root `node_modules/.bin` core puts on every PATH, their modules through
- * Node's resolution walking up to the root `node_modules` (`@types/*`,
- * a config's plugins) — so a root devDependency bump that moved only the
- * root's digest replayed the old tool's output (nx#36415 class,
- * 2026-09-24). A project the lockfile has no importer for folds its
- * nearest listed ancestor's, as Node resolves from that ancestor's
- * `node_modules` (`packages/a/e2e` from `packages/a`'s): the root's alone
- * keyed it on no bump only `a` reached. Outside every importer it folds
- * the root's alone; a file with neither folds a constant.
+ * A project's digest: its own member's AND the root member's. The root's
+ * dependencies reach every project (a workspace-wide tool, a shared
+ * toolchain), so a root bump that moved only the root's digest would
+ * replay the old tool's output. A project the lockfile has no member for
+ * folds its nearest listed ancestor's, whose dependencies it resolves;
+ * the root's alone would key it on no bump only that ancestor reached.
+ * Outside every member it folds the root's alone; a file with neither
+ * folds a constant, whose spelling is key material.
  */
-function digestFor(importers: ReadonlyMap<string, string>, importer: string): string {
-  let dir = importer
-  while (dir !== '.' && !importers.has(dir)) {
+function digestFor(members: ReadonlyMap<string, string>, member: string): string {
+  let dir = member
+  while (dir !== '.' && !members.has(dir)) {
     const slash = dir.lastIndexOf('/')
     dir = slash === -1 ? '.' : dir.slice(0, slash)
   }
-  const own = importers.get(dir)
-  const root = importers.get('.')
+  const own = members.get(dir)
+  const root = members.get('.')
   if (own === undefined) return root ?? 'no-importer'
   if (root === undefined || dir === '.') return own
   return xxh3hex(`${own}\0${root}`)
 }
 
-/** The lockfile's importer path for a project directory: `.` for the root, POSIX otherwise. */
-function importerOf(workspaceRoot: string, projectDir: string): string {
+/** The lockfile's member path for a project directory: `.` for the root, POSIX otherwise. */
+function memberOf(workspaceRoot: string, projectDir: string): string {
   return relPosix(workspaceRoot, projectDir) || '.'
 }
 
@@ -649,10 +628,10 @@ function decode(bytes: Uint8Array): string {
  * Each member of a cycle as what it is and where its edges land, by
  * colour refinement: a member starts as its material and the child
  * digests its edges leave the cycle for, then folds its in-cycle
- * targets' labels until no two labels part further. npm and bun key two
- * copies of one version alike (`a/node_modules/foo` → bar@1,
- * `node_modules/foo` → bar@2), so by material alone two members swapping
- * copies, in the cycle or out of it, moved nothing. Two members left with
+ * targets' labels until no two labels part further. A lockfile may key
+ * two copies of one version alike (installed at two places, each
+ * resolving another version of a dependency), so by material alone two
+ * members swapping copies, in the cycle or out of it, would move nothing. Two members left with
  * one label have the same material, reach the same children, and their
  * in-cycle edges land on labels alike to every depth. Telling such a pair
  * apart takes an isomorphism test; it needs a cycle where copies of one
@@ -701,8 +680,8 @@ export interface ReachGraph {
  * strongly connected component: Tarjan's walk (iterative — a dependency
  * chain can be thousands deep) emits components children-first, and each
  * folds its members (sorted), each as its material and the materials its
- * edges land on, and its child components' digests (sorted). O(nodes + edges): 1000 importers over 3000 packages digest in
- * ~20 ms where one traversal per importer took 400.
+ * edges land on, and its child components' digests (sorted).
+ * O(nodes + edges), where one traversal per member is O(members × nodes).
  */
 export function reachDigests(g: ReachGraph): string[] {
   const n = g.material.length
@@ -755,9 +734,9 @@ export function reachDigests(g: ReachGraph): string[] {
         for (const w of g.edges[m]!) if (comp[w] !== id) children.add(compHash[comp[w]!]!)
       }
       // A member is its material AND where its edges land: all members
-      // share one digest, so retargeting an edge between two of them (an
-      // importer's `y@1.0.0` → `y@1.1.0` inside one cycle) moved nothing
-      // and replayed a stale output (item 1013). A self-loop reaches
+      // share one digest, so retargeting an edge between two of them (a
+      // dependent's `y@1.0.0` → `y@1.1.0` inside one cycle) would move
+      // nothing and replay a stale output. A self-loop reaches
       // nothing new and is left out. A singleton's children already say
       // where its edges land, and its line stays as it was, so an acyclic
       // digest keeps its value.

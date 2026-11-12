@@ -3,7 +3,8 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { CACHE_VERSION } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/index-db/index.js'
 
 const doc = readFileSync(path.join(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
 
@@ -24,9 +25,7 @@ describe('the docs quote the current CACHE_VERSION and SCHEMA_VERSION', () => {
   })
 
   it('caching.md heads its schema block with the current SCHEMA_VERSION', () => {
-    expect(doc).toContain(
-      `-- src/cache/schema.ts (SCHEMA_VERSION = '${SCHEMA_VERSION}', in cache.ts)`,
-    )
+    expect(doc).toContain(`-- src/index-db/schema.ts (SCHEMA_VERSION = '${SCHEMA_VERSION}')`)
   })
 
   it('modules/cache.md quotes both constants as they are', () => {
@@ -55,13 +54,13 @@ function tables(sql: string): Map<string, string[]> {
   return out
 }
 
-describe('caching.md § SQLite tables follows the schema cache.ts and schema.ts create', () => {
+describe('caching.md § SQLite tables follows the schema store-index.ts and schema.ts create', () => {
   // The block documented five of ten tables until 2026-09-16 (item 298):
   // nothing read it against the source.
   it('documents every table with exactly its columns', () => {
     const source = tables(
-      ['cache.ts', 'schema.ts']
-        .map((f) => readFileSync(path.join(import.meta.dir, '..', 'src', 'cache', f), 'utf8'))
+      ['cache/store-index.ts', 'index-db/schema.ts']
+        .map((f) => readFileSync(path.join(import.meta.dir, '..', 'src', f), 'utf8'))
         .join('\n'),
     )
     const block = /```sql\n([\s\S]*?)```/.exec(doc)
@@ -142,18 +141,15 @@ describe('caching.md lists the key parts in the order key() folds them', () => {
   })
 })
 
-// J2-55: caching.md defined willRead / willWrite without the remote-only
-// condition execute-task.ts applies to both.
-describe("caching.md's read/write predicates are execute-task's", () => {
+// caching.md defined willRead / willWrite without the remote-only
+// condition task-policy.ts applies to both.
+describe("caching.md's read/write predicates are the task policy's", () => {
   it('each predicate names every condition the source ANDs', () => {
-    const src = readFileSync(
-      new URL('../src/orchestrator/execute-task.ts', import.meta.url),
-      'utf8',
-    )
+    const src = readFileSync(new URL('../src/orchestrator/task-policy.ts', import.meta.url), 'utf8')
     for (const name of ['willRead', 'willWrite']) {
       const line = src.match(new RegExp(`const ${name} = ([^\\n]+)`))![1]!
       expect(line).toContain('!remoteOnly')
-      expect(line).toContain('cfgCacheable')
+      expect(line).toContain('cacheable')
       const doc = readFileSync(new URL('../docs/caching.md', import.meta.url), 'utf8')
       const said = doc.match(new RegExp(`\`${name} = ([^\`]+)\``))![1]!
       expect(said).toContain('task is cached')

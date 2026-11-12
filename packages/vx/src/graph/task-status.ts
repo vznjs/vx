@@ -9,11 +9,9 @@ export type TaskStatus =
   | 'cache-hit-remote'
   | 'failed'
   | 'skipped'
-  // A child killed by a shutdown signal (SIGINT/SIGTERM — e.g. Ctrl-C):
-  // the task never finished on its own terms, so it reverts to aborted —
-  // excluded from the tally and the run history. It still PROPAGATES like
-  // a failure (see `willSkip`): the child died mid-write, so its outputs
-  // are partial.
+  // A child killed by SIGINT/SIGTERM never finished on its own terms: it
+  // reverts to aborted, outside the tally and history. It still propagates like
+  // a failure (`willSkip`): its outputs are partial.
   | 'aborted'
 
 /**
@@ -24,12 +22,9 @@ export type TaskStatus =
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
 
 /**
- * Map a task outcome status to its cache source. `success`/`failed` ran
- * (a miss as far as the cache read is concerned); the two cache-hit
- * statuses restored from local/remote; `skipped`/`aborted` never engaged
- * the cache. Pure function — the single place this mapping is decided;
- * `isCacheHit` below is derived from it rather than re-listing the two
- * hit statuses, so there is one decision, not two that can disagree.
+ * A status's cache source: `success`/`failed` ran (a miss), the two hit
+ * statuses restored, `skipped`/`aborted` never engaged the cache. The one place
+ * this is decided; `isCacheHit` derives from it.
  */
 export function deriveCacheSource(status: TaskStatus): CacheSource {
   switch (status) {
@@ -47,12 +42,8 @@ export function deriveCacheSource(status: TaskStatus): CacheSource {
 }
 
 /**
- * Whether each status counts as a PASS. Written as a `Record<TaskStatus, …>`
- * rather than a `new Set([...])` on purpose: a Record must name every member,
- * so adding a status to the union is a COMPILE error HERE and the omission
- * cannot ship. A Set of string literals has no such tripwire — it silently
- * answers `false` for the new member, which is how ten hand-rolled copies of
- * this vocabulary accumulated across core, cloud and the dashboard.
+ * A `Record<TaskStatus, …>`, not a Set: a new status is a compile error here
+ * instead of a silent `false`.
  */
 const PASSES: Record<TaskStatus, boolean> = {
   success: true,
@@ -64,36 +55,29 @@ const PASSES: Record<TaskStatus, boolean> = {
 }
 
 /**
- * Every `TaskStatus`, at runtime. Read off `PASSES`'s keys, which the
- * `Record<TaskStatus, …>` type guarantees is exactly the union — so this is
- * derived, not a second list that can fall behind. Exported so a consumer that
- * cannot import the type (a test asserting a copy of this vocabulary in
- * another package agrees) can still enumerate the real set.
+ * Every `TaskStatus` at runtime, read off `PASSES`'s keys, which the type pins
+ * to the union. For consumers that cannot import the type.
  */
 export const TASK_STATUSES: readonly TaskStatus[] = Object.keys(PASSES) as TaskStatus[]
 
 /**
- * Did the task pass? A cache hit counts — it produced the same result without
- * spending the time, which is the whole point. `skipped` and `aborted` do NOT:
- * neither finished on its own terms, so neither can vouch for anything.
+ * Did the task pass? A hit counts; `skipped` and `aborted` do not, as neither
+ * finished on its own terms.
  *
- * Takes `string`, not `TaskStatus`, because most callers hold a status that
- * arrived over a wire or out of a database column. An unrecognised string
- * reads as NOT passing — the safe direction, since the alternative is calling
- * a run green on a status this build has never heard of.
+ * Takes `string`: most statuses arrive over a wire or from a database. An
+ * unknown string does not pass, the safe direction.
  */
 export function isPassStatus(status: string): boolean {
   return PASSES[status as TaskStatus] === true
 }
 
 /**
- * Did the task's result come out of the cache (either layer)? Derived from
- * `deriveCacheSource` rather than re-listing the two hit statuses, so the two
- * cannot disagree about what a hit is. Unknown strings read as not-a-hit.
+ * Did the result come from the cache (either layer)? Derived from
+ * `deriveCacheSource`. Unknown strings are not hits.
  */
 export function isCacheHit(status: string): boolean {
   // No known-status guard: an unknown string falls through the switch to
-  // undefined, which is neither hit source (the guard survived item 654).
+  // undefined, which is neither hit source.
   const source = deriveCacheSource(status as TaskStatus)
   return source === 'local' || source === 'remote'
 }

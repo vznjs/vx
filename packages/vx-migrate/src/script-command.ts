@@ -1,29 +1,27 @@
 // The command a package.json script becomes. Inlining the body is the
 // rule — one process less per task than `<pm> run <name>` — with two npm
-// conventions mapped rather than lost, the way core's `vx init` maps
-// them (workspace/migrate-scripts.ts):
+// conventions mapped rather than lost:
 //
 // - `pre<name>` / `post<name>` hooks, which npm and pnpm run around
 //   `<name>` without being asked, are folded into the command in that
-//   order (novu's `prebuild` copies the CSS its `build` inlines,
-//   2026-09-11; Nx and Turbo run `pnpm run build`, so they get the hooks
+//   order (novu's `prebuild` copies the CSS its `build` inlines;
+//   Nx and Turbo run `pnpm run build`, so they get the hooks
 //   for free). A script named for a verb (`version`, `pack`) is no
 //   exception: `npm run version` runs `preversion` too, as pnpm, Yarn 1
-//   and Bun do (2026-11-11).
+//   and Bun do.
 // - yarn ≥ 2 runs scripts in its own shell, where `run` is a builtin
 //   (`run -T rollup -c` is "the root's rollup", `run build:code` the
 //   sibling script); inlined into sh that body is `run: command not
-//   found` in every strapi package (2026-09-11), so such a script runs
+//   found` in every strapi package, so such a script runs
 //   through `yarn run <name>`, exactly as Nx and Turbo run it — and yarn
 //   ≥ 2 runs no pre/post hooks, so none are folded there either.
 // - A Yarn Plug'n'Play workspace has no node_modules: a dependency's
 //   `require` resolves only through `.pnp.cjs` and its bins only through
 //   the shims `yarn run` writes, so inlined, `node -e "require('left-pad')"`
-//   was MODULE_NOT_FOUND (2026-09-28). Every script runs as `yarn run <name>`.
+//   was MODULE_NOT_FOUND. Every script runs as `yarn run <name>`.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { foldScriptHooks } from '@vzn/vx'
 import { shellQuote } from './nx-command.js'
 
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
@@ -47,6 +45,42 @@ export function scriptCommand(
   if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return yarnRun(name)
   return foldScriptHooks(parts[0], body, parts[2])
 }
+
+/**
+ * A script with the `pre<name>` / `post<name>` hooks npm runs around it,
+ * as ONE sh command. Each part runs in its own subshell, so a `;` or an
+ * `exit` in one ends that part alone, and the chain stops at the first
+ * that fails, as npm stops. The parts sit in a function the forwarded
+ * `--` args are appended to, and only the body takes them, as npm appends
+ * them to the script and never to its hooks: a plain ` && ` join handed
+ * them to the post hook, and `test -f x && echo A; echo B` ran `echo B`
+ * after a failed pre hook. npm appends them as TEXT: no part sees them as
+ * `$1`…, so the function quotes them into `vx_a`, clears its positional
+ * parameters, and evals the body with `vx_a` after it. Each part ends on
+ * its own line, so a trailing `# comment` cannot swallow the paren. A
+ * script with no hooks is its body, verbatim.
+ */
+export function foldScriptHooks(
+  pre: string | undefined,
+  body: string,
+  post: string | undefined,
+): string {
+  if (pre === undefined && post === undefined) return body
+  const quoted = `'${body.replaceAll("'", `'\\''`)}'`
+  const parts = [
+    ...(pre === undefined ? [] : [`(${pre}\n)`]),
+    `(eval ${quoted}"$vx_a"\n)`,
+    ...(post === undefined ? [] : [`(${post}\n)`]),
+  ]
+  return `vx_script() {\n${QUOTE_ARGS}\nset --\n${parts.join(' && ')}\n}\nvx_script`
+}
+
+/** Each argument single-quoted into `vx_a`, in sh alone (no spawn per arg). */
+const QUOTE_ARGS =
+  `vx_q="'" vx_a=\n` +
+  `for vx_s in "$@"; do vx_r=; while :; do case $vx_s in *"$vx_q"*) ` +
+  `vx_r="$vx_r\${vx_s%%"$vx_q"*}'\\''"; vx_s=\${vx_s#*"$vx_q"};; *) break;; esac; done; ` +
+  `vx_a="$vx_a '$vx_r$vx_s'"; done`
 
 /** `yarn run <name>`, the name one shell word: `a b` ran script `a` with an argument. */
 export function yarnRun(name: string): string {
@@ -77,14 +111,14 @@ export async function yarnrcText(root: string): Promise<string> {
 }
 
 /**
- * The package manager that owns `dir`, when it runs `pre` / `post` hooks
- * around a script; null when it runs none. The manager is the nearest `packageManager` field or
- * lockfile, and its settings are read beside it, as each reads them for a
- * member too. Probed with a `prebuild` / `build` / `postbuild` trio: Yarn
- * 2+ runs none (D-31); npm runs none under `ignore-scripts=true` in
- * `.npmrc`; pnpm runs none under `enable-pre-post-scripts=false` there or
- * `enablePrePostScripts: false` in `pnpm-workspace.yaml` (D-33); Bun and
- * Yarn 1 run them whatever those say. No manager found is npm's default.
+ * The package manager that owns `dir`, when it runs `pre` / `post` hooks around
+ * a script; null when it runs none. The manager is the nearest `packageManager`
+ * field or lockfile, and its settings are read beside it, as each reads them
+ * for a member too. Probed with a `prebuild` / `build` / `postbuild` trio: Yarn
+ * 2+ runs none; npm runs none under `ignore-scripts=true` in `.npmrc`; pnpm
+ * runs none under `enable-pre-post-scripts=false` there or
+ * `enablePrePostScripts: false` in `pnpm-workspace.yaml`; Bun and Yarn 1 run
+ * them whatever those say. No manager found is npm's default.
  */
 export function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
   const { manager, at } = ownerOf(dir, memo)
@@ -151,8 +185,8 @@ export function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
     const manifest = (read('package.json') ?? '').replace(/^\uFEFF/, '')
     const pm = (JSON.parse(manifest) as { packageManager?: unknown }).packageManager
     // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
-    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
-    // claim nothing had checked (D-96).
+    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a claim
+    // nothing had checked.
     if (typeof pm === 'string' && /^(npm|pnpm|yarn|bun)@/.test(pm))
       manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
   } catch {}

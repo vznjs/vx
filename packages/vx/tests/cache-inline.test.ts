@@ -13,6 +13,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache, CorruptArtifactError } from '../src/cache/cache.js'
 import { isInline, storedArtifact } from './helpers/stored-artifact.js'
+import * as pruning from '../src/cache/prune.js'
 
 let root: string
 let cacheDir: string
@@ -452,20 +453,21 @@ describe('8: prune over inline artifacts', () => {
       embeddings: 32 * 1024,
       decompress: false,
     })
+    let spy: ReturnType<typeof spyOn<typeof pruning, 'reapOrphans'>> | undefined
     try {
       await save(cache, '00000000000000a1', 'adopted')
       const db = indexDb(cache)
       db.query('DELETE FROM entries').run()
       db.query('UPDATE artifacts SET at = ?').run(Date.now() - 3 * 24 * HOUR)
-      const target = cache as unknown as { reapOrphans: (...a: unknown[]) => Promise<unknown> }
-      const reap = target.reapOrphans.bind(cache)
-      spyOn(target, 'reapOrphans').mockImplementation(async (...args: unknown[]) => {
+      const reap = pruning.reapOrphans
+      spy = spyOn(pruning, 'reapOrphans').mockImplementation(async (...args) => {
         expect((await cache.get('00000000000000a1', ctx))?.hash).toBe('00000000000000a1')
         return reap(...args)
       })
       const r = await cache.prune({ olderThanMs: Date.now() - 24 * HOUR })
       expect([r.orphans, isInline(cache, '00000000000000a1')]).toEqual([0, true])
     } finally {
+      spy?.mockRestore()
       cache.close()
     }
   })

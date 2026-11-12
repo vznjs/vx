@@ -89,10 +89,9 @@ const defaultPost =
   async (url, json, headers, deadline, tls) => {
     // Compressed once, not per attempt; the header says the sink asked.
     const body = headers['content-encoding'] === 'gzip' ? Bun.gzipSync(json) : json
-    // A collector that sheds load (429, 502, 503, 504, or a dropped
-    // connection) is retried twice, as the OTLP spec asks of exporters: the
-    // export was dropped whole on the first 503 (F-28). The flush deadline
-    // still bounds it all.
+    // A collector that sheds load (429, 502, 503, 504, or a dropped connection)
+    // is retried twice, as the OTLP spec asks of exporters: the export was
+    // dropped whole on the first 503. The flush deadline still bounds it all.
     for (let attempt = 0; ; attempt++) {
       try {
         return await postOnce(url, body, headers, timeoutMs, deadline, tls)
@@ -102,8 +101,8 @@ const defaultPost =
         if (retry === undefined || delay === undefined || deadline?.aborted === true) {
           throw err instanceof OtlpRetryable ? err.refused : err
         }
-        // The deadline ended the wait: core has given up on the flush, and
-        // the refusal is what to tell (F-46).
+        // The deadline ended the wait: core has given up on the flush, and the
+        // refusal is what to tell.
         if (await sleepUnless(retry > 0 ? Math.min(retry, MAX_RETRY_AFTER_MS) : delay, deadline)) {
           throw err instanceof OtlpRetryable ? err.refused : err
         }
@@ -151,10 +150,10 @@ function sleepUnless(ms: number, deadline: AbortSignal | undefined): Promise<boo
 
 // Takes the CONFIGURED timeout. It used to abort on a literal 15 s while
 // `timeoutMs` was resolved, defaulted and stored and then read by nobody, so
-// `otel({ timeoutMs: 1000 })` waited fifteen seconds on a hanging collector
-// (2026-09-19). Clearable timer, not AbortSignal.timeout: the latter's
-// internal timer is not unref'd and would keep a CLI process alive until it
-// fires, well after the POST resolved.
+// `otel({ timeoutMs: 1000 })` waited fifteen seconds on a hanging collector.
+// Clearable timer, not AbortSignal.timeout: the latter's internal timer is not
+// unref'd and would keep a CLI process alive until it fires, well after the
+// POST resolved.
 async function postOnce(
   url: string,
   body: string | Uint8Array,
@@ -165,16 +164,16 @@ async function postOnce(
 ): Promise<void> {
   const controller = new AbortController()
   // A timer past 2^31-1 ms fires after 1 ms: OTEL_EXPORTER_OTLP_TIMEOUT=1e10
-  // aborted every export at once (F-56). The spec defines that value, so it
-  // is held to the longest a timer waits; the option is refused at the call.
-  // The reason is what fetch rejects with, so the warning names the
-  // timeout spent; a bare abort said only "The operation was aborted."
+  // aborted every export at once. The spec defines that value, so it is held to
+  // the longest a timer waits; the option is refused at the call. The reason is
+  // what fetch rejects with, so the warning names the timeout spent; a bare
+  // abort said only "The operation was aborted."
   const timer = setTimeout(
     () => controller.abort(new Error(`no answer within ${timeoutMs} ms`)),
     Math.min(timeoutMs, MAX_TIMER_MS),
   )
-  // Core's flush deadline ends the POST too: `timeoutMs` (15 s by
-  // default) alone held the process that long after the run (item 1055).
+  // Core's flush deadline ends the POST too: `timeoutMs` (15 s by default)
+  // alone held the process that long after the run.
   const onDeadline = (): void => controller.abort(deadline?.reason)
   deadline?.addEventListener('abort', onDeadline, { once: true })
   try {
@@ -187,15 +186,15 @@ async function postOnce(
         signal: controller.signal,
         // An OTLP header is often the vendor's API key, and fetch drops only
         // `Authorization` on a redirect to another origin: a collector's 307
-        // sent the key there (L-43). The OTel SDK exporters follow none.
+        // sent the key there. The OTel SDK exporters follow none.
         redirect: 'manual',
         ...(tls === undefined ? {} : { tls }),
       })
     } catch (err) {
       // A connection that failed is worth a retry; one this side aborted is
       // not, nor a certificate this side refused, nor a port nothing listens
-      // on: each fails the same way every time, and the retries spent a
-      // second of the flush on it (F-40), a warm no-op's too.
+      // on: each fails the same way every time, and the retries spent a second
+      // of the flush on it, a warm no-op's too.
       if (controller.signal.aborted) throw err
       if ((err as { code?: unknown } | null)?.code === 'ECONNREFUSED') throw err
       if (isCertificateRefusal(err)) {
@@ -205,13 +204,12 @@ async function postOnce(
       }
       throw new OtlpRetryable(err instanceof Error ? err : new Error(String(err)), 0)
     }
-    // A collector that REFUSES the export still ANSWERS: only one that
-    // cannot be reached throws. Until this read the status, a 401 from a
-    // wrong token, a 404 from a wrong path and a 500 from a wedged
-    // collector each exported nothing and said nothing, for every run
-    // (walked the adopter's path, 2026-09-20). The body is the
-    // collector's own explanation, so a line of it rides the message.
-    // quiet: the status alone still names the refusal
+    // A collector that REFUSES the export still ANSWERS: only one that cannot
+    // be reached throws. Until this read the status, a 401 from a wrong token,
+    // a 404 from a wrong path and a 500 from a wedged collector each exported
+    // nothing and said nothing, for every run (walked the adopter's path). The
+    // body is the collector's own explanation, so a line of it rides the
+    // message. quiet: the status alone still names the refusal
     const text = await upTo(res, REPLY_BYTES).catch(() => '')
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
@@ -278,8 +276,8 @@ function retryAfterMs(value: string | null): number {
 
 /**
  * One line of a collector's error body, bounded, each control written as
- * `\xNN`: it is remote text, and an `ESC ]` in it retitled the terminal
- * the warning printed to (L-31).
+ * `\xNN`: it is remote text, and an `ESC ]` in it retitled the terminal the
+ * warning printed to.
  */
 function detail(body: string): string {
   const line = body
@@ -542,9 +540,9 @@ export class OtelSink implements TelemetrySink {
   }
 
   /**
-   * Every POST's signal, live ones included: core's flush deadline aborts
-   * it, so a send still hanging on a slow collector when the run ends is
-   * cut there, not left holding the process open (item 1055).
+   * Every POST's signal, live ones included: core's flush deadline aborts it,
+   * so a send still hanging on a slow collector when the run ends is cut there,
+   * not left holding the process open.
    */
   private readonly lifetime = new AbortController()
   private readonly deadline = this.lifetime.signal
@@ -764,7 +762,7 @@ export class OtelSink implements TelemetrySink {
           timeUnixNano: now,
           timeFor: (taskId) => this.taskEndNano.get(taskId),
           // Traces off: the trace and its spans are never exported, and a
-          // record naming them links nowhere (F-49).
+          // record naming them links nowhere.
           ...(this.cfg.tracesEnabled && this.traceId
             ? { traceId: this.traceId, spanIdFor: (taskId) => this.taskSpanId.get(taskId) }
             : {}),
@@ -773,7 +771,7 @@ export class OtelSink implements TelemetrySink {
     )
   }
 
-  /** The transport, under the signal's own timeout when it has one (F-49). */
+  /** The transport, under the signal's own timeout when it has one. */
   private postFor(signal: OtelSignal): PostFn {
     const own = this.cfg.signalTimeoutMs[signal]
     return own === undefined || this.injected ? this.cfg.post : defaultPost(own)
@@ -827,16 +825,16 @@ export class OtelSink implements TelemetrySink {
 
 /**
  * Items per OTLP request. A run's spans went in ONE request, and 20 000 tasks
- * made 23 MiB, past a collector's 20 MiB default: `request body too large`,
- * the whole trace lost (F-22). 1 000 spans is ~1.2 MiB; the SDKs batch 512.
+ * made 23 MiB, past a collector's 20 MiB default: `request body too large`, the
+ * whole trace lost. 1 000 spans is ~1.2 MiB; the SDKs batch 512.
  */
 const ITEMS_PER_REQUEST = 1000
 
 /**
  * Bytes per OTLP request. A count bounds spans, not log tails: the run's log
  * budget counts characters, and JSON writes a control character as six bytes
- * (`\u0001`), so 64 tails of control bytes made one 23 MiB logs request
- * (F-23). A body past this is split in half until it fits or is one item.
+ * (`\u0001`), so 64 tails of control bytes made one 23 MiB logs request. A body
+ * past this is split in half until it fits or is one item.
  */
 const BYTES_PER_REQUEST = 4 * 1024 * 1024
 
@@ -860,8 +858,7 @@ function requestBodies<T>(items: readonly T[], encode: (group: T[]) => string): 
 /**
  * `url` as a warning may print it: a credential in its userinfo or query
  * (`https://user:token@…`, `…?api-key=…`) is replaced, so a refused export
- * does not put the secret in a CI log. Headers were redacted by item 928;
- * the URL was not.
+ * does not put the secret in a CI log.
  */
 function shownUrl(url: string): string {
   let u: URL

@@ -4,15 +4,15 @@
  * older Bun starts fine and then answers WRONGLY, which is the failure class
  * this repo treats as the worst one.
  *
- * Measured on Bun 1.3.11 (2026-09-19, STATUS item 366): a 2 MiB `--format
- * json` answer reached a pipe as 219 KB — `bin.ts` ends stdout in a callback
- * precisely to prevent that, and the fix does not hold below the floor; the
- * runner read no `peakRssBytes` at all, so `vx last` and `vx why` reported
- * nothing a task used; and a config syntax error arrived as a `BuildMessage`
- * the loader's classifier does not know, surfacing as an internal error
- * instead of the UserError naming file, line and column. Ten of that
- * container's twenty-three failures were this, and every one of them is a
- * green exit over a wrong answer.
+ * Measured on Bun 1.3.11: a 2 MiB `--format json` answer
+ * reached a pipe as 219 KB — `bin.ts` ends stdout in a callback precisely to
+ * prevent that, and the fix does not hold below the floor; the runner read no
+ * `peakRssBytes` at all, so `vx last` and `vx why` reported nothing a task
+ * used; and a config syntax error arrived as a `BuildMessage` the loader's
+ * classifier does not know, surfacing as an internal error instead of the
+ * UserError naming file, line and column. Ten of that container's twenty-three
+ * failures were this, and every one of them is a green exit over a wrong
+ * answer.
  *
  * `@vzn/vx-reapi` REFUSES an old Bun at its wire, because its failure mode is
  * a hang and a hang leaves the user nothing to read. Core warns instead: most

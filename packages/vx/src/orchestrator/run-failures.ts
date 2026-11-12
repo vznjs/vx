@@ -3,10 +3,10 @@
 // cache.db's `failures` (cache/run-notes.ts), the newest 50 failed runs kept.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, type Cache, keepRunNotes, keptFailures, storedLog } from '../cache/index.js'
-import { isGroupTask, type TaskOutcome } from '../graph/index.js'
+import { indexDb, type Cache, storedLog } from '../cache/index.js'
+import { keepRunNotes, keptFailures, PASS_STATUSES } from '../history/index.js'
+import { isGroupTask, type SandboxFix, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
-import { PASS_STATUSES } from '../history/index.js'
 import { maskedLine, splitTaskId, stripEscapes } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from '../ui/index.js'
 
@@ -21,7 +21,7 @@ export interface TaskFailure {
   output: string
   locations: OutputLocation[]
   /** The `exec.sandbox.allow` entries that would have granted its denials. */
-  sandboxFix?: NonNullable<TaskOutcome['sandboxFix']>
+  sandboxFix?: SandboxFix
   /** The first later run where this task passed (ran or hit): the failure is history. */
   fixedIn?: string
 }
@@ -51,7 +51,7 @@ export function writeRunFailures(
     if (
       (o.failedOutput === undefined &&
         o.inputMoved === undefined &&
-        o.attemptOutputs === undefined) ||
+        o.attempts?.outputs === undefined) ||
       isGroupTask(o.node)
     )
       continue
@@ -61,7 +61,7 @@ export function writeRunFailures(
       ...(o.inputMoved !== undefined ? { inputMoved: o.inputMoved } : {}),
       output,
       locations: fileLocations(output, o.node.projectDir, isFile),
-      ...(o.sandboxFix !== undefined ? { sandboxFix: o.sandboxFix } : {}),
+      ...(o.sandbox?.fix !== undefined ? { sandboxFix: o.sandbox.fix } : {}),
     })
   }
   if (failures.length === 0) return
@@ -94,13 +94,13 @@ const ended = (a: { exitCode: number; timedOut?: true }): string =>
  */
 function attemptsText(o: TaskOutcome): string {
   const last = o.failedOutput === undefined ? '' : plain(o.failedOutput)
-  const before = o.attemptOutputs ?? []
+  const before = o.attempts?.outputs ?? []
   if (before.length === 0) return last
   const of = before.length + 1
   let text = ''
   before.forEach((log, i) => {
     const out = plain(log)
-    text += attemptHeading(i + 1, of, ended(o.failedAttempts![i]!)) + out
+    text += attemptHeading(i + 1, of, ended(o.attempts!.failed![i]!)) + out
     if (out !== '' && !out.endsWith('\n')) text += '\n'
   })
   if (o.status === 'failed') text += attemptHeading(of, of, ended(o)) + last
@@ -150,9 +150,7 @@ export function runFailures(db: Database, runId?: string): RunFailures | null {
         ...(k?.inputMoved !== undefined ? { inputMoved: k.inputMoved } : {}),
         output: k?.output ?? '',
         locations: (k?.locations ?? []) as OutputLocation[],
-        ...(k?.sandboxFix !== undefined
-          ? { sandboxFix: k.sandboxFix as NonNullable<TaskOutcome['sandboxFix']> }
-          : {}),
+        ...(k?.sandboxFix !== undefined ? { sandboxFix: k.sandboxFix as SandboxFix } : {}),
         ...(r.fixedIn !== null ? { fixedIn: r.fixedIn } : {}),
       }
     }),

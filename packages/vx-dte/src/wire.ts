@@ -18,9 +18,9 @@ export class RelayError extends Error {
 }
 
 /**
- * A send the relay would not take, said by `warn` (2026-10-23: no fault is
- * silent). One to a participant the relay no longer knows (404) is not:
- * its loss reaches the other side as a notice of its own.
+ * A send the relay would not take, said by `warn` (no fault is silent). One to
+ * a participant the relay no longer knows (404) is not: its loss reaches the
+ * other side as a notice of its own.
  */
 export function unsent(
   warn: (message: string) => void,
@@ -61,10 +61,9 @@ const RESEND_BEATS = LOST_BEATS / 2
 /** Why a worker ends on its orchestrator's silence. */
 export const ORCHESTRATOR_SILENT = 'relay: the orchestrator went silent'
 /**
- * A relay that forgot this participant (a restart: it stores nothing) is
- * joined again for this many heartbeats; the orchestrator joins as the
- * run's host again, a worker as itself (2026-10-25: "If they can't
- * rejoin for 2 heartbeats, it's over").
+ * A relay that forgot this participant (a restart: it stores nothing) is joined
+ * again for this many heartbeats; the orchestrator joins as the run's host
+ * again, a worker as itself.
  */
 const REJOIN_BEATS = 2
 /** What a beat delivers: nothing. */
@@ -78,16 +77,12 @@ const UNANSWERED = 'the relay answered no frame'
 const GONE = 4404
 /** This side's close of a socket that carried a frame no relay sends (RFC 6455 protocol error). */
 const NOT_PROTOCOL = 1002
-/**
- * No answer from the relay this long, every try counted, and it is gone
- * (2026-10-23: "no reply for 10s no matter of attempts its over").
- */
+/** No answer from the relay this long, every try counted, and it is gone. */
 const REPLY_MS = 10_000
 /**
- * How many times a request or a socket is tried again, after a fault (a
- * 5xx, a dropped connection), before the participant gives
- * up: the run is live, or it isn't (2026-10-23: "3 retries nothing
- * more").
+ * How many times a request or a socket is tried again, after a fault (a 5xx, a
+ * dropped connection), before the participant gives up: the run is live, or it
+ * isn't.
  */
 const RETRIES = 3
 /** The least either wait is: a loaded machine's loopback, under a test's short heartbeat. */
@@ -160,9 +155,9 @@ class Exhausted extends Error {
 
 /**
  * The wait before try `tries + 2`: doubling from an eighth of `REPLY_MS`,
- * jittered down to half, so `RETRIES` waits span 4.4 to 8.75 s of it. A
- * fault that fails at once (a refused or unresolved host) spent four tries
- * in about 2 s under a 250 ms start (PR #5082's CI, 2026-11-07).
+ * jittered down to half, so `RETRIES` waits span 4.4 to 8.75 s of it. A fault
+ * that fails at once (a refused or unresolved host) spent four tries in about 2
+ * s under a 250 ms start (a PR's CI).
  */
 const pause = (tries: number): number =>
   ((REPLY_MS / 2 ** RETRIES) * 2 ** tries * (1 + Math.random())) / 2
@@ -346,11 +341,10 @@ export async function join(
     return owing.delete(to) ? { a: taken.get(to)!.upTo } : {}
   }
   /**
-   * When each peer was last heard from: the orchestrator's workers from
-   * their `joined`, a worker's orchestrator from its join. One quiet
-   * `LOST_BEATS` is lost
-   * (2026-10-23: "if it does not reply for 10s its dead"), on a socket that
-   * never closed: the relay loses one whose socket closed and says so.
+   * When each peer was last heard from: the orchestrator's workers from their
+   * `joined`, a worker's orchestrator from its join. One quiet `LOST_BEATS` is
+   * lost, on a socket that never closed: the relay loses one whose socket
+   * closed and says so.
    */
   const heard = new Map<string, number>()
   /** `quiet`: a beat or a resend, which waits on no answer: the relay says only a failure. */
@@ -717,9 +711,8 @@ export async function join(
       if (o === undefined) outbox.set(to, (o = { next: 0, unacked: new Map() }))
       const seq = ++o.next
       o.unacked.set(seq, { body, at: performance.now() })
-      // With no socket, as while the relay restarts, it waits in the outbox
-      // for the next: the caller goes on (2026-10-25: "they just
-      // continue uninterrupted").
+      // With no socket, as while the relay restarts, it waits in the outbox for
+      // the next: the caller goes on.
       const s = socket
       if (s?.open !== true && ended === undefined) {
         again()
@@ -764,10 +757,10 @@ export async function join(
       leaving = true
       clearInterval(listening)
       clearTimeout(acking)
-      // The final call (2026-10-25): the relay keeps one whose socket
-      // dropped for its redial, so only `leave` ends it, and a host's
-      // session, at once. A socket that drops under it is dialed again
-      // for it. The relay drops it and closes the socket: that is its answer.
+      // The final call: the relay keeps one whose socket dropped for its
+      // redial, so only `leave` ends it, and a host's session, at once. A
+      // socket that drops under it is dialed again for it. The relay drops it
+      // and closes the socket: that is its answer.
       if (ended === undefined) {
         const said = over(
           (s) => s.request({ leave: true }),
@@ -1129,7 +1122,7 @@ async function connect(
         throw err
       }
       // A GitLab job with no `id_tokens` entry was told only `401 no bearer
-      // token`, not what gives it one (2026-10-26).
+      // token`, not what gives it one.
       const hint =
         status === 401 && headers['authorization'] === undefined
           ? `: this job has no token for the relay (on GitLab, an id_tokens entry VX_DTE_TOKEN with aud ${base.replace(/\/v1\/sessions\/.*$/, '')}; on GitHub Actions, permissions: id-token: write)`

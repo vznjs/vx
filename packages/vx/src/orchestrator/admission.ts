@@ -16,8 +16,6 @@
 //   `--exclude-dependencies` seeds the same taint: a task whose key folds a
 //   dependency that did not run has bytes nothing vouches for
 //   (excluded-keys.ts).
-//
-// Split from `run.ts` on 2026-09-10 (pure motion).
 
 import type { CachePolicy } from '../cache/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
@@ -55,14 +53,13 @@ const UNTAINTED: TaintTracker = {
  * `continueMode` is `'always'`, there is a seed, or one may be added while
  * the run goes on (`seedsLater`: a server that dies under a running task).
  *
- * A task's taint is read from its deps' SETTLED outcomes, not from what it
- * saw at dispatch: a restore-tier hit dispatches before its deps settle,
- * so it saw holes where the failure would be, and a dependent that asked
- * "was that hit tainted?" heard no. Under `--continue=always` the
- * dependent then saved the partial tree on its healthy key, and the next
- * healthy run replayed it (C-1). A dependent is released only once the
- * hit's own deps have settled too (scheduler.ts, item 963), so by the time
- * anyone asks, the answer is complete.
+ * A task's taint is read from its deps' SETTLED outcomes, not from what it saw
+ * at dispatch: a restore-tier hit dispatches before its deps settle, so it saw
+ * holes where the failure would be, and a dependent that asked "was that hit
+ * tainted?" heard no. Under `--continue=always` the dependent then saved the
+ * partial tree on its healthy key, and the next healthy run replayed it. A
+ * dependent is released only once the hit's own deps have settled too
+ * (scheduler.ts), so by the time anyone asks, the answer is complete.
  */
 export function taintTracker(
   continueAlways: boolean,
@@ -79,10 +76,10 @@ export function taintTracker(
   const through = (u: TaskOutcome | undefined): boolean =>
     u !== undefined && (failed(u) || taintOf(u.node.id))
   // Post-order over the settled deps with an explicit stack: a chain of
-  // restore-tier hits is judged in one ask, and a recursion would take a
-  // frame per hop. Taint is final at once; a clean answer only once every
-  // dep has settled and its own answer is kept, since a dep below a settled
-  // one may still fail (C-23).
+  // restore-tier hits is judged in one ask, and a recursion would take a frame
+  // per hop. Taint is final at once; a clean answer only once every dep has
+  // settled and its own answer is kept, since a dep below a settled one may
+  // still fail.
   const taintOf = (root: string): boolean => {
     const known = memo.get(root)
     if (known !== undefined) return known
@@ -197,13 +194,13 @@ export function admitTasks(
     // wrong. Route it straight to executeTask, which reuses the up-front
     // probe.
     const restorable = shortCircuit.restoreTier.has(node.id)
-    // `!cacheable` is an early-out for bookkeeping, not a guard: measured
-    // (item 506), a non-cacheable task never finds a sibling barrier,
-    // because the hash folds the taskId and a taskId executes once per
-    // run. Removing it reddens nothing and a throw on "a non-cacheable
-    // task joined a barrier" never fires across the whole suite. It saves
-    // the set/delete, and the wait a joiner would spend before running the
-    // task anyway — there is no artifact for it to hit.
+    // `!cacheable` is an early-out for bookkeeping, not a guard: measured, a
+    // non-cacheable task never finds a sibling barrier, because the hash folds
+    // the taskId and a taskId executes once per run. Removing it reddens
+    // nothing and a throw on "a non-cacheable task joined a barrier" never
+    // fires across the whole suite. It saves the set/delete, and the wait a
+    // joiner would spend before running the task anyway — there is no artifact
+    // for it to hit.
     if (inflight === undefined || !cacheable || restorable) {
       return executeTask(buildExecuteArgs(node, upstream)).catch(dropProbe)
     }
@@ -249,9 +246,9 @@ export function admitTasks(
       // the save runs off the slot (save-lane.ts), and a sibling released
       // before it landed would probe a miss and run the task again. The
       // executor's own return is not held — only the joiners wait.
-      const landed = execArgs.deferredSaves?.get(node.id)
+      const landed = execArgs.run.deferredSaves?.get(node.id)
       const lift = (): void => {
-        execArgs.deferredSaves?.delete(node.id)
+        execArgs.run.deferredSaves?.delete(node.id)
         inflight.delete(hash)
         release()
       }

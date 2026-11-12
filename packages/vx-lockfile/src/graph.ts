@@ -7,6 +7,23 @@
 // key, and an edit to it replayed the dependent's old output.
 
 /**
+ * What a lockfile records of one importer's links to the workspace's other
+ * importers: dependency name → importer directory (root-relative POSIX,
+ * `.` for the root). Core's claim keeps it in its memo as the claim's links.
+ */
+export interface LockfileImporter {
+  /** The entries it installs that resolve to an importer. */
+  readonly deps: Readonly<Record<string, string>>
+  /** Its peers that resolve to an importer, each with no installed entry of the same name. */
+  readonly peers: Readonly<Record<string, string>>
+  /**
+   * The importers it reaches only through installed packages, sorted: a
+   * registry package's dependency the install resolved to a workspace.
+   */
+  readonly transitive?: readonly string[]
+}
+
+/**
  * Each importer's other importers it reaches by a path through one or more
  * package nodes, sorted; one with none is left out. `nodes` maps each node
  * that stands for an importer to its dir: the importer's own, and an entry

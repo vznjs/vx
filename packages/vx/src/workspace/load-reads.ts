@@ -14,11 +14,11 @@ export type LoadReads = Map<string, Promise<Uint8Array | null>>
  * `file`'s bytes, read at most once per `reads`; null when there is no file
  * there (`Bun.file(<dir>).exists()` is false, so a directory is none).
  *
- * The probe stays ahead of the read: most names asked about are absent
- * (three of the four workspace config names, a manager's settings files),
- * and a failed read costs 90–200 µs building its error where `exists()`
- * answers in 15–40 µs (measured 2026-09-24) — so one stat per present file
- * is cheaper than letting the open answer both questions.
+ * The probe stays ahead of the read: most names asked about are absent (three
+ * of the four workspace config names, a manager's settings files), and a failed
+ * read costs 90–200 µs building its error where `exists()` answers in 15–40 µs
+ * (measured) — so one stat per present file is cheaper than letting the open
+ * answer both questions.
  */
 export function readOnce(reads: LoadReads | undefined, file: string): Promise<Uint8Array | null> {
   const held = reads?.get(file)
@@ -36,7 +36,7 @@ async function readIfFile(file: string): Promise<Uint8Array | null> {
 /**
  * A read the file system refused is the user's to fix, named as a read: a
  * config at mode 000 reached the user as "a path vx must write is not
- * writable" (D-132). Anything else is rethrown as it came.
+ * writable". Anything else is rethrown as it came.
  */
 export function unreadable(err: unknown, file: string): never {
   if (isPermissionError(err)) {

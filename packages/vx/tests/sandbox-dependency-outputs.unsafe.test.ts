@@ -155,7 +155,7 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
       const before = statSync(tool).mtimeMs
       fixture.log.length = 0
       const r = await run({ cwd: fixture.root, tasks: ['use'], log })
-      const refused = r.outcomes.flatMap((o) => o.sandboxViolationLines ?? [])
+      const refused = r.outcomes.flatMap((o) => o.sandbox?.lines ?? [])
       expect({
         ok: r.ok,
         hinted: fixture.log.join('\n').includes('no grant covers'),
@@ -251,7 +251,7 @@ describe.skipIf(!available)('a dependency’s non-output files stay hidden', () 
         // CI (#5124), so there the run may pass on what it could read.
         if (process.platform === 'linux') expect(use?.status).toBe('failed')
         if (process.platform === 'linux')
-          expect(use?.sandboxViolationLines).toEqual([
+          expect(use?.sandbox?.lines).toEqual([
             `openat(../tools/gen/notes.txt) = -1 ENOENT  [${notes}]`,
           ])
       },
@@ -354,8 +354,8 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
       const r = await run({ cwd: fixture.root, tasks: ['use'], log: collectingLogger(fixture) })
       const use = r.outcomes.find((o) => o.node.id === 'app#use')!
       expect(use.status).toBe('failed')
-      expect(use.sandboxFix?.write).toBeUndefined()
-      const lines = use.sandboxViolationLines ?? []
+      expect(use.sandbox?.fix?.write).toBeUndefined()
+      const lines = use.sandbox?.lines ?? []
       expect(lines.filter((l) => l.includes('outside the project'))).toEqual([])
       const named = lines
         .filter((l) => l.includes("a dependency's declared outputs"))

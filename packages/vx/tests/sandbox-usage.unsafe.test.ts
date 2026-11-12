@@ -11,7 +11,12 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
+import {
+  initSandbox,
+  resetSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+} from '../src/sandbox/runtime.js'
 import { runCommand } from '../src/exec/runner.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 

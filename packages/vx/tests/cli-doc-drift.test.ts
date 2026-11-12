@@ -13,7 +13,8 @@
 import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { SETTINGS } from '../src/settings.js'
-import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { CACHE_VERSION } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/index-db/index.js'
 import { LOCKFILE_VERSION } from '../src/workspace/lockfile.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
@@ -23,7 +24,7 @@ import {
   formatTaskHitLine,
 } from '../src/report/framed-output.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 
 /**
  * Flags the run parser accepts: the ones it matches as string literals
@@ -285,15 +286,14 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
       status: 'cache-hit',
       exitCode: 0,
       durationMs: 4,
-      restored: true,
-      storedDurationMs: 900,
+      cache: { restored: true, stored: { durationMs: 900 } },
     }
     const ran: TaskOutcome = {
       node: node('@vzn/vx#test'),
       status: 'success',
       exitCode: 0,
       durationMs: 5200,
-      saved: true,
+      cache: { saved: true },
     }
     const rendered = [
       formatTaskHitLine(hit.node, hit),
@@ -351,8 +351,7 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
       exitCode: 1,
       durationMs: 2100,
       hash: 'abc1234567',
-      sandboxViolations: 1,
-      sandboxViolationLines: ['write ../shared/notes.txt'],
+      sandbox: { violations: 1, lines: ['write ../shared/notes.txt'] },
     }
     const rendered = formatTaskBlock(
       node,
@@ -485,9 +484,15 @@ describe('docs/cli.md — the status and cache legends are the renderer', () => 
     const outcomes: TaskOutcome[] = [
       { node, status: 'success', exitCode: 0, durationMs: 1 },
       { node, status: 'failed', exitCode: 1, durationMs: 1 },
-      { node, status: 'skipped', exitCode: 0, durationMs: 0 },
+      { node, status: 'skipped', durationMs: 0 },
       ...(['cache-hit', 'cache-hit-remote'] as const).flatMap((status) =>
-        [true, false].map((restored) => ({ node, status, exitCode: 0, durationMs: 1, restored })),
+        [true, false].map((restored) => ({
+          node,
+          status,
+          exitCode: 0,
+          durationMs: 1,
+          cache: { restored },
+        })),
       ),
     ]
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()

@@ -1,11 +1,11 @@
 // The orchestrator's relay participant on a thread of its own.
 //
-// Liveness is in the protocol: a quiet worker reports every 1.5
-// heartbeats, its orchestrator acks, and a peer quiet 3 heartbeats is lost. On the orchestrator's loop, its own
-// sync work held its beats: in CI run 40886829588 (2026-10-29) it said
-// nothing for 12 s and every worker then running ended, stopping 13
-// tasks. Here the socket, its acks, beats and redials run on a thread the
-// run's work never holds; the run talks to it by messages.
+// Liveness is in the protocol: a quiet worker reports every 1.5 heartbeats, its
+// orchestrator acks, and a peer quiet 3 heartbeats is lost. On the
+// orchestrator's loop, its own sync work held its beats: in CI run 40886829588
+// it said nothing for 12 s and every worker then running ended, stopping 13
+// tasks. Here the socket, its acks, beats and redials run on a thread the run's
+// work never holds; the run talks to it by messages.
 
 import { ui } from '@vzn/vx'
 import { RelayError, type Participant, type RelayMessage } from './wire.js'

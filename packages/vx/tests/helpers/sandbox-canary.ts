@@ -19,7 +19,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run } from './orchestrator.js'
-import { probeSandbox } from '../../src/exec/index.js'
+import { probeSandbox } from '../../src/sandbox/runtime.js'
 import { localWorkspaceSource } from './local-workspace.js'
 
 const ITERATIONS = Number(process.argv[2] ?? 20)
@@ -120,7 +120,7 @@ for (let i = 0; i < ITERATIONS; i++) {
     let verdict: Verdict
     if (outcome === undefined || !controlRan) verdict = 'RUN_ERROR'
     else if (leaked || (r.ok && outcome.status !== 'failed')) verdict = 'NOT_ENFORCED'
-    else if ((outcome.sandboxViolations ?? 0) > 0) verdict = 'ENFORCED_REPORTED'
+    else if ((outcome.sandbox?.violations ?? 0) > 0) verdict = 'ENFORCED_REPORTED'
     else verdict = 'ENFORCED_UNREPORTED'
     counts[verdict]++
     if (verdict === 'NOT_ENFORCED') {

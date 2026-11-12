@@ -7,7 +7,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { readOnlyMasks } from '../src/exec/sandbox-binds.js'
+import { readOnlyMasks } from '../src/sandbox/binds.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -59,7 +59,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await project('echo x > ../../out.txt || exit 3')
       const r = await run({ cwd: root, tasks: ['t'], log: quiet })
       expect([r.outcomes[0]?.status, r.outcomes[0]?.exitCode]).toEqual(['failed', 3])
-      expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
+      expect(r.outcomes[0]?.sandbox?.lines).toEqual([
         `vx: the sandbox refused writes outside the project, which are not reported as ` +
           `violations: ${root}/out.txt. If the task needs one, grant its directory, e.g. ` +
           "`allow: { write: ['../../'] }`.",

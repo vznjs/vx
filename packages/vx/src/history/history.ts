@@ -1,21 +1,17 @@
-// HistoryTable + HistoryProvider — historical run data the `schedule`
-// plugin (`@vzn/vx-history`, and its `vx history` verb) and
-// `--dry`'s time prediction read.
+// HistoryTable and HistoryProvider: run history the `schedule` plugin
+// (`@vzn/vx-history`) and `--dry`'s prediction read. One SQL statement per call
+// pulls the last N executed rows per (project, task) from a rowid-bounded slice
+// of `runs`; the result is a read-only snapshot for the run, loaded once.
 //
-// The data has been in cache.db.runs since schema v11; what's new is
-// surfacing it. One SQL statement per call pulls the last N executed rows
-// per (project, task) pair out of a rowid-bounded slice of the table; the
-// result becomes a read-only snapshot for the run's lifetime. Loaded once
-// by the `schedule` stage (or `--dry`); never mutated mid-run.
-//
-// One provider ships, `LocalHistoryProvider`, reading cache.db directly
-// (zero-config); the interface is the seam a plugin fills for any other.
+// `LocalHistoryProvider` reads cache.db directly; the interface is the seam for
+// any other.
 
 import type { Database } from 'bun:sqlite'
-import { branchSource, type Cache, EXECUTED_RUNS_SQL, indexDb } from '../cache/index.js'
+import { branchSource } from './run-history.js'
+import { type Cache, indexDb } from '../cache/index.js'
+import { EXECUTED_RUNS_SQL } from '../index-db/index.js'
 import { isMeasure, splitTaskId } from '../util/index.js'
-import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
-import type { FailureMode } from './failure-mode.js'
+import { failureModeOf, mixedOutcomeKeysSql, type FailureMode } from './failure-mode.js'
 import { isPassStatus, TASK_STATUSES } from '../graph/index.js'
 
 const DEFAULT_RECENT = 50
@@ -34,11 +30,10 @@ export const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
 const SATURATED = 0.9
 
 /**
- * The cores a run of `runs r` kept busy, as need: its CPU over its time,
- * divided by the share of a core its threads got (`cpu_share`, v49). A run
- * on a crowded worker used its fair share only: nine test shards on four
- * cores each used 0.36 of the 1.1 they take alone, and learning 0.36 packed
- * the next run as tight (main c27c238, 2026-10-23). Never past the machine.
+ * The cores a run kept busy, as need: CPU over time, divided by the share of a
+ * core its threads got (`cpu_share`). On a crowded worker a task used only its
+ * fair share (nine shards on four cores used 0.36 of the 1.1 each takes alone),
+ * and learning that packed the next run as tight. Never past the machine.
  */
 const NEED_SQL = `MIN(r.cpu_ms * 1.0 / (r.duration_ms * COALESCE(r.cpu_share, 1)),
         COALESCE(r.placement_cores, r.cpu_ms * 1.0 / (r.duration_ms * COALESCE(r.cpu_share, 1))))`
@@ -59,36 +54,31 @@ export interface TaskHistory {
    *  the one rule `vx why`'s all-time query also applies). */
   failureMode: FailureMode
   /**
-   * Largest peak RSS (bytes) any successful execution in the window
-   * reported; undefined when none did (hits report nothing, and a
-   * platform may not expose rusage). The floor a memory reservation
-   * learned from history packs on.
+   * The largest peak RSS of any successful execution in the window; undefined
+   * when none reported (hits never do). The floor a learned memory reservation
+   * packs on.
    */
   maxPeakRssBytes?: number
   /**
-   * The CPU parallelism the window's successful executions needed on
-   * average: cpu time over wall time over the share of a core it got, so
-   * 2.0 means two cores busy for the whole task. An average, not the
-   * most: one crowded run's need read 2.84 cores for a build that uses
-   * 1.3 to 1.9, booked it a whole 3-core Mac, and the tasks beside it
-   * waited 45 s (main b5b83bb). Undefined when no row carried both numbers.
+   * The average CPU parallelism the window's successful executions needed: CPU
+   * over wall over core share (2.0 is two busy cores). An average, not the max:
+   * one crowded run read 2.84 cores for a 1.3-1.9 build and booked a whole
+   * machine. Undefined when no row has both.
    */
   maxCpuParallelism?: number
   /**
-   * The most cores, and the most memory, of a machine an executor ran it
-   * on (`ExecuteResult.machine`) that it used all of: 90% of the cores
-   * over its whole run, averaged over the window's runs on machines that
-   * size, or 90% of the memory in any one. A burst to every core is
-   * not one: tasks beside it slow for a moment, and booking a machine for
-   * it left CI agents half idle (2026-10-22). A
-   * task that filled a machine wanted a bigger one. Set by `resourcesFor`.
+   * The most cores and memory of a machine an executor ran it on
+   * (`ExecuteResult.machine`) that it used all of: 90% of cores over its whole
+   * run, averaged over runs on that size, or 90% of memory in any one. A burst
+   * is not that: booking a machine for it left CI agents half idle. Set by
+   * `resourcesFor`.
    */
   saturatedCores?: number
   saturatedMemoryBytes?: number
   /**
-   * A slow run's duration (ms): the slowest of the runs `p50DurationMs`
-   * reads, or a history server's (`importTimings`). A deadline needs how
-   * slow a task gets, which the median hides. Set by `resourcesFor`.
+   * A slow run's duration: the slowest of the runs `p50DurationMs` reads, or a
+   * history server's. Deadlines need how slow a task gets, which the median
+   * hides. Set by `resourcesFor`.
    */
   slowDurationMs?: number
 }
@@ -110,9 +100,8 @@ export type TaskResources = Pick<
 export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   /**
-   * Only `p50DurationMs` of each task `loadFor` would answer, for a reader
-   * that needs nothing else (`--dry`'s prediction). Optional: without it
-   * the reader takes them from `loadFor`.
+   * Only `p50DurationMs` of each task, for readers needing nothing else
+   * (`--dry`). Optional: without it they use `loadFor`.
    */
   p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
@@ -159,8 +148,8 @@ export interface LocalHistoryOptions {
 }
 
 /**
- * The run history in `cache`'s index. A plugin reads history only through
- * this: core owns every read and write of cache.db (2026-10-29).
+ * The run history in `cache`'s index. A plugin reads history only through this:
+ * core owns every read and write of cache.db.
  */
 export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory {
   return new LocalHistoryProvider(indexDb(cache), options.recent, options.branch, options.defs)
@@ -174,10 +163,10 @@ export class LocalHistoryProvider implements LocalHistory {
     /** The run's branch (`currentBranch`); undefined: a forecast reads every branch's timings. */
     private readonly branch?: string | null,
     /**
-     * Each task's definition (`taskDefinitions`): given, a task reads only
-     * the rows of it as it is now, and a task not in it reads none. A row
-     * of no definition (timings shared before definitions were kept) is
-     * read: dropping them left a PR's run with no task measured (#4150).
+     * Each task's definition (`taskDefinitions`): given, a task reads only rows
+     * of its current definition, and a task not in it none. A row with no
+     * definition (shared before definitions were kept) is read, or a PR's run
+     * had nothing measured.
      */
     private readonly defs?: ReadonlyMap<string, string>,
   ) {}
@@ -205,21 +194,14 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * The window is the last `recent` INVOCATIONS, read as one rowid slice.
-   *
-   * `runs` has no (project, task) index: it cost every run a scattered
-   * B-tree write per task (2026-09-09, 1,000 warm hits: the record stage
-   * 57–79 ms with it, 14–19 ms without) and bought this reader nothing —
-   * ranking every pair's rows newest-first (`ROW_NUMBER` over a partition)
-   * sorted the whole table either way, 230 ms at 116k rows. Rows are
-   * appended in time order, one contiguous block per invocation, so the
-   * rows of the newest `recent` invocations are exactly `id >=` the first
-   * row of the newest `recent` headers — a primary-key range, no sort, plain
-   * aggregates, and at most one row per pair per invocation, so "the last
-   * `recent` invocations" IS the last `recent` runs for a pair that runs
-   * every time and whatever fewer it has for one that runs less often. A
-   * hint for ordering and prediction, not a ledger; `vx why` / `vx last`
-   * read by `run_id` and stay exact.
+   * The window is the last `recent` invocations, read as one rowid slice.
+   * `runs` has no (project, task) index: it cost every run a B-tree write per
+   * task (1,000 hits: record stage 57-79 ms against 14-19) and saved nothing
+   * here. Rows append in time order, one block per invocation, so the newest
+   * `recent` invocations are `id >=` the first row of the newest `recent`
+   * headers: a primary-key range, no sort, at most one row per pair per
+   * invocation. A hint for ordering and prediction; `vx why` and `vx last` read
+   * by `run_id`, exactly.
    */
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable> {
     if (taskIds.length === 0) return new Map()
@@ -235,10 +217,9 @@ export class LocalHistoryProvider implements LocalHistory {
     const out = new Map<string, TaskHistory>()
     const floor = this.floor()
 
-    // `skipped` rows are excluded: a skip is a task the run never executed,
-    // so it belongs in no success/hit RATE and no duration. Percentiles are
-    // over the executed-success rows of the slice — work the runner actually
-    // did — while the rates count every executed row.
+    // `skipped` rows are excluded: never executed, they belong in no rate or
+    // duration. Percentiles cover executed successes; rates count every
+    // executed row.
     const sql = `
       SELECT
         r.project,
@@ -284,18 +265,16 @@ export class LocalHistoryProvider implements LocalHistory {
       rss: number | null
       cpu: number | null
     }
-    // Every pair in the slice is grouped (the slice is bounded, so this is
-    // cheap) and the asked-for ones are picked out here — a per-row IN-list
-    // probe in SQL cost more than the grouping it would have saved.
+    // Every pair in the bounded slice is grouped and the asked ones picked
+    // here: a per-row IN probe cost more.
     const rows = (this.db.query(sql).all(floor) as Row[]).filter((r) => {
       const id = `${r.project}#${r.task}`
       return (wanted === null || wanted.has(id)) && this.current(id, r.def)
     })
 
-    // The flakiness signal needs per-key outcomes, which the aggregate above
-    // folded away — one more pass over the slice, only for the pairs whose
-    // verdict actually depends on it (failed, and no retry already proving
-    // nondeterminism); a green history never pays for it.
+    // Flakiness needs per-key outcomes the aggregate folded away: one more
+    // pass, only for pairs whose verdict depends on it (failed, no retry
+    // already proving it). A green history never pays.
     const p50s = this.forecasts(new Set(rows.map((r) => `${r.project}#${r.task}`)))
     const mixed = this.mixedOutcomeKeys(
       floor,
@@ -323,9 +302,8 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * The forecasts alone. `loadFor`'s rates and resource maxima read every
-   * row of the window and join each hit to its entry: 38 ms at 27,000 rows
-   * against 4 for the executed successes' durations alone.
+   * The forecasts alone: `loadFor`'s rates and maxima read every row and join
+   * each hit to its entry (38 ms at 27,000 rows against 4).
    */
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
     return this.p50sNow(taskIds)
@@ -338,10 +316,9 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * Whether the last forecast read found some task with no timing on this
-   * branch (on any branch when the provider has none): what a
-   * default-branch import is for. Learned by the read itself, so asking
-   * costs nothing (a query per task was 70 ms at 8,002 tasks).
+   * Whether the last forecast read found a task with no timing on this branch
+   * (any branch when the provider has none): what a default-branch import is
+   * for. Learned by the read, so free to ask.
    */
   lackedBranchHistory = false
 
@@ -351,11 +328,10 @@ export class LocalHistoryProvider implements LocalHistory {
   private importedSlows = new Map<string, number>()
 
   /**
-   * Each plugin measure's forecast, tiered as a task's duration is: the
-   * median of its newest `FORECAST_RUNS` rows on this branch, else its
-   * newest imported row, else the median on any branch; its cores the
-   * median of the same rows' that have one. A measure has few rows and
-   * no run row, so a probe each, where `resourcesFor` groups the window.
+   * Each plugin measure's forecast, tiered like a task's duration: median of
+   * its newest `FORECAST_RUNS` rows on this branch, else its newest imported
+   * row, else the median anywhere; cores the median of rows that have one. Few
+   * rows and no run row, so a probe each.
    */
   measuresFor(ids: readonly string[]): ReadonlyMap<string, MeasureForecast> {
     const out = new Map<string, MeasureForecast>()
@@ -406,11 +382,9 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * Keep default-branch commit `sha`'s timings (task id → ms) as forecast
-   * rows, each with the task's measured need from `needs` when it has one
-   * (what `resourcesFor` answers for a task with no run here): one row per
-   * task, so a repeat import, by this worktree or another at once, adds
-   * nothing.
+   * Keep default-branch commit `sha`'s timings as forecast rows, each with the
+   * task's measured need from `needs` when present. One row per task, so a
+   * repeat import adds nothing.
    */
   importTimings(
     sha: string,
@@ -459,23 +433,19 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * Each task's duration forecast (2026-10-14): the median of its
-   * last `FORECAST_RUNS` timings on this branch, else the default branch's
-   * newest imported timing (`importTimings`), else the median on any
-   * branch, else none. The timings are the shared store's `task_durations`, so every
-   * worktree of the repo reads them and a new one forecasts on its first
-   * run. One statement per tier, an index probe per task on `(project,
-   * task, source, id)` inside it: exact however old the rows, where the
-   * runs window holds only the newest invocations.
+   * Each task's forecast: median of its last `FORECAST_RUNS` timings on this
+   * branch, else the default branch's newest import, else the median anywhere,
+   * else none. From the shared store's `task_durations`, so every worktree
+   * reads them and a new one forecasts on its first run. One statement per
+   * tier, an index probe per task: exact however old the rows.
    */
   private forecasts(wanted: ReadonlySet<string>): Map<string, number> {
     const out = new Map<string, number>()
     this.lackedBranchHistory = false
     this.slows = new Map()
     if (wanted.size === 0) return out
-    // A store that has timed nothing (a cold cache, a first run) answers no
-    // tier: one row's probe, where asking every task of 8,002 was 20 ms of
-    // a cold run's schedule stage (2026-11-07).
+    // A store that has timed nothing answers no tier: one probe, not one per
+    // task (20 ms of 8,002 on a cold run).
     if (this.db.query('SELECT 1 FROM task_durations LIMIT 1').get() === null) {
       this.lackedBranchHistory = true
       return out
@@ -500,9 +470,9 @@ export class LocalHistoryProvider implements LocalHistory {
     let ownAnswered = 0
     for (const tier of tiers) {
       if (pending.length === 0) break
-      // One statement per tier over every task it is asked for: an index
-      // probe per task inside SQLite, where a query per task from here was
-      // 31-40 ms of 2,000 tasks against 5-8.
+      // One statement per tier over every asked task: an index probe each
+      // inside SQLite (a query per task from here: 31-40 ms of 2,000 against
+      // 5-8).
       const rows = this.db
         .query(
           `SELECT j.key AS i, (SELECT group_concat(ms) FROM (
@@ -542,12 +512,10 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * `loadFor`'s p50 and resource maxima over the same window, without its
-   * rates. The rates group every row of the window and join each hit to
-   * its entry: 407 ms at 168,000 rows (8,002 tasks, 21 runs), most of a
-   * nothing-changed run's schedule stage. Here the executed successes are
-   * grouped alone, and the hits only as distinct keys, each joined to its
-   * entry once: 148 ms on the same table, the same numbers.
+   * `loadFor`'s p50 and maxima over the same window, without its rates, which
+   * group every row and join each hit (407 ms at 168,000 rows, most of a no-op
+   * run's schedule stage). Here successes are grouped alone and hits joined
+   * once per distinct key: 148 ms, same numbers.
    */
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>> {
     const out = new Map<string, TaskResources>()
@@ -583,11 +551,9 @@ export class LocalHistoryProvider implements LocalHistory {
       })
     }
     const hits = this.producerRows(floor)
-    // A hit's CPU is its producer's use, not need: the entry keeps no
-    // share, so a crowded producer's reads low. Only a task with no need
-    // from a run here or the default branch's import takes it: main's
-    // blob carried each hit shard's crowded use forward, and the next run
-    // packed them as tight (main 357d3aa, 2026-10-23).
+    // A hit's CPU is its producer's use, not need (the entry keeps no share),
+    // so a crowded producer's reads low. Only a task with no need from a run
+    // here or the import takes it.
     const hitCpu = new Map<string, number>()
     for (const row of hits) {
       const key = `${row.project}#${row.task}`
@@ -597,10 +563,8 @@ export class LocalHistoryProvider implements LocalHistory {
       const rss = Math.max(had?.maxPeakRssBytes ?? -Infinity, row.rss ?? -Infinity)
       out.set(key, {
         ...had,
-        // A task this store only restored is timed by its producer: one a
-        // branch's run made, main restored and never timed, and every
-        // later run planned it at a guess (PR #4339's docs chain: 90 s
-        // guessed, 45 s run, 2026-10-24).
+        // A task this store only restored is timed by its producer, or every
+        // later run planned it at a guess (90 s guessed, 45 s run).
         p50DurationMs: p50s.get(key) ?? row.ms ?? undefined,
         ...(rss !== -Infinity ? { maxPeakRssBytes: rss } : {}),
       })
@@ -658,11 +622,9 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * Only the `p50DurationMs` of each task `resourcesFor` answers: its
-   * forecast, else a restored task's producer time. For a reader that
-   * needs nothing else (`@vzn/vx-history`'s timings file): the window's
-   * grouped reads are skipped, and the hits are read only when some task
-   * has no forecast. 23-27 ms against 40 at 8,002 tasks.
+   * Only `p50DurationMs` of each task `resourcesFor` answers, for readers
+   * needing nothing else: the grouped reads are skipped, and hits are read only
+   * when some task has no forecast.
    */
   async durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
     if (taskIds.length === 0) return new Map()
@@ -703,9 +665,9 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * A task never measured here takes its need from the newest imported
-   * row that has one (`importTimings`): a fresh CI machine packs by what
-   * the default branch measured. One probe skips a store with none.
+   * A task never measured here takes its need from the newest imported row with
+   * one, so a fresh CI machine packs by the default branch's measures. One
+   * probe skips a store with none.
    */
   private remoteNeeds(wanted: ReadonlySet<string>, out: Map<string, TaskResources>): void {
     const pending = [...wanted].filter((id) => out.get(id)?.maxCpuParallelism === undefined)
@@ -755,10 +717,9 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * Of `taskIds`, each whose one timing (of its definition, given `defs`)
-   * was recorded at or after `since`: a run's own, with no usual to compare
-   * it with. At most two rows per task off `task_durations_task`, where
-   * grouping every task's rows cost `vx last` 1.5 s at 2M rows.
+   * Of `taskIds`, each whose one timing was recorded at or after `since`: a
+   * run's own, with no usual to compare. At most two rows per task off
+   * `task_durations_task` (grouping every row cost `vx last` 1.5 s at 2M rows).
    */
   timedOnlySince(taskIds: readonly string[], since: number): string[] {
     if (taskIds.length === 0) return []
@@ -775,9 +736,8 @@ export class LocalHistoryProvider implements LocalHistory {
   }
 
   /**
-   * Each task id the window's rows name, sorted: what a mistyped id is
-   * matched against. Every pair of the whole table was a scan of it, 270 ms
-   * at 2M rows, on an error's path.
+   * Each task id the window names, sorted, for matching a mistyped id. A scan
+   * of the whole table was 270 ms at 2M rows.
    */
   recentTaskIds(): string[] {
     const rows = this.db
@@ -788,9 +748,9 @@ export class LocalHistoryProvider implements LocalHistory {
 
   /** The first `runs` id of the newest `recent` invocations (see `loadFor`). */
   private floor(): number {
-    // The first row of each invocation in the window, an index probe each:
-    // a run of only a group records a header and no row (X-50), and at the
-    // oldest slot it gave no first row, so the window read the whole table.
+    // The first row of each invocation in the window, a probe each: a
+    // group-only run records a header and no row, and at the oldest slot the
+    // window read the whole table.
     const row = this.db
       .query(
         `SELECT COUNT(*) AS n, MIN(first) AS id,

@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'bun:test'
-import { applyMigration } from '../src/workspace/index.js'
+import { applyMigration } from '../src/orchestrator/index.js'
 import type {
   InputsConfig,
   TaskOutputs,
@@ -32,8 +32,8 @@ import type {
   PlanPrediction,
   RunPlan,
 } from '../src/orchestrator/index.js'
-import type { RunStep } from '../src/cache/index.js'
 import type {
+  RunStep,
   CacheKeyDiff,
   CacheKeyExplanation,
   FlakyTask,

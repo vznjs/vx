@@ -11,9 +11,9 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { assign, ordered } from '../src/dispatch.js'
-import type { PlanTask } from '../src/planner.js'
-import { DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
+import { assign, ordered } from '../src/plan/dispatch.js'
+import type { PlanTask } from '../src/plan/model.js'
+import { DEFAULT_STRATEGY, type Strategy } from '../src/plan/strategy.js'
 import { simulate, type SimTask } from '../tests/sim.js'
 
 const W = 20_000
@@ -134,7 +134,7 @@ function stack(bars: Bar[]): Bar[] {
 }
 
 /**
- * The planner's ideal packer (`planner.ts` simulate), each task kept: the
+ * The planner's ideal packer (`plan/play.ts` simulate), each task kept: the
  * tasks on machines that are up at `ups`, from `t0`, as each fits.
  */
 function lay(

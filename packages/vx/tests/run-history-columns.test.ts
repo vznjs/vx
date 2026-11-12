@@ -12,7 +12,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { type InvocationRecord, type RunRecord, runHistory } from '../src/history/index.js'
 import { xxh3hex } from '../src/util/index.js'
 
 // Now-relative: `close()` prunes history older than 30 days (retention).
@@ -114,7 +115,7 @@ it('binds at most 999 variables in any history INSERT', () => {
     task: `t${i}`,
     cached: true,
   }))
-  cache.recordRunBundle({ runs, invocation })
+  runHistory(cache).recordRunBundle({ runs, invocation })
   const inserts = sql.filter((t) =>
     /^\s*INSERT INTO (main\.runs|task_durations|task_outcomes)\b/.test(t),
   )
@@ -140,7 +141,7 @@ it('binds only the runs columns some row fills', () => {
     sql.push(text)
     return query(text)
   }) as typeof db.query
-  cache.recordRunBundle({
+  runHistory(cache).recordRunBundle({
     runs: [runB, { ...runB, hash: 'c'.repeat(16), task: 'lint' }],
     invocation,
   })
@@ -174,9 +175,9 @@ it('binds only the runs columns some row fills', () => {
 describe('the run history stores each field in its own column', () => {
   it('a run bundle reads back field by field', () => {
     const cache = new Cache(path.join(dir, 'cache'))
-    cache.recordRunBundle({ runs: [runA, runB], invocation })
+    runHistory(cache).recordRunBundle({ runs: [runA, runB], invocation })
     // A bundle written again under the same run id keeps the first header.
-    cache.recordRunBundle({ runs: [], invocation: { ...invocation, command: 'again' } })
+    runHistory(cache).recordRunBundle({ runs: [], invocation: { ...invocation, command: 'again' } })
     cache.close()
 
     // Item 1091: args after `--` were stored as written, a `--token=…` among
@@ -307,7 +308,7 @@ describe('the run history stores each field in its own column', () => {
 it('a run with forwarded args leaves no duration sample', () => {
   const cache = new Cache(path.join(dir, 'cache'))
   const db = indexDb(cache)
-  cache.recordRunBundle({
+  runHistory(cache).recordRunBundle({
     runs: [
       { ...runB, forwardArgs: ['one.test.ts'] },
       { ...runB, hash: 'c'.repeat(16), task: 'lint', forwardArgs: [''] },

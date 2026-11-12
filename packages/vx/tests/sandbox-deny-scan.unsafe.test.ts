@@ -17,8 +17,8 @@ import {
   resetSandbox,
   resolveSandboxConfig,
   wrapSandboxedCommand,
-} from '../src/exec/index.js'
-import { scopedMandatoryDenies, srtDefaultWritePaths } from '../src/exec/sandbox-deny-scan.js'
+} from '../src/sandbox/runtime.js'
+import { scopedMandatoryDenies, srtDefaultWritePaths } from '../src/sandbox/deny-scan.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox deny-scan test')

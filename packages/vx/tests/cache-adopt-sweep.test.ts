@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { indexDb, Cache } from '../src/cache/index.js'
+import * as saving from '../src/cache/save.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 // Adopting a row-less artifact hard-links it to a temp name, and a link
@@ -54,12 +55,9 @@ describe('an adopt beside another process sweeping orphans', () => {
         undefined,
         TAR_STORE,
       )
-      const index = adopter as unknown as {
-        writeArtifactAndIndex: (...args: unknown[]) => Promise<void>
-      }
-      const original = index.writeArtifactAndIndex.bind(adopter)
+      const original = saving.writeArtifactAndIndex
       let swept = false
-      index.writeArtifactAndIndex = async (...args: unknown[]) => {
+      const spy = spyOn(saving, 'writeArtifactAndIndex').mockImplementation(async (...args) => {
         // CONTROL: the sweep runs while the adopt's temp link exists.
         expect(
           (await readdir(dir)).filter((f) => f.startsWith(`${hash}.tar.zst.tmp-`)),
@@ -67,7 +65,7 @@ describe('an adopt beside another process sweeping orphans', () => {
         await sweeper.prune({ maxBytes: Number.MAX_SAFE_INTEGER })
         swept = true
         return original(...args)
-      }
+      })
       try {
         const entry = await adopter.get(hash, { taskId: 'pkg#build', command: 'tsc' })
         expect(swept).toBe(true)
@@ -76,6 +74,7 @@ describe('an adopt beside another process sweeping orphans', () => {
           `${hash}.tar.zst`,
         ])
       } finally {
+        spy.mockRestore()
         adopter.close()
         sweeper.close()
       }

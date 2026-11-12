@@ -11,7 +11,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache, GitFilesCache } from '../src/cache/index.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import type { TaskExecutor } from '../src/exec/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 import type { Logger } from '../src/report/index.js'
@@ -19,7 +19,7 @@ import { prepareRun } from './helpers/orchestrator.js'
 import { run } from './helpers/orchestrator.js'
 import { executeTask } from '../src/orchestrator/execute-task.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
-import { undeclaredWriteReach } from '../src/orchestrator/sandbox-request.js'
+import { undeclaredWriteReach } from '../src/sandbox/request.js'
 import { createHashCache } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
@@ -205,7 +205,7 @@ describe('execute-task drops what the command may have written, and nothing else
     const cache = new Cache(path.join(root, '.vx', 'cache'))
     // The true digest, so a cached task's re-check before its save finds
     // its package.json unmoved and drops nothing of its own.
-    const digest = await cache.hashFile(path.join(dir, 'package.json'))
+    const digest = await cache.memo.hashFile(path.join(dir, 'package.json'))
     const git = new GitFilesCache()
     git.setWorkspaceRoot(root)
     for (const p of [dir, OTHER, root]) {
@@ -228,17 +228,19 @@ describe('execute-task drops what the command may have written, and nothing else
       await executeTask({
         node: n,
         upstream: [],
-        workspaceRoot: root,
-        cache,
+        run: {
+          workspaceRoot: root,
+          cache,
+          runStartHrTimeNs: process.hrtime.bigint(),
+          keyedProjects: () => new Set<string>(),
+          gitFilesCache: git,
+          hashCache,
+          liveChildren,
+          persistentRegistry,
+        },
         log: logger(said),
         executor,
         nestedProjectDirs: [],
-        runStartHrTimeNs: process.hrtime.bigint(),
-        keyedProjects: () => new Set<string>(),
-        gitFilesCache: git,
-        hashCache,
-        liveChildren,
-        persistentRegistry,
       })
       for (const child of persistentRegistry.values()) child.kill()
       const name = (p: string) => (p === dir ? 'app' : p === OTHER ? 'other' : 'workspace')
@@ -297,9 +299,12 @@ describe('execute-task drops what the command may have written, and nothing else
       const sandboxed = { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } }
       expect(await survivors(sandboxed, ranHere)).toEqual(all)
       await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
-      expect(await survivors({ exec: { command: 'true' } }, { ...ranHere, remote: true })).toEqual(
-        all,
-      )
+      expect(
+        await survivors(
+          { exec: { command: 'true' } },
+          { ...ranHere, capabilities: { remote: true } },
+        ),
+      ).toEqual(all)
       await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
       const cached = {
         exec: { command: 'true' },

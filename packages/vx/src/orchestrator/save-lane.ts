@@ -1,12 +1,11 @@
-// The save lane: a miss's cache save runs OFF the execution slot. The
-// slot is CPU-shaped (`--concurrency`) and the save is not — pack, write,
-// rename and one index transaction, ~2.5 ms of mostly I/O per one-file
-// artifact against ~5 ms of execution on the 1,000-project bench
-// (2026-09-10) — so holding the slot for it serialized I/O behind CPU.
-// A bounded number run at once (memory: each pack holds an artifact's
-// bytes); the scheduler finishes a task only once its save has settled
-// (`settledOf`), so a run ends with every save in the cache; and a save
-// that fails degrades to a miss next time, reported with its task — the
+// The save lane: a miss's cache save runs OFF the execution slot. The slot is
+// CPU-shaped (`--concurrency`) and the save is not — pack, write, rename and
+// one index transaction, ~2.5 ms of mostly I/O per one-file artifact against ~5
+// ms of execution on the 1,000-project bench — so holding the slot for it
+// serialized I/O behind CPU. A bounded number run at once (memory: each pack
+// holds an artifact's bytes); the scheduler finishes a task only once its save
+// has settled (`settledOf`), so a run ends with every save in the cache; and a
+// save that fails degrades to a miss next time, reported with its task — the
 // task's work ran.
 
 export interface SaveLane {

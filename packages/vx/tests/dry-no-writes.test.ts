@@ -1,4 +1,4 @@
-// `--dry` with no remote to probe writes nothing (docs/modules/plan.md,
+// `--dry` with no remote to probe writes nothing (docs/modules/orchestrator.md,
 // "Side effects"). It opened the local cache as a run does: a fresh
 // workspace got `.vx/cache/cache.db*` and `.vx/.gitignore`, `--cache-dir
 // .vx/cahce` made the typo's directory (item 900 fixed that for the reading

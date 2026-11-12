@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { run } from './helpers/orchestrator.js'
 import { run as cli } from './helpers/cli.js'
-import { SCHEMA_VERSION } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/index-db/index.js'
 import { formatBytes, treeBytes } from '../src/util/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 

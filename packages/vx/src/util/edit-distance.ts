@@ -107,8 +107,8 @@ function wordIn(query: string, name: string): boolean {
 }
 
 /**
- * The names to offer when no one name is near: sorted, the first `limit`,
- * then a count. A typo past two edits named nothing to pick from (M-56).
+ * The names to offer when no one name is near: sorted, the first `limit`, then
+ * a count. A typo past two edits named nothing to pick from.
  */
 export function listed(names: Iterable<string>, limit = 8): string {
   const all = [...new Set(names)].sort()

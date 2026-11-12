@@ -27,7 +27,7 @@ export async function taskVerbHint(
   const projects = await workspaceProjects(cwd)
   if (projects === null) return null
   const tasks = new Set<string>()
-  // The default build is no task `vx run` takes by name (X-145).
+  // The default build is no task `vx run` takes by name.
   const declared = (task: TaskConfig | undefined): boolean =>
     task !== undefined && !isDefaultBuild(task)
   for (const p of projects.values())
@@ -98,7 +98,7 @@ export async function taskNamesHere(
 export async function undeclaredTasks(
   tasks: readonly string[],
   cwd: string,
-  /** The selection's discovery (`RunOptions.discovered`): discovering again ran every `discover` hook twice. */
+  /** The selection's discovery (`RunHandoff.discovered`): discovering again ran every `discover` hook twice. */
   discovered?: { root: string; projects: ProjectMeta[] },
 ): Promise<string | undefined> {
   const projects = await workspaceProjects(cwd, discovered)

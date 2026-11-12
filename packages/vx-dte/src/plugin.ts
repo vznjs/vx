@@ -15,11 +15,12 @@ import {
   type TaskResources,
 } from '@vzn/vx'
 import type { DteInit, DteSetup } from './init.js'
-import type { Need, Soon } from './dispatch.js'
-import { booked, DEFAULT_STRATEGY, MIN_CORES, STRATEGIES, type Strategy } from './strategy.js'
+import type { Need, Soon } from './plan/index.js'
+// Not the index: a config load reads the strategies alone, never the planner.
+import { booked, DEFAULT_STRATEGY, MIN_CORES, STRATEGIES, type Strategy } from './plan/strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
-import type { Forecast, Size } from './planner.js'
+import type { Forecast, Size } from './plan/index.js'
 import type { Learned } from './measures.js'
 
 /** One worker type: the machines of it the adapter can start, by name (letters, digits, `_` and `-`). */
@@ -659,7 +660,7 @@ export function dte(options: DteOptions = {}) {
       ] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire-thread.js'),
-        import('./planner.js'),
+        import('./plan/index.js'),
         import('./tree.js'),
         import('./seal.js'),
         import('./measures.js'),
@@ -832,7 +833,7 @@ export function dte(options: DteOptions = {}) {
       let again: ReturnType<typeof setTimeout> | undefined
       // The workers the run's known work needs to end as soon as all
       // would, each started when a task needs it, played out
-      // (`planner.ts`); idle ones it does without leave. Again at each miss, finish, join and history read.
+      // (`plan/`); idle ones it does without leave. Again at each miss, finish, join and history read.
       const shape = (remaining: ReadonlySet<string>): void => {
         // This run's for the size, else an earlier run's, else any size's
         // this run, else the default.
@@ -1094,35 +1095,25 @@ export function dte(options: DteOptions = {}) {
       const depsOf = (id: string): readonly string[] => (nodes ?? ran)?.get(id)?.deps ?? []
       return {
         name: 'dte',
-        remote: true,
-        // No task runs on the orchestrator; only hits restore here (2026-10-24).
-        exclusive: true,
-        // Each worker times a task from its start: a wait for a booting worker is not its run.
-        timeouts: true,
-        sandbox: true,
-        // A task's persistent dependencies start on its worker, never here.
-        servers: true,
-        // A worker answers a task's runtime probes before it runs it.
-        runtime: true,
-        // Its sizes' platforms; workers that join on their own, this machine's.
-        platforms: sized.length === 0 ? [host] : [...new Set(sized.map((s) => s.platform))],
-        // Its worker types, in declared order, each with its machines' platforms.
-        ...(types.length === 0
-          ? {}
-          : {
-              workers: types.map(
-                (t) =>
-                  [
-                    t,
-                    [...new Set(sized.filter((s) => s.type === t).map((s) => s.platform))],
-                  ] as const,
-              ),
-            }),
-        // Every ready task: the orchestrator's queue knows which platform's
-        // worker is free, core's order does not. A pool of twice the cores,
-        // shared by all platforms, held a 2 s arm task 79 s behind x64 work
-        // with its worker idle (main a1950a2, 2026-11-07).
-        capacity: Number.MAX_SAFE_INTEGER,
+        capabilities: {
+          remote: true,
+          // No task runs on the orchestrator; only hits restore here (2026-10-24).
+          exclusive: true,
+          // Each worker times a task from its start: a wait for a booting worker is not its run.
+          timeouts: true,
+          sandbox: true,
+          // A task's persistent dependencies start on its worker, never here.
+          servers: true,
+          // A worker answers a task's runtime probes before it runs it.
+          runtime: true,
+          // Its sizes' platforms; workers that join on their own, this machine's.
+          platforms: sized.length === 0 ? [host] : [...new Set(sized.map((s) => s.platform))],
+          // Every ready task: the orchestrator's queue knows which platform's
+          // worker is free, core's order does not. A pool of twice the cores,
+          // shared by all platforms, held a 2 s arm task 79 s behind x64 work
+          // with its worker idle (main a1950a2, 2026-11-07).
+          capacity: Number.MAX_SAFE_INTEGER,
+        },
         execute: (req) => {
           // A miss: the run's known work grows.
           missed = true
@@ -1130,26 +1121,40 @@ export function dte(options: DteOptions = {}) {
           replan()
           return o.execute(multi ? { ...req, platform: placeOf(req.worker, req.platform)! } : req)
         },
-        footer: () =>
-          o.footer(
-            () => o.idealMs(depsOf, sizes),
-            () => o.advice(depsOf, sizes),
-            () => o.driftOf(depsOf),
-            () => o.leastHeldMs(depsOf, sizes),
-          ),
-        machines: () => o.machines(),
-        idealMs: () => o.idealMs(depsOf, sizes),
-        advice: () => o.advice(depsOf, sizes),
-        profile: () => o.profile(),
-        running: (id) => o.where(id),
-        unneeded: (id) => o.unneeded(id),
-        demand(remaining, misses) {
-          if (pending === undefined) o.probed(remaining.size, misses.size)
-          o.missed = misses
-          pending = remaining
-          sure = misses
-          if (misses.size > 0) missed = true
-          replan()
+        distribution: {
+          // Its worker types, in declared order, each with its machines' platforms.
+          ...(types.length === 0
+            ? {}
+            : {
+                workers: types.map(
+                  (t) =>
+                    [
+                      t,
+                      [...new Set(sized.filter((s) => s.type === t).map((s) => s.platform))],
+                    ] as const,
+                ),
+              }),
+          footer: () =>
+            o.footer(
+              () => o.idealMs(depsOf, sizes),
+              () => o.advice(depsOf, sizes),
+              () => o.driftOf(depsOf),
+              () => o.leastHeldMs(depsOf, sizes),
+            ),
+          machines: () => o.machines(),
+          idealMs: () => o.idealMs(depsOf, sizes),
+          advice: () => o.advice(depsOf, sizes),
+          profile: () => o.profile(),
+          running: (id) => o.where(id),
+          unneeded: (id) => o.unneeded(id),
+          demand(remaining, misses) {
+            if (pending === undefined) o.probed(remaining.size, misses.size)
+            o.missed = misses
+            pending = remaining
+            sure = misses
+            if (misses.size > 0) missed = true
+            replan()
+          },
         },
       }
     },

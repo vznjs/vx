@@ -1,12 +1,11 @@
-// Nx's `^name` inputs over the project graph (item 910). Nx hashes a
-// dependency's `name` input for every project the graph reaches, whether or
-// not a task edge exists, so a `test` with `^production` and no `dependsOn`
-// re-keys on a dependency's source. vx folds upstream KEYS along
-// `dependsOn`, so each project gets one `inputs:<name>` task — a keyed
-// group, keyed on the project's own `name` input — with an edge to its
-// dependencies' twin. A task that reads `^name` depends on its direct
-// dependencies' twins and folds the whole closure through them: each
-// project's files are hashed once, not once per dependant (listing the
+// Nx's `^name` inputs over the project graph. Nx hashes a dependency's `name`
+// input for every project the graph reaches, whether or not a task edge exists,
+// so a `test` with `^production` and no `dependsOn` re-keys on a dependency's
+// source. vx folds upstream KEYS along `dependsOn`, so each project gets one
+// `inputs:<name>` task — a keyed group, keyed on the project's own `name` input
+// — with an edge to its dependencies' twin. A task that reads `^name` depends
+// on its direct dependencies' twins and folds the whole closure through them:
+// each project's files are hashed once, not once per dependant (listing the
 // closure's globs on every task was 2.5 million globs at 1,000 projects).
 //
 // The edges are the NX graph's, not vx's package graph (`^` in vx follows

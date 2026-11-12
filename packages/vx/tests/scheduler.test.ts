@@ -4,10 +4,13 @@ import {
   mergePriorities,
   tieredReverseDepCount,
 } from '../src/graph/priorities.js'
-import { RestoreDemoted, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { runGraph } from '../src/graph/scheduler.js'
+import { RestoreDemoted, type TaskOutcome } from '../src/graph/outcome.js'
 import { machineParallelism } from '../src/util/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { cpuClock } from './helpers/cpu-clock.js'
+// ui draws the notices the modules under test say (util/notice.ts), as in vx.
+import '../src/ui/index.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
   return {
@@ -1048,7 +1051,12 @@ describe('runGraph restore-tier (local short-circuit)', () => {
           ran.push(n.id)
           if (n.id === 'q#check') await new Promise((r) => setTimeout(r, 30))
           const status = statusOf(n.id) as TaskOutcome['status']
-          return { node: n, status, exitCode: status === 'failed' ? 1 : 0, durationMs: 0 }
+          return {
+            node: n,
+            status,
+            exitCode: status === 'failed' ? 1 : 0,
+            durationMs: 0,
+          } as TaskOutcome
         },
       })
       expect({
@@ -2029,12 +2037,14 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
         },
       })
     const out = await held(packing({ 'a#run': 5, 'b#run': 5 }, 8))
-    const waits = [...out.values()].map((o) => o.admissionHeldMs).filter((w) => w !== undefined)
+    const waits = [...out.values()]
+      .map((o) => o.timing?.admissionHeldMs)
+      .filter((w) => w !== undefined)
     expect(waits.length).toBe(1)
     expect(waits[0]!).toBeGreaterThanOrEqual(1)
-    expect(out.get('a#run')!.admissionHeldMs).toBeUndefined()
+    expect(out.get('a#run')!.timing?.admissionHeldMs).toBeUndefined()
     const plain = await held()
-    for (const o of plain.values()) expect(o.admissionHeldMs).toBeUndefined()
+    for (const o of plain.values()) expect(o.timing?.admissionHeldMs).toBeUndefined()
   })
 
   it('a task carries how long it waited ready for a worker, not for its deps', async () => {
@@ -2049,7 +2059,7 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
       })
     // One worker: b waits out a, and c (ready when a ends) waits out b.
     const serial = await run(1)
-    const waited = (id: string) => serial.get(id)!.queuedMs ?? 0
+    const waited = (id: string) => serial.get(id)!.timing?.queuedMs ?? 0
     expect([waited('a#run') < 10, waited('b#run') >= 25, waited('c#run') >= 25]).toEqual([
       true,
       true,
@@ -2057,7 +2067,7 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     ])
     // Workers to spare: c started 30 ms in, all of it its dep's, none queued.
     const wide = await run(8)
-    expect((wide.get('c#run')!.queuedMs ?? 0) < 10).toBe(true)
+    expect((wide.get('c#run')!.timing?.queuedMs ?? 0) < 10).toBe(true)
   })
 
   it('the policy sees a task dispatched earlier in the SAME tick', async () => {
@@ -2328,9 +2338,9 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
         execute: async (n) => success(n),
       })
       expect(refusals).toBeGreaterThan(1)
-      expect(out.get('b#run')?.admissionHeldMs).toBe(1)
+      expect(out.get('b#run')?.timing?.admissionHeldMs).toBe(1)
       // CONTROL: the task that was never refused carries no wait at all.
-      expect(out.get('a#run')?.admissionHeldMs).toBeUndefined()
+      expect(out.get('a#run')?.timing?.admissionHeldMs).toBeUndefined()
     } finally {
       clock.mockRestore()
     }
@@ -2541,7 +2551,7 @@ describe('runGraph — lanes, settles and refusals the sweep found unheld', () =
       },
       execute: async (n) => {
         await new Promise((r) => setTimeout(r, 20))
-        return n.id === 'r#x' ? { ...success(n), status: 'cache-hit' } : success(n)
+        return n.id === 'r#x' ? ({ ...success(n), status: 'cache-hit' } as TaskOutcome) : success(n)
       },
     })
     expect(seen.flat().filter((id) => id !== 'l#x' && id !== 'l#y')).toEqual([])

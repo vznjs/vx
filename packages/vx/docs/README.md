@@ -51,7 +51,7 @@ input hashing can see a change, selection has to see it too, or CI
 runs nothing and reports success. vx routes changed files to projects
 through three channels — directory containment, declared
 `workspaceFiles` globs, and a static scan of what each config
-**imports**. ([modules/affected.md](./modules/affected.md))
+**imports**. ([modules/affected.md](./modules/workspace.md#srcworkspaceaffectedts--git-relative-project-selection))
 
 ### 4. Boundaries that hold under pressure
 
@@ -82,7 +82,7 @@ that declines a task hands it back to this machine. Nothing here is a
 first-party product you have to adopt
 to get the good behaviour, and nothing distributed ships in this repo —
 the hooks are how it gets built.
-([modules/plugin.md](./modules/plugin.md), the design in
+([modules/plugin.md](./modules/orchestrator.md#srcorchestratorplugints--the-vxplugin-interface--installer), the design in
 [design/pipeline-2026-09.md](./design/pipeline-2026-09.md), and the
 "Extending vx" guides on the docs site)
 
@@ -183,23 +183,23 @@ seam in a plugin.
 
 ## Where to start
 
-| You want to…                                                           | Read                                                                     |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| The pitch: what vx does that others don't                              | [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead) |
-| Understand the overall shape                                           | [`architecture.md`](./architecture.md)                                   |
-| Author a `vx.config.ts`                                                | [`schema.md`](./schema.md)                                               |
-| Reason about caching                                                   | [`caching.md`](./caching.md)                                             |
-| Know what vx trusts and what the sandbox stops                         | [`security.md`](./security.md)                                           |
-| Trace what `vx run` actually does                                      | [`execution.md`](./execution.md)                                         |
-| See each scenario as a diagram                                         | [`flows.md`](./flows.md)                                                 |
-| See every perf decision + invariant                                    | [`optimizations.md`](./optimizations.md)                                 |
-| Use the CLI from a shell                                               | [`cli.md`](./cli.md)                                                     |
-| Write a plugin / replace a seam                                        | [`modules/plugin.md`](./modules/plugin.md)                               |
-| Benchmarks + side-by-side vs other runners                             | [`benchmarks.md`](./benchmarks.md), [`comparison.md`](./comparison.md)   |
-| Coming from Turbo or Nx: the same thing, spelled in vx, with its test  | [`parity.md`](./parity.md)                                               |
-| Check a Turbo or Nx bug report against vx, with the test that holds it | [`upstream-ledger.md`](./upstream-ledger.md)                             |
-| Modify, fork, or replace a module                                      | [`modules/`](./modules/) (one page per source module)                    |
-| Read forward-looking design notes                                      | [`design/`](./design/)                                                   |
+| You want to…                                                           | Read                                                                                                              |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| The pitch: what vx does that others don't                              | [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead)                                          |
+| Understand the overall shape                                           | [`architecture.md`](./architecture.md)                                                                            |
+| Author a `vx.config.ts`                                                | [`schema.md`](./schema.md)                                                                                        |
+| Reason about caching                                                   | [`caching.md`](./caching.md)                                                                                      |
+| Know what vx trusts and what the sandbox stops                         | [`security.md`](./security.md)                                                                                    |
+| Trace what `vx run` actually does                                      | [`execution.md`](./execution.md)                                                                                  |
+| See each scenario as a diagram                                         | [`flows.md`](./flows.md)                                                                                          |
+| See every perf decision + invariant                                    | [`optimizations.md`](./optimizations.md)                                                                          |
+| Use the CLI from a shell                                               | [`cli.md`](./cli.md)                                                                                              |
+| Write a plugin / replace a seam                                        | [`modules/orchestrator.md`](./modules/orchestrator.md#srcorchestratorplugints--the-vxplugin-interface--installer) |
+| Benchmarks + side-by-side vs other runners                             | [`benchmarks.md`](./benchmarks.md), [`comparison.md`](./comparison.md)                                            |
+| Coming from Turbo or Nx: the same thing, spelled in vx, with its test  | [`parity.md`](./parity.md)                                                                                        |
+| Check a Turbo or Nx bug report against vx, with the test that holds it | [`upstream-ledger.md`](./upstream-ledger.md)                                                                      |
+| Modify, fork, or replace a module                                      | [`modules/`](./modules/) (one page per source module)                                                             |
+| Read forward-looking design notes                                      | [`design/`](./design/)                                                                                            |
 
 If you have ten minutes: read `comparison.md` § Where vx is ahead, then
 `architecture.md`. Together they cover the why and the shape.
@@ -209,22 +209,25 @@ If you have ten minutes: read `comparison.md` § Where vx is ahead, then
 A Bun-workspaces monorepo: core `@vzn/vx` is `packages/vx`, and the
 plugins that ship alongside it are its siblings under `packages/`.
 
-Core `src/` is **ten modules** — each directory's `index.ts` is its
+Core `src/` is **thirteen modules** — each directory's `index.ts` is its
 contract, and cross-module imports go through it only, enforced by
 `tests/module-boundaries.test.ts`:
 
-| Module          | Owns                                                                                   |
-| --------------- | -------------------------------------------------------------------------------------- |
-| `cli/`          | subcommand parsers, help, plan formatting                                              |
-| `orchestrator/` | run composition: discover → graph → schedule → execute → record                        |
-| `report/`       | the run's event stream and the terminal output: frames, status line, summary, forecast |
-| `history/`      | what runs leave behind, read back: durations, flakiness, `vx last` / `vx why` queries  |
-| `workspace/`    | project discovery, filters, `--affected`, the lockfile                                 |
-| `graph/`        | the task graph and the two-tier scheduler                                              |
-| `cache/`        | the local store (the floor), the layering, the `RemoteCacheLayer` seam                 |
-| `exec/`         | per-task execution primitives (spawn, env, sandbox), the local executor (the floor)    |
-| `ui/`           | the only module that draws: tokens, components, panels, the streams                    |
-| `util/`         | small shared helpers                                                                   |
+| Module          | Owns                                                                                      |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `cli/`          | subcommand parsers, help, plan formatting                                                 |
+| `orchestrator/` | run composition: discover → graph → schedule → execute → record                           |
+| `report/`       | the run's event stream and the terminal output: frames, status line, summary, forecast    |
+| `history/`      | what runs leave behind, written and read back: durations, flakiness, `vx last` / `vx why` |
+| `workspace/`    | project discovery, filters, `--affected`, the lockfile                                    |
+| `graph/`        | the task graph and the two-tier scheduler                                                 |
+| `cache/`        | the local store (the floor), the layering, the `RemoteCacheLayer` seam                    |
+| `memo/`         | what a warm run remembers: file hashes, folds, lockfile parses, output stamps             |
+| `index-db/`     | cache.db's one schema and its SQLite helpers                                              |
+| `exec/`         | per-task execution primitives (spawn, env, kill tree), the executor contract              |
+| `sandbox/`      | a task's sandbox: the request, the run under bwrap or seatbelt, the violations            |
+| `ui/`           | the only module that draws: tokens, components, panels, the streams                       |
+| `util/`         | small shared helpers                                                                      |
 
 Every source file is documented under [`modules/`](./modules/). Tests live
 in `tests/`. The published plugin packages are `@vzn/vx-reapi` (Bazel

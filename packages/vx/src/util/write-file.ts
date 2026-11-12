@@ -4,10 +4,10 @@ import path from 'node:path'
 import { UserError } from './errors.js'
 
 /**
- * Refuses a `file` whose directory resolves outside `root`: a repo can
- * carry `.vx -> ../anywhere` (or `plugins -> ...`), and checking only the
- * file's own name wrote through it. The nearest directory that exists is
- * asked; one not made yet is made under it.
+ * Refuses a `file` whose directory resolves outside `root`: a repo can carry
+ * `.vx ->../anywhere` (or `plugins ->...`), and checking only the file's own
+ * name wrote through it. The nearest directory that exists is asked; one not
+ * made yet is made under it.
  */
 function refuseOutside(file: string, root: string): void {
   const top = realpathSync(root)

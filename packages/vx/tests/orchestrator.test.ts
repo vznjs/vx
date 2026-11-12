@@ -91,7 +91,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
       const coldMs = cold.outcomes[0]!.durationMs
       expect(cold.outcomes[0]?.status).toBe('success')
       // Nothing was skipped — the task executed.
-      expect(cold.outcomes[0]?.storedDurationMs).toBeUndefined()
+      expect(cold.outcomes[0]?.cache?.stored?.durationMs).toBeUndefined()
       expect(coldMs).toBeGreaterThanOrEqual(400)
 
       const warm = await run({
@@ -103,8 +103,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
       expect(warm.outcomes[0]?.status).toBe('cache-hit')
       // The stored figure is the cold exec; the restore is far cheaper. The
       // relation is what matters — absolute durations vary with load.
-      expect(warm.outcomes[0]?.storedDurationMs).toBeGreaterThanOrEqual(400)
-      expect(warm.outcomes[0]?.durationMs).toBeLessThan(warm.outcomes[0]!.storedDurationMs!)
+      expect(warm.outcomes[0]?.cache?.stored?.durationMs).toBeGreaterThanOrEqual(400)
+      expect(warm.outcomes[0]?.durationMs).toBeLessThan(warm.outcomes[0]!.cache!.stored!.durationMs)
     },
     TIMEOUT,
   )

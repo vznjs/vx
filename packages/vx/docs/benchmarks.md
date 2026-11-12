@@ -114,7 +114,7 @@ Two tools, and they answer different questions:
   in a dry run `plan` — with
   each stage's own and cumulative time, plus accumulated per-task spans (`cache.get`,
   `output glob`, `output stat` and `task hash` among them;
-  [`modules/timing.md`](./modules/timing.md) lists every one). This is the first thing to
+  [`modules/util.md`](./modules/util.md#srcutiltimingts--vx_debug_timing-stage-table) lists every one). This is the first thing to
   read: it says WHICH stage moved. The per-task spans run under the
   scheduler's concurrency, so they over-count (a span's wall includes
   time yielded to other tasks); compare them to each other, not to the
@@ -618,7 +618,7 @@ x64, 4 cores, vx from source, Turborepo 2.11.7:
 | Turborepo 2.11.7                                  | 276 ms     |
 
 vx now starts its first task about 20% sooner than Turborepo; the rest
-of the cold run is unchanged. History: `docs/history/ws-x.md` X-212, X-216.
+of the cold run is unchanged.
 
 ## CI timings file (2026-10-09)
 

@@ -77,7 +77,7 @@ it('runs the command and says where; stops it on exec.timeout', async () => {
   )
   await workspace('shellExecutor()')
   const ok = await run({ cwd: root, tasks: ['hello'], log: log(), handleSignals: false })
-  expect(ok.outcomes.map((o) => [o.node.id, o.status, o.where])).toEqual([
+  expect(ok.outcomes.map((o) => [o.node.id, o.status, o.placement?.where])).toEqual([
     ['a#hello', 'success', 'shell'],
   ])
   expect(await Bun.file(path.join(dir, 'out.txt')).text()).toBe('hi\n')

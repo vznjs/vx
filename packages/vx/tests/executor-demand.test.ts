@@ -8,7 +8,9 @@ function spy(): { executor: TaskExecutor; heard: string[][] } {
   const heard: string[][] = []
   const executor = {
     name: 'spy',
-    demand: (remaining: ReadonlySet<string>) => heard.push([...remaining].sort()),
+    distribution: {
+      demand: (remaining: ReadonlySet<string>) => heard.push([...remaining].sort()),
+    },
     execute: () => Promise.reject(new Error('not run')),
   } as unknown as TaskExecutor
   return { executor, heard }
@@ -52,7 +54,9 @@ it('tells the tasks the probe found in no store, narrowed as they finish', () =>
   const missed: string[][] = []
   const executor = {
     name: 'spy',
-    demand: (_: ReadonlySet<string>, m: ReadonlySet<string>) => missed.push([...m].sort()),
+    distribution: {
+      demand: (_: ReadonlySet<string>, m: ReadonlySet<string>) => missed.push([...m].sort()),
+    },
     execute: () => Promise.reject(new Error('not run')),
   } as unknown as TaskExecutor
   const d = executorDemand(new Map(['a', 'b', 'c'].map((id) => [id, executor])), () => {})

@@ -1,9 +1,7 @@
-// What a project is (2026-10-14): a directory holding a
-// `vx.config.*`. `vx lock` finds them (`findProjectConfigs`) and records
-// each by directory; a run takes them from the lock (`lockedProjects`) and
-// never walks. A project is named by `name` in its config, else by a
-// `discover` plugin, else by its root-relative path, `//` for the root.
-// Design: docs/design/language-agnostic-core-2026-10.md.
+// A project is a directory holding a `vx.config.*`. `vx lock` finds them
+// (`findProjectConfigs`); a run takes them from the lock and never walks. Named
+// by its config's `name`, else a `discover` plugin, else its root-relative path
+// (`//` for the root). docs/design/language-agnostic-core-2026-10.md.
 import { type Dirent, lstatSync, realpathSync } from 'node:fs'
 import { lstat, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -60,27 +58,21 @@ export const PROJECT_CONFIG_FILENAMES = [
   'vx.config.js',
   'vx.config.mjs',
   // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
-  // was ignored without a word (D-86).
+  // was ignored without a word.
   'vx.config.cts',
   'vx.config.cjs',
 ]
 
 /**
  * The workspace root for `start`: the directory holding the first
- * `.vx/workspace.*` from `start` up to the git top-level, or up to `/`
- * outside git ({@link workspaceFile}, shared with the hand-off). Nothing
- * else decides it (2026-10-13: "Workspace file is the ultimate"):
- * not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
- * `VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add`
- * when a sparse checkout left the git top-level's out.
+ * `.vx/workspace.*` up to the git top-level (or `/` outside git) ({@link
+ * workspaceFile}). Nothing else decides it. Throws `VX_E_NO_WORKSPACE`, naming
+ * `git sparse-checkout add` when a sparse checkout left it out.
  *
- * Outside git, a file another user owns is refused (root aside): a
- * `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
- * code that would run as you. The owner is the file's own, a link's
- * included, and its `.vx` directory's. Inside git the walk never leaves your
- * checkout. The directory you run in is yours to judge, and costs no
- * stat. Run as root, vx trusts every owner, as a container over a mounted
- * checkout needs. `uid` is for tests.
+ * Outside git, a file another user owns is refused (unless run as root, as
+ * containers need): one planted in a shared dir above you (`/tmp`) would run as
+ * you. The owner checked is the file's (a link's included) and its `.vx`'s.
+ * Inside git the walk never leaves your checkout. `uid` is for tests.
  */
 export async function findWorkspaceRoot(
   start: string,
@@ -110,9 +102,8 @@ export async function findWorkspaceRoot(
   if (workspaceFileBroken(file)) await refuseNotAFile(file)
   const root = workspaceRootOf(file)
   if (uid !== 0 && root !== start && (await gitTop(start)) === null) {
-    // The link itself and the `.vx` holding it, not what a link names: a
-    // link another user planted to a root-owned file passed as root's, and
-    // its owner could point it at their own code once it had.
+    // The link itself and its `.vx`, not the link's target: a link to a
+    // root-owned file passed as root's, and its owner could repoint it.
     const owners = await Promise.all(
       [lstat(file), stat(path.dirname(file))].map((p) =>
         p.then(
@@ -133,10 +124,8 @@ export async function findWorkspaceRoot(
 }
 
 /**
- * The workspace file a sparse checkout left out at git top-level `top`
- * (skip-worktree in the index; cone mode keeps the root's files, not its
- * `.vx`), as git names it, else null. Asked only once no workspace file
- * was found, so a run pays no git spawn.
+ * The workspace file a sparse checkout left out at `top` (skip-worktree; cone
+ * mode keeps root files, not `.vx`), else null. Asked only once none was found.
  */
 function sparseWorkspaceFile(top: string): string | null {
   for (const name of WORKSPACE_CONFIG_FILENAMES) {
@@ -147,9 +136,8 @@ function sparseWorkspaceFile(top: string): string | null {
 }
 
 /**
- * Refuses a config path that is no file: it marks a root or a project all
- * the same, so skipping it ran nothing there and said nothing. Learned by
- * `lstat` here, off the normal path.
+ * Refuses a config path that is no file: skipping it silently ran nothing
+ * there. Learned by `lstat`, off the normal path.
  */
 async function refuseNotAFile(file: string): Promise<never> {
   const link = await stat(file).then(
@@ -163,14 +151,13 @@ async function refuseNotAFile(file: string): Promise<never> {
 }
 
 /**
- * The workspace's own cache directory (index, history, memos):
- * `VX_CACHE_DIR`, else the workspace's `cache.dir`, else `.vx/cache`,
- * relative to the workspace root (`--cache-dir` is the caller's, above both).
+ * The workspace's cache dir: `VX_CACHE_DIR`, else `cache.dir`, else
+ * `.vx/cache`, relative to the root (`--cache-dir` beats both).
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
   const env = process.env['VX_CACHE_DIR']
-  // `cache.dir: '   '` is refused at load (X-22); the variable made the same
-  // directory named in spaces at the root (D-160).
+  // `cache.dir: ' '` is refused at load; the variable made the same directory
+  // named in spaces at the root.
   if (env !== undefined && env !== '' && env.trim() === '') {
     throw new UserError('VX_CACHE_DIR is only whitespace — name a directory, or unset it')
   }
@@ -181,8 +168,8 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
   // `'~/.cache/vx'` made a directory named `~` in the workspace.
   const dir =
     rel === '~' || rel.startsWith('~/') ? path.join(home, rel.slice(1)) : path.resolve(root, rel)
-  // The cache writes a `*` .gitignore beside its index: a bare `~` made a
-  // directory named `~`, and expanded it would land in home itself (D-153).
+  // The cache writes a `*`.gitignore beside its index: a bare `~` made a
+  // directory named `~`, and expanded it would land in home itself.
   if (path.resolve(dir) === path.resolve(home)) {
     const source = fromEnv ? 'VX_CACHE_DIR' : 'cache.dir'
     throw new UserError(
@@ -193,12 +180,10 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 }
 
 /**
- * Where this repository's shared store lives: `~/.vx/<repo id>/cache`, as
- * Nx 23 keeps `~/.nx/<id>/cache` (2026-10-06), so every checkout of
- * the repository hits what another saved and no other repository shares
- * it (`repoIdOf`). Null when the workspace names its cache (`cache.dir`,
- * `VX_CACHE_DIR`): that directory then holds everything, as one
- * workspace's alone. Null with no repository identity or no home.
+ * The repository's shared store, `~/.vx/<repo id>/cache` (as Nx keeps
+ * `~/.nx/<id>/cache`): every checkout hits what another saved, no other repo
+ * shares it. Null when the workspace names its cache dir, or with no repo
+ * identity or home.
  */
 export async function resolveStoreRoot(
   root: string,
@@ -220,9 +205,8 @@ export async function resolveStoreRoot(
 const repoIds = new Map<string, Promise<string | null>>()
 
 /**
- * Sets each project's `deps` / `reach` from the `discover` entries' edge
- * directories, resolved against every project the stage left. A target
- * outside the root or that is no project is refused naming the plugin.
+ * Sets each project's `deps` / `reach` from the `discover` entries' edge dirs.
+ * A target outside the root or not a project is refused naming the plugin.
  */
 export function linkDiscoveredEdges(
   root: string,
@@ -247,10 +231,8 @@ export function linkDiscoveredEdges(
       [edge.reach, reach],
     ] as const) {
       for (const target of kind) {
-        // Every project lies inside the root (`discoveredProject` refuses
-        // one that does not), so a target naming one needs no other check:
-        // a plugin hands project dirs as they are, absolute, and resolving
-        // and judging each of 5,000 edges was ~15 ms at 1,000 projects.
+        // Every project lies inside the root, so a target naming one needs no
+        // other check (resolving 5,000 edges was ~15 ms).
         let name = byDir.get(target) ?? byDir.get(path.resolve(root, target))
         if (name === undefined) {
           const real = canonicalDir(root, path.resolve(root, target))
@@ -308,15 +290,12 @@ export interface ProjectConfigs {
 }
 
 /**
- * Every project directory under `root`, for `vx lock` (a run reads the
- * lock and never walks). In git: `git ls-files` over the config names,
- * tracked and untracked, git's ignore rules applied, none under
- * `node_modules`, and each nested repository's own listing. Outside git: a walk
- * that skips `node_modules` and vx's own `.vx`, and enters every other
- * dot-directory, as git lists `.github/actions/x`. A config at or under a
- * nested `.vx/workspace.*` belongs to that workspace and is left out.
- * Where a directory holds several, `PROJECT_CONFIG_FILENAMES` order picks
- * the first that is a file.
+ * Every project directory under `root`, for `vx lock`. In git: `git ls-files`
+ * over config names (tracked and untracked, ignores applied, none under
+ * `node_modules`), plus nested repositories' own listings. Outside git: a walk
+ * skipping `node_modules` and `.vx`, entering other dot-dirs. A config under a
+ * nested `.vx/workspace.*` belongs to that workspace. Several in one dir:
+ * `PROJECT_CONFIG_FILENAMES` order picks the first file.
  */
 export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
   const inGit = (await gitTop(root)) !== null
@@ -350,11 +329,10 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     else names.push(base)
   }
   const shadowed: { file: string; read: string }[] = []
-  // The files among `names` (ranked), the first of them the one read: git
-  // lists a tracked config deleted from the worktree, which is skipped.
-  // Every other file is shadowed, said by `vx lock`. With no file, an entry
-  // by a config's name (a broken link, a directory) is refused, as the root
-  // walk refuses one: skipped, its project was in no lock and nothing said so.
+  // The files among `names`, ranked; the first is read (git lists a tracked
+  // config deleted from the worktree, skipped). The rest are shadowed, said by
+  // `vx lock`. With no file, a config-named entry (broken link, directory) is
+  // refused, as the walk does.
   const firstFile = async (
     dir: string,
     names: string[],
@@ -424,9 +402,9 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
 }
 
 /**
- * The nested workspace roots git did not list (an ignored `.vx/`) among the
- * directories holding `rels` and their ancestors under `root`: a run from
- * under one takes it as its root, so the outer lock must not claim it.
+ * Nested workspace roots git did not list (an ignored `.vx/`) among `rels`'
+ * directories and ancestors: a run from under one takes it as root, so the
+ * outer lock must not claim it.
  */
 async function unlistedNested(
   root: string,
@@ -460,11 +438,10 @@ async function unlistedNested(
 }
 
 /**
- * Whether a directory on root-relative `rel`'s path is a symlink, memoised
- * in `linked`. Git's index lists a tracked path a link now stands in front
- * of (a project moved and linked back), which git calls deleted; a stat
- * through the link found the config, and one directory was locked as two
- * projects. Asked by `vx lock` only.
+ * Whether a directory on `rel`'s path is a symlink, memoised. Git lists a
+ * tracked path a link now fronts (a project moved and linked back) as deleted,
+ * while a stat through the link found the config: one directory locked as two.
+ * `vx lock` only.
  */
 function behindLink(root: string, rel: string, linked: Map<string, boolean>): boolean {
   const slash = rel.lastIndexOf('/')
@@ -501,11 +478,9 @@ async function isFile(p: string): Promise<boolean> {
 }
 
 /**
- * The config and workspace-file paths git lists under `root`, root-relative.
- * A nested repository is one entry to the outer git, a gitlink (a
- * submodule) or an untracked `dir/` (an embedded repository), and none of
- * its files: its own git lists them, or a walk when it has no `.git`, as
- * the input enumeration expands one.
+ * The config and workspace-file paths git lists under `root`. A nested
+ * repository is one entry to the outer git (gitlink or untracked `dir/`): its
+ * own git lists its files, or a walk when it has no `.git`.
  */
 async function gitConfigs(root: string): Promise<string[]> {
   const [configs, index, untracked] = await Promise.all([
@@ -539,9 +514,9 @@ async function gitConfigs(root: string): Promise<string[]> {
   const gitlinks = index
     .filter((e) => e.startsWith('160000 '))
     .map((e) => e.slice(e.indexOf('\t') + 1))
-  // A linked worktree of this repository made inside it (`git worktree add
-  // .worktrees/x`) is this tree checked out again, no nested repository:
-  // recorded as a nested workspace, it failed `--check` on every other checkout.
+  // A linked worktree made inside the repo (`git worktree add .worktrees/x`) is
+  // this tree again, not a nested repository: recorded as one, `--check` failed
+  // on other checkouts.
   const common = (dir: string): string | null => {
     const at = locateGitDir(dir)?.commonDir
     return at === undefined ? null : realpathSync(at)
@@ -568,9 +543,8 @@ async function gitConfigs(root: string): Promise<string[]> {
 }
 
 /**
- * An install is no project, tracked or not, as the walk outside git skips
- * it: a repo whose .gitignore does not name `node_modules` listed each
- * installed package's vx.config as one.
+ * An install is no project, tracked or not: a repo not ignoring `node_modules`
+ * listed each package's vx.config.
  */
 const NOT_INSTALLS = ':(exclude,glob)**/node_modules/**'
 
@@ -743,9 +717,9 @@ async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
 const namedBy = new WeakMap<ProjectMeta, string>()
 
 /**
- * The projects a lock records, by directory: what a run starts from. Named
- * by the locked config's `name`, else by path; a `discover` plugin may name
- * a path-named one after this.
+ * The projects a lock records, by directory: what a run starts from. Named by
+ * the config's `name`, else by path; a `discover` plugin may rename a
+ * path-named one.
  */
 export function lockedProjects(
   root: string,
@@ -768,12 +742,11 @@ export function lockedProjects(
 }
 
 /**
- * The project a plugin's `discover` entry names: a new meta (`added`) for a
- * directory that is not a project yet, else the project already there,
- * renamed when its name was its path's. A config's `name` wins over the
- * plugin's; a name another plugin gave is not changed. `known` is the
- * projects by directory: a scan per entry was quadratic, 106 ms of a 5,000
- * project warm run. `by` names the plugin in a refusal.
+ * The project a `discover` entry names: a new meta (`added`) for a new
+ * directory, else the existing project, renamed if its name was its path. A
+ * config's `name` beats the plugin's; another plugin's name stays. `known`
+ * indexes projects by dir (a scan per entry was 106 ms at 5,000 projects). `by`
+ * names the plugin in a refusal.
  */
 export async function discoveredProject(
   root: string,
@@ -859,11 +832,9 @@ function nameFault(name: string): string | null {
 }
 
 /**
- * Why `dependsOn` or `--filter` cannot name a project called `name`, or
- * null; surrounding whitespace and `#` are each caller's own words. Each
- * shape loaded and could not be addressed: `^ui#build` was refused as `^`
- * with `pkg#task`, `--filter '!ui'` excluded it, `tag:ui` and `ui...` read
- * as a tag and a walk. Asked of the filter parser itself, as `tagProblem`.
+ * Why `dependsOn` or `--filter` cannot name a project called `name`, or null:
+ * `^ui#build`, `!ui`, `tag:ui`, `ui...` all read as syntax. Asked of the filter
+ * parser itself.
  */
 export function projectNameProblem(name: string): string | null {
   if (name.includes('*')) return "holds '*', which makes it a pattern"
@@ -889,10 +860,9 @@ export function projectNameProblem(name: string): string | null {
 }
 
 /**
- * Refuses two projects of one name, naming both directories, and a name
- * no task spec can address: a path name holding `#` or surrounding
- * whitespace (set `name`), or `//` on a directory other than the root.
- * Returns `metas` sorted by name.
+ * Refuses two projects of one name (naming both dirs), a name no task spec can
+ * address (`#` or surrounding whitespace in a path name), and `//` off the
+ * root. Returns `metas` sorted by name.
  */
 export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMeta[] {
   metas.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))

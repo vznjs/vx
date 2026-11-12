@@ -56,7 +56,7 @@ const read = (rel: string): string => readFileSync(path.join(app, rel), 'utf8')
 const rowsOf = (hash: string): string[] => {
   const cache = new Cache(path.join(fx.root, '.vx', 'cache'))
   try {
-    return (cache.loadOutputFilesBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
+    return (cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
   } finally {
     cache.close()
   }

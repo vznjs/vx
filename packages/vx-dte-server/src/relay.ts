@@ -6,7 +6,7 @@
 // It knows as little as routing needs: a session is a hash, bodies and a
 // peer's info are its peers' ciphertext, and no body is ever stored.
 
-import { TokenError, type VerifiedToken } from './oidc.js'
+import { type Admits, oidcClaims, Refusal } from '@vzn/vx-devtools'
 import { importKey, PROOF_HEADER, proofText, verifyProof } from './proof.js'
 
 export interface RelayOptions {
@@ -92,11 +92,11 @@ export const refusedWith = (status: number): number => 4000 + status
 export const GONE = refusedWith(404)
 
 /**
- * Close `socket` with `code`, said first in a frame (`{ "close": code,
- * "error"? }`, 0 for none): Bun 1.4.4's client fires its close only once
- * the host ends TCP too, and workerd never did, so a lost peer heard
- * 4404 10 s late, at its own redial limit (PR #4171, 2026-10-23). A
- * refusal's code is 4000 plus its HTTP status, its `reason` the error.
+ * Close `socket` with `code`, said first in a frame (`{ "close": code, "error"?
+ * }`, 0 for none): Bun 1.4.4's client fires its close only once the host ends
+ * TCP too, and workerd never did, so a lost peer heard 4404 10 s late, at its
+ * own redial limit. A refusal's code is 4000 plus its HTTP status, its `reason`
+ * the error.
  */
 export function closeSocket(socket: RelaySocket, code?: number, reason?: string): void {
   try {
@@ -177,7 +177,7 @@ class HttpError extends Error {
   }
 }
 
-const errorBody = (err: HttpError | TokenError): object => ({ error: err.message })
+const errorBody = (err: HttpError | Refusal): object => ({ error: err.message })
 
 export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 2_000
@@ -218,9 +218,9 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /**
-   * A socket a push failed on is closed, not only let go: left open, its
-   * pings answered, its participant never redialed for what queued (two CI
-   * runs hung 20 min, 2026-10-23).
+   * A socket a push failed on is closed, not only let go: left open, its pings
+   * answered, its participant never redialed for what queued (two CI runs hung
+   * 20 min).
    */
   const unplug = (p: Participant): void => {
     const s = p.socket
@@ -281,10 +281,9 @@ export function createRelay(opts: RelayOptions): Relay {
       deliver(session, p, { from: 'relay', body: { type: 'closed' } }, true)
       drop(session, p, false)
     }
-    // A session is live while its host is, and only a live one is kept:
-    // a peer that comes or calls after it learns it at once
-    // (2026-10-23: "job is live, or it isnt"). Kept closed, or opened by a
-    // peer alone, a session held a late peer's runner ten minutes.
+    // A session is live while its host is, and only a live one is kept: a peer
+    // that comes or calls after it learns it at once. Kept closed, or opened by
+    // a peer alone, a session held a late peer's runner ten minutes.
     forget(session)
   }
 
@@ -469,7 +468,7 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /** Refusals of socket requests, by the id their host attaches the socket as. */
-  const refusals = new Map<string, HttpError | TokenError>()
+  const refusals = new Map<string, HttpError | Refusal>()
 
   /**
    * A participant speaks only over its socket, and joins as it opens one
@@ -567,7 +566,7 @@ export function createRelay(opts: RelayOptions): Relay {
       try {
         return await handle(req, protocol, version)
       } catch (err) {
-        if (!(err instanceof HttpError || err instanceof TokenError)) throw err
+        if (!(err instanceof HttpError || err instanceof Refusal)) throw err
         // A failed upgrade tells a client nothing it can read: a socket
         // request is let in, and its socket closed saying why.
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
@@ -596,12 +595,12 @@ export function createRelay(opts: RelayOptions): Relay {
         closeSocket(socket, GONE, 'gone')
         return false
       }
-      // One socket a participant. A host restoring several (a wake, a
-      // redial whose old close it never ran) attached the last; a push
-      // failing on a stale one unplugged it, and the live one, its pings
-      // answered by the host, never heard again: main 32f73ed's
-      // host waited 13 min on results queued here (2026-10-23).
-      // Closed, the other's client dials again and gets what queued.
+      // One socket a participant. A host restoring several (a wake, a redial
+      // whose old close it never ran) attached the last; a push failing on a
+      // stale one unplugged it, and the live one, its pings answered by the
+      // host, never heard again: a main run's host waited 13 min on results
+      // queued here. Closed, the other's client dials again and gets what
+      // queued.
       const earlier = p.socket
       // Plugged first: Bun runs the earlier socket's close handler inside
       // its close(), and that detach lost the participant (a redial on
@@ -626,12 +625,11 @@ export function createRelay(opts: RelayOptions): Relay {
       const p = session?.byId.get(id)
       if (p === undefined || p.socket !== socket) return
       p.socket = undefined
-      // Only `leave` ends a participant at once (2026-10-25): one
-      // whose socket dropped dials again within `graceMs`, and its session,
-      // a host's too, waits. Main 8d0619f's host socket ended 1006 and its
-      // redial 350 ms on found the session closed (2026-10-24). A peer
-      // quiet on a socket that never closed is its peers' to lose (vx-dte
-      // probes it).
+      // Only `leave` ends a participant at once: one whose socket dropped dials
+      // again within `graceMs`, and its session, a host's too, waits. Main
+      // 8d0619f's host socket ended 1006 and its redial 350 ms on found the
+      // session closed. A peer quiet on a socket that never closed is its
+      // peers' to lose (vx-dte probes it).
       p.droppedAt = Date.now()
     },
     frame(key, id, text, socket) {
@@ -666,11 +664,10 @@ export function createRelay(opts: RelayOptions): Relay {
         lapse(found)
         const session = live(key)
         const p = participant(session, id)
-        // It spoke down this socket, so this socket reaches it: one its
-        // host let go or never restored as its own left it deaf while its
-        // pings were answered, and 13baaf6's host heard nothing
-        // for 8 min (2026-10-23). Not closing the other: a host may hand
-        // the same socket as another object.
+        // It spoke down this socket, so this socket reaches it: one its host
+        // let go or never restored as its own left it deaf while its pings were
+        // answered, and 13baaf6's host heard nothing for 8 min. Not closing the
+        // other: a host may hand the same socket as another object.
         if (socket !== undefined && p.socket !== socket) plug(session, p, socket)
         if (body.leave === true) drop(session, p)
         else if (body.remove !== undefined) removePeer(session, p, body.remove)
@@ -779,6 +776,50 @@ export async function sessionKey(
   const name = token === undefined ? sessionId : [token.iss, ...token.run, sessionId].join('\0')
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name))
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** A token the relay accepted: its issuer and the values of its run claims. */
+export interface VerifiedToken {
+  iss: string
+  run: readonly string[]
+}
+
+export interface OidcOptions {
+  /** Whose tokens the relay takes (`parseAllow`); an entry's unset parts admit any. */
+  allow: readonly Admits[]
+  /** The `aud` a token must name. */
+  audience: string
+  /** Run claims by issuer; an issuer not named here uses `runClaimsOf`. */
+  runClaims?: Readonly<Record<string, readonly string[]>>
+  /** Reads a URL as JSON; tests serve keys without a network. `fresh`: a reload, which must reach the issuer. */
+  fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
+  /** Seconds since the epoch; tests move the clock. */
+  now?: () => number
+}
+
+const GITHUB = 'https://token.actions.githubusercontent.com'
+
+/**
+ * The claims a run binds: its repository, GitHub's or GitLab's. Not the
+ * pipeline: workers run in another one (a GitLab pipeline the run triggers,
+ * a GitHub workflow it dispatches), and the run's own key admits them.
+ */
+export function runClaimsOf(iss: string): readonly string[] {
+  return iss === GITHUB ? ['repository_id'] : ['project_id']
+}
+
+/** The relay's `verify`: @vzn/vx-devtools' check, then the token's run claims. */
+export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
+  const check = oidcClaims(opts)
+  return async (token) => {
+    const { iss, claims } = await check(token, opts.audience)
+    const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {
+      const v = claims[c]
+      if (typeof v !== 'string' && typeof v !== 'number') throw new Refusal(403, `no ${c} claim`)
+      return String(v)
+    })
+    return { iss, run }
+  }
 }
 
 async function authorize(

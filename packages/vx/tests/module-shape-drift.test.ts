@@ -10,15 +10,18 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatBytes } from '../src/cli/format.js'
 import { ulid } from '../src/util/ulid.js'
+import { moduleSection } from './helpers/module-page.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const read = (rel: string) => readFileSync(path.join(pkg, rel), 'utf8')
 
 /** Top-level field names of `interface <name> {…}` in a doc block or a source file. */
 function interfaceFields(text: string, name: string): string[] {
-  const open = `interface ${name} {`
-  const start = text.indexOf(open)
-  expect(start).toBeGreaterThan(-1)
+  // A generic one declares its parameters between the name and the brace.
+  const found = new RegExp(`interface ${name}(?:<[^>{]*>)? \\{`).exec(text)
+  expect(found).not.toBeNull()
+  const open = found![0]
+  const start = found!.index
   const out: string[] = []
   let depth = 0
   let inComment = false
@@ -65,78 +68,88 @@ function interfaceFields(text: string, name: string): string[] {
   return out
 }
 
-const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
-  ['scheduler', 'graph/scheduler.ts', 'TaskOutcome'],
-  ['scheduler', 'graph/scheduler.ts', 'ScheduleOptions'],
-  ['inputs', 'cache/inputs.ts', 'ResolvedInputs'],
-  ['inputs', 'cache/inputs.ts', 'ResolveInputsArgs'],
-  ['cli-cache', 'cli/cache.ts', 'PruneArgs'],
-  ['task-hash', 'orchestrator/task-hash.ts', 'HashCache'],
-  ['task-hash', 'orchestrator/task-hash.ts', 'ComputeHashArgs'],
-  ['prepare', 'orchestrator/prepare.ts', 'PreparedRun'],
-  ['cli-run', 'cli/run.ts', 'RunArgs'],
-  ['summary', 'report/summary.ts', 'SummaryStats'],
-  ['summary', 'report/summary.ts', 'RunContext'],
-  ['filter', 'workspace/filter.ts', 'ParsedFilter'],
-  ['filter', 'workspace/filter.ts', 'ApplyFiltersOptions'],
-  ['env', 'exec/env.ts', 'BuildEnvOptions'],
-  ['deferred-outputs', 'orchestrator/deferred-outputs.ts', 'DeferredEntry'],
-  ['deferred-outputs', 'orchestrator/deferred-outputs.ts', 'DeferredOutputsArgs'],
-  ['migration', 'workspace/migration.ts', 'MigrationPlan'],
-  ['migration', 'workspace/migration.ts', 'GeneratedProject'],
-  ['migration', 'workspace/migration.ts', 'GeneratedTask'],
-  ['migration', 'workspace/migration.ts', 'ApplyMigrationArgs'],
-  ['remote-prefetch', 'orchestrator/remote-prefetch.ts', 'PrefetchArgs'],
-  ['history', 'history/history.ts', 'TaskHistory'],
-  ['run-context', 'orchestrator/run-context.ts', 'GitContext'],
-  ['run-context', 'orchestrator/run-context.ts', 'CiContext'],
-  ['run-context', 'orchestrator/run-context.ts', 'HostContext'],
-  ['placement', 'orchestrator/placement.ts', 'Placements'],
-  ['hit-restore', 'orchestrator/hit-restore.ts', 'RestoreHitArgs'],
-  ['miss-save', 'orchestrator/miss-save.ts', 'OutputDirSnapshot'],
-  ['miss-save', 'orchestrator/miss-save.ts', 'SaveMissArgs'],
-  ['options', 'orchestrator/options.ts', 'RunOptions'],
-  ['options', 'orchestrator/options.ts', 'RunSummary'],
-  ['lockfile', 'workspace/lockfile.ts', 'Lockfile'],
-  ['lockfile', 'workspace/lockfile.ts', 'Lockfile'],
-  ['plugin-commands', 'cli/plugin-commands.ts', 'ResolvedPluginCommand'],
-  ['plugin-commands', 'cli/plugin-commands.ts', 'UnresolvedPluginCommand'],
-  ['admission', 'orchestrator/admission.ts', 'AdmissionArgs'],
-  ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxArmer'],
-  ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxRequest'],
-  ['sandbox-request', 'orchestrator/sandbox-request.ts', 'Placeholder'],
-  ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxRunUnion'],
-  ['git-inputs', 'cache/git-inputs.ts', 'GitEnumeration'],
-  ['upgrade', 'cli/upgrade.ts', 'SignedRelease'],
-  ['upgrade', 'cli/upgrade.ts', 'ManagedInstall'],
-  ['cli-watch', 'cli/watch-fs.ts', 'ArmedWatcher'],
-  ['cli-watch', 'cli/watch-set.ts', 'ConfigSweep'],
-  ['cli-watch', 'cli/watch-judge.ts', 'JudgeContext'],
-  ['logger', 'report/logger.ts', 'OutputView'],
-  ['ui', 'ui/theme.ts', 'ColorSupport'],
-  ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ShortCircuitArgs'],
-  ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ProbedEntry'],
-  ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ShortCircuit'],
-  ['plan', 'orchestrator/plan.ts', 'PlannedTask'],
-  ['plan', 'orchestrator/plan.ts', 'PlanPrediction'],
-  ['plan', 'orchestrator/plan.ts', 'RunPlan'],
-  ['plan', 'orchestrator/plan.ts', 'PlanArgs'],
-  ['tally', 'report/tally.ts', 'Tally'],
-  ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'LockfileClaimOptions'],
-  ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'LockfileClaimHooks'],
-  ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'ReachGraph'],
-  ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogEntry'],
-  ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogBundle'],
-  ['util-tail', 'util/tail.ts', 'Tail'],
-  ['package-graph', 'workspace/package-graph.ts', 'PackageGraph'],
-  ['projects', 'orchestrator/projects.ts', 'LoadProjectsBase'],
-  ['projects', 'orchestrator/projects.ts', 'LoadedProjects'],
+const SHAPES: ReadonlyArray<[source: string, name: string]> = [
+  ['graph/outcome.ts', 'OutcomeTiming'],
+  ['graph/outcome.ts', 'OutcomeUsage'],
+  ['graph/outcome.ts', 'OutcomeCache'],
+  ['graph/outcome.ts', 'OutcomeSandbox'],
+  ['graph/outcome.ts', 'SandboxFix'],
+  ['graph/outcome.ts', 'OutcomeAttempts'],
+  ['graph/outcome.ts', 'OutcomePlacement'],
+  ['graph/outcome.ts', 'OutcomeBase'],
+  ['graph/outcome.ts', 'FailureFacts'],
+  ['graph/outcome.ts', 'BlockFacts'],
+  ['graph/outcome.ts', 'PlatformFacts'],
+  ['graph/scheduler.ts', 'ScheduleOptions'],
+  ['cache/inputs.ts', 'ResolvedInputs'],
+  ['cache/inputs.ts', 'ResolveInputsArgs'],
+  ['cli/cache.ts', 'PruneArgs'],
+  ['orchestrator/task-hash.ts', 'HashCache'],
+  ['orchestrator/task-hash.ts', 'ComputeHashArgs'],
+  ['orchestrator/prepare.ts', 'PreparedRun'],
+  ['cli/run.ts', 'RunArgs'],
+  ['report/summary.ts', 'SummaryStats'],
+  ['report/summary.ts', 'RunContext'],
+  ['workspace/filter.ts', 'ParsedFilter'],
+  ['workspace/filter.ts', 'ApplyFiltersOptions'],
+  ['exec/env.ts', 'BuildEnvOptions'],
+  ['orchestrator/deferred-outputs.ts', 'DeferredEntry'],
+  ['orchestrator/deferred-outputs.ts', 'DeferredOutputsArgs'],
+  ['workspace/migration.ts', 'MigrationPlan'],
+  ['workspace/migration.ts', 'GeneratedProject'],
+  ['workspace/migration.ts', 'GeneratedTask'],
+  ['workspace/migration.ts', 'ApplyMigrationArgs'],
+  ['orchestrator/remote-prefetch.ts', 'PrefetchArgs'],
+  ['history/history.ts', 'TaskHistory'],
+  ['orchestrator/run-context.ts', 'GitContext'],
+  ['orchestrator/run-context.ts', 'CiContext'],
+  ['orchestrator/run-context.ts', 'HostContext'],
+  ['orchestrator/placement.ts', 'Placements'],
+  ['orchestrator/hit-restore.ts', 'RestoreHitArgs'],
+  ['orchestrator/miss-save.ts', 'OutputDirSnapshot'],
+  ['orchestrator/miss-save.ts', 'SaveMissArgs'],
+  ['orchestrator/options.ts', 'RunOptions'],
+  ['orchestrator/options.ts', 'RunSummary'],
+  ['workspace/lockfile.ts', 'Lockfile'],
+  ['workspace/lockfile.ts', 'Lockfile'],
+  ['cli/plugin-commands.ts', 'ResolvedPluginCommand'],
+  ['cli/plugin-commands.ts', 'UnresolvedPluginCommand'],
+  ['orchestrator/admission.ts', 'AdmissionArgs'],
+  ['sandbox/request.ts', 'SandboxArmer'],
+  ['sandbox/request.ts', 'SandboxRequest'],
+  ['sandbox/request.ts', 'Placeholder'],
+  ['sandbox/request.ts', 'SandboxRunUnion'],
+  ['cache/git-inputs.ts', 'GitEnumeration'],
+  ['cli/upgrade.ts', 'SignedRelease'],
+  ['cli/upgrade.ts', 'ManagedInstall'],
+  ['cli/watch-fs.ts', 'ArmedWatcher'],
+  ['cli/watch-set.ts', 'ConfigSweep'],
+  ['cli/watch-judge.ts', 'JudgeContext'],
+  ['report/logger.ts', 'OutputView'],
+  ['ui/theme.ts', 'ColorSupport'],
+  ['orchestrator/local-shortcircuit.ts', 'ShortCircuitArgs'],
+  ['orchestrator/local-shortcircuit.ts', 'ProbedEntry'],
+  ['orchestrator/local-shortcircuit.ts', 'ShortCircuit'],
+  ['orchestrator/plan.ts', 'PlannedTask'],
+  ['orchestrator/plan.ts', 'PlanPrediction'],
+  ['orchestrator/plan.ts', 'RunPlan'],
+  ['orchestrator/plan.ts', 'PlanArgs'],
+  ['report/tally.ts', 'Tally'],
+  ['orchestrator/lockfile-claim.ts', 'LockfileClaimOptions'],
+  ['orchestrator/lockfile-claim.ts', 'LockfileClaimHooks'],
+  ['orchestrator/lockfile-claim.ts', 'ReachGraph'],
+  ['orchestrator/task-log-buffer.ts', 'TaskLogEntry'],
+  ['orchestrator/task-log-buffer.ts', 'TaskLogBundle'],
+  ['util/tail.ts', 'Tail'],
+  ['workspace/package-graph.ts', 'PackageGraph'],
+  ['orchestrator/projects.ts', 'LoadProjectsBase'],
+  ['orchestrator/projects.ts', 'LoadedProjects'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
-  for (const [page, source, name] of SHAPES) {
-    it(`docs/modules/${page}.md's ${name} is src/${source}'s`, () => {
-      const doc = interfaceFields(read(`docs/modules/${page}.md`), name)
+  for (const [source, name] of SHAPES) {
+    it(`the page's ${name} is src/${source}'s`, () => {
+      const doc = interfaceFields(moduleSection(source), name)
       const src = interfaceFields(read(`src/${source}`), name)
       expect(src.length).toBeGreaterThan(0)
       expect(doc).toEqual(src)
@@ -150,7 +163,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
-    const doc = read('docs/modules/inputs.md')
+    const doc = moduleSection('cache/inputs.ts')
     const rule = /\*\*Always-ignored\*\* — hard-coded([\s\S]*?)— applied/.exec(doc)
     expect(rule).not.toBeNull()
     expect([...rule![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
@@ -161,14 +174,14 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const arr = /export const ESSENTIAL_ENV: readonly string\[\] = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)
-    const doc = read('docs/modules/env.md')
+    const doc = moduleSection('exec/env.ts')
     const list = /The list:\n\n([\s\S]*?)\n\n/.exec(doc)
     expect(list).not.toBeNull()
     expect([...list![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
   })
 
   it("schema.md's credential stores are CREDENTIAL_STORES", () => {
-    const src = read('src/orchestrator/sandbox-request.ts')
+    const src = read('src/sandbox/request.ts')
     const arr = /export const CREDENTIAL_STORES = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
@@ -180,7 +193,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
   it("history.md's default window is DEFAULT_RECENT", () => {
     const recent = /const DEFAULT_RECENT = (\d+)/.exec(read('src/history/history.ts'))
     expect(recent).not.toBeNull()
-    expect(read('docs/modules/history.md')).toContain(
+    expect(moduleSection('history/history.ts')).toContain(
       `// the window; defaults to ${recent![1]} invocations`,
     )
   })
@@ -191,7 +204,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     )
     expect(arr).not.toBeNull()
     const providers = [...arr![1]!.matchAll(/\['\w+', '(\w+)'\]/g)].map((m) => m[1]!)
-    const doc = read('docs/modules/run-context.md')
+    const doc = moduleSection('orchestrator/run-context.ts')
     const bullet = /first truthy variable wins[\s\S]*?: ([\s\S]*?)\.\n/.exec(doc)
     expect(bullet).not.toBeNull()
     const named = [...bullet![1]!.matchAll(/`(\w+)`/g)].map((m) => m[1]!).filter((n) => n !== 'CI')
@@ -203,39 +216,27 @@ describe('a module page quotes a constant or a regex the module has', () => {
     // the generator became Bun.randomUUIDv7 (item 327, 2026-09-16).
     const id = ulid()
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
-    const doc = read('docs/modules/util-ulid.md')
+    const doc = moduleSection('util/ulid.ts')
     expect(doc).toContain(`a ${id.length}-character UUIDv7`)
     expect(doc).not.toContain('26-character')
   })
 
   it('the util pages quote the constants their modules declare', () => {
-    // [page, source, the declaration line the page must carry verbatim]
-    const quoted: ReadonlyArray<[page: string, source: string, decl: RegExp]> = [
-      ['util-num', 'util/num.ts', /^export const MAX_TIMEOUT_MS = .*$/m],
-      ['util-tail', 'util/tail.ts', /^export const PERSISTENT_TAIL_CHARS = .*$/m],
-      [
-        'task-log-buffer',
-        'orchestrator/task-log-buffer.ts',
-        /^export const TASK_LOG_TAIL_CHARS = .*$/m,
-      ],
-      [
-        'task-log-buffer',
-        'orchestrator/task-log-buffer.ts',
-        /^export const RUN_LOG_BUDGET_CHARS = .*$/m,
-      ],
-      [
-        'task-log-buffer',
-        'orchestrator/task-log-buffer.ts',
-        /^export const LOG_WIRE_VERSION = .*$/m,
-      ],
+    // [source, the declaration line its section must carry verbatim]
+    const quoted: ReadonlyArray<[source: string, decl: RegExp]> = [
+      ['util/num.ts', /^export const MAX_TIMEOUT_MS = .*$/m],
+      ['util/tail.ts', /^export const PERSISTENT_TAIL_CHARS = .*$/m],
+      ['orchestrator/task-log-buffer.ts', /^export const TASK_LOG_TAIL_CHARS = .*$/m],
+      ['orchestrator/task-log-buffer.ts', /^export const RUN_LOG_BUDGET_CHARS = .*$/m],
+      ['orchestrator/task-log-buffer.ts', /^export const LOG_WIRE_VERSION = .*$/m],
     ]
-    for (const [page, source, decl] of quoted) {
+    for (const [source, decl] of quoted) {
       const line = decl.exec(read(`src/${source}`))
       expect(line).not.toBeNull()
-      expect(read(`docs/modules/${page}.md`)).toContain(line![0])
+      expect(moduleSection(source)).toContain(line![0])
     }
     const settle = /const DEFAULT_TIMEOUT_MS = (\d+)/.exec(read('src/util/settle.ts'))
-    expect(read('docs/modules/util-settle.md')).toContain(`// default ${settle![1]}`)
+    expect(moduleSection('util/settle.ts')).toContain(`// default ${settle![1]}`)
   })
 
   it("download-policy.md's DownloadMode is the source's union", () => {
@@ -243,11 +244,11 @@ describe('a module page quotes a constant or a regex the module has', () => {
       read('src/orchestrator/download-policy.ts'),
     )
     expect(line).not.toBeNull()
-    expect(read('docs/modules/download-policy.md')).toContain(`${line![0]}\n`)
+    expect(moduleSection('orchestrator/download-policy.ts')).toContain(`${line![0]}\n`)
   })
 
   it("cli-cache.md's two regexes are parseDuration's and parseSize's", () => {
-    const doc = read('docs/modules/cli-cache.md')
+    const doc = moduleSection('cli/cache.ts')
     const quoted = [...doc.matchAll(/```\n(\/[^\n]+\/i?)\n```/g)].map((m) => m[1]!)
     expect(quoted).toHaveLength(2)
     const duration = /export function parseDuration[\s\S]*?input\.match\((\/.*\/i?)\)$/m.exec(
@@ -275,7 +276,7 @@ describe('a module page lists the functions the module exports', () => {
       'diffsOlderRun',
       'upstreamTask',
     ])
-    const doc = read('docs/modules/metrics.md')
+    const doc = moduleSection('history/metrics.ts')
     const block = /```ts\n([\s\S]*?)```/.exec(doc)
     expect(block).not.toBeNull()
     const named = [...block![1]!.matchAll(/^(\w+)\(/gm)].map((m) => m[1]!)
@@ -304,8 +305,8 @@ describe('cli-help.md names every section the help text has', () => {
     const src = read('src/cli/help.ts')
     const headers = [...src.matchAll(/^    '([A-Z][^']*):',$/gm)].map((m) => m[1]!)
     expect(headers.length).toBeGreaterThan(8)
-    const doc = read('docs/modules/cli-help.md')
-    const section = /## Sections \(current\)\n([\s\S]*?)\n## /.exec(doc)
+    const doc = moduleSection('cli/help.ts')
+    const section = /### Sections \(current\)\n([\s\S]*?)\n### /.exec(doc)
     expect(section).not.toBeNull()
     const named = [...section![1]!.matchAll(/^- `([^`]+)`/gm)].map((m) => m[1]!)
     expect(named).toEqual(headers)
@@ -314,7 +315,7 @@ describe('cli-help.md names every section the help text has', () => {
 
 describe('a module page shows what a formatter prints', () => {
   it("cli-format.md's byte table is formatBytes, row for row", () => {
-    const doc = read('docs/modules/cli-format.md')
+    const doc = moduleSection('cli/format.ts')
     const rows = [...doc.matchAll(/^\| `([^`]+)`\s+\| `([^`]+)`\s+\|$/gm)].map((m) => [
       m[1]!,
       m[2]!,
@@ -338,7 +339,7 @@ describe('a module page lists the errors a parser throws', () => {
     const thrown = new Set(
       [...src.matchAll(/new DependencySpecError\(field, raw, '([^']+)'\)/g)].map((m) => m[1]!),
     )
-    const doc = read('docs/modules/dependency-spec.md')
+    const doc = moduleSection('util/dependency-spec.ts')
     const errors = /Errors:\n\n([\s\S]*?)\n\n/.exec(doc)
     expect(errors).not.toBeNull()
     const named = new Set([...errors![1]!.matchAll(/→ `([^`]+)`/g)].map((m) => m[1]!))
@@ -349,14 +350,14 @@ describe('a module page lists the errors a parser throws', () => {
 
 describe('a module page names every export the module has', () => {
   const EXPORT_RE = /^export (?:async )?(?:interface|type|const|function) (\w+)/gm
-  for (const [page, source, atLeast] of [
-    ['docs/modules/config.md', 'src/config.ts', 12],
-    ['docs/modules/projects.md', 'src/orchestrator/projects.ts', 4],
+  for (const [source, atLeast] of [
+    ['config.ts', 12],
+    ['orchestrator/projects.ts', 4],
   ] as const) {
-    it(`${page}'s surface block names each export of ${source}`, () => {
-      const exported = [...read(source).matchAll(EXPORT_RE)].map((m) => m[1]!)
+    it(`the surface block names each export of src/${source}`, () => {
+      const exported = [...read(`src/${source}`).matchAll(EXPORT_RE)].map((m) => m[1]!)
       expect(exported.length).toBeGreaterThan(atLeast)
-      const block = /## Public surface\n\n```ts\n([\s\S]*?)```/.exec(read(page))
+      const block = /### Public surface\n\n```ts\n([\s\S]*?)```/.exec(moduleSection(source))
       expect(block).not.toBeNull()
       const named = new Set([...block![1]!.matchAll(EXPORT_RE)].map((m) => m[1]!))
       expect(exported.filter((n) => !named.has(n))).toEqual([])
@@ -375,7 +376,7 @@ describe('index.md names every export of the façade, values and types apart', (
       else values.add(entry.split(' as ').at(-1)!)
     }
   }
-  const doc = read('docs/modules/index.md')
+  const doc = moduleSection('index.ts')
   const rows = [...doc.matchAll(/^\| [^|]+ \| ([^|]*) \| ([^|]*) \|$/gm)]
   const column = (i: 1 | 2): string[] =>
     rows.flatMap((r) => [...r[i]!.matchAll(/`(\w+)`/g)].map((m) => m[1]!)).sort()
@@ -397,7 +398,9 @@ describe('plugin-host.md names every export of the host', () => {
       (m) => m[1]!,
     )
     expect(exported.length).toBeGreaterThan(10)
-    const section = /## Public surface\n([\s\S]*?)\n## /.exec(read('docs/modules/plugin-host.md'))
+    const section = /### Public surface\n([\s\S]*?)\n### /.exec(
+      moduleSection('orchestrator/plugin-host.ts'),
+    )
     expect(section).not.toBeNull()
     const named = new Set([...section![1]!.matchAll(/`(\w+)/g)].map((m) => m[1]!))
     expect(exported.filter((n) => !named.has(n))).toEqual([])
@@ -412,8 +415,8 @@ describe('a module page lists the tests its suite has', () => {
       ...src.matchAll(/^  it\((?:\n {4})?'(.+)',(?: |\n {4})(?:async )?\(\) => \{$/gm),
     ].map((m) => m[1]!)
     expect(names.length).toBeGreaterThan(10)
-    const doc = read('docs/modules/package-graph.md')
-    const section = /## Tests\n\n`tests\/package-graph\.test\.ts`:\n\n([\s\S]*?)\n\n/.exec(doc)
+    const doc = moduleSection('workspace/package-graph.ts')
+    const section = /### Tests\n\n`tests\/package-graph\.test\.ts`:\n\n([\s\S]*?)\n\n/.exec(doc)
     expect(section).not.toBeNull()
     expect([...section![1]!.matchAll(/^- (.+)$/gm)].map((m) => m[1]!)).toEqual(names)
   })
@@ -421,7 +424,9 @@ describe('a module page lists the tests its suite has', () => {
 
 describe('timing.md lists every mark and span the run path records', () => {
   const section = (): string => {
-    const m = /## Marks and spans \(current\)\n([\s\S]*?)\n## /.exec(read('docs/modules/timing.md'))
+    const m = /### Marks and spans \(current\)\n([\s\S]*?)\n### /.exec(
+      moduleSection('util/timing.ts'),
+    )
     expect(m).not.toBeNull()
     return m![1]!
   }

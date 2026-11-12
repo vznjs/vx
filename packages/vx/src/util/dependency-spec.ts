@@ -43,12 +43,12 @@ const ALL_STARS = /^\*+$/
 /**
  * Parse one `dependsOn` / `inputs.tasks` entry.
  *
- *   `name`       → self.name
- *   `^name`      → every dep workspace's `name` task
- *   `pkg#name`   → specific package's `name` task (cross-edge)
- *   `*`          → all same-project upstream (filter-only; `**` too)
- *   `^*`         → all dep upstream (filter-only; `^**` too)
- *   `!<form>`    → negation of any of the above (filter-only)
+ *   `name` → self.name
+ *   `^name` → every dep workspace's `name` task
+ *   `pkg#name` → specific package's `name` task (cross-edge)
+ *   `*` → all same-project upstream (filter-only; `**` too)
+ *   `^*` → all dep upstream (filter-only; `^**` too)
+ *   `!<form>` → negation of any of the above (filter-only)
  *
  * Wildcards and negation are accepted everywhere — callers (the graph
  * builder vs the filter) decide which ones make semantic sense and

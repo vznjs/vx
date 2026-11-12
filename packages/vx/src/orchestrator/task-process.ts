@@ -17,24 +17,24 @@ import type { TaskNode } from '../graph/index.js'
 import { parseDuration } from '../util/index.js'
 
 /**
- * Drop the run's facts about files a task may have written without
- * declaring them (`undeclaredWriteReach`): the project's git snapshot and
- * its index OIDs. The next reader
- * re-enumerates the project (one `git ls-files`) and hashes its files by
- * content; the per-declaration file-list memos are keyed on the snapshot
- * array, so they miss with it (item 743).
+ * Drop the run's facts about files a task may have written without declaring
+ * them (`undeclaredWriteReach`): the project's git snapshot and its index OIDs.
+ * The next reader re-enumerates the project (one `git ls-files`) and hashes its
+ * files by content; the per-declaration file-list memos are keyed on the
+ * snapshot array, so they miss with it.
  */
 export function forgetUndeclaredWrites(
-  args: { node: TaskNode; gitFilesCache?: GitFilesCache | undefined },
+  node: TaskNode,
+  gitFilesCache: GitFilesCache | undefined,
   reach: 'none' | 'project' | 'workspace',
 ): void {
-  if (reach === 'none') return
+  if (gitFilesCache === undefined || reach === 'none') return
   if (reach === 'workspace') {
-    args.gitFilesCache?.clear()
+    gitFilesCache.clear()
     return
   }
-  args.gitFilesCache?.delete(args.node.projectDir)
-  args.gitFilesCache?.invalidateWorkspacePartition()
+  gitFilesCache.delete(node.projectDir)
+  gitFilesCache.invalidateWorkspacePartition()
 }
 
 /** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */

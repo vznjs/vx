@@ -1,5 +1,5 @@
 // A merge conflict resolved by committing both sides left its markers in
-// docs/modules/metrics.md, and nothing read them (F-60). A line that opens
+// docs/modules/history.md, and nothing read them (F-60). A line that opens
 // with a conflict marker is refused in every file of this package.
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'

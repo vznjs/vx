@@ -1,20 +1,14 @@
-// `vx upgrade [TAG]` — bring this vx to a newer release, the way it was
-// installed. A compiled binary installed by hand replaces itself: it reads
-// its platform package (`@vzn/vx-<os>-<arch>`) from the npm registry the
-// user configured (`resolveRegistry`: .npmrc, bunfig, npmjs.org last),
-// checks npm's registry signature over `name@version:integrity` against
-// the key pinned below, checks the tarball's SHA-512 against that signed
-// integrity, and only then extracts the binary, stages it beside the old
-// one and renames it over. The signature is what proves the bytes are the
-// ones npm published: the host that serves the tarball cannot mint it
-// (pnpm's installer, pnpm/get, checks the same). A vx installed by a
-// package manager (npm, pnpm, bun, yarn; global or a project's
-// dependency) is upgraded by that package manager, never by a rename over
-// a file it owns. vx never installs Node or a package manager.
-// Handed a call by a global vx, the project's vx moves that global too,
-// to the same version (`upgradeGlobal`).
-// Named `upgrade` (not `update`) per CLI convention: bun upgrade,
-// deno upgrade — "update" is what package managers do to indexes.
+// `vx upgrade [TAG]`: bring this vx to a newer release the way it was
+// installed. A hand-installed binary replaces itself: it fetches its platform
+// package (`@vzn/vx-<os>-<arch>`) from the configured registry
+// (`resolveRegistry`), checks npm's signature over `name@version:integrity`
+// against the pinned key, checks the tarball's SHA-512 against that integrity,
+// and only then extracts, stages beside the old binary and renames over it. The
+// signature proves the bytes are npm's: the serving host cannot mint it
+// (pnpm/get checks the same). A package-manager install is upgraded by that
+// manager, never by renaming over its file. vx never installs Node or a package
+// manager. Handed a call by a global vx, the project's vx moves that global too
+// (`upgradeGlobal`). `upgrade`, not `update`, as bun and deno name it.
 
 import { constants, existsSync, readFileSync } from 'node:fs'
 import { createPublicKey, verify } from 'node:crypto'
@@ -31,10 +25,10 @@ import { VERSION } from '../version.js'
 const PACKAGE = '@vzn/vx'
 
 /**
- * npm's registry signing key, from https://registry.npmjs.org/-/npm/v1/keys.
- * Pinned, not fetched: a key read from the registry would prove nothing
- * about the registry's own answers. When npm rotates it, a release of vx
- * carries the new one, and an older vx refuses with that hint.
+ * npm's registry signing key (https://registry.npmjs.org/-/npm/v1/keys),
+ * pinned: a key fetched from the registry proves nothing about its answers.
+ * When npm rotates it, a vx release carries the new one and older ones refuse
+ * with that hint.
  */
 export const NPM_SIGNING_KEY = {
   id: 'SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U',
@@ -56,13 +50,10 @@ export function isBunfsPath(p: string): boolean {
 }
 
 /**
- * True when running as a `bun build --compile` binary. Keys off
- * `Bun.main` (and argv[1]), `import.meta.path` only last: with
- * `--minify --bytecode` — vx's release build flags — `import.meta.path`
- * reports the ORIGINAL SOURCE path, not the bunfs path, so the old
- * check silently failed for every installed binary and `vx
- * upgrade` refused with "running from source". `Bun.main` stays the
- * bunfs path under every compile-flag combination.
+ * True when running as a compiled binary. Keys off `Bun.main` (and argv[1]),
+ * `import.meta.path` last: under `--minify --bytecode`, vx's release flags,
+ * `import.meta.path` reports the source path, and every installed binary
+ * refused as "running from source".
  */
 export function isCompiledBinary(): boolean {
   return (
@@ -71,14 +62,11 @@ export function isCompiledBinary(): boolean {
 }
 
 /**
- * The package directory that owns `execPath` when it sits under a
- * `node_modules` — an npm install's platform binary, which the launcher
- * runs as `…/node_modules/@vzn/vx-<os>-<arch>/vx`. That file is npm's:
- * a rename over it upgrades this command until the next `npm install`
- * (or a lockfile-pinned CI checkout) puts the version npm knows back,
- * and `npm ls` never agrees with `vx --version` in between. Such an
- * install updates through its package manager (`managedInstall`). Null
- * for a binary installed by hand from a release.
+ * The package directory owning `execPath` under a `node_modules` (an
+ * npm-installed platform binary). Renaming over it lasts until the next `npm
+ * install` puts npm's version back, and `npm ls` disagrees meanwhile, so such
+ * an install updates through its manager (`managedInstall`). Null for a
+ * hand-installed binary.
  */
 export function npmOwnedBinary(execPath: string): string | null {
   const parts = execPath.split(/[\\/]/)
@@ -112,23 +100,18 @@ export function versionSpec(tag: string | undefined): string {
 }
 
 /**
- * How long a registry may stay silent, before its headers or between two
- * chunks of a body, before vx gives up: one that took the connection and
- * never answered hung `vx upgrade` and `vx init` with no output. A slow
- * download that keeps moving is never cut.
+ * How long a registry may stay silent before headers or between body chunks:
+ * one that took the connection and never answered hung `vx upgrade` and `vx
+ * init`. A slow, moving download is never cut.
  */
 const SILENCE_MS = 30_000
 
 const silence = (ms: number): Error => new Error(`no answer in ${ms / 1000} s`)
 
 /**
- * `fetch` on a box that cannot reach the host rejects with Bun's own
- * `TypeError` ("Unable to connect. Is the computer able to access the
- * url?", "Was there a typo in the url or port?"), which the CLI printed
- * as an internal error with a stack (a network namespace without a
- * route, 2026-09-16). One line, the host and the reason. `quiet` aborts
- * the request after `silenceMs` without headers; the body read
- * (`bodyOrRefuse`) aborts it too.
+ * `fetch` to an unreachable host rejects with Bun's own `TypeError`, printed as
+ * an internal error with a stack: one line instead, host and reason. `quiet`
+ * aborts after `silenceMs` without headers.
  */
 async function fetchOrRefuse(
   url: string,
@@ -152,12 +135,9 @@ async function fetchOrRefuse(
 }
 
 /**
- * A response's body, read to the end. The headers can arrive and the
- * connection drop before the body does (a proxy that cuts a transfer):
- * Bun rejects the read with its own `TypeError` (`ECONNRESET`, "The socket
- * connection was closed unexpectedly"), which `fetchOrRefuse` never sees
- * and the CLI printed as an internal error with a stack. A body silent for
- * `silenceMs` between chunks is the same refusal, and its request aborted.
+ * A response body read to the end. The connection can drop after the headers:
+ * Bun rejects the read with a `TypeError` `fetchOrRefuse` never sees. A body
+ * silent for `silenceMs` is the same refusal.
  */
 async function bodyOrRefuse<T>(
   res: Response,
@@ -243,11 +223,10 @@ export interface SignedRelease {
 }
 
 /**
- * The tarball and integrity of `pkg` in `manifest`, once npm's registry
- * signature over `pkg@version:integrity` verifies against `key`. Every
- * refusal comes before a byte of the tarball is fetched. The message is
- * built from the package vx asked for, so a signature npm made for
- * another package does not verify here.
+ * The tarball and integrity of `pkg` in `manifest`, once npm's signature over
+ * `pkg@version:integrity` verifies against `key`; every refusal precedes the
+ * download. The message is built from the package asked for, so another
+ * package's signature does not verify.
  */
 export function verifiedRelease(
   manifest: unknown,
@@ -358,9 +337,8 @@ async function downloadVerified(
 }
 
 /**
- * The `package/vx` file of a platform package's tarball (gzip'd ustar, as
- * npm packs it). Only a regular file by that name is taken: the tarball is
- * already verified, so this reads, it does not defend.
+ * The `package/vx` file of the platform tarball (gzipped ustar). Already
+ * verified, so this reads; it does not defend.
  */
 export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
   let tar: Uint8Array
@@ -390,11 +368,10 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
 }
 
 /**
- * The release of `pkg@spec`, its registry document verified, nothing
- * downloaded yet: `download` fetches the tarball, checks its integrity and
- * extracts the binary. A signed version other than the one asked, or as
- * `latest` one below `current`, is refused. Null when the release is
- * `current`, the version of the vx being replaced.
+ * The release of `pkg@spec`, its document verified, nothing downloaded:
+ * `download` fetches, checks integrity and extracts. A signed version other
+ * than the one asked, or a `latest` below `current`, is refused. Null when the
+ * release is `current`.
  */
 async function signedRelease(
   pkg: string,
@@ -409,9 +386,8 @@ async function signedRelease(
     pkg,
     key,
   )
-  // npm signs every version it published: the signature proves the bytes,
-  // not that they are the version asked for, so a mirror could hand back an
-  // older one.
+  // The signature proves the bytes, not that they are the version asked: a
+  // mirror could hand back an older one.
   if (spec !== 'latest' && release.version !== spec) {
     throw new UserError(
       `vx upgrade: the npm registry answered ${pkg}@${spec} with version ${release.version} — refusing to install; nothing replaced`,
@@ -426,13 +402,10 @@ async function signedRelease(
 }
 
 /**
- * The binary of `pkg@spec`, verified: the registry document's signature,
- * then the tarball's integrity, then the extraction, each refusing before
- * the next step runs. A signed version other than the one asked, or as
- * `latest` one below `current`, is refused. Null when the release is
- * `current`, the version of the vx being replaced; `announce` hears the
- * version before the download starts. `silenceMs` bounds each wait on the
- * registry (`SILENCE_MS`).
+ * The verified binary of `pkg@spec`: document signature, tarball integrity,
+ * extraction, each refusing before the next. Refusals as `resolveRelease`.
+ * `announce` hears the version before the download; `silenceMs` bounds each
+ * registry wait.
  */
 export async function releaseBinary(
   pkg: string,
@@ -449,11 +422,9 @@ export async function releaseBinary(
 }
 
 /**
- * Refuses `latest` below `current`, the vx it would replace: a mirror
- * behind, or a release pulled back, is no upgrade. One rule for every
- * install kind — a binary, a package manager's, the global a run moves
- * too; a package-manager install went down to it with exit 0. A version
- * asked for by name goes back on purpose and is never refused here.
+ * Refuses a `latest` below `current`: a lagging mirror or a pulled release is
+ * no upgrade, for every install kind (a manager's install went down with exit
+ * 0). A version named explicitly may go back.
  */
 function refuseOlderLatest(latest: string, current: string, pkg = PACKAGE): void {
   if (Bun.semver.order(latest, current) >= 0) return
@@ -463,25 +434,21 @@ function refuseOlderLatest(latest: string, current: string, pkg = PACKAGE): void
 }
 
 /**
- * Replace `dest` with the bytes `fetchBinary` returns (null: nothing to
- * do, and false is returned), keeping `dest`'s
- * mode (and, as root, its owner): a 0750 install came back 0755 and owned
- * by whoever upgraded (item 1097). Whether this user can write beside
- * `dest` is checked before `fetchBinary` runs, so a refusal downloads
- * nothing. `starts`, when given, is asked of the replaced binary; false
- * puts the old one back, since a verified download proves the bytes, not
- * that this machine can run them (a CPU below the build's target, a
- * `noexec` mount), and the upgrade reported success over a vx that no
- * longer started.
+ * Replace `dest` with the bytes `fetchBinary` returns (null: nothing to do,
+ * returns false), keeping its mode and, as root, owner (a 0750 install came
+ * back 0755). Writability beside `dest` is checked before downloading.
+ * `starts`, when given, asks the new binary to run; false restores the old one:
+ * verified bytes do not prove this machine can run them (an older CPU, a
+ * `noexec` mount).
  */
 export async function replaceBinary(
   dest: string,
   fetchBinary: () => Promise<Uint8Array | null>,
   starts?: (dest: string) => boolean,
 ): Promise<boolean> {
-  // The swap writes beside the binary: a directory this user cannot write
-  // (a root-owned /usr/local/bin) failed at the rename, the whole release
-  // downloaded for nothing, and the hint named npm, which this binary is not.
+  // The swap writes beside the binary: an unwritable directory (root-owned
+  // /usr/local/bin) failed at the rename after the whole download, with a hint
+  // naming npm.
   const dir = path.dirname(dest)
   await access(dir, constants.W_OK).catch((err: NodeJS.ErrnoException) => {
     throw new UserError(
@@ -493,9 +460,9 @@ export async function replaceBinary(
   if (bytes.byteLength === 0) {
     throw new UserError(`vx upgrade: the release's binary is empty — nothing replaced`)
   }
-  // A fresh directory beside the binary, not a name built from the pid:
-  // anyone who can write the install directory could plant a link at a
-  // predictable name, and a `sudo vx upgrade` wrote through it as root.
+  // A fresh directory, not a pid-built name: anyone who can write the install
+  // dir could plant a link there, and `sudo vx upgrade` wrote through it as
+  // root.
   let stage: string
   try {
     stage = await mkdtemp(path.join(dir, '.vx-upgrade-'))
@@ -599,10 +566,8 @@ const PLATFORM = /^@vzn\/vx-(?:darwin|linux)-(?:x64|arm64)$/
 
 /**
  * The `@vzn/vx-*` plugins `dir`'s package.json lists from the registry
- * (a `workspace:` or `file:` link is the repo's own). Every @vzn package
- * releases together, so they move with core in its one install
- * (2026-10-16); one in another field would move fields under core's flag,
- * so it is refused.
+ * (`workspace:` and `file:` are the repo's own). Every @vzn package releases
+ * together, so they move with core; one in another dependency field is refused.
  */
 function pluginsBeside(dir: string, field: NonNullable<ManagedInstall['field']>): string[] {
   const pkg = readJson(path.join(dir, 'package.json'))
@@ -655,13 +620,11 @@ export function projectManager(dir: string, execPath: string): ManagedInstall['m
 }
 
 /**
- * How a package manager installed the binary at `execPath`, or null when
- * none did (a release binary installed by hand). The launcher runs the
- * platform package's binary, `…/node_modules/@vzn/vx-<os>-<arch>/vx`, so
- * the path names the tree: a manager's global directory, or a project
- * whose package.json lists `@vzn/vx` (the tree's root, else the nearest
- * one above `cwd`, for a workspace whose dependencies are hoisted). A
- * package-manager cache (npx, bunx) is refused: nothing there to upgrade.
+ * How a package manager installed the binary at `execPath`, or null
+ * (hand-installed). The path names the tree: a manager's global dir, or a
+ * project whose package.json lists `@vzn/vx` (the root, else the nearest above
+ * `cwd`, for hoisted workspaces). A manager's cache (npx, bunx) is refused:
+ * nothing to upgrade.
  */
 export function managedInstall(execPath: string, cwd: string): ManagedInstall | null {
   const owner = npmOwnedBinary(execPath)
@@ -759,10 +722,9 @@ export async function targetVersion(tag: string | undefined, verb = 'vx upgrade'
 }
 
 /**
- * Run the package manager that owns a vx at `current` to bring it to
- * `version`; vx never installs one. `step` names the install when a run
- * moves two (`project `, `global `). `latest`: `version` is the
- * registry's latest, not one the user named (`refuseOlderLatest`).
+ * Run the package manager owning a vx at `current` to bring it to `version`; vx
+ * never installs one. `step` names the install when two move. `latest`:
+ * `version` is the registry's latest (`refuseOlderLatest`).
  */
 export async function upgradeManaged(
   install: ManagedInstall,
@@ -802,9 +764,9 @@ export async function upgradeManaged(
   if (proc.exitCode !== 0) {
     throw new UserError(
       `vx upgrade: ${argv.join(' ')} failed (exit ${proc.exitCode}) — vx changed nothing itself${
-        // The install is pinned, so pnpm refuses a release younger than
-        // its minimumReleaseAge instead of mixing releases; its words
-        // print above, so the way out is named (as vx-migrate does).
+        // The install is pinned, so pnpm refuses a release younger than its
+        // minimumReleaseAge rather than mixing releases; its words print above,
+        // so the way out is named.
         install.manager === 'pnpm'
           ? `; if pnpm refused a version published within its minimumReleaseAge, list ${[PACKAGE, ...plugins].join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
           : ''
@@ -815,9 +777,8 @@ export async function upgradeManaged(
 }
 
 /**
- * Replace the binary at `dest`, at `current`, with the verified release
- * `spec` names (`latest` or a version). `step` and `latest` as in
- * `upgradeManaged`.
+ * Replace the binary at `dest` with the verified release `spec` names. `step`
+ * and `latest` as in `upgradeManaged`.
  */
 export async function upgradeBinary(
   dest: string,
@@ -869,10 +830,8 @@ function answeredVersion(bin: string): string | undefined {
 }
 
 /**
- * Bring `from`, the global vx that handed this run to the project's own
- * (`VX_HANDED_OFF`), to `version`, the way it was installed: a binary
- * installed by hand is replaced, a package manager's global install is
- * updated by that manager. A refusal names it.
+ * Bring `from`, the global vx that handed this run over (`VX_HANDED_OFF`), to
+ * `version` the way it was installed. A refusal names it.
  */
 export async function upgradeGlobal(
   from: string,
@@ -896,9 +855,8 @@ export async function upgradeGlobal(
 }
 
 /**
- * `vx upgrade -g`: bring this vx, the global one, to `version` and nothing
- * else (2026-10-16) — no project's package.json, no plugin. The
- * project's own vx refuses: no global ran.
+ * `vx upgrade -g`: this global vx alone, no project or plugin. The project's
+ * own vx refuses: no global ran.
  */
 export async function upgradeOnlyGlobal(
   self: string,
@@ -987,7 +945,7 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   }
   const install = managedInstall(dest, process.cwd())
   // A global vx handed this run to the project's own: both move, to one
-  // version, the project first (2026-10-15).
+  // version, the project first.
   if (handedOffFrom !== undefined) {
     await upgradeBoth(handedOffFrom, dest, install, await targetVersion(tag), latest)
     return 0
@@ -1001,9 +959,9 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
 }
 
 /**
- * Move the project's vx at `dest` (`install`, null for a binary), then the
- * global `from` that handed the run to it, to `version`. The project's
- * move is locked even when the global's then fails: the lock was skipped.
+ * Move the project's vx (`install`, null for a binary), then the handing-off
+ * global, to `version`. The project's move is locked even if the global's
+ * fails.
  */
 export async function upgradeBoth(
   from: string,
@@ -1028,8 +986,8 @@ export async function upgradeBoth(
 
 /**
  * The vx an upgrade just installed: the replaced binary, or the tree's
- * `node_modules/.bin/vx` (a manager's store path names the old version).
- * npm's global tree has no `.bin` there; its platform binary keeps its path.
+ * `node_modules/.bin/vx` (a store path names the old version). npm's global
+ * tree has no `.bin`; its binary keeps its path.
  */
 function newVx(install: ManagedInstall | null, dest: string): string {
   if (install === null) return dest
@@ -1038,9 +996,9 @@ function newVx(install: ManagedInstall | null, dest: string): string {
 }
 
 /**
- * Lock the workspace with the vx just installed at `bin` (2026-10-18):
- * a release may record the lock differently. `-g` never re-locks. A lock
- * that fails leaves the upgrade done and says what to run.
+ * Lock the workspace with the new vx: a release may record the lock
+ * differently. `-g` never re-locks. A failed lock leaves the upgrade done and
+ * says what to run.
  */
 export async function relock(bin: string, cwd = process.cwd()): Promise<void> {
   const root = await findWorkspaceRoot(cwd).catch(() => null)
@@ -1059,10 +1017,9 @@ export async function relock(bin: string, cwd = process.cwd()): Promise<void> {
 }
 
 /**
- * `bin --version` when it answers as vx within `timeoutMs`, else null. The
- * answer decides whether a replaced binary is rolled back, so it is
- * bounded: a binary that hung on start held `vx upgrade` forever, new
- * binary in place, old one never restored.
+ * `bin --version` when it answers as vx within `timeoutMs`, else null. Bounded,
+ * since it decides the rollback: a binary hanging on start held `vx upgrade`
+ * forever.
  */
 export function startedVersion(bin: string, timeoutMs = 10_000): string | null {
   let proc: ReturnType<typeof Bun.spawnSync>

@@ -203,9 +203,9 @@ async function decomposeOutputDir(
   if (out.length + files.length + symlinks.length === 0) return whole
 
   // Upload the Tree blobs the new entries point at: one probe for all, the
-  // small ones batched, one past the batch limit streamed. One probe and
-  // write per entry cost 100 packages 3.4 s through 15 ms each way (F-31).
-  // A failed probe or batch still uploads: each blob is written.
+  // small ones batched, one past the batch limit streamed. One probe and write
+  // per entry cost 100 packages 3.4 s through 15 ms each way. A failed probe or
+  // batch still uploads: each blob is written.
   const blobs = [...encoded.values()]
   await client.uploadBlobs(blobs).catch(async (err: unknown) => {
     warn(
@@ -439,7 +439,7 @@ function decodeActionResult(buf: Uint8Array): ActionResult {
       else if (field === 9) res.execution_metadata = decodeExecutedActionMetadata(slice)
       else if (field === 12) (res.output_symlinks ??= []).push(decodeOutputSymlink(slice))
       // output_file_symlinks (10) and output_directory_symlinks (11): all a
-      // v2.0 server sends, and a v2.1 server repeats them beside field 12 (F-48).
+      // v2.0 server sends, and a v2.1 server repeats them beside field 12.
       else if (field === 10 || field === 11) legacyLinks.push(decodeOutputSymlink(slice))
     } else if (wire === 5) i += 4
     else if (wire === 1) i += 8
@@ -553,7 +553,7 @@ function decodeTimestamp(buf: Uint8Array): { seconds?: string; nanos?: number } 
 }
 
 /** `OutputDirectory { path = 1, tree_digest = 3, is_topologically_sorted = 4,
- *                      root_directory_digest = 5 }` — field 2 is RESERVED,
+ *  root_directory_digest = 5 }` — field 2 is RESERVED,
  *  which is exactly the trap a from-memory decoder falls into. */
 function decodeOutputDirectory(buf: Uint8Array): { path: string; tree_digest: Digest } {
   const out = { path: '', tree_digest: { hash: '', size_bytes: 0 } }
@@ -596,10 +596,10 @@ export interface ReapiExecutorOptions {
   executeTimeoutMs?: number
   /**
    * Bound on the time an action waits for a worker: from Execute until the
-   * EXECUTING transition. Past it the operation is cancelled and the
-   * task is given back to run on this machine, said once (B-100). Unset, an
-   * action waits for a worker as long as the task's own `exec.timeout`
-   * lets it (core's, from the request), and with neither, without bound.
+   * EXECUTING transition. Past it the operation is cancelled and the task is
+   * given back to run on this machine, said once. Unset, an action waits for a
+   * worker as long as the task's own `exec.timeout` lets it (core's, from the
+   * request), and with neither, without bound.
    */
   queueTimeoutMs?: number
   /** REAPI platform properties (`container-image`, `OSFamily`, …). */
@@ -655,8 +655,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   const ranHere = new Map<string, Digest | null>()
   const executor: TaskExecutor = {
     name: 'vx/reapi',
-    remote: true,
-    ...(opts.capacity === undefined ? {} : { capacity: opts.capacity }),
+    capabilities: {
+      remote: true,
+      ...(opts.capacity === undefined ? {} : { capacity: opts.capacity }),
+    },
     accepts: acceptsTask,
     async execute(req: ExecuteRequest): Promise<ExecuteResult> {
       const started = Bun.nanoseconds()
@@ -691,10 +693,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         //
         // Deliberately NOT extended to the UPSTREAM record reads below. Those
         // decide whether a dependency's bytes exist at all, and treating a
-        // failure there as "carry on" is how an action runs without its
-        // inputs and caches the result.
-        // Both streams asked inline: a server that moved them into CAS
-        // otherwise costs the replay a Read each (F-25).
+        // failure there as "carry on" is how an action runs without its inputs
+        // and caches the result. Both streams asked inline: a server that moved
+        // them into CAS otherwise costs the replay a Read each.
         const prior = await untilAborted(
           client.getActionResult(execDigestFor(req.cacheKey), {
             stdout: true,
@@ -801,8 +802,8 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             const [priorStdout, priorStderr] = printed
             // Delivered whatever `capture` says, as on the execute path below:
             // a deferred producer saves nothing, so its replay had printed
-            // nothing at all (item 827). Only once the replay has landed, so
-            // a replay that falls through does not print twice.
+            // nothing at all. Only once the replay has landed, so a replay that
+            // falls through does not print twice.
             if (priorStdout.length > 0) req.onStdout(priorStdout)
             if (priorStderr.length > 0) req.onStderr(priorStderr)
             return {
@@ -858,9 +859,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const treeGrafts: TreeGraft[] = []
       const symlinkGrafts: { path: string; target: string }[] = []
       const localUpstreamPaths: string[] = []
-      // Every upstream at once, and each one's trees at once (F-30): a
-      // remote-only upstream costs a record read, a probe and a read per
-      // tree, and in sequence N upstreams cost N times that.
+      // Every upstream at once, and each one's trees at once: a remote-only
+      // upstream costs a record read, a probe and a read per tree, and in
+      // sequence N upstreams cost N times that.
       const grafts = await untilAborted(
         Promise.all(
           req.inputs.upstream.map(
@@ -946,9 +947,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 digest: f.digest,
                 isExecutable: f.is_executable === true,
               }))
-              // A record's symlinks are outputs too (a worker's own, and a glob's
-              // last-segment matches since item 911); without them the action ran
-              // without an input it declared, and its result was cached (item 920).
+              // A record's symlinks are outputs too (a worker's own, and a
+              // glob's last-segment matches); without them the
+              // action ran without an input it declared, and its result was
+              // cached.
               const symlinks = (record.output_symlinks ?? []).map((sl) => ({
                 path: sl.path,
                 target: sl.target,
@@ -1007,10 +1009,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         treeGrafts,
         symlinkGrafts,
       })
-      // The tree is read after the key was taken. Bytes that moved in
-      // between (an edit mid-run, `vx watch`) run as this action but must
-      // not be recorded under the key: restored to the keyed state, the
-      // next run anywhere replayed the edited outputs (item 1037).
+      // The tree is read after the key was taken. Bytes that moved in between
+      // (an edit mid-run, `vx watch`) run as this action but must not be
+      // recorded under the key: restored to the keyed state, the next run
+      // anywhere replayed the edited outputs.
       if (tree.moved.length > 0) {
         warn(
           `[vx] vx-reapi: ${req.taskId}: \`${tree.moved[0]}\` changed after its key was taken — the execution is not recorded under it`,
@@ -1187,9 +1189,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // command): surface the server's message and its logs, which are the
       // only diagnostics that exist for a worker-side failure.
       if (decoded.status !== undefined && decoded.status.code !== 0) {
-        // A worker past its timeout answers DEADLINE_EXCEEDED with the
-        // partial result, as the spec suggests: what the command printed
-        // is delivered before the refusal, best effort (F-48).
+        // A worker past its timeout answers DEADLINE_EXCEEDED with the partial
+        // result, as the spec suggests: what the command printed is delivered
+        // before the refusal, best effort.
         if (result !== undefined) {
           const unread = (stream: string) => (e: unknown) => {
             warn(`[vx] vx-reapi: ${req.taskId}'s ${stream} could not be read (${errText(e)})`)
@@ -1227,10 +1229,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // onto the submitter's disk is precisely what `remote: 'only'` forbids.
       // `--cache-download=none` defers the same transfer WITHOUT making it
       // permanent: the bytes stay in the CAS and core gets a closure to pull
-      // them if a locally-placed consumer turns out to need them.
-      // Started before the logs are read, not after: a server that keeps
-      // stdout in CAS cost every execution that Read before the first
-      // output byte (F-35).
+      // them if a locally-placed consumer turns out to need them. Started
+      // before the logs are read, not after: a server that keeps stdout in CAS
+      // cost every execution that Read before the first output byte.
       const deferred = req.remoteOnly !== true && req.download === 'deferred'
       const materialised =
         req.remoteOnly !== true && !deferred
@@ -1268,17 +1269,16 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       if (stderr.length > 0) req.onStderr(stderr)
 
       // Record the execution under the task's vx key, output paths rewritten
-      // WORKSPACE-relative (the raw result's are working-directory-relative)
-      // so a dependent in ANY project can graft them at the right place.
-      // Written for every successful remote execution, not just remote-only
-      // tasks: it is what lets a 50-task chain flow worker→CAS→worker.
-      // The record is written while the outputs come down: the two share
-      // nothing, and in turn the record's round trips (a stdout blob, Tree
-      // reads, the update) all sat before the first output byte (F-27).
-      // A run core will not save (`unsaved`) records under this run's own
-      // key instead: under the task's it would replay as that key's hit
-      // (executor.ts contract), and with none a deferred one's dependants
-      // had nothing to graft.
+      // WORKSPACE-relative (the raw result's are working-directory-relative) so
+      // a dependent in ANY project can graft them at the right place. Written
+      // for every successful remote execution, not just remote-only tasks: it
+      // is what lets a 50-task chain flow worker→CAS→worker. The record is
+      // written while the outputs come down: the two share nothing, and in turn
+      // the record's round trips (a stdout blob, Tree reads, the update) all
+      // sat before the first output byte. A run core will not save (`unsaved`)
+      // records under this run's own key instead: under the task's it would
+      // replay as that key's hit (executor.ts contract), and with none a
+      // deferred one's dependants had nothing to graft.
       const hasOutputs =
         (result.output_files ?? []).length +
           (result.output_directories ?? []).length +
@@ -1294,9 +1294,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 req.unsaved === true
                   ? execDigestFor(`${cacheKey}\0${runNonce}`)
                   : execDigestFor(cacheKey)
-              // A whole-tree capture's path is '' — the working directory itself,
-              // which `${wd}/` spelled `pkg/`: never matched by a decomposition,
-              // and grafted as a directory with an empty name (item 1040).
+              // A whole-tree capture's path is '' — the working directory
+              // itself, which `${wd}/` spelled `pkg/`: never matched by a
+              // decomposition, and grafted as a directory with an empty name.
               const rebase = (rel: string): string =>
                 workingDirectory === ''
                   ? rel
@@ -1314,10 +1314,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 const bytes = new TextEncoder().encode(text)
                 if (bytes.length === 0) return {}
                 // A small one rides the record itself (`*_raw`), which the
-                // replay reads as it reads a digest: two CAS round trips fewer (F-27).
+                // replay reads as it reads a digest: two CAS round trips fewer.
                 if (bytes.length <= INLINE_STREAM_BYTES) return { raw: bytes }
                 // A larger one the server already keeps in CAS is recorded by
-                // its digest: no hash, probe or upload of our own (F-35).
+                // its digest: no hash, probe or upload of our own.
                 if (serverDigest !== undefined && serverDigest !== null) {
                   return { digest: serverDigest }
                 }
@@ -1474,9 +1474,9 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Pro
 
 /**
  * A gRPC status that escaped `execute` (an Execute the server refused, an
- * upload or upstream read that failed) is the server's answer, not a vx bug.
- * It reached the scheduler as a plain Error and printed as "internal error
- * in <task>" (F-11); a UserError prints as the refusal it is.
+ * upload or upstream read that failed) is the server's answer, not a vx bug. It
+ * reached the scheduler as a plain Error and printed as "internal error in
+ * <task>"; a UserError prints as the refusal it is.
  */
 function namedRefusal(taskId: string, err: unknown): unknown {
   if (isUserError(err) || !(err instanceof Error)) return err
@@ -1548,7 +1548,7 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
   // enters the digest) and correct in both anchoring modes.
   //
   //   root-anchored → cwd IS the input root, so "$PWD" is the root
-  //   otherwise     → cwd is the project, so climb back out of projectRel
+  //   otherwise → cwd is the project, so climb back out of projectRel
   const climb =
     projectRel === ''
       ? ''
@@ -1558,10 +1558,10 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
           .join('/')}`
   const root = cdInto === '' ? `"$PWD${climb}"` : '"$PWD"'
   // Order matters: VX_ROOT is read BEFORE the cd, the project-local bin dir
-  // AFTER it, so both are right whichever mode we are in. The project's
-  // first, as core's taskBinDirs: a tool the project pins beats the root's.
-  // Quoted as the forwarded args are: a project directory is a name like
-  // any other, and `it's` ended the quote and ran the rest as script (L-7).
+  // AFTER it, so both are right whichever mode we are in. The project's first,
+  // as core's taskBinDirs: a tool the project pins beats the root's. Quoted as
+  // the forwarded args are: a project directory is a name like any other, and
+  // `it's` ended the quote and ran the rest as script.
   const cd = cdInto === '' ? '' : `cd '${cdInto.replaceAll("'", `'\\''`)}' || exit 1; `
   return (
     `VX_ROOT=${root}; ${cd}` +
@@ -1605,20 +1605,18 @@ function literalHead(glob: string): { path: string; rest: string[] } {
 }
 
 /**
- * The action's environment: `inputs.env` (values read from THIS
- * machine's environment, already folded into the cache key) plus
- * `exec.env.define` (literals from the task config), plus the
- * `FORCE_COLOR` and `NO_COLOR` the local child sees (this machine's, or the
- * `FORCE_COLOR=1` vx sets on every local child). A define wins on
- * collision — it is the more explicit statement of intent. An `inputs.env`
- * name crosses only when the local child gets the same value (`childEnv`,
- * the request's resolved environment): a name the config only TRACKS is in
- * the key but not the local child's environment, and shipping it ran the
- * worker on a value a local run never saw, under the same key (item 1092).
- * Nothing else from `childEnv` may cross: that is this machine's RESOLVED
- * environment (its PATH, HOME, TMPDIR), and shipping it would put
- * host-specific values into the action identity, splitting every machine
- * from every other.
+ * The action's environment: `inputs.env` (values read from THIS machine's
+ * environment, already folded into the cache key) plus `exec.env.define`
+ * (literals from the task config), plus the `FORCE_COLOR` and `NO_COLOR` the
+ * local child sees (this machine's, or the `FORCE_COLOR=1` vx sets on every
+ * local child). A define wins on collision — it is the more explicit statement
+ * of intent. An `inputs.env` name crosses only when the local child gets the
+ * same value (`childEnv`, the request's resolved environment): a name the
+ * config only TRACKS is in the key but not the local child's environment, and
+ * shipping it ran the worker on a value a local run never saw, under the same
+ * key. Nothing else from `childEnv` may cross: that is this machine's RESOLVED
+ * environment (its PATH, HOME, TMPDIR), and shipping it would put host-specific
+ * values into the action identity, splitting every machine from every other.
  *
  * ORDER is deliberately not this function's business. The proto requires
  * environment_variables sorted by name so equivalent Commands hash alike, and
@@ -1738,7 +1736,7 @@ export async function materialiseOutputs(
   ].some((g) => isOutputGlob(g) && globToOutputPath(g) === '')
   // `abs` names a file a declared glob matches: missing, it is a hole in a
   // declared output under either capture, and warning let `save` cache the
-  // short tree under the key (F-8).
+  // short tree under the key.
   const missing = (what: string, hash: string, abs?: string): void => {
     if (!wholeTreeCapture || req.replay === true || (abs !== undefined && isDeclared(abs))) {
       throw new UserError(
@@ -1747,12 +1745,12 @@ export async function materialiseOutputs(
     }
     warn(`[vx] vx-reapi: output ${what} missing from CAS (${hash.slice(0, 12)})`)
   }
-  // A glob cut at its wildcard captured a directory that holds more than
-  // the outputs — `src/*.gen.js` returns all of `src`, inputs included.
-  // Only what a declared glob names is written: writing the rest put the
-  // worker's copy of the sources over the user's, an edit made during the
-  // action was lost, and core, seeing its inputs rewritten, never saved
-  // the task (item 1038). A directory a LITERAL glob names is written whole.
+  // A glob cut at its wildcard captured a directory that holds more than the
+  // outputs — `src/*.gen.js` returns all of `src`, inputs included. Only what a
+  // declared glob names is written: writing the rest put the worker's copy of
+  // the sources over the user's, an edit made during the action was lost, and
+  // core, seeing its inputs rewritten, never saved the task. A directory a
+  // LITERAL glob names is written whole.
   const projectRel = req.projectRel ?? toPosix(path.relative(req.workspaceRoot, req.cwd))
   const declared = [
     ...(req.outputs?.files ?? [])
@@ -1841,10 +1839,10 @@ export async function materialiseOutputs(
       // Inlined only when it has bytes: an ActionResult read back through
       // proto-loader (the execution-record replay) carries `contents` as an
       // EMPTY Buffer on every file, and taking that as inline wrote each
-      // replayed output empty (item 827). An empty file is the next branch.
-      // Inline bytes are held to the digest they ride with, as fetched ones
-      // are in wire.ts: a server's wrong inline copy was written as the output
-      // and cached under the key (F-8). A mismatch fetches the blob instead.
+      // replayed output empty. An empty file is the next branch. Inline bytes
+      // are held to the digest they ride with, as fetched ones are in wire.ts:
+      // a server's wrong inline copy was written as the output and cached under
+      // the key. A mismatch fetches the blob instead.
       const inline =
         f.contents !== undefined &&
         f.contents.length > 0 &&
@@ -1886,18 +1884,17 @@ export async function materialiseOutputs(
 }
 
 /**
- * Where a server's paths may land: under the workspace root, through no
- * link that leads out of it (L-2). The ActionResult is the server's word —
- * a fresh one or a record replayed from its action cache — and its paths
- * and Tree names were joined as given: `../../../.bashrc`, a Tree name
- * `..`, a symlink `a -> ~` followed by a directory `a` holding
- * `.ssh/authorized_keys`, a file written through a link the result placed,
- * or a link out of the tree that the save then packed and uploaded. Each
- * is refused as the server's fault. A directory's check is memoized: it
- * is created a real directory right after, and a link is never placed over
- * a directory (`rm` without `recursive` refuses one). An absolute path
- * needs no case of its own: the join lands it where it names, and the
- * containment check judges that.
+ * Where a server's paths may land: under the workspace root, through no link
+ * that leads out of it. The ActionResult is the server's word — a fresh one or
+ * a record replayed from its action cache — and its paths and Tree names were
+ * joined as given: `../../../.bashrc`, a Tree name `..`, a symlink `a -> ~`
+ * followed by a directory `a` holding `.ssh/authorized_keys`, a file written
+ * through a link the result placed, or a link out of the tree that the save
+ * then packed and uploaded. Each is refused as the server's fault. A
+ * directory's check is memoized: it is created a real directory right after,
+ * and a link is never placed over a directory (`rm` without `recursive` refuses
+ * one). An absolute path needs no case of its own: the join lands it where it
+ * names, and the containment check judges that.
  */
 class Fence {
   private realRoot: string | undefined
@@ -2005,10 +2002,10 @@ class Fence {
 
   /**
    * Every placed link, resolved as the OS follows it. The text check above
-   * collapses `x/..` where the OS follows `x`: with `x -> ..` placed, `y ->
-   * x/../../outside` reads as inside and leads out (F-47). Judged once all
-   * are placed, since a later link changes what an earlier one names. An
-   * escaping link is removed before the refusal.
+   * collapses `x/..` where the OS follows `x`: with `x ->..` placed, `y ->
+   * x/../../outside` reads as inside and leads out. Judged once all are placed,
+   * since a later link changes what an earlier one names. An escaping link is
+   * removed before the refusal.
    */
   async verifyLinks(): Promise<void> {
     // quiet: a local realpath; the root as given stands
@@ -2060,8 +2057,8 @@ async function writeOutput(
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
     }
   }
-  // A link at the path is replaced, never written through: the result may
-  // have placed it (L-2).
+  // A link at the path is replaced, never written through: the result may have
+  // placed it.
   await writeFile(abs, bytes, { flag: WRITE_NOFOLLOW }).catch(async (err: unknown) => {
     if ((err as NodeJS.ErrnoException).code !== 'ELOOP') throw err
     await unlink(abs)
@@ -2149,9 +2146,9 @@ async function readTree(
     return null
   }
   // Children are addressed by the digest of the bytes the WORKER encoded.
-  // Re-encoding our parse reproduces it only when both encoders agree byte
-  // for byte, and a child that did not was "not present in the Tree blob"
-  // (item 827), the miss decomposeOutputDir's own comment measured.
+  // Re-encoding our parse reproduces it only when both encoders agree byte for
+  // byte, and a child that did not was "not present in the Tree blob", the miss
+  // decomposeOutputDir's own comment measured.
   const byDigest = new Map<string, Directory>()
   tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
   return { root: tree.root, byDigest, ...treeShape(tree.root, byDigest) }
@@ -2233,9 +2230,9 @@ async function materialiseTree(
 ): Promise<void> {
   // Files are gathered from the whole tree before any is fetched: one
   // BatchReadBlobs per DIRECTORY was a round trip each, so a `dist/` of 200
-  // directories restored in 200 sequential calls (F-18). Windows bound what
-  // is held. A symlink placed later in the walk lies under a directory not
-  // yet visited, so no file gathered earlier is written through one.
+  // directories restored in 200 sequential calls. Windows bound what is held. A
+  // symlink placed later in the walk lies under a directory not yet visited, so
+  // no file gathered earlier is written through one.
   const files: { abs: string; f: Directory['files'][number] }[] = []
   const walk = async (dir: Directory, at: string, whole: boolean): Promise<void> => {
     const wanted = (abs: string): boolean => whole || declared!(abs)

@@ -9,6 +9,8 @@
 //         caught from any depth (the pattern that stood here matched only
 //         `../src/`, core's path before it moved under packages/, and let
 //         any reach from a sibling through).
+// Rule 1 holds private/vx-plugin-examples too: no src/, but its files are
+//         what a plugin author copies.
 // Rule 2: core (src/**) never imports a sibling @vzn/vx-* package or any
 //         packages/* path — the dependency direction is sibling → core, never
 //         the reverse. The OTel/HTTP SDK closures stay out of core's budget.
@@ -94,6 +96,29 @@ describe('package boundaries', () => {
     expect(allViolations).toEqual([])
   })
 
+  it('the plugin examples import vx only via the bare @vzn/vx specifier', async () => {
+    // They are what a plugin author copies, so they hold to the public API.
+    const examples = path.join(PRIVATE_DIR, 'vx-plugin-examples')
+    const dirs = (
+      await Array.fromAsync(new Bun.Glob('*').scan({ cwd: examples, onlyFiles: false }))
+    )
+      .filter((d) => d !== 'node_modules' && !d.includes('.'))
+      .sort()
+    expect(dirs).toContain('fingerprint')
+    const violations: string[] = []
+    for (const dir of dirs)
+      for (const i of await importsOf(path.join(examples, dir))) {
+        const outside =
+          i.specifier.startsWith('.') &&
+          !path
+            .resolve(examples, dir, path.dirname(i.file), i.specifier)
+            .startsWith(examples + path.sep)
+        if ((i.specifier.startsWith('@vzn/') && i.specifier !== '@vzn/vx') || outside)
+          violations.push(`${dir}/${i.file} → ${i.specifier}`)
+      }
+    expect(violations).toEqual([])
+  })
+
   it('core (src/**) never imports a sibling @vzn/vx-* package or packages/*', async () => {
     const imports = await importsOf(CORE_SRC)
     const violations = imports.filter(
@@ -116,7 +141,6 @@ describe('package boundaries', () => {
     const mod = (await import('../src/index.js')) as Record<string, unknown>
     const actual = Object.keys(mod).sort()
     const expected = [
-      'BoundedCapture',
       'Cache',
       // Widened 2026-11-06: a remote layer that checks its bytes (vx-reapi's
       // digest) refuses them with it, so the re-run's save repairs the key.
@@ -135,8 +159,6 @@ describe('package boundaries', () => {
       'TaskLogBuffer',
       'UserError',
       'VERSION',
-      // Widened 2026-10-22: `@vzn/vx-dte` checks a task's runtime probes on its worker.
-      'answerRuntime',
       'applyMigration',
       'branchCacheScope',
       'criticalPath',
@@ -147,7 +169,6 @@ describe('package boundaries', () => {
       'executorFallback',
       'exitSignal',
       'findWorkspaceRoot',
-      'foldScriptHooks',
       'hostPlatform',
       'isCacheHit',
       // Widened 2026-09-23 (item 667): `@vzn/vx-reapi` maps declared output
@@ -162,8 +183,6 @@ describe('package boundaries', () => {
       'isUserError',
       'loadProjectConfig',
       'loadResolvedProjects',
-      // Widened 2026-10-21: `@vzn/vx-dte` runs tasks itself, sandbox included.
-      'localFloor',
       // 2026-10-29: run history reaches a plugin as rows, never as a handle on cache.db.
       'localHistory',
       'lockfileClaim',
@@ -182,7 +201,6 @@ describe('package boundaries', () => {
       // outputs reach, as core's save does.
       'outputDirPrefixes',
       'outputsOverlap',
-      'packageManagerPath',
       'planRun',
       'prepareRun',
       'pruneOrphanPersistentNotes',
@@ -195,17 +213,10 @@ describe('package boundaries', () => {
       // through core's restore gate, so both refuse the same names.
       'restorableOutput',
       'run',
-      // Widened 2026-10-24: a DTE worker reads its running tasks' trees
-      // with core's own sampler, where no telemetry plugin asks for it.
-      'sampleTrees',
-      // Widened 2026-10-22: a DTE worker builds a task's sandbox on its own OS.
-      'sandboxRequestFor',
       // Widened 2026-10-28: `@vzn/vx-dte`'s github() refuses to hand a
       // worker, as a shown dispatch input, a value core would mask.
       'secretNamed',
       'splitTaskId',
-      // Widened 2026-10-24: a DTE worker takes back the placeholders as core does.
-      'sweepPlaceholders',
       // Widened 2026-10-23: a plugin reading history reads only the rows
       // of each task as it is now (M: a changed command is a new task).
       'taskDefinitions',
@@ -219,25 +230,21 @@ describe('package boundaries', () => {
       // args after `--` on their own, and lost them where the local
       // executor kept them (a trailing comment).
       'withForwardArgs',
+      // A distributed executor's worker runs a task as the local floor
+      // would: sandbox, capture, probes and package manager of its machine.
+      'workerRuntime',
     ]
     expect(actual).toEqual(expected)
   })
 
   // The schema entry a generated `vx.config.ts` type-imports: through the
-  // exports map (a user's `tsc`) and the directory shim (the compiled
-  // binary, which ignores the map), it is `src/config.ts` and no more.
-  it('@vzn/vx/config is the schema module through the map and the shim', async () => {
+  // exports map (a user's `tsc`) it is `src/config.ts` and no more. The
+  // compiled binary serves the same module itself (scripts/check-binary.ts).
+  it('@vzn/vx/config is the schema module through the map', async () => {
     const schema = await import('../src/config.js')
     const viaMap = await import('@vzn/vx/config')
-    const viaShim = await import('../config/index.js')
-    expect([Object.keys(viaMap).sort(), Object.keys(viaShim).sort()]).toEqual([
-      Object.keys(schema).sort(),
-      Object.keys(schema).sort(),
-    ])
-    expect([viaMap.defineProject, viaShim.defineProject]).toEqual([
-      schema.defineProject,
-      schema.defineProject,
-    ])
+    expect(Object.keys(viaMap).sort()).toEqual(Object.keys(schema).sort())
+    expect(viaMap.defineProject).toBe(schema.defineProject)
   })
 
   it('every package oxfmt config ignores the names the sandbox masks', async () => {

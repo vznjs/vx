@@ -20,9 +20,37 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
-### cache: bump the cache format to v56
+### exec: group executor capabilities and distribution
+
+TaskExecutor's remote, sandbox, servers, runtime, exclusive, timeouts, platforms and capacity move under `capabilities`; workers, demand, running, unneeded, footer, machines, idealMs, advice and profile move under `distribution`. Any other executor key refuses the run. @vzn/vx no longer exports localFloor, LocalFloor, sandboxRequestFor, sweepPlaceholders, SandboxRequest, BoundedCapture, answerRuntime, packageManagerPath or sampleTrees: a worker calls workerRuntime({ root }) and uses prepare(task) -> run() / sweep(), probe, packageManager and sample.
+
+### workspace: keep JS out of the migration seam
+
+foldScriptHooks is no longer exported from @vzn/vx. ApplyMigrationArgs drops `unmapped` (pass `emptyReason` and `example`), MigrationMember's `packageJson` is `esModule`, and core runs no formatter unless the migrator passes `written`.
+
+### orchestrator: make the lockfile claim ecosystem-neutral
+
+lockfileClaim's `importers` option and hook are now `links`, and `LockfileImporter` is no longer exported from @vzn/vx.
+
+### graph: group TaskOutcome by concern, a union by status
+
+TaskOutcome fields moved. storedDurationMs, storedCpuMs, storedPeakRssBytes -> cache.stored.{durationMs, cpuMs, peakRssBytes}; restored, saved, inputFiles, artifactBytes, outputBytes, inputChanges, unkeyed, driftedInput, keylessBy -> cache.*; cacheOff -> cache.off; outputs: 'deferred' -> cache.deferred: true; queuedMs, admissionHeldMs, fetchMs, saveMs -> timing.*; wallclockStartNs, wallclockEndNs -> timing.startNs, timing.endNs; cpuMs, peakRssBytes, peakCores, avgRssBytes -> usage.*; where, carried -> placement.*; whereCores, whereMemoryBytes, cpuShare -> placement.cores, placement.memoryBytes, placement.cpuShare; attempts -> attempts.count; failedAttempts, attemptOutputs, flaky -> attempts.failed, attempts.outputs, attempts.flaky; sandboxViolations, sandboxViolationLines, sandboxFix -> sandbox.violations, sandbox.lines, sandbox.fix. A skipped outcome has no exitCode: read exitCodeOf(outcome) for the exit a record writes; it keeps hash only when fail-fast stopped it after its key was derived. The groups and variants are exported as types. RunOptions loses staged, discovered, selectedByDiff, selectedOutright, affectedReasons, remoteRequested, remoteReadOnlyByDefault, summaryTable, holdPersistent, watch, keep and commandWindows: vx's CLI hands them on internally, and run() and planRun() no longer read them.
+
+### cache: take history and memos off Cache and CacheLayer
+
+Cache loses recordRun, recordRuns, recordMeasures, recordRunBundle and recordRemoteErrors, with no public replacement: core records each run into the local index itself. CacheLayer and LayeredCache lose recordRunBundle, so a custom layer's recordRunBundle is no longer called. Cache loses hashFile, hashBytes, hashFiles, knownBlobSizes, rememberBlobSizes, holdBlobSizes, storeHeldBlobSizes, blobVerdict, rememberBlobVerdict, loadOutputFilesBatch, isOutputsCurrent, recordOutputDirs, recordOutputStamps, loadOutputDirsBatch and outputDirsCurrent: call `cache.memo.<name>` (StoreMemo); `foldMemo()` is `cache.memo.folds`. CacheLayer and LayeredCache lose hashFile, loadOutputFilesBatch, isOutputsCurrent, recordOutputDirs, recordOutputStamps, loadOutputDirsBatch and outputDirsCurrent: a layer hands them out as `layer.memo` (TaskMemo).
+
+### everyday workspaces never cache a wrong build
 
 CACHE_VERSION is vx-cache-v56 and the index schema v56: caches start empty once, so every cached task misses once after upgrading. Re-run vx lock after upgrading: vx-lockfile's digests changed (a workspace package's own version under bun() and npm(), pnpm()'s injected copies), so vx lock --check fails on the old lock.
+
+### vx-dte-server: check tokens with @vzn/vx-devtools
+
+the relay no longer exports parseAllow, TokenError, Allowed, repositoryClaimOf or workflowClaimOf: use @vzn/vx-devtools' parseAllow, Refusal and Admits. Its refusal texts change: "this relay's ALLOW" is "this server's ALLOW"; "repository <r>" names the claim, "repository" or "project_path", lowercased; "workflow <w>" is "job_workflow_ref <w>" or "ci_config_ref_uri <w>"; the audience hint ends "or set the server's AUDIENCE"; the issuer is judged before the header's alg, and a signature no key makes is "bad signature" once the keys are held. The image bundles devtools, so it builds from the repo root.
+
+### vx: drop core's root and config entry shims
+
+@vzn/vx no longer ships index.ts or config/index.ts; a vx binary from 0.0.484 or older cannot load it.
 
 ### vx-dte: time worker warm-ups as tasks in history
 

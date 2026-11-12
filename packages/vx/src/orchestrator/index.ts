@@ -1,7 +1,15 @@
 // Module contract for `orchestrator`. Cross-module imports must come
 // through here (enforced by tests/module-boundaries.test.ts).
 
-export { run, planRun, nxProjectTarget, projectAtDir, projectNamed } from './run.js'
+export {
+  run,
+  runCore,
+  planRun,
+  planCore,
+  nxProjectTarget,
+  projectAtDir,
+  projectNamed,
+} from './run.js'
 export { CYCLE_INTERRUPT } from './run-stop.js'
 export {
   namesRemote,
@@ -13,6 +21,7 @@ export {
 } from './prepare.js'
 export { affectedTaskProjects } from './affected-tasks.js'
 export { applyGraphStage } from './graph-stage.js'
+export { applyMigration } from './migration.js'
 export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,
@@ -31,7 +40,13 @@ export {
   type LoadProjectsArgs,
 } from './projects.js'
 export { computeTaskHash, createHashCache, type HashCache } from './task-hash.js'
-export type { HeldPersistent, RunOptions, RunSummary } from './options.js'
+export type {
+  CoreRunOptions,
+  HeldPersistent,
+  RunHandoff,
+  RunOptions,
+  RunSummary,
+} from './options.js'
 export { commandWindows, type CommandWindows } from './command-windows.js'
 // Re-surface the cache policy contract (defined in the cache module) so
 // embedders constructing RunOptions.cache and the package façade can
@@ -118,7 +133,6 @@ export {
   withExtraHashes,
   type LockfileClaimHooks,
   type LockfileClaimOptions,
-  type LockfileImporter,
   type ReachGraph,
 } from './lockfile-claim.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
@@ -160,4 +174,10 @@ export {
 export { resolveRunId, shortRunId } from './run-id.js'
 export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'
 export { localFloor, type LocalFloor } from './local-floor.js'
-export { sandboxRequestFor, sweepPlaceholders, type SandboxRequest } from './sandbox-request.js'
+export {
+  workerRuntime,
+  type PreparedTask,
+  type WorkerRuntime,
+  type WorkerSandbox,
+  type WorkerTask,
+} from './worker-runtime.js'

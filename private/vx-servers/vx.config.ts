@@ -64,9 +64,6 @@ export default defineProject({
         files: ['compose.yaml', 'tests/smoke.sh'],
         workspaceFiles: [
           'packages/vx-dte-server/Dockerfile',
-          'packages/vx-dte-server/package.json',
-          'packages/vx-dte-server/index.ts',
-          'packages/vx-dte-server/PROTOCOL.md',
           'packages/vx-dte-server/src/**',
           'packages/vx-cache-server/Dockerfile',
           'packages/vx-cache-server/src/**',

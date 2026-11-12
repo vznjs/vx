@@ -9,8 +9,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
 import { gitInit } from './helpers/workspace.js'
-import { Cache, OUTPUT_DIRS_RACY_MS, type CacheEntry } from '../src/cache/index.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { Cache, type CacheEntry } from '../src/cache/index.js'
+import { OUTPUT_DIRS_RACY_MS } from '../src/memo/output-index.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { Logger } from '../src/report/index.js'
 import { restoreHit } from '../src/orchestrator/execute-task.js'
@@ -55,13 +56,15 @@ const restore = (hash: string, hit: CacheEntry) =>
     args: {
       node: node(),
       upstream: [] as TaskOutcome[],
-      workspaceRoot: b.root,
-      cache: b.cache,
+      run: {
+        workspaceRoot: b.root,
+        cache: b.cache,
+        runStartHrTimeNs: process.hrtime.bigint(),
+        keyedProjects: () => new Set<string>(),
+      },
       log: quiet,
       executor: localExecutor(),
       nestedProjectDirs: [] as string[],
-      runStartHrTimeNs: process.hrtime.bigint(),
-      keyedProjects: () => new Set<string>(),
     },
     hash,
     hit,
@@ -80,14 +83,14 @@ it('a stray written while a hit walks its outputs is not snapshotted as the entr
     outputFiles: [out],
     entry: { taskId: 'proj#build', command: 'x', durationMs: 1, stdout: '' },
   })
-  b.cache.recordOutputStamps(hash, b.dir, b.root)
+  b.cache.memo.recordOutputStamps(hash, b.dir, b.root)
   const old = new Date(Math.floor(Date.now() / 2000) * 2000 - 4000)
   utimesSync(path.join(b.dir, 'dist'), old, old)
   // The first hit has no snapshot: it walks, finds the set, stats the file.
   // Another process writes a stray into dist after the walk listed it, and
   // the rest of the walk (a big tree) takes longer than the racy window.
-  const real = b.cache.isOutputsCurrent.bind(b.cache)
-  const stat = spyOn(b.cache, 'isOutputsCurrent').mockImplementation((dir, rows) => {
+  const real = b.cache.memo.isOutputsCurrent.bind(b.cache.memo)
+  const stat = spyOn(b.cache.memo, 'isOutputsCurrent').mockImplementation((dir, rows) => {
     const ok = real(dir, rows)
     if (dir === b.dir && !existsSync(path.join(b.dir, 'dist', 'stray.txt'))) {
       writeFileSync(path.join(b.dir, 'dist', 'stray.txt'), 'stray')
@@ -95,7 +98,7 @@ it('a stray written while a hit walks its outputs is not snapshotted as the entr
     }
     return ok
   })
-  expect((await restore(hash, (await b.cache.get(hash))!)).restored).toBe(false)
+  expect((await restore(hash, (await b.cache.get(hash))!)).cache?.restored).toBe(false)
   stat.mockRestore()
   // The next hit: the stray is not the entry's, so it must restore and clean it.
   await restore(hash, (await b.cache.get(hash))!)

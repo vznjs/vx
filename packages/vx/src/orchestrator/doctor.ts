@@ -7,13 +7,8 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import {
-  cachePolicyEnvRefusal,
-  indexDb,
-  Cache,
-  CACHE_VERSION,
-  SCHEMA_VERSION,
-} from '../cache/index.js'
+import { cachePolicyEnvRefusal, indexDb, Cache, CACHE_VERSION } from '../cache/index.js'
+import { SCHEMA_VERSION } from '../index-db/index.js'
 import { PLUGIN_HOOKS, type WorkspaceConfig } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -36,7 +31,7 @@ import {
   resetSandbox,
   toRealPath,
   untracedReason,
-} from '../exec/index.js'
+} from '../sandbox/index.js'
 import {
   findWorkspaceRoot,
   lockfilePath,
@@ -233,8 +228,8 @@ async function collectWorkspaceInfo(
   // The lock's projects: none without a lock, or with one a run would
   // refuse, which is `vx lock`'s to report.
   const lock = lockReader(root)
-  // A lock a run refuses is said, not swallowed: "projects lock yes" with
-  // no task hid why every run failed (2026-10-28).
+  // A lock a run refuses is said, not swallowed: "projects lock yes" with no
+  // task hid why every run failed.
   let refused: string | null = null
   const held = await lock().then(
     () => true,
@@ -315,7 +310,7 @@ async function collectWorkspaceInfo(
   const statusCache = gitStatusCache(root)
   const probed = await probing
   // The host's runtime may start, but no sandboxed task runs here (a run
-  // refuses each one, sandbox-request.ts).
+  // refuses each one, sandbox/request.ts).
   const sandbox = replacedBySandbox(toRealPath(root))
     ? {
         available: false,
@@ -337,10 +332,10 @@ async function collectWorkspaceInfo(
     bun: Bun.version,
     bunSupported: !isUnsupportedBun(Bun.version),
     git,
-    // The one `git status` walk per run is the warm path's critical path on
-    // a large tree (~55 ms at 1000 projects, measured 2026-09-02). git's
-    // own caches make it near-free after the first run, and they are OFF by
-    // default — say so, since nothing else in a run would.
+    // The one `git status` walk per run is the warm path's critical path on a
+    // large tree (~55 ms at 1000 projects, measured). git's own caches make it
+    // near-free after the first run, and they are OFF by default — say so,
+    // since nothing else in a run would.
     gitStatusCache: statusCache,
     workspaceRoot: root,
     projects: metas.length,
@@ -446,7 +441,7 @@ function memoryFact(): InfoFacts['memory'] {
 /**
  * Whether git's fsmonitor / untracked cache are on. Reported as a fact,
  * not a remedy: interleaved A/B at 1000 projects measured neither moving
- * the warm run (STATUS, waves 5 and the 2026-09-03 refutations) — the
+ * the warm run — the
  * status walk's cost is git's own, and vx already overlaps it.
  */
 export function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {

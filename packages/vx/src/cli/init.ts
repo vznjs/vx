@@ -1,10 +1,10 @@
-// `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere.
-// It installs vx globally and, where a package.json is, as its devDependency
-// (2026-10-20). A Turbo or Nx repo is `@vzn/vx-migrate`'s, which maps it
-// and installs what it writes (`migrate`); any other gets the workspace file
-// and an empty root project, then the lock (`starter`).
-// `vx init --plugin <hook>` writes a runnable plugin for one hook and its
-// test instead (plugin-templates.ts, the examples the gate runs).
+// `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a
+// workspace from nowhere. It installs vx globally and, where a package.json is,
+// as its devDependency. A Turbo or Nx repo is `@vzn/vx-migrate`'s, which maps
+// it and installs what it writes (`migrate`); any other gets the workspace file
+// and an empty root project, then the lock (`starter`). `vx init --plugin
+// <hook>` writes a runnable plugin for one hook and its test instead
+// (plugin-templates.ts, the examples the gate runs).
 
 import { existsSync, lstatSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
@@ -144,7 +144,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   }
   const pkgRoot = packageRoot(dirs, top !== null)
   // Outside git `dirs` reach `/`: a stray turbo.json or nx.json above the
-  // project took init over, as a stray package.json did (2026-10-28).
+  // project took init over, as a stray package.json did.
   const own = top !== null ? dirs : dirs.slice(0, dirs.indexOf(pkgRoot ?? cwd) + 1)
   if (own.some(adoptsFrom)) {
     return migrate(dirs, parsed)
@@ -156,10 +156,10 @@ export async function initCmd(args: readonly string[]): Promise<number> {
 }
 
 /**
- * Inside git, the topmost package.json: a monorepo's root, wherever below
- * it init ran. Outside git `dirs` reach `/`, and the topmost took a stray
- * package.json in the home directory (2026-10-28); there it is the nearest
- * one, or the outermost above it that declares a workspace.
+ * Inside git, the topmost package.json: a monorepo's root, wherever below it
+ * init ran. Outside git `dirs` reach `/`, and the topmost took a stray
+ * package.json in the home directory; there it is the nearest one, or the
+ * outermost above it that declares a workspace.
  */
 function packageRoot(dirs: readonly string[], inGit: boolean): string | null {
   const has = (d: string, f: string): boolean => existsSync(path.join(d, f))
@@ -240,10 +240,10 @@ function lernaOnNx(root: string): boolean {
 }
 
 /**
- * The installs `vx init` runs (2026-10-20): vx at `version` globally,
- * with the manager that started init, so a bare `vx` is on PATH, unless
- * the global vx already answers `version`; and, where `pkgRoot` has a
- * package.json, as its devDependency with the repo's own manager.
+ * The installs `vx init` runs: vx at `version` globally, with the manager that
+ * started init, so a bare `vx` is on PATH, unless the global vx already answers
+ * `version`; and, where `pkgRoot` has a package.json, as its devDependency with
+ * the repo's own manager.
  */
 export function initInstalls(
   version: string,
@@ -288,9 +288,9 @@ function globalVersion(): string | undefined {
 
 /**
  * The package a manager's output says the registry answered 404 for, as
- * `name@version`: a release's platform tarball stays unserved for minutes
- * after publish (v0.0.646, 2026-10-23). bun: `GET <url> - 404`; npm:
- * `404 Not Found - GET <url>`; pnpm: `GET <url>: Not Found - 404`.
+ * `name@version`: a release's platform tarball stays unserved for minutes after
+ * publish (v0.0.646). bun: `GET <url> - 404`; npm: `404 Not Found - GET <url>`;
+ * pnpm: `GET <url>: Not Found - 404`.
  */
 export function notServed(output: string): string | undefined {
   for (const line of output.split('\n')) {
@@ -465,9 +465,9 @@ function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm'
 }
 
 /**
- * Whether `pkgRoot` has package.json scripts to map: its own, or a
- * workspace's members (`workspaces`, `pnpm-workspace.yaml`). Core maps none
- * (2026-10-20), so `next` names the tool that does.
+ * Whether `pkgRoot` has package.json scripts to map: its own, or a workspace's
+ * members (`workspaces`, `pnpm-workspace.yaml`). Core maps none, so `next`
+ * names the tool that does.
  */
 function hasScripts(pkgRoot: string | null): boolean {
   if (pkgRoot === null) return false
@@ -625,12 +625,12 @@ async function starter(
 }
 
 /**
- * A Turbo or Nx repo is `@vzn/vx-migrate`'s, after the global install, at the latest
- * release: it installs @vzn/vx and every @vzn/vx-* plugin the root lists
- * at its own version, so init always lands on latest with all of them
- * together, as `vx upgrade` moves them (2026-10-16: an installed 0.0.637
- * pinned core back from 0.0.639). It finds the root itself, asks a
- * terminal native or keep in a Turbo or Nx repo, and installs what it writes.
+ * A Turbo or Nx repo is `@vzn/vx-migrate`'s, after the global install, at the
+ * latest release: it installs @vzn/vx and every @vzn/vx-* plugin the root lists
+ * at its own version, so init always lands on latest with all of them together,
+ * as `vx upgrade` moves them (an installed 0.0.637 pinned core back from
+ * 0.0.639). It finds the root itself, asks a terminal native or keep in a Turbo
+ * or Nx repo, and installs what it writes.
  */
 async function migrate(dirs: readonly string[], args: InitArgs): Promise<number> {
   const flags = [

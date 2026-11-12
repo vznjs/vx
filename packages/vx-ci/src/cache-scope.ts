@@ -1,27 +1,25 @@
 // The cache scope and base commit a GitHub Actions run names through
-// `setBranch`: none on the default branch, a branch its own scope, the one
-// a laptop on that branch derives (2026-10-17).
+// `setBranch`: none on the default branch, a branch its own scope, the one a
+// laptop on that branch derives.
 import { readFile } from 'node:fs/promises'
 import { type BranchFacts, branchCacheScope } from '@vzn/vx'
 
 /**
- * What an Actions run knows of its branch (2026-10-17). `scope`:
- * none on a push to the default branch, outside Actions, or when the ref
- * is unknown; else `<owner>/<repo>:<branch>`, the repository and branch a
- * pull request comes from, or the branch or tag pushed. A fork's pull
- * request names the fork, a scope a laptop on the base repository never
- * derives; one whose head repository is unknown (a deleted fork)
- * `pr-<n>`. An event that runs in the default branch's context on a pull
- * request's behalf (`pull_request_target`, `issue_comment` on a PR, a
- * `workflow_run` a PR started) is the PR's, whatever `GITHUB_REF` says: a
- * workflow that checks out the PR's head there would otherwise share main's
- * scope. `issue_comment` names no branch, so it writes `pr-<n>`.
- * A merge queue's run (`merge_group`) is trusted (2026-10-18): no
- * scope, compared with `merge_group.base_sha`. A push to a branch named
- * like a queue ref is not one: anyone who can push can name one.
- * `base`: a pull request's base commit (`pull_request.base.sha`), what its
- * merge checkout is compared with, no git call needed. `refs`: what a
- * remote reads (`githubRefs`).
+ * What an Actions run knows of its branch. `scope`: none on a push to the
+ * default branch, outside Actions, or when the ref is unknown; else
+ * `<owner>/<repo>:<branch>`, the repository and branch a pull request comes
+ * from, or the branch or tag pushed. A fork's pull request names the fork, a
+ * scope a laptop on the base repository never derives; one whose head
+ * repository is unknown (a deleted fork) `pr-<n>`. An event that runs in the
+ * default branch's context on a pull request's behalf (`pull_request_target`,
+ * `issue_comment` on a PR, a `workflow_run` a PR started) is the PR's, whatever
+ * `GITHUB_REF` says: a workflow that checks out the PR's head there would
+ * otherwise share main's scope. `issue_comment` names no branch, so it writes
+ * `pr-<n>`. A merge queue's run (`merge_group`) is trusted: no scope, compared
+ * with `merge_group.base_sha`. A push to a branch named like a queue ref is not
+ * one: anyone who can push can name one. `base`: a pull request's base commit
+ * (`pull_request.base.sha`), what its merge checkout is compared with, no git
+ * call needed. `refs`: what a remote reads (`githubRefs`).
  */
 export async function githubBranch(
   env: Readonly<Record<string, string | undefined>>,
@@ -38,13 +36,12 @@ export async function githubBranch(
 const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
- * The refs an Actions run reads, in order (2026-10-25): a merge
- * queue's run only its base branch, the code it is about to become; any
- * other a pull request's merge ref (`refs/pull/<n>/merge`, the one scope
- * its token writes), then its own branch (a pull request's head, a
- * `workflow_run` a pull request started included, else `GITHUB_REF`), then
- * the branch it merges into, then the default branch (`baseBranch`, else
- * the event's).
+ * The refs an Actions run reads, in order: a merge queue's run only its base
+ * branch, the code it is about to become; any other a pull request's merge ref
+ * (`refs/pull/<n>/merge`, the one scope its token writes), then its own branch
+ * (a pull request's head, a `workflow_run` a pull request started included,
+ * else `GITHUB_REF`), then the branch it merges into, then the default branch
+ * (`baseBranch`, else the event's).
  */
 function githubRefs(
   env: Readonly<Record<string, string | undefined>>,

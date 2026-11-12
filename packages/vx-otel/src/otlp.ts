@@ -455,11 +455,11 @@ interface TaskSpanRunContext {
 }
 
 /**
- * `cicd.pipeline.task.run.result` is an enum (success, failure, error,
- * timeout, cancellation, skip). vx's own status went out verbatim, so
- * `failed`, `skipped`, `aborted` and the two hit statuses matched none of it
- * and a conventions-aware backend counted no task as failed (F-12). The
- * exact status still rides `vx.task.status`.
+ * `cicd.pipeline.task.run.result` is an enum (success, failure, error, timeout,
+ * cancellation, skip). vx's own status went out verbatim, so `failed`,
+ * `skipped`, `aborted` and the two hit statuses matched none of it and a
+ * conventions-aware backend counted no task as failed. The exact status still
+ * rides `vx.task.status`.
  */
 function runResult(t: TaskTelemetry): string {
   switch (t.status) {
@@ -599,9 +599,9 @@ export function buildTraceRequest(
 
 /**
  * Build an ExportMetricsServiceRequest from a run summary. Each count is the
- * RUN's, so it is a DELTA over the run's own interval: sent CUMULATIVE with
- * no start time, two runs of 10 tasks read as a series that never rose, and
- * parallel jobs interleaved on one series (item 927).
+ * RUN's, so it is a DELTA over the run's own interval: sent CUMULATIVE with no
+ * start time, two runs of 10 tasks read as a series that never rose, and
+ * parallel jobs interleaved on one series.
  */
 export function buildMetricsRequest(
   serviceName: string,

@@ -153,13 +153,7 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
     },
   },
   inputs: {
-    files: [
-      'src/**',
-      'index.ts',
-      'package.json',
-      'scripts/check-binary.ts',
-      'scripts/binary-launch.ts',
-    ],
+    files: ['src/**', 'package.json', 'scripts/check-binary.ts', 'scripts/binary-launch.ts'],
     workspaceFiles: ['packages/vx-history/**'],
     runtime: BUN_VERSION,
   },
@@ -531,7 +525,7 @@ export default defineProject({
     build: {
       description:
         'nothing to build — core is consumed as source; the release binaries are build.bun',
-      inputs: { files: ['src/**', 'index.ts', 'tsconfig.json'] },
+      inputs: { files: ['src/**', 'tsconfig.json'] },
     },
 
     // macOS CI's checks of this machine's own sandbox, as tasks so they run on
@@ -649,7 +643,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-linux-x64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-linux-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -672,7 +666,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-linux-arm64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-linux-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -695,7 +689,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-darwin-x64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-darwin-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -718,7 +712,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts src/cache/history-writer.ts --outfile dist/vx-darwin-arm64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts src/history/history-writer.ts --outfile dist/vx-darwin-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],

@@ -5,16 +5,18 @@
 // participant.
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
-import { createVerifier, parseAllow, TokenError, type VerifiedToken } from './oidc.js'
+import { cachedFetchJson, parseAllow, Refusal } from '@vzn/vx-devtools'
 import {
   closeSocket,
   createRelay,
+  createVerifier,
   GONE,
   negotiate,
   refusedWith,
   sessionKey,
   type Kept,
   type Relay,
+  type VerifiedToken,
 } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
@@ -56,34 +58,20 @@ export interface Env {
 
 const SESSION = /^\/v1\/sessions\/([^/]+)\//
 
-/** How long the data center's cache holds an issuer's keys for the next isolate. */
-const KEYS_TTL_S = 600
-
 /**
  * An issuer's keys, read through the data center's cache: each run is its
- * own object, often in a fresh isolate, and each read the issuer twice per
- * join (2026-10-22). A key it does not hold is read past the cache.
+ * own object, often in a fresh isolate, and each read the issuer per join.
  */
-async function fetchJson(url: string, fresh: boolean): Promise<unknown> {
-  const hit = fresh ? undefined : await caches.default.match(url)
-  if (hit !== undefined) return hit.json()
-  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
-  if (!res.ok) throw new Error(`${url}: ${res.status}`)
-  const body = await res.text()
-  await caches.default.put(
-    url,
-    new Response(body, { headers: { 'cache-control': `max-age=${KEYS_TTL_S}` } }),
-  )
-  return JSON.parse(body)
-}
+const fetchJson = (url: string, fresh: boolean): Promise<unknown> =>
+  cachedFetchJson(caches.default)(url, fresh)
 
 /** What is wrong with an ALLOW, read once per value. */
 let allowChecked: { allow: string | undefined; why: string | undefined } | undefined
 
 /**
  * Why no run can join under `allow`, or `undefined`. A 403, not the 503 an
- * object that will not start gives: a client retries a 5xx, and this
- * refusal does not pass (2026-10-23: fail quickly).
+ * object that will not start gives: a client retries a 5xx, and this refusal
+ * does not pass (fail quickly).
  */
 function allowRefusal(allow: string | undefined): string | undefined {
   if (allowChecked !== undefined && allowChecked.allow === allow) return allowChecked.why
@@ -175,15 +163,15 @@ export default {
     try {
       run = await verifierOf(env, req)(token)
     } catch (err) {
-      if (!(err instanceof TokenError)) throw err
+      if (!(err instanceof Refusal)) throw err
       return refuse(req, err.status, err.message)
     }
     const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, run)))
     try {
       return await stub.fetch(req)
     } catch (err) {
-      // The host refused the object (a plan's daily limit, an outage): a
-      // bare 500 told a failed run nothing (2026-10-22).
+      // The host refused the object (a plan's daily limit, an outage): a bare
+      // 500 told a failed run nothing.
       const why = err instanceof Error ? err.message : String(err)
       return refuse(req, 503, `the relay's host refused the run: ${why}`)
     }
@@ -238,8 +226,8 @@ export class RelayRun {
   }
 
   webSocketClose(ws: Socket): void {
-    // One `attach` closed as gone kept nothing: its close threw (main
-    // 8d0619f's redial, 2026-10-24).
+    // One `attach` closed as gone kept nothing: its close threw (a main run's
+    // redial).
     const kept = ws.deserializeAttachment()
     if (kept !== null) this.relay.detach(kept.key, kept.id, ws)
   }

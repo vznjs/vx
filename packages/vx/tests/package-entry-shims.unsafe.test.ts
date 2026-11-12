@@ -1,17 +1,18 @@
 // Bun 1.4.0's compiled binaries resolve an on-disk package by directory
 // convention — `<pkg>/index.ts`, `<pkg>/<subpath>/index.ts` — and ignore
-// package.json `exports` / `main` (measured 2026-09-03). So every package a
+// package.json `exports` / `main`. So every plugin package a
 // workspace config can import carries a root shim that re-exports the real
 // entry. These pins keep the shims present, shipped, and identical to what
 // the exports map names — a shim that drifted would give the binary a
-// different `@vzn/vx` from everyone else's.
+// different package from everyone else's. Core needs none: the binary
+// answers `@vzn/vx` and `@vzn/vx/config` from its own copy
+// (registerCoreAlias; scripts/check-binary.ts runs it with no shim).
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
 const PACKAGES = path.resolve(import.meta.dir, '../..')
 
 const SHIMS: ReadonlyArray<[pkg: string, shim: string, real: string]> = [
-  ['vx', 'index.ts', 'src/index.ts'],
   ['vx-otel', 'index.ts', 'src/index.ts'],
   ['vx-ci', 'index.ts', 'src/index.ts'],
   ['vx-reapi', 'index.ts', 'src/index.ts'],
@@ -27,7 +28,7 @@ describe('root entry shims for compiled binaries', () => {
     for (const k of Object.keys(realMod)) expect(shimMod[k]).toBe(realMod[k])
   })
 
-  it.each(['vx', 'vx-otel', 'vx-ci', 'vx-reapi', 'vx-history', 'vx-migrate'])(
+  it.each(['vx-otel', 'vx-ci', 'vx-reapi', 'vx-history', 'vx-migrate'])(
     '%s ships its shim (package.json files)',
     async (pkg) => {
       const manifest = (await Bun.file(path.join(PACKAGES, pkg, 'package.json')).json()) as {

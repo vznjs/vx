@@ -583,16 +583,15 @@ async function ownChanges(root: string): Promise<string[] | null> {
 
 /**
  * What the graph is computed from, as one digest: nx.json's chain by content,
- * and — since Nx derives edges from SOURCE imports
- * (`@nx/js`) — the worktree as git sees it: HEAD, `git status -z -uall`, and
- * the content of every path that lists. Freshness by manifest mtimes kept a
- * snapshot without the edge an added `import` makes, and a later edit to the
- * imported project replayed its dependant from cache (Next 26). The status
- * text alone is not enough: it names a modified file by path, not by what it
- * holds, so a second edit to a dirty file kept the key (measured, item 1075).
- * The status is the run's own when core hands it over (`changes`): a second
- * whole-tree walk cost refine ~96 ms of a 417 ms warm run (I-6).
- * Null outside a git worktree: the caller falls back to the mtimes.
+ * and — since Nx derives edges from SOURCE imports (`@nx/js`) — the worktree as
+ * git sees it: HEAD, `git status -z -uall`, and the content of every path that
+ * lists. Freshness by manifest mtimes kept a snapshot without the edge an added
+ * `import` makes, and a later edit to the imported project replayed its
+ * dependant from cache (Next 26). The status text alone is not enough: it names
+ * a modified file by path, not by what it holds, so a second edit to a dirty
+ * file kept the key (measured). The status is the run's own when core hands it
+ * over (`changes`): a second whole-tree walk cost refine ~96 ms of a 417 ms
+ * warm run. Null outside a git worktree: the caller falls back to the mtimes.
  */
 async function graphInputKey(
   root: string,

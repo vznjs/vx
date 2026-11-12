@@ -54,11 +54,11 @@ config hash and per-task forwarded-args fold — are documented in
 
 ### Input enumeration
 
-| Pattern                                                                                                        | Source     | vx source                                                                 |
-| -------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
-| Defer to git: tracked from `git ls-files -s -v`, untracked-but-not-ignored from `git status --porcelain -uall` | Turbo + Nx | `src/cache/git-inputs.ts`, `src/cache/inputs.ts` ("same as Turbo and Nx") |
-| Git blob OIDs as per-file content hashes (index-harvested)                                                     | Turbo      | `src/cache/git-inputs.ts` + `src/cache/file-hashes.ts`                    |
-| Project-boundary enforcement (no cross-project globs)                                                          | Turbo + Nx | `src/workspace/nested-dirs.ts`                                            |
+| Pattern                                                                                                        | Source     | vx source                                                               |
+| -------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------- |
+| Defer to git: tracked from `git ls-files -s -v`, untracked-but-not-ignored from `git status --porcelain -uall` | Turbo + Nx | `src/cache/git-inputs.ts`, `src/cache/inputs.ts` ("as Turbo and Nx do") |
+| Git blob OIDs as per-file content hashes (index-harvested)                                                     | Turbo      | `src/cache/git-inputs.ts` + `src/memo/file-hashes.ts`                   |
+| Project-boundary enforcement (no cross-project globs)                                                          | Turbo + Nx | `src/workspace/nested-dirs.ts`                                          |
 
 (vx hard-requires git — there is no fallback walker; a non-repo
 workspace gets a clean `UserError` telling the user to `git init`.)
@@ -82,13 +82,13 @@ parser's docblock marks them (`src/util/dependency-spec.ts`).
 
 ### Filter DSL + selection
 
-| Capability                                                    | Source       | vx source                                                                                  |
-| ------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
-| pnpm-style `--filter` (`pkg`, `pkg...`, `...pkg`, path globs) | Turbo + pnpm | `src/workspace/filter.ts`                                                                  |
-| Transitive-dep expansion (`pkg...`)                           | Turbo + pnpm | `src/workspace/filter.ts` (the DSL comment)                                                |
-| `[<since>]` git-relative selection                            | Turbo        | `src/workspace/filter.ts` ("Turbo-style"), `src/workspace/affected.ts` ("Matches Turbo's") |
-| `--affected[=<base>]` flag on `vx run`                        | Turbo + Nx   | `src/workspace/affected.ts`                                                                |
-| `pkg#task` direct addressing                                  | Turbo + Nx   | `src/cli/run.ts`                                                                           |
+| Capability                                                    | Source       | vx source                                                                                                |
+| ------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| pnpm-style `--filter` (`pkg`, `pkg...`, `...pkg`, path globs) | Turbo + pnpm | `src/workspace/filter.ts`                                                                                |
+| Transitive-dep expansion (`pkg...`)                           | Turbo + pnpm | `src/workspace/filter.ts` (the DSL comment)                                                              |
+| `[<since>]` git-relative selection                            | Turbo        | `src/workspace/filter.ts` ("Turbo-style"), `src/workspace/affected.ts` ("Turbo's `[<since>]` semantics") |
+| `--affected[=<base>]` flag on `vx run`                        | Turbo + Nx   | `src/workspace/affected.ts`                                                                              |
+| `pkg#task` direct addressing                                  | Turbo + Nx   | `src/cli/run.ts`                                                                                         |
 
 ### Workspace discovery
 
@@ -101,12 +101,12 @@ parser's docblock marks them (`src/util/dependency-spec.ts`).
 
 ### Cache topology
 
-| Layer                                    | Turbo                              | Nx                 | vx                                                             | vx source                                                            |
-| ---------------------------------------- | ---------------------------------- | ------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst`, shared in `~/.vx/<id>/cache/` | `src/cache/cache.ts`                                                 |
-| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date               | `src/cache/output-index.ts`                                          |
-| Read-through then write-through layering | yes                                | yes                | yes                                                            | `src/cache/layered-cache.ts`                                         |
-| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`                    | `src/cache/run-history.ts` (tables created in `src/cache/schema.ts`) |
+| Layer                                    | Turbo                              | Nx                 | vx                                                             | vx source                                                                 |
+| ---------------------------------------- | ---------------------------------- | ------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst`, shared in `~/.vx/<id>/cache/` | `src/cache/cache.ts`                                                      |
+| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date               | `src/memo/output-index.ts`                                                |
+| Read-through then write-through layering | yes                                | yes                | yes                                                            | `src/cache/layered-cache.ts`                                              |
+| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`                    | `src/history/run-history.ts` (tables created in `src/index-db/schema.ts`) |
 
 ### Remote cache wire
 
@@ -167,11 +167,11 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 ### Output presentation
 
-| Pattern                                              | Source                                           | vx source                                     |
-| ---------------------------------------------------- | ------------------------------------------------ | --------------------------------------------- |
-| Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/report/framed-output.ts`                 |
-| End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/report/summary.ts`                       |
-| Per-task output buffered until task finishes         | Turbo                                            | `src/report/framed-output.ts` ("Turbo-style") |
+| Pattern                                              | Source                                           | vx source                                                        |
+| ---------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
+| Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/report/framed-output.ts`                                    |
+| End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/report/summary.ts`                                          |
+| Per-task output buffered until task finishes         | Turbo                                            | `src/report/framed-output.ts` ("no live progress within a task") |
 
 (There is no `>>> FULL TURBO`-style all-cached banner — a fully-green
 cache meter carries the message.)

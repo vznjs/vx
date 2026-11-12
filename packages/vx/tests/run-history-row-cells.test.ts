@@ -96,9 +96,9 @@ it("an outcome's waited, outputs, blocks and flaky record reach its RunRecord", 
     status: 'success',
     exitCode: 0,
     durationMs: 10,
-    queuedMs: 70,
-    outputBytes: 900,
-    flaky: { passes: 3, failures: 2 },
+    timing: { queuedMs: 70 },
+    cache: { outputBytes: 900 },
+    attempts: { flaky: { passes: 3, failures: 2 } },
   }
   const { runs } = assembleRunRecords({
     outcomes: [outcome],
@@ -150,7 +150,7 @@ it('a forced miss over a kept entry still reports its outputs', async () => {
   expect((await run({ cwd: root, tasks: ['gen'], log: quiet })).ok).toBe(true)
   const forced = await run({ cwd: root, tasks: ['gen'], log: quiet, cacheFlags: { force: true } })
   expect(forced.ok).toBe(true)
-  expect(forced.outcomes[0]).toMatchObject({ status: 'success', outputBytes: 5 })
+  expect(forced.outcomes[0]).toMatchObject({ status: 'success', cache: { outputBytes: 5 } })
   expect(rows()[1]![0]).toMatchObject({ status: 'success', output_bytes: 5 })
 }, 30_000)
 
@@ -179,6 +179,6 @@ it('a miss that saves nothing still reports the outputs it wrote', async () => {
   const r = await run({ cwd: root, tasks: ['gen'], log: quiet })
   expect(r.ok).toBe(true)
   const gen = r.outcomes.find((o) => o.node.id === 'p#gen')!
-  expect(gen.saved).toBeUndefined()
-  expect(gen).toMatchObject({ status: 'success', outputBytes: 7 })
+  expect(gen.cache?.saved).toBeUndefined()
+  expect(gen).toMatchObject({ status: 'success', cache: { outputBytes: 7 } })
 }, 30_000)

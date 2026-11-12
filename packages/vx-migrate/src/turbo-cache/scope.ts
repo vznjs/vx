@@ -1,12 +1,12 @@
 import { type ArtifactInfo, type RemoteCacheLayer, UserError } from '@vzn/vx'
 
 /**
- * How a remote keeps branches apart (2026-10-20). `'header'`: plain keys,
- * and every read names the refs it may be answered from, in order, in
- * `x-artifact-read-scopes`; a server that files writes by the caller's CI
- * token reads them, any other ignores it. `'key'`: each entry's key also
- * folds a ref, for a server that keeps one bucket; a read asks each ref's
- * key and the first hit wins.
+ * How a remote keeps branches apart. `'header'`: plain keys, and every read
+ * names the refs it may be answered from, in order, in
+ * `x-artifact-read-scopes`; a server that files writes by the caller's CI token
+ * reads them, any other ignores it. `'key'`: each entry's key also folds a ref,
+ * for a server that keeps one bucket; a read asks each ref's key and the first
+ * hit wins.
  */
 export type RemoteScope = 'header' | 'key'
 

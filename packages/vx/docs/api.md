@@ -3,8 +3,24 @@
 Every export of `@vzn/vx`, generated from `src/index.ts` by
 `tests/api-reference.test.ts`: the declaration (comments dropped, a
 function to its signature, a class to its public members) and the doc
-comment above it. [The public surface](modules/index.md) groups the
+comment above it. [The public surface](modules/index.md#srcindexts--public-package-surface) groups the
 same names by what they are for; the plugins guide shows them in use.
+
+## `AbortedOutcome`
+
+type · `src/graph/outcome.ts`
+
+A shutdown (SIGINT/SIGTERM) stopped it, or stopped the run before it
+began: it never finished on its own terms. `exitCode` is the signal's,
+which the run's history keeps.
+
+```ts
+export interface AbortedOutcome
+  extends StartedOutcome, None<FailureFacts>, BlockFacts, None<PlatformFacts> {
+  status: 'aborted'
+  serverExit?: number
+}
+```
 
 ## `AdmitContext`
 
@@ -21,12 +37,10 @@ export interface AdmitContext {
 
 type · `src/workspace/affected.ts`
 
-What `--affected` seeds its tasks from (2026-10-04): the changed
-projects, each one's changed paths relative to it, and the projects a
-change reaches as a whole — every task in one is affected whatever its
-inputs say, because the reason was no path of its own (a lockfile claim,
-a config import, a nested repository, a
-workspace-wide file).
+What `--affected` seeds its tasks from: changed projects, each one's changed
+paths, and the projects a change reaches whole (a lockfile claim, a config
+import, a nested repository, a workspace-wide file), where every task is
+affected.
 
 ```ts
 export interface AffectedChanges {
@@ -44,27 +58,9 @@ export interface AffectedChanges {
 }
 ```
 
-## `answerRuntime`
-
-function · `src/cache/inputs.ts`
-
-One runtime probe answered on this machine as a key folds it: an
-`inputs.runtime` command run in `projectDir`, or with `workspace` a
-`workspaceRuntime` one run in `workspaceRoot`. For an executor that
-checks a task's probes where it runs it (`TaskExecutor.runtime`).
-
-```ts
-export function answerRuntime(
-  command: string,
-  projectDir: string,
-  workspaceRoot: string,
-  workspace = false,
-): Promise<string>
-```
-
 ## `applyMigration`
 
-function · `src/workspace/migration.ts`
+function · `src/orchestrator/migration.ts`
 
 Render a plan to files, refuse to overwrite without `force`, write (or
 print, under `dry`), and report. Returns the process exit code.
@@ -88,8 +84,9 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
-  unmapped?: boolean
   emptyReason?: string
+  example?: boolean
+  written?: (relPaths: readonly string[]) => readonly string[]
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<{ code: number; said: string }>
@@ -102,9 +99,8 @@ export interface ApplyMigrationArgs {
 
 type · `src/cache/layered-cache.ts`
 
-What a remote knows of an artifact it holds, before it is downloaded:
-the body's size in bytes and the producing task's duration, each when
-the wire carries it (Turbo's batch query and `HEAD` do).
+What a remote knows of an artifact before download: its size and the
+producing task's duration, when the wire carries them.
 
 ```ts
 export interface ArtifactInfo {
@@ -151,38 +147,12 @@ export interface ArtifactTask {
 }
 ```
 
-## `BoundedCapture`
-
-class · `src/exec/runner.ts`
-
-A head-and-tail accumulator: the head fills once, the tail is a ring
-of chunks trimmed from the front, so memory is bounded by the two
-limits plus one chunk whatever the task prints. Each chunk keeps its
-stream, so one capture can hold both in the order they arrived.
-
-```ts
-export class BoundedCapture {
-  constructor(
-    private readonly headChars = CAPTURE_HEAD_CHARS,
-    private readonly tailChars = CAPTURE_TAIL_CHARS,
-  ) {}
-  push(text: string, err = false): void
-  rebound(
-    headChars: number,
-    tailChars: number,
-    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
-  ): BoundedCapture
-  chunks(): CapturedChunk[]
-  text(): string
-}
-```
-
 ## `branchCacheScope`
 
 function · `src/workspace/config-schema.ts`
 
 A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
-branch and a laptop on it reads (2026-10-17). The repository's
+branch and a laptop on it reads. The repository's
 identity, not a remote's local name, so a clone whose `origin` is a fork
 names the fork. A name may hold characters a scope may not; each
 becomes `_`.
@@ -195,16 +165,11 @@ export function branchCacheScope(repo: string, branch: string): string
 
 type · `src/orchestrator/plugin.ts`
 
-What a CI knows of the run's branch (2026-10-17): `scope`, the
-cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
-beats the one git names), and `base`, the commit the branch is compared
-with (a pull request's base), for a bare `--affected`. `trusted`: the
-run has no scope, whatever git names (a merge queue's run,
-2026-10-18). The scope keys plugin entries only. `refs`: the refs a
-remote reads, in order (`CacheContext.refs`; 2026-10-25: a pull
-request its head branch, then its base, then the default branch; a
-merge queue or train only its base); unset, git's. A later plugin's
-field wins.
+What CI knows of the run's branch: `scope`, the cache scope
+(`VX_CACHE_SCOPE` beats it, it beats git's); `base`, the commit compared
+with (a PR's base), for a bare `--affected`; `trusted`: no scope, whatever
+git says (a merge queue). The scope keys plugin entries only. `refs`: the
+refs a remote reads, in order; unset, git's. A later plugin's field wins.
 
 ```ts
 export interface BranchFacts {
@@ -225,32 +190,25 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
-  runId: string | undefined
-  readonly remoteHits: RemoteHits
-  readonly storeDir: string | undefined
-  readonly schemaReset: SchemaReset | null
-  readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   constructor(
-    private readonly cacheDir: string,
+    cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
-    private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+    artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
-    private readonly store: StoreOptions = DEFAULT_STORE,
+    store: StoreOptions = DEFAULT_STORE,
   )
-  hashFile(filePath: string): Promise<string>
-  hashBytes(bytes: Uint8Array, nearPath: string): string
-  hashFiles(paths: readonly string[]): Promise<Map<string, string>>
-  knownBlobSizes(oids: readonly string[]): Map<string, number>
-  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
-  holdBlobSizes(): void
-  storeHeldBlobSizes(): void
-  blobVerdict(digest: string): string[] | undefined
-  rememberBlobVerdict(digest: string, paths: readonly string[]): void
-  foldMemo(): FoldMemo
+  get runId(): string | undefined
+  set runId(runId: string | undefined)
+  get remoteHits(): RemoteHits
+  get storeDir(): string | undefined
+  get schemaReset(): SchemaReset | null
+  get storeReset(): SchemaReset | null
+  get memo(): StoreMemo
   key(input: CacheKeyInput): Promise<string>
+  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
   getSaved(hash: string): Promise<CacheEntry | null>
@@ -261,22 +219,10 @@ export class Cache implements CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async localHasMany(hashes: readonly string[]): Promise<Set<string>>
-  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
   kept(hash: string): boolean
   artifactSize(hash: string): number | undefined
-  async recordOutputDirs(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   async restoreOutputs(
     hash: string,
     projectDir: string,
@@ -300,23 +246,8 @@ export class Cache implements CacheLayer {
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }>
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-    | { compressed: Uint8Array; tar: Uint8Array }
-    | { tmpPath: string }
-    | { plan: true; saved: SavedTree }
-  >
   checkpointOffThread(): void
   async stopCheckpoints(): Promise<void>
-  recordRun(run: RunRecord): void
-  recordRuns(
-    runs: readonly RunRecord[],
-    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void
-  recordMeasures(
-    measures: readonly MeasureRecord[],
-    head: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
-  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
@@ -372,13 +303,12 @@ export interface CacheFlags {
 
 type · `src/cache/layer.ts`
 
-The shape every cache implementation honors. `Cache` (the local store)
-and `LayeredCache` both `implements` this so the
-orchestrator's `executeTask` can take either without a discriminated
-union and we get a compile-time guarantee the surfaces stay congruent.
+The shape every cache implementation honours, so `executeTask` takes `Cache`
+or `LayeredCache` alike.
 
 ```ts
 export interface CacheLayer {
+  readonly memo: TaskMemo
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
@@ -404,17 +334,6 @@ export interface CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
-  recordOutputDirs?(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   restoreOutputs(
     hash: string,
     projectDir: string,
@@ -434,9 +353,7 @@ export interface CacheLayer {
     absent?: boolean
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
-  hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined
   outputBytes?(hash: string): number | undefined
@@ -450,15 +367,10 @@ export interface CacheLayer {
 
 type · `src/cache/policy.ts`
 
-Independent read/write control over the two cache layers (local +
-remote). Replaces the old single `noCache` boolean: each axis can be
-toggled on its own so `--force` (re-execute but still refresh the
-cache) is distinct from `--no-cache` (disable everything).
-
-The task-artifact get/save path is gated, and the local axes also gate
-the local store's file-hash writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
-prefetch-ingest are never affected — they are bookkeeping/analytics
-that a run policy has no business disabling.
+Independent read/write control of the local and remote layers, so `--force`
+(re-run, still refresh) differs from `--no-cache`. It gates the artifact
+get/save path and the local file-hash writes; bookkeeping (`recordRun`,
+stats, prune, key derivation, prefetch-ingest) never.
 
 ```ts
 export interface CachePolicy {
@@ -555,12 +467,9 @@ export interface ConfigContext extends WorkspaceHookContext {
 
 class · `src/cache/layer.ts`
 
-Bytes that are not the artifact their key names. Core's ingest throws
-it for bytes that do not decompress or parse, before anything is
-stored; a remote layer that checks its bytes as they pass (a digest, a
-signature) errors its `get` body with it to say they are wrong there,
-not cut short. Either way the hit is a miss, and the re-run's save is
-sent over that remote's copy.
+Bytes that are not the artifact their key names: they do not decompress or
+parse, or a remote's digest or signature check failed. The hit becomes a
+miss, and the re-run's save replaces that remote's copy.
 
 ```ts
 export class CorruptArtifactError extends Error {
@@ -611,9 +520,9 @@ export function currentBranch(
 function · `src/orchestrator/plugin.ts`
 
 The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
-The name is read from the package the calling module belongs to — the
-nearest `package.json` above it that has a name — and stamped where the workspace loader
-checks for it, so a plugin cannot be named anything but its package.
+The name comes from the nearest named `package.json` above the calling
+module and is stamped where the loader checks, so a plugin is named by its
+package alone.
 
 ```ts
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
@@ -623,11 +532,9 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
 
 function · `src/config.ts`
 
-Identity function — exists only so TypeScript narrows literal types
-and, crucially, **validates `dependsOn` against this project's own
-task names**. A bare entry that isn't a declared task key is a compile
-error; `^name` / `pkg#name` forms reference other projects and stay
-free strings. Runtime behavior is unchanged (it returns its input).
+Identity function, so TypeScript narrows literals and checks `dependsOn`
+against this project's own task names: a bare entry naming no task is a
+compile error; `^name` and `pkg#name` stay free strings.
 
 ```ts
 export function defineProject<const T extends ProjectConfig>(
@@ -698,6 +605,28 @@ export interface DiscoveredProject {
 }
 ```
 
+## `Distribution`
+
+type · `src/exec/executor.ts`
+
+The distribution contract: hooks core asks of an executor spreading one run
+over machines it starts. Each optional; a throw or bad shape is left out
+with one warning.
+
+```ts
+export interface Distribution {
+  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
+  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
+  running?(taskId: string): string | null | undefined
+  unneeded?(taskId: string): void
+  footer?(): readonly (readonly [label: string, text: Inline])[]
+  machines?(): readonly MachineReport[]
+  idealMs?(): number | undefined
+  advice?(): readonly WorkerAdvice[]
+  profile?(): readonly Record<string, unknown>[]
+}
+```
+
 ## `Duration`
 
 type · `src/config.ts`
@@ -744,10 +673,9 @@ export interface ExecEnv {
 
 type · `src/exec/executor.ts`
 
-One task's command, as core hands it to an executor. A plugin
-executor's `outputs`, `envDefine` and `forwardArgs` are frozen copies:
-core saves the outputs after the command, and a config or the run's
-args are shared with other tasks.
+One task's command as core hands it to an executor. `outputs`, `envDefine`
+and `forwardArgs` are frozen copies: core saves the outputs afterwards, and
+config and args are shared.
 
 ```ts
 export interface ExecuteRequest {
@@ -823,6 +751,25 @@ export interface ExecuteSandbox {
 }
 ```
 
+## `ExecutorCapabilities`
+
+type · `src/exec/executor.ts`
+
+What an executor declares it can do; core offers it tasks by these.
+
+```ts
+export interface ExecutorCapabilities {
+  readonly remote?: boolean
+  readonly sandbox?: boolean
+  readonly servers?: boolean
+  readonly runtime?: boolean
+  readonly exclusive?: boolean
+  readonly timeouts?: boolean
+  readonly platforms?: readonly string[]
+  readonly capacity?: number
+}
+```
+
 ## `ExecutorContext`
 
 type · `src/orchestrator/plugin.ts`
@@ -839,11 +786,10 @@ export interface ExecutorContext extends BaseContext {
 
 function · `src/exec/executor.ts`
 
-What a remote executor rejects with when it gives a task back: core runs
-the same request on the local floor and says `reason` once (a remote that
-never started it, B-100). A task placed `remote: 'only'` must not run
-here, so it fails naming `reason` instead. Matched by name, as
-`isUserError` is: a plugin's `@vzn/vx` can be another copy of this class.
+What a remote executor rejects with to give a task back: core runs the same
+request on the local floor and says `reason` once. A `remote: 'only'` task
+fails naming `reason` instead. Matched by name: a plugin's `@vzn/vx` may be
+another copy of this class.
 
 ```ts
 export function executorFallback(reason: string): Error
@@ -853,13 +799,24 @@ export function executorFallback(reason: string): Error
 
 function · `src/exec/runner.ts`
 
-The reverse: the signal an exit above 128 stands for (137 → SIGKILL),
-by the platform's numbering; undefined for a plain exit. The shell
-reports 128 + n for a death by signal n, so the read is the shell's
-convention, not proof — a command may exit 137 on its own.
+The signal an exit above 128 stands for, by platform numbering; undefined for
+a plain exit. The shell's convention, not proof: a command may exit 137
+itself.
 
 ```ts
 export function exitSignal(code: number): string | undefined
+```
+
+## `FailedOutcome`
+
+type · `src/graph/outcome.ts`
+
+```ts
+export interface FailedOutcome
+  extends StartedOutcome, FailureFacts, None<BlockFacts>, None<PlatformFacts> {
+  status: 'failed'
+  serverExit?: never
+}
 ```
 
 ## `findWorkspaceRoot`
@@ -867,20 +824,14 @@ export function exitSignal(code: number): string | undefined
 function · `src/workspace/workspace.ts`
 
 The workspace root for `start`: the directory holding the first
-`.vx/workspace.*` from `start` up to the git top-level, or up to `/`
-outside git ({@link workspaceFile}, shared with the hand-off). Nothing
-else decides it (2026-10-13: "Workspace file is the ultimate"):
-not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
-`VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add`
-when a sparse checkout left the git top-level's out.
+`.vx/workspace.*` up to the git top-level (or `/` outside git) ({@link
+workspaceFile}). Nothing else decides it. Throws `VX_E_NO_WORKSPACE`, naming
+`git sparse-checkout add` when a sparse checkout left it out.
 
-Outside git, a file another user owns is refused (root aside): a
-`.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
-code that would run as you. The owner is the file's own, a link's
-included, and its `.vx` directory's. Inside git the walk never leaves your
-checkout. The directory you run in is yours to judge, and costs no
-stat. Run as root, vx trusts every owner, as a container over a mounted
-checkout needs. `uid` is for tests.
+Outside git, a file another user owns is refused (unless run as root, as
+containers need): one planted in a shared dir above you (`/tmp`) would run as
+you. The owner checked is the file's (a link's included) and its `.vx`'s.
+Inside git the walk never leaves your checkout. `uid` is for tests.
 
 ```ts
 export async function findWorkspaceRoot(
@@ -952,33 +903,6 @@ export interface FingerprintDigests {
   readonly projects: Readonly<Record<string, string>>
   readonly extras?: readonly string[]
 }
-```
-
-## `foldScriptHooks`
-
-function · `src/workspace/migration.ts`
-
-A package.json script with the `pre<name>` / `post<name>` hooks npm runs
-around it, as ONE sh command. Each part runs in its own subshell, so a
-`;` or an `exit` in one ends that part alone, and the chain stops at the
-first that fails, as npm stops. The parts sit in a function the
-forwarded `--` args are appended to, and only the body takes them, as
-npm appends them to the script and never to its hooks. A plain ` && `
-join handed them to the post hook, and `test -f x && echo A; echo B` ran
-`echo B` after a failed pre hook and went green (item 905). npm appends
-them as TEXT: no part sees them as `$1`…, so the function quotes them
-into `vx_a`, clears its positional parameters, and evals the body with
-`vx_a` after it; `"$@"` on the body made a script's `$1` the first
-forwarded arg and its `$*` print them twice. Each part ends on its own
-line, so a trailing `# comment` cannot swallow the paren. A script with
-no hooks is its body, verbatim.
-
-```ts
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string
 ```
 
 ## `GeneratedProject`
@@ -1073,6 +997,19 @@ This machine as `exec.platforms` names it: `os-arch` as Bun reports them, `linux
 export function hostPlatform(): string
 ```
 
+## `InputChanges`
+
+type · `src/graph/outcome.ts`
+
+What moved in a missed task's key since the last entry saved for it.
+
+```ts
+export interface InputChanges {
+  count: number
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
+}
+```
+
 ## `InputsConfig`
 
 type · `src/config.ts`
@@ -1102,7 +1039,7 @@ export interface InputStability {
 
 ## `InvocationRecord`
 
-type · `src/cache/layer.ts`
+type · `src/history/run-history.ts`
 
 One header row per `vx run` invocation (the `invocations` table). All
 fields mirror the columns; nullable VCS/host columns are `null` when
@@ -1145,9 +1082,8 @@ export interface InvocationRecord {
 
 function · `src/graph/task-status.ts`
 
-Did the task's result come out of the cache (either layer)? Derived from
-`deriveCacheSource` rather than re-listing the two hit statuses, so the two
-cannot disagree about what a hit is. Unknown strings read as not-a-hit.
+Did the result come from the cache (either layer)? Derived from
+`deriveCacheSource`. Unknown strings are not hits.
 
 ```ts
 export function isCacheHit(status: string): boolean
@@ -1157,19 +1093,9 @@ export function isCacheHit(status: string): boolean
 
 function · `src/util/paths.ts`
 
-True when a pattern carries no wildcard — it names exactly one path.
-
-The character SET is the whole content: in a task glob `*`, `?` and a
-brace alternation are wildcards, so a pattern holding any of them must
-be MATCHED, never compared as a string. It lives here, exported, because
-four places asked the same question and one of them asked it with a
-smaller set: `graph/task-graph.ts` omitted `{}`, so `dist/{a,b}.txt`
-counted as a literal and the overlapping-output refusal compared it to
-`dist/a.txt` as two unequal strings — the two tasks were accepted and
-then deleted each other's outputs, green, every run (item 495). That is
-the same divergence `asTrees` was moved here to end in item 442, and the
-same one that removed `@vzn/vx-migrate`'s copy of `outputsOverlap` in
-item 445.
+True when a pattern has no wildcard and names one path. One copy for every
+caller: graph/task-graph.ts once omitted `{}`, so `dist/{a,b}.txt` compared
+unequal to `dist/a.txt` and two tasks deleted each other's outputs, green.
 
 ```ts
 export function isLiteralPattern(glob: string): boolean
@@ -1179,14 +1105,11 @@ export function isLiteralPattern(glob: string): boolean
 
 function · `src/graph/task-status.ts`
 
-Did the task pass? A cache hit counts — it produced the same result without
-spending the time, which is the whole point. `skipped` and `aborted` do NOT:
-neither finished on its own terms, so neither can vouch for anything.
+Did the task pass? A hit counts; `skipped` and `aborted` do not, as neither
+finished on its own terms.
 
-Takes `string`, not `TaskStatus`, because most callers hold a status that
-arrived over a wire or out of a database column. An unrecognised string
-reads as NOT passing — the safe direction, since the alternative is calling
-a run green on a status this build has never heard of.
+Takes `string`: most statuses arrive over a wire or from a database. An
+unknown string does not pass, the safe direction.
 
 ```ts
 export function isPassStatus(status: string): boolean
@@ -1219,12 +1142,11 @@ function · `src/util/errors.ts`
 
 `instanceof UserError`, plus the same class arriving from ANOTHER COPY of
 core. A compiled `vx` binary carries core inside it while a plugin in the
-workspace imports `@vzn/vx` from node_modules, so a plugin's `UserError`
-is a different class object and `instanceof` is false — a plugin verb's
-"bad flag --x" printed as `UserError: bad flag --x` with a stack, and a
-REAPI refusal would have read as an "internal error" (reproduced through
-the real binary, 2026-09-03). The name is the contract that survives the
-copy boundary.
+workspace imports `@vzn/vx` from node_modules, so a plugin's `UserError` is a
+different class object and `instanceof` is false — a plugin verb's "bad flag
+--x" printed as `UserError: bad flag --x` with a stack, and a REAPI refusal
+would have read as an "internal error" (reproduced through the real binary).
+The name is the contract that survives the copy boundary.
 
 ```ts
 export function isUserError(err: unknown): err is UserError
@@ -1277,45 +1199,12 @@ export async function loadResolvedProjects(
 ): Promise<Map<string, ProjectEntry>>
 ```
 
-## `localFloor`
-
-function · `src/orchestrator/local-floor.ts`
-
-`sandboxes`, in a process that is no run, are the `exec.sandbox` configs
-of every sandboxed task the run holds: the runtime's proxy and its
-unix-socket filter are one per process, set from their union before the
-first sandboxed task (`prepareSandbox`). A request that carries a
-`signal` but no `liveChildren` has its children stopped here when it
-aborts, the way a run's stop ends its own. `onServer` hears each
-server's pid as it spawns, and `undefined` as `stop` ends it: a worker
-meters what its servers use.
-
-```ts
-export function localFloor(
-  sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
-  onServer?: (taskId: string, pid: number | undefined) => void,
-): LocalFloor
-```
-
-## `LocalFloor`
-
-type · `src/orchestrator/local-floor.ts`
-
-```ts
-export interface LocalFloor {
-  execute(req: ExecuteRequest): Promise<ExecuteResult>
-  rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
-  stop(taskId: string): Promise<void>
-  close(): Promise<void>
-}
-```
-
 ## `localHistory`
 
 function · `src/history/history.ts`
 
-The run history in `cache`'s index. A plugin reads history only through
-this: core owns every read and write of cache.db (2026-10-29).
+The run history in `cache`'s index. A plugin reads history only through this:
+core owns every read and write of cache.db.
 
 ```ts
 export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
@@ -1372,23 +1261,25 @@ export interface LockedFile {
 function · `src/orchestrator/lockfile-claim.ts`
 
 ```ts
-export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
+export function lockfileClaim<L = unknown>(
+  options: LockfileClaimOptions<L>,
+): LockfileClaimHooks<L>
 ```
 
 ## `LockfileClaimHooks`
 
 type · `src/orchestrator/lockfile-claim.ts`
 
-What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `importers` for its own stages.
+What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `links` for its own stages.
 
 ```ts
-export interface LockfileClaimHooks {
+export interface LockfileClaimHooks<L = unknown> {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
-  importers(ctx: {
+  links(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
-  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  }): Promise<ReadonlyMap<string, L> | undefined>
   recorded(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
@@ -1401,7 +1292,7 @@ export interface LockfileClaimHooks {
 type · `src/orchestrator/lockfile-claim.ts`
 
 ```ts
-export interface LockfileClaimOptions {
+export interface LockfileClaimOptions<L = unknown> {
   readonly file: string
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly extraFiles?: (text: string) => readonly string[]
@@ -1409,24 +1300,8 @@ export interface LockfileClaimOptions {
   readonly identity?: string
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
-  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly links?: (text: string) => ReadonlyMap<string, L>
   readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
-}
-```
-
-## `LockfileImporter`
-
-type · `src/orchestrator/lockfile-claim.ts`
-
-What a lockfile records of one importer's links to the workspace's other
-importers: dependency name → importer directory (root-relative POSIX,
-`.` for the root).
-
-```ts
-export interface LockfileImporter {
-  readonly deps: Readonly<Record<string, string>>
-  readonly peers: Readonly<Record<string, string>>
-  readonly transitive?: readonly string[]
 }
 ```
 
@@ -1565,10 +1440,9 @@ export interface MeasureForecast {
 
 function · `src/workspace/affected.ts`
 
-The merge base of `ref` and HEAD, or undefined when there is none. A
-clone that lacks it fetches what it needs from origin (`reachMergeBase`):
-a plugin reading the base branch's history (shared timings) asks this,
-not `git merge-base`, so a one-commit checkout serves it too.
+The merge base of `ref` and HEAD, or undefined. A shallow clone fetches what
+it needs (`reachMergeBase`), so plugins reading base history ask this, not
+`git merge-base`.
 
 ```ts
 export async function mergeBaseWith(
@@ -1589,16 +1463,14 @@ export type MigrationFormat = 'ts' | 'mjs'
 
 type · `src/workspace/migration.ts`
 
-A project the adoption tool found: its name, directory and the vx config
-it already has. `packageJson.type` picks `vx.config.mts` for a CommonJS
-TypeScript package.
+A project the adoption tool found: its name, directory and the vx config it already has.
 
 ```ts
 export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  readonly esModule?: boolean
 }
 ```
 
@@ -1619,17 +1491,114 @@ export interface MigrationPlan {
 
 function · `src/util/paths.ts`
 
-The spellings a reader, Turbo and `.gitignore` all accept but a matcher
-fed the raw string turns into NOTHING — and a task keyed on nothing
-replays old outputs as a green hit (2026-09-10, probed one by one):
-a leading `./`, an inner `/./` segment, a doubled `//`, and a trailing
-`/` on a pattern (`src/*\/` means the trees under `src`, so it becomes
-`src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job), and a
-trailing `/.`, read as a trailing `/`. Applied
-after an optional `!`; a bare `.` is the empty entry the schema refuses.
+Spellings readers, Turbo and `.gitignore` accept but a raw matcher turns into
+nothing (a task keyed on nothing replays old outputs green): leading `./`,
+inner `/./`, doubled `//`, a trailing `/` on a pattern (`src/*\/` becomes
+`src/*\/**`; a literal's is `asTrees`'), and trailing `/.`. After an optional
+`!`; a bare `.` is refused by the schema.
 
 ```ts
 export function normalizeGlob(glob: string): string
+```
+
+## `OutcomeAttempts`
+
+type · `src/graph/outcome.ts`
+
+Its retries (`exec.retries`, `--retries`, a known flake's one more).
+
+```ts
+export interface OutcomeAttempts {
+  count?: number
+  failed?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  outputs?: readonly string[]
+  flaky?: { passes: number; failures: number }
+}
+```
+
+## `OutcomeCache`
+
+type · `src/graph/outcome.ts`
+
+What the cache and the key said of the task.
+
+```ts
+export interface OutcomeCache {
+  stored?: { durationMs: number; cpuMs?: number; peakRssBytes?: number }
+  restored?: boolean
+  saved?: true
+  inputFiles?: number
+  artifactBytes?: number
+  outputBytes?: number
+  inputChanges?: InputChanges
+  deferred?: true
+  off?: true
+  unkeyed?: true
+  driftedInput?: string | null
+  keylessBy?: string
+}
+```
+
+## `OutcomePlacement`
+
+type · `src/graph/outcome.ts`
+
+Where an executor ran it, when that is not this host (`ExecuteResult.where`, `.machine`).
+
+```ts
+export interface OutcomePlacement {
+  where?: string
+  carried?: true
+  cores?: number
+  memoryBytes?: number
+  cpuShare?: number
+}
+```
+
+## `OutcomeSandbox`
+
+type · `src/graph/outcome.ts`
+
+A sandboxed task's denials (`exec.sandbox`): any one fails the task.
+
+```ts
+export interface OutcomeSandbox {
+  violations: number
+  lines?: string[]
+  fix?: SandboxFix
+}
+```
+
+## `OutcomeTiming`
+
+type · `src/graph/outcome.ts`
+
+When the task waited, ran and moved bytes, on the run's clock.
+
+```ts
+export interface OutcomeTiming {
+  queuedMs?: number
+  admissionHeldMs?: number
+  startNs?: bigint
+  endNs?: bigint
+  fetchMs?: number
+  saveMs?: number
+}
+```
+
+## `OutcomeUsage`
+
+type · `src/graph/outcome.ts`
+
+What this run's execution of the task used; absent on a hit.
+
+```ts
+export interface OutcomeUsage {
+  cpuMs?: number
+  peakRssBytes?: number
+  peakCores?: number
+  avgRssBytes?: number
+}
 ```
 
 ## `OutcomeView`
@@ -1688,15 +1657,11 @@ export interface OutputContext extends BaseContext {
 
 function · `src/util/paths.ts`
 
-The directories whose snapshot covers every path the positive `globs`
-can match, or `null` when one reaches outside the project. A
-whole-subtree glob or a literal is its own tree
-({@link wholeSubtreePrefixes}); any other glob is the tree under its
-static prefix, and a root-anchored one (`**\/dist/**`, Turbo's shape) is
-the whole project, `''`. Sound for the same reason: a file added or
-removed anywhere under a recorded directory bumps a recorded mtime. The
-snapshot's file list is then held to the entry's rows through the globs
-themselves, so a source file beside the outputs is no stray.
+The directories whose snapshot covers every path the positive `globs` can
+match, or null when one leaves the project: a whole subtree or literal is its
+own tree, other globs the tree under their static prefix, a root-anchored one
+the whole project (`''`). The snapshot's file list is held to the entry's
+rows through the globs, so a source file beside outputs is no stray.
 
 ```ts
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
@@ -1706,52 +1671,21 @@ export function outputDirPrefixes(globs: readonly string[]): string[] | null
 
 function · `src/graph/task-graph.ts`
 
-True only when two output globs PROVABLY select an overlapping set.
+True only when two output globs PROVABLY overlap. Conservative, because the
+caller REFUSES the run and a false positive breaks a working build:
 
-Deliberately conservative, because the caller REFUSES the run: a false
-positive breaks a build that works today, which is worse than the defect
-being caught. So the three cases are exactly the ones that can be decided
-without a general glob-intersection algorithm:
+- both literal: equal paths;
+- literal vs glob: does the glob match the literal;
+- both globs: identical, or one is `P/**` and the other's literal prefix is P
+  or under it. Anything else passes.
 
-  both literal    — equal paths
-  literal vs glob — ask the glob whether it matches the literal (exact)
-  both globs      — identical strings, or one a whole subtree `P/**`
-                    and the other's literal prefix P or under it: every
-                    path the second matches is under P, so the first
-                    covers it (item 941). Anything else is undecided
-                    here and deliberately allowed through
+A static-prefix comparison is unsound for a refusal: `dist/vx-*` and
+`dist/other.txt` share `dist` and match disjoint sets.
 
-The rejected alternative was comparing each glob's static prefix. It is
-cheaper and catches more, but it is UNSOUND for a refusal — measured:
-`dist/vx-*` and `dist/other.txt` share the prefix `dist` while matching
-disjoint sets, so a prefix check refuses a legitimate config. (vx's own
-`build.bun.*` tasks escape only because they declare distinct literals.)
+Each side goes through `asTrees` first, the rule `cleanOutputs` deletes by:
+`./dist/**` is `dist/**`, and `outputs: ['dist']` is everything under `dist`.
 
-All three cases compare SPELLINGS, so each side is run through
-`asTrees` first — the same rule the resolver and `cleanOutputs` read,
-and `cleanOutputs` is what actually does the deleting. That folds two
-things this check used to miss, both of them the data loss it exists to
-prevent:
-
-  - the SPELLING: `./dist/**` and `dist/**` are one tree to every
-    matcher in vx, and `Bun.Glob('dist/**')` does not match the literal
-    `./dist/app.js` either (item 441, probed one spelling at a time);
-  - the literal DIRECTORY: `outputs: ['dist']` means everything under
-    `dist` — `asTrees` compiles it to `dist` + `dist/**` — while this
-    compared it to `dist/app.js` as two unequal literals. Measured end
-    to end: the task declaring `dist` wiped the other's `dist/app.js`
-    and the run reported success (item 442).
-
-Neither is a widening. Both read the declaration the way the code that
-deletes reads it, which is the only reading that decides the hazard.
-
-Exported through the façade because `@vzn/vx-migrate` asks the same
-question at MIGRATION time — it uncaches the losers so the generated
-config loads — and it used to ask it with a copy of this function. The
-copy did not get items 441 and 442, so it reported clean on configs
-core then refused, including `outputs: ['dist']` against
-`dist/app.js`, which is the commonest turbo.json shape there is (item
-445). One rule, one place: the copy is gone.
+On the façade so `@vzn/vx-migrate` asks the same question at migration time.
 
 ```ts
 export function outputsOverlap(rawA: string, rawB: string): boolean
@@ -1761,33 +1695,19 @@ export function outputsOverlap(rawA: string, rawB: string): boolean
 
 type · `src/report/logger.ts`
 
-The default logger's per-task output policy. Resolved once per run
-from (in priority order) the explicit `--output-logs` override, a
-truthy `CI` env, and the CLI-detected flow:
+The default logger's per-task output policy, from `--output-logs`, else a
+truthy `CI`, else the CLI's flow: full: frames for executed work, one-liners
+for quiet hits; CI's and the programmatic default. errors-only: only failed
+tasks print. none: no per-task output. hash-only: one line per task (outcome,
+id, key), Turbo's parity; the summary still renders. focused: requested nodes
+stream raw, live; dependencies are silent unless they fail. broad: a
+`success` line per executed task, frames for failures, silent hits.
 
-  full        — frames for executed work, one-liners for quiet hits.
-                Today's CI behavior; also the programmatic default.
-  errors-only — only failed tasks print.
-  none        — no per-task output at all.
-  hash-only   — one line per task: outcome word, task id, cache key.
-                No frames, no log replay (Turbo `--output-logs
-                hash-only` parity); the end-of-run summary still
-                renders. The line is the run's audit trail: which key
-                each task resolved to, without any build output.
-  focused     — requested nodes stream raw output live (running the
-                task should feel like running the command directly);
-                dependency-pulled nodes are silent unless they fail.
-  broad       — news only: one `success` line per executed task,
-                full frames for failures, silence for cache hits.
+`gha` (GitHub Actions): task output is fenced from workflow commands; in full
+mode each block is a collapsible group, except failures, which stay open with
+an `::error` annotation.
 
-`gha` (on GitHub Actions, any mode): task output is fenced from
-workflow commands. In full mode each task's block is also wrapped in
-`::group::` / `::endgroup::` so tasks collapse in the log viewer —
-except failed tasks, which stay pre-expanded and emit an `::error`
-annotation instead.
-
-`ci`: a truthy CI env was detected. Suppresses the dynamic status
-line even if stdout happens to be a TTY.
+`ci`: suppresses the status line even on a TTY.
 
 ```ts
 export interface OutputView {
@@ -1795,19 +1715,6 @@ export interface OutputView {
   gha?: boolean
   ci?: boolean
 }
-```
-
-## `packageManagerPath`
-
-function · `src/exec/env.ts`
-
-The executable of the workspace's package manager: the root
-package.json's `packageManager`, else its lockfile, found on the root's
-`node_modules/.bin` and PATH. Learned once per root; null when the root
-names none or this machine has none.
-
-```ts
-export function packageManagerPath(root: string): string | null
 ```
 
 ## `PERSISTENT_TODO`
@@ -1846,17 +1753,13 @@ export interface PlannedTask {
 
 function · `src/orchestrator/run.ts`
 
-Planning mode. Same setup as `run()` — workspace discovery, config
-load, package graph, task graph — but stops short of execution.
-Returns a `RunPlan` predicting the cache hit/miss outcome of every
-task. Used by `--dry`.
+Planning mode (`--dry`): the same setup as `run()`, stopping short of
+execution, returning a `RunPlan` predicting each task's hit or miss.
 
-Side-effects are limited to running `inputs.runtime` probe commands,
-which key derivation requires: with no remote the local cache opens to
-read only (`prepareRunLocked`'s `planning`); with one, the remote hits
-found are kept in the index for the run after. Probing is the
-byte-free `cache.has()` existence check — no artifact download, no
-ingest, no accessed_at bump.
+Side effects: only `inputs.runtime` probes, which keys need. With no remote
+the cache opens read-only; with one, remote hits found are kept for the next
+run. Probing is the byte-free `cache.has()`: no download, ingest or
+`accessed_at` bump.
 
 ```ts
 export async function planRun(options: RunOptions): Promise<RunPlan>
@@ -1884,12 +1787,10 @@ export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm6
 
 const · `src/config.ts`
 
-Every hook a plugin may fill, in pipeline order — THE list. The loader's
-"must be a function" and "at least one of" checks, the host's stage gate
-and `vx info`'s seam column all read it, so a stage added here is a stage
-everywhere: `admit` reached `vx info` a day late (2026-09-12) because
-that column kept its own copy, and the loader kept a third. The type
-pin below refuses a list that drifts from `Plugin`'s keys either way.
+Every hook a plugin may fill, in pipeline order: the one list the
+loader's checks, the host's stage gate and `vx info` read, so a stage
+added here is added everywhere. The type pin below refuses a list that
+drifts from `Plugin`'s keys.
 
 ```ts
 export const PLUGIN_HOOKS = [
@@ -1996,10 +1897,9 @@ export type PluginHooks = Omit<VxPlugin, 'name'>
 
 type · `src/orchestrator/plugin.ts`
 
-Every option a factory takes, each with the one kind its type allows
-(`'any'` for a union of kinds, such as `false | { … }`). Derived from
-the options interface, so the type checker refuses a missing option, an
-extra one or a wrong kind.
+Every option a factory takes with its kind (`'any'` for a union). Derived
+from the options interface, so the checker refuses a missing, extra or
+mistyped option.
 
 ```ts
 export type PluginOptionKinds<T> = {
@@ -2092,18 +1992,27 @@ export interface PreparedRun {
 }
 ```
 
+## `PreparedTask`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+A task whose sandbox is built: its placeholders exist until `sweep`.
+
+```ts
+export interface PreparedTask {
+  run(): Promise<ExecuteResult & { readonly output: CapturedChunk[] }>
+  sweep(): Promise<void>
+}
+```
+
 ## `prepareRun`
 
 function · `src/orchestrator/prepare.ts`
 
-Build the prepared-run context: workspace discovery, project-config
-load, package + task graph, cache handle (local, optionally wrapped
-in a remote layer). Caller owns `cache.close()`.
+Build the prepared run: discovery, config load, package and task graph, and
+the cache handle (local, maybe layered). Caller owns `cache.close()`.
 
-Returns even when nothing can run — the `empty` field tells the
-caller why. We never throw on "no tasks"; behavior on that case is
-caller-specific (run logs + returns NOT-ok; planRun returns an
-empty plan).
+Never throws on "no tasks": `empty` says why, and each caller decides.
 
 ```ts
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
@@ -2200,12 +2109,8 @@ export function pruneOrphanPersistentNotes(
 
 function · `src/workspace/migration.ts`
 
-Escape an arbitrary string into a single-quoted TS literal. Escapes
-backslash + quote AND raw newlines/CR — a value with an embedded newline
-(legal JSON, e.g. a script `"echo a\necho b"`, or a glob with a `'`) would
-otherwise splice into a single-quoted literal as an unterminated / malformed
-string that fails to load (generated files must round-trip through the
-loader).
+A string as a single-quoted TS literal, escaping backslash, quote and raw
+newlines/CR, so values with newlines or quotes round-trip through the loader.
 
 ```ts
 export function quoteTsLiteral(s: string): string
@@ -2233,8 +2138,8 @@ does not. Lockfiles carry dependency cycles, so the unit is the
 strongly connected component: Tarjan's walk (iterative — a dependency
 chain can be thousands deep) emits components children-first, and each
 folds its members (sorted), each as its material and the materials its
-edges land on, and its child components' digests (sorted). O(nodes + edges): 1000 importers over 3000 packages digest in
-~20 ms where one traversal per importer took 400.
+edges land on, and its child components' digests (sorted).
+O(nodes + edges), where one traversal per member is O(members × nodes).
 
 ```ts
 export function reachDigests(g: ReachGraph): string[]
@@ -2257,12 +2162,10 @@ export interface ReachGraph {
 
 function · `src/orchestrator/plugin.ts`
 
-Refuse an option a plugin factory does not take, or a value of the wrong
-kind, as core refuses an unknown config field. Bun strips a config's
-types, so a misspelt option (`reapi({ endpont })`) reached the factory,
-which read it as unset and quietly declined, and a string where a number
-or a boolean belongs (`process.env.X`) was misread or threw a bare
-TypeError. `factory` names the call in the message (`reapi()`).
+Refuse an option a factory does not take, or a wrong kind, as core refuses
+an unknown config field: Bun strips types, so a misspelt option (`reapi({
+endpont })`) quietly declined, and an env string where a number belongs was
+misread. `factory` names the call (`reapi()`).
 
 ```ts
 export function refuseUnknownOptions<T>(
@@ -2276,21 +2179,14 @@ export function refuseUnknownOptions<T>(
 
 type · `src/cache/layered-cache.ts`
 
-What a remote cache layer must provide — THE plugin seam for remote
-caching. Core ships no wire client; a plugin's `cache` hook returns one
-(or an embedder passes one as `RunOptions.remoteCache`), speaking
-whatever protocol it wants, and `LayeredCache` owns everything else:
-policy gating, in-flight dedup, remote provenance, and the never-fail
-contract (implementations THROW on failure; every throw degrades to a
-cache miss, reported to the remote's `onError`). The artifact bytes are the
-local `<hash>.tar.zst` verbatim. The wires live in plugin packages
-(`@vzn/vx-migrate`'s `turboCache()` and `nxCache()`, `@vzn/vx-reapi`); see
-docs/modules/layered-cache.md.
+What a remote cache layer provides: the plugin seam for remote caching. Core
+ships no wire; a plugin's `cache` hook returns one (or
+`RunOptions.remoteCache`), and `LayeredCache` owns policy, in-flight dedup,
+provenance and the never-fail contract: a layer THROWS on failure, and every
+throw is a miss reported to `onError`. The bytes are the local
+`<hash>.tar.zst` verbatim. See docs/modules/cache.md.
 
-Core awaits every call and bounds none: a `get` that never settles
-holds its task and a `put` the run's upload drain, so each request
-carries the layer's own deadline (every first-party layer has one; the
-plugin guide's example shows it).
+Core bounds no call, so each request carries the layer's own deadline.
 
 ```ts
 export interface RemoteCacheLayer {
@@ -2323,11 +2219,9 @@ export interface RemoteOpenContext extends PluginSecrets {
 
 ## `ResolvedSandboxConfig`
 
-type · `src/exec/sandbox-runtime.ts`
+type · `src/exec/executor.ts`
 
-Sandbox config with all path fields resolved to absolute paths.
-Produced by `resolveSandboxConfig`. The shape mirrors `SandboxConfig`
-but every string in a path list is guaranteed absolute.
+Sandbox config with every path absolute (`resolveSandboxConfig`).
 
 ```ts
 export interface ResolvedSandboxConfig {
@@ -2360,10 +2254,9 @@ export interface ResolvedSandboxConfig {
 
 function · `src/util/paths.ts`
 
-Whether a restore may write `rel`: one of the outputs `globs` declare and
-not `outputExcluded` — what the save side could have packed
-(`resolveOutputs`). An artifact naming anything else was not written by
-this task's save, and none of it is restored (2026-10-16).
+Whether a restore may write `rel`: a declared output not `outputExcluded`,
+what the save could have packed. Anything else in an artifact is not
+restored.
 
 ```ts
 export function restorableOutput(
@@ -2426,19 +2319,12 @@ export interface RunOptions {
   cwd: string
   tasks: readonly string[]
   projects?: string[]
-  selectedByDiff?: boolean
   affected?: AffectedChanges
-  selectedOutright?: readonly string[]
-  affectedReasons?: Map<string, AffectedReason>
-  staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy
   cacheFlags?: CacheFlags
-  remoteRequested?: string
   cacheScope?: string
-  remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   downloadConcurrency?: number
@@ -2456,11 +2342,6 @@ export interface RunOptions {
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
-  holdPersistent?: boolean
-  watch?: boolean
-  keep?: HeldPersistent
-  commandWindows?: CommandWindows
-  summaryTable?: boolean
   tty?: boolean
   log?: Logger
   bus?: EventBus
@@ -2489,7 +2370,7 @@ export interface RunPlan {
 
 ## `RunRecord`
 
-type · `src/cache/layer.ts`
+type · `src/history/run-history.ts`
 
 ```ts
 export interface RunRecord {
@@ -2536,14 +2417,12 @@ export interface RunRecord {
 
 type · `src/orchestrator/plugin.ts`
 
-What a finished run hands each plugin's `teardown`: its facts and every
-task, with the names core kept the task's bytes under. Core keeps them
-only when a remote takes the run's writes (CI by default): the log of a
-task that saved no entry, and a failed task's log and the files its
-outputs left when `cache.upload.failures` covers the run. Read
-them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
-plugin that wants one writes it from here (`ctx.cache.put`). Frozen:
-every teardown reads the same report.
+What a finished run hands each `teardown`: its facts and tasks, with the
+names core kept their bytes under. Kept only when a remote takes the run's
+writes (CI by default): the log of a task that saved no entry, and a failed
+task's log and leftover outputs when `cache.upload.failures` covers the
+run. Read with `ctx.cache.getRun(name)`; a plugin wanting a manifest writes
+one (`ctx.cache.put`). Frozen.
 
 ```ts
 export interface RunReport {
@@ -2620,10 +2499,8 @@ export interface RunSummary {
 
 type · `src/orchestrator/telemetry.ts`
 
-A per-run SUMMARY record — the denormalized invocation header plus the
-per-task outcome list, emitted once at run:end. An ingesting store can
-persist a whole run in one write without replaying the stream. The
-manual-API exporter + a service's ingest endpoint primarily speak this shape.
+A per-run summary, emitted once at run:end: the invocation header plus
+per-task outcomes, so a store persists a run in one write.
 
 ```ts
 export interface RunSummaryRecord {
@@ -2652,59 +2529,32 @@ export interface RunSummaryRecord {
 }
 ```
 
-## `sampleTrees`
-
-function · `src/exec/proc-sample.ts`
-
-Each root's tree usage; a root no longer alive has no entry.
-
-```ts
-export async function sampleTrees(
-  roots: readonly number[],
-  skip?: ReadonlySet<string>,
-): Promise<Map<number, TreeUsage>>
-```
-
 ## `SandboxConfig`
 
 type · `src/config.ts`
 
-What a sandboxed task may do, declared as CAPABILITIES.
+What a sandboxed task may do, declared as capabilities. You say what the
+task may touch; vx decides how each is enforced, and one the platform
+cannot express is an error, not a silent no-op.
 
-One shape for the whole policy. You say what the task is allowed to
-touch; vx decides how each capability is realised — some become sandbox
-runtime config, some become rules in the OS policy, and one the platform
-cannot express is an error rather than a silent no-op. None of that
-reaches the config.
+The baseline (`sandbox: {}`) grants almost nothing: no reads, no writes,
+no network, not even the project directory, which is why `allow: { read:
+['.'] }` opens most real blocks. The one implicit grant is dependencies:
+`node_modules` and the real paths of the workspace packages linked
+there.
 
-The baseline (`sandbox: {}`) grants almost nothing: the task reads
-nothing, writes nothing and reaches no network — NOT EVEN ITS OWN
-PROJECT DIRECTORY, which is why `allow: { read: ['.'] }` opens almost
-every real block. The one grant vx makes for you is dependencies:
-`node_modules`, and through it the real path of every workspace
-package linked there.
+Caching grants nothing: `inputs` says what invalidates a task, `allow`
+what it may touch, and declared `outputs` are no write grant (only
+`allow.write` binds).
 
-`cache` grants no access in either direction: `inputs` says what
-INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
-from the other coupled them both ways — a declaration added for
-caching silently widened the sandbox, and a path the task needed had
-to be laundered through the cache key to get it (2026-09-05).
-A declared `outputs` is NOT a write grant; the request
-`sandbox-request.ts` builds carries no write of its own and binds
-`allow.write` alone. This comment claimed the opposite — here and on
-both grant fields — while the file beside it and `schema.md` both said
-the truth, and no test read the bare baseline it described (item 443).
-That case has a test of its own now.
+Enforcement anchors at the workspace root, so a task cannot leave its
+project whatever it declares. `docs/schema.md` § `exec.sandbox` has the
+full account.
 
-Enforcement anchors at the WORKSPACE ROOT, so a task cannot leave its
-project whatever it declares here. The full account, including what a
-write grant costs on Linux, is in `docs/schema.md` under
-`exec.sandbox`.
-
-Paths are project-relative, absolute, or `~`-expanded, and may be
-globs: macOS matches the pattern in the policy, Linux expands it when
-the task starts (a mount cannot hold a pattern), so a file created
-later is not covered there — grant its directory.
+Paths are project-relative, absolute or `~`-expanded, and may be globs:
+macOS matches the pattern, Linux expands it at start (a mount cannot
+hold a pattern), so a file created later is not covered there; grant its
+directory.
 
 ```ts
 export interface SandboxConfig {
@@ -2727,6 +2577,22 @@ export interface SandboxDenials {
 }
 ```
 
+## `SandboxFix`
+
+type · `src/graph/outcome.ts`
+
+```ts
+export interface SandboxFix {
+  read?: string[]
+  write?: string[]
+  network?: string[]
+  systemInfo?: string[]
+  withheld?: string[]
+  inputs?: string[]
+  workspaceFiles?: string[]
+}
+```
+
 ## `SandboxGrants`
 
 type · `src/config.ts`
@@ -2743,68 +2609,6 @@ export interface SandboxGrants {
   pty?: boolean
   gitConfig?: boolean
 }
-```
-
-## `SandboxRequest`
-
-type · `src/orchestrator/sandbox-request.ts`
-
-The sandbox half of the request, plus the empty files vx created so a
-literal write grant had something to bind (`placeholders`). They are
-vx's, not the task's, until the task writes them: `sweepPlaceholders`
-takes back the ones it never touched. `withheld` names the linked
-dependencies a cached task was denied, for the hint a denial under one
-earns (`withheldLinkLine`).
-
-```ts
-export interface SandboxRequest {
-  sandbox: NonNullable<ExecuteRequest['sandbox']>
-  placeholders: Placeholder[]
-  withheld: WithheldLink[]
-}
-```
-
-## `sandboxRequestFor`
-
-function · `src/orchestrator/sandbox-request.ts`
-
-The sandbox half of an `ExecuteRequest` for one task, shared by the
-cached path (through the executor) and the persistent path (spawned here).
-
-The user's grants derive NOTHING from `cache` (2026-09-05). Those
-are two different questions: `inputs` says what INVALIDATES the
-task, `sandbox.allow` says what it may TOUCH. Deriving one from the other
-coupled them in both directions — a declaration added for caching
-silently widened the sandbox, and a path the task needed had to be
-laundered through the cache key to get it. A sandboxed task declares
-its own reads and writes.
-
-`node_modules` is the one grant core still makes: it is where the task's
-own PATH gets its `.bin` entries, and denying it made the sandbox
-unusable for anything that imports a dependency (`bun build --compile`
-died with only `error: An unknown error occurred (Unexpected)`; owner
-call 2026-09-04). Declaring `cache` may NARROW that grant, never widen
-anyone's (2026-09-24): `keyed` is the set of project directories the
-task's key answers for (keyed-projects.ts), and `undefined` for a task
-with no `cache`, which has no key to be stale.
-
-The other is the outputs of the tasks its key folds
-(`dependencyOutputs`, 2026-11-06): an edge the user drew, whose files
-this key already answers for, so the read can replay nothing stale —
-only the files the outputs take, never what lies beside them.
-
-```ts
-export async function sandboxRequestFor(
-  node: Pick<TaskNode, 'projectDir'>,
-  sandbox: NonNullable<ExecConfig['sandbox']>,
-  workspaceRoot: string,
-  keyed: ReadonlySet<string> | undefined,
-  nested: readonly string[] = [],
-  cacheDir?: string,
-  dependencyOutputs: readonly string[] = [],
-  dependencyReported: readonly string[] = [],
-  nestedOf: (projectDir: string) => readonly string[] = () => [],
-): Promise<SandboxRequest>
 ```
 
 ## `ScheduleHookContext`
@@ -2891,6 +2695,21 @@ export interface ServerSpec {
 }
 ```
 
+## `SkippedOutcome`
+
+type · `src/graph/outcome.ts`
+
+It never started, so it has no exit; a key only when fail-fast stopped it after deriving one.
+
+```ts
+export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFacts, PlatformFacts {
+  status: 'skipped'
+  exitCode?: never
+  hash?: string
+  serverExit?: never
+}
+```
+
 ## `splitTaskId`
 
 function · `src/util/task-id.ts`
@@ -2908,26 +2727,22 @@ answered with a different task's history.
 
 A config's task name may not hold `#` (`taskNameProblem`), but an id also
 arrives from run history and plugins, so the first-`#` rule is the one
-the graph uses. The cache's run history read the same rule from a
-private copy until item 646; one rule, one place.
+the graph uses; one rule, one place.
 
 ```ts
 export function splitTaskId(id: string): [project: string, task: string]
 ```
 
-## `sweepPlaceholders`
+## `SucceededOutcome`
 
-function · `src/orchestrator/sandbox-request.ts`
-
-Remove the placeholder files the task never wrote — still empty, mtime
-untouched — and return their paths. What the task wrote is its output
-and stays; what it did not is vx's own litter, and litter under a
-declared output would be archived as the task's (an empty `dist/vx`
-saved as a build) or, as a file where the task wanted a directory,
-would fail every later run the same way.
+type · `src/graph/outcome.ts`
 
 ```ts
-export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
+export interface SucceededOutcome
+  extends StartedOutcome, None<FailureFacts>, None<BlockFacts>, None<PlatformFacts> {
+  status: Exclude<TaskStatus, 'failed' | 'aborted' | 'skipped'>
+  serverExit?: number
+}
 ```
 
 ## `TaskArtifacts`
@@ -2977,25 +2792,10 @@ type · `src/exec/executor.ts`
 ```ts
 export interface TaskExecutor {
   readonly name: string
-  readonly remote?: boolean
-  readonly sandbox?: boolean
-  readonly servers?: boolean
-  readonly runtime?: boolean
-  readonly exclusive?: boolean
-  readonly timeouts?: boolean
-  readonly platforms?: readonly string[]
-  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
-  readonly capacity?: number
+  readonly capabilities?: ExecutorCapabilities
   accepts?(task: TaskPlacement): boolean
-  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
-  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
-  machines?(): readonly MachineReport[]
-  idealMs?(): number | undefined
-  advice?(): readonly WorkerAdvice[]
-  profile?(): readonly Record<string, unknown>[]
-  running?(taskId: string): string | null | undefined
-  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+  readonly distribution?: Distribution
 }
 ```
 
@@ -3074,7 +2874,7 @@ export interface TaskLogEntry {
 
 function · `src/workspace/config-schema.ts`
 
-Why `name` cannot be a task name, or null; `vx init` skips such a script (item 1033).
+Why `name` cannot be a task name, or null; `vx init` skips such a script.
 
 ```ts
 export function taskNameProblem(name: string): string | null
@@ -3106,71 +2906,10 @@ export interface TaskNode {
 
 ## `TaskOutcome`
 
-type · `src/graph/scheduler.ts`
+type · `src/graph/outcome.ts`
 
 ```ts
-export interface TaskOutcome {
-  node: TaskNode
-  status: TaskStatus
-  exitCode: number
-  durationMs: number
-  hash?: string
-  storedDurationMs?: number
-  storedCpuMs?: number
-  storedPeakRssBytes?: number
-  admissionHeldMs?: number
-  queuedMs?: number
-  inputFiles?: number
-  artifactBytes?: number
-  outputBytes?: number
-  fetchMs?: number
-  saveMs?: number
-  inputChanges?: InputChanges
-  cpuMs?: number
-  peakRssBytes?: number
-  peakCores?: number
-  avgRssBytes?: number
-  groupUpstream?: readonly TaskOutcome[]
-  unkeyed?: true
-  driftedInput?: string | null
-  keylessBy?: string
-  cacheOff?: true
-  blockedBy?: string
-  taintedBy?: string
-  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
-  timedOut?: true
-  failedOutput?: string
-  runLog?: string
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  serverExit?: number
-  inputMoved?: string
-  where?: string
-  carried?: true
-  whereCores?: number
-  whereMemoryBytes?: number
-  cpuShare?: number
-  outputs?: 'deferred'
-  saved?: true
-  restoreFailed?: true
-  wallclockStartNs?: bigint
-  wallclockEndNs?: bigint
-  restored?: boolean
-  attempts?: number
-  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
-  attemptOutputs?: readonly string[]
-  flaky?: { passes: number; failures: number }
-  sandboxViolations?: number
-  sandboxViolationLines?: string[]
-  sandboxFix?: {
-    read?: string[]
-    write?: string[]
-    network?: string[]
-    systemInfo?: string[]
-    withheld?: string[]
-    inputs?: string[]
-    workspaceFiles?: string[]
-  }
-}
+export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | SkippedOutcome
 ```
 
 ## `TaskOutputs`
@@ -3328,10 +3067,9 @@ export interface TelemetryContext {
 
 type · `src/orchestrator/telemetry.ts`
 
-A streaming telemetry record — one per lifecycle event. A superset of the
-rendering-oriented `WireEvent`: it carries the run context + the per-task
-analytics fields a consumer needs WITHOUT re-deriving from the stream.
-`task.log` records are large and OPT-IN (see `TelemetrySink.wants`).
+A streaming record, one per lifecycle event: the `WireEvent` plus run context
+and per-task analytics. `task.log` records are large and opt-in
+(`TelemetrySink.wants`).
 
 ```ts
 export type TelemetryRecord =
@@ -3512,17 +3250,12 @@ export const VERSION: string = pkg.version
 
 type · `src/orchestrator/plugin.ts`
 
-A vx plugin. Contributes any subset of the run-level capabilities —
-where work runs (executor), which cache is used (cache), who
-observes the run (telemetry). It never changes WHAT a task is (the
-command string — principle #3), only where and how that command is
-executed. Registered explicitly in .vx/workspace.ts via
-defineWorkspace({ plugins: [...] }). No auto-discovery.
-
-Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
-plain object. The capabilities are consulted by `plugin-host.ts`. Core
-names no plugin; the local executor and the local cache are the floor
-under the list, taking what every plugin declines.
+A vx plugin: any subset of where work runs (executor), which cache is used
+(cache) and who observes (telemetry). It never changes what a task is (its
+command), only where and how it runs. Registered explicitly in
+`.vx/workspace.ts`; no auto-discovery. Made only by
+`definePlugin(import.meta, hooks)`. Core names no plugin; the local
+executor and cache are the floor under the list.
 
 ```ts
 export interface VxPlugin {
@@ -3579,9 +3312,9 @@ export interface WatchSettings {
 
 function · `src/exec/runner.ts`
 
-The command a task runs with the args after `--` appended, shell-quoted.
-They go before a trailing comment: appended after it, `echo args: # show`
-ran without them and said nothing (item 1060). Trailing blanks go first.
+The task's command with the args after `--` appended, shell-quoted, before
+any trailing comment (after it they vanished silently). Trailing blanks go
+first.
 
 ```ts
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
@@ -3591,11 +3324,10 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
 
 type · `src/exec/executor.ts`
 
-Workers that would have run the run best (`TaskExecutor.advice`): `of`
-says on what. `declared`: as many of each size the executor may start
-as end it soonest; `more`: past each size's limit, when that ends it
-sooner; `any`: one shape a platform, of any cores, ending as soon for
-the least core time.
+Workers that would have run the run best (`TaskExecutor.advice`).
+`declared`: as many of each size as end it soonest; `more`: past a size's
+limit, when sooner; `any`: one shape per platform, ending as soon for the
+least core time.
 
 ```ts
 export interface WorkerAdvice {
@@ -3609,6 +3341,60 @@ export interface WorkerAdvice {
     size?: string
   }[]
 }
+```
+
+## `workerRuntime`
+
+function · `src/orchestrator/worker-runtime.ts`
+
+```ts
+export function workerRuntime(opts: {
+  readonly root: string
+  readonly onServer?: (taskId: string, pid: number | undefined) => void
+}): WorkerRuntime
+```
+
+## `WorkerRuntime`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+```ts
+export interface WorkerRuntime {
+  prepare(task: WorkerTask): Promise<PreparedTask>
+  probe(command: string, dir: string, workspace: boolean): Promise<string>
+  packageManager(): string | null
+  sample(roots: readonly number[]): Promise<ReadonlyMap<number, TreeUsage>>
+  rearm(sandboxes: readonly SandboxConfig[]): Promise<void>
+  stop(taskId: string): Promise<void>
+  close(): Promise<void>
+}
+```
+
+## `WorkerSandbox`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+A task's `exec.sandbox` as a worker receives it: built into walls on this machine.
+
+```ts
+export interface WorkerSandbox {
+  readonly config: SandboxConfig
+  readonly keyed?: readonly string[]
+  readonly reads?: readonly string[]
+  readonly reported?: readonly string[]
+}
+```
+
+## `WorkerTask`
+
+type · `src/orchestrator/worker-runtime.ts`
+
+A task to run here: the request core would build, with its sandbox not yet built.
+
+```ts
+export interface WorkerTask extends Omit<
+  ExecuteRequest,
+  'sandbox' | 'capture' | 'onStdout' | 'onStderr' | 'workspaceRoot'
 ```
 
 ## `WorkspaceConfig`

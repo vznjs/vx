@@ -1,9 +1,9 @@
-// What the written configs leave to .vx/workspace.ts, said once by both
-// migrators: the adoption plugin `vx init` declared still reads the old
-// tool's file every run, and the old tool keyed each package on its own
-// lockfile entries where core keys no lockfile (#3562): without a
-// lockfile plugin a dependency bump re-runs nothing, and a cached task
-// replays output built on the old versions.
+// What the written configs leave to.vx/workspace.ts, said once by both
+// migrators: the adoption plugin `vx init` declared still reads the old tool's
+// file every run, and the old tool keyed each package on its own lockfile
+// entries where core keys no lockfile: without a lockfile plugin a dependency
+// bump re-runs nothing, and a cached task replays output built on the old
+// versions.
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'

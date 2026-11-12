@@ -262,7 +262,7 @@ describe('cache declarations that match nothing', () => {
         handleSignals: false,
       })
       expect(summary.ok).toBe(true)
-      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.restored]))
+      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.cache?.restored]))
     }
     await outcomes()
     expect(await outcomes()).toEqual({ lost: false })
@@ -285,7 +285,7 @@ describe('cache declarations that match nothing', () => {
         handleSignals: false,
       })
       expect(summary.ok).toBe(true)
-      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.restored]))
+      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.cache?.restored]))
     }
     await outcomes()
     expect(await outcomes()).toEqual({ wslost: false })

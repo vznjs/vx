@@ -99,7 +99,7 @@ const hashes = async (): Promise<Record<string, string>> => {
   const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
   return Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.hash]))
 }
-/** A run, which keeps the memo: `--dry` writes nothing (docs/modules/plan.md). */
+/** A run, which keeps the memo: `--dry` writes nothing (docs/modules/orchestrator.md#srcorchestratorplants----dry-planning). */
 const warm = async (): Promise<void> => {
   expect((await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })).ok).toBe(
     true,

@@ -14,7 +14,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { indexDb, Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 let root: string
@@ -76,8 +77,8 @@ describe('a full index', () => {
       )
       fill(cache, (i, pad) => junk.run(`/junk/${i}`, pad))
       const before = indexDb(cache).query('SELECT COUNT(*) AS n FROM file_hashes').get()
-      expect(await cache.hashFile(a)).toMatch(/^[0-9a-f]{40}$/)
-      expect((await cache.hashFiles([b])).get(b)).toMatch(/^[0-9a-f]{40}$/)
+      expect(await cache.memo.hashFile(a)).toMatch(/^[0-9a-f]{40}$/)
+      expect((await cache.memo.hashFiles([b])).get(b)).toMatch(/^[0-9a-f]{40}$/)
       expect(indexDb(cache).query('SELECT COUNT(*) AS n FROM file_hashes').get()).toEqual(before)
     } finally {
       cache.close()
@@ -92,9 +93,9 @@ describe('a full index', () => {
         "INSERT INTO output_files(entry_hash, path, size_bytes, mode, mtime_ms) VALUES ('h1', ?, 0, 0, 0)",
       )
       fill(cache, (i, pad) => junk.run(`junk/${i}/${pad}`))
-      cache.recordOutputStamps('h1', proj, root)
+      cache.memo.recordOutputStamps('h1', proj, root)
       const paths =
-        cache
+        cache.memo
           .loadOutputFilesBatch(['h1'])
           .get('h1')
           ?.map((r) => r.path) ?? []

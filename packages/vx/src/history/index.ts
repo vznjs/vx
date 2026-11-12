@@ -55,3 +55,17 @@ export type {
   WhyDidThisRerun,
 } from './metrics.js'
 export { createMissExplainer, type MissExplainer } from './miss-reason.js'
+// The write side: a run's rows, written at its end (`runHistory`) or on a
+// thread while it runs (`HistoryStream`), and the notes it keeps.
+export { type InvocationRecord, type MeasureRecord, type RunRecord } from './run-history.js'
+export { type HistoryWrites, runHistory } from './history-writes.js'
+export { HistoryStream } from './history-stream.js'
+export {
+  type KeptFailure,
+  keepRunNotes,
+  keptFailures,
+  keptSteps,
+  keptWarnings,
+  type RunNotes,
+  type RunStep,
+} from './run-notes.js'

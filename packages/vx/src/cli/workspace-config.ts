@@ -108,9 +108,9 @@ export function verbWorkspace(root: string): VerbWorkspace {
 }
 
 /**
- * The workspace a discovery loaded, by the array it returned: `--affected`
- * asks every run for the claims, and loading the workspace again read its
- * file again (1.5-3.7 ms with no plugin, 2026-11-10).
+ * The workspace a discovery loaded, by the array it returned: `--affected` asks
+ * every run for the claims, and loading the workspace again read its file again
+ * (1.5-3.7 ms with no plugin).
  */
 const discoveredWorkspaces = new WeakMap<readonly ProjectMeta[], CliWorkspace>()
 
@@ -128,8 +128,8 @@ export function stageCacheDir(ws: { cacheDir: string }, load: CliLoadOptions): s
 }
 
 /**
- * `//#task`, Turbo's root package, as the root project's id: the name
- * discovery gives it (D-39), for a verb that reads history by task id.
+ * `//#task`, Turbo's root package, as the root project's id: the name discovery
+ * gives it, for a verb that reads history by task id.
  */
 export async function rootSpelled(at: VerbWorkspace, target: string): Promise<string> {
   if (!target.startsWith('//#')) return target
@@ -165,9 +165,9 @@ export function parseCacheDirFlag(
 }
 
 /**
- * A reading verb's `--cache-dir`, resolved against the working directory.
- * Named explicitly, a directory that is not there is a typo to report, not
- * an empty cache to read (item 900).
+ * A reading verb's `--cache-dir`, resolved against the working directory. Named
+ * explicitly, a directory that is not there is a typo to report, not an empty
+ * cache to read.
  */
 export function namedCacheDir(override: string): string {
   const dir = path.resolve(process.cwd(), override)

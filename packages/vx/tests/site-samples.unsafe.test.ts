@@ -10,13 +10,13 @@ import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
 import { executedCells, flakyNote, formatTaskExecutedLine } from '../src/report/framed-output.js'
 import { formatFailureLine } from '../src/report/status-line.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import { REMOTE_CACHE_METHODS } from '../src/orchestrator/plugin-host.js'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
 import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 import { createTelemetrySource } from '../src/orchestrator/telemetry.js'
@@ -366,9 +366,8 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
       status,
       exitCode: status === 'failed' ? 1 : 0,
       durationMs,
-      flaky: { passes, failures },
-      ...(attempts !== undefined && { attempts }),
-    }
+      attempts: { flaky: { passes, failures }, ...(attempts !== undefined && { count: attempts }) },
+    } as TaskOutcome
     return status === 'failed'
       ? formatFailureLine(id, durationMs, undefined, 'miss', executedCells(o, undefined)) +
           flakyNote(o)
@@ -471,7 +470,14 @@ describe('the why pages name every component kind the key records', () => {
 })
 
 describe('the watch-mode post states what watch.ts does', () => {
-  const src = ['watch.ts', 'watch-fs.ts', 'watch-filter.ts', 'watch-set.ts', 'watch-judge.ts']
+  const src = [
+    'watch.ts',
+    'watch-loop.ts',
+    'watch-fs.ts',
+    'watch-filter.ts',
+    'watch-set.ts',
+    'watch-judge.ts',
+  ]
     .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', f), 'utf8'))
     .join('\n')
   const page = readFileSync(path.join(DOCS, 'blog', 'watch-mode.md'), 'utf8')
@@ -555,10 +561,9 @@ describe('the telemetry post shows the sink contract the source declares', () =>
 })
 
 describe('the bitsets post states what the scheduler source measured', () => {
-  const src = readFileSync(
-    path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
-    'utf8',
-  )
+  const src = ['scheduler.ts', 'ready-heap.ts', 'lanes.ts']
+    .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', 'graph', f), 'utf8'))
+    .join('\n')
   const page = readFileSync(path.join(DOCS, 'blog', 'bitsets-and-the-scheduler.md'), 'utf8')
   const flat = page.replace(/\s+/g, ' ')
   it('its closure figures are the ones computeReverseDepCount records', () => {
@@ -588,11 +593,9 @@ describe('the bitsets post states what the scheduler source measured', () => {
     expect(flat).toContain('binary max-heap')
   })
   it('its restore lane is capped where the scheduler caps it', () => {
-    expect(src).toContain(
-      'const restoreConcurrency = options.restoreConcurrency ?? 2 * concurrency',
-    )
+    expect(src).toContain('this.restoreConcurrency = restoreConcurrency ?? 2 * concurrency')
     // At 1 the two lanes share the one slot (item 1103).
-    expect(src).toContain('const serial = concurrency === 1')
+    expect(src).toContain('this.serial = concurrency === 1')
     expect(flat).toContain('twice the worker count')
     expect(flat).toContain('`--concurrency 1` stays serial')
   })
@@ -858,11 +861,11 @@ describe.each([
 describe('the sandboxing guide says what gitConfig grants', () => {
   it('the flag reaches the wrap per task, and the guide does not call it inert', () => {
     const runtime = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'),
       'utf8',
     )
     const binds = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-binds.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'binds.ts'),
       'utf8',
     )
     expect(binds).toContain('allowGitConfig: c.gitConfig')
@@ -881,9 +884,9 @@ describe('the sandboxing guide says what gitConfig grants', () => {
 // (item 381, 2026-09-19). Found rather than listed, and each binary is
 // satisfied by either spelling — a negative grep is a claim about every one.
 describe('every page naming the Linux sandbox binaries names all three', () => {
-  it('each is the set sandbox-runtime.ts checks for, in either spelling', () => {
+  it('each is the set sandbox/runtime.ts checks for, in either spelling', () => {
     const runtime = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'),
       'utf8',
     )
     const m = /'the sandbox runtime needs ([^']*) on PATH'/.exec(runtime)
@@ -1910,10 +1913,10 @@ describe('the sandbox post judges a violation against the grants', () => {
   it('a denial inside the project fails the task; the grants decide what is denied', () => {
     const src = (rel: string): string =>
       readFileSync(path.resolve(import.meta.dir, '..', 'src', rel), 'utf8')
-    expect(src('orchestrator/execute-task.ts')).toContain(
-      'if (userSandbox && violations.some((v) => v.hint !== true) && code === 0) code = 1',
+    expect(src('orchestrator/attempt.ts')).toContain(
+      'if (policy.sandboxed && violations.some((v) => v.hint !== true) && code === 0) code = 1',
     )
-    expect(src('orchestrator/sandbox-request.ts')).toContain('reportWithin: node.projectDir')
+    expect(src('sandbox/request.ts')).toContain('reportWithin: node.projectDir')
     const post = readFileSync(path.join(DOCS, 'blog', 'the-sandbox.md'), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -2227,7 +2230,7 @@ describe('the pages say where an entry stdout lives', () => {
   // page, optimizations.md and two posts still put it in the row (J2-26).
   it('the schema keeps stdout apart, and each page says so', () => {
     const core = path.resolve(import.meta.dir, '..')
-    const schema = readFileSync(path.join(core, 'src', 'cache', 'schema.ts'), 'utf8')
+    const schema = readFileSync(path.join(core, 'src', 'index-db', 'schema.ts'), 'utf8')
     const entries = /CREATE TABLE IF NOT EXISTS \$\{store\}\.entries \(([^;]*?)\n {4}\);/.exec(
       schema,
     )?.[1]
@@ -2300,11 +2303,11 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
   // refused write outside the project names the directory to grant (J2-32).
   it('the hint names $TMPDIR there, and both pages say so', () => {
     const core = path.resolve(import.meta.dir, '..')
-    expect(readFileSync(path.join(core, 'src', 'exec', 'sandbox-runtime.ts'), 'utf8')).toContain(
+    expect(readFileSync(path.join(core, 'src', 'sandbox', 'runtime.ts'), 'utf8')).toContain(
       'The task has its own temp directory, empty at its start: write under',
     )
     const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
-    expect(flat(path.join(core, 'docs', 'modules', 'sandbox-runtime.md'))).toContain(
+    expect(flat(path.join(core, 'docs', 'modules', 'sandbox.md'))).toContain(
       "or, for a path under the host's shared temp directory",
     )
     expect(flat(path.join(DOCS, 'docs', 'sandboxing.mdx'))).toContain(
@@ -2411,7 +2414,7 @@ describe('no page calls a telemetry record immutable', () => {
   it('the docs and the site say plain-data records', () => {
     const core = path.resolve(import.meta.dir, '..')
     const pages = [
-      path.join(core, 'docs', 'modules', 'telemetry.md'),
+      path.join(core, 'docs', 'modules', 'orchestrator.md'),
       path.join(core, 'docs', 'architecture.md'),
       path.join(core, 'src', 'orchestrator', 'telemetry.ts'),
       path.join(DOCS, 'blog', 'telemetry-never-breaks-a-run.md'),
@@ -2440,7 +2443,7 @@ describe('telemetry.md claims no receiver check the sinks lack', () => {
       }
     }
     expect(readers).toEqual([])
-    const page = readFileSync(path.join(root, 'vx', 'docs', 'modules', 'telemetry.md'), 'utf8')
+    const page = readFileSync(path.join(root, 'vx', 'docs', 'modules', 'orchestrator.md'), 'utf8')
     expect(page).not.toContain('consumers reject unknown majors')
     expect(page).toContain('no first-party sink checks it')
   })

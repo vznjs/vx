@@ -173,7 +173,7 @@ describe('every internal link in the built site', () => {
       /<title>([^<|]*?)\s*\|/.exec(readFileSync(path.join(DIST, page), 'utf8'))?.[1]
     expect([title('modules/index.html'), title('modules/public-surface/index.html')]).toEqual([
       'Module reference',
-      'src/index.ts — public package surface',
+      'src/*.ts — the package root',
     ])
   })
 

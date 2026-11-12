@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, statSync, writeFileSync } f
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { fsClockNow } from '../src/cache/index.js'
+import { fsClockNow } from '../src/memo/index.js'
 
 const base = mkdtempSync(path.join(os.tmpdir(), 'vx-fs-clock-now-'))
 afterAll(() => rmSync(base, { recursive: true, force: true }))

@@ -62,8 +62,8 @@ export interface StatusRegionState {
   /** The run was stopped: running rows say `aborting`, idle rows leave. */
   stopping?: boolean
   /**
-   * vx's own steps still running, shown below the worker rows: no worker
-   * slot or `--concurrency` bounds them (2026-10-15).
+   * vx's own steps still running, shown below the worker rows: no worker slot
+   * or `--concurrency` bounds them.
    */
   steps?: readonly WorkerSlot[]
   /** Clock value used for per-slot elapsed (injectable for tests). */
@@ -118,9 +118,9 @@ export function formatFailureLine(
 const INTERNAL = 'internal'
 
 /**
- * The list row of one of vx's own steps (`vx:uploads`), on the task grid
- * with `internal` in the cache column: a step is no task and caches
- * nothing (2026-10-16: `4.60s success internal vx:keep-run`).
+ * The list row of one of vx's own steps (`vx:uploads`), on the task grid with
+ * `internal` in the cache column: a step is no task and caches nothing (`4.60s
+ * success internal vx:keep-run`).
  */
 export function formatStepLine(
   id: string,
@@ -175,13 +175,12 @@ export function formatStatusRegion(
     )
   }
 
-  // Running rows: `running` in yellow, then the live elapsed time (no
-  // spinner; the ticking time IS the motion), the usual duration,
-  // how many tasks wait on it, and the full id (never truncated — name is
-  // the last column). The rows no task runs in hold the tasks planned
-  // next, each nested under what it waits on. No blank rows pad the list
-  // to the worker count: a run using 2 of 12 workers left 10 empty lines
-  // between its rows and the footer (2026-10-29).
+  // Running rows: `running` in yellow, then the live elapsed time (no spinner;
+  // the ticking time IS the motion), the usual duration, how many tasks wait on
+  // it, and the full id (never truncated — name is the last column). The rows
+  // no task runs in hold the tasks planned next, each nested under what it
+  // waits on. No blank rows pad the list to the worker count: a run using 2 of
+  // 12 workers left 10 empty lines between its rows and the footer.
   const running = s.slots.filter((x): x is WorkerSlot => x !== null && x.waiting !== true)
   // Placed by an executor (DTE), the list is what runs: blocked tasks are
   // the tasks line's count alone, and its size is no machine's.

@@ -27,11 +27,10 @@ import {
 type Child = ReturnType<typeof Bun.spawn>
 
 /**
- * The abort reason that stops a run's own work and spares its ready
- * servers, handed in (`RunOptions.keep`) or made ready by the run, which
- * it hands back. `vx watch` stops a cycle waiting on a server that never
- * becomes ready (WD-15); any other stop took the unchanged servers down
- * with it, and they restarted.
+ * The abort reason that stops a run's own work and spares its ready servers,
+ * handed in (`RunHandoff.keep`) or made ready by the run, which it hands back.
+ * `vx watch` stops a cycle waiting on a server that never becomes ready; any
+ * other stop took the unchanged servers down with it, and they restarted.
  */
 export const CYCLE_INTERRUPT = 'vx:cycle-interrupt'
 
@@ -40,13 +39,13 @@ export interface RunStop {
   readonly liveChildren: Set<Child>
   readonly persistentRegistry: Map<string, Child>
   /**
-   * The process signal that stopped the run. A run a process signal
-   * stopped records no history: until item 849 the handler exited before
-   * any outcome landed, and a Ctrl-C'd run then read in `vx last` as
-   * FAILED with 0 tasks (item 854). So does an embedder's abort whose
-   * reason names one (`'SIGINT'`, `'SIGTERM'`, `'SIGHUP'`): the signal the
-   * embedder received, as the watch loop relays a Ctrl-C to its cycle. Any
-   * other abort is the embedder's own call and keeps its record.
+   * The process signal that stopped the run. A run a process signal stopped
+   * records no history: otherwise a Ctrl-C'd run would read in `vx last` as
+   * FAILED with 0 tasks.
+   * So does an embedder's abort whose reason names one (`'SIGINT'`,
+   * `'SIGTERM'`, `'SIGHUP'`): the signal the embedder received, as the watch
+   * loop relays a Ctrl-C to its cycle. Any other abort is the embedder's own
+   * call and keeps its record.
    */
   readonly stoppedBy: StopSignal | undefined
   /**
@@ -58,9 +57,8 @@ export interface RunStop {
    */
   readonly aborting: Promise<void> | undefined
   /**
-   * The servers that had ended when the stop landed: those crashed. One
-   * that ends after it is the stop's own kill, and was named a crash
-   * (item 1061).
+   * The servers that had ended when the stop landed: those crashed. One that
+   * ends after it is the stop's own kill, and was named a crash.
    */
   readonly endedBeforeStop: ReadonlySet<Child> | undefined
   /** The graph finished: a server ending from here on is said by the end of the run. */
@@ -88,11 +86,11 @@ export function runStop(args: {
 }): RunStop {
   const { log, external } = args
   const liveChildren = new Set<Child>()
-  // A server that ends on its own while the graph still runs is said at
-  // once: its dependants were failing against it, and the end of the run
-  // was the first word of it (C-69). Not once the graph is done (the end
-  // of the run and the keep-alive wait say it) nor under a stop, nor once
-  // the run took it out to stop it (no task left needed it).
+  // A server that ends on its own while the graph still runs is said at once:
+  // its dependants were failing against it, and the end of the run was the
+  // first word of it. Not once the graph is done (the end of the run and the
+  // keep-alive wait say it) nor under a stop, nor once the run took it out to
+  // stop it (no task left needed it).
   let graphDone = false
   const persistentRegistry = new (class extends Map<string, Child> {
     override set(id: string, child: Child): this {

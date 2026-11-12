@@ -162,7 +162,7 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
       const built = deferred.outcomes.find((o) => o.node.id === 'pkg#build')
       expect(built?.status).toBe('success')
       // THE claim: the declared output never reached this machine.
-      expect(built?.outputs).toBe('deferred')
+      expect(built?.cache?.deferred).toBe(true)
       expect(await exists(path.join(root, 'pkg', 'out.txt'))).toBe(false)
 
       // Eager re-run of the same key: the record answers, so nothing

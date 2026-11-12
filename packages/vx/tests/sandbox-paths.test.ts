@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { isMountableLiteral, MOUNT_WILDCARDS } from '../src/exec/index.js'
+import { isMountableLiteral, MOUNT_WILDCARDS } from '../src/sandbox/paths.js'
 import { BUN_GLOB_WILDCARDS, GLOB_WILDCARDS, isLiteralPattern } from '../src/util/index.js'
 
 const ALPHABET: Array<[string, string, { glob: boolean; mount: boolean }]> = [
@@ -50,7 +50,7 @@ describe('isLiteralPattern and isMountableLiteral, member by member', () => {
 describe('the two alphabets have one spelling each in src/', () => {
   it('no inline `[*?[` character class outside their homes', () => {
     const SRC = path.resolve(import.meta.dir, '..', 'src')
-    const homes = new Set(['util/paths.ts', 'exec/sandbox-paths.ts'])
+    const homes = new Set(['util/paths.ts', 'sandbox/paths.ts'])
     const found: string[] = []
     for (const rel of new Bun.Glob('**/*.ts').scanSync({ cwd: SRC })) {
       const file = rel.split(path.sep).join('/')

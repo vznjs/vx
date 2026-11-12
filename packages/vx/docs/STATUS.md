@@ -1,8 +1,7 @@
 # STATUS
 
 Direction and what is next. Edit it only when one of them changes. A
-merged change is recorded in its PR and change file, not here. The file
-as it stood until 2026-11-10 is `docs/history/2026-11-status-archive.md`.
+merged change is recorded in its PR and change file, not here.
 
 ## Direction (2026-11-10)
 

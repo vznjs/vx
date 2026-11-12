@@ -1,5 +1,5 @@
 // The remote-cache seam, end to end: core ships NO wire client
-// (docs/modules/layered-cache.md), so every remote layer here is an injected
+// (docs/modules/cache.md#srccachelayered-cachets--the-local-cache-with-the-declared-remotes-behind-it), so every remote layer here is an injected
 // `RunOptions.remoteCache` — an in-memory RemoteCacheLayer or a stub-HTTP
 // one where observing the wire matters. Coverage carried over from the
 // retired env-hatch (VX_REMOTE_CACHE_*) suites: the remote-hit e2e, the
@@ -21,6 +21,7 @@ import {
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
 import { indexDb, Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { LocalMemo } from '../src/memo/index.js'
 import { ownRssHighWater } from '../src/exec/runner.js'
 import { type RunSummaryRecord, type TelemetryRecord } from '../src/orchestrator/index.js'
 import { cacheKeyDiff, latestRunId, LocalHistoryProvider } from '../src/history/index.js'
@@ -28,6 +29,7 @@ import { planRun, run } from './helpers/orchestrator.js'
 import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
+import { RunHistory } from '../src/history/run-history.js'
 
 /**
  * A stub HTTP artifact ENDPOINT + the RemoteCacheLayer speaking to it —
@@ -1197,7 +1199,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
       // failed the finished run with a stack. History is observability: the
       // verdict stands, the line says what was lost, and close() still runs.
       const closeSpy = spyOn(Cache.prototype, 'close')
-      const recordSpy = spyOn(Cache.prototype, 'recordRunBundle').mockImplementation(() => {
+      const recordSpy = spyOn(RunHistory.prototype, 'recordRunBundle').mockImplementation(() => {
         throw new Error('SQLITE_BUSY: database is locked')
       })
       try {
@@ -1507,8 +1509,8 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         expect(produced.status).toBe('success')
         // The runner reports rusage on linux and darwin; the differential
         // below needs a real number, not an absent one.
-        expect(produced.peakRssBytes).toBeGreaterThanOrEqual(mb * MB)
-        expect(produced.storedPeakRssBytes).toBeUndefined()
+        expect(produced.usage?.peakRssBytes).toBeGreaterThanOrEqual(mb * MB)
+        expect(produced.cache?.stored?.peakRssBytes).toBeUndefined()
 
         // The fresh runner: no local cache, no history.
         await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
@@ -1520,17 +1522,17 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         })
         const hit = second.outcomes[0]!
         expect(hit.status).toBe('cache-hit-remote')
-        expect(hit.storedPeakRssBytes).toBe(produced.peakRssBytes!)
-        expect(hit.storedCpuMs).toBe(produced.cpuMs!)
+        expect(hit.cache?.stored?.peakRssBytes).toBe(produced.usage!.peakRssBytes!)
+        expect(hit.cache?.stored?.cpuMs).toBe(produced.usage!.cpuMs!)
         // A hit spent no CPU of its own on the task.
-        expect(hit.peakRssBytes).toBeUndefined()
-        expect(hit.cpuMs).toBeUndefined()
+        expect(hit.usage?.peakRssBytes).toBeUndefined()
+        expect(hit.usage?.cpuMs).toBeUndefined()
 
         // What `@vzn/vx-history` reads on this runner's NEXT run.
         const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
         try {
           const table = await new LocalHistoryProvider(indexDb(local)).loadFor(['app#build'])
-          expect(table.get('app#build')?.maxPeakRssBytes).toBe(produced.peakRssBytes!)
+          expect(table.get('app#build')?.maxPeakRssBytes).toBe(produced.usage!.peakRssBytes!)
           expect(table.get('app#build')?.hitRate).toBe(1)
         } finally {
           local.close()
@@ -2114,9 +2116,9 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
       // run takes its hits and then dies before its own close.
       const fixture = await makeFixture('vx-remote-e2e-')
       const g = globalThis as Record<string, unknown>
-      const record = Cache.prototype.recordOutputDirs
-      const dirs = spyOn(Cache.prototype, 'recordOutputDirs').mockImplementation(function (
-        this: Cache,
+      const record = LocalMemo.prototype.recordOutputDirs
+      const dirs = spyOn(LocalMemo.prototype, 'recordOutputDirs').mockImplementation(function (
+        this: LocalMemo,
         ...args
       ) {
         // Only the run-end snapshot (it passes `holds`): the hit path's own

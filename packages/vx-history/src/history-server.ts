@@ -42,7 +42,7 @@ export function outcomeOf(o: TaskOutcome, def: string): ServerOutcome | undefine
   if (o.blockedBy !== undefined || o.taintedBy !== undefined) return undefined
   if (o.status === 'failed') return { hash: def, key: o.hash, outcome: 'fail' }
   if (o.status !== 'success') return undefined
-  const flaky = (o.attempts ?? 1) > 1 || o.flaky !== undefined
+  const flaky = (o.attempts?.count ?? 1) > 1 || o.attempts?.flaky !== undefined
   return { hash: def, key: o.hash, outcome: flaky ? 'flaky' : 'pass' }
 }
 
@@ -69,27 +69,33 @@ export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   // reading where the share is 0. Uncapped, a crowded 4-core worker sent 8
   // and a DTE plan booked that; an Infinity went as null and the server
   // refused the whole upload.
+  const cpuMs = o.usage?.cpuMs
   const need =
-    o.cpuMs === undefined || o.durationMs <= 0
+    cpuMs === undefined || o.durationMs <= 0
       ? undefined
-      : Math.min(o.cpuMs / (o.durationMs * (o.cpuShare ?? 1)), o.whereCores ?? Infinity)
+      : Math.min(
+          cpuMs / (o.durationMs * (o.placement?.cpuShare ?? 1)),
+          o.placement?.cores ?? Infinity,
+        )
   // A share rounded to 0 divides by it, and the server refuses the upload.
   const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),
-    ...(o.peakRssBytes === undefined ? {} : { rssBytes: o.peakRssBytes }),
+    ...(o.usage?.peakRssBytes === undefined ? {} : { rssBytes: o.usage.peakRssBytes }),
   }
 }
 
 /**
  * How long it would have taken alone, as core's local history stores it
  * (`run-history.ts` aloneMs): on a crowded DTE worker (`cpuShare` < 1) each
- * thread waited for a core. Sent as it ran, every crowded run raised the
- * shared number a forecast reads (2026-10-26).
+ * thread waited for a core. Sent as it ran, every crowded run raised the shared
+ * number a forecast reads.
  */
 function aloneMs(o: TaskOutcome): number {
-  const { durationMs: d, cpuMs: c, cpuShare: s } = o
+  const d = o.durationMs
+  const c = o.usage?.cpuMs
+  const s = o.placement?.cpuShare
   if (c === undefined || s === undefined || !(s > 0 && s < 1) || !(d > 0)) return Math.round(d)
   return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
@@ -102,9 +108,9 @@ const deadline = (stop?: AbortSignal): AbortSignal => {
 }
 
 /**
- * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
- * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
- * overwrote the line before (core's `printable`, L-31).
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words reach
+ * the terminal, and an `ESC ]` or `\r` in them retitled it or overwrote the
+ * line before (core's `printable`).
  */
 const printable = (s: string): string =>
   // oxlint-disable-next-line no-control-regex
@@ -313,9 +319,9 @@ export class HistoryServer {
 
   /**
    * One answer, asked again while `again(status)` (`undefined`: no answer)
-   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at the run's end,
-   * and one 503 there, or from GitHub's OIDC endpoint (as vx-cache asks
-   * it, #4571), lost the run's timings.
+   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at
+   * the run's end, and one 503 there, or from GitHub's OIDC endpoint (as
+   * vx-cache asks it), lost the run's timings.
    */
   private async tried(
     send: () => Promise<Response>,
@@ -397,7 +403,7 @@ export class HistoryServer {
     )
     if (res.status >= 300 && res.status < 400) throw await redirected(res, url)
     if (res.status === 401 && bearer === '') {
-      // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
+      // Off CI: the bare 401 said nothing of why or what to do.
       const err = await refusal(res, this.hidden)
       const fix =
         this.env.GITHUB_ACTIONS === 'true'
@@ -428,10 +434,10 @@ export class HistoryServer {
 
   /**
    * `items` in requests of `send`, whole until an answer names the limit
-   * (`vx-max-*`): one refused for its size is sent again in parts of the
-   * limit it names, each a smaller one than the last. Nothing is asked apart: `/v1/capabilities` cost
-   * every run a request, and the query a round-trip (2026-11-06). A query
-   * sends its parts at once; an upload one after another, so a refused
+   * (`vx-max-*`): one refused for its size is sent again in parts of the limit
+   * it names, each a smaller one than the last. Nothing is asked apart:
+   * `/v1/capabilities` cost every run a request, and the query a round-trip. A
+   * query sends its parts at once; an upload one after another, so a refused
    * part resends no part the server folded.
    */
   private async parts<T, R>(

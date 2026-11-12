@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
+import { sandboxRequestFor } from '../src/sandbox/request.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, gitIn, gitInit, makeWorkspace } from './helpers/workspace.js'
@@ -93,7 +93,7 @@ describe.skipIf(!available)('a sandboxed task and a git dir outside the workspac
     git('commit', '-qm', 'init')
     const r = await run({ cwd: ws, tasks: ['a#t'] })
     expect(r.outcomes[0]?.status).toBe('failed')
-    const lines = r.outcomes[0]?.sandboxViolationLines ?? []
+    const lines = r.outcomes[0]?.sandbox?.lines ?? []
     // Linux traces no stat, so git's own words bring the hint; macOS
     // reports the hidden read itself. Either names the .git, and no grant.
     const named = lines.filter((l) => l.includes(`${repo}/.git`))

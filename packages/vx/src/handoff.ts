@@ -1,12 +1,11 @@
-// A global vx hands off to the project's own (2026-10-13), found
-// from the workspace root, the one lookup every verb shares. Here for
-// the compiled binary installed by hand; an npm install's launcher
-// (npm-launcher.sh) walks the same way and `exec`s, which Bun cannot. The
-// walk runs before anything else loads, through `Bun.Glob` and
-// `Bun.file(…).exists()`: importing `node:fs` alone was ~1.1 ms of a 4 ms
-// start (2026-10-13).
+// A global vx hands off to the project's own, found from the workspace root,
+// the one lookup every verb shares. Here for the compiled binary installed by
+// hand; an npm install's launcher (npm-launcher.sh) walks the same way and
+// `exec`s, which Bun cannot. The walk runs before anything else loads, through
+// `Bun.Glob` and `Bun.file(…).exists()`: importing `node:fs` alone was ~1.1 ms
+// of a 4 ms start.
 
-/** `vx upgrade -g`: moves only the global vx, so it never hands off (2026-10-16). */
+/** `vx upgrade -g`: moves only the global vx, so it never hands off. */
 export function upgradesOnlyItself(argv: readonly string[]): boolean {
   return argv[0] === 'upgrade' && argv.some((a) => a === '-g' || a === '--global')
 }
@@ -45,8 +44,8 @@ export async function localVx(
 }
 
 /**
- * The workspace config's paths under the root, in lookup order: one marks
- * the workspace root, the directory holding its `.vx` (2026-10-14).
+ * The workspace config's paths under the root, in lookup order: one marks the
+ * workspace root, the directory holding its `.vx`.
  */
 export const WORKSPACE_CONFIG_FILENAMES = [
   '.vx/workspace.ts',
@@ -54,7 +53,7 @@ export const WORKSPACE_CONFIG_FILENAMES = [
   '.vx/workspace.js',
   '.vx/workspace.mjs',
   // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
-  // was ignored without a word (D-86).
+  // was ignored without a word.
   '.vx/workspace.cts',
   '.vx/workspace.cjs',
 ]
@@ -69,10 +68,9 @@ const files = new Map<string, Promise<string | null>>()
 /**
  * The workspace config that marks the root for `dir`: the first
  * `.vx/workspace.*` from `dir` up to the git top-level ({@link gitTop}),
- * inclusive, or to `/` outside git (2026-10-13: "Workspace file is
- * the ultimate" and "never go out of git root"). Null when there is none.
- * Learned once per directory per run: the hand-off and the workspace root
- * share it (principle 9).
+ * inclusive, or to `/` outside git. Null when there is none. Learned once per
+ * directory per run: the hand-off and the workspace root share it (principle
+ * 9).
  */
 export function workspaceFile(dir: string): Promise<string | null> {
   let file = files.get(dir)
@@ -93,13 +91,13 @@ const workspaceNames = new Bun.Glob('workspace.*')
 const broken = new Set<string>()
 
 /**
- * The workspace config in `d`'s `.vx`: the first of the names that is a
- * file, else the first entry by one of them (a broken link, a directory),
- * which marks the root all the same, as `vx lock`'s discovery counts it,
- * and is refused there ({@link workspaceFileBroken}). A level without
- * one costs a stat and a failed open, where a stat per name was six:
- * 9 us against 15 us from three levels down, 1 us at a root holding
- * `.vx/workspace.ts` either way (min of 2000, 2026-11-07).
+ * The workspace config in `d`'s `.vx`: the first of the names that is a file,
+ * else the first entry by one of them (a broken link, a directory), which marks
+ * the root all the same, as `vx lock`'s discovery counts it, and is refused
+ * there ({@link workspaceFileBroken}). A level without one costs a stat and a
+ * failed open, where a stat per name was six: 9 us against 15 us from three
+ * levels down, 1 us at a root holding `.vx/workspace.ts` either way (min of
+ * 2000).
  */
 async function workspaceEntryIn(d: string): Promise<string | null> {
   // The name `vx init` writes, first: at the root, the stat it always was.
@@ -155,8 +153,8 @@ async function findWorkspaceFile(start: string): Promise<string | null> {
  * The workspace config of the repository `top` is embedded in (an untracked
  * clone with its own `.git` directory), when that repository's git does not
  * ignore it: `vx lock` lists such a repository's configs as the outer
- * workspace's, and a run from inside one stopped at its `.git`, "no
- * .vx/workspace.ts". A submodule's walk goes on already ({@link gitTop}).
+ * workspace's, and a run from inside one stopped at its `.git`,
+ * "no.vx/workspace.ts". A submodule's walk goes on already ({@link gitTop}).
  * Asked only when the walk found nothing, so a run pays nothing for it.
  */
 async function outerWorkspaceFile(top: string): Promise<string | null> {
@@ -258,9 +256,9 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   // hides the env on every verb, is never reached here. Imported here:
   // a start that hands off nothing pays nothing.
   await (await import('./util/index.js')).hideEnvFromTasks()
-  // The handlers come first: a signal landing between the spawn and them
-  // killed this vx and left the local one running, orphaned (main
-  // dc9d49c). A handler runs on the event loop, after the spawn returned.
+  // The handlers come first: a signal landing between the spawn and them killed
+  // this vx and left the local one running, orphaned. A handler runs on the
+  // event loop, after the spawn returned.
   let child: Bun.Subprocess | undefined
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     process.on(sig, () => {

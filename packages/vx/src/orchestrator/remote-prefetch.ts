@@ -11,14 +11,13 @@
 // in-flight (resolved-or-pending) remote promise — at most ONE remote
 // GET per key.
 //
-// HARD SCOPE: this runs ONLY when a remote layer is configured. It
-// asks the local index only which keys it holds (no local get / no
-// isOutputsCurrent), and probes the remote for the rest: a run the local
-// cache answers makes no remote call (2026-10-15). Local-only
-// runs are byte-identical to before; the caller gates on the layer's
-// own `hasRemote`, so a third-party remote layer gets the overlap too.
-// The two batch-probe hooks are OPTIONAL on the contract: a remote layer
-// that implements neither still prefetches, per-hash.
+// HARD SCOPE: this runs ONLY when a remote layer is configured. It asks the
+// local index only which keys it holds (no local get / no isOutputsCurrent),
+// and probes the remote for the rest: a run the local cache answers makes no
+// remote call. Local-only runs are byte-identical to before; the caller gates
+// on the layer's own `hasRemote`, so a third-party remote layer gets the
+// overlap too. The two batch-probe hooks are OPTIONAL on the contract: a remote
+// layer that implements neither still prefetches, per-hash.
 
 import type { TaskNode } from '../graph/index.js'
 import { maskedCommand } from '../util/index.js'
@@ -133,41 +132,39 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   const pool = fetchPool(args.concurrency, (k) =>
     args.cache.prefetch(k.hash, getContext(k.node, k.node.config.exec?.command ?? '')),
   )
-  // Trusted at once: a key the index says a remote holds is a hit and its
-  // pull starts now, before any remote answers (2026-10-23). The probe
-  // below still asks for all of them.
-  // One that knows none of them says nothing: a fresh CI runner's empty
-  // index called every key a miss, and main asked 15 workers for 16 misses
-  // (75f58f9, 2026-10-23). The probe answers them.
+  // Trusted at once: a key the index says a remote holds is a hit and its pull
+  // starts now, before any remote answers. The probe below still asks for all
+  // of them. One that knows none of them says nothing: a fresh CI runner's
+  // empty index called every key a miss, and main asked 15 workers for 16
+  // misses (75f58f9). The probe answers them.
   const kept = args.cache.remoteKnown?.(uniqueHashes)
   const known = kept === undefined || kept.size === 0 ? undefined : kept
   if (known !== undefined) pool.push(toPrefetch.filter((k) => known.has(k.hash)))
   const probeAt = performance.now()
   const asked = args.cache.remoteHasMany?.(uniqueHashes)
-  // The first keys in graph order are pulled now too, the probe unanswered:
-  // on CI it answered ~490 ms in, after a GET did (~250 ms), and a hit's
-  // dependant waited on its own GET once its upstream hit landed
-  // (2026-10-24). At most one pool's worth of these can 404.
+  // The first keys in graph order are pulled now too, the probe unanswered: on
+  // CI it answered ~490 ms in, after a GET did (~250 ms), and a hit's dependant
+  // waited on its own GET once its upstream hit landed. At most one pool's
+  // worth of these can 404.
   const eager = toPrefetch.filter((k) => known?.has(k.hash) !== true).slice(0, args.concurrency)
   if (asked !== undefined) pool.push(eager)
-  // Demand hears the index only when no probe will answer: a key the
-  // index lacks may still be held (a PR's CI stored main's next tree), and
-  // calling it a miss asked 14 workers for 71 tasks, 17 of which ran
-  // (main 7391c93, 2026-10-23). The probe is one round-trip.
+  // Demand hears the index only when no probe will answer: a key the index
+  // lacks may still be held (a PR's CI stored main's next tree), and calling it
+  // a miss asked 14 workers for 71 tasks, 17 of which ran. The probe is one
+  // round-trip.
   const early = known !== undefined && asked === undefined
   if (early) tell((h) => held?.has(h) === true || known.has(h), true)
 
-  // Batch existence probe (when the remote supports it): one round-trip
-  // tells us which of the N stable hashes exist remotely, so we GET only the
-  // hits and pre-mark the misses — their lazy `get` then short-circuits with
-  // no network. This collapses N probe waves into 1 and skips every GET that
-  // would 404. When the remote can't batch (`null` — an older remote, reads
-  // disabled, or a layer that doesn't implement the hook at all), fall back to
-  // prefetching every stable key, exactly as before.
-  // A remote that answered no batch query is asked key by key when demand
-  // plans on the answer: main f71b377 asked 15 workers for 116 tasks, 107
-  // restored, and small#1 joined to nothing (2026-10-23). A run that plans
-  // nothing pulls instead, as before.
+  // Batch existence probe (when the remote supports it): one round-trip tells
+  // us which of the N stable hashes exist remotely, so we GET only the hits and
+  // pre-mark the misses — their lazy `get` then short-circuits with no network.
+  // This collapses N probe waves into 1 and skips every GET that would 404.
+  // When the remote can't batch (`null` — an older remote, reads disabled, or a
+  // layer that doesn't implement the hook at all), fall back to prefetching
+  // every stable key, exactly as before. A remote that answered no batch query
+  // is asked key by key when demand plans on the answer: a run that asked 15
+  // workers for 116 tasks restored 107, and one worker joined to nothing. A run
+  // that plans nothing pulls instead, as before.
   let present = (await asked) ?? null
   if (asked !== undefined)
     span(args.spans, 'remote probe', probeAt, {
@@ -179,11 +176,11 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   if (!early) tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
-    // The pre-mark above already answers a pull for an absent hash from
-    // the in-flight map, so on the wire this filter is the pump's
-    // economy: deleting it alone GETs nothing extra, deleting both GETs
-    // every absent key. What it decides is which hashes the pump asks
-    // the layer for, and that is what the row pins (item 643, 645).
+    // The pre-mark above already answers a pull for an absent hash from the
+    // in-flight map, so on the wire this filter is the pump's economy: deleting
+    // it alone GETs nothing extra, deleting both GETs every absent key. What it
+    // decides is which hashes the pump asks the layer for, and that is what the
+    // row pins.
     toPrefetch = toPrefetch.filter((k) => present.has(k.hash))
   }
   const pulled = new Set(asked === undefined ? [] : eager)
@@ -225,21 +222,20 @@ function fetchPool(
 }
 
 /**
- * What a cache lookup is told about the task: its id and command for the
- * row a remote hit inserts, and its declared outputs, the only names a
- * remote artifact may carry (item 942). Shared with execute-task's own
- * lookup, the other one that can reach a remote.
+ * What a cache lookup is told about the task: its id and command for the row a
+ * remote hit inserts, and its declared outputs, the only names a remote
+ * artifact may carry. Shared with execute-task's own lookup, the other one that
+ * can reach a remote.
  */
 export function getContext(node: TaskNode, command: string) {
   const outputs = node.config.outputs
   let masked: string | undefined
   return {
     taskId: node.id,
-    // Stored in the entry row a remote hit inserts: masked as a save's is,
-    // or the token a config inlined sat in cache.db (L-27). Masked on the
-    // first read: only an adopt or a remote hit reads it, and masking every
-    // lookup's command cost a cold 1,090-package run ~20 ms before its
-    // first task.
+    // Stored in the entry row a remote hit inserts: masked as a save's is, or
+    // the token a config inlined sat in cache.db. Masked on the first read:
+    // only an adopt or a remote hit reads it, and masking every lookup's
+    // command cost a cold 1,090-package run ~20 ms before its first task.
     get command() {
       return (masked ??= maskedCommand(command, node.config.exec?.env))
     },

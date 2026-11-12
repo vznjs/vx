@@ -32,7 +32,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a refused write', (
       } } } }\n`,
     })
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    return r.outcomes[0]?.sandboxViolationLines
+    return r.outcomes[0]?.sandbox?.lines
   }
 
   it('under the host temp directory names $TMPDIR, not a grant of it', async () => {

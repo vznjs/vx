@@ -2,52 +2,16 @@
 // outside src/ui names a hue or writes an escape byte
 // (tests/ui-only-output.unsafe.test.ts); a component asks for a style.
 
+import type { Style, Tone } from '../util/index.js'
+
+export type { Style, Tone } from '../util/index.js'
+
 /** Whether a stream paints, and how wide it is. */
 export interface ColorSupport {
   enabled: boolean
   /** The terminal's width, read live; none off a terminal. Bars and rules fit it. */
   readonly columns?: number | undefined
 }
-
-/**
- * A style every component and inline token draws with, by the level of
- * what it marks. Five levels, each one look, brightest first:
- *
- *   1 outcome   how a thing went: a tone (`ok` `warn` `error` `info`,
- *               `aborted`, `notRun`), its glyph and status word bold
- *   2 name      what it is about: a title (`heading`), an id's hues, a
- *               command or path to type (`strong`, `term`), where a
- *               cache answer came from (`local`, `remote`)
- *   3 value     the fact itself: a field's value, a table cell, a
- *               sentence (`value`, a soft light grey: no line of vx
- *               reads plain white)
- *   4 meta      what frames a fact: a label, a unit, a hint, a count
- *               (`muted`, `label`)
- *   5 chrome    rules and separators (`border`)
- *
- * A component picks the level; a plain string takes the level of where it
- * sits (a value in a field, meta in a title's count).
- */
-export type Style =
-  | 'ok'
-  | 'warn'
-  | 'error'
-  | 'info'
-  | 'aborted'
-  | 'notRun'
-  | 'local'
-  | 'remote'
-  | 'heading'
-  | 'term'
-  | 'value'
-  | 'muted'
-  | 'strong'
-  | 'label'
-  | 'border'
-  | 'plain'
-
-/** How a status went: the four a notice or a status line can be. */
-export type Tone = 'ok' | 'warn' | 'error' | 'info'
 
 const HUE: Record<Style, string> = {
   ok: '#22c55e', // green-500
@@ -85,7 +49,7 @@ const BAR_LABEL = GUTTER
 
 /**
  * Identity hues for the two halves of a `project#task` id, never a status
- * colour: one name, one hue, in every run, list and row (2026-10-15).
+ * colour: one name, one hue, in every run, list and row.
  */
 const IDENTITY = [
   '#a78bfa', // violet-400
@@ -112,10 +76,10 @@ const hues = new Map<string, string>()
 
 /**
  * Standard env precedence:
- *   NO_COLOR non-empty          → off (overrides FORCE_COLOR)
- *   FORCE_COLOR=0 or =false     → off, even on a TTY
+ *   NO_COLOR non-empty → off (overrides FORCE_COLOR)
+ *   FORCE_COLOR=0 or =false → off, even on a TTY
  *   FORCE_COLOR any other value → on (the empty string too)
- *   any CI (`onCi`)             → on: a CI log looks like the terminal
+ *   any CI (`onCi`) → on: a CI log looks like the terminal
  *   else: on iff the stream is a TTY that is not `TERM=dumb`.
  * `0` and `false` are the convention's "off" (supports-color, chalk,
  * Node); reading every non-empty value as on painted a piped CI log that

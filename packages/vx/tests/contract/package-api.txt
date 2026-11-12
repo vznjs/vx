@@ -1,50 +1,28 @@
-== class BoundedCapture (src/exec/runner.ts)
-export class BoundedCapture {
-  constructor(
-    private readonly headChars = CAPTURE_HEAD_CHARS,
-    private readonly tailChars = CAPTURE_TAIL_CHARS,
-  ) {}
-  push(text: string, err = false): void
-  rebound(
-    headChars: number,
-    tailChars: number,
-    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
-  ): BoundedCapture
-  chunks(): CapturedChunk[]
-  text(): string
-}
 == class Cache (src/cache/cache.ts)
 export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
-  runId: string | undefined
-  readonly remoteHits: RemoteHits
-  readonly storeDir: string | undefined
-  readonly schemaReset: SchemaReset | null
-  readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   constructor(
-    private readonly cacheDir: string,
+    cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
-    private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+    artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
-    private readonly store: StoreOptions = DEFAULT_STORE,
+    store: StoreOptions = DEFAULT_STORE,
   )
-  hashFile(filePath: string): Promise<string>
-  hashBytes(bytes: Uint8Array, nearPath: string): string
-  hashFiles(paths: readonly string[]): Promise<Map<string, string>>
-  knownBlobSizes(oids: readonly string[]): Map<string, number>
-  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
-  holdBlobSizes(): void
-  storeHeldBlobSizes(): void
-  blobVerdict(digest: string): string[] | undefined
-  rememberBlobVerdict(digest: string, paths: readonly string[]): void
-  foldMemo(): FoldMemo
+  get runId(): string | undefined
+  set runId(runId: string | undefined)
+  get remoteHits(): RemoteHits
+  get storeDir(): string | undefined
+  get schemaReset(): SchemaReset | null
+  get storeReset(): SchemaReset | null
+  get memo(): StoreMemo
   key(input: CacheKeyInput): Promise<string>
+  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
   getSaved(hash: string): Promise<CacheEntry | null>
@@ -55,22 +33,10 @@ export class Cache implements CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async localHasMany(hashes: readonly string[]): Promise<Set<string>>
-  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
   kept(hash: string): boolean
   artifactSize(hash: string): number | undefined
-  async recordOutputDirs(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   async restoreOutputs(
     hash: string,
     projectDir: string,
@@ -94,23 +60,8 @@ export class Cache implements CacheLayer {
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }>
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-    | { compressed: Uint8Array; tar: Uint8Array }
-    | { tmpPath: string }
-    | { plan: true; saved: SavedTree }
-  >
   checkpointOffThread(): void
   async stopCheckpoints(): Promise<void>
-  recordRun(run: RunRecord): void
-  recordRuns(
-    runs: readonly RunRecord[],
-    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void
-  recordMeasures(
-    measures: readonly MeasureRecord[],
-    head: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
-  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
@@ -265,14 +216,7 @@ export const tone = (t: Style, text: string, bold = false): Inline =>
   bold ? { style: t, text, bold } : { style: t, text }
 == const VERSION (src/version.ts)
 export const VERSION: string = pkg.version
-== function answerRuntime (src/cache/inputs.ts)
-export function answerRuntime(
-  command: string,
-  projectDir: string,
-  workspaceRoot: string,
-  workspace = false,
-): Promise<string>
-== function applyMigration (src/workspace/migration.ts)
+== function applyMigration (src/orchestrator/migration.ts)
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
 == function branchCacheScope (src/workspace/config-schema.ts)
 export function branchCacheScope(repo: string, branch: string): string
@@ -346,12 +290,6 @@ export async function findWorkspaceRoot(
 ): Promise<string>
 == function fix (src/ui/components.ts)
 export function fix(action: Inline): Block
-== function foldScriptHooks (src/workspace/migration.ts)
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string
 == function gap (src/ui/components.ts)
 export function gap(): Block
 == function hostPlatform (src/exec/executor.ts)
@@ -379,15 +317,12 @@ export async function loadResolvedProjects(
   workspaceRoot: string,
   opts: { scope?: 'all' | readonly string[]; warn?: (message: string) => void } = {},
 ): Promise<Map<string, ProjectEntry>>
-== function localFloor (src/orchestrator/local-floor.ts)
-export function localFloor(
-  sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
-  onServer?: (taskId: string, pid: number | undefined) => void,
-): LocalFloor
 == function localHistory (src/history/history.ts)
 export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
 == function lockfileClaim (src/orchestrator/lockfile-claim.ts)
-export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
+export function lockfileClaim<L = unknown>(
+  options: LockfileClaimOptions<L>,
+): LockfileClaimHooks<L>
 == function machineMemoryBytes (src/util/cgroup.ts)
 export function machineMemoryBytes(probe: CgroupProbe = {}): number
 == function machineParallelism (src/util/cgroup.ts)
@@ -407,8 +342,6 @@ export function notice(p: NoticeParts): Block
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
 == function outputsOverlap (src/graph/task-graph.ts)
 export function outputsOverlap(rawA: string, rawB: string): boolean
-== function packageManagerPath (src/exec/env.ts)
-export function packageManagerPath(root: string): string | null
 == function planRun (src/orchestrator/run.ts)
 export async function planRun(options: RunOptions): Promise<RunPlan>
 == function prepareRun (src/orchestrator/prepare.ts)
@@ -447,23 +380,6 @@ export function restorableOutput(
 ): (rel: string) => boolean
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
-== function sampleTrees (src/exec/proc-sample.ts)
-export async function sampleTrees(
-  roots: readonly number[],
-  skip?: ReadonlySet<string>,
-): Promise<Map<number, TreeUsage>>
-== function sandboxRequestFor (src/orchestrator/sandbox-request.ts)
-export async function sandboxRequestFor(
-  node: Pick<TaskNode, 'projectDir'>,
-  sandbox: NonNullable<ExecConfig['sandbox']>,
-  workspaceRoot: string,
-  keyed: ReadonlySet<string> | undefined,
-  nested: readonly string[] = [],
-  cacheDir?: string,
-  dependencyOutputs: readonly string[] = [],
-  dependencyReported: readonly string[] = [],
-  nestedOf: (projectDir: string) => readonly string[] = () => [],
-): Promise<SandboxRequest>
 == function say (src/ui/terminal.ts)
 export function say(t: Tone, line: string, stream: StreamName = 'err'): void
 == function secretNamed (src/util/secret-mask.ts)
@@ -476,8 +392,6 @@ export function section(title: string, ...rest: (Block | Inline)[]): Block
 export function splitTaskId(id: string): [project: string, task: string]
 == function status (src/ui/components.ts)
 export function status(t: Tone, verb: string, headline: Inline): Block
-== function sweepPlaceholders (src/orchestrator/sandbox-request.ts)
-export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 == function table (src/ui/components.ts)
 export function table(columns: readonly Column[], rows: readonly (readonly Inline[])[]): Block
 == function tagged (src/ui/components.ts)
@@ -494,6 +408,17 @@ export function transient(line: Inline): () => void
 export function why(line: Inline): Block
 == function withForwardArgs (src/exec/runner.ts)
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
+== function workerRuntime (src/orchestrator/worker-runtime.ts)
+export function workerRuntime(opts: {
+  readonly root: string
+  readonly onServer?: (taskId: string, pid: number | undefined) => void
+}): WorkerRuntime
+== type AbortedOutcome (src/graph/outcome.ts)
+export interface AbortedOutcome
+  extends StartedOutcome, None<FailureFacts>, BlockFacts, None<PlatformFacts> {
+  status: 'aborted'
+  serverExit?: number
+}
 == type AdmitContext (src/orchestrator/plugin.ts)
 export interface AdmitContext {
   readonly running: readonly TaskNode[]
@@ -532,8 +457,9 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
-  unmapped?: boolean
   emptyReason?: string
+  example?: boolean
+  written?: (relPaths: readonly string[]) => readonly string[]
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<{ code: number; said: string }>
@@ -579,6 +505,10 @@ interface BaseContext {
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
   readonly head?: (colors: ColorSupport) => string
+}
+== type BlockFacts (src/graph/outcome.ts)
+interface BlockFacts {
+  blockedBy?: string
 }
 == type BranchFacts (src/orchestrator/plugin.ts)
 export interface BranchFacts {
@@ -652,6 +582,7 @@ export interface CacheKeyInput {
 }
 == type CacheLayer (src/cache/layer.ts)
 export interface CacheLayer {
+  readonly memo: TaskMemo
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
@@ -677,17 +608,6 @@ export interface CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
-  recordOutputDirs?(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   restoreOutputs(
     hash: string,
     projectDir: string,
@@ -707,9 +627,7 @@ export interface CacheLayer {
     absent?: boolean
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
-  hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined
   outputBytes?(hash: string): number | undefined
@@ -796,11 +714,6 @@ export interface CommandContext extends BaseContext {
   readonly artifacts: TaskArtifacts
   artifactsFor(facts: () => CacheFacts | undefined): TaskArtifacts
 }
-== type CommandWindows (src/orchestrator/command-windows.ts)
-export interface CommandWindows {
-  open(id: string, projectDir: string, reach: WriteReach): () => void
-  writerDuring(self: string, file: string, from: number, to: number): string | undefined
-}
 == type ConfigContext (src/orchestrator/plugin.ts)
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
@@ -843,6 +756,18 @@ export interface DiscoveredProject {
   readonly name?: string
   readonly deps?: readonly string[]
   readonly reach?: readonly string[]
+}
+== type Distribution (src/exec/executor.ts)
+export interface Distribution {
+  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
+  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
+  running?(taskId: string): string | null | undefined
+  unneeded?(taskId: string): void
+  footer?(): readonly (readonly [label: string, text: Inline])[]
+  machines?(): readonly MachineReport[]
+  idealMs?(): number | undefined
+  advice?(): readonly WorkerAdvice[]
+  profile?(): readonly Record<string, unknown>[]
 }
 == type Duration (src/config.ts)
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
@@ -928,6 +853,17 @@ export interface ExecuteSandbox {
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
 }
+== type ExecutorCapabilities (src/exec/executor.ts)
+export interface ExecutorCapabilities {
+  readonly remote?: boolean
+  readonly sandbox?: boolean
+  readonly servers?: boolean
+  readonly runtime?: boolean
+  readonly exclusive?: boolean
+  readonly timeouts?: boolean
+  readonly platforms?: readonly string[]
+  readonly capacity?: number
+}
 == type ExecutorContext (src/orchestrator/plugin.ts)
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
@@ -939,6 +875,20 @@ export interface FailedAttempt {
   endedAt: number
   exitCode: number
   timedOut?: true
+}
+== type FailedOutcome (src/graph/outcome.ts)
+export interface FailedOutcome
+  extends StartedOutcome, FailureFacts, None<BlockFacts>, None<PlatformFacts> {
+  status: 'failed'
+  serverExit?: never
+}
+== type FailureFacts (src/graph/outcome.ts)
+interface FailureFacts {
+  timedOut?: true
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  inputMoved?: string
+  restoreFailed?: true
+  failedOutput?: string
 }
 == type FailureMode (src/history/failure-mode.ts)
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
@@ -981,7 +931,7 @@ export interface FingerprintDigests {
   readonly projects: Readonly<Record<string, string>>
   readonly extras?: readonly string[]
 }
-== type FoldMemo (src/cache/fold-memo.ts)
+== type FoldMemo (src/memo/fold-memo.ts)
 export interface FoldMemo {
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
@@ -1056,9 +1006,9 @@ export interface IngestMeta {
   inputComponents?: readonly TaskInputRow[]
   outputs?: DeclaredOutputs
 }
-== type Inline (src/ui/components.ts)
+== type Inline (src/util/styled.ts)
 export type Inline = string | Token | readonly Inline[]
-== type InputChanges (src/graph/scheduler.ts)
+== type InputChanges (src/graph/outcome.ts)
 export interface InputChanges {
   count: number
   first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
@@ -1083,7 +1033,7 @@ export interface InputStability {
   strategy?: 'immutable' | 'mutable' | 'unchecked'
   severity?: 'warn' | 'error'
 }
-== type InvocationRecord (src/cache/layer.ts)
+== type InvocationRecord (src/history/run-history.ts)
 export interface InvocationRecord {
   runId: string
   command: string
@@ -1142,13 +1092,6 @@ export interface LentAccess {
   readonly token: string
   readonly expiresAt?: number
 }
-== type LocalFloor (src/orchestrator/local-floor.ts)
-export interface LocalFloor {
-  execute(req: ExecuteRequest): Promise<ExecuteResult>
-  rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
-  stop(taskId: string): Promise<void>
-  close(): Promise<void>
-}
 == type LocalHistory (src/history/history.ts)
 export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
@@ -1174,20 +1117,20 @@ export interface LockedFile {
   digest(projectDir: string): string | undefined
 }
 == type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
-export interface LockfileClaimHooks {
+export interface LockfileClaimHooks<L = unknown> {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
-  importers(ctx: {
+  links(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
-  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  }): Promise<ReadonlyMap<string, L> | undefined>
   recorded(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
   }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 == type LockfileClaimOptions (src/orchestrator/lockfile-claim.ts)
-export interface LockfileClaimOptions {
+export interface LockfileClaimOptions<L = unknown> {
   readonly file: string
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly extraFiles?: (text: string) => readonly string[]
@@ -1195,14 +1138,8 @@ export interface LockfileClaimOptions {
   readonly identity?: string
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
-  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly links?: (text: string) => ReadonlyMap<string, L>
   readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
-}
-== type LockfileImporter (src/orchestrator/lockfile-claim.ts)
-export interface LockfileImporter {
-  readonly deps: Readonly<Record<string, string>>
-  readonly peers: Readonly<Record<string, string>>
-  readonly transitive?: readonly string[]
 }
 == type LockSettings (src/config.ts)
 export interface LockSettings {
@@ -1260,13 +1197,6 @@ export interface MeasureForecast {
   readonly durationMs: number
   readonly cores?: number
 }
-== type MeasureRecord (src/cache/layer.ts)
-export interface MeasureRecord {
-  readonly id: string
-  readonly def: string
-  readonly durationMs: number
-  readonly cores?: number
-}
 == type MigrationFormat (src/workspace/migration.ts)
 export type MigrationFormat = 'ts' | 'mjs'
 == type MigrationMember (src/workspace/migration.ts)
@@ -1274,7 +1204,7 @@ export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  readonly esModule?: boolean
 }
 == type MigrationPlan (src/workspace/migration.ts)
 export interface MigrationPlan {
@@ -1283,6 +1213,8 @@ export interface MigrationPlan {
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
 }
+== type None (src/graph/outcome.ts)
+type None<T> = { [K in keyof T]?: never }
 == type NoticeParts (src/ui/components.ts)
 export interface NoticeParts {
   tone: Tone
@@ -1309,6 +1241,72 @@ type OptionKind<V> = [V] extends [string]
           : [V] extends [object]
             ? 'object'
             : 'any'
+== type OutcomeAttempts (src/graph/outcome.ts)
+export interface OutcomeAttempts {
+  count?: number
+  failed?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  outputs?: readonly string[]
+  flaky?: { passes: number; failures: number }
+}
+== type OutcomeBase (src/graph/outcome.ts)
+interface OutcomeBase {
+  node: TaskNode
+  durationMs: number
+  timing?: OutcomeTiming
+  usage?: OutcomeUsage
+  cache?: OutcomeCache
+  sandbox?: OutcomeSandbox
+  attempts?: OutcomeAttempts
+  placement?: OutcomePlacement
+  groupUpstream?: readonly TaskOutcome[]
+  taintedBy?: string
+  runLog?: string
+}
+== type OutcomeCache (src/graph/outcome.ts)
+export interface OutcomeCache {
+  stored?: { durationMs: number; cpuMs?: number; peakRssBytes?: number }
+  restored?: boolean
+  saved?: true
+  inputFiles?: number
+  artifactBytes?: number
+  outputBytes?: number
+  inputChanges?: InputChanges
+  deferred?: true
+  off?: true
+  unkeyed?: true
+  driftedInput?: string | null
+  keylessBy?: string
+}
+== type OutcomePlacement (src/graph/outcome.ts)
+export interface OutcomePlacement {
+  where?: string
+  carried?: true
+  cores?: number
+  memoryBytes?: number
+  cpuShare?: number
+}
+== type OutcomeSandbox (src/graph/outcome.ts)
+export interface OutcomeSandbox {
+  violations: number
+  lines?: string[]
+  fix?: SandboxFix
+}
+== type OutcomeTiming (src/graph/outcome.ts)
+export interface OutcomeTiming {
+  queuedMs?: number
+  admissionHeldMs?: number
+  startNs?: bigint
+  endNs?: bigint
+  fetchMs?: number
+  saveMs?: number
+}
+== type OutcomeUsage (src/graph/outcome.ts)
+export interface OutcomeUsage {
+  cpuMs?: number
+  peakRssBytes?: number
+  peakCores?: number
+  avgRssBytes?: number
+}
 == type OutcomeView (src/report/events.ts)
 export interface OutcomeView {
   taskId: string
@@ -1347,12 +1345,12 @@ export interface OutputContext extends BaseContext {
   readonly isTTY: boolean
   readonly ci: boolean
 }
-== type OutputDirRow (src/cache/layer.ts)
+== type OutputDirRow (src/memo/output-index.ts)
 export interface OutputDirRow {
   path: string
   mtimeMs: number
 }
-== type OutputFileRow (src/cache/layer.ts)
+== type OutputFileRow (src/memo/output-index.ts)
 export interface OutputFileRow {
   path: string
   size: number
@@ -1370,11 +1368,6 @@ export interface OutputView {
 == type PersistentConfig (src/config.ts)
 export interface PersistentConfig {
   readyWhen?: string
-}
-== type Placeholder (src/orchestrator/sandbox-request.ts)
-export interface Placeholder {
-  path: string
-  mtimeMs: number
 }
 == type PlannedTask (src/orchestrator/plan.ts)
 export interface PlannedTask {
@@ -1399,6 +1392,11 @@ export interface PlanPrediction {
 }
 == type Platform (src/config.ts)
 export type Platform = (typeof PLATFORMS)[number]
+== type PlatformFacts (src/graph/outcome.ts)
+interface PlatformFacts {
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  platform?: true
+}
 == type Plugin (src/config.ts)
 export interface Plugin {
   readonly name: string
@@ -1513,6 +1511,11 @@ export interface PreparedRun {
   dependents?: ReadonlyMap<string, number>
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
+== type PreparedTask (src/orchestrator/worker-runtime.ts)
+export interface PreparedTask {
+  run(): Promise<ExecuteResult & { readonly output: CapturedChunk[] }>
+  sweep(): Promise<void>
+}
 == type ProjectConfig (src/config.ts)
 export interface ProjectConfig {
   name?: string
@@ -1590,12 +1593,12 @@ export interface RemoteCacheLayer {
   put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   missing?(hash: string): void
 }
-== type RemoteHit (src/cache/remote-hits.ts)
+== type RemoteHit (src/memo/remote-hits.ts)
 export interface RemoteHit {
   readonly size?: number
   readonly durationMs?: number
 }
-== type RemoteHits (src/cache/remote-hits.ts)
+== type RemoteHits (src/memo/remote-hits.ts)
 export interface RemoteHits {
   get(hashes: readonly string[]): Map<string, RemoteHit>
   record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now?: number): void
@@ -1625,7 +1628,7 @@ export interface ResolvedRemote {
   write: boolean
   readonly onError?: (err: Error) => void
 }
-== type ResolvedSandboxConfig (src/exec/sandbox-runtime.ts)
+== type ResolvedSandboxConfig (src/exec/executor.ts)
 export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
   allowWrite: readonly string[]
@@ -1728,19 +1731,12 @@ export interface RunOptions {
   cwd: string
   tasks: readonly string[]
   projects?: string[]
-  selectedByDiff?: boolean
   affected?: AffectedChanges
-  selectedOutright?: readonly string[]
-  affectedReasons?: Map<string, AffectedReason>
-  staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy
   cacheFlags?: CacheFlags
-  remoteRequested?: string
   cacheScope?: string
-  remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   downloadConcurrency?: number
@@ -1758,11 +1754,6 @@ export interface RunOptions {
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
-  holdPersistent?: boolean
-  watch?: boolean
-  keep?: HeldPersistent
-  commandWindows?: CommandWindows
-  summaryTable?: boolean
   tty?: boolean
   log?: Logger
   bus?: EventBus
@@ -1781,7 +1772,7 @@ export interface RunPlan {
   noneAffected?: string
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
-== type RunRecord (src/cache/layer.ts)
+== type RunRecord (src/history/run-history.ts)
 export interface RunRecord {
   hash?: string
   project: string
@@ -1919,6 +1910,16 @@ export interface SandboxConfig {
 export interface SandboxDenials {
   network?: readonly string[]
 }
+== type SandboxFix (src/graph/outcome.ts)
+export interface SandboxFix {
+  read?: string[]
+  write?: string[]
+  network?: string[]
+  systemInfo?: string[]
+  withheld?: string[]
+  inputs?: string[]
+  workspaceFiles?: string[]
+}
 == type SandboxGrants (src/config.ts)
 export interface SandboxGrants {
   read?: readonly string[]
@@ -1938,13 +1939,7 @@ export interface SandboxIgnore {
   systemInfo?: readonly string[]
   network?: readonly string[]
 }
-== type SandboxRequest (src/orchestrator/sandbox-request.ts)
-export interface SandboxRequest {
-  sandbox: NonNullable<ExecuteRequest['sandbox']>
-  placeholders: Placeholder[]
-  withheld: WithheldLink[]
-}
-== type SandboxViolation (src/exec/sandbox-runtime.ts)
+== type SandboxViolation (src/exec/executor.ts)
 export interface SandboxViolation {
   line: string
   timestamp: Date
@@ -1957,12 +1952,6 @@ export interface SandboxViolation {
 }
 == type SaveArgs (src/cache/layer.ts)
 export type SaveArgs = Parameters<CacheLayer['save']>[0]
-== type SavedTree (src/cache/cache.ts)
-interface SavedTree {
-  tree: string
-  scan: Awaited<ReturnType<typeof scanArtifact>>
-  bytes: number
-}
 == type ScheduleHookContext (src/orchestrator/plugin.ts)
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
@@ -1983,7 +1972,7 @@ export interface ScheduleRun {
   readonly refined?: (merged: ReadonlyMap<string, number>) => void
   readonly flaky?: (taskIds: Iterable<string>) => void
 }
-== type SchemaReset (src/cache/cache.ts)
+== type SchemaReset (src/cache/store-index.ts)
 export interface SchemaReset {
   from: string
   to: string
@@ -2009,14 +1998,50 @@ export interface ServerSpec {
   readonly timeoutMs?: number
   readonly sandbox?: { readonly config: SandboxConfig; readonly nested: readonly string[] }
 }
-== type StoreOptions (src/cache/cache.ts)
+== type SkippedOutcome (src/graph/outcome.ts)
+export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFacts, PlatformFacts {
+  status: 'skipped'
+  exitCode?: never
+  hash?: string
+  serverExit?: never
+}
+== type StartedOutcome (src/graph/outcome.ts)
+interface StartedOutcome extends OutcomeBase {
+  exitCode: number
+  hash?: string
+}
+== type StoreMemo (src/memo/local-memo.ts)
+export interface StoreMemo {
+  hashFile(filePath: string): Promise<string>
+  hashBytes(bytes: Uint8Array, nearPath: string): string
+  hashFiles(paths: readonly string[]): Promise<Map<string, string>>
+  knownBlobSizes(oids: readonly string[]): Map<string, number>
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
+  holdBlobSizes(): void
+  storeHeldBlobSizes(): void
+  blobVerdict(digest: string): string[] | undefined
+  rememberBlobVerdict(digest: string, paths: readonly string[]): void
+  readonly folds: FoldMemo
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
+  recordOutputDirs(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
+}
+== type StoreOptions (src/cache/store-index.ts)
 export interface StoreOptions {
   embeddings: number
   decompress: boolean
 }
 == type StreamName (src/ui/terminal.ts)
 export type StreamName = 'out' | 'err'
-== type Style (src/ui/theme.ts)
+== type Style (src/util/styled.ts)
 export type Style =
   | 'ok'
   | 'warn'
@@ -2034,6 +2059,12 @@ export type Style =
   | 'label'
   | 'border'
   | 'plain'
+== type SucceededOutcome (src/graph/outcome.ts)
+export interface SucceededOutcome
+  extends StartedOutcome, None<FailureFacts>, None<BlockFacts>, None<PlatformFacts> {
+  status: Exclude<TaskStatus, 'failed' | 'aborted' | 'skipped'>
+  serverExit?: number
+}
 == type TaskArtifacts (src/orchestrator/task-artifacts.ts)
 export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
@@ -2055,25 +2086,10 @@ export interface TaskConfig {
 == type TaskExecutor (src/exec/executor.ts)
 export interface TaskExecutor {
   readonly name: string
-  readonly remote?: boolean
-  readonly sandbox?: boolean
-  readonly servers?: boolean
-  readonly runtime?: boolean
-  readonly exclusive?: boolean
-  readonly timeouts?: boolean
-  readonly platforms?: readonly string[]
-  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
-  readonly capacity?: number
+  readonly capabilities?: ExecutorCapabilities
   accepts?(task: TaskPlacement): boolean
-  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
-  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
-  machines?(): readonly MachineReport[]
-  idealMs?(): number | undefined
-  advice?(): readonly WorkerAdvice[]
-  profile?(): readonly Record<string, unknown>[]
-  running?(taskId: string): string | null | undefined
-  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+  readonly distribution?: Distribution
 }
 == type TaskHistory (src/history/history.ts)
 export interface TaskHistory {
@@ -2125,6 +2141,21 @@ export interface TaskLogEntry {
   charsFull: number
   truncatedHeadChars: number
 }
+== type TaskMemo (src/cache/layer.ts)
+export interface TaskMemo {
+  hashFile(filePath: string): Promise<string>
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
+}
 == type TaskNode (src/graph/task-graph.ts)
 export interface TaskNode {
   id: string
@@ -2143,69 +2174,8 @@ export interface TaskNode {
   outputsAddedToBy?: string[]
   excludedUpstream?: TaskOutcome[]
 }
-== type TaskOutcome (src/graph/scheduler.ts)
-export interface TaskOutcome {
-  node: TaskNode
-  status: TaskStatus
-  exitCode: number
-  durationMs: number
-  hash?: string
-  storedDurationMs?: number
-  storedCpuMs?: number
-  storedPeakRssBytes?: number
-  admissionHeldMs?: number
-  queuedMs?: number
-  inputFiles?: number
-  artifactBytes?: number
-  outputBytes?: number
-  fetchMs?: number
-  saveMs?: number
-  inputChanges?: InputChanges
-  cpuMs?: number
-  peakRssBytes?: number
-  peakCores?: number
-  avgRssBytes?: number
-  groupUpstream?: readonly TaskOutcome[]
-  unkeyed?: true
-  driftedInput?: string | null
-  keylessBy?: string
-  cacheOff?: true
-  blockedBy?: string
-  taintedBy?: string
-  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
-  timedOut?: true
-  failedOutput?: string
-  runLog?: string
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  serverExit?: number
-  inputMoved?: string
-  where?: string
-  carried?: true
-  whereCores?: number
-  whereMemoryBytes?: number
-  cpuShare?: number
-  outputs?: 'deferred'
-  saved?: true
-  restoreFailed?: true
-  wallclockStartNs?: bigint
-  wallclockEndNs?: bigint
-  restored?: boolean
-  attempts?: number
-  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
-  attemptOutputs?: readonly string[]
-  flaky?: { passes: number; failures: number }
-  sandboxViolations?: number
-  sandboxViolationLines?: string[]
-  sandboxFix?: {
-    read?: string[]
-    write?: string[]
-    network?: string[]
-    systemInfo?: string[]
-    withheld?: string[]
-    inputs?: string[]
-    workspaceFiles?: string[]
-  }
-}
+== type TaskOutcome (src/graph/outcome.ts)
+export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | SkippedOutcome
 == type TaskOutputs (src/config.ts)
 export interface TaskOutputs {
   files: readonly string[]
@@ -2343,13 +2313,13 @@ export interface TelemetrySink {
   onRunSummary?(summary: RunSummaryRecord): void
   flush?(signal: AbortSignal): Promise<void>
 }
-== type Token (src/ui/components.ts)
-interface Token {
+== type Token (src/util/styled.ts)
+export interface Token {
   readonly style: Style | 'id'
   readonly text: string
   readonly bold?: boolean
 }
-== type Tone (src/ui/theme.ts)
+== type Tone (src/util/styled.ts)
 export type Tone = 'ok' | 'warn' | 'error' | 'info'
 == type TreeUsage (src/exec/proc-sample.ts)
 export interface TreeUsage {
@@ -2404,13 +2374,6 @@ export interface VxPlugin {
 export interface WatchSettings {
   poll?: boolean
 }
-== type WithheldLink (src/orchestrator/sandbox-request.ts)
-export interface WithheldLink {
-  dir: string
-  name: string
-  target: string
-  link: string
-}
 == type WorkerAdvice (src/exec/executor.ts)
 export interface WorkerAdvice {
   of: 'declared' | 'more' | 'any'
@@ -2423,6 +2386,27 @@ export interface WorkerAdvice {
     size?: string
   }[]
 }
+== type WorkerRuntime (src/orchestrator/worker-runtime.ts)
+export interface WorkerRuntime {
+  prepare(task: WorkerTask): Promise<PreparedTask>
+  probe(command: string, dir: string, workspace: boolean): Promise<string>
+  packageManager(): string | null
+  sample(roots: readonly number[]): Promise<ReadonlyMap<number, TreeUsage>>
+  rearm(sandboxes: readonly SandboxConfig[]): Promise<void>
+  stop(taskId: string): Promise<void>
+  close(): Promise<void>
+}
+== type WorkerSandbox (src/orchestrator/worker-runtime.ts)
+export interface WorkerSandbox {
+  readonly config: SandboxConfig
+  readonly keyed?: readonly string[]
+  readonly reads?: readonly string[]
+  readonly reported?: readonly string[]
+}
+== type WorkerTask (src/orchestrator/worker-runtime.ts)
+export interface WorkerTask extends Omit<
+  ExecuteRequest,
+  'sandbox' | 'capture' | 'onStdout' | 'onStderr' | 'workspaceRoot'
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {
   baseBranch?: string
@@ -2468,8 +2452,6 @@ export interface WorkspaceRules {
   exclusiveOutputs?: boolean
   dependencies?: readonly DependencyRule[]
 }
-== type WriteReach (src/orchestrator/sandbox-request.ts)
-export type WriteReach = 'none' | 'project' | 'workspace'
 == runtime values
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"

@@ -54,7 +54,7 @@ async function runWith(executor: string): Promise<{ ok: boolean; status: string[
 
 it('an async demand that rejects is named once and the run goes on', async () => {
   const got = await runWith(
-    `{ name: 'ex', async demand() { throw new Error('demand-boom') }, execute: ${ok} }`,
+    `{ name: 'ex', distribution: { async demand() { throw new Error('demand-boom') } }, execute: ${ok} }`,
   )
   await Bun.sleep(0)
   expect({ ok: got.ok, said: got.status.filter((m) => m.includes('demand')) }).toEqual({
@@ -105,7 +105,7 @@ it('an accepts answering false or undefined declines the task', async () => {
 // Control: a demand that throws synchronously was already named (item 1022).
 it('a demand that throws is named once and the run goes on', async () => {
   const got = await runWith(
-    `{ name: 'ex', demand() { throw new Error('demand-boom') }, execute: ${ok} }`,
+    `{ name: 'ex', distribution: { demand() { throw new Error('demand-boom') } }, execute: ${ok} }`,
   )
   expect({ ok: got.ok, said: got.status.filter((m) => m.includes('demand')) }).toEqual({
     ok: true,

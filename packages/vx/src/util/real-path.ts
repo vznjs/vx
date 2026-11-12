@@ -2,8 +2,8 @@ import { readlinkSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 /**
- * A path's canonical spelling: the OS's own answer for the final path,
- * so a key or a comparison that folds the path sees one spelling (O-16).
+ * A path's canonical spelling: the OS's own answer for the final path, so a key
+ * or a comparison that folds the path sees one spelling.
  */
 export function realPath(p: string): string {
   return realpathSync.native(p)

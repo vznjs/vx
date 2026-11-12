@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 
-import { type Bin, dispatch, type Need, Queue } from '../src/dispatch.js'
-import type { Strategy } from '../src/strategy.js'
+import { type Bin, dispatch, Queue } from '../src/plan/dispatch.js'
+import type { Need } from '../src/plan/model.js'
+import type { Strategy } from '../src/plan/strategy.js'
 
 // The live run's waiting tasks kept across its passes (`Queue`): each pass
 // places exactly as `dispatch` placed over the whole list, read in order.

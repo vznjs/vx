@@ -260,7 +260,7 @@ describe('retries ladder — `exec.retries` vs the run-level default', () => {
 
       // `attempts` is set only when a task ran more than once, so it doubles
       // as an independent read on the same three numbers.
-      const attempts = new Map(r.outcomes.map((o) => [o.node.id, o.attempts]))
+      const attempts = new Map(r.outcomes.map((o) => [o.node.id, o.attempts?.count]))
       expect(attempts.get('pinned#build')).toBeUndefined()
       expect(attempts.get('insistent#build')).toBe(3)
       expect(attempts.get('bare#build')).toBe(2)

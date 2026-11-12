@@ -31,7 +31,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
       } } } }\n`,
     })
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    return [r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]
+    return [r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines ?? []]
   }
 
   it('is named beside a failed task, with the grant', async () => {
@@ -58,7 +58,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
       } } }\n`
     const app = await addProject(root, 'app', { config: cached(['.'], []) })
     const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
-    expect((await t())?.sandboxViolationLines).toEqual([
+    expect((await t())?.sandbox?.lines).toEqual([
       `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
         `not reported as violations: ${root}/tsconfig.base.json. If the task reads one, grant ` +
         "it, e.g. `allow: { read: ['../../tsconfig.base.json'] }`, and, if the output depends " +
@@ -88,7 +88,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
       } } }\n`
     const app = await addProject(root, 'app', { config: cached(['.'], []) })
     const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
-    const [line] = (await t())?.sandboxViolationLines ?? []
+    const [line] = (await t())?.sandbox?.lines ?? []
     expect(line).toEndWith("key it: `inputs: { workspaceFiles: ['\\\\!cfg'] }`.")
     await writeFile(path.join(app, 'vx.config.mjs'), cached(['.', '../../!cfg'], ['\\!cfg']))
     expect((await t())?.status).toBe('success')
@@ -208,13 +208,13 @@ describe.skipIf(!available)('a file the key holds that no grant reaches', () => 
       config: cached(stat, ['.'], ['tsconfig.base.json']),
     })
     const o = await t()
-    expect([o?.status, o?.saved, o?.sandboxViolations, o?.sandboxFix?.read]).toEqual([
+    expect([o?.status, o?.cache?.saved, o?.sandbox?.violations, o?.sandbox?.fix?.read]).toEqual([
       'failed',
       undefined,
       1,
       ['../../tsconfig.base.json'],
     ])
-    expect(o?.sandboxViolationLines?.at(-1)).toBe(
+    expect(o?.sandbox?.lines?.at(-1)).toBe(
       `vx: the sandbox hides a file this task's key holds, so it was not run: ` +
         `${root}/tsconfig.base.json. Grant it, e.g. ` +
         "`allow: { read: ['../../tsconfig.base.json'] }`.",
@@ -222,7 +222,7 @@ describe.skipIf(!available)('a file the key holds that no grant reaches', () => 
     expect(await Bun.file(path.join(app, 'out.txt')).exists()).toBe(false)
     await writeFile(
       path.join(app, 'vx.config.mjs'),
-      cached(stat, ['.', ...o!.sandboxFix!.read!], ['tsconfig.base.json']),
+      cached(stat, ['.', ...o!.sandbox!.fix!.read!], ['tsconfig.base.json']),
     )
     expect((await t())?.status).toBe('success')
     expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('{}\n')
@@ -237,7 +237,7 @@ describe.skipIf(!available)('a file the key holds that no grant reaches', () => 
       ),
     })
     const o = await t()
-    expect([o?.status, o?.sandboxFix?.read]).toEqual(['failed', ['../../tsconfig.base.json']])
+    expect([o?.status, o?.sandbox?.fix?.read]).toEqual(['failed', ['../../tsconfig.base.json']])
   })
 
   // An agent applies a suggested grant as given: a keyed `.env` is
@@ -248,7 +248,7 @@ describe.skipIf(!available)('a file the key holds that no grant reaches', () => 
       config: cached('(cat < ../../.env || echo fallback) > out.txt', ['.'], ['.env']),
     })
     const o = await t()
-    expect([o?.status, o?.sandboxFix?.read, o?.sandboxViolationLines?.at(-1)]).toEqual([
+    expect([o?.status, o?.sandbox?.fix?.read, o?.sandbox?.lines?.at(-1)]).toEqual([
       'failed',
       undefined,
       `vx: the sandbox hides a file this task's key holds, so it was not run: ` +
@@ -261,7 +261,7 @@ describe.skipIf(!available)('a file the key holds that no grant reaches', () => 
       config: cached('(cat < ../../tsconfig.base.json || echo fallback) > out.txt', ['.'], []),
     })
     const o = await t()
-    expect([o?.status, o?.saved, o?.sandboxViolationLines]).toEqual(['success', true, undefined])
+    expect([o?.status, o?.cache?.saved, o?.sandbox?.lines]).toEqual(['success', true, undefined])
   })
 
   it('CONTROL: a granted keyed file passes', async () => {
@@ -296,7 +296,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
       files: { 'tsconfig.json': '{}\n', 'src/a.ts': '' },
     })
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    return [r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]
+    return [r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines ?? []]
   }
   // tsc prints its diagnostics on stdout; most tools, on stderr.
   const tsc = (file: string, to = '') =>
@@ -344,7 +344,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
       files: { [file]: '', 'src/said': `${said}\n` },
     })
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+    expect(r.outcomes[0]?.sandbox?.lines?.[0]).toEndWith(
       `If the task reads one, grant it, e.g. \`allow: { read: ['${file}'] }\`.`,
     )
   })
@@ -370,7 +370,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
       files: { 'src/a': '' },
     })
     const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
-    expect((await t())?.sandboxViolationLines?.[0]).toEndWith(
+    expect((await t())?.sandbox?.lines?.[0]).toEndWith(
       "If the task reads one, grant it, e.g. `allow: { read: ['../golib'] }`, and, if the " +
         "output depends on it, key it: `inputs: { workspaceFiles: ['packages/golib/**'] }`.",
     )
@@ -397,7 +397,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
       files: { 'tsconfig.json': '{}\n', 'src/a.ts': '' },
     })
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+    expect(r.outcomes[0]?.sandbox?.lines?.[0]).toEndWith(
       "grant it, e.g. `allow: { read: ['tsconfig.json'] }`, and, if the output depends on it, " +
         "key it: `inputs: { files: ['tsconfig.json'] }`.",
     )
@@ -419,7 +419,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
       } } }\n`,
     )
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+    expect(r.outcomes[0]?.sandbox?.lines?.[0]).toEndWith(
       "grant it, e.g. `allow: { read: ['packages/lib/tsconfig.json'] }`, and, if the output " +
         "depends on it, key it: `inputs: { workspaceFiles: ['packages/lib/tsconfig.json'] }`.",
     )

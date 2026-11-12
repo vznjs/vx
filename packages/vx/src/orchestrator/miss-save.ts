@@ -17,9 +17,10 @@ import {
   resolveOutputs,
   resolveWorkspaceOutputs,
   resolveWorkspaceOutputTree,
-  WORKSPACE_OUTPUT_PREFIX,
+  type TaskInputComponent,
 } from '../cache/index.js'
-import type { TaskNode } from '../graph/index.js'
+import { WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
+import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import {
   anyTaskGlob,
   asTrees,
@@ -32,7 +33,6 @@ import {
   taskGlob,
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
-import type { TaskInputComponent } from '../cache/index.js'
 import { declareStateHint, stateLeft, type StateStamps } from './undeclared-state.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */
@@ -88,7 +88,7 @@ export async function recordOutputDirSnapshots(
 ): Promise<void> {
   const rowsOf = new Map<string, ReadonlyArray<{ path: string }>>()
   for (let i = 0; i < snapshots.length; i += 900) {
-    const batch = cache.loadOutputFilesBatch(snapshots.slice(i, i + 900).map((s) => s.hash))
+    const batch = cache.memo.loadOutputFilesBatch(snapshots.slice(i, i + 900).map((s) => s.hash))
     for (const [hash, rows] of batch) rowsOf.set(hash, rows)
   }
   for (let i = 0; i < snapshots.length; i += 32) {
@@ -96,7 +96,7 @@ export async function recordOutputDirSnapshots(
       snapshots
         .slice(i, i + 32)
         .map((s) =>
-          cache.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes, (files) =>
+          cache.memo.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes, (files) =>
             s.holds(files, rowsOf.get(s.hash) ?? []),
           ),
         ),
@@ -155,6 +155,18 @@ export interface SaveFacts {
   outputBytes?: number
   /** The entry landed: the outcome's `saved`, set only once it has. */
   saved?: true
+}
+
+/** The outcome a deferred save settles: what the save cost, folded in. */
+export function withSaveFacts(o: TaskOutcome, f: SaveFacts): TaskOutcome {
+  if (f.saveMs !== undefined) (o.timing ??= {}).saveMs = f.saveMs
+  if (f.artifactBytes === undefined && f.outputBytes === undefined && f.saved === undefined)
+    return o
+  const cache = (o.cache ??= {})
+  if (f.artifactBytes !== undefined) cache.artifactBytes = f.artifactBytes
+  if (f.outputBytes !== undefined) cache.outputBytes = f.outputBytes
+  if (f.saved !== undefined) cache.saved = f.saved
+  return o
 }
 
 /**
@@ -327,7 +339,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // The files the task just wrote are the entry's bytes: stamp them,
     // so the next hit can tell them from another entry's with the same
     // size and mtime (item 886).
-    cache.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot)
+    cache.memo.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot)
     // The directory snapshot behind the next hit's skip-restore, taken at
     // run end from the run's list: the task wrote these directories
     // milliseconds ago, inside the snapshot's racy window, so a snapshot

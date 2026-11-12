@@ -1,45 +1,22 @@
-// Cache artifact container: a zstd-compressed tar, read and written by
-// vx's own streaming tar code (`tar-stream.ts`).
+// Cache artifact container: a zstd tar written and read by vx's own streaming
+// tar (`tar-stream.ts`), holding `stdout` (the marker), `outputs/<rel>`,
+// `workspace-outputs/<rel>` and `.vx-meta.json`.
 //
-// An artifact is a tar of:
-//   stdout                       always present; the vx-artifact marker
-//   outputs/<rel>                project-relative outputs
-//   workspace-outputs/<rel>      workspace-root-relative outputs
-//   .vx-meta.json                per-output mode + millisecond mtime
+// Tar headers carry second mtimes, so the pack side stats each output once and
+// writes its mode and ms mtime into the sidecar. A restore applies the mode; it
+// dates a file it writes now and leaves the mtime of one whose bytes already
+// stood.
 //
-// Tar headers carry mode and SECOND mtimes; vx needs both exactly — a
-// lost executable bit builds cold and breaks warm, and `isOutputsCurrent`
-// skips a restore when size+mode+mtime match at millisecond precision —
-// so the pack side stats each output once and writes both into
-// `.vx-meta.json`. A restore applies the mode; it dates a file it writes
-// now, as the task's write would be, and leaves the mtime of one whose
-// bytes already stood. The sidecar mtime is the index rows' (a
-// REMOTE-ingested entry's too) and the cache's own tree form's.
+// Both directions stream a chunk at a time. Every regular entry is staged under
+// `.vx/tmp/<pid>-0/` and renamed into place only once the WHOLE archive is read
+// and every name proven safe, so a poisoned entry leaves nothing, and a killed
+// restore leaves temps the next run sweeps.
 //
-// Both directions stream. `packArtifactStream` reads each output as it is
-// written; `scanArtifact` lists what an artifact holds without
-// materialising a byte; `extractArtifactStream` restores while never
-// holding more than a chunk. `Bun.Archive` used to do all three and
-// needed the whole tar in memory on every side — restoring a 150 MiB
-// artifact peaked at 3.2× its size, saving one at 4.7× (measured
-// 2026-09-03). Every regular entry is written to the workspace's staging
-// directory (`.vx/tmp/<pid>-0/`, vx's own, never an output folder) and
-// renamed over its target only once the WHOLE archive has been read and
-// every name proven safe, so a poisoned entry anywhere — even the last
-// one — leaves nothing behind but the empty directories it needed, which
-// are pruned too, and a killed restore leaves its temps where the next
-// run sweeps them (`sweepStaging`).
-//
-// What stays here is the part no tar reader can decide for us: WHERE an
-// entry may land on disk. Every name is validated and every destination
-// is proven to stay inside its anchor before a byte is written, because a
-// cache artifact is attacker-reachable (a poisoned remote, a tampered
-// local entry) and "zip slip" is the class.
-//
-// Tar entries that are not regular files (symlinks, hardlinks, devices,
-// FIFOs) are never materialised — the reader reports them only to be
-// skipped. An output symlink rides the sidecar instead (`links`), its
-// target held to the workspace on both sides.
+// What stays here is WHERE an entry may land. An artifact is attacker-reachable
+// (a poisoned remote, a tampered entry), so every name is proven inside its
+// anchor before a byte is written ("zip slip"). Non-regular tar entries are
+// never materialised; an output symlink rides the sidecar (`links`), its target
+// held to the workspace on both sides.
 
 import {
   chmodSync,
@@ -58,8 +35,8 @@ import {
   realpathSync,
   statSync,
   utimesSync,
+  type Stats,
 } from 'node:fs'
-import type { Stats } from 'node:fs'
 import {
   copyFile,
   lstat,
@@ -76,9 +53,16 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { decodeRaw, ignoreDir, rawEncode, UserError, writableUnder } from '../util/index.js'
-import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from './layer.js'
-import { LINK_MODE } from './output-index.js'
+import {
+  decodeRaw,
+  ignoreDir,
+  rawEncode,
+  UserError,
+  writableUnder,
+  readUmask,
+  restoredMode,
+} from '../util/index.js'
+import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX, LINK_MODE } from '../memo/index.js'
 import {
   TarFormatError,
   type TarInput,
@@ -89,7 +73,6 @@ import {
   tarSize,
 } from './tar-stream.js'
 import { ON_THREAD_MAX } from './zstd.js'
-import { readUmask, restoredMode } from './umask.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
 const META_ENTRY = '.vx-meta.json'
@@ -100,20 +83,16 @@ const RESERVED_OUTPUT = `outputs/${WORKSPACE_OUTPUT_PREFIX}`
 /** Archive entry name of the always-present stdout record. */
 const STDOUT_ENTRY = 'stdout'
 
-// One decoder, its defaults (a leading BOM dropped), for both scanners.
-// `ignoreBOM`: a leading U+FEFF in a task's stdout is the task's.
+// One decoder for both scanners. `ignoreBOM`: a leading U+FEFF in a task's
+// stdout is the task's.
 const utf8 = new TextDecoder('utf-8', { ignoreBOM: true })
 
 /**
- * The last entry: a CRC-32 over every entry before it, each its name, a
- * NUL, then its body, as 8 lowercase hex digits (v36, L-19). Nothing else
- * checks an entry's BODY: tar sums its headers only, and neither zstd
- * writer asks for a frame checksum, so a byte flipped in a raw zstd block
- * (incompressible output: an image, a wasm, a tarball) decoded clean and
- * replayed wrong bytes under a green hit — 1,141 of 1,141 flips in a
- * random 8 KB body went unseen (probed). A CRC catches that transit or
- * storage damage; it is no defense against a store that forges artifacts,
- * which keys cannot tell apart from honest ones either.
+ * The last entry: a CRC-32 over every entry before it (name, NUL, body), as 8
+ * hex digits. Nothing else checks a BODY: tar sums headers only and zstd writes
+ * no frame checksum, so a byte flipped in a raw block decoded clean and
+ * replayed wrong bytes under a green hit. It catches transit and storage
+ * damage, not a store that forges artifacts.
  */
 const SUM_ENTRY = '.vx-sum'
 const SUM_SIZE = 8
@@ -139,10 +118,9 @@ class EntrySum {
 }
 
 /**
- * The reader's half: every regular entry is hashed as it is consumed, and
- * `check` is handed the sum entry's body. An archive whose sum is absent,
- * wrong, or followed by another entry is refused before anything it held
- * is committed.
+ * The reader's half: each regular entry is hashed as consumed and `check` gets
+ * the sum entry's body. A sum absent, wrong or followed by another entry is
+ * refused before anything is committed.
  */
 class SumCheck {
   private readonly sum = new EntrySum()
@@ -158,14 +136,14 @@ class SumCheck {
     return null
   }
   /**
-   * The next regular entry: true when it is the sum entry, whose text the
-   * caller hands to `verify`; otherwise the caller hands its bytes to `add`.
+   * The next regular entry: true when it is the sum entry, whose text goes to
+   * `verify`; otherwise its bytes go to `add`.
    */
   enter(name: string): boolean {
     if (this.seen) throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
     if (name === SUM_ENTRY) return true
-    // vx never packs a name twice, and a restore staged both: their renames
-    // ran together, so which body landed was a race the index never saw.
+    // vx never packs a name twice; staged twice, which body landed would be a
+    // race.
     if (this.names.has(name)) throw new ArchiveSecurityError(`archive holds ${name} twice`)
     this.names.add(name)
     this.sum.entry(name)
@@ -194,50 +172,42 @@ const drain = async (body: AsyncIterable<Uint8Array>): Promise<void> => {
 }
 
 /**
- * Sidecar shape. `files` maps an entry name to `[mode, mtimeMs]` — a
- * pair, not an object, because the sidecar is real entropy inside an
- * otherwise highly compressible artifact and per-file key names would
- * be paid for once per output.
+ * Sidecar shape. `files` maps an entry name to a `[mode, mtimeMs]` pair, not an
+ * object: per-file key names would be paid once per output in otherwise
+ * compressible bytes.
  */
 interface MetaFile {
-  /** Bumped only if the sidecar's own shape changes; the artifact
-   *  container is versioned by CACHE_VERSION, which gates reads. */
+  /**
+   * Bumped only if the sidecar's own shape changes; the container is versioned
+   * by CACHE_VERSION.
+   */
   version: 1
   /**
-   * The cache key the artifact was packed under (v35, item 943). Ingest
-   * refuses bytes whose key is not the one it asked for: nothing else ties
-   * an artifact to its key, so a remote layer that answered one key with
-   * another's bytes (a truncated or colliding mapping) replayed the other
-   * task's outputs under a green `cache-hit-remote`.
+   * The key the artifact was packed under. Ingest refuses bytes under another
+   * key: nothing else ties an artifact to its key, so a remote answering one
+   * key with another's bytes would replay the other task's outputs.
    */
   key?: string
   files: Record<string, [mode: number, mtimeMs: number]>
   /**
-   * The empty directories under the outputs, as entry names
-   * (`outputs/dist/empty`): a tar of regular files cannot hold them, and
-   * a hit that dropped them left another tree than the miss (v44).
+   * The empty directories under the outputs, as entry names: a tar of regular
+   * files cannot hold them.
    */
   dirs?: string[]
   /**
-   * The symlinks under the outputs, entry name → the link's target as
-   * written (relative, inside the workspace): a hit makes the link, as
-   * Turbo and Nx do, where it once packed a copy of the target (v45).
+   * The symlinks under the outputs, entry name → target as written (relative,
+   * inside the workspace): a hit makes the link, as Turbo and Nx do.
    */
   links?: Record<string, string>
   /**
-   * The directories under the outputs whose mode withholds a permission
-   * 0755 grants (`chmod 700 dist/keys`), entry name → permission bits
-   * (v49): a hit made each missing directory with mkdir's default, so a
-   * directory that kept its files to their owner came back readable by
-   * every user.
+   * Output directories whose mode withholds a permission 0755 grants (`chmod
+   * 700 dist/keys`), entry name → permission bits; otherwise a hit made them
+   * with mkdir's default, readable by every user.
    */
   dirModes?: Record<string, number>
   /**
-   * What the PRODUCING execution used (2026-09-12, additive: an artifact
-   * without it reads as before). Rides the artifact so a machine that
-   * never ran the task — a fresh CI runner on a remote hit — still learns
-   * what it needs; every wire ships the bytes verbatim, so no seam
-   * changes.
+   * What the producing execution used (optional). Rides the artifact so a
+   * machine that never ran the task still learns it.
    */
   exec?: ExecUsage
 }
@@ -260,10 +230,9 @@ interface ArchiveEntry {
 }
 
 /**
- * Thrown when an entry's name would let it escape the extraction anchor
- * (absolute path, `..` traversal, doubled separator, Windows shapes).
- * Callers treat this as a corrupt / malicious artifact — log it, drop
- * the entry, re-run the task.
+ * Thrown when an entry's name could escape the extraction anchor (absolute,
+ * `..`, doubled separator, Windows shapes). A corrupt or malicious artifact:
+ * dropped, and the task re-runs.
  */
 export class ArchiveSecurityError extends Error {
   constructor(message: string) {
@@ -274,7 +243,7 @@ export class ArchiveSecurityError extends Error {
 
 /** What `packArtifactStream` packs: stdout plus archive name → absolute source path. */
 interface PackArgs {
-  /** The cache key, recorded in the sidecar (item 943); ingest refuses an artifact without it. */
+  /** The cache key, recorded in the sidecar; ingest refuses an artifact without it. */
   key?: string
   stdout: string
   outputs: ReadonlyMap<string, string>
@@ -301,16 +270,15 @@ export interface ArtifactPlan {
 }
 
 /**
- * Stat every output once (size, and the sidecar's mode + millisecond
- * mtime) and lay out the tar — stdout first, the outputs, the sidecar
- * last — with its exact size, so the caller can choose the one-call pack
- * for a small artifact and the streamed one for a large one before a
- * byte is read. A symlinked output is stored as its link (`links`).
+ * Stat every output once (size, mode, millisecond mtime) and lay out the tar
+ * (stdout, outputs, sidecar) with its exact size, so the caller picks the
+ * one-call pack or the streamed one before a byte is read. A symlinked output
+ * is stored as its link.
  */
 export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
-  // A few outputs are stat'ed on this thread: a pool round trip per stat
-  // cost more than the stat. Many go to the pool together, as before.
+  // A few outputs are stat'ed on this thread: a pool round trip per stat cost
+  // more than the stat.
   const few = args.outputs.size <= ON_THREAD_STATS
   const lstatOf = few ? async (p: string) => lstatSync(p) : lstat
   const readlinkOf = few ? async (p: string) => readlinkSync(p) : readlink
@@ -320,18 +288,17 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   if (exec !== undefined) meta.exec = exec
   const files = await Promise.all(
     [...args.outputs].map(async ([name, abs]) => {
-      // The path as the config spells it: a root-anchored output's entry
-      // name is vx's own `workspace-outputs/…` (M-66).
+      // The path as the config spells it: a root-anchored output's entry name
+      // is `workspace-outputs/…`.
       const shown = name.startsWith('outputs/')
         ? `output ${name.slice('outputs/'.length)}`
         : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
           ? `workspaceFiles output ${name.slice(WORKSPACE_OUTPUT_PREFIX.length)}`
           : `output ${name}`
-      // The index stores a project row as its bare rel and reads one under
-      // `workspace-outputs/` as a workspace output, so every hit of this
-      // entry was "missing a recorded output", dropped and run again. The
-      // loader refuses a glob written under the name; one that reaches it
-      // otherwise (`**/*.js`, `w*/**`) is refused here, where names are known.
+      // The index reads a row under `workspace-outputs/` as a workspace output,
+      // so a project output by that name would miss on every hit. The loader
+      // refuses such a glob; one that reaches it anyway (`**/*.js`) is refused
+      // here, where names are known.
       if (name.startsWith(`outputs/${WORKSPACE_OUTPUT_PREFIX}`)) {
         throw new UserError(
           `${shown} is under workspace-outputs/, a name vx's artifacts reserve for outputs.workspaceFiles — write the task's files to another directory, or take them back with a '!' entry`,
@@ -339,12 +306,11 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
       const st = await lstatOf(abs)
       if (st.isSymbolicLink()) {
-        // Kept as the link, never read through: no byte of its target
-        // enters the artifact, so a link to a file the task could not
-        // read packs nothing of it (L-23).
+        // Kept as the link, never read through: no byte of its target enters
+        // the artifact.
         const to = await readlinkOf(abs)
-        // A venv's `bin/python -> /usr/local/bin/python3` names no checkout:
-        // told so, its fix read as "make it relative", which is not one.
+        // A venv's `bin/python -> /usr/local/bin/python3` names no checkout, so
+        // "make it relative" is no fix to suggest.
         if (path.isAbsolute(to) && args.root !== undefined && !inside(to, args.root)) {
           throw new UserError(
             `${shown} is a symlink to ${to}, an absolute path outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there (a copy, e.g. \`python -m venv --copies\`), or take it back with a '!' entry`,
@@ -381,9 +347,8 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         size: st.size,
         mode,
         mtimeMs: Math.floor(st.mtimeMs),
-        // ustar's octal field holds no sign and 11 digits: an mtime before
-        // 1970 made the header unreadable, and one past March 2242 failed
-        // every save of the task. The sidecar above carries the real value.
+        // ustar's octal field holds no sign and 11 digits: an mtime before 1970
+        // or past 2242 breaks the header. The sidecar carries the real value.
         mtime: Math.min(USTAR_MTIME_MAX, Math.max(0, Math.floor(st.mtimeMs / 1000))),
       }
     }),
@@ -465,9 +430,9 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
 
 /**
  * The modes `MetaFile.dirModes` keeps: of each directory on the way to an
- * output name below its namespace, and of each empty output directory, the
- * ones that withhold a permission 0755 grants. A wider mode is left to the
- * restoring umask, as a plain mkdir's is, so most artifacts carry none.
+ * output name, and of each empty output directory, only those withholding a
+ * permission 0755 grants. Wider modes are left to the umask, so most artifacts
+ * carry none.
  */
 function narrowDirModes(
   names: readonly string[],
@@ -501,9 +466,9 @@ export function packArtifactStream(plan: ArtifactPlan): ReadableStream<Uint8Arra
 const sumInput = (hex: string): TarInput => ({ name: SUM_ENTRY, size: SUM_SIZE, body: hex })
 
 /**
- * The inputs with each body hashed as `tarPack` reads it, then the sum
- * entry: `tarPack` drains one input before it asks for the next, so the
- * sum is whole when it is asked for.
+ * The inputs with each body hashed as `tarPack` reads it, then the sum entry:
+ * `tarPack` drains one input before asking for the next, so the sum is whole
+ * when asked for.
  */
 async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
   const sum = new EntrySum()
@@ -523,14 +488,12 @@ async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
 }
 
 /**
- * The tar in memory — the small-artifact path and the tests. Bodies are
- * read whole (one `bytes()` each, in flight together) rather than
- * streamed: a thousand one-file artifacts pay the stream setup
- * otherwise (measured 2026-09-03: 238 → 293 ms per 1 000 saves).
+ * The tar in memory, for small artifacts and tests. Bodies are read whole, in
+ * flight together: stream setup per tiny file costs more.
  */
 export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array> {
-  // A small artifact is read and packed on this thread (`ON_THREAD_MAX`):
-  // no promise or generator hop per file or block.
+  // A small artifact is packed on this thread (`ON_THREAD_MAX`): no promise or
+  // generator hop per file or block.
   if (plan.size <= ON_THREAD_MAX) return packSmall(plan)
   const inputs = await Promise.all(
     plan.inputs.map(async (i) =>
@@ -588,21 +551,15 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
 }
 
 /**
- * The tree form (`cache.store.decompress`, v47): an artifact's members as
- * plain files under one directory, each at its index row's path: a project
- * output at its rel, a workspace one under `workspace-outputs/`, an output
- * link as the link itself (v53). stdout lives in the index, and every
- * other fact the artifact's sidecar holds (modes, mtimes, empty and moded
- * directories, the key, the producing execution's usage) in its rows: the
- * tree keeps no sidecar and no `outputs/` level, each of which cost a
- * 4 KiB block per entry. A restore copies (or clones) each file out, so a
- * hit decodes nothing; an upload packs the tree back into the artifact a
- * remote expects (`planOfTree`).
+ * The tree form (`cache.store.decompress`): an artifact's members as plain
+ * files under one directory at their index rows' paths, with stdout and every
+ * sidecar fact in the index rows. A restore copies (or clones) each file out,
+ * decoding nothing; an upload packs the tree back into the artifact a remote
+ * expects (`planOfTree`).
  *
- * Write `plan`'s outputs into the empty `dir` as the tree form, each copied
- * by the kernel (`copy_file_range`, or a clone where the filesystem has one)
- * and given its sidecar mtime, and return what a scan of the plan's tar
- * would: the save indexes from it without packing a tar.
+ * Write `plan`'s outputs into the empty `dir` as the tree form, each copied by
+ * the kernel and given its sidecar mtime, and return what a scan of the plan's
+ * tar would.
  */
 export async function writeTree(plan: ArtifactPlan, dir: string): Promise<ArtifactScan> {
   const fold = new ScanFold()
@@ -619,14 +576,14 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
   }
   // A stdout-only entry writes no file to make the directory.
   await mkdir(dir, { recursive: true })
-  // Every write settles before a failure is thrown: the caller removes
-  // `dir`, and a write still in flight would make its parents again.
+  // Every write settles before a failure is thrown: the caller removes `dir`,
+  // and a write in flight would make its parents again.
   const settled = await Promise.allSettled([
     ...plan.inputs.map(async (i) => {
       if (!(i.body instanceof Blob)) return
       const to = path.join(dir, treeRel(i.name))
-      // The tar form's refusal (`tarPackInto`): an output that grew or shrank
-      // since the plan's stat is not the file its row describes.
+      // The tar form's refusal: an output that changed size since the plan's
+      // stat is not the file its row describes.
       const n = await Bun.write(to, i.body)
       if (n !== i.size) throw new TarFormatError(`${i.name}: ${n} bytes, ${i.size} declared`)
       const at = new Date(times[i.name]![1])
@@ -650,9 +607,8 @@ function treeRel(name: string): string {
 }
 
 /**
- * The plan that packs the tree in `dir` back into the artifact it holds,
- * its sidecar rebuilt from the entry's index rows (`rows`, `key`, `exec`).
- * A link is read from the tree and held to its row's length and CRC.
+ * The plan that packs the tree in `dir` back into its artifact, the sidecar
+ * rebuilt from the entry's rows. A link is held to its row's length and CRC.
  */
 export function planOfTree(
   dir: string,
@@ -737,8 +693,8 @@ class ScanFold {
     this.dirs = dirsOf(parsed)
     this.links = linksOf(parsed)
     this.dirModes = dirModesOf(parsed)
-    // The ingest side is the untrusted boundary: a foreign sidecar's
-    // usage is taken only when it is a plain non-negative number.
+    // Ingest is the untrusted boundary: a foreign sidecar's usage is taken only
+    // as a plain non-negative number.
     this.exec = usageOf(parsed.exec)
     if (typeof parsed.key === 'string') this.key = parsed.key
   }
@@ -748,9 +704,8 @@ class ScanFold {
   }
 
   result(): ArtifactScan {
-    // A mode names a directory the artifact holds, never one a restore
-    // would otherwise not make: the row it becomes is a directory a hit
-    // makes and asks to stand.
+    // A mode names a directory the artifact holds, never one a restore would
+    // otherwise not make.
     if (this.dirModes.length > 0) {
       const held = new Set(this.dirs)
       const hold = (name: string): void => {
@@ -771,9 +726,9 @@ class ScanFold {
     return {
       entries: this.seen.map((s) => {
         const m = this.files[s.name]
-        // A foreign artifact (or one whose sidecar lost an entry) restores
-        // readable-but-not-executable rather than failing the hit: the
-        // sidecar is metadata, never the authority on whether bytes exist.
+        // A foreign artifact, or a sidecar missing an entry, restores
+        // readable-but-not-executable rather than failing the hit: the sidecar
+        // is metadata, not the authority on what exists.
         return { name: s.name, size: s.size, mode: m?.[0] ?? 0o644, mtimeMs: m?.[1] ?? s.mtimeMs }
       }),
       dirs: this.dirs,
@@ -787,11 +742,10 @@ class ScanFold {
 }
 
 /**
- * List an artifact's regular entries with their restore metadata, and
- * its stdout text (`null` when the entry is absent — not a vx artifact),
- * without materialising anything. Rejects the WHOLE archive when any
- * name is unsafe — a partial reading of a poisoned artifact is the
- * outcome the traversal defense exists to prevent.
+ * List an artifact's regular entries with their restore metadata, and its
+ * stdout (`null`: not a vx artifact), materialising nothing. One unsafe name
+ * rejects the WHOLE archive: a partial reading of a poisoned artifact is what
+ * the traversal defense prevents.
  */
 export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<ArtifactScan> {
   const fold = new ScanFold()
@@ -814,10 +768,9 @@ export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<Art
 }
 
 /**
- * `scanArtifact` over a tar in memory, synchronously: a save scans the
- * tar it just packed. Same decoder, same checks in the same order, same
- * result. The async generators, per-chunk promises and drain were most
- * of a small save's scan: one 400 B output, 49 → 14 µs (X-191).
+ * `scanArtifact` over a tar in memory, synchronously, for the tar a save just
+ * packed. Same checks, same result, without the per-chunk promises that were
+ * most of a small save's scan.
  */
 export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   const fold = new ScanFold()
@@ -848,9 +801,8 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
 const DATE_MAX_MS = 8.64e15
 
 /**
- * The sidecar's stats, each an integer mode in 0..0o7777 and an integer
- * mtime a Date holds: one taken as is reached the index, and its restore
- * threw a TypeError out of `utimesSync` after renames had begun.
+ * Each sidecar mode an integer in 0..0o7777 and each mtime one a Date holds:
+ * anything else would throw out of `utimesSync` after renames had begun.
  */
 function filesOf(meta: MetaFile): MetaFile['files'] {
   const raw: unknown = meta.files
@@ -876,9 +828,8 @@ function filesOf(meta: MetaFile): MetaFile['files'] {
 }
 
 /**
- * The sidecar's directory names, each held to the rules a file entry's
- * name is (the sidecar is as attacker-reachable as the tar), and only
- * under an output namespace.
+ * The sidecar's directory names, held to a file entry's rules (the sidecar is
+ * as attacker-reachable as the tar), and only under an output namespace.
  */
 function dirsOf(meta: MetaFile): string[] {
   const raw: unknown = meta.dirs
@@ -897,9 +848,9 @@ function dirsOf(meta: MetaFile): string[] {
 }
 
 /**
- * The sidecar's links, each name held to a file entry's rules and each
- * target to a relative path with no NUL: where it may point is decided at
- * the restore, which knows the workspace.
+ * The sidecar's links: each name held to a file entry's rules, each target to a
+ * relative path with no NUL. Where it may point is decided at the restore,
+ * which knows the workspace.
  */
 function linksOf(meta: MetaFile): Array<[string, string]> {
   const raw: unknown = meta.links
@@ -923,15 +874,12 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
 const LINK_CHAIN_MAX = 8
 
 /**
- * The first of `links` (absolute paths to their targets as written) that
- * `to` passes through, walked from `dir` a segment at a time. Each link's
- * target is checked as text, but the kernel follows one link while it
- * resolves the next: `up -> ..` and `esc -> up/../../x` each read as
- * inside while `esc` lands outside. A link that is the LAST hop is no
- * such step: `libx.so -> libx.so.1` lands where `libx.so.1` lands, and
- * that link is checked on its own, so a shared library's soname chain is
- * kept. Such a chain is walked to its end and refused only when it loops
- * or runs past `LINK_CHAIN_MAX` (`why: 'loop'`).
+ * The first of `links` that `to` passes through, walked from `dir` a segment at
+ * a time. Each target is checked as text, but the kernel follows one link while
+ * resolving the next: `up -> ..` and `esc -> up/../../x` each read inside while
+ * `esc` lands outside. A link that is the LAST hop is checked on its own, so a
+ * soname chain (`libx.so -> libx.so.1`) is kept, walked to its end and refused
+ * only when it loops or passes `LINK_CHAIN_MAX`.
  */
 function throughLink(
   dir: string,
@@ -956,8 +904,8 @@ function throughLink(
 }
 
 /**
- * The sidecar's directory modes, each name held to a file entry's rules and
- * each mode to permission bits.
+ * The sidecar's directory modes: each name held to a file entry's rules, each
+ * mode to permission bits.
  */
 function dirModesOf(meta: MetaFile): Array<[string, number]> {
   const raw: unknown = meta.dirModes
@@ -980,10 +928,8 @@ function dirModesOf(meta: MetaFile): Array<[string, number]> {
 }
 
 /**
- * A file this user cannot read, or one gone since its stat, is not the
- * same bytes: the rename replaces it. Any other failure is the restore's:
- * an EMFILE read as "differs" sent the restore on to stage, and its error
- * named the staging file.
+ * A file this user cannot read, or one gone since its stat, is not the same
+ * bytes: the rename replaces it. Any other failure is the restore's.
  */
 function sameBytes(file: string, body: Uint8Array): boolean {
   try {
@@ -1003,13 +949,9 @@ const inside = (p: string, root: string): boolean => {
 
 /**
  * Where a link in `dir` reading `to` lands against `bound`, if a restore may
- * not write it: out of it, or into its `.git` (lexical: a write through a
- * link is judged where it resolves, so an alias chain into .git gets no
- * further than this link would). Out is any step above `bound`, even one
- * that comes back: `../../../ws/app/x` resolves inside only a root named
- * `ws`, so judged by where it ends it saved here and was refused on every
- * checkout under another name. The save asks it too, or it stored a link
- * every restore refused, an entry that never hit on any machine.
+ * not write it: out of it, or into its `.git`. Out is any step above `bound`,
+ * even one that comes back: `../../../ws/app/x` resolves inside only a root
+ * named `ws`. The save asks it too, or it would store a link no restore lays.
  */
 function linkRefused(dir: string, to: string, bound: string): 'out' | '.git' | undefined {
   const root = path.resolve(bound)
@@ -1025,12 +967,10 @@ function linkRefused(dir: string, to: string, bound: string): 'out' | '.git' | u
 }
 
 /**
- * `linkRefused` on disk: the kernel resolves a `..` from where the links
- * before it lead, so with a committed `app/up -> ..` the text
- * `../up/../x` read as inside and landed beside the workspace. Walked from
- * `dir`'s real path, each link on disk before the last `..` followed,
- * every step held to `realBound`. A target with no `..` touches no disk;
- * the links the artifact itself restores are `throughLink`'s.
+ * `linkRefused` on disk: the kernel resolves a `..` from where the links before
+ * it lead, so with a committed `app/up -> ..` the text `../up/../x` reads
+ * inside and lands beside the workspace. Walked from `dir`'s real path, every
+ * step held to `realBound`. A target with no `..` touches no disk.
  */
 async function linkLandsRefused(
   dir: string,
@@ -1094,10 +1034,9 @@ function boundOf(dir: string, where: string): LinkBound {
 }
 
 /**
- * Why a restore refuses the link `name` at `target` reading `to`, or
- * undefined when it may lay it. `linked` and `nameOf` hold every link the
- * restore lays, by where it stands. With no `bound` (an unpack into a cache
- * tree) only the links among themselves are judged.
+ * Why a restore refuses the link `name` at `target` reading `to`, or undefined.
+ * `linked` and `nameOf` hold every link the restore lays. With no `bound` (an
+ * unpack into a cache tree) only the links among themselves are judged.
  */
 async function linkRefusal(
   name: string,
@@ -1123,12 +1062,11 @@ async function linkRefusal(
 }
 
 /**
- * Whether the extractor would lay every one of `links` (`[row path, target]`
- * under `projectDir`) among the entry's `rows` with no refusal: the
- * copy-out lays links itself only then, and leaves a refusal to the
- * extractor, which names it. The same rules: a safe target, no other row at
- * or under the link, inside the workspace (the project, without one) as
- * text and on disk, never into `.git`, and never through another link.
+ * Whether the extractor would lay every one of `links` with no refusal: only
+ * then does the copy-out lay links itself, leaving a refusal to the extractor,
+ * which names it. Same rules: a safe target, no row at or under the link,
+ * inside the workspace as text and on disk, never into `.git`, never through
+ * another link.
  */
 export async function linksRestorable(
   links: ReadonlyArray<readonly [string, string]>,
@@ -1171,15 +1109,11 @@ function usageOf(raw: unknown): ExecUsage | undefined {
 }
 
 /**
- * Restore from `tar`, the DECOMPRESSED archive as a byte stream:
- * `outputs/<rel>` lands under `destDir/<rel>` and — when `workspaceDest`
- * is given — `workspace-outputs/<rel>` under `workspaceDest/<rel>`;
- * entries in neither namespace are ignored. Entries are validated and staged
- * as they arrive and renamed into place only after the archive has ended
- * cleanly and `verify` (the caller's look at which output names the
- * archive provided — the index's missing-output check) has passed. Any
- * failure — an unsafe name, an escape, a truncated stream, `verify` —
- * leaves nothing behind. Returns the provided output names.
+ * Restore from `tar`, the decompressed archive stream: `outputs/<rel>` under
+ * `destDir`, `workspace-outputs/<rel>` under `workspaceDest` when given; others
+ * ignored. Entries are validated and staged as they arrive, renamed into place
+ * only after a clean end and `verify` (the index's missing-output check). A
+ * failure leaves nothing. Returns the output names.
  */
 export async function extractArtifactStream(
   tar: ReadableStream<Uint8Array>,
@@ -1192,19 +1126,16 @@ export async function extractArtifactStream(
   /** Handed what `scanArtifact` would read of the same bytes, once their sum has checked. */
   onScan?: (scan: ArtifactScan) => void,
   /**
-   * Given, a restore into a workspace: each file written is dated now, and
-   * one whose bytes already stood keeps its own mtime; either is set here
-   * by entry name. Absent, an unpack into the cache's tree form: the saved
-   * mtimes apply.
+   * Given, a restore into a workspace: a file written is dated now, one whose
+   * bytes already stood keeps its mtime. Absent, an unpack into the tree form:
+   * saved mtimes apply.
    */
   dated?: Map<string, number>,
   /** Given, filled with the directories the extract found missing (and so made). */
   absentDirs?: Set<string>,
 ): Promise<Set<string>> {
-  // No `mkdir -p` of the destination here: `stage` creates each entry's
-  // directory chain, the destination included, and the cache restores
-  // into a project directory that exists. The eager one cost every
-  // restore a thread-pool round trip for an EEXIST and a stat (item 627).
+  // No `mkdir -p` of the destination: `stage` makes each entry's chain, the
+  // destination included.
   readUmask()
   const x = new Extractor(destDir, workspaceDest, stageRoot, absentDirs)
   const provided = new Set<string>()
@@ -1231,8 +1162,8 @@ export async function extractArtifactStream(
         continue
       }
       assertSafeName(e.name)
-      // Before anything is staged: an entry the task never declared is not
-      // this task's save, and none of the archive lands.
+      // Before anything is staged: an entry the task never declared is not this
+      // task's save, and none of the archive lands.
       if (accept !== undefined && !accept(e.name)) {
         throw new ArchiveSecurityError(
           `archive entry is not one of the task's declared outputs: ${e.name}`,
@@ -1269,13 +1200,9 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    // Unpacked into a cache tree (no stage root, `workspace-outputs/` inside
-    // the tree), the workspace is unknown: bounded by the tree, a project's
-    // `dist/l -> ../../other/f.txt` read as out and a good remote hit was
-    // refused. The tree stores a link as text and nothing is written through
-    // it; its restore (`restoreTree`: the copy-out after `linksRestorable`,
-    // else the extractor) bounds it by the workspace, as a local save's tree
-    // and an inline artifact are.
+    // Unpacked into a cache tree, the workspace is unknown, and bounding by the
+    // tree refused good links like `dist/l -> ../../other/f.txt`. The tree
+    // stores a link as text; its restore bounds it by the workspace.
     const tree = stageRoot === undefined && workspaceDest !== undefined
     const bound = stageRoot ?? destDir
     const where = stageRoot === undefined ? 'project' : 'workspace'
@@ -1289,13 +1216,13 @@ export async function extractArtifactStream(
     }
     const held = tree ? undefined : boundOf(bound, where)
     const realDirs = new Map<string, Promise<string>>()
-    // Once, not a scan of every entry per link: 700 links in 32k entries
-    // was 1.7 s of a restore.
+    // Once, not a scan of every entry per link: 700 links in 32k entries took
+    // 1.7 s.
     const under = new Set<string>()
     for (const p of provided) addAncestors(under, p)
     for (const [name, to] of links) {
       // Renamed over an entry just written, the link would stand where the
-      // sidecar says a file is, and a re-pack of the tree reads through it.
+      // sidecar says a file is.
       if (provided.has(name) || under.has(name)) {
         throw new ArchiveSecurityError(`archive link ${name} is also a file or directory entry`)
       }
@@ -1314,16 +1241,14 @@ export async function extractArtifactStream(
       provided.add(name)
       addAncestors(under, name)
     }
-    // A moded directory is one the entries above make; its row, like an
-    // empty directory's, names it with a trailing slash. The cache applies
-    // the mode (`Cache.restoreOutputs`), to the directories a hit makes.
+    // A moded directory is one the entries above make; its row names it with a
+    // trailing slash. `Cache.restoreOutputs` applies the mode.
     for (const [name] of dirModes) {
       if (x.destFor(name) !== null) provided.add(`${name}/`)
     }
     verify?.(provided)
-    // The sidecar's stat is the truth, a mode of 000 and an mtime at or
-    // before the epoch included (`SOURCE_DATE_EPOCH=0`). Without one, a
-    // header mtime of 0 is a producer that wrote none: unknown.
+    // The sidecar's stat is the truth, a 000 mode and an epoch mtime included
+    // (`SOURCE_DATE_EPOCH=0`). Without one, a header mtime of 0 means unknown.
     await x.commit((name) => {
       const m = meta[name]
       if (m !== undefined) return [m[0], m[1]]
@@ -1341,9 +1266,8 @@ export async function extractArtifactStream(
 const INHERITS_GROUP = process.platform === 'darwin'
 
 /**
- * Entries up to this size are buffered and written without waiting, so a
- * thousand tiny outputs restore in parallel; larger ones stream chunk by
- * chunk to a file sink.
+ * Entries up to this size are buffered and written without waiting, so tiny
+ * outputs restore in parallel; larger ones stream to a file sink.
  */
 const SMALL_ENTRY = 4 * 1024 * 1024
 
@@ -1371,10 +1295,9 @@ const textOf = async (body: AsyncIterable<Uint8Array>): Promise<string> =>
   utf8.decode(await bytesOf(body))
 
 /**
- * Bring a target that already held the entry's bytes to its mode and, when
- * given, `mtimeMs`, through a descriptor opened without following a link:
- * one planted since the compare is refused, never written through.
- * Answers the mtime it leaves, in whole milliseconds.
+ * Bring a target that already held the entry's bytes to its mode and `mtimeMs`,
+ * through a descriptor opened without following a link: one planted since the
+ * compare is refused. Answers the mtime it leaves, in whole ms.
  */
 function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined): number {
   const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
@@ -1430,9 +1353,8 @@ interface Tree {
 }
 
 /**
- * The staging core. Nothing reaches its final name until `commit`;
- * `abort` removes every temp and the empty directories this extraction
- * created.
+ * The staging core. Nothing reaches its final name until `commit`; `abort`
+ * removes every temp and the empty directories this extraction made.
  */
 class Extractor {
   private readonly staged: Staged[] = []
@@ -1443,20 +1365,16 @@ class Extractor {
   private inflight: Promise<unknown>[] = []
   private inflightBytes = 0
   private readonly realBaseCache = new Map<string, string>()
-  // Per-directory memos. An artifact holds a few files per directory
-  // (payload's ui: 4,069 files in 535 directories), and the containment
-  // walk and the `mkdir -p` are properties of the directory, not the
-  // entry: doing both once per directory took the restore of that
-  // artifact from 220–300 µs per file to the write itself. The window
-  // this opens — a symlink planted at a validated directory between two
-  // of its entries — is the same one that already lies between an
-  // entry's own check and its write.
+  // Per-directory memos: the containment walk and `mkdir -p` belong to the
+  // directory, not the entry (4,069 files in 535 directories went from 220–300
+  // µs per file to the write itself). The window this opens, a symlink planted
+  // at a checked directory between two of its entries, already lies between any
+  // entry's check and its write.
   private readonly containedDirs = new Set<string>()
   private readonly ensuredDirs = new Set<string>()
   private readonly trees = new Map<string, Tree>()
-  // Directories the containment walk found missing, which `treeFor` would
-  // otherwise probe again. A directory made since fails the tree's rename,
-  // and the entries then go in one by one.
+  // Directories the containment walk found missing. One made since fails the
+  // tree's rename, and the entries go in one by one.
   private readonly seenAbsent: Set<string>
 
   constructor(
@@ -1479,26 +1397,18 @@ class Extractor {
     return null
   }
 
-  // The REAL path of each base dir (symlinks resolved), memoized. Used to
-  // catch a symlinked ANCESTOR under the output tree: the lexical check
-  // below stops a `..` name, but if `<dest>/dist` is already an on-disk
-  // symlink pointing outside (planted in the repo or by a dependency
-  // postinstall), a lexically-contained entry `dist/x` would follow it and
-  // escape. Both sides are realpath'd, so a legitimate symlinked ANCESTOR of
-  // the base dir itself (e.g. macOS /tmp → /private/tmp) resolves
-  // consistently and is not flagged.
+  // The REAL path of each base dir, memoized, to catch a symlinked ANCESTOR
+  // under the output tree: an on-disk `<dest>/dist` link pointing out would
+  // carry a lexically contained `dist/x` with it. Both sides are realpath'd, so
+  // a symlinked ancestor of the base itself (macOS /tmp) resolves consistently.
   private async realBaseOf(base: string): Promise<string> {
     const key = path.resolve(base)
     let r = this.realBaseCache.get(key)
     if (r === undefined) {
-      // The base often does NOT exist yet — the workspace-outputs anchor is
-      // created lazily by the first entry. Falling back to the un-resolved
-      // path there would compare a real ancestor (`/private/tmp/...`, once
-      // mkdir has created it) against a symlinked base (`/tmp/...`) and
-      // refuse EVERY entry with a bogus security error. So resolve the
-      // deepest EXISTING ancestor and re-append the rest: the answer is the
-      // same before and after the base is created, which is what makes the
-      // memo safe.
+      // The base often does not exist yet (the workspace-outputs anchor is made
+      // by the first entry). Resolve the deepest EXISTING ancestor and
+      // re-append the rest, so the answer is the same before and after the base
+      // is made, which keeps the memo safe.
       r = await realOf(key).catch(async () => {
         let probe = path.dirname(key)
         const tail: string[] = [path.basename(key)]
@@ -1518,12 +1428,10 @@ class Extractor {
     return r
   }
 
-  // Two checks per entry: lexical (the joined path stays under the base)
-  // and real (the deepest EXISTING ancestor still resolves inside the real
-  // base). Walking up to the deepest existing ancestor is what makes it
-  // sound BEFORE anything is created — checking only the immediate parent
-  // would pass for `dist/a/b` when `dist` is the symlink and `dist/a` does
-  // not exist yet.
+  // Two checks per entry: lexical (the joined path stays under the base) and
+  // real (the deepest existing ancestor resolves inside the real base).
+  // Checking only the parent would pass `dist/a/b` when `dist` is the link and
+  // `dist/a` does not exist.
   async assertContained(base: string, target: string, name: string): Promise<void> {
     const baseResolved = path.resolve(base)
     const targetResolved = path.resolve(target)
@@ -1538,21 +1446,15 @@ class Extractor {
 
   private async assertParentContained(base: string, targetResolved: string): Promise<void> {
     const baseResolved = path.resolve(base)
-    // Only ancestors strictly BELOW the base are candidates — those are the
-    // ones a poisoned entry could follow out of the tree. The walk must never
-    // climb past the base: when the base itself does not exist yet (the
-    // workspace-outputs anchor is created lazily), its parent legitimately
-    // resolves outside and comparing against it would reject every entry.
-    // The base's own real path is resolved only once an ancestor EXISTS to
-    // compare it with: after a clean pruned the output directories (the
-    // common restore) nothing below the base is there, and the memoised
-    // resolve was a round trip spent on a comparison never made (item 627).
+    // Only ancestors strictly BELOW the base are candidates: a missing base's
+    // parent resolves outside legitimately. The base's real path is resolved
+    // only once an ancestor exists to compare with, which after a clean (the
+    // common restore) it does not.
     let probe = path.dirname(targetResolved)
     while (probe.startsWith(baseResolved + path.sep)) {
-      // Nothing there resolves either: the lstat answers the common case
-      // (a clean pruned the directory) without the failed realpath's round
-      // trip and error (X-163). A dangling link is there and falls through,
-      // as does an lstat that fails otherwise: the realpath decides.
+      // The lstat answers the common case (a clean pruned the directory)
+      // without a failed realpath. A dangling link, or an lstat failing
+      // otherwise, falls through to the realpath.
       if (absent(probe)) {
         this.seenAbsent.add(probe)
         probe = path.dirname(probe)
@@ -1571,19 +1473,15 @@ class Extractor {
       }
       probe = path.dirname(probe)
     }
-    // Nothing between the base and the target exists yet, so there is no
-    // pre-existing symlink to follow — the chain will be created fresh.
+    // Nothing between the base and the target exists: no symlink to follow.
   }
 
   /**
-   * `mkdir -p` does not follow a DANGLING link: it fails EEXIST at the link,
-   * ENOENT below it, ELOOP in a cycle — and the containment walk passed it,
-   * finding nothing that resolves between it and the base. A live link that
-   * stays inside the base is written through, so a dangling one is too: the
-   * directory it names is created and the entry lands through the link,
-   * which stays the user's (never replaced, nx#37061). One that leads out of
-   * the base is the refusal a live link out gets. Only the failure pays for
-   * the walk; a clean tree never reaches it.
+   * `mkdir -p` does not follow a DANGLING link (EEXIST, ENOENT or ELOOP), and
+   * the containment walk passed it. A live link inside the base is written
+   * through, so a dangling one is too: the directory it names is made and the
+   * link stays the user's (never replaced, nx#37061). One leading out of the
+   * base is refused. Only a failure pays for this walk.
    */
   private async mkdirThroughLink(
     base: string,
@@ -1597,21 +1495,17 @@ class Extractor {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
     // What stands there without a link on the way (a file named like the
-    // directory) fails this mkdir as it failed the first: the caller names
-    // it as a stray.
+    // directory) fails again: the caller names it as a stray.
     return mkdir(real, { recursive: true })
   }
 
   /**
-   * Where an entry in `dir` is written when a directory on the way to it is
-   * missing: inside a copy of the topmost missing one, built in the staging
-   * directory and renamed into place whole on commit. One rename per
-   * missing directory, not one per file: every file of a restore into a
-   * cleaned tree renamed across directories, all out of one staging
-   * directory, and the kernel time of a 5,000-artifact restore doubled
-   * (2026-10-17). A reader sees the directory complete or not at all.
-   * Undefined where the group or filesystem would differ from a write in
-   * place: the entry is then staged and renamed alone.
+   * Where an entry is written when a directory on its way is missing: inside a
+   * copy of the topmost missing one, built in staging and renamed into place
+   * whole on commit. One rename per directory, not per file (per-file renames
+   * doubled a 5,000-artifact restore's kernel time), and a reader sees the
+   * directory complete or not at all. Undefined where the group or filesystem
+   * would differ from a write in place.
    */
   private async treeFor(base: string, dir: string): Promise<string | undefined> {
     if (this.stageRoot === undefined) return undefined
@@ -1669,9 +1563,8 @@ class Extractor {
   }
 
   /**
-   * Write the entry beside its target. A buffer is written without
-   * waiting, bounded by `INFLIGHT_BYTES`; a chunk stream goes to a file
-   * sink one piece at a time.
+   * Write the entry beside its target: a buffer without waiting, bounded by
+   * `INFLIGHT_BYTES`; a stream to a file sink.
    */
   async stage(
     name: string,
@@ -1708,16 +1601,13 @@ class Extractor {
       }
       this.ensuredDirs.add(dir)
     }
-    // A target that already holds these bytes stays: renaming over a live
-    // file costs ~0.4 ms on ext4 (auto_da_alloc), and a hit that changed
-    // one of 2,000 outputs paid it 2,000 times. Bytes, not a stat stamp: a
-    // reproducible build gives every output one mtime (item 886). Never an
-    // empty file: one left in place reads as an untouched write-grant
-    // placeholder, and the sweep after a remote executor's task removed
-    // the empty output its restore had just landed.
+    // A target already holding these bytes stays: renaming over a live file
+    // costs ~0.4 ms on ext4 (auto_da_alloc). Bytes, not a stamp: a reproducible
+    // build gives every output one mtime. Never an empty file, which reads as
+    // an untouched write-grant placeholder and is swept after a remote task.
     const st = created === undefined ? lstatSync(target, { throwIfNoEntry: false }) : undefined
-    // A directory there fails its rename at commit, after the renames
-    // before it landed: refused now, no output is replaced.
+    // A directory there would fail its rename at commit, after others landed:
+    // refused now, nothing replaced.
     if (st?.isDirectory() === true)
       throw Object.assign(
         new Error(`EISDIR: illegal operation on a directory, rename '${target}'`),
@@ -1745,26 +1635,17 @@ class Extractor {
         return
       }
     }
-    // Write apart from the target and RENAME into place. rename(2) replaces
-    // the destination's directory ENTRY without following it, which is
-    // what makes this both link-safe and concurrency-safe:
+    // Write apart from the target and RENAME into place. rename(2) replaces the
+    // directory ENTRY without following it, so:
     //
-    //   - a planted symlink or HARDLINK at the target is replaced, not
-    //     written through, so `ln <victim> <dest>/out.txt` cannot get
-    //     the artifact's bytes into <victim>;
-    //   - the target is never momentarily ABSENT. The unlink-then-write
-    //     version opened exactly that window, and a second extract of
-    //     the same payload could delete the file between this one's
-    //     write and its chmod — reproduced 3/400 locally, caught red on
-    //     darwin CI where a loaded runner widened the race;
-    //   - mode and mtime are applied BEFORE the file is visible, so no
-    //     reader sees it with the wrong metadata.
+    // - a planted symlink or hardlink at the target is replaced, never written
+    //   through;
+    // - the target is never absent, so a second extract of the same payload
+    //   cannot delete it mid-restore;
+    // - mode and mtime are set before the file is visible.
     //
-    // A directory at the target makes the rename fail — the same
-    // fail-closed outcome the plain write had.
-    // Staged under `.vx/tmp/`, so no output folder ever holds a temp: a
-    // reader or a key taken meanwhile saw `.vx-tmp-*` files beside the
-    // outputs, and a killed restore left them there (2026-10-16).
+    // A directory at the target fails the rename, closed. Staged under
+    // `.vx/tmp/`, so no output folder ever holds a temp.
     const staged = this.stageRoot !== undefined
     const tmp = staged
       ? path.join(stagingDir(this.stageRoot!), (tmpSeq++).toString(36))
@@ -1777,17 +1658,12 @@ class Extractor {
   private async write(tmp: string, body: Uint8Array | AsyncIterable<Uint8Array>): Promise<void> {
     if (body instanceof Uint8Array) {
       this.inflightBytes += body.byteLength
-      // `writeFile`, not `Bun.write`: for a buffer this size `Bun.write`
-      // does the open, write and close on the calling thread and only
-      // its promise is asynchronous, so ten restores in flight wrote
-      // their 14,430 files one after another — a serial restore of
-      // payload took the same 6–7 s as one at concurrency 10, and a CPU
-      // profile put 6.7 of its 8.0 s inside `write` (2026-09-11). The
-      // thread-pool write lets the restores overlap their I/O.
+      // `writeFile`, not `Bun.write`: for a buffer `Bun.write` writes on the
+      // calling thread, so concurrent restores ran one after another. The
+      // thread-pool write overlaps their I/O.
       const write = writeFile(tmp, body)
-      // A write that fails before `commit` or `abort` awaits it must not
-      // surface as an unhandled rejection; the awaiting `Promise.all` still
-      // sees the error through the original promise.
+      // A write that fails before `commit` or `abort` awaits it is no unhandled
+      // rejection; `Promise.all` still sees the error.
       write.catch(() => undefined)
       this.inflight.push(write)
       if (this.inflightBytes > INFLIGHT_BYTES) await this.drain()
@@ -1853,14 +1729,10 @@ class Extractor {
 
   /**
    * Apply each entry's mode and mtime, then rename everything into place.
-   * The metadata calls are synchronous: a few microseconds each on the
-   * calling thread and ~40 µs each as thread-pool round trips, and a large
-   * artifact has thousands of them (measured 2026-09-11 on payload's ui,
-   * 4,069 files: 892 ms → see the archive bench). The renames go to the
-   * pool, `RENAME_BATCH` at a time: each replaces a live file. The chmod is skipped when the mode is
-   * the one the temp file was created with — the common case. The two
-   * writers create with different modes (under umask 000: 0666 and 0664),
-   * so each is stat'ed once.
+   * Metadata calls are synchronous: microseconds here, ~40 µs as pool round
+   * trips, thousands per large artifact. Renames go to the pool, `RENAME_BATCH`
+   * at a time. The chmod is skipped when the temp already has the mode; the two
+   * writers create with different modes, so each is stat'ed once.
    */
   async commit(
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
@@ -1878,11 +1750,9 @@ class Extractor {
     dated: Map<string, number> | undefined,
   ): Promise<void> {
     await this.drain()
-    // A restore dates each file it writes now, as the task's own write
-    // would, and moves no file's mtime back: the saved mtime predates
-    // outputs written since, and a make-style dependant took a changed
-    // upstream as older than its own output and kept bytes built from
-    // another one. Read once: one clock for the whole restore.
+    // A restore dates each file it writes now, as the task's write would, and
+    // moves no mtime back: a make-style dependant would take a changed upstream
+    // as older than its own output. One clock for the restore.
     const now = dated === undefined ? undefined : Date.now()
     // One stat per directory, shared by the filesystem check and the group.
     const dirStats = new Map<string, Stats>()
@@ -1896,9 +1766,8 @@ class Extractor {
     }
     await this.crossOver(statDir)
     const created = new Map<boolean, { mode: number; uid: number; gid: number }>()
-    // The group a file written in place would take, by directory: a setgid
-    // directory's on Linux, every directory's on BSD/macOS. A file staged
-    // elsewhere took the staging directory's.
+    // The group a file written in place would take: a setgid directory's on
+    // Linux, every directory's on BSD/macOS.
     const setgid = new Map<string, number | null>()
     let n = 0
     let renames: Promise<void>[] = []
@@ -1941,8 +1810,7 @@ class Extractor {
           created.set(s.streamed, made)
         }
         if (restoredMode(mode) !== made.mode) chmodSync(s.tmp, restoredMode(mode))
-        // A Date, not seconds: Bun reads a negative number of seconds as
-        // "now", and a Date before 1970 as itself (Bun 1.4.2).
+        // A Date, not seconds: Bun reads negative seconds as "now" (Bun 1.4.2).
         const t = mtimeMs === undefined ? undefined : new Date(mtimeMs)
         if (t !== undefined) utimesSync(s.tmp, t, t)
         if (s.tree !== undefined) continue
@@ -1963,8 +1831,7 @@ class Extractor {
         }
       }
     } catch (err) {
-      // Every rename in flight lands or fails before `abort` cleans up
-      // (a fuzz run on macOS, 2026-10-17).
+      // Every rename in flight lands or fails before `abort` cleans up.
       await Promise.allSettled(renames)
       throw err
     }
@@ -1976,9 +1843,8 @@ class Extractor {
   }
 
   /**
-   * Rename a staged tree to the directory it stands for. Something made
-   * there since staging (another restore of the same outputs) takes the
-   * tree's entries one by one instead, each renamed over its target.
+   * Rename a staged tree to the directory it stands for. Something made there
+   * since staging takes the entries one by one instead.
    */
   private async placeTree(top: string, t: Tree, checked: Set<string>): Promise<void> {
     await this.assertStillContained(t.base, path.dirname(top), checked)
@@ -2003,11 +1869,10 @@ class Extractor {
   }
 
   /**
-   * `rename`, into a directory of this user's that withholds its own write
-   * (a task's `chmod 555 dist/ro`, which a hit now restores): the
-   * directory gets owner write and search for the rest of the commit, and
-   * its mode back after. Without it every later hit that changed a file
-   * there failed EACCES, as only root could replace it.
+   * Into a directory of this user's that withholds its own write (`chmod 555
+   * dist/ro`, which a hit restores): it gets owner write and search for the
+   * commit and its mode back after, or every later hit changing a file there
+   * fails EACCES.
    */
   private async renameInto(from: string, to: string): Promise<void> {
     try {
@@ -2050,11 +1915,9 @@ class Extractor {
 
   /**
    * Copy every staged entry whose target is on another filesystem than
-   * `.vx/tmp/` to a temp beside its target, before any rename: a rename
-   * there would fail EXDEV, and copying at the rename, one file at a time,
-   * left the files renamed before a failed copy (ENOSPC) new and the rest
-   * old (Growth's parity run, 2026-10-16). A failed copy throws with
-   * nothing renamed, and `abort` removes the temps made so far.
+   * `.vx/tmp/` to a temp beside its target, before any rename: a rename would
+   * fail EXDEV, and copying at the rename left a mix of new and old files when
+   * one copy failed. A failed copy throws with nothing renamed.
    */
   private async crossOver(statDir: (dir: string) => Stats): Promise<void> {
     const dev = (dir: string): number => statDir(dir).dev
@@ -2086,9 +1949,8 @@ class Extractor {
   }
 
   /**
-   * Rename `s` over its target. A target on another filesystem than
-   * `.vx/tmp/` (EXDEV) is reached through a temp beside it, for that file
-   * only: the rename that replaces the live file stays atomic.
+   * Rename `s` over its target, through a temp beside it when on another
+   * filesystem (EXDEV): the final rename stays atomic.
    */
   private async place(s: Staged, mode: number, t: Date | undefined): Promise<void> {
     try {
@@ -2113,10 +1975,9 @@ class Extractor {
   }
 
   /**
-   * The staging check, again at the rename: a directory on the way swapped
-   * for a link out of the base since then would carry the rename with it.
-   * Bun has no `renameat` against a held directory fd, so this is by path,
-   * once per directory per commit.
+   * The staging check again at the rename: a directory swapped for a link out
+   * since then would carry the rename. Bun has no `renameat`, so by path, once
+   * per directory per commit.
    */
   private async assertStillContained(
     base: string,
@@ -2133,10 +1994,10 @@ class Extractor {
   }
 
   /**
-   * The check before each rename, once more after all landed: the rename
-   * runs on the thread pool, and a directory swapped for a link out in that
-   * gap carried the entry with it (restore-link-swap-rename.test.ts). An
-   * entry that landed outside is removed from there and the restore fails.
+   * The check once more after all landed: renames run on the pool, and a
+   * directory swapped in that gap carried an entry out
+   * (restore-link-swap-rename.test.ts). An entry that landed outside is removed
+   * and the restore fails.
    */
   private async assertLandedInside(): Promise<void> {
     const landed = new Map<string, { base: string; placed: string[] }>()
@@ -2160,10 +2021,9 @@ class Extractor {
   }
 
   /**
-   * Never leave a temp behind: beside a target, the declared output globs
-   * would sweep it into the next artifact. Directories this extraction created
-   * are removed bottom-up while empty; one a concurrent writer has since
-   * filled is left alone.
+   * Never leave a temp behind: beside a target, the output globs would sweep it
+   * into the next artifact. Directories this extraction made are removed
+   * bottom-up while empty.
    */
   async abort(): Promise<void> {
     await Promise.allSettled(this.inflight)
@@ -2175,14 +2035,14 @@ class Extractor {
     )
     for (const t of this.trees.values()) await rm(t.at, { recursive: true, force: true })
     this.trees.clear()
-    // Newest first: a later entry's chain can sit inside an earlier one's
-    // (`dist/` then `dist/sub/`), never the reverse.
+    // Newest first: a later chain can sit inside an earlier one, never the
+    // reverse.
     for (const s of this.staged.toReversed()) {
       if (s.created === undefined) continue
       let dir = path.dirname(s.target)
       const top = path.resolve(s.created)
-      // Created at a dangling link's resolved target (`mkdirThroughLink`),
-      // so the chain is pruned from where the link leads.
+      // Made at a dangling link's target (`mkdirThroughLink`), so pruned from
+      // where the link leads.
       if (!dir.startsWith(top)) dir = await realOf(dir).catch(() => dir)
       while (dir.startsWith(top)) {
         if (
@@ -2216,19 +2076,14 @@ class Extractor {
 }
 
 /**
- * Renames in flight at once. A rename over a live file is not the few
- * microseconds of one into an empty directory: on ext4 replacing a file
- * starts writeback of the new one's data (`auto_da_alloc`), ~250 µs each,
- * and synchronous ones stalled the main thread. 300 one-file restores
- * took 25% longer than delete-then-restore (2026-10-16); on the thread
- * pool they tie it, and 2,000 files in one restore are faster.
+ * Renames in flight at once. Replacing a live file starts writeback on ext4
+ * (~250 µs each), and synchronous ones stalled the main thread.
  */
 const RENAME_BATCH = 64
 
 /**
- * `p`, its failure marked handled at once: `settle` reads it later, and a
- * rename that fails while the commit awaits something else is not an
- * unhandled rejection that fails the process.
+ * Marked handled at once: `settle` reads it later, and a rename failing
+ * meanwhile must not fail the process.
  */
 function handled(p: Promise<void>): Promise<void> {
   p.catch(() => undefined)
@@ -2249,14 +2104,10 @@ const STAGING = 'tmp'
 const stagingMade = new Set<string>()
 
 /**
- * This process's staging directory under `root`'s `.vx/tmp/`, made on its
- * first restore and again only if something removed it: one per restore
- * cost 300 restores 12% (2026-10-16). Every restore's renames empty it;
- * the next run's `sweepStaging` removes it once this process is gone.
- * Made synchronously: a run's first restores arrive together, and each
- * awaited its own thread-pool `mkdir` of the one directory behind the
- * others' synchronous work, 2-3 ms of solid's three-restore run
- * (2026-11-10); the call is one `mkdir` of microseconds.
+ * This process's staging directory under `.vx/tmp/`, made on its first restore
+ * and again only if removed (one per restore cost 12%). The next run's
+ * `sweepStaging` removes it once this process is gone. Made synchronously: one
+ * `mkdir` of microseconds, where awaited ones queued behind each other.
  */
 function stagingDir(root: string): string {
   const top = stagingRoot(root)
@@ -2284,16 +2135,15 @@ export function stagingRoot(root: string): string {
 
 /**
  * Where a tree restore's copy-out stages: this process's directory under
- * `root`'s `.vx/tmp/`, its stats, and a fresh name in it per call of
- * `temp`. With no root each temp sits beside its target.
+ * `.vx/tmp/`, its stats, and a fresh name per `temp`. With no root each temp
+ * sits beside its target.
  */
 export function copyStaging(root: string | undefined): {
   stats: Stats | undefined
   temp: (target: string) => string
 } {
   if (root === undefined) return { stats: undefined, temp: siblingTemp }
-  // Made already: its stat is the check that it still stands, one call
-  // where `stagingDir`'s check and a stat were two on every restore.
+  // Made already: its stat checks it still stands.
   let dir = ownStaging(root)
   let stats = stagingMade.has(dir) ? statSync(dir, { throwIfNoEntry: false }) : undefined
   if (stats === undefined) {
@@ -2304,9 +2154,8 @@ export function copyStaging(root: string | undefined): {
 }
 
 /**
- * Whether what is made in the directory `staging` names keeps, renamed
- * into `dir`, what a write in place would give it: the same filesystem
- * (a rename across fails), and the same group.
+ * Whether a file made in `staging` and renamed into `dir` keeps what a write in
+ * place gives it: the same filesystem and group.
  */
 export function stagesInto(staging: Stats, dir: Stats | undefined): boolean {
   return (
@@ -2319,9 +2168,8 @@ export function stagesInto(staging: Stats, dir: Stats | undefined): boolean {
 }
 
 /**
- * A temp beside `target`, with its own short name, never `<target>.suffix`:
- * a suffix pushed a legal name of 242–255 bytes past NAME_MAX, and the
- * restore of a valid artifact failed with ENAMETOOLONG (item 666).
+ * A temp beside `target` with its own short name, never `<target>.suffix`,
+ * which pushes a legal 242–255 byte name past NAME_MAX.
  */
 function siblingTemp(target: string): string {
   return path.join(
@@ -2333,13 +2181,10 @@ function siblingTemp(target: string): string {
 const WORKSPACE_PREFIX = 'workspace-outputs/'
 
 /**
- * The on-disk half of containment failed: `probe`, a directory under
- * `base`, resolves outside it, so a directory between them is a link out.
- * That is the tree, not the artifact — an output directory made a link
- * after the entry was saved (upstream survey, nx#37061) — so it is the
- * user's to fix, and the refusal names the link and where it leads. The
- * restore never writes through it and never replaces it: the link is the
- * user's, and replacing it is the bug nx#37061 reports.
+ * Containment failed on disk: a directory between `base` and `probe` is a link
+ * out. That is the user's tree, not the artifact (nx#37061), so the refusal
+ * names the link and where it leads; the restore never writes through it or
+ * replaces it.
  */
 async function linkOutError(base: string, probe: string, realBase: string): Promise<UserError> {
   let dir = base
@@ -2372,10 +2217,8 @@ function absent(p: string): boolean {
 }
 
 /**
- * `realpath`, for a path holding a backslash too: Bun's answers ENOENT for
- * any such path (1.4.2), so the containment walk took a link named
- * `dist\x` for absent and wrote through it, and a save called a linked
- * output under one dangling. Such a path's links are read one by one.
+ * `realpath` for a path holding a backslash too: Bun's answers ENOENT for any
+ * such path (1.4.2), so such a path's links are read one by one.
  */
 async function realOf(p: string, sync = false): Promise<string> {
   try {
@@ -2389,10 +2232,9 @@ async function realOf(p: string, sync = false): Promise<string> {
 }
 
 /**
- * Where `p` leads, every link on the way followed, a dangling one included:
- * `realpath` for the part that exists, and past the first missing name the
- * rest as written — where `mkdir -p` would create it if it followed links.
- * A cycle is the user's tree, not the artifact, so it is refused by name.
+ * Where `p` leads, every link followed, a dangling one included: `realpath` for
+ * the part that exists, the rest as written. A cycle is the user's tree,
+ * refused by name.
  */
 async function resolveThrough(p: string): Promise<string> {
   const abs = path.resolve(p)
@@ -2430,10 +2272,9 @@ async function resolveThrough(p: string): Promise<string> {
 }
 
 /**
- * Path-traversal defense, applied to every entry name at read time.
- * Mirrors Turbo's `restore.rs:check_path` normalization: an artifact is
- * attacker-reachable, so a name that could resolve outside the anchor is
- * refused before anything decides where to write it.
+ * Path-traversal defense on every entry name at read time, mirroring Turbo's
+ * `check_path`: a name that could resolve outside the anchor is refused before
+ * anything decides where to write it.
  */
 function assertSafeName(name: string): void {
   if (name.length === 0) {
@@ -2448,39 +2289,35 @@ function assertSafeName(name: string): void {
   if (name.includes('//')) {
     throw new ArchiveSecurityError(`archive entry name has empty path component (unsafe): ${name}`)
   }
-  // vx never packs a `.` segment, and `outputs/.` names the anchor itself:
-  // ingest kept it, and every hit then failed renaming a file over the
-  // project directory, blamed on the user's tree.
+  // vx never packs a `.` segment, and `outputs/.` names the anchor itself.
   if (hasDotSegment(name)) {
     throw new ArchiveSecurityError(`archive entry name has a '.' segment (unsafe): ${name}`)
   }
-  // No backslash refusal: vx runs on Linux and macOS (Windows through WSL),
-  // where it is a name character, and the save scans its own artifact with
-  // these checks, so refusing one made `dist/back\slash` uncacheable.
+  // No backslash refusal: on Linux and macOS it is a name character, and
+  // refusing it made `dist/back\slash` uncacheable.
   if (/^[A-Za-z]:[\\/]/.test(name)) {
     throw new ArchiveSecurityError(`archive entry has windows drive prefix (unsafe): ${name}`)
   }
   if (name.includes('\0')) {
     throw new ArchiveSecurityError(`archive entry name contains a null byte (unsafe): ${name}`)
   }
-  // A tree keeps a project output at its rel beside `workspace-outputs/`
-  // (`writeTree`): one by that name would come back a workspace output.
+  // A tree keeps project outputs beside `workspace-outputs/`: one by that name
+  // would come back a workspace output.
   if (name.startsWith(RESERVED_OUTPUT) || name === RESERVED_OUTPUT.slice(0, -1)) {
     throw new ArchiveSecurityError(
       `archive entry ${name} is a project output under ${WORKSPACE_OUTPUT_PREFIX}, the name outputs.workspaceFiles reserve`,
     )
   }
-  // Only a pax `path` record can carry a name this long. Left to the file
-  // system it is a raw ENAMETOOLONG, which the restore reports as an
-  // internal error rather than a refused artifact. A UTF-16 unit is at most
-  // three UTF-8 bytes, so the common short name never pays for the count.
+  // Only a pax `path` record carries a name this long; the file system's
+  // ENAMETOOLONG would read as an internal error. A UTF-16 unit is at most
+  // three UTF-8 bytes, so a short name skips the count.
   if (name.length * 3 >= PATH_MAX && Buffer.byteLength(name) >= PATH_MAX) {
     throw new ArchiveSecurityError(
       `archive entry name is ${Buffer.byteLength(name)} bytes, past PATH_MAX (${PATH_MAX}) (unsafe): ${name.slice(0, 64)}…`,
     )
   }
-  // The same raw ENAMETOOLONG for one component past NAME_MAX, the same on
-  // Linux and macOS. Same cheap bound: a name under 86 units cannot hold one.
+  // The same for one component past NAME_MAX. A name under 86 units cannot hold
+  // one.
   if (name.length * 3 > NAME_MAX) {
     for (const part of name.split('/')) {
       if (part.length * 3 > NAME_MAX && Buffer.byteLength(part) > NAME_MAX) {

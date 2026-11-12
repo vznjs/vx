@@ -6,7 +6,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'bun:test'
-import { Cache, SCHEMA_VERSION } from '../src/cache/index.js'
+import { Cache } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/index-db/index.js'
 
 const made: string[] = []
 

@@ -5,11 +5,11 @@ import type { Database } from 'bun:sqlite'
 import { UserError } from '../util/index.js'
 
 /**
- * The recorded run `raw` names: itself when recorded, else the one run
- * whose id starts with it. Null when none does; a prefix several runs share
- * is refused with those runs, since picking one would replay the wrong run.
- * A run a stop ended keeps task rows but no header (item 854), and `vx why`
- * and `vx last --log` print its id, so its rows name it too.
+ * The recorded run `raw` names: itself when recorded, else the one run whose id
+ * starts with it. Null when none does; a prefix several runs share is refused
+ * with those runs, since picking one would replay the wrong run. A run a stop
+ * ended keeps task rows but no header, and `vx why` and `vx last --log` print
+ * its id, so its rows name it too.
  */
 export function resolveRunId(db: Database, raw: string, verb: string): string | null {
   // Run ids are lower-case UUIDs; one typed or pasted in upper case is the same id.

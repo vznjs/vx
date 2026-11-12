@@ -11,7 +11,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { coreEntries, emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
+import { emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
 import { publishOrder } from '../scripts/release.ts'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -39,28 +39,15 @@ describe('the published @vzn/vx tree', () => {
 
   it('ships the entry the exports map and the launcher name', async () => {
     expect(await Bun.file(path.join(mainDir, 'src', 'index.ts')).exists()).toBe(true)
-    expect(await Bun.file(path.join(mainDir, 'index.ts')).exists()).toBe(true)
     expect(manifest.bin).toEqual({ vx: './launcher.sh' })
     expect(await Bun.file(path.join(mainDir, manifest.bin.vx!)).exists()).toBe(true)
-  })
-
-  it('ships a directory twin for every exports subpath', async () => {
-    const twins: Array<{ sub: string; present: boolean }> = []
-    for (const sub of Object.keys(manifest.exports)) {
-      if (sub === '.') continue
-      twins.push({
-        sub,
-        present: await Bun.file(path.join(mainDir, sub, 'index.ts')).exists(),
-      })
-    }
-    expect(twins.filter((t) => !t.present)).toEqual([])
   })
 
   it('copies exactly what the workspace manifest declares', async () => {
     const core = (await Bun.file(path.join(CORE, 'package.json')).json()) as Manifest
     expect(manifest.exports).toEqual(core.exports)
     expect(manifest.files).toEqual([
-      ...coreEntries(core.exports),
+      'src',
       'schemas',
       'skills',
       'launcher.sh',
@@ -68,23 +55,6 @@ describe('the published @vzn/vx tree', () => {
       'README.md',
       'LICENSE',
     ])
-  })
-})
-
-describe('coreEntries', () => {
-  it('names only the source entries when the map has no subpath', () => {
-    expect(coreEntries({ '.': {} })).toEqual(['index.ts', 'src'])
-  })
-
-  it('names the top directory of every subpath, once, sorted', () => {
-    expect(
-      coreEntries({
-        '.': {},
-        './plugins/schedule-history': {},
-        './plugins/local-cache': {},
-        './adapters/turbo': {},
-      }),
-    ).toEqual(['index.ts', 'src', 'adapters', 'plugins'])
   })
 })
 

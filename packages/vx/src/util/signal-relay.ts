@@ -9,12 +9,12 @@
 //
 // A parent that sets no mark relays too: Bun's package-bin runner (`bun vx
 // run`, the form the docs use) passes on every SIGINT, in a terminal's
-// foreground as well, so one Ctrl-C reached vx twice, 0.2 ms apart, and
-// vx SIGKILLed every task with no summary (2026-11-12). Such a parent is a
-// launcher: it heard the same stop, so it sits in vx's process group (a
-// shell's job runs in a group of its own), and it ran vx for its own
-// command line, so its arguments end with vx's. Its copy follows within a
-// millisecond; a person's second Ctrl-C comes a key press later.
+// foreground as well, so one Ctrl-C reached vx twice, 0.2 ms apart, and vx
+// SIGKILLed every task with no summary. Such a parent is a launcher: it heard
+// the same stop, so it sits in vx's process group (a shell's job runs in a
+// group of its own), and it ran vx for its own command line, so its arguments
+// end with vx's. Its copy follows within a millisecond; a person's second
+// Ctrl-C comes a key press later.
 
 import { readFileSync } from 'node:fs'
 

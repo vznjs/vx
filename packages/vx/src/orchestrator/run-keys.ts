@@ -1,19 +1,18 @@
 // The run key memo: every up-front key a warm run derived, read back whole
-// when nothing any of them folds has moved. Deriving them again cost 250 ms
-// of a 1,070 ms warm run at 9,600 tasks even with every fold memo row
-// answering (2026-10-22): the per-task walk itself, not the files.
+// when nothing any of them folds has moved. Deriving them again cost a
+// quarter of a 9,600-task warm run even with every fold memo row answering:
+// the per-task walk itself, not the files.
 //
-// The token is everything `deriveStableKeys` reads: each node's id, edges,
-// resolved config, plugin key parts and files token, the declared env
-// values, the forward args and the code that derives. A run the token cannot
-// vouch for (a keyless or runtime-probed task, a declaration no files token
-// covers) derives as before.
+// The token is everything `deriveStableKeys` reads (`RUN_PARTS`,
+// `NODE_PARTS`, each node's files token, the declared env values). A run
+// the token cannot vouch for (a keyless or runtime-probed task, a
+// declaration no files token covers) derives as before.
 
 import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { ownEnv, xxh3hex } from '../util/index.js'
+import { memoParts, onlyAbsent, ownEnv, unread, xxh3hex } from '../util/index.js'
 import type { StableKey } from './stable-keys.js'
 import {
   hashTaskConfig,
@@ -36,6 +35,58 @@ export interface RunKeysArgs {
   gitFilesCache: GitFilesCache
   hashCache: HashCache
 }
+
+const RUN_PARTS = memoParts<RunKeysArgs>({
+  workspaceRoot: (root) => root,
+  forwardArgs: (argv) => JSON.stringify(argv ?? []),
+  claimedFiles: (files) => JSON.stringify([...files].sort()),
+  nestedDirsByProject: (dirs) => JSON.stringify([...dirs]),
+  // Which outputs git ignores decides which a reader may see (`readableOutputs`).
+  gitFilesCache: (git) => [...git.ignoredOutputs].sort().join('\0'),
+  // Folded into a config's key; a remembered graph's token names the
+  // lock, not `.vx/workspace` or the variables.
+  hashCache: (hc) =>
+    [
+      String(workspaceCleanOf(hc)),
+      String(inputStrategiesOf(hc)?.run),
+      String(inputStrategiesOf(hc)?.workspace),
+      hc.graph ?? '',
+    ].join('\0'),
+  nodes: unread('each node adds its own parts (`NODE_PARTS`)'),
+})
+
+const NODE_PARTS = memoParts<TaskNode, HashCache>({
+  id: (id) => id,
+  projectName: (name) => name,
+  projectDir: (dir) => dir,
+  deps: (deps) => deps.join('\u0001'),
+  orderOnly: (deps) => (deps ?? []).join('\u0001'),
+  requested: (requested) => (requested ? '1' : '0'),
+  config: (cfg, _node, hc) => hashTaskConfig(cfg, hc),
+  keyParts: (parts) => JSON.stringify(parts ?? []),
+  platform: (platform) => platform ?? '',
+  addsToOutputsOf: (ids) => JSON.stringify(ids ?? []),
+  outputsAddedToBy: (globs) => JSON.stringify(globs ?? []),
+  taskName: unread('part of `id`'),
+  surfaced: unread('display only'),
+  worker: unread('placement only, as `exec.worker` in the config hash'),
+  excludedUpstream: onlyAbsent('its key folds an outcome this run decides'),
+})
+
+/**
+ * Under a remembered graph: its token names every node's edges and config
+ * (a `key` hook unsets it, `prepare`), so only what may differ under it.
+ */
+const NODE_PARTS_UNDER_GRAPH = NODE_PARTS.without([
+  'projectName',
+  'projectDir',
+  'deps',
+  'orderOnly',
+  'config',
+  'keyParts',
+  'addsToOutputsOf',
+  'outputsAddedToBy',
+])
 
 /** What a run's up-front pass yields, as the memo holds it. */
 export interface RunKeys {
@@ -62,35 +113,20 @@ export interface RunKeysAt {
  */
 export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
   if (args.hashCache.folds === undefined) return undefined
-  const parts: string[] = [
-    RUN_MEMO_VERSION,
-    codeIdentity(),
-    args.workspaceRoot,
-    JSON.stringify(args.forwardArgs ?? []),
-    JSON.stringify([...args.claimedFiles].sort()),
-    JSON.stringify([...args.nestedDirsByProject]),
-    // Which outputs git ignores decides which a reader may see (`readableOutputs`).
-    [...args.gitFilesCache.ignoredOutputs].sort().join('\0'),
-    // Folded into a config's key; a remembered graph's token names the
-    // lock, not `.vx/workspace` or the variables.
-    String(workspaceCleanOf(args.hashCache)),
-    String(inputStrategiesOf(args.hashCache)?.run),
-    String(inputStrategiesOf(args.hashCache)?.workspace),
-  ]
-  // A remembered graph's token names every node's edges and config, so
-  // each node adds only what may differ under it (4 of 8 ms at 1,206
-  // tasks, 2026-10-23).
+  const parts: string[] = [RUN_MEMO_VERSION, codeIdentity()]
+  RUN_PARTS.push(args, undefined, parts)
+  // A remembered graph's token names every node's edges and config, so each
+  // node adds only what may differ under it (4 of 8 ms at 1,206 tasks).
   const graph = args.hashCache.graph
-  parts.push(graph ?? '')
+  const nodeParts = graph === undefined ? NODE_PARTS : NODE_PARTS_UNDER_GRAPH
   const ids: string[] = []
   const envNames = new Set<string>()
   // Tasks of one project mostly declare the same files and outputs, and the
-  // token is a function of that declaration (`filesToken`): one walk each,
-  // not one per task (5 of 12 ms at 1,206 tasks, 2026-10-23).
-  // Keyed by the project, then by the declaration's text, and that text is
-  // taken once per config object: the lock shares a config among the tasks
-  // that declare it alike, and a stringify and a joined key per node were
-  // ~6 ms of 9,603 (2026-11-07).
+  // token is a function of that declaration (`filesToken`): one walk each, not
+  // one per task (5 of 12 ms at 1,206 tasks). Keyed by the project, then by the
+  // declaration's text, and that text is taken once per config object: the lock
+  // shares a config among the tasks that declare it alike, and a stringify and
+  // a joined key per node were ~6 ms of 9,603.
   const tokens = new Map<string, Map<string, string>>()
   const declarations = new Map<TaskNode['config'], string>()
   const declarationOf = (cfg: TaskNode['config']): string => {
@@ -109,15 +145,15 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
   const filesAt: number[] = []
   for (const node of args.nodes.values()) {
     const cfg = node.config
-    if (isKeyless(cfg) || node.excludedUpstream !== undefined) return undefined
+    if (isKeyless(cfg)) return undefined
     const inputs = cfg.inputs
     if ((inputs?.runtime?.length ?? 0) > 0 || (inputs?.workspaceRuntime?.length ?? 0) > 0) {
       return undefined
     }
     // A files token in full is a root, a declaration and a digest, ~200
     // characters per node, joined and hashed again: 2 MB of token at 8,002
-    // tasks (2026-11-07). Each distinct one is hashed once instead, and the
-    // node names that hash, which is also what the delta compares.
+    // tasks. Each distinct one is hashed once instead, and the node names that
+    // hash, which is also what the delta compares.
     let files = ''
     if (inputs !== undefined) {
       // No positive entry resolves no files (`filesPlan`). The files token
@@ -147,25 +183,8 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
       for (const name of inputs.env ?? []) envNames.add(name)
     }
     ids.push(node.id)
-    if (graph !== undefined) {
-      parts.push(node.id, node.requested ? '1' : '0', node.platform ?? '')
-      filesAt.push(parts.push(files) - 1)
-      continue
-    }
-    parts.push(
-      node.id,
-      node.projectName,
-      node.projectDir,
-      node.deps.join('\u0001'),
-      (node.orderOnly ?? []).join('\u0001'),
-      node.requested ? '1' : '0',
-      hashTaskConfig(cfg, args.hashCache),
-      JSON.stringify(node.keyParts ?? []),
-      node.platform ?? '',
-      JSON.stringify(node.addsToOutputsOf ?? []),
-      JSON.stringify(node.outputsAddedToBy ?? []),
-      files,
-    )
+    if (!nodeParts.push(node, args.hashCache, parts)) return undefined
+    filesAt.push(parts.push(files) - 1)
   }
   for (const name of [...envNames].sort()) {
     const value = ownEnv(process.env, name)
@@ -190,10 +209,10 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
 }
 
 /**
- * A memo row: each stable and uncached key with its node's place in the
- * run's node order. The token names every node id in that order, so a row
- * read under it means the same nodes; by id, the row's JSON and a lookup
- * per node were ~5 ms of 8,002 (2026-11-07).
+ * A memo row: each stable and uncached key with its node's place in the run's
+ * node order. The token names every node id in that order, so a row read under
+ * it means the same nodes; by id, the row's JSON and a lookup per node were ~5
+ * ms of 8,002.
  */
 interface KeysRow {
   /** Stable keys: node places, and their keys alike. */
@@ -346,13 +365,13 @@ let identity: string | undefined
  */
 export function codeIdentity(): string {
   if (identity !== undefined) return identity
-  // `Bun.main`, not `import.meta.dir`: `--minify` inlines the build
-  // machine's source path, so an installed binary walked a `src/` that is
-  // not there, threw, and lost every warm run's short circuit (2026-10-22).
-  // ctime and inode with the mtime, as the file hash memo keys: an npm
-  // tarball stamps every file 1985-10-26 and extraction keeps that mtime,
-  // so an upgrade that kept a file's size left its stamp alone, and `cp
-  // -p` does the same to a binary. No write can set ctime back.
+  // `Bun.main`, not `import.meta.dir`: `--minify` inlines the build machine's
+  // source path, so an installed binary walked a `src/` that is not there,
+  // threw, and lost every warm run's short circuit. ctime and inode with the
+  // mtime, as the file hash memo keys: an npm tarball stamps every file
+  // 1985-10-26 and extraction keeps that mtime, so an upgrade that kept a
+  // file's size left its stamp alone, and `cp -p` does the same to a binary. No
+  // write can set ctime back.
   if (Bun.main.startsWith('/$bunfs/')) {
     const st = statSync(process.execPath)
     return (identity = `${process.execPath}:${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`)

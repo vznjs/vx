@@ -1,10 +1,9 @@
-// A distributed run in time, for `vx run --profile` (2026-10-23: "a
-// Chrome profile with all workers and tasks they executed in time"): Trace
-// Event Format events, one process per machine.
-// A worker's first row is its life (warm-up, idle, leave); each task gets
-// the first row free over its time there. The orchestrator's rows hold
-// what it asked and when, the tasks it held waiting for room, and its
-// restores. Times are this machine's, so a worker's are when it heard.
+// A distributed run in time, for `vx run --profile`: Trace Event Format events,
+// one process per machine. A worker's first row is its life (warm-up, idle,
+// leave); each task gets the first row free over its time there. The
+// orchestrator's rows hold what it asked and when, the tasks it held waiting
+// for room, and its restores. Times are this machine's, so a worker's are when
+// it heard.
 
 /** One slice: a span of a row, in `performance.now()` ms. */
 interface Slice {
@@ -69,10 +68,9 @@ export class Trace {
   }
 
   /**
-   * Worker `track`'s machine had `cpu` cores busy at `at`, its tasks' or
-   * not, and its running tasks' process trees `tasks` of them: a Mac
-   * whose tasks used 0.65 cores read 2.3 busy and queued a 1.67-core
-   * build 65 s (main b141dd5, 2026-10-24).
+   * Worker `track`'s machine had `cpu` cores busy at `at`, its tasks' or not,
+   * and its running tasks' process trees `tasks` of them: a Mac whose tasks
+   * used 0.65 cores read 2.3 busy and queued a 1.67-core build 65 s.
    */
   load(track: string, cpu: number, at = performance.now(), tasks?: number): void {
     const last = this.loads.findLast((l) => l.track === track)

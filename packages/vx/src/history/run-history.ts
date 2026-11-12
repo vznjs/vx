@@ -1,0 +1,586 @@
+// The run history: one `runs` row per task outcome and one `invocations`
+// header per `vx run`, written together, plus their 30-day retention.
+// What `vx why`, `vx last`, `stats` and the history reader read. Owns
+// its statements over the store's handle; `Cache` delegates.
+
+import type { Database, SQLQueryBindings } from 'bun:sqlite'
+import { lazyStatement } from '../index-db/index.js'
+
+import { isMeasure, splitTaskId } from '../util/index.js'
+
+/** The `main.runs` columns `bindRun` fills, in its order. */
+const RUN_COLUMNS = [
+  'hash',
+  'project',
+  'task',
+  'status',
+  'exit_code',
+  'duration_ms',
+  'forward_args',
+  'started_at',
+  'ended_at',
+  'run',
+  'cpu_ms',
+  'peak_rss_bytes',
+  'wallclock_start_ns',
+  'wallclock_end_ns',
+  'cache_hit',
+  'attempts',
+  'cached',
+  'blocked_by',
+  'timed_out',
+  'sandbox_violations',
+  'not_ready',
+  'restored',
+  'remote_error',
+  'peak_cores',
+  'avg_rss_bytes',
+  'placement',
+  'placement_cores',
+  'placement_memory',
+  'keyless_by',
+  'def',
+  'cpu_share',
+  'queued_ms',
+  'output_bytes',
+  'blocks',
+  'flaky_passes',
+  'flaky_failures',
+]
+
+/**
+ * An INSERT of `n` `runs` rows over the columns `kept` names (indexes into
+ * `RUN_COLUMNS`); a column it leaves out is NULL, as no `runs` column has
+ * a default.
+ */
+function insertRunsSql(kept: readonly number[], n: number): string {
+  const tuple = `(${kept.map(() => '?').join(', ')})`
+  return `INSERT INTO main.runs(${kept.map((i) => RUN_COLUMNS[i]).join(', ')}) VALUES ${Array(n).fill(tuple).join(', ')}`
+}
+
+/**
+ * Bound variables per INSERT: within 999, the oldest default ceiling. A
+ * statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4.
+ */
+const VARIABLES_PER_INSERT = 999
+
+/** Rows per `task_durations` INSERT: 7 variables each, under 999. */
+const DURATIONS_PER_INSERT = 140
+
+/** Rows per `task_outcomes` INSERT: 6 variables each, under 999. */
+const OUTCOMES_PER_INSERT = 160
+
+/**
+ * Whether a run says anything of its key, so the flaky record may keep it:
+ * keyed, cached, and not run behind a failure (its bytes were not the key's).
+ */
+const keyed = (r: RunRecord): boolean =>
+  r.hash !== undefined && r.hash !== '' && r.cached !== false && r.blockedBy == null
+
+/** A hit, as the orchestrator marks one (`isCacheHit`, run-records.ts). */
+const isHit = (r: RunRecord): boolean => r.cacheHit === true
+
+/**
+ * Of a JSON array of hashes, those the record holds a pass of: one index
+ * probe each (0.6 ms for 1,000; a join reading every row of each key was
+ * 5.7 ms at 20 runs of history). A hit's row is kept only when its key has
+ * none: a hit replays a pass, and the first is what a later failure
+ * relapses from (an entry adopted from its artifact, or older than the
+ * record, has no executed row). By hash alone, as the entry it replays is.
+ */
+const PASSED_HASHES = `
+      SELECT j.value AS hash FROM json_each(?) AS j
+      WHERE EXISTS (SELECT 1 FROM task_outcomes AS o WHERE o.hash = j.value AND o.status <> 'failed')`
+
+/** The commit a run ran on, as `task_durations` files its timings. */
+export type RunHead = Pick<InvocationRecord, 'branch' | 'commitSha'>
+const NO_HEAD: RunHead = { branch: null, commitSha: null }
+
+/** A local run's `task_durations.source`: its branch, `''` when it had none. */
+export const branchSource = (branch: string | null): string => `branch:${branch ?? ''}`
+
+/**
+ * How long a run would have taken alone: on a crowded worker
+ * (`cpuShare` < 1) each runnable thread waited for a core. A task that
+ * kept `n` cores busy lost its CPU's wait spread over them, under one
+ * core all of it. vx-dte#test (20 s CPU in 75 s) took 81-102 s beside
+ * test shards and the plan, reading those, said 118 s for a 92 s run.
+ */
+function aloneMs(r: Pick<RunRecord, 'durationMs' | 'cpuMs' | 'cpuShare'>): number {
+  const { durationMs: d, cpuMs: c, cpuShare: s } = r
+  if (c === undefined || s === undefined || !(s > 0 && s < 1) || !(d > 0)) return d
+  return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
+}
+
+export class RunHistory {
+  private readonly insertInvocation: ReturnType<Database['prepare']>
+
+  constructor(
+    private readonly db: Database,
+    /** The store's salted value digest. */
+    private readonly digestValue: (value: string) => string,
+  ) {
+    this.insertInvocation = lazyStatement(
+      this.db,
+      `
+      INSERT INTO invocations(
+        run_id, command, requested_tasks, cache_policy, concurrency, flow,
+        started_at, ended_at, total_duration_ms,
+        task_count, failed_count, hit_count, hit_local_count, hit_remote_count,
+        up_to_date_count, restored_local_count, restored_remote_count,
+        exit_ok,
+        commit_sha, branch, dirty, ci, ci_provider,
+        host, os, arch, vx_version
+      )
+      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?)
+      ON CONFLICT(run_id) DO NOTHING
+    `,
+    )
+  }
+
+  recordRun(run: RunRecord): void {
+    this.recordRuns([run])
+  }
+
+  /**
+   * Rows with no `invocations` header (a stopped run). `head` is
+   * the commit the run ran on: its timings file under that branch, as a
+   * finished run's do, or the branch's forecast never reads them.
+   */
+  recordRuns(runs: readonly RunRecord[], head: RunHead = NO_HEAD): void {
+    if (runs.length === 0) return
+    // One transaction, one fsync: for a 200-task run, one instead of 200.
+    // IMMEDIATE, as `recordRunBundle` explains.
+    this.db
+      .transaction(() => {
+        this.insertRuns(runs)
+        this.insertDurations(runs, branchSource(head.branch), head.commitSha)
+        this.insertOutcomes(runs)
+      })
+      .immediate()
+  }
+
+  /**
+   * Hits written while the run goes on (history-stream.ts): their rows and
+   * the flaky record's first hit of a key. A hit times nothing, so it
+   * leaves no `task_durations` row; IMMEDIATE, as `recordRunBundle` says.
+   */
+  recordHits(runs: readonly RunRecord[]): void {
+    if (runs.length === 0) return
+    this.db
+      .transaction(() => {
+        this.insertRuns(runs)
+        this.insertOutcomes(runs)
+      })
+      .immediate()
+  }
+
+  /**
+   * One `task_durations` row per executed success, as if run alone: what a
+   * forecast reads. Not one run with forwarded args: `test -- one.test.ts`
+   * times a sliver of the task, not the task.
+   */
+  private insertDurations(runs: readonly RunRecord[], source: string, sha: string | null): void {
+    const done = runs.filter(
+      (r) =>
+        r.status === 'success' &&
+        r.cacheHit !== true &&
+        !r.forwardArgs?.length &&
+        isMeasure(aloneMs(r)),
+    )
+    for (let i = 0; i < done.length; i += DURATIONS_PER_INSERT) {
+      const block = done.slice(i, i + DURATIONS_PER_INSERT)
+      const params: SQLQueryBindings[] = []
+      for (const r of block)
+        params.push(r.project, r.task, source, sha, aloneMs(r), r.endedAt, r.def ?? null)
+      this.db
+        .query(
+          `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at, def) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+        )
+        .run(...params)
+    }
+  }
+
+  /**
+   * One `task_durations` row per plugin measure, a task's timing to every
+   * reader, its cores where a remote row keeps a task's need: a plugin
+   * reads it back as a task (`localHistory(…).resourcesFor`).
+   */
+  recordMeasures(measures: readonly MeasureRecord[], head: RunHead): void {
+    const source = branchSource(head.branch)
+    const sha = head.commitSha
+    const insert = this.db.query(
+      `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at, def, cpu_parallelism)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    const now = Date.now()
+    this.db
+      .transaction(() => {
+        for (const m of measures) {
+          const [project, task] = splitTaskId(m.id)
+          insert.run(
+            project,
+            task,
+            source,
+            sha,
+            Math.round(m.durationMs),
+            now,
+            m.def,
+            m.cores ?? null,
+          )
+        }
+      })
+      .immediate()
+  }
+
+  /**
+   * The flaky record's rows: every executed outcome, and a key's first hit,
+   * in the order given (a batch may hold one key's history).
+   */
+  private insertOutcomes(runs: readonly RunRecord[]): void {
+    const rows = runs.filter(
+      (r) => keyed(r) && (isHit(r) || r.status === 'success' || r.status === 'failed'),
+    )
+    const hits = rows.filter(isHit)
+    let passed: Set<string> | undefined
+    if (hits.length > 0) {
+      const found = this.db.query(PASSED_HASHES).all(JSON.stringify(hits.map((r) => r.hash))) as {
+        hash: string
+      }[]
+      passed = new Set(found.map((f) => f.hash))
+    }
+    const kept: RunRecord[] = []
+    for (const r of rows) {
+      if (isHit(r)) {
+        if (passed!.has(r.hash!)) continue
+        passed!.add(r.hash!)
+      } else if (r.status === 'success') {
+        passed?.add(r.hash!)
+      }
+      kept.push(r)
+    }
+    for (let i = 0; i < kept.length; i += OUTCOMES_PER_INSERT) {
+      const block = kept.slice(i, i + OUTCOMES_PER_INSERT)
+      const params: SQLQueryBindings[] = []
+      for (const r of block)
+        params.push(r.project, r.task, r.hash!, r.status, r.attempts ?? null, r.startedAt)
+      this.db
+        .query(
+          `INSERT INTO task_outcomes(project, task, hash, status, attempts, recorded_at) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?)').join(', ')}`,
+        )
+        .run(...params)
+    }
+  }
+
+  /**
+   * `runs` as few INSERTs; each distinct forward-args list digested once.
+   * Only the columns some row fills are bound: a hit leaves half of them
+   * NULL, and binding 18 of 36 took the 8,002 rows of a warm run from
+   * 31.7 to 24.0 ms alone, the whole record stage 86.8 to 83.3 ms (median
+   * of 15 interleaved runs).
+   */
+  private insertRuns(runs: readonly RunRecord[]): void {
+    const digests = new Map<string, string>()
+    const digest = (value: string): string => {
+      let d = digests.get(value)
+      if (d === undefined) digests.set(value, (d = this.digestValue(value)))
+      return d
+    }
+    const keys = new Map<string, number>()
+    const key = (runId: string): number => {
+      let k = keys.get(runId)
+      if (k === undefined) keys.set(runId, (k = this.runKey(runId)))
+      return k
+    }
+    const bound = runs.map((r) => bindRun(r, digest, key))
+    const filled = RUN_COLUMNS.map(() => false)
+    for (const row of bound)
+      for (let c = 0; c < row.length; c++) if (row[c] !== null) filled[c] = true
+    const kept: number[] = []
+    for (let c = 0; c < filled.length; c++) if (filled[c]) kept.push(c)
+    const perInsert = Math.floor(VARIABLES_PER_INSERT / kept.length)
+    for (let i = 0; i < bound.length; i += perInsert) {
+      const block = bound.slice(i, i + perInsert)
+      const params: SQLQueryBindings[] = []
+      for (const row of block) for (const c of kept) params.push(row[c] as SQLQueryBindings)
+      // `query` caches by text: one statement for every full block.
+      this.db.query(insertRunsSql(kept, block.length)).run(...params)
+    }
+  }
+
+  /** A run's row in `run_ids`, made on its first rows; inside their transaction. */
+  private runKey(runId: string): number {
+    const found = this.db.query('SELECT id FROM run_ids WHERE run_id = ?').get(runId) as {
+      id: number
+    } | null
+    return (
+      found ??
+      (this.db.query('INSERT INTO run_ids(run_id) VALUES (?) RETURNING id').get(runId) as {
+        id: number
+      })
+    ).id
+  }
+
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+    // Whole run records atomically — one transaction, one fsync: the
+    // per-task `runs` rows and the one `invocations` header. The
+    // input-fingerprint rows do NOT live here: they're written inside
+    // the entry-save transaction (`save`/`ingest`) so a warm
+    // all-cache-hit run — which writes no `runs`-vs-`entry_inputs`
+    // mismatch — pays nothing for the moat it isn't refreshing.
+    //
+    // IMMEDIATE: the write lock is taken at BEGIN, where the busy timeout
+    // waits for it. A run's rows digest their forward args under a salt
+    // the body READS first (`[]` from every CLI run), and a deferred
+    // transaction that read before it wrote could not wait: 13 of 48 runs
+    // on one shared cache dir lost their history to `database is locked`
+    // in 2–60 ms (BUSY_SNAPSHOT, a retry passing at once).
+    this.db
+      .transaction(() => {
+        this.insertRuns(bundle.runs)
+        this.insertInvocation.run(...bindInvocation(bundle.invocation))
+        this.insertDurations(
+          bundle.runs,
+          branchSource(bundle.invocation.branch),
+          bundle.invocation.commitSha,
+        )
+        this.insertOutcomes(bundle.runs)
+      })
+      .immediate()
+  }
+
+  /**
+   * The remote failures a run's uploads met after its rows were written:
+   * the uploads drain once the history is in (run.ts).
+   */
+  recordRemoteErrors(
+    runId: string,
+    errors: readonly (readonly [hash: string, text: string])[],
+  ): void {
+    const update = this.db.prepare(
+      'UPDATE main.runs SET remote_error = ? WHERE run = (SELECT id FROM run_ids WHERE run_id = ?) AND hash = ?',
+    )
+    this.db
+      .transaction(() => {
+        for (const [hash, text] of errors) update.run(text, runId, hash)
+      })
+      .immediate()
+  }
+}
+
+/** A RunRecord as one value per `RUN_COLUMNS` entry, in its order. */
+function bindRun(
+  run: RunRecord,
+  digestValue: (v: string) => string,
+  runKey: (runId: string) => number,
+): SQLQueryBindings[] {
+  return [
+    // The ONE place the no-key sentinel is applied, so the column's
+    // NOT NULL invariant can't be violated from a call site.
+    run.hash ?? '',
+    run.project,
+    run.task,
+    run.status,
+    run.exitCode,
+    run.durationMs,
+    // A digest, as entry_inputs keeps: args after `--` carry tokens
+    // (`--token=…`), and cache.db holds no plaintext secret at rest; nothing
+    // reads the column but for whether the args changed.
+    run.forwardArgs ? digestValue(JSON.stringify(run.forwardArgs)) : null,
+    run.startedAt,
+    run.endedAt,
+    run.runId === undefined ? null : runKey(run.runId),
+    run.cpuMs ?? null,
+    run.peakRssBytes ?? null,
+    run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,
+    run.wallclockEndNs !== undefined ? run.wallclockEndNs : null,
+    run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
+    run.attempts ?? null,
+    run.cached === undefined ? null : run.cached ? 1 : 0,
+    run.blockedBy ?? null,
+    run.timedOut === true ? 1 : null,
+    run.sandboxViolations ?? null,
+    run.notReady ?? null,
+    run.restored === undefined ? null : run.restored ? 1 : 0,
+    run.remoteError ?? null,
+    run.peakCores ?? null,
+    run.avgRssBytes ?? null,
+    run.placement ?? null,
+    run.placementCores ?? null,
+    run.placementMemoryBytes ?? null,
+    run.keylessBy ?? null,
+    run.def ?? null,
+    run.cpuShare ?? null,
+    run.queuedMs ?? null,
+    run.outputBytes ?? null,
+    run.blocks ?? null,
+    run.flakyPasses ?? null,
+    run.flakyFailures ?? null,
+  ]
+}
+
+/**
+ * Bind an InvocationRecord to the positional parameters of the
+ * `insertInvocation` prepared statement (28 columns). Booleans map to
+ * 0/1; null-or-bool columns (`dirty`) keep null distinct from 0.
+ */
+function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
+  return [
+    inv.runId,
+    inv.command,
+    inv.requestedTasks,
+    inv.cachePolicy,
+    inv.concurrency,
+    inv.flow,
+    inv.startedAt,
+    inv.endedAt,
+    inv.totalDurationMs,
+    inv.taskCount,
+    inv.failedCount,
+    inv.hitCount,
+    inv.hitLocalCount,
+    inv.hitRemoteCount,
+    inv.upToDateCount,
+    inv.restoredLocalCount,
+    inv.restoredRemoteCount,
+    inv.exitOk ? 1 : 0,
+    inv.commitSha,
+    inv.branch,
+    inv.dirty === null ? null : inv.dirty ? 1 : 0,
+    inv.ci ? 1 : 0,
+    inv.ciProvider,
+    inv.host,
+    inv.os,
+    inv.arch,
+    inv.vxVersion,
+  ]
+}
+
+export interface RunRecord {
+  /**
+   * The task's cache key. ABSENT when the outcome never derived one — a
+   * `skipped` task (its upstream failed, so it never probed) or a
+   * `persistent` one (a dev server is never cached). Such a row is still a
+   * task of the run and must be recorded, so the column keeps a `''`
+   * sentinel rather than going nullable: `''` is impossible for a real key
+   * (`Cache.key` returns 16 hex chars), the reads that must not treat it as
+   * a key already guard it, and it matches what the cloud `task_runs.hash`
+   * column has stored for the same concept since its first migration.
+   */
+  hash?: string
+  project: string
+  task: string
+  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
+  exitCode: number
+  durationMs: number
+  forwardArgs?: readonly string[]
+  startedAt: number // ms-epoch wall clock
+  endedAt: number // ms-epoch wall clock
+  /**
+   * Optional analytics columns. Populated by the orchestrator/runner;
+   * stored as NULL on rows from older runs. Surfaced via `vx info`
+   * and consumable from CI by reading cache.db directly.
+   */
+  runId?: string // ULID shared across every task in one `vx run` invocation
+  cpuMs?: number // sum of user + system CPU time for the child process
+  peakRssBytes?: number // peak resident set size of the child process
+  wallclockStartNs?: bigint // hrtime span relative to run t=0
+  wallclockEndNs?: bigint
+  cacheHit?: boolean // convenience for flamegraph color; derivable from status
+  /**
+   * On a hit: whether outputs were written (`true`) or the disk already
+   * matched the entry (`false`, up-to-date). Absent on other statuses.
+   */
+  restored?: boolean
+  attempts?: number // >1 when the task retried; the direct within-run flaky signal
+  /**
+   * Whether the task declared `cache: true`. An uncached task executes
+   * on every run and its key exists only for dependents to fold, so a
+   * reader (`vx why`, `vx last`) must not present its re-run as a cache
+   * decision. Absent on rows written before the column existed.
+   */
+  cached?: boolean
+  /**
+   * Why the task failed or was skipped, as the run's own footer said it
+   * (v27 columns; NULL on older rows and where the reason does not apply):
+   * a skip's root blocker (or the one a task that ran behind a failure ran
+   * behind), vx's own timeout, the sandbox's violation count,
+   * and why a persistent task never became ready.
+   */
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined. */
+  remoteError?: string
+  /** The sampled peak cores and mean resident memory of the run. */
+  peakCores?: number
+  avgRssBytes?: number
+  /** Where an executor ran it (`small#1`); absent = here. */
+  placement?: string
+  /** The task with no `inputs` its key folded, so it never read or saved. */
+  keylessBy?: string
+  /** The task's definition (`taskDefinition`): what its history is kept under. */
+  def?: string
+  /** That machine's cores and memory. */
+  placementCores?: number
+  placementMemoryBytes?: number
+  /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
+  cpuShare?: number
+  /** How long it waited ready for a slot (`TaskOutcome.timing.queuedMs`, v51). */
+  queuedMs?: number
+  /** Its output files' bytes (`TaskOutcome.cache.outputBytes`, v51). */
+  outputBytes?: number
+  /** The tasks and groups downstream of it in the run, the scheduler's count. */
+  blocks?: number
+  /** The flaky record its row's note quoted (`TaskOutcome.attempts.flaky`, v51). */
+  flakyPasses?: number
+  flakyFailures?: number
+}
+
+/**
+ * One header row per `vx run` invocation (the `invocations` table). All
+ * fields mirror the columns; nullable VCS/host columns are `null` when
+ * the probe failed (not a git repo, hostname unavailable). Recorded
+ * once per run inside the same transaction as the per-task `runs` rows.
+ */
+export interface InvocationRecord {
+  runId: string
+  command: string
+  /** JSON-serialized `string[]` of the requested task names. */
+  requestedTasks: string
+  /** The `--cache-policy` spec, e.g. `'local:rw,remote:r'` (a flag omitted = off). */
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  /** Hits that restored nothing, and hits that restored outputs per layer; they sum to `hitCount`. */
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+}
+
+/** A plugin's measure kept as a task's timing (`PluginSetupContext.measure`): `id` is `<plugin>#<name>`. */
+export interface MeasureRecord {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
+}

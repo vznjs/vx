@@ -1,11 +1,10 @@
-// A task's spawn on a thread of its own. Bun's spawn holds the calling
-// thread until the child has exec'd (vfork), ~0.6 ms a task, and on a cold
-// run that thread is the scheduler's: 2,000 tasks with 1.8 ms of the
-// scheduler's own work each took 4.96 s spawned there and 3.71 s spawned
-// here, the 3.6 s of that work the floor (2026-10-29). The child's
-// descriptors are numbers in the one table every thread shares, so its
-// pipes are made and read where they were; only the spawn and the wait
-// for its exit move.
+// A task's spawn on a thread of its own. Bun's spawn holds the calling thread
+// until the child has exec'd (vfork), ~0.6 ms a task, and on a cold run that
+// thread is the scheduler's: 2,000 tasks with 1.8 ms of the scheduler's own
+// work each took 4.96 s spawned there and 3.71 s spawned here, the 3.6 s of
+// that work the floor. The child's descriptors are numbers in the one table
+// every thread shares, so its pipes are made and read where they were; only the
+// spawn and the wait for its exit move.
 
 import type { ResourceUsage } from 'bun'
 
@@ -116,8 +115,8 @@ export function spawnOff(opts: OffSpawn): Promise<OffChild> {
   const id = nextId++
   let held = opts.held !== false
   // Every spawn holds the run until its reply: a caller awaiting a spare's
-  // spawn (`runOnSpare`) had nothing else holding the loop, and the run
-  // drained mid-graph with every slot waiting on one (2026-11-06).
+  // spawn (`runOnSpare`) had nothing else holding the loop, and the run drained
+  // mid-graph with every slot waiting on one.
   settleLive(1)
   const { held: _, ...spawn } = opts
   return new Promise((resolve, reject) => {

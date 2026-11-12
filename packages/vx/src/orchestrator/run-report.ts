@@ -1,11 +1,9 @@
-// The report every plugin's teardown reads, and the run's own bytes kept
-// in a remote that takes its writes (2026-10-15): a failed task's
-// log and the files its outputs left (`cache.upload.failures`), and the
-// log of a task that saved no entry, on every run (2026-10-16: "Always
-// keep"). Each task's bytes leave when it ends, off its path, like its
-// entry's upload (2026-10-16); the run only waits for them where it
-// waits for every upload, and the footer counts them as the task's remote
-// traffic.
+// The report every plugin's teardown reads, and the run's own bytes kept in a
+// remote that takes its writes: a failed task's log and the files its outputs
+// left (`cache.upload.failures`), and the log of a task that saved no entry, on
+// every run. Each task's bytes leave when it ends, off its path, like its
+// entry's upload; the run only waits for them where it waits for every upload,
+// and the footer counts them as the task's remote traffic.
 
 import {
   type RemoteTraffic,
@@ -94,7 +92,7 @@ export class RunKeeper {
         })
       }
     }
-    if (this.args.failures && o.status === 'failed' && o.where === undefined) {
+    if (this.args.failures && o.status === 'failed' && o.placement?.where === undefined) {
       // Read now: a later task may write where this one's outputs lie.
       const packed = outputsLeft(
         o.node,

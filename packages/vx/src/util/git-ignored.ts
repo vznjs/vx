@@ -1,8 +1,8 @@
-// Whether git ignores everything an output glob can write (2026-10-15):
-// a key reads only what git lists, so such an output never reaches a
-// reader's key. Asked of git, never read from a `.gitignore`: git alone
-// knows every rule source (nested files, `info/exclude`, `core.excludesFile`)
-// and that a directory holding a tracked file is not ignored.
+// Whether git ignores everything an output glob can write: a key reads only
+// what git lists, so such an output never reaches a reader's key. Asked of git,
+// never read from a `.gitignore`: git alone knows every rule source (nested
+// files, `info/exclude`, `core.excludesFile`) and that a directory holding a
+// tracked file is not ignored.
 
 import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'

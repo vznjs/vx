@@ -21,9 +21,10 @@ export interface ProfileArgs {
 // ns → us; bigint arithmetic to avoid precision loss before converting to
 // a JSON-safe number.
 function spanUs(o: TaskOutcome): { startUs: number; durUs: number } {
+  const { startNs, endNs } = o.timing!
   return {
-    startUs: Number(o.wallclockStartNs! / 1000n),
-    durUs: Number((o.wallclockEndNs! - o.wallclockStartNs!) / 1000n),
+    startUs: Number(startNs! / 1000n),
+    durUs: Number((endNs! - startNs!) / 1000n),
   }
 }
 
@@ -60,7 +61,7 @@ function lanes(timed: readonly TaskOutcome[]): Map<TaskOutcome, number> {
 export async function writeRunProfile(args: ProfileArgs): Promise<string> {
   const outPath = path.resolve(args.cwd, args.target)
   const timed = args.outcomes.filter(
-    (o) => o.wallclockStartNs !== undefined && o.wallclockEndNs !== undefined,
+    (o) => o.timing?.startNs !== undefined && o.timing?.endNs !== undefined,
   )
   const tidOf = lanes(timed)
   const traceEvents = timed.map((o) => {
@@ -77,10 +78,10 @@ export async function writeRunProfile(args: ProfileArgs): Promise<string> {
       args: {
         exitCode: o.exitCode,
         hash: o.hash ?? null,
-        ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
-        ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+        ...(o.usage?.cpuMs !== undefined ? { cpuMs: o.usage?.cpuMs } : {}),
+        ...(o.usage?.peakRssBytes !== undefined ? { peakRssBytes: o.usage?.peakRssBytes } : {}),
         // A remote hit's download and ingest: the rest of its span is vx's.
-        ...(o.fetchMs !== undefined ? { fetchMs: o.fetchMs } : {}),
+        ...(o.timing?.fetchMs !== undefined ? { fetchMs: o.timing?.fetchMs } : {}),
       },
     }
   })

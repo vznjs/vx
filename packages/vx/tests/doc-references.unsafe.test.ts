@@ -7,7 +7,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
-import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { CACHE_VERSION } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/index-db/index.js'
 import { TELEMETRY_SCHEMA_VERSION } from '../src/orchestrator/telemetry.js'
 
 const pkg = path.resolve(import.meta.dir, '..')

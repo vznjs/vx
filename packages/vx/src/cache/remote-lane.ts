@@ -1,11 +1,9 @@
-// One declared remote as `LayeredCache` reaches it: what the run lets it
-// do, the boundary its answers cross (a plugin's shape is checked, its throw
-// becomes a miss), its own upload pool, and its failures said once per
-// class with the endpoint named. The order across remotes, the local store
-// and provenance are `LayeredCache`'s; nothing here knows another remote.
+// One declared remote as `LayeredCache` reaches it: what the run lets it do,
+// the boundary its answers cross (a plugin's shape is checked, a throw becomes
+// a miss), its upload pool, and its failures said once per class. Order across
+// remotes and provenance are `LayeredCache`'s.
 
-import { machineParallelism, thrownMessage } from '../util/index.js'
-import * as ui from '../ui/index.js'
+import { machineParallelism, notify, thrownMessage } from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
@@ -22,22 +20,20 @@ export interface ResolvedRemote {
 }
 
 /**
- * A fault of `r` that a caller outside its lane degrades to a miss, said as
- * the lane says its own: to its `onError`, else stderr. Reporting never
- * escalates.
+ * A fault of `r` degraded to a miss outside its lane, said as the lane says its
+ * own: to `onError`, else stderr.
  */
 export function sayRemoteFault(r: ResolvedRemote, e: Error): void {
   try {
     if (r.onError) r.onError(e)
-    else ui.say('warn', `[vx] remote cache: ${e.message}\n`)
+    else notify({ kind: 'line', tone: 'warn', text: `[vx] remote cache: ${e.message}\n` })
     // quiet: a throwing reporter must never fail the run
   } catch {}
 }
 
 /**
- * Requests at once to a remote, by default: pnpm's network concurrency
- * (Bun's is a fixed 64). A request waits on the network, not a core, so
- * the cap follows cores only past 21 of them.
+ * Requests at once to a remote, by default: pnpm's network concurrency. A
+ * request waits on the network, so the cap follows cores only past 21.
  */
 export function networkConcurrency(): number {
   return Math.min(96, Math.max(machineParallelism() * 3, 64))
@@ -49,12 +45,8 @@ export type RemoteOp = 'probe' | 'download' | 'upload'
 const PREPOSITION: Record<RemoteOp, string> = { probe: 'at', download: 'from', upload: 'to' }
 
 /**
- * What a remote layer resolves is a plugin's, so its shape is a boundary
- * (item 252): a `get` that resolved `{ body: 'abc' }` was reported as
- * "corrupt artifact … not a readable archive" — the bytes blamed for the
- * plugin's shape — and a `hasMany` that resolved an array reached the
- * prefetch pass's `.has()`. Named here and degraded to a miss, like every
- * other remote failure.
+ * What a remote layer resolves is a plugin's, so its shape is a boundary: a
+ * malformed answer is named and degraded to a miss, not blamed on the bytes.
  */
 function invalidRemoteResult(what: string): Error {
   return new Error(
@@ -97,13 +89,9 @@ function printableEndpoint(endpoint: unknown): string | undefined {
 }
 
 /**
- * What makes two failures "the same way": the error's `code` when it
- * carries one (a gRPC status, an errno, Bun's `ECONNREFUSED`), because
- * gRPC writes the elapsed time into its message and no two deadline messages
- * match; else the message with the artifact's hash taken out, so a 500 on
- * one hash and a 500 on the next are one class. The operation is not part of
- * it: an unreachable server fails the probe, the download and the upload
- * alike, and that is one fact.
+ * What makes two failures one class: the error's `code` when it has one (gRPC
+ * writes elapsed time into its message), else the message without the hash. Not
+ * the operation: an unreachable server fails probe, download and upload alike.
  */
 function failureClass(err: Error, hash: string | undefined): string {
   const code = (err as { code?: unknown }).code
@@ -133,9 +121,8 @@ export class RemoteLane {
   private readonly distrusted = new Set<string>()
 
   /**
-   * A remote the run writes but does not read (`--force`): which of the
-   * run's up-front keys it already holds, from one `hasMany`. `found` is
-   * null when the probe failed.
+   * A remote the run writes but does not read (`--force`): which up-front keys
+   * it holds, from one `hasMany`. `found` is null when the probe failed.
    */
   private presence:
     | Promise<{ asked: Set<string>; found: Map<string, ArtifactInfo> | null } | null>
@@ -152,10 +139,8 @@ export class RemoteLane {
   })
 
   /**
-   * One entry per failure class said: its first line went out, `repeats`
-   * counts the ones held back. A run's requests are concurrent, so an
-   * unreachable server otherwise printed its bare runtime message once per
-   * request (three lines for one task over the Turbo wire, item 749).
+   * One entry per failure class said; `repeats` counts the ones held back,
+   * since concurrent requests would print one line each.
    */
   private readonly reported = new Map<string, { cause: string; repeats: number }>()
 
@@ -208,9 +193,8 @@ export class RemoteLane {
   }
 
   /**
-   * The subset of `hashes` stored here in one round-trip, recording the
-   * rest as absent; `null` when this remote cannot batch or the probe
-   * failed, which the caller reads as "no batch info".
+   * The subset of `hashes` stored here in one round trip, recording the rest
+   * absent; `null` when this remote cannot batch or the probe failed.
    */
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     if (this.remote.hasMany === undefined) return null
@@ -245,9 +229,8 @@ export class RemoteLane {
   }
 
   /**
-   * `hashes` asked one by one (`has`), `concurrency` at a time: what a
-   * remote that answered no batch query holds, recording the rest as
-   * absent. Null when any probe failed: then the answer is not complete.
+   * `hashes` asked one by one, `concurrency` at a time, recording the rest
+   * absent. Null when any probe failed: the answer is not complete.
    */
   async hasEach(
     hashes: readonly string[],
@@ -280,9 +263,8 @@ export class RemoteLane {
   }
 
   /**
-   * The artifact's body, null on a miss or a known absence (unless
-   * `fresh`: saved since the probe), undefined on a failure or a
-   * malformed answer: the key may still be there.
+   * The artifact's body: null on a miss or known absence (unless `fresh`: saved
+   * since the probe), undefined on a failure or malformed answer.
    */
   async get(
     hash: string,
@@ -328,9 +310,8 @@ export class RemoteLane {
   }
 
   /**
-   * Start the batch probe `presence` reads. A lane that reads, never
-   * writes, or cannot batch (no `hasMany`) ignores it: each upload then
-   * asks `has` for its own key.
+   * Start the batch probe `presence` reads. A lane that reads, never writes, or
+   * cannot batch ignores it.
    */
   probeBeforeUpload(hashes: Promise<readonly string[]>): void {
     if (this.read || !this.write || this.remote.hasMany === undefined) return
@@ -342,11 +323,9 @@ export class RemoteLane {
   }
 
   /**
-   * Whether this remote already holds `hash`, asked only by a lane the run
-   * does not read: an entry is immutable, so a key it holds is the same
-   * bytes and is not sent again. Answered from the batch probe when it
-   * covered the key, else by one `has`; a failure reads as absent, and the
-   * upload goes as before.
+   * Whether this remote holds `hash`, asked only by a lane the run does not
+   * read: an entry is immutable, so it is not sent again. From the batch probe,
+   * else one `has`; a failure reads as absent.
    */
   private async holds(hash: string): Promise<boolean> {
     const probed = await this.presence
@@ -356,9 +335,9 @@ export class RemoteLane {
   }
 
   /**
-   * Queue a PUT in this remote's bounded pool; `body` is asked for when the
-   * job starts. Resolves true once this remote holds `hash`: put now, or held already.
-   * `absent`: no remote held it when the run asked, so none is asked again.
+   * Queue a PUT in this remote's pool; `body` is asked for when the job starts.
+   * Resolves true once the remote holds `hash`. `absent`: no remote held it
+   * when the run asked.
    */
   upload(
     hash: string,
@@ -428,11 +407,9 @@ export class RemoteLane {
   }
 
   /**
-   * The run was stopped (Ctrl-C, SIGTERM, an embedder's abort): queued
-   * uploads never start and the drain stops waiting on the ones in flight,
-   * which a plugin cannot be asked to cancel. Reads in flight are given up
-   * the same way (`LayeredCache.pullFrom`). A slow remote held a stopped
-   * run past the signal's exit bound, which then exited with no footer.
+   * The run was stopped: queued uploads never start and the drain stops waiting
+   * on ones in flight, which a plugin cannot be asked to cancel. A slow remote
+   * must not hold a stopped run past the signal's exit bound.
    */
   stop(): void {
     this.stopped = true
@@ -454,17 +431,15 @@ export class RemoteLane {
   }
 
   /**
-   * `subject` is the artifact's hash, or the batch for a `hasMany`. The
-   * wire's own message says what went wrong but not on what or where: an
-   * upload deadline read `The operation timed out.` with no upload, hash or
-   * server in it (item 749).
+   * `subject` is the hash, or the batch for `hasMany`: the wire's own message
+   * says what went wrong, not on what or where.
    */
   report(op: RemoteOp, subject: string | { batch: string }, err: unknown): void {
     const e = err instanceof Error ? err : new Error(thrownMessage(err))
     const hash = typeof subject === 'string' ? subject : undefined
-    // A batch probe's failure is no one task's: each of its hashes is asked
-    // again on its own, and that ask is the one counted. Nor is one that
-    // turned the remote off (`off`): it is the run's.
+    // A batch probe's failure is no one task's: each hash is asked again alone,
+    // and that ask counts. Nor is one that turned the remote off: it is the
+    // run's.
     if (hash !== undefined && this.remote.off !== true) {
       const failures = this.trafficOf(hash).failures
       const said = `${op}: ${e.message}`
@@ -512,13 +487,11 @@ export class RemoteLane {
   }
 
   private emit(e: Error): void {
-    // The remote cache is fully optional: NO remote failure — a 500, a
-    // network drop, a corrupt artifact, even a throwing reporter — may
-    // ever fail the run. A buggy reporter can't turn an optional-cache
-    // hiccup into a run failure.
+    // The remote cache is optional: NO remote failure, a throwing reporter
+    // included, may fail the run.
     try {
       if (this.onError) this.onError(e)
-      else ui.say('warn', `[vx] remote cache: ${e.message}\n`)
+      else notify({ kind: 'line', tone: 'warn', text: `[vx] remote cache: ${e.message}\n` })
     } catch {
       // swallow — reporting must never escalate
     }

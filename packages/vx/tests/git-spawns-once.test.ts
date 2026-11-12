@@ -11,7 +11,7 @@
 import { chmod, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/memo/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { lock } from './helpers/orchestrator.js'
 

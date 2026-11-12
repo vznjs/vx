@@ -4,8 +4,9 @@ import { indexDb } from '../src/cache/index.js'
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
 import { Cache, DEFAULT_STORE } from '../src/cache/cache.js'
+import * as saving from '../src/cache/save.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 let root: string
@@ -35,13 +36,12 @@ for (const [store, label] of [
       undefined,
       store,
     )
-    const c = cache as unknown as { planWithin: (a: unknown) => Promise<unknown> }
-    const plan = c.planWithin.bind(cache)
-    c.planWithin = async (a) => {
-      const p = await plan(a)
+    const plan = saving.planWithin
+    const spy = spyOn(saving, 'planWithin').mockImplementation(async (...a) => {
+      const p = await plan(...a)
       appendFileSync(out, 'late write')
       return p
-    }
+    })
     try {
       const saved = await cache
         .save({ hash: 'k1', projectDir: proj, outputFiles: [out], entry })
@@ -54,6 +54,7 @@ for (const [store, label] of [
         [],
       ])
     } finally {
+      spy.mockRestore()
       cache.close()
     }
   })

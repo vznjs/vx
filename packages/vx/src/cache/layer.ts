@@ -1,32 +1,23 @@
-// The cache layer CONTRACT and its records — what every cache implementation
-// honours (`Cache`, `LayeredCache`, a plugin's remote layer) and
-// the shapes that cross it: the key input, entries, run-history rows, output
-// fingerprints, stats, prune options. No implementation lives here; the one
-// reference to `Cache` below is a type (the local handle a layer may wrap).
+// The cache layer contract and the records that cross it: every cache
+// implementation (`Cache`, `LayeredCache`, a plugin's remote layer) honours it.
+// No implementation lives here.
 
 import type { Cache } from './cache.js'
 import type { ArtifactInfo } from './layered-cache.js'
-import { fsClockLag, stampGrainMs } from './fs-clock.js'
+import type { OutputDirRow, OutputFileRow } from '../memo/index.js'
 
 export interface CacheKeyInput {
   taskId: string
   /**
-   * Hash of the resolved task config (post-evaluation). Folds in everything
-   * the user wrote — command, env declarations (passThrough names + define
-   * key/value pairs), dependsOn, inputs declarations, outputs — including
-   * values that arrived via `import` at config-load time.
+   * Hash of the resolved task config: everything the user wrote, including
+   * values a config imported.
    */
   taskConfigHash: string
-  /**
-   * Runtime values of declared cache-input env names (from parent at hash
-   * time), `undefined` for a name that is unset. Independent of `exec.env`;
-   * lives here for cache identity.
-   */
+  /** Runtime values of the declared env inputs, `undefined` for an unset name. */
   envValues: Array<[name: string, value: string | undefined]>
   /**
-   * Resolved `inputs.runtime` commands as [command, output] pairs
-   * (output = trimmed stdout+stderr, resolved live at hash time). Folded
-   * into the key in a namespace distinct from workspaceRuntimeValues.
+   * Resolved `inputs.runtime` commands as [command, trimmed output] pairs,
+   * folded apart from workspaceRuntimeValues.
    */
   runtimeValues?: Array<[command: string, output: string]>
   /** Resolved `inputs.workspaceRuntime` pairs (root-cwd commands). */
@@ -37,76 +28,43 @@ export interface CacheKeyInput {
   /** Cache keys of upstream tasks this one depends on, sorted. */
   upstreamHashes: string[]
   /**
-   * Upstream hash → upstream task id, for `captureInto` row NAMING only.
-   * Never folded into the digest — the key already folds the sorted
-   * hashes. Lets the persisted `entry_inputs` row name which upstream
-   * task a hash came from (the diff reads better than a bare hash). When
-   * absent, the captured `upstream` row falls back to `name = hash`.
+   * Upstream hash → task id, only to name `captureInto` rows; never folded (the
+   * key folds the sorted hashes).
    */
   upstreamIds?: ReadonlyMap<string, string>
   /**
-   * The task's DEPENDENCY closure with GROUP tasks expanded into the real
-   * tasks they stand for — what an input-shipping executor must place in the
-   * input root. A different question from what the key folds, and derived
-   * differently in both directions:
-   *
-   * - It expands groups, which contribute a synthetic roll-up hash and no
-   *   outputs of their own, so a dependent of one would otherwise describe
-   *   an empty closure.
-   * - It ignores `inputs.tasks`. That filter says which upstream KEYS
-   *   this task's key folds; what the task may READ is `dependsOn`, and
-   *   locally every dependency's outputs are on disk before the command runs
-   *   however the filter is written.
-   *
-   * NEVER folded into the digest — the key cascades through a group's own
-   * roll-up hash already, and folding either difference in would move every
-   * existing dependent's key without telling it anything new.
+   * The task's dependency closure with groups expanded: what an input-shipping
+   * executor must place in the input root. It ignores `inputs.tasks`, which
+   * filters the key, not what the task may read. Never folded: the key already
+   * cascades through a group's roll-up hash.
    */
   upstreamGraft?: ReadonlyArray<{
     readonly taskId: string
     readonly hash: string
     readonly projectDir: string
   }>
-  /**
-   * CLI args forwarded to the task (after `--`). Folded into the key so that
-   * the same command with different forwarded args is treated as a distinct
-   * run, never a spurious cache hit.
-   */
+  /** CLI args forwarded after `--`. Folded, so different args never share a hit. */
   forwardArgs?: readonly string[]
   /**
-   * Precomputed content hashes (git blob OIDs) keyed by absolute
-   * path — typically the trusted-index OID map harvested by the
-   * run's bulk `git ls-files -s`. Paths present here skip `hashFile`
-   * entirely (no stat, no SQLite, no read); missing paths fall back
-   * to `hashFile`, which computes the byte-identical blob OID from
-   * disk. Pure fast path: the derived key never depends on whether a
-   * hash arrived via the map or the fallback.
+   * Precomputed git blob OIDs by absolute path (the run's `git ls-files -s`). A
+   * listed path skips `hashFile`; the key is the same either way.
    */
   fileHashes?: ReadonlyMap<string, string>
   /**
-   * Material a plugin's `key` stage contributed, as sorted `[name, value]`
-   * pairs. Folded only when non-empty, so a workspace without a key plugin
-   * derives exactly the key it always did.
+   * A plugin's `key` stage material as sorted `[name, value]` pairs. Folded
+   * only when non-empty, so a workspace without one keeps its keys.
    */
   pluginParts?: ReadonlyArray<readonly [name: string, value: string]>
   /**
-   * The platform a task that declares `exec.platforms` runs on: its
-   * outputs are that platform's. Folded only when set, so a task that
-   * declares none derives the key it always did.
+   * The platform a task declaring `exec.platforms` runs on. Folded only when
+   * set.
    */
   platform?: string
   /**
-   * When set, `key()` pushes each component (kind, name, hash) it folds
-   * — at the same fold sites, in fold order. Pure SIDE-CHANNEL: it does
-   * not change the returned digest in any way. On a cache MISS the
-   * orchestrator allocates an array, passes it here, and persists the
-   * rows to `entry_inputs` (inside the entry-save transaction) so a
-   * later run can diff its inputs against this one (the Tier-3 "why did
-   * this re-run?" moat). Capturing at the fold sites keeps the
-   * recorded set in lockstep with the key by construction: a future
-   * component that forgets to capture is a one-line miss, not silent
-   * drift. The per-file OIDs are already awaited here, so file rows cost
-   * zero extra I/O — just array pushes.
+   * When set, `key()` pushes each component it folds, at the fold sites,
+   * without changing the digest. A miss persists them to `entry_inputs` so a
+   * later run can say why it re-ran; capturing at the fold sites keeps the
+   * record in step with the key.
    */
   captureInto?: Array<{ kind: string; name: string; hash: string }>
 }
@@ -118,42 +76,31 @@ export interface CacheEntry {
   exitCode: number
   durationMs: number
   /**
-   * What the PRODUCING execution used — CPU time and peak RSS — carried in
-   * the artifact's sidecar, so an entry ingested from a remote knows them
-   * too. Absent when the runner reported nothing. A hit surfaces them as
-   * `storedCpuMs` / `storedPeakRssBytes` on its outcome: what the hit
-   * skipped, never what it spent.
+   * CPU time and peak RSS of the producing execution, carried in the artifact
+   * so a remote entry knows them too. A hit reports them as what it skipped.
    */
   cpuMs?: number
   peakRssBytes?: number
   outputFiles: string[]
   /**
-   * The `output_files` rows behind `outputFiles` (size / mode / mtime), when
-   * the layer that produced this entry had them in hand. `restoreHit` reads
-   * them for its tree-is-current check instead of re-querying — one SQL
-   * round trip per cache hit, saved.
+   * The `output_files` rows behind `outputFiles`, when the layer had them:
+   * `restoreHit` reads them instead of querying again.
    */
   outputRows?: OutputFileRow[]
   /**
-   * The `output_dirs` rows behind the directory short-circuit, when the
-   * batched `getMany` loaded them — one query for the run instead of one
-   * per hit (0.12 ms each across a warm 1000-project run before this).
+   * The `output_dirs` rows behind the directory short-circuit, when the batched
+   * `getMany` loaded them: one query per run, not per hit.
    */
   outputDirRows?: OutputDirRow[]
   /**
-   * The task's output log, always present (may be empty): both streams in
-   * the order the run printed them (`orchestrator/output-log.ts`). A local
-   * entry's is a getter that reads it on each access: read it once.
+   * The task's output log, both streams in print order. A local entry's is a
+   * getter that reads on each access: read it once.
    */
   stdout: string
   storedAt: string
   /**
-   * Where this hit was resolved from. `'local'` for a SQLite-backed
-   * Cache; `'remote'` when LayeredCache pulled the artifact from the
-   * remote layer this lookup (even though it's been materialized into
-   * local for next time). Lets the orchestrator surface
-   * `cache-hit-remote` so users see when remote caching actually saved
-   * them work vs. a stale-local replay.
+   * Where the hit came from: `'remote'` when LayeredCache pulled it this
+   * lookup, so the run can report `cache-hit-remote`.
    */
   source?: 'local' | 'remote'
   /** The artifact's compressed size, when the index knows it. */
@@ -162,132 +109,9 @@ export interface CacheEntry {
   fetchMs?: number
 }
 
-export interface RunRecord {
-  /**
-   * The task's cache key. ABSENT when the outcome never derived one — a
-   * `skipped` task (its upstream failed, so it never probed) or a
-   * `persistent` one (a dev server is never cached). Such a row is still a
-   * task of the run and must be recorded, so the column keeps a `''`
-   * sentinel rather than going nullable: `''` is impossible for a real key
-   * (`Cache.key` returns 16 hex chars), the reads that must not treat it as
-   * a key already guard it, and it matches what the cloud `task_runs.hash`
-   * column has stored for the same concept since its first migration.
-   */
-  hash?: string
-  project: string
-  task: string
-  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
-  exitCode: number
-  durationMs: number
-  forwardArgs?: readonly string[]
-  startedAt: number // ms-epoch wall clock
-  endedAt: number // ms-epoch wall clock
-  /**
-   * Optional analytics columns. Populated by the orchestrator/runner;
-   * stored as NULL on rows from older runs. Surfaced via `vx info`
-   * and consumable from CI by reading cache.db directly.
-   */
-  runId?: string // ULID shared across every task in one `vx run` invocation
-  cpuMs?: number // sum of user + system CPU time for the child process
-  peakRssBytes?: number // peak resident set size of the child process
-  wallclockStartNs?: bigint // hrtime span relative to run t=0
-  wallclockEndNs?: bigint
-  cacheHit?: boolean // convenience for flamegraph color; derivable from status
-  /**
-   * On a hit: whether outputs were written (`true`) or the disk already
-   * matched the entry (`false`, up-to-date). Absent on other statuses (v31).
-   */
-  restored?: boolean
-  attempts?: number // >1 when the task retried; the direct within-run flaky signal
-  /**
-   * Whether the task declared `cache: true`. An uncached task executes
-   * on every run and its key exists only for dependents to fold, so a
-   * reader (`vx why`, `vx last`) must not present its re-run as a cache
-   * decision. Absent on rows written before the column existed.
-   */
-  cached?: boolean
-  /**
-   * Why the task failed or was skipped, as the run's own footer said it
-   * (v27 columns; NULL on older rows and where the reason does not apply):
-   * a skip's root blocker (or the one a task that ran behind a failure ran
-   * behind), vx's own timeout, the sandbox's violation count,
-   * and why a persistent task never became ready.
-   */
-  blockedBy?: string
-  timedOut?: true
-  sandboxViolations?: number
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined (v40). */
-  remoteError?: string
-  /** The sampled peak cores and mean resident memory of the run (v43). */
-  peakCores?: number
-  avgRssBytes?: number
-  /** Where an executor ran it (`small#1`); absent = here (v44). */
-  placement?: string
-  /** The task with no `inputs` its key folded, so it never read or saved (v46). */
-  keylessBy?: string
-  /** The task's definition (`taskDefinition`): what its history is kept under (v48). */
-  def?: string
-  /** That machine's cores and memory (v44). */
-  placementCores?: number
-  placementMemoryBytes?: number
-  /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
-  cpuShare?: number
-  /** How long it waited ready for a slot (`TaskOutcome.queuedMs`, v51). */
-  queuedMs?: number
-  /** Its output files' bytes (`TaskOutcome.outputBytes`, v51). */
-  outputBytes?: number
-  /** The tasks and groups downstream of it in the run, the scheduler's count (v51). */
-  blocks?: number
-  /** The flaky record its row's note quoted (`TaskOutcome.flaky`, v51). */
-  flakyPasses?: number
-  flakyFailures?: number
-}
-
 /**
- * One header row per `vx run` invocation (the `invocations` table). All
- * fields mirror the columns; nullable VCS/host columns are `null` when
- * the probe failed (not a git repo, hostname unavailable). Recorded
- * once per run inside the same transaction as the per-task `runs` rows.
- */
-export interface InvocationRecord {
-  runId: string
-  command: string
-  /** JSON-serialized `string[]` of the requested task names. */
-  requestedTasks: string
-  /** The `--cache-policy` spec, e.g. `'local:rw,remote:r'` (a flag omitted = off). */
-  cachePolicy: string
-  concurrency: number
-  flow: 'focused' | 'broad' | null
-  startedAt: number
-  endedAt: number
-  totalDurationMs: number
-  taskCount: number
-  failedCount: number
-  hitCount: number
-  hitLocalCount: number
-  hitRemoteCount: number
-  /** Hits that restored nothing, and hits that restored outputs per layer (v31); they sum to `hitCount`. */
-  upToDateCount: number
-  restoredLocalCount: number
-  restoredRemoteCount: number
-  exitOk: boolean
-  commitSha: string | null
-  branch: string | null
-  dirty: boolean | null
-  ci: boolean
-  ciProvider: string | null
-  host: string | null
-  os: string | null
-  arch: string | null
-  vxVersion: string
-}
-
-/**
- * One cache-key component as `key()` folded it, the `captureInto` row.
- * Persisted on a miss (`TaskInputRow`) so a later run can diff its inputs
- * against this one (the Tier-3 "why did this re-run?" moat); a hit saves
- * nothing, so the warm path is free.
+ * One key component as `key()` folded it. Persisted on a miss so a later run
+ * can diff its inputs; a hit saves nothing.
  */
 export interface TaskInputComponent {
   kind: string
@@ -296,12 +120,8 @@ export interface TaskInputComponent {
 }
 
 /**
- * One cache-key component of an `entry_inputs` row (v34: one row per entry) — keyed by
- * the cache-entry HASH it belongs to, not a run. Written inside the
- * entry-save transaction (`writeArtifactAndIndex`) on a miss/save; a
- * cache HIT does not save, so it persists nothing (warm runs are free).
- * The diff (Phase B/B1) reads these by the run's task hash
- * (`runs.hash → entry_inputs[entry_hash]`).
+ * One `entry_inputs` row, keyed by the entry hash, written in the entry-save
+ * transaction on a miss. The diff reads them through `runs.hash`.
  */
 export interface TaskInputRow {
   entryHash: string
@@ -328,9 +148,8 @@ export interface PruneOptions {
   /** Drop entries last accessed before this ms-epoch threshold. */
   olderThanMs?: number
   /**
-   * After applying olderThanMs, if the cache still exceeds this size in
-   * bytes, evict LRU (smallest `accessed_at` first, a row-less artifact
-   * by its file time) until under it.
+   * After `olderThanMs`, evict least recently used (a row-less artifact by its
+   * file time) until the cache is under this many bytes.
    */
   maxBytes?: number
   /**
@@ -346,11 +165,9 @@ export interface PruneResult {
   /** Bytes the evicted entries occupied, per the index. */
   bytesFreed: number
   /**
-   * Artifacts and temp files with no index row, unlinked by the same
-   * policy (another vx version's open dropped the row, a deleted
-   * `cache.db`, a save that crashed before its rename). An artifact's file
-   * time plus an hour stands for its last use; a temp goes once an hour
-   * old. Files younger than one hour are never counted.
+   * Artifacts and temp files with no index row (a dropped row, a deleted
+   * `cache.db`, a crashed save), unlinked by the same policy. Files younger
+   * than an hour are never counted.
    */
   orphans: number
   /** Bytes the reaped orphans occupied on disk. */
@@ -365,121 +182,17 @@ export interface PruneResult {
 }
 
 /**
- * Artifact + `output_files` namespace prefix for workspace-root-
- * anchored outputs (`outputs.workspaceFiles`). Project outputs
- * keep their bare project-relative `path` rows; workspace rows store
- * the full `workspace-outputs/<rel-to-root>` tar entry name as the
- * discriminator — least-invasive row format, no schema change. A
- * project output dir literally named `workspace-outputs/` would
- * collide with the namespace; the name is reserved, and a project
- * output glob under it is refused at load (config-schema.ts), a file
- * another glob reaches there at save (`planArtifact`).
- */
-export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
-
-/**
- * Per-output-file fingerprint, scoped by the cache entry that
- * produced it. Batch-loaded once at the top of a run via
- * `loadOutputFilesBatch(hashes)` so the orchestrator's "is this
- * tree already current?" probe becomes an in-memory Map lookup
- * plus N parallel stat calls.
- *
- * `path` is project-relative (e.g. `dist/index.js`), matching how
- * outputs are addressed under `<projectDir>/` — except workspace
- * outputs, which carry the full `workspace-outputs/<rel-to-root>`
- * tar entry name (see `WORKSPACE_OUTPUT_PREFIX`); callers split on
- * the prefix and anchor those at the workspace root.
- */
-export interface OutputFileRow {
-  path: string
-  size: number
-  mode: number
-  mtimeMs: number
-  /**
-   * The inode and ctime THIS machine saw the file carry after the save or
-   * restore that left it equal to the entry (`recordOutputStamps`).
-   * Absent until then, and from any ingest: a row without them is never
-   * current.
-   */
-  ino?: number
-  ctimeMs?: number
-}
-
-/** One directory under a whole-subtree output glob, as it stood after the last save or restore on THIS machine. */
-export interface OutputDirRow {
-  path: string
-  mtimeMs: number
-}
-
-/**
- * More directories than this under a task's output prefixes: record
- * nothing, keep the walk. 256 refused payload's `@payloadcms/ui#build`
- * (535 directories, 4,069 files), which then paid the refused snapshot's
- * walk AND the output glob on every warm no-op — 65 ms of a 320 ms run
- * (2026-09-11). Rows are 60 bytes each and the check is one stat per
- * directory, so the cap is a bound on pathological trees, not a budget.
- */
-export const OUTPUT_DIRS_CAP = 8192
-
-/**
- * `mtime_ms` of the one row a snapshot over `OUTPUT_DIRS_CAP` leaves: never
- * current, so the hit walks, and it tells the hit not to snapshot again.
- * Cleared rows sent every hit through the walk AND a capped snapshot.
- */
-export const OUTPUT_DIRS_OVER_CAP = -3
-
-/**
- * A directory whose mtime lies within this many ms of the snapshot is RACY
- * and the whole snapshot is dropped. File timestamps are coarse on Linux
- * (a kernel tick, up to 10 ms), so a write landing in the same tick as the
- * one that made the directory's recorded mtime leaves the mtime unchanged
- * and the change invisible — git's index distrusts stats this young for
- * the same reason (a stray survived a hit on the ubuntu job, 2026-09-03).
- * The next hit walks, and once the tree is older than the window it is
- * recorded for good.
- */
-export const OUTPUT_DIRS_RACY_MS = 50
-
-/** The stat memo's twin of `OUTPUT_DIRS_RACY_MS`: a file changed within this window of the stat is not memoised. */
-export const FILE_HASH_RACY_MS = 50
-
-/**
- * The racy window for one timestamp. `windowMs` assumes a clock finer than
- * itself; a file system that keeps whole seconds (ext3, HFS+, FAT/exFAT,
- * some NFS mounts) stamps a write at 12:00:00.900 as 12:00:00, so a write
- * later in that second keeps the stamp, and a stat 120 ms after the first
- * write passed a 50 ms window: the memo served the first bytes' digest for
- * a same-size rewrite 120 ms on (A-2, reproduced on an ext2 mount). A stamp
- * with no sub-second part is read as such a second and widens the window by
- * it, as git judges racy entries at its index's own granularity. FAT32
- * keeps even seconds, so an even stamp widens by two: a hash 1.2 s after
- * one passed the single second and a rewrite later in the pair kept every
- * field (A-38). Pass the UNFLOORED stamp: a kernel's nanosecond stamp lands
- * on a whole second about once in 10^9, one set through a millisecond
- * `utimes` once in a thousand, and either is then trusted up to two seconds
- * later — never wrongly. And every window is widened by how far the file
- * system's clock runs behind this process's (`fsClockLag`, fs-clock.ts).
- */
-export function racyWindowMs(stampMs: number, windowMs: number): number {
-  return windowMs + stampGrainMs(stampMs) + fsClockLag()
-}
-
-/**
- * Context passed to `get()`. Optional, but required when the lookup
- * may resolve through the remote layer — the local SQL row inserted on
- * remote-hit needs `taskId` + `command` to be queryable later (the
- * artifact itself doesn't carry them). `Cache` (local) ignores this
- * field; `LayeredCache` forwards it to `Cache.ingest`.
+ * Context for `get()`. Needed when the lookup may resolve remotely: the local
+ * row a remote hit inserts needs `taskId` and `command`, which the artifact
+ * does not carry.
  */
 export interface CacheGetContext {
   taskId: string
   command: string
   /**
-   * The task's declared `outputs`. A remote artifact is ingested
-   * only when every file it carries is one of them: bytes off the network
-   * named `outputs/src/in.txt` or `workspace-outputs/.git/hooks/…` wrote
-   * an input and a git hook on a green `cache-hit-remote` (item 942).
-   * Absent, the names are not checked.
+   * The task's declared `outputs`. A remote artifact is ingested only when
+   * every file it carries is one of them, so network bytes cannot write an
+   * input or a git hook. Absent, names are not checked.
    */
   outputs?: DeclaredOutputs
 }
@@ -497,11 +210,8 @@ export interface IngestMeta {
   /** Wall-clock time of the original task execution. */
   durationMs: number
   /**
-   * Cache-key components (Tier-3 input fingerprint) to persist into
-   * `entry_inputs` in the same transaction as the entry row. Omitted on
-   * the remote-hit ingest path (the artifact doesn't carry them — the
-   * fingerprint is the saving machine's local moat). Only computed on a
-   * miss/save, so a cache hit never reaches here.
+   * Key components to persist into `entry_inputs` with the entry row. Omitted
+   * on a remote ingest: the artifact does not carry them.
    */
   inputComponents?: readonly TaskInputRow[]
   /** See `CacheGetContext.outputs`: the names the artifact may carry. */
@@ -509,22 +219,9 @@ export interface IngestMeta {
 }
 
 /**
- * SQLite's answer when the disk under the index is full. It is a code on
- * the `SQLiteError` (`SQLITE_FULL`), never an `ENOSPC` errno, so
- * `isDiskFull` does not see it: a memo write, a snapshot flush or a prune's
- * delete on a full disk reached the user as a stack (A-14).
- */
-export function isIndexFull(err: unknown): boolean {
-  return (err as { code?: unknown } | null)?.code === 'SQLITE_FULL'
-}
-
-/**
- * Bytes that are not the artifact their key names. Core's ingest throws
- * it for bytes that do not decompress or parse, before anything is
- * stored; a remote layer that checks its bytes as they pass (a digest, a
- * signature) errors its `get` body with it to say they are wrong there,
- * not cut short. Either way the hit is a miss, and the re-run's save is
- * sent over that remote's copy.
+ * Bytes that are not the artifact their key names: they do not decompress or
+ * parse, or a remote's digest or signature check failed. The hit becomes a
+ * miss, and the re-run's save replaces that remote's copy.
  */
 export class CorruptArtifactError extends Error {
   constructor(
@@ -543,14 +240,10 @@ export function isCorruptArtifact(err: unknown): boolean {
 }
 
 /**
- * `restoreOutputs` found no artifact where the probe found one: another
- * process removed or replaced it in between — a prune or a clean for a
- * workspace sharing the cache directory, a re-save of the key. The
- * bytes are not wrong, they are gone, so the entry is a MISS and the task
- * runs (execute-task.ts); nothing about the cache needs throwing away.
- * Also thrown, with its `reason`, for an artifact whose bytes ARE wrong
- * (`CorruptArtifactError` at restore): the entry is dropped and it is a
- * miss the same way, so the task's save stores it again (A-52).
+ * `restoreOutputs` found no artifact where the probe found one: a prune, a
+ * clean or a re-save removed it in between. The entry is a miss and the task
+ * runs. Also thrown, with `reason`, for an artifact whose bytes are wrong: the
+ * entry is dropped and saved again.
  */
 export class ArtifactVanishedError extends Error {
   constructor(
@@ -570,100 +263,119 @@ export class ArtifactVanishedError extends Error {
 }
 
 /**
- * The shape every cache implementation honors. `Cache` (the local store)
- * and `LayeredCache` both `implements` this so the
- * orchestrator's `executeTask` can take either without a discriminated
- * union and we get a compile-time guarantee the surfaces stay congruent.
+ * The machine-local memos a key and a hit read: file hashes and the output rows
+ * and stamps that prove a tree current.
+ */
+export interface TaskMemo {
+  /**
+   * Content-hash a file, reusing the stored digest (a git blob OID) while its
+   * `(mtime_ms, size_bytes)` match. Same hash a fresh read gives.
+   */
+  hashFile(filePath: string): Promise<string>
+  /**
+   * Output-file fingerprints for many entries in one query, by entry hash.
+   * Misses are absent.
+   */
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  /**
+   * True iff every `expected` row's file under `projectDir` matches its size,
+   * mode and mtime: the hit then skips clean and restore. Any mismatch or
+   * missing file falls through to a real restore.
+   */
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
+  /**
+   * The directory-mtime short-circuit behind a warm hit (optional).
+   * `recordOutputDirs` snapshots every directory under `prefixes` after a save
+   * or restore; `outputDirsCurrent` is true iff each still has its recorded
+   * mtime, proving no file was added or removed. `holds`, when given, is asked
+   * of each non-directory path; false records nothing, since a snapshot of a
+   * tree the entry does not hold would vouch for it later.
+   */
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
+  /**
+   * Stamp `hash`'s output rows with each file's inode and ctime once the tree
+   * equals the entry (optional: without it `isOutputsCurrent` trusts no row and
+   * every hit restores). Skips a file that no longer matches.
+   */
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
+}
+
+/**
+ * The shape every cache implementation honours, so `executeTask` takes `Cache`
+ * or `LayeredCache` alike.
  */
 export interface CacheLayer {
+  /** The local store's memos (`TaskMemo`). */
+  readonly memo: TaskMemo
   /**
-   * The local handle this layer wraps, when it wraps one (`LayeredCache`).
-   * `resolveCache` uses it to drop a bare local layer another declared layer
-   * already contains, so a plugin that layers over the local handle does
-   * not write the
-   * local store twice.
+   * The local handle this layer wraps, if any: `resolveCache` drops a bare
+   * local layer another layer already contains, so the local store is not
+   * written twice.
    */
   readonly local?: Cache | undefined
   /**
-   * `true` iff a REMOTE cache sits behind this layer. THE answer to "can
-   * the remote axes of the cache policy do anything on this run?" — the
-   * orchestrator clamps `remoteRead`/`remoteWrite` off when it is absent,
-   * skips the up-front local classify when it is present (that classify's
-   * `cache.get` would be a remote read-through awaited before scheduling),
-   * and drives the prefetch pass off it.
-   *
-   * A layer must answer TRUTHFULLY: identity against the local cache
-   * ("something other than the handle I passed in") is NOT the same
-   * question — an ordinary pass-through decorator with no remote at all
-   * answers yes to it. `LayeredCache` sets it, a bare `Cache` denies it,
-   * and a third-party layer opts in when, and only when, it really has a
-   * remote. Optional so a layer written before this contract keeps
-   * type-checking; absent reads as "no remote", the safe answer.
+   * Whether a remote sits behind this layer. With none, the run clamps the
+   * remote policy axes off; with one, it skips the up-front local classify and
+   * runs the prefetch pass. Answer truthfully: a pass-through decorator has no
+   * remote. Absent reads as no remote.
    */
   readonly hasRemote?: boolean
   /**
-   * Batch existence probe over the remote — the `hashes` stored remotely
-   * and what the first remote holding each knows of it (`ArtifactInfo`), in
-   * ONE round-trip, or `null` for "no batch info; use per-hash". Only meaningful with `hasRemote`; a remote layer that can't
-   * batch omits it and the prefetch pass falls back to per-hash GETs.
+   * Which `hashes` the remote holds and what the first holder knows of each, in
+   * one round trip, or `null` to probe per hash.
    */
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   /**
-   * `remoteHasMany`, with a remote that answers no batch query asked each
-   * key, `concurrency` at a time: a complete answer or `null`. For a run
-   * that plans on the answer (an executor's demand); others pull instead.
+   * `remoteHasMany`, asking a remote with no batch query key by key,
+   * `concurrency` at a time: a complete answer or `null`. For a run that plans
+   * on the answer.
    */
   remoteHasEach?(
     hashes: readonly string[],
     concurrency: number,
   ): Promise<Map<string, ArtifactInfo> | null>
   /**
-   * The subset of `hashes` the local store already holds. The prefetch
-   * pass probes the remote only for the rest, so a run the local cache
-   * answers makes no remote call. Absent reads as "none held".
+   * The subset of `hashes` the local store holds; the prefetch pass probes the
+   * remote only for the rest.
    */
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   /**
-   * The subset of `hashes` a remote said it holds, as the local index
-   * keeps it across runs and processes: trusted now, with no round-trip.
-   * A pull of one starts at once, waiting on no batch probe. Absent, a
-   * run learns its remote hits from `remoteHasMany` alone.
+   * The subset of `hashes` the local index remembers a remote holding: trusted
+   * with no round trip, so a pull starts at once.
    */
   remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   /**
-   * Record that the remote has NO artifact for each of `hashes` (from a
-   * batch probe), so a later `get`/`prefetch` short-circuits to a miss with
-   * no round-trip. Only meaningful with `hasRemote`.
+   * Record that the remote holds none of `hashes`, so a later `get` misses with
+   * no round trip.
    */
   markRemoteAbsent?(hashes: Iterable<string>): void
   /**
-   * The run's up-front keys, for each remote the run writes but does not
-   * read (`--force`): one batch probe in the background, and an upload of
-   * a key the remote already holds is skipped. Only meaningful with
-   * `hasRemote`.
+   * The run's up-front keys for each remote it writes but does not read
+   * (`--force`): one background probe, and an upload the remote already holds
+   * is skipped.
    */
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
-  /**
-   * Resolve once every background write-through upload settles. The
-   * orchestrator awaits it before `close()` — an upload reading layer state
-   * after close would race. Only meaningful with `hasRemote`; a layer that
-   * uploads synchronously (or not at all) omits it.
-   */
+  /** Resolves once every background upload settles; awaited before `close()`. */
   drainUploads?(): Promise<void>
   /** The run was stopped: start no more uploads, and let `drainUploads` resolve now. */
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
-   * `get` past the run's read policy: an entry a machine running a task
-   * for this run saved is the run's own work, not a hit (`TaskArtifacts`).
-   * A layer without it is read through `get`.
+   * `get` past the run's read policy: an entry this run's own machines saved is
+   * its work, not a hit.
    */
   getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
-   * True once a remote the run reads holds entry `hash`, the local entry
-   * uploaded to those it writes when none does (`TaskArtifacts.share`). A
-   * layer without it shares nothing.
+   * True once a remote the run reads holds entry `hash`, uploading the local
+   * entry where none does.
    */
   share?(hash: string): Promise<boolean>
   /**
@@ -676,95 +388,27 @@ export interface CacheLayer {
    * it, or already held it; undefined when this run sent it to none.
    */
   uploaded?(hash: string): Promise<boolean | undefined>
-  /**
-   * Optional batched `get` (same answers, fewer round trips). The
-   * short-circuit probe uses it when a layer offers one; a layer without it
-   * is probed hash by hash. `ctx` is each hash's `get` context.
-   */
+  /** Optional batched `get`; without it the short-circuit probes hash by hash. */
   getMany?(
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext,
   ): Promise<Map<string, CacheEntry>>
   /**
-   * Lightweight existence probe. `'local'` / `'remote'` names the layer
-   * that holds the artifact; `null` is a miss. NEVER moves bytes: no
-   * artifact read, no remote download, no local ingest, no accessed_at
-   * bump (on the remote side the layer decides the call: an HTTP HEAD, or
-   * REAPI's `getActionResult` + `findMissingBlobs`). Planning
-   * (`--dry`) predicts hits with this instead of `get` so a
-   * dry run can't pull N artifacts over the network. Remote errors
-   * degrade to `null` — an existence probe never fails anything.
+   * Existence probe: `'local'`, `'remote'` or `null`. Never moves bytes or
+   * bumps `accessed_at`, so `--dry` predicts hits without downloads. Remote
+   * errors read as `null`.
    */
   has(hash: string): Promise<'local' | 'remote' | null>
   /**
-   * Best-effort warm of `hash` from a slower layer (the remote cache)
-   * into this one, so a later `get(hash)` resolves locally without a
-   * round-trip on the task's critical path. Returns `true` if the
-   * artifact is now present locally, `false` on a miss / error
-   * (degrades, never throws). The local `Cache` is a no-op (nothing
-   * slower to warm from); `LayeredCache` owns the real implementation
-   * plus the in-flight de-dup so prefetch + get share ONE remote GET.
+   * Best-effort warm of `hash` from the remote into the local store, off the
+   * task's critical path. Never throws; `LayeredCache` shares one GET between
+   * prefetch and `get`.
    */
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   /**
-   * Batched lookup of per-output-file fingerprints for many cache
-   * entries in one SQL round-trip. Returns a Map keyed by entry hash.
-   *
-   * Orchestrator pattern: call this once at `prepareRun` for every
-   * task whose hash is known up-front, then per-task `executeCachedTask`
-   * does a Map.get (O(1)) + parallel stat checks to decide whether the
-   * on-disk tree is already current.
-   *
-   * Hashes with no rows (cache misses) are absent from the result.
-   */
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  /**
-   * Stat each `expected` row's target under `projectDir` and return
-   * `true` iff every (size, mode, mtime) matches. Missing files,
-   * stat errors, or any mismatch → `false`.
-   *
-   * Pure FS check — no DB access. Caller batches the expected rows
-   * via `loadOutputFilesBatch`. Lets the orchestrator skip
-   * `cleanOutputs + restoreOutputs` entirely when the cached
-   * snapshot is already in place. Integrity-preserving: detects
-   * out-of-band file edits or deletions and falls through to a real
-   * restore.
-   */
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
-  /**
-   * The directory-mtime short-circuit behind a warm hit (optional — a layer
-   * without it keeps the output walk). `recordOutputDirs` snapshots every
-   * directory under each of `prefixes` (project-relative, `''` the project
-   * itself — see `outputDirPrefixes`) after a save or restore;
-   * `loadOutputDirsBatch` reads them back; `outputDirsCurrent` is true iff
-   * every recorded directory still carries its recorded mtime, which proves
-   * no file was added or removed anywhere the glob could see. Machine-local
-   * state, like the output rows: a remote ingest records none. `holds`,
-   * when given, is asked with every non-directory path the walk saw
-   * (project-relative); false records nothing, since a snapshot of a tree
-   * the entry does not hold would vouch for it on every later hit.
-   */
-  recordOutputDirs?(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  /**
-   * Stamp `hash`'s output rows with each file's inode and ctime once a
-   * save or restore has left the tree equal to the entry (optional — a
-   * layer without it has rows `isOutputsCurrent` never trusts, so every
-   * hit restores). Machine-local; skips a file that no longer matches its
-   * row.
-   */
-  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
-  /**
-   * Extract the artifact's `outputs/` entries into `projectDir` and —
-   * when `workspaceRoot` is given — its `workspace-outputs/` entries
-   * into the workspace root. Callers restoring entries that may carry
-   * workspace outputs must pass `workspaceRoot`.
+   * Extract `outputs/` into `projectDir` and, given `workspaceRoot`,
+   * `workspace-outputs/` into the root. Pass `workspaceRoot` whenever the entry
+   * may carry workspace outputs.
    */
   restoreOutputs(
     hash: string,
@@ -776,13 +420,8 @@ export interface CacheLayer {
   save(args: {
     hash: string
     /**
-     * `exitCode` is deliberately NOT accepted: vx caches only successes, so
-     * the stored value is pinned to 0 and there is nothing for a caller to
-     * decide. Accepting a number and discarding it invited the one shape that
-     * launders a failure into a success — cache a failing task's outputs, read
-     * the entry back as exit 0, and the hit classifies `cache-hit` while the
-     * broken build's files are restored over a good tree. Unrepresentable
-     * beats guarded.
+     * No `exitCode`: vx caches only successes, so the stored value is 0. Taking
+     * one would let a failing task's outputs be read back as a green hit.
      */
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
@@ -790,59 +429,31 @@ export interface CacheLayer {
     /** The empty directories under the outputs (absolute), kept so a hit makes them. */
     outputDirs?: string[]
     /**
-     * Resolved `outputs.workspaceFiles` (absolute paths) + the root
-     * they're relative to. Packed under `workspace-outputs/<rel>`.
-     * Omitted → artifact bytes identical to the pre-workspaceFiles
-     * format.
+     * Resolved `outputs.workspaceFiles` and their root, packed under
+     * `workspace-outputs/<rel>`.
      */
     workspaceOutputFiles?: string[]
     /** The empty directories under `workspaceOutputFiles`' globs (absolute). */
     workspaceOutputDirs?: string[]
     workspaceRoot?: string
     /**
-     * Cache-key components for this entry (the Tier-3 input
-     * fingerprint). Persisted to `entry_inputs` inside the same
-     * transaction as the entry row, via `INSERT OR IGNORE` (a re-save
-     * of the same hash is a no-op). Omitted/empty → nothing written.
-     * Only computed on the miss/save path — never on a hit.
+     * Key components persisted to `entry_inputs` with the entry row (`INSERT OR
+     * IGNORE`). Miss path only.
      */
     inputComponents?: readonly TaskInputRow[]
     /** No remote held `hash` when the run asked: an upload asks none first. */
     absent?: boolean
   }): Promise<void>
   /**
-   * Adopt an artifact produced elsewhere — the remote-hit path. Streams
-   * the compressed body to `<cacheDir>/<hash>.tar.zst`, parses the
-   * tar headers to populate the `output_files` rows, and inserts the
-   * `entries` row using the caller-supplied `meta`. After this returns,
-   * the next `get(hash)` resolves locally.
+   * Adopt an artifact produced elsewhere (a remote hit): stream it to
+   * `<cacheDir>/<hash>.tar.zst`, index its files and insert the entry with
+   * `meta`.
    */
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  /**
-   * The run-history write at a run's end, atomically: the per-task `runs`
-   * rows (less the hits a `HistoryStream` already wrote) and the one
-   * `invocations` header row — in a SINGLE transaction (one fsync). Input-fingerprint rows are NOT written here — they
-   * ride the entry-save transaction (`save`/`ingest`) so a warm
-   * all-cache-hit run writes nothing.
-   */
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
   /**
-   * Content-hash a file with an mtime+size fast path. If the
-   * `(mtime_ms, size_bytes)` of `filePath` match a previously seen
-   * row, return the stored digest (a git blob OID since CACHE_VERSION
-   * v20) instead of re-reading the bytes. Otherwise read + hash + upsert.
-   * The hash is byte-for-byte identical to what a fresh content-hash
-   * would produce — pure optimization, no cache-key change.
-   */
-  hashFile(filePath: string): Promise<string>
-  /**
-   * Absolute path a file-backed artifact for a hash has —
-   * `<cacheDir>/<hash>.tar.zst`. Returns the path whether or
-   * not the artifact exists: a small artifact lives in the index, not
-   * in a file (`artifactSize` is its size). Exposed for telemetry /
-   * dashboards; `restoreOutputs` is the canonical way to materialize
-   * the bytes.
+   * Where a file-backed artifact for `hash` lives, whether or not it exists (a
+   * small one lives in the index). `restoreOutputs` is how to materialize it.
    */
   outputsPath(hash: string): string
   /** The stored artifact's compressed size, wherever it lives; undefined when none is stored. */
@@ -859,19 +470,8 @@ export interface CacheLayer {
 }
 
 /**
- * Convenience alias for the `save()` args. Used by `LayeredCache` to
- * forward call args without redeclaring the structural shape — NOT
- * part of the conceptual cache contract; consumers should call
- * `CacheLayer.save({ ... })` directly.
+ * The `save()` args, for `LayeredCache` to forward.
  *
  * @internal
  */
 export type SaveArgs = Parameters<CacheLayer['save']>[0]
-
-/** A plugin's measure kept as a task's timing (`PluginSetupContext.measure`): `id` is `<plugin>#<name>`. */
-export interface MeasureRecord {
-  readonly id: string
-  readonly def: string
-  readonly durationMs: number
-  readonly cores?: number
-}

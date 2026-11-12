@@ -34,17 +34,17 @@ const turn = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
 it('held blob sizes are stored while the run goes on, not when remembered', async () => {
   const cache = open()
-  cache.holdBlobSizes()
-  cache.rememberBlobSizes(sizes(600))
+  cache.memo.holdBlobSizes()
+  cache.memo.rememberBlobSizes(sizes(600))
   expect(stored()).toBe(0)
-  cache.storeHeldBlobSizes()
+  cache.memo.storeHeldBlobSizes()
   expect(stored()).toBe(0)
   await turn()
   expect(stored()).toBeGreaterThan(0)
   expect(stored()).toBeLessThan(600)
   for (let i = 0; i < 5; i++) await turn()
   expect(stored()).toBe(600)
-  cache.rememberBlobSizes(sizes(1))
+  cache.memo.rememberBlobSizes(sizes(1))
   cache.close()
 })
 
@@ -93,13 +93,13 @@ function reaches(from: string, to: string): boolean {
 
 it('stored blob sizes are let go, not held to the end of the run', async () => {
   const cache = open()
-  cache.holdBlobSizes()
+  cache.memo.holdBlobSizes()
   const entries = function* (): Generator<HeldSize> {
     for (let i = 0; i < 600; i++) yield new HeldSize(`oid${i}`, i)
   }
-  cache.rememberBlobSizes({ [Symbol.iterator]: entries } as unknown as Map<string, number>)
+  cache.memo.rememberBlobSizes({ [Symbol.iterator]: entries } as unknown as Map<string, number>)
   expect(reaches('Cache', 'HeldSize')).toBe(true)
-  cache.storeHeldBlobSizes()
+  cache.memo.storeHeldBlobSizes()
   for (let i = 0; i < 6; i++) await turn()
   expect(stored()).toBe(600)
   expect(reaches('Cache', 'HeldSize')).toBe(false)
@@ -108,25 +108,25 @@ it('stored blob sizes are let go, not held to the end of the run', async () => {
 
 it('close stores what is still held, stored or not', () => {
   const never = open()
-  never.holdBlobSizes()
-  never.rememberBlobSizes(sizes(10))
+  never.memo.holdBlobSizes()
+  never.memo.rememberBlobSizes(sizes(10))
   never.close()
   expect(stored()).toBe(10)
   const mid = open()
-  mid.holdBlobSizes()
-  mid.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`x${i}`, i])))
-  mid.storeHeldBlobSizes()
+  mid.memo.holdBlobSizes()
+  mid.memo.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`x${i}`, i])))
+  mid.memo.storeHeldBlobSizes()
   mid.close()
   expect(stored()).toBe(610)
-  expect(open().knownBlobSizes(['x599'])).toEqual(new Map([['x599', 599]]))
+  expect(open().memo.knownBlobSizes(['x599'])).toEqual(new Map([['x599', 599]]))
 })
 
 it('held blob sizes are stored in OID order, the key index appended at its edge', async () => {
   const cache = open()
-  cache.holdBlobSizes()
+  cache.memo.holdBlobSizes()
   // Path order is not OID order: remembered descending.
-  cache.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`oid${999 - i}`, i])))
-  cache.storeHeldBlobSizes()
+  cache.memo.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`oid${999 - i}`, i])))
+  cache.memo.storeHeldBlobSizes()
   for (let i = 0; i < 5; i++) await turn()
   const db = new Database(path.join(dir, 'cache.db'), { readonly: true })
   try {
@@ -144,8 +144,8 @@ it('held blob sizes are stored in OID order, the key index appended at its edge'
 // thread before the first task; the native string sort is 8 (2026-11-07).
 it('held blob sizes are ordered by the native sort, no JS comparator', () => {
   const cache = open()
-  cache.holdBlobSizes()
-  cache.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`oid${999 - i}`, i])))
+  cache.memo.holdBlobSizes()
+  cache.memo.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`oid${999 - i}`, i])))
   const sorts = [Array.prototype, Object.getPrototypeOf(Uint32Array.prototype)] as Array<{
     sort: (cmp?: unknown) => unknown
   }>
@@ -160,13 +160,13 @@ it('held blob sizes are ordered by the native sort, no JS comparator', () => {
     }
   })
   try {
-    cache.storeHeldBlobSizes()
+    cache.memo.storeHeldBlobSizes()
   } finally {
     sorts.forEach((p, i) => (p.sort = saved[i]!))
   }
   expect({ comparators, natives }).toEqual({ comparators: 0, natives: 1 })
   cache.close()
-  expect(open().knownBlobSizes(['oid400', 'oid999'])).toEqual(
+  expect(open().memo.knownBlobSizes(['oid400', 'oid999'])).toEqual(
     new Map([
       ['oid400', 599],
       ['oid999', 0],
@@ -176,8 +176,8 @@ it('held blob sizes are ordered by the native sort, no JS comparator', () => {
 
 it('an empty memo answers no size', () => {
   const cache = open()
-  expect(cache.knownBlobSizes(['a', 'b'])).toEqual(new Map())
-  cache.rememberBlobSizes(new Map([['a', 1]]))
-  expect(cache.knownBlobSizes(['a', 'b'])).toEqual(new Map([['a', 1]]))
+  expect(cache.memo.knownBlobSizes(['a', 'b'])).toEqual(new Map())
+  cache.memo.rememberBlobSizes(new Map([['a', 1]]))
+  expect(cache.memo.knownBlobSizes(['a', 'b'])).toEqual(new Map([['a', 1]]))
   cache.close()
 })

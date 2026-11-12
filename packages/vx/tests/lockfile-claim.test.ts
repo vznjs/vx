@@ -443,7 +443,7 @@ describe('key', () => {
     expect(await digestOf(hooks, 'packages/a', fresh)).toEqual({ deps: 'a1' })
     expect(await readdir(cacheDir)).toEqual([])
     new Cache(cacheDir).close()
-    expect(await hooks.importers(fresh)).toEqual(new Map())
+    expect(await hooks.links(fresh)).toEqual(new Map())
     expect(await digestOf(claim(), 'packages/a', fresh)).toEqual({ deps: 'a1' })
     expect(calls).toHaveLength(1)
   })
@@ -455,17 +455,17 @@ describe('key', () => {
   })
 })
 
-// A `discover` hook reads each importer's links from the memo the digests
-// live in, so a warm run parses nothing to learn its edges (language-
-// agnostic core, PR 2). Lines `dir>target` link two importers.
-describe('importers', () => {
+// A `discover` hook reads each member's links from the memo the digests
+// live in, so a warm run parses nothing to learn its edges. Lines
+// `dir>target` link two members; the value's shape is the plugin's.
+describe('links', () => {
   const withImporters = (scope?: 'project' | 'workspace') =>
     lockfileClaim({
       file: 'bun.lock',
       version: 1,
       ...(scope === undefined ? {} : { scope }),
       digest: () => new Map(),
-      importers: (text) => {
+      links: (text) => {
         calls.push(text)
         const out = new Map<string, { deps: Record<string, string>; peers: {} }>()
         for (const line of text.split('\n')) {
@@ -477,21 +477,21 @@ describe('importers', () => {
     })
 
   it('are undefined without a file, then served from the memo in a new process', async () => {
-    expect(await withImporters().importers(ctx())).toBeUndefined()
+    expect(await withImporters().links(ctx())).toBeUndefined()
     await lock('packages/a>packages/b\n')
     const want = new Map([['packages/a', { deps: { 'packages/b': 'packages/b' }, peers: {} }]])
-    expect(await withImporters().importers(ctx())).toEqual(want)
+    expect(await withImporters().links(ctx())).toEqual(want)
     expect(calls).toHaveLength(1)
     editMemo((m) => {
       m.edges['packages/a'] = { deps: { b: 'planted' }, peers: {} }
     })
-    expect(await withImporters().importers(ctx())).toEqual(
+    expect(await withImporters().links(ctx())).toEqual(
       new Map([['packages/a', { deps: { b: 'planted' }, peers: {} }]]),
     )
     expect(calls).toHaveLength(1)
   })
 
-  // A staleness check reads the names each importer records; parsed on every
+  // A staleness check reads the names each member records; parsed on every
   // run before, by the plugin, into a file of its own under the cache dir.
   it('recorded names are served from the memo in a new process', async () => {
     const withRecorded = () =>
@@ -514,7 +514,7 @@ describe('importers', () => {
     expect(calls).toHaveLength(1)
   })
 
-  // The digests are most of a parse (bun.lock's reach digests), and a run
+  // The digests are most of a parse, and a run
   // keys from the recorded ones: its read leaves them out of the memo, and
   // `vx lock`'s read, which needs them, parses again and keeps them.
   it("a run's read digests nothing; `vx lock`'s adds the digests to the memo", async () => {
@@ -527,16 +527,16 @@ describe('importers', () => {
           digested.push(text)
           return new Map([['packages/a', 'a1']])
         },
-        importers: (text) => {
+        links: (text) => {
           calls.push(text)
           return new Map()
         },
       })
     await lock('packages/a>packages/b\n')
-    await hooks().importers(ctx())
+    await hooks().links(ctx())
     expect([calls.length, digested.length, readMemo().importers]).toEqual([1, 0, null])
     // A fresh process's run reads the memo: no parse at all.
-    await hooks().importers(ctx())
+    await hooks().links(ctx())
     expect([calls.length, digested.length]).toEqual([1, 0])
     expect(await digestOf(hooks(), 'packages/a')).toEqual({ deps: 'a1' })
     expect([calls.length, digested.length, readMemo().importers]).toEqual([
@@ -545,7 +545,7 @@ describe('importers', () => {
       { 'packages/a': 'a1' },
     ])
     // Then every reader is served from it.
-    await hooks().importers(ctx())
+    await hooks().links(ctx())
     expect(await digestOf(hooks(), 'packages/a')).toEqual({ deps: 'a1' })
     expect([calls.length, digested.length]).toEqual([2, 1])
   })
@@ -553,11 +553,11 @@ describe('importers', () => {
   it('scope: workspace still records them, and its memo is not a project-scope memo', async () => {
     await lock('packages/a>packages/b\n')
     const want = new Map([['packages/a', { deps: { 'packages/b': 'packages/b' }, peers: {} }]])
-    expect(await withImporters('workspace').importers(ctx())).toEqual(want)
-    expect(await withImporters('workspace').importers(ctx())).toEqual(want)
+    expect(await withImporters('workspace').links(ctx())).toEqual(want)
+    expect(await withImporters('workspace').links(ctx())).toEqual(want)
     expect(calls).toHaveLength(1)
     // A project-scope claimant does not read the workspace memo's empty digests.
-    await withImporters().importers(ctx())
+    await withImporters().links(ctx())
     expect(calls).toHaveLength(2)
   })
 })
@@ -837,5 +837,27 @@ describe("the claimant's identity", () => {
     await digestOf(printed('source', 'probe@1'), 'packages/a')
     await digestOf(printed('source', 'other@1'), 'packages/a')
     expect(calls).toHaveLength(2)
+  })
+
+  // Renaming the option must not re-key every workspace's memo: a claimant
+  // with links still names itself by the token its memos were written under.
+  it('a claimant with links keeps the identity its memos were written under', async () => {
+    await lock('packages/a=a1\n')
+    await lockfileClaim({
+      file: 'bun.lock',
+      version: 1,
+      identity: 'probe@1',
+      digest: parse,
+      links: () => new Map(),
+    }).links(ctx())
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    try {
+      const row = db.query("SELECT claimant FROM lockfile_memos WHERE file = 'bun.lock'").get()
+      expect(row).toEqual({
+        claimant: xxh3hex(['deps', 'project', 'identity:probe@1', '', 'importers', ''].join('\0')),
+      })
+    } finally {
+      db.close()
+    }
   })
 })

@@ -3,8 +3,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, it, vi } from 'bun:test'
-import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
-import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/history/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import {
+  type InvocationRecord,
+  type RunRecord,
+  runHistory,
+  EmptyHistoryProvider,
+  LocalHistoryProvider,
+} from '../src/history/index.js'
 
 function mkRun(args: {
   hash: string
@@ -70,7 +76,7 @@ function mkInvocation(runId: string, startedAt: number): InvocationRecord {
 /** One invocation per row, so each row is its own slot in the window. */
 function recordAsInvocations(cache: Cache, rows: readonly RunRecord[]): void {
   for (const row of rows) {
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: [{ ...row, runId: `inv-${row.startedAt}` }],
       invocation: mkInvocation(`inv-${row.startedAt}`, row.startedAt),
     })
@@ -100,7 +106,7 @@ describe('LocalHistoryProvider', () => {
   it('a second open of an existing index keeps the rows the first has not checkpointed', async () => {
     const first = makeCache()
     try {
-      first.recordRuns([
+      runHistory(first).recordRuns([
         mkRun({
           hash: 'w1',
           project: 'pkg',
@@ -113,7 +119,7 @@ describe('LocalHistoryProvider', () => {
       expect(existsSync(path.join(cacheDir, 'cache.db-wal'))).toBe(true)
       const second = new Cache(cacheDir)
       try {
-        const db = (second as unknown as { db: Database }).db
+        const db = indexDb(second)
         const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')
         expect(entry?.runs).toBe(1)
       } finally {
@@ -184,8 +190,8 @@ describe('LocalHistoryProvider', () => {
           startedAt: 6000,
         }),
       ]
-      cache.recordRuns(rows)
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      runHistory(cache).recordRuns(rows)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['pkg#test'])
       const entry = table.get('pkg#test')
       expect(entry).toBeDefined()
@@ -208,7 +214,7 @@ describe('LocalHistoryProvider', () => {
     const cache = makeCache()
     try {
       const now = Date.now()
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         // The run went green, but only on attempt 2 — nondeterminism proven
         // by the retry, with no failed row anywhere to infer it from.
         {
@@ -223,7 +229,7 @@ describe('LocalHistoryProvider', () => {
           attempts: 2,
         },
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#test'])).get('pkg#test')
       expect(entry!.failureMode).not.toBe('stable')
     } finally {
@@ -301,8 +307,8 @@ describe('LocalHistoryProvider', () => {
           startedAt: 2500,
         }),
       ]
-      cache.recordRuns(rows)
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      runHistory(cache).recordRuns(rows)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['pkg#build', 'pkg#test'])
       const build = table.get('pkg#build')!
       const test = table.get('pkg#test')!
@@ -330,7 +336,7 @@ describe('LocalHistoryProvider', () => {
       // index by exactly as much as it adds a value below the answer. This
       // shape does not agree — ONE execution against THREE near-free hits, so
       // including them moves p50 off the executed duration entirely.
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         mkRun({
           hash: 'x1',
           project: 'pkg',
@@ -351,7 +357,7 @@ describe('LocalHistoryProvider', () => {
           }),
         ),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')!
       expect(entry.p50DurationMs).toBe(100)
       expect(entry.p99DurationMs).toBe(100)
@@ -375,7 +381,7 @@ describe('LocalHistoryProvider', () => {
       // is not (["1","10","100","11",…]), and 100 samples are the fewest that
       // put the 95th and the 99th percentile on different values.
       const ms = Array.from({ length: 100 }, (_, i) => i + 1)
-      cache.recordRuns(
+      runHistory(cache).recordRuns(
         // A deterministic shuffle: odds ascending, then evens descending.
         [...ms.filter((n) => n % 2 === 1), ...ms.filter((n) => n % 2 === 0).reverse()].map((n, i) =>
           mkRun({
@@ -388,7 +394,7 @@ describe('LocalHistoryProvider', () => {
           }),
         ),
       )
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')!
       // The forecast is the median of the last five recorded (evens 10..2);
       // p99 is sorted[floor(0.99 * 100)] of 1..100.
@@ -409,7 +415,7 @@ describe('LocalHistoryProvider', () => {
       // writer to always record the count — the schema's obvious tidy-up — and
       // `>= 1` would call EVERY green task in the history flaky. The reader
       // holds the meaning on its own side: 1 attempt is one run.
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         {
           ...mkRun({
             hash: 'o1',
@@ -433,7 +439,7 @@ describe('LocalHistoryProvider', () => {
           attempts: 2,
         },
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const table = await new LocalHistoryProvider(db).loadFor(['pkg#once', 'pkg#twice'])
       expect(table.get('pkg#once')!.failureMode).toBe('stable')
       // The control: the column IS reaching the query, so the row above is a
@@ -492,7 +498,7 @@ describe('LocalHistoryProvider', () => {
           startedAt: 5000,
         }),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const windowed = (await new LocalHistoryProvider(db, 3).loadFor(['pkg#test'])).get(
         'pkg#test',
       )!
@@ -573,7 +579,7 @@ describe('LocalHistoryProvider', () => {
           startedAt: 4000,
         }),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       expect(
         (await new LocalHistoryProvider(db, 2).loadFor(['pkg#test'])).get('pkg#test')!.failureMode,
       ).toBe('stable')
@@ -616,7 +622,7 @@ describe('LocalHistoryProvider', () => {
           startedAt: 3000,
         }),
       ])
-      const db = (cache as unknown as { db: Database }).db
+      const db = indexDb(cache)
       const table = await new LocalHistoryProvider(db, 10).loadFor([
         'pkg#build',
         'other#build',
@@ -771,7 +777,7 @@ describe('LocalHistoryProvider', () => {
         at(4, task, 'success'),
         at(5, task, last),
       ]
-      cache.recordRuns([...shape('test', 'failed'), ...shape('lint', 'success')])
+      runHistory(cache).recordRuns([...shape('test', 'failed'), ...shape('lint', 'success')])
       const table = await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#test', 'pkg#lint'])
       const pick = (id: string) => {
         const h = table.get(id)!
@@ -808,7 +814,7 @@ describe('LocalHistoryProvider', () => {
   it('a retry that never passed is no flaky signal', async () => {
     const cache = makeCache()
     try {
-      cache.recordRuns(
+      runHistory(cache).recordRuns(
         [1, 2].map((i) => ({
           ...mkRun({
             hash: 'stuck',
@@ -840,7 +846,7 @@ describe('LocalHistoryProvider', () => {
         durationMs: 250,
         startedAt: 1000,
       })
-      cache.recordRuns([{ ...row, peakRssBytes: 4096, cpuMs: 500 }])
+      runHistory(cache).recordRuns([{ ...row, peakRssBytes: 4096, cpuMs: 500 }])
       const h = (await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#build'])).get(
         'pkg#build',
       )!
@@ -870,7 +876,10 @@ describe('LocalHistoryProvider', () => {
             startedAt: 1000 + i,
           }),
         )
-      cache.recordRuns([...rows('odd', [30, 10, 20, 50, 40]), ...rows('even', [40, 10, 30, 20])])
+      runHistory(cache).recordRuns([
+        ...rows('odd', [30, 10, 20, 50, 40]),
+        ...rows('even', [40, 10, 30, 20]),
+      ])
       const table = await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#odd', 'pkg#even'])
       expect([table.get('pkg#odd')!.p50DurationMs, table.get('pkg#even')!.p50DurationMs]).toEqual([
         30, 30,
@@ -888,7 +897,7 @@ describe('LocalHistoryProvider', () => {
       const r = (hash: string, task: string, durationMs: number, startedAt: number) =>
         mkRun({ hash, project: 'pkg', task, status: 'success', durationMs, startedAt })
       const bundle = (runId: string, at: number, runs: RunRecord[]) =>
-        cache.recordRunBundle({
+        runHistory(cache).recordRunBundle({
           runs: runs.map((x) => ({ ...x, runId })),
           invocation: mkInvocation(runId, at),
         })
@@ -913,7 +922,7 @@ describe('LocalHistoryProvider', () => {
       const r = (hash: string, status: RunRecord['status'], durationMs: number, at: number) =>
         mkRun({ hash, project: 'pkg', task: 'test', status, durationMs, startedAt: at })
       const bundle = (runId: string, at: number, runs: RunRecord[]) =>
-        cache.recordRunBundle({
+        runHistory(cache).recordRunBundle({
           runs: runs.map((x) => ({ ...x, runId })),
           invocation: mkInvocation(runId, at),
         })
@@ -939,7 +948,7 @@ describe('LocalHistoryProvider', () => {
       const r = (hash: string, status: RunRecord['status'], startedAt: number) =>
         mkRun({ hash, project: 'pkg', task: 'test', status, durationMs: 100, startedAt })
       const bundle = (runId: string, at: number, runs: RunRecord[]) =>
-        cache.recordRunBundle({
+        runHistory(cache).recordRunBundle({
           runs: runs.map((x) => ({ ...x, runId })),
           invocation: mkInvocation(runId, at),
         })
@@ -994,7 +1003,7 @@ describe('LocalHistoryProvider', () => {
         ...mkRun({ hash: task, project: 'pkg', task, status, durationMs: 10, startedAt: 1000 }),
         attempts,
       })
-      cache.recordRuns([
+      runHistory(cache).recordRuns([
         run('green', 'success', 1),
         // Failed once, then passed on a retry: the retry already proves it.
         run('retried', 'failed', 1),
@@ -1044,7 +1053,7 @@ describe('LocalHistoryProvider', () => {
   it('returns nothing for tasks with no prior runs', async () => {
     const cache = makeCache()
     try {
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['nope#nada'])
       expect(table.size).toBe(0)
     } finally {
@@ -1067,8 +1076,8 @@ describe('LocalHistoryProvider', () => {
           startedAt: 1000 * i + 1000,
         }),
       )
-      cache.recordRuns(rows)
-      const provider = new LocalHistoryProvider((cache as unknown as { db: any }).db)
+      runHistory(cache).recordRuns(rows)
+      const provider = new LocalHistoryProvider(indexDb(cache))
       const table = await provider.loadFor(['pkg#lint'])
       expect(table.get('pkg#lint')!.failureMode).toBe('stable')
     } finally {
@@ -1096,7 +1105,7 @@ describe('a reading handle prunes no history', () => {
       (db.query('SELECT COUNT(*) AS n FROM invocations').get() as { n: number }).n,
     ]
     const writer = new Cache(dir)
-    writer.recordRunBundle({
+    runHistory(writer).recordRunBundle({
       runs: [
         mkRun({
           hash: 'h',

@@ -4,7 +4,7 @@
 // that exits is an `aborted` row, and the footer replaces the region.
 
 import { expect, it } from 'bun:test'
-import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import type { TaskNode } from '../src/graph/index.js'
 import { defaultLogger } from '../src/report/logger.js'
 import type { StatusStream } from '../src/ui/live-region.js'
 
@@ -55,8 +55,8 @@ it('a stop keeps the region: running rows say aborting, exited ones aborted', as
     status: 'aborted',
     exitCode: 130,
     durationMs: 1200,
-    wallclockStartNs: 1n,
-  } as TaskOutcome)
+    timing: { startNs: 1n },
+  })
   const text = out.text()
   const row = text.slice(text.lastIndexOf('p#a') - 110, text.lastIndexOf('p#a') + 3)
   expect(row).toMatch(/ {12}aborted\s+—\s+—\s+1\.20s(\s+—){4}\s+local\s+p#a/)

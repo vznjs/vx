@@ -533,7 +533,7 @@ use your own instead.
   free that it fits, so workers fill before the next takes work and the
   ones the rest no longer needs fall idle and leave.
 - A sandboxed task runs on a worker inside the worker's own sandbox, with
-  the same `exec.sandbox`, built there (`sandboxRequestFor`): its paths,
+  the same `exec.sandbox`, built there (`workerRuntime().prepare`): its paths,
   walls and credential stores are the worker's, so an orchestrator on
   Linux can run macOS workers. A violation there fails it here, named in
   this checkout's paths. An empty file it wrote over a write grant's
@@ -902,7 +902,7 @@ does and links it from the job summary.
 After the run, `dte()` replays it perfectly: each task as long as it held
 its worker and with the cores it used meanwhile, on as many
 workers as the sizes allow, each joining after its platform's fastest
-real warm-up. That ideal end (`TaskExecutor.idealMs`) sits beside the
+real warm-up. That ideal end (`distribution.idealMs`) sits beside the
 real time in the run summary and the footer's `ideal` line, and
 `@vzn/vx-ci` prints it.
 
@@ -971,7 +971,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did, and
     every uncached task, which runs every time; groups and hits need no worker. The run plays
-    that work out on its workers and on N more (`src/planner.ts`), each new
+    that work out on its workers and on N more (`src/plan/`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and the best end is the one with all N. A worker counts its cores
@@ -1002,7 +1002,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     later. The big one leaves once its running tasks end. While a task
     with no history is left, this happens only for the run's last work.
     With every task's time known, the plan packs the work instead, when
-    that holds less CPU and ends as soon (`src/pack.ts`): each task, in
+    that holds less CPU and ends as soon (`src/plan/pack.ts`): each task, in
     order of its latest start, goes where a worker has room for it
     between its ready time and the start that ends its chain by the
     deadline run slow (each task's slow run from history, else 15% over
@@ -1023,7 +1023,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     it: once on each worker that starts it, from its first dependant
     there until its last dependant anywhere ends. It then packs again in other orders, up to 64 times (fewer
     past 100 tasks, none past 6400), each new worker's task a random way
-    into its slack, and keeps the one holding least by the same end. It
+    into its slack, and keeps the one holding least by the same end. How far that is from the least
+    a run can hold: `scripts/optimum.ts` plays small graphs and
+    `scripts/optimum.py` solves each exactly (CP-SAT). It
     packs the whole run, past the window. Each next new
     worker of a size is counted as joining later by the spread this run's
     joins of it showed (the slowest less the fastest, over the joins

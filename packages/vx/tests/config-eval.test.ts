@@ -32,6 +32,8 @@ import {
 } from '../src/workspace/config-eval.js'
 import { loadProjectConfig, loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 import type { ProjectConfig } from '../src/config.js'
+// ui draws the notices the modules under test say (util/notice.ts), as in vx.
+import '../src/ui/index.js'
 
 const BUDGET_ENV = 'VX_CONFIG_WORKER_TIMEOUT'
 

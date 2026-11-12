@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox noscan test')
-const EXEC = path.resolve(import.meta.dir, '..', 'src', 'exec', 'index.js')
+const EXEC = path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.js')
 
 describe.skipIf(!available || process.platform !== 'linux')('the scan command gone', () => {
   let tmp = ''

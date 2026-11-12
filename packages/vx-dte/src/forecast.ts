@@ -1,10 +1,10 @@
-// Which cached tasks will miss, guessed before any worker can say: those
-// whose inputs the last commit changed, and every task after one, its key
-// folding theirs. The run learns a task missed only once a worker keys it,
-// 20 s in: main a09b987's plan saw its 56 shards only then, and ended
-// 14 s after the best (tests/sim.test.ts). The guess only sizes the run: a
-// hit it names costs a worker the plan cancels, a miss it does not names
-// the wait the run always had.
+// Which cached tasks will miss, guessed before any worker can say: those whose
+// inputs the last commit changed, and every task after one, its key folding
+// theirs. The run learns a task missed only once a worker keys it, 20 s in: a
+// main run's plan saw its 56 shards only then, and ended 14 s after the best
+// (tests/sim.test.ts). The guess only sizes the run: a hit it names costs a
+// worker the plan cancels, a miss it does not names the wait the run always
+// had.
 
 import type { TaskNode } from '@vzn/vx'
 
