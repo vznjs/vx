@@ -739,7 +739,7 @@ export default [
           tasks: {
             build: {
               command:
-                'mkdir -p out && { cat local.txt 2>/dev/null || cat tools/gen.txt; } > out/gen.txt',
+                'mkdir -p out && { { cat < local.txt; } 2>/dev/null || cat tools/gen.txt; } > out/gen.txt',
               inputs: ['tools/**'],
               outputs: ['out/**'],
               sandbox: { read: ['.'] },

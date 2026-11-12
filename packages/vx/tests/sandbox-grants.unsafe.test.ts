@@ -194,11 +194,13 @@ describe.skipIf(!available)("a root project's read grant stops at the walls", ()
       )
       const run = (command: string) =>
         runSandboxed({ command, cwd: root, env: process.env, ...sandbox })
-      const missing = await run('cat nope.txt src/nope.txt "a:b/c;d"; true')
+      // The shell opens each: Ubuntu 26's cat (uutils) stats first, and a
+      // stat is not traced.
+      const missing = await run('true < nope.txt; true < src/nope.txt; true < "a:b/c;d"; true')
       expect(missing.violations.map((v) => v.line)).toEqual([])
       // Nor is a failure there told to grant the directory it was granted.
       expect((await run('exit 3')).violations.map((v) => v.line)).toEqual([])
-      const walled = await run('cat packages/b/nope.txt .git/HEAD; true')
+      const walled = await run('true < packages/b/nope.txt; true < .git/HEAD; true')
       // Refused, and each refusal reported.
       expect([walled.stdout, ...walled.stderr.trim().split('\n')]).toEqual([
         '',
