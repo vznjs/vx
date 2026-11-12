@@ -92,7 +92,7 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
 packages/vx-cache-server  a cache server anyone hosts (PROTOCOL.md, /v1): one bucket, no database; Bun or Docker + S3,
                         or Workers + R2, one handler, one conformance suite
 packages/vx-devtools    code vx's servers and plugins share, never core (2026-10-25: core has nothing to do with
-                        OIDC): first the CI OIDC token check (ALLOW, oidcAuth), only jose
+                        OIDC): first the one CI OIDC token check (ALLOW, oidcClaims) every server and vx-dte use, only jose
 packages/vx-history-server  the task timings vx-history reads, one folded row per task (PROTOCOL.md, /v1): Bun +
                         SQLite, Workers + D1, or Docker
 packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire
@@ -100,7 +100,7 @@ private/vx-docs         Astro Starlight site; packages/vx/docs is imported by sc
 packages/vx-dte         distributed task execution: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees)
 packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
-                        OIDC tokens; imports only jose, not even core
+                        OIDC tokens; imports only @vzn/vx-devtools, not even core
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 private/vx-conformance  one neutral suite of task-runner outcomes (cases/), run sandboxed against vx, Turbo, Nx,
                         Vite Task and Nix through thin adapters; `conformance` (on demand, not in `ci`) writes the results the

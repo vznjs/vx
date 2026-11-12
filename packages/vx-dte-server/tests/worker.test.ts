@@ -332,7 +332,7 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
     401,
     {
       error:
-        "the token's aud is https://other.example.com, not this relay's https://relay.example.com: ask CI for a token for https://relay.example.com, or set the relay's audience",
+        "the token's aud is https://other.example.com, not this server's https://relay.example.com: ask CI for a token for https://relay.example.com, or set the server's AUDIENCE",
     },
     426,
   ])

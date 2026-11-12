@@ -142,11 +142,13 @@
       "inputs": {
         "files": [
           "Dockerfile",
-          "index.ts",
-          "package.json",
-          "PROTOCOL.md",
           "src/**",
-          "tests/docker/**"
+          "tests/docker/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx-devtools/package.json",
+          "packages/vx-devtools/src/**"
         ]
       },
       "outputs": {

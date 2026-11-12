@@ -1,10 +1,3 @@
-== class TokenError (src/oidc.ts)
-export class TokenError extends Error {
-  constructor(
-    message: string,
-    readonly status: 401 | 403 | 502,
-  )
-}
 == const GONE (src/relay.ts)
 export const GONE = refusedWith(404)
 == const PROOF_HEADER (src/proof.ts)
@@ -15,24 +8,12 @@ export function closeSocket(socket: RelaySocket, code?: number, reason?: string)
 export async function createProver(): Promise<Prover>
 == function createRelay (src/relay.ts)
 export function createRelay(opts: RelayOptions): Relay
-== function createVerifier (src/oidc.ts)
+== function createVerifier (src/relay.ts)
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken>
-== function parseAllow (src/oidc.ts)
-export function parseAllow(list: string): Allowed[]
-== function repositoryClaimOf (src/oidc.ts)
-export function repositoryClaimOf(iss: string): string
-== function runClaimsOf (src/oidc.ts)
+== function runClaimsOf (src/relay.ts)
 export function runClaimsOf(iss: string): readonly string[]
 == function serveRelay (src/serve.ts)
 export function serveRelay(opts: ServeOptions): RelayServer
-== function workflowClaimOf (src/oidc.ts)
-export function workflowClaimOf(iss: string): string
-== type Allowed (src/oidc.ts)
-export interface Allowed {
-  issuer: string
-  repository?: string
-  workflow?: string
-}
 == type Kept (src/relay.ts)
 export interface Kept {
   key: string
@@ -41,9 +22,9 @@ export interface Kept {
   cert?: string
   host?: string
 }
-== type OidcOptions (src/oidc.ts)
+== type OidcOptions (src/relay.ts)
 export interface OidcOptions {
-  allow: readonly Allowed[]
+  allow: readonly Admits[]
   audience: string
   runClaims?: Readonly<Record<string, readonly string[]>>
   fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
@@ -84,7 +65,7 @@ export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs
   hostname: string
   port: number
 }
-== type VerifiedToken (src/oidc.ts)
+== type VerifiedToken (src/relay.ts)
 export interface VerifiedToken {
   iss: string
   run: readonly string[]

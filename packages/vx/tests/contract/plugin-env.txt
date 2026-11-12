@@ -70,10 +70,7 @@
 @vzn/vx-dte VX_DTE_WORKER
 @vzn/vx-dte-server ALLOW
 @vzn/vx-dte-server AUDIENCE
-@vzn/vx-dte-server FORCE_COLOR
-@vzn/vx-dte-server NO_COLOR
 @vzn/vx-dte-server RELAY
-@vzn/vx-dte-server TERM
 @vzn/vx-history ACTIONS_ID_TOKEN_REQUEST_TOKEN
 @vzn/vx-history ACTIONS_ID_TOKEN_REQUEST_URL
 @vzn/vx-history GITHUB_ACTIONS

@@ -11,6 +11,7 @@ import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
 import { RelayError, unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
 import { ui } from '@vzn/vx'
+import { oidcClaims, Refusal } from '@vzn/vx-devtools'
 
 /**
  * What admits a side: the run's key (Noise's psk), or each side's CI
@@ -38,8 +39,6 @@ export function secretProof(secret: string): Proof {
 }
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
-/** GitHub's keys are read again for a key not among them at most this often. */
-const KEYS_REREAD_MS = 60_000
 
 /** One try at GitHub's token endpoint, which answers in well under a second. */
 const TOKEN_TRY_MS = 3_000
@@ -108,65 +107,27 @@ export function githubProof(
   }
   const aud = (parts: readonly string[]): string =>
     `vx-dte:${createHash('sha256').update(parts.join('\0')).digest('base64url')}`
-  // GitHub's keys, read once for every check, and again for a key not
-  // among them once a minute at most.
-  const seen = new Map<string, { at: number; p: Promise<unknown> }>()
-  const read =
-    fetchJson ??
-    (async (u: string): Promise<unknown> => {
-      const res = await fetch(u, { signal: AbortSignal.timeout(10_000) })
-      if (!res.ok) throw new Error(`${u}: ${res.status}`)
-      return res.json()
-    })
-  const once = (u: string, fresh: boolean): Promise<unknown> => {
-    const had = seen.get(u)
-    if (had !== undefined && !(fresh && Date.now() - had.at >= KEYS_REREAD_MS)) return had.p
-    const entry = { at: Date.now(), p: read(u) }
-    // quiet: the caller awaits p and hears its error; this only forgets it
-    entry.p.catch(() => seen.get(u) === entry && seen.delete(u))
-    seen.set(u, entry)
-    return entry.p
-  }
+  // One check for every token: it keeps GitHub's keys, and reads them again
+  // for a key not among them.
+  const check = oidcClaims({ allow: [{ issuer: GITHUB }], ...(fetchJson ? { fetchJson } : {}) })
   return {
     async sign(parts) {
       return oidcToken(url, bearer, aud(parts))
     },
     async check(token, parts) {
-      const { createVerifier, TokenError } = await import('@vzn/vx-dte-server')
-      // A read of GitHub's keys that failed is no check: refused as one, a
-      // keys outage read "its key is not the run's" (2026-10-23).
-      let unread: unknown
-      // A verifier per check, its audience the parts: its own refetch for
-      // an unknown key never fires, so a stale read is redone here.
-      const verify = (fresh: boolean) =>
-        createVerifier({
-          allow: [{ issuer: GITHUB }],
-          audience: aud(parts),
-          runClaims: {
-            [GITHUB]: runs === undefined ? ['repository_id'] : ['repository_id', 'run_id'],
-          },
-          fetchJson: (u) =>
-            once(u, fresh).catch((err: unknown) => {
-              unread = err
-              throw err
-            }),
-        })(token)
-      return verify(false)
-        .catch((err: unknown) => {
-          if (err instanceof TokenError && err.message === 'unknown signing key')
-            return verify(true)
-          throw err
-        })
-        .then(
-          (t) => {
-            const mine = runs?.()
-            return t.run[0] === repo && (mine === undefined || mine.has(t.run[1]!))
-          },
-          () => {
-            if (unread !== undefined) throw unread
-            return false
-          },
+      try {
+        const { claims } = await check(token, aud(parts))
+        const mine = runs?.()
+        return (
+          String(claims['repository_id']) === repo &&
+          (mine === undefined || mine.has(String(claims['run_id'])))
         )
+      } catch (err) {
+        // GitHub's keys out of reach is no check: refused as one, a keys
+        // outage read "its key is not the run's".
+        if (!(err instanceof Refusal) || err.status === 502) throw err
+        return false
+      }
     },
     mismatch: 'run it in a job of this repository with id-token: write',
   }

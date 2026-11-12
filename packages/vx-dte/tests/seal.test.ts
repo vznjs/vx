@@ -540,7 +540,7 @@ it('names exactly the GitHub variables a proof lacks', () => {
 // Each check made a verifier of its own over keys read once per process,
 // so a key GitHub rotated in was never read: every token it signed was
 // refused as a key mismatch.
-it('reads GitHub’s keys again for a token signed by one it has not seen, once a minute at most', async () => {
+it('reads GitHub’s keys again for a token signed by one it has not seen, once in 30 s at most', async () => {
   const rsa = async () =>
     (await crypto.subtle.generateKey(
       {
@@ -589,10 +589,10 @@ it('reads GitHub’s keys again for a token signed by one it has not seen, once 
     expect(reads).toBe(2)
     signer = { kid: 'k2', key: k2 }
     published = [{ ...(await crypto.subtle.exportKey('jwk', k2.publicKey)), kid: 'k2' }]
-    // Within a minute of the last read: refused, and GitHub not asked.
+    // Within 30 s of the last read: refused, and GitHub not asked.
     expect(await proof.check!(await proof.sign!(parts), parts)).toBe(false)
     expect(reads).toBe(2)
-    setSystemTime(new Date(Date.now() + 61_000))
+    setSystemTime(new Date(Date.now() + 31_000))
     expect(await proof.check!(await proof.sign!(parts), parts)).toBe(true)
   } finally {
     setSystemTime()
