@@ -203,6 +203,48 @@ describe('vx watch loop (e2e)', () => {
     expect(await executions(f.log)).toBe(2)
   }, 40_000)
 
+  it('a checkout whose events arrive in two batches is still one cycle (L5, late half)', async () => {
+    // macOS FSEvents split a checkout past the debounce window: the first
+    // half started a cycle that read every file, and the late half, first
+    // sightings stamped after the arm, started a second with nothing
+    // changed (macOS CI, 2026-11-12). The shim holds half the events back.
+    const shim = path.join(f.root, 'late-events.ts')
+    await writeFile(
+      shim,
+      "import fs from 'node:fs'\n" +
+        'const watch = fs.watch\n' +
+        'fs.watch = ((p: any, o: any, cb: any) => watch(p, o, (e: string, name: string) => {\n' +
+        '  if (/f1\\d\\.txt$/.test(String(name))) setTimeout(() => cb(e, name), 700)\n' +
+        '  else cb(e, name)\n' +
+        '})) as typeof fs.watch\n',
+    )
+    const git = gitIn(f.root)
+    const names = Array.from({ length: 20 }, (_, i) => `f${String(i).padStart(2, '0')}.txt`)
+    for (const n of names) await writeFile(path.join(f.dir, 'src', n), `${n} v1\n`)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'v1')
+    const base = git('branch', '--show-current').trim()
+    git('checkout', '-q', '-b', 'feat')
+    for (const n of names) await writeFile(path.join(f.dir, 'src', n), `${n} v2\n`)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'v2')
+    git('checkout', '-q', base)
+
+    f.watch = startWatch(f.root, ['--all'], { BUN_OPTIONS: `--preload ${shim}` })
+    const w = f.watch
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    git('checkout', '-q', 'feat')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after the checkout')
+    // The late half lands 700 ms on; a settle past it judges it.
+    await Bun.sleep(700 + SETTLE_MS)
+    expect(w.cycles()).toBe(1)
+    expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe(
+      ['a1\n', ...names.map((n) => `${n} v2\n`)].join(''),
+    )
+  }, 40_000)
+
   it('a writer that never pauses for a debounce window does not hold an edit back', async () => {
     // Each event reset the timer, so one every 50 ms (a dev server's log)
     // kept the loop idle for good and the edit never ran.
