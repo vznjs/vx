@@ -4353,8 +4353,8 @@ that forces colour for a run's log still parses them
 
 Two runs on one workspace take turns: the second waits for the first's
 run lock and, after a second, says `[vx] waiting for another vx run
-(pid N) on this workspace to finish…` (see caching.md § Concurrent
-runs). The lock lives in this user's own directory in the temp
+(pid N) on this workspace to finish…`, a status line the footer does
+not count as a warning (see caching.md § Concurrent runs). The lock lives in this user's own directory in the temp
 directory, so two runs take turns only when they are one user's and
 share `TMPDIR`: a `nix develop` shell sets its own.
 

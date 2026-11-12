@@ -501,15 +501,16 @@ describe('the lifecycle is reached on a run a signal stops', () => {
         stderr: 'pipe',
         env: { ...process.env, TMPDIR: tmp },
       })
-      // The wait says so after a second: the run is in it. Read to the
-      // end, so no write of vx's meets a closed pipe.
+      // The wait says so after a second, a status line on stdout: the run
+      // is in it. Read to the end, so no write of vx's meets a closed pipe.
       const { promise: waiting, resolve } = Promise.withResolvers<void>()
+      void new Response(proc.stderr).text()
       void (async () => {
-        let err = ''
+        let out = ''
         const decoder = new TextDecoder()
-        for await (const chunk of proc.stderr) {
-          err += decoder.decode(chunk)
-          if (err.includes('waiting for another vx run')) resolve()
+        for await (const chunk of proc.stdout) {
+          out += decoder.decode(chunk)
+          if (out.includes('waiting for another vx run')) resolve()
         }
         resolve()
       })()

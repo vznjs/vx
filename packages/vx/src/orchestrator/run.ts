@@ -537,13 +537,17 @@ async function runOnBus(
       held !== undefined && options.signal !== undefined
         ? AbortSignal.any([options.signal, held])
         : (held ?? options.signal)
-    const lock = await step('vx:run-lock', () => acquireRunLock(root, { log: warnOf(log), signal }))
+    // Waiting is taking turns, a status line; only a lock vx could not take warns.
+    const wait = (line: string): void => log.status(line)
+    const lock = await step('vx:run-lock', () =>
+      acquireRunLock(root, { log: warnOf(log), wait, signal }),
+    )
     heldLock = lock
     // Another workspace's clean of a shared cache directory takes no lock of
     // this one's: it waits for this hold, and this for it. Released with the
     // run lock.
     if (sharedCacheDir !== undefined) {
-      const dir = await holdCacheDir(sharedCacheDir, 'shared', warnOf(log), signal, root)
+      const dir = await holdCacheDir(sharedCacheDir, 'shared', wait, signal, root)
       heldLock = Object.assign(
         async (): Promise<void> => {
           dir()
