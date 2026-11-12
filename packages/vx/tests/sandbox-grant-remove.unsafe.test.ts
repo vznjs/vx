@@ -109,3 +109,61 @@ describe.skipIf(!available || process.platform !== 'linux')(
     }, 30_000)
   },
 )
+
+// A credential store inside a write grant stays hidden behind a mount, so
+// Expo's rename onto `~/.expo/state.json` under `write: ['~/.expo/']`
+// failed every run after the first with "resource busy" and no word from
+// vx (2026-11-12). Here the store is a denied file under a grant outside
+// home: the test writes nothing to the machine's home.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a hidden file inside a write grant',
+  () => {
+    let dir = ''
+    beforeEach(async () => {
+      dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-grant-store-')))
+      await mkdir(path.join(dir, 'p'))
+      await mkdir(path.join(dir, 'store'))
+      await writeFile(path.join(dir, 'store', 'state.json'), '{}')
+      await initSandbox()
+    })
+    afterEach(async () => {
+      await resetSandbox()
+      await rm(dir, { recursive: true, force: true })
+    })
+
+    const run = (command: string) =>
+      runSandboxed({
+        command,
+        cwd: path.join(dir, 'p'),
+        env: process.env,
+        baseAllowRead: [path.join(dir, 'p')],
+        baseDenyRead: [path.join(dir, 'store', 'state.json')],
+        reportWithin: path.join(dir, 'p'),
+        reportLinked: [],
+        config: resolveSandboxConfig(
+          { allow: { read: ['.'], write: [`${dir}/store/`] } },
+          path.join(dir, 'p'),
+        ),
+      })
+    const hints = (r: Awaited<ReturnType<typeof run>>) =>
+      r.violations.filter((v) => v.hint === true).map((v) => v.line)
+
+    it('is named with the grant that opens it', async () => {
+      const store = path.join(dir, 'store')
+      const r = await run(`echo {} > ${store}/s.tmp && mv ${store}/s.tmp ${store}/state.json`)
+      expect([r.exitCode, hints(r)]).toEqual([
+        1,
+        [
+          `vx: '${store}/state.json' lies inside a write grant, but the sandbox hides it (a credential store), ` +
+            'so the task can neither read nor replace it ("resource busy"). If the task must, grant it by name: ' +
+            `\`allow: { write: ['${store}/state.json'] }\`.`,
+        ],
+      ])
+    }, 30_000)
+
+    it('a failure that names no hidden file gets no hint', async () => {
+      const r = await run(`echo "mv: cannot move: Device or resource busy" >&2; exit 1`)
+      expect([r.exitCode, hints(r)]).toEqual([1, []])
+    }, 30_000)
+  },
+)

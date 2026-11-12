@@ -3027,6 +3027,19 @@ function addHints(
         args.reportWithin,
       )
       if (removed !== undefined) violations.push(removed)
+      const hidden = hiddenUnderGrantHint(
+        [
+          ...signs.readOnlyLines,
+          ...outTail
+            .text()
+            .split('\n')
+            .filter((l) => READ_ONLY_FS.test(l))
+            .slice(-64),
+        ],
+        bindableWrites(args.config.allowWrite),
+        baselines.denyRead,
+      )
+      if (hidden !== undefined) violations.push(hidden)
     }
   }
   if (upstreamWrites.size > 0)
@@ -3329,6 +3342,38 @@ function grantRemovalHint(
       `but not remove or rename it ("Read-only file system"). Remove its contents ` +
       `instead, e.g. \`rm -rf ${contents}/*\`, and give a tool that removes its own ` +
       `output directory one inside it (Playwright: \`--output ${contents}/run\`).`,
+  }
+}
+
+/**
+ * Linux: a path the sandbox hides inside a write grant (a credential store,
+ * `~/.expo/state.json` under `write: ['~/.expo/']`) is masked by a mount, so
+ * a tool that writes it by rename fails with "resource busy", the grant
+ * looking whole. A failure whose output names one gets the grant that
+ * opens it: by name, as a store is granted.
+ */
+function hiddenUnderGrantHint(
+  lines: readonly string[],
+  roots: readonly string[],
+  denied: readonly string[],
+): SandboxViolation | undefined {
+  if (lines.length === 0) return undefined
+  const named = denied.filter(
+    (d) =>
+      roots.some((r) => d !== r && atOrUnder(d, r)) &&
+      lines.some((l) => new RegExp(`(^|[\\s'"\`(])${RegExp.escape(d)}($|[\\s'"\`:,)])`).test(l)),
+  )
+  if (named.length === 0) return undefined
+  const home = toRealPath(os.homedir())
+  const spelled = named.map((d) => `'${atOrUnder(d, home) ? `~/${path.relative(home, d)}` : d}'`)
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: ${spelled.join(', ')} ${named.length === 1 ? 'lies' : 'lie'} inside a write grant, but the sandbox hides ` +
+      `${named.length === 1 ? 'it' : 'them'} (a credential store), so the task can neither read ` +
+      `nor replace ${named.length === 1 ? 'it' : 'them'} ("resource busy"). If the task must, grant ` +
+      `${named.length === 1 ? 'it' : 'them'} by name: \`allow: { write: [${spelled.join(', ')}] }\`.`,
   }
 }
 

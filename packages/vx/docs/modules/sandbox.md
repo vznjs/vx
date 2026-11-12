@@ -952,6 +952,16 @@ and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
 `sandbox-grant-remove.unsafe.test.ts`). The lines are kept as stderr
 streams, as `GIT_NO_REPO`'s are: a run captures no output.
 
+### A credential store inside a write grant (Linux)
+
+A grant above a credential store does not name it, so the store stays
+hidden behind a mount: under `write: ['~/.expo/']`, Expo's rename onto
+`~/.expo/state.json` fails with "resource busy" on every run once that
+file exists. A failed task whose output names a hidden path under one of
+its write grants, on such a line, gets a hint naming it and the grant
+that opens it, by name (`hiddenUnderGrantHint`,
+`sandbox-grant-remove.unsafe.test.ts`).
+
 ### git and a hidden `.git`
 
 git finds its repository by `stat`ing `.git` up from the cwd, and the
