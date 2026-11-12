@@ -22,7 +22,6 @@
     "remote-cache",
     "sandbox",
     "incremental-build",
-    "mcp",
     "pnpm"
   ],
   "type": "module",
@@ -44,8 +43,6 @@
   "files": [
     "npm-launcher.cjs",
     "npm-launcher.sh",
-    "index.ts",
-    "config",
     "src",
     "schemas",
     "README.md"

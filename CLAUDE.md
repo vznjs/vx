@@ -73,7 +73,6 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         resolution, boundaries) + git-inputs (the git enumeration it trusts)
   src/exec/             runner (Bun.spawn), env isolation, sandbox, local-executor (the floor)
   src/util/             incl. timing.ts (`VX_DEBUG_TIMING=1` stage table)
-  index.ts              root shim (Bun's compiled binary ignores the exports map)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-ci      GitHub Actions job summary plugin
@@ -110,7 +109,7 @@ private/vx-servers      compose.yaml: the dte, cache and history servers' images
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
                         `metadata.internal`, so that command offers nothing else; tests/skills-install.unsafe.test.ts)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
-                        history/ holds the shipped record STATUS moved out (read it only when an item's why matters)
+                        history/lessons.md holds the rules learned the hard way
 ```
 
 `packages/` holds what ships to npm; `private/` holds what never ships (the site,

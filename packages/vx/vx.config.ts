@@ -153,13 +153,7 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
     },
   },
   inputs: {
-    files: [
-      'src/**',
-      'index.ts',
-      'package.json',
-      'scripts/check-binary.ts',
-      'scripts/binary-launch.ts',
-    ],
+    files: ['src/**', 'package.json', 'scripts/check-binary.ts', 'scripts/binary-launch.ts'],
     workspaceFiles: ['packages/vx-history/**'],
     runtime: BUN_VERSION,
   },
@@ -531,7 +525,7 @@ export default defineProject({
     build: {
       description:
         'nothing to build — core is consumed as source; the release binaries are build.bun',
-      inputs: { files: ['src/**', 'index.ts', 'tsconfig.json'] },
+      inputs: { files: ['src/**', 'tsconfig.json'] },
     },
 
     // macOS CI's checks of this machine's own sandbox, as tasks so they run on

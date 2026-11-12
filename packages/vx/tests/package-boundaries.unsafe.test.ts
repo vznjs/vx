@@ -224,20 +224,13 @@ describe('package boundaries', () => {
   })
 
   // The schema entry a generated `vx.config.ts` type-imports: through the
-  // exports map (a user's `tsc`) and the directory shim (the compiled
-  // binary, which ignores the map), it is `src/config.ts` and no more.
-  it('@vzn/vx/config is the schema module through the map and the shim', async () => {
+  // exports map (a user's `tsc`) it is `src/config.ts` and no more. The
+  // compiled binary serves the same module itself (scripts/check-binary.ts).
+  it('@vzn/vx/config is the schema module through the map', async () => {
     const schema = await import('../src/config.js')
     const viaMap = await import('@vzn/vx/config')
-    const viaShim = await import('../config/index.js')
-    expect([Object.keys(viaMap).sort(), Object.keys(viaShim).sort()]).toEqual([
-      Object.keys(schema).sort(),
-      Object.keys(schema).sort(),
-    ])
-    expect([viaMap.defineProject, viaShim.defineProject]).toEqual([
-      schema.defineProject,
-      schema.defineProject,
-    ])
+    expect(Object.keys(viaMap).sort()).toEqual(Object.keys(schema).sort())
+    expect(viaMap.defineProject).toBe(schema.defineProject)
   })
 
   it('every package oxfmt config ignores the names the sandbox masks', async () => {

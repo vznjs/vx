@@ -1,7 +1,5 @@
 LICENSE
 README.md
-config/index.ts
-index.ts
 launcher.cjs
 launcher.sh
 package.json

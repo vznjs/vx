@@ -2,7 +2,6 @@
 
 > **Status:** complete (June 2026) — all seven steps landed; the
 > boundary law runs in CI with every directory module contracted.
-> **Feeds:** Phase 4 of `architecture-overhaul-2026-06.md`
 > **Principle source:** PR #108 (modules-first), adopted in place — no rebuild.
 
 ## What we're solving
