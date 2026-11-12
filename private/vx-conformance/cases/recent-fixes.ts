@@ -131,6 +131,35 @@ export default [
   }),
 
   defineCase({
+    id: 'outputs/kept-cache-beside-outputs-still-saves',
+    category: 'outputs',
+    kind: 'efficiency',
+    title: 'A tool cache the outputs take back with `!` does not stop the build from caching',
+    why: 'Next keeps its type-check state in `.next/cache`, and the usual outputs are `.next/**` without `.next/cache/**`, so the cache stays across builds. That state changes on every build. A tool that treats it as undeclared state stops saving every build after the first, and switching back to an earlier source rebuilds instead of replaying.',
+    from: ['undeclared-state'],
+    workspace: one(
+      build({
+        command:
+          'mkdir -p .next/cache && cat src/a.txt > .next/out.txt && date +%s%N > .next/cache/.tsbuildinfo',
+        outputs: ['.next/**', '!.next/cache/**'],
+      }),
+      { 'src/a.txt': 'a\n', '.gitignore': '.next/\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { 'packages/a/.next/out.txt': 'a2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/retry-saves-only-the-passing-attempt',
     category: 'outputs',
     kind: 'correctness',

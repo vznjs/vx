@@ -106,6 +106,31 @@ it(
   TIMEOUT,
 )
 
+// Next's type check keeps `.next/cache/.tsbuildinfo`, and the outputs
+// Turbo's docs teach take the cache back (ev5, 2026-11-12): the state is
+// declared kept, and every save after the first was withheld.
+it(
+  'state an output glob takes back with `!` does not withhold the save',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+    made.push(root)
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': '.next/\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'mkdir -p .next/cache && cp src/a.txt .next/a.txt && date +%s%N > .next/cache/.tsbuildinfo' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['.next/**', '!.next/cache/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect(fx.log.join('\n')).not.toContain('neither input nor output')
+  },
+  TIMEOUT,
+)
+
 // The state from a build outside vx (or one the rule above left unsaved)
 // says everything is built: the tool writes nothing at all.
 it(

@@ -1080,7 +1080,9 @@ the command creates is not listed, so a first build is still saved
 (`tests/undeclared-state.test.ts`). The rule guards a partial output, so
 a task that declares no outputs is exempt (`eslint --cache`, `tsc
 --noEmit --incremental`), and a file another task of the project declares
-as its output is that task's. An undeclared file a task of the same
+as its output is that task's. A file an output's `!` entry takes back is
+declared kept: `'.next/**', '!.next/cache/**'` keeps Next's type-check
+`.tsbuildinfo` across builds without withholding a save. An undeclared file a task of the same
 project running alongside may have written still withholds the save (an
 unsandboxed task's write cannot be told from it); the line names that
 task, and declaring the file in its outputs ends it.

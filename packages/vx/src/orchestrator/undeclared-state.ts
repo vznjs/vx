@@ -15,7 +15,7 @@ import { lstatSync, type Stats } from 'node:fs'
 import path from 'node:path'
 import type { TaskConfig } from '../config.js'
 import { declaresInput, type GitFilesCache } from '../cache/index.js'
-import { outputMatcher, printable, relPosix, taskGlobOf } from '../util/index.js'
+import { outputMatcher, printable, relPosix, splitNegations, taskGlobOf } from '../util/index.js'
 
 /**
  * The files a miss stamped before its command, absolute: each one's stamp,
@@ -70,9 +70,12 @@ export function stampUndeclaredState(args: {
   }
   if (ignored.length + untracked.length === 0) return new Map()
   // Each task's own matcher: one's negation does not take back another's glob.
+  // A file an output's `!` entry takes back is declared all the same: kept
+  // across builds on purpose (`'.next/**', '!.next/cache/**'`, where Next's
+  // type check keeps its `.tsbuildinfo`), it withheld every save but the first.
   const outs = [...new Set([config, ...args.projectTasks])].filter(declaresOutputs).map((c) => ({
-    own: outputMatcher(c.outputs?.files ?? []),
-    ws: outputMatcher(c.outputs?.workspaceFiles ?? []),
+    own: outputMatcher(splitNegations(c.outputs?.files ?? []).positive),
+    ws: outputMatcher(splitNegations(c.outputs?.workspaceFiles ?? []).positive),
   }))
   const dir = relPosix(workspaceRoot, projectDir)
   const nested = new Set(args.nestedProjectDirs)
