@@ -474,7 +474,7 @@ A flat list of the highest-bug-density "MISSING — fillable" entries across all
 
 12. **§7 (SCM metadata sha + dirty-hash per cache entry)** — Turbo writes the git sha + dirty-hash into each cache entry's metadata. vx writes per-run analytics only. **Rationale:** track if/when we want post-hoc "what git state produced this artifact" queries; not blocking today.
 
-13. **§8 (token refresh on 403)** — Turbo refreshes the bearer token on 403. vx remote auth is static. **Rationale:** documented in `docs/design/remote-cache.md`; revisit if hosted-cache use grows.
+13. **§8 (token refresh on 403)** — Turbo refreshes the bearer token on 403. vx remote auth is static. **Rationale:** revisit if hosted-cache use grows.
 
 14. **§9 (`**` symlink-following default)** — Turbo distinguishes shallow-wildcard vs doublestar follow-link behavior. vx defers to Bun.Glob defaults. **Rationale:\*\* pin Bun.Glob behavior in a test so we notice when it changes upstream.
 
