@@ -112,6 +112,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'output-flow',
     'output-glob-links',
     'output-links',
+    'output-nested-node-modules',
     'output-reach',
     'output-scan-root',
     'output-shape',

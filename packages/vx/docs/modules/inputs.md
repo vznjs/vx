@@ -434,11 +434,13 @@ host's `process.env`):
 - Globs run against the project dir (a literal is a tree here too); a
   `!` entry takes its matches back (A-44).
 - The project root's `.git`, `.vx` and `vx.lock.json` excluded whatever the glob, and
-  for `resolveWorkspaceOutputs` every project's `vx.lock.json` (`outputNever`: no task
+  for `resolveWorkspaceOutputs` every project's `vx.lock.json` (`outputExcluded`: no task
   produces them and their loss is unrecoverable), and every
   `node_modules` unless a glob names one (A-13): `**/*.js` cleaned the
   installed files, while an install task's `node_modules/**` keeps them.
-  The same holds for `resolveWorkspaceOutputs`.
+  The same holds for `resolveWorkspaceOutputs`. A project glob also takes
+  one under its own literal directory (`.output/**` takes
+  `.output/server/node_modules/**`, the build's own).
 - Nested-project subtrees excluded (boundary isolation).
 - **No gitignore filter** — outputs like `dist/` are usually
   gitignored on purpose, and we still want to capture them.

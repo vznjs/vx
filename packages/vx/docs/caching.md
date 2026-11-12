@@ -1084,7 +1084,13 @@ a build's own `dist/.git` or `dist/sub/vx.lock.json` is an output like any other
 `.vx` holds the workspace config and the lock, which a clean deleted and a
 hit restored stale while `.vx/cache` alone was listed). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
-legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
+legitimate output) or sits under the glob's own literal directory: a
+build's own, Nitro's `.output/server/node_modules/**` under `.output/**`
+or Next standalone's under `.next/standalone/**`, is saved, restored and
+cleaned like the rest (until 2026-11-12 the save dropped it, and a hit
+restored a server missing its imports); a project's installed one, reached
+only by a wildcard (`**/*.js`) or by any `workspaceFiles` glob, never is.
+Until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
 No clean deletes a file git tracks (2026-10-14). Under an output
 glob it is still an output: the task may rewrite it (TanStack Router's
@@ -1576,6 +1582,12 @@ saved (a second clone, a worktree), and none reads another's history.
 Task timings are shared too: `task_durations`, what a duration forecast
 reads, so a new worktree has one on its first run. So are plugins' own
 entries (`plugin_blobs`, a plugin's `ctx.cache`).
+A hit in one checkout replays the bytes another saved, so an output must
+be relocatable: one that bakes in its checkout's absolute path (Next's
+`required-server-files.json` holds the build's directory) points the
+other checkout at the first. Give such a workspace its own store
+(`cache.dir` in `.vx/workspace.ts`), or key the task per checkout
+(`import.meta.dir` in its command, [schema](./schema.md)).
 The id is Nx 23's: 16 hex of a sha256 of the remote (`origin`, then
 `upstream`, `base`, the first; `host/owner/repo` in lower case, so ssh
 and https agree) and the workspace's path in the repository; with no

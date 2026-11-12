@@ -1521,6 +1521,11 @@ Outputs are **NOT** filtered through gitignore — typical artifact
 dirs like `dist/`, `coverage/`, `.next/`, `pkg/` are captured normally
 even when gitignored (they usually are).
 
+An installed `node_modules` is no output unless a glob names it
+(`node_modules/**`): `**/*.js` never saves, restores or cleans the
+project's dependencies. One under a glob's own literal directory is the
+build's: `.output/**` takes Nitro's `.output/server/node_modules/**`.
+
 Like inputs, outputs stop at a project boundary: an entry rooted inside
 a nested project (`sub/dist/**` when `sub/` holds its own config) would
 save nothing, so `vx lock` refuses it (`VX_E_NESTED_OUTPUT`): let that

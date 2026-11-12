@@ -41,7 +41,7 @@ import {
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
-  outputNever,
+  outputExcluded,
   realpathOf,
   relPosix,
   restorableOutput,
@@ -995,13 +995,18 @@ async function resolveRuntimeValues(
 }
 
 /**
- * What a set of output globs may not reach (`outputNever`). `**\/*.js`
+ * What a walk of output globs leaves out: `outputExcluded` (`**\/*.js`
  * meant the build's files, and the clean before each run deleted every
- * installed `.js` under `node_modules` with them (A-13); an install task
- * declares `node_modules/**` and keeps it.
+ * installed `.js` under `node_modules` with them, A-13) and the `!` entries.
  */
-function outputExcludes(outputs: readonly string[], scope: 'project' | 'workspace'): Bun.Glob[] {
-  return outputNever(outputs, scope).map(globFor)
+function outputExcludes(
+  positive: readonly string[],
+  negative: readonly string[],
+  scope: 'project' | 'workspace',
+): (rel: string) => boolean {
+  const excluded = outputExcluded(positive, scope)
+  const back = anyTaskGlob(asTrees(negative))
+  return (rel) => excluded(rel) || back(rel)
 }
 
 /** A task's `inputs` and the directories they anchor at, for `refuseLinkedIntoInputs`. */
@@ -1106,13 +1111,13 @@ async function scanOutputs(
 ): Promise<{ files: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return { files: [] }
-  const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
+  const excluded = outputExcludes(positive, negative, 'project')
   const trees = asTrees(positive)
   const absent = refuseDirLinkedOut(args.projectDir, trees, 'project', args.inputs)
   const scanned = [
     ...(await scanUnion(
       trees,
-      excludeGlobs,
+      excluded,
       args.projectDir,
       inNestedProject(args.projectDir, args.nestedProjectDirs),
       emptyDirs,
@@ -1981,13 +1986,13 @@ export async function resolveWorkspaceOutputs(
 ): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
-  const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
+  const excluded = outputExcludes(positive, negative, 'workspace')
   const trees = asTrees(positive)
   const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace', args.inputs)
   const scanned = [
     ...(await scanUnion(
       trees,
-      excludeGlobs,
+      excluded,
       args.workspaceRoot,
       undefined,
       emptyDirs,
@@ -3082,7 +3087,7 @@ const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
  */
 async function scanUnion(
   positive: readonly string[],
-  excludeGlobs: readonly Bun.Glob[],
+  excluded: (rel: string) => boolean,
   cwd: string,
   nested: (rel: string) => boolean = () => false,
   emptyDirs?: Set<string>,
@@ -3099,7 +3104,7 @@ async function scanUnion(
   const roots = special === undefined ? undefined : new Set<string>()
   const dirs = special === undefined ? undefined : new Set<string>()
   const take = (rel: string): void => {
-    if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) return
+    if (nested(rel) || excluded(rel)) return
     const abs = path.resolve(cwd, rel)
     const st = lstatSync(abs, { throwIfNoEntry: false })
     if (st !== undefined && (st.isFile() || st.isSymbolicLink())) {
@@ -3149,7 +3154,7 @@ async function scanUnion(
       for (const f of [...matches, ...links]) walked.add(path.dirname(f))
       for (const d of dirs!) walked.add(d).add(path.dirname(d))
       const into = new Set<string>()
-      findSpecial(walked, cwd, anyTaskGlob(patterns), excludeGlobs, nested, into)
+      findSpecial(walked, cwd, anyTaskGlob(patterns), excluded, nested, into)
       return [...into]
     }
   }
@@ -3221,7 +3226,7 @@ function findSpecial(
   dirs: ReadonlySet<string>,
   cwd: string,
   any: (rel: string) => boolean,
-  excludeGlobs: readonly Bun.Glob[],
+  excluded: (rel: string) => boolean,
   nested: (rel: string) => boolean,
   into: Set<string>,
 ): void {
@@ -3236,7 +3241,7 @@ function findSpecial(
       if (e.isFile() || e.isDirectory() || e.isSymbolicLink()) continue
       const abs = path.join(dir, e.name)
       const rel = path.relative(cwd, abs).split(path.sep).join('/')
-      if (any(rel) && !nested(rel) && !excludeGlobs.some((g) => g.match(rel))) into.add(abs)
+      if (any(rel) && !nested(rel) && !excluded(rel)) into.add(abs)
     }
   }
 }

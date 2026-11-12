@@ -51,7 +51,7 @@ export {
   normalizeBunGlob,
   normalizeGlob,
   outputMatcher,
-  outputNever,
+  outputExcluded,
   restorableOutput,
   printable,
   hasControl,

@@ -2356,11 +2356,10 @@ export interface ResolvedSandboxConfig {
 
 function · `src/util/paths.ts`
 
-Whether a restore may write `rel`: one of the outputs `globs` declare,
-never under `OUTPUT_NEVER`, and under `node_modules` only where a glob
-names it — what the save side could have packed (`resolveOutputs`). An
-artifact naming anything else was not written by this task's save, and
-none of it is restored (2026-10-16).
+Whether a restore may write `rel`: one of the outputs `globs` declare and
+not `outputExcluded` — what the save side could have packed
+(`resolveOutputs`). An artifact naming anything else was not written by
+this task's save, and none of it is restored (2026-10-16).
 
 ```ts
 export function restorableOutput(
