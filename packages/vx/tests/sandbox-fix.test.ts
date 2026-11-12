@@ -3,7 +3,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { SandboxViolation } from '../src/exec/index.js'
-import { misrootedWriteHint, perRunWriteHint, sandboxFix } from '../src/sandbox/fix.js'
+import {
+  misrootedWriteHint,
+  perRunWriteHint,
+  rootFileWriteHint,
+  sandboxFix,
+} from '../src/sandbox/fix.js'
 import { CREDENTIAL_STORES } from '../src/sandbox/request.js'
 import { anyTaskGlob } from '../src/util/index.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
@@ -52,7 +57,8 @@ describe('sandboxFix', () => {
         v('deny(1) mach-lookup x', undefined, 'x'),
       ],
       dir,
-      dir,
+      // A member project: a file in the workspace root takes no grant.
+      path.dirname(dir),
     )
     expect(fix).toEqual({
       read: ['/etc/hosts', 'src/i.js', 'tsconfig.json'],
@@ -186,6 +192,34 @@ describe('sandboxFix', () => {
       inputs: ['tsconfig.json'],
     })
   })
+
+  // `eslint --cache` in a single-package workspace: the fix named
+  // `write: ['.']`, a grant vx refuses (it would bind `.git` writable).
+  it.skipIf(process.platform !== 'linux')(
+    'names no grant for a file written in the workspace root',
+    () => {
+      const write = (p: string) =>
+        v(`openat(${p}) = a write no grant covers`, ['read', 'write'], path.join(dir, p), {
+          opened: 'write',
+        })
+      const denials = [write('.eslintcache'), write('coverage/lcov.info')]
+      expect(sandboxFix(denials, dir, dir, undefined, undefined, [], undefined, [], ['.'])).toEqual(
+        {
+          write: ['coverage/'],
+        },
+      )
+      expect(rootFileWriteHint(denials, dir, dir)?.line).toBe(
+        "vx: no write grant covers a file in the workspace root (.eslintcache): a file's grant " +
+          'binds its directory, and the root holds .git. Have the tool write it in a directory ' +
+          '(its cache or output option), and grant that directory.',
+      )
+      // CONTROL: in a member project the file is the project's own.
+      const app = path.join(dir, 'packages', 'app')
+      const own = [write('packages/app/.eslintcache')]
+      expect(sandboxFix(own, app, dir)).toEqual({ write: ['.eslintcache'] })
+      expect(rootFileWriteHint(own, app, dir)).toBeUndefined()
+    },
+  )
 
   it('never turns a credential path into a grant', () => {
     const home = (p: string) => path.join(os.homedir(), p)
@@ -387,7 +421,8 @@ describe('sandboxFix', () => {
       v('mkdir(out) = -1 EROFS', ['write'], path.join(dir, 'out')),
     ]
     const fix = (reads: string[], outputs?: { files: string[] }) =>
-      sandboxFix(denied, dir, dir, undefined, undefined, [], outputs, [], reads)?.write
+      sandboxFix(denied, dir, path.dirname(dir), undefined, undefined, [], outputs, [], reads)
+        ?.write
     for (const reads of [['.', '~/.bun'], ['./'], ['**'], ['./**/*'], ['..']])
       expect(fix(reads)).toEqual(['.'])
     // CONTROL: the task may not list the project, so the empty file is unseen.
@@ -452,7 +487,7 @@ describe('sandboxFix', () => {
   it('grants a file named for the time it was made in the project itself by a glob, never the project', () => {
     const t = 'vite.config.ts.timestamp-1794464558889-c9bf267daafa9.mjs'
     const denied = [v(`openat(${t}) = -1 EROFS`, ['write'], path.join(dir, t))]
-    expect(sandboxFix(denied, dir, dir, undefined, { files: ['src/**'] })).toEqual({
+    expect(sandboxFix(denied, dir, path.dirname(dir), undefined, { files: ['src/**'] })).toEqual({
       write: ['vite.config.ts.timestamp-*.mjs'],
     })
   })
@@ -505,7 +540,7 @@ describe('sandboxFix', () => {
       sandboxFix(
         [write('src/generated/a/graphql.ts'), write('out.txt'), write('dist/x/y.js')],
         dir,
-        dir,
+        path.dirname(dir),
         undefined,
         { files },
         [],

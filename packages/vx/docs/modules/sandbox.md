@@ -1593,7 +1593,19 @@ export function misrootedWriteHint(
   projectDir,
   workspaceRoot,
 ): SandboxViolation | undefined
+// a refused write of a file in the workspace root: no grant, the tool writes it in a directory
+export function rootFileWriteHint(
+  violations,
+  projectDir,
+  workspaceRoot,
+): SandboxViolation | undefined
 ```
+
+On Linux a file written in the workspace root (`.eslintcache`,
+`tsconfig.tsbuildinfo` of a single-package workspace) takes no grant: a file's grant binds its
+directory, and vx refuses a bind that holds `.git`. `sandboxFix` named
+`'.'` or the file, which the next run turned down, so it names neither
+and `rootFileWriteHint` says to have the tool write it in a directory.
 
 ### Tests
 

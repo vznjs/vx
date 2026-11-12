@@ -269,7 +269,8 @@ export function sandboxFix(
         if (keyed !== undefined && !keyed.workspaceFiles(wsRel))
           fix.workspaceFiles.add(taskGlobOf(wsRel))
       }
-    } else if (isTimeNamed(v.path)) {
+    } else if (rootFile(v, dirs)) continue
+    else if (isTimeNamed(v.path)) {
       const grant = writeGrant(path.dirname(v.path), dirs, true, inputs?.files ?? [], outDirs)
       fix.write.add(grant === './' ? (timeGlob(path.basename(v.path)) ?? grant) : grant)
     } else {
@@ -429,6 +430,49 @@ function rootMarkers(dirs: Dirs): string[] {
     if (dir === dirs.root) break
   }
   return out
+}
+
+/**
+ * Linux: a refused write of a file in the workspace root (`.eslintcache`,
+ * `tsconfig.tsbuildinfo` of a single-package workspace). Its grant, and
+ * `'.'`, bind the root, which vx refuses for `.git`: the fix named a grant
+ * the next run turned down. Seatbelt grants the file alone.
+ */
+function rootFile(v: SandboxViolation, dirs: Dirs): boolean {
+  return (
+    process.platform === 'linux' &&
+    v.path !== undefined &&
+    path.dirname(v.path) === dirs.root &&
+    !v.line.startsWith('mkdir') &&
+    lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() !== true
+  )
+}
+
+/** The note for writes `rootFile` names, which `sandboxFix` grants no write for. */
+export function rootFileWriteHint(
+  violations: readonly SandboxViolation[],
+  projectDir: string,
+  workspaceRoot: string,
+): SandboxViolation | undefined {
+  const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
+  const files = [
+    ...new Set(
+      violations
+        .filter((v) => v.hint !== true && kindOf(v) === 'write' && rootFile(v, dirs))
+        .map((v) => path.basename(v.path!)),
+    ),
+  ]
+  if (files.length === 0) return undefined
+  const shown = files.slice(0, 3).join(', ')
+  const more = files.length > 3 ? ` and ${files.length - 3} more` : ''
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: no write grant covers a file in the workspace root (${shown}${more}): a file's grant ` +
+      `binds its directory, and the root holds .git. Have the tool write it in a directory ` +
+      `(its cache or output option), and grant that directory.`,
+  }
 }
 
 /**
