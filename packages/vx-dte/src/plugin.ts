@@ -536,12 +536,16 @@ export function dte(options: DteOptions = {}) {
         if (o === undefined) return
         const fitted = new Map([...bases].filter(([id, c]) => learned.bases.get(id) !== c))
         if (measures === undefined) return
-        const now = measures.runMeasures(measured, {
-          warmUps: o.warmUpsMs(),
-          others: o.othersOf(),
-          spreads: o.spreadsMs(),
-          bases: fitted,
-        })
+        const now = measures.runMeasures(
+          measured,
+          {
+            warmUps: o.warmUpsMs(),
+            others: o.othersOf(),
+            spreads: o.spreadsMs(),
+            bases: fitted,
+          },
+          learned.warmUps,
+        )
         for (const m of now) {
           const said = `${m.durationMs}\0${m.cores}`
           if (reported.get(m.id) === said) continue

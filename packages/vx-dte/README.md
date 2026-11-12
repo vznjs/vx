@@ -776,8 +776,8 @@ new workers are started for the cores the run keeps busy after that
 warm-up, not before it. Each size's worker is timed as a task is:
 `@vzn/vx-dte#worker:<size>`, defined by the size's name, platform, cores,
 memory and runner, so a size changed starts over. Its warm-up is the
-task's time and its machine's cores besides the run's tasks its cores;
-its join spread is `@vzn/vx-dte#join-spread:<size>`, and each server's
+task's time, at most twice what history said (more is the CI's queue),
+and its machine's cores besides the run's tasks its cores; its join spread is `@vzn/vx-dte#join-spread:<size>`, and each server's
 base `@vzn/vx-dte#server-base:<task>`. Core keeps them in the run's
 history, and a history plugin (`@vzn/vx-history`) shares them as it does
 task timings, so the next run plans by them before any worker of that

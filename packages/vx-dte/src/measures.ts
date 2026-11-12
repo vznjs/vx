@@ -80,9 +80,19 @@ export function learnedOf(
 }
 
 /**
+ * A warm-up past this many times history's is mostly the CI's queue, not
+ * the worker's start: kept whole, main ef6a822's Macs, queued 322 s, made
+ * the next run plan its Linux work to a 139 s Mac join; the Mac joined at
+ * 25 s, and the run ended 34 s past its ideal asking workers late
+ * (2026-11-12). Capped, a slower start is still learned, a run at a time.
+ */
+const QUEUED_PAST = 2
+
+/**
  * This run's measures: each size a worker of joined (its least warm-up,
- * its machines' other cores), each size two joined (its spread), each
- * server base this run fitted. Only those `defs` defines.
+ * capped at `QUEUED_PAST` times history's `known`, and its machines'
+ * other cores), each size two joined (its spread), each server base this
+ * run fitted. Only those `defs` defines.
  */
 export function runMeasures(
   defs: ReadonlyMap<string, string>,
@@ -92,6 +102,7 @@ export function runMeasures(
     spreads: ReadonlyMap<string, number>
     bases: ReadonlyMap<string, number>
   },
+  known: ReadonlyMap<string, number> = new Map(),
 ): Measure[] {
   const out: Measure[] = []
   const add = (id: string, durationMs: number, cores?: number): void => {
@@ -99,7 +110,12 @@ export function runMeasures(
     if (def === undefined) return
     out.push(cores === undefined ? { id, def, durationMs } : { id, def, durationMs, cores })
   }
-  for (const [size, ms] of run.warmUps) add(workerId(size), ms, run.others.get(size))
+  for (const [size, ms] of run.warmUps)
+    add(
+      workerId(size),
+      Math.min(ms, QUEUED_PAST * (known.get(size) ?? Infinity)),
+      run.others.get(size),
+    )
   for (const [size, ms] of run.spreads) add(spreadId(size), ms)
   for (const [server, cores] of run.bases) add(baseId(server), 0, cores)
   return out
