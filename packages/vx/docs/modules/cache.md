@@ -1997,6 +1997,13 @@ partition; the next `workspaceFiles` task lists the root again
 (`workspaceSnapshot`), and that listing, which carries no trusted OID,
 is digested by stat alone. Refused there, the restore after a cold
 vueuse build derived 11 of its 12 keys again (2026-11-12).
+A project's own partition is listed again the same way
+(`projectListing`) once a path its globs take was marked changed (a
+sibling task's output under `**/*`): the token reads that listing, the
+key that follows reuses it, and `looseFilesDigest` names each file by
+its stat in the form the next run's enumeration gives a project with no
+trusted OID. Refused there, vueuse's `metadata#build` stored no fold row
+after `metadata#update` wrote `index.json`.
 
 A file the index vouches no OID for (untracked, edited, or under a
 `text`/`eol`/`filter` attribute, which drops every OID) is hashed from

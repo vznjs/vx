@@ -2793,6 +2793,27 @@ function statRecords(
   return out
 }
 
+/**
+ * `noteFilesDigest`'s digest for a partition listed again after a write,
+ * where no index OID is trusted: every file by its stat, in the order and
+ * form `applyGitEnumeration` gives a project git vouches no OID for, so the
+ * next run's enumeration names the same token.
+ */
+export function looseFilesDigest(
+  cache: GitFilesCache,
+  dir: string,
+  files: readonly string[],
+): string | undefined {
+  const base = dir.endsWith(path.sep) ? dir : dir + path.sep
+  const statted = statRecords(
+    [...files].sort(),
+    (rel) => base + rel,
+    0,
+    (p) => cache.statOf(p),
+  )
+  return statted === undefined ? undefined : xxh3hex(`\0${statted}`)
+}
+
 /** One loose file's record for {@link statRecords}, less its line end. */
 function statRecord(
   rel: string,

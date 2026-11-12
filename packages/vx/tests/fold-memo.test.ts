@@ -314,6 +314,44 @@ it('a files digest stands past a mark outside its snapshot, and falls to one in 
   expect(cache.filesDigest(dir, snapshot)).toBeUndefined()
 })
 
+// A task whose globs take an output another task of its project just wrote
+// (`**/*` over an ignored `gen.txt`) had no listing to name, and stored no
+// fold row: vueuse's first restore after a build derived that key again
+// (2026-11-12). Under `text=auto` no index OID is trusted, and the listing
+// read again names the token the next run's does.
+it('a task after one that wrote into its globs stores its fold row, and an edit still runs it', async () => {
+  await writeFile(
+    path.join(pkg, 'vx.config.mjs'),
+    `export default { tasks: {
+  gen: { inputs: { files: ['src/**'] }, exec: { command: 'cat src/x.txt > gen.txt && echo ran-gen >> ../../runs.log' }, outputs: { files: ['gen.txt'] }, cache: true },
+  build: { dependsOn: ['gen'], inputs: { files: ['**/*'] }, exec: { command: 'cat src/x.txt > out.txt && echo ran >> ../../runs.log' }, outputs: { files: ['out.txt'] }, cache: true },
+} }\n`,
+  )
+  await writeFile(path.join(root, '.gitattributes'), '* text=auto\n')
+  await writeFile(
+    path.join(root, '.gitignore'),
+    'runs.log\npackages/a/out.txt\npackages/a/gen.txt\n',
+  )
+  git('add', '-A')
+  git('commit', '-qm', 'gen')
+  const probes = (): string[] =>
+    memoRows()
+      .filter((r) => r.task_id === 'a#build')
+      .map((r) => r.probe)
+  build()
+  const stored = probes()
+  expect(stored).toHaveLength(1)
+  build()
+  expect(await runs()).toBe(2)
+  // The next run's enumeration names the same token: the row is read, not replaced.
+  expect(probes()).toEqual(stored)
+  // Same size, so only the stat (or the bytes) can tell it moved.
+  await writeFile(path.join(pkg, 'src', 'x.txt'), 'two\n')
+  build()
+  expect(await runs()).toBe(4)
+  expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('two\n')
+}, 60_000)
+
 // An unsandboxed miss drops the workspace listing (it may have written
 // anywhere in its project), and every later workspaceFiles task stored no
 // fold row: on vueuse the restore after a cold build derived 11 of 12 keys

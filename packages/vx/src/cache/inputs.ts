@@ -52,6 +52,7 @@ import {
 import {
   GitFilesCache,
   listingEnv,
+  looseFilesDigest,
   lstatOrAbsent,
   newFilesIgnoredIn,
   runGitLsFiles,
@@ -206,8 +207,9 @@ export function filesToken(
       ? undefined
       : `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, { positive: [], negative: [] }, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0-${ws}`
   }
-  const snapshot = cache.snapshotFor(args.projectDir, plan.positiveGlobs)
-  if (snapshot === undefined) return undefined
+  const snapshot =
+    cache.snapshotFor(args.projectDir, plan.positiveGlobs) ??
+    projectListing(args.projectDir, args.workspaceRoot, cache).files
   const digest = cache.filesDigest(args.projectDir, snapshot)
   if (
     digest === undefined ||
@@ -373,6 +375,29 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     runtimeValues,
     workspaceRuntimeValues,
   }
+}
+
+/**
+ * A project's files listed again, once a write dropped its partition or
+ * moved a path its globs take: one `git ls-files` in the project, kept for
+ * the key that follows. Its digest names each file by its stat, so a task
+ * after an unsandboxed one in its own project still remembers its key
+ * (`filesToken`); a name that does not decode gives none.
+ */
+function projectListing(
+  projectDir: string,
+  workspaceRoot: string,
+  cache: GitFilesCache | undefined,
+): { files: readonly string[]; undecodable: ReadonlySet<string> } {
+  const ls = runGitLsFiles(projectDir, listingEnv(projectDir, workspaceRoot))
+  // set() also clears the project's pending-changed bookkeeping.
+  cache?.set(projectDir, ls.files)
+  const undecodable = noteUndecodable(cache, projectDir, ls.undecodable)
+  if (cache !== undefined && ls.undecodable.length === 0) {
+    const files = ls.files
+    cache.noteFilesDigest(projectDir, files, () => looseFilesDigest(cache, projectDir, files))
+  }
+  return { files: ls.files, undecodable }
 }
 
 /**
@@ -2451,11 +2476,9 @@ async function resolveFiles(
     // see (a submodule): spawned in the project dir. Its OIDs are NOT trusted
     // (no fresh `git status` vouches); these files fall back to `hashFile`,
     // which computes the same blob OID.
-    const ls = runGitLsFiles(args.projectDir, listingEnv(args.projectDir, args.workspaceRoot))
-    gitFiles = ls.files
-    // set() also clears the project's pending-changed bookkeeping.
-    args.gitFilesCache?.set(args.projectDir, gitFiles)
-    undecodable = noteUndecodable(args.gitFilesCache, args.projectDir, ls.undecodable)
+    const listed = projectListing(args.projectDir, args.workspaceRoot, args.gitFilesCache)
+    gitFiles = listed.files
+    undecodable = listed.undecodable
   }
   // A LITERAL entry names one file, so matching nothing is unambiguous (a glob
   // may legitimately match nothing). Tracked because the globs FILTER git's
