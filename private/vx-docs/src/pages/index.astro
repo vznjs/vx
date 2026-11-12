@@ -10,6 +10,7 @@
 // whole and still; the motion is script on top. tests/landing.test.ts holds it.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import Footer from '../components/landing/Footer.astro'
+import { SCOPE } from '../components/landing/scope.ts'
 import HeroStage from '../components/landing/HeroStage.astro'
 import DteRun from '../components/landing/DteRun.astro'
 import '../styles/landing.css'
@@ -63,6 +64,13 @@ const races = (
     lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, lap: (l.ms / max) * LAP_S })),
   }
 })
+const scope0 = SCOPE[0]!
+const scopeOut = [
+  ['vx last', 'any past run, task by task', 'features/vx-last/'],
+  ['vx why', 'the file, env var or setting that changed', 'features/vx-why/'],
+  ['SQLite', 'every task of every run, one query away', 'features/run-analytics/'],
+  ['OpenTelemetry', 'the same numbers in your own backend', 'plugins/vx-otel/'],
+] as const
 const benchFormula = 'Time each tool adds over the ideal run; lower is better.'
 const benchWorkload = fillBench(
   'Benchmark workload: a synthetic monorepo of %bench.projects% projects and %bench.tasks% tasks in %bench.levels% dependency levels, five core libraries a quarter of the projects use; build %bench.task.build%, test and typecheck %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish%; real repos with uneven task times will differ.',
@@ -165,10 +173,75 @@ const startCommands = [
             ))
           }
         </div>
+        <p class="fine race-note">Every tool runs the same track at its measured pace, and × counts its laps while the slowest finishes one.</p>
         <p class="fine">{benchFormula}</p>
         <p class="fine">{benchWorkload}</p>
         <p class="fine">{benchRun}</p>
         <a class="band-link" href={href('benchmarks/')}>Benchmarks: tables, method, run it yourself <span class="arr">→</span></a>
+      </div>
+    </section>
+
+    <section class="band" id="data">
+      <div class="band-in">
+        <header class="band-head">
+          <p class="kicker">Every task, measured · no account</p>
+          <h2>Every number.<br /><em>Yours.</em></h2>
+          <p class="band-sub">Time, CPU, peak memory, output size, the cache result and what changed, recorded for every task in a file on your disk, with no dashboard to buy and no login.</p>
+        </header>
+        <div class="scope" data-scope={JSON.stringify(SCOPE)}>
+          <div class="scope-tasks" role="tablist" aria-label="Example tasks">
+            {SCOPE.map((t, i) => (
+              <button type="button" role="tab" class:list={{ on: i === 0 }} aria-selected={i === 0 ? 'true' : 'false'} data-task={i}>{t.task}</button>
+            ))}
+          </div>
+          <div class="scope-grid">
+            <div class="dial dial-time">
+              <span class="dial-k">Time</span>
+              <strong data-f="time">{scope0.time}</strong>
+              <span class="meter"><i data-w="p" style={`width:${scope0.p}%`} /></span>
+              <span class="dial-s"><span data-f="usual">{scope0.usual}</span> · <b data-f="drift">{scope0.drift}</b></span>
+            </div>
+            <div class="dial dial-cpu">
+              <span class="dial-k">CPU</span>
+              <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+                <circle cx="60" cy="60" r="50" />
+                <circle class="ring-on" cx="60" cy="60" r="50" pathLength="100" data-ring style={`stroke-dashoffset:${100 - scope0.cpu}`} />
+              </svg>
+              <strong><span data-f="cores">{scope0.cores}</span><small> cores</small></strong>
+              <span class="dial-s">peak <span data-f="peak">{scope0.peak}</span></span>
+            </div>
+            <div class="dial">
+              <span class="dial-k">Peak memory</span>
+              <strong data-f="mem">{scope0.mem}</strong>
+              <span class="meter"><i data-w="memP" style={`width:${scope0.memP}%`} /></span>
+              <span class="dial-s">packs the next run by it</span>
+            </div>
+            <div class="dial">
+              <span class="dial-k">Outputs</span>
+              <strong data-f="out">{scope0.out}</strong>
+              <span class="meter"><i data-w="outP" style={`width:${scope0.outP}%`} /></span>
+              <span class="dial-s">stored once, restored exact</span>
+            </div>
+            <div class="dial dial-wide">
+              <span class="dial-k">Cache</span>
+              <strong data-f="cache">{scope0.cache}</strong>
+              <span class="dial-s" data-f="why">{scope0.why}</span>
+            </div>
+            <div class="dial dial-wide">
+              <span class="dial-k">History</span>
+              <strong data-f="rate">{scope0.rate}</strong>
+              <span class="dial-s" data-f="blocks">{scope0.blocks}</span>
+            </div>
+          </div>
+        </div>
+        <ul class="scope-out">
+          {scopeOut.map(([name, line, to]) => (
+            <li>
+              <a href={href(to)}><strong>{name}</strong> <span>{line}</span></a>
+            </li>
+          ))}
+        </ul>
+        <p class="fine">An example run; the fields are the ones vx records for every task.</p>
       </div>
     </section>
 
@@ -323,6 +396,38 @@ const startCommands = [
         }
         if (e!.isIntersecting) tick = window.setInterval(tally, 120)
       }).observe(speed)
+      // The scope steps through its example tasks while it is in view.
+      const scope = document.querySelector<HTMLElement>('.scope')!
+      const tasks = JSON.parse(scope.dataset['scope']!) as Array<Record<string, string | number>>
+      const tabs = [...scope.querySelectorAll<HTMLButtonElement>('[data-task]')]
+      let at = 0
+      const tune = (i: number): void => {
+        at = i % tasks.length
+        const t = tasks[at]!
+        tabs.forEach((b, j) => {
+          b.classList.toggle('on', j === at)
+          b.setAttribute('aria-selected', String(j === at))
+        })
+        scope.querySelectorAll<HTMLElement>('[data-f]').forEach((el) => (el.textContent = String(t[el.dataset['f']!])))
+        scope.querySelectorAll<HTMLElement>('[data-w]').forEach((el) => (el.style.width = `${t[el.dataset['w']!]}%`))
+        scope.querySelector<SVGElement>('[data-ring]')!.style.strokeDashoffset = String(100 - Number(t['cpu']))
+        scope.classList.toggle('hit', String(t['cache']).includes('hit'))
+      }
+      let turn = 0
+      const cycle = (): void => {
+        clearInterval(turn)
+        turn = window.setInterval(() => tune(at + 1), 3600)
+      }
+      tabs.forEach((b, i) =>
+        b.addEventListener('click', () => {
+          tune(i)
+          cycle()
+        }),
+      )
+      new IntersectionObserver(([e]) => {
+        clearInterval(turn)
+        if (e!.isIntersecting) cycle()
+      }).observe(scope)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {

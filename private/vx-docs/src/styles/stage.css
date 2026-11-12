@@ -875,6 +875,175 @@
   display: block;
 }
 
+/* ---- data: the scope, one task's instruments ---- */
+.scope {
+  margin-top: 56px;
+  border: 1px solid var(--hair);
+  border-radius: 18px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.scope-tasks {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--hair);
+}
+.scope-tasks button {
+  flex: 1 0 auto;
+  padding: 16px 20px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: 600 13px var(--font-mono);
+  color: #7f8a85;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+.scope-tasks button.on {
+  border-bottom-color: var(--tone-core);
+  color: var(--tone-core);
+}
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--hair);
+}
+.dial {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 26px 26px 24px;
+  background: #080b0e;
+}
+.dial-wide {
+  grid-column: span 2;
+}
+.dial-k {
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7f8a85;
+}
+.dial strong {
+  font: 700 clamp(30px, 3.6vw, 52px) / 1 var(--font-display);
+  letter-spacing: -0.04em;
+  color: #f5f8f0;
+  font-variant-numeric: tabular-nums;
+}
+.dial-wide strong {
+  font-size: clamp(22px, 2.4vw, 34px);
+}
+.dial strong small {
+  font: 500 14px var(--font-mono);
+  letter-spacing: 0;
+  color: #9aa59a;
+}
+.dial-s {
+  font: 400 13px/1.4 var(--font-mono);
+  color: #8b938f;
+}
+.dial-s b {
+  font-weight: 600;
+  color: var(--tone-core);
+}
+.meter {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(148, 170, 200, 0.12);
+  overflow: hidden;
+}
+.meter i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--sun-3), var(--tone-core));
+  box-shadow: 0 0 12px rgba(198, 248, 78, 0.5);
+  transition: width 0.9s var(--ease-out);
+}
+.dial-cpu {
+  padding-right: 120px;
+}
+.ring {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  width: 84px;
+  height: 84px;
+  transform: translateY(-50%) rotate(-90deg);
+}
+.ring circle {
+  fill: none;
+  stroke: rgba(148, 170, 200, 0.12);
+  stroke-width: 9;
+}
+.ring .ring-on {
+  stroke: var(--tone-core);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  transition: stroke-dashoffset 0.9s var(--ease-out);
+  filter: drop-shadow(0 0 6px rgba(198, 248, 78, 0.6));
+}
+.scope [data-f='cache'] {
+  color: var(--tone-remote);
+}
+.scope.hit [data-f='cache'] {
+  color: var(--tone-core);
+}
+.scope-out {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0 24px;
+  padding: 0;
+  list-style: none;
+}
+.scope-out a {
+  display: block;
+  height: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  font: 400 14px/1.45 var(--font-body);
+  color: #aeb8ad;
+  text-decoration: none;
+  transition: border-color 0.3s;
+}
+.scope-out a:hover {
+  border-color: var(--tone-core);
+}
+.scope-out strong {
+  display: block;
+  font: 600 14px var(--font-mono);
+  color: var(--tone-core);
+}
+@media (max-width: 960px) {
+  .scope-grid,
+  .scope-out {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .scope-out {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dial {
+    padding: 18px 16px;
+  }
+  .dial-cpu {
+    padding-right: 16px;
+  }
+  .ring {
+    width: 44px;
+    height: 44px;
+    right: 12px;
+    top: 34px;
+  }
+}
+
 /* ---- Distributed task execution: the run in 3D ---- */
 .dte-run {
   margin-top: 56px;
