@@ -1305,6 +1305,11 @@ export class Placing {
    * ended 19 s late (tests/sim.test.ts).
    */
   gate(id: string, now: number): 'wait' | { only?: string } {
+    // One the exact plan has not seen waits for the plan its arrival asks:
+    // let go, a test shard took the room the plan kept for a longer chain,
+    // and the chain waited 20 s for a new worker (sim main 2163fff,
+    // 2026-11-12).
+    if (this.exact && !this.placed.has(id)) return 'wait'
     const w = this.exact ? this.want(id) : undefined
     const there = w !== undefined && this.live.has(w)
     if ((this.after.get(id) ?? 0) > now && !(there && this.asap.has(id))) return 'wait'

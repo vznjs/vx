@@ -9,7 +9,7 @@ import type { TaskNode } from '@vzn/vx'
 import { Placing, Queue, type Soon } from '../src/plan/dispatch.js'
 import type { Need } from '../src/plan/model.js'
 import { needOf } from '../src/plugin.js'
-import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/plan/strategy.js'
+import { booked, DEFAULT_STRATEGY, MIN_CORES, type Strategy } from '../src/plan/strategy.js'
 import {
   keepLast,
   slowdown,
@@ -178,7 +178,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const b = booked(
       k?.cores === undefined
         ? needOf(undefined, options.unmeasured)
-        : { cores: Math.max(0.25, k.cores), memory: k.memory },
+        : { cores: Math.max(MIN_CORES, k.cores), memory: k.memory },
       how.book,
     )
     const platform = byId.get(id)!.platform ?? options.home
@@ -713,7 +713,8 @@ export function bestMs(graph: readonly SimTask[], size: Size, warmUpMs = 20_000)
       : [
           {
             id: t.id,
-            cores: t.ran.cores,
+            // As a run books it (`MIN_CORES`).
+            cores: Math.max(MIN_CORES, t.ran.cores),
             memory: t.ran.memory,
             ms: t.ran.ms,
             deps: up(t.id, new Set()),

@@ -1034,7 +1034,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     worker past its warm-up is packed as if asked now. The run then gives each task only to the worker the plan gave
     it, once that joined, and not before the plan starts it: one the plan
     starts as it gets ready goes as soon as it is. A task whose worker
-    has not joined by its start goes to any worker with room.
+    has not joined by its start goes to any worker with room. A task the
+    plan has not seen (its miss came after) waits for the plan its
+    arrival asks: let go, it took the room the plan kept for a longer chain.
     The plan may end 5% (5 s at least) past the best; that margin is
     spent once: later plans keep its deadline until new work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when
@@ -1058,9 +1060,12 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     Each task core's up-front cache probe found in no store
     (`TaskExecutor.demand`'s `missed`) counts as work too, the moment the
     probe answers.
-    A measured task books its cores times the share of their history the
+    A measured task books the cores it kept busy on average, and a whole
+    core at least: eight test shards at 0.3 cores each shared one 4-core
+    worker and ran 2-3 times their time alone, which their history then
+    kept. It books those cores times the share of their history the
     run's finished tasks used (once they used a minute of core-time; never
-    under two thirds), so a worker's bookings may reach 1.5 times its
+    under two thirds, nor a core), so a worker's bookings may reach 1.5 times its
     cores when tasks use less than history says; plans book the same.
     What a task used counts divided by its share of the CPU: a Linux
     worker reads its run queue (`procs_running` in /proc/stat) every 200 ms,
