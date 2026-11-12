@@ -35,7 +35,7 @@ flowchart LR
 In plugin terms the stages are named, in order:
 
 - `config` → `discover` → `project` → `graph` → `key` → `fingerprint`
-  → `schedule` → `admit`
+  → `measures` → `schedule` → `admit`
 - then `executor`, `cache`, `telemetry`, `output`, `setup`, `teardown`
   and `commands`
 

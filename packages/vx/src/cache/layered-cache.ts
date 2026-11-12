@@ -28,10 +28,10 @@ import type {
   CacheStatsOptions,
   IngestMeta,
   InvocationRecord,
+  RunRecord,
   OutputFileRow,
   PruneOptions,
   PruneResult,
-  RunRecord,
   SaveArgs,
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'

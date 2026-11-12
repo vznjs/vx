@@ -867,3 +867,11 @@ export interface CacheLayer {
  * @internal
  */
 export type SaveArgs = Parameters<CacheLayer['save']>[0]
+
+/** A plugin's measure kept as a task's timing (`PluginSetupContext.measure`): `id` is `<plugin>#<name>`. */
+export interface MeasureRecord {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
+}

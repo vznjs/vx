@@ -1202,9 +1202,16 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   })
 
   it('returns promptly when a backgrounded grandchild holds the pipe open', async () => {
-    const t0 = Date.now()
-    const r = await runSandboxed(args('sleep 10 & echo up'))
-    expect([r.exitCode, r.stdout]).toEqual([0, 'up\n'])
-    expect(Date.now() - t0).toBeLessThan(3000)
+    // The loop holds the pipe until released: a run that waited for it
+    // would hang to the test's timeout. No clock is read.
+    const release = path.join(dir, 'release')
+    try {
+      const r = await runSandboxed(
+        args(`(until [ -e ${JSON.stringify(release)} ]; do sleep 0.05; done) & echo up`),
+      )
+      expect([r.exitCode, r.stdout]).toEqual([0, 'up\n'])
+    } finally {
+      writeFileSync(release, '')
+    }
   }, 30_000)
 })

@@ -81,7 +81,12 @@ export interface LocalHistoryOptions {
   branch?: string | null // undefined: a forecast reads every branch
   defs?: ReadonlyMap<string, string> // `taskDefinitions`: rows of each task as it is now
 }
-// LocalHistory: HistoryProvider + resourcesFor, durationsFor, hasImported, importTimings.
+// LocalHistory: HistoryProvider + resourcesFor, durationsFor, measuresFor, hasImported, importTimings.
+// measuresFor: each plugin measure's forecast, tiered as a task's duration
+export interface MeasureForecast {
+  durationMs: number // median of its newest timings
+  cores?: number // median of the same rows' cores
+}
 // Core's own readers (`vx last`, `--dry`) build the provider on the handle.
 export class LocalHistoryProvider implements HistoryProvider {
   // without branch a forecast reads every branch

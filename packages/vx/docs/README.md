@@ -67,7 +67,8 @@ Core is a pipeline with a hook at every stage — `config` (the
 workspace config every verb sees), `discover` (projects beyond the
 package manager's members), `project` (a project's tasks),
 `graph` (the edges), `key` (extra key material), `fingerprint` (a
-lockfile claimed and keyed per project), `schedule` (which ready task
+lockfile claimed and keyed per project), `measures` (what a plugin
+times beside the tasks), `schedule` (which ready task
 runs first), `admit` (whether it runs now), `executor` (where one
 task's command runs), `cache` (where artifacts live), `telemetry`
 (where run records go), `output` (who draws the terminal), `commands`

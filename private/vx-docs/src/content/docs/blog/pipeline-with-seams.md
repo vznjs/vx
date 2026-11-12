@@ -41,11 +41,11 @@ xychart-beta horizontal
 
 ```mermaid
 flowchart LR
-  A[config] --> B[discover] --> C[project] --> D[graph] --> K[key] --> F[fingerprint] --> S[schedule] --> AD[admit] --> E[executor / cache] --> T[telemetry]
+  A[config] --> B[discover] --> C[project] --> D[graph] --> K[key] --> F[fingerprint] --> M[measures] --> S[schedule] --> AD[admit] --> E[executor / cache] --> T[telemetry]
 ```
 
 In words: `config → discover → project → graph → key → fingerprint →
-schedule → admit → executor`, with `setup` and `teardown` around the
+measures → schedule → admit → executor`, with `setup` and `teardown` around the
 run and `commands` for new verbs.
 
 | Stage         | What a plugin can do there                                                                 |
@@ -56,6 +56,7 @@ run and `commands` for new verbs.
 | `graph`       | Add or drop edges, mark tasks requested.                                                   |
 | `key`         | Contribute extra cache-key material per task.                                              |
 | `fingerprint` | Claim a root file such as a lockfile and key it per project.                               |
+| `measures`    | Time what is no task, such as a worker's warm-up, kept and shared as a task's timing.     |
 | `schedule`    | Return a priority per ready task.                                                          |
 | `admit`       | Vet each local dispatch against what is running right now; `false` holds the task.         |
 | `executor`    | Decide where one task's command runs.                                                      |

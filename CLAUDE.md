@@ -25,7 +25,7 @@ the nearest one up from the cwd, never above the git top-level, marks
 the workspace root (2026-10-13).
 
 Pipeline stages a plugin can fill, in order: `config` → `discover` → `project` →
-`graph` → `key` → `fingerprint` → `schedule` → `admit` → `executor` /
+`graph` → `key` → `fingerprint` → `measures` → `schedule` → `admit` → `executor` /
 `cache` → `telemetry` / `output`, with `setup` / `teardown` around the run, plus
 `commands` (CLI verbs). Design: `docs/design/pipeline-2026-09.md`.
 

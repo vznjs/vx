@@ -39,7 +39,7 @@ describe('the plugin-shape refusals, whole', () => {
   it('the removed backend seam, as any hook vx does not know', () => {
     const p = Object.assign(testPlugin('pin-backend', { teardown() {} }), { backend: () => {} })
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: plugin 'pin-backend' declares 'backend', which is no plugin hook (hooks: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, output, setup, commands, teardown)`,
+      `${WS}: plugin 'pin-backend' declares 'backend', which is no plugin hook (hooks: config, discover, project, graph, key, fingerprint, measures, schedule, admit, executor, cache, telemetry, output, setup, commands, teardown)`,
     )
   })
 

@@ -205,9 +205,11 @@ cache.close()
   } finally {
     db.close()
   }
-  // A writer holding the store's write lock: the forecast reads past it at once.
+  // A writer holding the store's lock, EXCLUSIVE: a forecast that had to
+  // wait for it waits until it ends, past the busy timeout, and fails busy;
+  // one that reads past it answers. Decided by the answer, not a clock.
   const holder = new Database(path.join(store, 'store.db'))
-  holder.exec('BEGIN IMMEDIATE')
+  holder.exec('BEGIN EXCLUSIVE')
   holder.exec(
     "INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at) VALUES ('p', 't', 'branch:b0', NULL, 1, 0)",
   )
@@ -220,9 +222,7 @@ cache.close()
     store,
   )
   try {
-    const started = performance.now()
     expect(await forecast('b0')).toBe(1)
-    expect(performance.now() - started).toBeLessThan(1_000)
   } finally {
     holder.exec('ROLLBACK')
     holder.close()

@@ -11,10 +11,12 @@ src/gitlab.ts
 src/index.ts
 src/init.ts
 src/local.ts
+src/measures.ts
 src/messages.ts
 src/noise.ts
 src/orchestrator.ts
 src/outputs.ts
+src/pack.ts
 src/planner.ts
 src/plugin.ts
 src/printable.ts
@@ -24,7 +26,6 @@ src/strategy.ts
 src/trace.ts
 src/tree.ts
 src/usage.ts
-src/warm-ups.ts
 src/wire-host.ts
 src/wire-thread.ts
 src/wire.ts

@@ -31,6 +31,8 @@ run removes on its way out (`orchestrator.md`).
   `telemetry.ts` are a separate projection).
 - `TaskView` / `OutcomeView` with `projectNode` / `projectOutcome` — the
   wire's task and outcome shapes; `RunStartInfo` is the run's.
+- `Measure` — a plugin's measure (`ctx.measure`), the `task:measure`
+  event: `{ id, def, durationMs, cores? }`, timed as a task is.
 - The outcome vocabulary, one copy for every surface: `outcomeWord`
   (`success` / `restored-local` / `restored-remote` / `up-to-date` /
   `failed` / `skipped` / `aborted`), `outcomeLabel` (the word with a failure's

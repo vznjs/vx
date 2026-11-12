@@ -101,6 +101,7 @@ import {
   formatPersistentList,
   formatRunSummary,
   type Logger,
+  type Measure,
   neverStarted,
   plainOutput,
   resolveOutputView,
@@ -702,6 +703,8 @@ async function runOnBus(
     terminal === null ? undefined : () => terminal.holdStatus(),
   )
   const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci, secrets)
+  // Each plugin measure's last (`ctx.measure`), kept with the run's history.
+  const measured = new Map<string, Measure>()
   signals.held?.arm()
   try {
     disposePlugins = await installPlugins({
@@ -716,6 +719,7 @@ async function runOnBus(
       secrets,
       step,
       signal: signals.held?.signal,
+      measured,
     })
   } catch (err) {
     disposePlugins?.()
@@ -1857,6 +1861,7 @@ async function runOnBus(
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
         recordHistory(() => cache.recordRunBundle(records))
+        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
         recordFailures(list)
       })
     } else if (stop.stoppedBy !== undefined) {
@@ -1865,6 +1870,7 @@ async function runOnBus(
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
         recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
+        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
         recordFailures(ended)
       })
     }
@@ -2067,6 +2073,7 @@ async function runOnBus(
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
             local.recordRunBundle(recordsOf(final, ok && !crashed))
+            local.recordMeasures([...measured.values()], head)
             recordFailures(final, local)
           } finally {
             local.close()

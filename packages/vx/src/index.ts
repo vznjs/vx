@@ -73,6 +73,7 @@ export type {
   HistoryTable,
   LocalHistory,
   LocalHistoryOptions,
+  MeasureForecast,
   TaskHistory,
   TaskResources,
 } from './history/index.js'
@@ -209,7 +210,7 @@ export type {
   PluginHookName,
   PluginHookHandlers,
 } from './orchestrator/index.js'
-export type { RunStartInfo } from './report/index.js'
+export type { Measure, RunStartInfo } from './report/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
 // (`runCommand` / `runSandboxed`, the local executor's own primitives, left
 // the façade 2026-09-10: no executor plugin built on them — `@vzn/vx-reapi`

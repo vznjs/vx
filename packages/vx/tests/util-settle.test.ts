@@ -203,10 +203,9 @@ describe('settleWithin — a rejection propagates, it is not a timeout', () => {
 
   // A rejection must not be mistaken for a hang: the call has to unwind
   // immediately, not sit on the budget first.
+  // A budget past the test's timeout: a call that sat on it fails the test.
   it('unwinds a rejection immediately, not after the budget', async () => {
-    const started = Date.now()
-    await expect(settleWithin(Promise.reject(new Error('x')), 5000)).rejects.toThrow('x')
-    expect(Date.now() - started).toBeLessThan(1000)
+    await expect(settleWithin(Promise.reject(new Error('x')), 600_000)).rejects.toThrow('x')
   }, 30_000)
 })
 
@@ -221,16 +220,17 @@ describe('settleWithin — the timer never outlives the call', () => {
     const src = path.join(import.meta.dir, '..', 'src', 'util', 'settle.ts')
     const script =
       `const { settleWithin } = await import(${JSON.stringify(src)});` +
-      `await settleWithin(Promise.resolve(), 3000);` +
+      `await settleWithin(Promise.resolve(), 600000);` +
       `process.stdout.write('done')`
-    const started = Date.now()
+    // A budget past the test's timeout: an uncleared timer holds the
+    // process until the test fails, and no clock is read.
     const proc = Bun.spawn(['bun', '-e', script], { stdout: 'pipe', stderr: 'pipe' })
-    const [code, out] = await Promise.all([proc.exited, new Response(proc.stdout).text()])
-    const elapsed = Date.now() - started
-    expect({ code, out }).toEqual({ code: 0, out: 'done' })
-    // Generous margin over the ~35ms measured, far under the 3000ms budget an
-    // uncleared timer would impose.
-    expect(elapsed).toBeLessThan(1500)
+    try {
+      const [code, out] = await Promise.all([proc.exited, new Response(proc.stdout).text()])
+      expect({ code, out }).toEqual({ code: 0, out: 'done' })
+    } finally {
+      proc.kill('SIGKILL')
+    }
   }, 30_000)
 
   // The in-process half: precise, and it pins that exactly ONE timer is armed
@@ -517,9 +517,7 @@ describe('teardownTimeoutMs — the upper end is bounded', () => {
         inRange: ms >= 0 && ms <= MAX_TIMEOUT_MS,
       }).toEqual({ raw, finite: true, inRange: true })
     }
-    const started = Date.now()
     expect(await settleWithin(never(), timeoutFor('120'))).toBe(false)
-    expect(Date.now() - started).toBeLessThan(2000)
   }, 30_000)
 })
 

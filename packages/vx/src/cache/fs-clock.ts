@@ -84,6 +84,10 @@ function stampIn(dir: string): number | undefined {
       const fd = openSync(name, 'w')
       held = { dir, fd }
       unlinkSync(name)
+      // Read its times before its first stamp, or that stamp is coarse: the
+      // tick of a write just before, so a lock renamed in a moment earlier
+      // read as written after `vx watch` started (49 of 50 tight pairs).
+      fstatSync(fd)
     }
     writeSync(held.fd, BYTE, 0, 1, 0)
     return fstatSync(held.fd).mtimeMs

@@ -269,7 +269,8 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   }
   child = Bun.spawn([bin, ...args], {
     stdio: ['inherit', 'inherit', 'inherit'],
-    env: { ...process.env, VX_HANDED_OFF: process.execPath },
+    // A group stop reaches the local vx from here too (util/signal-relay.ts).
+    env: { ...process.env, VX_HANDED_OFF: process.execPath, VX_SIGNAL_RELAY: '1' },
   })
   const code = await child.exited
   const signal = child.signalCode

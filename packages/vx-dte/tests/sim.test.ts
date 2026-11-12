@@ -101,7 +101,7 @@ const cases: Case[] = [
     name: 'main a09b987 (65 misses)',
     graph: load(a09),
     measured: true,
-    failing: ['utilization', 'makespan'],
+    failing: ['makespan'],
   },
   {
     name: 'main 2163fff (23 misses)',
@@ -440,13 +440,18 @@ function slowerThanHistory(seed: number): SimTask[] {
 // its forecast was planned to end now, and the plan asked a worker every
 // 10 s and cancelled each as not needed. What is left takes as much longer
 // as what ended did. Seeds that cancelled (195 also asked one again), and
-// two whose plan spun on a sub-millisecond `againInMs` (74, 283).
+// two whose plan spun on a sub-millisecond `againInMs` (74, 283). Packed,
+// 283 lets go one asked a moment before the run's end moved out, before
+// it joins, and asks none again: ending as soon, on 16% less worker time
+// (2026-11-11). 151 lets one go whose next task was planned past a
+// warm-up and two away, and asks one for it 10 s later, as planned: the
+// seeds end as soon on 1% less worker time (2026-11-11).
 it.each([14, 29, 74, 90, 151, 195, 283])(
-  'a run slower than its history asks for more, not a worker it then cancels (seed %d)',
+  'a run slower than its history asks for more, not workers it then cancels (seed %d)',
   (seed) => {
     const r = simulate(slowerThanHistory(seed), { sizes: [small] })
-    expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
-    expect(r.churn).toBe(0)
+    expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(1)
+    expect(r.churn).toBeLessThanOrEqual(seed === 151 ? 1 : 0)
   },
 )
 
@@ -506,8 +511,10 @@ it('asks no worker while the CI queues one of its size', () => {
   )
   expect(late.map((w) => w.id)).toEqual([])
   // Asked at once for tasks of no history, which no guess gives slack,
-  // two the CI queued past 83 s are cancelled once those ran shorter.
-  expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(2)
+  // those the CI queued past 81 s are cancelled once those ran shorter and
+  // the rest packs onto the workers that joined: four, where a play kept
+  // two of them for three tasks and ended no sooner (2026-11-11).
+  expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(4)
   // The run's ideal, 121.6 s, within the plan's 5% margin: a plan that
   // holds is followed, not played again at each join for a closer end.
   expect(r.endMs).toBeLessThanOrEqual(121_600 * 1.05)
@@ -595,6 +602,23 @@ function ciShaped(): SimTask[] {
   )
   return [t('vx#check.bun', [], 400, 0.25), ...long, ...lints, ...shards]
 }
+
+// CI runners asked at once join 2.5 s apart. Packed on each joining as
+// the first, the run asked 11 and ended at 149.5 s; told the spread an
+// earlier run saw, it asks more, each sooner, and ends on its chain
+// (2026-11-11).
+it('a run told its runners join one after another ends on its chain', () => {
+  const graph = ciShaped()
+  const stagger = (n: number): number => 55_000 + n * 2_500
+  const r = simulate(graph, {
+    sizes: [{ ...small, max: 25 }],
+    warmUpMs: stagger,
+    likely: misses(graph),
+    spreadsMs: new Map([['small', 2_500]]),
+  })
+  // The first joins at 57.5 s; the longest root runs 73.2 s.
+  expect(r.endMs).toBeLessThanOrEqual(57_500 + 73_200 + 1_000)
+})
 
 // Main 1c91c9d (2026-11-07): the roots joined the queue 0.7 s in, before
 // the default branch's timings landed, each ranked as an unknown task's

@@ -10,7 +10,6 @@ import {
   UserError,
   type CommandContext,
   type Platform,
-  type PluginCache,
   type PluginOptionKinds,
   type TaskNode,
   type TaskResources,
@@ -21,6 +20,7 @@ import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Forecast, Size } from './planner.js'
+import type { Learned } from './measures.js'
 
 /** One worker type: the machines of it the adapter can start, by name (letters, digits, `_` and `-`). */
 export interface WorkerType {
@@ -349,17 +349,21 @@ export function dte(options: DteOptions = {}) {
   /** The workspace names its cache dir (`cache.dir`): `config` reads it. */
   let namesCache = false
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
-  /** Each size's warm-up an earlier run learned (`warm-ups.ts`), and the read of it. */
-  let learned: ReadonlyMap<string, number> = new Map()
+  /** `measures.ts`, loaded with the orchestrator: a run that is not distributed loads none of it. */
+  let measures: typeof import('./measures.js') | undefined
+  /** The run's measures (`measures.ts`), id → definition: what history keeps of its workers and servers. */
+  let measured: ReadonlyMap<string, string> = new Map()
+  /** What earlier runs' measures say (`measures.ts`): each size's warm-up, other cores and join spread. */
+  let learned: Learned = {
+    warmUps: new Map(),
+    others: new Map(),
+    spreads: new Map(),
+    bases: new Map(),
+  }
   /** Each server's base an earlier run learned, then this run's workers' over it (`server-fit.ts`). */
   let bases = new Map<string, number>()
-  /** The bases as read, before this run's: kept with this run's over them. */
-  let basesRead: ReadonlyMap<string, number> = new Map()
-  /** Each size's cores an earlier run's machines spent besides its tasks (`Orchestrator.othersOf`). */
-  let othersRead: ReadonlyMap<string, number> = new Map()
-  let warming: Promise<void> = Promise.resolve()
-  /** On CI, where the run keeps the warm-ups it learned: `setup`'s cache, root and warn. */
-  let keep: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
+  /** Each measure as last reported (`ctx.measure`): one unchanged is not reported again. */
+  const reported = new Map<string, string>()
   /** Each task's tail by `nodes` and `peaks`, made again when either changes. */
   let tails: ((id: string) => number) | undefined
   /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
@@ -384,37 +388,10 @@ export function dte(options: DteOptions = {}) {
     orchestrator = undefined
     ran = nodes
     nodes = undefined
-    const ups = o?.warmUpsMs()
-    const k = keep
-    keep = undefined
-    if (k !== undefined && ups !== undefined) {
-      const { writeWarmUps } = await import('./warm-ups.js')
-      await writeWarmUps(k.cache, k.root, learned, ups).catch((err: unknown) =>
-        k.warn(`[vx] dte: warm-ups not kept: ${err instanceof Error ? err.message : String(err)}`),
-      )
-    }
-    if (k !== undefined && o !== undefined) {
-      const fitted = new Map([...bases].filter(([id, c]) => basesRead.get(id) !== c))
-      const { writeServerBases } = await import('./warm-ups.js')
-      await writeServerBases(k.cache, k.root, basesRead, fitted).catch((err: unknown) =>
-        k.warn(
-          `[vx] dte: server bases not kept: ${err instanceof Error ? err.message : String(err)}`,
-        ),
-      )
-    }
-    if (k !== undefined && o !== undefined) {
-      const { writeSizeOthers } = await import('./warm-ups.js')
-      await writeSizeOthers(k.cache, k.root, othersRead, o.othersOf()).catch((err: unknown) =>
-        k.warn(
-          `[vx] dte: sizes' other cores not kept: ${err instanceof Error ? err.message : String(err)}`,
-        ),
-      )
-    }
-    learned = new Map()
-    othersRead = new Map()
+    measured = new Map()
+    learned = { warmUps: new Map(), others: new Map(), spreads: new Map(), bases: new Map() }
     bases = new Map()
-    basesRead = new Map()
-    warming = Promise.resolve()
+    reported.clear()
     peaks = new Map()
     tails = undefined
     needsIn = undefined
@@ -542,11 +519,38 @@ export function dte(options: DteOptions = {}) {
       namesCache = workspace.cache?.dir !== undefined
     },
 
+    measures(graph) {
+      // A run that is not distributed measures nothing.
+      if (orchestrator === undefined) return undefined
+      measured = measures?.measureDefs(sized, graph) ?? new Map()
+      return measured
+    },
+
     setup(ctx) {
       // A run that is not distributed subscribes nothing.
       if (runOf() === undefined) return
-      if (ctx.ci) keep = { cache: ctx.cache, root: ctx.workspaceRoot, warn: (m) => ctx.warn(m) }
+      // What the run learned so far, as each task ends: the last before
+      // the run's end is in by then, where a history plugin sends it.
+      const report = (): void => {
+        const o = orchestrator
+        if (o === undefined) return
+        const fitted = new Map([...bases].filter(([id, c]) => learned.bases.get(id) !== c))
+        if (measures === undefined) return
+        const now = measures.runMeasures(measured, {
+          warmUps: o.warmUpsMs(),
+          others: o.othersOf(),
+          spreads: o.spreadsMs(),
+          bases: fitted,
+        })
+        for (const m of now) {
+          const said = `${m.durationMs}\0${m.cores}`
+          if (reported.get(m.id) === said) continue
+          reported.set(m.id, said)
+          ctx.measure(m)
+        }
+      }
       ctx.on('onTaskComplete', (node, outcome) => {
+        report()
         if (outcome.hash !== undefined) keys.set(node.id, outcome.hash)
         if (node.config.exec?.command === undefined || ended.has(node.id)) return
         ended.add(node.id)
@@ -601,42 +605,26 @@ export function dte(options: DteOptions = {}) {
             `[vx] dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
           )
         }
+        try {
+          if (measures !== undefined)
+            learned = measures.learnedOf(
+              localHistory(ctx.localCache, { branch: ctx.branch, defs: measured }).measuresFor([
+                ...measured.keys(),
+              ]),
+            )
+          for (const [id, cores] of learned.bases) if (!bases.has(id)) bases.set(id, cores)
+        } catch (err) {
+          ctx.warn(
+            `[vx] dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
       }
       let reading = read()
-      const basesIn = import('./warm-ups.js')
-        .then((w) => w.readServerBases(ctx.cache, ctx.workspaceRoot))
-        .then(
-          (m) => {
-            basesRead = m
-            for (const [id, cores] of m) if (!bases.has(id)) bases.set(id, cores)
-          },
-          (err: unknown) =>
-            ctx.warn(
-              `[vx] dte: no server bases learned: ${err instanceof Error ? err.message : String(err)}`,
-            ),
-        )
-      warming = import('./warm-ups.js')
-        .then((w) =>
-          Promise.all([
-            w.readWarmUps(ctx.cache, ctx.workspaceRoot),
-            w.readSizeOthers(ctx.cache, ctx.workspaceRoot),
-          ]),
-        )
-        .then(
-          ([m, others]) => {
-            learned = m
-            othersRead = others
-          },
-          (err: unknown) =>
-            ctx.warn(
-              `[vx] dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
-            ),
-        )
       const guess = changedSinceParent(ctx.workspaceRoot).then(async (changed) => {
         const { likelyMisses } = await import('./forecast.js')
         likely = likelyMisses(graph, changed, ctx.workspaceRoot)
       })
-      await Promise.all([reading, guess, basesIn])
+      await Promise.all([reading, guess])
       // Needs another plugin fetched (the default branch's timings) land
       // in history after this: the tasks not yet placed pack by them, and
       // the first ask for workers waits for them.
@@ -645,8 +633,7 @@ export function dte(options: DteOptions = {}) {
       // own. Read again then: a refine that landed before `onRefine` above
       // was listening left the first read's empty history, and main planned
       // 9 asks on 0 measured tasks, 25% of its cores used (2026-10-23).
-      needsIn = () =>
-        Promise.all([ctx.refining().then(() => (reading = read())), warming]).then(() => {})
+      needsIn = () => ctx.refining().then(() => (reading = read()))
       scheduled?.()
       return undefined
     },
@@ -664,13 +651,16 @@ export function dte(options: DteOptions = {}) {
         { decide, keepLast, knownMisses, sized: within, slowdown, tailsMs, UNKNOWN_MS, WARM_UP_MS },
         { snapshot, untrackedWorkspace },
         seal,
+        m,
       ] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire-thread.js'),
         import('./planner.js'),
         import('./tree.js'),
         import('./seal.js'),
+        import('./measures.js'),
       ])
+      measures = m
       // VX_DTE_SECRET wins. On GitHub, workers that join on their own or
       // an adapter's keyless ones prove themselves by OIDC; the workers
       // another adapter starts get a secret made for this run.
@@ -836,7 +826,7 @@ export function dte(options: DteOptions = {}) {
         const ups = o.warmUpsMs()
         const any = o.warmUpMs()
         const warmUp = (size: string | undefined): number =>
-          (size === undefined ? undefined : (ups.get(size) ?? learned.get(size))) ??
+          (size === undefined ? undefined : (ups.get(size) ?? learned.warmUps.get(size))) ??
           any ??
           WARM_UP_MS
         // What is left takes as much longer than history as what ended did.
@@ -851,8 +841,9 @@ export function dte(options: DteOptions = {}) {
         // Each size as the plan counts it: its cores less what its
         // machines spend besides the run's tasks, this run's or an earlier one's.
         const others = o.othersOf()
+        const spreads = o.spreadsMs()
         const planned = sizes.map((s) => {
-          const other = others.get(s.name) ?? othersRead.get(s.name) ?? 0
+          const other = others.get(s.name) ?? learned.others.get(s.name) ?? 0
           return other > 0 ? { ...s, cpu: Math.max(s.cpu / 2, s.cpu - other) } : s
         })
         const workers = keepLast(
@@ -875,6 +866,7 @@ export function dte(options: DteOptions = {}) {
           started,
           final,
           warmUpMs: warmUp,
+          spreadMs: (size) => spreads.get(size) ?? learned.spreads.get(size) ?? 0,
           replaceable: adapter !== undefined,
           limitMs: deadline === undefined ? undefined : deadline - performance.now(),
           known,
@@ -887,7 +879,7 @@ export function dte(options: DteOptions = {}) {
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)
         if (p.drain.length > 0) o.drain(p.drain)
-        if (p.placed !== undefined) o.place(p.placed)
+        o.place(p)
         if ((p.start.length > 0 && !final) || p.release.length > 0)
           o.planned({
             start: final ? [] : p.start.map((s) => s.name),

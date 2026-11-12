@@ -416,6 +416,7 @@
     "VX_RUN_TASK",
     "VX_RUN_TIMEOUT",
     "VX_RUN_WORKSPACE",
+    "VX_SIGNAL_RELAY",
     "VX_WATCH_POLL"
   ]
 }
