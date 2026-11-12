@@ -44,6 +44,15 @@ export const STRATEGIES: { readonly [K in keyof Strategy]: readonly Strategy[K][
 /** The fewest cores a measured task books: averages hide its bursts (plugin.ts `needOf`). */
 export const MIN_CORES = 1
 
+/**
+ * What a machine spends besides the run's tasks, as the run books it: whole
+ * cores only. A task books a whole core at least (`MIN_CORES`) and uses
+ * less, which covers the rest: 0.93 core taken off a 4-core worker left
+ * room for 3 shards, and main's ran at 2.6 of 4 cores while shards waited
+ * 150-200 s for room (afb260a, 2026-11-12).
+ */
+export const wholeCores = (cores: number): number => Math.floor(cores + 1e-9)
+
 /** `need` as `book` holds it. */
 export function booked(need: Need, book: Strategy['book']): Need {
   if (book === 'whole') return { cores: Infinity, memory: Infinity, above: need.above }

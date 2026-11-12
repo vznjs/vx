@@ -59,7 +59,7 @@ import {
 } from './plan/index.js'
 import { Usage, type UsageStats } from './usage.js'
 import { type Need, Placing, Queue, type Soon } from './plan/index.js'
-import { DEFAULT_STRATEGY, MIN_CORES, type Strategy } from './plan/index.js'
+import { DEFAULT_STRATEGY, MIN_CORES, type Strategy, wholeCores } from './plan/index.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
@@ -1000,7 +1000,7 @@ export class Orchestrator {
    */
   private otherOf(a: Worker): number {
     if (a.cores !== a.reported.cores) return 0
-    return a.other ?? this.sizeOther(a) ?? 0
+    return wholeCores(a.other ?? this.sizeOther(a) ?? 0)
   }
 
   /** What machines of `a`'s size spent besides the run's tasks: this run's, else an earlier run's. */
@@ -2517,7 +2517,7 @@ export class Orchestrator {
       let least = Infinity
       for (const s of offered) {
         if (platform !== undefined && s.platform !== undefined && s.platform !== platform) continue
-        const usable = Math.max(s.cpu / 2, s.cpu - (others.get(s.name) ?? 0))
+        const usable = Math.max(s.cpu / 2, s.cpu - wholeCores(others.get(s.name) ?? 0))
         const warm = r.warm(s.platform ?? platform)
         const each = usable * Math.max(0, within - warm)
         const n = each > 0 && Number.isFinite(each) ? Math.max(1, Math.ceil(w / each)) : 1

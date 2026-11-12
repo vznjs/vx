@@ -17,7 +17,14 @@ import {
 import type { DteInit, DteSetup } from './init.js'
 import type { Need, Soon } from './plan/index.js'
 // Not the index: a config load reads the strategies alone, never the planner.
-import { booked, DEFAULT_STRATEGY, MIN_CORES, STRATEGIES, type Strategy } from './plan/strategy.js'
+import {
+  booked,
+  DEFAULT_STRATEGY,
+  MIN_CORES,
+  STRATEGIES,
+  type Strategy,
+  wholeCores,
+} from './plan/strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Forecast, Size } from './plan/index.js'
@@ -861,7 +868,7 @@ export function dte(options: DteOptions = {}) {
         const others = o.othersOf()
         const spreads = o.spreadsMs()
         const planned = sizes.map((s) => {
-          const other = others.get(s.name) ?? learned.others.get(s.name) ?? 0
+          const other = wholeCores(others.get(s.name) ?? learned.others.get(s.name) ?? 0)
           return other > 0 ? { ...s, cpu: Math.max(s.cpu / 2, s.cpu - other) } : s
         })
         const workers = keepLast(

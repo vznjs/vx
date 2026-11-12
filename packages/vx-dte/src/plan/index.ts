@@ -20,4 +20,11 @@ export {
 } from './model.js'
 export { decide, type Forecast } from './plan.js'
 export { simulate, sized } from './play.js'
-export { booked, DEFAULT_STRATEGY, MIN_CORES, STRATEGIES, type Strategy } from './strategy.js'
+export {
+  booked,
+  DEFAULT_STRATEGY,
+  MIN_CORES,
+  STRATEGIES,
+  type Strategy,
+  wholeCores,
+} from './strategy.js'
