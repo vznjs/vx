@@ -171,6 +171,23 @@ it('asks each next worker of a size sooner by the join spread', () => {
   expect(p.starts.map((s) => s.at).sort((x, y) => x - y)).toEqual([5_000, 7_500, 10_000])
 })
 
+// Main 440f9dc: lints at 3.5 cores, workers planned at 3.1 and one
+// running at 3.2. Held to that one's 3.2, they fit it alone, queued 12
+// deep there, and the packing ended at 113 s where the play ended at 65 s.
+// Over every size, a task takes any worker whole.
+it('spreads tasks over every size’s cores across workers, not onto the biggest one', () => {
+  const lints = Array.from({ length: 6 }, (_, i) => task(`lint${i}`, 5_000, [], 3.5))
+  const p = pack(
+    lints,
+    [worker('big', { cores: 3.2 }), worker('w2', { cores: 3.1 }), worker('w3', { cores: 2.9 })],
+    [size('small', 3.1)],
+    () => WARM,
+    10_000,
+  )
+  expect(p.end).toBe(10_000)
+  expect(new Set([...p.placed.values()].map((x) => x.worker))).toEqual(new Set(['big', 'w2', 'w3']))
+})
+
 // A task measured over every size's cores: packed, it fit no worker, the
 // plan placed nothing and asked for none, and the run waited forever.
 it('plans a task over every size’s cores as the play does, not out of the run', () => {
