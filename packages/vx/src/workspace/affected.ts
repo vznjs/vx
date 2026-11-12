@@ -250,6 +250,77 @@ export async function affectedChanges(
   args: AffectedArgs,
   perTask = true,
 ): Promise<AffectedChanges> {
+  const { base, partial, autocrlf, caseArgs } = await diffBase(args)
+  const diff = await changedPaths(args, base, partial, autocrlf, caseArgs)
+  const { changed } = diff
+  const everything = (file: string): AffectedChanges => {
+    const all = new Set(diff.projects.map((p) => p.name))
+    const wholeBy = new Map([...all].map((n) => [n, file]))
+    return { projects: all, changed, paths: new Map(), whole: all, wholeBy, wide: true }
+  }
+  // The workspace config's plugins shape every project's resolved config,
+  // so its edit can re-key any task and selection cannot tell which (item
+  // 953). No key folds the file; selection is not hashed, so widening here
+  // changes no key.
+  const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
+  if (wsConfig !== undefined) return everything(wsConfig)
+  const extrasBy = await claimedExtras(args, diff)
+  if (typeof extrasBy === 'string') return everything(extrasBy)
+  const claimedOwned = await claimedOwners(args, diff, extrasBy)
+  if (typeof claimedOwned === 'string') return everything(claimedOwned)
+  const owners = await pathOwners(args, diff, claimedOwned, perTask)
+  if (typeof owners === 'string') return everything(owners)
+  const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet } = owners
+
+  // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
+  // Resolved-config hashing folds those values into the key, so the same
+  // sentence above applies — input hashing sees it, so selection must. This
+  // runs on the FULL changed set, not just the paths no project owns: the
+  // common shape is a config reaching into ANOTHER project
+  // (`../../src/index.ts`), whose target is owned.
+  // Per task, a project that owns the changed file still needs to know its
+  // config imported it: that re-keys every task, whatever their inputs.
+  // A file the workspace config imports widens as the config itself does.
+  if (args.configImports !== false) {
+    const imports = await configImportOwners({
+      workspaceRoot: args.workspaceRoot,
+      projects: diff.projects,
+      changed,
+      skip: perTask ? new Set() : owned,
+      workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
+    })
+    if (imports.workspace !== undefined) return everything(imports.workspace)
+    if (imports.outside !== undefined) {
+      const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
+      if (moved !== undefined) return everything(moved)
+    }
+    for (const name of imports.owners) {
+      owned.add(name)
+      whole.add(name)
+    }
+  }
+
+  const { dirLinks } = diff
+  const nestedDirs = [...diff.nested].map((rel) => rel.replace(/\/$/, ''))
+  const done = (): AffectedChanges => ({
+    projects: owned,
+    changed,
+    paths,
+    whole,
+    ...(claimedOwned.size > 0 ? { wholeBy: claimedOwned } : {}),
+    ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
+    ...(dirLinks.size > 0 ? { dirLinks, dirLinksIn } : {}),
+    ...(untrackedIn.size > 0 ? { untrackedIn } : {}),
+    ...(untrackedSet.size > 0 ? { untracked: untrackedSet } : {}),
+  })
+  if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
+  const globOwners = await args.workspaceGlobOwners(changed, nestedDirs, dirLinks, untrackedSet)
+  for (const name of globOwners) owned.add(name)
+  return done()
+}
+
+/** The commit `args.since` names to diff from, and the git config facts the diff's shape needs. */
+async function diffBase(args: AffectedArgs) {
   // Turbo's CI spelling, `[origin/main...HEAD]`, is the base alone here:
   // vx already diffs from the merge base (three dots' meaning), and the
   // working tree it diffs to holds HEAD (D-117). Its two-dot `[A..HEAD]`
@@ -314,7 +385,22 @@ export async function affectedChanges(
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
     : await rangeBase(args.workspaceRoot, since)
+  return { base, partial, autocrlf, caseArgs }
+}
 
+/**
+ * Every path that differs from `base` as a key sees it: the diff, the
+ * untracked files, links whose target moved and paths git was told not
+ * to look at; with the projects, and the base's lock record and the
+ * fingerprint claims, each read once when asked.
+ */
+async function changedPaths(
+  args: AffectedArgs,
+  base: string,
+  partial: Promise<boolean>,
+  autocrlf: Promise<boolean>,
+  caseArgs: Promise<readonly string[]>,
+) {
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
     // git's auto rename-detection on (the default in modern git), a
@@ -382,6 +468,59 @@ export async function affectedChanges(
       (path.posix.basename(own) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, own)))
     )
   })
+  const dirLinks = await unseenChanges(args, changed, diffed.links, untracked, caseArgs, autocrlf)
+  // The nested repositories git reports as one path: a gitlink, or an
+  // untracked embedded repository (`dir/`, the only path git prints so).
+  const nested = new Set(diffed.gitlinks)
+  for (const rel of untracked) if (rel.endsWith('/')) nested.add(rel)
+
+  // The base commit's `vx lock` record, read once and only when asked.
+  let baseDeps: Promise<DependenciesLock | null> | undefined
+  const baseDependencies = (): Promise<DependenciesLock | null> =>
+    (baseDeps ??= gitBytesAt(args.workspaceRoot, base, DEPENDENCIES_LOCK_NAME).then((bytes) => {
+      // A base a newer vx locked is read as no record (everything its
+      // files key moves), as before: only the working tree's lock is this
+      // vx's to refuse, since only that one `vx lock` would write over.
+      try {
+        return parseDependenciesLock(bytes)
+      } catch (err) {
+        if (isUserError(err)) return null
+        throw err
+      }
+    }))
+  // The workspace file is loaded once, for the extra files below and the
+  // changed root names after them.
+  let claims: FingerprintClaims | undefined
+  const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
+    (claims ??= await args.fingerprintClaims?.())
+  return {
+    base,
+    diffed,
+    untracked,
+    projects,
+    rootDir,
+    changed,
+    dirLinks,
+    nested,
+    baseDependencies,
+    loadClaims,
+  }
+}
+type Diff = Awaited<ReturnType<typeof changedPaths>>
+
+/**
+ * Adds to `changed` what the diff cannot list: links whose target moved
+ * and paths git was told not to look at. Returns the changed paths that
+ * are, or were, links to a directory.
+ */
+async function unseenChanges(
+  args: AffectedArgs,
+  changed: string[],
+  diffedLinks: readonly string[],
+  untracked: readonly string[],
+  caseArgs: Promise<readonly string[]>,
+  autocrlf: Promise<boolean>,
+) {
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
   // target changed is a changed path itself.
@@ -421,56 +560,34 @@ export async function affectedChanges(
     args.workspaceRoot,
     changed,
     dirLinkSet,
-    new Set([...diffed.links, ...untracked]),
+    new Set([...diffedLinks, ...untracked]),
   )
-  // The nested repositories git reports as one path: a gitlink, or an
-  // untracked embedded repository (`dir/`, the only path git prints so).
-  const nested = new Set(diffed.gitlinks)
-  for (const rel of untracked) if (rel.endsWith('/')) nested.add(rel)
+  return dirLinks
+}
 
-  // A root file a plugin CLAIMS (`VxPlugin.fingerprint`: a lockfile, an
-  // install setting) re-keys tasks through what its claimant folds, and it
-  // sits at the root, owned by no project or by the root alone: mapping
-  // paths to directories selected ZERO projects for a lockfile bump that
-  // re-keyed them all, and `vx run test --affected` after a `pnpm update`
-  // exited 0 having run nothing — the failure `docs/cli.md` warns against:
-  // "input hashing sees it, so `--affected` must too." So selection asks the
-  // claimant the question its key answers, with the bytes at the base ref
-  // and in the working tree; the answer is unioned with the path-owned
-  // projects below, and only "cannot tell" widens. Core keys no root file
-  // itself, so an unclaimed one is a path like any other.
-  //
-  // Selection is not hashed, so widening it here changes no cache key.
-  const everything = (file: string): AffectedChanges => {
-    const all = new Set(projects.map((p) => p.name))
-    const wholeBy = new Map([...all].map((n) => [n, file]))
-    return { projects: all, changed, paths: new Map(), whole: all, wholeBy, wide: true }
-  }
-  // The workspace config's plugins shape every project's resolved config,
-  // so its edit can re-key any task and selection cannot tell which (item
-  // 953). No key folds the file; selection is not hashed, so widening here
-  // changes no key.
-  const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
-  if (wsConfig !== undefined) return everything(wsConfig)
-  // The workspace file is loaded once, for the extra files below and the
-  // changed root names after them.
-  // The base commit's `vx lock` record, read once and only when asked.
-  let baseDeps: Promise<DependenciesLock | null> | undefined
-  const baseDependencies = (): Promise<DependenciesLock | null> =>
-    (baseDeps ??= gitBytesAt(args.workspaceRoot, base, DEPENDENCIES_LOCK_NAME).then((bytes) => {
-      // A base a newer vx locked is read as no record (everything its
-      // files key moves), as before: only the working tree's lock is this
-      // vx's to refuse, since only that one `vx lock` would write over.
-      try {
-        return parseDependenciesLock(bytes)
-      } catch (err) {
-        if (isUserError(err)) return null
-        throw err
-      }
-    }))
-  let claims: FingerprintClaims | undefined
-  const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
-    (claims ??= await args.fingerprintClaims?.())
+/** Before and after of each extra file a claimed lockfile names, by that lockfile. */
+type ExtrasBy = Map<string, Map<string, { before: Uint8Array | null; after: Uint8Array | null }>>
+
+/**
+ * The changed extra files of each claimed root file; or, when a change
+ * reaches every project, the file that widens.
+ *
+ * A root file a plugin CLAIMS (`VxPlugin.fingerprint`: a lockfile, an
+ * install setting) re-keys tasks through what its claimant folds, and it
+ * sits at the root, owned by no project or by the root alone: mapping
+ * paths to directories selected ZERO projects for a lockfile bump that
+ * re-keyed them all, and `vx run test --affected` after a `pnpm update`
+ * exited 0 having run nothing — the failure `docs/cli.md` warns against:
+ * "input hashing sees it, so `--affected` must too." So selection asks the
+ * claimant the question its key answers, with the bytes at the base ref
+ * and in the working tree; the answer is unioned with the path-owned
+ * projects below, and only "cannot tell" widens. Core keys no root file
+ * itself, so an unclaimed one is a path like any other.
+ *
+ * Selection is not hashed, so widening it here changes no cache key.
+ */
+async function claimedExtras(args: AffectedArgs, diff: Diff): Promise<ExtrasBy | string> {
+  const { base, changed } = diff
   // A file a claimed lockfile names that its claimant keys but the
   // lockfile does not pin (`FingerprintClaim.extraFiles`: bun.lock's
   // patches, a `file:`, `link:` or `portal:` directory
@@ -480,11 +597,8 @@ export async function affectedChanges(
   // directory, so every changed path is asked: asking only the paths no
   // project owned selected the owner and never the project the lockfile
   // says reaches it.
-  const extrasBy = new Map<
-    string,
-    Map<string, { before: Uint8Array | null; after: Uint8Array | null }>
-  >()
-  const extraClaims = changed.length > 0 ? await loadClaims() : undefined
+  const extrasBy: ExtrasBy = new Map()
+  const extraClaims = changed.length > 0 ? await diff.loadClaims() : undefined
   for (const file of extraClaims?.files ?? []) {
     const after = await bytesOrNull(path.join(args.workspaceRoot, file))
     // An unchanged claimed file is the same bytes at the base: one read,
@@ -523,88 +637,127 @@ export async function affectedChanges(
       // say which projects one reaches, so its edit widens.
       const patches = new Set(bunPatchFiles(after))
       const patch = changed.find((p) => patches.has(p))
-      if (patch !== undefined) return everything(patch)
+      if (patch !== undefined) return patch
     }
   }
-  // An extra file can move with no change git lists: a gitignored file in
-  // a `file:` directory (a vendored package's built `dist/`, which the
-  // manager copies), or a `file:` or `link:` directory outside the
-  // repository. The key digests anew from what `vx lock` recorded, so
-  // selection compares the same hashes, against the base's record, and
-  // the run's key reads them from this pass (`FingerprintClaims.hashExtra`).
-  const hashing = await loadClaims()
-  if (hashing?.hashExtra !== undefined && hashing.files.size > 0) {
-    // Not in the diff, the working tree's lock is the base's: no git show.
-    const relocked =
-      diffed.paths.includes(DEPENDENCIES_LOCK_NAME) || untracked.includes(DEPENDENCIES_LOCK_NAME)
-    const record = relocked
-      ? await baseDependencies()
-      : parseDependenciesLock(await bytesOrNull(path.join(rootDir, DEPENDENCIES_LOCK_NAME)))
-    for (const file of hashing.files) {
-      const was = record === null ? undefined : recordedDigests(record, file)
-      const rels = was === undefined ? [] : Object.keys(was.extras)
-      if (rels.length === 0) continue
-      const now = await Promise.all(rels.map((rel) => hashing.hashExtra!(rel)))
-      const listed = extrasBy.get(file) ?? new Map()
-      const side = (hash: string): Uint8Array | null =>
-        hash === '' ? null : new TextEncoder().encode(hash)
-      rels.forEach((rel, i) => {
-        const then = was!.extras[rel]!
-        if (now[i] === then || listed.has(rel)) return
-        // Sides that differ as the hashes do: the claimant folds each.
-        listed.set(rel, { before: side(then), after: side(now[i]!) })
-      })
-      if (listed.size > 0) extrasBy.set(file, listed)
-    }
+  await recordedExtras(diff, extrasBy)
+  return extrasBy
+}
+
+/**
+ * An extra file can move with no change git lists: a gitignored file in
+ * a `file:` directory (a vendored package's built `dist/`, which the
+ * manager copies), or a `file:` or `link:` directory outside the
+ * repository. The key digests anew from what `vx lock` recorded, so
+ * selection compares the same hashes, against the base's record, and
+ * the run's key reads them from this pass (`FingerprintClaims.hashExtra`).
+ */
+async function recordedExtras(diff: Diff, extrasBy: ExtrasBy): Promise<void> {
+  const hashing = await diff.loadClaims()
+  if (hashing?.hashExtra === undefined || hashing.files.size === 0) return
+  // Not in the diff, the working tree's lock is the base's: no git show.
+  const relocked =
+    diff.diffed.paths.includes(DEPENDENCIES_LOCK_NAME) ||
+    diff.untracked.includes(DEPENDENCIES_LOCK_NAME)
+  const record = relocked
+    ? await diff.baseDependencies()
+    : parseDependenciesLock(await bytesOrNull(path.join(diff.rootDir, DEPENDENCIES_LOCK_NAME)))
+  for (const file of hashing.files) {
+    const was = record === null ? undefined : recordedDigests(record, file)
+    const rels = was === undefined ? [] : Object.keys(was.extras)
+    if (rels.length === 0) continue
+    const now = await Promise.all(rels.map((rel) => hashing.hashExtra!(rel)))
+    const listed = extrasBy.get(file) ?? new Map()
+    const side = (hash: string): Uint8Array | null =>
+      hash === '' ? null : new TextEncoder().encode(hash)
+    rels.forEach((rel, i) => {
+      const then = was!.extras[rel]!
+      if (now[i] === then || listed.has(rel)) return
+      // Sides that differ as the hashes do: the claimant folds each.
+      listed.set(rel, { before: side(then), after: side(now[i]!) })
+    })
+    if (listed.size > 0) extrasBy.set(file, listed)
   }
-  // The projects whose digest of `file` moved, from the base's recorded
-  // digests and the claimant's now: the base side is never parsed. Null
-  // when the base recorded none for these bytes (no lock, or another
-  // hash) or the claimant gives none now: `affected` answers then.
-  const recordedMoves = async (
-    asked: FingerprintClaims,
-    file: string,
-    before: Uint8Array | null,
-    after: Uint8Array | null,
-  ): Promise<ReadonlySet<string> | null> => {
-    if (before === null || after === null || asked.digests === undefined) return null
-    const base = await baseDependencies()
-    const was = base === null ? undefined : recordedDigests(base, file)
-    // Base digests that read another file are that file's at the base,
-    // which the record does not prove.
-    if (was === undefined || was.hash !== xxh3hex(before) || Object.keys(was.extras).length > 0)
-      return null
-    const now = await asked.digests(file)
-    if (now === undefined) return null
-    const moved = new Set<string>()
-    for (const p of projects) {
-      const d = was.of(lockKey(rootDir, p.dir))
-      if (d === undefined || d !== now.projects[p.name]) moved.add(p.name)
-    }
-    return moved
-  }
+}
+
+/**
+ * The projects each changed claimed root file reaches, by the file that
+ * reached them; or the file whose claimant cannot tell, which widens.
+ */
+async function claimedOwners(
+  args: AffectedArgs,
+  diff: Diff,
+  extrasBy: ExtrasBy,
+): Promise<Map<string, string> | string> {
+  const { base, changed } = diff
   const claimedOwned = new Map<string, string>()
   const rootNamesChanged = changed.filter((p) => !p.includes('/'))
   for (const file of extrasBy.keys()) {
     if (!rootNamesChanged.includes(file)) rootNamesChanged.push(file)
   }
-  const claimed = rootNamesChanged.length > 0 ? await loadClaims() : undefined
+  const claimed = rootNamesChanged.length > 0 ? await diff.loadClaims() : undefined
   for (const file of rootNamesChanged) {
     if (claimed === undefined || !claimed.files.has(file)) continue
     const extras = extrasBy.get(file)
     const before = await gitBytesAt(args.workspaceRoot, base, file)
     const after = await bytesOrNull(path.join(args.workspaceRoot, file))
     const answer =
-      (extras === undefined ? await recordedMoves(claimed, file, before, after) : undefined) ??
+      (extras === undefined
+        ? await recordedMoves(diff, claimed, file, before, after)
+        : undefined) ??
       (await claimed.affected({ file, before, after, ...(extras !== undefined ? { extras } : {}) }))
     const why =
       extras === undefined || changed.includes(file)
         ? file
         : path.posix.normalize([...extras.keys()][0]!).replace(/\/+$/, '')
-    if (answer === undefined) return everything(why)
+    if (answer === undefined) return why
     for (const name of answer) if (!claimedOwned.has(name)) claimedOwned.set(name, why)
   }
+  return claimedOwned
+}
 
+/**
+ * The projects whose digest of `file` moved, from the base's recorded
+ * digests and the claimant's now: the base side is never parsed. Null
+ * when the base recorded none for these bytes (no lock, or another
+ * hash) or the claimant gives none now: `affected` answers then.
+ */
+async function recordedMoves(
+  diff: Diff,
+  asked: FingerprintClaims,
+  file: string,
+  before: Uint8Array | null,
+  after: Uint8Array | null,
+): Promise<ReadonlySet<string> | null> {
+  if (before === null || after === null || asked.digests === undefined) return null
+  const base = await diff.baseDependencies()
+  const was = base === null ? undefined : recordedDigests(base, file)
+  // Base digests that read another file are that file's at the base,
+  // which the record does not prove.
+  if (was === undefined || was.hash !== xxh3hex(before) || Object.keys(was.extras).length > 0)
+    return null
+  const now = await asked.digests(file)
+  if (now === undefined) return null
+  const moved = new Set<string>()
+  for (const p of diff.projects) {
+    const d = was.of(lockKey(diff.rootDir, p.dir))
+    if (d === undefined || d !== now.projects[p.name]) moved.add(p.name)
+  }
+  return moved
+}
+
+/**
+ * The projects the changed paths fall in, those a lock entry or a project
+ * marker moved, and per project its changed paths; or the removed config
+ * that widens when the base recorded no dependencies.
+ */
+async function pathOwners(
+  args: AffectedArgs,
+  diff: Diff,
+  claimedOwned: Map<string, string>,
+  perTask: boolean,
+) {
+  const { base, changed, projects, rootDir, dirLinks, untracked, diffed } = diff
   const realDirs = new Map(
     await Promise.all(
       projects.map(async (p) => [p.dir, await realpath(p.dir).catch(() => p.dir)] as const),
@@ -621,7 +774,7 @@ export async function affectedChanges(
   const owned = projectsContaining(
     args.workspaceRoot,
     changed,
-    nested,
+    diff.nested,
     projects,
     realDirs,
     perTask
@@ -682,8 +835,8 @@ export async function affectedChanges(
     // loss: its files select it where it lives.
     const nameAt = new Map(projects.map((p) => [lockKey(rootDir, p.dir), p.name]))
     for (const gone of await removedProjectConfigs(args.workspaceRoot, atBase, projects)) {
-      const recorded = await baseDependencies()
-      if (recorded === null) return everything(gone)
+      const recorded = await diff.baseDependencies()
+      if (recorded === null) return gone
       const held = dependantsOf(recorded, path.posix.dirname(gone)).flatMap(
         (d) => nameAt.get(d) ?? [],
       )
@@ -699,51 +852,7 @@ export async function affectedChanges(
     }
   }
   for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
-
-  // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
-  // Resolved-config hashing folds those values into the key, so the same
-  // sentence above applies — input hashing sees it, so selection must. This
-  // runs on the FULL changed set, not just the paths no project owns: the
-  // common shape is a config reaching into ANOTHER project
-  // (`../../src/index.ts`), whose target is owned.
-  // Per task, a project that owns the changed file still needs to know its
-  // config imported it: that re-keys every task, whatever their inputs.
-  // A file the workspace config imports widens as the config itself does.
-  if (args.configImports !== false) {
-    const imports = await configImportOwners({
-      workspaceRoot: args.workspaceRoot,
-      projects: projects,
-      changed,
-      skip: perTask ? new Set() : owned,
-      workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(rootDir, n)),
-    })
-    if (imports.workspace !== undefined) return everything(imports.workspace)
-    if (imports.outside !== undefined) {
-      const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
-      if (moved !== undefined) return everything(moved)
-    }
-    for (const name of imports.owners) {
-      owned.add(name)
-      whole.add(name)
-    }
-  }
-
-  const nestedDirs = [...nested].map((rel) => rel.replace(/\/$/, ''))
-  const done = (): AffectedChanges => ({
-    projects: owned,
-    changed,
-    paths,
-    whole,
-    ...(claimedOwned.size > 0 ? { wholeBy: claimedOwned } : {}),
-    ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
-    ...(dirLinks.size > 0 ? { dirLinks, dirLinksIn } : {}),
-    ...(untrackedIn.size > 0 ? { untrackedIn } : {}),
-    ...(untrackedSet.size > 0 ? { untracked: untrackedSet } : {}),
-  })
-  if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
-  const owners = await args.workspaceGlobOwners(changed, nestedDirs, dirLinks, untrackedSet)
-  for (const name of owners) owned.add(name)
-  return done()
+  return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet }
 }
 
 /** What vx writes under `.vx`, which no key reads (cache/inputs.ts `ALWAYS_IGNORE`). */
