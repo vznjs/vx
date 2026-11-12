@@ -1992,7 +1992,11 @@ the same for the workspace partition, per `workspaceFiles` declaration:
 the paths its globs may take in, each by OID, or by its stat and
 whether git tracks it, once per declaration and partition; each path's
 record once for every declaration, and a stat a project's digest took
-is not taken again (`statOf`).
+is not taken again (`statOf`). An unsandboxed miss drops the workspace
+partition; the next `workspaceFiles` task lists the root again
+(`workspaceSnapshot`), and that listing, which carries no trusted OID,
+is digested by stat alone. Refused there, the restore after a cold
+vueuse build derived 11 of its 12 keys again (2026-11-12).
 
 A file the index vouches no OID for (untracked, edited, or under a
 `text`/`eol`/`filter` attribute, which drops every OID) is hashed from

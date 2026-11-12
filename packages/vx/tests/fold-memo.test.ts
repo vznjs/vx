@@ -313,3 +313,31 @@ it('a files digest stands past a mark outside its snapshot, and falls to one in 
   cache.markOutputsChanged(dir, ['dist/d.js'])
   expect(cache.filesDigest(dir, snapshot)).toBeUndefined()
 })
+
+// An unsandboxed miss drops the workspace listing (it may have written
+// anywhere in its project), and every later workspaceFiles task stored no
+// fold row: on vueuse the restore after a cold build derived 11 of 12 keys
+// again (2026-11-12). The listing read again vouches for its files by stat.
+it('a workspaceFiles task after an unsandboxed one stores its fold row, and an edit still runs it', async () => {
+  const b = path.join(root, 'packages', 'b')
+  await mkdir(path.join(root, 'shared'), { recursive: true })
+  await mkdir(b, { recursive: true })
+  await writeFile(path.join(root, 'shared', 'cfg.txt'), 'one\n')
+  await writeFile(path.join(b, 'package.json'), '{"name":"b"}')
+  await writeFile(
+    path.join(b, 'vx.config.mjs'),
+    `export default { tasks: { build: { dependsOn: ['a#build'], inputs: { files: ['package.json'], workspaceFiles: ['shared/**'] }, exec: { command: 'cat ../../shared/cfg.txt > out.txt && echo ran-b >> ../../runs.log' }, outputs: { files: ['out.txt'] }, cache: true } } }\n`,
+  )
+  await writeFile(path.join(root, '.gitignore'), 'runs.log\npackages/*/out.txt\n')
+  git('add', '-A')
+  git('commit', '-qm', 'b')
+  build()
+  expect(memoRows().map((r) => r.task_id)).toContain('b#build')
+  build()
+  expect(await runs()).toBe(2)
+  // Same size, so only the stat (or the bytes) can tell it moved.
+  await writeFile(path.join(root, 'shared', 'cfg.txt'), 'two\n')
+  build()
+  expect(await runs()).toBe(3)
+  expect(await readFile(path.join(b, 'out.txt'), 'utf8')).toBe('two\n')
+}, 60_000)
