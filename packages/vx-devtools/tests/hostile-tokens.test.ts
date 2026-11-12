@@ -91,6 +91,29 @@ describe('hostile tokens', () => {
     expect(fetches).toBe(before)
   })
 
+  // Any token reached the issuer's keys: anyone could make the server fetch.
+  it('reads no keys for a token whose signature no RS256 key makes', async () => {
+    let read = 0
+    const fresh = oidcTokenAuth({
+      allow: parseAllow(`${GITHUB}:acme/app:ci.yml`),
+      audience: AUD,
+      fetchJson: async () => {
+        read++
+        return {}
+      },
+    })
+    const [header, payload] = good.split('.')
+    for (const sig of ['', 'x', 'A'.repeat(341)])
+      await expect(
+        fresh(
+          new Request(`${AUD}/v1/x`, {
+            headers: { authorization: `Bearer ${header}.${payload}.${sig}` },
+          }),
+        ),
+      ).rejects.toThrow(new Refusal(401, 'not a JWT'))
+    expect(read).toBe(0)
+  })
+
   it('never echoes the token it refuses', async () => {
     for (const token of [
       await sign({ alg: 'RS256', kid: 'k1' }, { repository: 'acme/other' }),

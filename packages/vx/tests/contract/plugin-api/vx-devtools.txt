@@ -18,6 +18,12 @@ export function hashPart(text: string): Promise<string>
 export function notAllowed(allow: string): Response
 == function oidcAuth (src/oidc.ts)
 export function oidcAuth(opts: OidcOptions): Authorize
+== function oidcClaims (src/oidc.ts)
+export function oidcClaims(opts: {
+  readonly allow: readonly Admits[]
+  readonly fetchJson?: OidcOptions['fetchJson']
+  readonly now?: OidcOptions['now']
+}): (token: string, audience: string) => Promise<Verified>
 == function oidcTokenAuth (src/oidc.ts)
 export function oidcTokenAuth(
   opts: OidcOptions,
@@ -36,6 +42,12 @@ export interface Access {
   readonly issuer: string
   readonly repository: string
   readonly write?: string
+}
+== type Admits (src/oidc.ts)
+export interface Admits {
+  readonly issuer: string
+  readonly repository?: string | undefined
+  readonly workflow?: string | undefined
 }
 == type Allowed (src/oidc.ts)
 export interface Allowed {
@@ -71,4 +83,9 @@ export interface OidcOptions {
 export interface Repo {
   readonly issuer: string
   readonly repository: string
+}
+== type Verified (src/oidc.ts)
+export interface Verified {
+  readonly iss: string
+  readonly claims: Readonly<Record<string, unknown>>
 }
