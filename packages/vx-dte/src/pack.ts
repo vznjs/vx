@@ -179,17 +179,29 @@ export function pack(
   // A task booking more cores than any worker of its platform has takes a
   // whole one, as the run books it: left out, a lint at 3.5 cores on
   // workers planned at 3 turned the packing off, and main asked 10 workers
-  // where 5 ended as soon (cc6cd1a, 2026-11-12).
-  const most = new Map<string | undefined, number>()
-  const room = (platform: string | undefined, cores: number): void => {
-    most.set(platform, Math.max(most.get(platform) ?? 0, cores))
-    most.set(undefined, Math.max(most.get(undefined) ?? 0, cores))
+  // where 5 ended as soon (cc6cd1a, 2026-11-12). So does one that asks
+  // for a bigger worker than any (`above`, read against the declared
+  // sizes, not the planned ones).
+  const fits = new Map<string | undefined, { cores: number; memory: number }[]>()
+  const room = (platform: string | undefined, cores: number, memory: number): void => {
+    for (const p of new Set([platform, undefined])) {
+      const k = fits.get(p)
+      if (k === undefined) fits.set(p, [{ cores, memory }])
+      else k.push({ cores, memory })
+    }
   }
-  for (const w of workers) if (w.drainIn === undefined) room(w.platform, w.cores)
-  for (const f of fresh) room(f.platform, f.cpu)
+  for (const w of workers) if (w.drainIn === undefined) room(w.platform, w.cores, w.memory)
+  for (const f of fresh) room(f.platform, f.cpu, f.memory)
   const tasks = work.map((t) => {
-    const cap = most.get(t.platform) ?? Infinity
-    return t.cores > cap && t.above === undefined ? { ...t, cores: cap } : t
+    const of = fits.get(t.platform) ?? []
+    let u: PlanTask = t
+    const a = t.above
+    if (a !== undefined && !of.some((k) => k.cores > a.cores || k.memory > a.memory)) {
+      const { above: _, ...rest } = t
+      u = rest
+    }
+    const cap = of.reduce((most, k) => Math.max(most, k.cores), 0)
+    return u.above === undefined && cap > 0 && u.cores > cap ? { ...u, cores: cap } : u
   })
   const n = tasks.length
   const index = new Map(tasks.map((t, i) => [t.id, i]))

@@ -232,6 +232,8 @@ it('packs a task booking more cores than any worker has onto a whole one', () =>
     task('a', 60_000),
     task('b', 60_000, ['a']),
     task('lint', 4_000, [], 3.5),
+    // Read against the declared 4-core size: a bigger one than 3.4, which none planned is.
+    { ...task('lint2', 4_000, [], 3.4), above: { cores: 3.4 - 1e-6, memory: Infinity } },
     ...Array.from({ length: 6 }, (_, i) => task(`f${i}`, 30_000, [], 1)),
   ]
   const sizes = candidates([{ ...size('w', 3), max: 9 }], new Map(), [], tasks.length)
