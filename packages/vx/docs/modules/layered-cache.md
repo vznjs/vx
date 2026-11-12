@@ -195,7 +195,8 @@ it carries one (a gRPC status, an errno, Bun's `ECONNREFUSED`),
 else its message with the artifact's hash taken out. The operation is
 not part of it. The requests held back are counted, and `close()` says
 `<n> more requests failed the same way: <cause>` per class that had
-any, after `run()` has drained every upload and prefetch.
+any (the cause's hash written `<hash>`, since the repeats are other
+artifacts), after `run()` has drained every upload and prefetch.
 
 ## Read path
 

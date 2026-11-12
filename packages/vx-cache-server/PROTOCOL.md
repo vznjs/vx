@@ -100,11 +100,14 @@ holds them (`application/octet-stream`; from the first scope named,
 `Cache-Control: private, max-age=31536000, immutable`: the bytes under a
 key never change; from a later one, `private, no-cache`: an earlier
 scope may come to hold the hash), or `404`. `HEAD` is the same with no bytes, and names
-the size as `Content-Length`. A download may come chunked with no
-`Content-Length` (Bun.serve sends any streamed answer so), so a body cut
-short can end as cleanly as a whole one: a client checks the bytes
-themselves (vx refuses an artifact whose zstd frame, tar end or recorded
-key is missing) and reads one that fails as a miss.
+the size as `Content-Length`. Both name it as `vx-size: <bytes>` too: a
+download may come chunked with no `Content-Length` (Bun.serve sends any
+streamed answer so), so a body cut short can end as cleanly as a whole
+one. A client holds the body to `vx-size` and reads one that ends short
+as a transfer that failed (a miss, the stored bytes unblamed); bytes of
+the right length it checks themselves (vx refuses an artifact whose zstd
+frame, tar end or recorded key is missing) and reads one that fails as a
+miss.
 
 `POST /v1/artifacts` (Turbo's batch query) with `{ "hashes": [<hash>,
 …], "scopes": [<scope>, …] }`, the scopes in the order to read them, up

@@ -1,7 +1,7 @@
 // `cache.store`: every combination of embeddings × decompress saves,
 // restores and uploads the same bytes; only where they live differs.
-import { existsSync, readdirSync, statSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { existsSync, readdirSync, readlinkSync, statSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -184,6 +184,39 @@ describe.each(combos)('cache.store %o', (store) => {
   })
 })
 
+// An evicted file entry's rows (one a file it holds) went to SQLite's free
+// list and stayed: a `--max-size` clean left the index 90% free pages.
+it.each([
+  ['an index', false],
+  ['a store', true],
+])('a prune that evicts a file entry gives its rows’ pages back (%s)', async (_, shared) => {
+  const proj = path.join(root, 'p')
+  await mkdir(path.join(proj, 'out'), { recursive: true })
+  const outs: string[] = []
+  for (let i = 0; i < 3000; i++) {
+    const f = path.join(proj, 'out', `file-with-a-long-name-${i}.js`)
+    await writeFile(f, `${i}`)
+    outs.push(f)
+  }
+  const store = shared ? path.join(root, 'home', '.vx', 'id', 'cache') : null
+  if (shared) await mkdir(path.join(root, 'home'), { mode: 0o700 })
+  const cache = new Cache(path.join(root, 'c'), undefined, undefined, undefined, 'open', store)
+  try {
+    await cache.save({
+      hash: HASH,
+      entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir: proj,
+      outputFiles: outs,
+    })
+    expect((await cache.prune({ maxBytes: 0 })).evicted).toBe(1)
+    const free = (schema: string) =>
+      Object.values(indexDb(cache).query(`PRAGMA ${schema}.freelist_count`).get() as object)[0]
+    expect(shared ? [free('main'), free('store')] : [free('main')]).toEqual(shared ? [0, 0] : [0])
+  } finally {
+    cache.close()
+  }
+})
+
 describe('cache.store.embeddings', () => {
   it('is the bound: an entry past it is files, and false keeps none inline', async () => {
     // SMALL's tar is past 1 KiB, under 32 KiB.
@@ -302,6 +335,85 @@ describe('a tree hit into absent outputs', () => {
     expect(readdirSync(path.join(proj, 'out'))).toEqual(['a.bin'])
     cache.close()
   })
+})
+
+describe('a tree hit holding a link', () => {
+  // A link sent the whole restore through a tar packed back from the tree,
+  // and the extractor's check of each link against every entry was
+  // links × files: 700 links in a 32k-entry tree restored in 3.5 s, not 0.2.
+  const savedWithLink = async (): Promise<{ cache: Cache; proj: string }> => {
+    const proj = path.join(root, 'p')
+    await mkdir(path.join(proj, 'out'), { recursive: true })
+    await writeFile(path.join(proj, 'out/a.bin'), LARGE)
+    await symlink('a.bin', path.join(proj, 'out/l'))
+    const cache = new Cache(
+      path.join(root, 'c'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { embeddings: 0, decompress: true },
+    )
+    await cache.save({
+      hash: HASH,
+      entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir: proj,
+      outputFiles: [path.join(proj, 'out/a.bin'), path.join(proj, 'out/l')],
+    })
+    await rm(path.join(proj, 'out'), { recursive: true })
+    return { cache, proj }
+  }
+
+  it.skipIf(process.platform === 'win32')(
+    'copies its files out and lays the link as written',
+    async () => {
+      const { cache, proj } = await savedWithLink()
+      const write = spyOn(Bun, 'write')
+      try {
+        await cache.restoreOutputs(HASH, proj, root)
+        const fromTree = write.mock.calls.filter(
+          ([, from]) =>
+            from instanceof Blob && String((from as { name?: string }).name).includes('.tree'),
+        )
+        expect(fromTree).toHaveLength(1)
+      } finally {
+        write.mockRestore()
+      }
+      expect(readlinkSync(path.join(proj, 'out/l'))).toBe('a.bin')
+      expect(new Uint8Array(await readFile(path.join(proj, 'out/l')))).toEqual(LARGE)
+      cache.close()
+    },
+  )
+
+  // The copy-out lays a link only where the extractor would: one its row
+  // records that points out of the workspace is still refused, and nothing lands.
+  it.skipIf(process.platform === 'win32')(
+    'a stored link pointing out of the workspace restores nothing',
+    async () => {
+      const { cache, proj } = await savedWithLink()
+      const rel = readdirSync(path.join(root, 'c'), { recursive: true })
+        .map(String)
+        .find((n) => n.endsWith(`${HASH}.tree`))!
+      const kept = path.join(root, 'c', rel, 'out/l')
+      const to = '../../../outside'
+      await rm(kept)
+      await symlink(to, kept)
+      const bytes = Buffer.from(to)
+      indexDb(cache)
+        .query(
+          "UPDATE output_files SET size_bytes = ?, mtime_ms = ? WHERE entry_hash = ? AND path = 'out/l'",
+        )
+        .run(bytes.byteLength, Bun.hash.crc32(bytes), HASH)
+      const err = await cache.restoreOutputs(HASH, proj, root).then(
+        () => null,
+        (e: unknown) => e,
+      )
+      expect(String(err)).toContain('archive link outputs/out/l points out of the workspace')
+      expect(existsSync(path.join(proj, 'out'))).toBe(false)
+      cache.close()
+    },
+  )
 })
 
 describe('a tree no row names', () => {

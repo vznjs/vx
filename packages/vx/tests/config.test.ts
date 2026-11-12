@@ -6,6 +6,7 @@ import {
   PLUGIN_HOOKS,
   PLUGIN_PACKAGE,
 } from '../src/config.js'
+import type { TaskConfig } from '../src/config.js'
 
 describe('defineProject', () => {
   it('is an identity function (returns its input)', () => {
@@ -51,6 +52,28 @@ describe('defineProject', () => {
         build: { exec: { command: 'tsc' } },
         // @ts-expect-error 'biuld' is not a declared task key (typo of 'build').
         ci: { dependsOn: ['biuld'] },
+      },
+    })
+  })
+
+  it('takes a preset typed TaskConfig, as schema.md § Presets writes it', () => {
+    // A preset's `dependsOn` is `readonly string[]`: its names are not
+    // literals, so there is nothing to check them against, and holding them
+    // to the task keys refused every preset annotated `(): TaskConfig`.
+    const tsBuild = (): TaskConfig => ({ exec: { command: 'tsc' }, dependsOn: ['^build'] })
+    const cfg = defineProject({
+      tasks: {
+        build: tsBuild(),
+        test: { exec: { command: 'bun test' }, dependsOn: ['build'] },
+      },
+    })
+    expect(cfg.tasks.build.dependsOn).toEqual(['^build'])
+    // CONTROL: an inline literal beside the preset is still checked.
+    defineProject({
+      tasks: {
+        build: tsBuild(),
+        // @ts-expect-error 'biuld' is not a declared task key.
+        test: { exec: { command: 'bun test' }, dependsOn: ['biuld'] },
       },
     })
   })

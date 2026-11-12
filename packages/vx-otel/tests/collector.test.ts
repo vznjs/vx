@@ -509,6 +509,42 @@ describe('a refused certificate', () => {
   })
 })
 
+// Nothing listening answers the same on every attempt: the two retries put
+// a second on every run, a warm no-op too, with a dead endpoint.
+describe('a refused connection', () => {
+  it('is not retried and warns once', async () => {
+    const s = Bun.serve({ port: 0, fetch: () => new Response('') })
+    const dead = `http://127.0.0.1:${s.port}`
+    await s.stop(true)
+    const warns: string[] = []
+    const sink = new OtelSink({
+      tracesUrl: `${dead}/v1/traces`,
+      metricsUrl: `${dead}/v1/metrics`,
+      logsUrl: `${dead}/v1/logs`,
+      serviceName: 'vx',
+      headers: {},
+      metricsEnabled: false,
+      logsEnabled: false,
+      timeoutMs: 5000,
+      warn: (m) => warns.push(m),
+    })
+    sink.onRecord({ v: 2, kind: 'run.start', run: RUN, total: 0, ts: 0, startedAt: 0 })
+    sink.onRecord({ v: 2, kind: 'run.end', runId: RUN.runId, ts: 10 })
+    let calls = 0
+    const own = globalThis.fetch
+    globalThis.fetch = ((...a: Parameters<typeof fetch>) => {
+      calls++
+      return own(...a)
+    }) as typeof fetch
+    try {
+      await sink.flush()
+    } finally {
+      globalThis.fetch = own
+    }
+    expect([calls, warns.length, warns[0]?.includes('Unable to connect')]).toEqual([1, 1, true])
+  })
+})
+
 // F-53: a mutation sweep of sink.ts found these unheld.
 describe('the sink, as its second sweep found it unheld', () => {
   const at = (path: string) => `[vx] vx-otel: export failed for ${url}${path}: `

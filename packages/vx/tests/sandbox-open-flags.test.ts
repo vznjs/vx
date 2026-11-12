@@ -68,3 +68,33 @@ it.skipIf(process.platform !== 'linux')(
     expect(refusedWrites([`deny openat2 ${file}`], [dir], [], [], widened)).toHaveLength(1)
   },
 )
+
+// `tsc -b` touches an up-to-date dependency's buildinfo (`utimensat`) when
+// its sources are newer than it — a branch switched and back, the
+// dependency a hit — and swallows the refusal. Judged a write, the
+// dependant failed every run until `--force` (tsref repro1, 2026-11-12).
+// On a path the sandbox shows read-only, a timestamp change landed nothing.
+it.skipIf(process.platform !== 'linux')(
+  'a refused timestamp change where the sandbox can read is no violation; one elsewhere, or a write there, is',
+  () => {
+    const file = path.join(dir, 'src', 'i.js')
+    const readable = [path.join(dir, 'src')]
+    expect(refusedWrites([`deny utimensat ${file}`], [], [], readable)).toEqual([])
+    expect(refusedWrites([`deny utimensat ${file}`], []).map((v) => v.line)).toEqual([
+      `utimensat(${file}) = a write no grant covers  [${file}]`,
+    ])
+    expect(refusedWrites([`deny openat ${file}`], [], [], readable).map((v) => v.line)).toEqual([
+      `openat(${file}) = a write no grant covers  [${file}]`,
+    ])
+    // `touch` opens for writing first (GNU without `-c`, uutils always),
+    // then, refused, sets the times by path: one touch, no write.
+    const touch = (p: string) => [`deny openat ${p}`, `deny utimensat ${p}`]
+    expect(refusedWrites(touch(file), [], [], readable)).toEqual([])
+    // A file it would have created is no touch of what is there.
+    const made = path.join(dir, 'src', 'new.js')
+    expect(refusedWrites(touch(made), [], [], readable).map((v) => v.line)).toEqual([
+      `openat(${made}) = a write no grant covers  [${made}]`,
+      `utimensat(${made}) = a write no grant covers  [${made}]`,
+    ])
+  },
+)

@@ -61,9 +61,12 @@ function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: 
       const at = cut.bytes
       const artifact = new URL(req.url).pathname.startsWith('/v1/artifacts/')
       if (at === undefined || !artifact || req.method !== 'GET' || res.status !== 200) return res
-      // A body cut short, ended cleanly: chunked, with its terminator.
+      // A body cut short, ended cleanly: chunked, with its terminator, and
+      // the server's own headers but the length Bun.serve drops.
       const bytes = new Uint8Array(await res.arrayBuffer())
       const kept = bytes.subarray(0, at(bytes.length))
+      const headers = new Headers(res.headers)
+      headers.delete('content-length')
       return new Response(
         new ReadableStream<Uint8Array>({
           start(c) {
@@ -72,6 +75,7 @@ function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: 
             c.close()
           },
         }),
+        { headers },
       )
     },
   })
@@ -1515,7 +1519,9 @@ describe('vx run with vxCache()', () => {
 
   // Bun.serve sends a streamed answer chunked, with no Content-Length
   // (PROTOCOL.md), so a body cut short can end cleanly: its terminator
-  // says nothing of its length. The artifact's own frame must refuse it.
+  // says nothing of its length. `vx-size` does: a short body is a transfer
+  // that failed, not bytes stored wrong, so it is not distrusted (whose
+  // re-upload the server refuses, said as an artifact that never heals).
   it('a download cut short, ended cleanly, is a miss said, and never stored', async () => {
     const cacheDir = path.join(root, '.vx', 'cache')
     const noWrite = { localRead: true, localWrite: false, remoteRead: true, remoteWrite: false }
@@ -1543,7 +1549,7 @@ describe('vx run with vxCache()', () => {
       }
       expect(fx.log.filter((l) => l.startsWith('[vx]'))).toEqual([
         expect.stringMatching(
-          /^\[vx\] plugin '@vzn\/vx-cache': download [0-9a-f]+ from http:\/\/127\.0\.0\.1:\d+ failed: cache: corrupt artifact for [0-9a-f]+: artifact is not a readable archive$/,
+          /^\[vx\] plugin '@vzn\/vx-cache': download [0-9a-f]+ from http:\/\/127\.0\.0\.1:\d+ failed: the download ended after \d+ of \d+ bytes$/,
         ),
       ])
       // Nothing a later run would serve: the cut bytes were not kept.
@@ -1557,6 +1563,26 @@ describe('vx run with vxCache()', () => {
       })
       expect(again.outcomes.map((o) => o.status)).toEqual(['success'])
     }
+    // With writes on, the re-run's save is no `replace`: nothing says the
+    // held artifact is bad.
+    await rm(cacheDir, { recursive: true, force: true })
+    await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    srv.cut.bytes = (n) => n >> 1
+    try {
+      await run({
+        cwd: root,
+        tasks: ['build'],
+        handleSignals: false,
+        cacheDir,
+        log: silentLogger(fx),
+      })
+    } finally {
+      delete srv.cut.bytes
+    }
+    expect(fx.log.filter((l) => l.startsWith('[vx]'))).toEqual([
+      expect.stringMatching(/download [0-9a-f]+ from .* failed: the download ended after /),
+    ])
   })
 
   // The re-run's save is told `replace`; the server keeps what it holds, so

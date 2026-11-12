@@ -43,6 +43,14 @@ export function restorableOutput(
   globs: readonly string[],
   scope?: 'project' | 'workspace',
 ): (rel: string) => boolean
+// The directory a `<dir>/**` glob is rooted at, which the glob does not
+// match: its empty root is saved and made as an empty output directory
+export function treeRoot(pattern: string): string | undefined
+// What a restore may make as an empty directory: `restorableOutput`'s, or a `treeRoot`
+export function restorableOutputDir(
+  globs: readonly string[],
+  scope?: 'project' | 'workspace',
+): (rel: string) => boolean
 export function isLiteralPattern(glob: string): boolean
 export function stripTrailingSlash(p: string): string
 export function taskGlob(pattern: string): Bun.Glob

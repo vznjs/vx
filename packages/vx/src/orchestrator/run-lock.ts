@@ -134,8 +134,10 @@ const LEGACY_PID = 'pid'
 export interface RunLockOptions {
   /** Where the lock directories live; this user's own directory in `os.tmpdir()` unless a test says otherwise. */
   dir?: string
-  /** A status line for the waiting notice and the unlocked warning. */
+  /** A status line for the unlocked warning, and the waiting notice when `wait` is absent. */
   log: (line: string) => void
+  /** The waiting notice: taking turns is normal, not a warning (a run's footer counts those). */
+  wait?: (line: string) => void
   /** Abort the wait (Ctrl-C, an embedder's signal). */
   signal?: AbortSignal | undefined
   /**
@@ -443,7 +445,7 @@ export async function acquireRunLock(
     if (h !== null && !said && Date.now() - started >= SAY_AFTER_MS) {
       said = true
       // Spelled out: the Troubleshooting page quotes the run's line as printed.
-      opts.log(
+      ;(opts.wait ?? opts.log)(
         opts.of === 'lock'
           ? `[vx] waiting for another vx lock (pid ${h.pid}) on this workspace to finish…`
           : `[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`,

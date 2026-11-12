@@ -276,6 +276,23 @@ describe('workspace digests', () => {
     ])
   })
 
+  it("a workspace's own version moves it and what links it; the root's moves none", () => {
+    // `bun pm pack` and `bun publish` write b's version in place of c's
+    // `workspace:*`: unkeyed, c's packed tarball replayed the old version
+    // after b's bump. The root's is in every key and packs into none.
+    const versioned = (b: string, root: string): string =>
+      lock()
+        .replace('"name": "b",', `"name": "b",\n      "version": "${b}",`)
+        .replace('"name": "ws",', `"name": "ws",\n      "version": "${root}",`)
+    const before = digests(versioned('1.0.0', '1.0.0'))
+    const after = digests(versioned('2.0.0', '1.0.0'))
+    expect([...after.keys()].filter((dir) => after.get(dir) !== before.get(dir)).sort()).toEqual([
+      'packages/b',
+      'packages/c',
+    ])
+    expect(digests(versioned('1.0.0', '2.0.0'))).toEqual(before)
+  })
+
   it('reads a scoped nested path level by level', () => {
     const text = (v: string) => `{
   "lockfileVersion": 1,
@@ -692,7 +709,7 @@ describe('vx run with bun() declared', () => {
     })
     const out = new TextDecoder().decode(r.stdout) + new TextDecoder().decode(r.stderr)
     expect(r.exitCode).toBe(0)
-    expect(out).toContain('2 affected · 3 total')
+    expect(out).toContain('2 in run · 3 total')
     expect(out).not.toContain('a#build')
   })
 })

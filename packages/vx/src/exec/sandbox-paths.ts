@@ -119,6 +119,22 @@ export function localBindingOn(c: { localBinding?: boolean | readonly number[] }
 }
 
 /**
+ * The host loopback ports a `network` list names (`localhost:4173`,
+ * `127.0.0.1:4173`, `[::1]:4173`): a client reaches them directly, never
+ * through the proxy (`NO_PROXY`, and every browser skips a proxy for
+ * loopback), so on Linux each is relayed into the task's namespace.
+ */
+export function loopbackPorts(network: true | readonly string[] | undefined): number[] {
+  if (!Array.isArray(network)) return []
+  const ports = new Set<number>()
+  for (const d of network) {
+    const m = /^(?:localhost|127\.0\.0\.1|\[::1\]):(\d{1,5})$/i.exec(d)
+    if (m !== null) ports.add(Number(m[1]))
+  }
+  return [...ports]
+}
+
+/**
  * Whether a sandboxed task may read `file`: it lies under no denial (the
  * rest of the host is mounted read-only), or under a read grant, a write
  * grant or a baseline read, by its canonical path. A path no grant holds

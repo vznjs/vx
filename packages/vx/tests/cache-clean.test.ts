@@ -305,20 +305,26 @@ describe('vx cache clean with no bound clears the cache', () => {
       stderr: 'pipe',
       env: { ...process.env, NO_COLOR: '1', HOME: home, ...env },
     })
-    const out = new Response(proc.stdout).text()
+    // A run says it waits on stdout (taking turns is a status line, not a
+    // warning); `vx cache clean` on stderr. Both are read as they come.
+    let out = ''
     let err = ''
-    const reader = proc.stderr.getReader()
-    const decoder = new TextDecoder()
-    while (!err.includes(notice)) {
-      const { done, value } = await reader.read()
-      if (done) break
-      err += decoder.decode(value, { stream: true })
+    const { promise: heard, resolve } = Promise.withResolvers<void>()
+    const drain = async (stream: ReadableStream<Uint8Array>, to: 'out' | 'err'): Promise<void> => {
+      const decoder = new TextDecoder()
+      for await (const chunk of stream) {
+        const text = decoder.decode(chunk, { stream: true })
+        if (to === 'out') out += text
+        else err += text
+        if ((out + err).includes(notice)) resolve()
+      }
     }
-    const said = err
+    const drained = Promise.all([drain(proc.stdout, 'out'), drain(proc.stderr, 'err')])
+    await Promise.race([heard, drained])
+    const said = out + err
     const ended = (async () => {
-      for (let c = await reader.read(); !c.done; c = await reader.read())
-        err += decoder.decode(c.value, { stream: true })
-      return { code: await proc.exited, out: await out, err }
+      await drained
+      return { code: await proc.exited, out, err }
     })()
     return { proc, said, ended }
   }

@@ -38,7 +38,9 @@ owns, instead of to its group: a Linux sandboxed task (item 752). Its
 group is bwrap's, whose monitor died of the SIGTERM and took the
 namespace down with SIGKILL (`--die-with-parent`), so a sandboxed
 command's trap never ran; a watcher inside reads the signal's name and
-signals the command's group (`sandbox-runtime.md`). SIGKILL still goes to
+signals the command's group (`sandbox-runtime.md`); the channel's end
+(vx closed it, or vx is gone) SIGKILLs the namespace's processes, where
+bwrap's `--die-with-parent` can miss. SIGKILL still goes to
 the group, and a write the reader is gone for (EPIPE) falls back to it.
 `closeSignalChannel` runs once the child has exited, and drops the entry
 before it closes the descriptor, so a later kill never writes to a

@@ -1,0 +1,686 @@
+// A `git pull` that brings a lockfile change, run with no install: the key
+// folds the new lockfile, the task builds against the old node_modules,
+// and the output saved under the new key replays after the install. Each
+// manager's run refuses until the install. The files are what real
+// installs wrote (bun 1.4.4, pnpm 10.9, npm 10, yarn 1.22), cut to `a`
+// depending on is-number.
+import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { bun, npm, pnpm, yarn } from '../src/index.js'
+import { lockedKey } from './helpers/key.js'
+
+let root: string
+let cacheDir: string
+
+beforeEach(async () => {
+  root = await mkdtemp(path.join(tmpdir(), 'vx-installed-'))
+  cacheDir = path.join(root, '.vx', 'cache')
+  await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
+  await mkdir(cacheDir, { recursive: true })
+})
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true })
+})
+
+async function write(files: Record<string, string>): Promise<void> {
+  for (const [rel, text] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
+    await writeFile(path.join(root, rel), text)
+  }
+}
+
+/** The run's refusal for `a`'s task, or `ok`. */
+async function run(plugin: ReturnType<typeof bun>): Promise<string> {
+  try {
+    await lockedKey(plugin, root, cacheDir, path.join(root, 'packages', 'a'))
+    return 'ok'
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+}
+
+const MANIFESTS = {
+  'package.json': '{ "name": "root", "private": true, "workspaces": ["packages/*"] }',
+  'packages/a/package.json':
+    '{ "name": "a", "version": "1.0.0", "dependencies": { "is-number": "7.0.0" } }',
+}
+
+const bunLock = (v: string): string => `{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": { "name": "root" },
+    "packages/a": { "name": "a", "dependencies": { "is-number": "${v}" } },
+  },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+    "is-number": ["is-number@${v}", "", {}, "sha512-${v}"],
+  }
+}
+`
+const pkg = (v: string): string => `{ "name": "is-number", "version": "${v}" }`
+
+describe('bun(): no install record, so the workspaces’ dependencies as Node resolves them', () => {
+  it('refuses a workspace whose dependency is another version than the lockfile names', async () => {
+    await write({
+      ...MANIFESTS,
+      'bun.lock': bunLock('5.0.0'),
+      'node_modules/.bun/is-number@7.0.0/node_modules/is-number/package.json': pkg('7.0.0'),
+      'packages/a/node_modules/is-number/package.json': pkg('7.0.0'),
+    })
+    expect(await run(bun())).toBe(
+      "node_modules was installed from a different bun.lock (packages/a's is-number is 7.0.0, the lockfile names 5.0.0) — run `bun install`",
+    )
+    // CONTROL: the install the lockfile names.
+    await write({ 'packages/a/node_modules/is-number/package.json': pkg('5.0.0') })
+    expect(await run(bun())).toBe('ok')
+  })
+
+  // Hoisted: a workspace with no copy of its own loads the root's.
+  it('reads the copy up the tree when the workspace has none', async () => {
+    await write({
+      ...MANIFESTS,
+      'bun.lock': bunLock('5.0.0'),
+      'node_modules/is-number/package.json': pkg('7.0.0'),
+    })
+    expect(await run(bun())).toContain("packages/a's is-number is 7.0.0")
+  })
+
+  // The match is kept and a warm run only stats; an install that replaces
+  // the package moves its directory, so the next run compares again.
+  it('compares again once the install moved a workspace’s node_modules', async () => {
+    await write({
+      ...MANIFESTS,
+      'bun.lock': bunLock('5.0.0'),
+      'packages/a/node_modules/is-number/package.json': pkg('5.0.0'),
+    })
+    const past = new Date(Date.now() - 60_000)
+    await mkdir(path.join(root, 'node_modules'))
+    for (const rel of ['bun.lock', 'node_modules', 'packages/a/node_modules']) {
+      await utimes(path.join(root, rel), past, past)
+    }
+    expect(await run(bun())).toBe('ok')
+    expect(
+      readdirSync(cacheDir).filter((f) => f.startsWith('vx-lockfile-installed-')),
+    ).toHaveLength(1)
+    await rm(path.join(root, 'packages/a/node_modules/is-number'), { recursive: true })
+    await write({ 'packages/a/node_modules/is-number/package.json': pkg('7.0.0') })
+    expect(await run(bun())).toContain("packages/a's is-number is 7.0.0")
+  })
+
+  // A fresh clone: nothing installed can be wrong, and a task that needs
+  // a package fails, which saves nothing.
+  it('checks nothing where nothing is installed', async () => {
+    await write({ ...MANIFESTS, 'bun.lock': bunLock('5.0.0') })
+    expect(await run(bun())).toBe('ok')
+    expect(readdirSync(cacheDir)).toEqual([])
+  })
+
+  // A pull that bumps only a transitive version, as Bun 1.4.4 lays it out.
+  const transitiveLock = (v: string): string => `{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": { "name": "root", "dependencies": { "is-number": "7.0.0" } },
+    "packages/a": { "name": "a", "dependencies": { "is-odd": "3.0.1" } },
+  },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+    "is-number": ["is-number@7.0.0", "", {}, "sha512-7"],
+    "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-odd"],
+    "is-odd/is-number": ["is-number@${v}", "", {}, "sha512-${v}"],
+  }
+}
+`
+  const odd = '{ "name": "is-odd", "version": "3.0.1" }'
+
+  // Hoisted: each lockfile key at its path, nested under its parent's.
+  it('refuses a transitive dependency at another version (hoisted)', async () => {
+    await write({
+      ...MANIFESTS,
+      'packages/a/package.json': '{ "name": "a", "dependencies": { "is-odd": "3.0.1" } }',
+      'bun.lock': transitiveLock('6.0.1'),
+      'node_modules/is-number/package.json': pkg('7.0.0'),
+      'node_modules/is-odd/package.json': odd,
+      'node_modules/is-odd/node_modules/is-number/package.json': pkg('6.0.0'),
+    })
+    expect(await run(bun())).toContain('(is-odd/is-number is 6.0.0, the lockfile names 6.0.1)')
+    // CONTROL: the install the lockfile names.
+    await write({ 'node_modules/is-odd/node_modules/is-number/package.json': pkg('6.0.1') })
+    expect(await run(bun())).toBe('ok')
+  })
+
+  // npm 11.21's tarball ships @sigstore/protobuf-specs 0.5.1 under a
+  // bundled package, where bun.lock names 0.5.2 and Bun installs nothing.
+  it('reads nothing under a package that bundles its dependencies', async () => {
+    await write({
+      ...MANIFESTS,
+      'packages/a/package.json': '{ "name": "a", "dependencies": { "npm": "11.21.0" } }',
+      'bun.lock': `{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": { "name": "root" },
+    "packages/a": { "name": "a", "dependencies": { "npm": "11.21.0" } },
+  },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+    "npm": ["npm@11.21.0", "", { "dependencies": { "sigstore": "^4.0.0" } }, "sha512-npm"],
+    "npm/sigstore": ["sigstore@4.0.0", "", { "bundled": true }, "sha512-s"],
+    "npm/@sigstore/protobuf-specs": ["@sigstore/protobuf-specs@0.5.2", "", {}, "sha512-p"],
+  }
+}
+`,
+      'node_modules/npm/package.json': '{ "name": "npm", "version": "11.21.0" }',
+      'node_modules/npm/node_modules/sigstore/package.json': '{ "version": "4.0.0" }',
+      'node_modules/npm/node_modules/@sigstore/protobuf-specs/package.json':
+        '{ "version": "0.5.1" }',
+    })
+    expect(await run(bun())).toBe('ok')
+  })
+
+  // Isolated: each package's store copy links its dependencies' copies.
+  // The store keeps every version it ever installed, so a branch switch
+  // back finds the lockfile's version there, linked to nothing.
+  it('refuses a store package linking another version (isolated)', async () => {
+    const store = 'node_modules/.bun'
+    await write({
+      ...MANIFESTS,
+      'packages/a/package.json': '{ "name": "a", "dependencies": { "is-odd": "3.0.1" } }',
+      'bun.lock': transitiveLock('6.0.1'),
+      [`${store}/is-odd@3.0.1/node_modules/is-odd/package.json`]: odd,
+      [`${store}/is-number@6.0.0/node_modules/is-number/package.json`]: pkg('6.0.0'),
+      [`${store}/is-number@6.0.1/node_modules/is-number/package.json`]: pkg('6.0.1'),
+      [`${store}/is-number@7.0.0/node_modules/is-number/package.json`]: pkg('7.0.0'),
+    })
+    const link = async (at: string, to: string): Promise<void> => {
+      await rm(path.join(root, at), { force: true })
+      await mkdir(path.dirname(path.join(root, at)), { recursive: true })
+      await symlink(to, path.join(root, at))
+    }
+    await link('node_modules/is-number', '.bun/is-number@7.0.0/node_modules/is-number')
+    await link(
+      'packages/a/node_modules/is-odd',
+      `../../../${store}/is-odd@3.0.1/node_modules/is-odd`,
+    )
+    const dep = `${store}/is-odd@3.0.1/node_modules/is-number`
+    await link(dep, '../../is-number@6.0.0/node_modules/is-number')
+    // A peer variant no workspace reaches any more: never loaded.
+    await link(
+      `${store}/is-odd@3.0.1+0123456789abcdef/node_modules/is-number`,
+      '../../is-number@6.0.0/node_modules/is-number',
+    )
+    expect(await run(bun())).toContain(
+      "(is-odd@3.0.1's is-number is 6.0.0, the lockfile names 6.0.1)",
+    )
+    // CONTROL: the install the lockfile names.
+    await link(dep, '../../is-number@6.0.1/node_modules/is-number')
+    expect(await run(bun())).toBe('ok')
+  })
+})
+
+const npmLock = (v: string): string => `{
+  "name": "root",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": { "name": "root", "workspaces": ["packages/*"] },
+    "node_modules/a": { "resolved": "packages/a", "link": true },
+    "node_modules/is-number": { "version": "${v}", "resolved": "https://registry.npmjs.org/is-number/-/is-number-${v}.tgz", "integrity": "sha512-${v}" },
+    "packages/a": { "version": "1.0.0", "dependencies": { "is-number": "${v}" } }
+  }
+}
+`
+// npm's hidden lockfile: the lockfile's entries as installed, no root.
+/** npm's record and the tree it names: each recorded package's package.json. */
+const npmInstall = (record: string): Record<string, string> => {
+  const files: Record<string, string> = { 'node_modules/.package-lock.json': record }
+  for (const [p, e] of Object.entries(
+    JSON.parse(record).packages as Record<string, { version?: string }>,
+  )) {
+    if (p.includes('node_modules/') && e.version !== undefined) {
+      files[`${p}/package.json`] = `{ "name": "x", "version": "${e.version}" }`
+    }
+  }
+  return files
+}
+const npmTree = (v: string): string => {
+  const lock = JSON.parse(npmLock(v))
+  delete lock.packages['']
+  return JSON.stringify(lock)
+}
+
+describe('npm(): node_modules/.package-lock.json', () => {
+  it('refuses a package installed at another version than the lockfile names', async () => {
+    await write({
+      ...MANIFESTS,
+      'package-lock.json': npmLock('5.0.0'),
+      ...npmInstall(npmTree('7.0.0')),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/is-number is 7.0.0, the lockfile names 5.0.0) — run `npm install`',
+    )
+    await write(npmInstall(npmTree('5.0.0')))
+    expect(await run(npm())).toBe('ok')
+  })
+
+  // Read as no record, a cut-off write would have let the old tree pass.
+  it('refuses a record it cannot read, naming it', async () => {
+    await write({
+      ...MANIFESTS,
+      'package-lock.json': npmLock('5.0.0'),
+      'node_modules/.package-lock.json': '{',
+    })
+    expect(await run(npm())).toStartWith('node_modules/.package-lock.json: cannot be read (')
+  })
+
+  // `npm ci --omit=dev` leaves dev packages out of the tree and its record.
+  it('takes a dev package the install left out', async () => {
+    const lock = JSON.parse(npmLock('5.0.0'))
+    lock.packages['node_modules/is-even'] = { version: '1.0.0', dev: true }
+    await write({
+      ...MANIFESTS,
+      'package-lock.json': JSON.stringify(lock),
+      ...npmInstall(npmTree('5.0.0')),
+    })
+    expect(await run(npm())).toBe('ok')
+  })
+
+  // What npm 10.9 and 11.21 wrote for `npm install -w packages/a` (and
+  // `npm ci -w packages/a`): a's closure and link, nothing of b's or the
+  // root's own dependencies.
+  const wsLock = (aDeps: Record<string, string>): Record<string, unknown> => ({
+    name: 'root',
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      '': { name: 'root', workspaces: ['packages/*'], dependencies: { 'has-flag': '^4.0.0' } },
+      'node_modules/a': { resolved: 'packages/a', link: true },
+      'node_modules/b': { resolved: 'packages/b', link: true },
+      'node_modules/has-flag': { version: '4.0.0', resolved: 'https://r/has-flag-4.0.0.tgz' },
+      'node_modules/is-number': { version: '6.0.0', resolved: 'https://r/is-number-6.0.0.tgz' },
+      'node_modules/ms': { version: '2.1.3', resolved: 'https://r/ms-2.1.3.tgz' },
+      ...(aDeps['semver'] === undefined
+        ? {}
+        : { 'node_modules/semver': { version: '7.6.0', resolved: 'https://r/semver-7.6.0.tgz' } }),
+      'packages/a': { version: '1.0.0', dependencies: aDeps },
+      'packages/b': { version: '1.0.0', dependencies: { ms: '^2.1.3' } },
+    },
+  })
+  const wsTree = (lock: Record<string, unknown>, paths: string[]): string => {
+    const all = lock['packages'] as Record<string, unknown>
+    return JSON.stringify({
+      name: 'root',
+      lockfileVersion: 3,
+      requires: true,
+      packages: Object.fromEntries(paths.map((p) => [p, all[p]])),
+    })
+  }
+  const WS_MANIFESTS = {
+    'package.json':
+      '{ "name": "root", "private": true, "workspaces": ["packages/*"], "dependencies": { "has-flag": "^4.0.0" } }',
+    'packages/a/package.json':
+      '{ "name": "a", "version": "1.0.0", "dependencies": { "is-number": "^6.0.0" } }',
+    'packages/b/package.json':
+      '{ "name": "b", "version": "1.0.0", "dependencies": { "ms": "^2.1.3" } }',
+  }
+  const A_ONLY = ['node_modules/a', 'node_modules/is-number', 'packages/a']
+
+  it('takes an install filtered to one workspace (`-w`)', async () => {
+    const lock = wsLock({ 'is-number': '^6.0.0' })
+    await write({
+      ...WS_MANIFESTS,
+      'package-lock.json': JSON.stringify(lock),
+      ...npmInstall(wsTree(lock, A_ONLY)),
+    })
+    expect(await run(npm())).toBe('ok')
+  })
+
+  // A pull that adds a dependency to an installed workspace, run before
+  // the install, still builds against the old tree.
+  it('refuses a dependency the lockfile adds to a workspace the install has', async () => {
+    const before = wsLock({ 'is-number': '^6.0.0' })
+    const lock = wsLock({ 'is-number': '^6.0.0', semver: '7.6.0' })
+    await write({
+      ...WS_MANIFESTS,
+      'packages/a/package.json':
+        '{ "name": "a", "version": "1.0.0", "dependencies": { "is-number": "^6.0.0", "semver": "7.6.0" } }',
+      'package-lock.json': JSON.stringify(lock),
+      ...npmInstall(wsTree(before, A_ONLY)),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/semver is not installed) — run `npm install`',
+    )
+  })
+
+  it('refuses a root dependency a full install lacks', async () => {
+    const lock = wsLock({ 'is-number': '^6.0.0' })
+    const full = [...A_ONLY, 'node_modules/b', 'node_modules/ms', 'packages/b']
+    await write({
+      ...WS_MANIFESTS,
+      'package-lock.json': JSON.stringify(lock),
+      ...npmInstall(wsTree(lock, full)),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/has-flag is not installed) — run `npm install`',
+    )
+    await write({
+      ...npmInstall(wsTree(lock, [...full, 'node_modules/has-flag'])),
+    })
+    expect(await run(npm())).toBe('ok')
+  })
+
+  // `npm install --dry-run` (npm 10.9) rewrites the record to the new
+  // lockfile and leaves the tree: the record matched and the old tree built.
+  it('refuses a record the tree does not hold', async () => {
+    await write({
+      ...MANIFESTS,
+      'package-lock.json': npmLock('5.0.0'),
+      'node_modules/.package-lock.json': npmTree('5.0.0'),
+      'node_modules/is-number/package.json': pkg('7.0.0'),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/is-number is 7.0.0, node_modules/.package-lock.json names 5.0.0) — run `npm install`',
+    )
+    await rm(path.join(root, 'node_modules/is-number'), { recursive: true })
+    expect(await run(npm())).toContain(
+      'node_modules/is-number is not installed, node_modules/.package-lock.json names 5.0.0',
+    )
+    // CONTROL: the tree the record names.
+    await write({ 'node_modules/is-number/package.json': pkg('5.0.0') })
+    expect(await run(npm())).toBe('ok')
+  })
+})
+
+const pnpmLock = (v: string): string => `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      is-number:
+        specifier: ${v}
+        version: ${v}
+
+packages:
+
+  is-number@${v}:
+    resolution: {integrity: sha512-${v}}
+
+snapshots:
+
+  is-number@${v}: {}
+`
+
+describe('pnpm(): node_modules/.pnpm/lock.yaml', () => {
+  it('refuses an importer linking another version than the lockfile names', async () => {
+    await write({
+      ...MANIFESTS,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': pnpmLock('5.0.0'),
+      'node_modules/.pnpm/lock.yaml': pnpmLock('7.0.0'),
+    })
+    expect(await run(pnpm())).toBe(
+      "node_modules was installed from a different pnpm-lock.yaml (packages/a's is-number is 7.0.0, the lockfile names 5.0.0) — run `pnpm install`",
+    )
+    await write({ 'node_modules/.pnpm/lock.yaml': pnpmLock('5.0.0') })
+    expect(await run(pnpm())).toBe('ok')
+  })
+
+  // pnpm 10.28 after `pnpm add -w -D prettier@3.3.3` over 3.4.2 (`pnpm
+  // update`, `pnpm --filter x remove is-odd` alike): the record keeps the
+  // old package, no importer reaching it, until a plain `pnpm install`.
+  const withPrettier = (v: string, orphan: string): string =>
+    pnpmLock('5.0.0')
+      .replace(
+        '  .: {}',
+        `  .:\n    devDependencies:\n      prettier:\n        specifier: ${v}\n        version: ${v}`,
+      )
+      .replace(
+        'packages:\n',
+        `packages:\n\n  prettier@${v}:\n    resolution: {integrity: sha512-${v}}\n    engines: {node: '>=14'}\n    hasBin: true\n${orphan === '' ? '' : `\n  prettier@${orphan}:\n    resolution: {integrity: sha512-${orphan}}\n    engines: {node: '>=14'}\n    hasBin: true\n`}`,
+      )
+      .replace(
+        'snapshots:\n',
+        `snapshots:\n\n  prettier@${v}: {}\n${orphan === '' ? '' : `\n  prettier@${orphan}: {}\n`}`,
+      )
+
+  it('takes a package the install left behind that no importer reaches', async () => {
+    await write({
+      ...MANIFESTS,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': withPrettier('3.3.3', ''),
+      'node_modules/.pnpm/lock.yaml': withPrettier('3.3.3', '3.4.2'),
+    })
+    expect(await run(pnpm())).toBe('ok')
+  })
+
+  // A pull that moves a transitive version under an unchanged importer:
+  // the old one is still reached, so it is another install.
+  it('refuses a package an importer reaches that the lockfile does not list', async () => {
+    const lock = (v: string): string =>
+      pnpmLock('5.0.0')
+        .replace(
+          'packages:\n',
+          `packages:\n\n  kind-of@${v}:\n    resolution: {integrity: sha512-${v}}\n`,
+        )
+        .replace(
+          '  is-number@5.0.0: {}',
+          `  is-number@5.0.0:\n    dependencies:\n      kind-of: ${v}\n\n  kind-of@${v}: {}`,
+        )
+    await write({
+      ...MANIFESTS,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': lock('3.2.2'),
+      'node_modules/.pnpm/lock.yaml': lock('3.2.0'),
+    })
+    expect(await run(pnpm())).toBe(
+      'node_modules was installed from a different pnpm-lock.yaml (kind-of@3.2.0 is installed, and the lockfile does not list it) — run `pnpm install`',
+    )
+  })
+})
+
+const yarnClassic = (
+  v: string,
+): string => `# THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.
+# yarn lockfile v1
+
+
+is-number@${v}:
+  version "${v}"
+  resolved "https://registry.yarnpkg.com/is-number/-/is-number-${v}.tgz#${v}"
+  integrity sha512-${v}
+`
+const integrity = (v: string): string =>
+  JSON.stringify({
+    systemParams: 'linux-x64-127',
+    topLevelPatterns: ['a@1.0.0', `is-number@${v}`],
+    lockfileEntries: {
+      [`is-number@${v}`]: `https://registry.yarnpkg.com/is-number/-/is-number-${v}.tgz#${v}`,
+    },
+  })
+
+const yarnBerry = (
+  v: string,
+): string => `# This file is generated by running "yarn install" inside your project.
+
+__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    is-number: "npm:${v}"
+  languageName: unknown
+  linkType: soft
+
+"is-number@npm:${v}":
+  version: ${v}
+  resolution: "is-number@npm:${v}"
+  checksum: 10c0/${v}
+  languageName: node
+  linkType: hard
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+const yarnState = (
+  v: string,
+): string => `# Warning: This file is automatically generated. Removing it is fine, but will
+# cause your node_modules installation to become invalidated.
+
+__metadata:
+  version: 1
+  nmMode: classic
+
+"a@workspace:packages/a":
+  locations:
+    - "node_modules/a"
+
+"is-number@npm:${v}":
+  locations:
+    - "node_modules/is-number"
+
+"root@workspace:.":
+  locations:
+    - ""
+`
+
+describe('yarn(): node_modules/.yarn-integrity (1) and .yarn-state.yml (2+)', () => {
+  it('refuses an entry Yarn 1 installed that the lockfile does not list', async () => {
+    await write({
+      ...MANIFESTS,
+      'yarn.lock': yarnClassic('5.0.0'),
+      'node_modules/.yarn-integrity': integrity('7.0.0'),
+    })
+    expect(await run(yarn())).toBe(
+      'node_modules was installed from a different yarn.lock (is-number@7.0.0 is installed, and the lockfile does not list it) — run `yarn install`',
+    )
+    await write({ 'node_modules/.yarn-integrity': integrity('5.0.0') })
+    expect(await run(yarn())).toBe('ok')
+  })
+
+  // A pull's most common change: an entry the lockfile adds, run before
+  // the install. A `--production` install records the flag and no dev entry.
+  it('refuses an entry the lockfile adds that Yarn 1 did not install, but not under --production', async () => {
+    const added = `${yarnClassic('5.0.0')}
+kleur@4.1.5:
+  version "4.1.5"
+  resolved "https://registry.yarnpkg.com/kleur/-/kleur-4.1.5.tgz#4.1.5"
+  integrity sha512-kleur
+`
+    const record = (flags: string[]): string =>
+      JSON.stringify({ ...JSON.parse(integrity('5.0.0')), flags })
+    await write({
+      ...MANIFESTS,
+      'yarn.lock': added,
+      'node_modules/.yarn-integrity': record([]),
+    })
+    expect(await run(yarn())).toBe(
+      'node_modules was installed from a different yarn.lock (kleur@4.1.5 is not installed) — run `yarn install`',
+    )
+    await write({ 'node_modules/.yarn-integrity': record(['production']) })
+    expect(await run(yarn())).toBe('ok')
+  })
+
+  it('refuses a package Yarn 2+ installed that the lockfile does not resolve to', async () => {
+    await write({
+      ...MANIFESTS,
+      'yarn.lock': yarnBerry('5.0.0'),
+      'node_modules/.yarn-state.yml': yarnState('7.0.0'),
+    })
+    expect(await run(yarn())).toBe(
+      'node_modules was installed from a different yarn.lock (is-number@npm:7.0.0 is installed, and the lockfile does not list it) — run `yarn install`',
+    )
+    await write({ 'node_modules/.yarn-state.yml': yarnState('5.0.0') })
+    expect(await run(yarn())).toBe('ok')
+  })
+})
+
+// Each parse of the lockfile, counted in a process of its own: a run whose
+// key parsed the lockfile (its content changed since the memo) checked
+// the install by parsing it again, 40-80 ms on a 10,000-package lockfile.
+const PARSES_PROBE = `
+const { readFileSync } = require('node:fs')
+Bun.plugin({
+  name: 'count',
+  setup(b) {
+    b.onLoad({ filter: /\\/vx-lockfile\\/src\\/(bun|pnpm)\\.ts$/ }, (a) => ({
+      contents: readFileSync(a.path, 'utf8').replace(
+        /export function parseLockfile\\(text: string\\): Lockfile \\{/,
+        '$&\\nglobalThis.parses = (globalThis.parses ?? 0) + 1',
+      ),
+      loader: 'ts',
+    }))
+  },
+})
+const [src, helper, manager, root] = process.argv.slice(1)
+const m = await import(src)
+const { lockedKey } = await import(helper)
+const cacheDir = require('node:path').join(root, '.vx', 'cache')
+await lockedKey(m[manager](), root, cacheDir, require('node:path').join(root, 'packages', 'a'))
+console.log('PARSES ' + globalThis.parses)
+`
+
+describe('the install check parses no lockfile the key already parsed', () => {
+  async function parses(manager: 'bun' | 'pnpm'): Promise<number> {
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        PARSES_PROBE,
+        path.join(import.meta.dir, '..', 'src', 'index.ts'),
+        path.join(import.meta.dir, 'helpers', 'key.ts'),
+        manager,
+        root,
+      ],
+      { env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    expect({ code, err: code === 0 ? '' : err }).toEqual({ code: 0, err: '' })
+    return Number(
+      out
+        .split('\n')
+        .find((l) => l.startsWith('PARSES '))
+        ?.slice(7),
+    )
+  }
+
+  it('bun(): one parse', async () => {
+    await write({
+      ...MANIFESTS,
+      'bun.lock': bunLock('5.0.0'),
+      'packages/a/node_modules/is-number/package.json': pkg('5.0.0'),
+    })
+    await mkdir(path.join(root, 'node_modules'))
+    expect(await parses('bun')).toBe(1)
+  })
+
+  // The record is another file, parsed once of its own.
+  it('pnpm(): one parse of the lockfile, one of the record', async () => {
+    await write({
+      ...MANIFESTS,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': pnpmLock('5.0.0'),
+      'node_modules/.pnpm/lock.yaml': pnpmLock('5.0.0'),
+    })
+    expect(await parses('pnpm')).toBe(2)
+  })
+})

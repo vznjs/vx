@@ -117,6 +117,17 @@ describe('macProfileRules, capability by capability', () => {
     ['a localBinding port list', { localBinding: [3000] }, LOOPBACK],
     ['localBinding: false', { localBinding: false }, []],
     [
+      // Dialled directly, never through the proxy: that port alone.
+      'a loopback port in the network list',
+      { network: ['localhost:4173', '127.0.0.1:4174', 'localhost', 'example.com:4175'] },
+      [
+        '(allow network-outbound (remote ip "localhost:4173"))',
+        '(allow network-outbound (remote ip "localhost:4174"))',
+        // curl reads the proxy settings first; refused, the record failed it.
+        '(allow mach-lookup (global-name "com.apple.SystemConfiguration.configd"))',
+      ],
+    ],
+    [
       'unixSockets: true',
       { unixSockets: true },
       [

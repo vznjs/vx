@@ -275,3 +275,153 @@ describe.skipIf(!available)('a file the key holds that no grant reaches', () => 
     expect((await t())?.status).toBe('success')
   })
 })
+
+// `tsc -p tsconfig.json` with the file not granted stats it first, which
+// no trace records: it failed "TS5058: The specified path does not exist"
+// with no violation and no word of the sandbox. A failed task whose
+// stderr calls missing a path the sandbox hides and the host has names it.
+describe.skipIf(!available || process.platform !== 'linux')('a stat refused by the wall', () => {
+  let root: string
+  beforeEach(async () => {
+    root = realpathSync(await makeWorkspace({ prefix: 'vx-stat-hidden-' }))
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  const outcome = async (command: string) => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { t: { exec: {
+        command: ${JSON.stringify(command)},
+        sandbox: { allow: { read: ['src/'] } },
+      } } } }\n`,
+      files: { 'tsconfig.json': '{}\n', 'src/a.ts': '' },
+    })
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    return [r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]
+  }
+  // tsc prints its diagnostics on stdout; most tools, on stderr.
+  const tsc = (file: string, to = '') =>
+    `[ -e ${file} ] || { echo "error TS5058: The specified path does not exist: '${file}'." ${to}; exit 1; }`
+
+  it('is named beside the failure, with the grant', async () => {
+    const named = await outcome(tsc('tsconfig.json'))
+    await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
+    expect(await outcome(tsc('tsconfig.json', '>&2'))).toEqual(named)
+    expect(named).toEqual([
+      'failed',
+      [
+        `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
+          `${root}/packages/app/tsconfig.json. A stat is not traced on Linux, so no violation ` +
+          "names them. If the task reads one, grant it, e.g. `allow: { read: ['tsconfig.json'] }`.",
+      ],
+    ])
+  })
+
+  it('CONTROL: a path the host lacks too is not named', async () => {
+    expect(await outcome(tsc('tsconfig.other.json'))).toEqual(['failed', []])
+  })
+
+  // cargo and make say neither "not found" nor "no such file": their
+  // failures named no hidden path.
+  it.each([
+    ['cargo', 'Cargo.toml', 'error: could not find `Cargo.toml` in `.` or any parent directory'],
+    [
+      'make, no makefile',
+      'Makefile',
+      'make: *** No targets specified and no makefile found.  Stop.',
+    ],
+    [
+      'make, no rule',
+      'gen.mk',
+      "make: *** No rule to make target 'gen.mk', needed by 'all'.  Stop.",
+    ],
+  ])('%s is named too', async (_, file, said) => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { t: { exec: {
+        command: ${JSON.stringify(`[ -e ${file} ] || { cat src/said >&2; exit 2; }`)},
+        sandbox: { allow: { read: ['src/'] } },
+      } } } }\n`,
+      // Read from a file: the shell would run cargo's backquotes.
+      files: { [file]: '', 'src/said': `${said}\n` },
+    })
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+      `If the task reads one, grant it, e.g. \`allow: { read: ['${file}'] }\`.`,
+    )
+  })
+
+  // `replace example.com/golib => ../golib` in a cached `go build`: the
+  // hint named only the read grant, and the grant applied as given read
+  // ../golib unkeyed, so an edit there replayed the old binary.
+  it('beside a cached task names the key entry too, and the two applied re-run on an edit', async () => {
+    await mkdir(path.join(root, 'packages', 'golib'), { recursive: true })
+    await writeFile(path.join(root, 'packages', 'golib', 'lib.go'), 'v1\n')
+    const cached = (read: string[], files: string[], workspaceFiles: string[]) =>
+      `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(
+          '[ -d ../golib ] || { echo "go: example.com/golib: replacement directory ../golib does not exist" >&2; exit 1; }; cat ../golib/lib.go > out.txt',
+        )},
+          sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out.txt'] } } },
+        cache: true,
+        inputs: { files: ${JSON.stringify(files)}, workspaceFiles: ${JSON.stringify(workspaceFiles)} },
+        outputs: { files: ['out.txt'] },
+      } } }\n`
+    const app = await addProject(root, 'app', {
+      config: cached(['src/'], ['src/**'], []),
+      files: { 'src/a': '' },
+    })
+    const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
+    expect((await t())?.sandboxViolationLines?.[0]).toEndWith(
+      "If the task reads one, grant it, e.g. `allow: { read: ['../golib'] }`, and, if the " +
+        "output depends on it, key it: `inputs: { workspaceFiles: ['packages/golib/**'] }`.",
+    )
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      cached(['src/', '../golib'], ['src/**'], ['packages/golib/**']),
+    )
+    expect((await t())?.status).toBe('success')
+    await writeFile(path.join(root, 'packages', 'golib', 'lib.go'), 'v2\n')
+    expect((await t())?.status).toBe('success')
+    expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('v2\n')
+  })
+
+  // In the project the key entry is the task's own `inputs.files`.
+  it('beside a cached task names an in-project key entry as inputs.files', async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(tsc('tsconfig.json'))},
+          sandbox: { allow: { read: ['src/'] } } },
+        cache: true,
+        inputs: { files: ['src/**'] },
+        outputs: { files: [] },
+      } } }\n`,
+      files: { 'tsconfig.json': '{}\n', 'src/a.ts': '' },
+    })
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+      "grant it, e.g. `allow: { read: ['tsconfig.json'] }`, and, if the output depends on it, " +
+        "key it: `inputs: { files: ['tsconfig.json'] }`.",
+    )
+  })
+
+  // A root task's `inputs.files` stops at a member project, and `vx lock`
+  // refuses a glob into one ("lies inside the project"): a root `tsc -b`
+  // reading a member was told an entry it could not declare.
+  it('beside a cached root task names a member project’s path for inputs.workspaceFiles', async () => {
+    await addProject(root, 'lib', { files: { 'tsconfig.json': '{}\n' } })
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(tsc('packages/lib/tsconfig.json'))},
+          sandbox: { allow: { read: ['tsconfig.base.json'] } } },
+        cache: true,
+        inputs: { files: ['tsconfig.base.json'] },
+        outputs: { files: [] },
+      } } }\n`,
+    )
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+      "grant it, e.g. `allow: { read: ['packages/lib/tsconfig.json'] }`, and, if the output " +
+        "depends on it, key it: `inputs: { workspaceFiles: ['packages/lib/tsconfig.json'] }`.",
+    )
+  })
+})

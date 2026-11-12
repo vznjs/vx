@@ -246,6 +246,62 @@ function linkAliases(foo: string, bar: string): ProjectSpec {
   )
 }
 
+/**
+ * app → confdep, a registry package at `version`, or (with `via`) app →
+ * confwrap@1.0.0 → confdep, the version only the lockfile names. The
+ * harness installs offline, so both versions sit in Bun's cache, as a
+ * registry install leaves them; bun.lock is byte for byte what Bun 1.4
+ * writes for that install, so the install after the pull rewrites nothing.
+ */
+function registry(version: string, via = false): WorkspaceSpec {
+  const cache = '.home/.cache/.bun/install/cache'
+  const pkg = (name: string, v: string, deps: Record<string, string>, main: string) => ({
+    [`${cache}/${name}@${v}@@@1/package.json`]: JSON.stringify({
+      name,
+      version: v,
+      dependencies: deps,
+    }),
+    [`${cache}/${name}@${v}@@@1/index.js`]: main,
+  })
+  const [dep, spec] = via ? ['confwrap', '1.0.0'] : ['confdep', version]
+  const wrap = via
+    ? `\n\n    "confwrap": ["confwrap@1.0.0", "", { "dependencies": { "confdep": "^1.0.0" } }, ""],`
+    : ''
+  return {
+    projects: {
+      app: reader('app', { [dep]: spec }, `bun -e "process.stdout.write(require('${dep}'))"`),
+    },
+    files: {
+      ...pkg('confdep', '1.0.0', {}, "module.exports = 'confdep 1.0.0\\n'\n"),
+      ...pkg('confdep', '1.1.0', {}, "module.exports = 'confdep 1.1.0\\n'\n"),
+      ...pkg('confwrap', '1.0.0', { confdep: '^1.0.0' }, "module.exports = require('confdep')\n"),
+      'bun.lock': `{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "conformance",
+    },
+    "packages/app": {
+      "name": "app",
+      "version": "0.0.0",
+      "dependencies": {
+        "${dep}": "${spec}",
+      },
+    },
+  },
+  "packages": {
+    "app": ["app@workspace:packages/app"],
+
+    "confdep": ["confdep@${version}", "", {}, ""],${wrap}
+  }
+}
+`,
+    },
+  }
+}
+const FROM_INSTALLED = 'vx-lockfile/installed-tree'
+
 export default [
   defineCase({
     id: 'inputs/lockfile-dependency-change-reruns',
@@ -1155,6 +1211,52 @@ export default [
       { run: 'build', expect: { exit: 0, files: { [out('a')]: 'dep\n' } } },
       { write: { '../outside/dep/v.txt': 'dep v2\n' } },
       { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'dep v2\n' } } },
+    ],
+  }),
+  defineCase({
+    id: 'inputs/lockfile-pull-without-install-never-caches-the-old-package',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A pulled dependency bump run before the install never caches a build of the old package',
+    why: 'A `git pull` brings the new manifest and lockfile but not the packages: until the install, `node_modules` still holds the old version. A task run then builds against the old package, and a runner that keys on the lockfile saves that build under the new lockfile’s key. After the install nothing in the key changes, so the stale build replays from then on, to teammates too through a shared cache. Refusing to run until the install, or keying on what is installed, keeps the new version’s build.',
+    from: [FROM_INSTALLED],
+    workspace: registry('1.0.0'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'confdep 1.0.0\n' } } },
+      {
+        write: {
+          'packages/app/package.json': manifest('app', { confdep: '1.1.0' }),
+          'bun.lock': registry('1.1.0').files!['bun.lock']!,
+        },
+      },
+      // What the pull brings beside them: the tool's own record of the lockfile (`vx lock`).
+      { configure: (ws) => ws },
+      { commit: 'pull: confdep 1.1.0' },
+      { run: 'build', expect: { orRefused: true } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'confdep 1.1.0\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/lockfile-pull-transitive-without-install-never-caches-the-old-package',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A pulled bump of a transitive dependency run before the install never caches a build of the old package',
+    why: 'Here only the lockfile changes: app’s manifest still names confwrap 1.0.0, and the new lockfile resolves confwrap’s own dependency confdep to 1.1.0. Until the install, the old confdep is what confwrap loads. A runner that checks only the project’s direct dependencies against the install, or none, saves the build of the old package under the new lockfile’s key, and it replays after the install.',
+    from: [FROM_INSTALLED],
+    workspace: registry('1.0.0', true),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'confdep 1.0.0\n' } } },
+      { write: { 'bun.lock': registry('1.1.0', true).files!['bun.lock']! } },
+      // What the pull brings beside them: the tool's own record of the lockfile (`vx lock`).
+      { configure: (ws) => ws },
+      { commit: 'pull: confdep 1.1.0' },
+      { run: 'build', expect: { orRefused: true } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'confdep 1.1.0\n' } } },
     ],
   }),
 ]

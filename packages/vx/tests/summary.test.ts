@@ -605,7 +605,7 @@ describe('formatRunSummary', () => {
     ])
   })
 
-  it('leads with the projects bar (affected vs workspace total)', () => {
+  it('leads with the projects bar (in the run vs workspace total)', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success')],
       10,
@@ -618,7 +618,7 @@ describe('formatRunSummary', () => {
       },
     )
     expect(lines[3]).toBe('  projects  ' + '▰'.repeat(13) + '▱'.repeat(37))
-    expect(lines[4]).toBe('            1 affected · 4 total')
+    expect(lines[4]).toBe('            1 in run · 4 total')
     // local-only mode reads on the info row (no worker count here)
     expect(lines).toContain('  info      local cache')
   })
@@ -935,7 +935,7 @@ describe('a total is the last word on its line', () => {
     const withTotal = lines.filter((l) => / total\b/.test(l))
     expect(withTotal).toHaveLength(2)
     for (const l of withTotal) expect(l).toMatch(/· \d+ total$/)
-    expect(withTotal[0]).toBe('            2 affected · 5 total')
+    expect(withTotal[0]).toBe('            2 in run · 5 total')
   })
 })
 

@@ -88,7 +88,7 @@ export interface CacheFacts {
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
 //   footer? (false: none), profile?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
-//   holdPersistent? (return the requested persistent tasks still running),
+//   holdPersistent? (return every persistent task still running),
 //   keep? (an earlier run's hand-back: keep each server whose task is unchanged)
 //   commandWindows? (the run's command windows, command-windows.ts; vx watch passes its own)
 
@@ -181,15 +181,16 @@ export interface RunSummary {
     reset during the session is reset back silently, as a run's open does.
     Its telemetry summary (step 14) waits for that verdict too, after the
     plugins' teardown, so a sink (vx-ci's job summary) reads the failure.
-    Under `RunOptions.holdPersistent` (the watch loop) the same
-    selection applies outside the foreground, and run() returns at
+    Under `RunOptions.holdPersistent` (the watch loop) every server is
+    kept, a dependency-only one too (but one with no `inputs.files`), and run() returns at
     once with the kept tasks on `RunSummary.persistent` (`holdServers`): the caller
     owns them and its `stop()` is the same teardown. One that dies on
     its own after that is named (`vx: <id> exited with code <n>`,
     #2442), so a watch loop idling over a dead server says so; the
     teardown its `stop()` runs is not. `RunOptions.keep` hands such a
     hand-back to the next run: each server still up whose node is in its
-    graph with the same resolved config (`serverConfig`) is reported
+    graph with the same resolved config (`serverConfig`), and for a
+    dependency-only one (`keyedServers`) the same key, is reported
     ready when its task is reached, without a spawn, and its output cell
     is pointed at the new run's bus; the others are stopped before the
     run lock (`takeHeldServers`). A taken server leaves the earlier
@@ -340,8 +341,10 @@ held it two at once 22 times in four seconds and a release threw ENOENT
 out of `run()` (item 759, `tests/run-lock.test.ts` › "contending
 processes never hold it at once…", with holders that die holding it). A
 second process polls every 50 ms, after a second says
-`[vx] waiting for another vx run (pid N) on this workspace to finish…`,
-and reclaims a lock whose pid is gone. A signal exit is `process.exit`
+`[vx] waiting for another vx run (pid N) on this workspace to finish…`
+(`run()` passes it to `log.status` as `wait`: taking turns is no
+warning; `tests/run-lock-e2e.test.ts` › "the waiting notice is a status
+line…"), and reclaims a lock whose pid is gone. A signal exit is `process.exit`
 (`signals.ts`), which runs no `finally`, so the process's `exit` event
 also removes the entry this process still holds, synchronously: a
 Ctrl-C left it for the next run to reclaim (item 848,

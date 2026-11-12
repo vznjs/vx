@@ -149,6 +149,23 @@ describe('the shared store', () => {
     expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
   })
 
+  it('two clones on one named cache dir each stay up to date', async () => {
+    // One index holds both clones' stamps and directory snapshots, keyed
+    // by the clone's root: keyed by the entry and relative path alone, the
+    // last clone's overwrote the other's, and every switch restored.
+    const shared = await mkdtemp(path.join(os.tmpdir(), 'vx-shared-dir-'))
+    made.push(shared)
+    process.env['VX_CACHE_DIR'] = shared
+    const a = await workspace()
+    const b = await workspace()
+    await build(a)
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
+    expect(await build(b)).toEqual({ status: 'cache-hit', restored: true })
+    expect(await build(b)).toEqual({ status: 'cache-hit', restored: false })
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
+    expect(await build(b)).toEqual({ status: 'cache-hit', restored: false })
+  })
+
   it('a different input misses, in either workspace', async () => {
     const a = await workspace('one\n')
     const b = await workspace('two\n')
@@ -265,6 +282,17 @@ describe('the shared store', () => {
     await rm(path.join(a.pkg, 'out.txt'))
     expect(await build(a)).toEqual({ status: 'cache-hit', restored: true })
     expect(storedKeys(await store(), 'store.db')).toHaveLength(1)
+  })
+
+  it("a repository's first commit keeps the outputs up to date", async () => {
+    // The stamps were keyed by whether a store held the entries: none
+    // before the first commit, one after, so the run after restored all.
+    const a = await workspace('hi\n', null)
+    await writeFile(path.join(a.root, '.gitignore'), 'out.txt\n')
+    await build(a)
+    gitIn(a.root)('add', '-A')
+    gitIn(a.root)('-c', 'user.email=t@vx', '-c', 'user.name=t', 'commit', '-q', '-m', 'first')
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
   })
 
   it('another repository keeps its own store', async () => {

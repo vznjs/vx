@@ -101,7 +101,7 @@ as the real command when you want Nx gone:
 ```ts
 build: {
   exec: { command: 'tsc -b tsconfig.lib.json' },
-  inputs: { files: ['src/**', 'tsconfig.lib.json'] }, outputs: { files: ['dist/**'] }, cache: true,
+  inputs: { files: ['src/**', 'tsconfig.lib.json'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,
 }
 ```
 

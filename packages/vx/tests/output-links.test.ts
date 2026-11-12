@@ -146,6 +146,13 @@ it.skipIf(process.platform === 'win32')(
     )
     const r2 = await build(abs.root)
     expect(r2.out + r2.err).toMatch(/output dist\/x is a symlink to an absolute path/)
+    // A venv's `bin/python -> /usr/local/bin/python3` was told it named
+    // this machine's checkout: it names a path outside the workspace.
+    const sys = await workspace('rm -rf dist && mkdir -p dist && ln -s /usr/bin/env dist/python')
+    const venv = await build(sys.root)
+    expect(venv.out + venv.err).toMatch(
+      /output dist\/python is a symlink to \/usr\/bin\/env, an absolute path outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there \(a copy, e\.g\. `python -m venv --copies`\), or take it back with a '!' entry/,
+    )
     // Every restore refuses a link into .git, so a save that kept one
     // stored an entry no machine could hit.
     const git = await workspace(
@@ -453,6 +460,49 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
+// A link named as a directory an entry lies in: the tree's re-pack would
+// read the entry through the link.
+it.skipIf(process.platform === 'win32')(
+  'an artifact with a link where a directory of its entries stands restores nothing',
+  async () => {
+    const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-links-under-'))
+    made.push(ws)
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest)
+    for (const file of ['outputs/dist/k/x', 'outputs/dist/k/sub/x']) {
+      const body = JSON.stringify({
+        version: 1,
+        files: { [file]: [0o644, 0] },
+        links: { 'outputs/dist/k': 'other' },
+      })
+      const parts: Uint8Array[] = []
+      for await (const c of tarPack([
+        { name: 'stdout', size: 0, body: '' },
+        { name: file, size: 5, body: 'decoy' },
+        { name: '.vx-meta.json', size: Buffer.byteLength(body), body },
+      ])) {
+        parts.push(c)
+      }
+      const tar = await withSum(new Uint8Array(await new Blob(parts).arrayBuffer()))
+      const err = await extractArtifactStream(
+        streamOf(tar),
+        dest,
+        ws,
+        undefined,
+        undefined,
+        ws,
+      ).then(
+        () => null,
+        (e: unknown) => e,
+      )
+      expect(String(err)).toContain(
+        'ArchiveSecurityError: archive link outputs/dist/k is also a file or directory entry',
+      )
+      expect(lstatSync(path.join(dest, 'dist'), { throwIfNoEntry: false })).toBeUndefined()
+    }
+  },
+)
+
 // What the rows call a file is packed only as one: a link there is
 // read through, so its target's bytes would ride the artifact.
 it.skipIf(process.platform === 'win32')('a kept tree packs no link it calls a file', () => {
@@ -555,7 +605,10 @@ it.skipIf(process.platform === 'win32')(
         '../../../../x',
         /output dist\/libu\.so\.1 is a symlink to \.\.\/\.\.\/\.\.\/\.\.\/x, outside the workspace/,
       ],
-      ['/etc/hostname', /output dist\/libu\.so\.1 is a symlink to an absolute path/],
+      [
+        '/etc/hostname',
+        /output dist\/libu\.so\.1 is a symlink to \/etc\/hostname, an absolute path outside the workspace/,
+      ],
     ] as const) {
       const { root } = await workspace(
         `rm -rf dist && mkdir -p dist && ln -s ${hop} dist/libu.so.1 && ln -s libu.so.1 dist/libu.so`,

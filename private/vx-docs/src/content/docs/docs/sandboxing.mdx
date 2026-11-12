@@ -20,7 +20,9 @@ export default defineProject({
         sandbox: {
           allow: {
             read: ['.', '~/.cache/ms-playwright'],
-            write: ['dist/**'],
+            // vite bundles vite.config.ts to a temp file it imports: vite 6+ in
+            // the nearest node_modules/.vite-temp/, vite 5 beside the config.
+            write: ['dist/**', 'node_modules/.vite-temp/', 'vite.config.ts.timestamp-*.mjs'],
             network: ['registry.npmjs.org'],
           },
           deny: { network: ['telemetry.example.com'] },
@@ -69,6 +71,12 @@ denied unless `allow.read` names one.
    An undeclared read or write fails it, names the path, and prints a
    `fix:` line with the grants that would have allowed it
    (`sandboxFix` in `vx last --format json`).
+
+   On Linux a tool that only checks a path exists (`existsSync`,
+   `test -e`) is not traced: it sees the file as missing.
+
+   A failed task whose output names such a path gets a hint with its
+   grant. A task that passes on its fallback is not caught.
 
 5. **Declare the path**
 
@@ -161,8 +169,8 @@ union per run.
 | -------------- | ----------------------------------------------------------------- |
 | `read`         | paths or globs: package-relative, absolute or `~/`                |
 | `write`        | paths or globs; a directory ends in `/` or is a glob (`dist/**`)  |
-| `network`      | `true`, or a list of domains (`*.sentry.io`)                      |
-| `localBinding` | bind localhost ports (macOS; Linux needs no grant); a list (`[3000]`) makes them reachable from outside |
+| `network`      | `true`, or a list of domains (`*.sentry.io`); `localhost:4173` reaches a server on this machine |
+| `localBinding` | bind localhost ports (Linux needs no grant); a list (`[3000]`) makes them reachable from outside |
 | `unixSockets`  | `true`, or socket paths (Linux: any path)                         |
 | `systemInfo`   | sysctl names a tool probes (`vfs.disk-space`)                     |
 | `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
@@ -252,6 +260,7 @@ a one-shot sandboxed task to see what it was refused.
 - **`File exists` or `Not a directory` from the task's own `mkdir`.** A write grant with no trailing slash is a file (`mkdir -p coverage` reads the first, `mkdir -p coverage/lcov` the second). Write `'coverage/'`.
 - **A file the task creates later is refused on Linux** ("Read-only file system"). A glob with a file part (`*.log`, `gen/**/*.ts`) is matched when the task starts. Grant its directory (`'gen/'`; `'dist/**'` grants the directory too). A temp directory the tool makes and removes in the package (`.*.tmp/**`) needs only the glob: nothing written there is kept.
 - **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable", then "Failed to extract executable"). Bun fetches the target's runtime from npm into its cache. Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
+- **`next build` with `output: 'standalone'` writes `node_modules/.bun/…` (or `.pnpm/…`) under the app.** Next finds its root by the lockfile up the tree, which the sandbox hides, so it takes the app for the root. Grant the lockfile, not the write: `read: ['.', '../../bun.lock']`, keyed with `inputs.workspaceFiles: ['bun.lock']`. The `fix:` line names both.
 - **`read packages/ui (linked at packages/app/node_modules/@x/ui), and its key includes no task of packages/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself: the `fix:` line names the grant and the `inputs.workspaceFiles` entry. A linked package that is no project gets only that second route.
 
 ---

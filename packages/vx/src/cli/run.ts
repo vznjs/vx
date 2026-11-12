@@ -134,6 +134,19 @@ const SETTING_OPTIONS = [
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
  * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
 export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
+  const { forwarded: _, ...out } = parse(args, verb)
+  return out
+}
+
+/**
+ * `forwarded` is the line a refused task flag suggests, every task flag
+ * behind `--`; `moved` holds the ones an outer call already took, in order.
+ */
+function parse(
+  args: readonly string[],
+  verb: 'run' | 'watch',
+  moved: readonly string[] = [],
+): RunArgs & { forwarded?: readonly string[] } {
   const out: RunArgs = {
     tasks: [],
     filters: [],
@@ -347,12 +360,23 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       // moved. A long one far from any vx flag gets no guess: a typo of
       // vx's own sent to the task would be ignored there unseen.
       const own = flagHint(verb, a)
-      const moved = [...before.slice(0, i), '--', ...before.slice(i), ...out.forwardArgs]
+      if (own !== '' || !/^-[^-]/.test(a)) return { ...out, error: `unknown flag: ${a}${own}` }
+      // Only the flag and the words it took move: `-j 1 --all` moved vx's
+      // `--all` too, and the line was refused `not inside a project`. The
+      // line is parsed again so a later task flag moves as well, and a line
+      // vx would refuse is not suggested.
+      let end = i + 1
+      while (end < before.length && !before[end]!.startsWith('-')) end++
+      const rest = [...before.slice(0, i), ...before.slice(end)]
+      const taken = [...moved, ...before.slice(i, end)]
+      const line = [...rest, '--', ...taken, ...out.forwardArgs]
+      const again = parse([...rest, '--', ...out.forwardArgs], verb, taken)
+      const forwarded = again.error === undefined ? line : again.forwarded
       const hint =
-        own !== '' || !/^-[^-]/.test(a)
-          ? own
-          : ` (did you mean vx ${verb} ${moved.map(shellQuote).join(' ')}?)`
-      return { ...out, error: `unknown flag: ${a}${hint}` }
+        forwarded === undefined
+          ? ''
+          : ` (did you mean vx ${verb} ${forwarded.map(shellQuote).join(' ')}?)`
+      return { ...out, error: `unknown flag: ${a}${hint}`, ...(forwarded ? { forwarded } : {}) }
     } else if (a !== undefined) {
       // A config may not declare such a name (`taskNameProblem`); a pasted
       // newline was refused as an unknown task, printed raw.

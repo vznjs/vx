@@ -16,6 +16,7 @@ import {
   POST_EXIT_DRAIN_MS,
   testTimerMs,
   helperEnv,
+  RawUtf8Decoder,
   type SecretMask,
 } from '../util/index.js'
 import {
@@ -1015,7 +1016,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       forward(chunk.slice(end))
     }
     const reader = stream.getReader()
-    const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
+    const decoder = new RawUtf8Decoder()
     try {
       while (true) {
         const { value, done } = await reader.read()
@@ -1644,7 +1645,7 @@ export async function streamToString(
   if (!stream || typeof stream === 'number') return ''
   const full = new BoundedCapture()
   const reader = stream.getReader()
-  const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
+  const decoder = new RawUtf8Decoder()
   // On abort, cancel the read so a pending `reader.read()` resolves
   // `done` and we return whatever we captured. Needed for the timeout
   // path: SIGTERMing `sh` doesn't close the pipe if an orphaned

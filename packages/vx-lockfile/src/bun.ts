@@ -27,6 +27,8 @@ export interface Lockfile {
   readonly workspaceSections: ReadonlyMap<string, string>
   /** workspace package name → its dir */
   readonly workspaceDirs: ReadonlyMap<string, string>
+  /** non-root workspace dir → its own `version`, which `bun pm pack` writes for a dependent's `workspace:` range */
+  readonly workspaceVersions: ReadonlyMap<string, string>
   /** root-relative dir → its installed dependencies (`dependencies` win, as Bun 1.4 installs them) */
   readonly workspaceInstalled: ReadonlyMap<string, ReadonlyMap<string, string>>
   /** root-relative dir → the peers it installs no entry for */
@@ -47,6 +49,8 @@ export interface Entry {
   readonly peers: ReadonlySet<string>
   /** integrity / commit — whatever pins the bytes */
   readonly resolution: string
+  /** shipped inside its parent's tarball (`bundleDependencies`), not installed from this entry */
+  readonly bundled: boolean
 }
 
 /** The top-level fields the digest reads per workspace. */
@@ -78,6 +82,7 @@ export function parseLockfile(text: string): Lockfile {
   const workspaces = new Map<string, ReadonlyMap<string, string>>()
   const workspaceSections = new Map<string, string>()
   const workspaceDirs = new Map<string, string>()
+  const workspaceVersions = new Map<string, string>()
   const workspaceInstalled = new Map<string, ReadonlyMap<string, string>>()
   const workspacePeers = new Map<string, ReadonlySet<string>>()
   for (const [dir, manifest] of Object.entries(record(d['workspaces']) ?? {})) {
@@ -91,6 +96,9 @@ export function parseLockfile(text: string): Lockfile {
     )
     workspacePeers.set(key, peerOnly(m))
     if (typeof m['name'] === 'string') workspaceDirs.set(m['name'], key)
+    // The root's is in every key and packs into none: a release bump of it
+    // would re-key every task with node_modules unchanged.
+    if (key !== '.' && typeof m['version'] === 'string') workspaceVersions.set(key, m['version'])
   }
   const packages = new Map<string, Entry>()
   for (const [p, tuple] of Object.entries(record(d['packages']) ?? {})) {
@@ -102,6 +110,7 @@ export function parseLockfile(text: string): Lockfile {
       deps: depsOf(record(meta) ?? {}),
       peers: peerOnly(record(meta) ?? {}),
       resolution: typeof resolution === 'string' ? resolution : '',
+      bundled: record(meta)?.['bundled'] === true,
     })
   }
   // Every top-level field but the two read per workspace, so a field this
@@ -122,6 +131,7 @@ export function parseLockfile(text: string): Lockfile {
     workspaces,
     workspaceSections,
     workspaceDirs,
+    workspaceVersions,
     workspaceInstalled,
     workspacePeers,
     packages,
@@ -256,12 +266,102 @@ function workspaceOf(lock: Lockfile, id: string): string | undefined {
  */
 function importerFrom(lock: Lockfile, dir: string): string {
   if (dir === '.') return ''
-  for (const [name, wsDir] of lock.workspaceDirs) {
-    if (wsDir !== dir) continue
-    const held = lock.packages.get(name)
-    return held === undefined || held.id === `${name}@workspace:${dir}` ? name : `./${name}`
+  // Each workspace asks: a scan of every name per ask was quadratic, 33 ms
+  // of a 1,000-workspace install check.
+  let names = namesByDir.get(lock)
+  if (names === undefined) {
+    names = new Map()
+    for (const [name, wsDir] of lock.workspaceDirs) if (!names.has(wsDir)) names.set(wsDir, name)
+    namesByDir.set(lock, names)
   }
-  return ''
+  const name = names.get(dir)
+  if (name === undefined) return ''
+  const held = lock.packages.get(name)
+  return held === undefined || held.id === `${name}@workspace:${dir}` ? name : `./${name}`
+}
+const namesByDir = new WeakMap<Lockfile, Map<string, string>>()
+
+/**
+ * The registry version each workspace's dependencies resolve to, as the
+ * lockfile names it: workspace dir → dependency name → version. A
+ * `workspace:`, git, tarball or `file:` dependency names no version and is
+ * left out.
+ */
+export function directVersions(lock: Lockfile): Map<string, Map<string, string>> {
+  const out = new Map<string, Map<string, string>>()
+  for (const [dir, deps] of lock.workspaceInstalled) {
+    const from = importerFrom(lock, dir)
+    const versions = new Map<string, string>()
+    for (const name of deps.keys()) {
+      const key = resolve(lock, from, name)
+      const version = registryVersion(key === undefined ? undefined : lock.packages.get(key)?.id)
+      if (version !== undefined) versions.set(name, version)
+    }
+    out.set(dir, versions)
+  }
+  return out
+}
+
+/** A registry package id's version (`is-number@7.0.0` → 7.0.0); none for any other id. */
+function registryVersion(id: string | undefined): string | undefined {
+  const version = id?.slice(id.indexOf('@', 1) + 1)
+  return version !== undefined && /^\d+\.\d+\.\d+/.test(version) ? version : undefined
+}
+
+/**
+ * Where the hoisted linker puts each registry package the lockfile lists:
+ * root-relative dir → version. Key `p/d` nests `d` in `p`'s own
+ * `node_modules`, a workspace's through the root's link to it, and
+ * `./<name>/d` in that workspace's.
+ */
+export function hoistedVersions(lock: Lockfile): Map<string, string> {
+  // A tarball's bundled packages are its own, nested ones too: npm 11.21
+  // ships @sigstore/protobuf-specs 0.5.1 where bun.lock names 0.5.2.
+  const bundlers = new Set<string>()
+  for (const [p, e] of lock.packages) {
+    if (e.bundled) bundlers.add(packageLevels(p).slice(0, -1).join('/'))
+  }
+  const out = new Map<string, string>()
+  for (const [p, e] of lock.packages) {
+    const version = registryVersion(e.id)
+    if (version === undefined) continue
+    const levels0 = packageLevels(p)
+    if (levels0.some((_, i) => i > 0 && bundlers.has(levels0.slice(0, i).join('/')))) continue
+    let base = ''
+    let levels = levels0
+    if (p.startsWith('./')) {
+      const dir = lock.workspaceDirs.get(levels[1]!)
+      if (dir === undefined) continue
+      base = `${dir}/`
+      levels = levels.slice(2)
+    }
+    out.set(base + levels.map((l) => `node_modules/${l}`).join('/'), version)
+  }
+  return out
+}
+
+/**
+ * The isolated linker's links, by package id: `name@version` → dependency
+ * name → the ids the lockfile resolves it to from any key holding that
+ * package. Peers are left out: each store copy links its own.
+ */
+export function storeLinks(lock: Lockfile): Map<string, Map<string, Set<string>>> {
+  const out = new Map<string, Map<string, Set<string>>>()
+  for (const [p, e] of lock.packages) {
+    if (registryVersion(e.id) === undefined) continue
+    let deps = out.get(e.id)
+    if (deps === undefined) out.set(e.id, (deps = new Map()))
+    for (const name of e.deps.keys()) {
+      if (e.peers.has(name)) continue
+      const key = resolve(lock, p, name)
+      const id = key === undefined ? undefined : lock.packages.get(key)!.id
+      if (registryVersion(id) === undefined) continue
+      let ids = deps.get(name)
+      if (ids === undefined) deps.set(name, (ids = new Set()))
+      ids.add(id!)
+    }
+  }
+  return out
 }
 
 /**
@@ -427,9 +527,11 @@ function buildGraph(
   const importers = new Map<string, number>()
   for (const [dir, deps] of lock.workspaces) {
     // Its dir, as pnpm's importers fold theirs (item 1073).
+    // And its version: `bun pm pack` writes it in place of a dependent's
+    // `workspace:*`, so a bump left the dependent's tarball replayed.
     const own = node(
       `workspace\0${dir}`,
-      `workspace\0${dir}\nsections\0${lock.workspaceSections.get(dir)}`,
+      `workspace\0${dir}\nsections\0${lock.workspaceSections.get(dir)}\nversion\0${lock.workspaceVersions.get(dir) ?? ''}`,
     )
     importers.set(dir, own)
     const from = importerFrom(lock, dir)

@@ -3,7 +3,8 @@
 // with no read grant the task met "Directory nonexistent", and with
 // `read: ['.']` the read-only bind of the link landed on the writable
 // target, "Read-only file system". No violation, no fix, and a warning
-// telling the user to move the write grant (`real`) out of `.`.
+// telling the user to move the write grant (`real`) out of `.`. A link a
+// read grant's punch meets is laid as a link now (`punchedLinks`).
 import { realpathSync, symlinkSync } from 'node:fs'
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -93,19 +94,45 @@ describe.skipIf(!available || process.platform !== 'linux')(
       )
     })
 
-    it('a link into a grant made by its real path is named, with the grant that writes through it', async () => {
-      // The warning told the user to move the write grant out of `.`.
+    it('a link into a grant made by its real path writes through it', async () => {
+      // The link was bound read-only over the writable target, and a
+      // warning told the user to move the write grant out of `.`.
       const { got, warned } = await outcome({ read: ['.'], write: ['real/'] })
-      const gen = path.join(root, 'packages', 'p', 'gen')
-      expect(got[0], said).toBe('failed')
-      expect(warned).toEqual([
-        `[vx] sandbox: ${gen} is a symlink into the write grant ${path.join(root, 'packages', 'p', 'real')}, ` +
-          `and the Linux sandbox mounts it read-only, so a write through it is refused. Grant ` +
-          `the link itself to write through it: ${gen}/\n`,
-      ])
-      await rm(path.join(root, 'packages', 'p'), { recursive: true, force: true })
-      const both = await outcome({ read: ['.'], write: ['real/', 'gen/'] })
-      expect(both.got, said).toEqual(['success', 0, 'a\n'])
+      expect(got, said).toEqual(['success', 0, 'a\n'])
+      expect(warned).toEqual([])
+    })
+
+    it('a write grant under node_modules keeps its linked packages links', async () => {
+      // pnpm's layout: every package a link into a store beside it, and
+      // `tsc -b` writes `node_modules/.tmp/*.tsbuildinfo`. The punch around
+      // that grant bound each link as the directory it points at, so a
+      // package resolving a sibling through `..` found none (vite: `Cannot
+      // find package 'picomatch'`), and a warning said to move the grant.
+      const dir = await addProject(root, 'p', {
+        config: `export default { tasks: { t: {
+        exec: { command: 'cat node_modules/pkg/../dep/f && echo b > node_modules/.tmp/t.info', sandbox: { allow: { read: ['.'], write: ['node_modules/.tmp/t.info'] } } },
+        inputs: { files: [] },
+      } } }\n`,
+        files: { 'node_modules/.store/pkg/index.js': '', 'node_modules/.store/dep/f': 'a\n' },
+      })
+      await mkdir(path.join(dir, 'node_modules', '.tmp'))
+      symlinkSync('.store/pkg', path.join(dir, 'node_modules', 'pkg'))
+      said = ''
+      const warned: string[] = []
+      const spy = spyOn(process.stderr, 'write').mockImplementation((s: string | Uint8Array) => {
+        warned.push(String(s))
+        return true
+      })
+      let r
+      try {
+        r = await run({ cwd: root, tasks: ['t'], log })
+      } finally {
+        spy.mockRestore()
+      }
+      expect(r.outcomes[0]!.status, said).toBe('success')
+      expect(said).toContain('a\n')
+      expect(await readFile(path.join(dir, 'node_modules', '.tmp', 't.info'), 'utf8')).toBe('b\n')
+      expect(warned.filter((w) => w.includes('symlink'))).toEqual([])
     })
 
     it('CONTROL: the grant by its real path lands', async () => {

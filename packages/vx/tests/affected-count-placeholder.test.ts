@@ -54,5 +54,5 @@ it('a project reached by ^build with no build is not counted as affected', () =>
   })
   const out = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
   expect(p.exitCode).toBe(0)
-  expect(out).toContain('1 affected · 2 total')
+  expect(out).toContain('1 in run · 2 total')
 }, 60_000)

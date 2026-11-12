@@ -171,6 +171,57 @@ describe('vx watch rejects flags it cannot honor', () => {
     expect(parseRunArgs(['test', '--zzz']).error).toBe('unknown flag: --zzz')
   })
 
+  it("keeps vx's own flags before `--` in the forwarding hint, and that line parses", () => {
+    // `vx run test -t adds --all` moved `--all` behind `--`: the suggested
+    // run was refused `not inside a project`.
+    const hint = (args: string[], verb: 'run' | 'watch' = 'run'): string[] | undefined => {
+      const m = /\(did you mean vx (?:run|watch) (.*)\?\)$/.exec(
+        parseRunArgs(args, verb).error ?? '',
+      )
+      return m?.[1]?.split(' ')
+    }
+    expect(hint(['test', '-t', 'adds', '--all', '--filter', 'app'])).toEqual([
+      'test',
+      '--all',
+      '--filter',
+      'app',
+      '--',
+      '-t',
+      'adds',
+    ])
+    // Every task flag moves, each with its words; forwarded args stay last.
+    const two = ['test', '--all', '-t', 'adds', '--concurrency', '2', '-x', '--', '--bail']
+    expect(hint(two)).toEqual([
+      'test',
+      '--all',
+      '--concurrency',
+      '2',
+      '--',
+      '-t',
+      'adds',
+      '-x',
+      '--bail',
+    ])
+    for (const args of [two, ['test', '-t', 'adds', '--all', '--filter', 'app']]) {
+      const parsed = parseRunArgs(hint(args)!)
+      expect(parsed.error).toBeUndefined()
+      expect(parsed.all).toBe(true)
+    }
+  })
+
+  it("names --concurrency for other tools' spellings of it", () => {
+    // `-j 1 --all` was told to forward `-j 1 --all` to the task.
+    for (const a of ['-j', '-j4', '--jobs', '--jobs=4', '--parallel', '--parallel=3'])
+      expect(parseRunArgs(['build', a, '--all']).error).toBe(
+        `unknown flag: ${a} (did you mean --concurrency?)`,
+      )
+    // Lerna's and Nx's project selectors.
+    for (const a of ['--scope', '--projects'])
+      expect(parseRunArgs(['build', a, 'app']).error).toBe(
+        `unknown flag: ${a} (did you mean --filter?)`,
+      )
+  })
+
   it('still parses --verbosity for vx run', () => {
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
   })

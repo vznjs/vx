@@ -47,6 +47,9 @@ import {
   maskCaptured,
   BoundedCapture,
   keyedOutsideGrants,
+  atOrUnder,
+  MOUNT_WILDCARDS,
+  toRealPath,
 } from '../exec/index.js'
 import {
   encodeOutputLog,
@@ -66,6 +69,8 @@ import {
 import {
   anyTaskGlob,
   heldSecrets,
+  ignoredByGlobs,
+  ignoredInputLine,
   isLiteralPattern,
   killGraceMs,
   MASKED,
@@ -77,9 +82,11 @@ import {
   type SecretMask,
   secretNamed,
   span,
+  taskGlobOf,
   UserError,
 } from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { declareStateHint, stampUndeclaredState, stateChanged } from './undeclared-state.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import type { CommandWindows } from './command-windows.js'
 import {
@@ -108,7 +115,7 @@ import { currentHit, restoreHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
 import { shellVerdict } from './shell-verdict.js'
 import { lockedDirGone } from './projects.js'
-import { perRunWriteHint, sandboxFix } from './sandbox-fix.js'
+import { misrootedWriteHint, perRunWriteHint, sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
@@ -136,6 +143,9 @@ import {
   taskEnv,
   taskTimeoutMs,
 } from './task-process.js'
+
+/** A test snapshot's path: jest's and vitest's `__snapshots__/`, or a `.snap` file. */
+const SNAPSHOT = /(?:^|[\\/])__snapshots__[\\/]|\.snap$/
 
 export interface ExecuteArgs {
   node: TaskNode
@@ -353,6 +363,8 @@ export interface ExecuteArgs {
   serversNested?: readonly (readonly string[])[]
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
+  /** Every task of the project at a directory, as its config declares them (undeclared-state.ts). Absent: none. */
+  projectTasks?: (projectDir: string) => readonly TaskConfig[]
   /**
    * A persistent task matched `readyWhen` (or spawned, with none): what it
    * writes from here on is its since-ready output (run.ts holds it until
@@ -1052,6 +1064,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
 
+  if (inputs !== undefined) {
+    const isOwnOutput = (abs: string): boolean =>
+      ownOutput?.(relPosix(node.projectDir, abs)) === true ||
+      ownWsOutput?.(relPosix(args.workspaceRoot, abs)) === true
+    const left = [
+      ...ignoredByGlobs(cfg.inputs?.files, node.projectDir, args.workspaceRoot, inputs.files),
+      ...ignoredByGlobs(
+        cfg.inputs?.workspaceFiles,
+        args.workspaceRoot,
+        args.workspaceRoot,
+        inputs.files,
+      ),
+    ].filter(([abs]) => !isOwnOutput(abs))
+    for (const [, rel, glob] of left) warnOf(log)(`[vx] ${ignoredInputLine(node.id, rel, glob)}`)
+  }
+
   // Sandbox is opt-in per task via `exec.sandbox: {}` (or `{...}`) in the
   // task config. No CLI flag, no workspace inheritance — the task config is
   // the single source of truth, and a violation fails the task (below).
@@ -1063,6 +1091,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The linked workspace packages the request withheld: the key does not
   // answer for them.
   let withheld: WithheldLink[] = []
+  // The dependencies' outputs: a write refused there is granted no fix.
+  let upstreamOutputs: string[] = []
+  // Where this machine's sandbox let the task write (absolute, globs kept):
+  // an input changed outside them was not the task's doing. Undefined when
+  // unsandboxed or run elsewhere.
+  let sandboxWrites: readonly string[] | undefined
 
   // Cache miss path (or caching disabled), up to `1 + retries` attempts.
   // Explicit config wins over the run-level `--retries` default, including
@@ -1542,6 +1576,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
   }
+  // The undeclared state the command may write and read back next run,
+  // stamped before it. Only where a save follows on this disk.
+  const stateFrom = Date.now()
+  const state =
+    willSave && !deferralRequested && args.executor.remote !== true
+      ? stampUndeclaredState({
+          config: node.config,
+          projectDir: node.projectDir,
+          workspaceRoot: args.workspaceRoot,
+          nestedProjectDirs: args.nestedProjectDirs,
+          gitFilesCache: args.gitFilesCache,
+          projectTasks: args.projectTasks?.(node.projectDir) ?? [],
+        })
+      : undefined
   for (;;) {
     attempt++
     const a = await runAttempt()
@@ -1766,6 +1814,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
+    upstreamOutputs = [...deps.reads, ...deps.reported]
+    const c = sb.sandbox.config
+    sandboxWrites = local
+      ? [
+          ...c.allowWrite,
+          ...(c.pendingWrites ?? []),
+          ...(c.linkedWrites ?? []).flatMap((l) => [l.link, l.target]),
+        ]
+      : undefined
     return { ...base, sandbox: sb.sandbox, signal: requestSignal(local) }
   }
 
@@ -1809,6 +1866,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     effectiveExitCode === 0 &&
     willSave &&
     nothingLeftRunning() &&
+    noStateWritten() &&
     (await keyStillTrue()) &&
     (await args.serverDiedUnder?.(node)) !== true &&
     (own = await ownOutputs()) !== undefined
@@ -1835,6 +1893,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         deferSave: args.deferSave,
         // A sink listens: say what the save cost.
         measure: args.explainMiss !== undefined,
+        state,
       }),
     )
     // A run that settles the outcome on `landed` learns there whether the
@@ -1973,6 +2032,42 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   /**
+   * The command changed an undeclared ignored file in its project
+   * (`undeclared-state.ts`). One a sandbox let it write none of is another
+   * process's. One another command of the project may have written while
+   * this one ran cannot be told from this one's write: still not saved,
+   * and the warning names that command.
+   */
+  function noStateWritten(): boolean {
+    if (state === undefined || state.size === 0) return true
+    const changed = stateChanged(state, node.projectDir).filter(
+      (rel) =>
+        sandboxWrites === undefined ||
+        sandboxWrites.some((w) => mayWrite(toRealPath(path.join(node.projectDir, rel)), w)),
+    )
+    if (changed.length === 0) return true
+    const to = Date.now() + 1
+    let alongside: string | undefined
+    for (const rel of changed) {
+      alongside = args.commandWindows?.writerDuring(
+        node.id,
+        path.join(node.projectDir, rel),
+        stateFrom,
+        to,
+      )
+      if (alongside !== undefined) break
+    }
+    warnOf(log)(
+      `[vx] ${node.id}: ${changed.map(printable).join(', ')} changed while the task ran, ` +
+        `but git ignores ${changed.length === 1 ? 'it' : 'them'} and the task declares ` +
+        `${changed.length === 1 ? 'it' : 'them'} neither input nor output — the result stands, but is not saved: ` +
+        `a tool that reads such a file back (an incremental build's state) builds from it, not from the inputs` +
+        declareStateHint(changed, alongside),
+    )
+    return false
+  }
+
+  /**
    * The input that no longer holds what the key folded, or one the key did
    * not fold that is there now: `null` when the key re-derived just before
    * the command already differed (the file unnamed), undefined when none
@@ -2066,6 +2161,28 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const read =
       moved !== null &&
       keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
+    // One that appeared is not an output to declare: vx deletes an
+    // uncommitted output before each run, so a snapshot vitest writes on
+    // its first run was written anew every run and a changed value passed.
+    // A file the task checks against is committed; a generated one leaves
+    // the inputs before it joins the outputs.
+    const appeared = (rel: string): string => {
+      const own = relPosix(node.projectDir, rel)
+      const [field, at] = own.startsWith('../')
+        ? ['inputs.workspaceFiles', relPosix(args.workspaceRoot, rel)]
+        : ['inputs.files', own]
+      return (
+        '; it appeared during the run: if the task checks against it (a test snapshot), ' +
+        `commit it; if the task generates it, exclude it from ${field} ` +
+        `('!${printable(taskGlobOf(at)).replace(/[\\']/g, '\\$&')}') and declare it in outputs`
+      )
+    }
+    // A sandboxed task none of whose write grants reach the file could not
+    // have written it: the outputs and 'mutable' advice read as if it had.
+    const notTheTask =
+      moved !== null &&
+      sandboxWrites !== undefined &&
+      !sandboxWrites.some((w) => mayWrite(toRealPath(moved), w))
     // Under watch the edit starts the next cycle, which runs on it: said
     // first, or the way out read as the fix for the user's own edit.
     const hint =
@@ -2074,10 +2191,19 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ? "; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }"
         : moved === null || rewroteBy !== undefined || !existsSync(moved)
           ? ''
-          : '; if the task generates it, declare it in outputs' +
-            (read && stability.strategy !== 'mutable'
-              ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
-              : ''))
+          : notTheTask
+            ? '; the sandbox let the task write none of it, so another process changed it during the run (an editor, a checkout)' +
+              (args.watch === true ? '' : '; the next run runs on it')
+            : !read
+              ? appeared(moved)
+              : // `jest -u`: a snapshot the task checks against is committed, as
+                // a new one is, never an output or a mutable input.
+                SNAPSHOT.test(moved)
+                ? '; it is a test snapshot the task updated: commit it'
+                : '; if the task generates it, declare it in outputs' +
+                  (stability.strategy !== 'mutable'
+                    ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+                    : ''))
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +
@@ -2115,11 +2241,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
 
-  const perRun =
+  const notes =
     violations.length === 0
-      ? undefined
-      : perRunWriteHint(violations, node.projectDir, args.workspaceRoot)
-  const finalViolations = perRun === undefined ? violations : [...violations, perRun]
+      ? []
+      : [
+          perRunWriteHint(violations, node.projectDir, args.workspaceRoot),
+          misrootedWriteHint(violations, node.projectDir, args.workspaceRoot),
+        ].filter((n) => n !== undefined)
+  const finalViolations = notes.length === 0 ? violations : [...violations, ...notes]
   const fixOf = (fix: TaskOutcome['sandboxFix']) => (fix === undefined ? {} : { sandboxFix: fix })
 
   return {
@@ -2182,11 +2311,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
               args.workspaceRoot,
               (t) => secrets?.mask(t) ?? t,
               cfg.inputs,
+              upstreamOutputs,
+              cfg.outputs,
+              args.nestedProjectDirs,
+              cfg.exec?.sandbox?.allow?.read,
             ),
           ),
         }
       : {}),
   }
+}
+
+/** Whether write grant `grant` (absolute) may reach `abs`: a glob by its whole directory, to err toward "it could". */
+function mayWrite(abs: string, grant: string): boolean {
+  const at = grant.search(MOUNT_WILDCARDS)
+  return atOrUnder(abs, at === -1 ? grant : path.dirname(grant.slice(0, at + 1)))
 }
 
 /** The workspace-relative paths of `files` outside project `project` (workspace-relative). */

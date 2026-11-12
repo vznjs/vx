@@ -291,14 +291,26 @@ the wall is no violation. A project file is left to the trace: an open
 of it is a violation, and a key may hold one the task never reads.
 
 A write refused at a per-run temp name (`bun build --compile`'s
-`.<hex>-<n>.bun-build`) gets no `sandboxFix` grant, which the next run's
-name would miss: the outcome's violation lines gain a hint naming the
+`.<hex>-<n>.bun-build`, `bun pm pack`'s `.bun-pack.<hex>-<n>.tmp`) gets
+no `sandboxFix` grant, which the next run's name would miss: the
+outcome's violation lines gain a hint naming the
 `ignore: { write: ['*.bun-build'] }` glob instead (`perRunWriteHint`).
+A file refused at the project's top, which vx would make empty before
+the next run for its literal grant, is granted `'.'` when the task's
+`allow.read` lets it list the project: a pack read the empty file.
+A write refused in an installed package's files or its store under the
+project, which a directory above holds too, gets none: the tool took the
+project for its root, missing a lockfile the sandbox hides, so the fix
+names those lockfiles as reads and keys, and `misrootedWriteHint` says why.
+A write refused in a dependency's declared outputs (the request's
+`dependencyReads` and `dependencyReported`) gets none either: that
+project's task writes them, and the runtime's note says so
+(`upstreamWritesHint`).
 
 ## Verdict
 
 A step that exits 127 or 126, or a persistent task that exits so
-before it is ready (`persistent-task.ts`), gets one frame line from
+before or after it is ready (`persistent-task.ts`), gets one frame line from
 `shell-verdict.ts` (`shellVerdict`), because the shell's own line names
 the word and nothing about why. A bare word is a PATH lookup and the
 PATH is vx's: the line names the word (`execWord`, the predicate

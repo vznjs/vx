@@ -53,6 +53,7 @@ import {
   POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
+  treeRoot,
   stripTrailingSlash,
   taskGlob,
   UserError,
@@ -3115,6 +3116,15 @@ async function scanUnion(
       if (emptyDirs !== undefined && readdirSync(abs).length === 0) emptyDirs.add(abs)
     } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs, clearing)
   }
+  // The walk from a `<dir>/**` glob's root never yields the root, so an
+  // empty one was not saved and a hit did not make it. Not a link: the
+  // walk enters one, and its tree is the link's.
+  const takeRoot = (rel: string): void => {
+    if (emptyDirs === undefined || nested(rel) || excluded(rel)) return
+    const abs = path.resolve(cwd, rel)
+    if (lstatSync(abs, { throwIfNoEntry: false })?.isDirectory() !== true) return
+    if (readdirSync(abs).length === 0) emptyDirs.add(abs)
+  }
   const opts = { onlyFiles: false, followSymlinks: false, dot: true }
   // A directory the task left unlistable (`chmod 000 dist/s`) stopped the
   // walk with EACCES: the clean failed every later run until a manual
@@ -3169,10 +3179,18 @@ async function scanUnion(
     !patterns.some((p) => headLinked(cwd, p))
   ) {
     const any = anyTaskGlob(patterns)
+    // A root with a child yielded is not empty: no second listing of it.
+    const treeRoots = emptyDirs === undefined ? [] : patterns.flatMap((p) => treeRoot(p) ?? [])
+    const bare = new Set<string>()
+    const filled = new Set<string>()
     try {
       walk(WHOLE_TREE, cwd, (rel) => {
         if (any(rel)) take(rel)
+        if (treeRoots.length === 0) return
+        if (treeRoots.includes(rel)) bare.add(rel)
+        filled.add(path.posix.dirname(rel))
       })
+      for (const rel of bare) if (!filled.has(rel)) takeRoot(rel)
     } finally {
       giveBack(reopened)
     }
@@ -3185,7 +3203,14 @@ async function scanUnion(
       if (from === null) continue
       roots?.add(from === undefined ? cwd : from.dir)
       if (from === undefined) walk(globFor(pattern), cwd, take)
-      else walk(globFor(from.rest), from.dir, (rel) => take(`${from.prefix}/${rel}`))
+      else {
+        let found = false
+        walk(globFor(from.rest), from.dir, (rel) => {
+          found = true
+          take(`${from.prefix}/${rel}`)
+        })
+        if (!found && from.rest === '**') takeRoot(from.prefix)
+      }
     }
   } finally {
     giveBack(reopened)

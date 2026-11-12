@@ -50,6 +50,12 @@ export interface ExecuteSandbox {
    */
   readonly keyRoot?: string
   /**
+   * A cached task's: the projects nested in its own (absolute). Its
+   * `inputs.files` stops at them, so a read the wall hid in one is named
+   * for `inputs.workspaceFiles`.
+   */
+  readonly keyNested?: readonly string[]
+  /**
    * The dependencies' outputs it may read (absolute), which an executor
    * that builds the request again hands `sandboxRequestFor` too.
    */

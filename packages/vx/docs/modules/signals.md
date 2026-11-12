@@ -143,9 +143,9 @@ SIGHUP handler, here or in `vx watch`: a handler replaces the inherited
 terminal closed (2026-10-08). `hangupIgnored` (`util-hangup.md`) reads
 the disposition once, before the first handler.
 
-Under a parent that relays stops (the Node launcher, a handing-off vx),
-a stop sent to the whole group arrives twice; the copy is the same stop,
-not "now" (`util-signal-relay.md`).
+Under a parent that relays stops (the Node launcher, a handing-off vx,
+Bun's `bun vx` runner), a stop sent to the whole group arrives twice; the
+copy is the same stop, not "now" (`util-signal-relay.md`).
 
 Ctrl-Z (SIGTSTP) stops the terminal's foreground group, which is vx's
 alone: a task runs in its own session, so vx stopped and its tasks ran

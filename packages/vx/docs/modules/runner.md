@@ -142,6 +142,15 @@ export class TaskPipes {
   close(): void // close the read ends once both streams ended or were cancelled
   closeStdin(): void // a persistent task's held stdin: once the child exited AND its output ended
 }
+
+// src/util/raw-utf8.ts: task output as text, each byte that is not UTF-8
+// kept as a lone surrogate U+DC80+byte, and written back as that byte.
+export function decodeRaw(bytes: Uint8Array): string
+export class RawUtf8Decoder {
+  decode(chunk?: Uint8Array, opts?: { stream?: boolean }): string // stream: an incomplete tail sequence is held for the next chunk
+}
+export function rawBytes(text: string): string | Uint8Array // itself when well-formed, else its bytes
+export function rawEncode(text: string): Uint8Array
 ```
 
 Cost of `lineEnds` (2026-10-29, runCommand A/B, interleaved, min of 11,
@@ -242,8 +251,15 @@ held to its start; at the exit, `end` lets everything go; and an
   unescaped `;` or `&`, so they do not run as a command; one scan reads quotes,
   comments and heredoc bodies together, as sh does. The sandbox wrapper and the
   persistent path build the line the same way.
-- **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
-  bytes are corrupted.
+- **Encoding:** UTF-8 via `RawUtf8Decoder` (`src/util/raw-utf8.ts`), a
+  sequence split across reads held for the next. A byte that is not
+  UTF-8 is kept as a lone surrogate U+DC80+byte, which the terminal
+  writer (`ui/live-region.ts`) and the stored log (`cache/archive.ts`,
+  `entry_stdout`) turn back into the byte (`rawBytes` / `rawEncode`), so
+  the terminal and a hit's replay get the bytes the task wrote, not
+  U+FFFD (`tests/raw-output-bytes.test.ts`); a whole buffer decodes with
+  `decodeRaw`. Valid UTF-8 costs one
+  native decode, as before.
 
 The promise from `runCommand` always resolves (never rejects) with a
 `RunResult`:

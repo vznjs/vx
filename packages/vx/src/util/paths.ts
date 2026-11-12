@@ -641,6 +641,35 @@ export function restorableOutput(
 }
 
 /**
+ * The directory a `<dir>/**` glob is rooted at, or undefined for any other
+ * glob. The glob does not match the root itself, yet a task that declares
+ * `public/uploads/**` and leaves the directory empty made it: a save keeps
+ * that empty root, so a hit makes it too.
+ */
+export function treeRoot(pattern: string): string | undefined {
+  if (!pattern.endsWith('/**')) return undefined
+  const root = pattern.slice(0, -3)
+  return root.length > 0 && staticPrefix(pattern) === root ? root : undefined
+}
+
+/**
+ * Whether a restore may make the empty directory `rel`: one
+ * `restorableOutput` takes, or the root of a `<dir>/**` glob (`treeRoot`).
+ */
+export function restorableOutputDir(
+  globs: readonly string[],
+  scope: 'project' | 'workspace' = 'project',
+): (rel: string) => boolean {
+  const take = restorableOutput(globs, scope)
+  const { positive, negative } = splitNegations(globs)
+  const roots = new Set(asTrees(positive).flatMap((g) => treeRoot(g) ?? []))
+  if (roots.size === 0) return take
+  const excluded = outputExcluded(globs, scope)
+  const back = anyTaskGlob(asTrees(negative))
+  return (rel) => take(rel) || (roots.has(rel) && !excluded(rel) && !back(rel))
+}
+
+/**
  * `pattern` with its first brace group expanded, recursively, while that
  * group holds a `/`; any other pattern as itself, since `Bun.Glob`
  * expands a slash-free brace on its own. An unbalanced or escaped brace

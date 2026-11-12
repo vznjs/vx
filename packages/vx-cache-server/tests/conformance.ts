@@ -139,17 +139,19 @@ export function conformance(name: string, target: Target): void {
     })
 
     // Bun.serve sends a streamed answer chunked, with no Content-Length
-    // (PROTOCOL.md): a download many chunks long arrives whole all the same.
-    it('serves a download many chunks long whole', async () => {
+    // (PROTOCOL.md): a download many chunks long arrives whole all the same,
+    // and `vx-size` names its length, which a client holds the body to.
+    it('serves a download many chunks long whole, its size named', async () => {
       const k = key()
       const big = new Uint8Array(4 * 1024 * 1024 + 1)
       for (let at = 0; at < big.length; at += 65_536)
         crypto.getRandomValues(big.subarray(at, at + 65_536))
       expect((await put(k, big)).status).toBe(204)
       const got = await get(k)
-      expect([got.status, got.headers.get('content-type')]).toEqual([
+      expect([got.status, got.headers.get('content-type'), got.headers.get('vx-size')]).toEqual([
         200,
         'application/octet-stream',
+        String(big.length),
       ])
       const bytes = new Uint8Array(await got.arrayBuffer())
       expect([bytes.length, Bun.hash(bytes)]).toEqual([big.length, Bun.hash(big)])
@@ -162,11 +164,12 @@ export function conformance(name: string, target: Target): void {
       expect((await head()).status).toBe(404)
       await put(k, 'four')
       const res = await head()
-      expect([res.status, res.headers.get('content-length'), await res.text()]).toEqual([
-        200,
-        '4',
-        '',
-      ])
+      expect([
+        res.status,
+        res.headers.get('content-length'),
+        res.headers.get('vx-size'),
+        await res.text(),
+      ]).toEqual([200, '4', '4', ''])
       expect((await head(FEATURE)).status).toBe(404)
     })
 

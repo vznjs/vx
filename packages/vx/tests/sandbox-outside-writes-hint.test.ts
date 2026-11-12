@@ -1,6 +1,7 @@
 // A sandboxed `go build` on a fresh home was refused its telemetry file,
 // then `mkdir ~/.cache`, and failed on the second. The hint granted only
 // the first one's directory, which left the build failing (2026-11-11).
+import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -37,6 +38,29 @@ describe('the refused outside writes hint', () => {
     ).toEndWith(
       'If the task needs them, grant their directories, e.g. ' +
         "`allow: { write: ['~/.npmrc', '~/.cache/'] }`.",
+    )
+  })
+
+  // `go build` writes `~/.cache/go-build/ab/<hash>-d`: the hint granted
+  // `~/.cache/go-build/ab/`, and the next build failed on another subdir.
+  it("grants a tool's cache directory under ~/.cache whole", () => {
+    expect(hint([`${home}/.cache/go-build/ab/abcd-d`], [])).toEndWith(
+      "If the task needs one, grant its directory, e.g. `allow: { write: ['~/.cache/go-build/'] }`.",
+    )
+  })
+
+  // A home under the host temp root (a CI container's, an agent's) is
+  // still home: `go build` was told to write under $TMPDIR, which go
+  // never does unless GOCACHE says so, and no grant was named.
+  it('a home under the host temp root names the grant, not $TMPDIR', () => {
+    // Canonical, as a refused path arrives: macOS's temp root is a link
+    // (`/tmp`, `/var/folders` under `/private`).
+    const tmpHome = path.join(realpathSync(os.tmpdir()), `vx-home-${process.pid}`)
+    spyOn(os, 'homedir').mockReturnValue(tmpHome)
+    const line = hint([`${tmpHome}/.cache/go-build/ab/abcd-d`], [])
+    expect(line).not.toContain('$TMPDIR')
+    expect(line).toEndWith(
+      "If the task needs one, grant its directory, e.g. `allow: { write: ['~/.cache/go-build/'] }`.",
     )
   })
 

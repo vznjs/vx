@@ -44,6 +44,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   renameSync,
   type Stats,
   statSync,
@@ -58,6 +59,7 @@ import {
   rename,
   rm,
   stat,
+  symlink,
   unlink,
   utimes,
   writeFile,
@@ -85,10 +87,13 @@ import {
   OWN_DIR_HINT,
   refuseForeignCacheDir,
   restorableOutput,
+  restorableOutputDir,
   relPosix,
   span,
   splitTaskId,
   xxh3hex,
+  decodeRaw,
+  rawEncode,
 } from '../util/index.js'
 import {
   ArchiveSecurityError,
@@ -96,6 +101,7 @@ import {
   type ExecUsage,
   copyStaging,
   extractArtifactStream,
+  linksRestorable,
   stagingRoot,
   scanArtifact,
   scanTarBytes,
@@ -191,6 +197,9 @@ const ACCESS_REFRESH_MS = 60 * 60 * 1000
  * the user's own release tarball included (item 968).
  */
 const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.(?:tar\.zst|tree)(\.tmp-\d+-\d+-[0-9a-z]*)?$/
+
+/** A kept link's target, read as `planOfTree` reads it. */
+const LINK_TEXT = new TextDecoder('utf-8', { ignoreBOM: true })
 
 /** What vx writes in a cache directory besides its artifacts. */
 const VX_CACHE_NAMES = new Set([
@@ -417,7 +426,12 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //        dependant took a restored upstream as older than its own output
 //        and saved bytes built from another upstream. The cache KEY and
 //        the stored artifact are unchanged.
-export const SCHEMA_VERSION = 'v55'
+//   v56: output_stamps and output_dirs carry root, in their primary key:
+//        clones sharing a named cache dir overwrote each other's stamps.
+//        A v55 index has no such column, so every statement on it failed;
+//        the reset drops it. entry_stdout holds output bytes that are not
+//        UTF-8 as written, which CACHE_VERSION v56 keys apart.
+export const SCHEMA_VERSION = 'v56'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -624,12 +638,23 @@ async function scanOrphanFiles(
   return found
 }
 
+/** The lstats `treeBytes` has in flight at once. */
+const TREE_STAT_BATCH = 4096
+
 /** The bytes a tree-form artifact holds on disk, its directories too, as `vx info` counts them. */
 async function treeBytes(dir: string): Promise<number> {
   const none = { size: 0, blocks: 0 }
   let n = diskBytes(await lstat(dir).catch(() => none))
-  for (const e of await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])) {
-    n += diskBytes(await lstat(path.join(e.parentPath, e.name)).catch(() => none))
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])
+  // A batch at once: one awaited at a time was 736 ms of a 1,020 ms save
+  // of 20k files; batched, ~35 ms (2026-11-12). Batched, not all at once,
+  // so a huge tree never holds every Stats.
+  for (let i = 0; i < entries.length; i += TREE_STAT_BATCH) {
+    const batch = entries.slice(i, i + TREE_STAT_BATCH)
+    const stats = await Promise.all(
+      batch.map((e) => lstat(path.join(e.parentPath, e.name)).catch(() => none)),
+    )
+    for (const st of stats) n += diskBytes(st)
   }
   return n
 }
@@ -864,7 +889,6 @@ function ensurePrivateDir(dir: string, make: boolean): string | null {
 // enumeration on the bench workspace before its generator ignored `.vx`. An
 // ignored directory is skipped by the walk entirely. Only written when
 // absent, so a user's own file wins.
-const utf8 = new TextEncoder()
 
 /**
  * The ignore file that keeps `cacheDir` out of git, and its text. The
@@ -1255,7 +1279,11 @@ export class Cache implements CacheLayer {
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
-    /** The workspace root, where the file hasher asks git for the object format (file-hashes.ts). */
+    /**
+     * The workspace root, where the file hasher asks git for the object format
+     * (file-hashes.ts), and whose output stamps and snapshots this handle
+     * reads in a named cache dir.
+     */
     repoDir?: string,
     /**
      * The largest artifact, decoded, this cache saves, ingests or
@@ -1596,7 +1624,16 @@ export class Cache implements CacheLayer {
       hash: (file, seen) => this.guard(() => this.files.hashFile(file, seen)),
       many: (files) => this.hashFiles(files),
     })
-    this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
+    this.outputs = new OutputIndex(
+      this.db,
+      this.writeBlocked === null && !this.inspecting,
+      // Only the workspace's own `.vx/cache` is no other clone's: a named
+      // directory may be shared. Not keyed by the store, which a
+      // repository's first commit adds, and the run after restored all.
+      repoDir !== undefined && cacheDir !== path.join(repoDir, '.vx', 'cache')
+        ? repoDir
+        : undefined,
+    )
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
     this.remoteHits = new IndexRemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
@@ -2466,9 +2503,10 @@ export class Cache implements CacheLayer {
 
   /**
    * Restore a tree-form entry: its files copied (or cloned) out one by
-   * one where the outputs are absent, as on every restore after a clean. Anything else (a tree to
-   * restore into, a workspace output, a link) goes through the extractor
-   * the tar form uses, fed the tree packed back into its tar.
+   * one, and its links laid, where the outputs are absent, as on every
+   * restore after a clean. Anything else (a tree to restore into, a
+   * workspace output, a link the extractor would refuse) goes through the
+   * extractor the tar form uses, fed the tree packed back into its tar.
    */
   private async restoreTree(
     hash: string,
@@ -2478,7 +2516,7 @@ export class Cache implements CacheLayer {
     projectDir: string,
     workspaceRoot: string | undefined,
     verify: (provided: ReadonlySet<string>) => void,
-    accept: ((name: string) => boolean) | undefined,
+    accept: ((name: string, dir?: boolean) => boolean) | undefined,
     dated: Map<string, number>,
     absentDirs: Set<string>,
   ): Promise<void> {
@@ -2578,11 +2616,26 @@ export class Cache implements CacheLayer {
     dated: Map<string, number>,
     absentDirs: Set<string>,
   ): Promise<boolean> {
+    const links: Array<[string, string]> = []
     for (const r of rows) {
-      if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) || r.mode === LINK_MODE) return false
+      if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)) return false
       if (accept !== undefined && !r.path.endsWith('/') && !accept(`outputs/${r.path}`))
         return false
+      if (r.mode !== LINK_MODE) continue
+      // The link as kept, held to its row as `planOfTree` holds it: one
+      // retargeted at rest is the extractor's to refuse, and name.
+      let to: Buffer
+      try {
+        to = readlinkSync(path.join(tree, r.path), 'buffer')
+      } catch {
+        return false
+      }
+      if (to.byteLength !== r.size || Bun.hash.crc32(to) !== r.mtimeMs) return false
+      links.push([r.path, LINK_TEXT.decode(to)])
     }
+    // Laid here only where the extractor lays each one; any refusal is its to name.
+    if (links.length > 0 && !(await linksRestorable(links, rows, projectDir, workspaceRoot)))
+      return false
     // What stands at each path, asked once: a real directory, nothing, or
     // anything else (a file, a link), which the extractor's rules decide.
     // Synchronous: the walk before this one looked these paths up, so each
@@ -2723,8 +2776,9 @@ export class Cache implements CacheLayer {
       else await Promise.all(leaves.map((d) => mkdir(d, { recursive: true })))
       // Every copy settles before a failure is handled: one still in flight
       // would write its file again after the cleanup removed it.
-      const copied = await Promise.allSettled(
-        files.map(async (r) => {
+      // A link is undated, as the extractor lays it.
+      const copied = await Promise.allSettled([
+        ...files.map(async (r) => {
           const to = target(r.path)
           const n = await copy(to, path.join(tree, r.path), r.path)
           if (n !== r.size)
@@ -2734,7 +2788,8 @@ export class Cache implements CacheLayer {
           await utimes(to, nowDate, nowDate)
           dated.set(`outputs/${r.path}`, now)
         }),
-      )
+        ...links.map(([rel, to]) => symlink(to, target(rel))),
+      ])
       const failed = copied.find((c) => c.status === 'rejected')
       if (failed !== undefined) throw failed.reason
       if (swapped()) throw new ArtifactVanishedError(hash)
@@ -3738,8 +3793,7 @@ export class Cache implements CacheLayer {
     }
     // Compressed before the write lock is taken: logs are most of what the
     // index held as text (v52).
-    const stdoutBlob =
-      scanned.stdout === '' ? null : await zstdCompress(utf8.encode(scanned.stdout))
+    const stdoutBlob = scanned.stdout === '' ? null : await zstdCompress(rawEncode(scanned.stdout))
 
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()
@@ -4136,12 +4190,15 @@ export class Cache implements CacheLayer {
     // (2026-10-18). `invocations` shares the window with `runs`, or `vx last`
     // would list a run whose task rows are gone.
     const orphans = await this.reapOrphans(picked.files)
-    // An inline artifact's deleted pages go to SQLite's free list and the
-    // file keeps its size: give them back, or the bytes said freed are not.
-    if ([...victims].some((h) => inline.has(h))) {
-      this.releaseFreePages(this.storeDir === undefined ? 'main' : 'store')
+    // An evicted entry's deleted pages (an inline artifact, a row and a
+    // stamp per output file) go to SQLite's free list and the file keeps its
+    // size: give them back, or the bytes said freed are not, and a
+    // `--max-size` clean left the store's index 90% free pages.
+    if (victims.size > 0 || stale.length > 0) {
+      this.releaseFreePages('main')
+      if (this.storeDir !== undefined) this.releaseFreePages('store')
     }
-    // After the inline release, so the shrink measured here is the history's
+    // After the entries' release, so the shrink measured here is the history's
     // alone: a year of runs left 28k of 36k pages free in a 140 MB index.
     const cutoff = now - HISTORY_RETENTION_MS
     const historyRows =
@@ -4593,8 +4650,9 @@ function assertArtifactNames(
   }
   if (declared === undefined) return
   const ok = declaredName(declared)
+  const dirSet = new Set(dirs)
   for (const name of names) {
-    if (!ok(name)) {
+    if (!ok(name, dirSet.has(name))) {
       throw new CorruptArtifactError(
         hash,
         `artifact carries ${name}, which is not one of the task's declared outputs`,
@@ -4678,15 +4736,13 @@ function inTree(p: string | undefined, tree: string): boolean {
   return p !== undefined && (p === tree || p.startsWith(`${tree}/`))
 }
 
-const utf8Decode = new TextDecoder('utf-8', { ignoreBOM: true })
-
 /**
  * An `entry_stdout` row's log (v52): a zstd frame of its UTF-8, which keeps
  * a leading U+FEFF a bound string loses. Null, no row, reads as ''. The
  * index is vx's own, so the frame is trusted, as a tree's files are.
  */
 export function storedLog(blob: Uint8Array | null): string {
-  return blob === null ? '' : utf8Decode.decode(Bun.zstdDecompressSync(blob))
+  return blob === null ? '' : decodeRaw(Bun.zstdDecompressSync(blob))
 }
 
 /**
@@ -4696,14 +4752,16 @@ export function storedLog(blob: Uint8Array | null): string {
  * again at every restore, so an entry that reached the local store by any
  * route still writes nothing it should not (2026-10-16).
  */
-function declaredName(declared: DeclaredOutputs): (name: string) => boolean {
+function declaredName(declared: DeclaredOutputs): (name: string, dir?: boolean) => boolean {
   const isFile = restorableOutput(declared.files)
   const isWsFile = restorableOutput(declared.workspaceFiles, 'workspace')
-  return (name) =>
+  const isDir = restorableOutputDir(declared.files)
+  const isWsDir = restorableOutputDir(declared.workspaceFiles, 'workspace')
+  return (name, dir = false) =>
     name.startsWith('outputs/')
-      ? isFile(name.slice('outputs/'.length))
+      ? (dir ? isDir : isFile)(name.slice('outputs/'.length))
       : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
-        ? isWsFile(name.slice(WORKSPACE_OUTPUT_PREFIX.length))
+        ? (dir ? isWsDir : isWsFile)(name.slice(WORKSPACE_OUTPUT_PREFIX.length))
         : true
 }
 

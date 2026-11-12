@@ -4,7 +4,7 @@
 // so it works for a refusal made in the config worker as for one made
 // here, and a message it cannot place prints as it always did.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 // `<file>: tasks.<path>[:] …`, `<file>: \`<setting>\` …`, `<file>: task name "<name>" …`,
@@ -32,6 +32,19 @@ function unquote(quoted: string): string {
  * config field or the field is not found in the file.
  */
 export function configErrorFrame(message: string, cwd: string): string | undefined {
+  const p = framedParts(message, cwd)
+  return p === undefined ? undefined : `${p.line}\n\n${p.frame}`
+}
+
+/** A frame in parts: its `<file>:<line>:<col> …` line, the source under it, and the config it reached. */
+interface Framed {
+  line: string
+  frame: string
+  /** The config that read the field, when the field is set in a file it imports. */
+  via?: string
+}
+
+function framedParts(message: string, cwd: string): Framed | undefined {
   const head = HEAD.exec(message)
   if (head === null) return positionFrame(message, cwd)
   const [, file, tasksPath, colon, setting, taskName] = head as unknown as [
@@ -65,15 +78,220 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
     ...(named === null || element !== null ? [] : [named[1]!]),
   ]
   if (segments.length === 0) return undefined
-  let source: string
+  const source = readOr(file)
+  if (source === undefined) return undefined
+  const hit = place(
+    file,
+    source,
+    segments,
+    0,
+    source.length,
+    element === null ? undefined : Number(element[2]),
+    0,
+  )
+  if (hit === undefined) return undefined
+  const out = framed(hit.file, hit.source, hit.at, message.slice(file.length), cwd)
+  return hit.file === file ? out : { ...out, via: shownPath(file, cwd) }
+}
+
+function readOr(file: string): string | undefined {
   try {
-    source = readFileSync(file, 'utf8')
+    return readFileSync(file, 'utf8')
   } catch {
     return undefined
   }
-  const at = locate(source, segments, element === null ? undefined : Number(element[2]))
-  if (at === undefined) return undefined
-  return framed(file, source, at, message.slice(file.length), cwd)
+}
+
+/** Where a field is set: in `file`, or in the file one of its values is imported from. */
+interface Hit {
+  file: string
+  source: string
+  at: { line: number; col: number }
+  exact: boolean
+}
+
+/** Bindings followed from a config into what it imports: a preset of a preset, and no further. */
+const FOLLOW_DEPTH = 4
+
+/**
+ * Where the last of `segments` is set in `source[start, stop)`. A value
+ * the walk cannot see into (`test: testTask`, `...lib()`) is followed to
+ * where that name is declared, here or in the file it is imported from:
+ * a typo in a shared preset was framed at the config's `test: testTask`,
+ * or not at all, and the file that held it never named.
+ */
+function place(
+  file: string,
+  source: string,
+  segments: readonly string[],
+  start: number,
+  stop: number,
+  index: number | undefined,
+  depth: number,
+  /** Where the followed name is declared: the place of a field it leaves out. */
+  anchor?: number,
+): Hit | undefined {
+  const w = walk(source, segments, start, stop, index)
+  if (w.i === segments.length) return hitAt(file, source, w.found, true)
+  if (depth < FOLLOW_DEPTH) {
+    // Where the object that lacks the key is written: the value the walk
+    // stopped at, the followed declaration's, or the config's default export.
+    const from =
+      w.i > 0 ? w.pos : depth === 0 ? (/\bexport\s+default\s+/.exec(source)?.index ?? -1) : start
+    const head = from < 0 ? null : /^(?:export\s+default\s+|[\s=(])*/.exec(source.slice(from))
+    const at = from + (head?.[0].length ?? 0)
+    const to = w.i > 0 ? w.end : /[{[]/.test(source[at] ?? '') ? literalEnd(source, at) : stop
+    // A name holds the rest (`test: testTask`, `export default base()`); a
+    // spread in the object that lacks the key may hold it whole.
+    const value = from < 0 ? null : /^[A-Za-z_$][\w$]*/.exec(source.slice(at, at + 200))
+    const names =
+      value !== null
+        ? [value[0]]
+        : from < 0
+          ? []
+          : [...topLevel(source, at, to).matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)].map((m) => m[1]!)
+    for (const name of names) {
+      const decl = declared(file, source, name)
+      if (decl === undefined) continue
+      const hit = place(
+        decl.file,
+        decl.source,
+        segments.slice(w.i),
+        decl.start,
+        decl.stop,
+        index,
+        depth + 1,
+        decl.at,
+      )
+      // A name, not a call: the object it holds is the one that lacks the key.
+      const held = value !== null && !/^\s*\(/.test(source.slice(at + value[0].length))
+      if (hit !== undefined && (hit.exact || held)) return hit
+    }
+  }
+  // The last segment is a field the object leaves out: framed at its parent.
+  if (w.i === segments.length - 1) {
+    if (w.found >= 0) return hitAt(file, source, w.found, false)
+    if (anchor !== undefined) return hitAt(file, source, anchor, false)
+  }
+  return undefined
+}
+
+function hitAt(file: string, source: string, found: number, exact: boolean): Hit {
+  const before = source.slice(0, found)
+  const line = before.split('\n').length
+  return { file, source, at: { line, col: found - before.lastIndexOf('\n') }, exact }
+}
+
+/** `source[from, to]` with every nested literal blanked: what its own level says. */
+function topLevel(source: string, from: number, to: number): string {
+  let i = from
+  if (source[i] === '{' || source[i] === '[') i++
+  let out = ''
+  for (; i < to; i++) {
+    const c = source[i]!
+    if (c === '{' || c === '[' || c === '(') {
+      const end = literalEnd(source, i)
+      i = end > i ? end : bracketEnd(source, i)
+      out += ' '
+    } else out += c
+  }
+  return out
+}
+
+/** Where the `(` at `from` closes. */
+function bracketEnd(source: string, from: number): number {
+  let depth = 0
+  for (let i = from; i < source.length; i++) {
+    if (source[i] === '(') depth++
+    else if (source[i] === ')' && --depth === 0) return i
+  }
+  return source.length
+}
+
+/** Where `name` is declared: in `file`, or in the file it imports it from, past re-exports. */
+function declared(
+  file: string,
+  source: string,
+  name: string,
+  hops = 0,
+): { file: string; source: string; start: number; stop: number; at: number } | undefined {
+  const local = new RegExp(
+    `(?:\\b(?:const|let|var|class)\\s+|\\bfunction\\s*\\*?\\s*)${escapeRe(name)}\\b`,
+  ).exec(source)
+  if (local !== null) {
+    const start = local.index + local[0].length
+    // The value: the object a `const` holds, or the body a function returns
+    // from, opened on the declaration's own statement: past it is the next.
+    const line = /^[^\n]*(?:\n[ \t)}\]][^\n]*)*/.exec(source.slice(start))![0]
+    const open = line.search(/[{[]/)
+    const stop = open < 0 ? start : literalEnd(source, start + open)
+    return { file, source, start, stop, at: start - name.length }
+  }
+  if (name === 'default') {
+    const def = /\bexport\s+default\s+/.exec(source)
+    if (def === null) return undefined
+    const start = def.index + def[0].length
+    return { file, source, start, stop: source.length, at: def.index }
+  }
+  if (hops > FOLLOW_DEPTH) return undefined
+  for (const im of importsOf(source)) {
+    if (im.local !== name && !(im.local === '*' && hops > 0)) continue
+    const target = resolved(im.spec, file)
+    const text = target === undefined ? undefined : readOr(target)
+    if (text === undefined) continue
+    const found = declared(target!, text, im.imported === '*' ? name : im.imported, hops + 1)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+/** One name an `import` / `export … from` statement binds: what it is called here and there. */
+interface ImportedName {
+  local: string
+  imported: string
+  spec: string
+  /** Where the name is written in the statement. */
+  at: number
+}
+
+const IMPORT = /\b(import|export)\s+(?:type\s+)?([\w$\s,{}*]*?)\s*from\s*(['"])([^'"\n]+)\3/g
+
+function importsOf(source: string): ImportedName[] {
+  const out: ImportedName[] = []
+  for (const m of source.matchAll(IMPORT)) {
+    const clause = m[2]!
+    const base = m.index + m[0].indexOf(clause, m[1]!.length)
+    const spec = m[4]!
+    if (m[1] === 'export' && /^\*$/.test(clause.trim())) {
+      out.push({ local: '*', imported: '*', spec, at: base })
+      continue
+    }
+    const braces = clause.indexOf('{')
+    const head = braces < 0 ? clause : clause.slice(0, braces)
+    const def = /^\s*([A-Za-z_$][\w$]*)/.exec(head)
+    if (def !== null && m[1] === 'import')
+      out.push({ local: def[1]!, imported: 'default', spec, at: base + def.index })
+    if (braces < 0) continue
+    const list = clause.slice(braces + 1, clause.indexOf('}', braces))
+    for (const n of list.matchAll(/(?:type\s+)?([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?/g))
+      out.push({
+        local: n[2] ?? n[1]!,
+        imported: n[1]!,
+        spec,
+        at: base + braces + 1 + n.index + n[0].indexOf(n[1]!),
+      })
+  }
+  return out
+}
+
+/** The file `spec` names from `file`, unless it is an installed package: that is no file to edit. */
+function resolved(spec: string, file: string): string | undefined {
+  try {
+    const target = realpathSync(Bun.resolveSync(spec, path.dirname(file)))
+    return target.includes(`${path.sep}node_modules${path.sep}`) ? undefined : target
+  } catch {
+    return undefined
+  }
 }
 
 // The loader's `Project config <file>:<line>:<col>: …`: a syntax error,
@@ -94,27 +312,63 @@ const UNPROVIDED =
 const NOT_OBJECT =
   /^(?:Project|Workspace) config at (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s) (did not export a default object[^]*)$/
 
+// The loader's `<kind> config <file>: an import names an export its module
+// lacks: Export named '<name>' not found in module '<module>'`: placed at
+// the import that names it, in the config or a file it imports.
+const MISSING_EXPORT =
+  /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s): (an import names an export its module lacks: Export named '([^'\n]+)' not found in module '([^'\n]+)'[^]*)$/
+
 /** The file, the source offset `find` places in it, and what follows `<file>:<line>:<col>`. */
 function sourceFrame(
   file: string,
   find: (source: string) => number,
   rest: string,
   cwd: string,
-): string | undefined {
-  let source: string
-  try {
-    source = readFileSync(file, 'utf8')
-  } catch {
-    return undefined
-  }
+): Framed | undefined {
+  const source = readOr(file)
+  if (source === undefined) return undefined
   const at = find(source)
   if (at < 0) return undefined
-  const before = source.slice(0, at)
-  const line = before.split('\n').length
-  return framed(file, source, { line, col: at - before.lastIndexOf('\n') }, rest, cwd)
+  return framed(file, source, hitAt(file, source, at, true).at, rest, cwd)
 }
 
-function positionFrame(message: string, cwd: string): string | undefined {
+/** The import of `name` from `module`: in `config`, or in a file it imports. */
+function importOf(
+  config: string,
+  name: string,
+  module: string,
+): { file: string; at: number } | undefined {
+  const want = realpathOr(module)
+  const seen = new Set<string>()
+  let level = [config]
+  for (let hops = 0; hops <= FOLLOW_DEPTH && level.length > 0; hops++) {
+    const next: string[] = []
+    for (const file of level) {
+      if (seen.has(file)) continue
+      seen.add(file)
+      const source = readOr(file)
+      if (source === undefined) continue
+      for (const im of importsOf(source)) {
+        const target = resolved(im.spec, file)
+        if (target === undefined) continue
+        if (im.imported === name && target === want) return { file, at: im.at }
+        next.push(target)
+      }
+    }
+    level = next
+  }
+  return undefined
+}
+
+function realpathOr(file: string): string {
+  try {
+    return realpathSync(file)
+  } catch {
+    return file
+  }
+}
+
+function positionFrame(message: string, cwd: string): Framed | undefined {
   const unprovided = UNPROVIDED.exec(message)
   if (unprovided !== null) {
     const [, file, said, pkg] = unprovided as unknown as [string, string, string, string]
@@ -122,6 +376,21 @@ function positionFrame(message: string, cwd: string): string | undefined {
       `(?<=\\b(?:from|import|import\\(|require\\()\\s*)(['"])${escapeRe(pkg)}\\1`,
     )
     return sourceFrame(file, (src) => spec.exec(src)?.index ?? -1, `: ${said}`, cwd)
+  }
+  const missing = MISSING_EXPORT.exec(message)
+  if (missing !== null) {
+    const [, file, said, name, module] = missing as unknown as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]
+    const where = importOf(file, name, module)
+    if (where === undefined) return undefined
+    const rest = `: ${said.replaceAll(module, shownPath(module, cwd))}`
+    const out = sourceFrame(where.file, () => where.at, rest, cwd)
+    return out === undefined || where.file === file ? out : { ...out, via: shownPath(file, cwd) }
   }
   const notObject = NOT_OBJECT.exec(message)
   if (notObject !== null) {
@@ -148,15 +417,17 @@ function positionFrame(message: string, cwd: string): string | undefined {
       : POSITION.exec(message)
   if (pos === null) return undefined
   const [, file, line, col, rest] = pos as unknown as [string, string, string, string, string]
-  let source: string
-  try {
-    source = readFileSync(file, 'utf8')
-  } catch {
-    return undefined
-  }
+  const source = readOr(file)
+  if (source === undefined) return undefined
   const at = { line: Number(line), col: Math.max(1, Number(col)) }
   if (at.line < 1 || at.line > source.split('\n').length) return undefined
   return framed(file, source, at, rest, cwd)
+}
+
+/** `file` relative to `cwd`, unless that means climbing out. */
+function shownPath(file: string, cwd: string): string {
+  const rel = path.relative(cwd, file)
+  return rel === '' || rel.startsWith('..') ? file : rel
 }
 
 /** `<file>:<line>:<col><rest>` relative to `cwd`, over the source lines up to `at`. */
@@ -166,11 +437,8 @@ function framed(
   at: { line: number; col: number },
   rest: string,
   cwd: string,
-): string {
+): Framed {
   const lines = source.split('\n')
-  // Relative to where the user stands, unless that means climbing out.
-  const rel = path.relative(cwd, file)
-  const shown = rel === '' || rel.startsWith('..') ? file : rel
   const first = Math.max(1, at.line - 2)
   const width = String(at.line).length
   const frame: string[] = []
@@ -182,24 +450,28 @@ function framed(
     .replace(/\t/g, '  ')
     .replace(/\S/g, ' ')
   frame.push(`  ${' '.repeat(width)} | ${lead}^`)
-  return `${shown}:${at.line}:${at.col}${rest}\n\n${frame.join('\n')}`
+  return { line: `${shownPath(file, cwd)}:${at.line}:${at.col}${rest}`, frame: frame.join('\n') }
 }
 
 /**
- * Where the last of `segments` is declared as a key, each one searched
+ * How far `segments` lead in `source[start, stop)`, each searched as a key
  * inside the object literal the one before holds. A task name holds dots
  * (`lint.oxfmt`), so the longest run of segments that names a key wins.
- * A last segment the object leaves out (`outputs is required`) is placed
- * at its parent: searched past it, the next task's `outputs` was framed.
+ * `i` segments were found, the last at `found`, its value at `pos` and its
+ * literal ending at `end` (`pos` when the value is no literal). A last
+ * segment the object leaves out (`outputs is required`) stops at its
+ * parent: searched past it, the next task's `outputs` was framed.
  */
-function locate(
+function walk(
   source: string,
   segments: readonly string[],
+  start: number,
+  stop: number,
   /** The element of the array the last segment holds; past its end, the key. */
   index?: number,
-): { line: number; col: number } | undefined {
-  let pos = 0
-  let end = source.length
+): { i: number; found: number; pos: number; end: number } {
+  let pos = start
+  let end = stop
   let found = -1
   let i = 0
   while (i < segments.length) {
@@ -222,20 +494,14 @@ function locate(
       end = literalEnd(source, pos)
       next = j
     }
-    if (next < 0) {
-      if (found < 0 || i !== segments.length - 1) return undefined
-      break
-    }
+    if (next < 0) break
     i = next
   }
-  if (found < 0) return undefined
   if (index !== undefined && i === segments.length) {
     const el = elementStart(source, pos, index)
     if (el !== undefined) found = el
   }
-  const before = source.slice(0, found)
-  const line = before.split('\n').length
-  return { line, col: found - before.lastIndexOf('\n') }
+  return { i, found, pos, end }
 }
 
 /**
@@ -318,31 +584,47 @@ export interface ConfigRefusal {
   problem: string
   allowed?: string
   fix?: string
+  /** The config that read the field, when `where` is a file it imports. */
+  via?: string
+  /** Empty when the field is not found in the source. */
   frame: string
 }
 
-/** `configErrorFrame`'s answer in parts, or undefined when it has none. */
+/**
+ * `configErrorFrame`'s answer in parts; a config field it cannot place
+ * keeps its file, relative, and its fix, with no frame. Undefined when the
+ * message names no config.
+ */
 export function configRefusal(message: string, cwd: string): ConfigRefusal | undefined {
-  const framed = configErrorFrame(message, cwd)
-  if (framed === undefined) return undefined
-  const cut = framed.indexOf('\n\n')
-  const line = framed.slice(0, cut)
-  const frame = framed.slice(cut + 2)
-  // A path may hold spaces (`packages/my app/`); the first `:line:col` ends it.
-  const at = /^([^\n]+?:\d+:\d+):? (.*)$/s.exec(line)
-  if (at === null) return { where: line, problem: '', frame }
+  const p = framedParts(message, cwd)
+  let where: string
+  let said: string
+  if (p === undefined) {
+    const head = HEAD.exec(message)
+    // Only a refusal of a field: `<file> (after plugin 'p'): …` says its own.
+    if (head === null || (head[2] ?? head[4] ?? head[5]) === undefined) return undefined
+    where = shownPath(head[1]!, cwd)
+    said = message.slice(head[1]!.length).replace(/^:? /, '')
+  } else {
+    // A path may hold spaces (`packages/my app/`); the first `:line:col` ends it.
+    const at = /^([^\n]+?:\d+:\d+):? (.*)$/s.exec(p.line)
+    if (at === null) return { where: p.line, problem: '', frame: p.frame }
+    where = at[1]!
+    said = at[2]!
+  }
   // After ` — `: the field meant, how vx spells another runner's field, or what to remove.
-  const said =
+  const parts =
     /^(.*?)(?: \(allowed: ([^)]*)\))?(?: — (?:did you mean ([^?]+)\?|vx spells it (.+)|(remove .+)))?$/s.exec(
-      at[2]!,
+      said,
     )!
   return {
-    where: at[1]!,
-    problem: said[1]!.replace(/^has /, ''),
-    ...(said[2] !== undefined ? { allowed: said[2] } : {}),
-    ...(said[3] !== undefined ? { fix: `use ${said[3]}` } : {}),
-    ...(said[4] !== undefined ? { fix: `use ${said[4]}` } : {}),
-    ...(said[5] !== undefined ? { fix: said[5] } : {}),
-    frame,
+    where,
+    problem: parts[1]!.replace(/^has /, ''),
+    ...(parts[2] !== undefined ? { allowed: parts[2] } : {}),
+    ...(parts[3] !== undefined ? { fix: `use ${parts[3]}` } : {}),
+    ...(parts[4] !== undefined ? { fix: `use ${parts[4]}` } : {}),
+    ...(parts[5] !== undefined ? { fix: parts[5] } : {}),
+    ...(p?.via !== undefined ? { via: p.via } : {}),
+    frame: p?.frame ?? '',
   }
 }

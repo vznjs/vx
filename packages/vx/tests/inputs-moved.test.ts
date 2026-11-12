@@ -942,7 +942,7 @@ describe('an input file added during the run', () => {
     async () => {
       const app = await addedDuring('src/new.txt')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
+        "[vx] app#build: `packages/app/src/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; it appeared during the run: if the task checks against it (a test snapshot), commit it; if the task generates it, exclude it from inputs.files ('!src/new.txt') and declare it in outputs",
       ])
       await rm(path.join(app, 'src', 'new.txt'))
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
@@ -959,7 +959,7 @@ describe('an input file added during the run', () => {
     async () => {
       await addedDuring('src/sub/new.txt')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/sub/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
+        "[vx] app#build: `packages/app/src/sub/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; it appeared during the run: if the task checks against it (a test snapshot), commit it; if the task generates it, exclude it from inputs.files ('!src/sub/new.txt') and declare it in outputs",
       ])
     },
     TIMEOUT,
@@ -970,7 +970,7 @@ describe('an input file added during the run', () => {
     async () => {
       await addedDuring('extra.txt', ADDS(BUILD, "['src/**', 'extra.txt']"))
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/extra.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
+        "[vx] app#build: `packages/app/extra.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; it appeared during the run: if the task checks against it (a test snapshot), commit it; if the task generates it, exclude it from inputs.files ('!extra.txt') and declare it in outputs",
       ])
     },
     TIMEOUT,
@@ -996,13 +996,59 @@ describe('an input file added during the run', () => {
       await writeFile(path.join(app, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/v` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
+        "[vx] app#build: `packages/app/src/v` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; it appeared during the run: if the task checks against it (a test snapshot), commit it; if the task generates it, exclude it from inputs.files ('!src/v') and declare it in outputs",
       ])
       await rm(path.join(app, 'src', 'v'))
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
       // Before the fix: a local hit restoring `hi NEW`.
       expect(statusOf(await runTask('build'), 'app#build')).toBe('success')
       expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('hi\n')
+    },
+    TIMEOUT,
+  )
+
+  // vitest's first run writes `src/__snapshots__/*.snap` under its own
+  // inputs. The line said to declare it in outputs: vx then deleted the
+  // uncommitted snapshot before every run, vitest wrote it anew, and a
+  // changed value passed. A file that appeared is committed (a file the
+  // task checks against) or, generated, taken out of the inputs first.
+  it(
+    'one the task itself created: the line says to commit it, or to exclude it before declaring it an output',
+    async () => {
+      await addProject(root, 'app', {
+        config: ADDS(
+          `mkdir -p src/__snapshots__; [ -f src/__snapshots__/a.snap ] || echo v1 > src/__snapshots__/a.snap; ${BUILD}`,
+        ),
+        files: { 'src/in.txt': 'hi\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
+      commit()
+      await writeFile(path.join(root, 'packages', 'app', 'go'), '')
+      await runTask('build')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        "[vx] app#build: `packages/app/src/__snapshots__/a.snap` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; it appeared during the run: if the task checks against it (a test snapshot), commit it; if the task generates it, exclude it from inputs.files ('!src/__snapshots__/a.snap') and declare it in outputs",
+      ])
+    },
+    TIMEOUT,
+  )
+
+  // `jest -u` rewrote a committed snapshot: the line said to declare it in
+  // outputs or set the stability to mutable, neither of which a file the
+  // task checks against is. It is committed, as a new one is.
+  it(
+    'a committed snapshot the task updated: the line says to commit it',
+    async () => {
+      await addProject(root, 'app', {
+        config: ADDS(`echo v2 > src/__snapshots__/a.snap; ${BUILD}`),
+        files: { 'src/in.txt': 'hi\n', 'src/__snapshots__/a.snap': 'v1\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
+      commit()
+      await writeFile(path.join(root, 'packages', 'app', 'go'), '')
+      await runTask('build')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#build: `packages/app/src/__snapshots__/a.snap` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; it is a test snapshot the task updated: commit it',
+      ])
     },
     TIMEOUT,
   )

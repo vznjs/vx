@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { storedKeys } from './helpers/stored-artifact.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { run } from './helpers/orchestrator.js'
 import { acquireRunLock, runLockPath } from '../src/orchestrator/run-lock.js'
 import { resolveStoreRoot } from '../src/workspace/workspace.js'
 
@@ -331,6 +332,72 @@ describe('two runs on one workspace', () => {
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).toBe(0)
       expect(existsSync(runLockPath(root))).toBe(false)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('taking turns', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-run-lock-turns-' })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'the waiting notice is a status line, never a warning the footer counts',
+    async () => {
+      await addProject(root, 'app', { config: MANY, files: { 'src/index.js': 'export {}\n' } })
+      // Another process holds the lock (this one's own takings nest) until
+      // its stdin closes.
+      const holder = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `const { acquireRunLock } = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/orchestrator/run-lock.ts'))})
+           const release = await acquireRunLock(${JSON.stringify(root)}, { log: () => {} })
+           console.log('held')
+           for await (const _ of Bun.stdin.stream()) {}
+           await release()`,
+        ],
+        { stdin: 'pipe', stdout: 'pipe', stderr: 'inherit' },
+      )
+      const reader = holder.stdout.getReader()
+      expect(new TextDecoder().decode((await reader.read()).value)).toContain('held')
+      const statuses: string[] = []
+      const warnings: string[] = []
+      const heard = (line: string): void => {
+        if (line.includes('waiting for another vx run')) void holder.stdin.end()
+      }
+      try {
+        const r = await run({
+          cwd: root,
+          tasks: ['build'],
+          log: {
+            status: (line) => {
+              statuses.push(line)
+              heard(line)
+            },
+            warn: (line) => {
+              warnings.push(line)
+              heard(line)
+            },
+            taskStdout() {},
+            taskStderr() {},
+            taskComplete() {},
+          },
+        })
+        expect(r.ok).toBe(true)
+      } finally {
+        void holder.stdin.end()
+        await holder.exited
+      }
+      expect(warnings.join('\n')).not.toContain('waiting for another')
+      expect(statuses.join('\n')).toContain(
+        `[vx] waiting for another vx run (pid ${holder.pid}) on this workspace to finish…`,
+      )
     },
     TIMEOUT,
   )

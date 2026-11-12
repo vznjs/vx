@@ -507,9 +507,11 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
     strAttr(VX_ATTR.taskProject, t.project),
     strAttr(VX_ATTR.taskTask, t.task),
     strAttr(VX_ATTR.cacheSource, t.cacheSource),
-    intAttr(VX_ATTR.taskExitCode, t.exitCode),
     intAttr(VX_ATTR.taskDurationMs, t.durationMs),
   ]
+  // A skipped task never ran: core's 1 (blocked) or 0 (other platform) is
+  // no process's exit.
+  if (t.status !== 'skipped') attrs.push(intAttr(VX_ATTR.taskExitCode, t.exitCode))
   if (t.hash !== undefined) attrs.push(strAttr(VX_ATTR.taskHash, t.hash))
   if (t.restored !== undefined) attrs.push(boolAttr(VX_ATTR.cacheRestored, t.restored))
   if (t.cpuMs !== undefined) attrs.push(intAttr(VX_ATTR.cpuMs, t.cpuMs))

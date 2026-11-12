@@ -28,6 +28,7 @@ import {
   undeclaredWriteReach,
   untouchedPlaceholderLine,
 } from './sandbox-request.js'
+import { explainServerExit } from './persistent.js'
 import { shellVerdict } from './shell-verdict.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 import { computeTaskHash, keyOf } from './task-hash.js'
@@ -223,6 +224,37 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
   }
+  // A server's 127, 126 or signal death needs the line a one-shot task's
+  // gets (execute-task.ts): a dev server whose tool sits in a sibling's
+  // bin said only "exit 127". Before ready or after it: `persistent: {}` is
+  // ready at its spawn, so its "not found" came after.
+  // A server is never traced, so the sandbox's refusals reach no report:
+  // a dev server that died on a file outside its grants read only as the
+  // tool's own "not found" (2026-10-03). Said for a sandboxed server that
+  // exited failing, which is the shape a refusal takes.
+  const exitNotes = (code: number | undefined, signal: string | number | undefined): string[] => {
+    const lines: string[] = []
+    const verdict =
+      code === undefined
+        ? undefined
+        : shellVerdict({
+            code,
+            command: step.command,
+            cwd: node.projectDir,
+            bins: taskBinDirs(node, args.workspaceRoot),
+            signal,
+            hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
+          })
+    if (verdict !== undefined) lines.push(serverSecrets?.mask(verdict) ?? verdict)
+    if (step.sandbox !== undefined && code !== 0) {
+      lines.push(
+        `[vx] ${node.id} ran in the sandbox, which reports nothing for a server: a path outside ` +
+          `its grants reads as missing (ENOENT), a refused write as read-only (EROFS). Check ` +
+          `exec.sandbox.allow, or run the command as a one-shot sandboxed task to see what it was refused.`,
+      )
+    }
+    return lines
+  }
   const spawn = runPersistent(persistentOpts)
   // The host side of a port bridge lives exactly as long as the server:
   // released on the child's exit, whether the run tore it down or it died.
@@ -306,43 +338,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // an open line goes first.
     ends.end()
     log.taskStderr(node, ends.own(`[vx] ${node.id}: not ready: ${message}\n`))
-    // A server's 127, 126 or signal death needs the line a one-shot task's
-    // gets (execute-task.ts): a dev server whose tool sits in a sibling's
-    // bin said only "exit 127".
-    if (
-      err instanceof PersistentReadyError &&
-      err.reason === 'exited' &&
-      err.exitCode !== undefined
-    ) {
-      const signal = spawn.child?.signalCode
-      const verdict = shellVerdict({
-        code: err.exitCode,
-        command: step.command,
-        cwd: node.projectDir,
-        bins: taskBinDirs(node, args.workspaceRoot),
-        signal: signal ?? undefined,
-        hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
-      })
-      if (verdict !== undefined)
-        log.taskStderr(node, `${serverSecrets?.mask(verdict) ?? verdict}\n`)
-    }
-    // A server is never traced, so the sandbox's refusals reach no report:
-    // a dev server that died on a file outside its grants read only as the
-    // tool's own "not found" (2026-10-03). Said for a sandboxed server that
-    // exited failing, which is the shape a refusal takes.
-    if (
-      step.sandbox !== undefined &&
-      err instanceof PersistentReadyError &&
-      err.reason === 'exited' &&
-      err.exitCode !== 0
-    ) {
-      log.taskStderr(
-        node,
-        `[vx] ${node.id} ran in the sandbox, which reports nothing for a server: a path outside ` +
-          `its grants reads as missing (ENOENT), a refused write as read-only (EROFS). Check ` +
-          `exec.sandbox.allow, or run the command as a one-shot sandboxed task to see what it was refused.\n`,
-      )
-    }
+    if (err instanceof PersistentReadyError && err.reason === 'exited')
+      for (const line of exitNotes(err.exitCode, spawn.child?.signalCode ?? undefined))
+        log.taskStderr(node, `${line}\n`)
     // The server is dead or being torn down, so the sweep on its exit may
     // already be running: ask the shared one rather than starting a second.
     for (const p of await sweptUntouched()) {
@@ -388,6 +386,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   }
   // Ready, so it spawned: only a failed spawn has no child.
   const child = spawn.child!
+  explainServerExit(child, (code) => exitNotes(code, child.signalCode ?? undefined))
   args.persistentRegistry?.set(node.id, child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   if (mayWriteFingerprint(node, args.workspaceRoot, args.fingerprintWatch?.names ?? [])) {

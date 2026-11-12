@@ -27,6 +27,7 @@ export {
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
 export { envFlagOn } from './env-flag.js'
+export { decodeRaw, rawBytes, rawEncode, RawUtf8Decoder } from './raw-utf8.js'
 export { keysSorted, xxh3, xxh3hex } from './hash.js'
 export {
   beginRun,
@@ -53,6 +54,8 @@ export {
   outputMatcher,
   outputExcluded,
   restorableOutput,
+  restorableOutputDir,
+  treeRoot,
   printable,
   hasControl,
   relPosix,
@@ -100,7 +103,7 @@ export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.
 export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
 export { hangupIgnored } from './hangup.js'
-export { relayedCopy } from './signal-relay.js'
+export { relayedCopy, stopActedOn } from './signal-relay.js'
 export { ESSENTIAL_ENV, ownEnv, withoutWorkspaceBins } from './essential-env.js'
 export { gitEnv, helperEnv, hideEnvFromTasks } from './hide-env.js'
 export {
@@ -108,6 +111,8 @@ export {
   checkIgnoreSync,
   gitCaseArgs,
   ignoreCaseLies,
+  ignoredByGlobs,
+  ignoredInputLine,
   ignoreProbes,
   listedSync,
   skipWorktreeSync,

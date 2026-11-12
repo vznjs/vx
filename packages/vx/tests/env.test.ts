@@ -75,6 +75,35 @@ describe('buildIsolatedEnv', () => {
     expect(env).toEqual({ ...xdg, FORCE_COLOR: '1' })
   })
 
+  // The official rust image sets RUSTUP_HOME and CARGO_HOME away from
+  // home: stripped, cargo failed "rustup could not choose a version", and
+  // an `inputs.runtime` probe (`rustc --version`, essentials only) could
+  // not be helped by passThrough. Go's homes likewise. Settings that pick
+  // the toolchain or the network (GOTOOLCHAIN, GOROOT, a proxy, which may
+  // hold a login) stay the task's to name.
+  it("passes the toolchains' home directories, not their other settings", () => {
+    const homes = {
+      RUSTUP_HOME: '/usr/local/rustup',
+      CARGO_HOME: '/usr/local/cargo',
+      GOPATH: '/go',
+      GOMODCACHE: '/go/pkg/mod',
+      GOCACHE: '/root/.cache/go-build',
+    }
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: {
+        ...homes,
+        RUSTUP_TOOLCHAIN: 'nightly',
+        GOTOOLCHAIN: 'local',
+        GOROOT: '/usr/local/go',
+        HTTPS_PROXY: 'http://u:p@proxy:3128',
+        NO_PROXY: 'localhost',
+      },
+    })
+    expect(env).toEqual({ ...homes, FORCE_COLOR: '1' })
+  })
+
   // Turbo made these default pass-throughs; in vx a task sees each only
   // when it names it, so what it reads is in its config (schema.md).
   it.each([

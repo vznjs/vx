@@ -29,7 +29,7 @@ export interface Entry {
   readonly deps: ReadonlyMap<string, string>
   /** the root's and a workspace's `sectionsOf`; '' for any other entry */
   readonly sections: string
-  /** version + resolved + integrity — whatever pins the bytes; '' for a link, the root, a workspace */
+  /** version + resolved + integrity — whatever pins the bytes; a workspace's version; '' for a link, the root */
   readonly resolution: string
   /** the path a `link: true` entry points at */
   readonly link: string | undefined
@@ -80,15 +80,20 @@ export function parseLockfile(text: string): Lockfile {
     packages.set(p, {
       deps: depsOf(e),
       sections: p === '' || isWorkspace ? sectionsOf(e) : '',
-      // The root's and a workspace's `version` is their own package.json's,
-      // not what npm installed: a release bump of the root re-keyed every
-      // task with node_modules unchanged.
+      // The root's `version` is its own package.json's, not what npm
+      // installed: a release bump of it re-keyed every task with
+      // node_modules unchanged. A workspace's is what `npm pack` writes in
+      // place of a dependent's range to it, so it keys the dependent.
       resolution:
-        link === undefined && p !== '' && !isWorkspace
-          ? [e['version'], e['resolved'], e['integrity']]
-              .map((v) => (typeof v === 'string' ? v : ''))
-              .join('\0')
-          : '',
+        link !== undefined || p === ''
+          ? ''
+          : isWorkspace
+            ? typeof e['version'] === 'string'
+              ? e['version']
+              : ''
+            : [e['version'], e['resolved'], e['integrity']]
+                .map((v) => (typeof v === 'string' ? v : ''))
+                .join('\0'),
       link,
       copyOf,
       isWorkspace,
@@ -141,7 +146,11 @@ function workspaceMatcher(root: unknown): (p: string) => boolean {
  * needs; stepping from one `/node_modules/` boundary to the next skipped
  * that directory, and `n` was keyed on its spec alone (D-139).
  */
-function resolve(lock: Lockfile, from: string, name: string): string | undefined {
+export function resolve(
+  lock: { readonly packages: { has(p: string): boolean } },
+  from: string,
+  name: string,
+): string | undefined {
   let base = from
   for (;;) {
     if (base !== 'node_modules' && !base.endsWith('/node_modules')) {

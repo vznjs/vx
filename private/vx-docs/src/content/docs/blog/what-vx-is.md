@@ -50,7 +50,7 @@ caches on your machine.
 build: {
   exec: { command: 'tsc -b' },
   inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**'] },
+  outputs: { files: ['dist/**', '*.tsbuildinfo'] },
   cache: true,
 }
 ```

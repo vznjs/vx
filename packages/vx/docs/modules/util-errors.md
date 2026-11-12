@@ -48,7 +48,7 @@ export function gitFailure(cwd: string, args: string, exitCode: number, stderr: 
 
 // src/util/config-frame.ts: a config refusal at its `line:col`, with the source under it; undefined when it names no field
 export function configErrorFrame(message: string, cwd: string): string | undefined
-export function configRefusal(message: string, cwd: string): ConfigRefusal | undefined // { where, problem, allowed?, fix?, frame }: the same, in a notice's parts
+export function configRefusal(message: string, cwd: string): ConfigRefusal | undefined // { where, problem, allowed?, fix?, via?, frame }: the same, in a notice's parts
 ```
 
 `UserError` instances have `.name === 'UserError'`. `bin.ts` prints
@@ -127,5 +127,13 @@ position) is framed at that position, and a config's own throw
 (`Project config <file> threw: … (at <file>:<line>:<col>)`) at the line
 its stack names in the config, a cause's `(at …)` made relative too.
 An import nothing provides (`<kind> config <file>: cannot find '<pkg>'`)
-is framed at its specifier, and a default export that is no object at
-its `export default`.
+is framed at its specifier, a default export that is no object at
+its `export default`, and an import of a name its module lacks at that
+name in the import that names it, in the config or a file it imports.
+A value the walk cannot see into (`test: testTask`, a `...lib()`spread) is followed to where that name is declared: in the config, or in
+the file it imports it from (relative or a workspace package; not one
+under`node_modules`), past re-exports, four files deep. That file is
+framed, and `configRefusal`names the config as`via`; `vx lock` says one
+such refusal once, with every config it reaches (`used by …`).
+`configRefusal`keeps a field refusal it cannot frame at its file,
+relative, with its fix and an empty`frame`.

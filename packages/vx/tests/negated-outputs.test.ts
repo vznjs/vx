@@ -99,7 +99,7 @@ describe('a negated output', () => {
       for (const d of ['dist', 'dist/sub']) utimesSync(path.join(app, d), old, old)
       const hit = (await build())['app#build']!
       expect(hit.status).toBe('cache-hit')
-      const cache = new Cache(path.join(fx.root, '.vx', 'cache'))
+      const cache = new Cache(path.join(fx.root, '.vx', 'cache'), undefined, fx.root)
       try {
         const rows = (await cache.getMany([hit.hash!])).get(hit.hash!)?.outputDirRows
         expect(rows?.map((d) => d.path).sort()).toEqual(['dist', 'dist/sub'])

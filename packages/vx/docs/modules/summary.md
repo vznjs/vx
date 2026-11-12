@@ -48,7 +48,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 
 export interface RunContext {
   version: string
-  packageCount: number // projects with a task to run → the bar's "affected" half
+  packageCount: number // projects with a task to run → the bar's "in run" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
   executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
   whereRunning?: (taskId: string) => string | null | undefined // a running task's executor
@@ -123,7 +123,7 @@ names no vx and the `projects` / `info` rows are skipped.
 ```
   Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-            1 affected · 2 total
+            1 in run · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             4 success · 4 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰

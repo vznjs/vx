@@ -1257,10 +1257,10 @@ describe('streamToString', () => {
     expect(await streamToString(bytes([0xe2, 0x82], [0xac]))).toBe('€')
   })
 
-  it('flushes a truncated last character to the text and to onChunk', async () => {
+  it('flushes a truncated last character, its byte kept, to the text and to onChunk', async () => {
     const seen: string[] = []
-    expect(await streamToString(bytes([0x61, 0xe2]), (s) => seen.push(s))).toBe('a\ufffd')
-    expect(seen.join('')).toBe('a\ufffd')
+    expect(await streamToString(bytes([0x61, 0xe2]), (s) => seen.push(s))).toBe('a\udce2')
+    expect(seen.join('')).toBe('a\udce2')
   })
 
   it('keeps every character across the head/tail seam', async () => {
@@ -1646,10 +1646,11 @@ describe('runPersistent — the rows its sweep asked for', () => {
     })
     await spawn.child!.exited
     await Bun.sleep(50)
-    // The stderr stream ends on a truncated character: the flush reports it.
+    // The stderr stream ends on a truncated character: the flush reports
+    // its byte, kept as its escape (raw-utf8.ts).
     expect([out.join(''), err.join(''), [...out, ...err].includes('')]).toEqual([
       'o\n',
-      'e�',
+      'e\udce2',
       false,
     ])
   })

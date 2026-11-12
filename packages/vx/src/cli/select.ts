@@ -609,7 +609,7 @@ export async function resolveFilters(
             ? ''
             : self === 'HEAD'
               ? ' — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
-              : ` — ${self} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
+              : ` — ${self} is HEAD itself: compare with ${self === 'origin/main' ? '' : 'the branch you merge into (--affected=origin/main) or '}the previous commit (--affected=HEAD~1)`
         return { empty: `nothing affected since ${refs}${hint}`, discovered: { root, projects } }
       }
       // The diff matched and a walk or an exclusion left nothing: still the

@@ -71,6 +71,9 @@ const PLUGIN_WORKSPACE = `${PLUGIN_IMPORT}
         },
       }`,
       )},
+      // A factory that declined (\`github()\` off Actions) is no plugin.
+      undefined,
+      false,
     ],
   }
 `
@@ -484,6 +487,11 @@ describe('vx show under a `project` plugin (e2e)', () => {
       // The doctor names each plugin and the seams it fills, in pipeline
       // order.
       expect(info.out).toMatch(/^  plugins +2 — vx-test-packages \(discover\); gen \(project\)$/m)
+      // The two entries a factory declined are not counted, and the doc says so.
+      const doc = await Bun.file(path.join(import.meta.dir, '..', 'docs', 'cli.md')).text()
+      expect(doc).toContain(
+        'A factory that returned `undefined` (`github()` off\n  Actions) declared no plugin',
+      )
     },
     TIMEOUT,
   )
