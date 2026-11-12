@@ -2117,7 +2117,7 @@ export function decide(input: {
   readonly spreadMs?: ((size: string) => number) | undefined
 }): Plan & {
   readonly tasks: readonly PlanTask[]
-  /** What `plan()` was given besides the tasks and workers, where it played (`Plan.unpacked`). */
+  /** What `plan()` was given besides the tasks and workers: a profile marks it to play back. */
   readonly played?: { readonly sizes: readonly Size[]; readonly limitMs: number | undefined }
 } {
   const how = input.how ?? DEFAULT_STRATEGY
@@ -2187,7 +2187,9 @@ export function decide(input: {
       input,
       now,
     )
-  return { ...p, tasks, ...(p.unpacked === undefined ? {} : { played: { sizes, limitMs } }) }
+  // Given whether it packed or played: the run's first plan packed, and
+  // its profile had nothing to play back (main 98088da, 2026-11-12).
+  return { ...p, tasks, played: { sizes, limitMs } }
 }
 
 /**
