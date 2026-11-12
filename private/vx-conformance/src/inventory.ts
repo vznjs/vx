@@ -163,6 +163,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'stale-hit',
     'stale-hit-digest',
     'stale-hit-git',
+    'stale-hit-git-enumeration',
     'stop-signal-before-spawn',
     'task-edge-selection',
     'task-glob-brackets',
