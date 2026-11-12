@@ -18,6 +18,7 @@ import { UserError } from '@vzn/vx'
 
 const load = createRequire(import.meta.url)
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
+const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
 const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 
@@ -44,8 +45,11 @@ const obj = (v: unknown): Json =>
 /**
  * npm's hidden lockfile: each installed path's version. A path the lockfile
  * leaves out, or one it names at another version, is another install; one
- * it names that the tree lacks too, unless an install may leave it out
- * (`--omit=dev`, a platform's optional package).
+ * it names that the tree lacks too, when the install should have it: a
+ * production dependency of a package or workspace the tree holds, or of
+ * the root once every workspace is installed (`-w` installs neither the
+ * other workspaces nor the root's own; `--omit=dev`, a platform's optional
+ * package).
  */
 function npmCompare(lockText: string, markerText: string): string | undefined {
   const lock = obj(obj(JSON.parse(lockText))['packages'])
@@ -62,11 +66,22 @@ function npmCompare(lockText: string, markerText: string): string | undefined {
       return `${p} is ${String(t['version'] ?? t['resolved'])}, the lockfile names ${String(w['version'] ?? w['resolved'])}`
     }
   }
-  for (const [p, raw] of Object.entries(lock)) {
-    const e = obj(raw)
-    if (!p.includes('node_modules/') || p in tree) continue
-    if (e['dev'] === true || e['optional'] === true || e['devOptional'] === true) continue
-    return `${p} is not installed`
+  const keys = { packages: new Set(Object.keys(lock)) }
+  const workspaces = Object.values(lock)
+    .map((e) => obj(e))
+    .filter((e) => e['link'] === true && typeof e['resolved'] === 'string')
+    .map((e) => e['resolved'] as string)
+    .filter((t) => t in lock)
+  const from = Object.keys(tree).filter((p) => obj(tree[p])['link'] !== true)
+  if (workspaces.every((w) => w in tree)) from.push('')
+  for (const p of from) {
+    for (const name of Object.keys(obj(obj(lock[p])['dependencies']))) {
+      const at = npmLock().resolve(keys, p, name)
+      if (at === undefined || at in tree) continue
+      const e = obj(lock[at])
+      if (e['dev'] === true || e['optional'] === true || e['devOptional'] === true) continue
+      return `${at} is not installed`
+    }
   }
   return undefined
 }
@@ -105,19 +120,31 @@ function pnpmCompare(lockText: string, markerText: string): string | undefined {
 }
 
 /**
- * Yarn 1's integrity file: each entry it installed and from where. A
- * `--production` install records no dev entry, so only an entry the
- * lockfile lists elsewhere or not at all counts.
+ * Yarn 1's integrity file: each entry it installed and from where. An
+ * entry the lockfile lists elsewhere or not at all counts, and so does one
+ * it lists that the file lacks, unless the install recorded a flag that
+ * leaves entries out (`--production`: every dev entry; `--focus`).
  */
 function yarnClassicCompare(lockText: string, markerText: string): string | undefined {
   const lock = yarnLock().parseLockfile(lockText)
-  const tree = obj(obj(JSON.parse(markerText))['lockfileEntries'])
+  const record = obj(JSON.parse(markerText))
+  const tree = obj(record['lockfileEntries'])
   const resolved = (d: string): string =>
     lock.entries.get(lock.descriptors.get(d)!)!.resolution.split('\0')[1]!
   for (const [d, url] of Object.entries(tree)) {
     if (!lock.descriptors.has(d)) return `${d} is installed, and the lockfile does not list it`
     if (resolved(d) !== url)
       return `${d} is installed from ${String(url)}, the lockfile names ${resolved(d)}`
+  }
+  const flags = record['flags']
+  if (
+    !Array.isArray(flags) ||
+    flags.some((f) => f === 'production' || String(f).startsWith('focus'))
+  ) {
+    return undefined
+  }
+  for (const d of lock.descriptors.keys()) {
+    if (!(d in tree)) return `${d} is not installed`
   }
   return undefined
 }

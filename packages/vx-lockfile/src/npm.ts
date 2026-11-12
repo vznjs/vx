@@ -146,7 +146,11 @@ function workspaceMatcher(root: unknown): (p: string) => boolean {
  * needs; stepping from one `/node_modules/` boundary to the next skipped
  * that directory, and `n` was keyed on its spec alone (D-139).
  */
-function resolve(lock: Lockfile, from: string, name: string): string | undefined {
+export function resolve(
+  lock: { readonly packages: { has(p: string): boolean } },
+  from: string,
+  name: string,
+): string | undefined {
   let base = from
   for (;;) {
     if (base !== 'node_modules' && !base.endsWith('/node_modules')) {

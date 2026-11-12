@@ -174,6 +174,90 @@ describe('npm(): node_modules/.package-lock.json', () => {
     })
     expect(await run(npm())).toBe('ok')
   })
+
+  // What npm 10.9 and 11.21 wrote for `npm install -w packages/a` (and
+  // `npm ci -w packages/a`): a's closure and link, nothing of b's or the
+  // root's own dependencies.
+  const wsLock = (aDeps: Record<string, string>): Record<string, unknown> => ({
+    name: 'root',
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      '': { name: 'root', workspaces: ['packages/*'], dependencies: { 'has-flag': '^4.0.0' } },
+      'node_modules/a': { resolved: 'packages/a', link: true },
+      'node_modules/b': { resolved: 'packages/b', link: true },
+      'node_modules/has-flag': { version: '4.0.0', resolved: 'https://r/has-flag-4.0.0.tgz' },
+      'node_modules/is-number': { version: '6.0.0', resolved: 'https://r/is-number-6.0.0.tgz' },
+      'node_modules/ms': { version: '2.1.3', resolved: 'https://r/ms-2.1.3.tgz' },
+      ...(aDeps['semver'] === undefined
+        ? {}
+        : { 'node_modules/semver': { version: '7.6.0', resolved: 'https://r/semver-7.6.0.tgz' } }),
+      'packages/a': { version: '1.0.0', dependencies: aDeps },
+      'packages/b': { version: '1.0.0', dependencies: { ms: '^2.1.3' } },
+    },
+  })
+  const wsTree = (lock: Record<string, unknown>, paths: string[]): string => {
+    const all = lock['packages'] as Record<string, unknown>
+    return JSON.stringify({
+      name: 'root',
+      lockfileVersion: 3,
+      requires: true,
+      packages: Object.fromEntries(paths.map((p) => [p, all[p]])),
+    })
+  }
+  const WS_MANIFESTS = {
+    'package.json':
+      '{ "name": "root", "private": true, "workspaces": ["packages/*"], "dependencies": { "has-flag": "^4.0.0" } }',
+    'packages/a/package.json':
+      '{ "name": "a", "version": "1.0.0", "dependencies": { "is-number": "^6.0.0" } }',
+    'packages/b/package.json':
+      '{ "name": "b", "version": "1.0.0", "dependencies": { "ms": "^2.1.3" } }',
+  }
+  const A_ONLY = ['node_modules/a', 'node_modules/is-number', 'packages/a']
+
+  it('takes an install filtered to one workspace (`-w`)', async () => {
+    const lock = wsLock({ 'is-number': '^6.0.0' })
+    await write({
+      ...WS_MANIFESTS,
+      'package-lock.json': JSON.stringify(lock),
+      'node_modules/.package-lock.json': wsTree(lock, A_ONLY),
+    })
+    expect(await run(npm())).toBe('ok')
+  })
+
+  // A pull that adds a dependency to an installed workspace, run before
+  // the install, still builds against the old tree.
+  it('refuses a dependency the lockfile adds to a workspace the install has', async () => {
+    const before = wsLock({ 'is-number': '^6.0.0' })
+    const lock = wsLock({ 'is-number': '^6.0.0', semver: '7.6.0' })
+    await write({
+      ...WS_MANIFESTS,
+      'packages/a/package.json':
+        '{ "name": "a", "version": "1.0.0", "dependencies": { "is-number": "^6.0.0", "semver": "7.6.0" } }',
+      'package-lock.json': JSON.stringify(lock),
+      'node_modules/.package-lock.json': wsTree(before, A_ONLY),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/semver is not installed) — run `npm install`',
+    )
+  })
+
+  it('refuses a root dependency a full install lacks', async () => {
+    const lock = wsLock({ 'is-number': '^6.0.0' })
+    const full = [...A_ONLY, 'node_modules/b', 'node_modules/ms', 'packages/b']
+    await write({
+      ...WS_MANIFESTS,
+      'package-lock.json': JSON.stringify(lock),
+      'node_modules/.package-lock.json': wsTree(lock, full),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/has-flag is not installed) — run `npm install`',
+    )
+    await write({
+      'node_modules/.package-lock.json': wsTree(lock, [...full, 'node_modules/has-flag']),
+    })
+    expect(await run(npm())).toBe('ok')
+  })
 })
 
 const pnpmLock = (v: string): string => `lockfileVersion: '9.0'
@@ -300,6 +384,29 @@ describe('yarn(): node_modules/.yarn-integrity (1) and .yarn-state.yml (2+)', ()
       'node_modules was installed from a different yarn.lock (is-number@7.0.0 is installed, and the lockfile does not list it) — run `yarn install`',
     )
     await write({ 'node_modules/.yarn-integrity': integrity('5.0.0') })
+    expect(await run(yarn())).toBe('ok')
+  })
+
+  // A pull's most common change: an entry the lockfile adds, run before
+  // the install. A `--production` install records the flag and no dev entry.
+  it('refuses an entry the lockfile adds that Yarn 1 did not install, but not under --production', async () => {
+    const added = `${yarnClassic('5.0.0')}
+kleur@4.1.5:
+  version "4.1.5"
+  resolved "https://registry.yarnpkg.com/kleur/-/kleur-4.1.5.tgz#4.1.5"
+  integrity sha512-kleur
+`
+    const record = (flags: string[]): string =>
+      JSON.stringify({ ...JSON.parse(integrity('5.0.0')), flags })
+    await write({
+      ...MANIFESTS,
+      'yarn.lock': added,
+      'node_modules/.yarn-integrity': record([]),
+    })
+    expect(await run(yarn())).toBe(
+      'node_modules was installed from a different yarn.lock (kleur@4.1.5 is not installed) — run `yarn install`',
+    )
+    await write({ 'node_modules/.yarn-integrity': record(['production']) })
     expect(await run(yarn())).toBe('ok')
   })
 
