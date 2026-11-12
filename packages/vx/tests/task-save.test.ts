@@ -9,13 +9,15 @@ import type { TaskConfig } from '../src/config.js'
 import type { CacheLayer } from '../src/cache/index.js'
 import type { ExecuteResult } from '../src/exec/index.js'
 import type { TaskNode } from '../src/graph/index.js'
-import type { ExecuteArgs } from '../src/orchestrator/execute-task.js'
+import type { ExecuteArgs, RunContext } from '../src/orchestrator/execute-task.js'
 import type { Attempts } from '../src/orchestrator/attempts.js'
 import type { KeyCheck, StateStamp } from '../src/orchestrator/input-recheck.js'
 import type { MissRun } from '../src/orchestrator/miss-run.js'
 import { saveVerdict } from '../src/orchestrator/task-save.js'
 import { taskPolicy } from '../src/orchestrator/task-policy.js'
 import type { FingerprintWatch } from '../src/orchestrator/fingerprint-watch.js'
+
+type ArgsOver = Partial<Omit<ExecuteArgs, 'run'>> & { run?: Partial<RunContext> }
 
 const cached: TaskConfig = {
   exec: { command: 'build' },
@@ -25,7 +27,7 @@ const cached: TaskConfig = {
 }
 
 interface Fake {
-  over?: Partial<ExecuteArgs>
+  over?: ArgsOver
   exitCode?: number
   result?: Partial<ExecuteResult>
   leftRunning?: boolean
@@ -49,17 +51,20 @@ function fake(f: Fake = {}): { m: MissRun; ran: Attempts; warned: string[] } {
   const args: ExecuteArgs = {
     node,
     upstream: [],
-    workspaceRoot: '/ws',
-    cache: { hasRemote: false } as unknown as CacheLayer,
     log: { warn: (l: string) => warned.push(l) } as unknown as ExecuteArgs['log'],
     executor: { name: 'local' } as ExecuteArgs['executor'],
     nestedProjectDirs: [],
-    runStartHrTimeNs: 0n,
-    keyedProjects: () => new Set(),
-    // `'unchecked'` keeps the re-check off the disk: the key holds unless
-    // the describe already disagreed.
-    inputStability: { run: { strategy: 'unchecked' } },
     ...f.over,
+    run: {
+      workspaceRoot: '/ws',
+      cache: { hasRemote: false } as unknown as CacheLayer,
+      runStartHrTimeNs: 0n,
+      keyedProjects: () => new Set(),
+      // `'unchecked'` keeps the re-check off the disk: the key holds unless
+      // the describe already disagreed.
+      inputStability: { run: { strategy: 'unchecked' } },
+      ...f.over?.run,
+    },
   }
   const m = {
     args,
@@ -130,7 +135,7 @@ describe('saveVerdict: may this task save', () => {
 
   it('a task not cached here (no cache block, remote-only, deferred) gets nothing', async () => {
     const plain: TaskConfig = { exec: { command: 'build' }, inputs: { files: ['src/**'] } }
-    const overs: Partial<ExecuteArgs>[] = [
+    const overs: ArgsOver[] = [
       { node: { ...fake().m.args.node, config: plain } },
       { remoteOnly: true },
       { download: 'deferred' },
@@ -160,7 +165,7 @@ describe('saveVerdict: may this task save', () => {
       moved: () => ['bun.lock'],
       say: () => said.push('moved'),
     } as unknown as FingerprintWatch
-    const { v, check } = await verdictOf({ over: { fingerprintWatch: watch } })
+    const { v, check } = await verdictOf({ over: { run: { fingerprintWatch: watch } } })
     expect(v).toEqual({ kind: 'mark' })
     expect(check.unkeyed).toBe(true)
     expect(said).toEqual(['moved'])
@@ -185,7 +190,7 @@ describe('saveVerdict: may this task save', () => {
   })
 
   it('a server that died under the task withholds the save', async () => {
-    const { v } = await verdictOf({ over: { serverDiedUnder: async () => true } })
+    const { v } = await verdictOf({ over: { run: { serverDiedUnder: async () => true } } })
     expect(v).toEqual({ kind: 'mark' })
   })
 
@@ -198,9 +203,11 @@ describe('saveVerdict: may this task save', () => {
     const { v } = await verdictOf({
       leftRunning: true,
       over: {
-        serverDiedUnder: async () => {
-          asked = true
-          return false
+        run: {
+          serverDiedUnder: async () => {
+            asked = true
+            return false
+          },
         },
       },
     })
@@ -222,7 +229,8 @@ describe('saveVerdict: may this task save', () => {
       keyed: false,
     })
     expect(
-      (await verdictOf({ result: deferred, over: { serverDiedUnder: async () => true } })).v,
+      (await verdictOf({ result: deferred, over: { run: { serverDiedUnder: async () => true } } }))
+        .v,
     ).toEqual({ kind: 'defer', materialize, keyed: false })
   })
 

@@ -146,7 +146,7 @@ export interface RunSummary {
 9. **`runGraph({..., priorities, restoreTier})`.** Two-tier schedule;
    each ready node runs `executeTask` (with its pre-probe when
    present; its arguments from `executeArgsOf`, execute-args.ts, which
-   spreads the run's `RunScope` built once) through `admission.ts`: a service-supplied `inflight` map
+   hands every task the run's one `RunContext` by reference) through `admission.ts`: a service-supplied `inflight` map
    dedupes identical-hash tasks across concurrent delegated runs, and
    under `continueMode: 'always'` the taint of an upstream failure is
    tracked so the task's save is withheld.
@@ -505,25 +505,32 @@ return a `TaskOutcome` to the scheduler.
 ### Public surface
 
 ```ts
-export interface ExecuteArgs {
-  node: TaskNode
-  upstream: TaskOutcome[]
+// What every task of a run shares: built once, shared by reference.
+export interface RunContext {
   workspaceRoot: string
   cache: CacheLayer
   cachePolicy?: CachePolicy // 4-axis read/write control; undefined → everything on
   forwardArgs?: readonly string[]
   retries?: number // run-level retry default (run.retries); exec.retries wins
-  log: Logger
-  executor: TaskExecutor // where run.ts placed this task
   keyedProjects: (node: TaskNode) => ReadonlySet<string> // orchestrator.md
-  nestedProjectDirs: string[]
   runStartHrTimeNs: bigint
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
   track?: (taskId: string, pid: number) => () => void // TelemetrySource.track: samples each attempt's tree
-  // … and the optional run-scoped fields (timeout, preProbed, download,
-  // deferSave, taintedUpstream, serverDiedUnder, leftRunning, fingerprintWatch, noDependants,
-  // probesAfterWrites, …)
+  // … and the other optional run-wide fields (timeout, deferSave,
+  // serverDiedUnder, leftRunning, fingerprintWatch, probesAfterWrites, …)
+}
+
+// One dispatch: the run it belongs to, plus this task's own facts.
+export interface ExecuteArgs {
+  run: RunContext
+  node: TaskNode
+  upstream: TaskOutcome[]
+  log: Logger
+  executor: TaskExecutor // where run.ts placed this task
+  nestedProjectDirs: string[]
+  // … and the optional per-task fields (preProbed, download,
+  // taintedUpstream, noDependants, terminal, servers, …)
 }
 
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
@@ -731,7 +738,7 @@ retry's clean that finds one added, removed or touched
 A process any attempt's shell left running (`ExecuteResult.leftRunning`)
 withholds the save, a failed attempt's too: it may write into the
 passing attempt's outputs. It is not killed, as a passing attempt's
-is not. The first one also calls `ExecuteArgs.leftRunning` (run.ts: it
+is not. The first one also calls `RunContext.leftRunning` (run.ts: it
 seeds the run's taint, so what is built on it is not saved either).
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
@@ -938,7 +945,7 @@ export function nestedDirsOf(
 ```
 
 `nestedDirsOf` is the projects nested in a keyed one, by its directory
-(`ExecuteArgs.nestedDirsOf`): a task granted that linked package is
+(`RunContext.nestedDirsOf`): a task granted that linked package is
 walled from them, since its key stops at a nested project
 (`sandbox/request.ts`).
 
@@ -959,7 +966,7 @@ since its hash is taken over them: built from `deps`, two groups whose
 dropped members differed shared one, and a keyed sibling was withheld.
 
 `run.ts` builds one lookup per run and hands it to every task
-(`ExecuteArgs.keyedProjects`); execute-task asks it only on the miss path
+(`RunContext.keyedProjects`); execute-task asks it only on the miss path
 of a sandboxed task that declares `cache`.
 
 ### Rules
@@ -2694,7 +2701,7 @@ rules stand between them and neither changes what the task is:
   is seeded just before its save (`ExecuteArgs.serverDiedUnder`), which
   withholds that save; a graph with a server therefore keeps the check on
   (`seedsLater`). So is a task whose shell left a process running
-  (`ExecuteArgs.leftRunning`): its dependents read a tree it may still
+  (`RunContext.leftRunning`): its dependents read a tree it may still
   write. `run()` turns the check on at that first leftover, before the
   task settles, so the tracker it makes then has every outcome a
   dependent's taint is read from. No seed, no server and no `always`

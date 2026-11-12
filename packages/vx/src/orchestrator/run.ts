@@ -96,8 +96,13 @@ import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
 import { commandWriteReach, prepareSandbox } from '../sandbox/index.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import { settleProbedHit, unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
-import { executeArgsOf, type RunScope } from './execute-args.js'
+import {
+  settleProbedHit,
+  unkeyedGroupOutcome,
+  type ExecuteArgs,
+  type RunContext,
+} from './execute-task.js'
+import { executeArgsOf } from './execute-args.js'
 import { excludedTaint } from './excluded-keys.js'
 import { dependedOn, keyUpstream } from './upstream.js'
 import { createLiveUsage } from './live-usage.js'
@@ -1319,7 +1324,7 @@ async function runOnBus(
     const failFast = new AbortController()
     // Tasks a plugin's shared record names flaky (`ctx.flaky`).
     const sharedFlaky = new Set<string>()
-    const scope: RunScope = {
+    const scope: RunContext = {
       workspaceRoot,
       cache,
       cachePolicy: policy,

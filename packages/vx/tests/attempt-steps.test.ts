@@ -6,7 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import type { CacheLayer } from '../src/cache/index.js'
 import type { TaskNode } from '../src/graph/index.js'
-import type { ExecuteArgs } from '../src/orchestrator/execute-task.js'
+import type { ExecuteArgs, RunContext } from '../src/orchestrator/execute-task.js'
 import type { Attempts } from '../src/orchestrator/attempts.js'
 import { AttemptSignal } from '../src/orchestrator/attempt-signal.js'
 import { AttemptStream } from '../src/orchestrator/attempt-stream.js'
@@ -15,6 +15,8 @@ import { missOutcome } from '../src/orchestrator/miss-outcome.js'
 import { taskPolicy } from '../src/orchestrator/task-policy.js'
 import { TaskSecrets } from '../src/orchestrator/task-secrets.js'
 import { localExecutor } from '../src/orchestrator/local-executor.js'
+
+type ArgsOver = Partial<Omit<ExecuteArgs, 'run'>> & { run?: Partial<RunContext> }
 
 const cached: TaskConfig = {
   exec: { command: 'build' },
@@ -45,18 +47,21 @@ function logged(): { log: ExecuteArgs['log']; out: string[]; err: string[]; warn
   return { log, out, err, warned }
 }
 
-function args(over: Partial<ExecuteArgs> = {}): ExecuteArgs {
+function args(over: ArgsOver = {}): ExecuteArgs {
   return {
     node,
     upstream: [],
-    workspaceRoot: '/ws',
-    cache: { hasRemote: false } as unknown as CacheLayer,
     log: logged().log,
     executor: { name: 'remote', remote: true, execute: async () => ({}) } as never,
     nestedProjectDirs: [],
-    runStartHrTimeNs: 0n,
-    keyedProjects: () => new Set(),
     ...over,
+    run: {
+      workspaceRoot: '/ws',
+      cache: { hasRemote: false } as unknown as CacheLayer,
+      runStartHrTimeNs: 0n,
+      keyedProjects: () => new Set(),
+      ...over.run,
+    },
   }
 }
 
@@ -95,7 +100,7 @@ describe('AttemptStream: one attempt’s output', () => {
 describe('AttemptSignal: what aborts an attempt’s request', () => {
   it('the run’s stop aborts it, with the stop’s reason', () => {
     const stop = new AbortController()
-    const sig = new AttemptSignal(args({ stopSignal: stop.signal }), undefined)
+    const sig = new AttemptSignal(args({ run: { stopSignal: stop.signal } }), undefined)
     const s = sig.request(false)
     stop.abort('SIGINT')
     expect([s.aborted, s.reason]).toEqual([true, 'SIGINT'])
@@ -124,13 +129,16 @@ describe('AttemptSignal: what aborts an attempt’s request', () => {
     const failFast = new AbortController()
     let begun: string | null = null
     const executor = { name: 'remote', remote: true, running: () => begun } as never
-    const sig = new AttemptSignal(args({ failFast: failFast.signal, executor }), undefined)
+    const sig = new AttemptSignal(args({ run: { failFast: failFast.signal }, executor }), undefined)
     const s = sig.request(false)
     failFast.abort()
     expect([s.aborted, sig.unbegun]).toEqual([true, true])
     const failFast2 = new AbortController()
     begun = 'machine-1'
-    const sig2 = new AttemptSignal(args({ failFast: failFast2.signal, executor }), undefined)
+    const sig2 = new AttemptSignal(
+      args({ run: { failFast: failFast2.signal }, executor }),
+      undefined,
+    )
     const s2 = sig2.request(false)
     failFast2.abort()
     expect([s2.aborted, sig2.unbegun]).toEqual([false, false])
@@ -141,7 +149,7 @@ describe('AttemptSignal: what aborts an attempt’s request', () => {
     try {
       const stop = new AbortController()
       const said: string[] = []
-      const sig = new AttemptSignal(args({ stopSignal: stop.signal }), undefined)
+      const sig = new AttemptSignal(args({ run: { stopSignal: stop.signal } }), undefined)
       const s = sig.request(false)
       const never = new Promise<unknown>(() => {})
       const bounded = sig.bound(never, s, (l) => said.push(l))
@@ -174,7 +182,7 @@ describe('missOutcome: what a miss adds up to', () => {
   function outcomeOf(over: {
     exitCode?: number
     check?: Parameters<typeof missOutcome>[2]
-    args?: Partial<ExecuteArgs>
+    args?: ArgsOver
   }) {
     const { log, warned } = logged()
     const a = args({ log, ...over.args })

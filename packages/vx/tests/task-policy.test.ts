@@ -2,8 +2,10 @@ import { describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import type { CacheLayer } from '../src/cache/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import type { ExecuteArgs } from '../src/orchestrator/execute-task.js'
+import type { ExecuteArgs, RunContext } from '../src/orchestrator/execute-task.js'
 import { inputStabilityOf, taskPolicy } from '../src/orchestrator/task-policy.js'
+
+type ArgsOver = Partial<Omit<ExecuteArgs, 'run'>> & { run?: Partial<RunContext> }
 
 const cached: TaskConfig = {
   exec: { command: 'build' },
@@ -24,18 +26,21 @@ function node(config: TaskConfig = cached, id = 'p#build'): TaskNode {
   } as TaskNode
 }
 
-function args(over: Partial<ExecuteArgs> = {}, n = node()): ExecuteArgs {
+function args(over: ArgsOver = {}, n = node()): ExecuteArgs {
   return {
     node: n,
     upstream: [],
-    workspaceRoot: '/ws',
-    cache: { hasRemote: false } as unknown as CacheLayer,
     log: {} as ExecuteArgs['log'],
     executor: {} as ExecuteArgs['executor'],
     nestedProjectDirs: [],
-    runStartHrTimeNs: 0n,
-    keyedProjects: () => new Set(),
     ...over,
+    run: {
+      workspaceRoot: '/ws',
+      cache: { hasRemote: false } as unknown as CacheLayer,
+      runStartHrTimeNs: 0n,
+      keyedProjects: () => new Set(),
+      ...over.run,
+    },
   }
 }
 
@@ -60,13 +65,13 @@ describe('taskPolicy: what a cached task may read, write and plan to save', () =
 
   it('--no-cache turns every axis off: no read, no write, no save', () => {
     const off = { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
-    const p = taskPolicy(args({ cachePolicy: off }))
+    const p = taskPolicy(args({ run: { cachePolicy: off } }))
     expect([p.read, p.write, p.save]).toEqual([false, false, false])
   })
 
   it('--force reads nothing but still writes and saves', () => {
     const force = { ...ALL_ON, localRead: false, remoteRead: false }
-    const p = taskPolicy(args({ cachePolicy: force }))
+    const p = taskPolicy(args({ run: { cachePolicy: force } }))
     expect([p.read, p.write, p.save]).toEqual([false, true, true])
   })
 
@@ -130,32 +135,32 @@ describe('taskPolicy: what a cached task may read, write and plan to save', () =
     expect(taskPolicy(args({ download: 'deferred' })).deferred).toBe(true)
     const additive = taskPolicy(args({}, { ...node(), addsToOutputsOf: ['q#build'] }))
     expect(additive.additive).toBe(true)
-    const keep = taskPolicy(args({ cleanOutputs: false }))
+    const keep = taskPolicy(args({ run: { cleanOutputs: false } }))
     expect(keep.keepOutputs).toBe(true)
     // The task's own `outputs.clean` beats the workspace's.
     const own = node({ ...cached, outputs: { files: ['dist/**'], clean: true } })
-    expect(taskPolicy(args({ cleanOutputs: false }, own)).keepOutputs).toBe(false)
+    expect(taskPolicy(args({ run: { cleanOutputs: false } }, own)).keepOutputs).toBe(false)
     // An additive task never cleans by glob, so it keeps nothing either.
     const both = taskPolicy(
-      args({ cleanOutputs: false }, { ...node(), addsToOutputsOf: ['q#build'] }),
+      args({ run: { cleanOutputs: false } }, { ...node(), addsToOutputsOf: ['q#build'] }),
     )
     expect(both.keepOutputs).toBe(false)
   })
 
   it('retries: the task beats the run, an explicit 0 included; a known flake may get one', () => {
-    expect(taskPolicy(args({ retries: 2 })).maxAttempts).toBe(3)
+    expect(taskPolicy(args({ run: { retries: 2 } })).maxAttempts).toBe(3)
     const zero = node({ ...cached, exec: { command: 'b', retries: 0 } })
-    const p = taskPolicy(args({ retries: 2 }, zero))
+    const p = taskPolicy(args({ run: { retries: 2 } }, zero))
     expect([p.maxAttempts, p.retriesSet, p.retryCanFollow]).toEqual([1, true, false])
-    const flaky = taskPolicy(args({ knownFlaky: () => true }))
+    const flaky = taskPolicy(args({ run: { knownFlaky: () => true } }))
     expect([flaky.maxAttempts, flaky.retriesSet, flaky.retryCanFollow]).toEqual([1, false, true])
     expect(taskPolicy(args()).retryCanFollow).toBe(false)
   })
 
   it('timeout: exec.timeout beats the run', () => {
-    expect(taskPolicy(args({ timeout: 5000 })).timeout).toBe(5000)
+    expect(taskPolicy(args({ run: { timeout: 5000 } })).timeout).toBe(5000)
     const own = node({ ...cached, exec: { command: 'b', timeout: '1s' } })
-    expect(taskPolicy(args({ timeout: 5000 }, own)).timeout).toBe(1000)
+    expect(taskPolicy(args({ run: { timeout: 5000 } }, own)).timeout).toBe(1000)
   })
 
   it("an executor's own record: unsaved when no save is planned or the remote write is off", () => {
@@ -163,25 +168,29 @@ describe('taskPolicy: what a cached task may read, write and plan to save', () =
     expect(taskPolicy(args({ taintedUpstream: true })).unsaved).toBe(true)
     const remote = { hasRemote: true } as unknown as CacheLayer
     const noRemoteWrite = { ...ALL_ON, remoteWrite: false }
-    expect(taskPolicy(args({ cache: remote, cachePolicy: noRemoteWrite })).unsaved).toBe(true)
+    expect(taskPolicy(args({ run: { cache: remote, cachePolicy: noRemoteWrite } })).unsaved).toBe(
+      true,
+    )
     // Without a remote layer the remote axes say nothing about the record.
-    expect(taskPolicy(args({ cachePolicy: noRemoteWrite })).unsaved).toBe(false)
+    expect(taskPolicy(args({ run: { cachePolicy: noRemoteWrite } })).unsaved).toBe(false)
   })
 
   it('refresh: no read axis, or the remote read off with a remote', () => {
     expect(taskPolicy(args()).refresh).toBe(false)
     const force = { ...ALL_ON, localRead: false, remoteRead: false }
-    expect(taskPolicy(args({ cachePolicy: force })).refresh).toBe(true)
+    expect(taskPolicy(args({ run: { cachePolicy: force } })).refresh).toBe(true)
     const remote = { hasRemote: true } as unknown as CacheLayer
     const noRemoteRead = { ...ALL_ON, remoteRead: false }
-    expect(taskPolicy(args({ cache: remote, cachePolicy: noRemoteRead })).refresh).toBe(true)
-    expect(taskPolicy(args({ cachePolicy: noRemoteRead })).refresh).toBe(false)
+    expect(taskPolicy(args({ run: { cache: remote, cachePolicy: noRemoteRead } })).refresh).toBe(
+      true,
+    )
+    expect(taskPolicy(args({ run: { cachePolicy: noRemoteRead } })).refresh).toBe(false)
   })
 
   it('forward args reach only a requested task', () => {
-    expect(taskPolicy(args({ forwardArgs: ['--x'] })).forwardArgs).toEqual(['--x'])
+    expect(taskPolicy(args({ run: { forwardArgs: ['--x'] } })).forwardArgs).toEqual(['--x'])
     const dep = { ...node(), requested: false }
-    expect(taskPolicy(args({ forwardArgs: ['--x'] }, dep)).forwardArgs).toEqual([])
+    expect(taskPolicy(args({ run: { forwardArgs: ['--x'] } }, dep)).forwardArgs).toEqual([])
   })
 })
 

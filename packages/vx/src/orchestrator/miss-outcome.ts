@@ -42,12 +42,12 @@ export function missOutcome(
     violations.length === 0
       ? []
       : [
-          perRunWriteHint(violations, node.projectDir, args.workspaceRoot),
-          misrootedWriteHint(violations, node.projectDir, args.workspaceRoot),
+          perRunWriteHint(violations, node.projectDir, args.run.workspaceRoot),
+          misrootedWriteHint(violations, node.projectDir, args.run.workspaceRoot),
         ].filter((n) => n !== undefined)
   const finalViolations = notes.length === 0 ? violations : [...violations, ...notes]
   const fixOf = (fix: TaskOutcome['sandboxFix']) => (fix === undefined ? {} : { sandboxFix: fix })
-  const keepsWhole = policy.save || args.keepRun !== undefined
+  const keepsWhole = policy.save || args.run.keepRun !== undefined
 
   return {
     node,
@@ -71,8 +71,8 @@ export function missOutcome(
     ...(exitCode !== 0 && stream.output !== undefined
       ? { failedOutput: failedOutputLog(stream.output, keepsWhole, secrets.mask ?? undefined) }
       : {}),
-    ...(args.keepRun !== undefined &&
-    (exitCode !== 0 ? args.keepRun.failures : !policy.save) &&
+    ...(args.run.keepRun !== undefined &&
+    (exitCode !== 0 ? args.run.keepRun.failures : !policy.save) &&
     stream.output !== undefined
       ? { runLog: stream.stored(secrets.mask) }
       : {}),
@@ -104,7 +104,7 @@ export function missOutcome(
             sandboxFix(
               finalViolations,
               node.projectDir,
-              args.workspaceRoot,
+              args.run.workspaceRoot,
               (t) => secrets.text(t),
               node.config.inputs,
               m.sandbox.upstreamOutputs,

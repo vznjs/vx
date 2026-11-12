@@ -43,8 +43,8 @@ export interface StateStamp {
  * task rewrote the lockfile), said once per run.
  */
 export function fingerprintMoved(args: ExecuteArgs): boolean {
-  if (args.fingerprintWatch?.moved() === undefined) return false
-  args.fingerprintWatch.say(args.log)
+  if (args.run.fingerprintWatch?.moved() === undefined) return false
+  args.run.fingerprintWatch.say(args.log)
   return true
 }
 
@@ -65,18 +65,18 @@ export async function movedSinceKey(
   if (described!.hash !== hash) return null
   // Changed where an executor ran it: this disk never shows it.
   if (result.changed !== undefined && result.changed.length > 0) {
-    const changed = new Set(result.changed.map((f) => path.join(args.workspaceRoot, f)))
+    const changed = new Set(result.changed.map((f) => path.join(args.run.workspaceRoot, f)))
     const there = keyed(described!.facts).find((f) => changed.has(f.path))
     if (there !== undefined) return there.path
     // One the key never folded, as this disk lacks it (untracked there),
     // that the declaration matches: the command read it, and its entry
     // here was every later run's hit.
-    const dir = relPosix(args.workspaceRoot, node.projectDir)
+    const dir = relPosix(args.run.workspaceRoot, node.projectDir)
     for (const f of result.changed) {
-      const own = relPosix(node.projectDir, path.join(args.workspaceRoot, f))
+      const own = relPosix(node.projectDir, path.join(args.run.workspaceRoot, f))
       const projectRel = own.startsWith('../') ? null : own
       if (declaresInput(node.config, projectRel, f, false, true, dir))
-        return path.join(args.workspaceRoot, f)
+        return path.join(args.run.workspaceRoot, f)
     }
   }
   // Under `'mutable'`, a write during the command that left the key's bytes
@@ -84,7 +84,7 @@ export async function movedSinceKey(
   // write the file ran between the describe and that write: one that did
   // may have changed it and put it back while this command read it.
   const ownRewrite = (file: string, ctimeMs: number): boolean => {
-    check.rewroteBy = args.commandWindows?.writerDuring(
+    check.rewroteBy = args.run.commandWindows?.writerDuring(
       node.id,
       file,
       described!.describedAt,
@@ -95,7 +95,7 @@ export async function movedSinceKey(
   return (
     (await movedInput(
       keyed(described!.facts),
-      args.cache,
+      args.run.cache,
       commandFrom,
       m.policy.stability.strategy === 'mutable' ? ownRewrite : undefined,
     )) ?? described!.added()
@@ -135,8 +135,9 @@ export async function keyStillTrue(
   if (stability.strategy === 'unchecked' && described!.hash === hash) {
     if (args.executor.remote !== true)
       forgetUndeclaredWrites(
-        args,
-        wsOutputs.length > 0 ? 'workspace' : commandWriteReach(node, args.workspaceRoot),
+        args.node,
+        args.run.gitFilesCache,
+        wsOutputs.length > 0 ? 'workspace' : commandWriteReach(node, args.run.workspaceRoot),
       )
     return true
   }
@@ -146,7 +147,7 @@ export async function keyStillTrue(
   if (moved === undefined) return true
   const { rewroteBy } = check
   const name =
-    moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``
+    moved === null ? 'its inputs' : `\`${printable(relPosix(args.run.workspaceRoot, moved))}\``
   // Only its ctime moved: a hard link (`cp -al src dist`), chmod or chown.
   // It is still withheld: an edit undone with its mtime put back reads the
   // same. Not said of a change an executor reported from where it ran.
@@ -154,7 +155,7 @@ export async function keyStillTrue(
     moved === null || rewroteBy !== undefined || (result.changed?.length ?? 0) > 0
       ? undefined
       : keyed(described!.facts).find((f) => f.path === moved)
-  const ctimeOnly = fact !== undefined && (await onlyCtimeMoved(fact, commandFrom, args.cache))
+  const ctimeOnly = fact !== undefined && (await onlyCtimeMoved(fact, commandFrom, args.run.cache))
   const what = ctimeOnly
     ? `${name}'s ctime moved while the task ran, but not its bytes or mtime (a hard link, chmod or chown)`
     : `${name} changed after its key was taken` +
@@ -177,7 +178,7 @@ export async function keyStillTrue(
   const appeared = (rel: string): string => {
     const own = relPosix(node.projectDir, rel)
     const [field, at] = own.startsWith('../')
-      ? ['inputs.workspaceFiles', relPosix(args.workspaceRoot, rel)]
+      ? ['inputs.workspaceFiles', relPosix(args.run.workspaceRoot, rel)]
       : ['inputs.files', own]
     return (
       '; it appeared during the run: if the task checks against it (a test snapshot), ' +
@@ -195,14 +196,14 @@ export async function keyStillTrue(
   // Under watch the edit starts the next cycle, which runs on it: said
   // first, or the way out read as the fix for the user's own edit.
   const hint =
-    (args.watch === true && rewroteBy === undefined ? '; the next cycle runs on it' : '') +
+    (args.run.watch === true && rewroteBy === undefined ? '; the next cycle runs on it' : '') +
     (ctimeOnly
       ? "; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }"
       : moved === null || rewroteBy !== undefined || !existsSync(moved)
         ? ''
         : notTheTask
           ? '; the sandbox let the task write none of it, so another process changed it during the run (an editor, a checkout)' +
-            (args.watch === true ? '' : '; the next run runs on it')
+            (args.run.watch === true ? '' : '; the next run runs on it')
           : !read
             ? appeared(moved)
             : // `jest -u`: a snapshot the task checks against is committed, as
@@ -218,7 +219,7 @@ export async function keyStillTrue(
       `[vx] ${node.id}: ${what} — the result is not saved, ` +
         `and inputs.stability.severity is 'error', so the task fails${hint}`,
     )
-    check.movedFails = moved === null ? '' : printable(relPosix(args.workspaceRoot, moved))
+    check.movedFails = moved === null ? '' : printable(relPosix(args.run.workspaceRoot, moved))
   } else {
     warnOf(log)(
       `[vx] ${node.id}: ${what} — ` +
@@ -228,7 +229,11 @@ export async function keyStillTrue(
         hint,
     )
   }
-  forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
+  forgetUndeclaredWrites(
+    args.node,
+    args.run.gitFilesCache,
+    wsOutputs.length > 0 ? 'workspace' : 'project',
+  )
   check.unkeyed = true
   check.drifted = moved
   return false
@@ -255,7 +260,7 @@ export function noStateWritten(m: MissRun, { state, from }: StateStamp): boolean
   const to = Date.now() + 1
   let alongside: string | undefined
   for (const rel of changed) {
-    alongside = args.commandWindows?.writerDuring(
+    alongside = args.run.commandWindows?.writerDuring(
       node.id,
       path.join(node.projectDir, rel),
       from,

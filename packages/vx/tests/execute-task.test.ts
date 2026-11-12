@@ -32,7 +32,7 @@ import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
 import type { Logger } from '../src/report/index.js'
 import { layeredOver } from './helpers/layered.js'
 import { run } from './helpers/orchestrator.js'
-import { executeTask, restoreHit } from '../src/orchestrator/execute-task.js'
+import { executeTask, restoreHit, type RunContext } from '../src/orchestrator/execute-task.js'
 import type { OutputDirSnapshot } from '../src/orchestrator/miss-save.js'
 import { computeTaskHash } from '../src/orchestrator/task-hash.js'
 
@@ -109,19 +109,31 @@ function node(b: Bench, config: TaskNode['config'], id = 'proj#build'): TaskNode
   }
 }
 
-function baseArgs(b: Bench, n: TaskNode, log: Logger) {
+function baseArgs(b: Bench, n: TaskNode, log: Logger, run: Partial<RunContext> = {}) {
   return {
     node: n,
     upstream: [] as TaskOutcome[],
-    workspaceRoot: b.root,
-    cache: b.cache,
+    run: {
+      workspaceRoot: b.root,
+      cache: b.cache,
+      runStartHrTimeNs: process.hrtime.bigint(),
+      keyedProjects: () => new Set<string>(),
+      ...run,
+    },
     log,
     executor: localExecutor(),
     nestedProjectDirs: [] as string[],
-    runStartHrTimeNs: process.hrtime.bigint(),
-    keyedProjects: () => new Set<string>(),
   }
 }
+
+/** The key's own args, as `keyFor` takes them from a dispatch. */
+const hashArgsOf = (a: ReturnType<typeof baseArgs>) => ({
+  node: a.node,
+  upstream: a.upstream,
+  nestedProjectDirs: a.nestedProjectDirs,
+  workspaceRoot: a.run.workspaceRoot,
+  cache: a.run.cache,
+})
 
 /** A completed upstream, as the scheduler hands it to a group task. */
 const upstreamOutcome = (id: string, hash: string): TaskOutcome =>
@@ -394,9 +406,8 @@ describe('execute-task — what the outcome and the request carry', () => {
       await executeTask({ ...baseArgs(b, cached, log), executor: recorder })
       // A task that will not write an entry retains nothing.
       await executeTask({
-        ...baseArgs(b, cached, log),
+        ...baseArgs(b, cached, log, { cachePolicy: NO_CACHE }),
         executor: recorder,
-        cachePolicy: NO_CACHE,
       })
       expect(seen).toEqual([
         { stdout: false, stderr: false },
@@ -428,13 +439,13 @@ describe('execute-task — what the outcome and the request carry', () => {
         outputs: { files: [] },
         cache: true,
       })
-      const run = (extra: object) =>
-        executeTask({ ...baseArgs(b, cached, log), executor: recorder, ...extra })
+      const run = (extra: Partial<RunContext>, task: object = {}) =>
+        executeTask({ ...baseArgs(b, cached, log, extra), executor: recorder, ...task })
       // Reads off throughout, so each run reaches the executor.
       const force = { localRead: false, localWrite: true, remoteRead: false, remoteWrite: false }
       await run({ cachePolicy: force })
       await run({ cachePolicy: NO_CACHE })
-      await run({ cachePolicy: force, taintedUpstream: true })
+      await run({ cachePolicy: force }, { taintedUpstream: true })
       expect(seen).toEqual([undefined, true, true])
     } finally {
       await closeBench(b)
@@ -471,10 +482,8 @@ describe('execute-task — what the outcome and the request carry', () => {
           cache: true,
         })
         return executeTask({
-          ...baseArgs(b, cached, log),
+          ...baseArgs(b, cached, log, { cachePolicy: policy, cache }),
           executor: recorder,
-          cachePolicy: policy,
-          cache,
         })
       }
       const at = (remoteRead: boolean, remoteWrite: boolean) => ({
@@ -701,9 +710,8 @@ describe('execute-task — what the outcome and the request carry', () => {
       // An abort only while the RUN is stopping; a SIGTERM it did not send
       // is a failure like the SIGKILL (item 1100).
       const t = await executeTask({
-        ...baseArgs(b, n, log),
+        ...baseArgs(b, n, log, { stopSignal: AbortSignal.abort() }),
         executor: term,
-        stopSignal: AbortSignal.abort(),
       })
       expect(t.status).toBe('aborted')
       const own = await executeTask({ ...baseArgs(b, n, log), executor: term })
@@ -794,7 +802,7 @@ describe('execute-task — what the clean and the fetch must NOT skip', () => {
         outputs: { files: [], workspaceFiles: ['shared/**'] },
         cache: true,
       })
-      await executeTask({ ...baseArgs(b, n, log), executor: localExecutor(), gitFilesCache })
+      await executeTask({ ...baseArgs(b, n, log, { gitFilesCache }), executor: localExecutor() })
       markSpy.mockRestore()
       expect(marked).toHaveLength(1)
       expect(marked[0]![0]).toBe(b.root)
@@ -831,7 +839,7 @@ describe('execute-task — what the clean and the fetch must NOT skip', () => {
         }),
       } as never
       const n = node(b, { exec: { command: 'true' } }, 'proj#far')
-      await executeTask({ ...baseArgs(b, n, log), executor: remote, deferred })
+      await executeTask({ ...baseArgs(b, n, log, { deferred }), executor: remote })
       expect(fetched).toBe(0)
 
       // CONTROL: the same task on a LOCAL executor does fetch them.
@@ -845,7 +853,7 @@ describe('execute-task — what the clean and the fetch must NOT skip', () => {
           violations: [],
         }),
       } as never
-      await executeTask({ ...baseArgs(b, n, log), executor: local, deferred })
+      await executeTask({ ...baseArgs(b, n, log, { deferred }), executor: local })
       expect(fetched).toBe(1)
     } finally {
       await closeBench(b)
@@ -1101,9 +1109,8 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
           },
         } as never
         const o = await executeTask({
-          ...baseArgs(b, n, log),
+          ...baseArgs(b, n, log, { failFast: failFast.signal }),
           executor: failing,
-          failFast: failFast.signal,
         })
         return [calls, o.status, o.exitCode, o.attempts, o.failedAttempts?.length]
       }
@@ -1145,9 +1152,8 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
         },
       } as never
       const o = await executeTask({
-        ...baseArgs(b, n, log),
+        ...baseArgs(b, n, log, { failFast: failFast.signal }),
         executor: failing,
-        failFast: failFast.signal,
       })
       expect([o.status, o.failedOutput]).toEqual(['failed', 'FIRST-ATTEMPT\n'])
     } finally {
@@ -1294,9 +1300,8 @@ describe('execute-task — what one attempt may hand the next', () => {
           },
         } as never
         const outcome = await executeTask({
-          ...baseArgs(b, n, capturingLogger(f)),
+          ...baseArgs(b, n, capturingLogger(f), { armSandbox: () => Bun.sleep(150) }),
           executor: recorder,
-          armSandbox: () => Bun.sleep(150),
         })
         expect([seen, outcome.status]).toEqual([[false], 'success'])
       } finally {
@@ -1499,7 +1504,9 @@ describe('execute-task — restoreHit classification (entry shapes a run() canno
     expect(o.durationMs).toBeLessThan(4321)
     // The wallclock window is run-relative, from the start it was handed.
     expect(o.wallclockStartNs).toBe(7n)
-    expect(o.wallclockEndNs).toBeLessThanOrEqual(process.hrtime.bigint() - args.runStartHrTimeNs)
+    expect(o.wallclockEndNs).toBeLessThanOrEqual(
+      process.hrtime.bigint() - args.run.runStartHrTimeNs,
+    )
   })
 })
 
@@ -1545,8 +1552,12 @@ describe('execute-task — what restoreHit reads and records', () => {
   const restore = (hash: string, hit: CacheEntry, snapshots?: OutputDirSnapshot[]) =>
     restoreHit({
       args: {
-        ...baseArgs(b, node(b, DIST_TASK), quiet()),
-        ...(snapshots !== undefined ? { outputDirSnapshots: snapshots } : {}),
+        ...baseArgs(
+          b,
+          node(b, DIST_TASK),
+          quiet(),
+          snapshots !== undefined ? { outputDirSnapshots: snapshots } : {},
+        ),
       },
       hash,
       hit,
@@ -1638,8 +1649,9 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
       remoteWrite: true,
     }
     const o = await executeTask({
-      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
-      cachePolicy: REMOTE_WRITE_ONLY,
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] }), {
+        cachePolicy: REMOTE_WRITE_ONLY,
+      }),
     } as never)
     expect(o.status).toBe('success')
     expect(b.cache.memo.loadOutputFilesBatch([o.hash ?? '']).size).toBe(1)
@@ -1686,29 +1698,32 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     })
     // 1. A FAILURE down the deferred path registers nothing.
     const failed = await executeTask({
-      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] }), {
+        deferred: deferred as never,
+      }),
       executor: far(7),
       download: 'deferred' as const,
-      deferred: deferred as never,
     } as never)
     expect([failed.status, registered]).toEqual(['failed', []])
     // 2. A TAINTED success down the same path registers nothing either.
     const cap = { root: '', out: [] as string[], err: [] as string[] }
     const tainted = await executeTask({
-      ...baseArgs(b, node(b, CACHEABLE), capturingLogger(cap)),
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger(cap), {
+        deferred: deferred as never,
+      }),
       executor: far(0),
       download: 'deferred' as const,
       taintedUpstream: true,
-      deferred: deferred as never,
     } as never)
     expect([tainted.status, registered]).toEqual(['success', []])
     // 3. CONTROL, on its own run: a clean success DOES register, so the two
     // refusals above are the gates' doing and not a path that never fires.
     const ok = await executeTask({
-      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] }), {
+        deferred: deferred as never,
+      }),
       executor: far(0),
       download: 'deferred' as const,
-      deferred: deferred as never,
     } as never)
     expect([ok.status, registered]).toEqual(['success', ['proj#build']])
   })
@@ -1748,9 +1763,9 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     })
     const stale = await executeTask({
       ...args,
+      run: { ...args.run, deferred: deferred as never },
       executor: far,
       download: 'deferred' as const,
-      deferred: deferred as never,
       preProbed: { hash: 'deadbeefdeadbeef', hit: null },
     } as never)
     // Still registered: a local consumer fetches the bytes, with no key.
@@ -1764,12 +1779,12 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     ])
     // CONTROL: the key the describe re-derives registers with it.
     registered.length = 0
-    const key = await computeTaskHash(args)
+    const key = await computeTaskHash(hashArgsOf(args))
     const held = await executeTask({
       ...args,
+      run: { ...args.run, deferred: deferred as never },
       executor: far,
       download: 'deferred' as const,
-      deferred: deferred as never,
       preProbed: { hash: key, hit: null },
     } as never)
     expect([held.status, registered]).toEqual(['success', [['proj#build', key]]])
@@ -1867,8 +1882,8 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     const args = baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] }))
     const demoted = await executeTask({
       ...args,
+      run: { ...args.run, fingerprintWatch: watch(['bun.lock']) as never },
       preProbed: { hash: 'feedfacefeedface', hit },
-      fingerprintWatch: watch(['bun.lock']) as never,
     }).then(
       (o) => o.status,
       (err: unknown) => (err instanceof RestoreDemoted ? 'demoted' : String(err)),
@@ -1881,8 +1896,8 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     // CONTROL: with the lockfile where the run read it, the hit restores.
     const o = await executeTask({
       ...args,
+      run: { ...args.run, fingerprintWatch: watch(undefined) as never },
       preProbed: { hash: 'feedfacefeedface', hit },
-      fingerprintWatch: watch(undefined) as never,
     })
     expect([o.status, await readFile(path.join(b.dir, 'out.txt'), 'utf8')]).toEqual([
       'cache-hit',
@@ -1906,14 +1921,14 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
       ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
       preProbed: { hash: 'feedfacefeedface', hit },
     }
-    const run = async (extra: object): Promise<string> => {
+    const run = async (extra: object, run: Partial<RunContext> = {}): Promise<string> => {
       await writeFile(path.join(b.dir, 'out.txt'), 'BEFORE')
-      const o = await executeTask({ ...args, ...extra } as never)
+      const o = await executeTask({ ...args, ...extra, run: { ...args.run, ...run } } as never)
       return `${o.status}:${await readFile(path.join(b.dir, 'out.txt'), 'utf8')}`
     }
     const force = { localRead: false, localWrite: true, remoteRead: false, remoteWrite: true }
     expect([
-      await run({ cachePolicy: force }),
+      await run({}, { cachePolicy: force }),
       await run({ remoteOnly: true }),
       await run({ remoteOnlyNoop: true }),
       await run({}),
@@ -1948,7 +1963,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
 
   it('a preProbed MISS saves under the up-front hash when the describe re-derives it', async () => {
     const args = baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] }))
-    const upFront = await computeTaskHash(args)
+    const upFront = await computeTaskHash(hashArgsOf(args))
     const getSpy = spyOn(b.cache, 'get')
     const o = await executeTask({ ...args, preProbed: { hash: upFront, hit: null } })
     expect(getSpy).toHaveBeenCalledTimes(0)
@@ -2452,10 +2467,9 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
             },
           }
           await executeTask({
-            ...baseArgs(b, consumer, log),
+            ...baseArgs(b, consumer, log, { cachePolicy: NO_CACHE }),
             upstream,
             executor: capturing,
-            cachePolicy: NO_CACHE,
           })
           return seen?.inputs?.upstream.map((u) => u.taskId)
         }
@@ -2690,9 +2704,8 @@ describe('execute-task — `--force` reaches a remote executor through `refresh`
 
         const forced = capturing()
         await executeTask({
-          ...baseArgs(b, node(b, cacheable), log),
+          ...baseArgs(b, node(b, cacheable), log, { cachePolicy: FORCE }),
           executor: forced.executor,
-          cachePolicy: FORCE,
         })
         expect(forced.seen()?.refresh).toBe(true)
 
@@ -2709,9 +2722,10 @@ describe('execute-task — `--force` reaches a remote executor through `refresh`
         // recorded anything under, so there is nothing to refresh.
         const bare = capturing()
         await executeTask({
-          ...baseArgs(b, node(b, { exec: { command: 'true' } }, 'proj#bare'), log),
+          ...baseArgs(b, node(b, { exec: { command: 'true' } }, 'proj#bare'), log, {
+            cachePolicy: FORCE,
+          }),
           executor: bare.executor,
-          cachePolicy: FORCE,
         })
         expect(bare.seen()?.refresh).toBeUndefined()
       } finally {
@@ -2777,8 +2791,9 @@ describe('execute-task edges', () => {
     git.set(b.dir, ['src.txt'])
     git.set(b.root, ['proj/src.txt'])
     const o = await executeTask({
-      ...baseArgs(b, node(b, cached('echo v2 > src.txt && echo x > out.txt')), log),
-      gitFilesCache: git,
+      ...baseArgs(b, node(b, cached('echo v2 > src.txt && echo x > out.txt')), log, {
+        gitFilesCache: git,
+      }),
       // With no dependants the unsaved branch after it is skipped, so the
       // save's own check is the only thing that forgets (the two masked each
       // other otherwise); a later task of the project still reads the facts.
@@ -2803,8 +2818,7 @@ describe('execute-task edges', () => {
       cache: true,
     } as TaskNode['config']
     await executeTask({
-      ...baseArgs(b, node(b, cfg), log),
-      gitFilesCache: git,
+      ...baseArgs(b, node(b, cfg), log, { gitFilesCache: git }),
       noDependants: true,
     })
     expect(git.has(path.join(b.root, 'other'))).toBe(false)
@@ -2813,8 +2827,9 @@ describe('execute-task edges', () => {
   it('a lockfile the command rewrote marks the outcome unkeyed', async () => {
     const watch = { moved: () => ['bun.lock'], say() {}, wrote() {} }
     const o = await executeTask({
-      ...baseArgs(b, node(b, cached('echo x > out.txt')), log),
-      fingerprintWatch: watch as never,
+      ...baseArgs(b, node(b, cached('echo x > out.txt')), log, {
+        fingerprintWatch: watch as never,
+      }),
     })
     expect([o.status, o.unkeyed]).toEqual(['success', true])
   })
@@ -2823,8 +2838,9 @@ describe('execute-task edges', () => {
     for (const requested of [true, false]) {
       out.length = 0
       await executeTask({
-        ...baseArgs(b, { ...node(b, { exec: { command: 'echo got' } }), requested }, log),
-        forwardArgs: ['--flag'],
+        ...baseArgs(b, { ...node(b, { exec: { command: 'echo got' } }), requested }, log, {
+          forwardArgs: ['--flag'],
+        }),
       })
       expect(out.join('').trim()).toBe(requested ? 'got --flag' : 'got')
     }
@@ -2832,14 +2848,19 @@ describe('execute-task edges', () => {
 
   it("a step's own timeout and retries win over the run's", async () => {
     const slow = await executeTask({
-      ...baseArgs(b, node(b, { exec: { command: 'sleep 0.3', timeout: '10s' } }), log),
-      timeout: 50,
+      ...baseArgs(b, node(b, { exec: { command: 'sleep 0.3', timeout: '10s' } }), log, {
+        timeout: 50,
+      }),
     })
     expect([slow.status, slow.timedOut]).toEqual(['success', undefined])
     const tries = path.join(b.dir, 'tries')
     const failing = await executeTask({
-      ...baseArgs(b, node(b, { exec: { command: `echo . >> ${tries}; exit 1`, retries: 0 } }), log),
-      retries: 2,
+      ...baseArgs(
+        b,
+        node(b, { exec: { command: `echo . >> ${tries}; exit 1`, retries: 0 } }),
+        log,
+        { retries: 2 },
+      ),
     })
     expect([failing.attempts, (await readFile(tries, 'utf8')).trim().split('\n').length]).toEqual([
       undefined,
@@ -2887,7 +2908,7 @@ describe('execute-task edges', () => {
       outputs: { files: [], workspaceFiles: ['gen/**'] },
       cache: true,
     } as TaskNode['config']
-    await executeTask({ ...baseArgs(b, node(b, cfg), log), cachePolicy: READ_ONLY })
+    await executeTask({ ...baseArgs(b, node(b, cfg), log, { cachePolicy: READ_ONLY }) })
     expect(await readFile(stray, 'utf8')).toBe('mine')
   })
 

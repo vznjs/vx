@@ -69,7 +69,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           ...given,
           hit: {
             ...given.hit,
-            outputRows: args.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? [],
+            outputRows: args.run.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? [],
           },
         }
       : given
@@ -97,7 +97,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   const isAddition = (rel: string): boolean => addedGlobs.some((g) => g.match(rel))
   const ownInputs = {
     projectDir: node.projectDir,
-    workspaceRoot: args.workspaceRoot,
+    workspaceRoot: args.run.workspaceRoot,
     declared: node.config.inputs,
   }
 
@@ -147,7 +147,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         clearing: true,
       })
       const wsTree = await resolveWorkspaceOutputTree({
-        workspaceRoot: args.workspaceRoot,
+        workspaceRoot: args.run.workspaceRoot,
         outputs: wsOutputs,
         inputs: ownInputs,
         special: 'later',
@@ -185,12 +185,12 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         .map((p) => relPosix(node.projectDir, p))
         .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
       const actualWsRels = actualWsAbs
-        .map((p) => relPosix(args.workspaceRoot, p))
+        .map((p) => relPosix(args.run.workspaceRoot, p))
         .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
       const actualDirRels = dirRels(node.projectDir, projTree.emptyDirs).filter(
         (rel) => expectedRels.has(rel) || !isAddition(rel.slice(0, -1)),
       )
-      const actualWsDirRels = dirRels(args.workspaceRoot, wsTree.emptyDirs).filter(
+      const actualWsDirRels = dirRels(args.run.workspaceRoot, wsTree.emptyDirs).filter(
         (rel) => expectedWsRels.has(rel) || !isAddition(rel.slice(0, -1)),
       )
       const rowsPresent = (
@@ -208,8 +208,8 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       if (treeMatches) {
         const endStat = span('output stat')
         skipRestore =
-          args.cache.memo.isOutputsCurrent(node.projectDir, projExpected) &&
-          args.cache.memo.isOutputsCurrent(args.workspaceRoot, wsExpected)
+          args.run.cache.memo.isOutputsCurrent(node.projectDir, projExpected) &&
+          args.run.cache.memo.isOutputsCurrent(args.run.workspaceRoot, wsExpected)
         endStat()
         // The walk ran and proved the tree current (rows absent, or a
         // directory had moved — a benign touch): snapshot the directories
@@ -223,8 +223,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           // written since the walk listed its directory, more than a racy
           // window before this, is not the entry's.
           const holds = entryHolds(node, outputWalkTakes(node.projectDir, outputs, outputNested))
-          await args.cache.memo.recordOutputDirs?.(hash, node.projectDir, dirPrefixes, (files) =>
-            holds(files, expected),
+          await args.run.cache.memo.recordOutputDirs?.(
+            hash,
+            node.projectDir,
+            dirPrefixes,
+            (files) => holds(files, expected),
           )
         }
       }
@@ -248,7 +251,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         clearing: true,
       })
       const actualWs = await resolveWorkspaceOutputTree({
-        workspaceRoot: args.workspaceRoot,
+        workspaceRoot: args.run.workspaceRoot,
         outputs: wsOutputs,
         inputs: ownInputs,
         special: 'later',
@@ -267,13 +270,13 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       outputs,
       nestedProjectDirs: outputNested,
       inputs: ownInputs,
-      committed: committedFiles(args.gitFilesCache, node.projectDir),
+      committed: committedFiles(args.run.gitFilesCache, node.projectDir),
     }
     const wsCleanArgs = {
-      workspaceRoot: args.workspaceRoot,
+      workspaceRoot: args.run.workspaceRoot,
       outputs: wsOutputs,
       inputs: ownInputs,
-      committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
+      committed: committedFiles(args.run.gitFilesCache, args.run.workspaceRoot),
     }
     const heldRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
     const heldWsRels = hit.outputFiles
@@ -299,7 +302,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     // none, a hit's restore started one more cycle whenever the next
     // command opened its window more than a racy window later (CI stalls).
     const closeWindow =
-      args.commandWindows?.open(
+      args.run.commandWindows?.open(
         node.id,
         node.projectDir,
         wsOutputs.length > 0 ? 'workspace' : 'project',
@@ -307,7 +310,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     try {
       if (!additive) {
         sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
-        sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
+        sweepRestoreTemps(args.run.workspaceRoot, wsOutputs, wsCleanArgs.committed)
         if (outputs.length > 0) {
           const tree = walked?.proj ?? (await resolveOutputTree({ ...walkArgs, ...cleanArgs }))
           // A FIFO, socket or device is found too: one the entry does not hold
@@ -333,15 +336,15 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           const tree =
             walked?.ws ?? (await resolveWorkspaceOutputTree({ ...walkArgs, ...wsCleanArgs }))
           foundWsRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
-            relPosix(args.workspaceRoot, f),
+            relPosix(args.run.workspaceRoot, f),
           )
           const blocking = inTheWay(foundWsRels, heldWsRels)
           staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
-          const dirs = splitDirs(args.workspaceRoot, tree.emptyDirs, heldWsRels)
+          const dirs = splitDirs(args.run.workspaceRoot, tree.emptyDirs, heldWsRels)
           staleWsDirs = dirs.stale
           if (blocking.size > 0 || dirs.blocking.length > 0) {
             await cleanOutputPaths({
-              projectDir: args.workspaceRoot,
+              projectDir: args.run.workspaceRoot,
               rels: [...blocking],
               outputs: wsOutputs,
               committed: wsCleanArgs.committed,
@@ -350,7 +353,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           }
         }
       }
-      await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
+      await args.run.cache.restoreOutputs(hash, node.projectDir, args.run.workspaceRoot, {
         files: outputs,
         workspaceFiles: wsOutputs,
       })
@@ -372,7 +375,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       }
       if (staleWsRels.length > 0 || staleWsDirs.length > 0) {
         await cleanOutputPaths({
-          projectDir: args.workspaceRoot,
+          projectDir: args.run.workspaceRoot,
           rels: staleWsRels,
           emptyDirs: staleWsDirs,
           outputs: wsOutputs,
@@ -380,7 +383,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           keep: new Set(
             heldWsRels
               .filter((r) => r.endsWith('/'))
-              .map((r) => path.join(args.workspaceRoot, r.slice(0, -1))),
+              .map((r) => path.join(args.run.workspaceRoot, r.slice(0, -1))),
           ),
         })
       }
@@ -389,7 +392,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     }
     // The tree now holds this entry's bytes: stamp them for the next hit
     // (item 886).
-    args.cache.memo.recordOutputStamps?.(hash, node.projectDir, args.workspaceRoot)
+    args.run.cache.memo.recordOutputStamps?.(hash, node.projectDir, args.run.workspaceRoot)
     // The directory snapshot behind the NEXT hit's skip-restore, taken at
     // run end from the run's list (as the miss path does, see
     // miss-save.ts): the restore renamed into these directories
@@ -398,8 +401,8 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     // walked its output trees — 41 of payload's 45 tasks, 14,430 files,
     // ~75 ms of the no-op's CPU (2026-09-11). A caller with no list gets
     // no snapshot (item 637: recording here was that same refusal).
-    if (dirPrefixes !== null && args.outputDirSnapshots !== undefined) {
-      args.outputDirSnapshots.push({
+    if (dirPrefixes !== null && args.run.outputDirSnapshots !== undefined) {
+      args.run.outputDirSnapshots.push({
         hash,
         projectDir: node.projectDir,
         prefixes: dirPrefixes,
@@ -415,10 +418,10 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     // unconditional drop (an executed task may write undeclared
     // files only git can see).
     if (outputs.length > 0) {
-      args.gitFilesCache?.markOutputsChanged(node.projectDir, [...foundRels, ...heldRels])
+      args.run.gitFilesCache?.markOutputsChanged(node.projectDir, [...foundRels, ...heldRels])
     }
     if (wsOutputs.length > 0) {
-      args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, [
+      args.run.gitFilesCache?.markWorkspaceOutputsChanged(args.run.workspaceRoot, [
         ...foundWsRels,
         ...heldWsRels,
       ])
@@ -443,8 +446,10 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
   if ((node.config.outputs?.workspaceFiles?.length ?? 0) > 0) return undefined
   if (outputs.length > 0) {
     const dirPrefixes = dirPrefixesOf(outputs)
-    if (dirPrefixes === null || args.cache.memo.outputDirsCurrent === undefined) return undefined
-    const expected = hit.outputRows ?? args.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? []
+    if (dirPrefixes === null || args.run.cache.memo.outputDirsCurrent === undefined)
+      return undefined
+    const expected =
+      hit.outputRows ?? args.run.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? []
     if (expected.length === 0) return undefined
     // Loaded with the entry (batched by getMany, or with the lazy get).
     const dirRows = hit.outputDirRows ?? []
@@ -457,8 +462,8 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
     if (expected.some((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))) return undefined
     // Asked back to back: the second reads the directories' modes the first
     // lstat'ed (`OutputIndex.dirModes`).
-    if (!args.cache.memo.outputDirsCurrent(node.projectDir, dirRows)) return undefined
-    if (!args.cache.memo.isOutputsCurrent(node.projectDir, expected)) return undefined
+    if (!args.run.cache.memo.outputDirsCurrent(node.projectDir, dirRows)) return undefined
+    if (!args.run.cache.memo.isOutputsCurrent(node.projectDir, expected)) return undefined
   }
   return () => hitOutcome(restore, false)
 }
@@ -504,7 +509,7 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
     hash,
     restored: restored || hit.source === 'remote',
     wallclockStartNs: taskStartNs,
-    wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
   }
   if (hit.cpuMs !== undefined) outcome.storedCpuMs = hit.cpuMs
   if (hit.peakRssBytes !== undefined) outcome.storedPeakRssBytes = hit.peakRssBytes

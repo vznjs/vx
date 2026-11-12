@@ -35,7 +35,7 @@ import { stampUndeclaredState } from './undeclared-state.js'
 
 /** Whether this task reads the cache: a cached, not remote-only task with a read axis on. */
 export function readsCache(args: ExecuteArgs): boolean {
-  const policy = args.cachePolicy ?? FULL_CACHE_POLICY
+  const policy = args.run.cachePolicy ?? FULL_CACHE_POLICY
   return (
     args.remoteOnly !== true &&
     args.node.config.cache === true &&
@@ -94,7 +94,7 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   const policy = taskPolicy(args)
   // When the task started, as an offset from run start, for EVERY outcome
   // (hits included), so the timeline shows when each task actually ran.
-  const taskStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  const taskStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const hash = await keyFor(args)
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
@@ -108,15 +108,15 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
       durationMs: 0,
       hash,
       wallclockStartNs: taskStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
     }
   }
 
   const hit = await probe(args, policy, hash, taskStartNs)
   if (hit !== null) return hit
 
-  const env = taskEnv(node, policy.exec, args.workspaceRoot)
-  const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  const env = taskEnv(node, policy.exec, args.run.workspaceRoot)
+  const wallclockStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const { inputs, secrets } = await describeMiss(args, policy, env)
 
   const fetched = await fetchDeferredUpstream(args, hash, taskStartNs)
@@ -146,21 +146,21 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   // A stop that landed during the awaits above (the key, the probe, the
   // input description): the first attempt would wipe the last build and
   // hand the executor a request after the run had stopped.
-  if (isAborted(args.stopSignal)) {
+  if (isAborted(args.run.stopSignal)) {
     return {
       node,
       status: 'aborted',
-      exitCode: signalExitCode(forwardedSignal(args.stopSignal?.reason)),
+      exitCode: signalExitCode(forwardedSignal(args.run.stopSignal?.reason)),
       durationMs: 0,
       hash,
       wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
     }
   }
   const stamp = stampState(m)
   const ran = await runAttempts(m, wallclockStartNs)
   if ('outcome' in ran) return ran.outcome
-  const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  const wallclockEndNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const check: KeyCheck = { unkeyed: false }
   const verdict = await saveVerdict(m, ran, check, stamp)
   const save = await applySave(m, ran, verdict, check, stamp)
@@ -183,14 +183,14 @@ async function keyFor(args: ExecuteArgs): Promise<string> {
       computeTaskHash({
         node: args.node,
         upstream: args.upstream,
-        workspaceRoot: args.workspaceRoot,
-        cache: args.cache,
-        forwardArgs: args.forwardArgs,
+        workspaceRoot: args.run.workspaceRoot,
+        cache: args.run.cache,
+        forwardArgs: args.run.forwardArgs,
         nestedProjectDirs: args.nestedProjectDirs,
-        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-        ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        ...(args.probesAfterWrites !== undefined
-          ? { probesAfterWrites: args.probesAfterWrites }
+        ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
+        ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
+        ...(args.run.probesAfterWrites !== undefined
+          ? { probesAfterWrites: args.run.probesAfterWrites }
           : {}),
       }),
     ))
@@ -216,7 +216,7 @@ async function probe(
   if (fingerprintMoved(args)) return null
   const cacheOpStart = performance.now()
   const endProbe = span('cache.get')
-  const hit = await args.cache.get(hash, getContext(args.node, policy.exec.command))
+  const hit = await args.run.cache.get(hash, getContext(args.node, policy.exec.command))
   endProbe()
   return hit ? restoreOrMiss(args, hash, hit, cacheOpStart, taskStartNs) : null
 }
@@ -233,9 +233,9 @@ async function fetchDeferredUpstream(
   hash: string,
   taskStartNs: bigint,
 ): Promise<TaskOutcome | undefined> {
-  if (args.executor.remote === true || args.deferred === undefined) return undefined
+  if (args.executor.remote === true || args.run.deferred === undefined) return undefined
   try {
-    await args.deferred.materializeFor(args.node)
+    await args.run.deferred.materializeFor(args.node)
     return undefined
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -248,7 +248,7 @@ async function fetchDeferredUpstream(
       durationMs: 0,
       hash,
       wallclockStartNs: taskStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
     }
   }
 }
@@ -262,10 +262,10 @@ function stampState(m: MissRun): StateStamp {
       ? stampUndeclaredState({
           config: args.node.config,
           projectDir: args.node.projectDir,
-          workspaceRoot: args.workspaceRoot,
+          workspaceRoot: args.run.workspaceRoot,
           nestedProjectDirs: args.nestedProjectDirs,
-          gitFilesCache: args.gitFilesCache,
-          projectTasks: args.projectTasks?.(args.node.projectDir) ?? [],
+          gitFilesCache: args.run.gitFilesCache,
+          projectTasks: args.run.projectTasks?.(args.node.projectDir) ?? [],
         })
       : undefined
   return { state, from }
