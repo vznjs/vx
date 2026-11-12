@@ -3,7 +3,7 @@
 // over the runs and entries tables (schema: src/cache/cache.ts).
 //
 // Pure SQL and JSON-safe shapes (`inputWriters` also stats files). The caller
-// opens and closes. Bigints serialize as decimal strings.
+// opens and closes. Bigints serialize as decimal strings (the WireEvent `timeUnixNano` rule).
 
 import type { Database } from 'bun:sqlite'
 import { statSync } from 'node:fs'
@@ -145,8 +145,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
 }
 
 /**
- * One invocation header: every `invocations` column camelCased,
- * `dirty`/`ci`/`exitOk` as booleans.
+ * One invocation header: every `invocations` column camelCased, `dirty`/`ci`/`exitOk` as booleans.
  */
 export interface InvocationDetail {
   runId: string
@@ -270,10 +269,7 @@ export interface ListInvocationsArgs {
   limit?: number
 }
 
-/**
- * Invocations newest-first from the header table, which keeps git, CI and tag
- * context.
- */
+/** Invocations newest-first from the header table, which keeps git, CI and tag context. */
 export function listInvocations(db: Database, args: ListInvocationsArgs = {}): InvocationDetail[] {
   const limit = clampInt(args.limit ?? 50, 1, 500)
   const rows = db
@@ -447,10 +443,9 @@ function unchangedKeyNote(
       at: number
     } | null
   )?.at
-  // The previous run executed and succeeded with the cache writable beside a
-  // failure, and no older entry holds the key: the continue-taint
-  // (admission.ts), which never saves. Not a flag nobody passed, nor a prune
-  // that never happened.
+  // The previous run executed and succeeded with the cache writable beside a failure, and no older
+  // entry holds the key: the continue-taint (admission.ts), which never saves. Not a flag nobody
+  // passed, nor a prune that never happened.
   if (
     (createdAt === undefined || createdAt >= this_.startedAt) &&
     this_.status === 'success' &&
@@ -494,9 +489,8 @@ function unchangedKeyNote(
   if (createdAt !== undefined && createdAt >= this_.startedAt) {
     return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
   }
-  // Read-skipping flags were ruled out above when the policy was recorded. A
-  // failed save leaves no row, only its trace: the previous run executed,
-  // succeeded, and no entry holds the key.
+  // Read-skipping flags were ruled out above when the policy was recorded. A failed save leaves no
+  // row, only its trace: the previous run executed, succeeded, and no entry holds the key.
   if (policy === undefined) {
     return 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
   }
@@ -556,9 +550,8 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       note: 'no row matching that runId + taskId',
     }
   }
-  // Compare against the previous run that recorded a key: a skipped or
-  // persistent row has `hash = ''`, and comparing would claim "unchanged" from
-  // no evidence.
+  // Compare against the previous run that recorded a key: a skipped or persistent row has `hash =
+  // ''`, and comparing would claim "unchanged" from no evidence.
   const prev = db
     .query(
       `SELECT hash, status, cache_hit AS cacheHit, restored, started_at AS startedAt,
@@ -605,9 +598,8 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       ? 'this task recorded no cache key (skipped, or a persistent task) — nothing to compare'
       : this_.cached === 0
         ? // Not a cache decision at all: the task runs every time by design,
-          // and its key is derived only so dependents can fold it. A keyless
-          // one's is new each run, so every dependent misses: "folded by
-          // dependents" read as if they could hit.
+          // and its key is derived only so dependents can fold it. A keyless one's is new each run,
+          // so every dependent misses: "folded by dependents" read as if they could hit.
           this_.keylessBy === null
           ? 'this task declares no `cache: true` — it runs on every invocation; its key is folded by dependents only'
           : this_.keylessBy === taskId
@@ -619,11 +611,10 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
             ? 'cache key changed between the previous run and this one (inputs differ)'
             : prev
               ? // An unchanged key has two very different endings, and calling
-                // both a "re-run" answered the question wrong: a cache HIT did not
-                // re-run at all, so blaming `--no-cache` named a cause that cannot
-                // have applied. Only a run that EXECUTED on an unchanged key is
-                // the case this verb exists to explain. A row with no recorded
-                // cacheHit (older rows) is neither — say that, do not guess.
+                // both a "re-run" answered the question wrong: a cache HIT did not re-run at all,
+                // so blaming `--no-cache` named a cause that cannot have applied. Only a run that
+                // EXECUTED on an unchanged key is the case this verb exists to explain. A row with
+                // no recorded cacheHit (older rows) is neither — say that, do not guess.
                 unchangedKeyNote(db, runId, this_, prev)
               : 'no prior run for this (project, task)',
   }
@@ -682,9 +673,8 @@ export function diffKeyComponents(
   const old = new Map(before.map((c) => [id(c), c]))
   const entries: InputDiffEntry[] = []
   let unchangedCount = 0
-  // A secret env input's hash is its unsalted value, recoverable when short:
-  // the diff says it changed and never shows the hash. Secret by name, or by
-  // `exec.env.secret`'s mark on its row.
+  // A secret env input's hash is its unsalted value, recoverable when short: the diff says it
+  // changed and never shows the hash. Secret by name, or by `exec.env.secret`'s mark on its row.
   const shown = (c: TaskInputComponent): string =>
     c.kind === 'env' && (secretNamed(c.name) || c.hash.startsWith(MASKED)) ? MASKED : c.hash
   const keys = new Set<string>([...cur.keys(), ...old.keys()])
@@ -715,11 +705,10 @@ export function diffKeyComponents(
 }
 
 /**
- * Name the key components that differ between this run of a task and its
- * previous one: each run's `runs.hash` resolves its entry, and the two runs'
- * `entry_inputs` rows are joined on `(kind, name)` (`diffKeyComponents`). No
- * config re-evaluation, no re-hash. Never throws: `found:false` when the pair
- * has no row, `entries:[]` on a task's first run.
+ * Name the key components that differ between this run of a task and its previous one: each run's
+ * `runs.hash` resolves its entry, and the two runs' `entry_inputs` rows are joined on `(kind,
+ * name)` (`diffKeyComponents`). No config re-evaluation, no re-hash. Never throws: `found:false`
+ * when the pair has no row, `entries:[]` on a task's first run.
  */
 export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff {
   const [project, task] = splitTaskId(taskId)
@@ -812,9 +801,8 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const cur = loadEntryInputs(db, this_.hash)
   const old = loadEntryInputs(db, prev.hash)
 
-  // A failed previous run, or one that passed beside a failed task
-  // (--continue), kept no fingerprints; the last run that saved an entry still
-  // names what moved since.
+  // A failed previous run, or one that passed beside a failed task (--continue), kept no
+  // fingerprints; the last run that saved an entry still names what moved since.
   const tainted = isPassStatus(prev.status) && failedWithWrites(db, prev.runId) > 0
   // So did one whose run wrote no cache (--no-cache, a read-only policy).
   const prevNoWrite = isPassStatus(prev.status) && !runWritesCache(db, prev.runId)
@@ -939,9 +927,8 @@ function restoredFromRemote(db: Database, project: string, task: string, hash: s
 const olderRun = new WeakSet<CacheKeyDiff>()
 
 /**
- * Whether `diff` compared with a run older than the previous one: a reader
- * labelling the previous run must then name the run its diff is from
- * (`diff.note` does).
+ * Whether `diff` compared with a run older than the previous one: a reader labelling the previous
+ * run must then name the run its diff is from (`diff.note` does).
  */
 export function diffsOlderRun(diff: CacheKeyDiff): boolean {
   return olderRun.has(diff)
@@ -1008,13 +995,11 @@ class Cause implements RootCause {
 }
 
 /**
- * The tasks under `taskId`'s moved upstreams whose own key components moved,
- * each with the chain that carried it up. An upstream is diffed between the two
- * keys its dependant folded, not against its own previous run. Each task is
- * visited once (a diamond names its root once). `groups` carries the walk
- * through groups, which record no run. Depth-first on an explicit stack (a
- * 20,000-task chain overflows recursion), each visit linking only to its
- * parent.
+ * The tasks under `taskId`'s moved upstreams whose own key components moved, each with the chain
+ * that carried it up. An upstream is diffed between the two keys its dependant folded, not against
+ * its own previous run. Each task is visited once (a diamond names its root once). `groups` carries
+ * the walk through groups, which record no run. Depth-first on an explicit stack (a 20,000-task
+ * chain overflows recursion), each visit linking only to its parent.
  */
 export function rootCauses(
   db: Database,
@@ -1085,10 +1070,9 @@ export interface InputWriter {
 const WRITE_SLACK_MS = 5
 
 /**
- * For each moved input file of `taskId` and each root cause, the recorded tasks
- * running when the file last changed: a task writing a file another key reads
- * re-keys it every run. The file's mtime against the recorded windows, so an
- * edit outside a run, or after `runId`, names none.
+ * For each moved input file of `taskId` and each root cause, the recorded tasks running when the
+ * file last changed: a task writing a file another key reads re-keys it every run. The file's mtime
+ * against the recorded windows, so an edit outside a run, or after `runId`, names none.
  */
 export function inputWriters(
   db: Database,
