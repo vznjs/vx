@@ -157,11 +157,13 @@
 }
 .stage h1 {
   margin: 28px 0 0;
-  font-size: clamp(54px, 10.5vw, 168px);
+  /* Sized so the longer line, indent included, fits the 1240px copy column. */
+  font-size: min(9vw, 132px);
 }
 .stage h1 .l1,
 .stage h1 .l2 {
   display: block;
+  white-space: nowrap;
 }
 .stage h1 .l2 {
   padding-left: 0.6em;
@@ -510,6 +512,9 @@
   box-shadow: 0 0 10px var(--tone);
 }
 @media (max-width: 720px) {
+  .stage h1 {
+    font-size: 10vw;
+  }
   .stage h1 .l2 {
     padding-left: 0;
   }
@@ -600,13 +605,13 @@
 .score {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 48px;
+  gap: clamp(48px, 7vw, 112px);
   align-items: end;
   margin-top: 56px;
 }
 .score-big strong {
   display: block;
-  font: 700 clamp(110px, 17vw, 260px) / 0.82 var(--font-display);
+  font: 700 clamp(96px, 11vw, 196px) / 0.82 var(--font-display);
   letter-spacing: -0.07em;
   color: var(--tone-core);
   text-shadow: 0 0 60px rgba(198, 248, 78, 0.35);
