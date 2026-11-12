@@ -328,7 +328,10 @@ Run the task only in projects whose files changed since `<base>`.
   commit) is on it too: `--affected has no default
 on the base branch (main): run --all (the cache skips what did not
 change), or name the last good commit, --affected=<sha>`. `HEAD~1`
-  would see only one commit of a multi-commit push.
+  would see only one commit of a multi-commit push. A rebase stopped on
+  a conflict or an `edit` is on the branch it rebases, not the detached
+  HEAD it stopped at: the base is the merge base with the branch it
+  rebases onto.
 - CI on the base branch needs only the current commit: `--all` reads no
   history, and the cache runs only what changed.
 - A shallow clone needs no more history. vx fetches what the merge base
@@ -1186,7 +1189,9 @@ cache entry for them, so the next run is a plain local hit.
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
+and each task hears it once: from vx, as SIGINT. Through `bun vx`, which
+passes the Ctrl-C on to vx as well, it is still one stop; a second
+press is the second signal. Ctrl-Z (SIGTSTP) stops
 each task's process group, then vx; `fg` or `bg` continues vx, and vx
 continues them. Neither a `timeout` nor a task's duration counts the time stopped. A Linux sandboxed task's command is not stopped, only
 held once its output pipe fills. A stop starts no more remote

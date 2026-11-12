@@ -3,7 +3,7 @@
 Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-ci/> · source: <https://github.com/vznjs/vx>
 
 GitHub Actions and GitLab CI integration for [`@vzn/vx`](https://vznjs.github.io/vx/):
-`github()` writes every `vx run` as a **job summary** on the workflow run
+`github()` writes each `vx run` that starts its tasks as a **job summary** on the workflow run
 page and names the run's cache scope; `gitlab()` names the run's cache
 scope on GitLab CI ([below](#gitlab-ci)).
 
@@ -22,7 +22,7 @@ export default defineWorkspace({
 ```
 
 That's the whole setup. On a GitHub Actions runner (`GITHUB_STEP_SUMMARY`
-set) every `vx run` appends a summary block, on its own line after
+set) every `vx run` that starts its tasks appends a summary block, on its own line after
 anything already written in the step: verdict headline, stats
 (tasks / executed / cache hits / aborted and not run when a stop cut the run short / duration, and the ideal time an executor says
 the run could have taken, as `@vzn/vx-dte` replays it), the workers
@@ -48,6 +48,10 @@ its machine's cpu utilization from its first task's send to its last one's end, 
 of the expected and used share of all their core-time (the expected share over the workers whose executor reports one). Tasks the executor left to the run's own machine get a `this machine` row, and a line splits the executed count between workers and this machine. A footer line
 names the vx version, the command (what follows `--` counted, not
 quoted), tasks passed and outputs restored.
+A run that starts no task writes no block: `nothing affected since <ref>`
+(exit 0), or a refusal before the run (a lockfile changed since
+`vx lock`, an `--affected` base the clone lacks) says its one line in
+the step's log, which is where to look.
 Anywhere else (`GITHUB_ACTIONS` not `true`: laptops, other CI)
 `github()` returns `undefined`, which `plugins` skips: no option is
 checked and nothing loads, so declaring it unconditionally is safe.
@@ -145,13 +149,13 @@ up:
 
 ```yaml
 # GitHub Actions
-- run: vx setup github
+- run: bun vx setup github
 ```
 
 ```yaml
 # GitLab CI
 script:
-  - vx setup gitlab
+  - bun vx setup gitlab
 ```
 
 It installs what is missing (apt-get by sudo, or apk), lets bwrap make
@@ -182,7 +186,7 @@ pull request's code saving there would reach every later job:
     key: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}
     restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
 - id: setup
-  run: vx setup github
+  run: bun vx setup github
 - if: steps.setup.outputs.fetched == 'true' && github.ref == 'refs/heads/main'
   uses: actions/cache/save@v5
   with:

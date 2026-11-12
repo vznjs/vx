@@ -106,14 +106,14 @@ jobs:
   build:
     if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     steps:
-      - run: vx run build --all
+      - run: bun vx run build --all
   build-main:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: cache-write
     env:
       CACHE_AUTH: ${{ secrets.CACHE_AUTH }}
     steps:
-      - run: vx run build --all
+      - run: bun vx run build --all
 ```
 
 A pull request's job has no `CACHE_AUTH`, so the server refuses its

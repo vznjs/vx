@@ -21,6 +21,7 @@ import {
   killGraceMs,
   relayedCopy,
   settleWithin,
+  stopActedOn,
 } from '../util/index.js'
 import {
   holdGroups,
@@ -140,6 +141,7 @@ export function holdSignals(): HeldSignals {
     heard = signal
     claimExitForSignal()
     controller.abort(signal)
+    stopActedOn()
   }
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')
@@ -265,8 +267,8 @@ export function forwardSignals(args: {
   const onSignal = (signal: StopSignal): void => {
     // A second signal during the grace is the user saying "now": SIGKILL
     // and go. The exit code stays the first signal's — that is the one
-    // that ended the run. A group stop's copy through a relaying parent is
-    // the same stop (util/signal-relay.ts).
+    // that ended the run. A stop's copy through a relaying parent is the
+    // same stop (util/signal-relay.ts).
     if (stopping !== undefined) {
       if (relayedCopy(signal, stopping)) return
       exit(stopping)
@@ -286,6 +288,7 @@ export function forwardSignals(args: {
       // for a reader that has gone and never takes it.
       .then(() => settleWithin(new Promise<void>((r) => process.stdout.end(() => r())), 2_000))
       .then(() => exit(signal))
+    stopActedOn()
   }
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')
