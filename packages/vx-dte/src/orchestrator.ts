@@ -59,7 +59,7 @@ import {
 } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
 import { type Need, Placing, Queue, type Soon } from './dispatch.js'
-import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
+import { DEFAULT_STRATEGY, MIN_CORES, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
@@ -1020,13 +1020,13 @@ export class Orchestrator {
   /**
    * What a task books: a measured one its need times the share of their
    * history the run's tasks used, once they used `LEARN_MS` of it, and
-   * never under `1 / OVERBOOK` of its need. An unmeasured one (`ask`)
+   * never under `1 / OVERBOOK` of its need nor `MIN_CORES`. An unmeasured one (`ask`)
    * books what it books.
    */
   booking(need: Need): Need {
     if (need.cores === Infinity || need.ask !== undefined || this.needMs < LEARN_MS) return need
     const used = Math.min(1, Math.max(1 / OVERBOOK, this.usedMs / this.needMs))
-    return { ...need, cores: need.cores * used }
+    return { ...need, cores: Math.max(Math.min(need.cores, MIN_CORES), need.cores * used) }
   }
 
   /**

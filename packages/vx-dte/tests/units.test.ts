@@ -1431,9 +1431,13 @@ it('plans a running unmeasured task as it planned it waiting', async () => {
 // and every Linux worker ran at 63-73% CPU against the sim's 86%.
 it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
   const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`)
-  const h = await harness(new Map(ids.map((id) => node(id))))
+  // Two cores each: a task never books under one (`MIN_CORES`).
+  const h = await harness(
+    new Map(ids.map((id) => node(id))),
+    () => ({ cores: 2, memory: 10 }),
+  )
   try {
-    const a = await h.worker(4)
+    const a = await h.worker(8)
     await Bun.sleep(50)
     for (const id of ids.slice(0, 4)) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
@@ -1444,7 +1448,7 @@ it('books measured tasks at the share of their history the run’s tasks used, a
         type: 'end',
         task: id,
         key: `k-${id}`,
-        result: { exitCode: 0, durationMs: 20_000, cpuMs: 10_000 },
+        result: { exitCode: 0, durationMs: 20_000, cpuMs: 20_000 },
       })
     }
     await Bun.sleep(50)
@@ -4369,12 +4373,13 @@ it('a worker begins its next task while the last one saves', async () => {
   }
 })
 
-// 2026-10-22: workers at 30-50% CPU; "close to 100%". A task books the
-// cores it keeps busy on average, so a 4-core worker takes five at 0.7.
-it('books the cores a task keeps busy on average, unrounded, a quarter at least', () => {
+// A task books the cores it keeps busy on average, unrounded, and a whole
+// core at least: eight 0.3-core shards on one 4-core worker each ran 2-3x
+// their time alone (main c2adbdd, 2026-11-12).
+it('books the cores a task keeps busy on average, unrounded, a whole core at least', () => {
   expect(
     [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
-  ).toEqual([0.7, 2.4, 0.25])
+  ).toEqual([1, 2.4, 1])
   expect(needOf(undefined)).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
 })
 

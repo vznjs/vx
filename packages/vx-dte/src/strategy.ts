@@ -42,6 +42,9 @@ export const STRATEGIES: { readonly [K in keyof Strategy]: readonly Strategy[K][
 }
 
 /** `need` as `book` holds it. */
+/** The fewest cores a measured task books: averages hide its bursts (plugin.ts `needOf`). */
+export const MIN_CORES = 1
+
 export function booked(need: Need, book: Strategy['book']): Need {
   if (book === 'whole') return { cores: Infinity, memory: Infinity, above: need.above }
   if (book === 'margin' && need.cores !== Infinity && need.ask === undefined)
