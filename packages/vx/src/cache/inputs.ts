@@ -1,20 +1,10 @@
-// Resolve declared cache inputs into the concrete pieces that go into the
-// cache key:
-//   - files: absolute paths whose contents are hashed
-//   - envValues: [name, value] pairs from parent process.env (value
-//     undefined for an unset name)
+// Resolve declared cache inputs into what the key folds: input files (hashed)
+// and `inputs.env` values (undefined when unset). `inputs.env` tracks the key;
+// `exec.env` decides what reaches the child.
 //
-// `inputs.env` is the cache-tracking axis for env vars; it's
-// independent of `exec.env`, which controls what reaches the child.
-//
-// File enumeration defers to git — same as Turbo and Nx. git-inputs.ts asks for
-// the tracked set with `git ls-files -s -v` (index OIDs and the skip-worktree
-// flag in the same spawn) and for the dirty and untracked paths with `git
-// status -uall`, with nested.gitignore,.git/info/exclude and the global
-// excludes applied because git already does the cascade. The user's
-// `inputs.files` globs are then matched as a *filter* on top of that file set.
-// vx requires git to be installed and the workspace to be a git work tree;
-// non-git environments are not supported.
+// File enumeration defers to git, as Turbo and Nx do (git-inputs.ts), so every
+// ignore rule applies; `inputs.files` globs filter that set. A git work tree is
+// required.
 
 import path from 'node:path'
 import {
@@ -69,9 +59,7 @@ import {
 } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../memo/index.js'
 
-// The git side lives in git-inputs.ts; its whole public surface is
-// re-exported here so a reader that reaches the resolver for it (the
-// tests do, by deep import) keeps working.
+// git-inputs.ts's surface, re-exported for readers that reach it through here.
 export {
   GitFilesCache,
   populateGitFilesCache,
@@ -85,56 +73,38 @@ export {
   type GitEnumeration,
 } from './git-inputs.js'
 
-// .vx/projects.lock.json is committed (so git enumerates it) but it's vx's own
-// frozen-config metadata — never a task input. Excluded globally so a
-// re-lock can't bust every cache key the way a tracked source file
-// would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
-// cache is a leaf module and must not import from workspace.)
-//
-// Relative to the project, so only where vx writes them: its root's `.vx` and
-// the `vx.lock.json` beside its config. Matched at any depth, a project's own
-// `src/.vx/tmp/*` or `src/sub/vx.lock.json` keyed nothing, and an edit to one
-// was a hit.
-//
-// `node_modules` is not here: the enumeration drops an untracked file
-// under one (`isInstalledPath`), and a tracked one is a source.
+// vx's own files are never task inputs, or a re-lock would move every `**`
+// reader's key. Relative to the project, so only where vx writes them: a
+// project's own `src/.vx/` stays an input. `node_modules` is not listed: the
+// enumeration drops untracked files under one, and a tracked one is a source.
 const ALWAYS_IGNORE = [
-  // Defense in depth, and measured as exactly that: git never reports a path
-  // under `.git`, so dropping this line changes NOTHING on any route into the
-  // input set. Probed three ways with the pattern in and out — a tracked `**/*`
-  // glob, an UNTRACKED one, and a literal `inputs.files: ['.git/HEAD']`
-  // (refused by the git-reports-it check, not by this list) — all identical,
-  // while the control in the same fixture showed an untracked ORDINARY file
-  // does enter the set. So the enumeration is the live guard and this is the
-  // backstop; every other member of this list is load-bearing and has a row
-  // that fails without it. Kept: the day an enumeration stops going through
-  // git, this is what keeps a repository's object store out of a cache key.
+  // A backstop: git never reports a path under `.git`, so this keeps a
+  // repository's object store out of a key only if an enumeration ever stops
+  // going through git.
   '.git/**',
   // vx's machine-local state; the workspace config beside it is a source.
   '.vx/cache/**',
   '.vx/projects.lock.json',
-  // `vx lock`'s review copy of a project's resolved config: the config is
-  // keyed already, and a re-lock must not move every `**` reader's key.
+  // `vx lock`'s review copy: the config is keyed already.
   'vx.lock.json',
-  // What `vx lock` and `vx init` write beside the lock: a re-lock or init
-  // must not select every `**` reader under --affected.
+  // What `vx lock` and `vx init` write beside the lock: a re-lock must not
+  // select every `**` reader under --affected.
   '.vx/.gitattributes',
   '.vx/.gitignore',
-  // `vx lock`'s record of the dependency edges and digests: the key folds
-  // the digests through `fingerprint` already.
+  // `vx lock`'s record of edges and digests: the key folds the digests through
+  // `fingerprint`.
   '.vx/dependencies.lock.json',
   // Where restores stage (archive.ts): vx's own, never an input.
   '.vx/tmp/**',
-  // The temps the locks and review copies are written to and renamed from
-  // (`writeAllOrNone`, `writeNoFollow`): a killed write leaves one.
+  // The temps a lock write renames from: a killed write leaves one.
   '.vx/projects.lock.json.tmp-*',
   '.vx/dependencies.lock.json.tmp-*',
   'vx.lock.json.tmp-*',
 ]
 
 /**
- * `ALWAYS_IGNORE` relative to the workspace root, for `inputs.workspaceFiles`:
- * those globs cross into other projects, and each one's `vx.lock.json` is vx's.
+ * `ALWAYS_IGNORE` relative to the workspace root, for `inputs.workspaceFiles`,
+ * whose globs cross into other projects.
  */
 const WORKSPACE_ALWAYS_IGNORE = [...ALWAYS_IGNORE, '**/vx.lock.json', '**/vx.lock.json.tmp-*']
 
@@ -156,46 +126,33 @@ export interface ResolveInputsArgs {
   inputs: InputsConfig | undefined
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: readonly string[]
-  /** Root-relative `outputs.workspaceFiles` globs to exclude from
-   *  `inputs.workspaceFiles` (a task cannot invalidate itself). */
+  /**
+   * Root-relative `outputs.workspaceFiles` to exclude from
+   * `inputs.workspaceFiles`: a task cannot invalidate itself.
+   */
   ownWorkspaceOutputs?: readonly string[]
   /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
-  /**
-   * Per-run memo for `git ls-files` output. The same project's file
-   * list is asked for once per task (build + test + …) — without
-   * memoization we spawn git 3× per project per run. The orchestrator
-   * passes a fresh Map at the top of every `vx run`.
-   */
+  /** Per-run memo of a project's `git ls-files`, asked once per task. */
   gitFilesCache?: GitFilesCache
   /**
-   * Run-scoped memo for `inputs.runtime` command execution, keyed
-   * by `projectDir + '\0' + command`. Shared across a run's tasks so a
-   * project's command runs once even across build/test/lint and across
-   * the hash + sandbox-baseline resolveInputs calls. The key is sound
-   * ONLY because every probe runs in one environment, vx's essentials,
-   * never a task's `exec.env` (`runRuntimeCommand`): two tasks with different
-   * `define`s share one value. Threading the task env in would have to
-   * widen this key too, or task A's probe becomes task B's key component.
+   * Run-scoped memo of `inputs.runtime` answers by `projectDir + '\0' +
+   * command`. Sound ONLY because every probe runs in one environment, never a
+   * task's `exec.env` (`runRuntimeCommand`); threading the task env in would
+   * have to widen this key.
    */
   runtimeCache?: Map<string, Promise<string>>
-  /**
-   * Run-scoped memo for `inputs.workspaceRuntime`, keyed by command
-   * only — global dedup so a root-level probe spawns once per run.
-   */
+  /** Run-scoped memo of `inputs.workspaceRuntime`, by command alone. */
   workspaceRuntimeCache?: Map<string, Promise<string>>
   /**
-   * Answer this task's probes apart from every other task's, in both memos
-   * above: the probes may read what its upstream wrote this run, so an answer
-   * another task took before that write is not this task's. The task id.
+   * Answer this task's probes apart in both memos: they may read what its
+   * upstream wrote this run. The task id.
    */
   runtimeScope?: string
   /**
-   * Run-scoped memo for `inputs.workspaceFiles`, keyed by the declaration and
-   * valid for one enumeration snapshot. A Turbo-mapped workspace gives every
-   * task the same `globalDependencies`, and resolving one literal against
-   * medusa's 24k-file enumeration per task was 930 ms of a 3.0 s warm no-op
-   * (159 scans).
+   * Run-scoped memo of `inputs.workspaceFiles` by declaration, valid for one
+   * enumeration snapshot: a Turbo-mapped workspace gives every task the same
+   * `globalDependencies` (930 ms of a 3.0 s no-op, unmemoized).
    */
   workspaceFilesCache?: WorkspaceFilesCache
   /** Per-run memo for `inputs.files`; see `ProjectFilesCache`. */
@@ -210,17 +167,11 @@ export type WorkspaceFilesCache = Map<
 >
 
 /**
- * Per-run memo of `inputs.files` resolution, keyed by the project and the
- * DECLARATION — tasks of one project that declare the same inputs and the same
- * outputs resolve to the same list, and this repo's own config is the shape
- * that pays for it: twelve shard tasks, each declaring the same whole-tree glob
- * over the same three thousand files (measured 1.2 ms of resolution per task).
- *
- * Reuse is gated on the git snapshot being the SAME ARRAY the entry was
- * built from, not on equal contents: a mid-run re-enumeration replaces it
- * (`GitFilesCache.set`), so a task whose inputs a previous task rewrote
- * misses the memo and walks again. Same discipline as WorkspaceFilesCache
- * above.
+ * Per-run memo of `inputs.files` resolution by project and DECLARATION: tasks
+ * of one project declaring the same inputs and outputs resolve alike. Reuse
+ * needs the git snapshot to be the SAME ARRAY the entry was built from: a
+ * mid-run re-enumeration replaces it, so a task whose inputs an earlier task
+ * rewrote walks again.
  */
 export type ProjectFilesCache = Map<
   string,
@@ -229,11 +180,8 @@ export type ProjectFilesCache = Map<
 
 /**
  * What a task's input files fold to is a function of this token when it is
- * one of the git records alone: the project's partition holds only files
- * the enumeration trusted an index OID for (`GitFilesCache.filesDigest`),
- * and the declaration reaches no gitignored path and no workspace file.
- * The token is the digest, the workspace root (the fold folds paths
- * relative to it) and everything `resolveFiles` keys its memo on.
+ * git's records alone: the project's partition holds only files with a trusted
+ * index OID, and the declaration reaches no gitignored path or workspace file.
  * Undefined when only resolving the files can say.
  */
 export function filesToken(
@@ -271,13 +219,10 @@ export function filesToken(
 }
 
 /**
- * The `workspaceFiles` half of {@link filesToken}: '' for none declared,
- * undefined when git cannot vouch for what the declaration lists. Else the
- * declaration and a digest of every workspace path its globs may take in
- * (`declarationDigest`): what `resolveWorkspaceFiles` picks from them is a
- * function of that, the task's outputs and project (the token's memo key).
- * One a glob names that git answers nothing for is read from disk
- * (`ignoredReach`), which no digest covers.
+ * The `workspaceFiles` half of {@link filesToken}: '' for none, undefined when
+ * git cannot vouch for what it lists, else the declaration and a digest of
+ * every workspace path its globs may take in. A path git answers nothing for is
+ * read from disk (`ignoredReach`), which no digest covers.
  */
 function workspaceFilesToken(
   workspaceRoot: string,
@@ -321,8 +266,8 @@ const wsPlans = new Map<
 >()
 
 /**
- * Each entry's fixed head: every path it takes in lies at, under or above
- * one (`declarationDigest`). Undefined when one has none (a leading `**`).
+ * Each entry's fixed head: every path it takes in lies at, under or above one.
+ * Undefined for a leading `**`.
  */
 function headsOf(positive: readonly string[]): string[] | undefined {
   const heads: string[] = []
@@ -391,13 +336,11 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     })
     if (ws !== undefined) listings.push(ws.listing)
     const wsFiles = ws === undefined ? [] : await ws.files
-    // Dedupe: when the project dir IS the workspace root (or a glob
-    // overlaps), the same absolute path can arrive via both lists —
-    // it must contribute to the key exactly once.
+    // Dedupe: with the project at the workspace root, a path can arrive through
+    // both lists and must fold once.
     if (wsFiles.length > 0) files = mergeSorted(projectFiles, wsFiles)
   }
-  // Two awaited empty resolutions per task were ~3 ms of a 1000-task warm run
-  // (profiled); a task declaring neither skips the fan-out.
+  // A task declaring neither skips the fan-out.
   const runtimeDecl = args.inputs?.runtime ?? []
   const wsRuntimeDecl = args.inputs?.workspaceRuntime ?? []
   const [runtimeValues, workspaceRuntimeValues] =
@@ -435,15 +378,9 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
 }
 
 /**
- * Resolve `inputs.workspaceFiles` — workspace-root-relative
- * globs matched against the workspace-wide git file set (tracked +
- * untracked-not-ignored, same visibility as project inputs).
- *
- * Deliberately NO project-boundary rule: a workspaceFiles glob may
- * match files inside any project's directory. This is the documented
- * escape hatch for root-level shared inputs (root tsconfig, shared
- * codegen); the hard boundary continues to apply to project-relative
- * `files` globs only.
+ * Resolve `inputs.workspaceFiles` against the workspace-wide git file set. No
+ * project-boundary rule: this is the documented way to declare shared root
+ * inputs. The boundary applies to `files` globs only.
  */
 function resolveWorkspaceFiles(args: {
   workspaceRoot: string
@@ -463,19 +400,16 @@ function resolveWorkspaceFiles(args: {
   }
   if (positive.length === 0) return undefined
 
-  // A path the task's own outputs take back with `!` is no output, so it stays
-  // an input.
+  // A path the task's own outputs take back with `!` stays an input.
   const ownOutput = outputMatcher(args.ownWorkspaceOutputs)
-  // Its project outputs too, which a root-anchored glob can reach as well:
-  // left in, the task's own build moved its key, and no run was ever saved.
+  // Its project outputs too, which a root-anchored glob reaches: left in, its
+  // own build moved its key and nothing was ever saved.
   let ownProjectOutput: ((rel: string) => boolean) | undefined
   const ownProject = (rel: string): boolean =>
     (ownProjectOutput ??= underProject(args.projectRel, outputMatcher(args.ownOutputs)))(rel)
   const positiveGlobs = asTrees(positive).map(globFor)
-  // Workspace-wide partition, keyed by the workspace root. Populated
-  // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
-  // any loaded task declares workspaceFiles; a missing/invalidated
-  // partition re-spawns git at the root on demand.
+  // Workspace-wide partition, keyed by the root; populated up-front when any
+  // task declares workspaceFiles, else spawned on demand.
   let gitFiles = args.gitFilesCache?.snapshotFor(args.workspaceRoot, positiveGlobs)
   let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles === undefined) {
@@ -484,9 +418,8 @@ function resolveWorkspaceFiles(args: {
     args.gitFilesCache?.set(args.workspaceRoot, gitFiles)
     undecodable = noteUndecodable(args.gitFilesCache, args.workspaceRoot, ls.undecodable)
   }
-  // The memo is valid for the snapshot it was computed over: a task that
-  // wrote workspace outputs mid-run replaces the partition, and the next
-  // caller sees a different array and scans again.
+  // Valid for one snapshot: a task that wrote workspace outputs replaces the
+  // partition.
   let isExcluded: ((rel: string) => boolean) | undefined
   let isPositive: ((rel: string) => boolean) | undefined
   let mayHold: ((rel: string) => boolean) | undefined
@@ -515,10 +448,8 @@ function resolveWorkspaceFiles(args: {
     ...reachOf(positive),
   }
   // Two levels: the declaration's files over the snapshot, shared by every task
-  // that declares it, then the task's own outputs taken out. A Turbo-mapped
-  // repo gives two thousand tasks one 400-entry list, and a memo keyed by the
-  // project too scanned, resolved and sorted the 4,000 files it matched once
-  // per task (astro).
+  // declaring it, then the task's outputs taken out. Keyed by project too,
+  // 2,000 tasks sharing one list each scanned the 4,000 files it matched.
   const declared = JSON.stringify([positive, negative])
   let base: Promise<string[]> | undefined
   const hit = args.memo?.get(declared)
@@ -539,8 +470,8 @@ function resolveWorkspaceFiles(args: {
     const kept = ownsAny ? all.filter((abs) => !own(relPosix(args.workspaceRoot, abs))) : all
     refuseUndecodable(kept, undecodable, args.workspaceRoot, 'workspaceFiles')
     if (reach.length === 0) return kept
-    // Outside the memo: an ignored file a task writes mid-run leaves the
-    // snapshot as it was.
+    // Outside the memo: an ignored file written mid-run leaves the snapshot as
+    // it was.
     isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive)))
     const accept = isPositive
     const extra = ignoredInputs(
@@ -563,8 +494,7 @@ async function resolveWorkspaceFilesOver(
   excluded: (rel: string) => boolean,
 ): Promise<string[]> {
   const candidates: string[] = []
-  // Same OID-trust shortcut as project files: a clean-per-status
-  // tracked file necessarily exists on disk.
+  // A clean tracked file exists on disk.
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
   const mayHold = mayHoldMatch(positive)
   for (const rel of gitFiles) {
@@ -580,10 +510,8 @@ async function resolveWorkspaceFilesOver(
 }
 
 /**
- * The sorted union of two path lists, each once. Both sides arrive sorted and
- * distinct, so one merge does what a Set and a sort of the concatenation did:
- * 3.7 s of an astro plan, where 2,000 tasks each joined a few project files to
- * the same 4,000 workspace files. A side out of order takes the general path.
+ * The sorted union of two sorted, distinct lists in one merge (a Set and sort
+ * was 3.7 s of an astro plan). A side out of order takes the general path.
  */
 function mergeSorted(a: readonly string[], b: readonly string[]): string[] {
   if (a.length === 0 && isStrictlySorted(b)) return b as string[]
@@ -642,15 +570,11 @@ function existsOnDisk(abs: string): boolean {
 }
 
 /**
- * What an enumerated path must be to count as an input: a regular file, or
- * a symlink (to anything, or to nothing — its target STRING is what folds,
- * as in git). A directory is not one: git lists a gitlink (a submodule) at
- * its path and the glob `**\/*` matches it, and the hasher has nothing to
- * read there. `Bun.file(p).exists()` answered false for every symlink to a
- * directory and every dangling link too, which silently dropped a tracked
- * link from the key — retargeting it was a stale hit. lstat, synchronously:
- * the paths that reach this probe are the ones without a trusted index OID
- * (untracked and dirty files), a handful on a warm run.
+ * An input is a regular file or a symlink to anything or nothing (its target
+ * STRING folds, as in git). Not a directory: git lists a submodule at its path
+ * and `**\/*` matches it. `Bun.file().exists()` was false for links to
+ * directories and dangling links, dropping them from the key. lstat
+ * synchronously: only paths without a trusted OID get here.
  */
 function isInputOnDisk(abs: string): boolean {
   try {
@@ -662,9 +586,8 @@ function isInputOnDisk(abs: string): boolean {
 }
 
 /**
- * `isInputOnDisk` from the run's stat of the path (`statOf`): each declaration
- * naming a file the index vouches no OID for stat'ed it again, seven times a
- * run for each of vueuse's core sources.
+ * `isInputOnDisk` from the run's stat of the path (`statOf`), not a stat per
+ * declaration.
  */
 function inputOnDisk(abs: string, run: GitFilesCache | undefined): boolean {
   if (run === undefined) return isInputOnDisk(abs)
@@ -695,10 +618,9 @@ function projectBinDirs(projectDir: string, workspaceRoot: string): string[] {
 }
 
 /**
- * One runtime probe answered on this machine as a key folds it: an
- * `inputs.runtime` command run in `projectDir`, or with `workspace` a
- * `workspaceRuntime` one run in `workspaceRoot`. For an executor that
- * checks a task's probes where it runs it (`TaskExecutor.runtime`).
+ * One runtime probe answered here as a key folds it: `inputs.runtime` in
+ * `projectDir`, or `workspaceRuntime` in `workspaceRoot`. For an executor that
+ * checks probes where a task runs.
  */
 export function answerRuntime(
   command: string,
@@ -731,11 +653,9 @@ function resolveEnvValues(
 ): Array<[string, string | undefined]> {
   return [...names].sort().map((name) => {
     const value = ownEnv(source, name)
-    // Bun decodes the environment lossily and offers no raw bytes on every
-    // platform (Linux's /proc/self/environ misses what vx sets itself), so
-    // Latin-1 é and è both read as U+FFFD and replayed each other's build.
-    // A value that truly holds U+FFFD is refused with them: the two read
-    // alike. The value is never shown; it may be a secret.
+    // Bun decodes the environment lossily, so Latin-1 é and è both read as
+    // U+FFFD and would key alike; a value holding U+FFFD is refused with them.
+    // Never shown: it may be a secret.
     if (value?.includes('�') === true) {
       throw new UserError(
         `inputs.env ${name} holds U+FFFD: its value is not UTF-8, or holds that character, ` +
@@ -747,22 +667,16 @@ function resolveEnvValues(
 }
 
 /**
- * Run one runtime-input command via `sh -c` (so pipelines / redirects
- * work — "shell is the API"). Returns trimmed stdout+stderr. A non-zero
- * exit is a hard UserError naming the command (fail-loud, like git).
+ * Run one runtime-input command via `sh -c` and return trimmed stdout+stderr; a
+ * non-zero exit is a UserError naming it.
  *
- * The probe sees the essential environment every task sees
- * (`ESSENTIAL_ENV`), from vx's own — never the task's `exec.env`, which
- * describes the command, not the machine, and never the rest of vx's: a
- * child is dumpable after its exec, so an unsandboxed task read every
- * secret vx holds from the probe's `/proc/<pid>/environ`. One env for
- * every probe is what lets the run-scoped memo key on (projectDir,
- * command) alone; see `runtimeCache`.
+ * The probe sees only the essential env every task sees, never `exec.env` and
+ * never the rest of vx's: an unsandboxed task could read vx's secrets from the
+ * probe's `/proc/<pid>/environ`. One env for every probe lets the memo key on
+ * (projectDir, command).
  *
- * Its PATH does lead with the task's own `node_modules/.bin` directories
- * (`binDirs`), as the task's does: `tsc --version` otherwise keyed the global
- * tsc while the task ran the workspace's, and a changed local tool replayed the
- * old output.
+ * Its PATH leads with the task's `node_modules/.bin` directories, as the task's
+ * does, so `tsc --version` keys the tsc the task runs.
  */
 async function runRuntimeCommand(
   command: string,
@@ -775,29 +689,27 @@ async function runRuntimeCommand(
   const probe = `inputs.${field} probe`
   // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
   const ambient = withoutWorkspaceBins(process.env['PATH'] ?? '', workspaceRoot)
-  // As the task's PATH does (exec/env.ts): a dir holding the delimiter
-  // splits into an entry relative to the probe's cwd.
+  // As the task's PATH: a dir holding the delimiter splits into a relative
+  // entry.
   const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
     .filter((entry) => entry)
     .join(path.delimiter)
   let proc
   try {
-    // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks a
-    // bare name up on the child's PATH, which leads with the project's
-    // `node_modules/.bin`, so a dependency's `sh` bin ran every probe.
+    // vx's own `sh`, resolved before the probe's PATH, which leads with the
+    // project's `.bin`: a dependency's `sh` bin would run every probe.
     proc = Bun.spawn(shellArgv(command), {
       cwd,
       env: { ...probeEnv(), PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
-      // Its own group, so the probe's whole tree can be taken down with vx
+      // Its own group, so the probe's tree goes down with vx
       // (`killProbesOnExit`).
       detached: true,
     })
   } catch (err) {
-    // The probe runs through `sh -c` like a task: a box without sh names the
-    // shell, not the command.
+    // A box without sh names the shell, not the command.
     if (isExecutableMissing(err)) {
       throw new UserError(
         `${probe} could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
@@ -821,11 +733,9 @@ async function runRuntimeCommand(
       probeBytes(proc.stderr, ac.signal),
     ])
     exitCode = await proc.exited
-    // A child the shell left holding the pipes (`sleep 6 & echo x`) kept
-    // them open past the shell's exit, and the run waited for the child. As
-    // a task's (exec/runner.ts): a short drain, then the reads stop and the
-    // group goes. What was read is what the shell printed, so the key folds
-    // it; what the child prints later is no part of the answer.
+    // A child holding the pipes (`sleep 6 & echo x`) would keep the run
+    // waiting. As a task's: a short drain, then the reads stop and the group
+    // goes. What the shell printed is the answer.
     let timer: ReturnType<typeof setTimeout> | undefined
     const cut = new Promise<void>((resolve) => {
       timer = setTimeout(resolve, POST_EXIT_DRAIN_MS)
@@ -841,8 +751,8 @@ async function runRuntimeCommand(
   }
   if (exitCode !== 0) {
     const lossy = new TextDecoder()
-    // Capped as a persistent task's log is: a chatty probe put megabytes
-    // into one error line. The tail is kept; the failure is usually last.
+    // Capped like a persistent task's log, tail kept: the failure is usually
+    // last.
     const tail = createTail()
     appendTail(tail, `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim())
     const shown = tailText(tail)
@@ -857,8 +767,7 @@ async function runRuntimeCommand(
     out = FATAL_UTF8.decode(stdout)
     err = FATAL_UTF8.decode(stderr)
   } catch {
-    // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
-    // folded the same output and replayed each other's build.
+    // A lossy decode would key Latin-1 é and è alike.
     throw new UserError(
       `${probe} printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
         `Pipe it through a hash or od.`,
@@ -868,10 +777,9 @@ async function runRuntimeCommand(
 }
 
 /**
- * The probe's output as the key folds it. Plain concatenation keyed stdout
- * `ab` and stdout `a` + stderr `b` alike. A probe with no stderr and no NUL
- * folds its trimmed stdout, as before; any other is framed with a leading
- * NUL and stdout's length, a form no unframed output takes.
+ * The probe's output as folded. Plain concatenation keyed stdout `ab` and
+ * stdout `a` + stderr `b` alike: an output with stderr or a NUL is framed with
+ * a leading NUL and stdout's length.
  */
 function probeOutput(stdout: string, stderr: string): string {
   const out = stdout.trim()
@@ -881,13 +789,9 @@ function probeOutput(stdout: string, stderr: string): string {
 }
 
 /**
- * Runtime probes still running. A probe that outlives its answer's need — a run
- * stopped by Ctrl-C, or ended by a refusal, while `node -e …` or a hung `git`
- * still ran — was left behind: vx exited and the probe's shell and what it
- * started ran on under init. Every probe is its own group, and the ones still
- * listed when vx exits are SIGKILLed with their trees. A `kill -9` of vx runs
- * no exit hook; that residual is the task groups' guard's (exec/kill-tree.ts),
- * which probes are not on.
+ * Runtime probes still running. Each is its own group, and those still listed
+ * at exit are SIGKILLed with their trees, so a stopped run leaves none under
+ * init. A `kill -9` of vx runs no hook.
  */
 const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
@@ -899,12 +803,9 @@ type RuntimeField = 'runtime' | 'workspaceRuntime'
 const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
 
 /**
- * Kill every runtime probe still running that these memos (one run's
- * `runtimeCache` and `workspaceRuntimeCache`) started, with its tree. A run's
- * stop asks this: a Ctrl-C while a probe ran waited for the probe, or for the
- * signal handler's bound, about 7 s, before vx exited. Its answer is no longer
- * needed; its caller sees it fail and the run reads it aborted. Another run in
- * the process keeps its own.
+ * Kill every probe these memos started, with its tree, on a run's stop: a
+ * Ctrl-C would otherwise wait for it. Its caller reads it aborted. Another run
+ * in the process keeps its own.
  */
 export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
   for (const memo of memos) {
@@ -923,9 +824,9 @@ function killGroup(pid: number): void {
 }
 
 /**
- * A probe's stream, read to its end or until `signal`: then the pending
- * read is cancelled and what was read is returned. `new Response().bytes()`
- * offers no way out while a leftover child holds the pipe.
+ * A probe's stream, read to its end or until `signal`, which cancels the read
+ * and returns what came: `Response.bytes()` cannot be left while a leftover
+ * child holds the pipe.
  */
 async function probeBytes(
   stream: ReadableStream<Uint8Array>,
@@ -959,13 +860,9 @@ function killProbesOnExit(): void {
 }
 
 /**
- * Resolve a list of runtime-input commands to sorted [command, output]
- * pairs. Dedups via the shared `memo` (Promise per key): the first
- * caller fires the spawn, concurrent callers await the same promise.
- * `memoKeyPrefix` namespaces project (`projectDir + '\0'`) vs workspace
- * (`''`) so the two scopes never collide in one map (they're separate
- * maps anyway, but the prefix keeps intent explicit). Distinct commands
- * run concurrently via Promise.all.
+ * Resolve runtime-input commands to sorted [command, output] pairs, deduped
+ * through `memo` (one promise per key). `memoKeyPrefix` separates project and
+ * workspace scopes. Distinct commands run concurrently.
  */
 async function resolveRuntimeValues(
   commands: readonly string[],
@@ -992,9 +889,8 @@ async function resolveRuntimeValues(
 }
 
 /**
- * What a walk of output globs leaves out: `outputExcluded` (`**\/*.js` meant
- * the build's files, and the clean before each run deleted every installed
- * `.js` under `node_modules` with them) and the `!` entries.
+ * What a walk of output globs leaves out: `outputExcluded` (a `**\/*.js` output
+ * must not clean installed `.js` under `node_modules`) and the `!` entries.
  */
 function outputExcludes(
   positive: readonly string[],
@@ -1014,9 +910,8 @@ export interface OwnInputs {
 }
 
 /**
- * Resolve declared output globs (project-relative) to actual produced files. An
- * output directory linked out of the project is refused by name: dropping its
- * files silently saved an empty entry under a green run.
+ * Resolve project-relative output globs to produced files. An output directory
+ * linked out of the project is refused by name, never silently saved empty.
  */
 export async function resolveOutputs(args: {
   projectDir: string
@@ -1027,11 +922,7 @@ export async function resolveOutputs(args: {
   return (await scanOutputs(args)).files
 }
 
-/**
- * Whether `resolveOutputs` takes the project-relative file `rel`, decided
- * without the walk: a directory snapshot's file list is held to the
- * entry's rows through it.
- */
+/** Whether `resolveOutputs` takes `rel`, decided without the walk. */
 export function outputWalkTakes(
   projectDir: string,
   outputs: readonly string[],
@@ -1043,9 +934,8 @@ export function outputWalkTakes(
 }
 
 /**
- * `resolveOutputs`, plus the empty directories the globs match: a save
- * keeps them, so a hit leaves the tree a miss left (Turbo and Nx restore
- * them too). Only a save asks; a hit's walk compares files.
+ * `resolveOutputs` plus the empty directories the globs match, which a save
+ * keeps (as Turbo and Nx do).
  */
 export async function resolveOutputTree(args: {
   projectDir: string
@@ -1054,9 +944,9 @@ export async function resolveOutputTree(args: {
   /** The task's own inputs: an output directory linked into them is refused. */
   inputs?: OwnInputs | undefined
   /**
-   * Also list the FIFOs, sockets and devices the globs name: a save refuses
-   * them, a clean removes them. `'later'` leaves `special` empty and hands
-   * `findSpecial` instead, for a walk that needs them only if it restores.
+   * Also list FIFOs, sockets and devices: a save refuses them, a clean removes
+   * them. `'later'` hands `findSpecial` for a walk that needs them only if it
+   * restores.
    */
   special?: boolean | 'later'
   /** The walk feeds a clean or a restore (`refuseUndecodableOutput`). */
@@ -1123,22 +1013,16 @@ async function scanOutputs(
       args.clearing,
     )),
   ]
-  // Containment, enforced HERE and not only at the loader. `cleanOutputs`
-  // DELETES whatever this returns, and `Bun.Glob.scan` happily walks `..` out
-  // of its cwd — so the loader's `..`/absolute rejection alone was a single
-  // point of failure. The resolver that feeds the delete refuses to name a path
-  // outside the project, so any future caller reaching it by another route (a
-  // programmatic embedder, a config source that skips the loader) is contained
-  // by construction.
+  // Containment enforced HERE, not only at the loader: `cleanOutputs` deletes
+  // what this returns, and `Bun.Glob.scan` walks `..` out of its cwd. Any
+  // caller reaching the resolver by another route is contained.
   const contained = containedIn(args.projectDir, scanned)
   return { files: outsideNested(args.nestedProjectDirs, contained).sort() }
 }
 
 /**
- * Whether git tracks a file under `dir`. No clean deletes a committed (or `git
- * add`ed) file an output glob reaches; the task may rewrite it and a restore
- * writes the bytes it left. It stays in the task's key, so those bytes follow
- * from the key. Turbo and Nx never clean an output at all.
+ * Whether git tracks a file under `dir`. No clean deletes a committed or staged
+ * file; the task may rewrite it, and it stays in the key.
  */
 export function committedFiles(
   cache: GitFilesCache | undefined,
@@ -1149,15 +1033,11 @@ export function committedFiles(
 
 /**
  * The literal head of each output glob, walked: the scan follows a link there
- * (`dist ->../elsewhere` for `dist/**`) and only there. A link below it is an
- * output, kept as the link (`archive.ts`). One into `.git` or `.vx` is refused
- * in either scope: for the root project and for workspace outputs those are
- * inside, and the clean deleted the repository through `dist ->.git`. One out
- * of the root is refused in either scope too: a workspace output's every file
- * was dropped as outside and an empty entry saved, while the project twin
- * refused the task. So is one holding an entry of the task's own `inputs`, in
- * either scope: read through the link, `dist -> src` under `src/**` would have
- * the clean delete every untracked source.
+ * (`dist -> ../elsewhere`) and only there; a link below is an output, kept as a
+ * link. Refused in either scope: a head linked into `.git` or `.vx` (a clean
+ * through `dist -> .git` deleted the repository), out of the root, or onto an
+ * entry of the task's own `inputs` (`dist -> src` would clean every untracked
+ * source).
  */
 function refuseDirLinkedOut(
   root: string,
@@ -1165,8 +1045,7 @@ function refuseDirLinkedOut(
   scope: 'project' | 'workspace',
   inputs?: OwnInputs,
 ): Set<string> {
-  // The heads found absent: the scan that follows skips them without
-  // asking again (a restore after a clean asks of every one).
+  // The heads found absent: the scan skips them without asking again.
   const absent = new Set<string>()
   let realRoot: string | undefined
   for (const tree of trees) {
@@ -1215,11 +1094,9 @@ function refuseDirLinkedOut(
 }
 
 /**
- * Throws when an entry of `inputs` can match a path under the real
- * directory `real`: `files` under the project, `workspaceFiles` under the
- * workspace root. A link to an ancestor of the anchor holds every entry.
- * Negations are not subtracted: a link onto files the task reads is wrong
- * even where one excludes them.
+ * Throws when an entry of `inputs` can match a path under the real directory
+ * `real`. A link to an ancestor of the anchor holds every entry. Negations are
+ * not subtracted.
  */
 function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): void {
   const holds = (anchor: string, globs: readonly string[] | undefined): boolean => {
@@ -1245,11 +1122,8 @@ function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): vo
 }
 
 /**
- * Whether the glob split into `segments` can match a path below the
- * directory `dir` (split too): each of `dir`'s names matches its segment
- * and the glob goes on past them, or a `**` comes first. `**\/*.ts` and
- * `src/**` reach below `src/lib`; `src/**` and `*.json` do not reach below
- * `build-out`.
+ * Whether the glob in `segments` can match below `dir`: each of `dir`'s names
+ * matches its segment and the glob goes on, or a `**` comes first.
  */
 function reachesBelow(segments: readonly string[], dir: readonly string[]): boolean {
   for (let i = 0; i < dir.length; i++) {
@@ -1262,9 +1136,8 @@ function reachesBelow(segments: readonly string[], dir: readonly string[]): bool
 }
 
 /**
- * Whether `real`, under `realRoot`, is in a `.git` there (`writableUnder`'s
- * rule) or in its `.vx`. Asked only of where a link landed: a build's own
- * `dist/.git/**` is an output.
+ * Whether `real` is in a `.git` or `.vx` under `realRoot`. Asked only where a
+ * link landed: a build's own `dist/.git/**` is an output.
  */
 function inMetadata(real: string, realRoot: string): boolean {
   if (!writableUnder(real, realRoot)) return true
@@ -1285,32 +1158,18 @@ function realOr(p: string): string {
 }
 
 /**
- * Keep only the paths that are REALLY inside `root` — lexically, and after
- * resolving symlinks.
+ * Keep only paths REALLY inside `root`, lexically and after resolving symlinks:
+ * since Bun 1.4.0 the scan descends into linked directories, so `dist ->
+ * ../victim` yields `dist/precious.txt`, lexically inside, and the caller
+ * deletes what this returns.
  *
- * Lexical alone was sufficient only while `Bun.Glob.scan` refused to descend
- * into symlinked directories, which this repo pinned as a deliberate tripwire
- * on a DEPENDENCY's behaviour. **Bun 1.4.0 tripped it**: with `dist
- * ->../victim` the scan now yields `dist/precious.txt`, a path that is
- * lexically inside the project while the file it names is not — and the caller
- * rm()s whatever this returns. Measured on 1.4.0 before this guard: a plain
- * `outputs.files: ['dist/**']` deleted a file outside the project.
- *
- * DIRECTORIES are what matter, not files: `rm` on a symlinked FILE unlinks the
- * link and never its target, so a link sitting inside a real output directory
- * is harmless. Resolving per directory also keeps this cheap — one syscall per
- * distinct output directory rather than per output file, concurrently, and a
- * `dist/**` of ten thousand files in one directory costs exactly one.
- *
- * A path whose directory will not resolve (a broken link, or a race with the
- * task that produced it) is REFUSED. When the caller deletes, unresolvable
- * means leave it alone.
+ * Directories are what matter: `rm` on a linked FILE unlinks the link. One
+ * syscall per distinct directory. A directory that will not resolve is refused:
+ * unresolvable means leave it alone.
  */
 function containedIn(root: string, paths: readonly string[]): string[] {
-  // One `path.dirname` per path, kept alongside — computing it again in the
-  // final filter measured as the DOMINANT added cost on a wide output tree
-  // (string work, not syscalls: 10k files in 20 dirs cost more than 5k files
-  // in 200, which is the wrong shape for a per-directory probe).
+  // One `path.dirname` per path, kept: recomputing it was the dominant cost on
+  // a wide tree.
   const lexical: string[] = []
   const lexDirs: string[] = []
   for (const p of paths) {
@@ -1319,8 +1178,8 @@ function containedIn(root: string, paths: readonly string[]): string[] {
     lexDirs.push(path.dirname(p))
   }
   if (lexical.length === 0) return []
-  // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the promise
-  // round trip per call was most of this function's cost on every miss (B).
+  // Sync: a realpath is microseconds, the promise round trip was most of the
+  // cost.
   const realRoot = realOrNull(root) ?? root
   const uniqueDirs = [...new Set(lexDirs)]
   const resolved = uniqueDirs.map(realOrNull)
@@ -1333,11 +1192,9 @@ function containedIn(root: string, paths: readonly string[]): string[] {
 }
 
 /**
- * `committed`, also asked by each path's real directory: the output walk
- * follows a link at a glob's head that stays inside `root`, so
- * `public/logo.txt` may be `static/logo.txt`, the only name git lists. Asked by
- * the lexical name alone, an untracked `public -> static` link let the clean
- * delete a committed file. One realpath per directory.
+ * `committed` is also asked by each path's real directory: through a followed
+ * `public -> static` link, `static/logo.txt` is the only name git lists, and a
+ * committed file must not be cleaned.
  */
 function committedPastLinks(
   root: string,
@@ -1363,9 +1220,8 @@ function committedPastLinks(
 }
 
 /**
- * Drop the files whose real directory is in a nested project: a link at a
- * glob's head that stays in the project is followed, and the lexical
- * nested-project filter cannot see where it lands.
+ * Drop files whose real directory is in a nested project: a followed link may
+ * land there.
  */
 function outsideNested(nestedDirs: readonly string[], files: string[]): string[] {
   if (nestedDirs.length === 0 || files.length === 0) return files
@@ -1390,17 +1246,10 @@ function isInside(dir: string, abs: string): boolean {
 }
 
 /**
- * Remove every file currently matching the declared output globs in
- * the project dir. Called both before a cache-hit restore (so the
- * restore lands on a clean slate, matching the cached snapshot bit-
- * for-bit) and before a cache-miss exec (so the task's output dir
- * doesn't carry stale stragglers from a prior run).
- *
- * Globs are evaluated against the *current* tree. Files in declared
- * output paths that the user dropped by hand will be removed — that's
- * the contract of declaring something as an output. Nested-project
- * dirs are excluded the same way `resolveOutputs` does, so we never
- * cross a project boundary.
+ * Remove every file the output globs match now, before a hit's restore (so the
+ * tree ends as cached) and before a miss's run (no stragglers). A file in a
+ * declared output path is the task's, by declaration. Nested projects are
+ * excluded, as in `resolveOutputs`.
  */
 export async function cleanOutputs(args: {
   projectDir: string
@@ -1409,16 +1258,13 @@ export async function cleanOutputs(args: {
   inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
   /**
-   * What `resolveOutputs` returned for these same arguments, when the caller
-   * walked the tree with no await since: a hit that found its tree stale walked
-   * it to say so, and a second walk here was half the restore's tree work.
+   * What `resolveOutputs` returned for the same arguments with no await since:
+   * a stale hit already walked the tree.
    */
   resolved?: readonly string[] | undefined
   /**
-   * The task's command runs next. A directory of this user's the clean
-   * opened (`removeAll`) is left open: given its `chmod 555` back, a
-   * kept `dist` refused the command's own write, and the task never
-   * missed again.
+   * The command runs next: a directory of this user's the clean opened stays
+   * open, or a kept `chmod 555 dist` refuses the command's own write.
    */
   beforeRun?: boolean
   /** Filled with the committed files it found and left (absolute). */
@@ -1429,17 +1275,15 @@ export async function cleanOutputs(args: {
     args.committed ?? committedFiles(undefined, args.projectDir),
   )
   sweepRestoreTemps(args.projectDir, args.outputs, committed)
-  // An empty directory under the outputs is one too (a save keeps it): one
-  // an older build left would otherwise be saved by this run. So is a FIFO,
-  // socket or device: a task writing a FIFO's path blocks on it forever.
+  // An empty directory under the outputs goes too (a save keeps it), and a
+  // FIFO, socket or device: writing a FIFO's path blocks forever.
   const tree =
     args.resolved === undefined
       ? await resolveOutputTree({ ...args, special: true, clearing: true })
       : { files: args.resolved, emptyDirs: [], special: [] }
   const matched = tree.files
-  // `force: true` makes rm tolerate ENOENT (e.g. when two output
-  // globs overlap and a sibling already deleted a path mid-iteration).
-  // A symlink is unlinked, never followed.
+  // `force: true` tolerates ENOENT from overlapping globs. A symlink is
+  // unlinked, never followed.
   const removed = await removeAll(
     [...matched, ...tree.special].filter((f) => !keptCommitted(f, committed, args.kept)),
     args.projectDir,
@@ -1453,20 +1297,17 @@ export async function cleanOutputs(args: {
     tree.emptyDirs,
     args.beforeRun,
   )
-  // Project-relative posix paths the outputs reach, for the caller's
-  // GitFilesCache.markOutputsChanged: a committed one kept here is the
-  // task's to rewrite or remove, so its index OID no longer vouches for it.
+  // Project-relative paths the outputs reach, for
+  // `GitFilesCache.markOutputsChanged`: a committed one kept here is the task's
+  // to rewrite, so its index OID no longer vouches for it.
   return matched.map((f) => relPosix(args.projectDir, f))
 }
 
 /**
- * Remove the restore temps (`.vx-tmp-<pid>-<n>`, archive.ts) a killed run left
- * beside an exact-file output. A restore stages in `.vx/tmp/` and writes one
- * beside its target only where the target is on another filesystem (EXDEV); a
- * glob over the directory takes it with the outputs, but `out/a.txt` reaches no
- * sibling, and a partial temp stayed in `out/` through every later run
- * (Growth's SIGKILL probe). A temp whose writer is alive, this process
- * included, is left: it may be mid-restore.
+ * Remove restore temps (`.vx-tmp-<pid>-<n>`) a killed run left beside an
+ * exact-file output. A restore writes one there only across filesystems
+ * (EXDEV), and `out/a.txt` reaches no sibling, so it would stay forever. A temp
+ * whose writer is alive is left.
  */
 export function sweepRestoreTemps(
   base: string,
@@ -1478,8 +1319,8 @@ export function sweepRestoreTemps(
     if (g.startsWith('!') || !isLiteralPattern(g)) continue
     dirs.add(path.dirname(path.resolve(base, stripTrailingSlash(normalizeGlob(g)))))
   }
-  // A directory that resolves out of `base` is not the outputs': the link
-  // refusal runs after this sweep, and a delete never follows a link out.
+  // A directory resolving out of `base` is not the outputs': a delete never
+  // follows a link out.
   let realBase: string | undefined
   for (const dir of dirs) {
     const real = realOrNull(dir)
@@ -1503,9 +1344,8 @@ export function sweepRestoreTemps(
 }
 
 /**
- * Empty `.vx/tmp/` (archive.ts `STAGING`) of the staging directories
- * (`<pid>-<n>`) a killed run left, once per run. One whose writer is alive,
- * another run's or this one's, is left: it may be mid-restore.
+ * Empty `.vx/tmp/` of the staging directories a killed run left, once per run;
+ * a live writer's is left.
  */
 export function sweepStaging(workspaceRoot: string): void {
   const top = path.join(workspaceRoot, '.vx', 'tmp')
@@ -1534,11 +1374,10 @@ function writerAlive(pid: number): boolean {
 }
 
 /**
- * Remove exactly these project-relative paths — the recorded rows of an
- * ADDITIVE task's own artifact, never a glob: the glob would take the
- * upstream's files the task adds beside. Emptied directories are pruned as
- * `cleanOutputs` prunes them, only inside the declared `outputs`
- * (`pruneScope`), and stop at one the upstream still fills.
+ * Remove exactly these paths, an ADDITIVE task's recorded rows, never a glob,
+ * which would take the upstream files it adds beside. Emptied directories are
+ * pruned only inside the declared outputs, stopping at one the upstream still
+ * fills.
  */
 export async function cleanOutputPaths(args: {
   projectDir: string
@@ -1562,10 +1401,8 @@ export async function cleanOutputPaths(args: {
 }
 
 /**
- * A file's identity for the additive diff: what the hit path's
- * `isOutputsCurrent` trusts too. Size and mtime alone missed a rewrite to bytes
- * of the same length with the mtime stamped back; the inode and ctime are what
- * no task sets.
+ * A file's identity for the additive diff, as `isOutputsCurrent` trusts it:
+ * inode and ctime, which no task sets back, beside size and mtime.
  */
 export interface OutputStamp {
   size: number
@@ -1575,9 +1412,8 @@ export interface OutputStamp {
 }
 
 /**
- * The stamps of every file the declared outputs currently select — taken BEFORE
- * an additive task runs, so what it added or changed can be told from what it
- * found.
+ * The stamps of every file the outputs select, taken BEFORE an additive task
+ * runs, so its additions and changes can be told from what it found.
  */
 export async function stampOutputs(args: {
   projectDir: string
@@ -1598,9 +1434,8 @@ export async function stampWorkspaceOutputs(args: {
 }
 
 /**
- * The stamps of the committed files among `files`, the outputs a clean
- * found. No clean deletes one, so a failed attempt's change to it stays
- * for the retry: `committedMoved` tells.
+ * The stamps of the committed files among `files`. No clean deletes one, so a
+ * failed attempt's change stays for the retry: `committedMoved` tells.
  */
 export function stampCommitted(
   files: readonly string[],
@@ -1633,21 +1468,14 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
 }
 
 /**
- * The files an additive task's run ADDED or CHANGED under its declared
- * outputs: every selected file that was not in `before`, or whose stamp
- * (`OutputStamp`) moved — the proof the hit path trusts for a current
- * tree, so no new trust is introduced. A file the run rewrote, even with
- * identical bytes, counts as its own (its ctime moved), which is the
- * rewrite-in-place cost the design note records.
+ * The files an additive task ADDED or CHANGED under its outputs: not in
+ * `before`, or with a moved stamp, the proof the hit path already trusts. A
+ * rewrite with identical bytes counts (its ctime moved). A file left as found
+ * is its own too when `mine` says a save or restore of this task left it so (an
+ * incremental emitter keeps unchanged files).
  *
- * A file the run found and left as it was is its own too when `mine` says
- * a save or restore of this task left it so (an incremental emitter keeps
- * the files whose bytes did not change; without them its entry restored a
- * tree a forced run never leaves).
- *
- * Undefined when the run REMOVED a file it found: an artifact holds what a
- * run wrote, never what it took away, and the upstream's restore puts the
- * file back, so no entry reproduces that run and none is saved.
+ * Undefined when the run REMOVED a file it found: an artifact holds what a run
+ * wrote, never what it took away, so no entry reproduces that run.
  */
 export async function ownOutputsSince(
   args: {
@@ -1703,26 +1531,19 @@ function changedSince(
 }
 
 /**
- * Up to this many paths, a clean removes synchronously: the threadpool round
- * trip per `rm`/`rmdir` cost more than the unlink itself, 0.30 ms against
- * 0.13 for one file and 1.7 against 1.5 for 128 (min of 7). Past a few
- * hundred the parallel async removal wins (512: 4.5 against 5.4).
+ * Up to this many paths a clean removes synchronously: the pool round trip per
+ * `rm` cost more than the unlink. Past a few hundred the parallel removal wins.
  */
 const SYNC_CLEAN_MAX = 128
 
 /**
- * A declared output the process cannot remove (a `dist/` another user
- * wrote, a read-only checkout) is the environment's failure, not vx's:
- * the scheduler prints any other error as an "internal error", which
- * sends the reader to file a bug against a permission bit.
+ * A declared output the process cannot remove (another user's `dist/`, a
+ * read-only checkout) is the environment's failure, not an internal error.
  *
- * A directory of this user's that withholds its own write (a task's
- * `chmod 555 dist/ro`, which a hit restores too) gets owner write and
- * search for the remove and its mode back after, as a restore's write
- * into it does (archive.ts `reopen`): else that task could never run or
- * restore again until someone chmodded the tree by hand. The prune after
- * reopens the same way for the subdirectories it removes (`pruneEmptiedDirs`).
- * `keepOpen`: the command runs next, and gets no mode back (`cleanOutputs`).
+ * A directory of this user's that withholds its own write (`chmod 555 dist/ro`,
+ * which a hit restores too) gets owner write and search for the remove and its
+ * mode back after, as a restore's write does, or the task could never run or
+ * restore again. `keepOpen`: the command runs next and gets no mode back.
  */
 async function removeAll(
   all: readonly string[],
@@ -1779,10 +1600,7 @@ async function removeAll(
 /** Directories given missing owner bits for a remove or a walk, with the mode each had. */
 type Reopened = Map<string, number>
 
-/**
- * Whether `dir` is now open: this user's, and the owner `bits` it lacked
- * given (write and search for a remove, read and search for a walk).
- */
+/** Whether `dir` is now open: this user's, given the owner `bits` it lacked. */
 function reopenDir(dir: string, reopened: Reopened, bits = 0o300): boolean {
   if (reopened.has(dir)) return true
   const st = lstatSync(dir, { throwIfNoEntry: false })
@@ -1805,24 +1623,20 @@ function giveBack(reopened: Reopened): void {
 
 /**
  * The paths whose directory resolves inside `root`. A link inside the project
- * is followed, as the save follows it (turborepo#13042): a clean that skipped
- * `dist -> real-out` left the last run's files for the next entry to save. One
- * that leaves the project is never deleted through; `cleanOutputPaths` takes
- * recorded rows, not the resolver's contained set, so the check is here too,
- * and so is the one into `.git` or `.vx`.
+ * is followed, as the save follows it (turborepo#13042); one leaving the
+ * project, or into `.git` or `.vx`, is never deleted through.
  */
 function insideRoot(files: readonly string[], root: string): string[] {
-  // Resolved only once a directory exists to compare: after a clean pruned
-  // the outputs (the common restore) nothing does, and the call was most
-  // of an empty clean.
+  // Resolved only once a directory exists to compare: after a clean (the common
+  // restore) none does.
   let realRoot: string | undefined
   const own = new Map<string, boolean>()
   return files.filter((f) => {
     const dir = path.dirname(f)
     let ok = own.get(dir)
     if (ok === undefined) {
-      // A directory already gone has nothing to delete through; its path
-      // stays so the prune still reaches the parents it emptied.
+      // A directory already gone has nothing to delete through; its path stays
+      // so the prune reaches its parents.
       const r = realOrNull(dir)
       if (r === null) ok = true
       else {
@@ -1839,14 +1653,11 @@ function insideRoot(files: readonly string[], root: string): string[] {
 }
 
 /**
- * Remove the directories a clean emptied, and the `emptyDirs` it found
- * (an older build's, which a save would keep), bottom-up, never `root` itself.
- * A restore writes files where the cached entry has them; a directory left
- * standing where the entry holds a FILE of the same name (a task that once
- * wrote `dist/out/…` and now writes `dist/out`) blocks the rename. A directory that still
- * holds something — a stray the globs do not cover — stays, and the restore
- * says so if it is in the way. With a `scope`, only a directory inside it
- * goes (`pruneScope`). `keepOpen` as `removeAll`'s.
+ * Remove the directories a clean emptied, and the `emptyDirs` it found,
+ * bottom-up, never `root`. A directory left where the entry holds a FILE of
+ * that name blocks the restore's rename. One still holding a stray stays, and
+ * the restore names it if it is in the way. With a `scope`, only directories
+ * inside it go.
  */
 async function pruneEmptiedDirs(
   root: string,
@@ -1857,19 +1668,12 @@ async function pruneEmptiedDirs(
   keepOpen = false,
 ): Promise<void> {
   const rootResolved = path.resolve(root)
-  // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
-  // once every one of its children has had its turn, which is what makes
-  // "the last child empties it" work — and it costs ONE rmdir per
-  // directory rather than one per directory PER CHILD.
-  //
-  // Measured (200 dirs x 20 files, min of 7, three interleaved passes):
-  // a walk-up with a `tried` memo is 46 ms but leaves an emptied parent
-  // standing when a sibling's turn came first; the same walk-up without
-  // the memo is correct and 60 ms, because every child re-attempts the
-  // shared parent. This is correct at 44 ms.
+  // LEVEL ORDER: a parent is tried only after all its children, so the last
+  // child empties it, at ONE rmdir per directory rather than one per directory
+  // per child.
   let level = new Set([...removed.map((f) => path.dirname(f)), ...emptyDirs])
-  // A subdirectory of a read-only directory of this user's (`dist/x/s` under
-  // a `chmod 555 dist/x`) is removed as `removeAll` removes a file there.
+  // A subdirectory of a read-only directory of this user's is removed as
+  // `removeAll` removes a file there.
   const reopened: Reopened = new Map()
   const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
   const denied = (err: NodeJS.ErrnoException, dir: string): boolean =>
@@ -1926,14 +1730,10 @@ interface PruneScope {
 }
 
 /**
- * Where a clean, before a miss or a restore, may prune: only the trees the task
- * declared. A directory above a glob's root or holding a literal output (`out`
- * for `out/a.txt`) stays: a sibling task running beside this one may have just
- * made it and not yet written into it, and pruning it failed that task
- * "Directory nonexistent". A glob's root stays: the task writes under it, and a
- * remove there bought only an rmdir and the task's mkdir. A literal's own path
- * goes: the entry or the task may need a file there. A glob rooted at the
- * project prunes nothing.
+ * Where a clean may prune: only the trees the task declared. A directory above
+ * a glob's root or holding a literal output stays: a sibling task may have just
+ * made it. A glob's root stays: the task writes under it. A literal's own path
+ * goes. A glob rooted at the project prunes nothing.
  */
 function pruneScope(base: string, outputs: readonly string[]): PruneScope {
   const scope: PruneScope = { below: [], atOrBelow: [] }
@@ -1959,11 +1759,9 @@ function inScope(dir: string, scope: PruneScope): boolean {
 }
 
 /**
- * Resolve declared `outputs.workspaceFiles` globs (workspace-root-
- * relative) to actual produced files. Live-FS glob like
- * `resolveOutputs`, anchored at the workspace root — and deliberately
- * with NO project-dir exclusion: workspace outputs are the documented
- * boundary escape hatch.
+ * Resolve `outputs.workspaceFiles` globs to produced files, anchored at the
+ * workspace root with NO project exclusion: workspace outputs are the
+ * documented escape hatch.
  */
 export async function resolveWorkspaceOutputs(
   args: {
@@ -1992,10 +1790,9 @@ export async function resolveWorkspaceOutputs(
       args.clearing,
     )),
   ]
-  // Same containment as the project twin, anchored one level out. These globs
-  // deliberately ignore PROJECT boundaries — that is the escape hatch — but
-  // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
-  // deletes what this returns.
+  // Same containment as the project twin, one level out: these globs may cross
+  // projects, never the workspace, and `cleanWorkspaceOutputs` deletes what
+  // this returns.
   return containedIn(args.workspaceRoot, scanned).sort()
 }
 
@@ -2017,12 +1814,8 @@ export async function resolveWorkspaceOutputTree(args: {
 }
 
 /**
- * `cleanOutputs` for the workspace-output namespace: wipe every file
- * currently matching the declared root-relative globs. Same contract
- * (clean slate before restore AND before exec), same caching gate at
- * the call site. Returns root-relative posix paths of what was
- * removed — the caller feeds these to
- * `GitFilesCache.markWorkspaceOutputsChanged`.
+ * `cleanOutputs` for workspace outputs. Returns the removed root-relative paths
+ * for `GitFilesCache.markWorkspaceOutputsChanged`.
  */
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
@@ -2079,18 +1872,14 @@ function realOrNull(p: string): string | null {
   }
 }
 
-// The literal-is-a-tree rule moved to `util/paths.ts`: it decides what a clean
-// deletes as well as what a key folds, and the graph's overlapping-output
-// refusal — which may not import `cache` — has to read the same one.
-// Re-exported here so the cache contract is unchanged.
+// Re-exported from `util/paths.ts`, where the graph's overlap refusal can read
+// the same rule.
 export { asTrees } from '../util/index.js'
 
 /**
- * The literals no path in `files` answers; a literal is answered by the path
- * itself or by anything under it. Git lists in order, so a binary search finds
- * the answer; a listing out of code-unit order (git sorts bytes) can hide one
- * from it, so only a walk says a literal is unanswered. Testing every literal
- * against every file was ~1.5 ms of a 1,800-file all-cached run.
+ * The literals no path in `files` answers (by itself or anything under it). Git
+ * lists in order, so a binary search answers; a listing out of code-unit order
+ * (git sorts bytes) can hide one, so only a walk says a literal is unanswered.
  */
 function unanswered(
   literals: readonly string[],
@@ -2114,10 +1903,8 @@ function unanswered(
 }
 
 /**
- * The rule a named entry reaches git-ignored files by: git lists nothing at
- * or under it, or ignores a new file directly in it (a kept `gen/.gitkeep`).
- * `src` of `src/**` over a listed `src` reaches none: an ignored `src/dev.log`
- * is no input.
+ * How a named entry reaches git-ignored files: git lists nothing at or under
+ * it, or ignores a new file directly in it (a kept `gen/.gitkeep`).
  */
 function reachingIgnored(
   named: readonly string[],
@@ -2128,11 +1915,8 @@ function reachingIgnored(
 }
 
 /**
- * The entries of `named` (absolute, from {@link namedOutright}) a
- * git-ignored input can be at or under, by the rule a key reads them
- * ({@link ignoredReach}): `listed` holds what git lists, absolute, with every
- * directory above a listed file. Watch asks it, so an ignored file the key
- * never reads starts no cycle.
+ * The entries of `named` a git-ignored input can be at or under, by the key's
+ * rule. Watch asks it, so an ignored file no key reads starts no cycle.
  */
 export function namedIgnoredReach(
   root: string,
@@ -2168,11 +1952,9 @@ function lowerBound(files: readonly string[], key: string): number {
 
 /**
  * The entries a declaration names outright that git answers nothing for: a
- * literal, or a glob's fixed prefix (`dist` of `dist/**`), with no listed path
- * at or under it. Such a path is gitignored or absent, and naming it is asking
- * for it, so {@link ignoredInputs} reads it from disk. A broad glob (`**`, or
- * `src/**` over a listed `src`) reaches no ignored file: `node_modules` is
- * never walked.
+ * literal or a glob's fixed prefix with no listed path under it. Naming it is
+ * asking for it, so {@link ignoredInputs} reads it from disk. A broad glob
+ * reaches no ignored file: `node_modules` is never walked.
  */
 function ignoredReach(
   reach: { prefixes: readonly string[]; literals: readonly string[] },
@@ -2188,9 +1970,8 @@ function ignoredReach(
   const key = named.join('\0')
   let left = memo.get(key)
   if (left === undefined) {
-    // A listed path under a named directory git otherwise ignores (a kept
-    // `gen/.gitkeep`) answered for the whole of it, and the untracked files
-    // beside it never entered the key.
+    // A listed path under an otherwise ignored named directory (`gen/.gitkeep`)
+    // must not answer for the whole of it.
     const cache = ignoredIn?.cache
     const newIgnored =
       cache === undefined
@@ -2206,9 +1987,8 @@ const reachMemo = new WeakMap<readonly string[], Map<string, readonly string[]>>
 const outrightMemo = new WeakMap<object, string[]>()
 
 /**
- * A declaration's literals and globs' fixed prefixes, each once: none for a
- * glob that starts with a wildcard, and none that leaves the directory the
- * entries are relative to (a project's boundary is hard).
+ * A declaration's literals and fixed prefixes, each once: none for a glob
+ * starting with a wildcard or leaving its directory.
  */
 function outright(reach: { prefixes: readonly string[]; literals: readonly string[] }): string[] {
   return [
@@ -2222,16 +2002,13 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
 
 /**
  * The files on disk under the {@link ignoredReach} entries that `accept` keeps,
- * sorted and absolute. A file is hashed from disk like any untracked one;
- * nothing here is stored or restored. `node_modules` is no special case: an
- * ignored path named outright is an input, a generated client
- * (`node_modules/.prisma/client/**`) too; skipping installs here folded such an
- * entry to nothing, silently. lstat, not `exists()`: that answers false for a
- * directory. Never memoized: a dependency writes these mid-run. Nothing under
- * `vxDirs` (the run's cache directory) is read: an ignored prefix over a
- * `cache.dir` there walked the index each run writes, and the task never hit.
- * The walk does not follow links, so a link to a directory a glob may reach
- * below (`linked`) is an input itself, as a listed one is (`dirLinkInput`).
+ * sorted and absolute, hashed like any untracked file. `node_modules` is no
+ * special case: an ignored path named outright
+ * (`node_modules/.prisma/client/**`) is an input. lstat, not `exists()`, which
+ * is false for a directory. Never memoized: a dependency writes these mid-run.
+ * Nothing under `vxDirs` is read, or a task over its own cache dir never hits.
+ * Links are not followed, so a link to a directory a glob may reach below is an
+ * input itself.
  */
 function ignoredInputs(
   root: string,
@@ -2268,8 +2045,8 @@ function ignoredInputs(
     } catch (err) {
       const e = err as NodeJS.ErrnoException
       if (e.code !== 'EACCES' || e.path === undefined) throw err
-      // The walk stops at a directory it cannot list: the files past it
-      // would be in no key. Named, not told as a write it is not.
+      // The walk stops at a directory it cannot list: its files would be in no
+      // key. Named as what it is.
       throw new UserError(
         `cannot list input directory ${relPosix(root, path.resolve(abs, e.path))}: EACCES — ` +
           `no key would see the files under it; give this user read and search permission ` +
@@ -2296,8 +2073,8 @@ interface ResolveFilesArgs {
 }
 
 /**
- * Record the names a fresh `git ls-files` could not decode, in the run's
- * cache when there is one, and return the set to check against.
+ * Record the names a fresh `git ls-files` could not decode, and return the set
+ * to check against.
  */
 function noteUndecodable(
   cache: GitFilesCache | undefined,
@@ -2311,10 +2088,8 @@ function noteUndecodable(
 }
 
 /**
- * An input whose name is not UTF-8 is one vx cannot open (a string cannot
- * spell it), so it could only drop out of the key, where an edit to it is a
- * hit. Named instead, with the way out. One git still lists after it left
- * the disk (a tracked file deleted) drops out as any deleted file does.
+ * An input whose name is not UTF-8 is one vx cannot open, so it would silently
+ * drop out of the key. Named instead, with the way out.
  */
 function refuseUndecodable(
   candidates: readonly string[],
@@ -2348,30 +2123,24 @@ interface FilesPlan {
   /** The directories a positive entry reaches; see `InputListing`. */
   prefixes: string[]
   /**
-   * Whether a project-relative path is an input by the declaration alone:
-   * a positive glob selects it, and no exclude and no own output takes it
-   * back. Projects repeat their relative paths (`src/index.ts`,
-   * `package.json`), so each is matched once per plan.
+   * Whether a project-relative path is an input by the declaration alone. Each
+   * path is matched once per plan.
    */
   verdicts: Map<string, boolean>
   /**
-   * Whether a path is under the task's own outputs and not vx's own
-   * (`ALWAYS_IGNORE`): one git tracks is an input (`committedFiles`) whether or
-   * not a positive glob reaches it, since a hit writes the artifact's copy over
-   * it. A `!` entry does not take it back: `!dist/**` names the outputs to keep
-   * the build's own writes out, and dropped the committed `dist/LICENSE` with
-   * them, so a committed edit hit and the restore wrote the old bytes over it.
+   * Whether a path is under the task's own outputs and not vx's: one git tracks
+   * is an input whether or not a glob reaches it, since a hit writes over it. A
+   * `!` entry does not take it back: `!dist/**` would drop the committed
+   * `dist/LICENSE`, and a hit would write old bytes over an edit.
    */
   ownOnly: Map<string, boolean>
   isIgnored: (rel: string) => boolean
 }
 
 /**
- * Compiled once per declaration for the life of the process: a workspace
- * declares a handful of `files` lists over thousands of tasks, and splitting,
- * normalizing and compiling them per task was ~6 ms of a 1,000-task warm run. A
- * refused declaration is never stored, so it throws for every task that carries
- * it.
+ * Compiled once per declaration for the process: a handful of `files` lists
+ * over thousands of tasks. A refused declaration is never stored, so it throws
+ * for every task.
  */
 const filesPlans = new Map<string, FilesPlan | null>()
 
@@ -2400,8 +2169,7 @@ function filesPlan(
           positive,
           negative,
           isExcluded: anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)]),
-          // A path the task's own outputs take back with `!` is no output, so
-          // it stays an input: a tracked file under `dist` the build reads.
+          // A path the task's own outputs take back with `!` stays an input.
           ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
           isPositive: throughLinks(positive, anyTaskGlob(asTrees(positive))),
@@ -2417,18 +2185,15 @@ function filesPlan(
 
 /**
  * `isPositive`, and each path a glob's static directory passes through: git
- * lists a linked directory as one path, the link, so `lib/**` over `lib
- * ->../shared` matched nothing, and an edit behind it kept the key the task's
- * last bytes were saved under. The link is then an input, and its key includes
- * every file behind it.
+ * lists a linked directory as one path, so `lib/**` over `lib -> ../shared`
+ * would match nothing. The link is then an input, keying every file behind it.
  */
 function throughLinks(
   positive: readonly string[],
   isPositive: (rel: string) => boolean,
 ): (rel: string) => boolean {
   const through = new Set<string>()
-  // Each brace alternative by its own prefix: whole, `{lib,src}/**` has none,
-  // and a file behind `lib ->../shared` was no input.
+  // Each brace alternative by its own prefix: whole, `{lib,src}/**` has none.
   for (const g of positive.flatMap(braceAlternatives)) {
     const prefix = staticPrefix(g)
     if (prefix === '.' || prefix === '' || path.isAbsolute(prefix)) continue
@@ -2439,21 +2204,17 @@ function throughLinks(
 }
 
 /**
- * Whether a positive glob may match a path under `rel`, by each alternative's
- * fixed prefix and depth (a `**` reaches any depth). A link below a glob's
- * fixed prefix is listed as one path too: `src/**\/*.txt` over `src/v
- * ->../shared` matched the link's name, not what the task read through it, and
- * an edit there was a hit. Such a path that is a link to a directory is an
- * input (`dirLinkInput`). Generous on purpose: a wrong yes costs one lookup,
- * and folds a linked directory.
+ * Whether a positive glob may match under `rel`, by each alternative's prefix
+ * and depth. A link below a prefix is listed as one path, so a link to a
+ * directory there is an input (`dirLinkInput`). Generous on purpose: a wrong
+ * yes costs one lookup.
  *
- * Asked of every path no glob takes, so the prefixes are a map walked by
- * the path's own `/`s: a scan of every prefix per path was 8,000 globs ×
- * 200,000 files, minutes per key.
+ * Asked of every path no glob takes, so the prefixes are a map walked by the
+ * path's own `/`s, not a scan of every prefix per path.
  */
 export function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
-  // A prefix ends in `/` (or is empty), so the ones a path starts with are
-  // its slices that end at one of its own `/`s.
+  // A prefix ends in `/` or is empty, so the ones a path starts with end at its
+  // own `/`s.
   const byPrefix = new Map<string, { deep: boolean; depth: number }>()
   for (const r of holdReach(positive)) {
     const seen = byPrefix.get(r.prefix)
@@ -2497,20 +2258,16 @@ const BENEATH = '\0'
 
 /**
  * Whether the `!` entries take back every path under `rel`, a link to a
- * directory: a negation applies to the files behind it, as under a real
- * directory, never to the link's own name. `!src/**\/*.skip` matched the name
- * of `src/l.skip ->../top` and dropped every file behind it, where under a real
- * `src/d.skip/` it drops none, so an edit there was a hit. Two depths, so
- * `!l/*` alone, which leaves `l/a/b` an input, keeps the link.
+ * directory: a negation applies to the files behind it, never the link's own
+ * name. Two depths, so `!l/*` alone keeps the link.
  */
 function excludedBeneath(isExcluded: (rel: string) => boolean, rel: string): boolean {
   return isExcluded(`${rel}/${BENEATH}`) && isExcluded(`${rel}/${BENEATH}/${BENEATH}`)
 }
 
 /**
- * Whether `abs`, a path a glob may reach below, is a link to a directory.
- * A trusted index OID answers for a tracked file with no syscall: only a
- * link's (`120000:`) or an untracked path's is looked at.
+ * Whether `abs` is a link to a directory. A trusted OID answers for a tracked
+ * file with no syscall.
  */
 function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined): boolean {
   const oid = oids?.get(abs)
@@ -2523,36 +2280,32 @@ function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined
 }
 
 /**
- * Whether a changed path is one of a task's declared file inputs: `projectRel`
- * (the path relative to the project that owns it) against `files`,
- * `workspaceRel` (relative to the workspace root) against `workspaceFiles`;
- * null skips that half, by the globs and `!` exclusions (a tracked path under
- * the task's own outputs counts: a committed one is keyed). `--affected` seeds
- * a task with it.
+ * Whether a changed path is one of a task's declared file inputs, by
+ * `projectRel` against `files` and `workspaceRel` against `workspaceFiles`
+ * (null skips that half). A committed path under the task's own outputs counts.
+ * `--affected` seeds a task with it.
  */
 export function declaresInput(
   task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
   /**
-   * The path is a link to a directory (or was one): a glob that may reach
-   * below it keys what is behind it, as `mayHoldMatch` says at key time.
+   * A link to a directory, now or before: a glob that may reach below keys what
+   * is behind it.
    */
   dirLink = false,
   /** Git does not track the path, so under the task's own outputs it is no input. */
   untracked = false,
   /**
-   * The task's project directory, workspace-relative: a `workspaceFiles`
-   * glob reaches its `outputs.files` too, which the key leaves out as it
-   * does `outputs.workspaceFiles` (`resolveWorkspaceFiles`).
+   * The task's project directory: a `workspaceFiles` glob reaches its
+   * `outputs.files` too, which the key leaves out.
    */
   projectDir?: string,
 ): boolean {
   const inputs = task.inputs
   if (inputs === undefined) return false
   if (projectRel !== null) {
-    // Under the task's own outputs the key folds only what git tracks
-    // (`committedFiles`); an untracked build output is not one.
+    // Under the task's own outputs the key folds only what git tracks.
     const plan = filesPlan(inputs.files, task.outputs?.files ?? [])
     if (plan !== null && (inPlan(plan, projectRel) || (!untracked && ownOnly(plan, projectRel)))) {
       return true
@@ -2582,10 +2335,9 @@ function ownWorkspaceOutput(task: TaskConfig, rel: string, projectDir?: string):
 }
 
 /**
- * Whether a task's `workspaceFiles` may name a file under `dir`
- * (workspace-relative): a nested repository git reports as that one path,
- * whose files the key folds and a match against the path alone misses.
- * By the entries' static prefixes, so a glob that may descend counts.
+ * Whether a task's `workspaceFiles` may name a file under `dir`: a nested
+ * repository is reported as that one path. By static prefixes, so a descending
+ * glob counts.
  */
 export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean {
   const ws = task.inputs?.workspaceFiles
@@ -2593,11 +2345,7 @@ export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean 
   return reaches(reachOf(splitNegations(ws).positive).prefixes, dir)
 }
 
-/**
- * The paths a task names outright (literals, and globs' fixed prefixes),
- * `files` relative to its project and `workspaceFiles` to the root: where a
- * gitignored input can be (`ignoredReach`).
- */
+/** The paths a task names outright: where a gitignored input can be. */
 export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] } {
   const inputs = task.inputs
   const plan = inputs === undefined ? null : filesPlan(inputs.files, task.outputs?.files ?? [])
@@ -2655,16 +2403,8 @@ async function resolveFiles(
   // Its root-anchored outputs that land in the project, as `files` sees them.
   const ownWsOutput = inProject(args.projectRel, outputMatcher(args.ownWorkspaceOutputs))
 
-  // Defer to git for the file set (Turbo / Nx parity). Nested.gitignore
-  // files,.git/info/exclude, and global excludes all participate correctly
-  // because git applies the cascade for us.
-  //
-  // Per-run memo: each project's git ls-files output is asked for once
-  // per task (build + test + lint + …). Spawning git N times for the
-  // same project per run is wasteful; we cache the result for the
-  // duration of one orchestrator run.
-  // Everything below the snapshot that decides the result: the project, what
-  // it declares, what it excludes as its own outputs, and the boundaries.
+  // Everything below the snapshot that decides the result: the project, its
+  // declaration, its own outputs and the boundaries.
   const memoKey = filesMemoKey(
     args.projectDir,
     plan,
@@ -2676,9 +2416,8 @@ async function resolveFiles(
   let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles !== undefined) {
     const memo = args.projectFilesCache?.get(memoKey)
-    // Identity, not equality: a re-enumeration hands back a new array even
-    // when the file set is unchanged, and that is exactly when this task's
-    // inputs must be walked again.
+    // Identity, not equality: a re-enumeration hands back a new array, and that
+    // is when inputs must be walked again.
     if (memo !== undefined && memo.snapshot === gitFiles) {
       return {
         files: withIgnored(
@@ -2695,35 +2434,21 @@ async function resolveFiles(
     }
   }
   if (gitFiles === undefined) {
-    // Mid-run re-enumeration — or a project the workspace-wide populate
-    // left without a partition because the workspace's git did not see its
-    // directory (a submodule, an embedded repository); spawned in the
-    // project dir, git answers from the nested repository.
-    // The OIDs this spawn could yield are NOT
-    // trusted (no fresh `git status` to vouch for them — the project's
-    // tree just changed); set() drops the project's OID slot and these
-    // files fall back to Cache.memo.hashFile, which computes the identical
-    // blob OID from disk.
+    // Mid-run re-enumeration, or a project git's workspace-wide pass did not
+    // see (a submodule): spawned in the project dir. Its OIDs are NOT trusted
+    // (no fresh `git status` vouches); these files fall back to `hashFile`,
+    // which computes the same blob OID.
     const ls = runGitLsFiles(args.projectDir, listingEnv(args.projectDir, args.workspaceRoot))
     gitFiles = ls.files
     // set() also clears the project's pending-changed bookkeeping.
     args.gitFilesCache?.set(args.projectDir, gitFiles)
     undecodable = noteUndecodable(args.gitFilesCache, args.projectDir, ls.undecodable)
   }
-  // A LITERAL entry — one with no glob metacharacter — names exactly one file,
-  // so "this matched nothing" is unambiguous. For a glob it is not: matching
-  // nothing is perfectly legitimate (`src/**/*.gen.ts` in a package with no
-  // generated code), which is why only literals are tracked here.
-  //
-  // The reason it has to be tracked at all: the user's globs FILTER the set git
-  // reports, and a filter can only remove. So naming a gitignored file by hand
-  // folds NOTHING — silently. The task then reports `up-to-date` while
-  // replaying an artifact built from an older version of a file the config
-  // explicitly claims as an input. See the refusal below for why this is not
-  // simply honoured instead. First pass: glob-filter to candidate absolute
-  // paths (no I/O). Git prints normalized relative paths, so under an absolute,
-  // normalized project dir a join is a concatenation: `path.resolve` per file
-  // was ~27 ms of a 900-task, 12,000-file warm run.
+  // A LITERAL entry names one file, so matching nothing is unambiguous (a glob
+  // may legitimately match nothing). Tracked because the globs FILTER git's
+  // set: naming a gitignored file folds nothing, silently, and the task replays
+  // a stale artifact. Git prints normalized relative paths, so a join is
+  // concatenation (`path.resolve` per file was ~27 ms of a warm run).
   const base =
     path.sep === '/' &&
     path.isAbsolute(args.projectDir) &&
@@ -2762,17 +2487,13 @@ async function resolveFiles(
   }
   const reach = ignoredReach(plan, gitFiles, { dir: args.projectDir, cache: args.gitFilesCache })
   refuseUndecodable(candidates, undecodable, args.projectDir, 'files')
-  // Second pass: existence check — but ONLY for paths without a
-  // trusted index OID. A clean-per-status tracked file necessarily
-  // exists on disk, so skipping its probe keeps the warm path free of
-  // per-file syscalls. Paths without an OID keep the probe:
-  // `git ls-files -s` can surface staged entries whose working-tree
-  // file is gone; the hasher would otherwise throw ENOENT.
+  // Existence check only for paths without a trusted OID: a clean tracked file
+  // exists. `git ls-files -s` can list a staged entry whose file is gone.
   const resolved = candidates.filter(
     (abs) => oids?.has(abs) === true || inputOnDisk(abs, args.gitFilesCache),
   )
-  // Git's slice comes sorted and a common prefix keeps it so: one pass
-  // proves it instead of a sort per task.
+  // Git's slice comes sorted and a common prefix keeps it so: one pass proves
+  // it.
   for (let i = 1; i < resolved.length; i++) {
     if (resolved[i - 1]! > resolved[i]!) {
       resolved.sort()
@@ -2850,12 +2571,10 @@ function listingFor(
 }
 
 /**
- * `Bun.Glob` decodes a name that is not UTF-8 lossily, so the path it
- * yields names no file and the output dropped out of the artifact without
- * a word: a hit then restored a tree without it (turborepo#9345's output
- * half). A `\ufffd` that does not stat is that case or a file that left
- * mid-scan; `undecodableOnDisk` tells them apart. `clearing`: the walk
- * feeds a clean or a restore, which nothing saves.
+ * `Bun.Glob` decodes a non-UTF-8 name lossily, so the path names no file and
+ * the output would silently drop out of the artifact (turborepo#9345's output
+ * half). `undecodableOnDisk` tells it from a file that left mid-scan.
+ * `clearing`: the walk feeds a clean or restore.
  */
 function refuseUndecodableOutput(abs: string, clearing: boolean): void {
   if (!undecodableOnDisk(abs)) return
@@ -2869,11 +2588,9 @@ function refuseUndecodableOutput(abs: string, clearing: boolean): void {
 }
 
 /**
- * Is `abs` (a lossy spelling) something on disk whose name, or a
- * directory's above it, is not UTF-8? From the deepest ancestor a string
- * can reach, read the raw names and look for one that decodes lossily to
- * the next segment and fatally not at all. Only a path that failed to
- * stat reaches here, so the reads are off every warm path.
+ * Is `abs`, a lossy spelling, something on disk whose name or an ancestor's is
+ * not UTF-8? Read raw names from the deepest reachable ancestor. Only a failed
+ * stat gets here, off every warm path.
  */
 function undecodableOnDisk(abs: string): boolean {
   let dir = path.dirname(abs)
@@ -2902,10 +2619,7 @@ function undecodableOnDisk(abs: string): boolean {
   return false
 }
 
-/**
- * The listing a task's input files were filtered from, and what reading it
- * again takes: {@link addedInput} looks for a file the listing lacked.
- */
+/** The listing a task's inputs were filtered from, and how to read it again. */
 export interface InputListing {
   root: string
   /** Where git's location variables point; `root` in a repository below it is listed without them. */
@@ -2914,8 +2628,8 @@ export interface InputListing {
   listed: readonly string[]
   isInput: (rel: string) => boolean
   /**
-   * Whether a link to a directory at `rel` is an input: a glob may match
-   * below it (`mayHoldMatch`), though its name fits none (`dirLinkInput`).
+   * Whether a link to a directory at `rel` is an input: a glob may match below
+   * it though its name fits none.
    */
   linked: (rel: string) => boolean
   nested: (rel: string) => boolean
@@ -2926,9 +2640,8 @@ export interface InputListing {
 }
 
 function reachOf(entries: readonly string[]): { prefixes: string[]; literals: string[] } {
-  // Each alternative names what it would alone: `{gen/a.txt,gen/b.txt}` names
-  // both files, as `gen/{a,b}.txt` does; whole, it had no fixed prefix and
-  // named nothing (Growth's parity).
+  // Each alternative names what it would alone: whole, `{gen/a.txt,gen/b.txt}`
+  // had no fixed prefix.
   const positive = entries.flatMap(braceAlternatives)
   const prefixes = new Set<string>()
   for (const p of asTrees(positive)) {
@@ -2966,19 +2679,15 @@ function reaches(prefixes: readonly string[], rel: string): boolean {
 }
 
 /**
- * An input file that exists now and that the key did not fold, or undefined.
- * The facts re-check only the files the key folded, so a file ADDED under
- * an input glob while the command ran — and read by it — was saved under a
- * key without it, and replayed once the file was gone.
+ * An input file that exists now and that the key did not fold, or undefined: a
+ * file ADDED under an input glob while the command ran would be saved under a
+ * key without it.
  *
- * Adding a name changes its directory's ctime, so the listing's directories
- * that a positive entry reaches are stat'ed, and only one changed since
- * `listedAt` (the listing's time, less the racy window) is read. A name
- * there that the key lacks and the declaration matches, or an unlisted
- * directory, is asked of git, which alone knows what is ignored; so is a
- * missing literal that now exists. Not seen: a file added inside a
- * directory that held no listed file before (only ignored ones, or none)
- * and was not itself created during the run — its parent's ctime stays.
+ * Adding a name changes its directory's ctime, so the listing's directories a
+ * positive entry reaches are stat'ed and only one changed since `listedAt` is
+ * read; its unknown names go to git, which alone knows what is ignored. Not
+ * seen: a file added in a directory that held no listed file and was not itself
+ * made during the run.
  */
 export function addedInput(
   listings: readonly InputListing[],
@@ -3049,20 +2758,10 @@ function addedTo(
 const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 /**
- * Union of the OUTPUT files matching any positive pattern in `cwd`, minus
- * files matching any exclude glob (tested by Bun.Glob.match on the relative
- * path). Bun.Glob takes a single pattern per instance, so we iterate.
- *
- * Yields SYMLINKS (never followed, never descended): a task that emits
- * `dist/out ->../src/x` has produced an output, so the save must capture it (as
- * its target's bytes, `planArtifact`) and the clean must remove it — a link the
- * clean leaves standing blocks the directory a later entry restores there.
- * Bun's `onlyFiles` walk drops every symlink, so this lists everything and
- * sorts by `lstat`.
- *
- * Sync scan: this runs on the MISS path twice per task (clean, then resolve),
- * where the walk is CPU-bound and each async chunk costs a main-thread round
- * trip (measured on a 1,000-task cold run).
+ * The output files matching any positive pattern in `cwd`, minus excludes.
+ * Yields SYMLINKS, never followed: the save keeps them and the clean must
+ * remove them. Bun's `onlyFiles` walk drops symlinks, so this lists everything
+ * and sorts by `lstat`. Synchronous: on the miss path the walk is CPU-bound.
  */
 async function scanUnion(
   positive: readonly string[],
@@ -3076,10 +2775,8 @@ async function scanUnion(
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   const links: string[] = []
-  // Bun's scan skips a FIFO, socket or device outright, so `special` is
-  // found by listing the directories the walk entered: its roots, the
-  // directories it took and the parents of what it took. Derived only when
-  // asked, so a walk that may never need them pays a set add per directory.
+  // Bun's scan skips FIFOs, sockets and devices, so `special` lists the
+  // directories the walk entered. Derived only when asked.
   const roots = special === undefined ? undefined : new Set<string>()
   const dirs = special === undefined ? undefined : new Set<string>()
   const take = (rel: string): void => {
@@ -3094,9 +2791,8 @@ async function scanUnion(
       if (emptyDirs !== undefined && readdirSync(abs).length === 0) emptyDirs.add(abs)
     } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs, clearing)
   }
-  // The walk from a `<dir>/**` glob's root never yields the root, so an
-  // empty one was not saved and a hit did not make it. Not a link: the
-  // walk enters one, and its tree is the link's.
+  // A `<dir>/**` walk never yields its root, so an empty one would not be
+  // saved. Not a link: its tree is the link's.
   const takeRoot = (rel: string): void => {
     if (emptyDirs === undefined || nested(rel) || excluded(rel)) return
     const abs = path.resolve(cwd, rel)
@@ -3104,11 +2800,9 @@ async function scanUnion(
     if (readdirSync(abs).length === 0) emptyDirs.add(abs)
   }
   const opts = { onlyFiles: false, followSymlinks: false, dot: true }
-  // A directory the task left unlistable (`chmod 000 dist/s`) stopped the
-  // walk with EACCES: the clean failed every later run until a manual
-  // chmod. A walk for a clean or a restore opens this user's own for its
-  // listing and gives each its mode back; a save refuses it by its path
-  // (`unlistedOutput`), as it cannot store what it cannot read.
+  // A directory the task left unlistable (`chmod 000 dist/s`) would fail every
+  // later clean. A clean or restore walk opens this user's own and gives the
+  // mode back; a save refuses it by path.
   const reopened: Reopened = new Map()
   const tried = new Set<string>()
   const walk = (glob: Bun.Glob, at: string, each: (rel: string) => void): void => {
@@ -3120,8 +2814,8 @@ async function scanUnion(
         const e = err as NodeJS.ErrnoException
         if (e.code !== 'EACCES' || e.path === undefined) throw err
         const dir = path.resolve(at, e.path)
-        // Under a directory with no search bit (`chmod 444`) the refusal
-        // names its child: the parent is the one to open.
+        // Under a directory with no search bit the refusal names its child: the
+        // parent is the one to open.
         const open = (d: string): boolean => {
           if (tried.has(d)) return false
           tried.add(d)
@@ -3132,9 +2826,8 @@ async function scanUnion(
       }
     }
   }
-  // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a `/`:
-  // `{dist,lib/esm}/**` saved an empty artifact, and a hit restored nothing
-  // over a cleaned tree. Expanded here, as discovery does.
+  // `Bun.Glob` finds nothing for a brace whose alternatives hold a `/`
+  // (`{dist,lib/esm}/**`): expanded here.
   const patterns = positive.flatMap(slashBraceExpansions)
   if (special !== undefined) {
     special.find = () => {
@@ -3146,10 +2839,8 @@ async function scanUnion(
       return [...into]
     }
   }
-  // A leading `**` walks the whole project whatever else is listed, so the list
-  // is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three, ~2 ms of
-  // a warm hit on solid. Not where a static head passes through a link: the one
-  // walk does not follow links, and the per-pattern scan enters them.
+  // A leading `**` walks the whole project anyway, so the list is one walk. Not
+  // through a static head that is a link: the one walk does not follow links.
   if (
     patterns.length > 1 &&
     patterns.some((p) => p.startsWith('**')) &&
@@ -3192,10 +2883,9 @@ async function scanUnion(
   } finally {
     giveBack(reopened)
   }
-  // A literal names the path and its tree (`dist`, `dist/**`), and a tree
-  // whose head is a directory link is walked through it: the link and the
-  // files under it were one artifact holding `dist` as a file and a
-  // directory, refused, so the task never cached. The walk is the output.
+  // A literal names the path and its tree, walked through a directory link at
+  // its head; otherwise one artifact would hold `dist` as a file and a
+  // directory.
   if (links.length > 0) {
     const sorted = [...matches].sort()
     for (const link of links) {
@@ -3262,13 +2952,10 @@ function headLinked(cwd: string, pattern: string): boolean {
 }
 
 /**
- * Where `pattern`'s scan can start: its static directory, with the rest of the
- * pattern to match there. `Bun.Glob` walks the whole of `cwd` whatever the
- * prefix: `out/d1/**` beside 9000 sibling dirs cost 2.3 ms a scan, twice per
- * miss. Null when the prefix is a file, which nothing lies under (a literal's
- * `<file>/**` tree). Undefined (scan from `cwd`) for no prefix, an escape, or a
- * prefix that does not stat (a dangling link, a cycle), whose refusals the walk
- * from `cwd` names. A prefix through a link is entered either way.
+ * Where `pattern`'s scan starts: its static directory, with the rest to match
+ * there (`Bun.Glob` walks all of `cwd` whatever the prefix). Null when the
+ * prefix is a file. Undefined (scan from `cwd`) for no prefix, an escape, or
+ * one that does not stat, whose refusals that walk names.
  */
 function scanRoot(
   cwd: string,
@@ -3290,11 +2977,8 @@ function scanRoot(
 }
 
 /**
- * True when `pattern`'s static directory is not on disk, so nothing can
- * match under it. A restore into a tree without its outputs scans each
- * glob twice (the check, then the clean), and a scan of a missing `dist`
- * cost ~58 µs where the lstat costs a few. Anything this cannot read
- * plainly (no prefix, an escape, an absolute path, a refused stat) scans.
+ * True when `pattern`'s static directory is absent, so nothing matches: an
+ * lstat, not a scan. Anything unclear scans.
  */
 function absentPrefix(cwd: string, pattern: string, known?: ReadonlySet<string>): boolean {
   const prefix = staticPrefix(pattern)
@@ -3310,9 +2994,7 @@ function absentPrefix(cwd: string, pattern: string, known?: ReadonlySet<string>)
 
 const WHOLE_TREE = new Bun.Glob('**')
 
-// Compiled once per pattern string for the life of the process: a `Bun.Glob`
-// is immutable, and the same handful of declared globs are compiled again
-// for every task otherwise (three sites, up to thousands of times per run).
+// Compiled once per pattern for the process: a `Bun.Glob` is immutable.
 const globMemo = new Map<string, Bun.Glob>()
 function globFor(pattern: string): Bun.Glob {
   let g = globMemo.get(pattern)
@@ -3321,13 +3003,9 @@ function globFor(pattern: string): Bun.Glob {
 }
 
 /**
- * Whether a project-relative path lies inside a nested project: its ancestor
- * directories looked up in a set, O(depth). One `<nested>/**` glob per nested
- * project matched every file against every one, O(files × nested): 320 ms of
- * astro's 834 ms warm no-op, 4,003 files against 330 fixture projects (I's
- * log). A glob also read `*`, `?` or `{` in a nested directory's NAME as
- * syntax, so a project at `pkg*` took its sibling `pkg-b`'s files out of the
- * key; a name is a name.
+ * Whether a path lies inside a nested project: its ancestors looked up in a
+ * set, O(depth), not a glob per nested project (320 ms of astro's warm no-op).
+ * A name is a name: `pkg*` is no glob.
  */
 function inNestedProject(projectDir: string, nestedDirs: string[]): (rel: string) => boolean {
   if (nestedDirs.length === 0) return () => false
