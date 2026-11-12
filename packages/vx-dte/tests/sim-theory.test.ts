@@ -87,22 +87,37 @@ const families: [name: string, cores: number, make: (r: () => number) => Task[],
 ]
 
 /** A family's graph `seed`, as run: how late past its chain and a warm-up, its worker time and floor. */
-function run(cores: number, make: (r: () => number) => Task[], seed: number, unknown = 0) {
+function run(
+  cores: number,
+  make: (r: () => number) => Task[],
+  seed: number,
+  unknown = 0,
+  noise = 0,
+) {
   // A unit is 3 s: tasks of 3 to 300 s.
   const tasks = make(rng(seed * 7919)).map((t) => ({ ...t, ms: t.ms * 3_000 }))
   const none = rng(seed * 104729)
+  // Each ran its history times a factor within `noise` of 1.
+  const off = rng(seed * 15485863)
+  const ms = tasks.map((t) =>
+    noise === 0 ? t.ms : Math.round(t.ms * (1 - noise + 2 * noise * off())),
+  )
   const graph: SimTask[] = tasks.map((t, i) => ({
     id: `t${i}`,
     deps: t.deps.map((d) => `t${d}`),
     exec: true,
     cache: true,
-    ran: { ms: t.ms, cores: t.cores, memory: 1e8 },
-    ...(none() < unknown ? { known: null } : {}),
+    ran: { ms: ms[i]!, cores: t.cores, memory: 1e8 },
+    ...(none() < unknown
+      ? { known: null }
+      : noise === 0
+        ? {}
+        : { known: { ms: t.ms, cores: t.cores, memory: 1e8 } }),
   }))
   const tail: number[] = []
-  for (let i = tasks.length - 1; i >= 0; i--) tail[i] = tasks[i]!.ms
+  for (let i = tasks.length - 1; i >= 0; i--) tail[i] = ms[i]!
   for (let i = tasks.length - 1; i >= 0; i--)
-    for (const d of tasks[i]!.deps) tail[d] = Math.max(tail[d]!, tasks[d]!.ms + tail[i]!)
+    for (const d of tasks[i]!.deps) tail[d] = Math.max(tail[d]!, ms[d]! + tail[i]!)
   const chain = Math.max(...tail)
   const r = simulate(graph, {
     sizes: [{ name: 'w', max: 1000, cpu: cores, memory: 64e9 }],
@@ -112,8 +127,9 @@ function run(cores: number, make: (r: () => number) => Task[], seed: number, unk
   return {
     late: (r.endMs - chain - WARM_UP_MS) / chain,
     lateMs: r.endMs - chain - WARM_UP_MS,
+    chain,
     spent: r.workers.reduce((a, w) => a + (w.leftAt ?? w.cancelledAt ?? r.endMs) - w.spawnedAt, 0),
-    floor: tasks.reduce((a, t) => a + (t.ms * t.cores) / cores, 0) + WARM_UP_MS,
+    floor: tasks.reduce((a, t, i) => a + (ms[i]! * t.cores) / cores, 0) + WARM_UP_MS,
   }
 }
 
@@ -143,4 +159,21 @@ for (const [name, cores, make] of families)
     let late = 0
     for (let seed = 1; seed <= 10; seed++) late += run(cores, make, seed, 0.3).late / 10
     expect(late).toBeLessThanOrEqual(0.06)
+  })
+
+// Each task 30% off its history either way: placed at its latest start, a
+// task that ran slow ended the run late, 5.2, 6.8, 5.3, 7 and 11% past
+// the chain. Its room sought with a margin on its chain, on 0-3% more
+// worker time (2026-11-12).
+const hedged: Record<string, number> = { random: 4, dense: 6, layered: 2, wide: 6, trap: 8 }
+for (const [name, cores, make] of families)
+  it(`${name} graphs 30% off their history end within ${hedged[name]}% of their chain`, () => {
+    let late = 0
+    let chain = 0
+    for (let seed = 1; seed <= 10; seed++) {
+      const r = run(cores, make, seed, 0, 0.3)
+      late += Math.max(0, r.lateMs)
+      chain += r.chain
+    }
+    expect((100 * late) / chain).toBeLessThanOrEqual(hedged[name]!)
   })

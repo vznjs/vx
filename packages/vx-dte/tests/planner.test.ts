@@ -65,9 +65,9 @@ it('plans main’s run on four workers: only its misses are work, never a group 
   const p = plan(work, [], candidates([small], new Map(), [], work.length), WARM)
   // Two end it on its longest chain, its slack packed beside the chain
   // (2026-11-11); played as soon as there was room, it took three. The
-  // second asked 14 s in, its work in its slack: the same end on less.
+  // second asked 15 s in, its work in its slack: the same end on less.
   expect(p.start).toEqual([small])
-  expect(p.later.map((l) => [l.size, Math.round(l.inMs / 1000)])).toEqual([[small, 14]])
+  expect(p.later.map((l) => [l.size, Math.round(l.inMs / 1000)])).toEqual([[small, 15]])
   expect(p.release).toEqual([])
   // How busy it keeps them is tests/sim.test.ts's to judge.
   // The longest chain, vx-docs's import, build and test, after the warm-up.
