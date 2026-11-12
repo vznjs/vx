@@ -1367,23 +1367,25 @@ export interface LockedFile {
 function · `src/orchestrator/lockfile-claim.ts`
 
 ```ts
-export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
+export function lockfileClaim<L = unknown>(
+  options: LockfileClaimOptions<L>,
+): LockfileClaimHooks<L>
 ```
 
 ## `LockfileClaimHooks`
 
 type · `src/orchestrator/lockfile-claim.ts`
 
-What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `importers` for its own stages.
+What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `links` for its own stages.
 
 ```ts
-export interface LockfileClaimHooks {
+export interface LockfileClaimHooks<L = unknown> {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
-  importers(ctx: {
+  links(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
-  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  }): Promise<ReadonlyMap<string, L> | undefined>
   recorded(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
@@ -1396,7 +1398,7 @@ export interface LockfileClaimHooks {
 type · `src/orchestrator/lockfile-claim.ts`
 
 ```ts
-export interface LockfileClaimOptions {
+export interface LockfileClaimOptions<L = unknown> {
   readonly file: string
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly extraFiles?: (text: string) => readonly string[]
@@ -1404,24 +1406,8 @@ export interface LockfileClaimOptions {
   readonly identity?: string
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
-  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly links?: (text: string) => ReadonlyMap<string, L>
   readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
-}
-```
-
-## `LockfileImporter`
-
-type · `src/orchestrator/lockfile-claim.ts`
-
-What a lockfile records of one importer's links to the workspace's other
-importers: dependency name → importer directory (root-relative POSIX,
-`.` for the root).
-
-```ts
-export interface LockfileImporter {
-  readonly deps: Readonly<Record<string, string>>
-  readonly peers: Readonly<Record<string, string>>
-  readonly transitive?: readonly string[]
 }
 ```
 
@@ -2328,8 +2314,8 @@ does not. Lockfiles carry dependency cycles, so the unit is the
 strongly connected component: Tarjan's walk (iterative — a dependency
 chain can be thousands deep) emits components children-first, and each
 folds its members (sorted), each as its material and the materials its
-edges land on, and its child components' digests (sorted). O(nodes + edges): 1000 importers over 3000 packages digest in
-~20 ms where one traversal per importer took 400.
+edges land on, and its child components' digests (sorted).
+O(nodes + edges), where one traversal per member is O(members × nodes).
 
 ```ts
 export function reachDigests(g: ReachGraph): string[]

@@ -22,7 +22,7 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: {
-        files: ['plugins/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        files: ['plugins/**', 'fingerprint/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
       outputs: { files: [] },
       cache: true,
@@ -57,7 +57,7 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
-      inputs: { files: ['plugins/**', 'package.json'] },
+      inputs: { files: ['plugins/**', 'fingerprint/**', 'package.json'] },
       outputs: { files: [] },
       cache: true,
     },

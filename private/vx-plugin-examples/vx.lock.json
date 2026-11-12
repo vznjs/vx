@@ -38,6 +38,7 @@
       "inputs": {
         "files": [
           "plugins/**",
+          "fingerprint/**",
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
@@ -106,6 +107,7 @@
       "inputs": {
         "files": [
           "plugins/**",
+          "fingerprint/**",
           "package.json"
         ]
       },

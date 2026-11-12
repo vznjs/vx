@@ -13,8 +13,8 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { reachedImporters, withTransitive } from './graph.js'
+import { reachDigests } from '@vzn/vx'
+import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
 import { record, sectionsOf, stable } from './json.js'
 import { topLevel } from './pnpm-blocks.js'
 import { joinPosix, resolvePosix } from './posix.js'
