@@ -1910,8 +1910,9 @@ their lengths. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
 
 A clean with a bound also drops run
-history and hash memos older than 30 days, and gives their pages back
-to the disk (a `VACUUM` of the index, once rows went); a run never does.
+history and hash memos older than 30 days, and gives the pages of the
+rows it dropped and the entries it evicted back to the disk (a `VACUUM`
+of the index, once rows went); a run never does.
 It reports the rows and the bytes the index shrank by
 (`historyRows`, `historyBytes`); a dry run reports neither.
 

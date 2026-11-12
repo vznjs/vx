@@ -1701,8 +1701,10 @@ straight to its place, its files were there empty, then short). A
 missing file in a folder that stands is copied straight to its place: a
 reader can meet it short while it copies, as the price of a restore
 that renaming each such file in made a fifth to a third slower (3,000
-files, 2026-11-06). A restore into outputs already on disk, a workspace output, a
-symlink, or a folder on another filesystem than `.vx/tmp/` takes the archive extractor, fed the tree packed back into its
+files, 2026-11-06). A symlink is laid as written, after the extractor's
+own checks of where it points; one it would refuse, a restore into outputs
+already on disk, a workspace output, or a folder on another filesystem than
+`.vx/tmp/` takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
 the save. A hit trusts the tree and checks none of its files' bytes: the store
 is vx's own, and a check could not stop a write to it. Each file's size

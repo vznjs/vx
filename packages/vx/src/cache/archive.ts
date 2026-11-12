@@ -1076,6 +1076,89 @@ function statOrAbsent(p: string): Stats | undefined {
   }
 }
 
+/** Each directory `p` (an entry name; a directory's ends in `/`) lies under, into `into`. */
+function addAncestors(into: Set<string>, p: string): void {
+  for (let i = p.indexOf('/'); i !== -1; i = p.indexOf('/', i + 1)) into.add(p.slice(0, i))
+}
+
+/** What a restore holds its links to: `dir`, named `where`, and its real path, asked once. */
+interface LinkBound {
+  dir: string
+  where: string
+  real: () => Promise<string>
+}
+
+function boundOf(dir: string, where: string): LinkBound {
+  let real: Promise<string> | undefined
+  return { dir, where, real: () => (real ??= realOf(dir)) }
+}
+
+/**
+ * Why a restore refuses the link `name` at `target` reading `to`, or
+ * undefined when it may lay it. `linked` and `nameOf` hold every link the
+ * restore lays, by where it stands. With no `bound` (an unpack into a cache
+ * tree) only the links among themselves are judged.
+ */
+async function linkRefusal(
+  name: string,
+  target: string,
+  to: string,
+  bound: LinkBound | undefined,
+  linked: ReadonlyMap<string, string>,
+  nameOf: ReadonlyMap<string, string>,
+  realDirs: Map<string, Promise<string>>,
+): Promise<string | undefined> {
+  let refused = bound === undefined ? undefined : linkRefused(path.dirname(target), to, bound.dir)
+  if (refused === 'out') return `archive link ${name} points out of the ${bound!.where}: ${to}`
+  const via = throughLink(path.dirname(target), to, linked)
+  if (via?.why === 'through')
+    return `archive link ${name} points through ${nameOf.get(via.at)}, another link it restores: ${to}`
+  if (via?.why === 'loop')
+    return `archive link ${name} starts a chain of links that loops or runs past ${LINK_CHAIN_MAX} hops at ${nameOf.get(via.at)}: ${to}`
+  if (refused === undefined && bound !== undefined)
+    refused = await linkLandsRefused(path.dirname(target), to, await bound.real(), realDirs)
+  if (refused === 'out') return `archive link ${name} points out of the ${bound!.where}: ${to}`
+  if (refused === '.git') return `archive link ${name} points into .git: ${to}`
+  return undefined
+}
+
+/**
+ * Whether the extractor would lay every one of `links` (`[row path, target]`
+ * under `projectDir`) among the entry's `rows` with no refusal: the
+ * copy-out lays links itself only then, and leaves a refusal to the
+ * extractor, which names it. The same rules: a safe target, no other row at
+ * or under the link, inside the workspace (the project, without one) as
+ * text and on disk, never into `.git`, and never through another link.
+ */
+export async function linksRestorable(
+  links: ReadonlyArray<readonly [string, string]>,
+  rows: readonly OutputFileRow[],
+  projectDir: string,
+  workspaceRoot: string | undefined,
+): Promise<boolean> {
+  const under = new Set<string>()
+  for (const r of rows) addAncestors(under, r.path)
+  const linked = new Map<string, string>()
+  const nameOf = new Map<string, string>()
+  for (const [rel, to] of links) {
+    if (to.length === 0 || to.includes('\0') || path.isAbsolute(to) || under.has(rel)) return false
+    linked.set(path.join(projectDir, rel), to)
+    nameOf.set(path.join(projectDir, rel), `outputs/${rel}`)
+  }
+  const bound = boundOf(
+    workspaceRoot ?? projectDir,
+    workspaceRoot === undefined ? 'project' : 'workspace',
+  )
+  const realDirs = new Map<string, Promise<string>>()
+  for (const [rel, to] of links) {
+    const target = path.join(projectDir, rel)
+    const name = `outputs/${rel}`
+    if ((await linkRefusal(name, target, to, bound, linked, nameOf, realDirs)) !== undefined)
+      return false
+  }
+  return true
+}
+
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
 function usageOf(raw: unknown): ExecUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
@@ -1190,8 +1273,9 @@ export async function extractArtifactStream(
     // the tree), the workspace is unknown: bounded by the tree, a project's
     // `dist/l -> ../../other/f.txt` read as out and a good remote hit was
     // refused. The tree stores a link as text and nothing is written through
-    // it; its restore (`restoreTree`, always the extractor for a link) bounds
-    // it by the workspace, as a local save's tree and an inline artifact are.
+    // it; its restore (`restoreTree`: the copy-out after `linksRestorable`,
+    // else the extractor) bounds it by the workspace, as a local save's tree
+    // and an inline artifact are.
     const tree = stageRoot === undefined && workspaceDest !== undefined
     const bound = stageRoot ?? destDir
     const where = stageRoot === undefined ? 'project' : 'workspace'
@@ -1203,12 +1287,16 @@ export async function extractArtifactStream(
       nameOf.set(path.join(dest.base, dest.rel), name)
       linked.set(path.join(dest.base, dest.rel), to)
     }
-    let realBound: Promise<string> | undefined
+    const held = tree ? undefined : boundOf(bound, where)
     const realDirs = new Map<string, Promise<string>>()
+    // Once, not a scan of every entry per link: 700 links in 32k entries
+    // was 1.7 s of a restore.
+    const under = new Set<string>()
+    for (const p of provided) addAncestors(under, p)
     for (const [name, to] of links) {
       // Renamed over an entry just written, the link would stand where the
       // sidecar says a file is, and a re-pack of the tree reads through it.
-      if (provided.has(name) || [...provided].some((p) => p.startsWith(`${name}/`))) {
+      if (provided.has(name) || under.has(name)) {
         throw new ArchiveSecurityError(`archive link ${name} is also a file or directory entry`)
       }
       if (accept !== undefined && !accept(name)) {
@@ -1220,33 +1308,11 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      let refused = tree ? undefined : linkRefused(path.dirname(target), to, bound)
-      if (refused === 'out') {
-        throw new ArchiveSecurityError(`archive link ${name} points out of the ${where}: ${to}`)
-      }
-      const via = throughLink(path.dirname(target), to, linked)
-      if (via?.why === 'through') {
-        throw new ArchiveSecurityError(
-          `archive link ${name} points through ${nameOf.get(via.at)}, another link it restores: ${to}`,
-        )
-      }
-      if (via?.why === 'loop') {
-        throw new ArchiveSecurityError(
-          `archive link ${name} starts a chain of links that loops or runs past ${LINK_CHAIN_MAX} hops at ${nameOf.get(via.at)}: ${to}`,
-        )
-      }
-      if (refused === undefined && !tree) {
-        realBound ??= realOf(bound)
-        refused = await linkLandsRefused(path.dirname(target), to, await realBound, realDirs)
-      }
-      if (refused === 'out') {
-        throw new ArchiveSecurityError(`archive link ${name} points out of the ${where}: ${to}`)
-      }
-      if (refused === '.git') {
-        throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
-      }
+      const refused = await linkRefusal(name, target, to, held, linked, nameOf, realDirs)
+      if (refused !== undefined) throw new ArchiveSecurityError(refused)
       await x.stageLink(name, dest.base, target, to)
       provided.add(name)
+      addAncestors(under, name)
     }
     // A moded directory is one the entries above make; its row, like an
     // empty directory's, names it with a trailing slash. The cache applies

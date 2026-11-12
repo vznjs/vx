@@ -460,6 +460,49 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
+// A link named as a directory an entry lies in: the tree's re-pack would
+// read the entry through the link.
+it.skipIf(process.platform === 'win32')(
+  'an artifact with a link where a directory of its entries stands restores nothing',
+  async () => {
+    const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-links-under-'))
+    made.push(ws)
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest)
+    for (const file of ['outputs/dist/k/x', 'outputs/dist/k/sub/x']) {
+      const body = JSON.stringify({
+        version: 1,
+        files: { [file]: [0o644, 0] },
+        links: { 'outputs/dist/k': 'other' },
+      })
+      const parts: Uint8Array[] = []
+      for await (const c of tarPack([
+        { name: 'stdout', size: 0, body: '' },
+        { name: file, size: 5, body: 'decoy' },
+        { name: '.vx-meta.json', size: Buffer.byteLength(body), body },
+      ])) {
+        parts.push(c)
+      }
+      const tar = await withSum(new Uint8Array(await new Blob(parts).arrayBuffer()))
+      const err = await extractArtifactStream(
+        streamOf(tar),
+        dest,
+        ws,
+        undefined,
+        undefined,
+        ws,
+      ).then(
+        () => null,
+        (e: unknown) => e,
+      )
+      expect(String(err)).toContain(
+        'ArchiveSecurityError: archive link outputs/dist/k is also a file or directory entry',
+      )
+      expect(lstatSync(path.join(dest, 'dist'), { throwIfNoEntry: false })).toBeUndefined()
+    }
+  },
+)
+
 // What the rows call a file is packed only as one: a link there is
 // read through, so its target's bytes would ride the artifact.
 it.skipIf(process.platform === 'win32')('a kept tree packs no link it calls a file', () => {
