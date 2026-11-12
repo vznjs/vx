@@ -10,6 +10,7 @@
 // whole and still; the motion is script on top. tests/landing.test.ts holds it.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import Footer from '../components/landing/Footer.astro'
+import { SCOPE } from '../components/landing/scope.ts'
 import HeroStage from '../components/landing/HeroStage.astro'
 import DteRun from '../components/landing/DteRun.astro'
 import '../styles/landing.css'
@@ -44,6 +45,7 @@ const RACERS = [
   ['nx', 'Nx'],
   ['vt', 'Vite Task'],
 ] as const
+const LAP_S = 12
 const races = (
   [
     ['warm', 'Nothing changed'],
@@ -54,8 +56,21 @@ const races = (
 ).map(([k, title]) => {
   const lanes = RACERS.map(([r, name]) => ({ r, name, value: bench(`${r}.${k}`), ms: parseDuration(bench(`${r}.${k}`))! }))
   const max = Math.max(...lanes.map((l) => l.ms))
-  return { k, title, lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, t: 0.35 + 2.4 * (l.ms / max) })) }
+  // Live, every tool runs the same track at its measured pace: the slowest
+  // takes LAP_S a lap, the rest lap it as often as they are faster.
+  return {
+    k,
+    title,
+    lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, lap: (l.ms / max) * LAP_S })),
+  }
 })
+const scope0 = SCOPE[0]!
+const scopeOut = [
+  ['vx last', 'any past run, task by task', 'features/vx-last/'],
+  ['vx why', 'the file, env var or setting that changed', 'features/vx-why/'],
+  ['SQLite', 'every task of every run, one query away', 'features/run-analytics/'],
+  ['OpenTelemetry', 'the same numbers in your own backend', 'plugins/vx-otel/'],
+] as const
 const benchFormula = 'Time each tool adds over the ideal run; lower is better.'
 const benchWorkload = fillBench(
   'Benchmark workload: a synthetic monorepo of %bench.projects% projects and %bench.tasks% tasks in %bench.levels% dependency levels, five core libraries a quarter of the projects use; build %bench.task.build%, test and typecheck %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish%; real repos with uneven task times will differ.',
@@ -144,11 +159,13 @@ const startCommands = [
               <figure class="race">
                 <figcaption>{race.title}</figcaption>
                 {race.lanes.map((l) => (
-                  <div class:list={['lane', { vx: l.r === 'vx' }]} style={`--w:${l.w.toFixed(1)}; --t:${l.t.toFixed(2)}s`}>
+                  <div class:list={['lane', { vx: l.r === 'vx' }]} style={`--w:${l.w.toFixed(1)}; --lap:${l.lap.toFixed(3)}s`}>
                     <span class="lane-name">{l.name}</span>
                     <span class="lane-track">
                       <span class="streak" />
+                      <span class="runner" />
                     </span>
+                    <span class="lane-laps" aria-hidden="true" />
                     <span class="lane-value">{l.value}</span>
                   </div>
                 ))}
@@ -156,10 +173,68 @@ const startCommands = [
             ))
           }
         </div>
+        <p class="fine race-note">Every tool runs the same track at its measured pace, and × counts its laps while the slowest finishes one.</p>
         <p class="fine">{benchFormula}</p>
         <p class="fine">{benchWorkload}</p>
         <p class="fine">{benchRun}</p>
         <a class="band-link" href={href('benchmarks/')}>Benchmarks: tables, method, run it yourself <span class="arr">→</span></a>
+      </div>
+    </section>
+
+    <section class="band" id="data">
+      <div class="band-in">
+        <header class="band-head">
+          <p class="kicker">Every task, measured · no account</p>
+          <h2>Every number.<br /><em>Yours.</em></h2>
+          <p class="band-sub">Time, CPU, peak memory, output size, the cache result and what changed, recorded for every task in a file on your disk, with no dashboard to buy and no login.</p>
+        </header>
+        <div class="scope" data-scope={JSON.stringify(SCOPE)}>
+          <div class="scope-tasks" role="tablist" aria-label="Example tasks">
+            {SCOPE.map((t, i) => (
+              <button type="button" role="tab" class:list={{ on: i === 0 }} aria-selected={i === 0 ? 'true' : 'false'} data-task={i}>{t.task}</button>
+            ))}
+          </div>
+          <div class="scope-grid">
+            <div class="dial dial-time">
+              <span class="dial-k">Time</span>
+              <strong data-f="time">{scope0.time}</strong>
+              <span class="dial-s"><span data-f="usual">{scope0.usual}</span> · <b data-f="drift">{scope0.drift}</b></span>
+            </div>
+            <div class="dial dial-cpu">
+              <span class="dial-k">CPU</span>
+              <strong><span data-f="cores">{scope0.cores}</span><small> cores</small></strong>
+              <span class="dial-s">peak <span data-f="peak">{scope0.peak}</span></span>
+            </div>
+            <div class="dial">
+              <span class="dial-k">Peak memory</span>
+              <strong data-f="mem">{scope0.mem}</strong>
+              <span class="dial-s">packs the next run by it</span>
+            </div>
+            <div class="dial">
+              <span class="dial-k">Outputs</span>
+              <strong data-f="out">{scope0.out}</strong>
+              <span class="dial-s">stored once, restored exact</span>
+            </div>
+            <div class="dial dial-wide">
+              <span class="dial-k">Cache</span>
+              <strong data-f="cache">{scope0.cache}</strong>
+              <span class="dial-s" data-f="why">{scope0.why}</span>
+            </div>
+            <div class="dial dial-wide">
+              <span class="dial-k">History</span>
+              <strong data-f="rate">{scope0.rate}</strong>
+              <span class="dial-s" data-f="blocks">{scope0.blocks}</span>
+            </div>
+          </div>
+        </div>
+        <ul class="scope-out">
+          {scopeOut.map(([name, line, to]) => (
+            <li>
+              <a href={href(to)}><strong>{name}</strong> <span>{line}</span></a>
+            </li>
+          ))}
+        </ul>
+        <p class="fine">An example run; the fields are the ones vx records for every task.</p>
       </div>
     </section>
 
@@ -172,6 +247,35 @@ const startCommands = [
         </header>
         <DteRun />
         <a class="band-link" href={href('plugins/vx-dte/')}>Distributed task execution <span class="arr">→</span></a>
+      </div>
+    </section>
+
+    <section class="band" id="flaky">
+      <div class="band-in">
+        <header class="band-head">
+          <p class="kicker">Flaky tasks · Distributed task execution</p>
+          <h2>Fails here.<br /><em>Retries there.</em></h2>
+          <p class="band-sub">A task that fails and retries runs on another worker than the one it failed on, because the worker, or what ran beside the task, may be the flake.</p>
+        </header>
+        <div class="hop">
+          <div class="hop-worker hop-from">
+            <span class="hop-name">worker 1</span>
+            <span class="hop-slot"><span class="hop-task"><i />api#test</span></span>
+            <span class="hop-mark"><b class="hop-run">running</b><b class="hop-end">failed</b></span>
+          </div>
+          <div class="hop-arc" aria-hidden="true"><span /></div>
+          <div class="hop-worker hop-to">
+            <span class="hop-name">worker 2</span>
+            <span class="hop-slot"><span class="hop-task"><i />api#test</span></span>
+            <span class="hop-mark"><b class="hop-run">running</b><b class="hop-end">passed</b></span>
+          </div>
+        </div>
+        <ul class="vows">
+          <li><strong>Flaky by proof.</strong> A task that fails on inputs it already passed on is flaky, and vx says so.</li>
+          <li><strong>One retry, on its own.</strong> A task known flaky gets one retry with none set.</li>
+          <li><strong>One record.</strong> Every CI machine shares the flaky record through your history server.</li>
+        </ul>
+        <a class="band-link" href={href('features/flaky-detection/')}>Flaky detection <span class="arr">→</span></a>
       </div>
     </section>
 
@@ -255,7 +359,7 @@ const startCommands = [
 
   <script>
     // Bands play once as they come near: the count runs up, the columns
-    // rise, the streaks race. Everything already shows at rest; the play
+    // rise, the race starts. Everything already shows at rest; the play
     // class only replays it, and never with reduced motion.
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const count = (el: HTMLElement): void => {
@@ -280,6 +384,89 @@ const startCommands = [
         { rootMargin: '0px 0px -15% 0px' },
       )
       document.querySelectorAll('.band').forEach((el) => seen.observe(el))
+      // The race runs only while it is in view, and costs nothing out of it
+      // (tests/motion-budget.test.ts): sixteen transform-only runners, each
+      // lapping at its measured pace. Laps count against the slowest, and
+      // start over when it finishes one.
+      const speed = document.getElementById('speed')!
+      const fields = [...speed.querySelectorAll<HTMLElement>('.race')].map((race) =>
+        [...race.querySelectorAll<HTMLElement>('.lane')].map((lane) => {
+          const ms = parseFloat(getComputedStyle(lane).getPropertyValue('--lap')) * 1000
+          const run = lane
+            .querySelector('.runner')!
+            .animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' }], { duration: ms, iterations: Infinity })
+          run.pause()
+          return { ms, run, laps: lane.querySelector<HTMLElement>('.lane-laps')! }
+        }),
+      )
+      const tally = (): void => {
+        for (const lanes of fields) {
+          const lap = Math.max(...lanes.map((l) => l.ms))
+          const into = Number(lanes[0]!.run.currentTime ?? 0) % lap
+          for (const l of lanes) {
+            const n = Math.floor(into / l.ms)
+            l.laps.textContent = n > 0 ? `×${n + 1}` : ''
+          }
+        }
+      }
+      let tick = 0
+      new IntersectionObserver(([e]) => {
+        clearInterval(tick)
+        for (const l of fields.flat()) {
+          if (e!.isIntersecting) l.run.play()
+          else l.run.pause()
+        }
+        if (e!.isIntersecting) tick = window.setInterval(tally, 120)
+      }).observe(speed)
+      // The scope steps through its example tasks while it is in view.
+      const scope = document.querySelector<HTMLElement>('.scope')!
+      const tasks = JSON.parse(scope.dataset['scope']!) as Array<Record<string, string | number>>
+      const tabs = [...scope.querySelectorAll<HTMLButtonElement>('[data-task]')]
+      let at = 0
+      const tune = (i: number): void => {
+        at = i % tasks.length
+        const t = tasks[at]!
+        tabs.forEach((b, j) => {
+          b.classList.toggle('on', j === at)
+          b.setAttribute('aria-selected', String(j === at))
+        })
+        scope.querySelectorAll<HTMLElement>('[data-f]').forEach((el) => (el.textContent = String(t[el.dataset['f']!])))
+        scope.classList.toggle('hit', String(t['cache']).includes('hit'))
+      }
+      let turn = 0
+      const cycle = (): void => {
+        clearInterval(turn)
+        turn = window.setInterval(() => tune(at + 1), 3600)
+      }
+      tabs.forEach((b, i) =>
+        b.addEventListener('click', () => {
+          tune(i)
+          cycle()
+        }),
+      )
+      new IntersectionObserver(([e]) => {
+        clearInterval(turn)
+        if (e!.isIntersecting) cycle()
+      }).observe(scope)
+      // The hop replays while it is in view: run, fail, retry elsewhere, pass.
+      const hop = document.querySelector<HTMLElement>('.hop')!
+      const HOP = [1500, 1100, 1700, 2800]
+      let hopAt = 0
+      let hopT = 0
+      const hopStep = (): void => {
+        hop.dataset['at'] = String(hopAt)
+        hopT = window.setTimeout(hopStep, HOP[hopAt])
+        hopAt = (hopAt + 1) % HOP.length
+      }
+      new IntersectionObserver(
+        ([e]) => {
+          clearTimeout(hopT)
+          if (!e!.isIntersecting) return
+          hopAt = 0
+          hopStep()
+        },
+        { threshold: 0.4 },
+      ).observe(hop)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {

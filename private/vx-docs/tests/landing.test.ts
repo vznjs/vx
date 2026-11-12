@@ -17,7 +17,7 @@ const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every band under the stage, top to bottom.
-const SECTIONS = ['proof', 'speed', 'dte', 'plugins', 'agents', 'start']
+const SECTIONS = ['proof', 'speed', 'data', 'dte', 'flaky', 'plugins', 'agents', 'start']
 
 // The anchors the old chapters and landings redirect to (redirects.test.ts),
 // each on the step, vow or card that now says it.
@@ -344,6 +344,21 @@ describe('the landing page', () => {
       `${BASE}features/`,
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
+  })
+
+  // The scope shows the fields vx records for a task, on an example run it
+  // names as one, and links to where each number is read.
+  it('shows what vx records for every task, and where to read it', () => {
+    const data = section(html, 'data')
+    const dials = [...data.matchAll(/class="dial-k">([\s\S]*?)<\/span>/g)].map((m) => text(m[1]!))
+    expect(dials).toEqual(['Time', 'CPU', 'Peak memory', 'Outputs', 'Cache', 'History'])
+    expect(text(data)).toContain('An example run')
+    expect(hrefs(data)).toEqual([
+      `${BASE}features/vx-last/`,
+      `${BASE}features/vx-why/`,
+      `${BASE}features/run-analytics/`,
+      `${BASE}plugins/vx-otel/`,
+    ])
   })
 
   // At rest (no script, reduced motion) the page is whole and still: the
