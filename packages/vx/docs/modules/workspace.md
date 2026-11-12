@@ -147,7 +147,9 @@ Outside git, a file another user owns above `start` is refused (root
 aside): it is code that would run as you. An entry by a workspace name
 that is no file (a broken link, a directory), with no file beside it,
 marks the root all the same and is refused by name, `VX_E_CONFIG`. Without one the error is
-`VX_E_NO_WORKSPACE`, naming `vx init`
+`VX_E_NO_WORKSPACE`, naming `vx init`, or `git sparse-checkout add .vx`
+when the git top-level's workspace file is in the index but a sparse
+checkout left it out (git asked only then)
 (`tests/workspace-root-file.test.ts`). The lookup is `workspaceFile` in
 `handoff.ts`, shared with the hand-off and the config loader, once per run.
 
@@ -172,7 +174,7 @@ tracked one deleted from the worktree. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (git lists a tracked config deleted from the worktree, skipped;
 one a sparse checkout left out, skip-worktree in the index, is
-`sparse`, which `vx lock` refuses, naming `git sparse-checkout add`:
+`sparse`, which `vx lock` refuses, naming them all in one `git sparse-checkout add`:
 skipped, its project left the committed lock).
 With no file, an entry by a config's name (a broken link, a directory)
 is refused by name, as the root walk refuses one: skipped, its project

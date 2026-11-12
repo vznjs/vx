@@ -2256,9 +2256,11 @@ a config-less one (a `project` plugin's, such as `turbo()`'s) whose
 directory is gone fails its task with the same `vx lock` hint, asked only
 once its spawn failed, so a run stats no project directory;
 one a sparse checkout left out is refused only when the run selects it or
-depends on it, naming the `git sparse-checkout add` that brings it back
-(`vx lock` and `vx lock --check` there refuse too, naming the same
-command: the lock they wrote would have dropped it); a config added since the lock is no project until
+depends on it, naming every such project and the one `git sparse-checkout
+add a b c` that brings them all back (the message lists the first five and
+counts the rest; the command lists all; `vx lock` and `vx lock --check`
+there refuse too, naming the same command: the lock they wrote would have
+dropped them); a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
@@ -2428,7 +2430,11 @@ outside git it looks up to `/`. Nothing else marks the root: not a
 Any entry by one of those names marks the root: one that is a broken
 link or a directory, with no file beside it, is refused by name
 (`<path>: is a broken link — fix or remove it`), not walked past, as
-`vx lock` counts it a nested workspace. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
+`vx lock` counts it a nested workspace. A workspace file a sparse checkout
+left out (a cone checkout keeps the root's files, not its `.vx`) is
+refused as such, `VX_E_NO_WORKSPACE` with the fix `git sparse-checkout add
+.vx`, by every verb, `vx init` too: a new one would replace the tracked
+one. Git is asked only once no file was found. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
 `vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json`,
 `nx.json`, exported Nx graph or Lerna on Nx). A project inside the
 root is a directory holding a `vx.config.*`, which `vx lock` finds
@@ -2931,7 +2937,9 @@ on CI fails one that no longer matches the configs.
 No `.vx/workspace.*` in the working directory or a parent, up to the git
 top-level (a file above the checkout never counts). The file marks the
 workspace root, so run `vx init` to create one. Outside git, one another
-user owns does not count (`security.md`); the message names it.
+user owns does not count (`security.md`); the message names it. One a
+sparse checkout left out names `git sparse-checkout add .vx` instead, and
+`vx init` refuses rather than write a second one.
 
 #### `VX_E_CACHE_VERSION`
 

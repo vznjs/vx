@@ -32,6 +32,7 @@ import {
   isFsRefusal,
   isOutOfFds,
   isUserError,
+  listed,
   maskedLine,
   relPosix,
   type RefusalParts,
@@ -209,10 +210,14 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     } = await findProjectConfigs(root)
     // Left out, the project would leave the committed lock, as a run refuses it.
     if (sparse.length > 0) {
-      const { file, add } = sparse[0]!
-      const dir = relPosix(root, path.dirname(file)) || 'the workspace root project'
+      const dirs = sparse.map(
+        ({ file }) => relPosix(root, path.dirname(file)) || 'the workspace root project',
+      )
+      const add = `git sparse-checkout add ${[...new Set(sparse.map((s) => s.add))].join(' ')}`
       throw new UserError(
-        `${dir} is outside this sparse checkout, so vx lock cannot read its ${path.basename(file)} — run \`git sparse-checkout add ${add}\``,
+        new Set(dirs).size === 1
+          ? `${dirs[0]} is outside this sparse checkout, so vx lock cannot read its ${path.basename(sparse[0]!.file)} — run \`${add}\``
+          : `${listed(dirs, 5)} are outside this sparse checkout, so vx lock cannot read their configs — run \`${add}\``,
         'VX_E_LOCK',
       )
     }

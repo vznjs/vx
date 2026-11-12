@@ -867,7 +867,8 @@ The workspace root for `start`: the directory holding the first
 outside git ({@link workspaceFile}, shared with the hand-off). Nothing
 else decides it (2026-10-13: "Workspace file is the ultimate"):
 not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
-`VX_E_NO_WORKSPACE` when there is none.
+`VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add`
+when a sparse checkout left the git top-level's out.
 
 Outside git, a file another user owns is refused (root aside): a
 `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is

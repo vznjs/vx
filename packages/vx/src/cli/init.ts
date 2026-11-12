@@ -126,7 +126,12 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     )
   }
   const cwd = process.cwd()
-  const marked = await findWorkspaceRoot(cwd).catch(() => undefined)
+  const marked = await findWorkspaceRoot(cwd).catch((err: unknown) => {
+    // A tracked workspace file a sparse checkout left out: a new one would
+    // replace the real one.
+    if (err instanceof UserError && err.parts?.fix?.startsWith('git sparse-checkout ')) throw err
+    return undefined
+  })
   if (parsed.plugin !== undefined) return scaffoldPlugin(parsed.plugin, marked ?? cwd, parsed)
   // The directories from here up to the workspace root, else the git
   // top-level, else `/`: where a package manager's root or an installed
