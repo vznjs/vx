@@ -121,6 +121,7 @@ export {
 } from './plugin-cache.js'
 export { packRunOutputs, putRunEntry, runEntryName, writesRunStore } from './run-store.js'
 export { branchSource } from './run-history.js'
+export { type HistoryWrites, runHistory } from './history-writes.js'
 export { HistoryStream } from './history-stream.js'
 export {
   type KeptFailure,

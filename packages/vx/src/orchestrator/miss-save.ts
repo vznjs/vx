@@ -88,7 +88,7 @@ export async function recordOutputDirSnapshots(
 ): Promise<void> {
   const rowsOf = new Map<string, ReadonlyArray<{ path: string }>>()
   for (let i = 0; i < snapshots.length; i += 900) {
-    const batch = cache.loadOutputFilesBatch(snapshots.slice(i, i + 900).map((s) => s.hash))
+    const batch = cache.memo.loadOutputFilesBatch(snapshots.slice(i, i + 900).map((s) => s.hash))
     for (const [hash, rows] of batch) rowsOf.set(hash, rows)
   }
   for (let i = 0; i < snapshots.length; i += 32) {
@@ -96,7 +96,7 @@ export async function recordOutputDirSnapshots(
       snapshots
         .slice(i, i + 32)
         .map((s) =>
-          cache.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes, (files) =>
+          cache.memo.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes, (files) =>
             s.holds(files, rowsOf.get(s.hash) ?? []),
           ),
         ),
@@ -327,7 +327,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // The files the task just wrote are the entry's bytes: stamp them,
     // so the next hit can tell them from another entry's with the same
     // size and mtime (item 886).
-    cache.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot)
+    cache.memo.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot)
     // The directory snapshot behind the next hit's skip-restore, taken at
     // run end from the run's list: the task wrote these directories
     // milliseconds ago, inside the snapshot's racy window, so a snapshot

@@ -25,6 +25,7 @@ import {
   holdCacheDir,
   HistoryStream,
   networkConcurrency,
+  runHistory,
   keepRunNotes,
   stopRuntimeProbes,
   sweepStaging,
@@ -1507,7 +1508,7 @@ async function runOnBus(
       }
     }
     let lockBroken: boolean | undefined
-    prepared.localCache.storeHeldBlobSizes()
+    prepared.localCache.memo.storeHeldBlobSizes()
     prepared.localCache.checkpointOffThread()
     // A hit's row is whole when it finishes, so it is written while the
     // graph runs (history-stream.ts); every other row waits for the bundle.
@@ -1883,8 +1884,10 @@ async function runOnBus(
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
-        recordHistory(() => cache.recordRunBundle(records))
-        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
+        recordHistory(() => runHistory(prepared.localCache).recordRunBundle(records))
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
+        )
         recordFailures(list)
       })
     } else if (stop.stoppedBy !== undefined) {
@@ -1892,8 +1895,12 @@ async function runOnBus(
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
-        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordRuns(recordsOf(ended, false).runs, head),
+        )
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
+        )
         recordFailures(ended)
       })
     }
@@ -2097,8 +2104,8 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle(recordsOf(final, ok && !crashed))
-            local.recordMeasures([...measured.values()], head)
+            runHistory(local).recordRunBundle(recordsOf(final, ok && !crashed))
+            runHistory(local).recordMeasures([...measured.values()], head)
             recordFailures(final, local)
           } finally {
             local.close()

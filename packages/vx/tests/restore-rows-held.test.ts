@@ -47,7 +47,7 @@ it('a probed hit restores and stamps without reading its rows again (X-162)', as
     read.mockClear()
     const out = path.join(root, 'out')
     await cache.restoreOutputs(HASH, out)
-    cache.recordOutputStamps(HASH, out, root)
+    cache.memo.recordOutputStamps(HASH, out, root)
     // Read before the restore of the spy, which clears what it recorded.
     expect(read.mock.calls).toEqual([])
     expect(readFileSync(path.join(out, 'a.txt'), 'utf8')).toBe('a')

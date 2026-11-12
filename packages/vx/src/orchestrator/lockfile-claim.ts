@@ -246,7 +246,7 @@ async function hashDir(dir: string): Promise<string> {
 }
 
 /**
- * A file's identity for the in-process gate, as `Cache.hashFile`'s memo
+ * A file's identity for the in-process gate, as `LocalMemo.hashFile`'s memo
  * keys one: size and mtime alone kept the digests of a lockfile or patch
  * replaced by another of the same size with its mtime kept (`cp -p`,
  * `tar -x`), and no task sets a ctime. Given `readAt` (taken before the

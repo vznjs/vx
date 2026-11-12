@@ -6,7 +6,13 @@ import { Database } from 'bun:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import {
+  indexDb,
+  Cache,
+  type InvocationRecord,
+  type RunRecord,
+  runHistory,
+} from '../src/cache/index.js'
 import { LocalHistoryProvider } from '../src/history/index.js'
 
 let dir: string
@@ -78,7 +84,7 @@ function record(
     arch: null,
     vxVersion: '0.0.0',
   }
-  cache.recordRunBundle({ runs: [run], invocation })
+  runHistory(cache).recordRunBundle({ runs: [run], invocation })
 }
 
 const forecast = async (
@@ -169,7 +175,7 @@ it('worktrees recording in parallel on one store lose no timing, never fail busy
   const script = path.join(dir, 'writer.ts')
   await Bun.write(
     script,
-    `import { Cache } from ${JSON.stringify(path.join(import.meta.dir, '../src/cache/index.js'))}
+    `import { Cache, runHistory } from ${JSON.stringify(path.join(import.meta.dir, '../src/cache/index.js'))}
 const [cacheDir, store, w, runs] = process.argv.slice(2)
 const cache = new Cache(cacheDir, undefined, undefined, undefined, 'open', store)
 // Now-ish times: the history's 30-day retention runs at close.
@@ -177,7 +183,7 @@ const at = Date.now()
 for (let i = 0; i < Number(runs); i++) {
   const runId = 'w' + w + '-' + i
   const run = { hash: runId, project: 'p', task: 't', status: 'success', exitCode: 0, durationMs: 1, startedAt: at + i, endedAt: at + i + 1, runId, wallclockStartNs: 0n, wallclockEndNs: 1n }
-  cache.recordRunBundle({ runs: [run], invocation: { runId, command: 'vx run', requestedTasks: '[]', cachePolicy: 'local:rw,remote:', concurrency: 1, flow: null, startedAt: at + i, endedAt: at + i + 1, totalDurationMs: 1, taskCount: 1, failedCount: 0, hitCount: 0, hitLocalCount: 0, hitRemoteCount: 0, upToDateCount: 0, restoredLocalCount: 0, restoredRemoteCount: 0, exitOk: true, commitSha: null, branch: 'b' + w, dirty: null, ci: false, ciProvider: null, host: null, os: null, arch: null, vxVersion: '0', tags: '{}' } })
+  runHistory(cache).recordRunBundle({ runs: [run], invocation: { runId, command: 'vx run', requestedTasks: '[]', cachePolicy: 'local:rw,remote:', concurrency: 1, flow: null, startedAt: at + i, endedAt: at + i + 1, totalDurationMs: 1, taskCount: 1, failedCount: 0, hitCount: 0, hitLocalCount: 0, hitRemoteCount: 0, upToDateCount: 0, restoredLocalCount: 0, restoredRemoteCount: 0, exitOk: true, commitSha: null, branch: 'b' + w, dirty: null, ci: false, ciProvider: null, host: null, os: null, arch: null, vxVersion: '0', tags: '{}' } })
 }
 cache.close()
 `,

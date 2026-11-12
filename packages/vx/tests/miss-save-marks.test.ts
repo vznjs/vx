@@ -150,7 +150,9 @@ it(
       const { hash } = indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as {
         hash: string
       }
-      expect((c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)).toEqual(['dist'])
+      expect((c.memo.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)).toEqual([
+        'dist',
+      ])
     } finally {
       c.close()
     }

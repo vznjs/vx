@@ -1,4 +1,4 @@
-import { indexDb } from '../src/cache/index.js'
+import { indexDb, runHistory } from '../src/cache/index.js'
 import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -879,7 +879,7 @@ describe('Cache storage (v10)', () => {
         const fresh = path.join(projectDir, 'fresh.txt')
         await mkdir(projectDir, { recursive: true })
         await writeFile(fresh, 'fresh')
-        expect(await later.hashFile(fresh)).toMatch(/^[0-9a-f]{40}$/)
+        expect(await later.memo.hashFile(fresh)).toMatch(/^[0-9a-f]{40}$/)
         expect(() => later.assertWritable()).toThrow(UserError)
         expect(() => later.assertWritable()).toThrow(
           /^cache directory .* is not writable \(EACCES: .*\) — every run records its history there; make it writable by this user, or pass --cache-dir <path>$/,
@@ -1588,7 +1588,7 @@ describe('Cache storage (v10)', () => {
   it('recordRun() + stats() captures run history', async () => {
     const startedAt = Date.now() - 100
     const endedAt = Date.now()
-    cache.recordRun({
+    runHistory(cache).recordRun({
       hash: 'h3',
       project: 'pkg',
       task: 'build',
@@ -1598,7 +1598,7 @@ describe('Cache storage (v10)', () => {
       startedAt,
       endedAt,
     })
-    cache.recordRun({
+    runHistory(cache).recordRun({
       hash: 'h3',
       project: 'pkg',
       task: 'build',
@@ -2263,7 +2263,7 @@ describe('Cache storage (v10)', () => {
 
   it('stats() counts remote cache hits in hitCountLast24h', () => {
     const now = Date.now()
-    cache.recordRun({
+    runHistory(cache).recordRun({
       hash: 'h-remote-hit',
       project: 'pkg',
       task: 'build',
@@ -2280,7 +2280,7 @@ describe('Cache storage (v10)', () => {
   it('recordRun() persists the v11 analytics columns when provided', async () => {
     const started = Date.now() - 50
     const ended = Date.now()
-    cache.recordRun({
+    runHistory(cache).recordRun({
       hash: 'h-v11',
       project: 'pkg',
       task: 'build',
@@ -2312,7 +2312,7 @@ describe('Cache storage (v10)', () => {
   })
 
   it('recordRun() omitting v11 columns stores NULL', async () => {
-    cache.recordRun({
+    runHistory(cache).recordRun({
       hash: 'h-v11-null',
       project: 'pkg',
       task: 'build',
@@ -2351,7 +2351,7 @@ describe('Cache storage (v10)', () => {
       const now = Date.now()
       const writeMany = async (label: string, c: Cache): Promise<void> => {
         for (let i = 0; i < 20; i++) {
-          c.recordRun({
+          runHistory(c).recordRun({
             hash: `${label}-${i}`,
             project: 'pkg',
             task: 'build',
@@ -2549,7 +2549,7 @@ describe('Cache storage (v10)', () => {
   })
 
   it('recordRun() persists cache-hit-remote with cache_hit=1', async () => {
-    cache.recordRun({
+    runHistory(cache).recordRun({
       hash: 'h-remote',
       project: 'pkg',
       task: 'build',
@@ -2971,7 +2971,7 @@ describe('Cache schema/version recovery', () => {
         outputFiles: [path.join(projectDir, 'out.txt')],
         entry: { taskId: 'pkg#build', command: 'noop', durationMs: 0, stdout: '' },
       })
-      c1.recordRun({
+      runHistory(c1).recordRun({
         hash: 'h-old',
         project: 'pkg',
         task: 'build',
@@ -3030,7 +3030,7 @@ describe('Cache schema/version recovery', () => {
         .sort()
       expect(tables).toEqual(['entry_inputs', 'invocations'])
       // Write succeeds (tables exist).
-      c2.recordRun({
+      runHistory(c2).recordRun({
         hash: 'h-new',
         project: 'pkg',
         task: 'build',
@@ -3198,7 +3198,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       },
     ]
     try {
-      cache.recordRunBundle({ runs, invocation: invocation(runId) })
+      runHistory(cache).recordRunBundle({ runs, invocation: invocation(runId) })
       const db = indexDb(cache)
 
       const inv = db.query('SELECT * FROM invocations WHERE run_id = ?').get(runId) as Record<
@@ -3297,7 +3297,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       endedAt,
       runId,
     })
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: [runRow('old-run', Date.now() - old)],
       invocation: {
         ...invocation('old-run'),
@@ -3305,7 +3305,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         endedAt: Date.now() - old,
       },
     })
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: [runRow('recent-run', Date.now())],
       invocation: invocation('recent-run'),
     })
@@ -3426,7 +3426,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       // Warm: a cache hit never calls save, so it writes nothing. We
       // assert the invariant directly — recording the run touches only
       // runs + invocations.
-      cache.recordRunBundle({
+      runHistory(cache).recordRunBundle({
         runs: [
           {
             hash: 'h-warm',
@@ -3471,7 +3471,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     const runId = 'run-nogit'
     try {
       const inv = { ...invocation(runId), dirty: null, commitSha: null, branch: null }
-      cache.recordRunBundle({ runs: [], invocation: inv })
+      runHistory(cache).recordRunBundle({ runs: [], invocation: inv })
       const row = indexDb(cache)
         .query('SELECT dirty, commit_sha, branch FROM invocations WHERE run_id = ?')
         .get(runId) as { dirty: number | null; commit_sha: string | null; branch: string | null }
@@ -3486,7 +3486,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
   it('survives a close/reopen round-trip', async () => {
     const runId = 'run-persist'
     const c1 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
-    c1.recordRunBundle({ runs: [], invocation: invocation(runId) })
+    runHistory(c1).recordRunBundle({ runs: [], invocation: invocation(runId) })
     await saveWithInputs(c1, 'h-persist', [{ kind: 'config', name: 'config', hash: 'c' }])
     c1.close()
 
@@ -3540,21 +3540,21 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
       entry: { taskId: 'pkg#build', command: 'b', durationMs: 1, stdout: '' },
     })
     // What the miss path does after every save (miss-save.ts).
-    cache.recordOutputStamps(hash, projectDir, workspaceRoot)
+    cache.memo.recordOutputStamps(hash, projectDir, workspaceRoot)
     return outFile
   }
 
-  const rowsOf = (hash: string) => cache.loadOutputFilesBatch([hash]).get(hash)!
+  const rowsOf = (hash: string) => cache.memo.loadOutputFilesBatch([hash]).get(hash)!
   /** A restore as the hit path runs it: extract, then stamp (hit-restore.ts). */
   const restore = async (hash: string) => {
     await cache.restoreOutputs(hash, projectDir)
-    cache.recordOutputStamps(hash, projectDir, workspaceRoot)
+    cache.memo.recordOutputStamps(hash, projectDir, workspaceRoot)
   }
 
   it('a same-size different-content rewrite is detected (was invisible within one second)', async () => {
     const outFile = await saveOne('ms1', 'AAAA')
     // Unchanged: current.
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms1'))).toBe(true)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms1'))).toBe(true)
     // Same-size rewrite inside the same wall-clock second, which the old
     // seconds-granularity compare could not see. The rewrite's mtime is
     // STAMPED one millisecond past the recorded one: a file's mtime comes
@@ -3564,7 +3564,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     await writeFile(outFile, 'BBBB')
     const bumped = new Date(rowsOf('ms1')[0]!.mtimeMs + 1)
     await utimes(outFile, bumped, bumped)
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms1'))).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms1'))).toBe(false)
   })
 
   it('restoreOutputs re-syncs mtimes to the rows, so the next probe skips', async () => {
@@ -3572,7 +3572,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     await rm(outFile)
     await restore('ms2')
     expect(await readFile(outFile, 'utf8')).toBe('CCCC')
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms2'))).toBe(true)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms2'))).toBe(true)
   })
 
   it('an INGESTED (remote-sourced) artifact indexes ms mtimes too', async () => {
@@ -3610,12 +3610,12 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 
     // An ingest has no file of this machine's to stamp: its rows are never
     // current until a restore writes and stamps them (item 886).
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms3-remote'))).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms3-remote'))).toBe(false)
     // …and restoring the ingested copy reproduces that stamp on disk, so
     // the next probe skips instead of restoring again.
     await rm(outFile)
     await restore('ms3-remote')
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms3-remote'))).toBe(true)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms3-remote'))).toBe(true)
   })
 
   it('a forged mtime is caught: the rewrite moved the ctime (item 886)', async () => {
@@ -3629,7 +3629,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     // 886 this was the documented blind spot; the utimes itself moves
     // the ctime, which no task can set.
     await utimes(outFile, recorded / 1000, recorded / 1000)
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms4'))).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms4'))).toBe(false)
   })
 
   it('two entries with one size and one fixed mtime are told apart (item 886)', async () => {
@@ -3655,31 +3655,31 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
         outputFiles: [outFile],
         entry: { taskId: 'pkg#build', command: 'b', durationMs: 1, stdout: '' },
       })
-      cache.recordOutputStamps(hash, projectDir, workspaceRoot)
+      cache.memo.recordOutputStamps(hash, projectDir, workspaceRoot)
     }
     // The control: the rows really are identical but for the stamp.
     const strip = (h: string) => rowsOf(h).map(({ ino: _i, ctimeMs: _c, ...r }) => r)
     expect(strip('v1')).toEqual(strip('v2'))
     expect(await readFile(outFile, 'utf8')).toBe('two2')
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v2'))).toBe(true)
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v1'))).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('v2'))).toBe(true)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('v1'))).toBe(false)
     // Restored, v1 is current and v2 is not.
     await restore('v1')
     expect(await readFile(outFile, 'utf8')).toBe('one1')
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v1'))).toBe(true)
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('v2'))).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('v1'))).toBe(true)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('v2'))).toBe(false)
   })
 
   it('a permission (mode-only) change is detected even with size + mtime unchanged', async () => {
     const { chmod } = await import('node:fs/promises')
     const outFile = await saveOne('ms5', 'GGGG')
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms5'))).toBe(true)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms5'))).toBe(true)
     // Toggle the execute bits: chmod changes ctime only, so size + mtime
     // stay identical to the recorded row — the mode compare is the only
     // thing that can catch it.
     const recordedMode = rowsOf('ms5')[0]!.mode & 0o777
     await chmod(outFile, recordedMode ^ 0o111)
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms5'))).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(projectDir, rowsOf('ms5'))).toBe(false)
   })
 })
 
@@ -3767,13 +3767,13 @@ describe('the WAL a closed cache leaves', () => {
       // The first open creates the index; the WAL persists from the second.
       new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
       const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
-      cache.rememberBlobSizes(new Map([['oid', 1]]))
+      cache.memo.rememberBlobSizes(new Map([['oid', 1]]))
       // CONTROL: the write sits in the WAL until the close checkpoints it.
       expect(statSync(wal).size).toBeGreaterThan(0)
       cache.close()
       expect(statSync(wal).size).toBe(0)
       const again = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
-      expect(again.knownBlobSizes(['oid'])).toEqual(new Map([['oid', 1]]))
+      expect(again.memo.knownBlobSizes(['oid'])).toEqual(new Map([['oid', 1]]))
       again.close()
     } finally {
       await rm(root, { recursive: true, force: true })

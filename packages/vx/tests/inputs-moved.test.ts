@@ -1112,6 +1112,9 @@ describe('movedInput — which files the re-check hashes again', () => {
   const counting = (digest: string): { cache: CacheLayer; calls: string[] } => {
     const calls: string[] = []
     const cache = {
+      get memo() {
+        return this
+      },
       hashFile: async (p: string) => {
         calls.push(p)
         return digest

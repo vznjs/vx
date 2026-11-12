@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { indexDb, Cache } from '../src/cache/index.js'
+import { indexDb, Cache, runHistory } from '../src/cache/index.js'
 import type { InvocationRecord, RunRecord } from '../src/cache/index.js'
 
 const run = (i: number, runId: string): RunRecord => {
@@ -81,11 +81,11 @@ describe('a run bundle of 85 rows (two full blocks and five)', () => {
 
   it('writes in order the rows one at a time would', () => {
     const n = 85
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: Array.from({ length: n }, (_, i) => run(i, 'bundle')),
       invocation: invocation('bundle'),
     })
-    for (let i = 0; i < n; i++) cache.recordRun(run(i, 'single'))
+    for (let i = 0; i < n; i++) runHistory(cache).recordRun(run(i, 'single'))
     const rows = (runId: string): unknown[] =>
       (
         indexDb(cache).query('SELECT * FROM runs WHERE run_id = ? ORDER BY id').all(runId) as Array<

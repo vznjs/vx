@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
+### cache: take history and memos off Cache and CacheLayer
+
+Cache loses recordRun, recordRuns, recordMeasures, recordRunBundle and recordRemoteErrors, with no public replacement: core records each run into the local index itself. CacheLayer and LayeredCache lose recordRunBundle, so a custom layer's recordRunBundle is no longer called. Cache loses hashFile, hashBytes, hashFiles, knownBlobSizes, rememberBlobSizes, holdBlobSizes, storeHeldBlobSizes, blobVerdict, rememberBlobVerdict, loadOutputFilesBatch, isOutputsCurrent, recordOutputDirs, recordOutputStamps, loadOutputDirsBatch and outputDirsCurrent: call `cache.memo.<name>` (StoreMemo); `foldMemo()` is `cache.memo.folds`. CacheLayer and LayeredCache lose hashFile, loadOutputFilesBatch, isOutputsCurrent, recordOutputDirs, recordOutputStamps, loadOutputDirsBatch and outputDirsCurrent: a layer hands them out as `layer.memo` (TaskMemo).
+
 ### everyday workspaces never cache a wrong build
 
 CACHE_VERSION is vx-cache-v56 and the index schema v56: caches start empty once, so every cached task misses once after upgrading. Re-run vx lock after upgrading: vx-lockfile's digests changed (a workspace package's own version under bun() and npm(), pnpm()'s injected copies), so vx lock --check fails on the old lock.

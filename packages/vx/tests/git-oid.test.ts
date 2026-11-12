@@ -71,7 +71,7 @@ describe('Cache.hashFile — git blob OID domain', () => {
     const f = path.join(root, 'a.txt')
     await writeFile(f, 'hello blob\n')
     const expected = git(root, 'hash-object', f)
-    expect(await cache.hashFile(f)).toBe(expected)
+    expect(await cache.memo.hashFile(f)).toBe(expected)
   })
 
   it('matches `git hash-object` for empty and binary content', async () => {
@@ -79,8 +79,8 @@ describe('Cache.hashFile — git blob OID domain', () => {
     await writeFile(empty, '')
     const bin = path.join(root, 'data.bin')
     await writeFile(bin, Buffer.from([0, 1, 2, 255, 0, 42]))
-    expect(await cache.hashFile(empty)).toBe(git(root, 'hash-object', empty))
-    expect(await cache.hashFile(bin)).toBe(git(root, 'hash-object', bin))
+    expect(await cache.memo.hashFile(empty)).toBe(git(root, 'hash-object', empty))
+    expect(await cache.memo.hashFile(bin)).toBe(git(root, 'hash-object', bin))
   })
 
   it('uses sha256 blob OIDs in a sha256 repo', async () => {
@@ -97,7 +97,7 @@ describe('Cache.hashFile — git blob OID domain', () => {
       await writeFile(f, 'sha256 me\n')
       const c2 = new Cache(path.join(dir, '.vx', 'cache'))
       try {
-        const h = await c2.hashFile(f)
+        const h = await c2.memo.hashFile(f)
         expect(h).toHaveLength(64)
         expect(h).toBe(git(dir, 'hash-object', f))
       } finally {
@@ -121,22 +121,22 @@ describe('Cache.hashFile — git blob OID domain', () => {
     git(root, 'add', '-A')
     // Every link's fallback hash equals git's index OID for it, under the
     // symlink's mode (item 887: an OID holds no mode).
-    expect(await cache.hashFile(fileLink)).toBe(`120000:${indexOid(root, 'file-link')}`)
-    expect(await cache.hashFile(dirLink)).toBe(`120000:${indexOid(root, 'dir-link')}`)
-    expect(await cache.hashFile(dangling)).toBe(`120000:${indexOid(root, 'dangling')}`)
+    expect(await cache.memo.hashFile(fileLink)).toBe(`120000:${indexOid(root, 'file-link')}`)
+    expect(await cache.memo.hashFile(dirLink)).toBe(`120000:${indexOid(root, 'dir-link')}`)
+    expect(await cache.memo.hashFile(dangling)).toBe(`120000:${indexOid(root, 'dangling')}`)
     // Differential: a file link is NOT its target's content hash.
-    expect(await cache.hashFile(fileLink)).not.toBe(await cache.hashFile(target))
+    expect(await cache.memo.hashFile(fileLink)).not.toBe(await cache.memo.hashFile(target))
     // A retargeted link is a different blob.
     await rm(fileLink)
     await symlink('nowhere', fileLink)
-    expect(await cache.hashFile(fileLink)).toBe(await cache.hashFile(dangling))
+    expect(await cache.memo.hashFile(fileLink)).toBe(await cache.memo.hashFile(dangling))
   })
 
   it('mtime+size memo returns the same OID without re-reading', async () => {
     const f = path.join(root, 'memo.txt')
     await writeFile(f, 'memo me\n')
-    const first = await cache.hashFile(f)
-    const second = await cache.hashFile(f)
+    const first = await cache.memo.hashFile(f)
+    const second = await cache.memo.hashFile(f)
     expect(second).toBe(first)
     expect(first).toBe(git(root, 'hash-object', f))
   })
@@ -527,7 +527,7 @@ describe('Cache.key — fileHashes seam', () => {
     const f = path.join(dir, 'a.ts')
     await writeFile(f, 'content\n')
     const oid = git(dir, 'hash-object', f)
-    const spy = vi.spyOn(cache, 'hashFile')
+    const spy = vi.spyOn(cache.memo, 'hashFile')
     await cache.key({ ...baseKeyInput([f]), fileHashes: new Map([[f, oid]]) })
     expect(spy).not.toHaveBeenCalled()
   })

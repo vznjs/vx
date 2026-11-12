@@ -2,7 +2,7 @@
 // the `cache-hit-perf` PR. Each test targets one specific behavior
 // rather than asserting wall-clock time (which is too flaky for CI).
 
-import { indexDb } from '../src/cache/index.js'
+import { indexDb, runHistory } from '../src/cache/index.js'
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, utimes, stat, rename } from 'node:fs/promises'
 import os from 'node:os'
@@ -50,7 +50,7 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
   it('returns the git blob OID on first call (cold path)', async () => {
     const f = path.join(dir, 'hello.txt')
     await writeFile(f, 'hello world')
-    const h = await cache.hashFile(f)
+    const h = await cache.memo.hashFile(f)
     // git's well-known blob OID for "hello world" (no trailing newline).
     expect(h).toBe('95d09f2b10159347eece71399a7e2e907ea3df4f')
     expect(h).toBe(blobOid('hello world'))
@@ -59,30 +59,30 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
   it('returns identical hash on second call (warm path)', async () => {
     const f = path.join(dir, 'a.txt')
     await writeFile(f, 'static contents')
-    const a = await cache.hashFile(f)
-    const b = await cache.hashFile(f)
+    const a = await cache.memo.hashFile(f)
+    const b = await cache.memo.hashFile(f)
     expect(b).toBe(a)
   })
 
   it('detects content change via mtime+size mismatch', async () => {
     const f = path.join(dir, 'edited.txt')
     await writeFile(f, 'before')
-    const a = await cache.hashFile(f)
+    const a = await cache.memo.hashFile(f)
     // Wait so the mtime is reliably distinct (some filesystems have
     // 1s mtime granularity).
     await Bun.sleep(20)
     await writeFile(f, 'AFTER-VALUE-DIFFERENT-SIZE')
-    const b = await cache.hashFile(f)
+    const b = await cache.memo.hashFile(f)
     expect(b).not.toBe(a)
   })
 
   it('refreshes the stored hash when stat changes', async () => {
     const f = path.join(dir, 'tracked.txt')
     await writeFile(f, 'v1')
-    await cache.hashFile(f)
+    await cache.memo.hashFile(f)
     await Bun.sleep(20)
     await writeFile(f, 'v2-longer-content')
-    const second = await cache.hashFile(f)
+    const second = await cache.memo.hashFile(f)
     // Hash matches the blob OID of the new bytes.
     expect(second).toBe(blobOid('v2-longer-content'))
   })
@@ -94,8 +94,8 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     // untouched file returns the same digest, and it is the RIGHT one.
     const f = path.join(dir, 'pinned.txt')
     await writeFile(f, 'AAAAAA')
-    const firstHash = await cache.hashFile(f)
-    expect(await cache.hashFile(f)).toBe(firstHash)
+    const firstHash = await cache.memo.hashFile(f)
+    expect(await cache.memo.hashFile(f)).toBe(firstHash)
     expect(firstHash).toBe(blobOid('AAAAAA'))
   })
 
@@ -108,12 +108,12 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     // cannot suppress ctime without root.
     const f = path.join(dir, 'pinned.txt')
     await writeFile(f, 'AAAAAA')
-    const firstHash = await cache.hashFile(f)
+    const firstHash = await cache.memo.hashFile(f)
     const s = await stat(f)
     // Same byte length, mtime forced back to what the first call recorded.
     await writeFile(f, 'BBBBBB')
     await utimes(f, s.atime, s.mtime)
-    const secondHash = await cache.hashFile(f)
+    const secondHash = await cache.memo.hashFile(f)
     expect(secondHash).not.toBe(firstHash)
     expect(secondHash).toBe(blobOid('BBBBBB'))
   })
@@ -136,7 +136,7 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     let inWindow = false
     for (let attempt = 0; attempt < 50 && !inWindow; attempt++) {
       await writeFile(f, `AAAAAA${attempt}`)
-      await cache.hashFile(f)
+      await cache.memo.hashFile(f)
       const age = Date.now() - Math.floor((await stat(f)).ctimeMs)
       if (age < FILE_HASH_RACY_MS - 5) {
         inWindow = true
@@ -145,9 +145,9 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
       indexDb(cache).query('DELETE FROM file_hashes WHERE path = ?').run(f)
     }
     expect(inWindow).toBe(true) // the box managed one write+hash inside the window
-    const first = await cache.hashFile(f)
+    const first = await cache.memo.hashFile(f)
     await Bun.sleep(FILE_HASH_RACY_MS + 20)
-    expect(await cache.hashFile(f)).toBe(first)
+    expect(await cache.memo.hashFile(f)).toBe(first)
     expect(rows()).toBe(1) // aged: memoised now
   })
 
@@ -157,13 +157,13 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     const f = path.join(dir, 'renamed.txt')
     const tmp = path.join(dir, 'renamed.tmp')
     await writeFile(f, 'AAAAAA')
-    const firstHash = await cache.hashFile(f)
+    const firstHash = await cache.memo.hashFile(f)
     const s = await stat(f)
     await writeFile(tmp, 'BBBBBB')
     await rename(tmp, f)
     await utimes(f, s.atime, s.mtime)
-    expect(await cache.hashFile(f)).toBe(blobOid('BBBBBB'))
-    expect(await cache.hashFile(f)).not.toBe(firstHash)
+    expect(await cache.memo.hashFile(f)).toBe(blobOid('BBBBBB'))
+    expect(await cache.memo.hashFile(f)).not.toBe(firstHash)
   })
 })
 
@@ -203,19 +203,19 @@ describe('Cache.recordRuns (batched)', () => {
   }
 
   it('no-ops on empty array', () => {
-    expect(() => cache.recordRuns([])).not.toThrow()
+    expect(() => runHistory(cache).recordRuns([])).not.toThrow()
     expect(cache.stats().runCountLast24h).toBe(0)
   })
 
   it('single-row insert path', () => {
-    cache.recordRuns([sampleRun(0)])
+    runHistory(cache).recordRuns([sampleRun(0)])
     expect(cache.stats().runCountLast24h).toBe(1)
   })
 
   it('batched path persists every row', () => {
     const N = 50
     const rows = Array.from({ length: N }, (_, i) => sampleRun(i))
-    cache.recordRuns(rows)
+    runHistory(cache).recordRuns(rows)
     expect(cache.stats().runCountLast24h).toBe(N)
   })
 
@@ -224,8 +224,8 @@ describe('Cache.recordRuns (batched)', () => {
     const cache2 = new Cache(dir2, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     try {
       const rows = Array.from({ length: 7 }, (_, i) => sampleRun(i))
-      for (const r of rows) cache2.recordRun(r)
-      cache.recordRuns(rows)
+      for (const r of rows) runHistory(cache2).recordRun(r)
+      runHistory(cache).recordRuns(rows)
       expect(cache2.stats().runCountLast24h).toBe(cache.stats().runCountLast24h)
     } finally {
       cache2.close()

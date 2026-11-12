@@ -24,12 +24,14 @@ src/cache/fs-clock.ts
 src/cache/git-inputs.ts
 src/cache/history-stream.ts
 src/cache/history-writer.ts
+src/cache/history-writes.ts
 src/cache/index.ts
 src/cache/inputs.ts
 src/cache/key-fold.ts
 src/cache/layer.ts
 src/cache/layered-cache.ts
 src/cache/linked-inputs.ts
+src/cache/local-memo.ts
 src/cache/lockfile-memo.ts
 src/cache/output-index.ts
 src/cache/plugin-cache.ts

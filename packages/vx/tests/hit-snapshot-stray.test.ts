@@ -80,14 +80,14 @@ it('a stray written while a hit walks its outputs is not snapshotted as the entr
     outputFiles: [out],
     entry: { taskId: 'proj#build', command: 'x', durationMs: 1, stdout: '' },
   })
-  b.cache.recordOutputStamps(hash, b.dir, b.root)
+  b.cache.memo.recordOutputStamps(hash, b.dir, b.root)
   const old = new Date(Math.floor(Date.now() / 2000) * 2000 - 4000)
   utimesSync(path.join(b.dir, 'dist'), old, old)
   // The first hit has no snapshot: it walks, finds the set, stats the file.
   // Another process writes a stray into dist after the walk listed it, and
   // the rest of the walk (a big tree) takes longer than the racy window.
-  const real = b.cache.isOutputsCurrent.bind(b.cache)
-  const stat = spyOn(b.cache, 'isOutputsCurrent').mockImplementation((dir, rows) => {
+  const real = b.cache.memo.isOutputsCurrent.bind(b.cache.memo)
+  const stat = spyOn(b.cache.memo, 'isOutputsCurrent').mockImplementation((dir, rows) => {
     const ok = real(dir, rows)
     if (dir === b.dir && !existsSync(path.join(b.dir, 'dist', 'stray.txt'))) {
       writeFileSync(path.join(b.dir, 'dist', 'stray.txt'), 'stray')

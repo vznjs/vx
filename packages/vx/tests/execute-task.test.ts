@@ -1536,7 +1536,7 @@ describe('execute-task — what restoreHit reads and records', () => {
       outputFiles: [out()],
       entry: { taskId: 'proj#build', command: 'x', durationMs: 1, stdout: '' },
     })
-    b.cache.recordOutputStamps(hash, b.dir, b.root)
+    b.cache.memo.recordOutputStamps(hash, b.dir, b.root)
     const hit = await b.cache.get(hash)
     if (hit === null) throw new Error('fixture: seeded entry did not read back')
     return hit
@@ -1557,7 +1557,7 @@ describe('execute-task — what restoreHit reads and records', () => {
   it('reads the rows a layer handed over, and loads them when it handed none', async () => {
     const hash = 'aaaa0000bbbb1111'
     const hit = await seedDist(hash)
-    const load = spyOn(b.cache, 'loadOutputFilesBatch')
+    const load = spyOn(b.cache.memo, 'loadOutputFilesBatch')
     expect((await restore(hash, hit)).restored).toBe(false)
     expect(load).not.toHaveBeenCalled()
     // A layer's entry without rows: the untouched tree is still current…
@@ -1579,11 +1579,11 @@ describe('execute-task — what restoreHit reads and records', () => {
     // nothing was recorded, one run in a thousand (M-11).
     const old = new Date(Math.floor(Date.now() / 2000) * 2000 - 4000)
     utimesSync(path.join(b.dir, 'dist'), old, old)
-    await b.cache.recordOutputDirs(hash, b.dir, ['dist'])
+    await b.cache.memo.recordOutputDirs(hash, b.dir, ['dist'])
     const hit = (await b.cache.get(hash))!
     expect(hit.outputDirRows?.map((r) => r.path)).toEqual(['dist'])
-    const current = spyOn(b.cache, 'outputDirsCurrent')
-    const record = spyOn(b.cache, 'recordOutputDirs')
+    const current = spyOn(b.cache.memo, 'outputDirsCurrent')
+    const record = spyOn(b.cache.memo, 'recordOutputDirs')
     expect((await restore(hash, hit)).restored).toBe(false)
     expect(current).toHaveBeenCalledTimes(1)
     expect(await current.mock.results[0]!.value).toBe(true)
@@ -1642,7 +1642,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
       cachePolicy: REMOTE_WRITE_ONLY,
     } as never)
     expect(o.status).toBe('success')
-    expect(b.cache.loadOutputFilesBatch([o.hash ?? '']).size).toBe(1)
+    expect(b.cache.memo.loadOutputFilesBatch([o.hash ?? '']).size).toBe(1)
   })
 
   it('the DEFERRED save site refuses a failure and a tainted run, exactly as the eager one does', async () => {
@@ -1808,7 +1808,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
       // that would have overwritten it ran on the far side, not here.
       expect(await readFile(path.join(b.dir, 'out.txt'), 'utf8')).toBe('STRAY')
       // No local artifact: nothing was saved under this task's key.
-      expect(b.cache.loadOutputFilesBatch([o.hash ?? '']).size).toBe(0)
+      expect(b.cache.memo.loadOutputFilesBatch([o.hash ?? '']).size).toBe(0)
       getSpy.mockRestore()
     } finally {
       await closeBench(b)
@@ -1939,7 +1939,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     expect(getSpy).toHaveBeenCalledTimes(0)
     expect(o.status).toBe('success')
     expect(o.hash).toBe('deadbeefdeadbeef')
-    expect(b.cache.loadOutputFilesBatch(['deadbeefdeadbeef']).size).toBe(0)
+    expect(b.cache.memo.loadOutputFilesBatch(['deadbeefdeadbeef']).size).toBe(0)
     expect(status).toEqual([
       '[vx] proj#build: its inputs changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
     ])
@@ -1954,7 +1954,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     expect(getSpy).toHaveBeenCalledTimes(0)
     expect(o.hash).toBe(upFront)
     // The save landed under that exact key — `output_files` rows exist for it.
-    const rows = b.cache.loadOutputFilesBatch([upFront]).get(upFront)
+    const rows = b.cache.memo.loadOutputFilesBatch([upFront]).get(upFront)
     expect(rows?.map((r) => r.path)).toEqual(['out.txt'])
     getSpy.mockRestore()
   })
@@ -2322,9 +2322,9 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
         )
         const made = await executeTask(baseArgs(b, producer, log))
         expect(made.status).toBe('success')
-        const read = b.cache.loadOutputFilesBatch.bind(b.cache)
+        const read = b.cache.memo.loadOutputFilesBatch.bind(b.cache.memo)
         let reads = 0
-        b.cache.loadOutputFilesBatch = (hashes) => {
+        b.cache.memo.loadOutputFilesBatch = (hashes) => {
           reads++
           return read(hashes)
         }

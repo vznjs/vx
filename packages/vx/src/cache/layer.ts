@@ -575,7 +575,80 @@ export class ArtifactVanishedError extends Error {
  * orchestrator's `executeTask` can take either without a discriminated
  * union and we get a compile-time guarantee the surfaces stay congruent.
  */
+/**
+ * The machine-local memos a task's key and hit read: file hashes and
+ * the output rows and stamps that prove a tree current. Always the local
+ * store's, whatever layers sit above it.
+ */
+export interface TaskMemo {
+  /**
+   * Content-hash a file with an mtime+size fast path. If the
+   * `(mtime_ms, size_bytes)` of `filePath` match a previously seen
+   * row, return the stored digest (a git blob OID since CACHE_VERSION
+   * v20) instead of re-reading the bytes. Otherwise read + hash + upsert.
+   * The hash is byte-for-byte identical to what a fresh content-hash
+   * would produce — pure optimization, no cache-key change.
+   */
+  hashFile(filePath: string): Promise<string>
+  /**
+   * Batched lookup of per-output-file fingerprints for many cache
+   * entries in one SQL round-trip. Returns a Map keyed by entry hash.
+   *
+   * Orchestrator pattern: call this once at `prepareRun` for every
+   * task whose hash is known up-front, then per-task `executeCachedTask`
+   * does a Map.get (O(1)) + parallel stat checks to decide whether the
+   * on-disk tree is already current.
+   *
+   * Hashes with no rows (cache misses) are absent from the result.
+   */
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  /**
+   * Stat each `expected` row's target under `projectDir` and return
+   * `true` iff every (size, mode, mtime) matches. Missing files,
+   * stat errors, or any mismatch → `false`.
+   *
+   * Pure FS check — no DB access. Caller batches the expected rows
+   * via `loadOutputFilesBatch`. Lets the orchestrator skip
+   * `cleanOutputs + restoreOutputs` entirely when the cached
+   * snapshot is already in place. Integrity-preserving: detects
+   * out-of-band file edits or deletions and falls through to a real
+   * restore.
+   */
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
+  /**
+   * The directory-mtime short-circuit behind a warm hit (optional — a layer
+   * without it keeps the output walk). `recordOutputDirs` snapshots every
+   * directory under each of `prefixes` (project-relative, `''` the project
+   * itself — see `outputDirPrefixes`) after a save or restore;
+   * `loadOutputDirsBatch` reads them back; `outputDirsCurrent` is true iff
+   * every recorded directory still carries its recorded mtime, which proves
+   * no file was added or removed anywhere the glob could see. Machine-local
+   * state, like the output rows: a remote ingest records none. `holds`,
+   * when given, is asked with every non-directory path the walk saw
+   * (project-relative); false records nothing, since a snapshot of a tree
+   * the entry does not hold would vouch for it on every later hit.
+   */
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
+  /**
+   * Stamp `hash`'s output rows with each file's inode and ctime once a
+   * save or restore has left the tree equal to the entry (optional — a
+   * layer without it has rows `isOutputsCurrent` never trusts, so every
+   * hit restores). Machine-local; skips a file that no longer matches its
+   * row.
+   */
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
+}
+
 export interface CacheLayer {
+  /** The local store's memos (`TaskMemo`). */
+  readonly memo: TaskMemo
   /**
    * The local handle this layer wraps, when it wraps one (`LayeredCache`).
    * `resolveCache` uses it to drop a bare local layer another declared layer
@@ -707,60 +780,6 @@ export interface CacheLayer {
    */
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   /**
-   * Batched lookup of per-output-file fingerprints for many cache
-   * entries in one SQL round-trip. Returns a Map keyed by entry hash.
-   *
-   * Orchestrator pattern: call this once at `prepareRun` for every
-   * task whose hash is known up-front, then per-task `executeCachedTask`
-   * does a Map.get (O(1)) + parallel stat checks to decide whether the
-   * on-disk tree is already current.
-   *
-   * Hashes with no rows (cache misses) are absent from the result.
-   */
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  /**
-   * Stat each `expected` row's target under `projectDir` and return
-   * `true` iff every (size, mode, mtime) matches. Missing files,
-   * stat errors, or any mismatch → `false`.
-   *
-   * Pure FS check — no DB access. Caller batches the expected rows
-   * via `loadOutputFilesBatch`. Lets the orchestrator skip
-   * `cleanOutputs + restoreOutputs` entirely when the cached
-   * snapshot is already in place. Integrity-preserving: detects
-   * out-of-band file edits or deletions and falls through to a real
-   * restore.
-   */
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
-  /**
-   * The directory-mtime short-circuit behind a warm hit (optional — a layer
-   * without it keeps the output walk). `recordOutputDirs` snapshots every
-   * directory under each of `prefixes` (project-relative, `''` the project
-   * itself — see `outputDirPrefixes`) after a save or restore;
-   * `loadOutputDirsBatch` reads them back; `outputDirsCurrent` is true iff
-   * every recorded directory still carries its recorded mtime, which proves
-   * no file was added or removed anywhere the glob could see. Machine-local
-   * state, like the output rows: a remote ingest records none. `holds`,
-   * when given, is asked with every non-directory path the walk saw
-   * (project-relative); false records nothing, since a snapshot of a tree
-   * the entry does not hold would vouch for it on every later hit.
-   */
-  recordOutputDirs?(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  /**
-   * Stamp `hash`'s output rows with each file's inode and ctime once a
-   * save or restore has left the tree equal to the entry (optional — a
-   * layer without it has rows `isOutputsCurrent` never trusts, so every
-   * hit restores). Machine-local; skips a file that no longer matches its
-   * row.
-   */
-  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
-  /**
    * Extract the artifact's `outputs/` entries into `projectDir` and —
    * when `workspaceRoot` is given — its `workspace-outputs/` entries
    * into the workspace root. Callers restoring entries that may carry
@@ -818,24 +837,7 @@ export interface CacheLayer {
    * the next `get(hash)` resolves locally.
    */
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  /**
-   * The run-history write at a run's end, atomically: the per-task `runs`
-   * rows (less the hits a `HistoryStream` already wrote) and the one
-   * `invocations` header row — in a SINGLE transaction (one fsync). Input-fingerprint rows are NOT written here — they
-   * ride the entry-save transaction (`save`/`ingest`) so a warm
-   * all-cache-hit run writes nothing.
-   */
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
-  /**
-   * Content-hash a file with an mtime+size fast path. If the
-   * `(mtime_ms, size_bytes)` of `filePath` match a previously seen
-   * row, return the stored digest (a git blob OID since CACHE_VERSION
-   * v20) instead of re-reading the bytes. Otherwise read + hash + upsert.
-   * The hash is byte-for-byte identical to what a fresh content-hash
-   * would produce — pure optimization, no cache-key change.
-   */
-  hashFile(filePath: string): Promise<string>
   /**
    * Absolute path a file-backed artifact for a hash has —
    * `<cacheDir>/<hash>.tar.zst`. Returns the path whether or

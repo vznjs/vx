@@ -10,7 +10,7 @@ import type { Database } from 'bun:sqlite'
 import { lazyStatement } from './schema.js'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
-import { fileIdentity, repoFacts } from './git-inputs.js'
+import { fileIdentity } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, isIndexFull, racyWindowMs } from './layer.js'
 import { isPermissionError, UserError } from '../util/index.js'
 
@@ -21,6 +21,8 @@ export class FileHashStore {
 
   constructor(
     private readonly db: Database,
+    /** The object format of the repository at a directory; undefined outside one. */
+    private readonly formatOf: (dir: string) => 'sha1' | 'sha256' | undefined,
     /** Where the object format is asked when no `repoDir` is given and no file is named. */
     private readonly cacheDir: string,
     /** The local WRITE axis: off, and a miss is hashed but not remembered (a read-only cache). */
@@ -384,7 +386,7 @@ export class FileHashStore {
    * sha1, which is still a deterministic blob-OID domain.
    */
   private detectObjectFormat(nearPath: string): 'sha1' | 'sha256' {
-    const detected = repoFacts(this.repoDir ?? path.dirname(nearPath))?.objectFormat ?? 'sha1'
+    const detected = this.formatOf(this.repoDir ?? path.dirname(nearPath)) ?? 'sha1'
     this.objectFormat = detected
     return detected
   }

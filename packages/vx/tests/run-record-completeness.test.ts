@@ -29,7 +29,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import {
+  indexDb,
+  Cache,
+  type InvocationRecord,
+  type RunRecord,
+  runHistory,
+} from '../src/cache/index.js'
 import type { Logger } from '../src/report/index.js'
 import {
   cacheKeyDiff,
@@ -279,7 +285,7 @@ describe('a skipped row is a task of the run, never an execution', () => {
   it('does not evict real history from the duration-history window', async () => {
     // Window of 2: the skips are the NEWEST rows, so an unfiltered window
     // would hold nothing but skips and report a 0% success rate.
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: [
         mkRun({ project: 'app', task: 'build', hash: 'k1', startedAt: T0, endedAt: T0 + 100 }),
         mkRun({ project: 'app', task: 'build', hash: 'k2', startedAt: T0 + 1, endedAt: T0 + 101 }),
@@ -328,7 +334,7 @@ describe('a row with no cache key is not evidence about inputs', () => {
   })
 
   it('whyDidThisRerun reports no verdict for a keyless row', () => {
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: [
         mkRun({ project: 'app', task: 'build', hash: 'k1', runId: 'r-1', startedAt: T0 }),
         mkRun({
@@ -352,7 +358,7 @@ describe('a row with no cache key is not evidence about inputs', () => {
   })
 
   it('whyDidThisRerun compares against the previous KEYED run, past a skip', () => {
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: [
         mkRun({ project: 'app', task: 'build', hash: 'k1', runId: 'r-1', startedAt: T0 }),
         mkRun({
@@ -374,7 +380,7 @@ describe('a row with no cache key is not evidence about inputs', () => {
   })
 
   it('cacheKeyDiff does not claim "same inputs" for a keyless row', () => {
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: [
         mkRun({ project: 'app', task: 'build', hash: 'k1', runId: 'r-1', startedAt: T0 }),
         mkRun({

@@ -358,7 +358,7 @@ describe('overlapping outputs, same tree at the workspace root', () => {
       const hash = cold.outcomes.find((o) => o.node.id.endsWith('#individual'))!.hash!
       const cache = new Cache(path.join(ws.root, '.vx', 'cache'))
       try {
-        const rows = cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+        const rows = cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? []
         expect(rows.map((r) => r.path)).toEqual(['workspace-outputs/gen/b.txt'])
       } finally {
         cache.close()
@@ -446,7 +446,7 @@ describe('overlapping outputs: the run-end snapshot of each side', () => {
       const { hash } = indexDb(c).query('SELECT hash FROM entries WHERE task = ?').get(task) as {
         hash: string
       }
-      return (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)
+      return (c.memo.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)
     } finally {
       c.close()
     }
@@ -732,7 +732,7 @@ describe("overlapping outputs: an incremental dependant keeps what it didn't rew
       const hash = second.outcomes.find((o) => o.node.taskName === 'types')!.hash!
       const cache = new Cache(path.join(root, '.vx', 'cache'))
       try {
-        const rows = cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+        const rows = cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? []
         expect(rows.map((r) => r.path).sort()).toEqual(['dist/types/ta.d', 'dist/types/tb.d'])
       } finally {
         cache.close()

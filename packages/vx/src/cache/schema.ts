@@ -496,3 +496,27 @@ export function inHashes(hashes: readonly string[]): { test: string; params: str
     ? { test: '= ?', params: [hashes[0]!] }
     : { test: 'IN (SELECT value FROM json_each(?))', params: [JSON.stringify(hashes)] }
 }
+
+/**
+ * Retention: the runs table grows by one row per task per invocation,
+ * hits included — a 2000-task repo accretes ~20k rows in days. 30 days
+ * covers `vx info` (24 h windows) and CI-side consumers. The
+ * `invocations` header is pruned on the SAME window, or a header would
+ * outlive its rows and `vx last` would list a run whose detail is gone.
+ * Plugin blobs and remote hits share the window. Returns the rows dropped.
+ */
+export function pruneHistoryRows(db: Database, cutoff: number): number {
+  let dropped = db.prepare('DELETE FROM main.runs WHERE started_at < ?').run(cutoff).changes
+  // A run's id goes with its last row; ids only grow, so the oldest kept row bounds them.
+  dropped += db
+    .prepare(
+      'DELETE FROM run_ids WHERE id < COALESCE((SELECT MIN(run) FROM main.runs), (SELECT MAX(id) + 1 FROM run_ids))',
+    )
+    .run().changes
+  dropped += db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM task_durations WHERE recorded_at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM task_outcomes WHERE recorded_at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM plugin_blobs WHERE at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM remote_hits WHERE seen_at < ?').run(cutoff).changes
+  return dropped
+}

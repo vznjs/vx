@@ -6,7 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { indexDb, Cache } from '../src/cache/index.js'
+import { indexDb, Cache, runHistory } from '../src/cache/index.js'
 import type { InvocationRecord, RunRecord } from '../src/cache/index.js'
 import { ulid } from '../src/util/index.js'
 
@@ -86,7 +86,7 @@ it('an all-hit run of 500 tasks adds at most 160 bytes a task to the index', () 
   const record = (k: number) => {
     const runId = ulid()
     const at = 1_800_000_000_000 + k * 1_000
-    cache.recordRunBundle({
+    runHistory(cache).recordRunBundle({
       runs: Array.from({ length: TASKS }, (_, i) => hit(i, runId, at)),
       invocation: invocation(runId, at),
     })
@@ -122,11 +122,11 @@ it('a batch of 50 runs writes at most a tenth of the pages 50 single runs write'
   }
   const rows = (tag: string) => Array.from({ length: 50 }, (_, j) => row(hex(`${tag}${j}`)))
   // The first write makes each table's first pages.
-  cache.recordRuns(rows('warm'))
+  runHistory(cache).recordRuns(rows('warm'))
   const single = frames(() => {
-    for (const r of rows('single')) cache.recordRun(r)
+    for (const r of rows('single')) runHistory(cache).recordRun(r)
   })
-  const batch = frames(() => cache.recordRuns(rows('batch')))
+  const batch = frames(() => runHistory(cache).recordRuns(rows('batch')))
   expect(batch).toBeGreaterThan(0)
   expect(batch * 10).toBeLessThanOrEqual(single)
 })

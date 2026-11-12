@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import { indexDb, Cache, KEYED_RUNS_SQL, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, KEYED_RUNS_SQL, type RunRecord, runHistory } from '../src/cache/index.js'
 import {
   classifyFailureMode,
   detectFlaky,
@@ -70,7 +70,7 @@ async function withRuns(
   const dir = mkdtempSync(path.join(tmpdir(), 'vx-failure-mode-'))
   const cache = new Cache(dir)
   try {
-    if (rows.length > 0) cache.recordRuns(rows)
+    if (rows.length > 0) runHistory(cache).recordRuns(rows)
     await fn(indexDb(cache), cache)
   } finally {
     cache.close()

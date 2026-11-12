@@ -70,6 +70,7 @@ import {
   createTables,
   inHashes,
   lazyStatement,
+  pruneHistoryRows,
   RUNS_VIEW,
   SQLITE_FCNTL_PERSIST_WAL,
   unreadableIndex,
@@ -124,17 +125,14 @@ import {
   CorruptArtifactError,
   type DeclaredOutputs,
   type IngestMeta,
-  type InvocationRecord,
-  type MeasureRecord,
   isIndexFull,
-  type OutputDirRow,
   type OutputFileRow,
   type PruneOptions,
   type PruneResult,
-  type RunRecord,
   type SaveArgs,
   type TaskInputComponent,
   type TaskInputRow,
+  type TaskMemo,
   WORKSPACE_OUTPUT_PREFIX,
 } from './layer.js'
 import {
@@ -147,12 +145,18 @@ import {
 } from './zstd.js'
 import { FileHashStore } from './file-hashes.js'
 import { DIR_MODE, LINK_MODE, OutputIndex, rowAncestors, wideDirMode } from './output-index.js'
-import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
-import { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
+import { IndexFoldMemo } from './fold-memo.js'
 import { IndexRemoteHits, type RemoteHits } from './remote-hits.js'
+import { LocalMemo, type StoreMemo } from './local-memo.js'
 import { behindLink } from './linked-inputs.js'
 import { WalCheckpointer } from './checkpointer.js'
+import { repoFacts } from './git-inputs.js'
+
+/** SQLite's own default, back on a connection whose checkpoint thread failed. */
+const WAL_AUTOCHECKPOINT = 1000
+/** Asks whether an open database file is still the one at its name (`attachStore`). */
+const SQLITE_FCNTL_HAS_MOVED = 20
 
 /**
  * An artifact or temp file without an `entries` row is never reaped
@@ -163,13 +167,6 @@ import { WalCheckpointer } from './checkpointer.js'
  * this, so the file time trails the last use by at most this much, and
  * the policy reads the file time plus this as the last use.
  */
-// About 1.3 ms of inserts per turn: a task's exit waits at most that.
-const HELD_SLICE = 250
-/** SQLite's own default, back on a connection whose checkpoint thread failed. */
-const WAL_AUTOCHECKPOINT = 1000
-/** Asks whether an open database file is still the one at its name (`attachStore`). */
-const SQLITE_FCNTL_HAS_MOVED = 20
-
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
 /**
@@ -1068,55 +1065,35 @@ export interface RemoteTraffic {
 }
 
 /**
- * Core's own cache's `hashFile`, also told the ctime of the stat its digest
- * came from (`hashFileSeen`). Kept off `CacheLayer`, a public type: another
- * layer has none here.
- */
-const seenHashers = new WeakMap<
-  CacheLayer,
-  {
-    /** The layer's `hashFile` when it registered: one replaced since is not this. */
-    method: CacheLayer['hashFile']
-    hash: (file: string, seen: (ctimeMs: number) => void) => Promise<string>
-    /** `hashFiles`: one memo query for them all. */
-    many: (files: readonly string[]) => Promise<Map<string, string>>
-  }
->()
-
-/**
- * `layer.hashFile(file)`, and `seen` told the ctime of the stat the digest
- * came from when the layer is core's own cache (the re-check's tie rule,
- * `InputFact.ctimeMs`). Any other layer tells nothing, and so does one
+ * `memo.hashFile(file)`, and `seen` told the ctime of the stat the digest
+ * came from when the memo is core's own (the re-check's tie rule,
+ * `InputFact.ctimeMs`). Any other memo tells nothing, and so does one
  * whose `hashFile` was replaced since.
  */
 export function hashFileSeen(
-  layer: CacheLayer,
+  memo: TaskMemo,
   file: string,
   seen: (ctimeMs: number) => void,
 ): Promise<string> {
-  const own = seenHashers.get(layer)
-  return own === undefined || own.method !== layer.hashFile
-    ? layer.hashFile(file)
-    : own.hash(file, seen)
+  return ownHasher(memo) ? memo.hashFileSeen(file, seen) : memo.hashFile(file)
 }
 
 /**
- * Each of `files` by `layer.hashFile`'s answer, with one memo query for
- * them all when the layer is core's own cache (`hashFiles`), where one
+ * Each of `files` by `memo.hashFile`'s answer, with one memo query for
+ * them all when the memo is core's own (`hashFiles`), where one
  * point query per file took the lock each time: 10 of vueuse's 45 ms of
  * keys (2026-11-11). A file that cannot be hashed is absent: the caller
  * asks `hashFile` for it, and its error is that call's.
  */
 export async function hashFilesOf(
-  layer: CacheLayer,
+  memo: TaskMemo,
   files: readonly string[],
 ): Promise<Map<string, string>> {
-  const own = seenHashers.get(layer)
-  if (own !== undefined && own.method === layer.hashFile) return own.many(files)
+  if (ownHasher(memo)) return memo.hashFiles(files)
   const out = new Map<string, string>()
   await Promise.all(
     files.map((f) =>
-      layer.hashFile(f).then(
+      memo.hashFile(f).then(
         (id) => void out.set(f, id),
         () => {},
       ),
@@ -1125,11 +1102,9 @@ export async function hashFilesOf(
   return out
 }
 
-/** `to` answers `hashFileSeen` as `from` does: a layer over core's cache. */
-export function shareSeenHasher(from: CacheLayer, to: CacheLayer): void {
-  const own = seenHashers.get(from)
-  if (own !== undefined)
-    seenHashers.set(to, { method: to.hashFile, hash: own.hash, many: own.many })
+/** Core's own memo, its `hashFile` not replaced since (a test's double). */
+function ownHasher(memo: TaskMemo): memo is LocalMemo {
+  return memo instanceof LocalMemo && memo.hashFile === LocalMemo.prototype.hashFile
 }
 
 /**
@@ -1189,33 +1164,21 @@ export class Cache implements CacheLayer {
    * serves those rows only while the blob still carries it.
    */
   private readonly heldInlineAt = new Map<string, number>()
-  /**
-   * The mtime each file the last restore of a key left, by row path
-   * (`extractArtifactStream`'s `dated`): its stamps take that, not the
-   * row's saved one. Taken by `recordOutputStamps`.
-   */
-  private readonly datedMtimes = new Map<string, Map<string, number>>()
   /** Keys the last lookups found an inline artifact for and no row: `adopt`'s to read. */
   private readonly rowless = new Set<string>()
   /** Row-less lookups that stat'ed their artifact path (`artifactFileMayExist`). */
   private adoptStats = 0
   /** The artifact directory's names, listed once past `ADOPT_STATS`; this process's writes kept in it. */
   private artifactNames: Set<string> | undefined
-  private heldBlobSizes: Array<[string, number]> | undefined
-  private heldTimer: ReturnType<typeof setTimeout> | undefined
   /** Saves' index writes waiting for this turn's one transaction (`indexInBatch`). */
   private indexQueue: Array<{ write: () => void; settle: (err?: unknown) => void }> = []
-  /**
-   * The held sizes being stored, `oid\0size` in OID order, and how many
-   * are: fields, not a closure's, so the store lets them go.
-   */
-  private storing: string[] | undefined
-  private stored = 0
   /** The checkpoint thread: `armed` until a save commits (`checkpointOffThread`). */
   private checkpoints: 'armed' | WalCheckpointer | undefined
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
+  /** The memos a task's key and hit read, over `files`, `folds` and `outputs`. */
+  private readonly localMemo: LocalMemo
   private readonly outputs: OutputIndex
   /**
    * Each entry `save()` wrote: its files' bytes, summed as the rows went in,
@@ -1228,7 +1191,6 @@ export class Cache implements CacheLayer {
   /** The run this cache saves for: each entry it writes records it (`entries.run_id`). */
   runId: string | undefined
   private readonly folds: IndexFoldMemo
-  private readonly history: RunHistory
   /** What the remotes said they hold, across runs (remote-hits.ts). */
   readonly remoteHits: RemoteHits
 
@@ -1270,6 +1232,10 @@ export class Cache implements CacheLayer {
   readonly storeReset: SchemaReset | null = null
   /** This open stamped the store's schema: it was new or another vx's. */
   private storeStamped = false
+  /** The memos a task's key and hit read on this machine (`TaskMemo`). */
+  get memo(): StoreMemo {
+    return this.localMemo
+  }
 
   /** A reading verb's open: it never resets the index (the constructor's `mode`). */
   static inspect(cacheDir: string): Cache {
@@ -1618,12 +1584,13 @@ export class Cache implements CacheLayer {
     )
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
-    this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
-    seenHashers.set(this, {
-      method: this.hashFile,
-      hash: (file, seen) => this.guard(() => this.files.hashFile(file, seen)),
-      many: (files) => this.hashFiles(files),
-    })
+    this.files = new FileHashStore(
+      this.db,
+      (dir) => repoFacts(dir)?.objectFormat,
+      cacheDir,
+      this.write,
+      repoDir,
+    )
     this.outputs = new OutputIndex(
       this.db,
       this.writeBlocked === null && !this.inspecting,
@@ -1635,7 +1602,7 @@ export class Cache implements CacheLayer {
         : undefined,
     )
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
-    this.history = new RunHistory(this.db, (v) => this.digestValue(v))
+    this.localMemo = new LocalMemo(this.files, this.folds, this.outputs, (op) => this.guard(op))
     this.remoteHits = new IndexRemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
@@ -1956,134 +1923,12 @@ export class Cache implements CacheLayer {
       .immediate()
   }
 
-  // --- input file hashes: delegated to `FileHashStore` (see file-hashes.ts) ---
-  hashFile(filePath: string): Promise<string> {
-    return this.guard(() => this.files.hashFile(filePath))
-  }
-  hashBytes(bytes: Uint8Array, nearPath: string): string {
-    return this.files.hashBytes(bytes, nearPath)
-  }
-  hashFiles(paths: readonly string[]): Promise<Map<string, string>> {
-    return this.guard(() => this.files.hashFiles(paths))
-  }
-  /** `BlobSizeMemo`: the sizes of these blobs this cache has learned. */
-  knownBlobSizes(oids: readonly string[]): Map<string, number> {
-    return this.guard(() => this.files.knownBlobSizes(oids))
-  }
-  /** `BlobSizeMemo`: remember blob sizes, honouring the local WRITE axis. */
-  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void {
-    if (this.heldBlobSizes !== undefined) for (const e of sizes) this.heldBlobSizes.push(e)
-    else this.guard(() => this.files.rememberBlobSizes(sizes))
-  }
-  /**
-   * Hold the blob sizes remembered from now on until `storeHeldBlobSizes`
-   * or `close`: a run learns them before its first task, where storing
-   * 40,030 cost a cold 9,603-task run 217 ms (2026-11-01).
-   */
-  holdBlobSizes(): void {
-    this.heldBlobSizes ??= []
-  }
-  /**
-   * Store the held blob sizes `HELD_SLICE` per event-loop turn from the
-   * next turn on, while the run's tasks run; `close` stores the rest.
-   */
-  storeHeldBlobSizes(): void {
-    const held = this.heldBlobSizes
-    this.heldBlobSizes = undefined
-    if (held === undefined || held.length === 0) return
-    // In OID order, so each slice appends at the key index's right edge:
-    // in git's path order every slice dirtied pages across the whole
-    // index, and the 160 commits of a cold 9,603-task run cost its main
-    // thread ~5x more (2026-11-06). Sorted as `oid\0size` strings with no
-    // comparator: a JS comparator over 40,000 entries was 32 ms of a cold
-    // 8,002-task run's main thread before its first task, the native
-    // string sort 8 (2026-11-07). `\0` sorts below every OID character,
-    // so the order is the OIDs'. No entry outlives this: the strings are
-    // all the store keeps.
-    const keys: string[] = []
-    for (let i = 0; i < held.length; i++) keys.push(`${held[i]![0]}\0${held[i]![1]}`)
-    keys.sort()
-    this.storing = keys
-    this.stored = 0
-    this.heldTimer = setTimeout(this.storeHeldSlice, 0)
-  }
-
-  // A closure over the sizes kept all of them while anything held it (the
-  // rest's getter, a fired timer's callback): a cold 9,603-task run's
-  // 38,331 to its end, ~5 MB of heap (2026-11-06).
-  private readonly storeHeldSlice = (): void => {
-    const held = this.storing
-    if (held === undefined) return
-    const at = this.stored
-    this.stored = at + HELD_SLICE
-    this.guard(() => this.files.rememberBlobSizes(this.heldSizes(held, at, this.stored)))
-    if (this.stored < held.length) this.heldTimer = setTimeout(this.storeHeldSlice, 0)
-    else {
-      this.heldTimer = undefined
-      this.storing = undefined
-    }
-  }
-  private heldSizes(held: readonly string[], from: number, to: number): Map<string, number> {
-    const out = new Map<string, number>()
-    for (let i = from; i < Math.min(to, held.length); i++) {
-      const k = held[i]!
-      const at = k.indexOf('\0')
-      out.set(k.slice(0, at), Number(k.slice(at + 1)))
-    }
-    return out
-  }
-  /** `BlobSizeMemo`: the paths an index with this digest distrusts, when known. */
-  blobVerdict(digest: string): string[] | undefined {
-    return this.guard(() => this.files.blobVerdict(digest))
-  }
-  /** `BlobSizeMemo`: remember a verdict, honouring the local WRITE axis. */
-  rememberBlobVerdict(digest: string, paths: readonly string[]): void {
-    this.guard(() => this.files.rememberBlobVerdict(digest, paths))
-  }
-  /**
-   * `relPosix` against the run's workspace root, memoized: the same three
-   * thousand files are re-relativized for every task of the project, which
-   * is 132,000 calls for 3,000 answers on this repo's own gate. Cleared
-   * when a caller arrives with a different root, so the memo can never
-   * answer for a workspace it did not measure.
-   */
-  private relMemo = new Map<string, string>()
-  private relMemoRoot: string | undefined
-  /** `root` and a slash, when a file under it is relative by slicing; else undefined. */
-  private relPrefix: string | undefined
-  private relFor(root: string, file: string): string {
-    if (root !== this.relMemoRoot) {
-      this.relMemoRoot = root
-      this.relMemo.clear()
-      this.relPrefix =
-        path.sep === '/' && path.isAbsolute(root) && path.normalize(root) === root
-          ? root.endsWith('/')
-            ? root
-            : `${root}/`
-          : undefined
-    }
-    // An input file is a normalized absolute path (`resolveInputs` makes
-    // every one), and under a normalized root that is the root, a slash and
-    // its relative path: a slice, where the memo hashed the whole path per
-    // file per task (~15 ms over 36,000 files, I-31).
-    const prefix = this.relPrefix
-    if (prefix !== undefined && file.startsWith(prefix)) return file.slice(prefix.length)
-    let rel = this.relMemo.get(file)
-    if (rel === undefined) this.relMemo.set(file, (rel = relPosix(root, file)))
-    return rel
-  }
-
-  /** Each task's last key by its probe (`computeTaskHash`). */
-  foldMemo(): FoldMemo {
-    return this.folds
-  }
-
   key(input: CacheKeyInput): Promise<string> {
-    const hashFile = (f: string): Promise<string> => this.hashFile(f)
+    const hashFile = (f: string): Promise<string> => this.localMemo.hashFile(f)
     return foldKey(
       input,
       hashFile,
-      (f) => this.relFor(input.workspaceRoot, f),
+      (f) => this.localMemo.relFor(input.workspaceRoot, f),
       (v) => this.digestValue(v),
       (link) => behindLink(link, hashFile),
     )
@@ -2261,9 +2106,9 @@ export class Cache implements CacheLayer {
     // decompressing it made hit cost scale with artifact size (73 ms
     // for four up-to-date hits on ~70 MB binaries). restoreOutputs
     // reads the artifact itself, only when extraction actually runs.
-    const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
+    const fileRows = this.localMemo.loadOutputFilesBatch([hash]).get(hash) ?? []
     const entry = entryOf(row as LiveRow, fileRows, this.logOf)
-    entry.outputDirRows = this.loadOutputDirsBatch([hash]).get(hash) ?? []
+    entry.outputDirRows = this.localMemo.loadOutputDirsBatch([hash]).get(hash) ?? []
     return entry
   }
 
@@ -2397,17 +2242,6 @@ export class Cache implements CacheLayer {
     return false
   }
 
-  // --- output fingerprints: delegated to `OutputIndex` (see output-index.ts) ---
-  // The slices' proofs and hashes are returned as the slice's own promise —
-  // no `async` wrapper, no `return await`: each of those added a promise and
-  // a microtask hop per call, and a 1,000-hit warm run pays the proofs
-  // 2,000 times (measured 2026-09-10: +3 ms on `classify + probe`).
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
-    return this.guard(() => this.outputs.loadOutputFilesBatch(hashes))
-  }
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
-    return this.outputs.isOutputsCurrent(projectDir, expected)
-  }
   outputsPath(hash: string): string {
     return this.tarPath(hash)
   }
@@ -2430,25 +2264,6 @@ export class Cache implements CacheLayer {
     )
   }
 
-  async recordOutputDirs(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void> {
-    await this.outputs.recordOutputDirs(hash, projectDir, prefixes, holds)
-  }
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
-    const dated = this.datedMtimes.get(hash)
-    this.datedMtimes.delete(hash)
-    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated)
-  }
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
-    return this.guard(() => this.outputs.loadOutputDirsBatch(hashes))
-  }
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean {
-    return this.outputs.outputDirsCurrent(projectDir, rows)
-  }
   async restoreOutputs(
     hash: string,
     projectDir: string,
@@ -3039,7 +2854,7 @@ export class Cache implements CacheLayer {
           name.startsWith(WORKSPACE_OUTPUT_PREFIX) ? name : name.slice('outputs/'.length),
           t,
         )
-      this.datedMtimes.set(hash, byRow)
+      this.localMemo.datedMtimes.set(hash, byRow)
       const dirModes = [
         ...moded,
         ...narrowedDirs(rows, projectDir, workspaceRoot, absentDirs),
@@ -3240,7 +3055,7 @@ export class Cache implements CacheLayer {
     // The kept entry's bytes are this run's too (same key): the row's
     // `outputs` counts them as a hit would.
     if (!this.read && this.guard(() => this.storedHere(args.hash))) {
-      const rows = this.loadOutputFilesBatch([args.hash]).get(args.hash) ?? []
+      const rows = this.localMemo.loadOutputFilesBatch([args.hash]).get(args.hash) ?? []
       this.savedBytes.set(
         args.hash,
         rows.reduce((n, r) => n + r.size, 0),
@@ -4040,36 +3855,6 @@ export class Cache implements CacheLayer {
     this.db.prepare(`UPDATE entries SET accessed_at = ? WHERE hash ${test}`).run(now, ...params)
   }
 
-  // --- run history: delegated to `RunHistory` (see run-history.ts) ---
-  // A run over a directory it cannot write records no history:
-  // `readOnlyNotice` said so once.
-  recordRun(run: RunRecord): void {
-    if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRun(run))
-  }
-  recordRuns(
-    runs: readonly RunRecord[],
-    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void {
-    if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRuns(runs, head))
-  }
-  /** A run's plugin measures, each its last (`PluginSetupContext.measure`), as timings. */
-  recordMeasures(
-    measures: readonly MeasureRecord[],
-    head: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void {
-    if (this.writeBlocked !== null || measures.length === 0) return
-    return this.guard(() => this.history.recordMeasures(measures, head))
-  }
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
-    if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRunBundle(bundle))
-  }
-  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void {
-    if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRemoteErrors(runId, errors))
-  }
   stats(opts: CacheStatsOptions = {}): CacheStats {
     return this.guard(() => this.statsOf(opts))
   }
@@ -4202,7 +3987,7 @@ export class Cache implements CacheLayer {
     // alone: a year of runs left 28k of 36k pages free in a 140 MB index.
     const cutoff = now - HISTORY_RETENTION_MS
     const historyRows =
-      this.history.pruneOlderThan(cutoff) +
+      pruneHistoryRows(this.db, cutoff) +
       this.files.pruneOlderThan(cutoff) +
       this.folds.prune(cutoff)
     const result = { evicted: victims.size, bytesFreed, ...orphans }
@@ -4383,16 +4168,7 @@ export class Cache implements CacheLayer {
   close(): void {
     try {
       this.flushIndex()
-      clearTimeout(this.heldTimer)
-      const held =
-        this.heldBlobSizes !== undefined
-          ? new Map(this.heldBlobSizes)
-          : this.storing !== undefined
-            ? this.heldSizes(this.storing, this.stored, this.storing.length)
-            : undefined
-      this.heldBlobSizes = undefined
-      this.storing = undefined
-      this.heldTimer = undefined
+      const held = this.localMemo.takeHeldBlobSizes()
       if (held !== undefined && held.size > 0) this.files.rememberBlobSizes(held)
       this.flushAccessed()
       this.outputs.flushOutputDirs()
@@ -4450,6 +4226,16 @@ export function historyFiles(cache: Cache): { index: string; store?: string } | 
  */
 export function indexDb(cache: Cache): Database {
   return cache['db']
+}
+
+/** The salted digest value-bearing rows hold (`digestValue`), for the history writer. */
+export function valueDigest(cache: Cache): (value: string) => string {
+  return (value) => cache['digestValue'](value)
+}
+
+/** Whether this open may write the index: one it cannot write keeps no history. */
+export function indexWritable(cache: Cache): boolean {
+  return cache['writeBlocked'] === null
 }
 
 /**

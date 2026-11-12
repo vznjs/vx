@@ -94,7 +94,7 @@ const PASSED_HASHES = `
       WHERE EXISTS (SELECT 1 FROM task_outcomes AS o WHERE o.hash = j.value AND o.status <> 'failed')`
 
 /** The commit a run ran on, as `task_durations` files its timings. */
-type RunHead = Pick<InvocationRecord, 'branch' | 'commitSha'>
+export type RunHead = Pick<InvocationRecord, 'branch' | 'commitSha'>
 const NO_HEAD: RunHead = { branch: null, commitSha: null }
 
 /** A local run's `task_durations.source`: its branch, `''` when it had none. */
@@ -367,34 +367,6 @@ export class RunHistory {
         for (const [hash, text] of errors) update.run(text, runId, hash)
       })
       .immediate()
-  }
-
-  /**
-   * Retention: the runs table grows by one row per task per invocation,
-   * hits included — a 2000-task repo accretes ~20k rows in days. 30 days
-   * covers `vx info` (24 h windows) and CI-side consumers. The
-   * `invocations` header is pruned on the SAME window, or a header would
-   * outlive its rows and `vx last` would list a run whose detail is gone.
-   * Returns the rows dropped.
-   */
-  pruneOlderThan(cutoff: number): number {
-    let dropped = this.db.prepare('DELETE FROM main.runs WHERE started_at < ?').run(cutoff).changes
-    // A run's id goes with its last row; ids only grow, so the oldest kept row bounds them.
-    dropped += this.db
-      .prepare(
-        'DELETE FROM run_ids WHERE id < COALESCE((SELECT MIN(run) FROM main.runs), (SELECT MAX(id) + 1 FROM run_ids))',
-      )
-      .run().changes
-    dropped += this.db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff).changes
-    dropped += this.db
-      .prepare('DELETE FROM task_durations WHERE recorded_at < ?')
-      .run(cutoff).changes
-    dropped += this.db
-      .prepare('DELETE FROM task_outcomes WHERE recorded_at < ?')
-      .run(cutoff).changes
-    dropped += this.db.prepare('DELETE FROM plugin_blobs WHERE at < ?').run(cutoff).changes
-    dropped += this.db.prepare('DELETE FROM remote_hits WHERE seen_at < ?').run(cutoff).changes
-    return dropped
   }
 }
 

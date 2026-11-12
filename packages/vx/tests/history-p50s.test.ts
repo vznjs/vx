@@ -6,7 +6,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import {
+  indexDb,
+  Cache,
+  type InvocationRecord,
+  type RunRecord,
+  runHistory,
+} from '../src/cache/index.js'
 import { LocalHistoryProvider, type TaskResources } from '../src/history/index.js'
 
 const STATUSES: RunRecord['status'][] = ['success', 'cache-hit', 'failed', 'skipped', 'success']
@@ -75,7 +81,7 @@ beforeEach(() => {
     const runId = `inv-${i}`
     const runs = TASKS.slice(0, 4).map((t) => run(i, runId, t))
     runs.push({ ...run(i, runId, 'only-hits'), status: 'cache-hit', cacheHit: true })
-    cache.recordRunBundle({ runs, invocation: invocation(runId, 1_000 + i) })
+    runHistory(cache).recordRunBundle({ runs, invocation: invocation(runId, 1_000 + i) })
   }
   // What each hit's entry says its producing execution used; some say nothing.
   const entry = indexDb(cache).query(
@@ -194,7 +200,7 @@ it('names the biggest machine a task filled, by its cores or its memory', async 
     durationMs: 1_000,
     ...over,
   })
-  cache.recordRunBundle({
+  runHistory(cache).recordRunBundle({
     runs: [
       // 1.9 of 2 cores for its whole run: filled; on 8 it used 2: did not.
       base('cpu', {
@@ -267,7 +273,7 @@ it('learns the mean need over the window, filling a machine only on average', as
     ...(cpuShare === undefined ? {} : { cpuShare }),
   })
   for (const [i, r] of [at(0, 16_000), at(1, 19_000, 0.67), at(2, 19_000)].entries())
-    cache.recordRunBundle({ runs: [r], invocation: invocation(`mean${i}`, 5_000 + i) })
+    runHistory(cache).recordRunBundle({ runs: [r], invocation: invocation(`mean${i}`, 5_000 + i) })
   const r = await new LocalHistoryProvider(indexDb(cache)).resourcesFor(['p#build'])
   expect(r.get('p#build')?.maxCpuParallelism).toBeCloseTo((1.6 + 1.9 / 0.67 + 1.9) / 3, 2)
   expect(r.get('p#build')?.saturatedCores).toBeUndefined()
@@ -289,7 +295,7 @@ it('learns a crowded run’s need, not its share, and never past its machine', a
     placementMemoryBytes: 16e9,
     ...over,
   })
-  cache.recordRunBundle({
+  runHistory(cache).recordRunBundle({
     runs: [
       base('shard', { cpuMs: 36_000, cpuShare: 0.33 }),
       base('free', { cpuMs: 36_000 }),
@@ -327,7 +333,7 @@ it('a store that has timed nothing asks no per-task forecast', async () => {
     expect(history.lackedBranchHistory).toBe(true)
     expect(asked.filter((s) => s.includes('json_each'))).toEqual([])
     // CONTROL: one timing, and every task is asked again.
-    empty.recordRunBundle({
+    runHistory(empty).recordRunBundle({
       runs: [{ ...run(1, 'one', 't0'), status: 'success', cacheHit: false }],
       invocation: { ...invocation('one', 9_000), branch: 'main' },
     })

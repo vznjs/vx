@@ -28,6 +28,7 @@ import { streamOf } from './helpers/stream.js'
 import { Cache } from '../src/cache/cache.js'
 import { xxh3, xxh3hex } from '../src/util/hash.js'
 import { withSum } from './helpers/artifact-sum.js'
+import { runHistory } from '../src/cache/index.js'
 
 // CI auto-scales budgets ~3× to cover shared-runner variance; dev
 // runs the calibration-tight values unless VX_PERF_SCALE is set
@@ -209,7 +210,7 @@ describePerf('cache baseline: hashFile', () => {
       async () => {
         const f = path.join(tmpdir, `cold-${i++}.txt`)
         await writeFile(f, 'x'.repeat(1024))
-        await cache.hashFile(f)
+        await cache.memo.hashFile(f)
       },
       3,
     )
@@ -220,9 +221,9 @@ describePerf('cache baseline: hashFile', () => {
 
   it('warm path (1KB, mtime+size fast-path hit) — median < 30µs', async () => {
     // Warm the row, then repeatedly hit it.
-    await cache.hashFile(smallFile)
+    await cache.memo.hashFile(smallFile)
     const r = await bench(5000, async () => {
-      await cache.hashFile(smallFile)
+      await cache.memo.hashFile(smallFile)
     })
     const budget = budgetUs('hashFile warm 1KB', 30)
     if (r.medianNs / 1000 >= budget) console.log(diag(r, budget))
@@ -233,9 +234,9 @@ describePerf('cache baseline: hashFile', () => {
     // Critically: the fast path returns the cached digest WITHOUT
     // reading the 1MB bytes. If this jumps to ~100µs+, someone broke
     // the fast-path early-return.
-    await cache.hashFile(largeFile)
+    await cache.memo.hashFile(largeFile)
     const r = await bench(5000, async () => {
-      await cache.hashFile(largeFile)
+      await cache.memo.hashFile(largeFile)
     })
     const budget = budgetUs('hashFile warm 1MB', 30)
     if (r.medianNs / 1000 >= budget) console.log(diag(r, budget))
@@ -252,7 +253,7 @@ describePerf('cache baseline: hashFile', () => {
     let i = 0
     const warmFile = path.join(tmpdir, 'rel-warm.txt')
     await writeFile(warmFile, 'x'.repeat(1024))
-    await cache.hashFile(warmFile)
+    await cache.memo.hashFile(warmFile)
     const { aMinNs: coldMinNs, bMinNs: warmMinNs } = await benchRatioSides(
       () =>
         bench(
@@ -260,11 +261,11 @@ describePerf('cache baseline: hashFile', () => {
           async () => {
             const f = path.join(tmpdir, `rel-cold-${i++}.txt`)
             await writeFile(f, 'x'.repeat(1024))
-            await cache.hashFile(f)
+            await cache.memo.hashFile(f)
           },
           3,
         ),
-      () => bench(2000, async () => void (await cache.hashFile(warmFile))),
+      () => bench(2000, async () => void (await cache.memo.hashFile(warmFile))),
     )
     const ratio = coldMinNs / warmMinNs
     expect(ratio).toBeGreaterThanOrEqual(5)
@@ -286,7 +287,7 @@ describePerf('cache baseline: Cache.key', () => {
       files.push(f)
     }
     // Pre-warm the fast-path memo.
-    await Promise.all(files.map((f) => cache.hashFile(f)))
+    await Promise.all(files.map((f) => cache.memo.hashFile(f)))
     return files
   }
 
@@ -518,7 +519,7 @@ describePerf('cache baseline: save + restore', () => {
     })
 
     // output_files rows exist for this entry.
-    const rows = cache.loadOutputFilesBatch(['mf-direct']).get('mf-direct') ?? []
+    const rows = cache.memo.loadOutputFilesBatch(['mf-direct']).get('mf-direct') ?? []
     expect(rows.length).toBe(outFiles.length)
     for (const r of rows) {
       expect(r.path.startsWith('dist/')).toBe(true)
@@ -531,13 +532,13 @@ describePerf('cache baseline: save + restore', () => {
     await mkdir(dest, { recursive: true })
     await cache.restoreOutputs('mf-direct', dest)
     // Stamped as the hit path does after a restore (item 886).
-    cache.recordOutputStamps('mf-direct', dest, dest)
-    const stamped = cache.loadOutputFilesBatch(['mf-direct']).get('mf-direct') ?? []
-    expect(await cache.isOutputsCurrent(dest, stamped)).toBe(true)
+    cache.memo.recordOutputStamps('mf-direct', dest, dest)
+    const stamped = cache.memo.loadOutputFilesBatch(['mf-direct']).get('mf-direct') ?? []
+    expect(await cache.memo.isOutputsCurrent(dest, stamped)).toBe(true)
 
     // Corrupt one file → isOutputsCurrent flips to false.
     await Bun.write(path.join(dest, rows[0]!.path), 'tampered-different-size')
-    expect(await cache.isOutputsCurrent(dest, stamped)).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(dest, stamped)).toBe(false)
   })
 
   it('isOutputsCurrent catches a SAME-SIZE edit in the same SECOND (ms precision)', async () => {
@@ -558,9 +559,9 @@ describePerf('cache baseline: save + restore', () => {
     await mkdir(dest, { recursive: true })
     await cache.restoreOutputs('ms-precision', dest)
     // Stamped as the hit path does after a restore (item 886).
-    cache.recordOutputStamps('ms-precision', dest, dest)
-    const rows = cache.loadOutputFilesBatch(['ms-precision']).get('ms-precision')!
-    expect(await cache.isOutputsCurrent(dest, rows)).toBe(true)
+    cache.memo.recordOutputStamps('ms-precision', dest, dest)
+    const rows = cache.memo.loadOutputFilesBatch(['ms-precision']).get('ms-precision')!
+    expect(await cache.memo.isOutputsCurrent(dest, rows)).toBe(true)
 
     // Same byte LENGTH, different content, and an mtime ONE MILLISECOND off
     // the recorded one — set explicitly, so the claim never rides on where
@@ -576,7 +577,7 @@ describePerf('cache baseline: save + restore', () => {
     await writeFile(path.join(dest, rows[0]!.path), sameSize)
     const offByOneMs = new Date(rows[0]!.mtimeMs + 1)
     await utimes(path.join(dest, rows[0]!.path), offByOneMs, offByOneMs)
-    expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(dest, rows)).toBe(false)
 
     // The residual this row once pinned as accepted — a same-size edit
     // with a FORGED identical mtime (touch -r) — is caught since item 886:
@@ -586,7 +587,7 @@ describePerf('cache baseline: save + restore', () => {
       new Date(rows[0]!.mtimeMs),
       new Date(rows[0]!.mtimeMs),
     )
-    expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(dest, rows)).toBe(false)
   })
 
   it('restoreOutputs dates each file it writes now, keeps a current one, and repairs a wrong-sized file', async () => {
@@ -691,7 +692,7 @@ describePerf('cache baseline: SQLite writes', () => {
     const r = await bench(
       200,
       () => {
-        cache.recordRun({
+        runHistory(cache).recordRun({
           hash: `run-${i++}`,
           project: 'p',
           task: 'build',
@@ -725,7 +726,7 @@ describePerf('cache baseline: SQLite writes', () => {
           endedAt: Date.now(),
         }))
         base += 50
-        cache.recordRuns(rows)
+        runHistory(cache).recordRuns(rows)
       },
       3,
     )

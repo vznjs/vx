@@ -70,7 +70,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           ...given,
           hit: {
             ...given.hit,
-            outputRows: args.cache.loadOutputFilesBatch([hash]).get(hash) ?? [],
+            outputRows: args.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? [],
           },
         }
       : given
@@ -209,8 +209,8 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       if (treeMatches) {
         const endStat = span('output stat')
         skipRestore =
-          args.cache.isOutputsCurrent(node.projectDir, projExpected) &&
-          args.cache.isOutputsCurrent(args.workspaceRoot, wsExpected)
+          args.cache.memo.isOutputsCurrent(node.projectDir, projExpected) &&
+          args.cache.memo.isOutputsCurrent(args.workspaceRoot, wsExpected)
         endStat()
         // The walk ran and proved the tree current (rows absent, or a
         // directory had moved — a benign touch): snapshot the directories
@@ -224,7 +224,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           // written since the walk listed its directory, more than a racy
           // window before this, is not the entry's.
           const holds = entryHolds(node, outputWalkTakes(node.projectDir, outputs, outputNested))
-          await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes, (files) =>
+          await args.cache.memo.recordOutputDirs?.(hash, node.projectDir, dirPrefixes, (files) =>
             holds(files, expected),
           )
         }
@@ -390,7 +390,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     }
     // The tree now holds this entry's bytes: stamp them for the next hit
     // (item 886).
-    args.cache.recordOutputStamps?.(hash, node.projectDir, args.workspaceRoot)
+    args.cache.memo.recordOutputStamps?.(hash, node.projectDir, args.workspaceRoot)
     // The directory snapshot behind the NEXT hit's skip-restore, taken at
     // run end from the run's list (as the miss path does, see
     // miss-save.ts): the restore renamed into these directories
@@ -444,8 +444,8 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
   if ((node.config.outputs?.workspaceFiles?.length ?? 0) > 0) return undefined
   if (outputs.length > 0) {
     const dirPrefixes = dirPrefixesOf(outputs)
-    if (dirPrefixes === null || args.cache.outputDirsCurrent === undefined) return undefined
-    const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    if (dirPrefixes === null || args.cache.memo.outputDirsCurrent === undefined) return undefined
+    const expected = hit.outputRows ?? args.cache.memo.loadOutputFilesBatch([hash]).get(hash) ?? []
     if (expected.length === 0) return undefined
     // Loaded with the entry (batched by getMany, or with the lazy get).
     const dirRows = hit.outputDirRows ?? []
@@ -458,8 +458,8 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
     if (expected.some((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))) return undefined
     // Asked back to back: the second reads the directories' modes the first
     // lstat'ed (`OutputIndex.dirModes`).
-    if (!args.cache.outputDirsCurrent(node.projectDir, dirRows)) return undefined
-    if (!args.cache.isOutputsCurrent(node.projectDir, expected)) return undefined
+    if (!args.cache.memo.outputDirsCurrent(node.projectDir, dirRows)) return undefined
+    if (!args.cache.memo.isOutputsCurrent(node.projectDir, expected)) return undefined
   }
   return () => hitOutcome(restore, false)
 }

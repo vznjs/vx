@@ -298,5 +298,5 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
   }
   if (st.ctimeMs < from - stampGrainMs(st.ctimeMs)) return false
   if (st.mtimeMs >= from - stampGrainMs(st.mtimeMs)) return false
-  return (await cache.hashFile(fact.path).catch(() => undefined)) === fact.digest
+  return (await cache.memo.hashFile(fact.path).catch(() => undefined)) === fact.digest
 }
