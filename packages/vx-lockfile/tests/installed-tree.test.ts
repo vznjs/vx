@@ -475,3 +475,78 @@ kleur@4.1.5:
     expect(await run(yarn())).toBe('ok')
   })
 })
+
+// Each parse of the lockfile, counted in a process of its own: a run whose
+// key parsed the lockfile (its content changed since the memo) checked
+// the install by parsing it again, 40-80 ms on a 10,000-package lockfile.
+const PARSES_PROBE = `
+const { readFileSync } = require('node:fs')
+Bun.plugin({
+  name: 'count',
+  setup(b) {
+    b.onLoad({ filter: /\\/vx-lockfile\\/src\\/(bun|pnpm)\\.ts$/ }, (a) => ({
+      contents: readFileSync(a.path, 'utf8').replace(
+        /export function parseLockfile\\(text: string\\): Lockfile \\{/,
+        '$&\\nglobalThis.parses = (globalThis.parses ?? 0) + 1',
+      ),
+      loader: 'ts',
+    }))
+  },
+})
+const [src, helper, manager, root] = process.argv.slice(1)
+const m = await import(src)
+const { lockedKey } = await import(helper)
+const cacheDir = require('node:path').join(root, '.vx', 'cache')
+await lockedKey(m[manager](), root, cacheDir, require('node:path').join(root, 'packages', 'a'))
+console.log('PARSES ' + globalThis.parses)
+`
+
+describe('the install check parses no lockfile the key already parsed', () => {
+  async function parses(manager: 'bun' | 'pnpm'): Promise<number> {
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        PARSES_PROBE,
+        path.join(import.meta.dir, '..', 'src', 'index.ts'),
+        path.join(import.meta.dir, 'helpers', 'key.ts'),
+        manager,
+        root,
+      ],
+      { env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    expect({ code, err: code === 0 ? '' : err }).toEqual({ code: 0, err: '' })
+    return Number(
+      out
+        .split('\n')
+        .find((l) => l.startsWith('PARSES '))
+        ?.slice(7),
+    )
+  }
+
+  it('bun(): one parse', async () => {
+    await write({
+      ...MANIFESTS,
+      'bun.lock': bunLock('5.0.0'),
+      'packages/a/node_modules/is-number/package.json': pkg('5.0.0'),
+    })
+    await mkdir(path.join(root, 'node_modules'))
+    expect(await parses('bun')).toBe(1)
+  })
+
+  // The record is another file, parsed once of its own.
+  it('pnpm(): one parse of the lockfile, one of the record', async () => {
+    await write({
+      ...MANIFESTS,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': pnpmLock('5.0.0'),
+      'node_modules/.pnpm/lock.yaml': pnpmLock('5.0.0'),
+    })
+    expect(await parses('pnpm')).toBe(2)
+  })
+})

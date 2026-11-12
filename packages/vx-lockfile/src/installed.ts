@@ -20,7 +20,6 @@ const load = createRequire(import.meta.url)
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
-const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 
 /** What the install left that disagrees with the lockfile; `dirs`: what the kept match stats too. */
 interface Verdict {
@@ -33,6 +32,7 @@ interface InstallCheck {
   readonly markers?: readonly string[]
   readonly compare: (
     lock: string,
+    parse: (text: string) => unknown,
     marker: { file: string; text: string } | undefined,
     root: string,
   ) => Verdict
@@ -92,8 +92,8 @@ function npmCompare(lockText: string, markerText: string): string | undefined {
  * or `--prod` install records less, so only a disagreement, an extra
  * package an importer reaches or a missing production dependency counts.
  */
-function pnpmCompare(lockText: string, markerText: string): string | undefined {
-  const [want, tree] = [pnpmLock().parseLockfile(lockText), pnpmLock().parseLockfile(markerText)]
+function pnpmCompare(want: import('./pnpm.js').Lockfile, markerText: string): string | undefined {
+  const tree = pnpmLock().parseLockfile(markerText)
   for (const [importer, deps] of tree.importers) {
     const wanted = want.importers.get(importer)
     if (wanted === undefined) continue
@@ -136,8 +136,10 @@ function pnpmCompare(lockText: string, markerText: string): string | undefined {
  * it lists that the file lacks, unless the install recorded a flag that
  * leaves entries out (`--production`: every dev entry; `--focus`).
  */
-function yarnClassicCompare(lockText: string, markerText: string): string | undefined {
-  const lock = yarnLock().parseLockfile(lockText)
+function yarnClassicCompare(
+  lock: import('./yarn.js').Lockfile,
+  markerText: string,
+): string | undefined {
   const record = obj(JSON.parse(markerText))
   const tree = obj(record['lockfileEntries'])
   const resolved = (d: string): string =>
@@ -165,8 +167,10 @@ function yarnClassicCompare(lockText: string, markerText: string): string | unde
  * locator the lockfile does not resolve to is another install; a missing
  * one may be a platform's optional package, so only the extra counts.
  */
-function yarnBerryCompare(lockText: string, markerText: string): string | undefined {
-  const lock = yarnLock().parseLockfile(lockText)
+function yarnBerryCompare(
+  lock: import('./yarn.js').Lockfile,
+  markerText: string,
+): string | undefined {
   for (const line of markerText.split('\n')) {
     const m = /^"?([^\s"].*?)"?:$/.exec(line)
     if (m === null || m[1] === '__metadata') continue
@@ -183,9 +187,9 @@ function yarnBerryCompare(lockText: string, markerText: string): string | undefi
  * `node_modules`, then each one up to the root. One the tree lacks fails
  * the task that loads it; one at another version is the stale install.
  */
-function bunCompare(lockText: string, root: string): Verdict {
+function bunCompare(lock: import('./bun.js').Lockfile, root: string): Verdict {
   const dirs = ['node_modules']
-  for (const [importer, deps] of bunLock().directVersions(bunLock().parseLockfile(lockText))) {
+  for (const [importer, deps] of bunLock().directVersions(lock)) {
     const chain: string[] = []
     for (let d = importer; ; d = path.posix.dirname(d)) {
       chain.push(d === '.' ? 'node_modules' : `${d}/node_modules`)
@@ -217,21 +221,30 @@ function bunCompare(lockText: string, root: string): Verdict {
 const INSTALL_CHECKS: Readonly<Record<string, InstallCheck>> = {
   npm: {
     markers: ['node_modules/.package-lock.json'],
-    compare: (lock, marker) => ({ mismatch: npmCompare(lock, marker!.text) }),
+    // Its record compares raw entries: the lockfile's own JSON, not the parse.
+    compare: (lock, _parse, marker) => ({ mismatch: npmCompare(lock, marker!.text) }),
   },
   pnpm: {
     markers: ['node_modules/.pnpm/lock.yaml'],
-    compare: (lock, marker) => ({ mismatch: pnpmCompare(lock, marker!.text) }),
+    compare: (lock, parse, marker) => ({
+      mismatch: pnpmCompare(parse(lock) as import('./pnpm.js').Lockfile, marker!.text),
+    }),
   },
   yarn: {
     markers: ['node_modules/.yarn-integrity', 'node_modules/.yarn-state.yml'],
-    compare: (lock, marker) => ({
-      mismatch: marker!.file.endsWith('.yarn-integrity')
-        ? yarnClassicCompare(lock, marker!.text)
-        : yarnBerryCompare(lock, marker!.text),
-    }),
+    compare: (lock, parse, marker) => {
+      const parsed = parse(lock) as import('./yarn.js').Lockfile
+      return {
+        mismatch: marker!.file.endsWith('.yarn-integrity')
+          ? yarnClassicCompare(parsed, marker!.text)
+          : yarnBerryCompare(parsed, marker!.text),
+      }
+    },
   },
-  bun: { compare: (lock, _marker, root) => bunCompare(lock, root) },
+  bun: {
+    compare: (lock, parse, _marker, root) =>
+      bunCompare(parse(lock) as import('./bun.js').Lockfile, root),
+  },
 }
 
 /** A file's stat identity; `-` when absent. */
@@ -247,7 +260,9 @@ function identity(file: string): { id: string; mtime: number } {
  * Not checked: no `node_modules` (nothing installed is wrong; a task that
  * needs a package fails, and a failure saves nothing), or a manager's
  * record absent (Yarn PnP, an install by another tool). `version`: the
- * check's own, so a changed check asks again.
+ * check's own, so a changed check asks again. `parse`: the lockfile's
+ * parser, memoised with the claim's, so a run whose claim parsed this text
+ * (a changed lockfile) does not parse it again.
  */
 export function checkInstalled(
   manager: string,
@@ -255,6 +270,7 @@ export function checkInstalled(
   cacheDir: string,
   lockFile: string,
   version: number,
+  parse: (text: string) => unknown,
 ): void {
   const check = INSTALL_CHECKS[manager]!
   if (statSync(path.join(root, 'node_modules'), { throwIfNoEntry: false }) === undefined) return
@@ -287,6 +303,7 @@ export function checkInstalled(
   try {
     verdict = check.compare(
       readFileSync(path.join(root, lockFile), 'utf8'),
+      parse,
       marker === undefined
         ? undefined
         : { file: marker, text: readFileSync(path.join(root, marker), 'utf8') },

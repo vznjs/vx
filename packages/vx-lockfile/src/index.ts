@@ -176,6 +176,13 @@ const pnpmParse = lastParse((t: string) => pnpmLock().parseLockfile(t))
 const bunParse = lastParse((t: string) => bunLock().parseLockfile(t))
 const npmParse = lastParse((t: string) => npmLock().parseLockfile(t))
 const yarnParse = lastParse((t: string) => yarnLock().parseLockfile(t))
+// The install check's parse of the lockfile: the claim's, when it parsed this text.
+const PARSE: Readonly<Record<string, (t: string) => unknown>> = {
+  pnpm: pnpmParse,
+  bun: bunParse,
+  npm: npmParse,
+  yarn: yarnParse,
+}
 
 const MANAGERS = {
   pnpm: {
@@ -501,6 +508,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
               ctx.cacheDir,
               file,
               digestVersion(),
+              PARSE[manager.name]!,
             ),
           )
           installedPerRun.set(ctx, installed)

@@ -263,13 +263,20 @@ function workspaceOf(lock: Lockfile, id: string): string | undefined {
  */
 function importerFrom(lock: Lockfile, dir: string): string {
   if (dir === '.') return ''
-  for (const [name, wsDir] of lock.workspaceDirs) {
-    if (wsDir !== dir) continue
-    const held = lock.packages.get(name)
-    return held === undefined || held.id === `${name}@workspace:${dir}` ? name : `./${name}`
+  // Each workspace asks: a scan of every name per ask was quadratic, 33 ms
+  // of a 1,000-workspace install check.
+  let names = namesByDir.get(lock)
+  if (names === undefined) {
+    names = new Map()
+    for (const [name, wsDir] of lock.workspaceDirs) if (!names.has(wsDir)) names.set(wsDir, name)
+    namesByDir.set(lock, names)
   }
-  return ''
+  const name = names.get(dir)
+  if (name === undefined) return ''
+  const held = lock.packages.get(name)
+  return held === undefined || held.id === `${name}@workspace:${dir}` ? name : `./${name}`
 }
+const namesByDir = new WeakMap<Lockfile, Map<string, string>>()
 
 /**
  * The registry version each workspace's dependencies resolve to, as the
