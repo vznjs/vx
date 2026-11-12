@@ -2255,6 +2255,33 @@ it('advises the workers that would have run it best, from the same replay', asyn
   }
 })
 
+// Main 5c2463f: the least held read 14.9 core-min, its tasks and one
+// warm-up, where ending by the ideal took 4 smalls and a Mac, each warming
+// up: 26 at least. As many workers as end the work by then, each warmed.
+it('counts the warm-up of each worker the ideal end needs in the least held', async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const sizes = [{ name: 'small', max: 9, cpu: 4, memory: 1e10 }]
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 1e10 })
+    await Bun.sleep(40)
+    const w = await h.worker(4, 'small#1')
+    await Bun.sleep(50)
+    const runs = ids.map((id) => h.o.execute(h.req(id)))
+    await w.batches()
+    for (const id of ids)
+      await w.finish(id, `k-${id}`, { exitCode: 0, durationMs: 400, cpuMs: 400 })
+    await Promise.all(runs)
+    // Eight one-core tasks of 400 ms: 3200 core-ms, 1600 a small by an end a warm-up and 400 ms on.
+    const loose = h.o.leastHeldMs(() => [], sizes, 1e9)! - 3200
+    expect(loose).toBeGreaterThan(4 * 30)
+    const tight = h.o.leastHeldMs(() => [], sizes, loose / 4 + 400)! - 3200
+    expect(tight).toBeCloseTo(2 * loose)
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main 6a7224f: ideal 127.8 s above real 111.0 s. Mac shards ran five
 // side by side at a 0.22 share; the replay kept their crowded length and
 // booked the cores they would use free, so it ran them one at a time.
