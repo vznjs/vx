@@ -290,3 +290,15 @@ it('seeks room for a task by its slow run when one is known', () => {
   expect(slow.placed.get('b')).toMatchObject({ worker: 'two', at: 0 })
   expect(slow.starts).toEqual([])
 })
+
+// Sim main 2163fff (2026-11-12): a test shard the exact plan had not seen
+// took the room it kept for docs#build, and the chain waited 20 s for a
+// new worker. One unseen waits for the plan its arrival asks; with a plan
+// that is not exact, it goes anywhere.
+it('holds a task an exact plan has not seen until the next plan', () => {
+  const p = new Placing()
+  p.set({ placed: new Map([['a', 'one']]), after: new Map(), exact: true }, 0)
+  expect(p.gate('new', 0)).toBe('wait')
+  p.set({ placed: new Map([['a', 'one']]), after: new Map(), exact: false }, 0)
+  expect(p.gate('new', 0)).toEqual({})
+})

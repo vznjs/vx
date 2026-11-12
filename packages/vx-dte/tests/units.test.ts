@@ -1432,10 +1432,7 @@ it('plans a running unmeasured task as it planned it waiting', async () => {
 it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
   const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`)
   // Two cores each: a task never books under one (`MIN_CORES`).
-  const h = await harness(
-    new Map(ids.map((id) => node(id))),
-    () => ({ cores: 2, memory: 10 }),
-  )
+  const h = await harness(new Map(ids.map((id) => node(id))), () => ({ cores: 2, memory: 10 }))
   try {
     const a = await h.worker(8)
     await Bun.sleep(50)

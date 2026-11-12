@@ -97,11 +97,12 @@ const cases: Case[] = [
     likely: new Set([...misses(load(a09))].filter((id) => !LATE.includes(id))),
     failing: ['utilization'],
   },
+  // Utilization since each task books a whole core (`MIN_CORES`, 0.73).
   {
     name: 'main a09b987 (65 misses)',
     graph: load(a09),
     measured: true,
-    failing: ['makespan'],
+    failing: ['makespan', 'utilization'],
   },
   {
     name: 'main 2163fff (23 misses)',
@@ -164,13 +165,14 @@ const cases: Case[] = [
     restoreMs: 1_000,
     failing: ['utilization'],
   },
-  // The forecast knows some keys: half its misses.
+  // The forecast knows some keys: half its misses. All 12 workers busy, a
+  // whole core a task (`MIN_CORES`) ends it at 134 s, its bound 120 s.
   {
     name: 'main a09b987, half its misses forecast',
     graph: load(a09),
     measured: true,
     likely: new Set([...misses(load(a09))].filter((_, i) => i % 2 === 0)),
-    failing: ['utilization'],
+    failing: ['utilization', 'makespan'],
   },
   // Short tasks: the work is gone before a worker started for it joins.
   { name: 'forty short tasks', graph: short(40, 400), measured: false },
@@ -232,7 +234,9 @@ function aThirdUnmeasured(): SimTask[] {
 it('a run a third unmeasured ends within 140 s, its workers 65% busy', () => {
   const r = simulate(aThirdUnmeasured(), { sizes: [small], likely: misses(load(a09)) })
   expect(r.endMs).toBeLessThanOrEqual(140_000)
-  expect(r.utilization).toBeGreaterThanOrEqual(0.65)
+  // 65% before each task booked a whole core (`MIN_CORES`): a sim has no
+  // bursts, so a floor shows here only as idle booked cores.
+  expect(r.utilization).toBeGreaterThanOrEqual(0.6)
 })
 
 for (const c of cases) {
@@ -521,7 +525,9 @@ it('asks no worker while the CI queues one of its size', () => {
   expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(4)
   // The run's ideal, 121.6 s, within the plan's 5% margin: a plan that
   // holds is followed, not played again at each join for a closer end.
-  expect(r.endMs).toBeLessThanOrEqual(121_600 * 1.05)
+  // With a whole core a task (`MIN_CORES`) on the few workers the CI let
+  // join early, 136.5 s.
+  expect(r.endMs).toBeLessThanOrEqual(137_000)
 })
 
 // Main, 2026-11-06: the one arm worker (max 1) was let go idle, then
@@ -640,13 +646,17 @@ it('ranks the waiting again when history lands: a long root goes before later sh
     likely: misses(graph),
     historyAt: 300,
   })
-  const first = Math.min(...joined(late).map((w) => w.joinedAt!))
+  // The second to join: check.bun books a whole core (`MIN_CORES`), so
+  // the first holds three of the four roots.
+  const second = joined(late)
+    .map((w) => w.joinedAt!)
+    .sort((a, b) => a - b)[1]!
   const shardStart = Math.min(
     ...[...late.startedAt].filter(([id]) => id.includes('shard')).map(([, at]) => at),
   )
   // Each long root begins on the first workers to join, before any shard.
   for (const id of ['dte#test.wire', 'reapi#test', 'dte#test.units', 'dte#test.rest']) {
-    expect(late.startedAt.get(id)).toBe(first)
+    expect(late.startedAt.get(id)!).toBeLessThanOrEqual(second)
     expect(late.startedAt.get(id)!).toBeLessThanOrEqual(shardStart)
   }
   expect(late.endMs).toBeLessThanOrEqual(known.endMs * 1.02)
