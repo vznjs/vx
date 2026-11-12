@@ -1,24 +1,22 @@
-// Cache artifact container: a zstd-compressed tar written and read by vx's own
-// streaming tar code (`tar-stream.ts`). It holds `stdout` (the vx-artifact
-// marker), `outputs/<rel>`, `workspace-outputs/<rel>` and `.vx-meta.json`.
+// Cache artifact container: a zstd tar written and read by vx's own streaming
+// tar (`tar-stream.ts`), holding `stdout` (the marker), `outputs/<rel>`,
+// `workspace-outputs/<rel>` and `.vx-meta.json`.
 //
-// Tar headers carry second mtimes and lose nothing else vx needs only by luck,
-// so the pack side stats each output once and writes its mode and millisecond
-// mtime into the sidecar. A restore applies the mode; it dates a file it writes
-// now, and leaves the mtime of one whose bytes already stood.
+// Tar headers carry second mtimes, so the pack side stats each output once and
+// writes its mode and ms mtime into the sidecar. A restore applies the mode; it
+// dates a file it writes now and leaves the mtime of one whose bytes already
+// stood.
 //
-// Both directions stream, never holding more than a chunk. Every regular entry
-// is staged under `.vx/tmp/<pid>-0/` and renamed over its target only once the
-// WHOLE archive has been read and every name proven safe, so a poisoned entry
-// anywhere leaves nothing behind, and a killed restore leaves temps the next
-// run sweeps.
+// Both directions stream a chunk at a time. Every regular entry is staged under
+// `.vx/tmp/<pid>-0/` and renamed into place only once the WHOLE archive is read
+// and every name proven safe, so a poisoned entry leaves nothing, and a killed
+// restore leaves temps the next run sweeps.
 //
-// What stays here is what no tar reader decides: WHERE an entry may land. An
-// artifact is attacker-reachable (a poisoned remote, a tampered local entry),
-// so every name and destination is proven inside its anchor before a byte is
-// written ("zip slip"). Non-regular tar entries are never materialised; an
-// output symlink rides the sidecar (`links`), its target held to the workspace
-// on both sides.
+// What stays here is WHERE an entry may land. An artifact is attacker-reachable
+// (a poisoned remote, a tampered entry), so every name is proven inside its
+// anchor before a byte is written ("zip slip"). Non-regular tar entries are
+// never materialised; an output symlink rides the sidecar (`links`), its target
+// held to the workspace on both sides.
 
 import {
   chmodSync,
@@ -1111,12 +1109,11 @@ function usageOf(raw: unknown): ExecUsage | undefined {
 }
 
 /**
- * Restore from `tar`, the DECOMPRESSED archive as a stream: `outputs/<rel>`
- * under `destDir`, `workspace-outputs/<rel>` under `workspaceDest` when given;
- * other entries are ignored. Entries are validated and staged as they arrive
- * and renamed into place only after the archive ended cleanly and `verify` (the
- * index's missing-output check) passed. Any failure leaves nothing behind.
- * Returns the provided output names.
+ * Restore from `tar`, the decompressed archive stream: `outputs/<rel>` under
+ * `destDir`, `workspace-outputs/<rel>` under `workspaceDest` when given; others
+ * ignored. Entries are validated and staged as they arrive, renamed into place
+ * only after a clean end and `verify` (the index's missing-output check). A
+ * failure leaves nothing. Returns the output names.
  */
 export async function extractArtifactStream(
   tar: ReadableStream<Uint8Array>,

@@ -1,10 +1,9 @@
-// Resolve declared cache inputs into what the key folds: input files (hashed)
-// and `inputs.env` values (undefined when unset). `inputs.env` tracks the key;
+// Resolve declared inputs into what the key folds: input files (hashed) and
+// `inputs.env` values (undefined when unset). `inputs.env` tracks the key;
 // `exec.env` decides what reaches the child.
 //
-// File enumeration defers to git, as Turbo and Nx do (git-inputs.ts), so every
-// ignore rule applies; `inputs.files` globs filter that set. A git work tree is
-// required.
+// File enumeration defers to git (git-inputs.ts), so every ignore rule applies;
+// `inputs.files` globs filter that set. A git work tree is required.
 
 import path from 'node:path'
 import {
@@ -1654,10 +1653,9 @@ function insideRoot(files: readonly string[], root: string): string[] {
 
 /**
  * Remove the directories a clean emptied, and the `emptyDirs` it found,
- * bottom-up, never `root`. A directory left where the entry holds a FILE of
- * that name blocks the restore's rename. One still holding a stray stays, and
- * the restore names it if it is in the way. With a `scope`, only directories
- * inside it go.
+ * bottom-up, never `root`: a directory where the entry holds a FILE of that
+ * name blocks the restore's rename. One holding a stray stays; the restore
+ * names it if in the way. With a `scope`, only directories inside it.
  */
 async function pruneEmptiedDirs(
   root: string,

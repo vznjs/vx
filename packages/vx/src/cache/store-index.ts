@@ -730,14 +730,13 @@ function carryEntries(ix: StoreIndex, cacheDir: string, storeDir: string): void 
 
 /**
  * Attach the shared store as `store`, WAL like the index, so workspaces share
- * it as runs share an index. A reading verb over a store with no file or tables
- * reads an empty one in memory.
+ * it. A reading verb over a store without file or tables reads an empty one in
+ * memory.
  *
- * Each checkout has its own run lock, and `vx cache clean` holds the store
- * alone (`holdStore`) until it deleted it. A writing open meeting that hold
- * answers SQLITE_BUSY within a second, for the caller to retry (prepare.ts).
- * One let in after the clean opened the unlinked store.db: it makes the store
- * again (`remake`) and opens that. Once in, its lock keeps a clean out.
+ * `vx cache clean` holds the store alone (`holdStore`) until it deleted it; a
+ * writing open meeting that hold gets SQLITE_BUSY within a second and retries
+ * (prepare.ts). One let in after the clean opened the unlinked store.db: it
+ * makes the store again (`remake`). Once in, its lock keeps a clean out.
  */
 function attachStore(
   ix: StoreIndex,
