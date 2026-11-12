@@ -223,3 +223,31 @@ it('packs a run with a server’s dependant on no worker more than without', () 
   expect(served.start.length + served.later.length).toBe(plain.start.length + plain.later.length)
   expect(served.start.length).toBe(1)
 })
+
+// Main cc6cd1a planned its 4-core workers at 3 (the rest busy outside
+// tasks), its lints booked 3.5: none fit, the packing was dropped, and the
+// play asked 10 workers where 5 ended as soon.
+it('packs a task booking more cores than any worker has onto a whole one', () => {
+  const tasks = [
+    task('a', 60_000),
+    task('b', 60_000, ['a']),
+    task('lint', 4_000, [], 3.5),
+    // Read against the declared 4-core size: a bigger one than 3.4, which none planned is.
+    { ...task('lint2', 4_000, [], 3.4), above: { cores: 3.4 - 1e-6, memory: Infinity } },
+    ...Array.from({ length: 6 }, (_, i) => task(`f${i}`, 30_000, [], 1)),
+  ]
+  const sizes = candidates([{ ...size('w', 3), max: 9 }], new Map(), [], tasks.length)
+  const p = plan(tasks, [], sizes, WARM)
+  expect(p.exact).toBe(true)
+  expect(p.unpacked).toBeUndefined()
+  expect(p.endsInMs).toBe(WARM + 120_000)
+})
+
+// A plan that plays its work says why it did not pack it, for the profile.
+it('says why it played the work rather than packed it', () => {
+  const sizes = candidates([{ ...size('w', 4), max: 2 }], new Map(), [], 2)
+  // One task on one worker: packed or played, it holds as much.
+  expect(plan([task('a', 1_000)], [], sizes, WARM).unpacked).toBe('holds 84000, the play 84000')
+  const blind = plan([{ ...task('a', 1_000), ms: undefined }], [], sizes, WARM)
+  expect(blind.unpacked).toBe('a task has no history')
+})

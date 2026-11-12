@@ -196,6 +196,8 @@ export interface Plan {
    * the plan reserved its room there, and kept no other.
    */
   readonly exact?: boolean
+  /** Why the work was played, not packed: for the run's profile. */
+  readonly unpacked?: string
 }
 
 /**
@@ -1802,7 +1804,14 @@ export function plan(
   // spread over workers the run then kept, 21% more than the least that
   // ends at the critical path (lab, 2026-11-11). Known work only: a
   // guessed time packs nothing.
-  if (!blind && replaceable && bound < Infinity) {
+  let unpacked = blind
+    ? 'a task has no history'
+    : !replaceable
+      ? 'no adapter'
+      : bound === Infinity
+        ? 'no end'
+        : undefined
+  if (unpacked === undefined) {
     // One past its warm-up may join any time: packed as if asked now. Packed
     // on joining at once, workers the CI started 2.5 s apart took work
     // planned on the fleet and the run ended 19 s late, where a play
@@ -1853,11 +1862,15 @@ export function plan(
     // A play cut at its window holds less than its run: not compared. One
     // that left out a task no worker fits (its history over a worker's
     // cores) held nothing, and the run waited on it forever (2026-11-11).
-    if (
-      packed.placed.size === tasks.length &&
-      packed.end <= best + 1e-6 &&
-      (played.cut === true || packed.held < played.held())
-    ) {
+    unpacked =
+      packed.placed.size < tasks.length
+        ? `left out ${tasks.find((t) => !packed.placed.has(t.id))!.id}`
+        : packed.end > best + 1e-6
+          ? `ends ${Math.round(packed.end)} ms, the play ${Math.round(best)}`
+          : played.cut !== true && packed.held >= played.held()
+            ? `holds ${Math.round(packed.held)}, the play ${Math.round(played.held())}`
+            : undefined
+    if (unpacked === undefined) {
       const start: Size[] = []
       const started: Ahead['started'][number][] = []
       const later: Ahead['later'][number][] = []
@@ -1957,6 +1970,7 @@ export function plan(
   // Work past the window: plan again a warm-up on, the window moved.
   const untilInMs = cut === true ? (horizon - MARGIN_MS) / 2 : undefined
   return {
+    ...(unpacked === undefined ? {} : { unpacked }),
     start,
     release,
     endsInMs: end,

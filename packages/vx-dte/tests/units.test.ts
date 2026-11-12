@@ -1630,6 +1630,8 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
       { id: 'p#new', cores: 1, memory: 0, ms: undefined, deps: [] },
     ],
     warmUps: new Map([['mac', 16_900]]),
+    sizes: [{ name: 'mac', cpu: 2.5 }],
+    unpacked: 'a task has no history',
   })
   await Bun.sleep(20)
   await a.say({ type: 'ran', task: 't1' })
@@ -1686,6 +1688,8 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   expect(plan?.args).toMatchObject({
     work: 'p#build 33.2s 2.16c 3.1G darwin +p#db 0.5c · p#new ?s 1c',
     warmUps: 'mac 16.9s',
+    sizes: 'mac 2.5c',
+    unpacked: 'a task has no history',
   })
 })
 
