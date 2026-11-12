@@ -903,13 +903,17 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     takes: (rel: string) => boolean,
     heads?: readonly string[],
   ): string | undefined {
+    if (this.get(root) !== snapshot || this.changed.has(root)) return
+    // A listing taken after a write has no OID slot (`set`): each path is
+    // vouched for by its stat, as an edited file is under one.
     const slot = this.oids.get(root)
-    if (slot === undefined || this.get(root) !== snapshot || this.changed.has(root)) return
-    let held = this.declDigests.get(slot)
+    const memo: WeakMap<OidSlot | readonly string[], DeclHeld> =
+      slot === undefined ? slotlessDigests : this.declDigests
+    let held = memo.get(slot ?? snapshot)
     if (held === undefined)
-      this.declDigests.set(slot, (held = { digests: new Map(), records: new Map() }))
+      memo.set(slot ?? snapshot, (held = { digests: new Map(), records: new Map() }))
     if (held.digests.has(key)) return held.digests.get(key)
-    const oids = slot.map
+    const oids = slot?.map
     const base = root.endsWith(path.sep) ? root : root + path.sep
     // Declarations overlap (each package's reads the shared `meta/**`):
     // each path's record is made once for them all.
@@ -923,7 +927,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       let record = records.get(rel)
       if (record === undefined) {
         const abs = base + rel
-        const oid = oids.get(abs)
+        const oid = oids?.get(abs)
         if (this.undecodable.has(abs) || oid?.startsWith('120000:') === true) record = null
         else if (oid !== undefined) record = `${rel}\0${oid}\n`
         else {
@@ -1105,6 +1109,11 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     super.clear()
   }
 }
+
+type DeclHeld = { digests: Map<string, string | undefined>; records: Map<string, string | null> }
+
+/** `declarationDigest`'s memo for a listing with no OID slot, by the listing itself. */
+const slotlessDigests = new WeakMap<readonly string[], DeclHeld>()
 
 /** No glob metacharacter — the entry names one exact path. */
 
