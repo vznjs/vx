@@ -151,7 +151,7 @@ export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] {
   const local = layer instanceof Cache ? layer : (layer as { local?: unknown }).local
   if (!(local instanceof Cache)) return []
   const [project, task] = splitTaskId(taskId)
-  const ix = local['ix']
+  const ix = storeIndexOf(local)
   return guard(ix, () =>
     (
       ix.db
@@ -167,7 +167,7 @@ export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] {
  * A function, as `indexDb` is: no plugin writes the history.
  */
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined {
-  return historyFilesOf(cache['ix'])
+  return historyFilesOf(storeIndexOf(cache))
 }
 
 /**
@@ -177,17 +177,17 @@ export function historyFiles(cache: Cache): { index: string; store?: string } | 
  * never close it — `Cache.close()` owns the lifetime.
  */
 export function indexDb(cache: Cache): Database {
-  return cache['ix'].db
+  return storeIndexOf(cache).db
 }
 
 /** The salted digest value-bearing rows hold (`digestValue`), for the history writer. */
 export function valueDigest(cache: Cache): (value: string) => string {
-  return (value) => digestValue(cache['ix'], value)
+  return (value) => digestValue(storeIndexOf(cache), value)
 }
 
 /** Whether this open may write the index: one it cannot write keeps no history. */
 export function indexWritable(cache: Cache): boolean {
-  return cache['ix'].writeBlocked === null
+  return storeIndexOf(cache).writeBlocked === null
 }
 
 /**
@@ -196,7 +196,7 @@ export function indexWritable(cache: Cache): boolean {
  * `vx last` and `vx why` printed a raw `SQLiteError` and a stack.
  */
 export function indexError(cache: Cache, err: unknown): unknown {
-  return indexErrorOf(cache['ix'], err)
+  return indexErrorOf(storeIndexOf(cache), err)
 }
 
 function closeStore(ix: StoreIndex): void {
@@ -219,6 +219,16 @@ function closeStore(ix: StoreIndex): void {
   if (ix.checkpoints instanceof WalCheckpointer) ix.checkpoints.terminate()
   ix.checkpoints = undefined
   closeDb(ix.db)
+}
+
+const indexes = new WeakMap<Cache, StoreIndex>()
+
+/**
+ * The store index behind `cache`, for the cache module's own files and
+ * tests: the one way past the class wall, and not in `index.ts`.
+ */
+export function storeIndexOf(cache: Cache): StoreIndex {
+  return indexes.get(cache)!
 }
 
 export class Cache implements CacheLayer {
@@ -284,6 +294,7 @@ export class Cache implements CacheLayer {
       storeRoot,
       store,
     )
+    indexes.set(this, this.ix)
   }
 
   /** The run this cache saves for: each entry it writes records it (`entries.run_id`). */
