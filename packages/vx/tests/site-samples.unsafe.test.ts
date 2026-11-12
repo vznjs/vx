@@ -1910,8 +1910,8 @@ describe('the sandbox post judges a violation against the grants', () => {
   it('a denial inside the project fails the task; the grants decide what is denied', () => {
     const src = (rel: string): string =>
       readFileSync(path.resolve(import.meta.dir, '..', 'src', rel), 'utf8')
-    expect(src('orchestrator/execute-task.ts')).toContain(
-      'if (userSandbox && violations.some((v) => v.hint !== true) && code === 0) code = 1',
+    expect(src('orchestrator/attempt.ts')).toContain(
+      'if (policy.sandboxed && violations.some((v) => v.hint !== true) && code === 0) code = 1',
     )
     expect(src('orchestrator/sandbox-request.ts')).toContain('reportWithin: node.projectDir')
     const post = readFileSync(path.join(DOCS, 'blog', 'the-sandbox.md'), 'utf8').replace(

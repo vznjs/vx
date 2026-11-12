@@ -267,16 +267,16 @@ describe('no doc describes exec.resources as a field a config can declare', () =
   })
 })
 
-// Two claims about one stderr line: `execute-task.ts` ends the retry notice
+// Two claims about one stderr line: `attempts.ts` ends the retry notice
 // `after a timeout` when the kill was the timeout's and `after exit <code>`
 // otherwise, and both pages that quote the line quoted only the second —
 // modules/execute-task.md in the same bullet that says "timeouts included"
 // (item 357, 2026-09-19). A user greps the message they got; half a message
 // finds nothing.
 describe('every page quoting the retry line quotes both its endings', () => {
-  it('the two spellings are the ones execute-task.ts emits', () => {
+  it('the two spellings are the ones attempts.ts emits', () => {
     const src = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'execute-task.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'attempts.ts'),
       'utf8',
     )
     expect(src).toContain("'a timeout'")
