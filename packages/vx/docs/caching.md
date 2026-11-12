@@ -147,7 +147,13 @@ over (in order):
    this repo declares `bun()`. Each also claims its manager's install
    settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
    `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, `.npmrc`, the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions` and dependency ranges)
-   and folds each whole into every task.
+   and folds each whole into every task. The key folds the lockfile,
+   never `node_modules`, so a run after a `git pull` that brought a
+   lockfile change, with no install, would save a build made against the
+   old packages under the new lockfile's key; each plugin refuses such a
+   run, naming the package and the install that fixes it (`bun install`),
+   by the record the manager leaves of its install (`@vzn/vx-lockfile`'s
+   README, "The installed tree").
 
    The run reads each claimed root file once, before any task. A task
    in the root project may rewrite one — `pnpm install` without
@@ -985,6 +991,13 @@ ignored ones, or none) and was not itself created mid-run. Cost: one
 `lstat` per input and per reached directory on a miss that saves, a
 `readdir` per directory that changed, and a `git ls-files` only when a
 candidate turned up; a hit runs no command and checks nothing.
+The line for a file that appeared (added, or a literal input absent
+before) does not say to declare it an output: vx deletes an uncommitted
+output before each run, so a snapshot vitest writes on its first run
+(`src/__snapshots__/*.snap`) was written anew every run and a changed
+value passed. It says to commit a file the task checks against, or to
+exclude a generated one from the inputs (`'!src/gen.ts'`) and then
+declare it in outputs.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run

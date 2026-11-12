@@ -265,6 +265,28 @@ function importerFrom(lock: Lockfile, dir: string): string {
 }
 
 /**
+ * The registry version each workspace's dependencies resolve to, as the
+ * lockfile names it: workspace dir → dependency name → version. A
+ * `workspace:`, git, tarball or `file:` dependency names no version and is
+ * left out.
+ */
+export function directVersions(lock: Lockfile): Map<string, Map<string, string>> {
+  const out = new Map<string, Map<string, string>>()
+  for (const [dir, deps] of lock.workspaceInstalled) {
+    const from = importerFrom(lock, dir)
+    const versions = new Map<string, string>()
+    for (const name of deps.keys()) {
+      const key = resolve(lock, from, name)
+      const id = key === undefined ? undefined : lock.packages.get(key)?.id
+      const version = id?.slice(id.indexOf('@', 1) + 1)
+      if (version !== undefined && /^\d+\.\d+\.\d+/.test(version)) versions.set(name, version)
+    }
+    out.set(dir, versions)
+  }
+  return out
+}
+
+/**
  * The patch files `patchedDependencies` names. bun.lock records a patch by
  * PATH, never by a hash of its content, so an edited patch left the lockfile
  * byte-identical and every key unmoved while the install applied the new
