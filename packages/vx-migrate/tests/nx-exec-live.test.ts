@@ -283,7 +283,11 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
         {
           commands: [
             // A slow trap, so a line that returns before it ends reads no file.
-            'trap "sleep 0.2; echo terminated > term.txt; exit 143" TERM; : > up; while :; do sleep 0.05; done',
+            // The wait is a builtin loop: Nx TERMs a tree leaf first and a
+            // parent only once it has no child, so a shell that keeps forking
+            // `sleep` may never take the TERM before Nx's grace runs out and
+            // it SIGKILLs the shell, trap unrun.
+            'trap "sleep 0.2; echo terminated > term.txt; exit 143" TERM; : > up; while :; do :; done',
             'while [ ! -f up ]; do sleep 0.01; done; exit 3',
           ],
         },
