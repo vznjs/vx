@@ -313,6 +313,11 @@ beforeAll(async () => {
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
   json('cache', ['clean', '--max-size', '1K', '--dry'])
+  // Runs past the history's retention: the real prune names the rows it drops.
+  const aged = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  const old = Date.now() - 40 * 86_400_000
+  aged.query('UPDATE runs SET started_at = ?, ended_at = ?').run(old, old)
+  aged.close()
   json('cache', ['clean', '--max-size', '1K'])
   json('cache', ['clean', '--dry'])
   // A refusal: exit 1, and the error document on stdout.

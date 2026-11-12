@@ -94,9 +94,11 @@ describe.skipIf(!available)('a sandboxed task and a git dir outside the workspac
     const r = await run({ cwd: ws, tasks: ['a#t'] })
     expect(r.outcomes[0]?.status).toBe('failed')
     const lines = r.outcomes[0]?.sandboxViolationLines ?? []
-    const named = lines.filter((l) => l.includes(`hides ${repo}/.git`))
+    // Linux traces no stat, so git's own words bring the hint; macOS
+    // reports the hidden read itself. Either names the .git, and no grant.
+    const named = lines.filter((l) => l.includes(`${repo}/.git`))
     expect(named).toHaveLength(1)
-    expect(named[0]).toContain('suggests no grant')
+    expect(named[0]).toMatch(/suggests no grant/)
   })
 
   it('refuses a write grant into the git dir outside the workspace', async () => {
