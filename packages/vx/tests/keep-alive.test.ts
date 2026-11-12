@@ -624,15 +624,23 @@ describe('a persistent server that dies before the run stops it', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  const crashing = (srv: string) => `
+  // `dies`: the server exits on its own, and e2e holds until vx has reaped
+  // it (a zombie still answers kill -0), so its exit lands while e2e runs
+  // however loaded the host: a fixed 0.2 s lost the race on CI.
+  const crashing = (srv: string, dies = true) => `
     export default {
       tasks: {
         srv: {
-          exec: { command: ${JSON.stringify(srv)}, persistent: { readyWhen: 'READY' } },
+          exec: { command: ${JSON.stringify(dies ? `echo $$ > srv.pid; ${srv}` : srv)}, persistent: { readyWhen: 'READY' } },
         },
         e2e: {
           dependsOn: ['srv'],
-          exec: { command: 'while [ ! -f gone ]; do sleep 0.02; done; sleep 0.2' },
+          exec: { command: ${JSON.stringify(
+            'while [ ! -f gone ]; do sleep 0.02; done; ' +
+              (dies
+                ? 'while kill -0 $(cat srv.pid) 2>/dev/null; do sleep 0.02; done; sleep 0.3'
+                : 'sleep 0.2'),
+          )} },
         },
       },
     }
@@ -773,7 +781,7 @@ describe('a persistent server that dies before the run stops it', () => {
     const green = { code: 0, said: [], pinned: [], tally: '2 success · 2 total' }
     expect(await run(root, ['e2e'])).toEqual(green)
     await rm(path.join(root, 'packages', 'app', 'gone'), { force: true })
-    await addProject(root, 'app', crashing('touch gone; echo READY; exec sleep 30'))
+    await addProject(root, 'app', crashing('touch gone; echo READY; exec sleep 30', false))
     expect(await run(root, ['e2e'])).toEqual(green)
   }, 30_000)
 
