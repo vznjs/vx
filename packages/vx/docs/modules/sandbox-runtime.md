@@ -1280,6 +1280,11 @@ takes those listeners over at that init: each still runs SRT's reset,
 once, but as a reset `initSandbox` waits for, so an init under it no
 longer returns early on the dying session ("Linux HTTP bridge socket
 does not exist", M-35).
+A SIGINT or SIGTERM during `initialize` ran that reset before the
+session existed: it found no bridge, the start then made one, and the
+socat outlived vx for good (an early Ctrl-C, 9 of 20 tries). `initSandbox`
+listens for both while it starts, and after a signal resets what the
+start finished (`sandbox-session-guard.unsafe.test.ts`).
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.

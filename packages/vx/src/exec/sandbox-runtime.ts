@@ -1010,13 +1010,33 @@ export async function initSandbox(opts?: {
   const wasUp = srtUp
   if (!wasUp) await unlinkStaleMuxSockets()
   const listening = srtCleanupAdopted ? undefined : cleanupListeners()
-  await SandboxManager.initialize(
-    config,
-    undefined,
-    // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
-    true,
-  )
+  // A SIGINT or SIGTERM while SRT starts runs its reset before the session
+  // exists: the reset found no bridge to kill, the start then made one,
+  // and that socat outlived vx for good (one per early Ctrl-C, regr1112).
+  let cut = false
+  const onCut = (): void => {
+    cut = true
+  }
+  for (const ev of CUT_SIGNALS) process.once(ev, onCut)
+  try {
+    await SandboxManager.initialize(
+      config,
+      undefined,
+      // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
+      true,
+    )
+  } finally {
+    for (const ev of CUT_SIGNALS) process.off(ev, onCut)
+  }
   if (listening !== undefined) adoptSrtCleanup(listening)
+  if (cut) {
+    // What the start finished after the signal's reset is taken down here.
+    srtDown()
+    const reset = SandboxManager.reset()
+    trackReset(reset)
+    await reset
+    return
+  }
   srtUp = true
   if (!wasUp && process.platform === 'linux' && procfsIsOwn()) {
     const { pids, paths } = sessionLeftovers(SandboxManager)
@@ -1158,6 +1178,7 @@ function trackReset(reset: Promise<unknown>): void {
 }
 
 const SRT_CLEANUP_EVENTS = ['exit', 'SIGINT', 'SIGTERM'] as const
+const CUT_SIGNALS = ['SIGINT', 'SIGTERM'] as const
 let srtCleanupAdopted = false
 
 function cleanupListeners(): Map<string, unknown[]> {
