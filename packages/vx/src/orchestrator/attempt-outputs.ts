@@ -81,7 +81,7 @@ export class OutputGuard {
     const { node } = args
     const ownInputs = {
       projectDir: node.projectDir,
-      workspaceRoot: args.workspaceRoot,
+      workspaceRoot: args.run.workspaceRoot,
       declared: node.config.inputs,
     }
     this.cleanArgs = {
@@ -89,13 +89,13 @@ export class OutputGuard {
       outputs: policy.outputs,
       nestedProjectDirs: args.outputNestedDirs ?? args.nestedProjectDirs,
       inputs: ownInputs,
-      committed: committedFiles(args.gitFilesCache, node.projectDir),
+      committed: committedFiles(args.run.gitFilesCache, node.projectDir),
     }
     this.wsCleanArgs = {
-      workspaceRoot: args.workspaceRoot,
+      workspaceRoot: args.run.workspaceRoot,
       outputs: policy.wsOutputs,
       inputs: ownInputs,
-      committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
+      committed: committedFiles(args.run.gitFilesCache, args.run.workspaceRoot),
     }
   }
 
@@ -129,7 +129,7 @@ export class OutputGuard {
           await ownOutputsSince(cleanArgs, this.stampedBefore),
           () => resolveOutputs(cleanArgs),
         )
-        args.gitFilesCache?.markOutputsChanged(node.projectDir, rels)
+        args.run.gitFilesCache?.markOutputsChanged(node.projectDir, rels)
       }
       endStamp()
     } else if (clean && outputs.length > 0) {
@@ -146,7 +146,7 @@ export class OutputGuard {
         kept: this.committedKept,
       })
       endClean()
-      args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
+      args.run.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
       this.committedBefore = this.checkCommitted(
         node.projectDir,
         cleanedRels,
@@ -171,14 +171,14 @@ export class OutputGuard {
         this.wsStampedBefore = await stampWorkspaceOutputs(wsCleanArgs)
       else {
         const rels = await this.dropFailedAdditions(
-          args.workspaceRoot,
+          args.run.workspaceRoot,
           wsOutputs,
           this.wsStampedBefore,
           wsCleanArgs.committed,
           await ownWorkspaceOutputsSince(wsCleanArgs, this.wsStampedBefore),
           () => resolveWorkspaceOutputs(wsCleanArgs),
         )
-        args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, rels)
+        args.run.gitFilesCache?.markWorkspaceOutputsChanged(args.run.workspaceRoot, rels)
       }
     } else if (clean && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
@@ -188,18 +188,20 @@ export class OutputGuard {
         beforeRun: true,
         kept: this.committedKept,
       })
-      args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
+      args.run.gitFilesCache?.markWorkspaceOutputsChanged(args.run.workspaceRoot, cleanedWsRels)
       this.wsCommittedBefore = this.checkCommitted(
-        args.workspaceRoot,
+        args.run.workspaceRoot,
         cleanedWsRels,
         wsCleanArgs.committed,
         this.wsCommittedBefore,
       )
     } else if (keepOutputs && write && !deferred && wsOutputs.length > 0) {
       this.wsCommittedBefore = this.checkCommitted(
-        args.workspaceRoot,
+        args.run.workspaceRoot,
         retryCanFollow
-          ? (await resolveWorkspaceOutputs(wsCleanArgs)).map((f) => relPosix(args.workspaceRoot, f))
+          ? (await resolveWorkspaceOutputs(wsCleanArgs)).map((f) =>
+              relPosix(args.run.workspaceRoot, f),
+            )
           : [],
         wsCleanArgs.committed,
         this.wsCommittedBefore,
@@ -264,12 +266,12 @@ export class OutputGuard {
     return (abs) => {
       if (byPath === undefined) {
         byPath = new Map()
-        const hashes = taskEntryHashes(args.cache, node.id)
-        for (const rows of args.cache.memo.loadOutputFilesBatch(hashes).values()) {
+        const hashes = taskEntryHashes(args.run.cache, node.id)
+        for (const rows of args.run.cache.memo.loadOutputFilesBatch(hashes).values()) {
           for (const row of rows) {
             if (row.ino === undefined) continue
             const ws = row.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
-            const root = ws ? args.workspaceRoot : node.projectDir
+            const root = ws ? args.run.workspaceRoot : node.projectDir
             const rel = ws ? row.path.slice(WORKSPACE_OUTPUT_PREFIX.length) : row.path
             const at = path.join(root, rel)
             const list = byPath.get(at)
@@ -280,7 +282,7 @@ export class OutputGuard {
         }
       }
       return (byPath.get(abs) ?? []).some(([root, row]) =>
-        args.cache.memo.isOutputsCurrent(root, [row]),
+        args.run.cache.memo.isOutputsCurrent(root, [row]),
       )
     }
   }

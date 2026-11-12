@@ -23,46 +23,11 @@ export interface RunOptions {
   tasks: readonly string[]
   projects?: string[]
   /**
-   * `projects` came from a git diff (`--affected`, a `[ref]` filter), so
-   * which projects hold a bare task name depends on what changed: a name
-   * the changed projects do not declare is not a typo when the workspace
-   * declares it elsewhere, and a run with nothing left to do is clean.
-   * Judged against the scope, a docs-only commit turned
-   * `vx run test --affected` red (item 1024).
-   */
-  selectedByDiff?: boolean
-  /**
    * `--affected`'s diff: a bare requested task runs only when the change
    * reaches its `dependsOn` closure (`affected-tasks.ts`; owner,
    * 2026-10-04). `projects` is the candidate set it narrows.
    */
   affected?: AffectedChanges
-  /**
-   * The projects an include other than `--affected` selected (`--filter
-   * other`): every include is a union, so their requested tasks run
-   * whether or not `affected` reaches them (X-10).
-   */
-  selectedOutright?: readonly string[]
-  /** Filled with why `--affected` kept each requested task; `planRun` (`--dry`) passes it. */
-  affectedReasons?: Map<string, AffectedReason>
-  /**
-   * Configs a selection pass in this same process already loaded and
-   * staged with the same `cacheDir` (the CLI walks every
-   * `pkg#task` edge for `--filter 'app...'` and `--affected`). The run
-   * seeds and scopes as it always does and reuses these entries instead
-   * of evaluating and staging them again. One run only — never carry a
-   * map across runs, a config can change between them (`vx watch` drops
-   * it per cycle).
-   */
-  staged?: ReadonlyMap<string, ProjectEntry>
-  /**
-   * The projects a selection pass in this same process discovered under
-   * `root` (`--filter`, `--affected`, the project a run from inside one
-   * is in). The run takes them instead of
-   * walking the workspace again when its root is the same. One run only,
-   * as `staged` is.
-   */
-  discovered?: { root: string; projects: ProjectMeta[] }
   /** Worker slots: a positive integer; run() refuses anything else (C-61). */
   concurrency?: number
   /**
@@ -84,22 +49,8 @@ export interface RunOptions {
    * off), applied over the workspace's `cache.policy`.
    */
   cacheFlags?: CacheFlags
-  /**
-   * The setting that asked for a remote axis by name (`'--cache-policy'` for
-   * `--cache-policy=remote:rw`), named in the warning. With no cache plugin
-   * supplying a remote layer the axes are inert, and a CI job that believes
-   * it is filling a shared cache deserves one line saying it is not.
-   */
-  remoteRequested?: string
   /** This run's cache scope, above `VX_CACHE_SCOPE`, a plugin's and the branch's (an embedder's). */
   cacheScope?: string
-  /**
-   * The default policy's remote write is off (`remote:r`): the CLI passes it
-   * off CI (`CI` unset, `0` or `false`) unless `--cache-policy` or
-   * `VX_CACHE_POLICY` names the remote. Dropped when the workspace's
-   * `cache.policy` names the remote.
-   */
-  remoteReadOnlyByDefault?: boolean
   /**
    * Explicit per-task output volume for the default logger. ALWAYS
    * overrides the flow default. 'full': frames for work + one-liners
@@ -212,44 +163,6 @@ export interface RunOptions {
    */
   signal?: AbortSignal
   /**
-   * Hand every persistent task still running, a dependency-only one too
-   * when it declares `inputs.files`, back on `RunSummary.persistent`
-   * instead of stopping them when the graph ends.
-   * The caller owns them from then on and stops them with its `stop()`.
-   * The watch loop sets this: a dev server stays up while watch idles and
-   * is replaced only when the next cycle starts.
-   */
-  holdPersistent?: boolean
-  /**
-   * The run is a `vx watch` cycle: an input edited while a task ran starts
-   * the next cycle, and the line withholding the task's save says so.
-   */
-  watch?: boolean
-  /**
-   * The servers an earlier `holdPersistent` run handed back. Each one still
-   * up whose task this run would start again, with the same resolved
-   * config (and, for a dependency-only one, the same key), is kept running and reported ready instead of restarted; what
-   * it writes reaches this run's renderer from then on. The rest are
-   * stopped before the graph starts, so a new one never meets the old
-   * one's port. The watch loop sets it: `vx watch dev` rebuilds what the
-   * server depends on and leaves the server up. The caller still stops
-   * the earlier hand-back afterwards; that stops only what this run did
-   * not take.
-   */
-  keep?: HeldPersistent
-  /**
-   * Where the run records when each command ran (and each restore or deferred fetch)
-   * and where it may write (command-windows.ts). The watch loop passes its
-   * own, so a write that lands during the cycle and no command of it may
-   * have made is the user's edit, whatever the file settles to.
-   */
-  commandWindows?: CommandWindows
-  /**
-   * Print the per-task table (`--verbosity 1`) just above the footer: the
-   * footer is the run's last word, so the caller cannot print it after.
-   */
-  summaryTable?: boolean
-  /**
    * vx's stdin is a terminal: each `exec.interactive` task is handed it,
    * alone (placement.ts `terminalHolders`). The CLI sets it from
    * `isatty(0)`; absent, an interactive task runs as any task.
@@ -311,6 +224,105 @@ export interface RunOptions {
    * or variable reaches it.
    */
   artifactCeiling?: number
+}
+
+/**
+ * What only vx's own CLI hands run(): what its selection pass already
+ * learned, and `vx watch`'s plumbing. Not on the façade's RunOptions.
+ */
+export interface RunHandoff {
+  /**
+   * `projects` came from a git diff (`--affected`, a `[ref]` filter), so
+   * which projects hold a bare task name depends on what changed: a name
+   * the changed projects do not declare is not a typo when the workspace
+   * declares it elsewhere, and a run with nothing left to do is clean.
+   * Judged against the scope, a docs-only commit turned
+   * `vx run test --affected` red (item 1024).
+   */
+  selectedByDiff?: boolean
+  /**
+   * The projects an include other than `--affected` selected (`--filter
+   * other`): every include is a union, so their requested tasks run
+   * whether or not `affected` reaches them (X-10).
+   */
+  selectedOutright?: readonly string[]
+  /** Filled with why `--affected` kept each requested task; `planRun` (`--dry`) passes it. */
+  affectedReasons?: Map<string, AffectedReason>
+  /**
+   * Configs a selection pass in this same process already loaded and
+   * staged with the same `cacheDir` (the CLI walks every
+   * `pkg#task` edge for `--filter 'app...'` and `--affected`). The run
+   * seeds and scopes as it always does and reuses these entries instead
+   * of evaluating and staging them again. One run only — never carry a
+   * map across runs, a config can change between them (`vx watch` drops
+   * it per cycle).
+   */
+  staged?: ReadonlyMap<string, ProjectEntry>
+  /**
+   * The projects a selection pass in this same process discovered under
+   * `root` (`--filter`, `--affected`, the project a run from inside one
+   * is in). The run takes them instead of
+   * walking the workspace again when its root is the same. One run only,
+   * as `staged` is.
+   */
+  discovered?: { root: string; projects: ProjectMeta[] }
+  /**
+   * The setting that asked for a remote axis by name (`'--cache-policy'` for
+   * `--cache-policy=remote:rw`), named in the warning. With no cache plugin
+   * supplying a remote layer the axes are inert, and a CI job that believes
+   * it is filling a shared cache deserves one line saying it is not.
+   */
+  remoteRequested?: string
+  /**
+   * The default policy's remote write is off (`remote:r`): the CLI passes it
+   * off CI (`CI` unset, `0` or `false`) unless `--cache-policy` or
+   * `VX_CACHE_POLICY` names the remote. Dropped when the workspace's
+   * `cache.policy` names the remote.
+   */
+  remoteReadOnlyByDefault?: boolean
+  /**
+   * Hand every persistent task still running, a dependency-only one too
+   * when it declares `inputs.files`, back on `RunSummary.persistent`
+   * instead of stopping them when the graph ends.
+   * The caller owns them from then on and stops them with its `stop()`.
+   * The watch loop sets this: a dev server stays up while watch idles and
+   * is replaced only when the next cycle starts.
+   */
+  holdPersistent?: boolean
+  /**
+   * The run is a `vx watch` cycle: an input edited while a task ran starts
+   * the next cycle, and the line withholding the task's save says so.
+   */
+  watch?: boolean
+  /**
+   * The servers an earlier `holdPersistent` run handed back. Each one still
+   * up whose task this run would start again, with the same resolved
+   * config (and, for a dependency-only one, the same key), is kept running and reported ready instead of restarted; what
+   * it writes reaches this run's renderer from then on. The rest are
+   * stopped before the graph starts, so a new one never meets the old
+   * one's port. The watch loop sets it: `vx watch dev` rebuilds what the
+   * server depends on and leaves the server up. The caller still stops
+   * the earlier hand-back afterwards; that stops only what this run did
+   * not take.
+   */
+  keep?: HeldPersistent
+  /**
+   * Where the run records when each command ran (and each restore or deferred fetch)
+   * and where it may write (command-windows.ts). The watch loop passes its
+   * own, so a write that lands during the cycle and no command of it may
+   * have made is the user's edit, whatever the file settles to.
+   */
+  commandWindows?: CommandWindows
+  /**
+   * Print the per-task table (`--verbosity 1`) just above the footer: the
+   * footer is the run's last word, so the caller cannot print it after.
+   */
+  summaryTable?: boolean
+}
+
+/** run()'s argument inside vx: the public options and the CLI's hand-off. */
+export interface CoreRunOptions extends RunOptions {
+  handoff?: RunHandoff
 }
 
 export interface RunSummary {

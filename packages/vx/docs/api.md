@@ -6,6 +6,22 @@ function to its signature, a class to its public members) and the doc
 comment above it. [The public surface](modules/index.md#srcindexts--public-package-surface) groups the
 same names by what they are for; the plugins guide shows them in use.
 
+## `AbortedOutcome`
+
+type · `src/graph/outcome.ts`
+
+A shutdown (SIGINT/SIGTERM) stopped it, or stopped the run before it
+began: it never finished on its own terms. `exitCode` is the signal's,
+which the run's history keeps.
+
+```ts
+export interface AbortedOutcome
+  extends StartedOutcome, None<FailureFacts>, BlockFacts, None<PlatformFacts> {
+  status: 'aborted'
+  serverExit?: number
+}
+```
+
 ## `AdmitContext`
 
 type · `src/orchestrator/plugin.ts`
@@ -816,6 +832,18 @@ convention, not proof — a command may exit 137 on its own.
 export function exitSignal(code: number): string | undefined
 ```
 
+## `FailedOutcome`
+
+type · `src/graph/outcome.ts`
+
+```ts
+export interface FailedOutcome
+  extends StartedOutcome, FailureFacts, None<BlockFacts>, None<PlatformFacts> {
+  status: 'failed'
+  serverExit?: never
+}
+```
+
 ## `findWorkspaceRoot`
 
 function · `src/workspace/workspace.ts`
@@ -1025,6 +1053,19 @@ This machine as `exec.platforms` names it: `os-arch` as Bun reports them, `linux
 
 ```ts
 export function hostPlatform(): string
+```
+
+## `InputChanges`
+
+type · `src/graph/outcome.ts`
+
+What moved in a missed task's key since the last entry saved for it.
+
+```ts
+export interface InputChanges {
+  count: number
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
+}
 ```
 
 ## `InputsConfig`
@@ -1584,6 +1625,106 @@ after an optional `!`; a bare `.` is the empty entry the schema refuses.
 
 ```ts
 export function normalizeGlob(glob: string): string
+```
+
+## `OutcomeAttempts`
+
+type · `src/graph/outcome.ts`
+
+Its retries (`exec.retries`, `--retries`, a known flake's one more).
+
+```ts
+export interface OutcomeAttempts {
+  count?: number
+  failed?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  outputs?: readonly string[]
+  flaky?: { passes: number; failures: number }
+}
+```
+
+## `OutcomeCache`
+
+type · `src/graph/outcome.ts`
+
+What the cache and the key said of the task.
+
+```ts
+export interface OutcomeCache {
+  stored?: { durationMs: number; cpuMs?: number; peakRssBytes?: number }
+  restored?: boolean
+  saved?: true
+  inputFiles?: number
+  artifactBytes?: number
+  outputBytes?: number
+  inputChanges?: InputChanges
+  deferred?: true
+  off?: true
+  unkeyed?: true
+  driftedInput?: string | null
+  keylessBy?: string
+}
+```
+
+## `OutcomePlacement`
+
+type · `src/graph/outcome.ts`
+
+Where an executor ran it, when that is not this host (`ExecuteResult.where`, `.machine`).
+
+```ts
+export interface OutcomePlacement {
+  where?: string
+  carried?: true
+  cores?: number
+  memoryBytes?: number
+  cpuShare?: number
+}
+```
+
+## `OutcomeSandbox`
+
+type · `src/graph/outcome.ts`
+
+A sandboxed task's denials (`exec.sandbox`): any one fails the task.
+
+```ts
+export interface OutcomeSandbox {
+  violations: number
+  lines?: string[]
+  fix?: SandboxFix
+}
+```
+
+## `OutcomeTiming`
+
+type · `src/graph/outcome.ts`
+
+When the task waited, ran and moved bytes, on the run's clock.
+
+```ts
+export interface OutcomeTiming {
+  queuedMs?: number
+  admissionHeldMs?: number
+  startNs?: bigint
+  endNs?: bigint
+  fetchMs?: number
+  saveMs?: number
+}
+```
+
+## `OutcomeUsage`
+
+type · `src/graph/outcome.ts`
+
+What this run's execution of the task used; absent on a hit.
+
+```ts
+export interface OutcomeUsage {
+  cpuMs?: number
+  peakRssBytes?: number
+  peakCores?: number
+  avgRssBytes?: number
+}
 ```
 
 ## `OutcomeView`
@@ -2380,19 +2521,12 @@ export interface RunOptions {
   cwd: string
   tasks: readonly string[]
   projects?: string[]
-  selectedByDiff?: boolean
   affected?: AffectedChanges
-  selectedOutright?: readonly string[]
-  affectedReasons?: Map<string, AffectedReason>
-  staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy
   cacheFlags?: CacheFlags
-  remoteRequested?: string
   cacheScope?: string
-  remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   downloadConcurrency?: number
@@ -2410,11 +2544,6 @@ export interface RunOptions {
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
-  holdPersistent?: boolean
-  watch?: boolean
-  keep?: HeldPersistent
-  commandWindows?: CommandWindows
-  summaryTable?: boolean
   tty?: boolean
   log?: Logger
   bus?: EventBus
@@ -2681,6 +2810,22 @@ export interface SandboxDenials {
 }
 ```
 
+## `SandboxFix`
+
+type · `src/graph/outcome.ts`
+
+```ts
+export interface SandboxFix {
+  read?: string[]
+  write?: string[]
+  network?: string[]
+  systemInfo?: string[]
+  withheld?: string[]
+  inputs?: string[]
+  workspaceFiles?: string[]
+}
+```
+
 ## `SandboxGrants`
 
 type · `src/config.ts`
@@ -2845,6 +2990,21 @@ export interface ServerSpec {
 }
 ```
 
+## `SkippedOutcome`
+
+type · `src/graph/outcome.ts`
+
+It never started, so it has no exit; a key only when fail-fast stopped it after deriving one.
+
+```ts
+export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFacts, PlatformFacts {
+  status: 'skipped'
+  exitCode?: never
+  hash?: string
+  serverExit?: never
+}
+```
+
 ## `splitTaskId`
 
 function · `src/util/task-id.ts`
@@ -2867,6 +3027,18 @@ private copy until item 646; one rule, one place.
 
 ```ts
 export function splitTaskId(id: string): [project: string, task: string]
+```
+
+## `SucceededOutcome`
+
+type · `src/graph/outcome.ts`
+
+```ts
+export interface SucceededOutcome
+  extends StartedOutcome, None<FailureFacts>, None<BlockFacts>, None<PlatformFacts> {
+  status: Exclude<TaskStatus, 'failed' | 'aborted' | 'skipped'>
+  serverExit?: number
+}
 ```
 
 ## `sweepPlaceholders`
@@ -3063,68 +3235,7 @@ export interface TaskNode {
 type · `src/graph/outcome.ts`
 
 ```ts
-export interface TaskOutcome {
-  node: TaskNode
-  status: TaskStatus
-  exitCode: number
-  durationMs: number
-  hash?: string
-  storedDurationMs?: number
-  storedCpuMs?: number
-  storedPeakRssBytes?: number
-  admissionHeldMs?: number
-  queuedMs?: number
-  inputFiles?: number
-  artifactBytes?: number
-  outputBytes?: number
-  fetchMs?: number
-  saveMs?: number
-  inputChanges?: InputChanges
-  cpuMs?: number
-  peakRssBytes?: number
-  peakCores?: number
-  avgRssBytes?: number
-  groupUpstream?: readonly TaskOutcome[]
-  unkeyed?: true
-  driftedInput?: string | null
-  keylessBy?: string
-  cacheOff?: true
-  blockedBy?: string
-  taintedBy?: string
-  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
-  timedOut?: true
-  failedOutput?: string
-  runLog?: string
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  serverExit?: number
-  inputMoved?: string
-  where?: string
-  carried?: true
-  whereCores?: number
-  whereMemoryBytes?: number
-  cpuShare?: number
-  outputs?: 'deferred'
-  saved?: true
-  restoreFailed?: true
-  wallclockStartNs?: bigint
-  wallclockEndNs?: bigint
-  restored?: boolean
-  attempts?: number
-  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
-  attemptOutputs?: readonly string[]
-  flaky?: { passes: number; failures: number }
-  sandboxViolations?: number
-  sandboxViolationLines?: string[]
-  sandboxFix?: {
-    read?: string[]
-    write?: string[]
-    network?: string[]
-    systemInfo?: string[]
-    withheld?: string[]
-    inputs?: string[]
-    workspaceFiles?: string[]
-  }
-}
+export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | SkippedOutcome
 ```
 
 ## `TaskOutputs`

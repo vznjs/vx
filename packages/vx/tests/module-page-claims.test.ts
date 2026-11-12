@@ -36,9 +36,15 @@ describe('summary.md says the footer never repeats a fact', () => {
         },
       }) as unknown as TaskNode
     const outcomes: TaskOutcome[] = [
-      { node: node('a#hit'), status: 'cache-hit', exitCode: 0, durationMs: 1, restored: false },
+      {
+        node: node('a#hit'),
+        status: 'cache-hit',
+        exitCode: 0,
+        durationMs: 1,
+        cache: { restored: false },
+      },
       { node: node('a#ran'), status: 'failed', exitCode: 1, durationMs: 5 },
-      { node: node('a#after'), status: 'skipped', exitCode: 0, durationMs: 0, blockedBy: 'a#ran' },
+      { node: node('a#after'), status: 'skipped', durationMs: 0, blockedBy: 'a#ran' },
     ]
     const lines = formatRunSummary(
       outcomes,
@@ -131,7 +137,7 @@ describe('module pages state what their file does since the fix', () => {
     expect(src('orchestrator/persistent.ts')).toContain(
       'if (!state.stopping && !handed.has(child) && code !== 0)',
     )
-    const held = blocks('modules/orchestrator.md', 'RunOptions.holdPersistent')
+    const held = blocks('modules/orchestrator.md', 'RunHandoff.holdPersistent')
     expect(held.length).toBe(1)
     expect(held[0]).toContain('One that dies on its own after that is named')
   })

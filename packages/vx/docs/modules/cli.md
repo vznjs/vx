@@ -115,9 +115,9 @@ cwd project and the interactive picker — is `src/cli/select.ts`
 `resolveRunOptions`; every read of the workspace there goes through
 the staged load (`loadCliProjects`), so the selection is the run's —
 and when the selection had to stage every config (a filter that walks
-the graph), that load travels into the run as `RunOptions.staged`, so
+the graph), that load travels into the run as `RunHandoff.staged`, so
 the configs load once per run. A filter pass also hands its discovered
-projects over (`RunOptions.discovered`), so the workspace is listed once.
+projects over (`RunHandoff.discovered`), so the workspace is listed once.
 
 ### Public surface
 
@@ -255,7 +255,7 @@ If `--dry` is set:
 
 ### Verbose summary
 
-`--verbosity 1` (any value above 0) sets `RunOptions.summaryTable`:
+`--verbosity 1` (any value above 0) sets `RunHandoff.summaryTable`:
 the run prints a per-task table after the framed blocks and above the
 footer (nothing prints below it), one row per task with a command —
 groups are left out, as the footer leaves them. The
@@ -356,7 +356,7 @@ export interface JudgeContext {
 export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
   lastCycle: { start: number; end: number } | undefined // start on the mtime clock (fsClockNow), as armedAt
-  cycle: { from: number; to: number; windows: CommandWindows } | undefined // the cycle the last change-finding judgement started: from it on the mtime clock to the run's end, with the run's command windows (RunOptions.commandWindows)
+  cycle: { from: number; to: number; windows: CommandWindows } | undefined // the cycle the last change-finding judgement started: from it on the mtime clock to the run's end, with the run's command windows (RunHandoff.commandWindows)
   constructor(ctx: JudgeContext)
   seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
   sawEvent(abs: string): void // an event: a write during `cycle` no command of it (nor a held server) may have made is a change next time, whatever it settles to
@@ -697,7 +697,7 @@ Watch mode re-invokes `orchestrator.run` per cycle with
 requested or only a dependency, is handed back
 running (`RunSummary.persistent`) instead of being stopped when its
 graph ends. The loop holds them while it idles and hands them to the
-next cycle as `RunOptions.keep`: a server still up whose task that
+next cycle as `RunHandoff.keep`: a server still up whose task that
 cycle starts again, with the same resolved config and forwarded args,
 stays up and reads ready at once (`0ms running`), and what it writes
 reaches the new cycle's renderer. The rest of the graph re-runs as

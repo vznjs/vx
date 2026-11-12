@@ -54,7 +54,12 @@ describe('a server held from an earlier run', () => {
       `,
     })
     const one = capture()
-    const first = await run({ cwd: root, tasks: ['dev'], log: one.logger, holdPersistent: true })
+    const first = await run({
+      cwd: root,
+      tasks: ['dev'],
+      log: one.logger,
+      handoff: { holdPersistent: true },
+    })
     expect(first.persistent?.ids).toEqual(['app#dev'])
     await Bun.write(`${root}/packages/app/armed`, '')
     const two = capture()
@@ -62,8 +67,7 @@ describe('a server held from an earlier run', () => {
       cwd: root,
       tasks: ['dev'],
       log: two.logger,
-      holdPersistent: true,
-      keep: first.persistent!,
+      handoff: { holdPersistent: true, keep: first.persistent! },
     })
     await second.persistent?.stop()
     await first.persistent!.stop()
@@ -92,15 +96,19 @@ describe('a server held from an earlier run', () => {
       `,
     })
     const one = capture()
-    const first = await run({ cwd: root, tasks: ['dev'], log: one.logger, holdPersistent: true })
+    const first = await run({
+      cwd: root,
+      tasks: ['dev'],
+      log: one.logger,
+      handoff: { holdPersistent: true },
+    })
     await Bun.write(`${root}/packages/app/armed`, '')
     const two = capture()
     const second = await run({
       cwd: root,
       tasks: ['dev'],
       log: two.logger,
-      holdPersistent: true,
-      keep: first.persistent!,
+      handoff: { holdPersistent: true, keep: first.persistent! },
     })
     await second.persistent?.stop()
     await first.persistent!.stop()

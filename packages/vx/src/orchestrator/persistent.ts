@@ -398,7 +398,7 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
   // keep-alive says it: `vx watch` sat on "watching" over a dead dev
   // server. The holder's own stop() is not such a death.
   const state = { stopping: false }
-  // Taken by a later run (`RunOptions.keep`): kept or stopped there.
+  // Taken by a later run (`RunHandoff.keep`): kept or stopped there.
   const handed = new Set<Child>()
   return {
     ids: keepAlive.nodes.map((n) => n.id),
@@ -414,7 +414,7 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
  * Apart from `holdServers`, and in a loop, so that no closure the
  * hand-back keeps sees `args`: its `outOf` reads the run that held it,
  * which the next cycle's run keeps through this hand-back
- * (`RunOptions.keep`).
+ * (`RunHandoff.keep`).
  */
 function heldServerMap(
   keepAlive: KeepAlive,

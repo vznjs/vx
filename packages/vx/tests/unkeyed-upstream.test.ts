@@ -142,7 +142,7 @@ it(
     gitIn(root)('add', '-A')
     gitIn(root)('commit', '-q', '-m', 'fixture')
     const r = await run({ cwd: root, tasks: ['app#e2e'], log, handleSignals: false })
-    expect(r.outcomes.find((o) => o.node.id === 'app#e2e')?.saved).toBeUndefined()
+    expect(r.outcomes.find((o) => o.node.id === 'app#e2e')?.cache?.saved).toBeUndefined()
     expect(lines.filter((l) => l.startsWith('[vx] app#e2e:'))).toEqual([
       '[vx] app#e2e: not saved — its key folds app#serve, which declares no `inputs`, so no ' +
         'later run derives it; declare inputs on app#serve',

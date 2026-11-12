@@ -95,7 +95,7 @@ describe('exec.retries — e2e', () => {
         projects: ['slowflaky'],
         log: capturingLogger(fixture),
       })
-      expect(r.outcomes[0]!.attempts).toBe(2)
+      expect(r.outcomes[0]!.attempts?.count).toBe(2)
       // Two attempts of 300 ms each; the last alone is ~300.
       expect(r.outcomes[0]!.durationMs).toBeGreaterThanOrEqual(580)
     },
@@ -129,7 +129,7 @@ describe('exec.retries — e2e', () => {
       })
       expect(r1.ok).toBe(true)
       expect(r1.outcomes[0]!.status).toBe('success')
-      expect(r1.outcomes[0]!.attempts).toBe(2)
+      expect(r1.outcomes[0]!.attempts?.count).toBe(2)
       expect(fixture.err.join('')).toContain('vx: retrying flaky#build (attempt 2/2) after exit 1')
 
       // Second run is a cache hit; the replayed stdout carries ONLY the
@@ -174,7 +174,7 @@ describe('exec.retries — e2e', () => {
       expect(r.ok).toBe(false)
       expect(r.outcomes[0]!.status).toBe('failed')
       expect(r.outcomes[0]!.exitCode).toBe(3)
-      expect(r.outcomes[0]!.attempts).toBe(3)
+      expect(r.outcomes[0]!.attempts?.count).toBe(3)
       expect(lineCount(path.join(dir, 'attempts.txt'))).toBe(3)
     },
     TIMEOUT,

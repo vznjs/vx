@@ -61,7 +61,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       const o = r.outcomes[0]!
       return [
         o.status,
-        (o.sandboxViolations ?? 0) > 0,
+        (o.sandbox?.violations ?? 0) > 0,
         await readFile(path.join(dir, 'out', 'r.txt'), 'utf8').catch(() => ''),
       ]
     }
@@ -81,7 +81,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
         await outcome(read, 'config.json')
         const r = await run({ cwd: root, tasks: ['t'], log })
-        expect(r.outcomes[0]!.sandboxFix?.read, said).toEqual(['.', 'conf/real.json'])
+        expect(r.outcomes[0]!.sandbox?.fix?.read, said).toEqual(['.', 'conf/real.json'])
       }
     })
 

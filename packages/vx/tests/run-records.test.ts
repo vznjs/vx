@@ -28,7 +28,7 @@ function outcome(
     exitCode: 0,
     durationMs: 100,
     ...extra,
-  }
+  } as TaskOutcome
 }
 
 function input(outcomes: TaskOutcome[], over: Partial<RunRecordsInput> = {}): RunRecordsInput {
@@ -58,10 +58,9 @@ describe('assembleRunRecords', () => {
       input([
         outcome('a#build', 'success', {
           hash: 'h1',
-          wallclockStartNs: 1_500_400_000n,
-          wallclockEndNs: 2_600_600_000n,
-          attempts: 2,
-          sandboxViolations: 3,
+          timing: { startNs: 1_500_400_000n, endNs: 2_600_600_000n },
+          sandbox: { violations: 3 },
+          attempts: { count: 2 },
         }),
         outcome('b#build', 'skipped', { durationMs: 250, blockedBy: 'a#build' }),
       ]),
@@ -89,7 +88,8 @@ describe('assembleRunRecords', () => {
         project: 'b',
         task: 'build',
         status: 'skipped',
-        exitCode: 0,
+        // A skip behind a failure has no exit of its own: the record's is 1.
+        exitCode: 1,
         durationMs: 250,
         startedAt: 1_004_750,
         endedAt: 1_005_000,
@@ -129,9 +129,9 @@ describe('assembleRunRecords', () => {
   it('writes the header row from the run, its context and its counts', () => {
     const { invocation } = assembleRunRecords(
       input([
-        outcome('a#build', 'cache-hit', { restored: true }),
+        outcome('a#build', 'cache-hit', { cache: { restored: true } }),
         outcome('b#build', 'cache-hit-remote'),
-        outcome('c#build', 'cache-hit-remote', { restored: true }),
+        outcome('c#build', 'cache-hit-remote', { cache: { restored: true } }),
         outcome('d#build', 'failed', { exitCode: 1 }),
         outcome('e#build', 'success'),
       ]),
@@ -183,9 +183,9 @@ describe('assembleRunRecords', () => {
   it('counts the same tasks in the header, the terminal and telemetry', () => {
     const outcomes = [
       outcome('ws#all', 'success', {}, {}),
-      outcome('a#build', 'cache-hit', { restored: true }),
-      outcome('b#build', 'cache-hit', { restored: false }),
-      outcome('c#build', 'cache-hit-remote', { restored: true }),
+      outcome('a#build', 'cache-hit', { cache: { restored: true } }),
+      outcome('b#build', 'cache-hit', { cache: { restored: false } }),
+      outcome('c#build', 'cache-hit-remote', { cache: { restored: true } }),
       outcome('d#build', 'aborted', { exitCode: 130 }),
       outcome('e#build', 'failed', { exitCode: 1 }),
       outcome('f#build', 'skipped', { blockedBy: 'e#build' }),

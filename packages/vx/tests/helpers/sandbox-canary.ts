@@ -120,7 +120,7 @@ for (let i = 0; i < ITERATIONS; i++) {
     let verdict: Verdict
     if (outcome === undefined || !controlRan) verdict = 'RUN_ERROR'
     else if (leaked || (r.ok && outcome.status !== 'failed')) verdict = 'NOT_ENFORCED'
-    else if ((outcome.sandboxViolations ?? 0) > 0) verdict = 'ENFORCED_REPORTED'
+    else if ((outcome.sandbox?.violations ?? 0) > 0) verdict = 'ENFORCED_REPORTED'
     else verdict = 'ENFORCED_UNREPORTED'
     counts[verdict]++
     if (verdict === 'NOT_ENFORCED') {

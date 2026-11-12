@@ -105,7 +105,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await writeFile(path.join(root, 'packages', 'app', 'dist', 'old.js'), 'old')
       const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
       const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
-      expect(r.outcomes[0]?.sandboxViolationLines).toEqual([HINT])
+      expect(r.outcomes[0]?.sandbox?.lines).toEqual([HINT])
     }, 30_000)
   },
 )

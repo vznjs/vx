@@ -28,7 +28,7 @@ type Child = ReturnType<typeof Bun.spawn>
 
 /**
  * The abort reason that stops a run's own work and spares its ready
- * servers, handed in (`RunOptions.keep`) or made ready by the run, which
+ * servers, handed in (`RunHandoff.keep`) or made ready by the run, which
  * it hands back. `vx watch` stops a cycle waiting on a server that never
  * becomes ready (WD-15); any other stop took the unchanged servers down
  * with it, and they restarted.

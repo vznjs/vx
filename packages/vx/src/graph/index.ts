@@ -22,6 +22,7 @@ export { setStandIns, type StandIns, standInsOf } from './stand-ins.js'
 export { criticalPath } from './critical-path.js'
 export { taskDefinition, taskDefinitions } from './definition.js'
 export {
+  exitCodeOf,
   type InputChanges,
   RestoreDemoted,
   isKeyFailed,
@@ -31,6 +32,17 @@ export {
   OutputsFailed,
   outputsFailedOf,
   RestoreFailed,
+  type AbortedOutcome,
+  type FailedOutcome,
+  type OutcomeAttempts,
+  type OutcomeCache,
+  type OutcomePlacement,
+  type OutcomeSandbox,
+  type OutcomeTiming,
+  type OutcomeUsage,
+  type SandboxFix,
+  type SkippedOutcome,
+  type SucceededOutcome,
   type TaskOutcome,
 } from './outcome.js'
 export { type ContinueMode, deadServerBehind, idleServers, runGraph } from './scheduler.js'

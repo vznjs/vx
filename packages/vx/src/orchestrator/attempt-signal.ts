@@ -40,20 +40,20 @@ export class AttemptSignal {
   request(local: boolean): AbortSignal {
     const { args } = this
     const stop = new AbortController()
-    const abort = (): void => stop.abort(args.stopSignal?.reason)
+    const abort = (): void => stop.abort(args.run.stopSignal?.reason)
     this.unlisten?.()
     this.unlisten = undefined
     this.unbegun = false
     this.withdrawUnbegun = undefined
-    if (args.stopSignal?.aborted === true) abort()
-    else if (args.stopSignal !== undefined) {
-      const run = args.stopSignal
+    if (args.run.stopSignal?.aborted === true) abort()
+    else if (args.run.stopSignal !== undefined) {
+      const run = args.run.stopSignal
       run.addEventListener('abort', abort, { once: true })
       this.unlisten = () => run.removeEventListener('abort', abort)
     }
     // `--continue=never` starts nothing after a failure: a task a plugin
     // executor still holds for a machine is not yet started.
-    const failFast = args.failFast
+    const failFast = args.run.failFast
     if (!local && failFast !== undefined && args.executor.running !== undefined) {
       const withdraw = (): void => {
         if (stop.signal.aborted || args.executor.running?.(args.node.id) !== null) return

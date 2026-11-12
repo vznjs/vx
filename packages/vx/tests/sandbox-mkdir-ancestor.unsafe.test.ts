@@ -94,7 +94,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await mkdir(path.join(dir, 'node_modules', 'dep'), { recursive: true })
       await writeFile(path.join(dir, 'node_modules', 'dep', 'index.js'), 'x\n')
       const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-      return [r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolations ?? 0]
+      return [r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.violations ?? 0]
     }
 
     it('passes when the cache directory is granted', async () => {
@@ -116,7 +116,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await mkdir(path.join(dir, 'src', 'lib'), { recursive: true })
       const r = await run({ cwd: root, tasks: ['seen', 'made'], log: quiet })
       const by = Object.fromEntries(
-        r.outcomes.map((o) => [o.node.id, [o.status, o.sandboxViolations ?? 0]]),
+        r.outcomes.map((o) => [o.node.id, [o.status, o.sandbox?.violations ?? 0]]),
       )
       expect(by).toEqual({ 'app#seen': ['success', 0], 'app#made': ['failed', 1] })
     })

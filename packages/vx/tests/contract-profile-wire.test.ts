@@ -62,10 +62,9 @@ async function profileJson(): Promise<unknown> {
       status: 'success',
       exitCode: 0,
       durationMs: 1,
-      wallclockStartNs: 1_000_000n,
-      wallclockEndNs: 3_000_000n,
       ...extra,
-    }
+      timing: { startNs: 1_000_000n, endNs: 3_000_000n, ...extra.timing },
+    } as TaskOutcome
   }
   // Every field the profile reads, and the unkeyed, unmeasured task
   // beside it (`hash: null`, no `cpuMs`).
@@ -74,7 +73,11 @@ async function profileJson(): Promise<unknown> {
     target: 'profile.json',
     cwd: dir,
     outcomes: [
-      outcome('a#build', { hash: 'h1', cpuMs: 5, peakRssBytes: 4, fetchMs: 3 }),
+      outcome('a#build', {
+        hash: 'h1',
+        usage: { cpuMs: 5, peakRssBytes: 4 },
+        timing: { fetchMs: 3 },
+      }),
       outcome('b#gen', {}),
     ],
   })

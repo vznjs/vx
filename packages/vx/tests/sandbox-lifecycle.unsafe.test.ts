@@ -595,7 +595,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           const held = await run({
             cwd: fixture.root,
             tasks: ['srv#serve'],
-            holdPersistent: true,
+            handoff: { holdPersistent: true },
             log: collectingLogger(fixture),
           })
           try {
@@ -645,7 +645,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const held = await run({
           cwd: fixture.root,
           tasks: ['srv#serve'],
-          holdPersistent: true,
+          handoff: { holdPersistent: true },
           log: collectingLogger(fixture),
         })
         const order: string[] = []

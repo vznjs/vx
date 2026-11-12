@@ -49,7 +49,7 @@ describe.skipIf(!available || python === null || process.platform !== 'linux')(
       await writeFile(path.join(dir, 'deep', 'f.txt'), 'hi\n')
       const r = await run({ cwd: root, tasks: ['t'], log: quiet })
       const o = r.outcomes[0]
-      return [o?.status, o?.sandboxViolations ?? 0, o?.sandboxFix]
+      return [o?.status, o?.sandbox?.violations ?? 0, o?.sandbox?.fix]
     }
 
     it('passes where a read grant covers it', async () => {

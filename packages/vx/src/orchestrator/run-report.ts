@@ -94,7 +94,7 @@ export class RunKeeper {
         })
       }
     }
-    if (this.args.failures && o.status === 'failed' && o.where === undefined) {
+    if (this.args.failures && o.status === 'failed' && o.placement?.where === undefined) {
       // Read now: a later task may write where this one's outputs lie.
       const packed = outputsLeft(
         o.node,

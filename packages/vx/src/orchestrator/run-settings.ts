@@ -23,14 +23,14 @@ const FROM_OPTIONS = {
  * `options` with each run-level setting it leaves unset filled from the
  * environment, then the workspace.
  */
-export function withRunSettings(
-  options: RunOptions,
+export function withRunSettings<T extends RunOptions>(
+  options: T,
   workspace: WorkspaceConfig | null | undefined,
-): RunOptions {
-  const out: Record<string, unknown> = { ...options }
+): T {
+  const out: Record<string, unknown> = { ...(options as RunOptions) }
   for (const [field, path] of Object.entries(FROM_OPTIONS)) {
     const { value } = resolveSetting(path, workspace, options[field as keyof RunOptions])
     if (value !== undefined) out[field] = value
   }
-  return out as unknown as RunOptions
+  return out as unknown as T
 }

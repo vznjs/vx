@@ -4,7 +4,7 @@
 import type { ExecConfig, InputsConfig, InputStability } from '../config.js'
 import { type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
 import { standInsOf, type TaskOutcome } from '../graph/index.js'
-import type { ExecuteArgs } from './execute-task.js'
+import type { ExecuteArgs, RunContext } from './execute-task.js'
 import { isKeyless } from './task-hash.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 import { taskTimeoutMs } from './task-process.js'
@@ -50,11 +50,12 @@ export interface TaskPolicy {
 }
 
 export function taskPolicy(args: ExecuteArgs): TaskPolicy {
-  const { node, upstream, cache } = args
+  const { node, upstream } = args
+  const { cache } = args.run
   const cfg = node.config
   const exec = cfg.exec as ExecConfig // the dispatcher guarantees exec is present
   const cfgOut = cfg.outputs
-  const policy = args.cachePolicy ?? FULL_CACHE_POLICY
+  const policy = args.run.cachePolicy ?? FULL_CACHE_POLICY
   const cacheable = cfg.cache === true
   // `--no-cache` (all axes off) leaves the user's tree alone, while `--force`
   // (reads off, writes on) still wipes and repopulates a clean snapshot. A
@@ -75,7 +76,7 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
   const keylessBy = isKeyless(cfg)
     ? node.id
     : foldedTasks
-        .map((u) => u.keylessBy ?? (isKeyless(u.node.config) ? u.node.id : undefined))
+        .map((u) => u.cache?.keylessBy ?? (isKeyless(u.node.config) ? u.node.id : undefined))
         .find((id) => id !== undefined)
   const keyless = keylessBy !== undefined
   const reads = policy.localRead || policy.remoteRead
@@ -87,7 +88,7 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
   // under a key folding `gen`'s, and once `a.txt` was put back `use` hit
   // the edit's output. Only an upstream whose key this one folds: one read
   // by content (`tasks: []` and a file input) is judged by its bytes.
-  const unkeyedUpstream = foldedTasks.find((u) => u.unkeyed === true)
+  const unkeyedUpstream = foldedTasks.find((u) => u.cache?.unkeyed === true)
   const willSave =
     willWrite &&
     args.taintedUpstream !== true &&
@@ -101,8 +102,8 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
   const remoteOff = (axis: 'remoteRead' | 'remoteWrite'): boolean =>
     cache.hasRemote === true && !policy[axis]
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
-  const retriesSet = exec.retries !== undefined || args.retries !== undefined
-  const maxAttempts = 1 + (exec.retries ?? args.retries ?? 0)
+  const retriesSet = exec.retries !== undefined || args.run.retries !== undefined
+  const maxAttempts = 1 + (exec.retries ?? args.run.retries ?? 0)
   return {
     exec,
     cache: policy,
@@ -116,20 +117,21 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
     deferred: args.download === 'deferred',
     outputs: cfgOut?.files ?? [],
     wsOutputs: cfgOut?.workspaceFiles ?? [],
-    forwardArgs: node.requested ? (args.forwardArgs ?? []) : [],
+    forwardArgs: node.requested ? (args.run.forwardArgs ?? []) : [],
     // `exec.timeout` beats `run.timeout` (flag, variable, workspace).
-    timeout: taskTimeoutMs(exec) ?? args.timeout,
+    timeout: taskTimeoutMs(exec) ?? args.run.timeout,
     additive,
     // `outputs.clean: false` leaves the outputs to the first attempt's
     // command and saves whatever they hold after it: the user opted out of
     // the clean-tree guarantee. An additive task never cleans by glob anyway.
-    keepOutputs: !additive && (cfgOut?.clean ?? args.cleanOutputs ?? true) === false,
+    keepOutputs: !additive && (cfgOut?.clean ?? args.run.cleanOutputs ?? true) === false,
     sandboxed: exec.sandbox !== undefined,
     retriesSet,
     maxAttempts,
     retryCanFollow:
-      maxAttempts > 1 || (!retriesSet && cacheable && !keyless && args.knownFlaky !== undefined),
-    stability: inputStabilityOf(cfg.inputs, args.inputStability),
+      maxAttempts > 1 ||
+      (!retriesSet && cacheable && !keyless && args.run.knownFlaky !== undefined),
+    stability: inputStabilityOf(cfg.inputs, args.run.inputStability),
     unsaved: cacheable && ((!remoteOnly && !willSave) || remoteOff('remoteWrite')),
     refresh: cacheable && (!reads || remoteOff('remoteRead')),
   }
@@ -144,7 +146,7 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
  */
 export function inputStabilityOf(
   inputs: InputsConfig | undefined,
-  layers: ExecuteArgs['inputStability'],
+  layers: RunContext['inputStability'],
 ): Required<InputStability> {
   const task = inputs?.stability
   return {

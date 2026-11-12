@@ -36,7 +36,10 @@ for the extension seams.
 ```ts
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
-// The abort reason `vx watch` stops a cycle with: the run's own work stops, its ready servers, handed in (`RunOptions.keep`) or made ready by the run, are spared.
+// The same two as vx's CLI calls them, with its hand-off (CoreRunOptions).
+export function runCore(options: CoreRunOptions): Promise<RunSummary>
+export function planCore(options: CoreRunOptions): Promise<RunPlan>
+// The abort reason `vx watch` stops a cycle with: the run's own work stops, its ready servers, handed in (`RunHandoff.keep`) or made ready by the run, are spared.
 export const CYCLE_INTERRUPT: 'vx:cycle-interrupt'
 export function nxProjectTarget(spec: string, projects): string | undefined // Nx's `web:build` as `web#build`, when web declares build
 export function projectNamed(typed: string, projects): string | undefined // `cart` as `@scope/cart`, when that is the one such project
@@ -146,7 +149,7 @@ export interface RunSummary {
 9. **`runGraph({..., priorities, restoreTier})`.** Two-tier schedule;
    each ready node runs `executeTask` (with its pre-probe when
    present; its arguments from `executeArgsOf`, execute-args.ts, which
-   spreads the run's `RunScope` built once) through `admission.ts`: a service-supplied `inflight` map
+   hands every task the run's one `RunContext` by reference) through `admission.ts`: a service-supplied `inflight` map
    dedupes identical-hash tasks across concurrent delegated runs, and
    under `continueMode: 'always'` the taint of an upstream failure is
    tracked so the task's save is withheld.
@@ -183,13 +186,13 @@ export interface RunSummary {
     reset during the session is reset back silently, as a run's open does.
     Its telemetry summary (step 14) waits for that verdict too, after the
     plugins' teardown, so a sink (vx-ci's job summary) reads the failure.
-    Under `RunOptions.holdPersistent` (the watch loop) every server is
+    Under `RunHandoff.holdPersistent` (the watch loop) every server is
     kept, a dependency-only one too (but one with no `inputs.files`), and run() returns at
     once with the kept tasks on `RunSummary.persistent` (`holdServers`): the caller
     owns them and its `stop()` is the same teardown. One that dies on
     its own after that is named (`vx: <id> exited with code <n>`,
     #2442), so a watch loop idling over a dead server says so; the
-    teardown its `stop()` runs is not. `RunOptions.keep` hands such a
+    teardown its `stop()` runs is not. `RunHandoff.keep` hands such a
     hand-back to the next run: each server still up whose node is in its
     graph with the same resolved config (`serverConfig`), and for a
     dependency-only one (`keyedServers`) the same key, is reported
@@ -422,19 +425,12 @@ export interface RunOptions {
   cwd: string
   tasks: readonly string[] // bare names and `pkg#task` specs
   projects?: string[] // the selection's project names; undefined = no scope needed
-  selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
   affected?: AffectedChanges // --affected's diff: a bare task runs only when it reaches a seeded task (affected-tasks.md)
-  selectedOutright?: readonly string[] // projects a non-affected --filter named: their tasks run beside affected ones (X-10)
-  affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
-  staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
-  discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   concurrency?: number // run.concurrency: the flag, else VX_RUN_CONCURRENCY, else .vx/workspace (withRunSettings)
   cacheDir?: string // --cache-dir, resolved against cwd
   cache?: CachePolicy // --cache-policy / VX_CACHE_POLICY resolved; absent → the workspace's cache.policy, else FULL_CACHE_POLICY
   cacheFlags?: CacheFlags // with no `cache`: --no-cache / --force over the workspace's cache.policy
-  remoteRequested?: string // the setting whose spec named a remote axis ('--cache-policy')
   cacheScope?: string // an embedder's scope, above VX_CACHE_SCOPE, a plugin's and the branch's
-  remoteReadOnlyByDefault?: boolean // the default policy writes no remote; the CLI passes it off CI
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   downloadConcurrency?: number // cache.concurrency.download
@@ -452,11 +448,6 @@ export interface RunOptions {
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
-  holdPersistent?: boolean // hand every persistent task still running (a dependency-only one only with inputs.files) back on RunSummary.persistent
-  watch?: boolean // a vx watch cycle: a save withheld over an input edited mid-run says the next cycle runs on it
-  keep?: HeldPersistent // an earlier hand-back: a server still up whose task is unchanged stays up; the rest stop first
-  commandWindows?: CommandWindows // where the run records when each command ran (and each restore or deferred fetch) and where it may write; vx watch passes its own to tell a user's mid-cycle write from the run's
-  summaryTable?: boolean // --verbosity 1: the per-task table, just above the footer
   tty?: boolean // vx's stdin is a terminal: each exec.interactive task is handed it, alone
   log?: Logger
   bus?: EventBus // an embedder's bus; the run's own when absent
@@ -466,6 +457,25 @@ export interface RunOptions {
   remoteCache?: RemoteCacheLayer // an injected remote layer; wins over the cache seam
   artifactCeiling?: number // the 2 GiB artifact ceiling, lowered only by a test
 }
+// What only vx's own CLI hands run(): not on the façade's RunOptions.
+export interface RunHandoff {
+  staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
+  discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
+  selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
+  selectedOutright?: readonly string[] // projects a non-affected --filter named: their tasks run beside affected ones (X-10)
+  affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
+  remoteRequested?: string // the setting whose spec named a remote axis ('--cache-policy')
+  remoteReadOnlyByDefault?: boolean // the default policy writes no remote; the CLI passes it off CI
+  summaryTable?: boolean // --verbosity 1: the per-task table, just above the footer
+  holdPersistent?: boolean // hand every persistent task still running (a dependency-only one only with inputs.files) back on RunSummary.persistent
+  watch?: boolean // a vx watch cycle: a save withheld over an input edited mid-run says the next cycle runs on it
+  keep?: HeldPersistent // an earlier hand-back: a server still up whose task is unchanged stays up; the rest stop first
+  commandWindows?: CommandWindows // where the run records when each command ran (and each restore or deferred fetch) and where it may write; vx watch passes its own to tell a user's mid-cycle write from the run's
+}
+// run()'s argument inside vx (runCore / planCore): the public options and the hand-off.
+export interface CoreRunOptions extends RunOptions {
+  handoff?: RunHandoff
+}
 export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
@@ -474,15 +484,17 @@ export interface RunSummary {
 }
 ```
 
-`staged` is the CLI's own selection load handed to the run: a filter
+`handoff.staged` is the CLI's own selection load handed to the run: a filter
 that walks the graph (`app...`, `--affected` with a diff) stages every
 config to read the `pkg#task` edges, and the run reuses those entries
 instead of evaluating and staging them again (`loadProjects` seeds and
 scopes exactly as before). One run only — `vx watch` deletes it from
 the options it re-runs, since a cycle after an edit must load again.
 
-Both are re-exported by `orchestrator/index.ts` (the module contract)
-and by the package façade `src/index.ts`. See
+`RunOptions` and `RunSummary` are re-exported by `orchestrator/index.ts`
+(the module contract) and by the package façade `src/index.ts`;
+`RunHandoff`, `CoreRunOptions`, `runCore` and `planCore` only by the
+module, so the CLI's plumbing is no embedder's surface. See
 [`orchestrator.md`](#srcorchestratorindexrunts--end-to-end-glue) for the full field-by-field
 documentation — this page exists to map the file, the types are
 documented with their consumer.
@@ -505,25 +517,32 @@ return a `TaskOutcome` to the scheduler.
 ### Public surface
 
 ```ts
-export interface ExecuteArgs {
-  node: TaskNode
-  upstream: TaskOutcome[]
+// What every task of a run shares: built once, shared by reference.
+export interface RunContext {
   workspaceRoot: string
   cache: CacheLayer
   cachePolicy?: CachePolicy // 4-axis read/write control; undefined → everything on
   forwardArgs?: readonly string[]
   retries?: number // run-level retry default (run.retries); exec.retries wins
-  log: Logger
-  executor: TaskExecutor // where run.ts placed this task
   keyedProjects: (node: TaskNode) => ReadonlySet<string> // orchestrator.md
-  nestedProjectDirs: string[]
   runStartHrTimeNs: bigint
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
   track?: (taskId: string, pid: number) => () => void // TelemetrySource.track: samples each attempt's tree
-  // … and the optional run-scoped fields (timeout, preProbed, download,
-  // deferSave, taintedUpstream, serverDiedUnder, leftRunning, fingerprintWatch, noDependants,
-  // probesAfterWrites, …)
+  // … and the other optional run-wide fields (timeout, deferSave,
+  // serverDiedUnder, leftRunning, fingerprintWatch, probesAfterWrites, …)
+}
+
+// One dispatch: the run it belongs to, plus this task's own facts.
+export interface ExecuteArgs {
+  run: RunContext
+  node: TaskNode
+  upstream: TaskOutcome[]
+  log: Logger
+  executor: TaskExecutor // where run.ts placed this task
+  nestedProjectDirs: string[]
+  // … and the optional per-task fields (preProbed, download,
+  // taintedUpstream, noDependants, terminal, servers, …)
 }
 
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
@@ -628,7 +647,7 @@ one-shot handler mid-cleanup.
      have made to write into, stays too (inputs.md).
    - Build isolated env (`<projectDir>/node_modules/.bin`, then
      `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
-   - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
+   - `timing.startNs = process.hrtime.bigint() - runStartHrTimeNs`.
    - The attempt builds an `ExecuteRequest` (command, env, capture,
      declared outputs, timeout, sandbox grants) and hands it to
      `args.executor` — the executor this task was PLACED on by `run.ts`
@@ -654,9 +673,9 @@ one-shot handler mid-cleanup.
      `SANDBOX VIOLATIONS (<n>)` (the outcome's section is the last
      attempt's), so `vx last --log` keeps them. The final outcome (and the
      cached stdout) is the last attempt's, its `durationMs` every
-     attempt's; `TaskOutcome.attempts` is
+     attempt's; `TaskOutcome.attempts.count` is
      set when > 1.
-   - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
+   - `timing.endNs = process.hrtime.bigint() - runStartHrTimeNs`.
 5. **If exit 0 + caching enabled**: the key is re-checked
    (`keyStillTrue`, item 743): the key the describe re-derived before
    the command must equal it, no input may have moved since its
@@ -731,7 +750,7 @@ retry's clean that finds one added, removed or touched
 A process any attempt's shell left running (`ExecuteResult.leftRunning`)
 withholds the save, a failed attempt's too: it may write into the
 passing attempt's outputs. It is not killed, as a passing attempt's
-is not. The first one also calls `ExecuteArgs.leftRunning` (run.ts: it
+is not. The first one also calls `RunContext.leftRunning` (run.ts: it
 seeds the run's taint, so what is built on it is not saved either).
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
@@ -938,7 +957,7 @@ export function nestedDirsOf(
 ```
 
 `nestedDirsOf` is the projects nested in a keyed one, by its directory
-(`ExecuteArgs.nestedDirsOf`): a task granted that linked package is
+(`RunContext.nestedDirsOf`): a task granted that linked package is
 walled from them, since its key stops at a nested project
 (`sandbox/request.ts`).
 
@@ -959,7 +978,7 @@ since its hash is taken over them: built from `deps`, two groups whose
 dropped members differed shared one, and a keyed sibling was withheld.
 
 `run.ts` builds one lookup per run and hands it to every task
-(`ExecuteArgs.keyedProjects`); execute-task asks it only on the miss path
+(`RunContext.keyedProjects`); execute-task asks it only on the miss path
 of a sandboxed task that declares `cache`.
 
 ### Rules
@@ -1726,7 +1745,7 @@ export interface UpfrontGroupKey {
   `VX_INPUTS_STABILITY_STRATEGY=mutable`, true when no other command
   that may write the file ran between the describe and that write,
   `command-windows.ts`; `vx watch` reads the same windows to tell a
-  user's write during a cycle from the run's own, `RunOptions.commandWindows`) such a write is hashed and compared instead. Returns the
+  user's write during a cycle from the run's own, `RunHandoff.commandWindows`) such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
 - `keyOf` — wraps a key derivation for `executeTask` and `plan()`: a
   throw (a runtime probe that exits non-zero, a refused `inputs.env`
@@ -1973,7 +1992,7 @@ or `affectedRoots` reaches it. `affectedTaskProjects` is `vx show <task>
 opened and no key derived, so the list is the projects the run keeps
 (X-147).
 
-Given an `AffectedExplain` (`planRun` passes one as `RunOptions.affectedReasons`),
+Given an `AffectedExplain` (`planRun` passes one as `RunHandoff.affectedReasons`),
 both record why each kept request survived: the seed's changed file or
 package, and the `dependsOn` chain that carried it. Without one no map
 is filled and the walk does what it did.
@@ -2694,7 +2713,7 @@ rules stand between them and neither changes what the task is:
   is seeded just before its save (`ExecuteArgs.serverDiedUnder`), which
   withholds that save; a graph with a server therefore keeps the check on
   (`seedsLater`). So is a task whose shell left a process running
-  (`ExecuteArgs.leftRunning`): its dependents read a tree it may still
+  (`RunContext.leftRunning`): its dependents read a tree it may still
   write. `run()` turns the check on at that first leftover, before the
   task settles, so the tracker it makes then has every outcome a
   dependent's taint is read from. No seed, no server and no `always`
@@ -2815,8 +2834,8 @@ the footer.
 ### `writeRunProfile`
 
 Chrome-trace format. One `ph: 'X'` event per task with `ts` and
-`dur` in microseconds derived from `wallclockStartNs` /
-`wallclockEndNs`. Tasks with missing hrtime data (group tasks) are
+`dur` in microseconds derived from `timing.startNs` /
+`timing.endNs`. Tasks with missing hrtime data (group tasks) are
 skipped.
 
 Each project gets its own `tid` so overlapping tasks across packages

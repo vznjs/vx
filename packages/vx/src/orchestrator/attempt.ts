@@ -71,7 +71,7 @@ export async function runAttempt(
   // A sibling's failure under --continue=never can land while a retry
   // cleans or builds its request, after the loop's own check: the retry is
   // withdrawn and the attempt before it stands.
-  if (m.attempt > 1 && args.failFast?.aborted === true) {
+  if (m.attempt > 1 && args.run.failFast?.aborted === true) {
     const back = withdrawn()
     signal.settle()
     await sweepPlaceholders(sandbox.placeholders)
@@ -98,29 +98,29 @@ export async function runAttempt(
     (cfg.inputs?.workspaceFiles?.length ?? 0) > 0
       ? keyedOutsideGrants(
           req.sandbox,
-          args.workspaceRoot,
-          outsideProject(described.inputs.files, relPosix(args.workspaceRoot, node.projectDir)),
+          args.run.workspaceRoot,
+          outsideProject(described.inputs.files, relPosix(args.run.workspaceRoot, node.projectDir)),
         )
       : []
   const closeWindow =
     unseen.length > 0
       ? () => {}
-      : (args.commandWindows?.open(
+      : (args.run.commandWindows?.open(
           node.id,
           node.projectDir,
-          commandWriteReach(node, args.workspaceRoot),
+          commandWriteReach(node, args.run.workspaceRoot),
         ) ?? (() => {}))
-  if (unseen.length === 0) args.executing?.(node.id)
+  if (unseen.length === 0) args.run.executing?.(node.id)
   try {
     running = Promise.resolve(
       unseen.length > 0
-        ? unseenResult(unseen, node.projectDir, args.workspaceRoot)
+        ? unseenResult(unseen, node.projectDir, args.run.workspaceRoot)
         : args.executor.execute(req),
     )
   } catch (thrown) {
     running = Promise.reject(thrown)
   }
-  if (args.failFast?.aborted === true) signal.withdraw()
+  if (args.run.failFast?.aborted === true) signal.withdraw()
   let res = await signal
     .bound(running, req.signal, (line) => log.taskStderr(node, `${stream.nl()}${line}`))
     .then((r: unknown) => {
@@ -177,7 +177,7 @@ export async function runAttempt(
   if (res.spawnFailed === true && !existsSync(node.projectDir)) {
     await sweepPlaceholders(sandbox.placeholders)
     throw new UserError(
-      lockedDirGone(args.workspaceRoot, node.projectName, node.projectDir),
+      lockedDirGone(args.run.workspaceRoot, node.projectName, node.projectDir),
       'VX_E_LOCK',
     )
   }
@@ -222,7 +222,7 @@ async function classifyExit(
     violations.push({
       timestamp: new Date(),
       hint: true,
-      line: withheldLinkLine(node.id, w, args.projectAt?.(w.target)),
+      line: withheldLinkLine(node.id, w, args.run.projectAt?.(w.target)),
     })
   }
   // A placeholder the task never wrote is not its output: take it back
@@ -276,15 +276,15 @@ async function classifyExit(
   if (
     !res.timedOut &&
     (res.signal === 'SIGINT' || res.signal === 'SIGTERM') &&
-    args.stopSignal?.aborted !== true
+    args.run.stopSignal?.aborted !== true
   )
     await new Promise((resolve) => setTimeout(resolve, 0))
-  if (!res.timedOut && res.spawnFailed !== true && args.stopSignal?.aborted !== true) {
+  if (!res.timedOut && res.spawnFailed !== true && args.run.stopSignal?.aborted !== true) {
     const verdict = shellVerdict({
       code,
       command: policy.exec.command,
       cwd: node.projectDir,
-      bins: taskBinDirs(node, args.workspaceRoot),
+      bins: taskBinDirs(node, args.run.workspaceRoot),
       signal: res.signal,
       hidden: sandbox && ((f: string) => !sandboxReads(sandbox, f)),
       stderr: stream.errTail,

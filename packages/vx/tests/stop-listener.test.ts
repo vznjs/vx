@@ -64,14 +64,16 @@ describe("an attempt's listener on the run's stop signal", () => {
     executeTask({
       node: n,
       upstream: [] as TaskOutcome[],
-      workspaceRoot: root,
-      cache,
+      run: {
+        workspaceRoot: root,
+        cache,
+        runStartHrTimeNs: process.hrtime.bigint(),
+        keyedProjects: () => new Set<string>(),
+        stopSignal,
+      },
       log: quiet,
       executor,
       nestedProjectDirs: [] as string[],
-      runStartHrTimeNs: process.hrtime.bigint(),
-      keyedProjects: () => new Set<string>(),
-      stopSignal,
     })
 
   const ok = { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }

@@ -93,7 +93,24 @@ export type { Logger, OutputView } from './report/index.js'
 // consumers roll their own `split('#', 2)` and drift from the graph, which
 // splits on the FIRST '#'.
 export { criticalPath, outputsOverlap, splitTaskId, taskDefinitions } from './graph/index.js'
-export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
+// TaskOutcome is a union by status; its facts are grouped by concern.
+export type {
+  AbortedOutcome,
+  FailedOutcome,
+  InputChanges,
+  OutcomeAttempts,
+  OutcomeCache,
+  OutcomePlacement,
+  OutcomeSandbox,
+  OutcomeTiming,
+  OutcomeUsage,
+  SandboxFix,
+  SkippedOutcome,
+  SucceededOutcome,
+  TaskNode,
+  TaskOutcome,
+  TaskStatus,
+} from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency).
 // A remote layer errors a body it refuses with `CorruptArtifactError`.

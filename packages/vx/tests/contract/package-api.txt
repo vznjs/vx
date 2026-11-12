@@ -460,6 +460,12 @@ export function transient(line: Inline): () => void
 export function why(line: Inline): Block
 == function withForwardArgs (src/exec/runner.ts)
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
+== type AbortedOutcome (src/graph/outcome.ts)
+export interface AbortedOutcome
+  extends StartedOutcome, None<FailureFacts>, BlockFacts, None<PlatformFacts> {
+  status: 'aborted'
+  serverExit?: number
+}
 == type AdmitContext (src/orchestrator/plugin.ts)
 export interface AdmitContext {
   readonly running: readonly TaskNode[]
@@ -545,6 +551,10 @@ interface BaseContext {
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
   readonly head?: (colors: ColorSupport) => string
+}
+== type BlockFacts (src/graph/outcome.ts)
+interface BlockFacts {
+  blockedBy?: string
 }
 == type BranchFacts (src/orchestrator/plugin.ts)
 export interface BranchFacts {
@@ -750,11 +760,6 @@ export interface CommandContext extends BaseContext {
   readonly artifacts: TaskArtifacts
   artifactsFor(facts: () => CacheFacts | undefined): TaskArtifacts
 }
-== type CommandWindows (src/orchestrator/command-windows.ts)
-export interface CommandWindows {
-  open(id: string, projectDir: string, reach: WriteReach): () => void
-  writerDuring(self: string, file: string, from: number, to: number): string | undefined
-}
 == type ConfigContext (src/orchestrator/plugin.ts)
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
@@ -893,6 +898,20 @@ export interface FailedAttempt {
   endedAt: number
   exitCode: number
   timedOut?: true
+}
+== type FailedOutcome (src/graph/outcome.ts)
+export interface FailedOutcome
+  extends StartedOutcome, FailureFacts, None<BlockFacts>, None<PlatformFacts> {
+  status: 'failed'
+  serverExit?: never
+}
+== type FailureFacts (src/graph/outcome.ts)
+interface FailureFacts {
+  timedOut?: true
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  inputMoved?: string
+  restoreFailed?: true
+  failedOutput?: string
 }
 == type FailureMode (src/history/failure-mode.ts)
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
@@ -1230,6 +1249,8 @@ export interface MigrationPlan {
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
 }
+== type None (src/graph/outcome.ts)
+type None<T> = { [K in keyof T]?: never }
 == type NoticeParts (src/ui/components.ts)
 export interface NoticeParts {
   tone: Tone
@@ -1256,6 +1277,72 @@ type OptionKind<V> = [V] extends [string]
           : [V] extends [object]
             ? 'object'
             : 'any'
+== type OutcomeAttempts (src/graph/outcome.ts)
+export interface OutcomeAttempts {
+  count?: number
+  failed?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  outputs?: readonly string[]
+  flaky?: { passes: number; failures: number }
+}
+== type OutcomeBase (src/graph/outcome.ts)
+interface OutcomeBase {
+  node: TaskNode
+  durationMs: number
+  timing?: OutcomeTiming
+  usage?: OutcomeUsage
+  cache?: OutcomeCache
+  sandbox?: OutcomeSandbox
+  attempts?: OutcomeAttempts
+  placement?: OutcomePlacement
+  groupUpstream?: readonly TaskOutcome[]
+  taintedBy?: string
+  runLog?: string
+}
+== type OutcomeCache (src/graph/outcome.ts)
+export interface OutcomeCache {
+  stored?: { durationMs: number; cpuMs?: number; peakRssBytes?: number }
+  restored?: boolean
+  saved?: true
+  inputFiles?: number
+  artifactBytes?: number
+  outputBytes?: number
+  inputChanges?: InputChanges
+  deferred?: true
+  off?: true
+  unkeyed?: true
+  driftedInput?: string | null
+  keylessBy?: string
+}
+== type OutcomePlacement (src/graph/outcome.ts)
+export interface OutcomePlacement {
+  where?: string
+  carried?: true
+  cores?: number
+  memoryBytes?: number
+  cpuShare?: number
+}
+== type OutcomeSandbox (src/graph/outcome.ts)
+export interface OutcomeSandbox {
+  violations: number
+  lines?: string[]
+  fix?: SandboxFix
+}
+== type OutcomeTiming (src/graph/outcome.ts)
+export interface OutcomeTiming {
+  queuedMs?: number
+  admissionHeldMs?: number
+  startNs?: bigint
+  endNs?: bigint
+  fetchMs?: number
+  saveMs?: number
+}
+== type OutcomeUsage (src/graph/outcome.ts)
+export interface OutcomeUsage {
+  cpuMs?: number
+  peakRssBytes?: number
+  peakCores?: number
+  avgRssBytes?: number
+}
 == type OutcomeView (src/report/events.ts)
 export interface OutcomeView {
   taskId: string
@@ -1346,6 +1433,11 @@ export interface PlanPrediction {
 }
 == type Platform (src/config.ts)
 export type Platform = (typeof PLATFORMS)[number]
+== type PlatformFacts (src/graph/outcome.ts)
+interface PlatformFacts {
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  platform?: true
+}
 == type Plugin (src/config.ts)
 export interface Plugin {
   readonly name: string
@@ -1675,19 +1767,12 @@ export interface RunOptions {
   cwd: string
   tasks: readonly string[]
   projects?: string[]
-  selectedByDiff?: boolean
   affected?: AffectedChanges
-  selectedOutright?: readonly string[]
-  affectedReasons?: Map<string, AffectedReason>
-  staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy
   cacheFlags?: CacheFlags
-  remoteRequested?: string
   cacheScope?: string
-  remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   downloadConcurrency?: number
@@ -1705,11 +1790,6 @@ export interface RunOptions {
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
-  holdPersistent?: boolean
-  watch?: boolean
-  keep?: HeldPersistent
-  commandWindows?: CommandWindows
-  summaryTable?: boolean
   tty?: boolean
   log?: Logger
   bus?: EventBus
@@ -1866,6 +1946,16 @@ export interface SandboxConfig {
 export interface SandboxDenials {
   network?: readonly string[]
 }
+== type SandboxFix (src/graph/outcome.ts)
+export interface SandboxFix {
+  read?: string[]
+  write?: string[]
+  network?: string[]
+  systemInfo?: string[]
+  withheld?: string[]
+  inputs?: string[]
+  workspaceFiles?: string[]
+}
 == type SandboxGrants (src/config.ts)
 export interface SandboxGrants {
   read?: readonly string[]
@@ -1950,6 +2040,18 @@ export interface ServerSpec {
   readonly timeoutMs?: number
   readonly sandbox?: { readonly config: SandboxConfig; readonly nested: readonly string[] }
 }
+== type SkippedOutcome (src/graph/outcome.ts)
+export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFacts, PlatformFacts {
+  status: 'skipped'
+  exitCode?: never
+  hash?: string
+  serverExit?: never
+}
+== type StartedOutcome (src/graph/outcome.ts)
+interface StartedOutcome extends OutcomeBase {
+  exitCode: number
+  hash?: string
+}
 == type StoreMemo (src/memo/local-memo.ts)
 export interface StoreMemo {
   hashFile(filePath: string): Promise<string>
@@ -1999,6 +2101,12 @@ export type Style =
   | 'label'
   | 'border'
   | 'plain'
+== type SucceededOutcome (src/graph/outcome.ts)
+export interface SucceededOutcome
+  extends StartedOutcome, None<FailureFacts>, None<BlockFacts>, None<PlatformFacts> {
+  status: Exclude<TaskStatus, 'failed' | 'aborted' | 'skipped'>
+  serverExit?: number
+}
 == type TaskArtifacts (src/orchestrator/task-artifacts.ts)
 export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
@@ -2124,68 +2232,7 @@ export interface TaskNode {
   excludedUpstream?: TaskOutcome[]
 }
 == type TaskOutcome (src/graph/outcome.ts)
-export interface TaskOutcome {
-  node: TaskNode
-  status: TaskStatus
-  exitCode: number
-  durationMs: number
-  hash?: string
-  storedDurationMs?: number
-  storedCpuMs?: number
-  storedPeakRssBytes?: number
-  admissionHeldMs?: number
-  queuedMs?: number
-  inputFiles?: number
-  artifactBytes?: number
-  outputBytes?: number
-  fetchMs?: number
-  saveMs?: number
-  inputChanges?: InputChanges
-  cpuMs?: number
-  peakRssBytes?: number
-  peakCores?: number
-  avgRssBytes?: number
-  groupUpstream?: readonly TaskOutcome[]
-  unkeyed?: true
-  driftedInput?: string | null
-  keylessBy?: string
-  cacheOff?: true
-  blockedBy?: string
-  taintedBy?: string
-  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
-  timedOut?: true
-  failedOutput?: string
-  runLog?: string
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  serverExit?: number
-  inputMoved?: string
-  where?: string
-  carried?: true
-  whereCores?: number
-  whereMemoryBytes?: number
-  cpuShare?: number
-  outputs?: 'deferred'
-  saved?: true
-  restoreFailed?: true
-  wallclockStartNs?: bigint
-  wallclockEndNs?: bigint
-  restored?: boolean
-  attempts?: number
-  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
-  attemptOutputs?: readonly string[]
-  flaky?: { passes: number; failures: number }
-  sandboxViolations?: number
-  sandboxViolationLines?: string[]
-  sandboxFix?: {
-    read?: string[]
-    write?: string[]
-    network?: string[]
-    systemInfo?: string[]
-    withheld?: string[]
-    inputs?: string[]
-    workspaceFiles?: string[]
-  }
-}
+export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | SkippedOutcome
 == type TaskOutputs (src/config.ts)
 export interface TaskOutputs {
   files: readonly string[]
@@ -2448,8 +2495,6 @@ export interface WorkspaceRules {
   exclusiveOutputs?: boolean
   dependencies?: readonly DependencyRule[]
 }
-== type WriteReach (src/sandbox/request.ts)
-export type WriteReach = 'none' | 'project' | 'workspace'
 == runtime values
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"

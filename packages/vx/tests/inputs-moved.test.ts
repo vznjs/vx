@@ -20,7 +20,7 @@ import {
   startGitEnumeration,
 } from '../src/cache/index.js'
 import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
-import type { TaskNode } from '../src/graph/index.js'
+import { exitCodeOf, type TaskNode } from '../src/graph/index.js'
 import type { RunSummary } from '../src/orchestrator/index.js'
 import type { Logger } from '../src/report/index.js'
 import { failedLabel } from '../src/report/events.js'
@@ -299,14 +299,18 @@ describe('inputs.stability: what a write during the command means', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
       commit()
-      const first = await run({ cwd: root, tasks: ['srv'], log: logger, holdPersistent: true })
+      const first = await run({
+        cwd: root,
+        tasks: ['srv'],
+        log: logger,
+        handoff: { holdPersistent: true },
+      })
       status = []
       const second = await run({
         cwd: root,
         tasks: ['srv', 'read'],
         log: logger,
-        holdPersistent: true,
-        keep: first.persistent!,
+        handoff: { holdPersistent: true, keep: first.persistent! },
       })
       await second.persistent?.stop()
       await first.persistent!.stop()
@@ -412,7 +416,7 @@ describe('inputs.stability: what a write during the command means', () => {
       const o = r.outcomes.find((x) => x.node.id === 'app#format')!
       expect([o.exitCode, o.inputMoved]).toEqual([1, 'packages/app/a.ts'])
       expect(
-        failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved),
+        failedLabel(exitCodeOf(o), o.timedOut, o.sandbox?.violations, o.notReady, o.inputMoved),
       ).toBe('failed (packages/app/a.ts changed during the run, exit 1)')
     },
     TIMEOUT,
@@ -703,7 +707,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
       commit()
       status = []
-      const pending = run({ cwd: root, tasks: ['build'], log: logger, watch: true })
+      const pending = run({ cwd: root, tasks: ['build'], log: logger, handoff: { watch: true } })
       await reached(path.join(app, 'started'))
       await writeFile(path.join(app, 'src', 'a.ts'), 'EDITED\n')
       await writeFile(path.join(app, 'go'), '')

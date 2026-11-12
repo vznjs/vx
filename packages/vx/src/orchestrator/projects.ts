@@ -150,7 +150,7 @@ const isRef = (r: unknown): boolean =>
 
 /**
  * The enumeration a discovery's `discover` hooks shared, by the array it
- * returned: a run handed that array (`RunOptions.discovered`, the CLI's
+ * returned: a run handed that array (`RunHandoff.discovered`, the CLI's
  * `--filter` pass) reuses the walk a hook started instead of a second one.
  */
 const discoveredGit = new WeakMap<readonly ProjectMeta[], LazyGitEnumeration>()
@@ -163,7 +163,7 @@ type WorkspacePlugins = Awaited<ReturnType<typeof loadWorkspacePlugins>>
 
 /**
  * The workspace a discovery's caller loaded (`loadWorkspacePlugins`), by the
- * discovery's array: a run handed that array (`RunOptions.discovered`) runs
+ * discovery's array: a run handed that array (`RunHandoff.discovered`) runs
  * the `config` stage no second time, and a plugin's warning prints once.
  */
 const discoveredWorkspace = new WeakMap<readonly ProjectMeta[], WorkspacePlugins>()
@@ -214,7 +214,7 @@ export function nestedWorkspacesOf(projects: readonly ProjectMeta[]): readonly s
 /**
  * The package graph a selection pass built over a discovery, by that
  * discovery's array, when it folded no task edge in: the graph a run that
- * reuses the discovery (`RunOptions.discovered`) would build again.
+ * reuses the discovery (`RunHandoff.discovered`) would build again.
  */
 const discoveredGraph = new WeakMap<readonly ProjectMeta[], PackageGraph>()
 

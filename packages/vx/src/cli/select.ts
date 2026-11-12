@@ -199,7 +199,7 @@ export async function findCwdProject(
 
 /**
  * The project `cwd` is in, and the discovery that found it, for the run to
- * reuse (`RunOptions.discovered`): discovering again ran every `discover`
+ * reuse (`RunHandoff.discovered`): discovering again ran every `discover`
  * hook twice (`nx()`'s graph load and worktree key among them).
  */
 export async function findCwdSelection(
@@ -279,15 +279,15 @@ async function refuseUnlockedConfig(
 export type FilterResolution =
   | {
       names: string[]
-      /** An include filter was a git diff (`[ref]`, `--affected`): `RunOptions.selectedByDiff`. */
+      /** An include filter was a git diff (`[ref]`, `--affected`): `RunHandoff.selectedByDiff`. */
       byDiff: boolean
-      /** The staged load the graph walk needed, for the run to reuse (`RunOptions.staged`). */
+      /** The staged load the graph walk needed, for the run to reuse (`RunHandoff.staged`). */
       staged?: ReadonlyMap<string, ProjectEntry>
-      /** The discovery this pass made, for the run to reuse (`RunOptions.discovered`). */
+      /** The discovery this pass made, for the run to reuse (`RunHandoff.discovered`). */
       discovered: { root: string; projects: ProjectMeta[] }
       /** The `affected` filter's diff, for the run to seed its tasks from (`RunOptions.affected`). */
       affected?: AffectedChanges
-      /** What the other includes selected (`RunOptions.selectedOutright`). */
+      /** What the other includes selected (`RunHandoff.selectedOutright`). */
       outright?: string[]
     }
   | Refusal
@@ -419,7 +419,7 @@ export async function resolveFilters(
   )
   // Every reader of the staged configs in this pass — the `pkg#task`
   // edge walk, the `workspaceFiles` owners of a changed path — shares
-  // ONE load, and the run reuses it (`RunOptions.staged`): the `project`
+  // ONE load, and the run reuses it (`RunHandoff.staged`): the `project`
   // stage runs once per project per run.
   let stagedPromise: Promise<Map<string, ProjectEntry>> | undefined
   const stagedOnce = (): Promise<Map<string, ProjectEntry>> =>

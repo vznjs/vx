@@ -62,7 +62,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       return {
         got: [
           o.status,
-          o.sandboxViolations ?? 0,
+          o.sandbox?.violations ?? 0,
           await readFile(path.join(dir, 'real', 'f.txt'), 'utf8').catch(() => ''),
         ],
         warned: warned.filter((w) => w.includes('symlink')),

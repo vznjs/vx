@@ -109,7 +109,7 @@ import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
 import { cacheRefs, currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import { type Logger, warnOf } from '../report/index.js'
-import type { RunOptions } from './options.js'
+import type { CoreRunOptions, RunOptions } from './options.js'
 import { resolveSetting, runRules, settingEnv } from '../settings.js'
 
 export interface PreparedRun {
@@ -267,7 +267,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
  * `.gitignore` or row is made.
  */
 export async function prepareRunLocked(
-  options: RunOptions,
+  options: CoreRunOptions,
   log: Logger,
   beforeOpen?: (workspaceRoot: string, sharedCacheDir: string | undefined) => Promise<void>,
   countDependents = false,
@@ -343,7 +343,7 @@ export async function prepareRunLocked(
       gitFilesCache: new GitFilesCache(),
       empty:
         reason ??
-        (options.selectedByDiff === true && asked.unresolvedTasks.length === 0
+        (options.handoff?.selectedByDiff === true && asked.unresolvedTasks.length === 0
           ? 'none-affected'
           : 'no-tasks-declared'),
     })
@@ -393,7 +393,7 @@ export async function prepareRunLocked(
  * its cache lives, and its projects, with the lock read and git's walk
  * started as early as they can be.
  */
-async function startWorkspace(options: RunOptions, log: Logger, planning: boolean) {
+async function startWorkspace(options: CoreRunOptions, log: Logger, planning: boolean) {
   // A claimed root file is read once. A watch cycle is a new run and reads
   // them afresh.
   const reads: LoadReads = new Map()
@@ -402,7 +402,8 @@ async function startWorkspace(options: RunOptions, log: Logger, planning: boolea
   // 1,000 projects, ~10 ms to read and parse) starts here and overlaps the
   // workspace config's evaluation (X-181). A missing or malformed lock
   // refuses at discovery, after any earlier refusal.
-  const reused = options.discovered?.root === workspaceRoot ? options.discovered : undefined
+  const reused =
+    options.handoff?.discovered?.root === workspaceRoot ? options.handoff?.discovered : undefined
   const readLock =
     (reused !== undefined ? lockOfDiscovery(reused.projects) : undefined) ??
     lockReader(workspaceRoot)
@@ -490,7 +491,7 @@ async function startWorkspace(options: RunOptions, log: Logger, planning: boolea
 type Workspace = Awaited<ReturnType<typeof startWorkspace>>
 
 /** The package graph and which projects' configs the run's task specs need. */
-function scopeOf(options: RunOptions, ws: Workspace) {
+function scopeOf(options: CoreRunOptions, ws: Workspace) {
   const { reused, projectMetas } = ws
   // SCOPED config loading: configs are programs, and evaluating 1090
   // of them costs ~200 ms — the dominant fixed cost of small runs.
@@ -539,7 +540,7 @@ type Scope = ReturnType<typeof scopeOf>
  * plugins claim, read before any task can rewrite them.
  */
 async function openStore(
-  options: RunOptions,
+  options: CoreRunOptions,
   log: Logger,
   ws: Workspace,
   beforeOpen:
@@ -556,7 +557,7 @@ async function openStore(
   // holds only declared inputs, so a laptop's write could be replayed on CI.
   // A workspace policy naming the remote asks to write it, as `--cache-policy` does.
   const readOnly =
-    options.remoteReadOnlyByDefault === true &&
+    options.handoff?.remoteReadOnlyByDefault === true &&
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
   const wanted: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
   const resolvedStore = await ws.storeRoot
@@ -629,7 +630,7 @@ type Store = Awaited<ReturnType<typeof openStore>>
 
 /** The configs in scope, from the lock; `everyProject` loads the rest when a refusal needs them. */
 async function loadScope(
-  options: RunOptions,
+  options: CoreRunOptions,
   log: Logger,
   ws: Workspace,
   scope: Scope,
@@ -641,11 +642,11 @@ async function loadScope(
   // only `vx lock` evaluates.
   // See docs/design/config-lock-2026-06.md.
   // Read once, and only when a config is to be read from it: the CLI's
-  // selection pass may have staged every config (`options.staged`), and
+  // selection pass may have staged every config (`handoff.staged`), and
   // its load refused a run without a lock. A 1,000-project lock is
   // 1.1 MB of JSON (I-27); a run with nothing staged started its read
   // beside discovery, above.
-  const staged = options.staged
+  const staged = options.handoff?.staged
   const allStaged =
     staged !== undefined &&
     projectMetas.every(
@@ -668,7 +669,7 @@ async function loadScope(
       ...loadArgs,
       seeds: scope.seeds,
       closure: true,
-      ...(options.staged !== undefined ? { staged: options.staged } : {}),
+      ...(options.handoff?.staged !== undefined ? { staged: options.handoff?.staged } : {}),
     })
   } catch (err) {
     // The cache opened before the configs loaded; a config error must not
@@ -688,7 +689,7 @@ type Load = Awaited<ReturnType<typeof loadScope>>
  * What the task specs ask for over the loaded projects, and what is said
  * of a name they cannot find: unresolved, declared elsewhere, or hinted at.
  */
-async function judgeRequests(options: RunOptions, ws: Workspace, scope: Scope, load: Load) {
+async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scope, load: Load) {
   const { workspaceRoot, projectMetas } = ws
   const { tasks } = scope
   const { projects, projectsWithConfigs, everyProject } = load
@@ -725,18 +726,18 @@ async function judgeRequests(options: RunOptions, ws: Workspace, scope: Scope, l
   // A diff that changed only config-less projects loads none of them: no
   // candidate to ask, so every bare name is still to judge, or a typo ran
   // nothing, exit 0.
-  if (options.selectedByDiff === true && candidateProjects.length === 0)
+  if (options.handoff?.selectedByDiff === true && candidateProjects.length === 0)
     unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
   await refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
   // A scope that loaded no candidate judged no bare name: each is unresolved.
-  if (options.projects !== undefined && options.selectedByDiff !== true)
+  if (options.projects !== undefined && options.handoff?.selectedByDiff !== true)
     refuseUnlockedScope(
       candidateProjects.length === 0 ? tasks : unresolvedTasks,
       options.projects,
       projectMetas,
       workspaceRoot,
     )
-  if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
+  if (options.handoff?.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
     // it, and the run said no project did (C-3). Only what is still
@@ -755,7 +756,11 @@ async function judgeRequests(options: RunOptions, ws: Workspace, scope: Scope, l
   const bare = (candidateProjects.length === 0 ? tasks : unresolvedTasks).filter(
     (t) => !t.includes('#'),
   )
-  if (options.projects !== undefined && options.selectedByDiff !== true && bare.length > 0) {
+  if (
+    options.projects !== undefined &&
+    options.handoff?.selectedByDiff !== true &&
+    bare.length > 0
+  ) {
     let nowhere = undeclaredIn(bare, projects)
     if (nowhere.length > 0 && partialLoad) {
       nowhere = await declaredNowhere(nowhere, everyProject)
@@ -795,7 +800,7 @@ async function judgeRequests(options: RunOptions, ws: Workspace, scope: Scope, l
 type Asked = Awaited<ReturnType<typeof judgeRequests>>
 
 /** The cache the run reads and writes: the local one, layered over the run's remotes. */
-async function openLayer(options: RunOptions, log: Logger, ws: Workspace, store: Store) {
+async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, store: Store) {
   const { workspaceRoot, plugins } = ws
   const { localCache, policy } = store
   // Cache seam precedence: an EXPLICITLY injected remote layer
@@ -861,7 +866,7 @@ type Layer = Awaited<ReturnType<typeof openLayer>>
  * reaches; or `'none-affected'` when it reaches no request.
  */
 async function buildGraph(
-  options: RunOptions,
+  options: CoreRunOptions,
   log: Logger,
   ws: Workspace,
   scope: Scope,
@@ -887,7 +892,7 @@ async function buildGraph(
   // Every config is the lock's when it was read: a `project` plugin's
   // edits are the lock's record too (graph-memo.ts).
   const lock =
-    hashCache.folds !== undefined && options.staged === undefined && !load.allStaged
+    hashCache.folds !== undefined && options.handoff?.staged === undefined && !load.allStaged
       ? lockDigest(await ws.readLock())
       : undefined
   const graphMemo: GraphMemo | undefined =
@@ -937,9 +942,9 @@ async function buildGraph(
       workspaceRoot,
       {
         named: new Set(scope.tasks.filter((t) => t.includes('#'))),
-        outright: new Set(options.selectedOutright),
+        outright: new Set(options.handoff?.selectedOutright),
       },
-      options.affectedReasons && { reasons: options.affectedReasons },
+      options.handoff?.affectedReasons && { reasons: options.handoff?.affectedReasons },
     )
     if (kept.length === 0) return 'none-affected' as const
     if (before !== null) {
@@ -994,7 +999,7 @@ async function buildGraph(
 type Graph = Exclude<Awaited<ReturnType<typeof buildGraph>>, 'none-affected'>
 
 /** Whether `--exclude-dependencies` names anything to drop. */
-function excludes(options: RunOptions): boolean {
+function excludes(options: CoreRunOptions): boolean {
   const exclude = options.excludeDependencies
   return exclude !== undefined && (exclude === 'all' || exclude.length > 0)
 }
@@ -1004,7 +1009,7 @@ function excludes(options: RunOptions): boolean {
  * dependents count taken while git's blob-size check runs.
  */
 async function enumerateGit(
-  options: RunOptions,
+  options: CoreRunOptions,
   ws: Workspace,
   store: Store,
   asked: Asked,
@@ -1079,7 +1084,7 @@ type Enumerated = Awaited<ReturnType<typeof enumerateGit>>
  * tasks only keyed, never run.
  */
 async function applyKeyStages(
-  options: RunOptions,
+  options: CoreRunOptions,
   log: Logger,
   ws: Workspace,
   store: Store,

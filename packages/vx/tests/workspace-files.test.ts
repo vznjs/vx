@@ -782,7 +782,9 @@ describe('workspaceFiles e2e', () => {
         const summary = await run({ cwd: fixture.root, tasks: ['gen'], log: silentLogger(fixture) })
         expect(summary.ok).toBe(true)
         const o = summary.outcomes.find((o) => o.node.id === 'pkg-a#gen')
-        return o === undefined ? undefined : { status: o.status, restored: o.restored === true }
+        return o === undefined
+          ? undefined
+          : { status: o.status, restored: o.cache?.restored === true }
       }
       expect(await outcome()).toEqual({ status: 'success', restored: false })
       // Wiped and restored.

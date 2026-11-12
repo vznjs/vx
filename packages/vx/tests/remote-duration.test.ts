@@ -40,7 +40,7 @@ it(
         duration = d
         await rm(path.join(fx.root, '.vx', 'cache'), { recursive: true, force: true })
         const r = await run({ cwd: fx.root, tasks: ['build'], log, remoteCache: remote })
-        seen[String(d)] = [r.outcomes[0]!.status, r.outcomes[0]!.storedDurationMs]
+        seen[String(d)] = [r.outcomes[0]!.status, r.outcomes[0]!.cache?.stored?.durationMs]
       }
       expect(seen).toEqual({
         NaN: ['cache-hit-remote', 0],

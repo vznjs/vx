@@ -4,10 +4,11 @@ import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
 import {
-  planRun,
-  run as runOrchestrator,
+  planCore,
+  runCore as runOrchestrator,
   shellQuote,
-  type RunOptions,
+  type CoreRunOptions,
+  type RunHandoff,
 } from '../orchestrator/index.js'
 import { type ContinueMode, isKeyFailed } from '../graph/index.js'
 import {
@@ -117,7 +118,7 @@ function settingFlagOf(a: string): { s: Setting; name: string } | undefined {
   return undefined
 }
 
-/** Each setting a flag sets, and the RunOptions field it lands in. */
+/** Each setting a flag sets, and the CoreRunOptions field it lands in. */
 const SETTING_OPTIONS = [
   ['run.concurrency', 'concurrency'],
   ['run.schedule', 'schedule'],
@@ -129,7 +130,7 @@ const SETTING_OPTIONS = [
   ['cache.concurrency.download', 'downloadConcurrency'],
   ['cache.concurrency.upload', 'uploadConcurrency'],
   ['cache.concurrency.restore', 'restoreConcurrency'],
-] as const satisfies readonly (readonly [string, keyof RunOptions])[]
+] as const satisfies readonly (readonly [string, keyof CoreRunOptions])[]
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
  * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
@@ -492,7 +493,7 @@ export async function resolveRunOptions(
   verb: 'run' | 'watch' = 'run',
   /** Given, it learns the ref `--affected` diffed from (`--dry=json` states it). */
   scopeOut?: { affectedBase?: string },
-): Promise<RunOptions | { error: string; code?: string } | { nothingSelected: string }> {
+): Promise<CoreRunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     // A blank name (`vx run --all ''`) otherwise reached the orchestrator,
     // which refuses it in the embedder API's words.
@@ -526,10 +527,10 @@ export async function resolveRunOptions(
   const bareTasks = tasks.filter((t) => !t.includes('#'))
   const anchoredTasks = tasks.filter((t) => t.includes('#'))
   let projects: string[] | undefined
-  let staged: RunOptions['staged']
-  let discovered: RunOptions['discovered']
+  let staged: RunHandoff['staged']
+  let discovered: RunHandoff['discovered']
   let selectedByDiff = false
-  let affected: RunOptions['affected']
+  let affected: CoreRunOptions['affected']
   let outright: string[] | undefined
   // Resolved even when every task is anchored and the scope goes unused:
   // a filter or ref the user typed is judged, as it is beside a bare task.
@@ -587,25 +588,28 @@ export async function resolveRunOptions(
     discovered = cwdProject.discovered
   }
 
-  const opts: RunOptions = {
-    cwd,
-    tasks: [...tasks],
-    ...(parsed.cacheFlags !== undefined
-      ? { cacheFlags: parsed.cacheFlags }
-      : { cache: parsed.cache }),
+  const handoff: RunHandoff = {
     ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
     // A laptop reads the shared cache and never writes it (owner,
     // 2026-10-03); naming the remote in `--cache-policy` is asking to.
     ...(!parsed.remoteRequested && !onCI(process.env['CI'])
       ? { remoteReadOnlyByDefault: true }
       : {}),
-    flow: detectFlow(parsed),
     ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
+  }
+  const opts: CoreRunOptions = {
+    cwd,
+    tasks: [...tasks],
+    ...(parsed.cacheFlags !== undefined
+      ? { cacheFlags: parsed.cacheFlags }
+      : { cache: parsed.cache }),
+    flow: detectFlow(parsed),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
     // isatty, not process.stdin: touching the stream opens it, and a config
     // that throws then reports an extra native stack frame.
     ...(isatty(0) ? { tty: true } : {}),
+    handoff,
   }
   if (parsed.excludeDependencies === 'all') {
     opts.excludeDependencies = 'all'
@@ -613,11 +617,11 @@ export async function resolveRunOptions(
     opts.excludeDependencies = parsed.excludeDependencies
   }
   if (projects !== undefined) opts.projects = projects
-  if (selectedByDiff) opts.selectedByDiff = true
+  if (selectedByDiff) handoff.selectedByDiff = true
   if (affected !== undefined) opts.affected = affected
-  if (outright !== undefined) opts.selectedOutright = outright
-  if (staged !== undefined) opts.staged = staged
-  if (discovered !== undefined) opts.discovered = discovered
+  if (outright !== undefined) handoff.selectedOutright = outright
+  if (staged !== undefined) handoff.staged = staged
+  if (discovered !== undefined) handoff.discovered = discovered
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
   for (const [path, field] of SETTING_OPTIONS) {
     if (parsed.settings[path] !== undefined) Object.assign(opts, { [field]: parsed.settings[path] })
@@ -761,7 +765,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 
   // Planning short-circuits execution: the full task graph + a cache probe.
   if (parsed.dry !== undefined) {
-    const plan = await planRun(opts)
+    const plan = await planCore(opts)
     // Refused as a run refuses: `--dry=json` gets the error document.
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
       return unknownTask(
@@ -775,7 +779,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         sayLine('info', plan.noneAffected, 'vx run')
         return nothingToRun()
       }
-      if (opts.selectedByDiff === true) {
+      if (opts.handoff?.selectedByDiff === true) {
         sayNotice('info', 'vx run', `no affected project declares task(s): ${tasks.join(', ')}`)
         return nothingToRun()
       }

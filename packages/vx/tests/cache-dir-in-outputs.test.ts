@@ -113,7 +113,7 @@ describe('a cache directory under a task’s outputs', () => {
       await writeFile(path.join(cacheDir, 'vx-write'), '')
       const opts = { cwd: fx.root, tasks: ['build'], cacheDir, log: silentLogger(fx) }
       const first = await run(opts)
-      expect(first.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+      expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', true]])
       expect(fx.log.join('\n')).not.toContain('changed while the task ran')
       const second = await run(opts)
       expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit'])

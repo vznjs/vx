@@ -2,7 +2,7 @@
 // after the run stopped or fail-fast tripped.
 
 import type { ExecuteResult } from '../exec/index.js'
-import type { TaskOutcome } from '../graph/index.js'
+import type { OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import { printable } from '../util/index.js'
 import { failedOutputLog } from './output-log.js'
 import { runAttempt } from './attempt.js'
@@ -40,36 +40,26 @@ export async function runAttempts(
   // Pass or fail, the command may have written where its project's run-start
   // facts describe; a remote executor wrote on its own disk.
   const writeReach =
-    args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
+    args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.run.workspaceRoot)
   const writesFingerprint =
     args.executor.remote !== true &&
-    mayWriteFingerprint(node, args.workspaceRoot, args.fingerprintWatch?.names ?? [])
+    mayWriteFingerprint(node, args.run.workspaceRoot, args.run.fingerprintWatch?.names ?? [])
   let maxAttempts = policy.maxAttempts
   let prior: { result: ExecuteResult; exitCode: number } | undefined
   let spentMs = 0
   let leftRunning = false
   const failedAttempts: FailedAttempt[] = []
   const attemptOutputs: string[] = []
-  const ended = (
-    status: 'aborted' | 'skipped',
-    exitCode: number,
-    durationMs: number,
-  ): { outcome: TaskOutcome } => ({
-    outcome: {
-      node,
-      status,
-      exitCode,
-      durationMs,
-      hash,
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
-    },
+  const timing = (): OutcomeTiming => ({
+    startNs: wallclockStartNs,
+    endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
   })
   for (;;) {
     m.attempt++
     const a = await runAttempt(m, prior, spentMs)
     // Never started: skipped, as fail-fast skips a task not yet dispatched.
-    if (a.unbegun) return ended('skipped', 1, 0)
+    if (a.unbegun)
+      return { outcome: { node, status: 'skipped', durationMs: 0, hash, timing: timing() } }
     const result = a.result
     prior = { result, exitCode: a.exitCode }
     if (a.withdrawn) {
@@ -83,10 +73,10 @@ export async function runAttempts(
     // withheld (`nothingLeftRunning`), and its dependents' (`args.leftRunning`).
     if (result.leftRunning === true && !leftRunning) {
       leftRunning = true
-      args.leftRunning?.(node)
+      args.run.leftRunning?.(node)
     }
-    forgetUndeclaredWrites(args, writeReach)
-    if (writesFingerprint) args.fingerprintWatch?.wrote()
+    forgetUndeclaredWrites(args.node, args.run.gitFilesCache, writeReach)
+    if (writesFingerprint) args.run.fingerprintWatch?.wrote()
     spentMs += result.durationMs
 
     // An attempt that ended in a shutdown never finished on its own terms:
@@ -99,19 +89,26 @@ export async function runAttempts(
     // seen before vx's own handler has run, so a signal death waits one
     // event-loop turn for a pending handler before it is judged; a
     // timeout's SIGTERM is our own deadline and judged now.
-    let shutdown = args.stopSignal?.aborted === true
+    let shutdown = args.run.stopSignal?.aborted === true
     if (
       !shutdown &&
       (result.signal === 'SIGINT' || result.signal === 'SIGTERM') &&
       !result.timedOut
     ) {
       await new Promise((resolve) => setTimeout(resolve, 0))
-      shutdown = args.stopSignal?.aborted === true
+      shutdown = args.run.stopSignal?.aborted === true
     }
     if (shutdown) {
-      const out = ended('aborted', a.exitCode, spentMs)
-      if (result.where !== undefined) out.outcome.where = result.where
-      return out
+      const outcome: TaskOutcome = {
+        node,
+        status: 'aborted',
+        exitCode: a.exitCode,
+        durationMs: spentMs,
+        hash,
+        timing: timing(),
+      }
+      if (result.where !== undefined) outcome.placement = { where: result.where }
+      return { outcome }
     }
 
     // A known flake gets the one retry its config did not ask for; a
@@ -124,11 +121,11 @@ export async function runAttempts(
       result.timedOut !== true &&
       policy.cacheable &&
       policy.keylessBy === undefined &&
-      args.failFast?.aborted !== true &&
-      args.knownFlaky?.(node, hash) === true
+      args.run.failFast?.aborted !== true &&
+      args.run.knownFlaky?.(node, hash) === true
     )
       maxAttempts = 2
-    if (a.exitCode === 0 || m.attempt >= maxAttempts || args.failFast?.aborted === true) break
+    if (a.exitCode === 0 || m.attempt >= maxAttempts || args.run.failFast?.aborted === true) break
     failedAttempts.push({
       endedAt: Date.now(),
       exitCode: a.exitCode,

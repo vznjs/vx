@@ -45,7 +45,7 @@ it('a held server that dies on its own is said', async () => {
   const result = await run({
     cwd: root,
     tasks: ['app#dev'],
-    holdPersistent: true,
+    handoff: { holdPersistent: true },
     log,
     handleSignals: false,
   })
@@ -65,7 +65,7 @@ it("the holder's stop() is not said as a death", async () => {
   const result = await run({
     cwd: root,
     tasks: ['app#dev'],
-    holdPersistent: true,
+    handoff: { holdPersistent: true },
     log,
     handleSignals: false,
   })

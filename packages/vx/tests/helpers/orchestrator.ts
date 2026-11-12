@@ -4,10 +4,10 @@
 // the module's own.
 import { lockWorkspace } from '../../src/cli/lock.js'
 import {
-  planRun as corePlanRun,
+  planCore as corePlanRun,
   prepareRun as corePrepareRun,
-  run as coreRun,
-  type RunOptions,
+  runCore as coreRun,
+  type CoreRunOptions,
 } from '../../src/orchestrator/index.js'
 import { findWorkspaceRoot } from '../../src/workspace/index.js'
 
@@ -60,7 +60,7 @@ export async function lock(cwd: string, warn: (line: string) => void = () => {})
   }
 }
 
-export async function run(options: RunOptions): ReturnType<typeof coreRun> {
+export async function run(options: CoreRunOptions): ReturnType<typeof coreRun> {
   await lock(options.cwd)
   return coreRun(options)
 }

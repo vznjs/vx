@@ -22,7 +22,7 @@ import {
   secretNamed,
 } from '../util/index.js'
 import { warnOf } from '../report/index.js'
-import type { ExecuteArgs } from './execute-task.js'
+import type { ExecuteArgs, RunContext } from './execute-task.js'
 import { bracketLiteralHint } from './miss-save.js'
 import type { TaskPolicy } from './task-policy.js'
 import { describeTaskInputs, type InputFact } from './task-hash.js'
@@ -35,8 +35,8 @@ export interface MissInputs {
   readonly captured: TaskInputComponent[]
   readonly described: Described | undefined
   readonly inputs: TaskInputs | undefined
-  /** What a missed key changed (`ExecuteArgs.explainMiss`). */
-  readonly inputChanges: ReturnType<NonNullable<ExecuteArgs['explainMiss']>> | undefined
+  /** What a missed key changed (`RunContext.explainMiss`). */
+  readonly inputChanges: ReturnType<NonNullable<RunContext['explainMiss']>> | undefined
   /**
    * The command's start for the re-check (`movedInput`), on the clock that
    * stamps its writes: off `Date.now()`, a coarse kernel tick dated an edit
@@ -55,7 +55,8 @@ export async function describeMiss(
   policy: TaskPolicy,
   env: NodeJS.ProcessEnv,
 ): Promise<{ inputs: MissInputs; secrets: TaskSecrets }> {
-  const { node, upstream, cache, log } = args
+  const { node, upstream, log } = args
+  const { cache } = args.run
   const cfg = node.config
   // A non-cacheable task folds nothing and ships no inputs. The HashCache
   // memos and the gitFilesCache OID map make this a fold, no I/O.
@@ -64,20 +65,20 @@ export async function describeMiss(
     ? await describeTaskInputs({
         node,
         upstream,
-        workspaceRoot: args.workspaceRoot,
+        workspaceRoot: args.run.workspaceRoot,
         cache,
-        forwardArgs: args.forwardArgs,
+        forwardArgs: args.run.forwardArgs,
         nestedProjectDirs: args.nestedProjectDirs,
         captureInto: captured,
-        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-        ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        ...(args.probesAfterWrites !== undefined
-          ? { probesAfterWrites: args.probesAfterWrites }
+        ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
+        ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
+        ...(args.run.probesAfterWrites !== undefined
+          ? { probesAfterWrites: args.run.probesAfterWrites }
           : {}),
       })
     : undefined
   const commandFrom = policy.cacheable
-    ? fsClockNow(args.cacheDir ?? path.join(args.workspaceRoot, '.vx'))
+    ? fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
     : 0
 
   // A committed file under the task's own outputs is keyed (`committedFiles`)
@@ -92,7 +93,7 @@ export async function describeMiss(
       : facts.filter(
           (f) =>
             ownOutput?.(relPosix(node.projectDir, f.path)) !== true &&
-            ownWsOutput?.(relPosix(args.workspaceRoot, f.path)) !== true,
+            ownWsOutput?.(relPosix(args.run.workspaceRoot, f.path)) !== true,
         )
 
   // A name only `exec.env.secret` makes secret is not one the name rule
@@ -121,7 +122,8 @@ export async function describeMiss(
     }
   }
   const inputs = described?.inputs
-  const inputChanges = described !== undefined ? args.explainMiss?.(node.id, captured) : undefined
+  const inputChanges =
+    described !== undefined ? args.run.explainMiss?.(node.id, captured) : undefined
   // A plugin may keep the request past the run (the cache closed): it gets
   // the upstream outputs read now. Only the local floor leaves them unread.
   if (inputs !== undefined && !isLocalExecutor(args.executor)) await described!.readUpstream()
@@ -139,8 +141,8 @@ export async function describeMiss(
         : deadSourceGlobs(
             cfg.inputs,
             inputs.files,
-            args.workspaceRoot,
-            relPosix(args.workspaceRoot, node.projectDir),
+            args.run.workspaceRoot,
+            relPosix(args.run.workspaceRoot, node.projectDir),
           )
   if (unmatched.length > 0) {
     warnOf(log)(
@@ -148,7 +150,7 @@ export async function describeMiss(
         `the key will not change when this project's source does` +
         bracketLiteralHint([
           ...(cfg.inputs?.files ?? []).map((g) => [node.projectDir, g] as const),
-          ...(cfg.inputs?.workspaceFiles ?? []).map((g) => [args.workspaceRoot, g] as const),
+          ...(cfg.inputs?.workspaceFiles ?? []).map((g) => [args.run.workspaceRoot, g] as const),
         ]),
     )
   }
@@ -156,13 +158,13 @@ export async function describeMiss(
   if (inputs !== undefined) {
     const isOwnOutput = (abs: string): boolean =>
       ownOutput?.(relPosix(node.projectDir, abs)) === true ||
-      ownWsOutput?.(relPosix(args.workspaceRoot, abs)) === true
+      ownWsOutput?.(relPosix(args.run.workspaceRoot, abs)) === true
     const left = [
-      ...ignoredByGlobs(cfg.inputs?.files, node.projectDir, args.workspaceRoot, inputs.files),
+      ...ignoredByGlobs(cfg.inputs?.files, node.projectDir, args.run.workspaceRoot, inputs.files),
       ...ignoredByGlobs(
         cfg.inputs?.workspaceFiles,
-        args.workspaceRoot,
-        args.workspaceRoot,
+        args.run.workspaceRoot,
+        args.run.workspaceRoot,
         inputs.files,
       ),
     ].filter(([abs]) => !isOwnOutput(abs))

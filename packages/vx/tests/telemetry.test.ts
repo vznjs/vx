@@ -261,10 +261,8 @@ describe('createTelemetrySource — projection', () => {
       outcome: mkOutcome(node, {
         status: 'cache-hit-remote',
         hash: 'deadbeef',
-        cpuMs: 5,
-        peakRssBytes: 1024,
-        wallclockStartNs: 100n,
-        wallclockEndNs: 200n,
+        usage: { cpuMs: 5, peakRssBytes: 1024 },
+        timing: { startNs: 100n, endNs: 200n },
       }),
     })
     const r = records[0]!
@@ -308,13 +306,11 @@ describe('createTelemetrySource — projection', () => {
         exitCode: 0,
         durationMs: 12,
         hash: 'h',
-        cpuMs: 5,
-        peakRssBytes: 2048,
-        where: 'worker-3',
-        outputs: 'deferred',
-        attempts: 2,
-        wallclockStartNs: 100n,
-        wallclockEndNs: 200n,
+        usage: { cpuMs: 5, peakRssBytes: 2048 },
+        placement: { where: 'worker-3' },
+        cache: { deferred: true },
+        timing: { startNs: 100n, endNs: 200n },
+        attempts: { count: 2 },
       }),
     })
     const { ts, ...rest } = records[0] as TelemetryRecord & { ts: number }
@@ -369,7 +365,11 @@ describe('createTelemetrySource — projection', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })
     const node = mkNode('a#build', 'tsc')
-    src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node, { attempts: 3 }) })
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, { attempts: { count: 3 } }),
+    })
     // CONTROL: a task that ran once says nothing, so a reader can treat the
     // field's presence as the signal.
     src.subscriber({ kind: 'task:complete', node, outcome: mkOutcome(node) })
@@ -394,7 +394,7 @@ describe('createTelemetrySource — projection', () => {
         status: 'failed',
         exitCode: 143,
         timedOut: true,
-        sandboxViolations: 2,
+        sandbox: { violations: 2 },
         notReady: 'timeout',
       }),
     })
@@ -425,14 +425,10 @@ describe('createTelemetrySource — projection', () => {
       node,
       outcome: mkOutcome(node, {
         status: 'cache-hit',
-        storedDurationMs: 900,
-        storedCpuMs: 800,
-        storedPeakRssBytes: 700,
-        admissionHeldMs: 60,
-        queuedMs: 75,
-        inputFiles: 9,
-        flaky: { passes: 2, failures: 1 },
-        sandboxViolationLines: ['deny file-write /x'],
+        cache: { inputFiles: 9, stored: { durationMs: 900, cpuMs: 800, peakRssBytes: 700 } },
+        timing: { admissionHeldMs: 60, queuedMs: 75 },
+        attempts: { flaky: { passes: 2, failures: 1 } },
+        sandbox: { violations: 1, lines: ['deny file-write /x'] },
       }),
     })
     const plain = mkNode('b#build', 'tsc')
@@ -440,7 +436,7 @@ describe('createTelemetrySource — projection', () => {
     src.subscriber({
       kind: 'task:complete',
       node: plain,
-      outcome: mkOutcome(plain, { sandboxViolationLines: [] }),
+      outcome: mkOutcome(plain, { sandbox: { violations: 0, lines: [] } }),
     })
     const pick = (r: TelemetryRecord) =>
       r.kind === 'task.end'
@@ -481,7 +477,7 @@ describe('createTelemetrySource — projection', () => {
     src.subscriber({
       kind: 'task:complete',
       node: killed,
-      outcome: mkOutcome(killed, { ...aborted, wallclockStartNs: 1n, wallclockEndNs: 2n }),
+      outcome: mkOutcome(killed, { ...aborted, timing: { startNs: 1n, endNs: 2n } }),
     })
     src.subscriber({ kind: 'task:complete', node: pending, outcome: mkOutcome(pending, aborted) })
     expect(records.map((r) => (r.kind === 'task.end' ? r.taskId : r.kind))).toEqual(['a#post'])

@@ -97,19 +97,13 @@ describe.skipIf(!available)('a refused connection, run for real', () => {
   it('fails a task that survived it, naming the host', async () => {
     await addApp(root)
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
-      'failed',
-      [DENY],
-    ])
+    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines]).toEqual(['failed', [DENY]])
   })
 
   it('CONTROL: ignore.network naming the host passes it', async () => {
     await addApp(root, `, ignore: { network: ['example.com:443'] }`)
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]).toEqual([
-      'success',
-      [],
-    ])
+    expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines ?? []]).toEqual(['success', []])
   })
 })
 

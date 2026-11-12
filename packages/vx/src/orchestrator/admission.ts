@@ -249,9 +249,9 @@ export function admitTasks(
       // the save runs off the slot (save-lane.ts), and a sibling released
       // before it landed would probe a miss and run the task again. The
       // executor's own return is not held — only the joiners wait.
-      const landed = execArgs.deferredSaves?.get(node.id)
+      const landed = execArgs.run.deferredSaves?.get(node.id)
       const lift = (): void => {
-        execArgs.deferredSaves?.delete(node.id)
+        execArgs.run.deferredSaves?.delete(node.id)
         inflight.delete(hash)
         release()
       }

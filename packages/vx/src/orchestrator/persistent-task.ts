@@ -55,12 +55,12 @@ export function serverKey(args: ExecuteArgs): Promise<string | undefined> | stri
       computeTaskHash({
         node: args.node,
         upstream: args.upstream,
-        workspaceRoot: args.workspaceRoot,
-        cache: args.cache,
-        forwardArgs: args.forwardArgs,
+        workspaceRoot: args.run.workspaceRoot,
+        cache: args.run.cache,
+        forwardArgs: args.run.forwardArgs,
         nestedProjectDirs: args.nestedProjectDirs,
-        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-        ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
+        ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
       }),
     )
   )
@@ -86,9 +86,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   const step = node.config.exec as ExecConfig & {
     persistent: NonNullable<ExecConfig['persistent']>
   }
-  const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-  const env = taskEnv(node, step, args.workspaceRoot)
-  const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  const effectiveForwardArgs = node.requested ? (args.run.forwardArgs ?? []) : []
+  const env = taskEnv(node, step, args.run.workspaceRoot)
+  const wallclockStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const hash = await serverKey(args)
 
   // Every dependant starts it where it runs (`ServerSpec`): nothing to spawn
@@ -100,10 +100,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       status: 'success',
       exitCode: 0,
       durationMs: 0,
-      carried: true,
+      placement: { carried: true },
       ...(hash === undefined ? {} : { hash }),
-      wallclockStartNs,
-      wallclockEndNs: wallclockStartNs,
+      timing: { startNs: wallclockStartNs, endNs: wallclockStartNs },
     }
 
   // The args after `--` reach a server as they reach any task. A readyWhen
@@ -127,17 +126,17 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   let placeholders: Placeholder[] = []
   let serverSandbox: Awaited<ReturnType<typeof sandboxRequestFor>>['sandbox'] | undefined
   if (step.sandbox !== undefined) {
-    await args.armSandbox?.()
+    await args.run.armSandbox?.()
     // A persistent task never declares `cache` (the loader refuses it), so
     // it keeps the whole linked grant: no key of its can be stale.
-    const deps = await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot)
+    const deps = await dependencyReads(args.run.readableDeps?.(node) ?? [], args.run.workspaceRoot)
     const sb = await sandboxRequestFor(
       node,
       step.sandbox,
-      args.workspaceRoot,
+      args.run.workspaceRoot,
       undefined,
       args.nestedProjectDirs,
-      args.cacheDir,
+      args.run.cacheDir,
       deps.reads,
       deps.reported,
     )
@@ -164,7 +163,11 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // the idle timer: a server never ends on the way to a flush.
   const serverSecrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   // A server writes until the run stops it: its window stays open.
-  args.commandWindows?.open(node.id, node.projectDir, commandWriteReach(node, args.workspaceRoot))
+  args.run.commandWindows?.open(
+    node.id,
+    node.projectDir,
+    commandWriteReach(node, args.run.workspaceRoot),
+  )
   // Whether the server's output ends mid-line, for vx's never-ready note.
   const ends = lineEnds(
     (t) => log.taskStdout(node, t),
@@ -178,20 +181,20 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     env,
     onStdout: serverMasked ? serverMasked.out : ends.onStdout!,
     onStderr: serverMasked ? serverMasked.err : ends.onStderr!,
-    ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
-    ...(args.track !== undefined
-      ? { onSpawn: (pid: number) => void args.track!(node.id, pid) }
+    ...(args.run.liveChildren !== undefined ? { liveChildren: args.run.liveChildren } : {}),
+    ...(args.run.track !== undefined
+      ? { onSpawn: (pid: number) => void args.run.track!(node.id, pid) }
       : {}),
     ...(signalChannel ? { signalChannel } : {}),
     ...(args.terminal === true ? { terminal: true } : {}),
     // What the pre-ready text left held goes out first, so the run can
     // tell it from what the server writes since ready.
-    ...(args.serverReady !== undefined
+    ...(args.run.serverReady !== undefined
       ? {
           onReady: () => {
             serverMasked?.end()
             ends.end()
-            args.serverReady!(node.id)
+            args.run.serverReady!(node.id)
           },
         }
       : {}),
@@ -201,7 +204,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   }
   // For a persistent task the timeout bounds the readiness wait. Per-task
   // `exec.timeout` wins; else the run-level default (env/workspace/--timeout).
-  const effectiveTimeout = taskTimeoutMs(step) ?? args.timeout
+  const effectiveTimeout = taskTimeoutMs(step) ?? args.run.timeout
   if (effectiveTimeout !== undefined) {
     persistentOpts.timeoutMs = effectiveTimeout
   }
@@ -209,17 +212,19 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // A stop that landed during the awaits above (the key, the sandbox's
   // arming, request and wrap) leaves nothing to kill yet: spawned now, the
   // server came up after the teardown and held the run's exit 7 s.
-  if (args.stopSignal?.aborted === true) {
+  if (args.run.stopSignal?.aborted === true) {
     if (bridgeTag !== undefined) releaseBridges(bridgeTag)
     await placeholderSweeper(placeholders)()
     return {
       node,
       status: 'aborted',
       // The signal a spawned server would have been sent (a hang-up forwards SIGTERM).
-      exitCode: signalExitCode(forwardedSignal(args.stopSignal.reason)),
+      exitCode: signalExitCode(forwardedSignal(args.run.stopSignal.reason)),
       durationMs: 0,
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      timing: {
+        startNs: wallclockStartNs,
+        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      },
     }
   }
   // A server's 127, 126 or signal death needs the line a one-shot task's
@@ -239,7 +244,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
             code,
             command: step.command,
             cwd: node.projectDir,
-            bins: taskBinDirs(node, args.workspaceRoot),
+            bins: taskBinDirs(node, args.run.workspaceRoot),
             signal,
             hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
           })
@@ -291,7 +296,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       : setTimeout(() => {
           // A server that traps SIGTERM runs out the kill grace after the
           // timeout gave up; the wait is over, and its failure says so.
-          if (isAborted(args.stopSignal) || spawn.gaveUp()) return
+          if (isAborted(args.run.stopSignal) || spawn.gaveUp()) return
           const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
           const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
           warnOf(log)(
@@ -319,14 +324,16 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // aborts before it kills, so it is set by the time the child is gone.
     // Read through a call: the early return above narrows `aborted` to
     // false, but the stop can land during `spawn.ready`.
-    if (isAborted(args.stopSignal)) {
+    if (isAborted(args.run.stopSignal)) {
       return {
         node,
         status: 'aborted',
         exitCode: err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1,
         durationMs: spawn.readyMs(),
-        wallclockStartNs,
-        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+        timing: {
+          startNs: wallclockStartNs,
+          endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+        },
       }
     }
     const message = err instanceof Error ? err.message : String(err)
@@ -363,8 +370,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
           : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
       ...(ready !== undefined ? { notReady: ready.reason } : {}),
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      timing: {
+        startNs: wallclockStartNs,
+        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      },
     }
   }
 
@@ -372,23 +381,29 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // the way down, or a race with the signal. The stop is killing it (it
   // is in `liveChildren`), and it served nobody, as a one-shot that exits
   // 0 on the stop is aborted (item 962).
-  if (isAborted(args.stopSignal)) {
+  if (isAborted(args.run.stopSignal)) {
     return {
       node,
       status: 'aborted',
-      exitCode: signalExitCode(forwardedSignal(args.stopSignal!.reason)),
+      exitCode: signalExitCode(forwardedSignal(args.run.stopSignal!.reason)),
       durationMs: spawn.readyMs(),
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      timing: {
+        startNs: wallclockStartNs,
+        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      },
     }
   }
   // Ready, so it spawned: only a failed spawn has no child.
   const child = spawn.child!
   explainServerExit(child, (code) => exitNotes(code, child.signalCode ?? undefined))
-  args.persistentRegistry?.set(node.id, child)
-  forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
-  if (mayWriteFingerprint(node, args.workspaceRoot, args.fingerprintWatch?.names ?? [])) {
-    args.fingerprintWatch?.wrote()
+  args.run.persistentRegistry?.set(node.id, child)
+  forgetUndeclaredWrites(
+    args.node,
+    args.run.gitFilesCache,
+    undeclaredWriteReach(node, args.run.workspaceRoot),
+  )
+  if (mayWriteFingerprint(node, args.run.workspaceRoot, args.run.fingerprintWatch?.names ?? [])) {
+    args.run.fingerprintWatch?.wrote()
   }
   // Ready by its clean exit (a setup step): nothing is running any more.
   const exited = child.exitCode
@@ -399,7 +414,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     durationMs: spawn.readyMs(),
     ...(exited === null ? {} : { serverExit: exited }),
     ...(hash !== undefined ? { hash } : {}),
-    wallclockStartNs,
-    wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    timing: {
+      startNs: wallclockStartNs,
+      endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+    },
   }
 }

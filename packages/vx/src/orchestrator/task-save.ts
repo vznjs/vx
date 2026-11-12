@@ -60,7 +60,7 @@ export async function saveVerdict(
     if (materialize === undefined) return { kind: 'defer', keyed: false }
     const keyed =
       (await keyStillTrue(m, ran.result, check)) &&
-      (await args.serverDiedUnder?.(args.node)) !== true
+      (await args.run.serverDiedUnder?.(args.node)) !== true
     return { kind: 'defer', materialize, keyed }
   }
   if (
@@ -69,7 +69,7 @@ export async function saveVerdict(
     nothingLeftRunning(m, ran) &&
     noStateWritten(m, stamp) &&
     (await keyStillTrue(m, ran.result, check)) &&
-    (await args.serverDiedUnder?.(args.node)) !== true
+    (await args.run.serverDiedUnder?.(args.node)) !== true
   ) {
     const own = await m.guard.own()
     if (own !== undefined) return { kind: 'save', own }
@@ -94,7 +94,7 @@ export async function applySave(
   switch (verdict.kind) {
     case 'defer':
       if (verdict.materialize !== undefined)
-        args.deferred?.register(node.id, {
+        args.run.deferred?.register(node.id, {
           materialize: verdict.materialize,
           ...(verdict.keyed ? { hash } : {}),
           entry: {
@@ -113,11 +113,11 @@ export async function applySave(
           ...verdict.own,
           node,
           hash,
-          cache: args.cache,
+          cache: args.run.cache,
           log: args.log,
-          workspaceRoot: args.workspaceRoot,
+          workspaceRoot: args.run.workspaceRoot,
           nestedProjectDirs,
-          gitFilesCache: args.gitFilesCache,
+          gitFilesCache: args.run.gitFilesCache,
           outputs,
           wsOutputs,
           captured: m.inputs.captured,
@@ -126,18 +126,18 @@ export async function applySave(
           stdout: stream.stored(secrets.mask),
           ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
           ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
-          outputDirSnapshots: args.outputDirSnapshots,
-          deferSave: args.deferSave,
+          outputDirSnapshots: args.run.outputDirSnapshots,
+          deferSave: args.run.deferSave,
           // A sink listens: say what the save cost.
-          measure: args.explainMiss !== undefined,
+          measure: args.run.explainMiss !== undefined,
           state: stamp.state,
         }),
       )
       // A run that settles the outcome on `landed` learns there whether the
       // entry is in; without one, the save is done (a `--force` save may
       // have kept the entry it found).
-      if (args.deferredSaves !== undefined) {
-        args.deferredSaves.set(node.id, landed)
+      if (args.run.deferredSaves !== undefined) {
+        args.run.deferredSaves.set(node.id, landed)
         return { saved: false }
       }
       return { saved: (await landed).saved === true }
@@ -149,7 +149,7 @@ export async function applySave(
         saved: false,
         unsavedBytes: await unsavedOutputBytes({
           node,
-          workspaceRoot: args.workspaceRoot,
+          workspaceRoot: args.run.workspaceRoot,
           nestedProjectDirs,
           outputs,
           wsOutputs,
@@ -164,16 +164,20 @@ export async function applySave(
       const moved = await movedSinceKey(m, result, check)
       endCheck()
       if (moved !== undefined) {
-        forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
+        forgetUndeclaredWrites(
+          args.node,
+          args.run.gitFilesCache,
+          wsOutputs.length > 0 ? 'workspace' : 'project',
+        )
         return { saved: false }
       }
       return {
         saved: false,
         unsavedBytes: await markUnsaved({
           node,
-          workspaceRoot: args.workspaceRoot,
+          workspaceRoot: args.run.workspaceRoot,
           nestedProjectDirs,
-          gitFilesCache: args.gitFilesCache,
+          gitFilesCache: args.run.gitFilesCache,
           outputs,
           wsOutputs,
         }),

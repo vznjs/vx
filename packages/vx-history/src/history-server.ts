@@ -42,7 +42,7 @@ export function outcomeOf(o: TaskOutcome, def: string): ServerOutcome | undefine
   if (o.blockedBy !== undefined || o.taintedBy !== undefined) return undefined
   if (o.status === 'failed') return { hash: def, key: o.hash, outcome: 'fail' }
   if (o.status !== 'success') return undefined
-  const flaky = (o.attempts ?? 1) > 1 || o.flaky !== undefined
+  const flaky = (o.attempts?.count ?? 1) > 1 || o.attempts?.flaky !== undefined
   return { hash: def, key: o.hash, outcome: flaky ? 'flaky' : 'pass' }
 }
 
@@ -69,16 +69,20 @@ export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   // reading where the share is 0. Uncapped, a crowded 4-core worker sent 8
   // and a DTE plan booked that; an Infinity went as null and the server
   // refused the whole upload.
+  const cpuMs = o.usage?.cpuMs
   const need =
-    o.cpuMs === undefined || o.durationMs <= 0
+    cpuMs === undefined || o.durationMs <= 0
       ? undefined
-      : Math.min(o.cpuMs / (o.durationMs * (o.cpuShare ?? 1)), o.whereCores ?? Infinity)
+      : Math.min(
+          cpuMs / (o.durationMs * (o.placement?.cpuShare ?? 1)),
+          o.placement?.cores ?? Infinity,
+        )
   // A share rounded to 0 divides by it, and the server refuses the upload.
   const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),
-    ...(o.peakRssBytes === undefined ? {} : { rssBytes: o.peakRssBytes }),
+    ...(o.usage?.peakRssBytes === undefined ? {} : { rssBytes: o.usage.peakRssBytes }),
   }
 }
 
@@ -89,7 +93,9 @@ export function timingOf(o: TaskOutcome): ServerTiming | undefined {
  * shared number a forecast reads (2026-10-26).
  */
 function aloneMs(o: TaskOutcome): number {
-  const { durationMs: d, cpuMs: c, cpuShare: s } = o
+  const d = o.durationMs
+  const c = o.usage?.cpuMs
+  const s = o.placement?.cpuShare
   if (c === undefined || s === undefined || !(s > 0 && s < 1) || !(d > 0)) return Math.round(d)
   return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }

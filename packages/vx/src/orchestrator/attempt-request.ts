@@ -13,11 +13,11 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
   // streams' mask: its start holds the proxy's token, which the task's env
   // carries (`initSandbox`).
   if (policy.sandboxed && args.executor.remote !== true) {
-    await args.armSandbox?.()
+    await args.run.armSandbox?.()
     secrets.refresh()
   }
   const { onStdout, onStderr } = stream.open(
-    policy.save || args.keepRun !== undefined,
+    policy.save || args.run.keepRun !== undefined,
     secrets.mask,
   )
   // A plugin executor gets frozen copies of what core goes on reading: the
@@ -29,7 +29,7 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
   const base: ExecuteRequest = {
     taskId: node.id,
     ...(m.attempt > 1 ? { attempt: m.attempt } : {}),
-    workspaceRoot: args.workspaceRoot,
+    workspaceRoot: args.run.workspaceRoot,
     command: exec.command,
     forwardArgs: own(policy.forwardArgs),
     cwd: node.projectDir,
@@ -40,12 +40,12 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
     capture: { stdout: false, stderr: false },
     onStdout,
     onStderr,
-    ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
-    ...(args.track !== undefined
+    ...(args.run.liveChildren !== undefined ? { liveChildren: args.run.liveChildren } : {}),
+    ...(args.run.track !== undefined
       ? {
           onSpawn: (pid: number) => {
             m.load.untrack?.()
-            m.load.untrack = args.track!(node.id, pid)
+            m.load.untrack = args.run.track!(node.id, pid)
           },
         }
       : {}),
@@ -66,7 +66,7 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
       ? {}
       : {
           servers: args.servers.map((s, i) =>
-            serverSpec(s, args.workspaceRoot, args.serversNested?.[i] ?? []),
+            serverSpec(s, args.run.workspaceRoot, args.serversNested?.[i] ?? []),
           ),
         }),
   }
@@ -74,17 +74,17 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
   // arming above is vx's work, not the task's. Armed first, a 60 ms timeout
   // expired before the spawn and failed `echo` as timed out, unrun.
   if (!policy.sandboxed) return { ...base, signal: m.signal.request(local) }
-  const deps = await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot)
+  const deps = await dependencyReads(args.run.readableDeps?.(node) ?? [], args.run.workspaceRoot)
   const sb = await sandboxRequestFor(
     node,
     exec.sandbox!,
-    args.workspaceRoot,
-    policy.cacheable ? args.keyedProjects(node) : undefined,
+    args.run.workspaceRoot,
+    policy.cacheable ? args.run.keyedProjects(node) : undefined,
     args.nestedProjectDirs,
-    args.cacheDir,
+    args.run.cacheDir,
     deps.reads,
     deps.reported,
-    args.nestedDirsOf,
+    args.run.nestedDirsOf,
   )
   m.sandbox.placeholders = sb.placeholders
   m.sandbox.withheld = sb.withheld

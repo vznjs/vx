@@ -1509,8 +1509,8 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         expect(produced.status).toBe('success')
         // The runner reports rusage on linux and darwin; the differential
         // below needs a real number, not an absent one.
-        expect(produced.peakRssBytes).toBeGreaterThanOrEqual(mb * MB)
-        expect(produced.storedPeakRssBytes).toBeUndefined()
+        expect(produced.usage?.peakRssBytes).toBeGreaterThanOrEqual(mb * MB)
+        expect(produced.cache?.stored?.peakRssBytes).toBeUndefined()
 
         // The fresh runner: no local cache, no history.
         await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
@@ -1522,17 +1522,17 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         })
         const hit = second.outcomes[0]!
         expect(hit.status).toBe('cache-hit-remote')
-        expect(hit.storedPeakRssBytes).toBe(produced.peakRssBytes!)
-        expect(hit.storedCpuMs).toBe(produced.cpuMs!)
+        expect(hit.cache?.stored?.peakRssBytes).toBe(produced.usage!.peakRssBytes!)
+        expect(hit.cache?.stored?.cpuMs).toBe(produced.usage!.cpuMs!)
         // A hit spent no CPU of its own on the task.
-        expect(hit.peakRssBytes).toBeUndefined()
-        expect(hit.cpuMs).toBeUndefined()
+        expect(hit.usage?.peakRssBytes).toBeUndefined()
+        expect(hit.usage?.cpuMs).toBeUndefined()
 
         // What `@vzn/vx-history` reads on this runner's NEXT run.
         const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
         try {
           const table = await new LocalHistoryProvider(indexDb(local)).loadFor(['app#build'])
-          expect(table.get('app#build')?.maxPeakRssBytes).toBe(produced.peakRssBytes!)
+          expect(table.get('app#build')?.maxPeakRssBytes).toBe(produced.usage!.peakRssBytes!)
           expect(table.get('app#build')?.hitRate).toBe(1)
         } finally {
           local.close()

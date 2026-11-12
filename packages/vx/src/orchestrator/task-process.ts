@@ -25,16 +25,17 @@ import { parseDuration } from '../util/index.js'
  * array, so they miss with it (item 743).
  */
 export function forgetUndeclaredWrites(
-  args: { node: TaskNode; gitFilesCache?: GitFilesCache | undefined },
+  node: TaskNode,
+  gitFilesCache: GitFilesCache | undefined,
   reach: 'none' | 'project' | 'workspace',
 ): void {
-  if (reach === 'none') return
+  if (gitFilesCache === undefined || reach === 'none') return
   if (reach === 'workspace') {
-    args.gitFilesCache?.clear()
+    gitFilesCache.clear()
     return
   }
-  args.gitFilesCache?.delete(args.node.projectDir)
-  args.gitFilesCache?.invalidateWorkspacePartition()
+  gitFilesCache.delete(node.projectDir)
+  gitFilesCache.invalidateWorkspacePartition()
 }
 
 /** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */

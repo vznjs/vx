@@ -62,8 +62,8 @@ function mkOutcome(id: string, s: Shape): TaskOutcome {
     status: s.status,
     exitCode: s.status === 'failed' ? 1 : s.status === 'aborted' ? 143 : 0,
     durationMs: 100,
-  }
-  if (s.restored !== undefined) o.restored = s.restored
+  } as TaskOutcome
+  if (s.restored !== undefined) (o.cache ??= {}).restored = s.restored
   return o
 }
 

@@ -56,7 +56,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const r = await run({ cwd: root, tasks: ['t'], concurrency: 16, log })
         expect(r.outcomes.map((o) => o.status)).toEqual(Array(projects).fill('failed'))
         for (const o of r.outcomes)
-          if ((o.sandboxViolations ?? 0) === 0)
+          if ((o.sandbox?.violations ?? 0) === 0)
             unnamed.push(`${o.node.id}: ${JSON.stringify(stderr.get(o.node.id) ?? '')}`)
       }
       expect(unnamed).toEqual([])

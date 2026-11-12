@@ -27,55 +27,18 @@ import {
 import { executePersistentTask } from './persistent-task.js'
 import { executeCachedTask, readsCache, restoreProbed } from './cached-task.js'
 
-export interface ExecuteArgs {
-  node: TaskNode
-  upstream: TaskOutcome[]
+/** What every task of a run shares: built once per run. */
+export interface RunContext {
   workspaceRoot: string
   cache: CacheLayer
   /** Granular cache read/write policy. Undefined → everything on. */
   cachePolicy?: CachePolicy
   forwardArgs?: readonly string[] | undefined
-  log: Logger
-  /** The executor this task was PLACED on (run.ts, before scheduling). */
-  executor: TaskExecutor
   /** Told the task executes, so the executor's demand counts it again (`ExecutorDemand.executing`). */
   executing?: ((id: string) => void) | undefined
-  /**
-   * `exec.remote: 'only'` with no remote executor to take it: succeed
-   * WITHOUT executing, cleaning, restoring or saving anything on this
-   * machine. The hash is still computed — dependents fold it.
-   */
-  remoteOnlyNoop?: boolean
-  /**
-   * The task depends on a `remoteOnlyNoop` one, directly or through others
-   * (`Placements.belowNoop`): it saves nothing, since its key names the
-   * no-op's outputs, which never landed.
-   */
-  belowNoop?: boolean
-  /**
-   * `exec.remote: 'only'` placed on a remote executor: execute remotely,
-   * but this machine's disk is untouched — no output clean, no vx cache
-   * probe/restore/save. The task's outputs live in the REMOTE store and
-   * reach dependents' input trees by reference (the executor's job).
-   */
-  remoteOnly?: boolean
-  /**
-   * Plan-time `--cache-download` decision for THIS task (run.ts). `'deferred'`
-   * means: do not clean, do not save — the executor is expected to leave
-   * the outputs in the remote store and hand back a closure. An executor
-   * that ignores it and materialises anyway simply gets no local entry;
-   * the outputs are on disk but unindexed, which is its contract to keep.
-   */
-  download?: 'eager' | 'deferred'
   /** Run-scoped deferral registry — where deferred closures land, and
    *  where a locally-placed consumer fetches its producers from. */
   deferred?: DeferredOutputs
-  nestedProjectDirs: string[]
-  /**
-   * Where its outputs stop when that is more than `nestedProjectDirs`: the
-   * nested workspaces under it too (prepare.ts `outputWallsOf`).
-   */
-  outputNestedDirs?: string[]
   /** The run's cache directory: walled off from a sandboxed task's grants. */
   cacheDir?: string
   /** Anchor for hrtime spans across all tasks in this run. */
@@ -138,29 +101,6 @@ export interface ExecuteArgs {
   /** The run's `probesAfterWrites`, handed to every key this task takes. */
   probesAfterWrites?: ReadonlySet<string>
   /**
-   * Up-front probe result from the local short-circuit classify, when
-   * this task was stable + cacheable + local-read. Reused here so there
-   * is NO second `cache.get`:
-   *   - `hit` present  → restore that entry directly (restore-tier; may
-   *     run before deps, so the up-front `hash` is used verbatim rather
-   *     than recomputed against an incomplete upstream).
-   *   - `hit` null     → a confirmed stable miss; skip the probe, go to
-   *     the run path.
-   * Absent → probe lazily, exactly as today (unstable / unclassified).
-   */
-  preProbed?: { hash: string; hit: CacheEntry | null }
-  /**
-   * An uncached task's key as the up-front pass derived it, present only
-   * when no upstream can change it (`deriveStableKeys`' `uncachedKeys`):
-   * used verbatim instead of deriving the same key again.
-   */
-  upfrontKey?: string
-  /**
-   * An unkeyed group's up-front key (`deriveStableKeys`' `groupKeys`): used
-   * verbatim when the live upstream folds the same ids and keys.
-   */
-  upfrontGroupKey?: UpfrontGroupKey
-  /**
    * Start the sandbox runtime, on the first task that executes inside one
    * (run.ts, `prepareSandbox`). Absent when no task in the run declares a
    * sandbox. A cache hit never calls it: a hit needs no sandbox.
@@ -205,16 +145,6 @@ export interface ExecuteArgs {
    */
   deferredSaves?: Map<string, Promise<SaveFacts>>
   /**
-   * `continueMode: 'always'` let this task run although an upstream —
-   * directly or through a chain of successes — failed or aborted. It still
-   * cleans its outputs and runs, and a cache HIT still restores (a hit is a
-   * healthy run's bytes), but its own result is never saved: the key it
-   * derives is the one a healthy run derives (pure-input hashing), while
-   * the bytes were built on a partial tree, so a save here is the next
-   * clean run's stale hit.
-   */
-  taintedUpstream?: boolean
-  /**
    * The run keeps its bytes in a remote (run-store.ts): an attempt captures
    * its output at the entry's bounds, and an outcome that saves no entry
    * carries it as `runLog`; a failure's only when `failures`
@@ -227,20 +157,6 @@ export interface ExecuteArgs {
    * on the old digest is probed or saved.
    */
   fingerprintWatch?: FingerprintWatch
-  /**
-   * No task in the run depends on this one, so none is ordered after it to
-   * read what it wrote: a miss that saves nothing marks nothing (the output
-   * walk cost 1,000 read-only misses 1.62 → 1.78 s).
-   */
-  noDependants?: true
-  /** The task holds vx's terminal (`terminalHolders`): its stdio is vx's own. */
-  terminal?: true
-  /** A persistent task every dependant of which starts it where it runs: never spawned here. */
-  carried?: true
-  /** The persistent tasks its `servers` executor starts where it runs it. */
-  servers?: readonly TaskNode[]
-  /** Each of `servers`' nested project dirs, in its order. */
-  serversNested?: readonly (readonly string[])[]
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
   /** Every task of the project at a directory, as its config declares them (undeclared-state.ts). Absent: none. */
@@ -263,8 +179,98 @@ export interface ExecuteArgs {
    * with this task and nothing built on it is saved.
    */
   leftRunning?: (node: TaskNode) => void
-  /** A `vx watch` cycle (`RunOptions.watch`): an input edited mid-run is the next cycle's. */
+  /** A `vx watch` cycle (`RunHandoff.watch`): an input edited mid-run is the next cycle's. */
   watch?: true
+}
+
+/** One dispatch: the run it belongs to, plus this task's own facts. */
+export interface ExecuteArgs {
+  run: RunContext
+  node: TaskNode
+  upstream: TaskOutcome[]
+  log: Logger
+  /** The executor this task was PLACED on (run.ts, before scheduling). */
+  executor: TaskExecutor
+  /**
+   * `exec.remote: 'only'` with no remote executor to take it: succeed
+   * WITHOUT executing, cleaning, restoring or saving anything on this
+   * machine. The hash is still computed — dependents fold it.
+   */
+  remoteOnlyNoop?: boolean
+  /**
+   * The task depends on a `remoteOnlyNoop` one, directly or through others
+   * (`Placements.belowNoop`): it saves nothing, since its key names the
+   * no-op's outputs, which never landed.
+   */
+  belowNoop?: boolean
+  /**
+   * `exec.remote: 'only'` placed on a remote executor: execute remotely,
+   * but this machine's disk is untouched — no output clean, no vx cache
+   * probe/restore/save. The task's outputs live in the REMOTE store and
+   * reach dependents' input trees by reference (the executor's job).
+   */
+  remoteOnly?: boolean
+  /**
+   * Plan-time `--cache-download` decision for THIS task (run.ts). `'deferred'`
+   * means: do not clean, do not save — the executor is expected to leave
+   * the outputs in the remote store and hand back a closure. An executor
+   * that ignores it and materialises anyway simply gets no local entry;
+   * the outputs are on disk but unindexed, which is its contract to keep.
+   */
+  download?: 'eager' | 'deferred'
+  nestedProjectDirs: string[]
+  /**
+   * Where its outputs stop when that is more than `nestedProjectDirs`: the
+   * nested workspaces under it too (prepare.ts `outputWallsOf`).
+   */
+  outputNestedDirs?: string[]
+  /**
+   * Up-front probe result from the local short-circuit classify, when
+   * this task was stable + cacheable + local-read. Reused here so there
+   * is NO second `cache.get`:
+   *   - `hit` present  → restore that entry directly (restore-tier; may
+   *     run before deps, so the up-front `hash` is used verbatim rather
+   *     than recomputed against an incomplete upstream).
+   *   - `hit` null     → a confirmed stable miss; skip the probe, go to
+   *     the run path.
+   * Absent → probe lazily, exactly as today (unstable / unclassified).
+   */
+  preProbed?: { hash: string; hit: CacheEntry | null }
+  /**
+   * An uncached task's key as the up-front pass derived it, present only
+   * when no upstream can change it (`deriveStableKeys`' `uncachedKeys`):
+   * used verbatim instead of deriving the same key again.
+   */
+  upfrontKey?: string
+  /**
+   * An unkeyed group's up-front key (`deriveStableKeys`' `groupKeys`): used
+   * verbatim when the live upstream folds the same ids and keys.
+   */
+  upfrontGroupKey?: UpfrontGroupKey
+  /**
+   * `continueMode: 'always'` let this task run although an upstream —
+   * directly or through a chain of successes — failed or aborted. It still
+   * cleans its outputs and runs, and a cache HIT still restores (a hit is a
+   * healthy run's bytes), but its own result is never saved: the key it
+   * derives is the one a healthy run derives (pure-input hashing), while
+   * the bytes were built on a partial tree, so a save here is the next
+   * clean run's stale hit.
+   */
+  taintedUpstream?: boolean
+  /**
+   * No task in the run depends on this one, so none is ordered after it to
+   * read what it wrote: a miss that saves nothing marks nothing (the output
+   * walk cost 1,000 read-only misses 1.62 → 1.78 s).
+   */
+  noDependants?: true
+  /** The task holds vx's terminal (`terminalHolders`): its stdio is vx's own. */
+  terminal?: true
+  /** A persistent task every dependant of which starts it where it runs: never spawned here. */
+  carried?: true
+  /** The persistent tasks its `servers` executor starts where it runs it. */
+  servers?: readonly TaskNode[]
+  /** Each of `servers`' nested project dirs, in its order. */
+  serversNested?: readonly (readonly string[])[]
 }
 
 /**
@@ -287,7 +293,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args,
       probed.hash,
       probed.hit,
-      process.hrtime.bigint() - args.runStartHrTimeNs,
+      process.hrtime.bigint() - args.run.runStartHrTimeNs,
     )
   }
   return executeCachedTask(args)
@@ -304,13 +310,13 @@ export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefi
   if (probed?.hit == null || !readsCache(args) || args.remoteOnlyNoop === true) return undefined
   if (isGroupTask(args.node) || args.node.config.exec?.persistent !== undefined) return undefined
   // A moved fingerprint is said, and demotes the hit, on the dispatch.
-  if (args.fingerprintWatch?.moved() !== undefined) return undefined
+  if (args.run.fingerprintWatch?.moved() !== undefined) return undefined
   const restore = {
     args,
     hash: probed.hash,
     hit: probed.hit,
     cacheOpStart: performance.now(),
-    taskStartNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    taskStartNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
   }
   return currentHit(restore)
 }
@@ -326,20 +332,20 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.node,
       args.upstream,
       args.upfrontGroupKey,
-      args.runStartHrTimeNs,
+      args.run.runStartHrTimeNs,
     )
   }
-  const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  const wallclockNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const hash = await keyOf(
     computeTaskHash({
       node: args.node,
       upstream: args.upstream,
-      workspaceRoot: args.workspaceRoot,
-      cache: args.cache,
-      forwardArgs: args.forwardArgs,
+      workspaceRoot: args.run.workspaceRoot,
+      cache: args.run.cache,
+      forwardArgs: args.run.forwardArgs,
       nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+      ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
+      ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
     }),
   )
   return groupOutcome(args.node, args.upstream, hash, wallclockNs)
@@ -381,8 +387,7 @@ function groupOutcome(
     // What this group stands for. A dependent expands it to describe the
     // real tasks in its input closure — see `TaskOutcome.groupUpstream`.
     groupUpstream: upstream,
-    wallclockStartNs: wallclockNs,
-    wallclockEndNs: wallclockNs,
+    timing: { startNs: wallclockNs, endNs: wallclockNs },
   }
 }
 

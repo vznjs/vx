@@ -228,17 +228,19 @@ describe('execute-task drops what the command may have written, and nothing else
       await executeTask({
         node: n,
         upstream: [],
-        workspaceRoot: root,
-        cache,
+        run: {
+          workspaceRoot: root,
+          cache,
+          runStartHrTimeNs: process.hrtime.bigint(),
+          keyedProjects: () => new Set<string>(),
+          gitFilesCache: git,
+          hashCache,
+          liveChildren,
+          persistentRegistry,
+        },
         log: logger(said),
         executor,
         nestedProjectDirs: [],
-        runStartHrTimeNs: process.hrtime.bigint(),
-        keyedProjects: () => new Set<string>(),
-        gitFilesCache: git,
-        hashCache,
-        liveChildren,
-        persistentRegistry,
       })
       for (const child of persistentRegistry.values()) child.kill()
       const name = (p: string) => (p === dir ? 'app' : p === OTHER ? 'other' : 'workspace')

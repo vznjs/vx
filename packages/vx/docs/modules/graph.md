@@ -456,60 +456,128 @@ export interface InputChanges {
   first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[] // the first ten, by kind then name
 }
 
-export interface TaskOutcome {
-  node: TaskNode
-  status: TaskStatus
-  exitCode: number
-  durationMs: number // what THIS run spent (a hit's restore cost)
-  hash?: string // cache key (pure-input transitive; folded into dependents)
-  storedDurationMs?: number // hits: the exec time the entry was stored with — the work skipped
-  storedCpuMs?: number // hits: what the producing execution used (rides the artifact)
-  storedPeakRssBytes?: number
-  admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
+export interface OutcomeTiming { // on the run's clock
   queuedMs?: number // how long it waited ready for a worker, any admission hold included
-  inputFiles?: number // on a cacheable task that ran: the files its key read
-  artifactBytes?: number // a hit's entry size, or (sink listening) the size a miss's save wrote
-  outputBytes?: number // its output files' raw bytes, restored or saved: the row's `outputs`
+  admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
+  startNs?: bigint // hrtime span relative to run t=0
+  endNs?: bigint
   fetchMs?: number // a remote hit this run pulled: download + ingest
   saveMs?: number // a miss that saved, sink listening: the save's own time
-  inputChanges?: InputChanges // on one that ran with a sink listening: its key against the last saved entry
+}
+
+export interface OutcomeUsage { // what this run's execution used; absent on a hit
   cpuMs?: number
   peakRssBytes?: number
   peakCores?: number // sampled: most cores one interval burned
   avgRssBytes?: number // sampled: mean resident memory
-  groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
+}
+
+export interface OutcomeCache {
+  stored?: { durationMs: number; cpuMs?: number; peakRssBytes?: number } // hits: what the producing execution took — the work skipped
+  restored?: boolean // cache hits: false = tree already current (up-to-date)
+  saved?: true // ran here and its result went to the cache: the footer's `↑`
+  inputFiles?: number // on a cacheable task that ran: the files its key read
+  artifactBytes?: number // a hit's entry size, or (sink listening) the size a miss's save wrote
+  outputBytes?: number // its output files' raw bytes, restored or saved: the row's `outputs`
+  inputChanges?: InputChanges // on one that ran with a sink listening: its key against the last saved entry
+  deferred?: true // outputs left in the remote store (`--cache-download=none`)
+  off?: true // the run's policy read and wrote nothing: a run of it is no-cache, not a miss
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
   driftedInput?: string | null // its own re-check found this input (absolute) moved while it ran, null unnamed: vx watch judges it changed next
   keylessBy?: string // the task with no `inputs` its key includes (or itself): no read, no save
-  cacheOff?: true // the run's policy read and wrote nothing: a run of it is no-cache, not a miss
-  blockedBy?: string // skipped: the failed or aborted task at the root of the block
-  taintedBy?: string // ran behind a failure (`always`) or a dropped dependency: its root; set by run() before any observer hears it, so no flaky verdict reads it
-  otherPlatform?: { readonly needs: readonly string[]; readonly host: string } // skipped: its `exec.platforms` leave this machine out
-  timedOut?: true // failed: vx's own `timeout` killed the final attempt
-  failedOutput?: string // failed command: its output log (output-log.ts), first 8 KiB + last 56 KiB, masked
-  runLog?: string // run keeps bytes in a remote and this task saved no entry: its whole output log, masked
-  notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
-  serverExit?: number // ready persistent task whose child exited on its own mid-run (a setup step's 0 at ready, a crash's code): no label calls it running
-  inputMoved?: string // failed by inputs.stability.severity 'error': the input that changed ('' unnamed)
-  where?: string // executor-reported placement, when not this host
-  carried?: true // a persistent task each dependant's executor starts where it runs: nothing ran here
-  whereCores?: number // that machine's cores and memory (ExecuteResult.machine)
-  whereMemoryBytes?: number
-  cpuShare?: number // ExecuteResult.machine.cpuShare: the share of a core its threads got there
-  outputs?: 'deferred' // outputs left in the remote store (`--cache-download=none`)
-  saved?: true // ran here and its result went to the cache: the footer's `↑`
-  restoreFailed?: true // on `failed`: a hit whose restore threw; failed only, in no cache count
-  wallclockStartNs?: bigint // hrtime span relative to run t=0
-  wallclockEndNs?: bigint
-  restored?: boolean // cache hits: false = tree already current (up-to-date)
-  attempts?: number // set only when `retries` / `--retries` ran it more than once
-  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[] // the attempts that were run again
-  attemptOutputs?: readonly string[] // each of failedAttempts' output, encoded as failedOutput: vx last --log
-  flaky?: { passes: number; failures: number } // the run proved it flaky; its row says so
-  sandboxViolations?: number
-  sandboxViolationLines?: string[]
-  sandboxFix?: { read?: string[]; write?: string[]; network?: string[]; systemInfo?: string[]; withheld?: string[]; inputs?: string[]; workspaceFiles?: string[] } // the grants that would have allowed the denials; withheld: credential paths left out; inputs / workspaceFiles: a cached task's unkeyed reads
 }
+
+export interface OutcomeSandbox { // any denial fails the task
+  violations: number
+  lines?: string[]
+  fix?: SandboxFix
+}
+
+export interface SandboxFix { // the grants that would have allowed the denials
+  read?: string[]
+  write?: string[]
+  network?: string[]
+  systemInfo?: string[]
+  withheld?: string[] // credential paths left out
+  inputs?: string[] // a cached task's unkeyed reads of its project
+  workspaceFiles?: string[] // the same elsewhere in the workspace
+}
+
+export interface OutcomeAttempts {
+  count?: number // set only when `retries` / `--retries` ran it more than once
+  failed?: readonly { endedAt: number; exitCode: number; timedOut?: true }[] // the attempts that were run again
+  outputs?: readonly string[] // each failed attempt's output, encoded as failedOutput: vx last --log
+  flaky?: { passes: number; failures: number } // the run proved it flaky; its row says so
+}
+
+export interface OutcomePlacement { // executor-reported, when not this host
+  where?: string
+  carried?: true // a persistent task each dependant's executor starts where it runs: nothing ran here
+  cores?: number // that machine's cores and memory (ExecuteResult.machine)
+  memoryBytes?: number
+  cpuShare?: number // ExecuteResult.machine.cpuShare: the share of a core its threads got there
+}
+
+interface OutcomeBase { // every status; a group exists only when it holds a value
+  node: TaskNode
+  durationMs: number // what THIS run spent (a hit's restore cost)
+  timing?: OutcomeTiming
+  usage?: OutcomeUsage
+  cache?: OutcomeCache
+  sandbox?: OutcomeSandbox
+  attempts?: OutcomeAttempts
+  placement?: OutcomePlacement
+  groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
+  taintedBy?: string // ran behind a failure (`always`) or a dropped dependency: its root; set by run() before any observer hears it, so no flaky verdict reads it
+  runLog?: string // run keeps bytes in a remote and this task saved no entry: its whole output log, masked
+}
+
+interface StartedOutcome extends OutcomeBase {
+  exitCode: number
+  hash?: string // cache key (pure-input transitive; folded into dependents)
+}
+
+interface FailureFacts { // failed only
+  timedOut?: true // vx's own `timeout` killed the final attempt
+  notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
+  inputMoved?: string // failed by inputs.stability.severity 'error': the input that changed ('' unnamed)
+  restoreFailed?: true // a hit whose restore threw; in no cache count
+  failedOutput?: string // failed command: its output log (output-log.ts), first 8 KiB + last 56 KiB, masked
+}
+
+interface BlockFacts { // skipped or aborted
+  blockedBy?: string // the failed or aborted task at the root of the block
+}
+
+interface PlatformFacts { // skipped only
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string } // its `exec.platforms` leave this machine out
+  platform?: true // it, or the task it is blocked behind, is a platform skip: it fails nothing
+}
+
+type None<T> = { [K in keyof T]?: never } // a variant's absent facts read as undefined on the union
+
+export interface SucceededOutcome extends StartedOutcome, None<FailureFacts>, None<BlockFacts>, None<PlatformFacts> {
+  status: Exclude<TaskStatus, 'failed' | 'aborted' | 'skipped'>
+  serverExit?: number // ready persistent task whose child exited on its own mid-run: no label calls it running
+}
+export interface FailedOutcome extends StartedOutcome, FailureFacts, None<BlockFacts>, None<PlatformFacts> {
+  status: 'failed'
+  serverExit?: never
+}
+export interface AbortedOutcome extends StartedOutcome, None<FailureFacts>, BlockFacts, None<PlatformFacts> {
+  status: 'aborted' // a shutdown stopped it; exitCode is the signal's
+  serverExit?: number
+}
+export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFacts, PlatformFacts {
+  status: 'skipped' // never started: no exit
+  exitCode?: never
+  hash?: string // fail-fast stopped it after its key was derived
+  serverExit?: never
+}
+
+export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | SkippedOutcome
+
+export function exitCodeOf(o: TaskOutcome): number // the exit a record writes: a skip's is 0 behind a platform skip, else 1
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
 

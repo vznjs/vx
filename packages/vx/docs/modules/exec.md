@@ -631,7 +631,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   non-negative `memoryBytes` and an optional positive `cpuShare` (a
   `where` object lost the run's history to a bind error). `where` is the
   executor-reported placement label (a REAPI worker id); absent = this
-  host. Rides `TaskOutcome.where` into telemetry (OTel:
+  host. Rides `TaskOutcome.placement.where` into telemetry (OTel:
   `vx.task.where`), the task's row and the run history.
 - `selectExecutor(executors, task, label?, pinnedFor?, barred?)` — first executor, in order,
   that may take the task: a `remote` executor is skipped outright for a

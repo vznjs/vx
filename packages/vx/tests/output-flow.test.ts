@@ -123,7 +123,7 @@ function mkOutcome(
     durationMs: 100,
     hash: 'abcdef0123456789',
     ...extra,
-  }
+  } as TaskOutcome
 }
 
 const NO_COLORS = { enabled: false }
@@ -145,7 +145,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const n = mkNode('one#build', { requested: true })
     log.taskStdout(n, 'replayed output\n')
-    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { cache: { restored: true } }))
     expect(out.text()).toBe('')
   })
 
@@ -153,7 +153,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const n = mkNode('one#build')
-    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: false }))
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { cache: { restored: false } }))
     expect(out.text()).toBe('')
   })
 
@@ -190,8 +190,11 @@ describe('defaultLogger visibility matrix — broad', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const a = mkNode('one#types')
     const b = mkNode('one#test')
-    log.taskComplete(a, mkOutcome(a, 'success', { flaky: { passes: 1, failures: 1 } }))
-    log.taskComplete(b, mkOutcome(b, 'failed', { flaky: { passes: 3, failures: 1 } }))
+    log.taskComplete(
+      a,
+      mkOutcome(a, 'success', { attempts: { flaky: { passes: 1, failures: 1 } } }),
+    )
+    log.taskComplete(b, mkOutcome(b, 'failed', { attempts: { flaky: { passes: 3, failures: 1 } } }))
     expect(out.text().split('\n').slice(0, 2)).toEqual([
       '            success no-cache       —   100ms     —      —       —       — local          one#types flaky - failed 1× before',
       '            failed  no-cache       —   100ms     —      —       —       — local          one#test flaky - passed 3× before',
@@ -215,7 +218,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const n = mkNode('one#build')
     log.taskStderr(n, 'partial\n')
-    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143, wallclockStartNs: 1n }))
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143, timing: { startNs: 1n } }))
     const later = mkNode('one#later')
     log.taskComplete(later, mkOutcome(later, 'aborted', { exitCode: 1, durationMs: 0 }))
     log.runEnd?.()
@@ -243,7 +246,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode }, out)
     const n = mkNode('one#build')
-    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143, wallclockStartNs: 1n }))
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143, timing: { startNs: 1n } }))
     log.runEnd?.()
     expect(out.text()).toBe('')
   })
@@ -331,7 +334,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })
     log.taskStart?.(n)
-    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { cache: { restored: true } }))
     expect(out.text()).toBe('┌─ one#test > $ noop\n└─ one#test ── (100ms) restored-local\n\n')
   })
 
@@ -341,7 +344,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const n = mkNode('one#test', { requested: true })
     log.taskStart?.(n)
     log.taskStdout(n, 'replayed\n')
-    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { cache: { restored: true } }))
     expect(out.text()).toBe(
       '┌─ one#test > $ noop\nreplayed\n└─ one#test ── (100ms) restored-local\n\n',
     )
@@ -383,7 +386,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const dep = mkNode('lib#build')
     log.taskStdout(dep, 'replayed dep output\n')
-    log.taskComplete(dep, mkOutcome(dep, 'cache-hit', { restored: true }))
+    log.taskComplete(dep, mkOutcome(dep, 'cache-hit', { cache: { restored: true } }))
     expect(out.text()).toBe('')
   })
 
@@ -487,8 +490,8 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
     const b = mkNode('@bench/l3-1#test', { requested: true })
     log.taskStart?.(a)
     log.taskStart?.(b)
-    log.taskComplete(a, mkOutcome(a, 'cache-hit', { restored: false }))
-    log.taskComplete(b, mkOutcome(b, 'cache-hit', { restored: false }))
+    log.taskComplete(a, mkOutcome(a, 'cache-hit', { cache: { restored: false } }))
+    log.taskComplete(b, mkOutcome(b, 'cache-hit', { cache: { restored: false } }))
     const text = out.text()
     // No interleaved garbage: a's full frame precedes any of b's lines.
     const aClose = text.indexOf('└─ @bench/l3-1#build')
@@ -516,7 +519,7 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
     log.runStart?.({ total: 2, requestedCount: 2 })
     const a = mkNode('one#build', { requested: true })
     log.taskStart?.(a)
-    log.taskComplete(a, mkOutcome(a, 'cache-hit', { restored: false }))
+    log.taskComplete(a, mkOutcome(a, 'cache-hit', { cache: { restored: false } }))
     // The command line is present for the hit (forceCommand), so the
     // asked-for task's frame reads the same whether it ran or cached.
     expect(out.text()).toContain('$ noop')
@@ -635,7 +638,7 @@ describe('defaultLogger visibility matrix — overrides', () => {
     log.taskStdout(ok, 'fine\n')
     log.taskComplete(ok, mkOutcome(ok, 'success'))
     const hit = mkNode('one#b')
-    log.taskComplete(hit, mkOutcome(hit, 'cache-hit', { restored: true }))
+    log.taskComplete(hit, mkOutcome(hit, 'cache-hit', { cache: { restored: true } }))
     expect(out.text()).toBe('')
     const bad = mkNode('one#c')
     log.taskStdout(bad, 'partial work\n')
@@ -663,7 +666,7 @@ describe('defaultLogger visibility matrix — overrides', () => {
     log.taskStdout(ok, 'this build output must never print\n')
     log.taskComplete(ok, mkOutcome(ok, 'success'))
     const hit = mkNode('one#b')
-    log.taskComplete(hit, mkOutcome(hit, 'cache-hit', { restored: true }))
+    log.taskComplete(hit, mkOutcome(hit, 'cache-hit', { cache: { restored: true } }))
     const bad = mkNode('one#c')
     log.taskStderr(bad, 'not even failures replay\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
@@ -748,7 +751,7 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
     const n = mkNode('one#build')
     log.taskStdout(n, '::error::from-trap\n')
-    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 130, wallclockStartNs: 1n }))
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 130, timing: { startNs: 1n } }))
     const text = out.text()
     expect(text).toContain('::error::from-trap')
     expect(unfenced(text)).not.toContain('::error::from-trap')
@@ -810,7 +813,7 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
     const n = mkNode('one#build')
     log.taskStdout(n, 'replayed\n')
-    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true, durationMs: 12 }))
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { cache: { restored: true }, durationMs: 12 }))
     expect(out.text()).toContain('::group::one#build (restored-local 12ms)\n')
   })
 
@@ -847,7 +850,7 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
     const n = mkNode('one#box')
-    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1, sandboxViolations: 1 }))
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1, sandbox: { violations: 1 } }))
     expect(out.text()).toContain('::error title=one#box::failed (exit 1, 1 sandbox violation)\n')
   })
 
@@ -863,7 +866,7 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
     const n = mkNode('one#build')
-    log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
+    log.taskComplete(n, mkOutcome(n, 'cache-hit', { cache: { restored: true } }))
     const text = out.text()
     expect(text).toContain(
       '            success local          —   100ms     —      —       —       — local          one#build\n',

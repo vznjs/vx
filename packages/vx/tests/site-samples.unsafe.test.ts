@@ -366,9 +366,8 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
       status,
       exitCode: status === 'failed' ? 1 : 0,
       durationMs,
-      flaky: { passes, failures },
-      ...(attempts !== undefined && { attempts }),
-    }
+      attempts: { flaky: { passes, failures }, ...(attempts !== undefined && { count: attempts }) },
+    } as TaskOutcome
     return status === 'failed'
       ? formatFailureLine(id, durationMs, undefined, 'miss', executedCells(o, undefined)) +
           flakyNote(o)

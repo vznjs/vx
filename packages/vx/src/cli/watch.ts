@@ -20,9 +20,9 @@ import {
   commandWindows,
   fingerprintClaims,
   forwardedSignal,
-  run as runOrchestrator,
+  runCore as runOrchestrator,
   type HeldPersistent,
-  type RunOptions,
+  type CoreRunOptions,
   shellQuote,
 } from '../orchestrator/index.js'
 import { findWorkspaceRoot, LOCKFILE_NAME, NO_LOCK, type ProjectMeta } from '../workspace/index.js'
@@ -107,12 +107,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // in too late, so a SIGTERM during the initial run took Bun's
   // default (exit 143) and left the cycle's children running under init.
   const stop = new AbortController()
-  const opts: RunOptions = {
+  const opts: CoreRunOptions = {
     ...resolved,
     handleSignals: false,
     signal: stop.signal,
-    holdPersistent: true,
-    watch: true,
+    // Its own: the deletes below and each cycle's additions stay off the resolved run's.
+    handoff: { ...resolved.handoff, holdPersistent: true, watch: true },
   }
   // Every cycle's `invocations` row names the verb, as `vx run`'s does;
   // run()'s process.argv fallback put the bin's absolute path there, so
@@ -120,8 +120,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   opts.command = ['vx', 'watch', ...args.map(shellQuote)].join(' ')
   // A staged load and a discovery from the selection pass are one run's
   // worth; every cycle after an edit must load and list live.
-  delete opts.staged
-  delete opts.discovered
+  delete opts.handoff?.staged
+  delete opts.handoff?.discovered
   // `on`, not `once`: a second signal during the teardown is absorbed (an
   // abort is once), where `once` left it to Bun's default, exit 130 with
   // the cycle's children mid-grace.
@@ -205,11 +205,15 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     lock: lockStamp(workspaceRoot),
   }
   const initial: InitialCycle = {
-    cycle: watchCycle({ ...opts, commandWindows: initialRun.windows }, stop.signal, () => {
-      if (initial.onWaiting !== undefined) initial.onWaiting()
-      else if (loop === undefined && (scope.length > 0 || unlocked) && !stop.signal.aborted)
-        loop = armLoop(initial)
-    }),
+    cycle: watchCycle(
+      { ...opts, handoff: { ...opts.handoff, commandWindows: initialRun.windows } },
+      stop.signal,
+      () => {
+        if (initial.onWaiting !== undefined) initial.onWaiting()
+        else if (loop === undefined && (scope.length > 0 || unlocked) && !stop.signal.aborted)
+          loop = armLoop(initial)
+      },
+    ),
     held: Promise.resolve(undefined),
   }
   const openingTasks = (): number | undefined => initial.cycle.tasks
@@ -222,7 +226,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   let drifted: string | undefined
   initial.held = runOrchestrator(initial.cycle.opts).then(
     async (run) => {
-      drifted = run.outcomes.find((o) => o.unkeyed === true)?.node.id
+      drifted = run.outcomes.find((o) => o.cache?.unkeyed === true)?.node.id
       if (run.refused !== undefined) {
         const hint = run.refused.startsWith('no projects declare')
           ? await spacedHint(parsed, cwd)
@@ -277,7 +281,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     // later edit out of the scope it picked. A cycle is an edit, and the
     // cache keys decide what in the scope it re-runs.
     delete opts.affected
-    delete opts.selectedOutright
+    delete opts.handoff?.selectedOutright
 
     const load = stageLoad
     const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)

@@ -22,7 +22,7 @@ export interface Fixture {
 export function expectOk(r: RunSummary, fixture: Fixture): void {
   if (r.ok) return
   const exits = r.outcomes.map((o) => `${o.node.id} ${o.status} exit=${o.exitCode}`).join(', ')
-  const refused = r.outcomes.flatMap((o) => o.sandboxViolationLines ?? [])
+  const refused = r.outcomes.flatMap((o) => o.sandbox?.lines ?? [])
   throw new Error(
     `run was not ok (${exits}); task output:\n${fixture.log.join('\n')}` +
       (refused.length > 0 ? `\nsandbox:\n${refused.join('\n')}` : ''),

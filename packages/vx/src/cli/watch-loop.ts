@@ -9,9 +9,9 @@ import { namedIgnoredReach, repoFacts } from '../cache/index.js'
 import {
   type CommandWindows,
   forwardedSignal,
-  run as runOrchestrator,
+  runCore as runOrchestrator,
   type HeldPersistent,
-  type RunOptions,
+  type CoreRunOptions,
 } from '../orchestrator/index.js'
 import {
   LOCKFILE_NAME,
@@ -48,7 +48,7 @@ function sayCannot(what: string, err: unknown): void {
  * print no row: watch prints no footer, so such a cycle said nothing, and
  * a failure the cycle before stayed the last outcome on screen.
  */
-export function sayAllCached(opts: RunOptions, outcomes: readonly { status: string }[]): void {
+export function sayAllCached(opts: CoreRunOptions, outcomes: readonly { status: string }[]): void {
   if (outcomes.length === 0 || !outcomes.every((o) => isCacheHit(o.status))) return
   const mode = resolveOutputView(opts).mode
   if (mode !== 'broad' && mode !== 'errors-only' && mode !== 'none') return
@@ -93,7 +93,7 @@ export interface InitialCycle {
 }
 
 interface WatchLoopArgs {
-  opts: RunOptions
+  opts: CoreRunOptions
   /** The persistent tasks the initial run left running; the next cycle stops them before it starts. */
   held: HeldPersistent | undefined
   /** The initial run, still in flight: the loop's first cycle. */
@@ -101,7 +101,7 @@ interface WatchLoopArgs {
   initialRun: InitialRun
   /** The initial run's task count, once it has started. */
   tasks: () => number | undefined
-  /** A task the initial run left unsaved because its inputs moved under it (`TaskOutcome.unkeyed`). */
+  /** A task the initial run left unsaved because its inputs moved under it (`TaskOutcome.cache.unkeyed`). */
   drifted: string | undefined
   /** Aborted by the SIGINT/SIGTERM handlers `watchCmd` installed; the loop drains its cycle and resolves. */
   stop: AbortSignal
@@ -181,7 +181,7 @@ interface Streamed {
 
 /** The loop's state between events, and the steps that arm, judge and run. */
 class WatchLoop {
-  private readonly opts: RunOptions
+  private readonly opts: CoreRunOptions
   private readonly stop: AbortSignal
   private readonly workspaceRoot: string
   // The watched set as of the last cycle: `rearm` replaces these after an
@@ -622,8 +622,11 @@ class WatchLoop {
     const current = watchCycle(
       {
         ...opts,
-        ...(before ? { keep: before } : {}),
-        ...(judged ? { commandWindows: judged.windows } : {}),
+        handoff: {
+          ...opts.handoff,
+          ...(before ? { keep: before } : {}),
+          ...(judged ? { commandWindows: judged.windows } : {}),
+        },
       },
       this.stop,
       this.interruptIfWaiting,
@@ -631,7 +634,9 @@ class WatchLoop {
     this.current = current
     const cycle = await runOrchestrator(current.opts)
     changes.unseen(
-      cycle.outcomes.flatMap((o) => (o.driftedInput === undefined ? [] : [o.driftedInput])),
+      cycle.outcomes.flatMap((o) =>
+        o.cache?.driftedInput === undefined ? [] : [o.cache.driftedInput],
+      ),
     )
     sayAllCached(opts, cycle.outcomes)
     this.lastTasks = current.tasks ?? this.lastTasks

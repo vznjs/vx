@@ -301,8 +301,7 @@ terminal and a task succeeding or failing. Read it alongside
  │              LayeredCache with remote writes on, the remote upload
  │              fires in the BACKGROUND (drained at end of run).
  │       9. Return TaskOutcome { node, status, exitCode, durationMs,
- │            hash, cpuMs?, peakRssBytes?, restored?,
- │            wallclockStartNs, wallclockEndNs }.
+ │            hash, usage?, cache?, timing: { startNs, endNs } }.
  │
  └─ End-of-run
     1. SIGTERM dependency-only persistent children still up (each is

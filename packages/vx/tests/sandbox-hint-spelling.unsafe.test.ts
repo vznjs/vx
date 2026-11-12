@@ -31,7 +31,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a sandbox hint spel
       } } } }\n`,
     })
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    return (r.outcomes[0]?.sandboxViolationLines ?? []).map((l) => l.replace(/^.*e\.g\. /, ''))
+    return (r.outcomes[0]?.sandbox?.lines ?? []).map((l) => l.replace(/^.*e\.g\. /, ''))
   }
 
   it('a write grant in the workspace from the project, quoted as a JS string', async () => {

@@ -367,7 +367,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const dir = realpathSync(await project(undefined))
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.ok).toBe(false)
-        expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
+        expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines]).toEqual([
           'failed',
           [`mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`],
         ])
@@ -448,7 +448,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         // opens under the widened directory report it, and the read of
         // `dist/sibling.txt`, which lies under it too.
         expect(r.outcomes[0]?.status).toBe('failed')
-        expect(r.outcomes[0]?.sandboxViolations).toBe(2)
+        expect(r.outcomes[0]?.sandbox?.violations).toBe(2)
         expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('AT THE ROOT')
       },
       TIMEOUT,
@@ -465,7 +465,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(r.outcomes[0]?.status).toBe('failed')
         // The root read is denied; the read of `dist/`'s sibling succeeds
         // (the widening is real and scoped) and is reported.
-        expect(r.outcomes[0]?.sandboxViolations).toBe(2)
+        expect(r.outcomes[0]?.sandbox?.violations).toBe(2)
         // The redirection still creates the file; what the denial costs is
         // its CONTENT, which is the difference that matters.
         expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('')
@@ -522,7 +522,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         // The shell opens banner.txt, so it reads on any cat: Ubuntu 26's
         // (uutils) stats first and so never opens a hidden path.
         expect(r.outcomes[0]?.exitCode).toBe(2)
-        expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
+        expect(r.outcomes[0]?.sandbox?.lines).toEqual([
           `openat(banner.txt) = -1 ENOENT  [${realpathSync(dir)}/banner.txt]`,
         ])
         // The logger trims each stderr chunk, and the message arrives split
@@ -559,7 +559,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           files: { 'src/in.txt': 'in\n' },
         })
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-        expect(r.outcomes[0]?.sandboxViolationLines ?? []).toEqual([])
+        expect(r.outcomes[0]?.sandbox?.lines ?? []).toEqual([])
         expectOk(r, fixture)
         expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe('in\n')
       },
@@ -609,7 +609,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const dir = await project(['dist/'])
         const r = await run({ cwd: fixture.root, tasks: ['gen'], log: collectingLogger(fixture) })
         expect([r.outcomes[0]?.status, r.outcomes[0]?.exitCode]).toEqual(['failed', 1])
-        expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
+        expect(r.outcomes[0]?.sandbox?.lines).toEqual([
           `openat(${realpathSync(dir)}/src/gen.txt) = a write no grant covers  [${realpathSync(dir)}/src/gen.txt]`,
         ])
       },
@@ -621,7 +621,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       async () => {
         const dir = await project(['dist/'], 'for i in $(seq 150); do echo $i > dist/f$i.txt; done')
         const r = await run({ cwd: fixture.root, tasks: ['gen'], log: collectingLogger(fixture) })
-        expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
+        expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines]).toEqual([
           'failed',
           [
             `openat(${realpathSync(dir)}/src/gen.txt) = a write no grant covers  [${realpathSync(dir)}/src/gen.txt]`,
@@ -694,7 +694,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
     const deniesBanner = async (cwd: string, dir: string): Promise<void> => {
       const r = await run({ cwd, tasks: ['build'], log: collectingLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('failed')
-      expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
+      expect(r.outcomes[0]?.sandbox?.lines).toEqual([
         `openat(banner.txt) = -1 ENOENT  [${realpathSync(dir)}/banner.txt]`,
       ])
     }
@@ -834,12 +834,12 @@ describe.skipIf(!available || process.platform !== 'linux')(
       ]
       const first = testOutcome(await runTest())
       expect(first?.status).toBe('failed')
-      expect(first?.sandboxViolationLines).toEqual(expected)
+      expect(first?.sandbox?.lines).toEqual(expected)
       // The edit that was a stale hit is a run that fails the same way.
       await writeFile(path.join(ui, 'src', 'index.js'), 'export const ui = 2\n')
       const second = testOutcome(await runTest())
       expect(second?.status).toBe('failed')
-      expect(second?.sandboxViolationLines).toEqual(expected)
+      expect(second?.sandbox?.lines).toEqual(expected)
     }
 
     // Titles spelled out: the site's proof list links the first by name.
@@ -860,7 +860,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       'the suggested fix, applied as given, keys the read: an edit re-runs it',
       async () => {
         const { app, ui } = await workspace('project', { cache: true, dependsOn: [] })
-        const fix = testOutcome(await runTest())?.sandboxFix
+        const fix = testOutcome(await runTest())?.sandbox?.fix
         expect(fix).toEqual({
           read: ['../x-ui/src/index.js'],
           workspaceFiles: ['packages/x-ui/src/index.js'],
@@ -892,7 +892,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const out = path.join(app, 'dist', 'out.txt')
         const r1 = await runTest()
         expectOk(r1, fixture)
-        expect(testOutcome(r1)?.sandboxViolations).toBeUndefined()
+        expect(testOutcome(r1)?.sandbox?.violations).toBeUndefined()
         expect(await readFile(out, 'utf8')).toBe('export const ui = 1\n')
 
         await writeFile(path.join(ui, 'src', 'index.js'), 'export const ui = 2\n')
@@ -915,7 +915,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const { app } = await workspace('root', { cache: false, dependsOn: [] })
         const r = await runTest()
         expectOk(r, fixture)
-        expect(testOutcome(r)?.sandboxViolations).toBeUndefined()
+        expect(testOutcome(r)?.sandbox?.violations).toBeUndefined()
         expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe(
           'export const ui = 1\n',
         )
@@ -933,7 +933,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           const denied = testOutcome(await runTest(link))
           expect(denied?.status).toBe('failed')
           // One denial; the withheld-link line beside it is vx's note (B-20).
-          expect(denied?.sandboxViolations).toBe(1)
+          expect(denied?.sandbox?.violations).toBe(1)
           await writeFile(
             path.join(fixture.root, 'packages', 'x-app', 'vx.config.mjs'),
             appConfig('root', { cache: true, dependsOn: ['^source'] }),
@@ -1010,7 +1010,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         await chain({ cache: false, uiKeysCore: false })
         const r = await runTest()
         expectOk(r, fixture)
-        expect(testOutcome(r)?.sandboxViolations).toBeUndefined()
+        expect(testOutcome(r)?.sandbox?.violations).toBeUndefined()
         expect(await out()).toBe('core 1')
       },
       TIMEOUT,
@@ -1036,7 +1036,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         await chain({ cache: true, uiKeysCore: false })
         const r = testOutcome(await runTest())
         expect(r?.status).toBe('failed')
-        expect(r?.sandboxViolationLines?.at(-1)).toBe(
+        expect(r?.sandbox?.lines?.at(-1)).toBe(
           'vx: @x/app#test read `packages/x-core` (linked at `packages/x-ui/node_modules/@x/core`), ' +
             'and its key includes no task of @x/core, so an edit there would not re-run it. Add a ' +
             '`dependsOn` edge that reaches one (`^build`, or `@x/core#build` where it keys its ' +
@@ -1110,7 +1110,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(r.outcomes).toHaveLength(2)
         for (const o of r.outcomes) {
           expect([o.node.id, o.status]).toEqual([o.node.id, 'failed'])
-          expect([o.node.id, o.sandboxViolations]).toEqual([o.node.id, 1])
+          expect([o.node.id, o.sandbox?.violations]).toEqual([o.node.id, 1])
         }
       },
       TIMEOUT,
@@ -1174,9 +1174,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         await project('echo hi > out.log; echo x > other.txt', '*.log')
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.outcomes[0]?.status).toBe('failed')
-        expect(r.outcomes[0]?.sandboxViolationLines?.some((l) => l.includes('other.txt'))).toBe(
-          true,
-        )
+        expect(r.outcomes[0]?.sandbox?.lines?.some((l) => l.includes('other.txt'))).toBe(true)
       },
       TIMEOUT,
     )
@@ -1191,7 +1189,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.outcomes[0]?.status).toBe('failed')
         expect(
-          r.outcomes[0]?.sandboxViolationLines?.some(
+          r.outcomes[0]?.sandbox?.lines?.some(
             (l) => l.includes('out.log') && l.includes("sandbox's scratch"),
           ),
         ).toBe(true)

@@ -28,7 +28,7 @@ describe.skipIf(!available)('a network grant', () => {
     })
     const r = await run({ cwd: root, tasks: ['a', 'b'], log: quiet })
     const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
-    expect([b?.status, b?.sandboxViolationLines]).toEqual([
+    expect([b?.status, b?.sandbox?.lines]).toEqual([
       'failed',
       ['deny network-outbound a.example.com:443 (host is not on the allow list)'],
     ])
@@ -86,7 +86,7 @@ describe.skipIf(!available)('a network grant', () => {
     })
     const r = await run({ cwd: root, tasks: ['a', 'b'], log: quiet })
     const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
-    expect([b?.status, b?.sandboxViolationLines ?? []]).toEqual(['success', []])
+    expect([b?.status, b?.sandbox?.lines ?? []]).toEqual(['success', []])
   })
 
   it('refuses its own deny under network: true', async () => {
@@ -98,7 +98,7 @@ describe.skipIf(!available)('a network grant', () => {
     })
     const r = await run({ cwd: root, tasks: ['a', 'b'], log: quiet })
     const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
-    expect([b?.status, b?.sandboxViolationLines]).toEqual([
+    expect([b?.status, b?.sandbox?.lines]).toEqual([
       'failed',
       ['deny network-outbound b.example.com:443 (host is on the deny list)'],
     ])

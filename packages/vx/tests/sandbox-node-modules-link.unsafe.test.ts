@@ -111,7 +111,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           await symlink('../x-b', path.join(app, 'node_modules'))
           const first = await neverStale(path.join(b, 'secret.txt'), app)
           expect(testOutcome(first)?.status).toBe('failed')
-          expect(testOutcome(first)?.sandboxViolations).toBeGreaterThan(0)
+          expect(testOutcome(first)?.sandbox?.violations).toBeGreaterThan(0)
         },
         TIMEOUT,
       )
@@ -154,7 +154,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         await symlink('../../../x-b', path.join(app, 'node_modules', '@x', 'b'))
         const first = await neverStale(path.join(nested, 'secret.txt'), app)
         expect(testOutcome(first)?.status).toBe('failed')
-        expect(testOutcome(first)?.sandboxViolationLines?.[0]).toBe(
+        expect(testOutcome(first)?.sandbox?.lines?.[0]).toBe(
           `openat(node_modules/@x/b/c/secret.txt) = -1 ENOENT  [${realpathSync(nested)}/secret.txt]`,
         )
       },

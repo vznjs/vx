@@ -303,12 +303,10 @@ describe('projectOutcome', () => {
     const node = mkNode({ id: 'a#build', command: 'x' })
     const raw = mkOutcome(node, {
       status: 'cache-hit',
-      restored: false,
+      cache: { restored: false },
+      usage: { cpuMs: 12, peakRssBytes: 9999 },
+      timing: { startNs: 1000n, endNs: 2500n },
       hash: 'deadbeef',
-      cpuMs: 12,
-      peakRssBytes: 9999,
-      wallclockStartNs: 1000n,
-      wallclockEndNs: 2500n,
     })
     const view = projectOutcome(raw)
     expect('node' in view).toBe(false)
@@ -321,7 +319,7 @@ describe('projectOutcome', () => {
 
   it('the raw outcome is NOT JSON-serializable (bigint throws); the projection is', () => {
     const node = mkNode({ id: 'a#build', command: 'x' })
-    const raw = mkOutcome(node, { wallclockStartNs: 1n, wallclockEndNs: 2n })
+    const raw = mkOutcome(node, { timing: { startNs: 1n, endNs: 2n } })
     expect(() => JSON.stringify(raw)).toThrow()
     const view = projectOutcome(raw)
     expect(JSON.parse(JSON.stringify(view))).toEqual(view)
@@ -377,7 +375,7 @@ describe('projectOutcome', () => {
       mkOutcome(mkNode({ id: 'a#build', command: 'x' }), {
         status: 'cache-hit',
         durationMs: 6,
-        storedDurationMs: 2006,
+        cache: { stored: { durationMs: 2006 } },
       }),
     )
     expect(view.durationMs).toBe(6)
@@ -396,21 +394,13 @@ describe('projectOutcome', () => {
         status: 'failed',
         exitCode: 143,
         durationMs: 6,
-        storedDurationMs: 2006,
-        storedCpuMs: 1500,
-        storedPeakRssBytes: 4096,
+        cache: { restored: true, stored: { durationMs: 2006, cpuMs: 1500, peakRssBytes: 4096 } },
+        usage: { cpuMs: 5, peakRssBytes: 2048 },
+        timing: { admissionHeldMs: 7, startNs: 10n, endNs: 20n },
+        sandbox: { violations: 2, lines: ['write /etc'] },
         hash: 'h',
-        cpuMs: 5,
-        peakRssBytes: 2048,
-        admissionHeldMs: 7,
         timedOut: true,
         notReady: 'timeout',
-        blockedBy: 'z#y',
-        restored: true,
-        sandboxViolations: 2,
-        sandboxViolationLines: ['write /etc'],
-        wallclockStartNs: 10n,
-        wallclockEndNs: 20n,
       }),
     )
     expect(view).toEqual({
@@ -427,13 +417,15 @@ describe('projectOutcome', () => {
       admissionHeldMs: 7,
       timedOut: true,
       notReady: 'timeout',
-      blockedBy: 'z#y',
       restored: true,
       sandboxViolations: 2,
       sandboxViolationLines: ['write /etc'],
       wallclockStartNs: '10',
       wallclockEndNs: '20',
     })
+    // Only a skip or an abort names what stopped it; a skip has no exit of its own.
+    const skip = projectOutcome({ node, status: 'skipped', durationMs: 0, blockedBy: 'z#y' })
+    expect([skip.blockedBy, skip.exitCode]).toEqual(['z#y', 1])
   })
 })
 
@@ -457,9 +449,13 @@ describe('the label vocabulary at its edges', () => {
     // The local arm is held by the framed-output rows; the remote arm had
     // no reader, so a remote hit that restored nothing read
     // `restored-remote` with the suite green (654).
-    expect(outcomeWord({ status: 'cache-hit-remote', restored: false })).toBe('up-to-date')
-    expect(outcomeWord({ status: 'cache-hit-remote', restored: true })).toBe('restored-remote')
-    expect(outcomeWord({ status: 'cache-hit-remote' })).toBe('restored-remote')
+    expect(outcomeWord({ taskId: 'a#b', status: 'cache-hit-remote', restored: false })).toBe(
+      'up-to-date',
+    )
+    expect(outcomeWord({ taskId: 'a#b', status: 'cache-hit-remote', restored: true })).toBe(
+      'restored-remote',
+    )
+    expect(outcomeWord({ taskId: 'a#b', status: 'cache-hit-remote' })).toBe('restored-remote')
   })
 })
 
@@ -471,7 +467,7 @@ describe('toWireEvent', () => {
       { kind: 'task:start', node },
       { kind: 'task:stdout', node, chunk: 'out' },
       { kind: 'task:stderr', node, chunk: 'err' },
-      { kind: 'task:complete', node, outcome: mkOutcome(node, { wallclockStartNs: 5n }) },
+      { kind: 'task:complete', node, outcome: mkOutcome(node, { timing: { startNs: 5n } }) },
       { kind: 'run:status', line: 'hi' },
       { kind: 'run:end' },
     ]
