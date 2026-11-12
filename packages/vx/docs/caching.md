@@ -325,8 +325,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     it out, but `vx lock` and the miss name it: `inputs leave out git-ignored
 .env.local (matched by .env*)`, with the literal that folds it. A
     `**` glob is not asked, so an ignored `node_modules` says nothing.
-    A **glob** matching nothing stays silent, and so does a literal
-    naming a path that does not exist, until it does. An ignored
+    A **glob** matching nothing stays silent while another glob of the
+    task matches a file, and so does a literal naming a path that does
+    not exist, until it does. When no glob matches (a literal does not
+    count) or the inputs resolve to nothing, the miss warns
+    `inputs matched no files (nope/**)` (see below). An ignored
     directory named outright folds every file under it; an empty one
     folds nothing.
 

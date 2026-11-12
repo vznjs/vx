@@ -2740,7 +2740,8 @@ export default defineProject({
         },
       },
       inputs: {
-        files: ['e2e/**'],
+        // The app playwright's webServer starts: a page edit makes e2e run again.
+        files: ['e2e/**', 'src/**', 'playwright.config.ts'],
         runtime: ['playwright --version'],
         workspaceRuntime: ['node -v'],
       },
@@ -2831,21 +2832,24 @@ for the bootstrap-cycle tradeoff.
 
 When a `dependsOn` exists for ordering only, and the upstream's
 output doesn't influence this task's output. Common case: an
-integration test that depends on a dev server starting up but whose
-own inputs are just the test source.
+integration test that needs a database container up first, whose
+image the test's own inputs already pin.
 
 ```ts
-e2e: {
-  dependsOn: ['dev'],
-  exec: { command: 'playwright test' },
+'test:integration': {
+  dependsOn: ['db:up'], // docker compose up -d postgres
+  exec: { command: 'bun test integration/' },
   inputs: {
-    files: ['e2e/**'],
-    tasks: [],   // dev's hash does not affect e2e's cache identity
+    files: ['src/**', 'integration/**', 'compose.yaml'],
+    tasks: [],   // db:up only orders; compose.yaml pins what it starts
   },
-  outputs: { files: ['playwright-report/**'] },
   cache: true,
 }
 ```
+
+Not for a dev server: it serves the app's source, so `e2e` must fold
+its key (the `persistent` example above), or a broken page replays a
+green `e2e`.
 
 ### When to use `--no-cache` instead of removing `cache`
 
@@ -2969,8 +2973,8 @@ built from different inputs; a silently-dropped `env: { set: … }` would
 run the task without the variables it was written to have. The error
 names the offending key, lists what that level accepts, and adds the
 nearest accepted spelling when one is within two edits:
-`tasks.build.exec.env has unknown field "passthrough" (allowed: define,
-passThrough, secret) — did you mean passThrough?`. A field another runner spells
+`tasks.build.exec.env has unknown field "passthrough"`, then
+`allowed: define, passThrough, secret` and `fix  use passThrough`. A field another runner spells
 on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
 (`exec.interactive`) and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,

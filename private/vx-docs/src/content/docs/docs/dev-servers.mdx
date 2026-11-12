@@ -13,11 +13,13 @@ export default defineProject({
   tasks: {
     dev: {
       exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: '30s' },
+      // e2e's key folds this one, so an app edit makes e2e run again.
+      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
     },
     e2e: {
       dependsOn: ['dev'],
       exec: { command: 'playwright test' },
-      inputs: { files: ['e2e/**'], tasks: [] }, // dev is for order, not the key
+      inputs: { files: ['e2e/**'] },
       outputs: { files: ['playwright-report/**'] },
       cache: true,
     },

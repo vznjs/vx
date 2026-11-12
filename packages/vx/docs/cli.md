@@ -572,8 +572,9 @@ Only `vx run` and `vx watch` forward. Any other core verb refuses a `--`
 (`vx show forwards nothing after --`, `VX_E_USAGE`).
 
 vx takes no short flag, so a `-x` before `--` that no vx flag hint claims
-is refused with the run that forwards it: `vx run test -t adds` says
-`unknown flag: -t (did you mean vx run test -- -t adds?)`. Only the
+is refused with the run that forwards it: `vx run test -t adds` prints
+`✗ vx run  unknown flag: -t`, `see vx run --help` and
+`fix  vx run test -- -t adds`. Only the
 flag and the words after it up to the next flag move; vx's own flags
 stay before `--` (`vx run test -t adds --all` suggests
 `vx run test --all -- -t adds`). Another tool's name for a vx flag is
@@ -658,8 +659,8 @@ Mutual exclusion:
   about.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
-nearest flag the verb accepts when one is within two edits
-(`unknown flag: --concurency (did you mean --concurrency?)`); a name of
+nearest flag the verb accepts when one is within two edits on a `fix`
+line (`unknown flag: --concurency`, then `fix  --concurrency`); a name of
 four letters or fewer gets one edit or a swap of two letters, so
 `--poll` is not hinted `--all` nor `vx test` `last`. The same name in
 another case is always hinted (`--ALL` hints `--all`), as is a task or
@@ -3225,9 +3226,9 @@ has that name) and `vx show project <name>` say `vx show` and
 
 Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
-neither reads `unknown project or task: "buidl" — did you mean build?`,
-and a `pkg#task` hints whole specs (`unknown task: "app#bui" — did you
-mean app#build?`). A project's directory, relative to the root, hints
+neither reads `unknown project or task: "buidl"` with a `fix  build`
+line, and a `pkg#task` hints whole specs (`unknown task: "app#bui"`,
+`fix  app#build`). A project's directory, relative to the root, hints
 that project (`p/a` hints `alpha`, `p/a#build` `alpha#build`). With nothing near, it lists what exists instead: `unknown
 project: "zzz"; projects: app, lib`, `; its tasks: app#build, app#test`,
 or `; projects and tasks: …` (M-57).
@@ -3815,7 +3816,7 @@ run 019a2f3c-5b1e-7c2d-9a40-1f3e5d7c8b21 — running 4.21s
   waiting  a#after
 
   warnings
-    [vx] a#lost: inputs.files matched no files …
+    [vx] a#lost: inputs matched no files (nope/**) — the key will not change when this project's source does
 ```
 
 With `--format json` it prints `{ live, tasks, warnings }`: `live` is
