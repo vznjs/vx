@@ -65,9 +65,10 @@ interface ProjectConfig {
 `defineProject` is an identity function — it exists purely so
 TypeScript narrows literal types in your config (clean autocomplete,
 strict validation against the schema). It has zero runtime effect.
-The same typing without a runtime import is
+The same key checking without a runtime import is
 `import type { ProjectConfig } from '@vzn/vx/config'` plus
-`export default { … } satisfies ProjectConfig` — the form `vx init`
+`export default { … } satisfies ProjectConfig` (it does not check
+`dependsOn` names against the task keys) — the form `vx init`
 and `@vzn/vx-migrate` generate, because Bun erases the type import and the
 file then loads in a workspace that runs the `vx` binary without the
 package installed. Either form is fine; the object is what vx reads.
@@ -2585,9 +2586,9 @@ rather than at `vx run` time.
 
 They cost one runtime import of `@vzn/vx/config` per config file:
 `src/config.ts`, which imports nothing, so it is cheap, but it must
-resolve from the config's directory. The type-only form gives the same
-editor checking with no runtime import, and is what `vx init` /
-`@vzn/vx-migrate` write:
+resolve from the config's directory. The type-only form checks the
+same keys with no runtime import, but not `dependsOn` names (a typo is a
+plain string), and is what `vx init` / `@vzn/vx-migrate` write:
 
 ```ts
 import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'
@@ -2774,7 +2775,9 @@ export default defineProject({
 
 ### Presets
 
-A preset is a TypeScript function that returns a `TaskConfig`:
+A preset is a TypeScript function that returns a `TaskConfig`.
+`defineProject` checks `dependsOn` names written inline; a preset's
+`dependsOn` is `string[]`, so its names are not checked:
 
 ```ts
 // presets/ts-build.ts
@@ -2878,8 +2881,13 @@ opens it on click), and the lines up to it with a caret under the field
   fix  use command
 ```
 
-A field the file does not hold (a required one missing, or one a plugin
-set) prints without the frame. Every config that does not load is
+A value the config imports (`test: testTask`, `...lib()`) is followed to
+the file that declares it, a relative import or a workspace package's,
+and that file is framed, with the configs it reaches as `used by …`:
+a typo in a shared preset prints once, not once per config. An import
+of a name its module does not export is framed at that import. A field
+no file holds (a required one missing, or one a plugin set) prints at
+its file, without the frame. Every config that does not load is
 named in one run: the first in full, then up to four more as `✗ vx lock
 also refused`, then a count of the rest. The table below lists the messages
 a user meets most:

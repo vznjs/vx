@@ -27,6 +27,7 @@ import {
 import { resolveSetting, runRules } from '../settings.js'
 import {
   configErrorFrame,
+  configRefusal,
   DOT_VX_GITATTRIBUTES,
   fsRefusalHint,
   isFsRefusal,
@@ -414,10 +415,18 @@ export async function lockAfterMigration(root: string): Promise<{ code: number; 
 /** Refusals shown in full past the first; the rest are counted. */
 const ALSO_SHOWN = 4
 
+/** One refusal `notWritten` prints, and the configs it reaches when it is in a file they import. */
+interface Refused {
+  message: string
+  parts?: RefusalParts
+  usedBy: string[]
+}
+
 /**
  * The lock refused: the refusal's own parts, or its config line and frame,
  * or its message; then each other config that does not load, so one run
- * names what a repo must fix.
+ * names what a repo must fix. A field set in a file several configs import
+ * is one refusal, said once with the configs it reaches.
  */
 function notWritten(
   message: string,
@@ -426,16 +435,32 @@ function notWritten(
 ): void {
   // Masked: a config's own throw is its author's text, and quotes what
   // it read (L-11). bin.ts masks what reaches it; this is printed here.
-  ui.print(
-    'err',
-    refusalNotice('vx lock', maskedLine(message), parts, { headline: 'lock not written' }),
-  )
-  for (const e of also.slice(0, ALSO_SHOWN))
+  const groups = new Map<string, Refused>()
+  for (const [i, e] of [{ message, parts }, ...also].entries()) {
+    const masked = maskedLine(e.message)
+    const c = e.parts === undefined ? configRefusal(masked, process.cwd()) : undefined
+    const key = c?.via === undefined ? `#${i}` : `${c.where}\0${c.problem}`
+    const group = groups.get(key)
+    if (group !== undefined) group.usedBy.push(c!.via!)
+    else
+      groups.set(key, {
+        message: masked,
+        ...(e.parts !== undefined ? { parts: e.parts } : {}),
+        usedBy: c?.via === undefined ? [] : [c.via],
+      })
+  }
+  const [first, ...rest] = [...groups.values()]
+  const say = (g: Refused, headline: string) =>
     ui.print(
       'err',
-      refusalNotice('vx lock', maskedLine(e.message), e.parts, { headline: 'also refused' }),
+      refusalNotice('vx lock', g.message, g.parts, {
+        headline,
+        ...(g.usedBy.length > 1 ? { usedBy: g.usedBy } : {}),
+      }),
     )
-  const more = also.length - ALSO_SHOWN
+  say(first!, 'lock not written')
+  for (const g of rest.slice(0, ALSO_SHOWN)) say(g, 'also refused')
+  const more = rest.slice(ALSO_SHOWN).reduce((n, g) => n + Math.max(1, g.usedBy.length), 0)
   if (more > 0)
     sayNotice('error', 'vx lock', `${more} more configs refused; fix these, then run vx lock again`)
 }

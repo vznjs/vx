@@ -118,8 +118,8 @@ export function refusalNotice(
   verb: string,
   message: string,
   parts?: RefusalParts,
-  opts?: { headline?; cwd? },
-): Block // parts, else a config refusal's frame, else messageParts
+  opts?: { headline?; cwd?; usedBy? },
+): Block // parts, else a config refusal's frame (usedBy: the configs a shared file's refusal reaches), else messageParts
 export function lineNotice(tone: Tone, line: string, verb?: string): Block // the verb read off a `vx X:` prefix
 export function sayNotice(tone: Tone, verb: string, message: string): void // a message as a notice, on stderr
 export function sayLine(tone: Tone, line: string, verb?: string): void // lineNotice, on stderr
