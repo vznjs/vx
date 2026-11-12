@@ -1,11 +1,6 @@
-import { describe, expect, it } from 'bun:test'
-import {
-  createVerifier,
-  parseAllow,
-  repositoryClaimOf,
-  runClaimsOf,
-  TokenError,
-} from '../src/index.js'
+import { describe, expect, it, setSystemTime } from 'bun:test'
+import { parseAllow, Refusal } from '@vzn/vx-devtools'
+import { createVerifier, runClaimsOf } from '../src/index.js'
 
 const ISS = 'https://gitlab.example'
 const AUD = 'https://relay.example'
@@ -61,7 +56,7 @@ async function refusal(p: Promise<unknown>): Promise<[number, string]> {
   try {
     await p
   } catch (err) {
-    if (err instanceof TokenError) return [err.status, err.message]
+    if (err instanceof Refusal) return [err.status, err.message]
     throw err
   }
   throw new Error('accepted')
@@ -92,7 +87,7 @@ describe('a CI OIDC token', () => {
     const asked = async (claims: Record<string, unknown>) =>
       verify(await sign(claims)).then(
         () => 'ok',
-        (e: TokenError) => e.message,
+        (e: Refusal) => e.message,
       )
     expect([
       await asked({ ...gh, job_workflow_ref: 'org/app/.github/workflows/ci.yml@refs/heads/main' }),
@@ -112,10 +107,10 @@ describe('a CI OIDC token', () => {
     ]).toEqual([
       'ok',
       'ok',
-      "workflow org/app/.github/workflows/evil.yml is not in this relay's ALLOW",
-      "workflow org/app/.github/workflows/deploy.yml is not in this relay's ALLOW",
+      "job_workflow_ref org/app/.github/workflows/evil.yml is not in this server's ALLOW",
+      "job_workflow_ref org/app/.github/workflows/deploy.yml is not in this server's ALLOW",
       'no job_workflow_ref claim',
-      "repository org/third is not in this relay's ALLOW",
+      "repository org/third is not in this server's ALLOW",
       'ok',
     ])
   })
@@ -159,7 +154,7 @@ describe('a CI OIDC token', () => {
     const asked = async (claims: Record<string, unknown>) =>
       verify(await sign(claims)).then(
         () => 'ok',
-        (e: TokenError) => e.message,
+        (e: Refusal) => e.message,
       )
     expect([
       await asked({
@@ -195,7 +190,7 @@ describe('a CI OIDC token', () => {
     const asked = async (claims: Record<string, unknown>) =>
       verify(await sign(claims)).then(
         () => 'ok',
-        (e: TokenError) => e.message,
+        (e: Refusal) => e.message,
       )
     const ci = 'gitlab.example/group/app//.gitlab-ci.yml'
     expect([
@@ -213,46 +208,9 @@ describe('a CI OIDC token', () => {
     ]).toEqual([
       'ok',
       'ok',
-      `workflow ${ci}@refs/other is not in this relay's ALLOW`,
-      `workflow ${ci}@group/shared is not in this relay's ALLOW`,
+      `ci_config_ref_uri ${ci}@refs/other is not in this server's ALLOW`,
+      `ci_config_ref_uri ${ci}@group/shared is not in this server's ALLOW`,
     ])
-  })
-
-  it('reads ALLOW’s entries from the right, since an issuer holds colons', () => {
-    expect(
-      parseAllow(
-        ' https://gitlab.example:8443:group/sub/app:ci/main.yml\nhttps://x.dev:o/r:a.yml ',
-      ),
-    ).toEqual([
-      {
-        issuer: 'https://gitlab.example:8443',
-        repository: 'group/sub/app',
-        workflow: 'ci/main.yml',
-      },
-      { issuer: 'https://x.dev', repository: 'o/r', workflow: 'a.yml' },
-    ])
-    expect(() => parseAllow('vznjs/vx:ci.yml')).toThrow(
-      'vznjs/vx:ci.yml is not issuer:owner/repo:workflow',
-    )
-    expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
-    // Well formed, so "is not issuer:owner/repo:workflow" sent its author to the wrong part.
-    // One rule with @vzn/vx-devtools' parseAllow, which the cache and
-    // history servers read ALLOW with: plain http only to 127.0.0.1's host,
-    // where a server's own container tests run an issuer.
-    for (const [bad, issuer] of [
-      ['http://x.dev:o/r:ci.yml', 'http://x.dev'],
-      ['http://127.0.0.1:80@x.example:o/r:ci.yml', 'http://127.0.0.1:80@x.example'],
-      ['http://127.0.0.1.x.example:o/r:ci.yml', 'http://127.0.0.1.x.example'],
-    ] as const)
-      expect(() => parseAllow(bad)).toThrow(
-        new Error(`${bad}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`),
-      )
-    expect(parseAllow('http://127.0.0.1:8080:o/r:ci.yml')).toEqual([
-      { issuer: 'http://127.0.0.1:8080', repository: 'o/r', workflow: 'ci.yml' },
-    ])
-    expect(() => parseAllow('https://x.dev:o/r:a.yml,https://x.dev:o/s:a.yml')).toThrow(
-      'entries are space separated',
-    )
   })
 
   it('is refused for what is wrong with it', async () => {
@@ -267,7 +225,7 @@ describe('a CI OIDC token', () => {
     ])
     expect(await refusal(verify(await sign(other)))).toEqual([
       401,
-      "issuer https://evil.example is not in this relay's ALLOW: add issuer:owner/repo:workflow for it",
+      "issuer https://evil.example is not in this server's ALLOW: add issuer:owner/repo:workflow for it",
     ])
     expect(await refusal(verify(await sign(good, { kid: 'k2' })))).toEqual([
       401,
@@ -275,7 +233,7 @@ describe('a CI OIDC token', () => {
     ])
     expect(await refusal(verify(await sign({ ...good, aud: 'x' })))).toEqual([
       401,
-      `the token's aud is x, not this relay's ${AUD}: ask CI for a token for ${AUD}, or set the relay's audience`,
+      `the token's aud is x, not this server's ${AUD}: ask CI for a token for ${AUD}, or set the server's AUDIENCE`,
     ])
     expect(await refusal(verify(await sign({ ...good, exp: now - 61 })))).toEqual([401, 'expired'])
     // A token with no exp never expired: it lacks the claim.
@@ -336,14 +294,25 @@ describe('a CI OIDC token', () => {
       },
     })
     const token = (exp: number) => sign({ ...good, exp })
-    expect(await verify(await token(t + 900))).toEqual({ iss: ISS, run: ['7'] })
-    served = []
-    t += 599
-    expect(await verify(await token(t + 300))).toEqual({ iss: ISS, run: ['7'] })
-    expect(fetched).toHaveLength(2)
-    t += 1
-    expect(await refusal(verify(await token(t + 300)))).toEqual([401, 'unknown signing key'])
-    expect(fetched).toHaveLength(4)
+    // The key set ages by the system clock: it moves with the token's.
+    const at = (s: number) => setSystemTime(new Date(s * 1000))
+    try {
+      at(t)
+      expect(await verify(await token(t + 900))).toEqual({ iss: ISS, run: ['7'] })
+      served = []
+      at((t += 599))
+      expect(await verify(await token(t + 300))).toEqual({ iss: ISS, run: ['7'] })
+      expect(fetched).toHaveLength(2)
+      at((t += 1))
+      expect(await refusal(verify(await token(t + 300)))).toEqual([401, 'unknown signing key'])
+      expect(fetched).toEqual([
+        `${ISS}/.well-known/openid-configuration`,
+        `${ISS}/jwks`,
+        `${ISS}/jwks`,
+      ])
+    } finally {
+      setSystemTime()
+    }
   })
 
   it('is refused before any key fetch when it carries no signature or another alg', async () => {
@@ -362,6 +331,8 @@ describe('a CI OIDC token', () => {
       'alg is not RS256',
     ])
     expect(fetched).toEqual([])
+    await verify(await sign(good))
+    expect(await refusal(verify(`${h}.${p}.x`))).toEqual([401, 'not a JWT'])
   })
 
   it('is refused unless its repository is one the relay names', async () => {
@@ -372,11 +343,11 @@ describe('a CI OIDC token', () => {
     })
     expect(await refusal(verify(await sign({ ...good, project_path: 'group/app2' })))).toEqual([
       403,
-      "repository group/app2 is not in this relay's ALLOW",
+      "project_path group/app2 is not in this server's ALLOW",
     ])
     expect(await refusal(verify(await sign({ ...good, project_path: 'group' })))).toEqual([
       403,
-      "repository group is not in this relay's ALLOW",
+      "project_path group is not in this server's ALLOW",
     ])
     expect(await refusal(verify(await sign({ ...good, project_path: undefined })))).toEqual([
       403,
@@ -400,7 +371,5 @@ describe('a CI OIDC token', () => {
   it('binds a run to its repository by its issuer', () => {
     expect(runClaimsOf('https://token.actions.githubusercontent.com')).toEqual(['repository_id'])
     expect(runClaimsOf('https://gitlab.com')).toEqual(['project_id'])
-    expect(repositoryClaimOf('https://token.actions.githubusercontent.com')).toBe('repository')
-    expect(repositoryClaimOf('https://gitlab.com')).toBe('project_path')
   })
 })

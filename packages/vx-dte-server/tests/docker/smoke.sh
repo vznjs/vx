@@ -7,7 +7,7 @@ set -eu
 cd "$(dirname "$0")/../.."
 tag="vx-dte-server-smoke:$$"
 port=18788
-docker build -q -t "$tag" .
+docker build -q -f Dockerfile -t "$tag" ../..
 name=$(docker run -d --rm --network host "$tag" --no-auth --port "$port")
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true; docker rmi -f "$tag" >/dev/null 2>&1 || true' EXIT
 ready=
