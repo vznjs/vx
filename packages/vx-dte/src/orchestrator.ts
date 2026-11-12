@@ -2035,6 +2035,10 @@ export class Orchestrator {
      */
     work?: readonly PlanTask[]
     warmUps?: ReadonlyMap<string, number>
+    /** Each size as planned: its cores less what runs there outside tasks. */
+    sizes?: readonly { readonly name: string; readonly cpu: number }[]
+    /** Why it played the work rather than packed it (`Plan.unpacked`). */
+    unpacked?: string
   }): void {
     const work = p.work?.map(
       (t) =>
@@ -2053,6 +2057,10 @@ export class Orchestrator {
       boundMs: Math.round(p.boundMs),
       workers: workers.join(' · '),
       ...(work === undefined ? {} : { work: work.join(' · ') }),
+      ...(p.sizes === undefined
+        ? {}
+        : { sizes: p.sizes.map((s) => `${s.name} ${Math.round(s.cpu * 100) / 100}c`).join(' · ') }),
+      ...(p.unpacked === undefined ? {} : { unpacked: p.unpacked }),
       ...(p.warmUps === undefined
         ? {}
         : {

@@ -237,5 +237,15 @@ it('packs a task booking more cores than any worker has onto a whole one', () =>
   const sizes = candidates([{ ...size('w', 3), max: 9 }], new Map(), [], tasks.length)
   const p = plan(tasks, [], sizes, WARM)
   expect(p.exact).toBe(true)
+  expect(p.unpacked).toBeUndefined()
   expect(p.endsInMs).toBe(WARM + 120_000)
+})
+
+// A plan that plays its work says why it did not pack it, for the profile.
+it('says why it played the work rather than packed it', () => {
+  const sizes = candidates([{ ...size('w', 4), max: 2 }], new Map(), [], 2)
+  // One task on one worker: packed or played, it holds as much.
+  expect(plan([task('a', 1_000)], [], sizes, WARM).unpacked).toBe('holds 84000, the play 84000')
+  const blind = plan([{ ...task('a', 1_000), ms: undefined }], [], sizes, WARM)
+  expect(blind.unpacked).toBe('a task has no history')
 })

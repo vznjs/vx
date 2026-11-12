@@ -889,8 +889,13 @@ export function dte(options: DteOptions = {}) {
             boundMs: p.boundMs,
             workers,
             ...(p.start.length > 0 && !final
-              ? { work: p.tasks, warmUps: new Map(sizes.map((s) => [s.name, warmUp(s.name)])) }
+              ? {
+                  work: p.tasks,
+                  warmUps: new Map(sizes.map((s) => [s.name, warmUp(s.name)])),
+                  sizes: planned,
+                }
               : {}),
+            ...(p.unpacked === undefined ? {} : { unpacked: p.unpacked }),
           })
         const { tasks } = p
         // At the end the relay closing ends them all.
