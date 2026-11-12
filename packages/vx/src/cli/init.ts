@@ -41,6 +41,7 @@ import {
   REVIEW_FILE,
   renderWorkspace,
   starterProject,
+  tscCompilesConfigNotes,
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
@@ -571,10 +572,14 @@ async function starter(
   const gitInit =
     root === process.cwd() ? 'git init' : `git init ${path.relative(process.cwd(), root)}`
   const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `bunx @vzn/vx-migrate${args.mjs ? ' --mjs' : ''} to make package.json scripts tasks, or ${declare}` : declare}`
+  const notes = tscCompilesConfigNotes(
+    root,
+    files.map((f) => path.join(root, f.path)),
+  )
   if (args.json === true) {
     ui.data(
       'out',
-      `${JSON.stringify({ dry: true, source: 'no turbo.json or nx.json', files, kept, replaced, todos: [], notes: [], next, installs })}\n`,
+      `${JSON.stringify({ dry: true, source: 'no turbo.json or nx.json', files, kept, replaced, todos: [], notes, next, installs })}\n`,
     )
     return 0
   }
@@ -586,6 +591,7 @@ async function starter(
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (replaced.length > 0) rows.push(['replaced', ...replaced])
+  if (notes.length > 0) rows.push(['note', ...notes])
   if (args.dry) {
     rows.push([
       'lock',

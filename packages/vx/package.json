@@ -37,6 +37,13 @@
       "import": "./src/config.ts"
     }
   },
+  "typesVersions": {
+    "*": {
+      "config": [
+        "./src/config.ts"
+      ]
+    }
+  },
   "bin": {
     "vx": "./src/bin.ts"
   },

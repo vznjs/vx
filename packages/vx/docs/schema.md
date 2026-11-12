@@ -75,6 +75,13 @@ package installed. Either form is fine; the object is what vx reads.
 `@vzn/vx/config` is the schema alone (`src/config.ts`, which imports
 nothing): your own `tsc` checks that one file, where `@vzn/vx` would
 walk core's Bun-only sources and fail without `@types/bun`.
+It resolves under every `moduleResolution`, `node` (node10) included.
+
+A `tsconfig.json` with no `include` takes every `.ts` beside it, a
+`vx.config.ts` too: an emitting build's output then moves (`dist/main.js`
+becomes `dist/src/main.js`, as in a NestJS app). `vx init` and
+`@vzn/vx-migrate` say so where they write one; add `"vx.config.ts"` to
+that tsconfig's `exclude`.
 
 The object is JSON data. The cache key folds `JSON.stringify` of each
 task's config, `vx lock` stores the same JSON, and `vx watch` re-reads a

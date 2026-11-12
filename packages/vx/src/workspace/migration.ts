@@ -239,6 +239,54 @@ export interface WorkspacePlugin {
 export type MigrationFormat = 'ts' | 'mjs'
 
 /**
+ * The note for each directory whose `tsc` would compile the `vx.config.ts`
+ * written there: a `tsconfig.json` with no `include` or `files` takes every
+ * `.ts` beside it, so an emitting build's output moves (`dist/main.js`
+ * becomes `dist/src/main.js`, and a NestJS app no longer starts) or, under
+ * `rootDir`, stops with TS6059. Judged from the files as written; one the
+ * config extends is not followed.
+ */
+export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[] {
+  const notes: string[] = []
+  for (const abs of written) {
+    const name = path.basename(abs)
+    if (!name.endsWith('.ts')) continue
+    const dir = path.dirname(abs)
+    const read = (file: string): Record<string, unknown> | undefined => {
+      try {
+        const parsed: unknown = Bun.JSONC.parse(readFileSync(path.join(dir, file), 'utf8'))
+        return typeof parsed === 'object' && parsed !== null
+          ? (parsed as Record<string, unknown>)
+          : undefined
+      } catch {
+        return undefined
+      }
+    }
+    const base = read('tsconfig.json')
+    if (base === undefined) continue
+    const options = (base['compilerOptions'] ?? {}) as Record<string, unknown>
+    const emits =
+      options['noEmit'] !== true &&
+      (typeof options['outDir'] === 'string' || typeof options['rootDir'] === 'string')
+    if (!emits) continue
+    const takes = (c: Record<string, unknown> | undefined): boolean =>
+      c !== undefined &&
+      c['include'] === undefined &&
+      c['files'] === undefined &&
+      !(Array.isArray(c['exclude']) && c['exclude'].some((e) => e === name || e === `./${name}`))
+    const configs = ['tsconfig.json', 'tsconfig.build.json'].filter((f) => takes(read(f)))
+    if (!configs.includes('tsconfig.json')) continue
+    const where = configs.map((f) => relPosix(root, path.join(dir, f))).join(' and ')
+    notes.push(
+      `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles ` +
+        `${relPosix(root, abs)} too and its output moves (dist/main.js becomes dist/src/main.js): ` +
+        `add "${name}" to "exclude" there`,
+    )
+  }
+  return notes
+}
+
+/**
  * What a migration did, for `report` to draw: the files a dry run shows,
  * the counts and lines of each row, the lock's answer, the next step.
  */
@@ -453,6 +501,10 @@ export async function writeMigration(
   const example = empty && (args.example ?? emptyReason === undefined)
   const notes = [
     ...(args.notes ?? []),
+    ...tscCompilesConfigNotes(
+      root,
+      files.map((f) => f.abs),
+    ),
     ...ignoredNote,
     ...formatted,
     ...plan.headerNotes,

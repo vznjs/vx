@@ -11,6 +11,7 @@ import {
   isStarterConfig,
   quoteTsLiteral,
   starterProject,
+  tscCompilesConfigNotes,
   type ApplyMigrationArgs,
   type GeneratedTask,
   type MigrationPlan,
@@ -92,6 +93,45 @@ describe('quoteTsLiteral', () => {
     const file = path.join(root, 'controls.mjs')
     writeFileSync(file, `export default ${lit}\n`)
     expect((await import(file)).default).toBe(raw)
+  })
+})
+
+// A NestJS app's `nest build` (tsc, no `include`) took the `vx.config.ts`
+// written at its root: `dist/main.js` became `dist/src/main.js` and the app
+// no longer started, with no word from vx.
+describe('tscCompilesConfigNotes', () => {
+  let dir = ''
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'vx-tsc-note-'))
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+  const notes = (tsconfig: string, build?: string, name = 'vx.config.ts'): string[] => {
+    writeFileSync(path.join(dir, 'tsconfig.json'), tsconfig)
+    if (build !== undefined) writeFileSync(path.join(dir, 'tsconfig.build.json'), build)
+    return tscCompilesConfigNotes(dir, [path.join(dir, name)])
+  }
+
+  it('names each tsconfig that would compile the written config', () => {
+    expect(
+      notes(
+        `{ // as nest new writes it\n "compilerOptions": { "outDir": "./dist", }, }`,
+        `{ "extends": "./tsconfig.json", "exclude": ["node_modules", "dist"] }`,
+      ),
+    ).toEqual([
+      'tsconfig.json and tsconfig.build.json name no "include", so tsc compiles vx.config.ts too ' +
+        'and its output moves (dist/main.js becomes dist/src/main.js): add "vx.config.ts" to "exclude" there',
+    ])
+  })
+
+  it('says nothing where tsc leaves the config alone', () => {
+    const out = `"compilerOptions": { "outDir": "dist" }`
+    expect(notes(`{ ${out}, "include": ["src"] }`)).toEqual([])
+    expect(notes(`{ ${out}, "files": ["src/main.ts"] }`)).toEqual([])
+    expect(notes(`{ ${out}, "exclude": ["vx.config.ts"] }`)).toEqual([])
+    expect(notes(`{ "compilerOptions": { "outDir": "dist", "noEmit": true } }`)).toEqual([])
+    expect(notes(`{ "compilerOptions": { "strict": true } }`)).toEqual([])
+    expect(notes(`{ ${out} }`, undefined, 'vx.config.mjs')).toEqual([])
+    expect(notes(`not json`)).toEqual([])
   })
 })
 

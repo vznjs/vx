@@ -2235,6 +2235,10 @@ export function renderWorkspace(
   plugins: readonly WorkspacePlugin[],
 ): string
 export function isStarterConfig(file: string): boolean
+// A note per written `vx.config.ts` an emitting `tsc` beside it would compile
+// (a tsconfig.json with no `include` or `files`: a NestJS app's output moves).
+// `vx init` and a migration print them.
+export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[]
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TODO: string
 // Drops `note` from each persistent task no `dependsOn` in the mapping
