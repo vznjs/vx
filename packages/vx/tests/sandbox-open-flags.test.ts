@@ -68,3 +68,23 @@ it.skipIf(process.platform !== 'linux')(
     expect(refusedWrites([`deny openat2 ${file}`], [dir], [], [], widened)).toHaveLength(1)
   },
 )
+
+// `tsc -b` touches an up-to-date dependency's buildinfo (`utimensat`) when
+// its sources are newer than it — a branch switched and back, the
+// dependency a hit — and swallows the refusal. Judged a write, the
+// dependant failed every run until `--force` (tsref repro1, 2026-11-12).
+// On a path the sandbox shows read-only, a timestamp change landed nothing.
+it.skipIf(process.platform !== 'linux')(
+  'a refused timestamp change where the sandbox can read is no violation; one elsewhere, or a write there, is',
+  () => {
+    const file = path.join(dir, 'src', 'i.js')
+    const readable = [path.join(dir, 'src')]
+    expect(refusedWrites([`deny utimensat ${file}`], [], [], readable)).toEqual([])
+    expect(refusedWrites([`deny utimensat ${file}`], []).map((v) => v.line)).toEqual([
+      `utimensat(${file}) = a write no grant covers  [${file}]`,
+    ])
+    expect(refusedWrites([`deny openat ${file}`], [], [], readable).map((v) => v.line)).toEqual([
+      `openat(${file}) = a write no grant covers  [${file}]`,
+    ])
+  },
+)

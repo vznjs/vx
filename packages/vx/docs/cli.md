@@ -3158,7 +3158,7 @@ $ vx show app#build
   dependsOn      ^build
   inputs.files   src/**
   inputs.env     NODE_ENV
-  outputs.files  dist/**
+  outputs.files  dist/**, *.tsbuildinfo
   cache          yes
 ```
 

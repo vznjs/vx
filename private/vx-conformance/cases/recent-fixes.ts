@@ -49,7 +49,52 @@ const besideOutputs = (read: string): WorkspaceSpec => ({
 
 const A = 'packages/a/src/a.txt'
 
+/**
+ * An incremental tool, as `tsc -b` is: it emits a source only when its
+ * state file's record of it differs, and rewrites the state only when it
+ * emitted.
+ */
+const INCREMENTAL =
+  'mkdir -p dist; e=0; for f in src/*.txt; do n=$(basename $f); h=$(cksum < $f); ' +
+  'grep -qxF "$n $h" state 2>/dev/null || { cp $f dist/$n; e=1; }; done; ' +
+  '[ $e = 0 ] || for f in src/*.txt; do echo "$(basename $f) $(cksum < $f)"; done > state'
+
 export default [
+  defineCase({
+    id: 'outputs/incremental-state-beside-outputs-caches-no-partial-build',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An incremental tool’s state file beside its outputs never leaves a partial build in the cache',
+    why: 'An incremental tool keeps its state outside its outputs (`tsc -b` writes `tsconfig.tsbuildinfo` beside the tsconfig) and emits only what its state calls changed. A tool that empties `dist` before a run but keeps the state gets one changed file from the next build, and stores that partial `dist` as the result. A fresh checkout then restores it, and everything that imports the missing files fails.',
+    from: ['undeclared-state'],
+    workspace: one(build({ command: INCREMENTAL }), {
+      'src/a.txt': 'a\n',
+      'src/b.txt': 'b\n',
+      '.gitignore': 'dist/\nstate\n',
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0 } },
+      // A fresh checkout: neither the outputs nor the state.
+      {
+        write: {
+          'packages/a/dist/a.txt': null,
+          'packages/a/dist/b.txt': null,
+          'packages/a/state': null,
+        },
+      },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/dist/a.txt': 'a2\n', 'packages/a/dist/b.txt': 'b\n' },
+        },
+      },
+    ],
+  }),
+
   defineCase({
     id: 'outputs/retry-saves-only-the-passing-attempt',
     category: 'outputs',

@@ -129,6 +129,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
   ignoredOutputs: ReadonlySet<string> // declared outputs (root-relative) git ignores whole, asked once per run (`stable-keys.md`)
   setIgnored(root: string, paths: readonly string[]): void // what `status --ignored=matching` named
+  ignoredFilesIn(dir: string): string[] // the ignored files (not directories) that listing named under dir, absolute; a miss's undeclared state
   newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir; a normalized dir under the root is relative as its rest, no path.relative; the first spawn asks every dir above an ignored path, up to 256; none for a dir `answerNewFilesIgnored` answered)
   answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void // git's answer for root-relative dirs, asked beside the enumeration (`askIgnoredOutputs`); held until the next enumeration
 }

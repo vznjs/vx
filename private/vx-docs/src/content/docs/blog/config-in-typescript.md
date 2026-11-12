@@ -27,9 +27,9 @@ import type { ProjectConfig } from '@vzn/vx/config'
 
 export default {
   tasks: {
-    // TODO(vx-migrate): cache: add `inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true` with this package's real inputs and outputs — …
+    // TODO(vx-migrate): cache: add `inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', 'tsconfig.tsbuildinfo'] }, cache: true` with this package's real inputs and outputs — …
     build: {
-      // inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      // inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', 'tsconfig.tsbuildinfo'] }, cache: true,
       exec: {
         command: 'tsc -b',
       },

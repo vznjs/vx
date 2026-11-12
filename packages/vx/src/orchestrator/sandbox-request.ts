@@ -351,7 +351,13 @@ export async function sandboxRequestFor(
       ...dependencyReported.map(toRealPath),
     ],
     config,
-    ...(keyed === undefined ? {} : { keyed: [...keyed], keyRoot: workspaceRoot }),
+    ...(keyed === undefined
+      ? {}
+      : {
+          keyed: [...keyed],
+          keyRoot: workspaceRoot,
+          ...(nested.length > 0 ? { keyNested: [...nested] } : {}),
+        }),
     ...(dependencyOutputs.length === 0 ? {} : { dependencyReads: [...dependencyOutputs] }),
     ...(dependencyReported.length === 0 ? {} : { dependencyReported: [...dependencyReported] }),
   }

@@ -184,6 +184,12 @@ export function sandboxFix(
   upstream: readonly string[] = [],
   /** The task's own outputs: a write under one is granted its directory. */
   outputs?: Partial<TaskOutputs>,
+  /**
+   * The projects nested in this one (absolute): `inputs.files` stops at
+   * them, and `vx lock` refuses a glob into one, so a read there is named
+   * for `inputs.workspaceFiles`.
+   */
+  nested: readonly string[] = [],
 ): SandboxFix | undefined {
   const fix: Record<keyof SandboxFix, Set<string>> = {
     read: new Set(),
@@ -218,7 +224,7 @@ export function sandboxFix(
       // target alone stays unreachable, and the fix named it again forever.
       if (v.via !== undefined) fix.read.add(grantFor(v.via, dirs, 'read'))
       if (keyed === undefined) continue
-      if (inProject(rel)) {
+      if (inProject(rel) && !nested.some((d) => atOrUnder(v.path!, toRealPath(d)))) {
         if (!keyed.files(rel)) fix.inputs.add(taskGlobOf(rel))
       } else if (atOrUnder(v.path, dirs.root)) {
         const wsRel = relPosix(dirs.root, v.path)

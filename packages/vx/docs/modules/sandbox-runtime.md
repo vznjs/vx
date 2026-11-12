@@ -236,6 +236,7 @@ export interface SandboxedRunArgs {
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
   keyRoot?: string // a cached task's workspace root: a hidden read under it is named for inputs.workspaceFiles too
+  keyNested?: readonly string[] // the projects nested in its own: a hidden read in one is named for inputs.workspaceFiles, never inputs.files
   upstreamOutputs?: readonly string[] // the dependencies' outputs: a write refused there gets a note to run their task, no grant
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
 }
@@ -386,7 +387,7 @@ export function refusedWrites(
   records: readonly string[],
   writable: readonly string[],
   scratch?: readonly string[], // pending write globs a write may land under; one left in the scratch at the end is reported
-  readable?: readonly string[], // what the sandbox mounts readable: a mkdir or openat2 there wrote nothing
+  readable?: readonly string[], // what the sandbox mounts readable: a mkdir, openat2 or timestamp change there wrote nothing
   widened?: { entries; granted }, // `widenedEntries` at task start and the write grants: a write there is judged by the grants
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
@@ -626,7 +627,10 @@ grant: an agent applies a suggestion as given, and `cat ~/.npmrc` was
 told to grant `../../home/.npmrc` until 2026-11-08. For a cached task
 (`keyRoot`) a grant inside the workspace comes with the
 `inputs.workspaceFiles` entry that keys it: applied alone, the grant
-read the file unkeyed and an edit there was a stale hit. The entry is
+read the file unkeyed and an edit there was a stale hit. Inside the
+project it is `inputs.files`, except in a project nested in it
+(`keyNested`): `vx lock` refuses a `files` glob into one, so a root
+`tsc -b` reading a member was told an entry it could not declare. The entry is
 spelled by `taskGlobOf`, as the fix's is: `'\\!cfg'` for a file `!cfg`,
 which raw is a negation that keyed nothing.
 
@@ -893,7 +897,15 @@ read-only bind and landed nothing; elsewhere it reports `= an open no
 grant covers`, ignorable as a read or a write, and the fix names a read
 grant, the cheaper one (a granted `openat2(O_RDONLY)` read failed a
 clean task as a write until 2026-11-07,
-`sandbox-openat2.unsafe.test.ts`).
+`sandbox-openat2.unsafe.test.ts`). A refused timestamp change
+(`utimensat`, `utimes`, `futimesat`, `utime`) where the sandbox can read
+is nothing too: the read-only bind took no byte and no time. `tsc -b`
+touches an up-to-date dependency's buildinfo when its sources are newer
+than it (a branch switched and back, the dependency a hit, whose restore
+keeps the outputs' times) and swallows the refusal; judged a write, the
+dependant failed every run until `--force` (2026-11-12,
+`sandbox-dependency-outputs.unsafe.test.ts`). Linux only; the macOS
+report is unchanged and unproven for this case.
 
 The directory is writable in full too, and a hard link reads without an
 open: `ln -f README.md out.txt` beside `write: ['out.txt']` passed

@@ -137,6 +137,22 @@ describe('sandboxFix', () => {
     expect(sandboxFix(denials, project, dir)?.workspaceFiles).toBeUndefined()
   })
 
+  // A root task's `inputs.files` stops at a member project, and `vx lock`
+  // refuses a glob into one: the read there is named for workspaceFiles.
+  it('names a read in a nested project for inputs.workspaceFiles', () => {
+    const at = (p: string) => path.join(dir, p)
+    const read = (p: string) => v('deny(1) file-read-data', ['read'], at(p))
+    const denials = [read('packages/a/tsconfig.json'), read('tsconfig.json')]
+    const inputs = { files: ['src/**'] }
+    expect(
+      sandboxFix(denials, dir, dir, undefined, inputs, [], undefined, [at('packages/a')]),
+    ).toEqual({
+      read: ['packages/a/tsconfig.json', 'tsconfig.json'],
+      inputs: ['tsconfig.json'],
+      workspaceFiles: ['packages/a/tsconfig.json'],
+    })
+  })
+
   it('never turns a credential path into a grant', () => {
     const home = (p: string) => path.join(os.homedir(), p)
     const read = (p: string) => v('deny(1) file-read-data', ['read'], p)

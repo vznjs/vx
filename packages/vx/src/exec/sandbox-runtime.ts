@@ -1246,6 +1246,8 @@ export interface SandboxedRunArgs {
   readonly reportLinked: readonly string[]
   /** `ExecuteSandbox.keyRoot`. */
   readonly keyRoot?: string
+  /** `ExecuteSandbox.keyNested`. */
+  readonly keyNested?: readonly string[]
   /** `ExecuteSandbox.dependencyReads` and `dependencyReported`: the dependencies' outputs. */
   readonly upstreamOutputs?: readonly string[]
   /**
@@ -2969,7 +2971,7 @@ async function runSandboxedOnce(
       skip: [taskTmpRoot()],
     })
     if (hidden.length > 0)
-      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, args.keyRoot))
+      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, keyOf(args)))
     const git = gitNoRepo
       ? hiddenGitHint(args.cwd, grantedRead, baselines.denyRead, args.reportWithin)
       : undefined
@@ -2986,7 +2988,7 @@ async function runSandboxedOnce(
         baselines.denyRead,
         args.reportWithin,
         [...violations.map((v) => v.path), ...hidden, ...(git === undefined ? [] : [git.dir])],
-        args.keyRoot,
+        keyOf(args),
       )
       if (named !== undefined) violations.push(named)
     }
@@ -3235,7 +3237,7 @@ function statedHiddenHint(
   walled: readonly string[],
   within: string,
   named: readonly (string | undefined)[],
-  keyRoot: string | undefined,
+  key: KeyScope | undefined,
 ): SandboxViolation | undefined {
   const deny = walled.map(toRealPath)
   const grants = granted.map(toRealPath)
@@ -3275,24 +3277,35 @@ function statedHiddenHint(
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
           `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`` +
-          `${keyEntryHint(grantable, within, keyRoot)}.`,
+          `${keyEntryHint(grantable, within, key)}.`,
   }
 }
 
+/** A cached task's key scope: the workspace root, and the projects nested in its own. */
+interface KeyScope {
+  root: string
+  nested: readonly string[]
+}
+
+const keyOf = (args: Pick<SandboxedRunArgs, 'keyRoot' | 'keyNested'>): KeyScope | undefined =>
+  args.keyRoot === undefined ? undefined : { root: args.keyRoot, nested: args.keyNested ?? [] }
+
 /**
- * For a cached task (`keyRoot`), the input entry that keys a path a hint
+ * For a cached task (`key`), the input entry that keys a path a hint
  * grants: the grant alone, applied as given, read it unkeyed, and an edit
  * there replayed the old bytes (`replace … => ../golib` in a cached `go
  * build`). The project's own `inputs.files` in it, else
- * `inputs.workspaceFiles`; a directory whole. Nothing outside the
- * workspace: no glob can name it.
+ * `inputs.workspaceFiles`, which a path in a nested project takes too:
+ * `vx lock` refuses a `files` glob into one. A directory whole. Nothing
+ * outside the workspace: no glob can name it.
  */
-function keyEntryHint(p: string, within: string, keyRoot: string | undefined): string {
-  if (keyRoot === undefined) return ''
-  const root = toRealPath(keyRoot)
+function keyEntryHint(p: string, within: string, key: KeyScope | undefined): string {
+  if (key === undefined) return ''
+  const root = toRealPath(key.root)
   if (!atOrUnder(p, root)) return ''
   const project = toRealPath(within)
-  const [field, base] = atOrUnder(p, project) ? ['files', project] : ['workspaceFiles', root]
+  const own = atOrUnder(p, project) && !key.nested.some((d) => atOrUnder(p, toRealPath(d)))
+  const [field, base] = own ? ['files', project] : ['workspaceFiles', root]
   const rel = relPosix(base, p)
   const dir = statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
   const glob = rel === '' ? '**' : dir ? `${taskGlobOf(rel)}/**` : taskGlobOf(rel)
@@ -3325,7 +3338,7 @@ function hiddenReadsHint(
   paths: readonly string[],
   walled: readonly string[],
   within: string,
-  keyRoot: string | undefined,
+  key: KeyScope | undefined,
 ): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
@@ -3343,7 +3356,7 @@ function hiddenReadsHint(
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
           `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`` +
-          `${keyEntryHint(grantable, within, keyRoot)}.`,
+          `${keyEntryHint(grantable, within, key)}.`,
   }
 }
 

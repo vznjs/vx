@@ -4,7 +4,7 @@
 // them: a dependency's key folds the files that made its outputs. The
 // dependency's sources, and the outputs of a task it does not depend on,
 // stay behind the project wall.
-import { realpathSync } from 'node:fs'
+import { realpathSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -117,6 +117,41 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
       expect(
         await peek(`dependsOn: ['tools#node'],`, `{ hermetic: true, allow: { read: ['.'] } }`),
       ).toEqual(['OUT', 'NOSRC', 'ROOT'])
+    },
+    TIMEOUT,
+  )
+
+  // `tsc -b` touches an up-to-date dependency's buildinfo when its sources
+  // are newer than it (a branch switched and back, the dependency a hit),
+  // and swallows the refusal; judged a write, the dependant failed every
+  // run until `--force` (tsref repro1, 2026-11-12). The bind is read-only:
+  // the touch lands nothing, and the dependency's file keeps its time.
+  it(
+    'a refused timestamp change on a dependency’s output is no violation and moves nothing',
+    async () => {
+      await addProject(fixture.root, 'tools', {
+        files: { 'src/s.txt': 'SRC\n' },
+        config: `export default { tasks: { node: {
+          exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo ROOT > root.txt' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '*.txt'] }, cache: true,
+        } } }`,
+      })
+      const touch = `touch -c ../tools/out/bin/tool.txt 2>/dev/null; ${PEEK}`
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'A\n' },
+        config: `export default { tasks: { use: {
+          exec: { command: ${JSON.stringify(touch)}, sandbox: { allow: { read: ['.'] } } },
+          dependsOn: ['tools#node'],
+        } } }`,
+      })
+      const log = collectingLogger(fixture)
+      expect((await run({ cwd: fixture.root, tasks: ['node'], log })).ok).toBe(true)
+      const tool = path.join(fixture.root, 'packages', 'tools', 'out', 'bin', 'tool.txt')
+      const before = statSync(tool).mtimeMs
+      fixture.log.length = 0
+      const r = await run({ cwd: fixture.root, tasks: ['use'], log })
+      expect([r.ok, fixture.log.join('\n').includes('no grant covers')]).toEqual([true, false])
+      expect(statSync(tool).mtimeMs).toBe(before)
     },
     TIMEOUT,
   )

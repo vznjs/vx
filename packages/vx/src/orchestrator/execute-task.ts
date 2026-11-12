@@ -86,6 +86,7 @@ import {
   UserError,
 } from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { declareStateHint, stampUndeclaredState, stateChanged } from './undeclared-state.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import type { CommandWindows } from './command-windows.js'
 import {
@@ -1570,6 +1571,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
   }
+  // The undeclared state the command may write and read back next run,
+  // stamped before it. Only where a save follows on this disk.
+  const state =
+    willSave && !deferralRequested && args.executor.remote !== true
+      ? stampUndeclaredState({
+          config: node.config,
+          projectDir: node.projectDir,
+          workspaceRoot: args.workspaceRoot,
+          nestedProjectDirs: args.nestedProjectDirs,
+          gitFilesCache: args.gitFilesCache,
+        })
+      : undefined
   for (;;) {
     attempt++
     const a = await runAttempt()
@@ -1846,6 +1859,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     effectiveExitCode === 0 &&
     willSave &&
     nothingLeftRunning() &&
+    noStateWritten() &&
     (await keyStillTrue()) &&
     (await args.serverDiedUnder?.(node)) !== true &&
     (own = await ownOutputs()) !== undefined
@@ -1872,6 +1886,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         deferSave: args.deferSave,
         // A sink listens: say what the save cost.
         measure: args.explainMiss !== undefined,
+        state,
       }),
     )
     // A run that settles the outcome on `landed` learns there whether the
@@ -2005,6 +2020,29 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     warnOf(log)(
       `[vx] ${node.id}: a process it left running may still write its outputs — ` +
         `the result stands, but is not saved; wait for it in the command (\`wait\`)`,
+    )
+    return false
+  }
+
+  /**
+   * The command changed an undeclared ignored file in its project
+   * (`undeclared-state.ts`). One a sandbox let it write none of is another
+   * process's.
+   */
+  function noStateWritten(): boolean {
+    if (state === undefined || state.size === 0) return true
+    const changed = stateChanged(state, node.projectDir).filter(
+      (rel) =>
+        sandboxWrites === undefined ||
+        sandboxWrites.some((w) => mayWrite(toRealPath(path.join(node.projectDir, rel)), w)),
+    )
+    if (changed.length === 0) return true
+    warnOf(log)(
+      `[vx] ${node.id}: ${changed.map(printable).join(', ')} changed while the task ran, ` +
+        `but git ignores ${changed.length === 1 ? 'it' : 'them'} and the task declares ` +
+        `${changed.length === 1 ? 'it' : 'them'} neither input nor output — the result stands, but is not saved: ` +
+        `a tool that reads such a file back (an incremental build's state) builds from it, not from the inputs` +
+        declareStateHint(changed),
     )
     return false
   }
@@ -2248,6 +2286,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
               cfg.inputs,
               upstreamOutputs,
               cfg.outputs,
+              args.nestedProjectDirs,
             ),
           ),
         }

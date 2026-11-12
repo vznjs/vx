@@ -817,6 +817,7 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly keyRoot?: string
+  readonly keyNested?: readonly string[]
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
 }

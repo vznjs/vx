@@ -139,7 +139,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   withheld from a cached task because its key does not answer for them:
   denials there are reported too), `config`, and for a cached task
   `keyed`, `keyRoot` (the workspace root: a hidden read under it is named
-  for `inputs.workspaceFiles` beside its grant). An executor that ships the
+  for `inputs.workspaceFiles` beside its grant) and `keyNested` (the
+  projects nested in its own: a hidden read in one is named for
+  `inputs.workspaceFiles` too, since `inputs.files` stops there). An executor that ships the
   sandbox elsewhere receives the narrowed `baseAllowRead`; enforcing it
   is its own.
 - `TaskInputs` — everything the cache key folds, WITH values: `files`

@@ -145,6 +145,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   enumeratedAtMs: number | undefined
   ignoredOutputs: ReadonlySet<string>
   setIgnored(root: string, paths: readonly string[]): void
+  ignoredFilesIn(dir: string): string[]
   newFilesIgnored(dir: string): boolean
   answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void
   get undecodableNames(): ReadonlySet<string>
@@ -923,6 +924,7 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly keyRoot?: string
+  readonly keyNested?: readonly string[]
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
 }

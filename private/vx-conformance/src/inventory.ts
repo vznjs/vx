@@ -177,6 +177,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'uncached-no-lookup',
     'uncached-outputs',
     'uncached-upstream-key',
+    'undeclared-state',
     'undeclared-writes',
     'unkeyed-upstream',
     'unlistable-input-dir',

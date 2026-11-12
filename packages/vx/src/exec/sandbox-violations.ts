@@ -922,6 +922,8 @@ const MOVES = /^(?:rename|link)/
  * TRACE), so this record is the only trace of an `openat2` read.
  */
 const OPEN_EITHER = /^openat2$/
+/** The calls that change only a path's timestamps. */
+const TIMES = /^(?:utimensat|utimes|futimesat|utime)$/
 
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
@@ -1025,6 +1027,12 @@ export function refusedWrites(
     // judged a write, a granted `openat2(O_RDONLY)` failed a clean task.
     const either = OPEN_EITHER.test(syscall)
     if (!bound && either && inSandbox(abs, binds, readable)) continue
+    // A timestamp change there met the read-only bind too: no byte and no
+    // time moved. `tsc -b` touches an up-to-date dependency's buildinfo when
+    // its sources are newer (a branch switched and back, the dependency a
+    // hit), and swallows the refusal; judged a write, the dependant failed
+    // every run until `--force`.
+    if (!bound && TIMES.test(syscall) && inSandbox(abs, binds, readable)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)

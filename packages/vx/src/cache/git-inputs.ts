@@ -603,6 +603,32 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   /**
+   * The ignored files `git status` named under `dir` (absolute), absolute:
+   * an ignored directory, named whole, is left out. Empty when no
+   * enumeration listed them.
+   */
+  ignoredFilesIn(dir: string): string[] {
+    const ig = this.ignored
+    if (ig === null || ig.paths.length === 0) return []
+    const rel = relPosix(ig.root, dir)
+    if (rel.startsWith('../')) return []
+    const under = rel === '' ? '' : `${rel}/`
+    let lo = 0
+    let hi = ig.paths.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (ig.paths[mid]! < under) lo = mid + 1
+      else hi = mid
+    }
+    const out: string[] = []
+    for (let i = lo; i < ig.paths.length && ig.paths[i]!.startsWith(under); i++) {
+      const p = ig.paths[i]!
+      if (!p.endsWith('/')) out.push(path.join(ig.root, p))
+    }
+    return out
+  }
+
+  /**
    * Whether git ignores a new file directly in `dir` (absolute) while it
    * reports an ignored path under it: `gen/*` beside a kept `gen/.gitkeep`,
    * or `gen/` with a force-added file. Such a directory is ignored in all

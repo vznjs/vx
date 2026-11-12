@@ -168,6 +168,7 @@ src/orchestrator/task-log-buffer.ts
 src/orchestrator/task-process.ts
 src/orchestrator/telemetry-host.ts
 src/orchestrator/telemetry.ts
+src/orchestrator/undeclared-state.ts
 src/orchestrator/upstream.ts
 src/report/events.ts
 src/report/forecast.ts

@@ -4,7 +4,7 @@
 // init.test.ts; `vx init` hands such a repo to this bin
 // (init-no-manifest.test.ts in core holds the hand-off).
 
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -539,6 +539,34 @@ describe('migrateScripts', () => {
     })
     // CONTROL: a `build` with a command carries it itself, once.
     expect(cacheTodos({ build: 'tsc -b', test: 'v' })).toEqual({ build: 1, test: 0 })
+  })
+
+  // tsc's buildinfo beside the tsconfig survived vx's clean of `dist/`, and
+  // `tsc -b` re-emitted only the changed file into the empty `dist/`: the
+  // TODO's outputs, copied as written, cached that partial `dist/`.
+  it('the cache TODO names the buildinfo a `tsc -b` writes outside `dist/`', () => {
+    const outputsOf = (compilerOptions: object): string | undefined => {
+      const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-scripts-tsc-'))
+      try {
+        writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions }))
+        const todo = migrateScripts([
+          {
+            name: 'app',
+            dir,
+            packageJson: { name: 'app', scripts: { build: 'tsc -b' } } as never,
+            configPath: null,
+          },
+        ])
+          .projects[0]?.tasks.find((t) => t.name === 'build')
+          ?.todos.find((d) => d.startsWith('cache: add'))
+        return /outputs: \{ files: \[(.*?)\] \}/.exec(todo ?? '')?.[1]
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+    expect(outputsOf({ rootDir: 'src', outDir: 'dist' })).toBe("'dist/**', 'tsconfig.tsbuildinfo'")
+    // CONTROL: a buildinfo under `dist/` is one of its outputs already.
+    expect(outputsOf({ outDir: 'dist', tsBuildInfoFile: 'dist/.tsbuildinfo' })).toBe("'dist/**'")
   })
 
   it("the cache TODO names the framework's own build output", () => {

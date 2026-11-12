@@ -402,4 +402,26 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
         "key it: `inputs: { files: ['tsconfig.json'] }`.",
     )
   })
+
+  // A root task's `inputs.files` stops at a member project, and `vx lock`
+  // refuses a glob into one ("lies inside the project"): a root `tsc -b`
+  // reading a member was told an entry it could not declare.
+  it('beside a cached root task names a member project’s path for inputs.workspaceFiles', async () => {
+    await addProject(root, 'lib', { files: { 'tsconfig.json': '{}\n' } })
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(tsc('packages/lib/tsconfig.json'))},
+          sandbox: { allow: { read: ['tsconfig.base.json'] } } },
+        cache: true,
+        inputs: { files: ['tsconfig.base.json'] },
+        outputs: { files: [] },
+      } } }\n`,
+    )
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    expect(r.outcomes[0]?.sandboxViolationLines?.[0]).toEndWith(
+      "grant it, e.g. `allow: { read: ['packages/lib/tsconfig.json'] }`, and, if the output " +
+        "depends on it, key it: `inputs: { workspaceFiles: ['packages/lib/tsconfig.json'] }`.",
+    )
+  })
 })

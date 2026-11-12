@@ -58,6 +58,7 @@ export function localExecutor(): TaskExecutor {
         reportLinked: req.sandbox.reportLinked,
         config: req.sandbox.config,
         ...(req.sandbox.keyRoot !== undefined ? { keyRoot: req.sandbox.keyRoot } : {}),
+        ...(req.sandbox.keyNested !== undefined ? { keyNested: req.sandbox.keyNested } : {}),
         upstreamOutputs: [
           ...(req.sandbox.dependencyReads ?? []),
           ...(req.sandbox.dependencyReported ?? []),

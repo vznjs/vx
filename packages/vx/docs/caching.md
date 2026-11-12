@@ -1054,6 +1054,21 @@ symlink out of the workspace, whose files vx drops as outside (a project
 output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache: true` is never checked.
 
+**Undeclared state is not saved** (`orchestrator/undeclared-state.ts`).
+A git-ignored file in the task's project that is neither an input nor
+an output survives the clean before a miss, and a hit never restores
+it. An incremental tool keeps its state there: `tsc -b` writes
+`tsconfig.tsbuildinfo` beside the tsconfig, so after vx emptied `dist/`
+it emitted only the changed file, and the partial `dist/` was saved. A
+miss stamps those files, as `git status` listed them at run start,
+before its command; if one changed (and a sandbox let the task write
+it), or the outputs matched no files while one is there, the result
+stands but is not saved, and the line names the file and the fix:
+declare it in `outputs.files`, so a miss starts without it and a hit
+restores it. A miss costs a stat per such file; a hit, nothing. A file
+the command creates is not listed, so a first build is still saved
+(`tests/undeclared-state.test.ts`).
+
 **The outputs are what exists when the task's command exits.** The run
 waits for the command's own process, not for everything it started — a
 backgrounded grandchild that still holds the output pipe does not hold
