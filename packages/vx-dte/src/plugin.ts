@@ -717,6 +717,7 @@ export function dte(options: DteOptions = {}) {
         nodes: () => nodes,
         need,
         bases,
+        learnedOther: (size) => learned.others.get(size),
         artifacts: ctx.artifacts,
         cacheFacts: () => ctx.cacheFacts(),
         run,
