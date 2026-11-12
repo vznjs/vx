@@ -115,7 +115,7 @@ import { currentHit, restoreHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
 import { shellVerdict } from './shell-verdict.js'
 import { lockedDirGone } from './projects.js'
-import { perRunWriteHint, sandboxFix } from './sandbox-fix.js'
+import { misrootedWriteHint, perRunWriteHint, sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
@@ -2217,11 +2217,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
 
-  const perRun =
+  const notes =
     violations.length === 0
-      ? undefined
-      : perRunWriteHint(violations, node.projectDir, args.workspaceRoot)
-  const finalViolations = perRun === undefined ? violations : [...violations, perRun]
+      ? []
+      : [
+          perRunWriteHint(violations, node.projectDir, args.workspaceRoot),
+          misrootedWriteHint(violations, node.projectDir, args.workspaceRoot),
+        ].filter((n) => n !== undefined)
+  const finalViolations = notes.length === 0 ? violations : [...violations, ...notes]
   const fixOf = (fix: TaskOutcome['sandboxFix']) => (fix === undefined ? {} : { sandboxFix: fix })
 
   return {

@@ -465,6 +465,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-host-helpers.unsafe',
     'sandbox-host-services.unsafe',
     'sandbox-lifecycle.unsafe',
+    'sandbox-misrooted-writes.unsafe',
     'sandbox-mkdir-ancestor.unsafe',
     'sandbox-network-patterns.unsafe',
     'sandbox-network-per-task.unsafe',

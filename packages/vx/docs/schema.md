@@ -2107,6 +2107,18 @@ A task git finds no repository for (git probes `.git` by `stat`, which the trace
 report) fails with a hint naming the `.git` grant, or saying it lies outside the workspace and
 is walled on purpose.
 
+**A root found by a hidden file.** A tool that finds the workspace root by
+looking up the tree for a lockfile (`next build`'s tracing root) takes the
+project for the root when the sandbox hides the lockfile, and writes under
+the project what belongs above it: Next's standalone copy wrote
+`node_modules/.bun/next@…/…` under the app. A refused write into an
+installed package's files, or the store holding them (`node_modules/.bun`,
+`.pnpm`), that a directory above the project holds too gets no write
+grant: the fix names the lockfiles above the project as reads
+(`'../../bun.lock'`) and, for a cached task, as `inputs.workspaceFiles`
+entries, and a note says why. Granted the write, the build passed, was
+cached, and its server could not start.
+
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
 On Linux a denied read is reported only where `strace` is on PATH and

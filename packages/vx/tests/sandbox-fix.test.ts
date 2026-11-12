@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { SandboxViolation } from '../src/exec/index.js'
-import { perRunWriteHint, sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import { misrootedWriteHint, perRunWriteHint, sandboxFix } from '../src/orchestrator/sandbox-fix.js'
 import { CREDENTIAL_STORES } from '../src/orchestrator/sandbox-request.js'
 import { anyTaskGlob } from '../src/util/index.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
@@ -327,6 +327,42 @@ describe('sandboxFix', () => {
     expect(hint?.hint).toBe(true)
     expect(hint?.line).toContain("ignore: { write: ['*.bun-build', 'sub/*.bun-build'] }")
     expect(perRunWriteHint(denied.slice(2), dir, dir)).toBeUndefined()
+  })
+  // `next build` found its tracing root by the lockfile, which the sandbox
+  // hid, and copied `node_modules/.bun/next@…` under the app: the fix
+  // granted that write, and the green, cached build's server could not start.
+  it('grants no write into a package that a directory above holds; names the root marker', () => {
+    const app = path.join(dir, 'apps', 'web')
+    const pkg = 'node_modules/.bun/next@1/node_modules/next'
+    mkdirSync(path.join(dir, pkg), { recursive: true })
+    mkdirSync(path.join(app, 'node_modules/.vite'), { recursive: true })
+    mkdirSync(path.join(dir, 'node_modules/.vite'), { recursive: true })
+    writeFileSync(path.join(dir, 'bun.lock'), '')
+    const copied = v(
+      `openat(${pkg}/dist/x.js) = a write no grant covers`,
+      ['write'],
+      path.join(app, pkg, 'dist/x.js'),
+    )
+    const vite = v(
+      'mkdir(node_modules/.vite/deps) = -1 EROFS',
+      ['write'],
+      path.join(app, 'node_modules/.vite/deps'),
+    )
+    expect(sandboxFix([copied, vite], app, dir, undefined, { files: ['app/**'] })).toEqual({
+      read: ['../../bun.lock'],
+      write: ['node_modules/.vite/'],
+      workspaceFiles: ['bun.lock'],
+    })
+    expect(misrootedWriteHint([copied, vite], app, dir)?.line).toBe(
+      `vx: the task wrote installed packages' files under the project (${pkg}/dist/x.js), which ` +
+        `../../node_modules/.bun holds: it took the project for its root, as a tool does that ` +
+        `finds its root by a file the sandbox hides. A write grant there is not the fix; grant ` +
+        "what it looks for: `allow: { read: ['../../bun.lock'] }`.",
+    )
+    // CONTROL: no package above holds it, so it is the task's own write.
+    rmSync(path.join(dir, 'node_modules'), { recursive: true })
+    expect(sandboxFix([copied], app, dir)).toEqual({ write: [`${pkg}/`] })
+    expect(misrootedWriteHint([copied, vite], app, dir)).toBeUndefined()
   })
   // vite bundles its config to `node_modules/.vite-temp/vite.config.ts.timestamp-<ms>-<hex>.mjs`,
   // a new name each run: the fix granted that one name, and the next run
