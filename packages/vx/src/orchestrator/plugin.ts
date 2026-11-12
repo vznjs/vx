@@ -1,12 +1,8 @@
-// Plugin API — the ONE `VxPlugin` contract (docs/design/pipeline-2026-09.md).
-//
-// Users register plugins via defineWorkspace({ plugins }). Behaviour
-// capabilities (`cache`, `executor`) return objects core calls INTO;
-// observe capabilities (`telemetry`, `setup` on the bus) can only read.
-//
-// Crash isolation: a plugin that throws in a load-bearing hook aborts the
-// run with a clean UserError naming plugin + hook. A plugin that throws
-// inside a bus hook is logged and disabled for the remainder of the run.
+// Plugin API: the one `VxPlugin` contract (docs/design/pipeline-2026-09.md).
+// Behaviour capabilities (`cache`, `executor`) return objects core calls
+// into; observe capabilities (`telemetry`, `setup` on the bus) only read. A
+// throw in a load-bearing hook aborts the run with a UserError naming plugin
+// and hook; a throw in a bus hook is logged and disables it for the run.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -41,17 +37,12 @@ import type { CacheFacts, TaskArtifacts } from './task-artifacts.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
- * A vx plugin. Contributes any subset of the run-level capabilities — where
- * work runs (executor), which cache is used (cache), who observes the run
- * (telemetry). It never changes WHAT a task is (the command string — principle
- * #3), only where and how that command is executed. Registered explicitly
- * in.vx/workspace.ts via defineWorkspace({ plugins: [...] }). No
- * auto-discovery.
- *
- * Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
- * plain object. The capabilities are consulted by `plugin-host.ts`. Core
- * names no plugin; the local executor and the local cache are the floor
- * under the list, taking what every plugin declines.
+ * A vx plugin: any subset of where work runs (executor), which cache is used
+ * (cache) and who observes (telemetry). It never changes what a task is (its
+ * command), only where and how it runs. Registered explicitly in
+ * `.vx/workspace.ts`; no auto-discovery. Made only by
+ * `definePlugin(import.meta, hooks)`. Core names no plugin; the local
+ * executor and cache are the floor under the list.
  */
 export interface VxPlugin {
   /**
@@ -62,16 +53,15 @@ export interface VxPlugin {
    */
   readonly name: string
 
-  // --- PIPELINE stages (shape the run before it executes — opt-in) ----------
+  // --- PIPELINE stages (shape the run before it executes — opt-in)
+  // ----------
   //
-  // Each receives the object core is about to use and edits it IN PLACE;
-  // core re-validates after each plugin, so a plugin cannot produce what
-  // the loader would refuse from a user. Declaration order is the order.
-  // Whatever a stage changes reaches the cache key by construction: the key
-  // hashes the task config AFTER `project` and `graph` ran, and a reference
-  // kept past its stage cannot change it later: the run copies a project's
-  // config after its hooks and freezes each task's after `graph`. See
-  // docs/design/pipeline-2026-09.md.
+  // Each edits the object core is about to use in place; core re-validates
+  // after each plugin, so a plugin cannot produce what a user could not
+  // write. Declaration order is the order. A stage's changes reach the key by
+  // construction (the key hashes task configs after `project` and `graph`),
+  // and a reference kept past its stage cannot change it later: the run
+  // copies and freezes configs.
 
   /**
    * The workspace config, before anything is derived from it (concurrency,
@@ -84,34 +74,28 @@ export interface VxPlugin {
   config?(workspace: WorkspaceConfig, ctx: ConfigContext): void | Promise<void>
 
   /**
-   * Projects beyond the directories holding a vx.config, their names, and edges
-   * between projects, as `DiscoveredProject`s (each directory absolute or
-   * relative to the workspace root): a lockfile's importers, their package
-   * names and the dependencies it records; a runner's root tasks. Runs under
-   * `vx lock` (and `--check`) only, before any project config loads: the lock
-   * records what the hooks found, and every other verb applies that record and
-   * calls no hook. Each plugin sees the locked projects and the ones earlier
-   * plugins added, without their edges. A directory that is not a project
-   * becomes one (with no config; named by `name`, else its path). A project
-   * named by its path takes `name`; one its config names keeps that name, and a
-   * different name from an earlier plugin is refused, as is a directory outside
-   * the root and the name `//` away from it. Two projects of one name are
-   * refused once the stage ends. `deps` and `reach` from every plugin union
-   * then; a target that is no project is refused.
+   * Projects beyond the directories holding a vx.config, their names and
+   * inter-project edges, as `DiscoveredProject`s (dirs absolute or
+   * root-relative): a lockfile's importers, a runner's root tasks. Runs under
+   * `vx lock` (and `--check`) only, before any project config loads; every
+   * other verb applies the lock's record. Each plugin sees the locked
+   * projects and earlier plugins' additions, without edges. A new directory
+   * becomes a project (named by `name`, else its path). A path-named project
+   * takes `name`; a config's name wins, and a different name from an earlier
+   * plugin is refused, as is a dir outside the root or `//` off it. Duplicate
+   * names are refused once the stage ends. `deps` and `reach` from every
+   * plugin union; a target that is no project is refused.
    */
   discover?(
     ctx: DiscoverContext,
   ): readonly DiscoveredProject[] | Promise<readonly DiscoveredProject[]>
 
   /**
-   * One project's validated config, right after it loaded and before the graph
-   * is built. Add, remove or edit tasks. Runs under `vx lock` (and `--check`)
-   * only, for every project: the lock records what the hooks left, and a run
-   * reads that record and calls no hook — a run follows the lock, never what
-   * the files say now. A project with NO config file (a `discover` plugin added
-   * it) is visited too, as `{ tasks: {} }`, so a plugin can give it tasks; with
-   * no `project` plugin such a project is never visited. Its `name` is fixed by
-   * then: a change is refused.
+   * One project's validated config, after load and before the graph: add,
+   * remove or edit tasks. Runs under `vx lock` (and `--check`) only, for
+   * every project; a run follows the lock's record, never the files. A
+   * project with no config file (a `discover` plugin added it) is visited as
+   * `{ tasks: {} }`. Its `name` is fixed: a change is refused.
    */
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
 
@@ -124,12 +108,11 @@ export interface VxPlugin {
   graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
 
   /**
-   * Extra cache-key material for one task: a `{ name: value }` record that
-   * is folded into the key (and named in `vx why`) — a tool version, a
-   * feature flag, anything the declared inputs cannot see. Runs once per
-   * task per run, before any key is derived. Return undefined to add
-   * nothing. Values must be deterministic for the same inputs or the key
-   * never hits. The task is read-only (a write throws): `graph` edits tasks.
+   * Extra key material for one task: a `{ name: value }` record folded into
+   * the key and named in `vx why` (a tool version, a feature flag). Once per
+   * task per run, before any key. Undefined adds nothing. Values must be
+   * deterministic, or the key never hits. The task is read-only; `graph`
+   * edits tasks.
    */
   key?(
     task: TaskNode,
@@ -140,27 +123,21 @@ export interface VxPlugin {
     | Promise<Readonly<Record<string, string>> | undefined>
 
   /**
-   * Workspace-root files this plugin keys on: core folds no root file into any
-   * key, so a plugin that reads one (a lockfile it folds per project through
-   * `key`, `turbo.json` that shapes every task through its `project` stage)
-   * claims it here. `--affected` asks `affected` which projects a change to it
-   * touches (undefined: every project), `vx watch` re-runs on an edit, and a
-   * task that rewrites one during the run withholds every later save. A claim
-   * is a bare name at the root; a file has one claimant.
+   * Workspace-root files this plugin keys on: core folds no root file, so a
+   * plugin reading one (a lockfile, `turbo.json`) claims it here.
+   * `--affected` asks `affected` which projects a change touches (undefined:
+   * all), `vx watch` re-runs on an edit, and a task rewriting one during a
+   * run withholds every later save. A bare root name; one claimant per file.
    */
   readonly fingerprint?: FingerprintClaim
 
   /**
-   * Scheduling priorities: task id → weight, higher runs first among READY
-   * tasks (merged over the structural baseline, which stays the tie-break).
-   * Runs once, after the graph is final and the local hits are known, and
-   * only when a task will start: a run of confirmed local hits restores
-   * in no order a weight changes. A later plugin's weight for a task
-   * overrides an earlier one's. Return undefined to leave the baseline.
-   * The run waits for this answer before its first task, so it should
-   * come from what is at hand (local history); better weights that need
-   * a fetch go to `ctx.refine` when they arrive, without holding the run.
-   * The nodes are read-only (a write throws): their keys are taken.
+   * Scheduling priorities: task id → weight, higher first among ready tasks,
+   * merged over the structural baseline (the tie-break). Once, after the
+   * graph is final and local hits are known, only when a task will start. A
+   * later plugin's weight wins. Undefined keeps the baseline. The run waits
+   * for this, so answer from what is at hand; weights needing a fetch go to
+   * `ctx.refine`. The nodes are read-only.
    */
   schedule?(
     nodes: ReadonlyMap<string, TaskNode>,
@@ -168,76 +145,63 @@ export interface VxPlugin {
   ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
 
   /**
-   * What this plugin will measure in the run that is no task of the graph
-   * (a worker's warm-up): measure id → definition hash, each id
-   * `<plugin>#<name>`. Asked once before `schedule`, which hands every
-   * plugin the union as `ctx.measures`, so a history plugin fetches their
-   * timings with the tasks'. A plugin reports each by `ctx.measure` and
-   * reads them back as tasks, `localHistory(…).resourcesFor`.
+   * What this plugin will measure that is no task (a worker's warm-up): id
+   * (`<plugin>#<name>`) → definition hash. Asked before `schedule`, which
+   * hands the union to every plugin as `ctx.measures`, so a history plugin
+   * fetches them with the tasks'. Reported by `ctx.measure`, read back via
+   * `localHistory(…).resourcesFor`.
    */
   measures?(nodes: ReadonlyMap<string, TaskNode>): ReadonlyMap<string, string> | undefined
 
   /**
    * Admission over the worker count: asked for every task about to start
-   * on this machine, with the tasks running here right now. Return `false`
-   * to hold it until something finishes (it is asked again then). Asked
-   * many times per run, so it must be cheap and synchronous; a throw, or
-   * an answer that is a Promise or not a boolean or undefined, is reported once and the plugin admits
-   * from then on — a policy never
-   * breaks a run. Restore-tier hits, tasks on an executor pool and groups
-   * hold no local resources: never asked, never in `ctx.running`. When
-   * several plugins answer, all must admit. Core keeps no notion of what a task needs: a plugin that
-   * packs memory or CPU learns or declares the numbers itself
-   * (`@vzn/vx-history` packs what past executions used). The task and
-   * `ctx.running` are read-only (a write throws, and admits from then on).
+   * here, with the tasks running here. `false` holds it until something
+   * finishes. Asked often: cheap and synchronous. A throw or a non-boolean
+   * answer is reported once and the plugin admits from then on; a policy
+   * never breaks a run. Restore-tier hits, pooled tasks and groups are never
+   * asked. Several plugins: all must admit. Core keeps no notion of a task's
+   * needs: a packing plugin learns or declares them (`@vzn/vx-history`). Task
+   * and `ctx.running` are read-only.
    */
   admit?(task: TaskNode, ctx: AdmitContext): boolean
 
   // --- CLI verbs (opt-in) ---------------------------------------------------
 
   /**
-   * Verbs this plugin adds to the `vx` CLI, keyed by name. Consulted only
-   * for a verb core does not know — a verb named like a core verb is
-   * refused at load — and only
-   * when the cwd is inside a workspace that declares the plugin. `vx help`
-   * lists them under "Plugin commands". A verb's exit code is the process
-   * exit code; a thrown `UserError` prints cleanly, like core's own.
+   * Verbs this plugin adds to `vx`, by name. Consulted only for verbs core
+   * does not know (a clash is refused at load) and only inside a workspace
+   * declaring the plugin. `vx help` lists them. The exit code is the
+   * process's; a thrown `UserError` prints cleanly.
    */
   readonly commands?: Readonly<Record<string, PluginCommand>>
 
   // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
 
   /**
-   * Contribute a remote cache: the wire (`has`, `get`, `put`, optional
-   * `hasMany`), or undefined to decline. Consulted ONCE per prepareRun.
-   * Core layers each one behind its own local cache and owns the rest:
-   * the local store is asked first, then each remote in declaration order;
-   * the run's policy and scope gate every remote; a remote's throw is a
-   * miss and a warning naming the plugin, never a failed run.
+   * Contribute a remote cache (`has`, `get`, `put`, optional `hasMany`), or
+   * undefined. Consulted once per prepareRun. Core layers each behind its own
+   * local cache: local first, then each remote in order, all gated by the
+   * run's policy and scope; a remote's throw is a miss and a warning, never a
+   * failed run.
    */
   cache?(ctx: CacheContext): RemoteCacheLayer | undefined | Promise<RemoteCacheLayer | undefined>
 
   /**
-   * Contribute a task executor — WHERE one task's command runs. Consulted
-   * ONCE per run; every contributed executor is kept, in declaration order,
-   * and per task the first whose `accepts()` passes executes it. Nothing is
-   * appended in front: core's own local executor is always the TAIL, so
-   * declining a task hands it back to this machine rather than failing
-   * the run. Persistent tasks never reach an executor (local by
-   * construction).
+   * Contribute a task executor: where one task's command runs. Consulted once
+   * per run; all are kept in order, and per task the first whose `accepts()`
+   * passes runs it. Core's local executor is always last, so a declined task
+   * runs here. Persistent tasks never reach an executor.
    */
   executor?(ctx: ExecutorContext): TaskExecutor | undefined | Promise<TaskExecutor | undefined>
 
   // --- OBSERVE-ONLY capability (cannot change behavior — by construction) ---
 
   /**
-   * Contribute one or more telemetry sinks — the canonical data-export path.
-   * A sink receives versioned `TelemetryRecord` / `RunSummaryRecord` values
-   * and holds NO run handle (no bus, no cache, no request), so it provably
-   * cannot change what or how tasks run. ALL plugins' sinks are active at
-   * once (additive); a throwing/slow sink is isolated and can never fail or
-   * stall a run. This is THE export contract OTel, the manual HTTP API, and
-   * any third-party exporter all speak. See docs/design/observability-architecture-2026-06.md.
+   * Contribute telemetry sinks, the export path. A sink receives versioned
+   * `TelemetryRecord` / `RunSummaryRecord` values and holds no run handle, so
+   * it cannot change what runs. Every plugin's sinks are active at once; a
+   * throwing or slow sink is isolated.
+   * docs/design/observability-architecture-2026-06.md.
    */
   telemetry?(
     ctx: TelemetryContext,
@@ -248,49 +212,40 @@ export interface VxPlugin {
     | Promise<TelemetrySink | TelemetrySink[] | undefined>
 
   /**
-   * Take the terminal for this run: return the `Logger` that renders it
-   * (the contract `run({ log })` takes), or `undefined` to leave core's
-   * renderer in place. The first plugin, in declaration order, that
-   * returns one renders the run; the rest are not asked. Not consulted
-   * when an embedder passed its own `log`. A logger that throws or rejects
-   * hands the rest of the run back to core's renderer with one warning, and
-   * core draws the event it was handed; a hook that does not answer within
-   * the teardown bound (3 s) is passed over with one. The nodes and
-   * outcomes it is handed are read-only: a write throws.
+   * Take the terminal: return the `Logger` that renders the run, or undefined
+   * for core's. The first plugin returning one renders; the rest are not
+   * asked; never when an embedder passed `log`. A logger that throws hands
+   * the run back to core's renderer with one warning; one not answering
+   * within the teardown bound (3 s) is passed over. Nodes and outcomes are
+   * read-only.
    */
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
   /**
-   * Optional one-time setup per run (validate the workspace, open a
-   * connection, read a token). Throwing aborts the run with a clean
-   * UserError naming the plugin. It is not a guard over the pipeline: the
-   * config, project, cache, graph and key stages have run by the time it
-   * is called, and a plan (`--dry`, `planRun`) never calls it. It
-   * precedes the schedule stage, the executors, the telemetry sinks,
-   * admission and the first task (tests/plugin-e2e.test.ts).
+   * Optional setup per run (validate, connect, read a token). A throw aborts
+   * the run with a UserError naming the plugin. Not a guard over the
+   * pipeline: the config, project, cache, graph and key stages ran already,
+   * and a plan never calls it. It precedes `schedule`, the executors, the
+   * sinks, admission and the first task.
    */
   setup?(ctx: PluginSetupContext): void | Promise<void>
 
   /**
-   * Optional teardown at end-of-run (flush a sink, close a socket), in
-   * declaration order, a plugin with `cache` after every other: the
-   * others may still write through its remote. Errors are logged, never
-   * thrown. A run that ran to its end passes its
-   * `RunReport`; every other exit (a refused setup, a stop, a hook that
-   * never settles) passes none.
+   * Optional teardown at run end (flush, close), in declaration order,
+   * `cache` plugins last since the others may write through them. Errors are
+   * logged, never thrown. A completed run passes its `RunReport`; other exits
+   * pass none.
    */
   teardown?(run?: RunReport): void | Promise<void>
 }
 
 /**
- * What a finished run hands each plugin's `teardown`: its facts and every
- * task, with the names core kept the task's bytes under. Core keeps them
- * only when a remote takes the run's writes (CI by default): the log of a
- * task that saved no entry, and a failed task's log and the files its
- * outputs left when `cache.upload.failures` covers the run. Read
- * them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
- * plugin that wants one writes it from here (`ctx.cache.put`). Frozen:
- * every teardown reads the same report.
+ * What a finished run hands each `teardown`: its facts and tasks, with the
+ * names core kept their bytes under. Kept only when a remote takes the run's
+ * writes (CI by default): the log of a task that saved no entry, and a failed
+ * task's log and leftover outputs when `cache.upload.failures` covers the
+ * run. Read with `ctx.cache.getRun(name)`; a plugin wanting a manifest writes
+ * one (`ctx.cache.put`). Frozen.
  */
 export interface RunReport {
   /** The `run_id` the run's history rows and telemetry carry. */
@@ -337,10 +292,9 @@ export interface PluginSetupContext extends BaseContext, PluginSecrets {
   /** The run's branch (`currentBranch`): `run.branch`, else git's, else the CI provider's. */
   readonly branch: string | null
   /**
-   * Subscribe a lifecycle handler; it leaves with the run. A throw or a
-   * rejection warns once and switches the plugin's handlers off for the run.
-   * What a handler is handed is read-only: a write throws, so a handler
-   * can never turn a failed task into a pass.
+   * Subscribe a lifecycle handler for the run. A throw or rejection warns
+   * once and switches the plugin's handlers off. What a handler gets is
+   * read-only, so it can never turn a failure into a pass.
    */
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
   /**
@@ -361,17 +315,14 @@ export interface PluginCommand {
 
 export interface CommandContext extends BaseContext {
   /**
-   * The worker count a `vx run` here uses unless `--concurrency` says
-   * otherwise: `.vx/workspace`'s `concurrency`, else what the machine allows. A
-   * verb that budgets a run (`vx history`) reads it here; its own
-   * `machineParallelism()` said 4 cores beside `concurrency: 1`.
+   * The worker count a `vx run` here uses without `--concurrency`: the
+   * workspace's `concurrency`, else the machine's. For verbs that budget a
+   * run (`vx history`).
    */
   readonly concurrency: number
   /**
-   * The argv that runs this vx again: the binary alone when compiled, the
-   * runtime and its entry script from source. A verb that runs tasks
-   * spawns `[...vx, 'run', …]` rather than guess
-   * which `vx` a PATH holds.
+   * The argv that runs this vx again: the binary when compiled, runtime and
+   * entry from source. Spawn `[...vx, 'run', …]` rather than guess at PATH.
    */
   readonly vx: readonly string[]
   /**
@@ -382,16 +333,14 @@ export interface CommandContext extends BaseContext {
   readonly cache: PluginCache
   /**
    * Task entries by key in the workspace's cache, under a run's policy and
-   * scope (a laptop writes no remote unless the workspace's policy names
-   * it): what a verb that runs a run's tasks on this machine saves and
-   * restores through (`TaskArtifacts`). Opened on first use.
+   * scope: what a verb running a run's tasks here saves and restores through
+   * (`TaskArtifacts`). Opened on first use.
    */
   readonly artifacts: TaskArtifacts
   /**
-   * `artifacts` read as another machine's run would read them: under its
-   * refs, with the access its remotes lent (`CacheFacts`, asked on each
-   * request, so a token it lends again replaces the last). Opened on first
-   * use; until `facts` answers, under this machine's own.
+   * `artifacts` as another machine's run reads them: under its refs, with the
+   * access its remotes lent (`CacheFacts`, asked per request). Until `facts`
+   * answers, under this machine's own.
    */
   artifactsFor(facts: () => CacheFacts | undefined): TaskArtifacts
 }
@@ -403,14 +352,11 @@ export interface WorkspaceHookContext {
 }
 
 /**
- * What a CI knows of the run's branch: `scope`, the cache scope
- * (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it beats the one git
- * names), and `base`, the commit the branch is compared with (a pull request's
- * base), for a bare `--affected`. `trusted`: the run has no scope, whatever git
- * names (a merge queue's run). The scope keys plugin entries only. `refs`: the
- * refs a remote reads, in order (`CacheContext.refs`: a pull
- * request its head branch, then its base, then the default branch; a merge
- * queue or train only its base); unset, git's. A later plugin's field wins.
+ * What CI knows of the run's branch: `scope`, the cache scope
+ * (`VX_CACHE_SCOPE` beats it, it beats git's); `base`, the commit compared
+ * with (a PR's base), for a bare `--affected`; `trusted`: no scope, whatever
+ * git says (a merge queue). The scope keys plugin entries only. `refs`: the
+ * refs a remote reads, in order; unset, git's. A later plugin's field wins.
  */
 export interface BranchFacts {
   scope?: string
@@ -427,17 +373,15 @@ export interface DiscoverContext extends WorkspaceHookContext {
   /** Where vx's cache lives: a plugin may keep what it read to answer here. */
   readonly cacheDir: string
   /**
-   * The projects found so far: the lock's, then earlier plugins'. Read-only,
-   * entries too (a write throws): a project is added by returning it. The
-   * same object `project` hooks get as `ctx.projects`.
+   * The projects found so far: the lock's, then earlier plugins'. Read-only;
+   * a project is added by returning it. The same object `project` hooks get.
    */
   readonly projects: readonly ProjectMeta[]
   /**
-   * What `git status` lists in the workspace, workspace-relative: modified,
-   * staged or deleted paths (both sides of a rename) and untracked files;
-   * null outside a git worktree. It is core's own enumeration, so a
-   * plugin whose answer depends on the worktree (nx()'s graph key) reads it
-   * here instead of walking the tree a second time.
+   * What `git status` lists, workspace-relative (modified, staged, deleted,
+   * both sides of a rename, untracked); null outside git. Core's own
+   * enumeration, so a plugin needing the worktree (nx()'s graph key) reads it
+   * here.
    */
   worktreeChanges(): Promise<readonly string[] | null>
 }
@@ -464,16 +408,10 @@ export interface ProjectHookContext extends BaseContext {
   /** The project's directory, absolute. */
   readonly dir: string
   /**
-   * Every project the workspace discovered — the one being visited, the
-   * rest of the run's scope and the projects outside it, config file or
-   * not — as the `discover` stage left them. A plugin whose mapping needs
-   * the whole workspace (a `dependsOn` is only valid against every
-   * package's scripts at once) reads it here instead of walking the workspace a
-   * second time. The same array (`discover`'s) is handed to every visit of a run and a
-   * new one to the next run — a plugin instance outlives a run under `vx
-   * watch`, so a per-run memo keys on this array's identity, never on the
-   * process. Frozen, entries too: a hook edits its own project's config,
-   * never which projects there are or where they live.
+   * Every project the workspace discovered, as `discover` left them: for a
+   * mapping that needs the whole workspace. The same array for every visit of
+   * a run, a new one the next run: a plugin instance outlives a run under `vx
+   * watch`, so memo on this array's identity. Frozen, entries too.
    */
   readonly projects: readonly ProjectMeta[]
   /**
@@ -495,12 +433,10 @@ export interface GraphHookContext extends BaseContext {
 
 export interface KeyHookContext extends BaseContext {
   /**
-   * What `vx lock` recorded of the claimed `file` in
-   * `.vx/dependencies.lock.json` (`FingerprintClaim.digests`): a run keys
-   * from the record and never parses the file. Undefined when the file is
-   * absent and unrecorded. Refuses, naming `vx lock`, when the lock is
-   * absent or records no such present file; a recorded file whose bytes
-   * moved since refused the run before the key stage.
+   * What `vx lock` recorded of the claimed `file`
+   * (`FingerprintClaim.digests`): a run keys from the record and never parses
+   * the file. Undefined when absent and unrecorded. Refuses, naming `vx
+   * lock`, when the lock is missing or lacks a present file.
    */
   locked(file: string): Promise<LockedFile | undefined>
 }
@@ -522,24 +458,20 @@ export interface FingerprintClaim {
   /** Bare names at the workspace root the plugin reads: a lockfile (`pnpm-lock.yaml`), a settings file, `turbo.json`. */
   readonly files: readonly string[]
   /**
-   * The projects (by name) a change to a claimed file affects. Called
-   * by `--affected` with the file's bytes at the base ref and in the
-   * working tree (`null` where it does not exist). Return `undefined` to
-   * select every project — the answer a claimant gives when it cannot
-   * tell. A name that is not one of `ctx.projects` is refused.
+   * The projects a change to a claimed file affects, given its bytes at the
+   * base and now (`null` where absent). `undefined` selects every project,
+   * for a claimant that cannot tell. A name not in `ctx.projects` is refused.
    */
   affected(
     change: FingerprintChange,
     ctx: FingerprintContext,
   ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
   /**
-   * The workspace-relative files a claimed file's bytes name that the
-   * plugin's key reads too: `bun.lock`'s patch files, which it names by
-   * path and hashes nowhere, or a `file:` dependency's directory. A change
-   * to one, or under one, asks `affected` about the file naming it, with
-   * `change.extras`. Without it, a `bun.lock` patch edit selects every
-   * project. Asked on every `--affected` diff, so a claimant that memoises
-   * its parse answers from `ctx.cacheDir`.
+   * Files a claimed file names that the plugin's key also reads (`bun.lock`
+   * patches, a `file:` dependency's dir). A change to one asks `affected`
+   * about the file naming it, with `change.extras`; without this, a patch
+   * edit selects every project. Asked on every `--affected` diff, so memoise
+   * in `ctx.cacheDir`.
    */
   extraFiles?(
     file: string,
@@ -547,14 +479,12 @@ export interface FingerprintClaim {
     ctx: FingerprintContext,
   ): readonly string[] | Promise<readonly string[]>
   /**
-   * Each project's digest of the claimed `file` as it is now, by project
-   * name, with `hash`, the xxh3 of the bytes they came from (`xxh3hex`),
-   * and `extras`, the other files they read. `vx lock` records them in
-   * `.vx/dependencies.lock.json` with each extra file's hash; a run keys
-   * from that record (`KeyHookContext.locked`), and `--affected`
-   * reads the base's copy there instead of asking `affected` to parse the
-   * base side, when its `hash` is the base file's xxh3. `undefined`:
-   * nothing to record.
+   * Each project's digest of the claimed `file` now, by project, with `hash`
+   * (xxh3 of its bytes) and `extras`. `vx lock` records them in
+   * `.vx/dependencies.lock.json`; a run keys from that
+   * (`KeyHookContext.locked`), and `--affected` reads the base's copy instead
+   * of parsing the base side when `hash` matches. `undefined`: nothing to
+   * record.
    */
   digests?(
     file: string,
@@ -594,10 +524,9 @@ export interface FingerprintContext extends BaseContext {
 
 export interface AdmitContext {
   /**
-   * The tasks holding a worker on this machine right now, in dispatch
-   * order. A persistent task leaves at ready, when it gives its worker
-   * back: it runs until the graph ends, so a policy that counted it would
-   * hold its dependants with no completion left to ask again.
+   * The tasks holding a worker here now, in dispatch order. A persistent task
+   * leaves at ready: counted, it would hold its dependants with no completion
+   * left to ask again.
    */
   readonly running: readonly TaskNode[]
   /** The run's worker count — the ceiling the count gate already applies. */
@@ -616,32 +545,26 @@ export interface ScheduleHookContext extends BaseContext {
   /** This plugin's entries in the workspace's cache, as `setup` has them. */
   readonly cache: PluginCache
   /**
-   * Replace this plugin's weights while the run goes on: the tasks not yet
-   * started re-rank at once. For weights that arrive late (timings fetched
-   * from a remote). Ignored in a plan and once the run's tasks are done.
-   * Given a promise, the weights it resolves to, if any, when it does:
-   * `refining()` waits for it meanwhile.
+   * Replace this plugin's weights mid-run: unstarted tasks re-rank at once.
+   * For weights that arrive late. Ignored in a plan and after the run's
+   * tasks. Given a promise, `refining()` waits for it.
    */
   refine(
     weights: ReadonlyMap<string, number> | Promise<ReadonlyMap<string, number> | undefined>,
   ): void
   /**
-   * Settles once every refine promised so far (a promise to `refine`) has
-   * landed or failed, its listeners called: a plugin that sizes the run by
-   * the fetched data waits for it here rather than guessing without it.
+   * Settles once every promised refine has landed or failed, so a plugin
+   * sizing the run by fetched data waits here instead of guessing.
    */
   refining(): Promise<void>
   /**
-   * Calls `listener` each time another plugin `refine`s: the late data it
-   * waited for (timings fetched from a remote) has landed in history, so a
-   * plugin that read history in `schedule` may read it again. Never called
-   * in a plan.
+   * Calls `listener` each time another plugin refines: late data has landed
+   * in history, so a plugin may read it again. Never in a plan.
    */
   onRefine(listener: () => void): void
   /**
-   * Name tasks a shared record knows as flaky (a history server's): one
-   * that fails gets the one retry a known flake gets, as the local
-   * record's do. Ids not in the run are ignored; ignored in a plan.
+   * Name tasks a shared record knows as flaky: a failing one gets the one
+   * retry a known flake gets. Unknown ids and plans ignore it.
    */
   flaky(taskIds: Iterable<string>): void
 }
@@ -654,16 +577,16 @@ export interface CacheContext extends BaseContext {
    */
   readonly scope: string | undefined
   /**
-   * The refs the run reads, in order (`['refs/heads/feat-x', 'refs/heads/main']`):
-   * its own branch, the branch it merges into, the default branch. A remote
-   * keys or scopes its entries by them; core keys task entries by none.
+   * The refs the run reads, in order: its branch, the branch it merges into,
+   * the default branch. A remote keys or scopes by them; core keys task
+   * entries by none.
    */
   readonly refs: readonly string[]
   /**
-   * The token a run lent this plugin's remote (`RemoteCacheLayer.lend`),
-   * on a machine that runs that run's tasks (`CommandContext.artifactsFor`);
-   * undefined anywhere else. Read it per request: a run lends again before
-   * a token ends. A plugin uses it only when it has no access of its own.
+   * The token a run lent this plugin's remote (`RemoteCacheLayer.lend`), on a
+   * machine running that run's tasks; undefined elsewhere. Read it per
+   * request: a run lends again before it expires. Use it only without access
+   * of your own.
    */
   readonly lent?: () => string | undefined
 }
@@ -735,14 +658,10 @@ export interface Plugin {
   /** The plugin's package name (`definePlugin` sets it), logged on errors. */
   readonly name: string
   /**
-   * Called once at the start of every run. Register hooks via
-   * `ctx.on(name, fn)` or subscribe to `ctx.bus` directly. Returning
-   * a promise lets a plugin do async setup; the bus subscription must
-   * be installed synchronously inside setup() so no events are missed.
-   *
-   * OPTIONAL: a capability-only plugin (one that contributes
-   * `cache`/`executor`/`telemetry` but no `setup`) is simply skipped by
-   * `installPlugins` — its capabilities are consulted by `plugin-host.ts`.
+   * Called at the start of every run. Register hooks via `ctx.on(name, fn)`
+   * or `ctx.bus`; async setup may return a promise, but subscribe
+   * synchronously so no event is missed. Optional: a capability-only plugin
+   * is skipped here.
    */
   setup?(ctx: PluginContext): void | Promise<void>
 }
@@ -765,10 +684,9 @@ const packageNameByDir = new Map<string, string>()
 function pluginPackageName(dir: string): string {
   const memo = packageNameByDir.get(dir)
   if (memo !== undefined) return memo
-  // A package.json with no `name` below the package root is no package:
-  // dual builds (tshy) write `{ "type": "module" }` into `dist/esm/`. The
-  // walk passes it, as Vite's package lookup does; with no named one
-  // above, the nearest is refused.
+  // A package.json with no `name` below the package root is no package (tshy
+  // writes `{ "type": "module" }` into `dist/esm/`): passed, as Vite's lookup
+  // does; with no named one above, the nearest is refused.
   let nameless: string | undefined
   for (let d = dir; ;) {
     let text: string | undefined
@@ -813,10 +731,10 @@ function pluginPackageName(dir: string): string {
 }
 
 /**
- * The one way to make a plugin: `definePlugin(import.meta, {...hooks })`. The
- * name is read from the package the calling module belongs to — the nearest
- * `package.json` above it that has a name — and stamped where the workspace
- * loader checks for it, so a plugin cannot be named anything but its package.
+ * The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
+ * The name comes from the nearest named `package.json` above the calling
+ * module and is stamped where the loader checks, so a plugin is named by its
+ * package alone.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
   // The hooks are copied by spread, which takes own fields only: a class
@@ -861,22 +779,19 @@ type OptionKind<V> = [V] extends [string]
             : 'any'
 
 /**
- * Every option a factory takes, each with the one kind its type allows
- * (`'any'` for a union of kinds, such as `false | { … }`). Derived from
- * the options interface, so the type checker refuses a missing option, an
- * extra one or a wrong kind.
+ * Every option a factory takes with its kind (`'any'` for a union). Derived
+ * from the options interface, so the checker refuses a missing, extra or
+ * mistyped option.
  */
 export type PluginOptionKinds<T> = {
   readonly [K in keyof Required<T>]-?: OptionKind<Required<T>[K]>
 }
 
 /**
- * Refuse an option a plugin factory does not take, or a value of the wrong
- * kind, as core refuses an unknown config field. Bun strips a config's
- * types, so a misspelt option (`reapi({ endpont })`) reached the factory,
- * which read it as unset and quietly declined, and a string where a number
- * or a boolean belongs (`process.env.X`) was misread or threw a bare
- * TypeError. `factory` names the call in the message (`reapi()`).
+ * Refuse an option a factory does not take, or a wrong kind, as core refuses
+ * an unknown config field: Bun strips types, so a misspelt option (`reapi({
+ * endpont })`) quietly declined, and an env string where a number belongs was
+ * misread. `factory` names the call (`reapi()`).
  */
 export function refuseUnknownOptions<T>(
   factory: string,
@@ -945,9 +860,8 @@ export interface InstallPluginsArgs {
 
 /**
  * `ctx.measure`'s measure, copied: refused when its id is not under the
- * plugin's name, it has no definition, or a number is not finite and at
- * least 0, since history keeps a row for good and every later forecast
- * reads it.
+ * plugin's name, it has no definition, or a number is not finite and
+ * non-negative, since history keeps the row for good.
  */
 function measureOf(plugin: string, m: Measure): Measure {
   const bad = (what: string): never => {
@@ -984,14 +898,10 @@ export class PluginSetupError extends UserError {
 }
 
 /**
- * Install every plugin's `setup` hook against a shared bus + context.
- * Synchronous loop; setup() promises are awaited in order so a plugin's
- * hooks are subscribed before the next plugin's setup runs. Throws if any
- * plugin's setup() throws (the run cannot start with a broken plugin).
- *
- * A plugin without a `setup` is a capability-only plugin (cache
- * / executor / telemetry) — skipped here; those capabilities are consulted by
- * `plugin-host.ts`.
+ * Install every plugin's `setup` on a shared bus and context, awaited in
+ * order so a plugin is subscribed before the next one's setup. A throwing
+ * setup fails the run. Capability-only plugins are skipped; plugin-host.ts
+ * consults them.
  */
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
   const { plugins, bus, workspaceRoot, cacheDir } = args
@@ -1008,9 +918,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
       throw new UserError('plugin missing `name` field')
     }
-    // No setup → a capability-only plugin (cache / executor / telemetry),
-    // consulted by plugin-host.ts; skip the hook install. A setup that's
-    // present but not callable is a real authoring error — reject it.
+    // No setup: a capability-only plugin, skipped. A setup that is not
+    // callable is an authoring error.
     if (plugin.setup === undefined) continue
     if (typeof plugin.setup !== 'function') {
       throw new UserError(`plugin '${plugin.name}' setup is not a function`)
@@ -1081,10 +990,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         const kind = HOOK_EVENTS[hook]
         const dispose = bus.subscribe((live) => {
           if (live.kind !== kind || disabled.has(plugin)) return
-          // Not awaited: the bus is synchronous and plugin work runs off the
-          // critical path. A handler's rejection is caught like its throw.
-          // Handed each part's view, not the event's: a view of the event
-          // was one more proxy and two traps per task a hook heard.
+          // Not awaited: the bus is synchronous and plugin work stays off the
+          // critical path. A rejection is caught like a throw. Each part's
+          // view is handed, not the event's: one proxy fewer per task.
           let ret: unknown
           try {
             switch (live.kind) {

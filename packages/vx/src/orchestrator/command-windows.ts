@@ -1,8 +1,7 @@
 // When each command of the run ran, and each restore or deferred fetch, and where it
 // may write, so `inputs.stability.strategy: 'mutable'` can tell a task's
-// own identical rewrite from another task's write and restore (STATUS item
-// 28), and `vx watch` a user's write from the run's own: a file
-// whose bytes match the key after a write is the task's own only if no
+// own identical rewrite from another task's write and restore, and `vx
+// watch` a user's write from the run's own: a file whose bytes match the key after a write is the task's own only if no
 // other command that may write it ran between the describe and that write.
 
 import path from 'node:path'
