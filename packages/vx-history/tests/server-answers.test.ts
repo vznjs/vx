@@ -29,12 +29,12 @@ function serve(timing: string, answered: string): Bun.Server<undefined> {
 describe("a history server's answer", () => {
   it('keeps only the numbers a server folds: whole ms, finite cores, a byte count', async () => {
     const answers: Record<string, string> = {
-      ok: '{"durationMs":40,"cores":1.5,"rssBytes":1000}',
+      ok: '{"durationMs":40,"cores":1.5,"rssBytes":1000,"slowMs":55}',
       inf: '{"durationMs":1e309}',
       huge: '{"durationMs":1e308}',
       frac: '{"durationMs":0.5}',
       neg: '{"durationMs":-1}',
-      badNeeds: '{"durationMs":7,"cores":1e309,"rssBytes":-5}',
+      badNeeds: '{"durationMs":7,"cores":1e309,"rssBytes":-5,"slowMs":1e309}',
     }
     const body = `{"timings":{${Object.entries(answers)
       .map(([h, t]) => `"${h}":${t}`)
@@ -43,7 +43,7 @@ describe("a history server's answer", () => {
     const client = new HistoryServer('https://h.example', NAMED, {}, fake)
     expect((await client.query(['refs/heads/main'], Object.keys(answers))).timings).toEqual(
       new Map([
-        ['ok', { durationMs: 40, cores: 1.5, rssBytes: 1000 }],
+        ['ok', { durationMs: 40, cores: 1.5, rssBytes: 1000, slowMs: 55 }],
         ['badNeeds', { durationMs: 7 }],
       ]),
     )

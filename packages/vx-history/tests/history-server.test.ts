@@ -60,7 +60,9 @@ describe('HistoryServer', () => {
       '/v1/timings/upload',
     ])
     const got = await client.query(['refs/heads/feature', 'refs/heads/main'], ['a1', 'none'])
-    expect(got.timings).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
+    expect(got.timings).toEqual(
+      new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000, slowMs: 100 }]]),
+    )
   })
 
   it('sends a request refused for its size again in parts of the limit its refusal names', async () => {
@@ -571,7 +573,7 @@ describe('HistoryServer', () => {
     const client = new HistoryServer('https://h.example', NAMED, {}, fake)
     expect(client.writes).toBe(false)
     expect((await client.query(['refs/heads/main'], ['p1'])).timings).toEqual(
-      new Map([['p1', { durationMs: 7 }]]),
+      new Map([['p1', { durationMs: 7, slowMs: 7 }]]),
     )
     expect(auths).toEqual([null])
   })
