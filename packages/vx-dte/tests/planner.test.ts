@@ -581,6 +581,17 @@ it('starts workers needed at once as one sized to them all', () => {
   expect(p.endsInMs).toBe(80_000)
 })
 
+it('sizes a need against its own platform’s sizes only', () => {
+  const sizes: Size[] = [
+    { name: 'small', max: 9, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+    { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' },
+    { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+  ]
+  expect(sized({ cores: 3.6, memory: 1e9 }, sizes, 'linux-x64').above).toBeUndefined()
+  // CONTROL: against every platform's, the mac is too small for it.
+  expect(sized({ cores: 3.6, memory: 1e9 }, sizes).above).toBeDefined()
+})
+
 it('keeps a need to the sizes with room for all of it', () => {
   const sizes: Size[] = [
     { name: 'c2', max: 1, cpu: 2, memory: 8e9 },

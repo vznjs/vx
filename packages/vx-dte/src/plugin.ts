@@ -688,7 +688,15 @@ export function dte(options: DteOptions = {}) {
         )
       const serves = new Map<string, readonly string[]>()
       const need = (id: string): Need => {
-        const n = within(booked(needOf(peaks.get(id), unmeasured), how.book), sizes)
+        // Against its own platform's sizes (`sized`).
+        const node = nodes?.get(id)
+        const platform =
+          node === undefined
+            ? undefined
+            : multi
+              ? placeOf(node.worker, node.platform)
+              : (node.platform ?? home)
+        const n = within(booked(needOf(peaks.get(id), unmeasured), how.book), sizes, platform)
         let ids = serves.get(id)
         if (ids === undefined) {
           ids = serversOf(nodes, id)
