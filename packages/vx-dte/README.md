@@ -486,8 +486,8 @@ use your own instead.
   measured CPU and peak RAM), plus the cores its machine spends on no
   task of the run while it runs some (each frame's load less its tasks',
   averaged: a GitHub runner's own agent and the like, 0.6 to 1.1 of a
-  4-core small's), or its live load plus what was sent since
-  when that is more. Never less: load lags a task's start, and a test
+  4-core small's), or what its tasks use live (its machine's load where
+  it does not say), those cores and what was sent since, when that is more. Never less: load lags a task's start, and a test
   shard idle for a second then uses all its cores. A command that ended
   frees its cores while its outputs save, and its worker's load until the
   next frame: that load counted the task. Every

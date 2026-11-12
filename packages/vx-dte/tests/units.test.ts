@@ -1419,6 +1419,39 @@ it('books what a machine spends besides the tasks in whole cores', async () => {
   }
 })
 
+// Main 12a2f64: a small read 3.7 of 4 cores busy under 3 shards, 0.7 of
+// it no task's and already booked as no whole core, so the fourth shard
+// the plan placed there waited for another worker.
+it("holds a worker's room by what its tasks use, not its machine's other cores again", async () => {
+  const ids = ['t1', 't2', 't3', 't4']
+  const h = await harness(
+    new Map(ids.map((id) => node(id))),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { learnedOther: (size) => (size === 'small' ? 0.7 : undefined) },
+  )
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 100 })
+    const a = await h.worker(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ids.slice(0, 3)) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3'],
+      batch: 1,
+      load: { cpu: 3.7, memory: 0, tasks: 3 },
+    })
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t4'))
+    expect(await a.batches()).toEqual([['t4']])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main 2975e38: a Mac's frame as a task ended read 2.9 of 3 cores busy,
 // that task and its save among them, and held the next task for the next
 // frame, up to 30 s on.
