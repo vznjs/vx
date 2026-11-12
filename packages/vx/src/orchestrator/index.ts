@@ -21,6 +21,7 @@ export {
 } from './prepare.js'
 export { affectedTaskProjects } from './affected-tasks.js'
 export { applyGraphStage } from './graph-stage.js'
+export { applyMigration } from './migration.js'
 export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,

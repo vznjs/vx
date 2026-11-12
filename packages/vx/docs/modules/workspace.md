@@ -2159,8 +2159,8 @@ re-hashes them, as its memo did on every run before, and digests anew
 What any adoption tool needs once it has decided what a package's tasks
 are: the plan's shape, TypeScript emission, the overwrite guard, the
 writes and the lock step. It draws nothing: `writeMigration` answers with
-a `MigrationReport`, and `applyMigration` (`src/report/migration.ts`)
-writes and draws it. Core knows no source format here — a mapper returns
+a `MigrationReport`; `applyMigration` (`src/orchestrator/migration.ts`)
+writes, then `report` draws it. Core knows no source format here — a mapper returns
 a `MigrationPlan` and `applyMigration` does the rest. `@vzn/vx-migrate` maps package.json scripts, Turbo, Nx
 and Vite Task through it. Before 2026-09-10 the Turbo and Nx mappers
 lived in `src/cli/`, and the scripts mapper until 2026-10-14; core reads
@@ -2217,12 +2217,12 @@ export interface ApplyMigrationArgs {
   steps?: readonly (readonly [label: string, value: string])[] // what the tool did first, e.g. ['ran', 'bun add -d …']
   plugins?: readonly WorkspacePlugin[] // { pkg, factory }: what the written workspace file declares
 }
-// Internal: what the write did, for report/migration.ts to draw; under
+// Internal: what the write did, for report's drawMigration; under
 // `json`, the dry run's one document.
 export function writeMigration(
   args: ApplyMigrationArgs,
 ): Promise<MigrationReport | { json: string }>
-// On the façade from src/report/migration.ts: write, then draw. The exit code.
+// On the façade from src/orchestrator/migration.ts: write, then draw. The exit code.
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
 // The files `vx init` writes outside a Turbo or Nx repo (type-only import,
 // so a user's tsc checks them against config.ts alone), and whether a file

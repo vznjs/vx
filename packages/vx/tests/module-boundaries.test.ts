@@ -60,7 +60,7 @@ const ALLOWED: Record<string, readonly string[]> = {
   history: ['util', 'graph', 'cache', 'ui', 'index-db'],
   // `report`: renders the outcomes it is handed; it never runs a task or
   // reads the cache, so it reaches neither orchestrator nor cache.
-  // `workspace`: a migration's report, drawn from what its write answers.
+  // `workspace`: the type of what a migration's write answers, to draw it.
   report: ['util', 'version', 'settings', 'workspace', 'exec', 'graph', 'ui'],
   orchestrator: [
     'util',

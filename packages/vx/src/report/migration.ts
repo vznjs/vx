@@ -1,26 +1,21 @@
 // A migration's report: `workspace` writes the plan and answers with what
-// it did; this draws it. `applyMigration` is the seam an adoption tool
-// calls, write and report in one.
+// it did; this draws it. It writes no file (orchestrator/migration.ts
+// composes the two).
 
 import * as ui from '../ui/index.js'
 import { VERSION } from '../version.js'
-import {
-  writeMigration,
-  type ApplyMigrationArgs,
-  type MigrationReport,
-} from '../workspace/index.js'
+import type { MigrationReport } from '../workspace/index.js'
 
 /**
- * Render a plan to files, refuse to overwrite without `force`, write (or
- * print, under `dry`), and report. Returns the process exit code.
+ * Draw what a migration did: under `--json` its one document, else the
+ * dry run's files, a lock refusal and the report. Returns the exit code.
  */
-export async function applyMigration(args: ApplyMigrationArgs): Promise<number> {
-  const done = await writeMigration(args)
+export function drawMigration(done: MigrationReport | { readonly json: string }): number {
   if ('json' in done) {
     ui.data('out', done.json)
     return 0
   }
-  return drawMigration(done)
+  return drawReport(done)
 }
 
 /** Files named one per line; past this, the root's and a count (TanStack form: 97). */
@@ -35,7 +30,7 @@ function fileLines(paths: readonly string[]): string[] {
 /** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */
 const TODO_IDS_SHOWN = 5
 
-function drawMigration(r: MigrationReport): number {
+function drawReport(r: MigrationReport): number {
   for (const f of r.shown) ui.print('out', ui.excerpt(f.relPath, f.contents))
   const lock = r.lock
   // The lock's own words become a row; a refusal prints above the report.

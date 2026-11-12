@@ -162,7 +162,7 @@ export {
   quoteTsLiteral,
   taskNameProblem,
 } from './workspace/index.js'
-export { applyMigration } from './report/index.js'
+export { applyMigration } from './orchestrator/index.js'
 // Output components: a plugin draws its lines with core's, so they look alike.
 export { ui } from './ui/index.js'
 export type {

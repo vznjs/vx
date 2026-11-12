@@ -900,16 +900,15 @@ failed)` / `failed (output clean failed)` for a miss whose save or clean
 
 ### Purpose
 
-`applyMigration`, the seam an adoption tool calls (on the façade):
-`workspace`'s `writeMigration` writes the plan and answers with a
-`MigrationReport`; this draws it. Under `--dry`, each file as an excerpt;
-a lock refusal above; then the `from` … `next` rows. Under `--json`, the
-one document on stdout.
+`drawMigration`: what `workspace`'s `writeMigration` answered, drawn.
+Under `--dry`, each file as an excerpt; a lock refusal above; then the
+`from` … `next` rows. Under `--json`, the one document on stdout. It
+writes no file; `orchestrator/migration.ts` composes write and draw.
 
 ### Public surface
 
 ```ts
-export function applyMigration(args: ApplyMigrationArgs): Promise<number>
+export function drawMigration(done: MigrationReport | { json: string }): number // the exit code
 ```
 
 ### Tests
