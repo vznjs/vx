@@ -151,11 +151,9 @@ export type { ProjectMeta } from './workspace/index.js'
 export { loadResolvedProjects } from './orchestrator/index.js'
 export type { ProjectEntry } from './workspace/index.js'
 // The migration seam: how a generated config is planned, rendered, guarded
-// and written. `@vzn/vx-migrate` (package.json scripts, Turbo, Nx) and any
-// other adoption tool use it from here; `taskNameProblem` is why a name
-// cannot be a task's, so a mapper leaves such a script out.
+// and written. Every migrator uses it from here; `taskNameProblem` is why a
+// name cannot be a task's, so a mapper leaves such a source task out.
 export {
-  foldScriptHooks,
   isStarterConfig,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,

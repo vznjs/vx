@@ -20,6 +20,14 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
+### workspace: keep JS out of the migration seam
+
+foldScriptHooks is no longer exported from @vzn/vx. ApplyMigrationArgs drops `unmapped` (pass `emptyReason` and `example`), MigrationMember's `packageJson` is `esModule`, and core runs no formatter unless the migrator passes `written`.
+
+### orchestrator: make the lockfile claim ecosystem-neutral
+
+lockfileClaim's `importers` option and hook are now `links`, and `LockfileImporter` is no longer exported from @vzn/vx.
+
 ### graph: group TaskOutcome by concern, a union by status
 
 TaskOutcome fields moved. storedDurationMs, storedCpuMs, storedPeakRssBytes -> cache.stored.{durationMs, cpuMs, peakRssBytes}; restored, saved, inputFiles, artifactBytes, outputBytes, inputChanges, unkeyed, driftedInput, keylessBy -> cache.*; cacheOff -> cache.off; outputs: 'deferred' -> cache.deferred: true; queuedMs, admissionHeldMs, fetchMs, saveMs -> timing.*; wallclockStartNs, wallclockEndNs -> timing.startNs, timing.endNs; cpuMs, peakRssBytes, peakCores, avgRssBytes -> usage.*; where, carried -> placement.*; whereCores, whereMemoryBytes, cpuShare -> placement.cores, placement.memoryBytes, placement.cpuShare; attempts -> attempts.count; failedAttempts, attemptOutputs, flaky -> attempts.failed, attempts.outputs, attempts.flaky; sandboxViolations, sandboxViolationLines, sandboxFix -> sandbox.violations, sandbox.lines, sandbox.fix. A skipped outcome has no exitCode: read exitCodeOf(outcome) for the exit a record writes; it keeps hash only when fail-fast stopped it after its key was derived. The groups and variants are exported as types. RunOptions loses staged, discovered, selectedByDiff, selectedOutright, affectedReasons, remoteRequested, remoteReadOnlyByDefault, summaryTable, holdPersistent, watch, keep and commandWindows: vx's CLI hands them on internally, and run() and planRun() no longer read them.

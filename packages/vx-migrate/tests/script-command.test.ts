@@ -2,8 +2,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { foldScriptHooks } from '@vzn/vx'
-import { scriptCommand, yarnPnp } from '../src/script-command.js'
+import { withForwardArgs } from '@vzn/vx'
+import { foldScriptHooks, scriptCommand, yarnPnp } from '../src/script-command.js'
 
 describe('scriptCommand — a script body becomes the task command', () => {
   it('inlines a body that stands on its own in sh', () => {
@@ -81,5 +81,55 @@ describe("Yarn Plug'n'Play: no node_modules, so every script runs through `yarn 
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('foldScriptHooks runs the hooks as npm does', () => {
+  const run = async (command: string, args: string[] = []) => {
+    const full = withForwardArgs(command, args)
+    const p = Bun.spawn(['sh', '-c', full], { stdout: 'pipe', stderr: 'ignore' })
+    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
+    return { code, out: out.trim().split('\n') }
+  }
+
+  it('hands the forwarded args to the body alone, not the post hook', async () => {
+    expect(
+      await run(foldScriptHooks('echo PRE', 'echo BODY', 'echo POST'), ['--flag', 'a b']),
+    ).toEqual({ code: 0, out: ['PRE', 'BODY --flag a b', 'POST'] })
+  })
+
+  it('stops at a failing pre hook even when the body holds a `;`', async () => {
+    expect(await run(foldScriptHooks('false', 'echo A; echo B', 'echo POST'))).toEqual({
+      code: 1,
+      out: [''],
+    })
+  })
+
+  it('runs no post hook after a failing body, and keeps the body’s code', async () => {
+    expect(await run(foldScriptHooks(undefined, 'echo A; exit 3', 'echo POST'))).toEqual({
+      code: 3,
+      out: ['A'],
+    })
+  })
+
+  it('survives a trailing comment in any part', async () => {
+    expect(await run(foldScriptHooks('echo PRE # c', 'echo BODY # c', 'echo POST # c'))).toEqual({
+      code: 0,
+      out: ['PRE', 'BODY', 'POST'],
+    })
+  })
+
+  it('appends the args as text, as npm does: no part sees them as $1', async () => {
+    const fold = foldScriptHooks('echo pre:$1:$#', 'echo body:$1:$#: "$*"', 'echo post:$1:$#')
+    expect(await run(fold, ['foo', "it's", 'a b', '$HOME'])).toEqual({
+      code: 0,
+      out: ['pre::0', "body::0:  foo it's a b $HOME", 'post::0'],
+    })
+    const npm = await run('echo body:$1:$#: "$*"', ['foo', "it's", 'a b', '$HOME'])
+    expect(npm.out[0]).toBe("body::0:  foo it's a b $HOME")
+  })
+
+  it('CONTROL: a script with no hooks is its body, verbatim', () => {
+    expect(foldScriptHooks(undefined, 'tsc -b && echo x', undefined)).toBe('tsc -b && echo x')
   })
 })

@@ -104,8 +104,9 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
-  unmapped?: boolean
   emptyReason?: string
+  example?: boolean
+  written?: (relPaths: readonly string[]) => readonly string[]
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<{ code: number; said: string }>
@@ -936,33 +937,6 @@ export interface FingerprintDigests {
 }
 ```
 
-## `foldScriptHooks`
-
-function · `src/workspace/migration.ts`
-
-A package.json script with the `pre<name>` / `post<name>` hooks npm runs
-around it, as ONE sh command. Each part runs in its own subshell, so a
-`;` or an `exit` in one ends that part alone, and the chain stops at the
-first that fails, as npm stops. The parts sit in a function the
-forwarded `--` args are appended to, and only the body takes them, as
-npm appends them to the script and never to its hooks. A plain ` && `
-join handed them to the post hook, and `test -f x && echo A; echo B` ran
-`echo B` after a failed pre hook and went green (item 905). npm appends
-them as TEXT: no part sees them as `$1`…, so the function quotes them
-into `vx_a`, clears its positional parameters, and evals the body with
-`vx_a` after it; `"$@"` on the body made a script's `$1` the first
-forwarded arg and its `$*` print them twice. Each part ends on its own
-line, so a trailing `# comment` cannot swallow the paren. A script with
-no hooks is its body, verbatim.
-
-```ts
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string
-```
-
 ## `GeneratedProject`
 
 type · `src/workspace/migration.ts`
@@ -1570,16 +1544,14 @@ export type MigrationFormat = 'ts' | 'mjs'
 
 type · `src/workspace/migration.ts`
 
-A project the adoption tool found: its name, directory and the vx config
-it already has. `packageJson.type` picks `vx.config.mts` for a CommonJS
-TypeScript package.
+A project the adoption tool found: its name, directory and the vx config it already has.
 
 ```ts
 export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  readonly esModule?: boolean
 }
 ```
 

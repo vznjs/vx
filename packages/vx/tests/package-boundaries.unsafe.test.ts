@@ -172,7 +172,6 @@ describe('package boundaries', () => {
       'executorFallback',
       'exitSignal',
       'findWorkspaceRoot',
-      'foldScriptHooks',
       'hostPlatform',
       'isCacheHit',
       // Widened 2026-09-23 (item 667): `@vzn/vx-reapi` maps declared output

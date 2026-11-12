@@ -26,6 +26,11 @@ claims Python's `uv.lock` through core's `lockfileClaim`, so each member
 keys on its own dependency closure. It lives outside `plugins/`, so
 `vx init --plugin` does not offer it.
 
+A migrator is not a seam: it reads another tool's files and hands core's
+migration seam (`applyMigration`) a plan, which core renders, guards,
+writes and reports. [`migrators/makefile.ts`](migrators/makefile.ts)
+turns each project's Makefile targets into tasks, beside its test.
+
 Use one in `.vx/workspace.ts`:
 
 ```ts

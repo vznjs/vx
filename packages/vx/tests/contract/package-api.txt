@@ -312,12 +312,6 @@ export async function findWorkspaceRoot(
 ): Promise<string>
 == function fix (src/ui/components.ts)
 export function fix(action: Inline): Block
-== function foldScriptHooks (src/workspace/migration.ts)
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string
 == function gap (src/ui/components.ts)
 export function gap(): Block
 == function hostPlatform (src/exec/executor.ts)
@@ -506,8 +500,9 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
-  unmapped?: boolean
   emptyReason?: string
+  example?: boolean
+  written?: (relPaths: readonly string[]) => readonly string[]
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<{ code: number; said: string }>
@@ -1236,7 +1231,7 @@ export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  readonly esModule?: boolean
 }
 == type MigrationPlan (src/workspace/migration.ts)
 export interface MigrationPlan {

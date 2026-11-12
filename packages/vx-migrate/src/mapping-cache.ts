@@ -10,7 +10,7 @@
 import { statSync } from 'node:fs'
 import { mkdir, rename } from 'node:fs/promises'
 import path from 'node:path'
-import { foldScriptHooks, isLiteralPattern, outputsOverlap, VERSION } from '@vzn/vx'
+import { isLiteralPattern, outputsOverlap, VERSION } from '@vzn/vx'
 import type { Gaps } from './plugin-gaps.js'
 
 /** What the stage uses of a mapping: tags and tasks per package name, and the gaps to report once. */
@@ -33,10 +33,7 @@ let code: Promise<string> | undefined
 /** This package's sources (by size and mtime) and the core helpers the mappers call, once per process. */
 export function codeId(): Promise<string> {
   code ??= (async () => {
-    const parts: string[] = [
-      VERSION,
-      ...[foldScriptHooks, isLiteralPattern, outputsOverlap].map(String),
-    ]
+    const parts: string[] = [VERSION, ...[isLiteralPattern, outputsOverlap].map(String)]
     const files: string[] = []
     for await (const f of new Bun.Glob('**/*.{ts,cjs}').scan(import.meta.dir)) files.push(f)
     files.sort()

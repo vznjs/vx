@@ -19,5 +19,5 @@
     "allowImportingTsExtensions": true,
     "types": ["bun"]
   },
-  "include": ["plugins/**/*", "fingerprint/**/*"]
+  "include": ["plugins/**/*", "fingerprint/**/*", "migrators/**/*"]
 }
