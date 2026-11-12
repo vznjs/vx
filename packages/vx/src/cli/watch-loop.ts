@@ -170,51 +170,290 @@ interface Rediscovered {
 }
 
 export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
-  const { opts, stop, workspaceRoot, projects } = args
+  return new WatchLoop(args).run()
+}
+
+/** One project the one stream hands events to, by its real directory. */
+interface Streamed {
+  proj: ProjectMeta
+  real: string
+}
+
+/** The loop's state between events, and the steps that arm, judge and run. */
+class WatchLoop {
+  private readonly opts: RunOptions
+  private readonly stop: AbortSignal
+  private readonly workspaceRoot: string
   // The watched set as of the last cycle: `rearm` replaces these after an
   // event that can change it, and every filter below reads the current one.
-  let cacheDir = args.cacheDir
-  let workspaceWide = args.workspaceWide
-  let projectDirs = args.projectDirs
-  let workspaceInputs = args.workspaceInputs
-  let outputs = args.outputs
-  let inputs = args.inputs
-  let uncached = args.uncached
-  let namedIgnored = args.namedIgnored
-  let claimedRootFiles = args.claimedRootFiles
-  let extraFiles = args.extraFiles
-  let configImportFiles = args.configImports
-  let wsConfigImportFiles = args.workspaceConfigImports
+  private cacheDir: string
+  private workspaceWide: boolean
+  private projectDirs: readonly string[]
+  private workspaceInputs: readonly string[]
+  private outputs: ReadonlyMap<string, readonly string[]>
+  private inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>
+  private uncached: ReadonlySet<string>
+  private namedIgnored: readonly string[]
+  private claimedRootFiles: ReadonlySet<string>
+  private extraFiles: ReadonlySet<string>
+  private configImportFiles: readonly string[]
+  private wsConfigImportFiles: readonly string[]
   // A dev server stays up while the loop idles and across cycles; a cycle
   // that must restart it (its config changed, it died) stops it before its
   // graph, so the new one never meets the old one's port.
-  let held = args.held
+  private held: HeldPersistent | undefined
   /** The watched projects: `rearm` replaces them. */
-  let watched = projects
+  private watched: readonly ProjectMeta[]
 
   // Reentrancy guard — never two orchestrator runs in flight. Events that
   // land while one is running wait in `changes.pending` and are judged, on
   // settled bytes, one debounce window after it ends.
-  let running = args.initial !== undefined
+  private running: boolean
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
-  let inFlight: Promise<void> = Promise.resolve()
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  private inFlight: Promise<void> = Promise.resolve()
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null
   /** The run in flight, while one is. */
-  let current: WatchCycle | undefined
+  private current: WatchCycle | undefined
   /** What stopped a cycle that waited on a server's readiness; the loop runs it next. */
-  let interruptedBy: string | undefined
-  let interruptTimer: ReturnType<typeof setTimeout> | null = null
+  private interruptedBy: string | undefined
+  private interruptTimer: ReturnType<typeof setTimeout> | null = null
   /** The server's own writes among the paths that stopped the last cycle waiting on readiness. */
-  let stoppedLast = new Set<string>()
+  private stoppedLast = new Set<string>()
+  private windowOpened = 0
+  /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
+  private lockSeen: string
+
+  // Filter out events for paths we don't care about. We watch each
+  // project's dir recursively, so a `node_modules` write under a
+  // project would otherwise trigger every save during `bun install` —
+  // and vx's own cache writes would trigger a cycle that writes again.
+  /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
+  private readonly atArm: ReturnType<typeof gitFiles>
+  private isIgnoredPath: ReturnType<typeof makeWatchIgnore>
+  private fenced: ReturnType<typeof makeFence>
+  private matters: ReturnType<typeof makeRootEventFilter>
+  /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
+  private reread = false
+  private readonly pool: WatcherPool
+  // Only the named entries a key reads ignored files under: `src` of
+  // `src/**` over a listed `src` reaches none, and a dev server's ignored
+  // `src/dev.log` started ~3 cycles a second. Reckoned per sweep.
+  private reachOf: readonly string[] | undefined
+  private reach: readonly string[] = []
+  /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
+  private readonly changes: ChangeJudge
+  /** Per-project arms by directory, so `rearm` can add and drop them. */
+  private readonly perProject = new Map<string, WatchHandle>()
+  // Each FSEvents stream goes live slower than the one before it: per
+  // project, 751 of 3000 missed their 2 s proof on a macos-latest runner
+  // and fell back to polling, a full core at idle; one stream at the root
+  // went live in 8 ms (tests/watch-one-stream.test.ts). Polling keeps its
+  // per-project walks, which skip what lies between projects.
+  private readonly oneStream: boolean
+  private readonly treeArms: boolean
+  /** The projects the one stream hands events to, by their real directory. */
+  private streamed: Streamed[] = []
+  private readonly realRoot: string
+  // An OS watch holds the directory's inode, not its path: one removed and
+  // made again (`rm -rf packages && git checkout packages`) keeps reporting
+  // for the deleted one. Each arm notes the directory it holds, and a
+  // re-arm replaces any whose path now names another.
+  private readonly armedAs = new Map<string, string>()
+  /** The ancestor and import directories the one stream serves (`inStream`). */
+  private streamedAncestors = new Set<string>()
+  private streamedImports = new Set<string>()
+  /** The projects the workspace-wide arm names an event by. */
+  private wide: readonly ProjectMeta[] = []
+  /** The root arm: recursive when workspace-wide or the one stream, else the root's own files only. */
+  private rootArm: WatchHandle = CLOSED
+  private dotVxArm: WatchHandle = CLOSED
+  private readonly importArms = new Map<string, WatchHandle>()
+  private importNames = new Map<string, Set<string>>()
+  private readonly staleNamed = new Map<string, number>()
+  private readonly linkArms = new Map<string, { target: string; handle: WatchHandle }>()
+  private links: Set<string>
+  private readonly extraArms = new Map<string, { at: string; handle: WatchHandle }>()
+  private readonly excludeFile: string | undefined
+  // Said once, when the loop first arms: a re-arm repeated it after every
+  // cycle that re-read the watched set, between task rows. `debug.watch`
+  // says each arm on stderr, for whoever needs to see the set change.
+  private lastTasks: number | undefined
+  private readonly debugArms: boolean
+  // A project directory, or one a config imports from, removed and made
+  // again (`rm -rf packages && git checkout packages`) is no event to its
+  // own watch (it holds the deleted directory) nor to the root arm, which
+  // drops every name but its own files: silence until a restart. So each
+  // is watched from its nearest directory that exists, for the next name
+  // on the way down: its parent while it is there, an ancestor when the
+  // parent went too (`apps/` removed under `apps/web/site`). Every
+  // directory above it up to the root is watched for the next name too:
+  // FSEvents reports nothing for a watched directory's children when the
+  // directory itself goes with them, so on macOS the parent's arm alone
+  // never heard `packages/` removed under `packages/a` (inotify did).
+  private readonly ancestorArms = new Map<string, WatchHandle>()
+  private ancestorNames = new Map<string, Set<string>>()
+  /** Each project directory below the root as these arms first saw it (`inodeOf`). */
+  private heldDirs = new Map<string, string>()
+
+  constructor(private readonly args: WatchLoopArgs) {
+    this.opts = args.opts
+    this.stop = args.stop
+    const workspaceRoot = args.workspaceRoot
+    this.workspaceRoot = workspaceRoot
+    this.cacheDir = args.cacheDir
+    this.workspaceWide = args.workspaceWide
+    this.projectDirs = args.projectDirs
+    this.workspaceInputs = args.workspaceInputs
+    this.outputs = args.outputs
+    this.inputs = args.inputs
+    this.uncached = args.uncached
+    this.namedIgnored = args.namedIgnored
+    this.claimedRootFiles = args.claimedRootFiles
+    this.extraFiles = args.extraFiles
+    this.configImportFiles = args.configImports
+    this.wsConfigImportFiles = args.workspaceConfigImports
+    this.held = args.held
+    this.watched = args.projects
+    this.running = args.initial !== undefined
+    this.lockSeen = args.initialRun.lock
+
+    this.atArm = gitFiles(workspaceRoot, true)
+    this.isIgnoredPath = makeWatchIgnore(
+      this.cacheDir,
+      this.outputs,
+      this.inputs,
+      this.atArm?.tracked,
+    )
+    this.fenced = makeFence(args.fenceDirs)
+    this.matters = makeRootEventFilter(
+      workspaceRoot,
+      this.projectDirs,
+      this.workspaceInputs,
+      this.claimedRootFiles,
+      this.fenced,
+    )
+    // The poller skips exactly what the event filter would drop: the
+    // unconditional segments AND this run's declared output containers. Read
+    // through `isIgnoredPath` rather than captured, because `rearm` replaces
+    // the filter when the selection changes.
+    this.pool = new WatcherPool((dir, rel) => this.isIgnoredPath(dir, rel, true), args.poll)
+    /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
+    const armedAt = fsClockNow(this.cacheDir)
+    this.changes = new ChangeJudge({
+      workspaceRoot,
+      armedAt,
+      clock: () => fsClockNow(this.cacheDir),
+      held: () => this.held !== undefined,
+      serverDirs: () => {
+        const names = new Set(this.held?.ids.map((id) => id.slice(0, id.lastIndexOf('#'))))
+        return this.watched.filter((p) => names.has(p.name)).map((p) => p.dir)
+      },
+      uncached: () => this.uncached,
+      namedIgnored: () => {
+        if (this.reachOf !== this.namedIgnored) {
+          this.reachOf = this.namedIgnored
+          this.reach =
+            this.atArm === undefined
+              ? this.namedIgnored
+              : namedIgnoredReach(workspaceRoot, this.namedIgnored, this.atArm.listed)
+        }
+        return this.reach
+      },
+      fenced: (ownDir, abs) => this.fenced(ownDir, abs),
+      awaited: (abs) => this.ancestorNames.get(path.dirname(abs))?.has(path.basename(abs)) === true,
+      ...(this.atArm !== undefined
+        ? { existedAtArm: this.atArm.listed, trackedAtArm: this.atArm.tracked }
+        : {}),
+    })
+    this.oneStream = process.platform === 'darwin' && !args.poll
+    this.treeArms = process.platform === 'linux' && !args.poll
+    this.realRoot = ((): string => {
+      try {
+        return fs.realpathSync(workspaceRoot)
+      } catch {
+        return path.resolve(workspaceRoot)
+      }
+    })()
+    this.links = this.atArm?.links ?? new Set<string>()
+    /**
+     * `info/exclude` ignores as a `.gitignore` does, and keys are
+     * gitignore-aware (X-136), so its edit is a cycle; the ignore filter drops
+     * every path under `.git/`. Armed once, from the common dir the run's own
+     * enumeration asked git for (`repoFacts`, memoised).
+     */
+    const commonDir = repoFacts(workspaceRoot)?.commonDir
+    this.excludeFile =
+      commonDir === undefined
+        ? undefined
+        : path.resolve(workspaceRoot, commonDir, 'info', 'exclude')
+    this.debugArms = resolveSetting('debug.watch', undefined).value === true
+  }
+
+  async run(): Promise<void> {
+    const args = this.args
+    const projects = args.projects
+    this.armMode(projects)
+    this.armAncestors()
+    this.armImports()
+    this.armLinks()
+    this.armExtras()
+    this.armExclude()
+
+    // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
+    // closes over the RESOLVED cache dir (relocated or not) and the tasks'
+    // declared outputs.
+
+    // "watching" is a promise that an edit from now on is seen; every
+    // watcher has proved (or been given 2 s to prove) delivery first.
+    await this.pool.proved()
+    if (args.initial !== undefined) {
+      this.current = args.initial.cycle
+      args.initial.onWaiting = this.interruptIfWaiting
+      this.inFlight = this.runCycle(undefined, args.initial)
+      this.interruptIfWaiting()
+    }
+
+    this.lastTasks = args.tasks()
+    this.sayWatching(projects.length)
+    this.sayArmed(projects.length)
+    // An edit made while the initial run ran landed before any watcher, and
+    // its mtime predates the arm, so no event or judgement can find it.
+    // Unheard, watch idled over output built from the old bytes. One to a
+    // task the run was running, the run's own re-check found (it left the
+    // task unsaved); any other is heard here.
+    const heard = this.heardSinceRun()
+    if (args.drifted !== undefined && !heard)
+      void this.cycle(`${args.drifted} inputs, edited during the first run`)
+
+    return await new Promise<void>((resolve) => {
+      const cleanup = async (): Promise<void> => {
+        this.pool.closeAll()
+        if (this.debounceTimer) clearTimeout(this.debounceTimer)
+        if (this.interruptTimer) clearTimeout(this.interruptTimer)
+        // The aborted cycle is tearing its children down; resolve only once
+        // it has returned, so the process never exits over a live child.
+        await this.inFlight
+        await this.held?.stop(forwardedSignal(this.stop.reason))
+        resolve()
+      }
+      if (this.stop.aborted) {
+        void cleanup()
+        return
+      }
+      this.stop.addEventListener('abort', () => void cleanup(), { once: true })
+    })
+  }
+
   // Judged on settled state one window later, as an idle edit is, and only
   // if the cycle still waits on readiness alone by then.
-  const interruptIfWaiting = (): void => {
-    if (changes.pending.size === 0 || current?.waitsOnReadiness() !== true) return
-    if (interruptTimer) clearTimeout(interruptTimer)
-    interruptTimer = setTimeout(() => {
-      interruptTimer = null
-      const c = current
-      if (c === undefined || c.interrupted || !c.waitsOnReadiness() || stop.aborted) return
+  private readonly interruptIfWaiting = (): void => {
+    const changes = this.changes
+    if (changes.pending.size === 0 || this.current?.waitsOnReadiness() !== true) return
+    if (this.interruptTimer) clearTimeout(this.interruptTimer)
+    this.interruptTimer = setTimeout(() => {
+      this.interruptTimer = null
+      const c = this.current
+      if (c === undefined || c.interrupted || !c.waitsOnReadiness() || this.stop.aborted) return
       const label = changes.judge()
       if (label === undefined) return
       // What a server writes in its project as it boots (a timestamped
@@ -226,67 +465,71 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       const own = changes.changed.filter(
         (p) => dirs.some((d) => p.startsWith(d + path.sep)) && !changes.tracked(p),
       )
-      const again = own.length === changes.changed.length && own.every((p) => stoppedLast.has(p))
-      stoppedLast = new Set(own)
+      const again =
+        own.length === changes.changed.length && own.every((p) => this.stoppedLast.has(p))
+      this.stoppedLast = new Set(own)
       if (again) return
-      interruptedBy = label
+      this.interruptedBy = label
       c.interrupt()
     }, DEBOUNCE_MS)
   }
-  let windowOpened = 0
 
-  const hasWorkspaceFile = (): boolean =>
-    WORKSPACE_CONFIG_FILENAMES.some((n) => fs.existsSync(path.join(workspaceRoot, n)))
-  /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
-  let lockSeen = args.initialRun.lock
+  private hasWorkspaceFile(): boolean {
+    return WORKSPACE_CONFIG_FILENAMES.some((n) => fs.existsSync(path.join(this.workspaceRoot, n)))
+  }
+
   // Every cycle's configs are the lock's, so a config edit alone ran a cycle
   // that printed `changed` and nothing else, read as the edit applied. A
   // config gone is the run's own refusal to name.
-  const sayUnlocked = (paths: readonly string[]): void => {
+  private sayUnlocked(paths: readonly string[]): void {
     for (const abs of paths)
-      if ((isProjectConfigFile(abs) || configImportFiles.includes(abs)) && fs.existsSync(abs))
+      if ((isProjectConfigFile(abs) || this.configImportFiles.includes(abs)) && fs.existsSync(abs))
         sayNotice(
           'warn',
           'vx watch',
-          `${printable(path.relative(workspaceRoot, abs))} changed; runs read the lock, so run \`vx lock\` to apply it`,
+          `${printable(path.relative(this.workspaceRoot, abs))} changed; runs read the lock, so run \`vx lock\` to apply it`,
         )
   }
-  const trigger = (label: string, abs: string): void => {
+
+  private trigger(label: string, abs: string): void {
+    const changes = this.changes
     if (!changes.pending.has(abs)) changes.pending.set(abs, label)
     changes.sawEvent(abs)
-    if (running) return interruptIfWaiting()
-    if (debounceTimer) {
-      if (performance.now() - windowOpened >= DEBOUNCE_MAX_MS) return
-      clearTimeout(debounceTimer)
-    } else windowOpened = performance.now()
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null
-      if (running) return
+    if (this.running) return this.interruptIfWaiting()
+    if (this.debounceTimer) {
+      if (performance.now() - this.windowOpened >= DEBOUNCE_MAX_MS) return
+      clearTimeout(this.debounceTimer)
+    } else this.windowOpened = performance.now()
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null
+      if (this.running) return
       const first = changes.judge()
-      if (first !== undefined) void cycle(first)
+      if (first !== undefined) void this.cycle(first)
     }, DEBOUNCE_MS)
   }
 
-  const cycle = async (label: string): Promise<void> => {
-    if (stop.aborted || running) return
-    running = true
-    const done = (inFlight = runCycle(label))
+  private async cycle(label: string): Promise<void> {
+    if (this.stop.aborted || this.running) return
+    this.running = true
+    const done = (this.inFlight = this.runCycle(label))
     await done
   }
-  const runCycle = async (first: string | undefined, initial?: InitialCycle): Promise<void> => {
+
+  private async runCycle(first: string | undefined, initial?: InitialCycle): Promise<void> {
+    const changes = this.changes
     try {
       let label: string | undefined = first
       /** The lock this cycle's run read; none for the initial run. */
       let lockAtRun: string | undefined
       // The initial run is collected even after a stop: its server is the
       // loop's to stop.
-      while (initial !== undefined || (label !== undefined && !stop.aborted)) {
+      while (initial !== undefined || (label !== undefined && !this.stop.aborted)) {
         /** This cycle's failure, as said: a re-read failing on the same cause says nothing more. */
         let failed: string | undefined
         /** The judged cycle this run is (`ChangeJudge.cycle`): its window closes when the run ends. */
         const judged = changes.cycle
         if (initial !== undefined) {
-          held = await initial.held
+          this.held = await initial.held
           initial = undefined
         } else
           try {
@@ -294,66 +537,10 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // new package while its first cycle runs queues like any other; armed
             // only after, it fell in the gap and ran nothing (X-138). The re-read
             // after the run stays, for what the run itself changed.
-            lockAtRun = lockStamp(workspaceRoot)
-            const relocked = lockAtRun !== lockSeen
-            lockSeen = lockAtRun
-            // The file marks the root, and `vx run` refuses without it; a
-            // cycle ran on with no workspace config, its plugins gone and
-            // its tasks named by path.
-            if (!hasWorkspaceFile()) {
-              ui.print('out', ui.gap())
-              ui.say('info', `changed ${label}`, 'out')
-              throw new Error(
-                `no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`,
-              )
-            }
-            // A failed re-read is said once, by the re-read after the
-            // cycle: said here too, it printed above the cycle's header.
-            if (reread) await rearm(false)
-            ui.print('out', ui.gap())
-            ui.say('info', `changed ${label}`, 'out')
-            if (!relocked) sayUnlocked(changes.changed)
-            if (stop.aborted) break
-            // A file a `.gitignore` edit stops ignoring is an input from this
-            // cycle on, and was not on the arm's inventory: its deletion read
-            // as a file born and gone since, and ran nothing.
-            if (
-              atArm !== undefined &&
-              changes.changed.some((p) => path.basename(p) === '.gitignore' || p === excludeFile)
-            ) {
-              for (const p of gitFiles(workspaceRoot)?.listed ?? []) atArm.listed.add(p)
-              reachOf = undefined
-            }
-            restartTimings()
-            // On the mtime clock, as the arm is: from `Date.now()` a write the
-            // run made within a tick of it carried an earlier mtime and read as
-            // an edit (WD-20). The end needs no stamp: an mtime never leads it.
-            const start = fsClockNow(cacheDir)
-            // A server still up whose task is unchanged stays up: the cycle
-            // rebuilds what it depends on, and the dev tool's own reload
-            // takes it from there. The run stops the others before its graph.
-            const before = held
-            current = watchCycle(
-              {
-                ...opts,
-                ...(before ? { keep: before } : {}),
-                ...(judged ? { commandWindows: judged.windows } : {}),
-              },
-              stop,
-              interruptIfWaiting,
-            )
-            const cycle = await runOrchestrator(current.opts)
-            changes.unseen(
-              cycle.outcomes.flatMap((o) => (o.driftedInput === undefined ? [] : [o.driftedInput])),
-            )
-            sayAllCached(opts, cycle.outcomes)
-            lastTasks = current.tasks ?? lastTasks
-            current = undefined
-            held = cycle.persistent
-            // What this cycle did not take (a server whose task did not run).
-            await before?.stop()
-            if (cycle.refused !== undefined) sayNotice('error', 'vx watch', cycle.refused)
-            changes.lastCycle = { start, end: Date.now() }
+            lockAtRun = lockStamp(this.workspaceRoot)
+            const relocked = lockAtRun !== this.lockSeen
+            this.lockSeen = lockAtRun
+            if ((await this.runOnce(label!, relocked, judged)) === 'stopped') break
           } catch (err) {
             // A re-run can fail catastrophically when the workspace
             // itself moved out from under us — e.g. the user deleted
@@ -367,35 +554,15 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             sayNotice('error', 'vx watch', `cycle failed: ${maskedLine(failed)}`)
           }
         if (judged !== undefined) judged.to = Math.min(judged.to, Date.now())
-        // After a failed cycle too: a package added with a config that does
-        // not load yet fails its cycle, and unarmed, the fix to that config
-        // was never an event.
-        if (reread && !stop.aborted && hasWorkspaceFile()) {
-          reread = false
-          const err = await rearm()
-          // No lock is the cycle's own failure to say; said here too, it was two lines.
-          const why = err instanceof Error ? err.message : String(err)
-          if (err !== undefined && why !== NO_LOCK && why !== failed)
-            sayCannot(`cannot re-read the workspace`, err)
-        }
-        // A re-lock since this cycle began: the re-arm can close the watcher
-        // its event was still on its way to (FSEvents' latency, a poller's
-        // tick), and the new lock ran nothing until the next edit (macOS CI,
-        // 2026-10-23). A cycle that read the lock mid-write failed on it, and
-        // is the same case. Asked after the re-arm, not when the run ends: a
-        // lock written in between was the re-arm's to read, its new pollers
-        // took it as their baseline, and it was never an event (macOS CI,
-        // 2026-11-06).
-        if (lockAtRun !== undefined && lockStamp(workspaceRoot) !== lockAtRun)
-          rootFileEvent(LOCKFILE_NAME)
+        await this.afterCycle(failed, lockAtRun)
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.
-        current = undefined
-        if (stop.aborted) break
-        if (interruptedBy === undefined) stoppedLast = new Set()
-        if (interruptedBy !== undefined) {
-          label = interruptedBy
-          interruptedBy = undefined
+        this.current = undefined
+        if (this.stop.aborted) break
+        if (this.interruptedBy === undefined) this.stoppedLast = new Set()
+        if (this.interruptedBy !== undefined) {
+          label = this.interruptedBy
+          this.interruptedBy = undefined
           continue
         }
         if (changes.pending.size === 0) break
@@ -403,94 +570,116 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         label = changes.judge()
       }
     } finally {
-      running = false
+      this.running = false
       // Anything that landed after the last judgement waits for a timer
       // like any other event.
-      const next = pendingAfterCycle(changes.pending, stop.aborted)
-      if (next !== undefined) trigger(next[1], next[0])
+      const next = pendingAfterCycle(changes.pending, this.stop.aborted)
+      if (next !== undefined) this.trigger(next[1], next[0])
     }
   }
 
-  // Filter out events for paths we don't care about. We watch each
-  // project's dir recursively, so a `node_modules` write under a
-  // project would otherwise trigger every save during `bun install` —
-  // and vx's own cache writes would trigger a cycle that writes again.
-  /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
-  const atArm = gitFiles(workspaceRoot, true)
-  let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs, atArm?.tracked)
-  let fenced = makeFence(args.fenceDirs)
-  let matters = makeRootEventFilter(
-    workspaceRoot,
-    projectDirs,
-    workspaceInputs,
-    claimedRootFiles,
-    fenced,
-  )
-  /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
-  let reread = false
-
-  // The poller skips exactly what the event filter would drop: the
-  // unconditional segments AND this run's declared output containers. Read
-  // through `isIgnoredPath` rather than captured, because `rearm` replaces
-  // the filter when the selection changes.
-  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel, true), args.poll)
-  const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
-    pool.arm(dir, recursive, onEvent)
-
-  // Only the named entries a key reads ignored files under: `src` of
-  // `src/**` over a listed `src` reaches none, and a dev server's ignored
-  // `src/dev.log` started ~3 cycles a second. Reckoned per sweep.
-  let reachOf: readonly string[] | undefined
-  let reach: readonly string[] = []
-  /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
-  const armedAt = fsClockNow(cacheDir)
-  /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
-  const changes = new ChangeJudge({
-    workspaceRoot,
-    armedAt,
-    clock: () => fsClockNow(cacheDir),
-    held: () => held !== undefined,
-    serverDirs: () => {
-      const names = new Set(held?.ids.map((id) => id.slice(0, id.lastIndexOf('#'))))
-      return watched.filter((p) => names.has(p.name)).map((p) => p.dir)
-    },
-    uncached: () => uncached,
-    namedIgnored: () => {
-      if (reachOf !== namedIgnored) {
-        reachOf = namedIgnored
-        reach =
-          atArm === undefined
-            ? namedIgnored
-            : namedIgnoredReach(workspaceRoot, namedIgnored, atArm.listed)
-      }
-      return reach
-    },
-    fenced: (ownDir, abs) => fenced(ownDir, abs),
-    awaited: (abs) => ancestorNames.get(path.dirname(abs))?.has(path.basename(abs)) === true,
-    ...(atArm !== undefined ? { existedAtArm: atArm.listed, trackedAtArm: atArm.tracked } : {}),
-  })
-  /** Per-project arms by directory, so `rearm` can add and drop them. */
-  const perProject = new Map<string, WatchHandle>()
-  // Each FSEvents stream goes live slower than the one before it: per
-  // project, 751 of 3000 missed their 2 s proof on a macos-latest runner
-  // and fell back to polling, a full core at idle; one stream at the root
-  // went live in 8 ms (tests/watch-one-stream.test.ts). Polling keeps its
-  // per-project walks, which skip what lies between projects.
-  const oneStream = process.platform === 'darwin' && !args.poll
-  const treeArms = process.platform === 'linux' && !args.poll
-  /** The projects the one stream hands events to, by their real directory. */
-  let streamed: { proj: ProjectMeta; real: string }[] = []
-  const realRoot = ((): string => {
-    try {
-      return fs.realpathSync(workspaceRoot)
-    } catch {
-      return path.resolve(workspaceRoot)
+  /** One judged cycle's run: `'stopped'` when the stop came before it began. */
+  private async runOnce(
+    label: string,
+    relocked: boolean,
+    judged: ChangeJudge['cycle'],
+  ): Promise<'stopped' | undefined> {
+    const { changes, workspaceRoot, opts } = this
+    // The file marks the root, and `vx run` refuses without it; a
+    // cycle ran on with no workspace config, its plugins gone and
+    // its tasks named by path.
+    if (!this.hasWorkspaceFile()) {
+      ui.print('out', ui.gap())
+      ui.say('info', `changed ${label}`, 'out')
+      throw new Error(`no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`)
     }
-  })()
+    // A failed re-read is said once, by the re-read after the
+    // cycle: said here too, it printed above the cycle's header.
+    if (this.reread) await this.rearm(false)
+    ui.print('out', ui.gap())
+    ui.say('info', `changed ${label}`, 'out')
+    if (!relocked) this.sayUnlocked(changes.changed)
+    if (this.stop.aborted) return 'stopped'
+    // A file a `.gitignore` edit stops ignoring is an input from this
+    // cycle on, and was not on the arm's inventory: its deletion read
+    // as a file born and gone since, and ran nothing.
+    if (
+      this.atArm !== undefined &&
+      changes.changed.some((p) => path.basename(p) === '.gitignore' || p === this.excludeFile)
+    ) {
+      for (const p of gitFiles(workspaceRoot)?.listed ?? []) this.atArm.listed.add(p)
+      this.reachOf = undefined
+    }
+    restartTimings()
+    // On the mtime clock, as the arm is: from `Date.now()` a write the
+    // run made within a tick of it carried an earlier mtime and read as
+    // an edit (WD-20). The end needs no stamp: an mtime never leads it.
+    const start = fsClockNow(this.cacheDir)
+    // A server still up whose task is unchanged stays up: the cycle
+    // rebuilds what it depends on, and the dev tool's own reload
+    // takes it from there. The run stops the others before its graph.
+    const before = this.held
+    const current = watchCycle(
+      {
+        ...opts,
+        ...(before ? { keep: before } : {}),
+        ...(judged ? { commandWindows: judged.windows } : {}),
+      },
+      this.stop,
+      this.interruptIfWaiting,
+    )
+    this.current = current
+    const cycle = await runOrchestrator(current.opts)
+    changes.unseen(
+      cycle.outcomes.flatMap((o) => (o.driftedInput === undefined ? [] : [o.driftedInput])),
+    )
+    sayAllCached(opts, cycle.outcomes)
+    this.lastTasks = current.tasks ?? this.lastTasks
+    this.current = undefined
+    this.held = cycle.persistent
+    // What this cycle did not take (a server whose task did not run).
+    await before?.stop()
+    if (cycle.refused !== undefined) sayNotice('error', 'vx watch', cycle.refused)
+    changes.lastCycle = { start, end: Date.now() }
+    return undefined
+  }
+
+  /** After a cycle: re-read the watched set if an event asked, and hear a re-lock made meanwhile. */
+  private async afterCycle(
+    failed: string | undefined,
+    lockAtRun: string | undefined,
+  ): Promise<void> {
+    // After a failed cycle too: a package added with a config that does
+    // not load yet fails its cycle, and unarmed, the fix to that config
+    // was never an event.
+    if (this.reread && !this.stop.aborted && this.hasWorkspaceFile()) {
+      this.reread = false
+      const err = await this.rearm()
+      // No lock is the cycle's own failure to say; said here too, it was two lines.
+      const why = err instanceof Error ? err.message : String(err)
+      if (err !== undefined && why !== NO_LOCK && why !== failed)
+        sayCannot(`cannot re-read the workspace`, err)
+    }
+    // A re-lock since this cycle began: the re-arm can close the watcher
+    // its event was still on its way to (FSEvents' latency, a poller's
+    // tick), and the new lock ran nothing until the next edit (macOS CI,
+    // 2026-10-23). A cycle that read the lock mid-write failed on it, and
+    // is the same case. Asked after the re-arm, not when the run ends: a
+    // lock written in between was the re-arm's to read, its new pollers
+    // took it as their baseline, and it was never an event (macOS CI,
+    // 2026-11-06).
+    if (lockAtRun !== undefined && lockStamp(this.workspaceRoot) !== lockAtRun)
+      this.rootFileEvent(LOCKFILE_NAME)
+  }
+
+  private arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {
+    return this.pool.arm(dir, recursive, onEvent)
+  }
+
   // The stream names a file by its real place under the root, so a project
   // whose real directory lies outside the root keeps its own arm.
-  const toStream = (all: readonly ProjectMeta[]): { proj: ProjectMeta; real: string }[] => {
-    const out: { proj: ProjectMeta; real: string }[] = []
+  private toStream(all: readonly ProjectMeta[]): Streamed[] {
+    const out: Streamed[] = []
     for (const proj of all) {
       let real: string
       try {
@@ -498,29 +687,17 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       } catch {
         continue
       }
-      const rel = path.relative(realRoot, real)
+      const rel = path.relative(this.realRoot, real)
       if (rel.startsWith('..') || path.isAbsolute(rel)) continue
       out.push({ proj, real })
     }
     return out
   }
-  // An OS watch holds the directory's inode, not its path: one removed and
-  // made again (`rm -rf packages && git checkout packages`) keeps reporting
-  // for the deleted one. Each arm notes the directory it holds, and a
-  // re-arm replaces any whose path now names another. The birth time is
-  // part of the name: a freed inode number is handed straight to the next
-  // directory made (measured on this box's /tmp), so the number alone
-  // said "the same one" of a new directory.
-  const armedAs = new Map<string, string>()
-  const inodeOf = (dir: string): string | undefined => {
-    try {
-      const st = fs.statSync(dir)
-      return `${st.dev}:${st.ino}:${st.birthtimeMs}`
-    } catch {
-      return undefined
-    }
+
+  private stale(dir: string): boolean {
+    return this.armedAs.get(dir) !== inodeOf(dir)
   }
-  const stale = (dir: string): boolean => armedAs.get(dir) !== inodeOf(dir)
+
   // Bun keeps ONE FSEvents stream for every `fs.watch` of a process and
   // rebuilds it, from "now", on each watch opened or closed: what lands
   // while it is down is lost to every watch, the proved root stream
@@ -529,31 +706,28 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // (macOS CI, 2026-11-04). So inside the root the one stream serves the
   // ancestor and import arms too, and a re-arm there opens or closes none.
   /** Whether the one stream hears `dir`'s children: under the root by its real path. */
-  const inStream = (dir: string): boolean => {
-    if (!oneStream) return false
-    const rel = path.relative(workspaceRoot, dir)
+  private inStream(dir: string): boolean {
+    if (!this.oneStream) return false
+    const rel = path.relative(this.workspaceRoot, dir)
     if (rel.startsWith('..') || path.isAbsolute(rel)) return false
     try {
-      return fs.realpathSync(dir) === path.join(realRoot, rel)
+      return fs.realpathSync(dir) === path.join(this.realRoot, rel)
     } catch {
       return false
     }
   }
-  /** The ancestor and import directories the one stream serves (`inStream`). */
-  let streamedAncestors = new Set<string>()
-  let streamedImports = new Set<string>()
-  const heardInStream = (filename: string): void => {
-    const abs = path.join(workspaceRoot, filename)
+
+  private heardInStream(filename: string): void {
+    const abs = path.join(this.workspaceRoot, filename)
     const dir = path.dirname(abs)
-    if (streamedAncestors.has(dir)) ancestorEvent(dir, path.basename(abs))
-    if (streamedImports.has(dir)) importEvent(dir, path.basename(abs))
+    if (this.streamedAncestors.has(dir)) this.ancestorEvent(dir, path.basename(abs))
+    if (this.streamedImports.has(dir)) this.importEvent(dir, path.basename(abs))
   }
-  /** The projects the workspace-wide arm names an event by. */
-  let wide: readonly ProjectMeta[] = []
+
   // The deepest, as a nested project's file is its own.
-  const ownerOf = (abs: string): ProjectMeta | undefined => {
+  private ownerOf(abs: string): ProjectMeta | undefined {
     let best: ProjectMeta | undefined
-    for (const proj of wide)
+    for (const proj of this.wide)
       if (
         abs.startsWith(proj.dir + path.sep) &&
         (best === undefined || proj.dir.length > best.dir.length)
@@ -561,84 +735,86 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         best = proj
     return best
   }
-  /** The root arm: recursive when workspace-wide or the one stream, else the root's own files only. */
-  let rootArm: WatchHandle = CLOSED
-  let dotVxArm: WatchHandle = CLOSED
-  const projectEvent = (proj: ProjectMeta, filename: string): void => {
+
+  private projectEvent(proj: ProjectMeta, filename: string): void {
     const abs = path.join(proj.dir, filename)
-    if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
+    if (this.isIgnoredPath(proj.dir, filename) || this.fenced(proj.dir, abs)) return
     // A module the config imports from inside the project is the config
     // too: its edit can add an output or a `workspaceFiles` input.
-    if (shapesWatchedSet(filename) || configImportFiles.includes(abs) || linkChanged(abs))
-      reread = true
+    if (shapesWatchedSet(filename) || this.configImportFiles.includes(abs) || this.linkChanged(abs))
+      this.reread = true
     // Inside a project (any repo whose root is one) no import arm hears it.
-    if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
-    trigger(`${proj.name} ${filename}`, abs)
+    if (this.wsConfigImportFiles.includes(abs)) this.sayStaleImport(abs)
+    this.trigger(`${proj.name} ${filename}`, abs)
   }
-  const armProject = (proj: ProjectMeta): void => {
+
+  private armProject(proj: ProjectMeta): void {
     // Gone for now: its ancestor's arm (`armAncestors`) hears it return.
     if (inodeOf(proj.dir) === undefined) return
     try {
-      const handle = arm(proj.dir, true, (filename) => projectEvent(proj, filename))
-      perProject.set(proj.dir, handle)
-      armedAs.set(proj.dir, inodeOf(proj.dir) ?? '')
+      const handle = this.arm(proj.dir, true, (filename) => this.projectEvent(proj, filename))
+      this.perProject.set(proj.dir, handle)
+      this.armedAs.set(proj.dir, inodeOf(proj.dir) ?? '')
     } catch (err) {
       sayCannot(`cannot watch ${proj.dir}`, err)
     }
   }
-  const rootFileEvent = (filename: string): void => {
-    if (
-      !isWorkspaceConfigFile(filename) &&
-      filename !== '.gitignore' &&
-      !claimedRootFiles.has(filename)
-    )
+
+  private rootFileEvent(filename: string): void {
+    const claimed = this.claimedRootFiles
+    if (!isWorkspaceConfigFile(filename) && filename !== '.gitignore' && !claimed.has(filename))
       return
-    if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME || claimedRootFiles.has(filename))
-      reread = true
-    trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+    if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME || claimed.has(filename))
+      this.reread = true
+    this.trigger(`root ${filename}`, path.join(this.workspaceRoot, filename))
   }
-  const dotVxEvent = (filename: string): void => {
+
+  private dotVxEvent(filename: string): void {
     const rel = `.vx/${filename}`
-    if (!isWorkspaceConfigFile(rel) && !claimedRootFiles.has(rel)) return
-    reread = true
-    trigger(`root ${rel}`, path.join(workspaceRoot, rel))
+    if (!isWorkspaceConfigFile(rel) && !this.claimedRootFiles.has(rel)) return
+    this.reread = true
+    this.trigger(`root ${rel}`, path.join(this.workspaceRoot, rel))
   }
+
   /**
    * The one stream's events, handed out as the per-project arms, the
    * root's own files and `.vx/` would have heard them: an event lies in
    * every watched project whose tree holds it (a nested one's fence drops
    * it from the outer), so each listener decides exactly as its own arm did.
    */
-  const streamEvent = (filename: string): void => {
-    heardInStream(filename)
+  private streamEvent(filename: string): void {
+    this.heardInStream(filename)
     const rel = filename.split(path.sep).join('/')
-    if (!rel.includes('/')) rootFileEvent(rel)
-    else if (rel.startsWith('.vx/') && rel.indexOf('/', 4) < 0) dotVxEvent(rel.slice(4))
-    const abs = path.join(realRoot, filename)
-    for (const { proj, real } of streamed) {
-      if (abs.startsWith(real + path.sep)) projectEvent(proj, path.relative(real, abs))
+    if (!rel.includes('/')) this.rootFileEvent(rel)
+    else if (rel.startsWith('.vx/') && rel.indexOf('/', 4) < 0) this.dotVxEvent(rel.slice(4))
+    const abs = path.join(this.realRoot, filename)
+    for (const { proj, real } of this.streamed) {
+      if (abs.startsWith(real + path.sep)) this.projectEvent(proj, path.relative(real, abs))
     }
   }
-  const wideEvent = (filename: string): void => {
-    if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
-    const abs = path.join(workspaceRoot, filename)
+
+  private wideEvent(filename: string): void {
+    if (!this.matters(filename) || this.isIgnoredPath(this.workspaceRoot, filename)) return
+    const abs = path.join(this.workspaceRoot, filename)
     if (
       shapesWatchedSet(filename) ||
       filename === LOCKFILE_NAME ||
-      claimedRootFiles.has(filename) ||
-      configImportFiles.includes(abs)
+      this.claimedRootFiles.has(filename) ||
+      this.configImportFiles.includes(abs)
     )
-      reread = true
-    if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
-    const owner = ownerOf(abs)
-    trigger(
+      this.reread = true
+    if (this.wsConfigImportFiles.includes(abs)) this.sayStaleImport(abs)
+    const owner = this.ownerOf(abs)
+    this.trigger(
       owner === undefined ? `root ${filename}` : `${owner.name} ${path.relative(owner.dir, abs)}`,
       abs,
     )
   }
-  const armRoot = (): void => {
+
+  private armRoot(): void {
+    const workspaceRoot = this.workspaceRoot
     try {
-      rootArm = workspaceWide
+      this.rootArm = this.workspaceWide
         ? // workspaceFiles inputs in play: a root-relative glob can name a
           // file anywhere, so one recursive root watcher replaces the
           // per-project ones (it also covers claimed root files).
@@ -646,49 +822,53 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // project trees, claimed root files, the declared globs — and drops
           // the rest of the tree; the ignore filter then keeps node_modules
           // / .git / .vx and declared outputs out of what remains.
-          arm(workspaceRoot, true, (filename) => {
-            if (oneStream) heardInStream(filename)
-            wideEvent(filename)
+          this.arm(workspaceRoot, true, (filename) => {
+            if (this.oneStream) this.heardInStream(filename)
+            this.wideEvent(filename)
           })
-        : oneStream
-          ? arm(workspaceRoot, true, streamEvent)
+        : this.oneStream
+          ? this.arm(workspaceRoot, true, (filename) => this.streamEvent(filename))
           : // The root itself, non-recursive, beside the per-project arms, so
             // claimed root files (a lockfile) trigger re-runs even when no
             // project dir saw the change.
-            arm(workspaceRoot, false, rootFileEvent)
+            this.arm(workspaceRoot, false, (filename) => this.rootFileEvent(filename))
     } catch (err) {
       sayCannot(`cannot watch workspace root`, err)
     }
     // The workspace config and the lock sit in `.vx/`, which the root's
     // non-recursive arm does not see into.
-    if (workspaceWide || oneStream) return
+    if (this.workspaceWide || this.oneStream) return
     try {
-      dotVxArm = arm(path.join(workspaceRoot, '.vx'), false, dotVxEvent)
+      this.dotVxArm = this.arm(path.join(workspaceRoot, '.vx'), false, (filename) =>
+        this.dotVxEvent(filename),
+      )
     } catch (err) {
       sayCannot(`cannot watch ${path.join(workspaceRoot, '.vx')}`, err)
     }
   }
+
   // One recursive watcher per project, unless workspace-wide: each project
   // owns its own subtree; the root is never watched recursively for them
   // (it would cover every project + node_modules + caches). On macOS one
   // recursive stream at the root stands for all of them (`oneStream`).
-  const armMode = (watched: readonly ProjectMeta[]): void => {
-    wide = workspaceWide ? watched : []
-    if (!workspaceWide) {
-      streamed = oneStream ? toStream(watched) : []
-      const inStream = new Set(streamed.map((s) => s.proj))
-      for (const proj of watched) if (!inStream.has(proj)) armProject(proj)
+  private armMode(watched: readonly ProjectMeta[]): void {
+    this.wide = this.workspaceWide ? watched : []
+    if (!this.workspaceWide) {
+      this.streamed = this.oneStream ? this.toStream(watched) : []
+      const inStream = new Set(this.streamed.map((s) => s.proj))
+      for (const proj of watched) if (!inStream.has(proj)) this.armProject(proj)
     }
-    armRoot()
+    this.armRoot()
   }
-  const dropMode = (): void => {
-    streamed = []
-    for (const handle of perProject.values()) handle.close()
-    perProject.clear()
-    rootArm.close()
-    rootArm = CLOSED
-    dotVxArm.close()
-    dotVxArm = CLOSED
+
+  private dropMode(): void {
+    this.streamed = []
+    for (const handle of this.perProject.values()) handle.close()
+    this.perProject.clear()
+    this.rootArm.close()
+    this.rootArm = CLOSED
+    this.dotVxArm.close()
+    this.dotVxArm = CLOSED
   }
 
   /**
@@ -699,62 +879,72 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
    * loaded once per process (Bun keeps the module), so its edit is named
    * with the restart it needs instead of a cycle that would run stale.
    */
-  const importArms = new Map<string, WatchHandle>()
-  let importNames = new Map<string, Set<string>>()
-  const staleNamed = new Map<string, number>()
-  const sayStaleImport = (abs: string): void => {
+  private sayStaleImport(abs: string): void {
     // One line per save, not per event: a save is often two.
     const now = Date.now()
-    if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
-    staleNamed.set(abs, now)
+    if (now - (this.staleNamed.get(abs) ?? 0) < 1_000) return
+    this.staleNamed.set(abs, now)
     ui.say(
       'warn',
-      `vx watch: ${printable(path.relative(workspaceRoot, abs))} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+      `vx watch: ${printable(path.relative(this.workspaceRoot, abs))} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
       'out',
     )
   }
-  const importEvent = (dir: string, filename: string): void => {
-    if (!(importNames.get(dir)?.has(filename) ?? false)) return
+
+  private importEvent(dir: string, filename: string): void {
+    if (!(this.importNames.get(dir)?.has(filename) ?? false)) return
     const abs = path.join(dir, filename)
-    const rel = path.relative(workspaceRoot, abs)
-    if (configImportFiles.includes(abs)) {
-      reread = true
-      trigger(`config import ${rel}`, abs)
+    const rel = path.relative(this.workspaceRoot, abs)
+    if (this.configImportFiles.includes(abs)) {
+      this.reread = true
+      this.trigger(`config import ${rel}`, abs)
       return
     }
-    sayStaleImport(abs)
+    this.sayStaleImport(abs)
   }
-  const armImports = (): void => {
-    const inProject = (f: string): boolean => projectDirs.some((d) => f.startsWith(d + path.sep))
+
+  private armImports(): void {
+    const inProject = (f: string): boolean =>
+      this.projectDirs.some((d) => f.startsWith(d + path.sep))
     const want = new Map<string, Set<string>>()
-    for (const f of new Set([...configImportFiles, ...wsConfigImportFiles])) {
+    for (const f of new Set([...this.configImportFiles, ...this.wsConfigImportFiles])) {
       if (inProject(f)) continue
       const names = want.get(path.dirname(f)) ?? new Set<string>()
       names.add(path.basename(f))
       want.set(path.dirname(f), names)
     }
-    importNames = want
-    streamedImports = new Set([...want.keys()].filter(inStream))
-    for (const [dir, handle] of importArms) {
-      if (want.has(dir) && !streamedImports.has(dir) && !stale(dir)) continue
+    this.importNames = want
+    this.streamedImports = new Set([...want.keys()].filter((d) => this.inStream(d)))
+    for (const [dir, handle] of this.importArms) {
+      if (want.has(dir) && !this.streamedImports.has(dir) && !this.stale(dir)) continue
       handle.close()
-      importArms.delete(dir)
+      this.importArms.delete(dir)
     }
     for (const dir of want.keys()) {
-      if (importArms.has(dir) || streamedImports.has(dir)) continue
+      if (this.importArms.has(dir) || this.streamedImports.has(dir)) continue
       // Gone for now: its ancestor's arm (`armAncestors`) hears it return.
       if (inodeOf(dir) === undefined) continue
       try {
-        importArms.set(
+        this.importArms.set(
           dir,
-          arm(dir, false, (filename) => importEvent(dir, filename)),
+          this.arm(dir, false, (filename) => this.importEvent(dir, filename)),
         )
-        armedAs.set(dir, inodeOf(dir) ?? '')
+        this.armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${dir}`, err)
       }
     }
-    armAncestors()
+    this.armAncestors()
+  }
+
+  /** A link came, went or moved: the set `armLinks` reads is stale. */
+  private linkChanged(abs: string): boolean {
+    if (this.links.has(abs)) return true
+    try {
+      return fs.lstatSync(abs).isSymbolicLink()
+    } catch {
+      return false
+    }
   }
 
   /**
@@ -764,22 +954,11 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
    * target, recursive; each event names the link. Links are read again when
    * one comes or goes (`projectEvent`).
    */
-  const linkArms = new Map<string, { target: string; handle: WatchHandle }>()
-  let links = atArm?.links ?? new Set<string>()
-  /** A link came, went or moved: the set `armLinks` reads is stale. */
-  const linkChanged = (abs: string): boolean => {
-    if (links.has(abs)) return true
-    try {
-      return fs.lstatSync(abs).isSymbolicLink()
-    } catch {
-      return false
-    }
-  }
-  const armLinks = (): void => {
+  private armLinks(): void {
     const want = new Map<string, { proj: ProjectMeta; real: string; dir: boolean }>()
-    for (const link of links) {
+    for (const link of this.links) {
       let proj: ProjectMeta | undefined
-      for (const p of watched)
+      for (const p of this.watched)
         if (
           link.startsWith(p.dir + path.sep) &&
           (proj === undefined || p.dir.length > proj.dir.length)
@@ -793,22 +972,22 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // Dangling: its target string is all the key reads, and the link's own arm hears that.
       }
     }
-    for (const [link, armed] of linkArms) {
+    for (const [link, armed] of this.linkArms) {
       if (want.get(link)?.real === armed.target) continue
       armed.handle.close()
-      linkArms.delete(link)
+      this.linkArms.delete(link)
     }
     for (const [link, { proj, real, dir }] of want) {
-      if (linkArms.has(link)) continue
+      if (this.linkArms.has(link)) continue
       const name = path.basename(real)
       const label = `${proj.name} ${path.relative(proj.dir, link)}`
       try {
-        const handle = arm(dir ? real : path.dirname(real), dir, (filename) => {
+        const handle = this.arm(dir ? real : path.dirname(real), dir, (filename) => {
           if (!dir && filename !== name) return
-          trigger(label, link)
+          this.trigger(label, link)
         })
-        linkArms.set(link, { target: real, handle })
-        changes.seed(link)
+        this.linkArms.set(link, { target: real, handle })
+        this.changes.seed(link)
       } catch (err) {
         sayCannot(`cannot watch ${real}`, err)
       }
@@ -822,179 +1001,161 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
    * a file (or a path gone for now) from its directory; armed again when a
    * re-lock changes the set.
    */
-  const extraArms = new Map<string, { at: string; handle: WatchHandle }>()
-  const armExtras = (): void => {
+  private armExtras(): void {
     const want = new Map<string, { at: string; dir: boolean }>()
-    for (const abs of extraFiles) {
+    for (const abs of this.extraFiles) {
       const dir = isDirectory(abs)
       want.set(abs, { at: dir ? abs : path.dirname(abs), dir })
     }
-    for (const [abs, armed] of extraArms) {
-      if (want.get(abs)?.at === armed.at && !stale(armed.at)) continue
+    for (const [abs, armed] of this.extraArms) {
+      if (want.get(abs)?.at === armed.at && !this.stale(armed.at)) continue
       armed.handle.close()
-      extraArms.delete(abs)
+      this.extraArms.delete(abs)
     }
     for (const [abs, { at, dir }] of want) {
-      if (extraArms.has(abs) || inodeOf(at) === undefined) continue
+      if (this.extraArms.has(abs) || inodeOf(at) === undefined) continue
       const name = path.basename(abs)
       try {
-        const handle = arm(at, dir, (filename) => {
+        const handle = this.arm(at, dir, (filename) => {
           if (!dir && filename !== name) return
           const changed = dir ? path.join(abs, filename) : abs
           // A directory made where a file or nothing was armed: armed again, recursively.
-          if (!dir && isDirectory(abs)) reread = true
-          trigger(`root ${path.relative(workspaceRoot, changed)}`, changed)
+          if (!dir && isDirectory(abs)) this.reread = true
+          this.trigger(`root ${path.relative(this.workspaceRoot, changed)}`, changed)
         })
-        extraArms.set(abs, { at, handle })
-        armedAs.set(at, inodeOf(at) ?? '')
+        this.extraArms.set(abs, { at, handle })
+        this.armedAs.set(at, inodeOf(at) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${at}`, err)
       }
     }
   }
-  /**
-   * `info/exclude` ignores as a `.gitignore` does, and keys are
-   * gitignore-aware (X-136), so its edit is a cycle; the ignore filter drops
-   * every path under `.git/`. Armed once, from the common dir the run's own
-   * enumeration asked git for (`repoFacts`, memoised).
-   */
-  const commonDir = repoFacts(workspaceRoot)?.commonDir
-  const excludeFile =
-    commonDir === undefined ? undefined : path.resolve(workspaceRoot, commonDir, 'info', 'exclude')
-  const armExclude = (): void => {
+
+  private armExclude(): void {
+    const excludeFile = this.excludeFile
     if (excludeFile === undefined || inodeOf(path.dirname(excludeFile)) === undefined) return
     try {
-      arm(path.dirname(excludeFile), false, (filename) => {
+      this.arm(path.dirname(excludeFile), false, (filename) => {
         if (filename === 'exclude')
-          trigger(`root ${path.relative(workspaceRoot, excludeFile)}`, excludeFile)
+          this.trigger(`root ${path.relative(this.workspaceRoot, excludeFile)}`, excludeFile)
       })
     } catch (err) {
       sayCannot(`cannot watch ${path.dirname(excludeFile)}`, err)
     }
   }
 
-  // Said once, when the loop first arms: a re-arm repeated it after every
-  // cycle that re-read the watched set, between task rows. `debug.watch`
-  // says each arm on stderr, for whoever needs to see the set change.
-  let lastTasks: number | undefined
-  const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
-  const sayWatching = (count: number): void => {
-    const tasks = lastTasks === undefined ? '' : ` · ${plural(lastTasks, 'task')}`
+  private sayWatching(count: number): void {
+    const tasks = this.lastTasks === undefined ? '' : ` · ${plural(this.lastTasks, 'task')}`
     ui.say('info', `watching ${plural(count, 'project')}${tasks}`, 'out')
   }
-  const debugArms = resolveSetting('debug.watch', undefined).value === true
-  const sayArmed = (count: number): void => {
-    if (debugArms)
+
+  private sayArmed(count: number): void {
+    const open = this.pool.open
+    if (this.debugArms)
       ui.say(
         'info',
-        `vx watch: armed ${plural(count, 'project')} (${pool.open} watch${pool.open === 1 ? '' : 'es'})`,
+        `vx watch: armed ${plural(count, 'project')} (${open} watch${open === 1 ? '' : 'es'})`,
       )
   }
 
   /** Re-read the workspace and re-arm on it; a failed re-read is returned, for the caller to say. */
-  const rearm = async (say = true): Promise<unknown> => {
+  private async rearm(say = true): Promise<unknown> {
     let next: Rediscovered
     try {
-      next = await args.rediscover()
+      next = await this.args.rediscover()
     } catch (err) {
       return err
     }
-    cacheDir = next.cacheDir
-    projectDirs = next.projects.map((p) => p.dir)
-    workspaceInputs = next.workspaceInputs
-    outputs = next.outputs
+    this.cacheDir = next.cacheDir
+    this.projectDirs = next.projects.map((p) => p.dir)
+    this.workspaceInputs = next.workspaceInputs
+    this.outputs = next.outputs
     // Linux's tree watcher picks the `node_modules` it enters when it arms
     // (watch-fs.ts): an input newly named there needs the trees armed again.
-    const modulesRenamed = treeArms && modulesNamed(next.inputs) !== modulesNamed(inputs)
-    inputs = next.inputs
-    uncached = next.uncached
-    namedIgnored = next.namedIgnored
-    claimedRootFiles = next.claimedRootFiles
-    extraFiles = next.extraFiles
-    configImportFiles = next.configImports
-    wsConfigImportFiles = next.workspaceConfigImports
-    armAncestors()
-    isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs, atArm?.tracked)
-    fenced = makeFence(next.fenceDirs)
-    matters = makeRootEventFilter(
-      workspaceRoot,
-      projectDirs,
-      workspaceInputs,
-      claimedRootFiles,
-      fenced,
+    const modulesRenamed = this.treeArms && modulesNamed(next.inputs) !== modulesNamed(this.inputs)
+    this.inputs = next.inputs
+    this.uncached = next.uncached
+    this.namedIgnored = next.namedIgnored
+    this.claimedRootFiles = next.claimedRootFiles
+    this.extraFiles = next.extraFiles
+    this.configImportFiles = next.configImports
+    this.wsConfigImportFiles = next.workspaceConfigImports
+    this.armAncestors()
+    this.isIgnoredPath = makeWatchIgnore(
+      this.cacheDir,
+      this.outputs,
+      this.inputs,
+      this.atArm?.tracked,
     )
-    if (next.workspaceWide !== workspaceWide || modulesRenamed) {
+    this.fenced = makeFence(next.fenceDirs)
+    this.matters = makeRootEventFilter(
+      this.workspaceRoot,
+      this.projectDirs,
+      this.workspaceInputs,
+      this.claimedRootFiles,
+      this.fenced,
+    )
+    if (next.workspaceWide !== this.workspaceWide || modulesRenamed) {
       // A task started or stopped declaring `workspaceFiles`: the other
       // arm's shape. Until item 891 the choice was made once, at start, and
       // a root file a config newly named was never an event.
-      dropMode()
-      workspaceWide = next.workspaceWide
-      armMode(next.projects)
-    } else if (workspaceWide) wide = next.projects
-    else {
-      streamed = oneStream ? toStream(next.projects) : []
-      const inStream = new Set(streamed.map((s) => s.proj))
-      const own = next.projects.filter((p) => !inStream.has(p))
-      const keep = new Set(own.map((p) => p.dir))
-      for (const [dir, handle] of perProject) {
-        if (keep.has(dir) && !stale(dir)) continue
-        handle.close()
-        perProject.delete(dir)
-      }
-      for (const proj of own) if (!perProject.has(proj.dir)) armProject(proj)
-    }
-    armImports()
-    watched = next.projects
-    links = gitFiles(workspaceRoot)?.links ?? links
-    armLinks()
-    armExtras()
+      this.dropMode()
+      this.workspaceWide = next.workspaceWide
+      this.armMode(next.projects)
+    } else if (this.workspaceWide) this.wide = next.projects
+    else this.rearmProjects(next.projects)
+    this.armImports()
+    this.watched = next.projects
+    this.links = gitFiles(this.workspaceRoot)?.links ?? this.links
+    this.armLinks()
+    this.armExtras()
     // A new arm proves delivery like the first ones: an edit in the new
     // project right after this cycle is seen, not lost in the gap.
-    await pool.proved()
-    if (say) sayArmed(next.projects.length)
+    await this.pool.proved()
+    if (say) this.sayArmed(next.projects.length)
     return undefined
   }
 
-  armMode(projects)
+  /** The per-project arms for `projects`: a gone or replaced one closed, a new one opened. */
+  private rearmProjects(projects: readonly ProjectMeta[]): void {
+    this.streamed = this.oneStream ? this.toStream(projects) : []
+    const inStream = new Set(this.streamed.map((s) => s.proj))
+    const own = projects.filter((p) => !inStream.has(p))
+    const keep = new Set(own.map((p) => p.dir))
+    for (const [dir, handle] of this.perProject) {
+      if (keep.has(dir) && !this.stale(dir)) continue
+      handle.close()
+      this.perProject.delete(dir)
+    }
+    for (const proj of own) if (!this.perProject.has(proj.dir)) this.armProject(proj)
+  }
 
-  // A project directory, or one a config imports from, removed and made
-  // again (`rm -rf packages && git checkout packages`) is no event to its
-  // own watch (it holds the deleted directory) nor to the root arm, which
-  // drops every name but its own files: silence until a restart. So each
-  // is watched from its nearest directory that exists, for the next name
-  // on the way down: its parent while it is there, an ancestor when the
-  // parent went too (`apps/` removed under `apps/web/site`). Every
-  // directory above it up to the root is watched for the next name too:
-  // FSEvents reports nothing for a watched directory's children when the
-  // directory itself goes with them, so on macOS the parent's arm alone
-  // never heard `packages/` removed under `packages/a` (inotify did).
-  const ancestorArms = new Map<string, WatchHandle>()
-  let ancestorNames = new Map<string, Set<string>>()
-  const ancestorEvent = (dir: string, filename: string): void => {
+  private ancestorEvent(dir: string, filename: string): void {
     // A project's parent's `.gitignore` shapes what its keys read, as the root's does.
-    if (!ancestorNames.get(dir)?.has(filename) && filename !== '.gitignore') return
+    if (!this.ancestorNames.get(dir)?.has(filename) && filename !== '.gitignore') return
     const abs = path.join(dir, filename)
     // A project directory still the one its arm holds is no change:
     // its arm judges what is in it. macOS reports the directory's
     // mtime here on every write at its top level, and a cycle's own
     // write started the next (solid's `types`, 2026-10-15).
-    if (heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
-    reread = true
-    trigger(path.relative(workspaceRoot, abs), abs)
+    if (this.heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
+    this.reread = true
+    this.trigger(path.relative(this.workspaceRoot, abs), abs)
   }
-  /** Each project directory below the root as these arms first saw it (`inodeOf`). */
-  let heldDirs = new Map<string, string>()
-  const armAncestors = (): void => {
-    ancestorNames = new Map()
+
+  private armAncestors(): void {
+    const workspaceRoot = this.workspaceRoot
+    const ancestorNames = new Map<string, Set<string>>()
+    this.ancestorNames = ancestorNames
     const rootDir = path.resolve(workspaceRoot)
-    const below = projectDirs.filter((d) => path.resolve(d) !== rootDir)
-    heldDirs = new Map(
+    const below = this.projectDirs.filter((d) => path.resolve(d) !== rootDir)
+    this.heldDirs = new Map(
       below.flatMap((d) => {
         const id = inodeOf(d)
         return id === undefined ? [] : [[d, id]]
       }),
     )
-    for (const base of [...below, ...importNames.keys()]) {
+    for (const base of [...below, ...this.importNames.keys()]) {
       let dir = path.dirname(base)
       let name = path.basename(base)
       while (inodeOf(dir) === undefined && dir !== workspaceRoot && dir !== path.dirname(dir)) {
@@ -1012,56 +1173,25 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         dir = path.dirname(dir)
       }
     }
-    streamedAncestors = new Set([...ancestorNames.keys()].filter(inStream))
-    for (const [dir, handle] of ancestorArms) {
-      if (ancestorNames.has(dir) && !streamedAncestors.has(dir) && !stale(dir)) continue
+    this.streamedAncestors = new Set([...ancestorNames.keys()].filter((d) => this.inStream(d)))
+    for (const [dir, handle] of this.ancestorArms) {
+      if (ancestorNames.has(dir) && !this.streamedAncestors.has(dir) && !this.stale(dir)) continue
       handle.close()
-      ancestorArms.delete(dir)
+      this.ancestorArms.delete(dir)
     }
     for (const dir of ancestorNames.keys()) {
-      if (ancestorArms.has(dir) || streamedAncestors.has(dir)) continue
+      if (this.ancestorArms.has(dir) || this.streamedAncestors.has(dir)) continue
       try {
-        ancestorArms.set(
+        this.ancestorArms.set(
           dir,
-          arm(dir, false, (filename) => ancestorEvent(dir, filename)),
+          this.arm(dir, false, (filename) => this.ancestorEvent(dir, filename)),
         )
-        armedAs.set(dir, inodeOf(dir) ?? '')
+        this.armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${dir}`, err)
       }
     }
   }
-  armAncestors()
-  armImports()
-  armLinks()
-  armExtras()
-  armExclude()
-
-  // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
-  // closes over the RESOLVED cache dir (relocated or not) and the tasks'
-  // declared outputs.
-
-  // "watching" is a promise that an edit from now on is seen; every
-  // watcher has proved (or been given 2 s to prove) delivery first.
-  await pool.proved()
-  if (args.initial !== undefined) {
-    current = args.initial.cycle
-    args.initial.onWaiting = interruptIfWaiting
-    inFlight = runCycle(undefined, args.initial)
-    interruptIfWaiting()
-  }
-
-  lastTasks = args.tasks()
-  sayWatching(projects.length)
-  sayArmed(projects.length)
-  // An edit made while the initial run ran landed before any watcher, and
-  // its mtime predates the arm, so no event or judgement can find it.
-  // Unheard, watch idled over output built from the old bytes. One to a
-  // task the run was running, the run's own re-check found (it left the
-  // task unsaved); any other is heard here.
-  const heard = heardSinceRun()
-  if (args.drifted !== undefined && !heard)
-    void cycle(`${args.drifted} inputs, edited during the first run`)
 
   /**
    * The files written since the initial run started, by none of its
@@ -1070,57 +1200,56 @@ export async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
    * so a start with no edit adds `-m`'s stats and nothing else. An edit
    * made before its task keyed it re-runs to a hit.
    */
-  function heardSinceRun(): boolean {
+  private heardSinceRun(): boolean {
+    const { initialRun } = this.args
+    const workspaceRoot = this.workspaceRoot
     let heard = false
-    for (const abs of atArm?.dirty ?? []) {
+    for (const abs of this.atArm?.dirty ?? []) {
       let t: number
       try {
         const st = fs.lstatSync(abs)
-        if (Math.max(st.mtimeMs, st.ctimeMs) < args.initialRun.from) continue
+        if (Math.max(st.mtimeMs, st.ctimeMs) < initialRun.from) continue
         t = st.ctimeMs
       } catch {
         // Gone: a deletion has no date, and one made before the start would run every start.
         continue
       }
       if (
-        args.initialRun.windows.writerDuring('', abs, t, t + racyWindowMs(t, FILE_HASH_RACY_MS)) !==
+        initialRun.windows.writerDuring('', abs, t, t + racyWindowMs(t, FILE_HASH_RACY_MS)) !==
         undefined
       )
         continue
       const rel = path.relative(workspaceRoot, abs)
-      if (workspaceWide) wideEvent(rel)
+      if (this.workspaceWide) this.wideEvent(rel)
       else {
-        if (!rel.includes(path.sep)) rootFileEvent(rel)
+        if (!rel.includes(path.sep)) this.rootFileEvent(rel)
         else if (rel.startsWith(`.vx${path.sep}`) && !rel.slice(4).includes(path.sep))
-          dotVxEvent(rel.slice(4))
-        for (const proj of watched)
-          if (abs.startsWith(proj.dir + path.sep)) projectEvent(proj, path.relative(proj.dir, abs))
+          this.dotVxEvent(rel.slice(4))
+        for (const proj of this.watched)
+          if (abs.startsWith(proj.dir + path.sep))
+            this.projectEvent(proj, path.relative(proj.dir, abs))
       }
-      if (!changes.pending.has(abs)) continue
-      changes.unseen([abs])
+      if (!this.changes.pending.has(abs)) continue
+      this.changes.unseen([abs])
       heard = true
     }
     return heard
   }
-
-  return await new Promise<void>((resolve) => {
-    const cleanup = async (): Promise<void> => {
-      pool.closeAll()
-      if (debounceTimer) clearTimeout(debounceTimer)
-      if (interruptTimer) clearTimeout(interruptTimer)
-      // The aborted cycle is tearing its children down; resolve only once
-      // it has returned, so the process never exits over a live child.
-      await inFlight
-      await held?.stop(forwardedSignal(stop.reason))
-      resolve()
-    }
-    if (stop.aborted) {
-      void cleanup()
-      return
-    }
-    stop.addEventListener('abort', () => void cleanup(), { once: true })
-  })
 }
+
+// The birth time is part of a directory's name: a freed inode number is
+// handed straight to the next directory made (measured on this box's
+// /tmp), so the number alone said "the same one" of a new directory.
+function inodeOf(dir: string): string | undefined {
+  try {
+    const st = fs.statSync(dir)
+    return `${st.dev}:${st.ino}:${st.birthtimeMs}`
+  } catch {
+    return undefined
+  }
+}
+
+const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
 
 /** The lock's identity, `''` when there is none: a re-lock changes it. */
 export function lockStamp(workspaceRoot: string): string {
