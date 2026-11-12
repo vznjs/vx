@@ -17,6 +17,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
+import { sections } from './helpers/module-page.js'
 
 const DOCS = path.resolve(
   import.meta.dir,
@@ -43,24 +44,18 @@ const CLASS_PAGES = {
     'README.md',
     'api.md',
     'architecture.md',
+    'cache.md',
     'cli.md',
     'comparison.md',
     'extend-vx.md',
     'flows.md',
     'index.md',
-    'layered-cache.md',
-    'options.md',
+    'orchestrator.md',
     'patterns.md',
-    'plugin-host.md',
-    'plugin.md',
-    // docs/modules/orchestrator.md; the site's page is writing-plugins.mdx.
-    'plugins.md',
-    'remote-lane.md',
-    'scoped-cache.md',
     'upgrading.md',
     'writing-plugins.mdx',
   ],
-  retryLine: ['execute-task.md', 'schema.md'],
+  retryLine: ['orchestrator.md', 'schema.md'],
   outputFingerprint: [
     'caching.md',
     'flows.md',
@@ -423,8 +418,8 @@ describe('every page listing the env allowlist lists all of it', () => {
     // schema.md (pinned separately), execution.md, modules/exec.md, and the
     // environment-variables page. A fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'env.md',
       'environment-variables.mdx',
+      'exec.md',
       'execution.md',
       'schema.md',
     ])
@@ -816,8 +811,13 @@ describe('every page enumerating the run signal handlers names all three', () =>
 
     const pages: string[] = []
     const wrong: string[] = []
-    for (const page of handAuthoredDocs()) {
-      const text = readFileSync(page, 'utf8')
+    // A module page holds many files' accounts; each section is judged alone.
+    const units = handAuthoredDocs().flatMap((page) =>
+      path.basename(path.dirname(page)) === 'modules' && path.basename(page) !== 'README.md'
+        ? [...sections(path.basename(page)).values()].map((text) => ({ page, text }))
+        : [{ page, text: readFileSync(page, 'utf8') }],
+    )
+    for (const { page, text } of units) {
       // A page ENUMERATES the set when it names the exit code SIGINT gets
       // on the vx process. 143 alone is a timeout's SIGTERM, 137 a SIGKILL;
       // 130 is only ever this.

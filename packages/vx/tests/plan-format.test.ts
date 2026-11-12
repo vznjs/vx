@@ -288,7 +288,7 @@ describe('docs/modules/cli.md shows what the formatters print', () => {
   // formatter never wrote (item 313,
   // 2026-09-16). Each sample is the formatter on the same fixture.
   const page = readFileSync(
-    path.resolve(import.meta.dir, '..', 'docs', 'modules', 'plan-format.md'),
+    path.resolve(import.meta.dir, '..', 'docs', 'modules', 'cli.md'),
     'utf8',
   )
   const fenced = [...page.matchAll(/```(\w*)\n([\s\S]*?)```/g)].map((m) => ({

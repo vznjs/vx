@@ -114,6 +114,6 @@ packages/a#build hit-local 823174d6
 
 `planRun()` tells you each task's cache status without running it.
 `run()` runs them. See the [API reference](../../api/) and
-[Plugins](../../modules/plugins/).
+[Plugins](../../modules/orchestrator/#plugins--core-ships-none).
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

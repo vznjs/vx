@@ -322,7 +322,7 @@ describe('no page describes a Windows branch the source dropped', () => {
   it('src holds no win32 branch, and the pages say WSL', () => {
     const src = walk(path.join(pkg, 'src'), '.ts').map((f) => readFileSync(f, 'utf8'))
     expect(src.filter((s) => s.includes("=== 'win32'") || s.includes("!== 'win32'"))).toEqual([])
-    const row = readFileSync(path.join(pkg, 'docs', 'modules', 'sandbox-runtime.md'), 'utf8')
+    const row = readFileSync(path.join(pkg, 'docs', 'modules', 'exec.md'), 'utf8')
       .split('\n')
       .find((l) => l.startsWith('| Windows '))
     expect(row).toContain('WSL')
@@ -333,7 +333,7 @@ describe('no page describes a Windows branch the source dropped', () => {
     expect(exec).not.toContain('/ Windows')
     // J2-50: util-paths.md framed toPosix as keeping keys stable for a
     // workspace cloned on native Windows, which vx does not run on.
-    const paths = readFileSync(path.join(pkg, 'docs', 'modules', 'util-paths.md'), 'utf8')
+    const paths = readFileSync(path.join(pkg, 'docs', 'modules', 'util.md'), 'utf8')
       .split(/\s+/)
       .join(' ')
     expect(paths).not.toContain('across Windows')
@@ -371,7 +371,7 @@ describe("task-graph.md's account of inputs.tasks misses is the schema's", () =>
     const schema = readFileSync(path.join(pkg, 'src', 'workspace', 'config-schema.ts'), 'utf8')
     expect(schema).toContain('names no task in ${task}.dependsOn')
     expect(schema).toContain("f.task.includes('*')")
-    const text = readFileSync(path.join(pkg, 'docs', 'modules', 'task-graph.md'), 'utf8')
+    const text = readFileSync(path.join(pkg, 'docs', 'modules', 'graph.md'), 'utf8')
       .split(/\s+/)
       .join(' ')
     expect(text).toContain('The schema refuses an exact name no `dependsOn` entry names')

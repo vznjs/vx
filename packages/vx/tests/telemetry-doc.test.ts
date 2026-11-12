@@ -10,16 +10,14 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { moduleSection } from './helpers/module-page.js'
 
 const SRC = readFileSync(
   path.join(import.meta.dir, '..', 'src', 'orchestrator', 'telemetry.ts'),
   'utf8',
 )
-const DOC = readFileSync(
-  path.join(import.meta.dir, '..', 'docs', 'modules', 'telemetry.md'),
-  'utf8',
-)
-const RECORDS = DOC.slice(DOC.indexOf('## Records'), DOC.indexOf('## Invariants'))
+const DOC = moduleSection('orchestrator/telemetry.ts')
+const RECORDS = DOC.slice(DOC.indexOf('### Records'), DOC.indexOf('### Invariants'))
 
 const INTERFACES = ['RunContextRecord', 'TaskTelemetry', 'RunSummaryRecord'] as const
 

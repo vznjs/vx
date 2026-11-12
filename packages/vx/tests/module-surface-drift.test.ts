@@ -8,28 +8,20 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { sections, sourcesBySection } from './helpers/module-page.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const DOCS = path.join(pkg, 'docs', 'modules')
 
-/** modules/README.md rows: a page's row plus the rows under it with an empty first cell. */
-function sourcesByPage(): Map<string, string[]> {
-  const out = new Map<string, string[]>()
-  let current: string | undefined
-  for (const line of readFileSync(path.join(DOCS, 'README.md'), 'utf8').split('\n')) {
-    if (!line.startsWith('| ')) continue
-    const cells = line.split('|')
-    const page = /\[`([a-z-]+\.md)`\]/.exec(cells[1] ?? '')?.[1]
-    if (page !== undefined) current = page
-    else if ((cells[1] ?? '').trim() !== '') continue
-    if (current === undefined) continue
-    for (const m of (cells[2] ?? '').matchAll(/`(src\/[A-Za-z0-9_./{},-]+\.ts)`/g)) {
-      const ref = m[1]!
-      const group = /^(.*)\{([^}]*)\}(.*)$/.exec(ref)
-      const files = group
-        ? group[2]!.split(',').map((p) => group[1]! + p.trim() + group[3]!)
-        : [ref]
-      out.set(current, [...(out.get(current) ?? []), ...files])
+/** Each `## ` section of every module page, with the source files the index links to it. */
+function sectionsWithSources(): Array<{ page: string; text: string; files: string[] }> {
+  const out: Array<{ page: string; text: string; files: string[] }> = []
+  const bySection = sourcesBySection()
+  for (const page of readdirSync(DOCS)
+    .filter((f) => f.endsWith('.md') && f !== 'README.md')
+    .sort()) {
+    for (const [slug, text] of sections(page)) {
+      out.push({ page: `${page}#${slug}`, text, files: bySection.get(`${page}#${slug}`) ?? [] })
     }
   }
   return out
@@ -37,16 +29,12 @@ function sourcesByPage(): Map<string, string[]> {
 
 describe('every name a module page declares as public surface exists in its module', () => {
   it('ts-block exports and bullet names resolve against the source the index maps', () => {
-    const sources = sourcesByPage()
     const missing: string[] = []
     let names = 0
-    for (const file of readdirSync(DOCS)
-      .filter((f) => f.endsWith('.md'))
-      .sort()) {
-      const text = readFileSync(path.join(DOCS, file), 'utf8')
-      const section = /^## Public surface\n([\s\S]*?)(?=^## )/m.exec(text)?.[1]
+    for (const { page: file, text, files: linked } of sectionsWithSources()) {
+      const section = /^### Public surface\n([\s\S]*?)(?=^### |$(?![\s\S]))/m.exec(text)?.[1]
       if (section === undefined) continue
-      const files = (sources.get(file) ?? []).filter((s) => existsSync(path.join(pkg, s)))
+      const files = linked.filter((s) => existsSync(path.join(pkg, s)))
       if (files.length === 0) continue
       const src = files.map((s) => readFileSync(path.join(pkg, s), 'utf8')).join('\n')
       const declared = new Set<string>()
@@ -88,7 +76,6 @@ describe('every name a module page declares as public surface exists in its modu
 // `modules/README.md` says so in the same breath.
 describe('every export another module imports is on its page', () => {
   it('no module-crossing name is missing from its Public surface block', () => {
-    const sources = sourcesByPage()
     const srcDir = path.join(pkg, 'src')
     const files: string[] = []
     const walk = (dir: string): void => {
@@ -103,11 +90,17 @@ describe('every export another module imports is on its page', () => {
     // `src/cache/x.ts` → `cache`; `src/index.ts` → `<root>`, its own module.
     const moduleOf = (r: string): string => (r.split('/').length > 2 ? r.split('/')[1]! : '<root>')
 
-    // Which files import or re-export each name.
-    const importers = new Map<string, string[]>()
+    // Which files import or re-export each name, and from which module: two
+    // modules may export one name (`SandboxGrants` in config.ts and
+    // orchestrator/miss-run.ts), and only an import from the owner counts.
+    const importers = new Map<string, { file: string; from: string }[]>()
     for (const abs of files) {
       const text = readFileSync(abs, 'utf8')
-      for (const m of text.matchAll(/^(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from/gms)) {
+      for (const m of text.matchAll(
+        /^(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']+)'/gms,
+      )) {
+        if (!m[2]!.startsWith('.')) continue
+        const from = moduleOf(rel(path.resolve(path.dirname(abs), m[2]!)))
         for (const part of m[1]!.split(',')) {
           const name = part
             .trim()
@@ -115,20 +108,17 @@ describe('every export another module imports is on its page', () => {
             .split(/\s+as\s+/)[0]!
             .trim()
           if (name === '') continue
-          importers.set(name, [...(importers.get(name) ?? []), rel(abs)])
+          importers.set(name, [...(importers.get(name) ?? []), { file: rel(abs), from }])
         }
       }
     }
 
     const undocumented: string[] = []
     let checked = 0
-    for (const page of readdirSync(DOCS)
-      .filter((f) => f.endsWith('.md'))
-      .sort()) {
-      const text = readFileSync(path.join(DOCS, page), 'utf8')
-      const section = /^## Public surface\n([\s\S]*?)(?=^## )/m.exec(text)?.[1]
+    for (const { page, text, files } of sectionsWithSources()) {
+      const section = /^### Public surface\n([\s\S]*?)(?=^### |$(?![\s\S]))/m.exec(text)?.[1]
       if (section === undefined) continue
-      const owned = (sources.get(page) ?? []).filter((s) => existsSync(path.join(pkg, s)))
+      const owned = files.filter((s) => existsSync(path.join(pkg, s)))
       if (owned.length === 0) continue
       const ownerModules = new Set(owned.map(moduleOf))
       for (const src of owned) {
@@ -137,7 +127,9 @@ describe('every export another module imports is on its page', () => {
           /^export (?:async )?(?:function|interface|type|const|class|enum|let)\s+([A-Za-z_$][\w$]*)/gm,
         )) {
           const name = m[1]!
-          const crossing = (importers.get(name) ?? []).filter((f) => !ownerModules.has(moduleOf(f)))
+          const crossing = (importers.get(name) ?? [])
+            .filter((i) => ownerModules.has(i.from) && !ownerModules.has(moduleOf(i.file)))
+            .map((i) => i.file)
           if (crossing.length === 0) continue
           checked += 1
           if (!new RegExp(`\\b${name}\\b`).test(section)) {

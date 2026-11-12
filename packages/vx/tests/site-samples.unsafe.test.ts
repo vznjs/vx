@@ -2304,7 +2304,7 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
       'The task has its own temp directory, empty at its start: write under',
     )
     const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
-    expect(flat(path.join(core, 'docs', 'modules', 'sandbox-runtime.md'))).toContain(
+    expect(flat(path.join(core, 'docs', 'modules', 'exec.md'))).toContain(
       "or, for a path under the host's shared temp directory",
     )
     expect(flat(path.join(DOCS, 'docs', 'sandboxing.mdx'))).toContain(
@@ -2411,7 +2411,7 @@ describe('no page calls a telemetry record immutable', () => {
   it('the docs and the site say plain-data records', () => {
     const core = path.resolve(import.meta.dir, '..')
     const pages = [
-      path.join(core, 'docs', 'modules', 'telemetry.md'),
+      path.join(core, 'docs', 'modules', 'orchestrator.md'),
       path.join(core, 'docs', 'architecture.md'),
       path.join(core, 'src', 'orchestrator', 'telemetry.ts'),
       path.join(DOCS, 'blog', 'telemetry-never-breaks-a-run.md'),
@@ -2440,7 +2440,7 @@ describe('telemetry.md claims no receiver check the sinks lack', () => {
       }
     }
     expect(readers).toEqual([])
-    const page = readFileSync(path.join(root, 'vx', 'docs', 'modules', 'telemetry.md'), 'utf8')
+    const page = readFileSync(path.join(root, 'vx', 'docs', 'modules', 'orchestrator.md'), 'utf8')
     expect(page).not.toContain('consumers reject unknown majors')
     expect(page).toContain('no first-party sink checks it')
   })

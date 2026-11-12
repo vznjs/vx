@@ -2283,6 +2283,18 @@ export async function affectedTaskProjects(args: {
   rules?: WorkspaceRules | undefined
   warn: (message: string) => void
 }): Promise<string[]> // the projects whose `task` the run keeps
+
+export async function applyGraphStage(
+  plugins: readonly VxPlugin[],
+  nodes: Map<string, TaskNode>, // edited in place
+  args: {
+    workspaceRoot: string
+    cacheDir: string
+    projectMetas: readonly ProjectMeta[]
+    warn: (message: string) => void
+    rules?: GraphRules | undefined
+  },
+): Promise<void>
 ```
 
 ## `src/orchestrator/excluded-keys.ts` — keying a dependency that does not run

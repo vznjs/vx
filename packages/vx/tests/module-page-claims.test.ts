@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/report/summary.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
+import { moduleSection } from './helpers/module-page.js'
 
 const DOCS = path.resolve(import.meta.dir, '..', 'docs')
 
@@ -461,12 +462,12 @@ describe('util-settle.md names every grace killGraceMs serves', () => {
 describe("cli-watch.md's account of the watched set is the loop's", () => {
   it('says the lock re-reads the set, and names no package glob', () => {
     expect(src('cli/watch-filter.ts')).not.toContain('pnpm-workspace')
-    const text = page('modules/cli.md')
+    const text = moduleSection('cli/watch.ts').split(/\s+/).join(' ')
     expect(text).toContain('so `.vx/projects.lock.json` is the event that changes the set')
     expect(text).not.toContain('package glob')
-    const at = text.indexOf('## What this does NOT do')
+    const at = text.indexOf('### What this does NOT do')
     expect(at).toBeGreaterThan(-1)
-    const notDo = text.slice(at, text.indexOf('## ', at + 3))
+    const notDo = text.slice(at, text.indexOf('### ', at + 4))
     expect(notDo).toContain('declared input globs')
   })
 })
