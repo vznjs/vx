@@ -12,6 +12,7 @@ import {
 import { candidates, decide, type Forecast, plan } from '../src/plan/plan.js'
 import { simulate, sized } from '../src/plan/play.js'
 import replay from './fixtures/main-run-2026-10-23.json'
+import input0 from './fixtures/plan-input-8c5d2cb.json'
 import input89 from './fixtures/plan-input-bf52a3e.json'
 
 const small: Size = { name: 'small', max: 12, cpu: 4, memory: 16e9 }
@@ -1006,6 +1007,28 @@ it('plays new workers a join spread apart, as it packs them', () => {
   expect(p.unpacked).toBeUndefined()
   expect(p.start).toEqual([])
   expect(p.endsInMs).toBeLessThanOrEqual(p.boundMs)
+})
+
+// PR #5282's run at 1 s: 64 Linux tasks for at most 9 smalls of 3 free
+// cores, more than end by the chain. Packed to the play's end alone, the
+// plan said 193 s and asked 8; 171 s packs, on all 9.
+it('seeks the earliest end that packs when its sizes hold fewer than the chain asks', () => {
+  const inp = JSON.parse(JSON.stringify(input0), (_k, v) => (v === 'Infinity' ? Infinity : v))
+  const warm = new Map(Object.entries(inp.warmUps)) as Map<string, number>
+  const spreads = new Map(Object.entries(inp.spreads)) as Map<string, number>
+  const p = plan(
+    inp.tasks,
+    [],
+    inp.sizes,
+    (s) => warm.get(s ?? '') ?? 20_000,
+    true,
+    Infinity,
+    undefined,
+    (s) => spreads.get(s) ?? 0,
+  )
+  expect(p.unpacked).toBeUndefined()
+  expect(p.endsInMs).toBeLessThan(175_000)
+  expect(p.start.filter((s) => s.name === 'hosted.small')).toHaveLength(9)
 })
 
 // Main 98088da: the run's first plan packed its work and said nothing of

@@ -21,6 +21,8 @@ import { chainMs, fresh, play, simulate, tailFrom, together } from './play.js'
 /** Packings tried again in other orders, at most; fewer as tasks pass `RESTART_TASKS / RESTARTS`. */
 const RESTARTS = 64
 const RESTART_TASKS = 6_400
+/** Deadlines tried between the chain's end and the play's, for the earliest that packs; fewer as tasks pass `RESTART_TASKS / SEEKS`. */
+const SEEKS = 6
 
 /**
  * The workers to start and to let go. Of the new ones (`candidates`, in
@@ -337,10 +339,28 @@ export function plan(
     // play's end: packed to the play's end only, a run a moment off its plan
     // packed to that later end, and ended there.
     const warmest = candidates.reduce((most, c) => Math.max(most, warm(c.name)), 0)
-    let packed: Packing =
+    let packed: Packing | undefined =
       (floor < best ? packs(floor, true) : undefined) ??
-      (floor + warmest < best ? packs(floor + warmest, true) : undefined) ??
-      packs(best, false)!
+      (floor + warmest < best ? packs(floor + warmest, true) : undefined)
+    // Neither ends there (its sizes' `max` holds fewer than the chain
+    // asks): the earliest end between them and the play's, halved to a
+    // second. Packed to the play's end alone, 46 shards on 9 workers
+    // planned 193 s where 180 s packed (PR #5282's run, 2026-11-12).
+    if (packed === undefined && floor + warmest < best && best < Infinity) {
+      let lo = floor + warmest
+      let hi = best
+      const seeks = Math.min(SEEKS, Math.floor(RESTART_TASKS / Math.max(1, tasks.length)))
+      for (let k = 0; k < seeks && hi - lo > 1000; k++) {
+        const mid = (lo + hi) / 2
+        const p = packs(mid, true)
+        if (p === undefined || p.placed.size < tasks.length) lo = mid
+        else {
+          packed = p
+          hi = Math.min(mid, p.end)
+        }
+      }
+    }
+    packed ??= packs(best, false)!
     // Then packed again in other orders, each task's new worker a random
     // way into its slack, keeping the least held by the same end: on 50
     // small graphs solved exactly, 64 more brought 3-10% over the least
