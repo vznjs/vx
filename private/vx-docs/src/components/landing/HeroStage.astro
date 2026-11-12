@@ -274,7 +274,8 @@ const specs = [
     const horizon = (): number => H * 0.58
     const sunR = (): number => Math.min(W * 0.2, H * 0.3)
     const size = (): void => {
-      const dpr = Math.min(2, devicePixelRatio || 1)
+      // One pixel per CSS pixel: the sky is soft, and a 2x canvas quadruples each frame's fill.
+      const dpr = 1
       W = canvas.clientWidth
       H = canvas.clientHeight
       for (const c of [canvas, back]) {
@@ -384,12 +385,14 @@ const specs = [
 
     // ---- one loop, only while the stage is on screen ----
     let running = false
+    let tick = 0
     let last = 0
     const frame = (now: number): void => {
       if (!running) return
       const dt = Math.min(0.05, (now - (last || now)) / 1000)
       last = now
-      draw(dt)
+      // The sky moves slowly: 30 frames a second is enough, and halves its cost.
+      if ((tick = (tick + 1) % 2) === 0) draw(dt * 2)
       spawn(now)
       movePackets(now)
       requestAnimationFrame(frame)
