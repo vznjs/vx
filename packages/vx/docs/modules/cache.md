@@ -356,6 +356,8 @@ export function storedLog(blob: Uint8Array | null): string
 export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] // every entry this machine holds for the task (an additive miss reads their rows)
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
+// `cache.lock` is last, so a clear deletes it last: a waiting run takes a
+// missing lock as the clear's end.
 export function vxCacheEntries(cacheDir: string): string[]
 
 // The four independent cache axes, and the `--cache-policy=<spec>` parser over

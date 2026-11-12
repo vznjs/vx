@@ -199,6 +199,12 @@ describe.skipIf(!available)("a root project's read grant stops at the walls", ()
       // Nor is a failure there told to grant the directory it was granted.
       expect((await run('exit 3')).violations.map((v) => v.line)).toEqual([])
       const walled = await run('cat packages/b/nope.txt .git/HEAD; true')
+      // Refused, and each refusal reported.
+      expect([walled.stdout, ...walled.stderr.trim().split('\n')]).toEqual([
+        '',
+        expect.stringContaining('packages/b/nope.txt'),
+        expect.stringContaining('.git/HEAD'),
+      ])
       expect(walled.violations.map((v) => v.path)).toEqual([
         path.join(root, 'packages', 'b', 'nope.txt'),
         path.join(root, '.git', 'HEAD'),
