@@ -1,5 +1,6 @@
-// A git-ignored file in a task's project that is neither its input nor its
-// output survives the clean before a miss and is never restored by a hit.
+// A file git ignores or does not track (or a committed `.tsbuildinfo`) in
+// a task's project that is neither its input nor its output survives the clean before a
+// miss and is never restored by a hit.
 // An incremental tool keeps its state there (`tsc -b`'s
 // `tsconfig.tsbuildinfo`): after vx deleted `dist/`, the state still said
 // the outputs were built, so `tsc` emitted only the changed file, exited 0,
@@ -10,30 +11,37 @@
 // exempt (`eslint --cache`, `tsc --noEmit --incremental`), and a file any
 // task of the project declares as its output is that task's.
 
-import { lstatSync } from 'node:fs'
+import { lstatSync, type Stats } from 'node:fs'
 import path from 'node:path'
 import type { TaskConfig } from '../config.js'
 import { declaresInput, type GitFilesCache } from '../cache/index.js'
 import { outputMatcher, printable, relPosix, taskGlobOf } from '../util/index.js'
 
-/** The files a miss stamped before its command, absolute, with their stamps. */
-export type StateStamps = ReadonlyMap<string, string | undefined>
+/**
+ * The files a miss stamped before its command, absolute: each one's stamp,
+ * and whether git ignores it.
+ */
+export type StateStamps = ReadonlyMap<string, { at: string | undefined; ignored: boolean }>
 
-function stampOf(abs: string): string | undefined {
+function lstatOf(abs: string): Stats | undefined {
   try {
-    const st = lstatSync(abs, { throwIfNoEntry: false })
-    return st === undefined ? undefined : `${st.mtimeMs}:${st.ctimeMs}:${st.size}:${st.ino}`
+    return lstatSync(abs, { throwIfNoEntry: false })
   } catch {
     return undefined
   }
 }
 
+const stampFrom = (st: Stats | undefined): string | undefined =>
+  st === undefined ? undefined : `${st.mtimeMs}:${st.ctimeMs}:${st.size}:${st.ino}`
+
+const stampOf = (abs: string): string | undefined => stampFrom(lstatOf(abs))
+
 const declaresOutputs = (config: TaskConfig): boolean =>
   (config.outputs?.files?.length ?? 0) + (config.outputs?.workspaceFiles?.length ?? 0) > 0
 
 /**
- * The git-ignored files in the task's project that `git status` listed at
- * run start and the task declares neither as an input nor as an output,
+ * The files git ignores or does not track in the task's project (and its
+ * committed `.tsbuildinfo` files) that `git status` listed at run start and the task declares neither as an input nor as an output,
  * and no task of its project (`projectTasks`) as an output, stamped. None
  * for a task that declares no outputs. Read from the run's one
  * enumeration: no spawn, a stat each.
@@ -48,8 +56,19 @@ export function stampUndeclaredState(args: {
 }): StateStamps {
   const { config, projectDir, workspaceRoot } = args
   if (!declaresOutputs(config)) return new Map()
-  const found = args.gitFilesCache?.ignoredFilesIn(projectDir) ?? []
-  if (found.length === 0) return new Map()
+  // Untracked too: a `.gitignore` that names `dist` and not
+  // `*.tsbuildinfo` left the state untracked, and the partial `dist/` saved.
+  const ignored = args.gitFilesCache?.ignoredFilesIn(projectDir) ?? []
+  const untracked = args.gitFilesCache?.untrackedFilesIn(projectDir) ?? []
+  // A committed `.tsbuildinfo` (`git add -A` before `.gitignore` named it)
+  // is state all the same; no other tracked file is stamped.
+  const loose = new Set(untracked)
+  for (const rel of args.gitFilesCache?.get(projectDir) ?? []) {
+    if (!rel.endsWith('.tsbuildinfo')) continue
+    const abs = path.join(projectDir, rel)
+    if (!loose.has(abs)) untracked.push(abs)
+  }
+  if (ignored.length + untracked.length === 0) return new Map()
   // Each task's own matcher: one's negation does not take back another's glob.
   const outs = [...new Set([config, ...args.projectTasks])].filter(declaresOutputs).map((c) => ({
     own: outputMatcher(c.outputs?.files ?? []),
@@ -64,8 +83,8 @@ export function stampUndeclaredState(args: {
   }
   // vx writes its cache directory (SQLite's WAL) while the task runs.
   const vxDirs = args.gitFilesCache?.vxDirs ?? []
-  const out = new Map<string, string | undefined>()
-  for (const abs of found) {
+  const out = new Map<string, { at: string | undefined; ignored: boolean }>()
+  for (const [i, abs] of [...ignored, ...untracked].entries()) {
     if (nested.size > 0 && inNested(abs)) continue
     if (vxDirs.some((d) => abs.startsWith(d + path.sep))) continue
     const rel = relPosix(projectDir, abs)
@@ -74,7 +93,12 @@ export function stampUndeclaredState(args: {
     const wsRel = relPosix(workspaceRoot, abs)
     if (outs.some((o) => o.own(rel) || o.ws(wsRel))) continue
     if (declaresInput(config, rel, wsRel, false, true, dir)) continue
-    out.set(abs, stampOf(abs))
+    const isIgnored = i < ignored.length
+    const st = lstatOf(abs)
+    // A tool's state is a file: an untracked link is the task's own way to
+    // its outputs (`ln -sfn real-out dist` under `dist/**`), rewritten each run.
+    if (!isIgnored && st?.isFile() !== true) continue
+    out.set(abs, { at: stampFrom(st), ignored: isIgnored })
   }
   return out
 }
@@ -85,16 +109,23 @@ export function stateChanged(stamps: StateStamps, projectDir: string): string[] 
   for (const [abs, before] of stamps) {
     const after = stampOf(abs)
     // One the task removed cannot be read back.
-    if (after !== undefined && after !== before) changed.push(relPosix(projectDir, abs))
+    if (after !== undefined && after !== before.at) changed.push(relPosix(projectDir, abs))
   }
   return changed
 }
 
-/** The stamped files still there, project-relative. */
+/**
+ * The stamped files still there, project-relative. Of those git does not
+ * ignore, only `.tsbuildinfo` files: before a first commit every source is
+ * untracked, and a task whose outputs came out empty beside its own
+ * `package.json` was refused its save.
+ */
 export function stateLeft(stamps: StateStamps, projectDir: string): string[] {
   const left: string[] = []
-  for (const abs of stamps.keys())
+  for (const [abs, s] of stamps) {
+    if (!s.ignored && !abs.endsWith('.tsbuildinfo')) continue
     if (stampOf(abs) !== undefined) left.push(relPosix(projectDir, abs))
+  }
   return left
 }
 

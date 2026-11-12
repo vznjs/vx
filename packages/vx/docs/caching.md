@@ -1057,14 +1057,17 @@ output directory linked out of the project refuses the task instead, X-88). `out
 no-op and says nothing; a task with no `cache: true` is never checked.
 
 **Undeclared state is not saved** (`orchestrator/undeclared-state.ts`).
-A git-ignored file in the task's project that is neither an input nor
-an output survives the clean before a miss, and a hit never restores
-it. An incremental tool keeps its state there: `tsc -b` writes
+A file in the task's project that git ignores or does not track, and is
+neither an input nor an output, survives the clean before a miss, and a
+hit never restores it. So does a committed `.tsbuildinfo` (`git add -A`
+before `.gitignore` named it). An incremental tool keeps its state there: `tsc -b` writes
 `tsconfig.tsbuildinfo` beside the tsconfig, so after vx emptied `dist/`
 it emitted only the changed file, and the partial `dist/` was saved. A
 miss stamps those files, as `git status` listed them at run start,
 before its command; if one changed (and a sandbox let the task write
-it), or the outputs matched no files while one is there, the result
+it), or the outputs matched no files while one is there (an ignored
+file or a `.tsbuildinfo`: before a first commit every source is
+untracked), the result
 stands but is not saved, and the line names the file and the fix:
 declare it in `outputs.files`, so a miss starts without it and a hit
 restores it. Of a directory git ignores whole (`.cache/`,

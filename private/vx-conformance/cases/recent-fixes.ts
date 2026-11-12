@@ -96,6 +96,41 @@ export default [
   }),
 
   defineCase({
+    id: 'outputs/untracked-incremental-state-caches-no-partial-build',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An incremental tool’s state file git does not ignore never leaves a partial build in the cache',
+    why: 'A `.gitignore` that names `dist` but not `*.tsbuildinfo` leaves `tsc -b`’s state untracked, not ignored. It is still state: emptied `dist`, kept state, and the next build emits one changed file. A tool that guards only ignored state stores that partial `dist`, and a fresh checkout restores it.',
+    from: ['undeclared-state'],
+    workspace: one(build({ command: INCREMENTAL }), {
+      'src/a.txt': 'a\n',
+      'src/b.txt': 'b\n',
+      '.gitignore': 'dist/\n',
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0 } },
+      // A fresh checkout: neither the outputs nor the state.
+      {
+        write: {
+          'packages/a/dist/a.txt': null,
+          'packages/a/dist/b.txt': null,
+          'packages/a/state': null,
+        },
+      },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/dist/a.txt': 'a2\n', 'packages/a/dist/b.txt': 'b\n' },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/retry-saves-only-the-passing-attempt',
     category: 'outputs',
     kind: 'correctness',

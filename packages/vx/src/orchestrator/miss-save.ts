@@ -143,7 +143,7 @@ export interface SaveMissArgs {
   deferSave?: ((save: () => Promise<void>, taskId: string) => Promise<boolean>) | undefined
   /** Time the save and size its artifact, for a telemetry sink: one stat. */
   measure?: boolean | undefined
-  /** The undeclared ignored files the miss stamped (`undeclared-state.ts`). */
+  /** The undeclared untracked files the miss stamped (`undeclared-state.ts`). */
   state?: StateStamps | undefined
 }
 
@@ -238,7 +238,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
         [...outputFiles, ...tree.emptyDirs],
         [...wsOutputFiles, ...wsTree.emptyDirs],
       )
-  // Outputs that came out empty beside an undeclared ignored file: an
+  // Outputs that came out empty beside an undeclared untracked file: an
   // incremental tool's state said the cleaned outputs were built, and it
   // wrote nothing (`tsc -b` after vx deleted `dist/`, which the clean left).
   const left =
@@ -246,7 +246,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   if (left.length > 0) {
     warnOf(log)(
       `[vx] ${node.id}: outputs matched no files (${(noFiles ? [...a.outputs, ...a.wsOutputs] : dead).join(', ')}) ` +
-        `while ${left.map(printable).join(', ')}, which git ignores and the task declares neither input nor output, ` +
+        `while ${left.map(printable).join(', ')}, which the task declares neither input nor output, ` +
         `survived the clean — the result stands, but is not saved: a tool that reads such a file back ` +
         `(an incremental build's state) may take the cleaned outputs as built` +
         declareStateHint(left),
