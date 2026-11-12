@@ -1,35 +1,14 @@
-// Content-addressed task cache.
+// Content-addressed task cache: a SQLite index (`cache.db`) and one
+// `<hash>.tar.zst` per entry holding only replayable bytes, the output log and
+// the outputs. Entry metadata lives in the index; the same artifact bytes go to
+// a remote unchanged, and `ingest` takes the metadata on a remote hit. Failed
+// runs are never cached.
 //
-// On-disk layout:
-//   <cacheDir>/cache.db — SQLite index (entries + runs + file_hashes)
-//   <cacheDir>/<hash>.tar.zst — per-entry artifact:
-//                                      stdout (captured stdout, always present)
-//                                      outputs/ (declared output files, when any)
-//                                      workspace-outputs/ (declared outputs.workspaceFiles,
-//                                                          root-relative, when any)
+// With a shared store the entries and artifacts live in `<store>/`, attached to
+// the workspace's own `cache.db`, which keeps the history and memos.
 //
-// The artifact carries ONLY replayable bytes (logs + outputs). Entry
-// metadata — taskId, command, exitCode, durationMs, storedAt — lives
-// in the SQLite `entries` row. The same tar.zst bytes ship to a remote
-// cache server unchanged; on remote-hit, the caller supplies metadata
-// via the `ingest(hash, body, meta)` API so the local SQL index gets
-// populated without sniffing the artifact.
-//
-// We never cache failed runs, so stderr is dropped from the cached
-// surface entirely. Live runs still stream stderr through the logger
-// for the user to see — but on a cache hit there's nothing to replay
-// (the original run was successful and stderr typically empty).
-//
-// With a shared store (the default: `docs/design/shared-store-2026-10.md`)
-// the entries and their artifacts live in `<store>/store.db` and
-// `<store>/<hash>.tar.zst`, attached to the workspace's own `cache.db`,
-// which keeps the history and the memos: every workspace of one user hits
-// what another saved, and none reads another's runs.
-//
-// This is core's FLOOR, not a module to replace: remote storage is a
-// `RemoteCacheLayer` (has / get / put) that `LayeredCache` wraps around
-// this handle, declared by a plugin's `cache` hook. The contract every
-// layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
+// This is core's floor: a remote is a `RemoteCacheLayer` that `LayeredCache`
+// wraps around this handle. Every layer speaks `CacheLayer` (layer.ts).
 
 import { Database } from 'bun:sqlite'
 import { closeDb } from '../index-db/index.js'
@@ -98,10 +77,9 @@ export interface RemoteTraffic {
 }
 
 /**
- * `memo.hashFile(file)`, and `seen` told the ctime of the stat the digest
- * came from when the memo is core's own (the re-check's tie rule,
- * `InputFact.ctimeMs`). Any other memo tells nothing, and so does one
- * whose `hashFile` was replaced since.
+ * `memo.hashFile(file)`, and `seen` told the ctime of the stat behind the
+ * digest when the memo is core's own (the re-check's tie rule). Any other memo
+ * tells nothing.
  */
 export function hashFileSeen(
   memo: TaskMemo,
@@ -112,11 +90,9 @@ export function hashFileSeen(
 }
 
 /**
- * Each of `files` by `memo.hashFile`'s answer, with one memo query for
- * them all when the memo is core's own (`hashFiles`), where one
- * point query per file took the lock each time: 10 of vueuse's 45 ms of
- * keys. A file that cannot be hashed is absent: the caller
- * asks `hashFile` for it, and its error is that call's.
+ * Each of `files` by `memo.hashFile`, in one memo query when the memo is core's
+ * own (a query per file took the lock each time). A file that cannot be hashed
+ * is absent: the caller asks `hashFile`, and gets its error.
  */
 export async function hashFilesOf(
   memo: TaskMemo,
@@ -141,11 +117,9 @@ function ownHasher(memo: TaskMemo): memo is LocalMemo {
 }
 
 /**
- * The hashes of every entry this machine's index holds for `taskId`: an
- * additive task's miss reads their rows to tell the files a save or
- * restore of its own left from what it found. A function, not
- * a layer method, so the package's API is unchanged; a layer with no
- * local index (a test double) answers none.
+ * The hashes of every entry this machine holds for `taskId`: an additive task's
+ * miss reads their rows to tell its own files from what it found. A layer with
+ * no local index answers none.
  */
 export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] {
   const local = layer instanceof Cache ? layer : (layer as { local?: unknown }).local
@@ -162,19 +136,17 @@ export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] {
 }
 
 /**
- * The files a second connection writes a run's hits through
- * (history-stream.ts); undefined when the store keeps no history on disk.
- * A function, as `indexDb` is: no plugin writes the history.
+ * The files a second connection writes a run's hits through; undefined when the
+ * store keeps no history on disk.
  */
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined {
   return historyFilesOf(storeIndexOf(cache))
 }
 
 /**
- * The cache's `bun:sqlite` handle, for core's own readers (`vx last`, `vx
- * why`, the history provider). A function, not a member: the façade hands
- * `Cache` to plugins and no plugin touches cache.db. Callers
- * never close it — `Cache.close()` owns the lifetime.
+ * The cache's `bun:sqlite` handle, for core's readers (`vx last`, `vx why`,
+ * history). A function, so plugins handed `Cache` never touch cache.db. Never
+ * close it: `Cache.close()` does.
  */
 export function indexDb(cache: Cache): Database {
   return storeIndexOf(cache).db
@@ -191,9 +163,8 @@ export function indexWritable(cache: Cache): boolean {
 }
 
 /**
- * `err` as a reader of `indexDb(cache)` reports it: a page SQLite cannot
- * read is refused by its file, as every `Cache` read refuses it, where
- * `vx last` and `vx why` printed a raw `SQLiteError` and a stack.
+ * `err` as a reader of `indexDb(cache)` reports it: an unreadable page is
+ * refused naming its file, not printed as a raw `SQLiteError`.
  */
 export function indexError(cache: Cache, err: unknown): unknown {
   return indexErrorOf(storeIndexOf(cache), err)
@@ -208,12 +179,9 @@ function closeStore(ix: StoreIndex): void {
     ix.outputs.flushOutputDirs()
     ix.folds.flush()
   } catch {
-    // `accessed_at` is LRU bookkeeping, never correctness, and the run's
-    // results are already recorded by the time we get here. Letting it throw
-    // also SKIPPED `db.close()` below, leaking the handle. Reachable when the
-    // cache dir is removed under a live handle (a concurrent `rm
-    // -rf.vx/cache`): macOS answers SQLITE_IOERR_VNODE on a write to an
-    // unlinked file where Linux happily writes on.
+    // `accessed_at` is LRU bookkeeping, and throwing here would skip
+    // `db.close()`. macOS answers SQLITE_IOERR_VNODE on a write to a removed
+    // cache dir.
   }
   if (ix.checkpoints instanceof WalCheckpointer) ix.checkpoints.terminate()
   ix.checkpoints = undefined
@@ -222,10 +190,7 @@ function closeStore(ix: StoreIndex): void {
 
 const indexes = new WeakMap<Cache, StoreIndex>()
 
-/**
- * The store index behind `cache`, for the cache module's own files and
- * tests: the one way past the class wall, and not in `index.ts`.
- */
+/** The store index behind `cache`, for the cache module and its tests only. */
 export function storeIndexOf(cache: Cache): StoreIndex {
   return indexes.get(cache)!
 }
@@ -234,9 +199,8 @@ export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false
   /**
-   * The run's uploads to a remote behind this cache, tallied by the
-   * `LayeredCache` over it (a plugin's, constructed over `ctx.localCache`)
-   * so the run can report them without a method on the layer seam.
+   * The run's uploads, tallied by a `LayeredCache` over this cache, so the run
+   * reports them without a method on the layer seam.
    */
   readonly uploads: UploadTally = { count: 0, bytes: 0, ms: 0, failed: 0 }
   /** The run's hits pulled from those remotes, and their bytes on the wire. */
@@ -254,32 +218,26 @@ export class Cache implements CacheLayer {
     cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     /**
-     * The workspace root, where the file hasher asks git for the object format
-     * (file-hashes.ts), and whose output stamps and snapshots this handle
-     * reads in a named cache dir.
+     * The workspace root: where the file hasher asks git for the object format,
+     * and whose output stamps this handle reads.
      */
     repoDir?: string,
     /**
-     * The largest artifact, decoded, this cache saves, ingests or
-     * restores (zstd.ts). Lowered only by a test, through
-     * `RunOptions.artifactCeiling`: 2 GiB of output is out of a test's reach.
+     * The largest decoded artifact this cache saves, ingests or restores.
+     * Lowered only by tests (`RunOptions.artifactCeiling`).
      */
     artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     /**
-     * `'inspect'`: a reading verb (`why`, `last`, `info`). It never resets
-     * the index: a schema it cannot read is refused, named, and left as it
-     * was. `'preview'`: a dry prune or a `--dry` plan, which reads such an
-     * index as the reset the real prune or run does first leaves it, empty,
-     * with the store still reached, so it names what that prune takes.
+     * `'inspect'`: a reading verb, which never resets the index; an unreadable
+     * schema is refused and left alone. `'preview'`: a dry prune or `--dry`
+     * plan, which reads such an index as the reset would leave it.
      */
     mode: 'open' | 'inspect' | 'preview' = 'open',
     /**
-     * The shared store's directory, unversioned: every key is seeded with
-     * `CACHE_VERSION`, so two vx versions never read each other's entries,
-     * and the store's own schema is `store_meta.schema` (`matchStoreSchema`). Or
-     * `null` for an index that holds its entries itself (a `cacheDir`).
-     * Undefined follows the layout the index records: a reading verb, a
-     * plugin's handle.
+     * The shared store's directory. Unversioned: keys are seeded with
+     * `CACHE_VERSION`, and the store's schema is `store_meta.schema`. `null`
+     * for an index holding its own entries; undefined follows what the index
+     * records.
      */
     storeRoot?: string | null,
     store: StoreOptions = DEFAULT_STORE,
@@ -315,18 +273,17 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * Set when THIS open found an index written by another `SCHEMA_VERSION`
-   * and dropped every table. The next open sees the current version and
-   * reports null. vx prints nothing for it: the cache is vx's to keep.
+   * Set when THIS open found another `SCHEMA_VERSION` and dropped every table.
+   * Never printed: the cache is vx's to keep.
    */
   get schemaReset(): SchemaReset | null {
     return this.ix.schemaReset
   }
 
   /**
-   * Set when THIS open found the shared store written under another
-   * `SCHEMA_VERSION` and dropped its inventory; the artifacts stay and are
-   * indexed again as they hit. Never printed: the cache is vx's to keep.
+   * Set when THIS open found the shared store under another `SCHEMA_VERSION`
+   * and dropped its inventory; artifacts stay and are indexed again as they
+   * hit.
    */
   get storeReset(): SchemaReset | null {
     return this.ix.storeReset
@@ -348,27 +305,20 @@ export class Cache implements CacheLayer {
     )
   }
 
-  // Local cache has no slower layer to warm from — prefetch is a no-op.
-  // The contract still resolves false so callers can treat every layer
-  // uniformly (LayeredCache overrides with the real remote pull).
+  // Nothing slower to warm from; resolves false like every layer.
   async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean> {
     return false
   }
-  // ctx is accepted but ignored — the local layer reads metadata from
-  // the entries row. It's part of the contract so LayeredCache can
-  // route metadata to `ingest()` on remote-hit without a separate API.
+  // `ctx` is ignored: the local layer reads metadata from its row.
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
     return lookup.get(this.ix, hash, ctx)
   }
 
   /**
-   * Read an entry BYPASSING the local read gate. The gate means "don't
-   * serve hits out of the PRE-EXISTING local cache" — it must not throw
-   * away bytes this run just downloaded. `LayeredCache` calls this to
-   * deliver an artifact it ingested from the remote; under
-   * `--cache-policy=local:,remote:rw` the gated `get` returned null for the row
-   * `ingest` had just written, so the task re-executed and re-uploaded on
-   * every single run.
+   * Read an entry past the local read gate, which keeps the PRE-EXISTING local
+   * cache from serving hits, not bytes this run just downloaded. `LayeredCache`
+   * delivers an ingested remote artifact through it; through the gated `get`,
+   * `local:,remote:rw` re-ran and re-uploaded every task each run.
    */
   getIngested(hash: string): Promise<CacheEntry | null> {
     return lookup.getIngested(this.ix, hash)
@@ -378,22 +328,14 @@ export class Cache implements CacheLayer {
     return lookup.getSaved(this.ix, hash)
   }
 
-  /**
-   * Whether no lookup here can hit: no artifact, inline or file. Every
-   * entry has one, and a row-less one is still a hit (`adopt`). The listing
-   * is kept for `adopt`.
-   */
+  /** Whether no lookup here can hit. The listing is kept for `adopt`. */
   holdsNothing(): boolean {
     return lookup.holdsNothing(this.ix)
   }
 
   /**
-   * `get` for many hashes at once: one `entries` query and one
-   * `output_files` query per chunk instead of two per hash, with the
-   * artifact-existence stats in flight together. Same answers as N calls
-   * to `get` — a hash whose artifact is gone is simply absent from the map.
-   * The up-front short-circuit probe is the caller; per-hit `get` stays for
-   * the lazy path.
+   * `get` for many hashes: one query per chunk instead of two per hash. Same
+   * answers; a hash whose artifact is gone is absent.
    */
   async getMany(
     hashes: readonly string[],
@@ -402,17 +344,13 @@ export class Cache implements CacheLayer {
     return lookup.getMany(this.ix, hashes, ctx)
   }
 
-  // Existence probe: SQL row + where its artifact is (an inline one, or a
-  // file on disk), no byte reads and no accessed_at bump (the plan path
-  // must stay read-only).
+  // Existence probe: no byte reads, no `accessed_at` bump (the plan path stays
+  // read-only).
   async has(hash: string): Promise<'local' | 'remote' | null> {
     return lookup.has(this.ix, hash)
   }
 
-  /**
-   * The subset of `hashes` this store holds, `has` for each: the prefetch
-   * pass asks the remote only about the rest.
-   */
+  /** The subset of `hashes` this store holds. */
   async localHasMany(hashes: readonly string[]): Promise<Set<string>> {
     return lookup.localHasMany(this.ix, hashes)
   }
@@ -443,22 +381,17 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * A run writes here on every path — the run record at its end, an
-   * entry's `accessed_at` on a hit, the artifact on a miss — so a cache
-   * directory this user cannot write into fails the run before the graph
-   * starts, once, with the directory named, rather than every task at
-   * 0 ms (or the run at its very end) with SQLite's "attempt to write a
-   * readonly database" as an internal error. The readers open the same
-   * directory read-only and go on; a run refuses.
+   * A run writes here on every path, so a cache directory this user cannot
+   * write fails the run once, before the graph, naming the directory. Readers
+   * open it read-only and go on.
    */
   assertWritable(): void {
     saving.assertWritable(this.ix)
   }
 
   /**
-   * A run over a cache directory it cannot write: one holding entries
-   * serves its hits and saves nothing, and the line this
-   * returns says so; an empty one has nothing to serve and refuses.
+   * A run over a cache directory it cannot write: one holding entries serves
+   * its hits, saves nothing and says so; an empty one refuses.
    */
   readOnlyNotice(): string | null {
     return saving.readOnlyNotice(this.ix)
@@ -481,53 +414,43 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * Whether this local layer persists artifacts. The LayeredCache reads
-   * it to decide between uploading the on-disk artifact (write enabled)
-   * vs. packing bytes in memory (write disabled) for a remote upload.
+   * Whether this layer persists artifacts: `LayeredCache` uploads the file when
+   * it does, else packs bytes in memory.
    */
   get localWritesEnabled(): boolean {
     return saving.localWritesEnabled(this.ix)
   }
 
   /**
-   * Pack the save args into tar.zst bytes WITHOUT touching disk or the
-   * index. Used by the LayeredCache when local writes are disabled but
-   * a remote upload still needs the artifact bytes.
+   * Pack the save args into tar.zst bytes without touching disk or the index,
+   * for a remote upload when local writes are off.
    */
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array> {
     return saving.packSavedBytes(this.ix, args)
   }
 
   /**
-   * The artifact under a private second name, for a body read more than
-   * once (a digest pass then an upload, a retry). The live name is not
-   * stable: a re-save of the key renames other bytes over it, and a body
-   * opened by path read those mid-upload (a digest of one artifact over
-   * the bytes of another). A `Bun.file` over an fd is no answer — its
-   * second read starts where the first ended. Throws when the artifact is
-   * gone; `release` unlinks the name. An inline artifact is read once into
-   * the body, which no re-save can change.
+   * The artifact under a private second name, for a body read more than once (a
+   * digest then an upload, a retry): a re-save renames other bytes over the
+   * live name. Throws when it is gone; `release` unlinks it. An inline artifact
+   * is read once into the body.
    */
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }> {
     return saving.pinArtifact(this.ix, hash)
   }
 
   /**
-   * The remote body goes to the temp by `Bun.write`, which streams a
-   * `Response` and copies a file `Blob` without collecting either, so a
-   * pull never holds the artifact. A body that fails mid-stream (a dropped
-   * socket) leaves a partial temp behind it, removed here; validation
-   * removes its own. A body of at most `cache.store.embeddings` bytes — by its size,
-   * or counted as it streams — is read to memory and stored inline.
+   * `Bun.write` streams the remote body to the temp without collecting it. A
+   * body that fails mid-stream leaves a partial temp, removed here. A body of
+   * at most `cache.store.embeddings` bytes is read to memory and stored inline.
    */
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     return saving.ingest(this.ix, hash, body, meta)
   }
 
   /**
-   * A run's saves from now on leave the WAL's checkpoints to a thread of
-   * their own (checkpointer.ts), started by the first save's commit, so a
-   * run that saves nothing starts none. `stopCheckpoints` ends it.
+   * From now on the WAL's checkpoints run on a thread of their own
+   * (checkpointer.ts), started by the first save. `stopCheckpoints` ends it.
    */
   checkpointOffThread(): void {
     saving.checkpointOffThread(this.ix)
@@ -556,9 +479,7 @@ export class Cache implements CacheLayer {
   }
 }
 
-// The contract, the policy grammar and the zstd framing live beside this
-// file; they are re-exported here so an importer of `./cache.js` — the
-// module index, the sibling layers, the tests — keeps one path.
+// Re-exported so an importer of `./cache.js` keeps one path.
 export * from './layer.js'
 export * from './policy.js'
 export { zstdContentSize } from './zstd.js'
