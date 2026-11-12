@@ -14,6 +14,28 @@ const graph = new Map([
   ['a#test', node('a#test', { command: 'test' })],
 ])
 
+// Main ef6a822's Macs queued 322 s, where history said 40 s: the next run
+// planned to a 139 s Mac join, and the Mac joined at 25 s.
+it('caps a warm-up past twice history’s, as the CI’s queue', () => {
+  const defs = measureDefs([small], graph)
+  const run = (ms: number, known?: Map<string, number>) =>
+    runMeasures(
+      defs,
+      {
+        warmUps: new Map([['linux.small', ms]]),
+        others: new Map(),
+        spreads: new Map(),
+        bases: new Map(),
+      },
+      known,
+    ).find((m) => m.id === workerId('linux.small'))!.durationMs
+  const known = new Map([['linux.small', 40_000]])
+  expect(run(322_000, known)).toBe(80_000)
+  expect(run(60_000, known)).toBe(60_000)
+  // None known: as it was.
+  expect(run(322_000)).toBe(322_000)
+})
+
 it('defines each size by its name and what it is, and each server by its definition', () => {
   const defs = measureDefs([small], graph)
   expect([...defs.keys()]).toEqual([
