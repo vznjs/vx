@@ -49,9 +49,11 @@ export const MIN_CORES = 1
  * cores only. A task books a whole core at least (`MIN_CORES`) and uses
  * less, which covers the rest: 0.93 core taken off a 4-core worker left
  * room for 3 shards, and main's ran at 2.6 of 4 cores while shards waited
- * 150-200 s for room (afb260a, 2026-11-12).
+ * 150-200 s for room (afb260a, 2026-11-12). A core from 1.5 on: a small's
+ * read 0.6 to 1.1 run to run, so one run planned 3 shards a worker and the
+ * next 4, and at 4 they ran 9% longer, a third more at once.
  */
-export const wholeCores = (cores: number): number => Math.floor(cores + 1e-9)
+export const wholeCores = (cores: number): number => Math.max(0, Math.floor(cores - 0.5 + 1e-9))
 
 /** `need` as `book` holds it. */
 export function booked(need: Need, book: Strategy['book']): Need {

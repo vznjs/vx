@@ -976,7 +976,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     else an earlier run's, else any size's this run, else 20 s,
     and the best end is the one with all N. A worker counts its cores
     less what its machine spends besides the run's tasks, in whole cores
-    (a task's whole core covers a fraction), and a new one
+    from 1.5 on (a task's whole core covers the rest), and a new one
     of a size what this run's of that size spent, else an earlier run's
     (kept in history, as warm-ups are), else none; so does one just joined,
     until its own load says, which then moves it from there a step a frame,
@@ -1014,7 +1014,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     idle until it costs more than a new one's warm-up (two warm-ups for a
     worker the run has; never while one sits idle that could take it),
     asked to join as that task gets ready. The plan packs to the longest
-    chain from now first, then past it by a warm-up, then to the best
+    chain from now first, then past it by a warm-up, then to the earliest
+    end between that and the best that packs (halved, six tries), then to the best
     end; a packing that leaves out a task fits no worker and is not
     used. A task booking more cores than any size of its platform has
     is packed onto any worker whole, as the run books it. A task reading files an uncached upstream left on its worker

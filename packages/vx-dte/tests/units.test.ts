@@ -1316,9 +1316,9 @@ it("books a worker's cores its machine spends besides the run's tasks", async ()
       type: 'report',
       running: ['t1', 't2', 't3', 't4'],
       batch: 1,
-      load: { cpu: 4, memory: 0, tasks: 3 },
+      load: { cpu: 4, memory: 0, tasks: 2.4 },
     })
-    await a.say({ type: 'ran', task: 't1', load: { cpu: 3.9, memory: 0, tasks: 2.9 } })
+    await a.say({ type: 'ran', task: 't1', load: { cpu: 3.9, memory: 0, tasks: 2.3 } })
     await Bun.sleep(50)
     expect(h.o.where('t5')).toBeNull()
     const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
@@ -1347,7 +1347,7 @@ it("books a joining worker's other cores as its size's, before it says its own",
       type: 'report',
       running: ['t1', 't2', 't3', 't4'],
       batch: 1,
-      load: { cpu: 4, memory: 0, tasks: 3 },
+      load: { cpu: 4, memory: 0, tasks: 2.4 },
     })
     await Bun.sleep(50)
     const b = await h.worker(4, 'small#2')
@@ -1371,7 +1371,7 @@ it("books a joining worker's other cores as an earlier run learned its size's", 
     undefined,
     undefined,
     {
-      learnedOther: (size) => (size === 'small' ? 1 : undefined),
+      learnedOther: (size) => (size === 'small' ? 1.6 : undefined),
     },
   )
   try {
@@ -1381,7 +1381,7 @@ it("books a joining worker's other cores as an earlier run learned its size's", 
     for (const id of ids) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
     // Its first frame moves it a step from its size's, not all the way:
-    // 1.25, booked as the one whole core.
+    // booked as the one whole core still.
     await a.say({
       type: 'report',
       running: ['t1', 't2', 't3'],
@@ -1398,6 +1398,8 @@ it("books a joining worker's other cores as an earlier run learned its size's", 
 
 // Main afb260a: 0.93 core taken off each 4-core small left room for 3
 // shards; they ran at 2.6 of 4 cores while the rest waited 150-200 s.
+// A core from 1.5 on: a small's read 0.6 to 1.1 run to run, and one run
+// planned 3 shards a worker, the next 4.
 it('books what a machine spends besides the tasks in whole cores', async () => {
   const ids = ['t1', 't2', 't3', 't4']
   const h = await harness(
@@ -1406,7 +1408,7 @@ it('books what a machine spends besides the tasks in whole cores', async () => {
     undefined,
     undefined,
     undefined,
-    { learnedOther: (size) => (size === 'small' ? 0.93 : undefined) },
+    { learnedOther: (size) => (size === 'small' ? 1.1 : undefined) },
   )
   try {
     h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 100 })
