@@ -768,7 +768,10 @@ highest priority:
    `GATSBY_`, `STORYBOOK_`, `VUE_APP_`) or `NODE_ENV` that `inputs.env`
    leaves out and that is no secret (by name or `secret`), once per task: add it to
    `inputs.env`, or a build with another `VITE_API_URL` replays the old
-   bundle. It is a note; the lock is written.
+   bundle. It also names such a name `inputs.env` keys that neither
+   `passThrough` nor `define` gives the command: the key moves with the
+   value, but the bundle is built without it. Each is a note; the lock
+   is written.
 3. **`define`** → explicit literal values. _ARE_ folded into the
    cache key via the task config hash (the values are in your config
    file, so they participate naturally).
