@@ -253,13 +253,9 @@
   z-index: 1;
   margin: 24px auto 0;
   max-width: 1240px;
-  perspective: 1500px;
-  perspective-origin: 50% 20%;
 }
 .stage-tilt {
-  transform: rotateX(14deg);
   transform-origin: 50% 40%;
-  transform-style: preserve-3d;
 }
 .stage-tilt::before {
   /* a pool of light under the graph */
@@ -484,7 +480,7 @@
   left: 50%;
   top: 56%;
   width: min(1180px, 92vw);
-  transform: translate(-50%, -50%) translateY(22%) rotateX(24deg) scale(1.02);
+  transform: translate(-50%, -50%) translateY(22%) scale(1.02);
   will-change: transform;
 }
 .stage.js .stage-story {

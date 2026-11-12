@@ -19,7 +19,7 @@ export interface RealRow {
 }
 
 const ARMS = ['cold', 'restore', 'noop'] as const
-const TOOL_NAMES: Record<string, string> = { Turbo: 'Turborepo', Nx: 'Nx' }
+const TOOL_NAMES: Record<string, string> = { Turbo: 'Turbo', Nx: 'Nx' }
 
 const bare = (cell: string): string => cell.replaceAll('**', '')
 

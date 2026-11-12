@@ -216,7 +216,7 @@ describe('the landing page', () => {
   it('scores every tool on the conformance suite, first after the stage', () => {
     const proof = section(html, 'proof')
     expect(text(proof)).toContain(`${RESULTS.cases.length} cases`)
-    expect(text(proof)).toContain('Every test in vx, Turborepo, Nx, Vite Task, Nix and moon')
+    expect(text(proof)).toContain('Every test in vx, Turbo, Nx, Vite Task, Nix and moon')
     const vx = RESULTS.scores['vx']!.all!
     expect(text(/<div class="score-big">([\s\S]*?)<\/div>/.exec(proof)![1]!)).toBe(
       `${vx.pass} of ${vx.of} cases pass on vx`,
@@ -228,19 +228,26 @@ describe('the landing page', () => {
         text(/class="col-sup">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
       ],
     )
+    // Highest score first.
+    const rate = (t: string): number => RESULTS.scores[t]!.all!.pass / RESULTS.scores[t]!.all!.of
     expect(cols).toEqual(
-      TOOLS.map((t) => {
-        const all = RESULTS.scores[t]!.all!
-        return [toolName(t), percent(all), `supports ${supports(all)}`]
-      }),
+      [...TOOLS]
+        .sort((x, y) => rate(y) - rate(x))
+        .map((t) => {
+          const all = RESULTS.scores[t]!.all!
+          return [toolName(t), percent(all), `supports ${supports(all)}`]
+        }),
     )
-    expect(cols.map((c) => c[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix', 'moon'])
+    expect(cols[0]![0]).toBe('vx')
+    expect(new Set(cols.map((c) => c[0]))).toEqual(
+      new Set(['vx', 'Turbo', 'Nx', 'Vite Task', 'Nix', 'moon']),
+    )
     expect(hrefs(proof)).toEqual([`${BASE}conformance/`])
   })
 
   // Every race is the time a runner adds over the ideal run, never a total
   // (2026-10-09), each lane as long as its time against the slowest.
-  it('races vx, Turborepo, Nx and Vite Task on the measured figures', () => {
+  it('races vx, Turbo, Nx and Vite Task on the measured figures', () => {
     const speed = section(html, 'speed')
     const races = [...speed.matchAll(/<figure class="race">([\s\S]*?)<\/figure>/g)].map(
       (m) => m[1]!,
@@ -258,7 +265,7 @@ describe('the landing page', () => {
       ]
       expect(
         lanes.map((m) => text(/class="lane-name">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
-      ).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task'])
+      ).toEqual(['vx', 'Turbo', 'Nx', 'Vite Task'])
       expect(lanes.map((m) => m[1] ?? '')).toEqual([' vx', '', '', ''])
       expect(Math.max(...lanes.map((m) => Number(m[2])))).toBe(100)
       expect(
