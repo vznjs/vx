@@ -131,6 +131,65 @@ it(
   TIMEOUT,
 )
 
+// Vite's template runs `tsc -b` with `noEmit`, its buildinfo in
+// `node_modules/.tmp` (ev1, 2026-11-12). Not incremental, tsc writes only
+// its roots and version there and builds the whole project: no state.
+// An incremental one whose build emits nothing (create-vue's `vue-tsc
+// --build`, composite with noEmit) keeps every root pending emit.
+it.each([
+  ['non-incremental', '"root":["../../src/a.txt"]'],
+  [
+    'noEmit composite',
+    '"fileNames":["../../src/a.txt"],"root":[1],"affectedFilesPendingEmit":[[1,17]]',
+  ],
+])(
+  'a %s tsbuildinfo rewritten each build does not withhold the save',
+  async (_kind: string, fields: string) => {
+    const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+    made.push(root)
+    const info = `{${fields},"version":"5.9.3","at":"'$(date +%s%N)'"}`
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\nnode_modules/\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: ${JSON.stringify(`mkdir -p node_modules/.tmp dist && echo '${info}' > node_modules/.tmp/tsconfig.app.tsbuildinfo && cp src/a.txt dist/`)} },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect(fx.log.join('\n')).not.toContain('neither input nor output')
+  },
+  TIMEOUT,
+)
+
+// The same shape emitting: a root not pending emit is one it claims built.
+it(
+  'an incremental tsbuildinfo that records an emit still withholds the save',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+    made.push(root)
+    const info = `{"fileNames":["../../src/a.txt"],"root":[1],"version":"5.9.3","at":"'$(date +%s%N)'"}`
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\nnode_modules/\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: ${JSON.stringify(`mkdir -p node_modules/.tmp dist && echo '${info}' > node_modules/.tmp/tsconfig.app.tsbuildinfo && cp src/a.txt dist/`)} },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([
+      ['success', undefined],
+    ])
+  },
+  TIMEOUT,
+)
+
 // The state from a build outside vx (or one the rule above left unsaved)
 // says everything is built: the tool writes nothing at all.
 it(

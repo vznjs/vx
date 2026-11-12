@@ -11,7 +11,7 @@
 // exempt (`eslint --cache`, `tsc --noEmit --incremental`), and a file any
 // task of the project declares as its output is that task's.
 
-import { lstatSync, type Stats } from 'node:fs'
+import { lstatSync, readFileSync, type Stats } from 'node:fs'
 import path from 'node:path'
 import type { TaskConfig } from '../config.js'
 import { declaresInput, type GitFilesCache } from '../cache/index.js'
@@ -33,8 +33,6 @@ function lstatOf(abs: string): Stats | undefined {
 
 const stampFrom = (st: Stats | undefined): string | undefined =>
   st === undefined ? undefined : `${st.mtimeMs}:${st.ctimeMs}:${st.size}:${st.ino}`
-
-const stampOf = (abs: string): string | undefined => stampFrom(lstatOf(abs))
 
 const declaresOutputs = (config: TaskConfig): boolean =>
   (config.outputs?.files?.length ?? 0) + (config.outputs?.workspaceFiles?.length ?? 0) > 0
@@ -106,13 +104,62 @@ export function stampUndeclaredState(args: {
   return out
 }
 
-/** The stamped files the command changed and left in place, project-relative. */
+/** A `.tsbuildinfo` larger than this is taken as per-file state unread. */
+const BUILD_INFO_READ_MAX = 4 << 20
+
+/**
+ * Whether `abs` may hold per-file build state. A `.tsbuildinfo` a
+ * non-incremental `tsc -b` writes lists only its roots and version
+ * (`{"root":[…],"version":…}`): such a build emits its whole project, and
+ * rebuilds outputs gone missing, so nothing it reads back cuts them short.
+ * Vite's template (`tsc -b` with `noEmit`, its state in
+ * `node_modules/.tmp`) rewrites one on every edit, and every save after the
+ * first was withheld. Nor does an incremental one that emits nothing
+ * (`emitsNothing`).
+ */
+function holdsState(abs: string, size: number | undefined): boolean {
+  if (!abs.endsWith('.tsbuildinfo') || size === undefined || size > BUILD_INFO_READ_MAX) return true
+  try {
+    const info: unknown = JSON.parse(readFileSync(abs, 'utf8'))
+    if (typeof info !== 'object' || info === null || 'program' in info) return true
+    if (!('fileNames' in info)) return false
+    return !emitsNothing(info)
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Whether an incremental buildinfo records every root file as still to
+ * emit: a `noEmit` build (create-vue's `vue-tsc --build`, `tsc -b` with
+ * `composite` and `noEmit`) never emits, so it claims no output as built.
+ * `root` holds file ids and `[first, last]` ranges, and
+ * `affectedFilesPendingEmit` ids or `[id, kind]` pairs.
+ */
+function emitsNothing(info: object): boolean {
+  const root = 'root' in info ? info.root : undefined
+  const pending = 'affectedFilesPendingEmit' in info ? info.affectedFilesPendingEmit : undefined
+  if (!Array.isArray(root) || !Array.isArray(pending) || root.length === 0) return false
+  const ids = new Set<unknown>(pending.map((p: unknown) => (Array.isArray(p) ? p[0] : p)))
+  for (const r of root as unknown[]) {
+    if (typeof r === 'number') {
+      if (!ids.has(r)) return false
+    } else if (Array.isArray(r) && typeof r[0] === 'number' && typeof r[1] === 'number') {
+      for (let id = r[0]; id <= r[1]; id++) if (!ids.has(id)) return false
+    } else return false
+  }
+  return true
+}
+
+/** The stamped files the command changed and left in place, holding state, project-relative. */
 export function stateChanged(stamps: StateStamps, projectDir: string): string[] {
   const changed: string[] = []
   for (const [abs, before] of stamps) {
-    const after = stampOf(abs)
+    const st = lstatOf(abs)
+    const after = stampFrom(st)
     // One the task removed cannot be read back.
-    if (after !== undefined && after !== before.at) changed.push(relPosix(projectDir, abs))
+    if (after === undefined || after === before.at || !holdsState(abs, st?.size)) continue
+    changed.push(relPosix(projectDir, abs))
   }
   return changed
 }
@@ -127,7 +174,8 @@ export function stateLeft(stamps: StateStamps, projectDir: string): string[] {
   const left: string[] = []
   for (const [abs, s] of stamps) {
     if (!s.ignored && !abs.endsWith('.tsbuildinfo')) continue
-    if (stampOf(abs) !== undefined) left.push(relPosix(projectDir, abs))
+    const st = lstatOf(abs)
+    if (st !== undefined && holdsState(abs, st.size)) left.push(relPosix(projectDir, abs))
   }
   return left
 }

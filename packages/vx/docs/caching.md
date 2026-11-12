@@ -1082,7 +1082,12 @@ a task that declares no outputs is exempt (`eslint --cache`, `tsc
 --noEmit --incremental`), and a file another task of the project declares
 as its output is that task's. A file an output's `!` entry takes back is
 declared kept: `'.next/**', '!.next/cache/**'` keeps Next's type-check
-`.tsbuildinfo` across builds without withholding a save. An undeclared file a task of the same
+`.tsbuildinfo` across builds without withholding a save. Nor does a
+`.tsbuildinfo` a non-incremental `tsc -b` writes (`{"root":[…],"version":…}`,
+Vite's template in `node_modules/.tmp`): that build emits its whole
+project and rebuilds missing outputs, so it holds no state. Nor does an
+incremental one whose every root file is still pending emit, as a
+`noEmit` build leaves it (create-vue's `vue-tsc --build`). An undeclared file a task of the same
 project running alongside may have written still withholds the save (an
 unsandboxed task's write cannot be told from it); the line names that
 task, and declaring the file in its outputs ends it.

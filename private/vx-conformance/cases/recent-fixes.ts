@@ -160,6 +160,34 @@ export default [
   }),
 
   defineCase({
+    id: 'outputs/whole-build-info-beside-outputs-still-saves',
+    category: 'outputs',
+    kind: 'efficiency',
+    title: 'A build-info file that records no per-file state does not stop the build from caching',
+    why: 'Vite’s template runs `tsc -b` with `noEmit` before `vite build`, and tsc writes `node_modules/.tmp/tsconfig.app.tsbuildinfo` holding only its root files and version. That file changes on every build but cannot leave outputs half-built: the build emits its whole project. A tool that treats it as incremental state stops saving every build after the first.',
+    from: ['undeclared-state'],
+    workspace: one(
+      build({
+        command:
+          'mkdir -p node_modules/.tmp dist && echo "{\\"root\\":[\\"../../src/a.txt\\"],\\"version\\":\\"5.9.3\\",\\"at\\":\\"$(date +%s%N)\\"}" > node_modules/.tmp/tsconfig.app.tsbuildinfo && cat src/a.txt > dist/out.txt',
+      }),
+      { 'src/a.txt': 'a\n', '.gitignore': 'dist/\nnode_modules/\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { [out('a')]: 'a2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/retry-saves-only-the-passing-attempt',
     category: 'outputs',
     kind: 'correctness',
