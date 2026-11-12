@@ -168,16 +168,14 @@ export function branchCacheScope(repo: string, branch: string): string
 
 type · `src/orchestrator/plugin.ts`
 
-What a CI knows of the run's branch (2026-10-17): `scope`, the
-cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
-beats the one git names), and `base`, the commit the branch is compared
-with (a pull request's base), for a bare `--affected`. `trusted`: the
-run has no scope, whatever git names (a merge queue's run,
-2026-10-18). The scope keys plugin entries only. `refs`: the refs a
-remote reads, in order (`CacheContext.refs`; 2026-10-25: a pull
-request its head branch, then its base, then the default branch; a
-merge queue or train only its base); unset, git's. A later plugin's
-field wins.
+What a CI knows of the run's branch: `scope`, the cache scope
+(`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it beats the one git
+names), and `base`, the commit the branch is compared with (a pull request's
+base), for a bare `--affected`. `trusted`: the run has no scope, whatever git
+names (a merge queue's run). The scope keys plugin entries only. `refs`: the
+refs a remote reads, in order (`CacheContext.refs`: a pull
+request its head branch, then its base, then the default branch; a merge
+queue or train only its base); unset, git's. A later plugin's field wins.
 
 ```ts
 export interface BranchFacts {
@@ -537,10 +535,10 @@ export function currentBranch(
 
 function · `src/orchestrator/plugin.ts`
 
-The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
-The name is read from the package the calling module belongs to — the
-nearest `package.json` above it that has a name — and stamped where the workspace loader
-checks for it, so a plugin cannot be named anything but its package.
+The one way to make a plugin: `definePlugin(import.meta, {...hooks })`. The
+name is read from the package the calling module belongs to — the nearest
+`package.json` above it that has a name — and stamped where the workspace
+loader checks for it, so a plugin cannot be named anything but its package.
 
 ```ts
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
@@ -808,11 +806,11 @@ export interface ExecutorContext extends BaseContext {
 
 function · `src/exec/executor.ts`
 
-What a remote executor rejects with when it gives a task back: core runs
-the same request on the local floor and says `reason` once (a remote that
-never started it, B-100). A task placed `remote: 'only'` must not run
-here, so it fails naming `reason` instead. Matched by name, as
-`isUserError` is: a plugin's `@vzn/vx` can be another copy of this class.
+What a remote executor rejects with when it gives a task back: core runs the
+same request on the local floor and says `reason` once (a remote that never
+started it). A task placed `remote: 'only'` must not run here, so it fails
+naming `reason` instead. Matched by name, as `isUserError` is: a plugin's
+`@vzn/vx` can be another copy of this class.
 
 ```ts
 export function executorFallback(reason: string): Error
@@ -848,12 +846,11 @@ export interface FailedOutcome
 function · `src/workspace/workspace.ts`
 
 The workspace root for `start`: the directory holding the first
-`.vx/workspace.*` from `start` up to the git top-level, or up to `/`
-outside git ({@link workspaceFile}, shared with the hand-off). Nothing
-else decides it (2026-10-13: "Workspace file is the ultimate"):
-not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
-`VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add`
-when a sparse checkout left the git top-level's out.
+`.vx/workspace.*` from `start` up to the git top-level, or up to `/` outside
+git ({@link workspaceFile}, shared with the hand-off). Nothing else decides
+it: not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
+`VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add` when
+a sparse checkout left the git top-level's out.
 
 Outside git, a file another user owns is refused (root aside): a
 `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
@@ -1126,17 +1123,14 @@ function · `src/util/paths.ts`
 
 True when a pattern carries no wildcard — it names exactly one path.
 
-The character SET is the whole content: in a task glob `*`, `?` and a
-brace alternation are wildcards, so a pattern holding any of them must
-be MATCHED, never compared as a string. It lives here, exported, because
-four places asked the same question and one of them asked it with a
-smaller set: `graph/task-graph.ts` omitted `{}`, so `dist/{a,b}.txt`
-counted as a literal and the overlapping-output refusal compared it to
-`dist/a.txt` as two unequal strings — the two tasks were accepted and
-then deleted each other's outputs, green, every run (item 495). That is
-the same divergence `asTrees` was moved here to end in item 442, and the
-same one that removed `@vzn/vx-migrate`'s copy of `outputsOverlap` in
-item 445.
+The character SET is the whole content: in a task glob `*`, `?` and a brace
+alternation are wildcards, so a pattern holding any of them must be MATCHED,
+never compared as a string. It lives here, exported, because four places
+asked the same question and one of them asked it with a smaller set:
+`graph/task-graph.ts` omitted `{}`, so `dist/{a,b}.txt` counted as a literal
+and the overlapping-output refusal compared it to `dist/a.txt` as two unequal
+strings — the two tasks were accepted and then deleted each other's outputs,
+green, every run. One copy here keeps them from diverging.
 
 ```ts
 export function isLiteralPattern(glob: string): boolean
@@ -1186,12 +1180,11 @@ function · `src/util/errors.ts`
 
 `instanceof UserError`, plus the same class arriving from ANOTHER COPY of
 core. A compiled `vx` binary carries core inside it while a plugin in the
-workspace imports `@vzn/vx` from node_modules, so a plugin's `UserError`
-is a different class object and `instanceof` is false — a plugin verb's
-"bad flag --x" printed as `UserError: bad flag --x` with a stack, and a
-REAPI refusal would have read as an "internal error" (reproduced through
-the real binary, 2026-09-03). The name is the contract that survives the
-copy boundary.
+workspace imports `@vzn/vx` from node_modules, so a plugin's `UserError` is a
+different class object and `instanceof` is false — a plugin verb's "bad flag
+--x" printed as `UserError: bad flag --x` with a stack, and a REAPI refusal
+would have read as an "internal error" (reproduced through the real binary).
+The name is the contract that survives the copy boundary.
 
 ```ts
 export function isUserError(err: unknown): err is UserError
@@ -1248,8 +1241,8 @@ export async function loadResolvedProjects(
 
 function · `src/history/history.ts`
 
-The run history in `cache`'s index. A plugin reads history only through
-this: core owns every read and write of cache.db (2026-10-29).
+The run history in `cache`'s index. A plugin reads history only through this:
+core owns every read and write of cache.db.
 
 ```ts
 export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
@@ -1537,13 +1530,12 @@ export interface MigrationPlan {
 
 function · `src/util/paths.ts`
 
-The spellings a reader, Turbo and `.gitignore` all accept but a matcher
-fed the raw string turns into NOTHING — and a task keyed on nothing
-replays old outputs as a green hit (2026-09-10, probed one by one):
-a leading `./`, an inner `/./` segment, a doubled `//`, and a trailing
-`/` on a pattern (`src/*\/` means the trees under `src`, so it becomes
-`src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job), and a
-trailing `/.`, read as a trailing `/`. Applied
+The spellings a reader, Turbo and `.gitignore` all accept but a matcher fed
+the raw string turns into NOTHING — and a task keyed on nothing replays old
+outputs as a green hit (probed one by one): a leading `./`, an inner `/./`
+segment, a doubled `//`, and a trailing `/` on a pattern (`src/*\/` means the
+trees under `src`, so it becomes `src/*\/**`; a trailing slash on a LITERAL
+is `asTrees`' job), and a trailing `/.`, read as a trailing `/`. Applied
 after an optional `!`; a bare `.` is the empty entry the schema refuses.
 
 ```ts
@@ -1731,12 +1723,12 @@ positive breaks a build that works today, which is worse than the defect
 being caught. So the three cases are exactly the ones that can be decided
 without a general glob-intersection algorithm:
 
-  both literal    — equal paths
+  both literal — equal paths
   literal vs glob — ask the glob whether it matches the literal (exact)
-  both globs      — identical strings, or one a whole subtree `P/**`
+  both globs — identical strings, or one a whole subtree `P/**`
                     and the other's literal prefix P or under it: every
                     path the second matches is under P, so the first
-                    covers it (item 941). Anything else is undecided
+                    covers it. Anything else is undecided
                     here and deliberately allowed through
 
 The rejected alternative was comparing each glob's static prefix. It is
@@ -1753,23 +1745,19 @@ prevent:
 
   - the SPELLING: `./dist/**` and `dist/**` are one tree to every
     matcher in vx, and `Bun.Glob('dist/**')` does not match the literal
-    `./dist/app.js` either (item 441, probed one spelling at a time);
+    `./dist/app.js` either (probed one spelling at a time);
   - the literal DIRECTORY: `outputs: ['dist']` means everything under
     `dist` — `asTrees` compiles it to `dist` + `dist/**` — while this
     compared it to `dist/app.js` as two unequal literals. Measured end
     to end: the task declaring `dist` wiped the other's `dist/app.js`
-    and the run reported success (item 442).
+    and the run reported success.
 
 Neither is a widening. Both read the declaration the way the code that
 deletes reads it, which is the only reading that decides the hazard.
 
-Exported through the façade because `@vzn/vx-migrate` asks the same
-question at MIGRATION time — it uncaches the losers so the generated
-config loads — and it used to ask it with a copy of this function. The
-copy did not get items 441 and 442, so it reported clean on configs
-core then refused, including `outputs: ['dist']` against
-`dist/app.js`, which is the commonest turbo.json shape there is (item
-445). One rule, one place: the copy is gone.
+Exported through the façade because `@vzn/vx-migrate` asks the same question
+at MIGRATION time — it uncaches the losers so the generated config loads. A
+copy would report clean on configs core then refuses. One rule, one place.
 
 ```ts
 export function outputsOverlap(rawA: string, rawB: string): boolean
@@ -1783,19 +1771,19 @@ The default logger's per-task output policy. Resolved once per run
 from (in priority order) the explicit `--output-logs` override, a
 truthy `CI` env, and the CLI-detected flow:
 
-  full        — frames for executed work, one-liners for quiet hits.
+  full — frames for executed work, one-liners for quiet hits.
                 Today's CI behavior; also the programmatic default.
   errors-only — only failed tasks print.
-  none        — no per-task output at all.
-  hash-only   — one line per task: outcome word, task id, cache key.
+  none — no per-task output at all.
+  hash-only — one line per task: outcome word, task id, cache key.
                 No frames, no log replay (Turbo `--output-logs
                 hash-only` parity); the end-of-run summary still
                 renders. The line is the run's audit trail: which key
                 each task resolved to, without any build output.
-  focused     — requested nodes stream raw output live (running the
+  focused — requested nodes stream raw output live (running the
                 task should feel like running the command directly);
                 dependency-pulled nodes are silent unless they fail.
-  broad       — news only: one `success` line per executed task,
+  broad — news only: one `success` line per executed task,
                 full frames for failures, silence for cache hits.
 
 `gha` (on GitHub Actions, any mode): task output is fenced from
@@ -1890,11 +1878,11 @@ export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm6
 const · `src/config.ts`
 
 Every hook a plugin may fill, in pipeline order — THE list. The loader's
-"must be a function" and "at least one of" checks, the host's stage gate
-and `vx info`'s seam column all read it, so a stage added here is a stage
-everywhere: `admit` reached `vx info` a day late (2026-09-12) because
-that column kept its own copy, and the loader kept a third. The type
-pin below refuses a list that drifts from `Plugin`'s keys either way.
+"must be a function" and "at least one of" checks, the host's stage gate and
+`vx info`'s seam column all read it, so a stage added here is a stage
+everywhere: `admit` reached `vx info` a day late because that column kept its
+own copy, and the loader kept a third. The type pin below refuses a list that
+drifts from `Plugin`'s keys either way.
 
 ```ts
 export const PLUGIN_HOOKS = [
@@ -2378,10 +2366,10 @@ export interface ResolvedSandboxConfig {
 
 function · `src/util/paths.ts`
 
-Whether a restore may write `rel`: one of the outputs `globs` declare and
-not `outputExcluded` — what the save side could have packed
-(`resolveOutputs`). An artifact naming anything else was not written by
-this task's save, and none of it is restored (2026-10-16).
+Whether a restore may write `rel`: one of the outputs `globs` declare and not
+`outputExcluded` — what the save side could have packed (`resolveOutputs`).
+An artifact naming anything else was not written by this task's save, and
+none of it is restored.
 
 ```ts
 export function restorableOutput(
@@ -2677,17 +2665,16 @@ every real block. The one grant vx makes for you is dependencies:
 `node_modules`, and through it the real path of every workspace
 package linked there.
 
-`cache` grants no access in either direction: `inputs` says what
-INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
-from the other coupled them both ways — a declaration added for
-caching silently widened the sandbox, and a path the task needed had
-to be laundered through the cache key to get it (2026-09-05).
-A declared `outputs` is NOT a write grant; the request
+`cache` grants no access in either direction: `inputs` says what INVALIDATES
+a task, `allow` says what it may TOUCH, and deriving one from the other
+coupled them both ways — a declaration added for caching silently widened the
+sandbox, and a path the task needed had to be laundered through the cache key
+to get it. A declared `outputs` is NOT a write grant; the request
 `sandbox/request.ts` builds carries no write of its own and binds
-`allow.write` alone. This comment claimed the opposite — here and on
-both grant fields — while the file beside it and `schema.md` both said
-the truth, and no test read the bare baseline it described (item 443).
-That case has a test of its own now.
+`allow.write` alone. This comment claimed the opposite — here and on both
+grant fields — while the file beside it and `schema.md` both said the truth,
+and no test read the bare baseline it described. That case has a test of its
+own now.
 
 Enforcement anchors at the WORKSPACE ROOT, so a task cannot leave its
 project whatever it declares here. The full account, including what a
@@ -2870,8 +2857,7 @@ answered with a different task's history.
 
 A config's task name may not hold `#` (`taskNameProblem`), but an id also
 arrives from run history and plugins, so the first-`#` rule is the one
-the graph uses. The cache's run history read the same rule from a
-private copy until item 646; one rule, one place.
+the graph uses; one rule, one place.
 
 ```ts
 export function splitTaskId(id: string): [project: string, task: string]
@@ -3395,12 +3381,12 @@ export const VERSION: string = pkg.version
 
 type · `src/orchestrator/plugin.ts`
 
-A vx plugin. Contributes any subset of the run-level capabilities —
-where work runs (executor), which cache is used (cache), who
-observes the run (telemetry). It never changes WHAT a task is (the
-command string — principle #3), only where and how that command is
-executed. Registered explicitly in .vx/workspace.ts via
-defineWorkspace({ plugins: [...] }). No auto-discovery.
+A vx plugin. Contributes any subset of the run-level capabilities — where
+work runs (executor), which cache is used (cache), who observes the run
+(telemetry). It never changes WHAT a task is (the command string — principle
+#3), only where and how that command is executed. Registered explicitly
+in.vx/workspace.ts via defineWorkspace({ plugins: [...] }). No
+auto-discovery.
 
 Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
 plain object. The capabilities are consulted by `plugin-host.ts`. Core
@@ -3462,9 +3448,9 @@ export interface WatchSettings {
 
 function · `src/exec/runner.ts`
 
-The command a task runs with the args after `--` appended, shell-quoted.
-They go before a trailing comment: appended after it, `echo args: # show`
-ran without them and said nothing (item 1060). Trailing blanks go first.
+The command a task runs with the args after `--` appended, shell-quoted. They
+go before a trailing comment: appended after it, `echo args: # show` ran
+without them and said nothing. Trailing blanks go first.
 
 ```ts
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
