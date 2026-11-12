@@ -178,3 +178,48 @@ it('plans a task over every size’s cores as the play does, not out of the run'
   const p = plan([task('a', 2, [], 1.3)], [], candidates([one], new Map(), [], 1), WARM)
   expect(p.start).toEqual([one])
 })
+
+// As the run books it: a server's base once on each worker, from its first
+// dependant there to its last, beside each dependant's own cores.
+it('books a server’s base once per worker it runs on', () => {
+  const servers = [{ id: 's#db', cores: 2 }]
+  const plain = ['a', 'b', 'c'].map((id) => task(id, 1_000))
+  const tasks = plain.map((t) => ({ ...t, servers }))
+  // 2 for the base, then 1 each: two fit on 4 cores, the third after.
+  expect(pack(tasks, [worker('w')], [], () => WARM, Infinity).end).toBe(2_000)
+  // CONTROL: with no base all three fit at once.
+  expect(pack(plain, [worker('w')], [], () => WARM, Infinity).end).toBe(1_000)
+  // A worker already running it books it no more.
+  const serving = worker('w', { serving: new Map([['s#db', 2]]) })
+  expect(pack(tasks, [serving], [], () => WARM, Infinity).end).toBe(2_000)
+  expect(pack(tasks.slice(0, 2), [serving], [], () => WARM, Infinity).end).toBe(1_000)
+  // Between two dependants it runs on: no room for a 3-core task then.
+  const gap = [
+    { ...task('x', 1_000), servers },
+    { ...task('y', 1_000, ['x']), servers },
+    task('z', 1_000, [], 3),
+  ]
+  const p = pack(gap, [worker('w')], [], () => WARM, Infinity)
+  expect(p.placed.get('z')!.at).toBeGreaterThanOrEqual(2_000)
+})
+
+// Main 6406ebd asked 10 workers where 4 ended as soon: one task with a
+// server turned the packing off, and the play spread the slack over all.
+it('packs a run with a server’s dependant on no worker more than without', () => {
+  const tasks = [
+    task('a', 60_000),
+    task('b', 60_000, ['a']),
+    ...Array.from({ length: 10 }, (_, i) => task(`f${i}`, 30_000, [], 1)),
+  ]
+  const sizes = candidates([{ ...size('w', 4), max: 9 }], new Map(), [], tasks.length)
+  const plain = plan(tasks, [], sizes, WARM)
+  const served = plan(
+    tasks.map((t) => (t.id === 'f0' ? { ...t, servers: [{ id: 's#db', cores: 0.5 }] } : t)),
+    [],
+    sizes,
+    WARM,
+  )
+  expect(served.endsInMs).toBe(plain.endsInMs)
+  expect(served.start.length + served.later.length).toBe(plain.start.length + plain.later.length)
+  expect(served.start.length).toBe(1)
+})
