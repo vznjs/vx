@@ -91,8 +91,7 @@ describe('every export another module imports is on its page', () => {
     const moduleOf = (r: string): string => (r.split('/').length > 2 ? r.split('/')[1]! : '<root>')
 
     // Which files import or re-export each name, and from which module: two
-    // modules may export one name (`SandboxGrants` in config.ts and
-    // orchestrator/miss-run.ts), and only an import from the owner counts.
+    // modules may export one name, and only an import from the owner counts.
     const importers = new Map<string, { file: string; from: string }[]>()
     for (const abs of files) {
       const text = readFileSync(abs, 'utf8')

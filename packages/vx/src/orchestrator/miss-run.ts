@@ -14,7 +14,7 @@ import type { TaskSecrets } from './task-secrets.js'
 import type { TreeLoad } from './telemetry.js'
 
 /** What the last attempt's sandbox request set up, and what it refused. */
-export interface SandboxGrants {
+export interface AttemptSandbox {
   violations: SandboxViolation[]
   /** The empty files created for a literal write grant; swept after the attempt. */
   placeholders: Placeholder[]
@@ -45,7 +45,7 @@ export interface MissRun {
   readonly stream: AttemptStream
   readonly signal: AttemptSignal
   readonly guard: OutputGuard
-  readonly sandbox: SandboxGrants
+  readonly sandbox: AttemptSandbox
   /** The sampling of the attempt's process tree, and what the last one saw. */
   readonly load: { untrack?: (() => TreeLoad | undefined) | undefined; seen?: TreeLoad | undefined }
   /** 1-based, the attempt running now. */
