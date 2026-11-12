@@ -417,10 +417,8 @@ describe('timing, doctor and plugin-host Purpose sections match the source', () 
     'ten',
   ]
   it("timing.md's prepareRun count is the marks prepareRun records", () => {
-    const prep = src('orchestrator/prepare.ts')
-    const start = prep.indexOf('export async function prepareRunLocked(')
-    const body = prep.slice(start, prep.indexOf('\n}\n', start))
-    const count = [...body.matchAll(/\bmark\('/g)].length
+    // prepareRunLocked's stages are functions of their own in this file.
+    const count = [...src('orchestrator/prepare.ts').matchAll(/\bmark\('/g)].length
     expect(count).toBeGreaterThan(5)
     expect(page('modules/util.md')).toContain(`\`prepareRun\`'s ${WORDS[count]},`)
   })
