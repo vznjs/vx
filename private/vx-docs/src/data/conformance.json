@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 239,
+    "ported": 240,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -25,7 +25,6 @@
         "uncached-outputs",
         "unlistable-input-dir",
         "vx-lockfile/installed-layout",
-        "vx-lockfile/installed-tree",
         "vx-lockfile/sparse-checkout",
         "watch-cache-dir-change",
         "watch-dependency-gone",
@@ -248,6 +247,7 @@
         "sandbox-hint-spelling.unsafe",
         "sandbox-host-helpers.unsafe",
         "sandbox-lifecycle.unsafe",
+        "sandbox-misrooted-writes.unsafe",
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
         "sandbox-network-per-task.unsafe",
@@ -1077,14 +1077,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1002,
-        "can": 1004,
-        "of": 1006
+        "pass": 1004,
+        "can": 1006,
+        "of": 1008
       },
       "correctness": {
-        "pass": 827,
-        "can": 828,
-        "of": 830
+        "pass": 829,
+        "can": 830,
+        "of": 832
       },
       "efficiency": {
         "pass": 166,
@@ -1122,9 +1122,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 306,
-        "can": 307,
-        "of": 307
+        "pass": 308,
+        "can": 309,
+        "of": 309
       },
       "env": {
         "pass": 31,
@@ -1155,13 +1155,13 @@
     "turbo": {
       "all": {
         "pass": 634,
-        "can": 920,
-        "of": 1006
+        "can": 922,
+        "of": 1008
       },
       "correctness": {
         "pass": 513,
-        "can": 750,
-        "of": 830
+        "can": 752,
+        "of": 832
       },
       "efficiency": {
         "pass": 117,
@@ -1200,8 +1200,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 297,
-        "of": 307
+        "can": 299,
+        "of": 309
       },
       "env": {
         "pass": 27,
@@ -1232,13 +1232,13 @@
     "nx": {
       "all": {
         "pass": 650,
-        "can": 945,
-        "of": 1006
+        "can": 947,
+        "of": 1008
       },
       "correctness": {
         "pass": 492,
-        "can": 771,
-        "of": 830
+        "can": 773,
+        "of": 832
       },
       "efficiency": {
         "pass": 154,
@@ -1277,8 +1277,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 307,
-        "of": 307
+        "can": 309,
+        "of": 309
       },
       "env": {
         "pass": 25,
@@ -1309,13 +1309,13 @@
     "vite-task": {
       "all": {
         "pass": 505,
-        "can": 754,
-        "of": 1006
+        "can": 756,
+        "of": 1008
       },
       "correctness": {
         "pass": 416,
-        "can": 626,
-        "of": 830
+        "can": 628,
+        "of": 832
       },
       "efficiency": {
         "pass": 87,
@@ -1354,8 +1354,8 @@
       },
       "inputs": {
         "pass": 178,
-        "can": 298,
-        "of": 307
+        "can": 300,
+        "of": 309
       },
       "env": {
         "pass": 29,
@@ -1386,13 +1386,13 @@
     "nix": {
       "all": {
         "pass": 482,
-        "can": 717,
-        "of": 1006
+        "can": 719,
+        "of": 1008
       },
       "correctness": {
         "pass": 416,
-        "can": 596,
-        "of": 830
+        "can": 598,
+        "of": 832
       },
       "efficiency": {
         "pass": 64,
@@ -1431,8 +1431,8 @@
       },
       "inputs": {
         "pass": 177,
-        "can": 297,
-        "of": 307
+        "can": 299,
+        "of": 309
       },
       "env": {
         "pass": 22,
@@ -1463,13 +1463,13 @@
     "moon": {
       "all": {
         "pass": 587,
-        "can": 904,
-        "of": 1006
+        "can": 906,
+        "of": 1008
       },
       "correctness": {
         "pass": 457,
-        "can": 743,
-        "of": 830
+        "can": 745,
+        "of": 832
       },
       "efficiency": {
         "pass": 125,
@@ -1508,8 +1508,8 @@
       },
       "inputs": {
         "pass": 193,
-        "can": 307,
-        "of": 307
+        "can": 309,
+        "of": 309
       },
       "env": {
         "pass": 26,
@@ -22328,6 +22328,86 @@
           "status": "fail",
           "step": 3,
           "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/lockfile-pull-without-install-never-caches-the-old-package",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A pulled dependency bump run before the install never caches a build of the old package",
+      "why": "A `git pull` brings the new manifest and lockfile but not the packages: until the install, `node_modules` still holds the old version. A task run then builds against the old package, and a runner that keys on the lockfile saves that build under the new lockfile’s key. After the install nothing in the key changes, so the stale build replays from then on, to teammates too through a shared cache. Refusing to run until the install, or keying on what is installed, keeps the new version’s build.",
+      "from": [
+        "vx-lockfile/installed-tree"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/lockfile-pull-transitive-without-install-never-caches-the-old-package",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A pulled bump of a transitive dependency run before the install never caches a build of the old package",
+      "why": "Here only the lockfile changes: app’s manifest still names confwrap 1.0.0, and the new lockfile resolves confwrap’s own dependency confdep to 1.1.0. Until the install, the old confdep is what confwrap loads. A runner that checks only the project’s direct dependencies against the install, or none, saves the build of the old package under the new lockfile’s key, and it replays after the install.",
+      "from": [
+        "vx-lockfile/installed-tree"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/app/dist/out.txt is \"confdep 1.0.0\\n\", expected \"confdep 1.1.0\\n\""
         }
       }
     },

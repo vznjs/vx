@@ -7,11 +7,19 @@
 // `node_modules/.package-lock.json`, pnpm `node_modules/.pnpm/lock.yaml`,
 // Yarn 1 `node_modules/.yarn-integrity`, Yarn 2+ `node_modules/.yarn-state.yml`);
 // Bun leaves none (1.4.4, either linker), so its workspaces' dependencies
-// are read where Node resolves them. The answer is a pure function of the
+// are read where Node resolves them, and every package where its linker
+// put it. The answer is a pure function of the
 // files compared, so a match is kept in the cache dir under their stat
 // identities (Bun's: each workspace's `node_modules` directory, which a
 // relink or a replaced package moves) and a warm run only stats them.
-import { readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import {
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { UserError } from '@vzn/vx'
@@ -51,9 +59,19 @@ const obj = (v: unknown): Json =>
  * other workspaces nor the root's own; `--omit=dev`, a platform's optional
  * package).
  */
-function npmCompare(lockText: string, markerText: string): string | undefined {
+function npmCompare(lockText: string, markerText: string, root: string): string | undefined {
   const lock = obj(obj(JSON.parse(lockText))['packages'])
   const tree = obj(obj(JSON.parse(markerText))['packages'])
+  // The record is not the tree: `npm install --dry-run` (npm 10.9) rewrites
+  // it to the new lockfile and installs nothing.
+  for (const [p, raw] of Object.entries(tree)) {
+    const version = obj(raw)['version']
+    if (!p.includes('node_modules/') || typeof version !== 'string') continue
+    const installed = versionAt(root, p)
+    if (installed !== version) {
+      return `${p} is ${installed === undefined ? 'not installed' : String(installed)}, node_modules/.package-lock.json names ${String(version)}`
+    }
+  }
   for (const [p, raw] of Object.entries(tree)) {
     const want = lock[p]
     if (want === undefined) return `${p} is installed, and the lockfile does not list it`
@@ -182,13 +200,42 @@ function yarnBerryCompare(
   return undefined
 }
 
+/** The version of the package installed at root-relative `dir`; none when absent or unreadable. */
+function versionAt(root: string, dir: string): string | undefined {
+  let text: string
+  try {
+    text = readFileSync(path.join(root, dir, 'package.json'), 'utf8')
+  } catch {
+    return undefined
+  }
+  // A registry package has a top-level version, so a sole `"version":` is
+  // it: parsing every manifest was half a cold check (10 of 20 ms, 630 packages).
+  const keys = text.match(VERSION_KEY)
+  if (keys?.length === 1) return /"version"\s*:\s*"([^"\\]*)"/.exec(text)?.[1]
+  let version: unknown
+  try {
+    version = obj(JSON.parse(text))['version']
+  } catch {
+    return undefined
+  }
+  return typeof version === 'string' ? version : undefined
+}
+const VERSION_KEY = /"version"\s*:/g
+
 /**
  * Each workspace's registry dependencies where Node resolves them: its own
  * `node_modules`, then each one up to the root. One the tree lacks fails
  * the task that loads it; one at another version is the stale install.
+ * Then every package the lockfile lists, where the linker put it: a pull
+ * that bumps only a transitive version moves no workspace's dependency.
  */
 function bunCompare(lock: import('./bun.js').Lockfile, root: string): Verdict {
   const dirs = ['node_modules']
+  const read = new Map<string, string | undefined>()
+  const at = (dir: string): string | undefined => {
+    if (!read.has(dir)) read.set(dir, versionAt(root, dir))
+    return read.get(dir)
+  }
   for (const [importer, deps] of bunLock().directVersions(lock)) {
     const chain: string[] = []
     for (let d = importer; ; d = path.posix.dirname(d)) {
@@ -198,14 +245,8 @@ function bunCompare(lock: import('./bun.js').Lockfile, root: string): Verdict {
     if (importer !== '.') dirs.push(chain[0]!)
     for (const [name, version] of deps) {
       for (const nm of chain) {
-        let installed: unknown
-        try {
-          installed = obj(
-            JSON.parse(readFileSync(path.join(root, nm, name, 'package.json'), 'utf8')),
-          )['version']
-        } catch {
-          continue
-        }
+        const installed = at(`${nm}/${name}`)
+        if (installed === undefined) continue
         if (installed !== version) {
           return {
             mismatch: `${importer}'s ${name} is ${String(installed)}, the lockfile names ${version}`,
@@ -215,14 +256,91 @@ function bunCompare(lock: import('./bun.js').Lockfile, root: string): Verdict {
       }
     }
   }
+  // Only the isolated linker leaves a store; the hoisted one removes it.
+  const store = path.join(root, 'node_modules', '.bun')
+  if (statSync(store, { throwIfNoEntry: false }) !== undefined) {
+    return { mismatch: storeCompare(lock, root, store), dirs }
+  }
+  for (const [dir, version] of bunLock().hoistedVersions(lock)) {
+    const installed = at(dir)
+    // Absent: an optional package of another platform, or a `--production` install.
+    if (installed !== undefined && installed !== version) {
+      return {
+        mismatch: `${dir.replaceAll('node_modules/', '')} is ${String(installed)}, the lockfile names ${version}`,
+      }
+    }
+  }
   return { dirs }
+}
+
+/** A store entry's package id: `@s+x@1.0.0+<peer hash>` → `@s/x@1.0.0`. */
+const storeId = (entry: string): string =>
+  (entry.startsWith('@') ? entry.replace('+', '/') : entry).replace(/\+[0-9a-f]{16}$/, '')
+
+/**
+ * The isolated linker's store (`node_modules/.bun/<id>/node_modules`), as
+ * Node walks it from the workspaces' links: each copy's dependency links to
+ * the copy the lockfile resolves. Bun never prunes the store, so a copy no
+ * link reaches (an old version, a peer variant gone) is left unread.
+ */
+function storeCompare(
+  lock: import('./bun.js').Lockfile,
+  root: string,
+  store: string,
+): string | undefined {
+  const wanted = bunLock().storeLinks(lock)
+  const prefix = `${store}/`
+  const seen = new Set<string>()
+  const queue: string[] = []
+  /** Each link in `dir` into the store: its name and the entry it reaches. */
+  const links = (dir: string): [string, string][] => {
+    const out: [string, string][] = []
+    let entries: import('node:fs').Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return out
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue
+      if (e.name.startsWith('@') && e.isDirectory()) {
+        for (const [n, to] of links(path.join(dir, e.name))) out.push([`${e.name}/${n}`, to])
+        continue
+      }
+      if (!e.isSymbolicLink()) continue
+      const to = path.resolve(dir, readlinkSync(path.join(dir, e.name)))
+      if (to.startsWith(prefix))
+        out.push([e.name, to.slice(prefix.length, to.indexOf('/', prefix.length))])
+    }
+    return out
+  }
+  const visit = (entry: string): void => {
+    if (seen.has(entry)) return
+    seen.add(entry)
+    queue.push(entry)
+  }
+  for (const dir of lock.workspaces.keys()) {
+    for (const [, to] of links(path.join(root, dir, 'node_modules'))) visit(to)
+  }
+  for (let entry = queue.pop(); entry !== undefined; entry = queue.pop()) {
+    const deps = wanted.get(storeId(entry))
+    for (const [name, to] of links(path.join(store, entry, 'node_modules'))) {
+      const ids = deps?.get(name)
+      if (ids !== undefined && !ids.has(storeId(to))) {
+        const version = (id: string): string => id.slice(id.indexOf('@', 1) + 1)
+        return `${storeId(entry)}'s ${name} is ${version(storeId(to))}, the lockfile names ${[...ids].map(version).join(' or ')}`
+      }
+      visit(to)
+    }
+  }
+  return undefined
 }
 
 const INSTALL_CHECKS: Readonly<Record<string, InstallCheck>> = {
   npm: {
     markers: ['node_modules/.package-lock.json'],
     // Its record compares raw entries: the lockfile's own JSON, not the parse.
-    compare: (lock, _parse, marker) => ({ mismatch: npmCompare(lock, marker!.text) }),
+    compare: (lock, _parse, marker, root) => ({ mismatch: npmCompare(lock, marker!.text, root) }),
   },
   pnpm: {
     markers: ['node_modules/.pnpm/lock.yaml'],
