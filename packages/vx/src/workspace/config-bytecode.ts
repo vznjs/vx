@@ -34,7 +34,7 @@ import {
 import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { beforeExit, refuseForeignCacheDir, xxh3hex } from '../util/index.js'
+import { beforeExit, memoParts, refuseForeignCacheDir, xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
 const COMPILED_VERSION = 3
@@ -65,8 +65,14 @@ function compiledDir(root: string): string {
   return path.join(root, '.vx', 'cache', 'compiled')
 }
 
+/** A bundle's name: the config by path and bytes; its imports are checked by the manifest. */
+const NAME_PARTS = memoParts<{ configPath: string; bytes: Uint8Array }>({
+  configPath: (configPath) => configPath,
+  bytes: (bytes) => xxh3hex(bytes),
+})
+
 function nameOf(configPath: string, bytes: Uint8Array): string {
-  return `workspace-${xxh3hex(`${COMPILED_VERSION}\0${Bun.revision}\0${configPath}\0${xxh3hex(bytes)}`)}`
+  return `workspace-${NAME_PARTS.token(`${COMPILED_VERSION}\0${Bun.revision}`, { configPath, bytes })!}`
 }
 
 function fresh(manifest: Manifest, configPath: string): boolean {
