@@ -1,25 +1,25 @@
 // CI OIDC tokens, the only tokens vx's servers take (@vzn/vx-cache-server,
-// @vzn/vx-history-server): a job's token names its repository and the one
-// scope it writes, its own branch, never a header or a client option. A
-// cache request names its issuer and repository by their hashes (2026-10-25:
-// the user names them, no client guesses), which a token must match; a
-// history request names them plainly in its body (`oidcTokenAuth`).
-// Who may take part is `ALLOW`, the string @vzn/vx-dte-server reads
-// (2026-10-26: that string and nothing else): `issuer:owner/repo:workflow`
-// entries. `READ_ACCESS=public` lets a request with no token read a
-// repository ALLOW names. Any other repository is refused. The JWT itself is
-// jose's to check: signature, algorithm, audience and times.
+// @vzn/vx-history-server, @vzn/vx-dte-server). `oidcClaims` is the one
+// check: jose's, then `ALLOW` (`issuer:owner/repo:workflow` entries). The
+// cache and history servers add the branch a token writes, never a header
+// or a client option; a cache request names its issuer and repository by
+// their hashes, a history request plainly in its body (`oidcTokenAuth`).
+// `READ_ACCESS=public` lets a request with no token read a repository ALLOW
+// names.
 
 import { hashPart } from './hash-part.js'
 import { Refusal } from './refusal.js'
 import {
-  createRemoteJWKSet,
-  customFetch,
+  createLocalJWKSet,
   decodeJwt,
   errors,
+  type JSONWebKeySet,
   jwtVerify,
   type JWTPayload,
+  type JWTVerifyGetKey,
 } from 'jose'
+
+type KeySet = ReturnType<typeof createLocalJWKSet>
 
 /** One entry of `ALLOW`: the jobs of one workflow file of one repository at one issuer. */
 export interface Allowed {
@@ -40,7 +40,7 @@ export interface Access {
   readonly issuer: string
   /**
    * The repository at that issuer, lowercased: `org/name` (`repository`,
-   * GitLab's `project_path`, 2026-10-25), what a checkout's origin names.
+   * GitLab's `project_path`), what a checkout's origin names.
    */
   readonly repository: string
   /** The token's own ref: the one scope it writes. */
@@ -124,7 +124,7 @@ const ON_BEHALF = new Set(['pull_request_target', 'issue_comment', 'workflow_run
  * `head_ref`: a fork names that, and no claim tells a fork's from the
  * repository's own, so a fork's branch `release` wrote release. A merge
  * queue's (`merge_group`) run writes its base branch, which its code is
- * about to become (2026-10-25: "just strip it"); only its ref is renamed:
+ * about to become; only its ref is renamed:
  * anyone can push a branch named like a queue ref. A run of an event in
  * `ON_BEHALF` writes nothing. A GitLab run writes only when the code and
  * the job are its project's own (`source_project_path`, `job_project_path`):
@@ -171,6 +171,10 @@ export interface OidcOptions {
 
 /** Clock skew a token's `exp` / `nbf` may be off by. */
 const LEEWAY_S = 60
+/** Keys this old are read again: a key the issuer withdrew stops signing (jose's `cacheMaxAge`). */
+const KEYS_MAX_AGE_MS = 600_000
+/** A kid the keys lack reads them again at most this often (jose's `cooldownDuration`). */
+const KEYS_COOLDOWN_MS = 30_000
 
 /** The `Access` a request's verified CI token has; a refused one throws a 401 or 403. */
 export function oidcAuth(opts: OidcOptions): Authorize {
@@ -289,58 +293,133 @@ function readAccessOf(opts: OidcOptions): boolean {
 const bearerOf = (req: Request): string | undefined =>
   /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
 
-/** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
+/** A token checked: `oidcClaims`, then the repository lowercased and the branch it may write. */
 function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
   const own = opts.audience === undefined ? undefined : originOf(opts.audience)
+  const check = oidcClaims(opts)
+  return async (token, req) => {
+    const { iss, claims } = await check(token, own ?? new URL(req.url).origin)
+    // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
+    const repo = { issuer: iss, repository: String(claims[repoClaimOf(iss)]).toLowerCase() }
+    const branch = branchOf(iss, claims)
+    return branch === undefined ? repo : { ...repo, write: branch }
+  }
+}
+
+/**
+ * An `ALLOW` entry whose unset parts admit any: a check that binds the
+ * repository by a claim of its own (the DTE relay's run) may name the
+ * issuer alone. `parseAllow` sets all three.
+ */
+export interface Admits {
+  readonly issuer: string
+  readonly repository?: string | undefined
+  readonly workflow?: string | undefined
+}
+
+/** A token `oidcClaims` took: its issuer, no trailing slash, and its claims. */
+export interface Verified {
+  readonly iss: string
+  readonly claims: Readonly<Record<string, unknown>>
+}
+
+/** An RS256 signature: at least a 2048-bit key's 256 bytes, base64url. */
+const SIGNATURE = /^[\w-]{342,}$/
+const signed = (token: string): boolean => SIGNATURE.test(token.slice(token.lastIndexOf('.') + 1))
+
+
+/**
+ * The check every vx server makes of a CI token for `audience`: jose's
+ * (RS256, signature, `aud`, `exp`, `nbf`), then the repository and the
+ * workflow an `allow` entry of its issuer names. Refuses with a `Refusal`:
+ * 401 for the token, 403 for ALLOW, 502 when the issuer's keys cannot be read.
+ */
+export function oidcClaims(opts: {
+  readonly allow: readonly Admits[]
+  readonly fetchJson?: OidcOptions['fetchJson']
+  readonly now?: OidcOptions['now']
+}): (token: string, audience: string) => Promise<Verified> {
+  const notIn = (what: string) => `${what} is not in this server's ALLOW`
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
-  // jose keeps each issuer's keys, and refetches them for a key it lacks.
-  const keys = new Map<string, Promise<ReturnType<typeof createRemoteJWKSet>>>()
-  // The key set each URL last answered. jose refetches every 10 minutes and
-  // threw when that failed: one slow answer from GitHub's key endpoint failed
-  // an upload 502 and lost a DTE worker's entry (2026-10-29). Keys rotate
-  // rarely, so the last set answers until the issuer answers again.
+  // Each issuer's keys, as jose's remote key set keeps them: read again
+  // once KEYS_MAX_AGE_MS old, and for a kid they lack once KEYS_COOLDOWN_MS
+  // after the last read. A local set, so the first token pays no timer and
+  // no Response round trip.
+  const keys = new Map<string, { at: number; set: Promise<KeySet> }>()
+  const discovered = new Map<string, Promise<string>>()
+  // The key set each URL last answered: one slow answer from the issuer
+  // failed a request. Keys rotate rarely: the last set answers until the
+  // issuer does.
   const lastRead = new Map<string, unknown>()
   // The issuers answered from lastRead since their last fetch: a kid that
   // set lacks is then the issuer out of reach, not a token refused.
   const stale = new Set<string>()
-  const keySet = async (iss: string, url: string): Promise<unknown> => {
-    try {
-      const json = await fetchJson(url, lastRead.has(url))
-      lastRead.set(url, json)
-      stale.delete(iss)
-      return json
-    } catch (err) {
-      if (!lastRead.has(url)) throw err
-      stale.add(iss)
-      return lastRead.get(url)
-    }
-  }
-  const keysOf = (iss: string) => {
-    let set = keys.get(iss)
-    if (set === undefined) {
-      set = fetchJson(`${iss.replace(/\/$/, '')}/.well-known/openid-configuration`, false).then(
-        (c) => {
-          const uri = (c as { jwks_uri?: unknown }).jwks_uri
-          if (typeof uri !== 'string') throw new Error('no jwks_uri')
-          return createRemoteJWKSet(new URL(uri), {
-            [customFetch]: async (url: string) => Response.json(await keySet(iss, url)),
-          })
-        },
-      )
-      keys.set(iss, set)
+  const jwksUri = (iss: string): Promise<string> => {
+    let uri = discovered.get(iss)
+    if (uri === undefined) {
+      uri = fetchJson(`${iss}/.well-known/openid-configuration`, false).then((c) => {
+        const u = (c as { jwks_uri?: unknown }).jwks_uri
+        if (typeof u !== 'string') throw new Error('no jwks_uri')
+        return u
+      })
+      discovered.set(iss, uri)
       // A failed discovery is not kept: the next token tries again.
-      // quiet: the awaited set rethrows it; this only forgets it
-      set.catch(() => keys.get(iss) === set && keys.delete(iss))
+      // quiet: the awaited read rethrows it; this only forgets it
+      uri.catch(() => discovered.get(iss) === uri && discovered.delete(iss))
     }
-    // The issuer's outage, not the token's fault: a 401 tells a client its
-    // token is refused, and vx-cache turns the remote off for the run.
-    return set.catch((err: unknown) => {
+    return uri
+  }
+  const read = (iss: string): { at: number; set: Promise<KeySet> } => {
+    const set = (async () => {
+      const url = await jwksUri(iss)
+      let json: unknown
+      try {
+        json = await fetchJson(url, lastRead.has(url))
+        lastRead.set(url, json)
+        stale.delete(iss)
+      } catch (err) {
+        if (!lastRead.has(url)) throw err
+        stale.add(iss)
+        json = lastRead.get(url)
+      }
+      return createLocalJWKSet(json as JSONWebKeySet)
+    })()
+    const entry = { at: Date.now(), set }
+    keys.set(iss, entry)
+    // quiet: the awaited set rethrows it; this only forgets it
+    set.catch(() => keys.get(iss) === entry && keys.delete(iss))
+    return entry
+  }
+  // The issuer's outage, not the token's fault: a client gives up on a
+  // 401, and retries a 5xx.
+  const usable = (iss: string, set: Promise<KeySet>): Promise<KeySet> =>
+    set.catch((err: unknown) => {
       throw keysUnread(iss, err)
     })
+  // jose has checked the alg by now. A token that cannot be signed costs no
+  // read of its issuer's keys.
+  const reading = (iss: string, token: string) => {
+    if (!signed(token)) throw new Refusal(401, 'not a JWT')
+    return read(iss)
   }
+  const keyOf =
+    (iss: string, raw: string): JWTVerifyGetKey =>
+    async (header, token) => {
+      const had = keys.get(iss)
+      const entry =
+        had !== undefined && Date.now() - had.at < KEYS_MAX_AGE_MS ? had : reading(iss, raw)
+      const set = await usable(iss, entry.set)
+      try {
+        return await set(header, token)
+      } catch (err) {
+        if (!(err instanceof errors.JWKSNoMatchingKey) || Date.now() - entry.at < KEYS_COOLDOWN_MS)
+          throw err
+        return (await usable(iss, reading(iss, raw).set))(header, token)
+      }
+    }
 
-  return async (token, req) => {
+  return async (token, audience) => {
     let said: unknown
     try {
       said = decodeJwt(token).iss
@@ -350,19 +429,19 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     // A trailing slash is no other issuer, as a key and a tokenless read
     // name it: one in ALLOW or in the token refused every token.
     const iss = typeof said === 'string' ? issuerOf(said) : undefined
-    if (iss === undefined || !opts.allow.some((a) => issuerOf(a.issuer) === iss)) {
+    const ofIssuer = opts.allow.filter((a) => issuerOf(a.issuer) === iss)
+    if (iss === undefined || ofIssuer.length === 0) {
       throw new Refusal(
         401,
         typeof said === 'string'
-          ? `issuer ${said.slice(0, 200)} is not in this server's ALLOW: add issuer:owner/repo:workflow for it`
+          ? `${notIn(`issuer ${said.slice(0, 200)}`)}: add issuer:owner/repo:workflow for it`
           : 'the token names no issuer (iss)',
       )
     }
-    const audience = own ?? new URL(req.url).origin
     let claims: JWTPayload
     try {
       claims = (
-        await jwtVerify(token, await keysOf(iss), {
+        await jwtVerify(token, keyOf(iss, token), {
           algorithms: ['RS256'],
           audience,
           clockTolerance: LEEWAY_S,
@@ -377,29 +456,31 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     }
     const claim = repoClaimOf(iss)
     const named = claims[claim]
-    if (typeof named !== 'string') throw new Refusal(403, `no ${claim} claim`)
-    // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
-    const repository = named.toLowerCase()
-    const ofRepo = opts.allow.filter(
-      (a) => issuerOf(a.issuer) === iss && same(a.repository, repository),
-    )
-    if (ofRepo.length === 0)
-      throw new Refusal(403, `${claim} ${repository} is not in this server's ALLOW`)
-    const wclaim = workflowClaimOf(iss)
-    const ran = claims[wclaim]
-    if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
-    // Cut at the last `@`: the ref after it is `refs/…` or a SHA (a reusable
-    // workflow pinned by one), and GitLab's CI file may itself hold one
-    // (`.gitlab-ci.yml@group/project`, a file kept in another project, which
-    // a cut at the first `@refs/` matched as this project's own when that
-    // project was `refs/…`). A ref holding an `@` is refused, never widened.
-    const at = ran.lastIndexOf('@')
-    const workflow = at < 0 ? ran : ran.slice(0, at)
-    if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
-      throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
-    const repo = { issuer: iss, repository }
-    const branch = branchOf(iss, claims)
-    return branch === undefined ? repo : { ...repo, write: branch }
+    let ofRepo = ofIssuer
+    if (ofIssuer.some((a) => a.repository !== undefined)) {
+      if (typeof named !== 'string') throw new Refusal(403, `no ${claim} claim`)
+      ofRepo = ofIssuer.filter((a) => a.repository === undefined || same(a.repository, named))
+      if (ofRepo.length === 0)
+        throw new Refusal(
+          403,
+          notIn(`${claim} ${named.toLowerCase()}`),
+        )
+    }
+    if (ofRepo.every((a) => a.workflow !== undefined)) {
+      const wclaim = workflowClaimOf(iss)
+      const ran = claims[wclaim]
+      if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
+      // Cut at the last `@`: the ref after it is `refs/…` or a SHA (a
+      // reusable workflow pinned by one), and GitLab's CI file may itself
+      // hold one (`.gitlab-ci.yml@group/project`, a file kept in another
+      // project). A ref holding an `@` is refused, never widened.
+      const at = ran.lastIndexOf('@')
+      const workflow = at < 0 ? ran : ran.slice(0, at)
+      const repo = String(named)
+      if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!))))
+        throw new Refusal(403, notIn(`${wclaim} ${workflow}`))
+    }
+    return { iss, claims }
   }
 }
 
@@ -430,7 +511,6 @@ function refusal(err: unknown, iss: string, audience: string): Refusal {
   // A broken set read "not a JWT".
   if (
     !(err instanceof errors.JOSEError) ||
-    err instanceof errors.JWKSTimeout ||
     err instanceof errors.JWKSInvalid ||
     err instanceof errors.JWKSMultipleMatchingKeys
   )
@@ -472,7 +552,7 @@ const KEYS_TTL_S = 600
 /**
  * `fetchJson` through a cache isolates share: a Worker's fresh isolate read
  * the issuer on its first token, and one slow answer from GitHub failed it
- * 502 (2026-10-29), as the DTE relay found (2026-10-22). A fresh read (a
+ * 502. A fresh read (a
  * reload, maybe for a rotated key) asks the issuer, and refills the cache.
  */
 export function cachedFetchJson(

@@ -4,15 +4,18 @@
 
 export {
   type Access,
+  type Admits,
   type Allowed,
   type Authorize,
   cachedFetchJson,
   type KeysCache,
   oidcAuth,
+  oidcClaims,
   oidcTokenAuth,
   type OidcOptions,
   parseAllow,
   type Repo,
+  type Verified,
 } from './oidc.js'
 export { hashPart } from './hash-part.js'
 export { statusLine } from './terminal.js'

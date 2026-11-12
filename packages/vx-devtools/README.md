@@ -6,9 +6,10 @@ Code vx's servers and plugins share. Core never imports it.
 
 ## Purpose
 
-First, the CI tokens vx's servers take. `@vzn/vx-cache-server` and
-`@vzn/vx-history-server` take one kind of token: a CI job's OIDC token
-(GitHub Actions, GitLab CI). This package is the check both share. It imports only jose, so a server on Workers
+First, the CI tokens vx's servers take. `@vzn/vx-cache-server`,
+`@vzn/vx-history-server` and `@vzn/vx-dte-server` take one kind of token:
+a CI job's OIDC token (GitHub Actions, GitLab CI). This package is the
+check all three share, and `@vzn/vx-dte` checks its workers' tokens with it. It imports only jose, so a server on Workers
 bundles it alone. Clients never import it: each plugin asks its CI for
 its own token. The token alone decides
 what a request reads and where it writes, never a header or a client
@@ -23,6 +24,11 @@ option.
   `(req, named?)`, `named` a `Repo`, answers the token's `Access`, refusing a token of
   another repository than `named`; with no token where `readAccess` is
   `public`, `named` when ALLOW names it, or `undefined` when none is named.
+- `oidcClaims(options)` is that one check, for any audience:
+  `(token, audience)` answers a `Verified`, `{ iss, claims }`, or throws a
+  `Refusal`. Its `allow` takes `Admits`, `ALLOW` entries whose unset
+  `repository` or `workflow` admits any (a check that binds the repository
+  by a claim of its own names the issuer alone).
 - `errorJson(status, message)` is every server's refusal, `{ code, message }`
   (Turbo's spec's `Error`); `notAllowed(allow)` its `405`, naming the methods in `Allow`.
 - `hashPart(text)` is what a request names its issuer and repository by (`vx-issuer`, `vx-repository`):
@@ -57,6 +63,18 @@ export interface OidcOptions {
   readonly readAccess?: string
 }
 export function parseAllow(list: string): Allowed[]
+export interface Admits {
+  readonly issuer: string
+  readonly repository?: string | undefined
+  readonly workflow?: string | undefined
+}
+export interface Verified {
+  readonly iss: string
+  readonly claims: Readonly<Record<string, unknown>>
+}
+export function oidcClaims(
+  opts: Pick<OidcOptions, 'fetchJson' | 'now'> & { readonly allow: readonly Admits[] },
+): (token: string, audience: string) => Promise<Verified>
 export function oidcAuth(opts: OidcOptions): Authorize
 export interface Repo {
   readonly issuer: string
@@ -83,9 +101,12 @@ export function cachedFetchJson(
 
 ## How it decides
 
+- A token whose header is not `RS256`, or with no signature a 2048-bit
+  key could make, is `401` before any read of its issuer's keys.
 - jose checks the JWT: `RS256`, the signature against the issuer's keys
-  (found through its `/.well-known/openid-configuration`, kept and
-  refetched by `createRemoteJWKSet`), `aud`, `exp` and `nbf` within 60 s.
+  (found through its `/.well-known/openid-configuration`, kept 10 minutes,
+  and read again for a key they lack at most every 30 s), `aud`, `exp`
+  and `nbf` within 60 s.
   When a refetch fails, the keys last read still check tokens. A key they
   lack is then `502`, not a refused token.
 - With `oidcAuth`, every request names its repository: `vx-issuer` and `vx-repository`,
