@@ -116,7 +116,7 @@ export default defineProject({
 
     // Only the `*-live.test.ts` files, against the Nx `nx.install` puts in
     // `.nx-live`; `test` runs every file, these in skip mode. No cache: the
-    // install is an unpinned `nx@22` the key cannot see.
+    // install is an unpinned `nx@24` the key cannot see.
     'test.live': {
       description: 'bun test, the live Nx files, against the install in .nx-live',
       exec: {
@@ -140,10 +140,10 @@ export default defineProject({
     // against 4 s, on the critical path of every main run (2026-10-24),
     // the live files passing on both.
     'nx.install': {
-      description: 'bun add nx@22 into .nx-live',
+      description: 'bun add nx@24 into .nx-live',
       exec: {
         command:
-          'mkdir -p .nx-live && cd .nx-live && { [ -f package.json ] || echo \'{"private":true}\' > package.json; } && bun add nx@22 @nx/js@22 typescript@5 && echo installed',
+          'mkdir -p .nx-live && cd .nx-live && { [ -f package.json ] || echo \'{"private":true}\' > package.json; } && bun add nx@24 @nx/js@24 typescript@5 && echo installed',
         persistent: { readyWhen: '^installed$' },
         timeout: '5m',
       },

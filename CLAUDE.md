@@ -178,7 +178,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   in the gate; the live files run as `@vzn/vx-reapi#test.live` and
   `@vzn/vx-migrate#test.live` in the same Linux run, each bringing its
   services as foreground persistent tasks (uncached: the services and
-  `nx@22` are unpinned).
+  `nx@24` are unpinned).
 - Sandbox tests skip without `bwrap`/`socat`/`strace`; `VX_REQUIRE_SANDBOX=1`
   (CI) makes an unavailable sandbox a failure.
 - Format: `bun packages/vx/src/bin.ts run lint.oxfmt.fix`.

@@ -80,7 +80,14 @@ describe.skipIf(!MODULES)('{args.name} takes the forwarded value, as nx run does
               ],
               {
                 cwd: root,
-                env: { ...process.env, NX_DAEMON: 'false', NX_NO_CLOUD: 'true' },
+                // Nx 24 loads plugins in socket workers, which the test
+                // task's sandbox refuses; run-commands is what is compared.
+                env: {
+                  ...process.env,
+                  NX_DAEMON: 'false',
+                  NX_NO_CLOUD: 'true',
+                  NX_ISOLATE_PLUGINS: 'false',
+                },
                 stdin: 'ignore',
                 stdout: 'ignore',
                 stderr: 'ignore',
