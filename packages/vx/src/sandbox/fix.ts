@@ -249,6 +249,8 @@ export function sandboxFix(
       // target alone stays unreachable, and the fix named it again forever.
       if (v.via !== undefined) fix.read.add(grantFor(v.via, dirs, 'read'))
       if (keyed === undefined) continue
+      // The repository is no input: git lists nothing in it, so no glob keys it.
+      if (atOrUnder(v.path, path.join(dirs.root, '.git'))) continue
       if (inProject(rel) && !nested.some((d) => atOrUnder(v.path!, toRealPath(d)))) {
         if (!keyed.files(rel)) fix.inputs.add(taskGlobOf(rel))
       } else if (atOrUnder(v.path, dirs.root)) {

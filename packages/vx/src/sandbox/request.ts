@@ -820,7 +820,13 @@ function wallOff(
         `grant a directory of the task's own instead, such as "dist/".`,
     )
   }
-  return { ...config, allowRead: config.allowRead.flatMap((r) => punchWalls(r, walls)) }
+  const reads: string[] = []
+  const allowRead = config.allowRead.flatMap((r) => {
+    const cut = punchWalls(r, walls)
+    if (cut.length !== 1 || cut[0] !== r) reads.push(r)
+    return cut
+  })
+  return { ...config, allowRead, ...(reads.length === 0 ? {} : { walled: { reads, walls } }) }
 }
 
 /**

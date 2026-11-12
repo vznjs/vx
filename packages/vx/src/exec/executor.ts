@@ -40,6 +40,12 @@ export interface ResolvedSandboxConfig {
   weakerNetworkIsolation?: boolean
   /** Reads outside the workspace are refused too (`hermeticReads`). */
   hermetic?: boolean
+  /**
+   * Linux: the read grants bound as their children around a wall
+   * (`punchWalls`), as declared, and those walls. A path under one and
+   * outside every wall is granted, though no bind is its ancestor.
+   */
+  walled?: { reads: readonly string[]; walls: readonly string[] }
   /** macOS: the walls a glob grant reaches, by kind (`darwinWallRules`). */
   wallsReached?: { read: readonly string[]; write: readonly string[] }
   ignore?: {

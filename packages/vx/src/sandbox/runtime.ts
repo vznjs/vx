@@ -3107,7 +3107,8 @@ function addHints(
       // `bun test` and Vitest scan it, find no test file, and fail with no
       // read to report.
       const cwd = toRealPath(args.cwd)
-      const granted = grantedRead.map(toRealPath)
+      // A grant cut around the walls (a root's `read: ['.']`) covers the cwd.
+      const granted = [...grantedRead, ...(args.config.walled?.reads ?? [])].map(toRealPath)
       if (violations.length === 0 && !granted.some((g) => atOrUnder(cwd, g))) {
         const inside = [
           ...new Set(

@@ -1647,6 +1647,7 @@ export interface ResolvedSandboxConfig {
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
   hermetic?: boolean
+  walled?: { reads: readonly string[]; walls: readonly string[] }
   wallsReached?: { read: readonly string[]; write: readonly string[] }
   ignore?: {
     read?: readonly string[]

@@ -723,4 +723,33 @@ export default [
       },
     ],
   }),
+
+  defineCase({
+    id: 'sandbox/root-package-missing-optional-file-passes',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task of the root package may look for a file that is not there',
+    why: 'Most tools try optional files first: a local override, a config in one of five spellings. In a workspace that is one package, or whose root has tasks of its own, those lookups happen in the root. A sandbox that reports a file that does not exist as a refused read fails every such tool, and isolation cannot be turned on there.',
+    from: ['sandbox-grants.unsafe'],
+    needs: ['sandbox'],
+    workspace: {
+      projects: {
+        root: {
+          dir: '.',
+          tasks: {
+            build: {
+              command:
+                'mkdir -p out && { cat local.txt 2>/dev/null || cat tools/gen.txt; } > out/gen.txt',
+              inputs: ['tools/**'],
+              outputs: ['out/**'],
+              sandbox: { read: ['.'] },
+            },
+          },
+          files: { 'tools/gen.txt': 'one\n' },
+        },
+        a: { tasks: { build: { command: 'true', cache: false } }, files: { 'src/a.txt': 'a\n' } },
+      },
+    },
+    steps: [{ run: 'build', expect: { exit: 0, files: { 'out/gen.txt': 'one\n' } } }],
+  }),
 ]

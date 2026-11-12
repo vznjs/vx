@@ -176,6 +176,17 @@ describe('sandboxFix', () => {
     })
   })
 
+  // Angular probes `.git` from a root project: the fix named it for
+  // `inputs.files`, a path git lists nothing under.
+  it('never names the repository for the key', () => {
+    const read = (p: string) => v('deny(1) file-read-data', ['read'], path.join(dir, p))
+    const denials = [read('.git'), read('.git/HEAD'), read('tsconfig.json')]
+    expect(sandboxFix(denials, dir, dir, undefined, { files: ['src/**'] })).toEqual({
+      read: ['.git', '.git/HEAD', 'tsconfig.json'],
+      inputs: ['tsconfig.json'],
+    })
+  })
+
   it('never turns a credential path into a grant', () => {
     const home = (p: string) => path.join(os.homedir(), p)
     const read = (p: string) => v('deny(1) file-read-data', ['read'], p)

@@ -828,7 +828,13 @@ around it (`punchWalls`, the write-path punch with the wall dropped), on
 macOS each wall is a read deny, which SRT emits after a literal grant
 holding it so that the deny wins (B-4), and
 a write grant whose bind, widened or not, would hold one is refused,
-naming the wall. A grant that names a wall or a path inside it is the
+naming the wall. The punched grant still grants its directory: the request
+keeps the grant as declared beside the walls (`walled`), and a path under
+it, outside every wall and missing on the host is the task's own missing
+file, not a refusal. No bind is its ancestor, so every tool that tries an
+optional file (`.env.local`, esbuild's `angular:styles/…`) failed a
+single-package workspace's sandboxed task. The fix line never names `.git`
+for the key. A grant that names a wall or a path inside it is the
 user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
 `~`) unless it reaches the repository's git dir there (a workspace below
 the top-level, a linked worktree: `orchestrator.md`). A glob's hit that is a wall or lies inside one was matched, not
