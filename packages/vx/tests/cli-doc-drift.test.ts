@@ -24,7 +24,7 @@ import {
   formatTaskHitLine,
 } from '../src/report/framed-output.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 
 /**
  * Flags the run parser accepts: the ones it matches as string literals

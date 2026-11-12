@@ -81,7 +81,9 @@ src/graph/default-build.ts
 src/graph/definition.ts
 src/graph/folds.ts
 src/graph/index.ts
+src/graph/outcome.ts
 src/graph/priorities.ts
+src/graph/ready-heap.ts
 src/graph/scheduler.ts
 src/graph/stand-ins.ts
 src/graph/task-graph.ts

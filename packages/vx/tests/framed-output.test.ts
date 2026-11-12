@@ -13,7 +13,7 @@ import {
   formatTaskSkippedLine,
   paintIdParts,
 } from '../src/report/framed-output.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import { paint, type Style } from '../src/ui/theme.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 

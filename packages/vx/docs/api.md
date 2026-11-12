@@ -3060,7 +3060,7 @@ export interface TaskNode {
 
 ## `TaskOutcome`
 
-type · `src/graph/scheduler.ts`
+type · `src/graph/outcome.ts`
 
 ```ts
 export interface TaskOutcome {

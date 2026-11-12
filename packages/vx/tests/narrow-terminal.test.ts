@@ -4,7 +4,7 @@
 // its width; off one (a CI log) they keep their fixed width.
 
 import { describe, expect, it } from 'bun:test'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { formatTaskBlock } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'

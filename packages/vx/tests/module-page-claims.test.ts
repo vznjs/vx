@@ -6,7 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/report/summary.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import { moduleSection } from './helpers/module-page.js'
 
 const DOCS = path.resolve(import.meta.dir, '..', 'docs')

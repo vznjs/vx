@@ -22,9 +22,6 @@ export { setStandIns, type StandIns, standInsOf } from './stand-ins.js'
 export { criticalPath } from './critical-path.js'
 export { taskDefinition, taskDefinitions } from './definition.js'
 export {
-  type ContinueMode,
-  deadServerBehind,
-  idleServers,
   type InputChanges,
   RestoreDemoted,
   isKeyFailed,
@@ -34,9 +31,9 @@ export {
   OutputsFailed,
   outputsFailedOf,
   RestoreFailed,
-  runGraph,
   type TaskOutcome,
-} from './scheduler.js'
+} from './outcome.js'
+export { type ContinueMode, deadServerBehind, idleServers, runGraph } from './scheduler.js'
 export {
   type CacheSource,
   deriveCacheSource,
