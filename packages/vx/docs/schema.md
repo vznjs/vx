@@ -816,6 +816,11 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
   with different `FOO=bar` set would produce different outputs and
   the user would never know why.
 
+A failed task whose last output names a variable your shell holds and
+the task was not given gets one line naming it and `passThrough`
+(`tests/unpassed-env.test.ts`): names only, upper-case, four characters
+or more; never a value.
+
 This is hygiene, not a boundary: an unsandboxed task runs as you, so it
 can read your files. vx hides its own environment from a task
 (`modules/util.md`), not your files. Only `exec.sandbox` keeps them out (`security.md` § What the sandbox stops).
