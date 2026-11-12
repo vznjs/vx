@@ -2647,7 +2647,7 @@ async function runSandboxedOnce(
     afterCommand(SandboxManager)
     return {
       exitCode: 127,
-      durationMs: Date.now() - start,
+      durationMs: Math.round(runTime() - start),
       stdout: '',
       stderr,
       spawnFailed: true,
