@@ -1993,7 +1993,7 @@ export class Orchestrator {
     workers: readonly PlanWorker[]
     /**
      * A plan that starts workers: the work it played (seconds, cores,
-     * platform) and each size's warm-up, so it can be played back. Main
+     * memory, platform, servers) and each size's warm-up, so it can be played back. Main
      * d8a795c planned 38 s with one Mac for a Mac lane of 88 s, and
      * nothing in the profile said what it thought each task took.
      */
@@ -2002,7 +2002,7 @@ export class Orchestrator {
   }): void {
     const work = p.work?.map(
       (t) =>
-        `${t.id} ${t.ms === undefined ? '?' : Math.round(t.ms / 100) / 10}s ${Math.round(t.cores * 100) / 100}c${t.platform === undefined ? '' : ` ${bare(t.platform)}`}`,
+        `${t.id} ${t.ms === undefined ? '?' : Math.round(t.ms / 100) / 10}s ${Math.round(t.cores * 100) / 100}c${t.memory > 0 ? ` ${Math.round(t.memory / 1e8) / 10}G` : ''}${t.platform === undefined ? '' : ` ${bare(t.platform)}`}${(t.servers ?? []).map((sv) => ` +${sv.id} ${Math.round(sv.cores * 100) / 100}c`).join('')}`,
     )
     const workers = p.workers.map((w) =>
       w.starting === true
