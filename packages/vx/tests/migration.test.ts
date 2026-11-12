@@ -16,7 +16,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import {
-  applyMigration,
   foldScriptHooks,
   isStarterConfig,
   quoteTsLiteral,
@@ -25,6 +24,7 @@ import {
   type GeneratedTask,
   type MigrationPlan,
 } from '../src/workspace/index.js'
+import { applyMigration } from '../src/orchestrator/index.js'
 import { UserError } from '../src/util/index.js'
 import { withForwardArgs } from '../src/exec/index.js'
 

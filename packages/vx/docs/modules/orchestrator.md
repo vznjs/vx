@@ -4914,3 +4914,18 @@ it), the `TaskExecutor` contract for an executor.
 plugin runs and caches; a declining executor falls back), the `NO PLUGINS` /
 `CONTROL` e2e pins in `tests/plugin-capabilities.test.ts`, and each
 package's own suite (CI's plugin-packages job).
+
+## `src/orchestrator/migration.ts` — the migration seam
+
+### Purpose
+
+`applyMigration`, on the façade for any adoption tool: `workspace`'s
+`writeMigration` renders, guards and writes the plan and runs the lock
+step; `report`'s `drawMigration` draws what it did. Same name and shape
+as before the split.
+
+### Public surface
+
+```ts
+export function applyMigration(args: ApplyMigrationArgs): Promise<number> // the exit code
+```

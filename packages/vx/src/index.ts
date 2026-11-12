@@ -155,7 +155,6 @@ export type { ProjectEntry } from './workspace/index.js'
 // other adoption tool use it from here; `taskNameProblem` is why a name
 // cannot be a task's, so a mapper leaves such a script out.
 export {
-  applyMigration,
   foldScriptHooks,
   isStarterConfig,
   PERSISTENT_TODO,
@@ -163,6 +162,7 @@ export {
   quoteTsLiteral,
   taskNameProblem,
 } from './workspace/index.js'
+export { applyMigration } from './orchestrator/index.js'
 // Output components: a plugin draws its lines with core's, so they look alike.
 export { ui } from './ui/index.js'
 export type {

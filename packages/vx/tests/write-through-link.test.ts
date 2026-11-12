@@ -15,7 +15,8 @@ import { rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'bun:test'
-import { applyMigration, type MigrationPlan } from '../src/workspace/index.js'
+import { applyMigration } from '../src/orchestrator/index.js'
+import type { MigrationPlan } from '../src/workspace/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`

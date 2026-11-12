@@ -142,6 +142,7 @@ src/orchestrator/local-floor.ts
 src/orchestrator/local-shortcircuit.ts
 src/orchestrator/locked-digests.ts
 src/orchestrator/lockfile-claim.ts
+src/orchestrator/migration.ts
 src/orchestrator/miss-inputs.ts
 src/orchestrator/miss-outcome.ts
 src/orchestrator/miss-run.ts
@@ -192,6 +193,7 @@ src/report/forecast.ts
 src/report/framed-output.ts
 src/report/index.ts
 src/report/logger.ts
+src/report/migration.ts
 src/report/plain-output.ts
 src/report/status-line.ts
 src/report/summary.ts

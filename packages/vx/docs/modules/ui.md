@@ -12,6 +12,11 @@ reads with `data`. Nothing else writes to a stream, prints with
 (`tests/ui-only-output.unsafe.test.ts`). Design:
 [`docs/design/ui-2026-11.md`](../design/ui-2026-11.md).
 
+The modules below the terminal (cache, exec, graph, sandbox, workspace)
+draw nothing: a warning they give is a `Notice` (`util/notice.ts`).
+`index.ts`, loaded, draws each one: a `line` as `say`, a `notice` as
+`sayLine`.
+
 The screen looks like a TUI and is not one: panels stacked top to
 bottom, written into the scrollback line by line. A panel is its title
 rule `─ Title ───` and its lines, with no box. Nothing is hidden, cut,
@@ -37,9 +42,7 @@ colour, the bytes a test or `grep` reads.
   `progressEscape`, `PROGRESS_CLEAR`, `fileLocations`, `fileMemo`,
   `linkPaths`).
 - `refusal.ts`: a refusal or warning as a notice (`refusalNotice`,
-  `lineNotice`, `messageParts`, `sayNotice`, `sayLine`). Loaded, it draws
-  every `Notice` the modules below say (`util/notice.ts`): a `line` as
-  `say`, a `notice` as `sayLine`. One said before is held and drawn then.
+  `lineNotice`, `messageParts`, `sayNotice`, `sayLine`).
 - `version-line.ts`: `vx --version`, imported alone (`printVersion`).
 
 ### Public surface

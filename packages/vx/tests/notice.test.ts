@@ -45,4 +45,20 @@ describe('notices', () => {
     )
     expect(err).toBe('[vx] p#a: refused\n! vx  config a.ts still evaluating\n')
   })
+
+  // A notice held for a whole run is a warning the user never sees in time:
+  // each entry sets the drawer as it loads, before any run starts. bin.ts
+  // runs every verb through cli/index.ts; a plugin reaches core through the
+  // façade.
+  for (const entry of ['./cli/index.ts', './index.ts']) {
+    it(`${entry} draws a notice the moment it is said`, async () => {
+      const err = await stderrOf(
+        `await import('${entry}')\n` +
+          `const { notify } = await import('./util/index.ts')\n` +
+          `notify({ kind: 'line', tone: 'warn', text: '[vx] now: said\\n' })\n` +
+          `process.stderr.write('after\\n')\n`,
+      )
+      expect(err).toBe('[vx] now: said\nafter\n')
+    })
+  }
 })
