@@ -584,6 +584,8 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/local-close',
     'vx-dte/local-e2e',
     'vx-dte/local-e2e-saves',
+    'vx-dte/local-e2e-workers',
+    'vx-dte/local-e2e-worktrees',
     'vx-dte/measures',
     'vx-dte/noise',
     'vx-dte/outputs',

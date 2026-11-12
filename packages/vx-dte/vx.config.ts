@@ -9,9 +9,12 @@ const HEAVY = [
   'wire-faults',
   'wire-dials',
   'local-e2e',
+  'local-e2e-workers',
   'local-e2e-saves',
+  'local-e2e-worktrees',
   'units',
   'gitlab',
+  'github',
 ]
 const rest = `$(ls tests/*.test.ts | grep -v ${HEAVY.map((f) => `-e /${f}.test.ts`).join(' ')})`
 
@@ -108,9 +111,12 @@ export default defineProject({
         'test.wire-faults',
         'test.wire-dials',
         'test.local-e2e',
+        'test.local-e2e-workers',
         'test.local-e2e-saves',
+        'test.local-e2e-worktrees',
         'test.units',
         'test.gitlab',
+        'test.github',
         'test.rest',
       ],
     },
@@ -118,9 +124,12 @@ export default defineProject({
     'test.wire-faults': testTask('./tests/wire-faults.test.ts'),
     'test.wire-dials': testTask('./tests/wire-dials.test.ts'),
     'test.local-e2e': testTask('./tests/local-e2e.test.ts'),
+    'test.local-e2e-workers': testTask('./tests/local-e2e-workers.test.ts'),
     'test.local-e2e-saves': testTask('./tests/local-e2e-saves.test.ts'),
+    'test.local-e2e-worktrees': testTask('./tests/local-e2e-worktrees.test.ts'),
     'test.units': testTask('./tests/units.test.ts'),
     'test.gitlab': testTask('./tests/gitlab.test.ts'),
+    'test.github': testTask('./tests/github.test.ts'),
     'test.rest': testTask(rest),
   },
 })
