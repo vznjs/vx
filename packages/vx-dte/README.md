@@ -835,8 +835,10 @@ time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
 as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
 (below), so every log reads it beside core's `time` row, and the least
-CPU a run ending then holds: each task's cores for as long as it held its
-worker, and one warm-up of the smallest size. The `drift`
+CPU a run ending then holds: on each platform, its tasks' cores for as
+long as each held its worker, on as few workers of the least costly size
+as end that work by then, each worker's cores less what its machine
+spends besides the run's tasks, and each worker's warm-up. The `drift`
 line says how far past it the run ended and what caused it, along the
 chain of tasks that ended the run: tasks waiting for a worker to join
 past its platform's fastest warm-up, waiting for room on a joined one,

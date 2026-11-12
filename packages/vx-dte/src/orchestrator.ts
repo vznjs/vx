@@ -2481,24 +2481,47 @@ export class Orchestrator {
 
   /**
    * The least CPU its ideal could hold (2026-11-11: "Allocated cpu but
-   * not used counts as used"): each task's cores for as long as it held
-   * its worker, and one warm-up of the smallest worker.
+   * not used counts as used"): on each platform, its tasks' cores for as
+   * long as each held its worker, on workers of the size that holds the
+   * least, each holding its cores less what its machine spends besides
+   * the run's tasks (`othersOf`), as few as end that work by the ideal end
+   * (`idealMs`), each held through its warm-up. One warm-up for the run
+   * was a floor no run reached: a run that ends at its chain starts as
+   * many workers as its width needs, and each warms up (main 5c2463f:
+   * 14.9 core-min where the least of 4 smalls and a Mac held 26,
+   * 2026-11-12).
    */
   leastHeldMs(
     depsOf: (id: string) => readonly string[],
     sizes: readonly Size[],
+    end = this.idealMs(depsOf, sizes),
   ): number | undefined {
     const r = this.replay(depsOf)
     if (r === undefined) return undefined
-    let ms = 0
-    for (const t of r.tasks) ms += t.cores * (t.ms ?? 0)
+    const work = new Map<string | undefined, number>()
+    for (const t of r.tasks)
+      work.set(t.platform, (work.get(t.platform) ?? 0) + t.cores * (t.ms ?? 0))
     const all = [...this.workers.values(), ...this.gone]
-    const smallest = Math.min(
-      ...(sizes.length > 0
-        ? sizes.filter((s) => s.max > 0).map((s) => s.cpu)
-        : all.map((a) => a.cores)),
-    )
-    return ms + (Number.isFinite(smallest) ? smallest * r.warm(undefined) : 0)
+    const others = this.othersOf()
+    const offered =
+      sizes.length > 0
+        ? sizes.filter((s) => s.max > 0)
+        : all.map((a) => ({ name: '', cpu: a.cores, platform: a.platform }))
+    const within = end === undefined ? Infinity : end - r.from
+    let ms = 0
+    for (const [platform, w] of work) {
+      let least = Infinity
+      for (const s of offered) {
+        if (platform !== undefined && s.platform !== undefined && s.platform !== platform) continue
+        const usable = Math.max(s.cpu / 2, s.cpu - (others.get(s.name) ?? 0))
+        const warm = r.warm(s.platform ?? platform)
+        const each = usable * Math.max(0, within - warm)
+        const n = each > 0 && Number.isFinite(each) ? Math.max(1, Math.ceil(w / each)) : 1
+        least = Math.min(least, (w * s.cpu) / usable + n * s.cpu * warm)
+      }
+      ms += Number.isFinite(least) ? least : w
+    }
+    return ms
   }
 
   /**
