@@ -2,9 +2,9 @@
 // carries, a config refusal's frame, or a plain message laid out a fact a
 // line. The flat message stays what `--format json` and logs carry.
 
-import { configRefusal, onNotice, type RefusalParts } from '../util/index.js'
+import { configRefusal, type RefusalParts } from '../util/index.js'
 import { notice, type Block, type Inline } from './components.js'
-import { print, say } from './terminal.js'
+import { print } from './terminal.js'
 import type { Tone } from './theme.js'
 
 // A sentence break before a capital, a backtick or a paren: vx joins
@@ -117,7 +117,3 @@ export function sayNotice(tone: Tone, verb: string, message: string): void {
 export function sayLine(tone: Tone, line: string, verb = 'vx'): void {
   print('err', lineNotice(tone, line, verb))
 }
-
-// The notices of the modules below the terminal (util/notice.ts), drawn
-// once this module loads, as every vx process loads it before a run.
-onNotice((n) => (n.kind === 'line' ? say(n.tone, n.text) : sayLine(n.tone, n.text)))

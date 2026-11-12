@@ -2177,7 +2177,9 @@ export function modeMatches(disk: number, stored: number): boolean
 `cache`, `exec`, `graph`, `sandbox` and `workspace` draw nothing. A
 warning they give mid-run (a grant the sandbox cannot mount, an observer
 that threw, a config still evaluating) is a `Notice`: kind, tone, text.
-`ui` draws it when it loads; one said before is held, never dropped.
+`ui` draws it from the moment `src/ui/index.ts` loads, which every entry
+(`cli/index.ts`, the façade) does before a run; one said before is held,
+never dropped. `notify` is for warning paths only, never once per task.
 
 ### Public surface
 
@@ -2194,7 +2196,8 @@ export function onNotice(draw: (n: Notice) => void): void // set by ui
 ### Tests
 
 `tests/notice.test.ts`: a notice said before `ui` loads is drawn when it
-does; with no `ui`, nothing is written; each kind's bytes. The callers'
+does; with no `ui`, nothing is written; each kind's bytes; each entry
+draws a notice the moment it is said. The callers'
 own pins (`scheduler.test.ts`, `seatbelt-profile.test.ts`,
 `config-eval.test.ts`, `layered-cache.test.ts`, the sandbox suites) hold
 every line byte for byte.
