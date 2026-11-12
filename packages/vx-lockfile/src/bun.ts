@@ -27,6 +27,8 @@ export interface Lockfile {
   readonly workspaceSections: ReadonlyMap<string, string>
   /** workspace package name → its dir */
   readonly workspaceDirs: ReadonlyMap<string, string>
+  /** non-root workspace dir → its own `version`, which `bun pm pack` writes for a dependent's `workspace:` range */
+  readonly workspaceVersions: ReadonlyMap<string, string>
   /** root-relative dir → its installed dependencies (`dependencies` win, as Bun 1.4 installs them) */
   readonly workspaceInstalled: ReadonlyMap<string, ReadonlyMap<string, string>>
   /** root-relative dir → the peers it installs no entry for */
@@ -78,6 +80,7 @@ export function parseLockfile(text: string): Lockfile {
   const workspaces = new Map<string, ReadonlyMap<string, string>>()
   const workspaceSections = new Map<string, string>()
   const workspaceDirs = new Map<string, string>()
+  const workspaceVersions = new Map<string, string>()
   const workspaceInstalled = new Map<string, ReadonlyMap<string, string>>()
   const workspacePeers = new Map<string, ReadonlySet<string>>()
   for (const [dir, manifest] of Object.entries(record(d['workspaces']) ?? {})) {
@@ -91,6 +94,9 @@ export function parseLockfile(text: string): Lockfile {
     )
     workspacePeers.set(key, peerOnly(m))
     if (typeof m['name'] === 'string') workspaceDirs.set(m['name'], key)
+    // The root's is in every key and packs into none: a release bump of it
+    // would re-key every task with node_modules unchanged.
+    if (key !== '.' && typeof m['version'] === 'string') workspaceVersions.set(key, m['version'])
   }
   const packages = new Map<string, Entry>()
   for (const [p, tuple] of Object.entries(record(d['packages']) ?? {})) {
@@ -122,6 +128,7 @@ export function parseLockfile(text: string): Lockfile {
     workspaces,
     workspaceSections,
     workspaceDirs,
+    workspaceVersions,
     workspaceInstalled,
     workspacePeers,
     packages,
@@ -449,9 +456,11 @@ function buildGraph(
   const importers = new Map<string, number>()
   for (const [dir, deps] of lock.workspaces) {
     // Its dir, as pnpm's importers fold theirs (item 1073).
+    // And its version: `bun pm pack` writes it in place of a dependent's
+    // `workspace:*`, so a bump left the dependent's tarball replayed.
     const own = node(
       `workspace\0${dir}`,
-      `workspace\0${dir}\nsections\0${lock.workspaceSections.get(dir)}`,
+      `workspace\0${dir}\nsections\0${lock.workspaceSections.get(dir)}\nversion\0${lock.workspaceVersions.get(dir) ?? ''}`,
     )
     importers.set(dir, own)
     const from = importerFrom(lock, dir)

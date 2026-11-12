@@ -140,34 +140,40 @@ describe('workspace digests (npm)', () => {
     for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
-  it("the root's and a workspace's own version move no digest: npm installs nothing new", () => {
+  it("the root's own version moves no digest: npm installs nothing new", () => {
     // A release bump of the root's version re-keyed every task in the
     // workspace, the root's digest being in every key, with node_modules
-    // unchanged. Bun and pnpm record no importer version.
+    // unchanged.
     const bump = (text: string): string => {
       const doc = JSON.parse(text)
       doc.packages[''].version = '2.0.0'
+      return JSON.stringify(doc, null, 2)
+    }
+    expect(digests(bump(lock()))).toEqual(digests(lock()))
+  })
+
+  it("a workspace's own version moves it and what links it, no other", () => {
+    // `npm pack` and `npm publish` write b's version where c names it: an
+    // unkeyed bump replayed c's packed tarball with the old version.
+    const bump = (text: string): string => {
+      const doc = JSON.parse(text)
       doc.packages['packages/b'].version = '1.0.1'
       return JSON.stringify(doc, null, 2)
     }
     const before = digests(lock())
     const after = digests(bump(lock()))
-    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
+    expect([...after.keys()].filter((dir) => after.get(dir) !== before.get(dir)).sort()).toEqual([
+      'packages/b',
+      'packages/c',
+    ])
   })
 
-  it("a workspaces glob with a trailing slash still names the workspace's own version", () => {
+  it('a workspaces glob with a trailing slash still names the workspace', () => {
     // Turbo #6772: `packages/*/` matched no workspace, so none had a
     // digest of its own and b's version read as an installed package's.
-    const slash = (text: string, version: string): string => {
-      const doc = JSON.parse(text)
-      doc.packages[''].workspaces = ['packages/*/']
-      doc.packages['packages/b'].version = version
-      return JSON.stringify(doc, null, 2)
-    }
-    const before = digests(slash(lock(), '1.0.0'))
-    const after = digests(slash(lock(), '1.0.1'))
-    expect([...before.keys()].sort()).toEqual([...digests(lock()).keys()].sort())
-    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
+    const doc = JSON.parse(lock())
+    doc.packages[''].workspaces = ['packages/*/']
+    expect(digests(JSON.stringify(doc, null, 2))).toEqual(digests(lock()))
   })
 
   it('workspaces written as `{ packages: [...] }` name the same workspaces (Turbo #3235, #3244)', () => {

@@ -542,4 +542,48 @@ export default [
       },
     ],
   }),
+
+  defineCase({
+    id: 'inputs/workspace-dependency-version-bump-repacks',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A new version of a workspace package a project depends on runs that project’s pack again',
+    why: 'Packing or publishing a package writes the version each `workspace:*` dependency has now in place of the range. Here `app` packs a tarball that names `lib`, and `lib`’s version moves from 0.0.0 to 1.0.0 with no other change. A tool that keys `app` on what `lib` installs but not on `lib`’s own version replays the old tarball, and the release ships depending on a version of `lib` that is not the one released with it.',
+    from: ['vx-lockfile/bun', 'vx-lockfile/npm'],
+    workspace: {
+      projects: {
+        lib: { files: { 'src/a.txt': 'lib\n' } },
+        app: {
+          deps: ['lib'],
+          tasks: {
+            pack: {
+              command:
+                'mkdir -p dist && bun pm pack --destination dist --quiet >/dev/null && tar -xzOf dist/*.tgz package/package.json | grep -o \'"lib": *"[^"]*"\' > dist/out.txt',
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'app\n' },
+        },
+      },
+    },
+    steps: [
+      { run: 'pack', expect: { exit: 0, files: { [out('app')]: '"lib": "0.0.0"\n' } } },
+      {
+        write: {
+          'packages/lib/package.json': JSON.stringify(
+            { name: 'lib', version: '1.0.0', private: true, dependencies: {} },
+            null,
+            2,
+          ),
+        },
+      },
+      { install: true },
+      {
+        run: 'pack',
+        expect: { exit: 0, ran: ['app#pack'], files: { [out('app')]: '"lib": "1.0.0"\n' } },
+      },
+    ],
+  }),
 ]
