@@ -1,9 +1,8 @@
-// A plugin's own entries in the cache the workspace declares (`ctx.cache`): the
-// local store first, then each remote in declared order, under the run's policy
-// and scope. The plugin speaks names; core derives the key, so no plugin
-// reaches another's entries or a task's. An entry is written once and never
-// replaced (the cache is immutable). Every failure is an absent answer, never a
-// warning (M: no extra runtime warnings): what a plugin keeps here is a hint.
+// A plugin's own entries in the workspace's cache (`ctx.cache`): local first,
+// then each remote in order, under the run's policy and scope. The plugin
+// speaks names and core derives the key, so no plugin reaches another's entries
+// or a task's. Written once, never replaced. Every failure is an absent answer,
+// never a warning: what a plugin keeps here is a hint.
 
 import type { Database } from 'bun:sqlite'
 import { thrownMessage, xxh3hex } from '../util/index.js'
@@ -18,9 +17,9 @@ export const PLUGIN_ENTRY_MAX_BYTES = 1024 * 1024
 /** What a plugin's `ctx.cache` offers. Keys are the plugin's own names. */
 export interface PluginCache {
   /**
-   * The bytes stored under `key`, from the first layer holding them; null
-   * when none does. On a scoped run a remote is asked for the branch's
-   * entry, or with `scoped` false the base branch's: one request either way.
+   * The bytes under `key` from the first layer holding them, or null. A scoped
+   * run asks a remote for the branch's entry, or with `scoped` false the base
+   * branch's: one request.
    */
   get(key: string, scoped?: boolean): Promise<Uint8Array | null>
   /** Store `bytes` under `key` in every layer the policy writes, where it is not already; empty bytes store nothing. */
@@ -33,9 +32,9 @@ export interface PluginCache {
    */
   hasMany(keys: readonly string[], scoped?: boolean): Promise<Set<string> | null>
   /**
-   * What core kept of a run under `name` (a `log` or `outputs` name its
-   * `RunReport` hands `teardown`), from the first readable remote holding
-   * it; null when none does. Uncapped: core wrote it.
+   * What core kept of a run under `name` (a `RunReport` `log` or `outputs`
+   * name), from the first readable remote; null when none. Uncapped: core wrote
+   * it.
    */
   getRun(name: string): Promise<Uint8Array | null>
 }
@@ -54,9 +53,8 @@ function entryKey(plugin: string, name: string): string {
 }
 
 /**
- * A remote body's bytes; null past the cap (read no further than it) and for an
- * empty or odd body, which kept would hide every later good one: an entry is
- * written once (Security).
+ * A remote body's bytes; null past the cap and for an empty or odd body, which
+ * kept would hide every later good one.
  */
 async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint8Array | null> {
   if (body instanceof Blob) {
@@ -89,17 +87,15 @@ async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint
 }
 
 /**
- * `plugin`'s view of the cache. The local store never knows a scope: it keeps
- * every entry under its name's key. A scoped run writes a remote only under the
- * scope's key, and reads one key: the scope's, or with `scoped` false the
- * default (no request twice).
+ * `plugin`'s view of the cache. The local store keeps every entry under its
+ * name's key. A scoped run writes a remote only under the scope's key and reads
+ * one key.
  */
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache {
   const { db, policy, scope } = host
   // A plugin's entries are not task artifacts: a policy that reads no remote
-  // artifact (a cold run, `--force`) still reads them, so the run is planned on
-  // the default branch's timings. A cold CI run asked workers for 128 tasks
-  // with 0 measured, at 25% of their cores.
+  // artifact (`--force`) still reads them, so the run is planned on known
+  // timings.
   const readers = host.remotes.filter((r) => r.read || r.write)
   const writers = host.remotes.filter((r) => r.write)
   // Each remote's fault said once per kind: unsaid, a remote down left DTE

@@ -26,19 +26,16 @@ import {
 } from './store-index.js'
 
 /**
- * Row-less lookups answered by a stat each before the artifact directory
- * is listed once instead: a warm run's few misses keep their stat, a
- * cold run's thousands share one listing.
+ * Row-less lookups answered by a stat each until the artifact directory is
+ * listed once: a warm run's few misses stat, a cold run's thousands share one
+ * listing.
  */
 const ADOPT_STATS = 64
 
 /**
- * A hit renews an entry's `accessed_at` only once it is older than this:
- * renewing every hit rewrote 2,180 rows at a warm 1,090-package run's
- * close, ~30 ms of it. So `accessed_at` trails the last use by at most
- * this much, and the prune policy reads it plus this as the last use:
- * an entry used within the limit is never pruned, and one may stay up to
- * this long past it.
+ * A hit renews `accessed_at` only once older than this (renewing every hit
+ * rewrote thousands of rows at close). The prune reads it plus this as the last
+ * use.
  */
 export const ACCESS_REFRESH_MS = 60 * 60 * 1000
 
@@ -67,18 +64,16 @@ interface EntryRow {
 
 /**
  * The entry a row answers. Its log is a getter, decompressed on each access
- * and, past `LOG_INLINE_BYTES`, read from the index then (`log`), so an
- * entry held from the probe to its replay holds no log text and the replay
- * drops it once printed. A reader takes it once.
+ * and, past `LOG_INLINE_BYTES`, read then, so an entry held until its replay
+ * holds no log text. Read it once.
  */
 function entryOf(
   row: LiveRow,
   fileRows: OutputFileRow[],
   log: (hash: string) => string,
 ): CacheEntry {
-  // Assigned, not spread, and the date formatted only when read: a warm
-  // run's probe builds one per hit and reads neither (~4 ms of 8,002
-  // entries).
+  // Assigned, not spread, and the date formatted only when read: a warm probe
+  // builds one per hit and reads neither.
   const entry: CacheEntry = {
     hash: row.hash,
     taskId: `${row.project}#${row.task}`,
@@ -117,14 +112,10 @@ export async function get(
 }
 
 /**
- * Index an artifact the index does not know, from its own bytes: the
- * artifact is the record, the index only an inventory of it
- *. A reset index (a `SCHEMA_VERSION` change, a `cache.db` or
- * `store.db` deleted) loses nothing a task asks for again. The artifact
- * is checked as an ingest checks a remote's (its recorded key, its names
- * against the declared outputs); one that fails is a miss, and the run
- * that follows saves over it. An inline artifact is read first, as every
- * reader reads it, and indexed in one transaction with its bytes.
+ * Index an artifact the index does not know, from its own bytes: the artifact
+ * is the record, the index an inventory, so a reset index loses nothing. It is
+ * checked as an ingest checks a remote's (key, names); a failure is a miss. An
+ * inline artifact is indexed in one transaction with its bytes.
  */
 async function adopt(ix: StoreIndex, hash: string, ctx: CacheGetContext): Promise<boolean> {
   // Built only for an artifact found: its command is masked on read.
@@ -147,10 +138,9 @@ async function adopt(ix: StoreIndex, hash: string, ctx: CacheGetContext): Promis
     // A second name for the same bytes: the index step renames it over
     // the artifact inside its write transaction, as for a save.
     linkSync(finalPath, tmpPath)
-    // The link shares the artifact's inode and so its mtime, which an
-    // artifact that needs adopting has had for hours: another process's
-    // orphan sweep read the temp as a crashed save's and took it, and the
-    // artifact with it, while this adopt was scanning them.
+    // The link shares the artifact's mtime, hours old for one that needs
+    // adopting: another process's sweep would read the temp as a crashed
+    // save's.
     const now = new Date()
     utimesSync(tmpPath, now, now)
   } catch {
@@ -160,12 +150,9 @@ async function adopt(ix: StoreIndex, hash: string, ctx: CacheGetContext): Promis
 }
 
 /**
- * Whether `hash` may have a file artifact: a stat for the first
- * `ADOPT_STATS` asks, then one listing of the directory. A cold
- * 1,090-package run asked 3,270 times before its first task ran. A
- * name listed and since removed fails the adopt's link, a miss; a file
- * another process writes after the listing is missed too, and its own
- * row serves it.
+ * Whether `hash` may have a file artifact: a stat for the first `ADOPT_STATS`
+ * asks, then one listing. A name removed since fails the link, a miss; a file
+ * written after the listing has its own row.
  */
 function artifactFileMayExist(ix: StoreIndex, hash: string): boolean {
   const name = `${hash}.tar.zst`
@@ -217,17 +204,12 @@ async function readEntry(ix: StoreIndex, hash: string): Promise<CacheEntry | nul
     if (st.mtimeMs < Date.now() - ORPHAN_GRACE_MS) ix.staleTimes.add(hash)
   }
 
-  // Deferred: per-hit UPDATEs cost ~60 ms across 2000+ probes on a
-  // full-cache run. Hashes are collected and flushed as ONE batched
-  // UPDATE by flushAccessed() (called from prune/stats/close), which
-  // is when accessed_at is actually read.
+  // Deferred: per-hit UPDATEs cost ~60 ms across a full-cache run. Flushed as
+  // one UPDATE by flushAccessed(), when accessed_at is read.
   if (row.accessed_at < Date.now() - ACCESS_REFRESH_MS) ix.touched.add(hash)
 
-  // Pure SQL: outputFiles come from the output_files rows and
-  // stdout from the entries row. The artifact is NOT touched here —
-  // decompressing it made hit cost scale with artifact size (73 ms
-  // for four up-to-date hits on ~70 MB binaries). restoreOutputs
-  // reads the artifact itself, only when extraction actually runs.
+  // Pure SQL: the artifact is not touched, so a hit's cost does not scale with
+  // its size. restoreOutputs reads it only when extracting.
   const fileRows = ix.localMemo.loadOutputFilesBatch([hash]).get(hash) ?? []
   const entry = entryOf(row as LiveRow, fileRows, (h) => logOf(ix, h))
   entry.outputDirRows = ix.localMemo.loadOutputDirsBatch([hash]).get(hash) ?? []

@@ -66,13 +66,11 @@ export function usageOfEntry(entry: {
 }
 
 /**
- * The directories with a mode to restore (`DIR_MODE` rows) that are absent
- * before the restore, or stand with another mode, deepest first: the
- * restore makes a missing one with mkdir's default, and each is then given
- * the mode the miss left, minus the umask as a file's is. A standing one
- * kept its own mode once, so a branch switch A → B → A left B's 0755 on
- * A's `chmod 700 dist/keys`. A symlink is never followed. A mode only ever
- * narrows mkdir's default, whatever an artifact says.
+ * The directories with a mode to restore that are absent or stand with another
+ * mode, deepest first: each gets the mode the miss left, minus the umask. A
+ * standing one must be set too, or a branch switch A → B → A keeps B's 0755 on
+ * A's `chmod 700 dist/keys`. A symlink is never followed; a mode only ever
+ * narrows mkdir's default.
  */
 function modedDirs(
   rows: readonly OutputFileRow[],
@@ -104,11 +102,9 @@ function rowDir(
 }
 
 /**
- * The directories with no recorded mode that stood narrower than 0755
- * through the restore (a switch from an entry that chmods one, a hand's
- * chmod), each to be given 0755: an entry records only a narrower mode. A
- * directory the restore made (`made`, found missing) is mkdir's, 0755
- * already, and is not asked about again.
+ * The directories with no recorded mode that stood narrower than 0755 (a switch
+ * from an entry that chmods one, a hand's chmod), each to get 0755. One the
+ * restore made is 0755 already.
  */
 function narrowedDirs(
   rows: readonly OutputFileRow[],
@@ -141,11 +137,9 @@ function inTree(p: string | undefined, tree: string): boolean {
 }
 
 /**
- * Whether an artifact entry names one of the task's declared outputs, as
- * the save could have packed it (`restorableOutput`: a `!` take-back, vx's
- * own files and an unnamed `node_modules` are none). Asked at ingest and
- * again at every restore, so an entry that reached the local store by any
- * route still writes nothing it should not.
+ * Whether an artifact entry names one of the task's declared outputs as the
+ * save could have packed it. Asked at ingest and at every restore, so an entry
+ * reaching the local store by any route writes nothing it should not.
  */
 export function declaredName(declared: DeclaredOutputs): (name: string, dir?: boolean) => boolean {
   const isFile = restorableOutput(declared.files)
@@ -173,12 +167,11 @@ export async function restoreOutputs(
   } catch (err) {
     if (!(err instanceof CorruptArtifactError)) throw err
     let failed = err
-    // A file artifact has no `at` to say a re-save in another process
-    // replaced it since the probe: the probe's rows then name another
-    // build's files, and this one reads as corrupt. Rows that changed
-    // since are that race, so the restore runs once more on the rows read
-    // now, and an entry is dropped only while its rows are the ones that
-    // failed: another process's fresh entry is never taken.
+    // A file artifact has no `at` to say another process re-saved it since the
+    // probe; the probe's rows then name another build's files and this one
+    // reads as corrupt. Rows that changed are that race: restore again on the
+    // rows read now, and drop an entry only while its rows are the ones that
+    // failed.
     if (entryChanged(ix, hash, used.rows)) {
       try {
         await restoreOutputsOnce(ix, hash, projectDir, workspaceRoot, outputs, used, true)
@@ -188,10 +181,9 @@ export async function restoreOutputs(
         failed = again
       }
     }
-    // Bad bytes under a good key failed the task on every run until
-    // `--force`, since nothing rewrote them. The
-    // entry goes, and the caller runs the task, whose save stores it
-    // again; running is always correct, only slower than a hit.
+    // Bad bytes under a good key would fail the task every run, since nothing
+    // rewrites them. The entry goes and the task runs; its save stores it
+    // again.
     if (ix.write && !(await dropUnchanged(ix, hash, used.rows)))
       throw new ArtifactVanishedError(hash)
     throw new ArtifactVanishedError(
@@ -214,11 +206,9 @@ function entryChanged(ix: StoreIndex, hash: string, rows: readonly OutputFileRow
 }
 
 /**
- * Restore a tree-form entry: its files copied (or cloned) out one by
- * one, and its links laid, where the outputs are absent, as on every
- * restore after a clean. Anything else (a tree to restore into, a
- * workspace output, a link the extractor would refuse) goes through the
- * extractor the tar form uses, fed the tree packed back into its tar.
+ * Restore a tree-form entry by copying (or cloning) its files out and laying
+ * its links where the outputs are absent, as after a clean. Anything else goes
+ * through the tar extractor, fed the tree packed back into its tar.
  */
 async function restoreTree(
   ix: StoreIndex,
@@ -272,10 +262,9 @@ async function restoreTree(
 }
 
 /**
- * The tree packed back into its tar, its sidecar rebuilt from the rows
- * and each file held to its row's size: the tree form keeps no checksum,
- * and a file cut short at rest (a crash after its rename, before its data
- * reached the disk) was restored, and uploaded under a fresh sum.
+ * The tree packed back into its tar, its sidecar rebuilt from the rows and each
+ * file held to its row's size: the tree form keeps no checksum, and a file cut
+ * short at rest must not be restored or uploaded under a fresh sum.
  */
 export function treePlan(
   ix: StoreIndex,
@@ -310,17 +299,13 @@ export function treePlan(
 }
 
 /**
- * The copy-out: false, having written nothing, where it is not the case it
- * serves. It writes only where nothing stands: each file's place is absent,
- * and every directory on the way either is a real directory or is absent
- * and made here. solid's build outputs `store/dist/**` beside the sources
- * in `store/`; asking that each output's TOP be absent sent every such
- * restore through the tar extractor, ~25 ms a task. The
- * files of each absent top directory are copied into the workspace's
- * `.vx/tmp/` (`copyStaging`) and the directory renamed in once, so a
- * reader finds it complete or not at all; one staging cannot rename into
- * as a write in place would land (another filesystem, a setgid
- * directory) is the extractor's.
+ * The copy-out: false, having written nothing, where it does not apply. It
+ * writes only where nothing stands: each file's place is absent, and every
+ * directory on the way is real or absent and made here (solid keeps
+ * `store/dist/**` beside sources, so asking the whole top be absent sent such
+ * restores to the extractor). Each absent top directory is built in `.vx/tmp/`
+ * and renamed in once, so a reader finds it complete or not at all; where
+ * staging cannot rename as a write in place would land, the extractor takes it.
  */
 async function copyTree(
   ix: StoreIndex,
@@ -355,10 +340,8 @@ async function copyTree(
   if (links.length > 0 && !(await linksRestorable(links, rows, projectDir, workspaceRoot)))
     return false
   // What stands at each path, asked once: a real directory, nothing, or
-  // anything else (a file, a link), which the extractor's rules decide.
-  // Synchronous: the walk before this one looked these paths up, so each
-  // answer is a cached dentry, and the async form cost a 1,600-restore run
-  // ~40 ms of its main thread in promises.
+  // anything else, which the extractor decides. Synchronous: the walk before
+  // cached these dentries.
   const standing = new Map<string, 'dir' | 'absent' | 'other'>()
   const at = (rel: string): 'dir' | 'absent' | 'other' => {
     let known = standing.get(rel)
@@ -398,16 +381,13 @@ async function copyTree(
   const roots = [...made].filter((d) => ![...made].some((o) => d.startsWith(`${o}/`)))
   readUmask()
   const plain = restoredMode(0o666)
-  // Another process's re-save of this key renames the tree aside and a
-  // new one in mid-copy: the files copied after came from another build.
-  // A changed inode is that race, a miss (the task runs), and the entry
-  // the other process saved is kept. `ino` is the tree's as the restore
-  // found it, before this walk: a swap since is caught all the same.
+  // Another process's re-save renames the tree aside mid-copy, so later files
+  // would come from another build. A changed inode is that race: a miss, and
+  // the other process's entry is kept.
   const swapped = (): boolean => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino
-  // A standing directory of this user's that withholds its own write (a
-  // task's `chmod 555 dist/ro`) gets owner write and search for the copy
-  // and its mode back after, as the extractor's rename does: else only
-  // root could restore a file into it, and the hit failed EACCES.
+  // A standing directory of this user's withholding its own write (`chmod 555
+  // dist/ro`) gets owner write and search for the copy and its mode back after,
+  // as the extractor's rename does.
   const reopened = new Map<string, number>()
   const reopen = (dir: string): boolean => {
     if (reopened.has(dir)) return true
@@ -418,15 +398,12 @@ async function copyTree(
     chmodSync(dir, (st.mode & 0o7777) | 0o300)
     return true
   }
-  // A missing top directory is built whole in staging and renamed in
-  // once, as the extractor does: copied in place, a reader met its files
-  // empty, then short. A file missing from a directory that stands is
-  // copied straight to its place: a temp renamed in cost such a restore
-  // a fifth to a third more (tmpfs, 3,000 files).
+  // A missing top directory is built in staging and renamed in once, as the
+  // extractor does. A file missing from a standing directory is copied straight
+  // to its place: a temp and rename cost a fifth to a third more.
   if (roots.length === 0 && placed.length === 0) return true
-  // A restore into a project directory not there yet makes it, as the
-  // copy in place did.
-  // Its stat also answers, below, what a rename into it keeps.
+  // A restore into a project directory not there yet makes it. Its stat also
+  // answers what a rename into it keeps.
   let projectStat: Stats | undefined
   try {
     projectStat = statSync(projectDir, { throwIfNoEntry: false })
@@ -458,13 +435,10 @@ async function copyTree(
     }
     return path.join(projectDir, rel)
   }
-  // Per file, not `fs.promises.cp` of the tree (14.5 ms for vueuse's 92
-  // tree files against 1.9; `cpSync` 3.5), nor a Worker: the copies are
-  // 1.9 ms of a 25 ms restore, and one Worker's start is 1.5–2.4 ms.
-  // A tree file is asked its type first: a FIFO at its place (damage at
-  // rest) blocked the copy's open for a writer that never came, and the
-  // run hung. An lstat, not an open of our own handed to Bun:
-  // Bun clones only from a path, and a link there is damage too.
+  // Per file, not `fs.promises.cp` of the tree (7× slower) nor a Worker (its
+  // start costs more than the copies). A tree file's type is asked first: a
+  // FIFO at its place (damage at rest) would hang the copy's open. An lstat:
+  // Bun clones only from a path.
   const copy = async (to: string, from: string, rel: string): Promise<number> => {
     if (lstatSync(from, { throwIfNoEntry: false })?.isFile() === false)
       throw new CorruptArtifactError(hash, `${rel} is not a file in its stored tree`)
@@ -491,9 +465,8 @@ async function copyTree(
     const leaves = sorted.filter((d, i) => !sorted[i + 1]?.startsWith(`${d}/`))
     if (leaves.length === 1) await mkdir(leaves[0]!, { recursive: true })
     else await Promise.all(leaves.map((d) => mkdir(d, { recursive: true })))
-    // Every copy settles before a failure is handled: one still in flight
-    // would write its file again after the cleanup removed it.
-    // A link is undated, as the extractor lays it.
+    // Every copy settles before a failure is handled, or one would write again
+    // after the cleanup. A link is undated, as the extractor lays it.
     const copied = await Promise.allSettled([
       ...files.map(async (r) => {
         const to = target(r.path)
@@ -549,10 +522,9 @@ async function copyTree(
 }
 
 /**
- * Remove one entry while its rows are still `rows`: false, touching
- * nothing, once another process re-saved the key. Checked and dropped
- * under the write lock a save renames its artifact in under, so no save
- * lands between; the artifact is moved aside inside, unlinked after.
+ * Remove one entry while its rows are still `rows`: false, touching nothing,
+ * once another process re-saved the key. Checked under the write lock a save
+ * renames under, so no save lands between.
  */
 async function dropUnchanged(
   ix: StoreIndex,
@@ -598,58 +570,29 @@ async function restoreOutputsOnce(
   used: { rows: readonly OutputFileRow[] },
   fresh: boolean,
 ): Promise<void> {
-  // In-process extraction — no fork+exec on the hot path
-  // (~5-10ms reclaimed per hit vs the prior subprocess `tar -xf`).
-  //
-  // The "tree is already current" skip-everything check happens at
-  // the orchestrator level (using the batched `output_files` map),
-  // BEFORE this method runs. By the time we're here we've committed
-  // to a fresh extract.
-  //
-  // `stdout` / `stderr` entries in the archive are ignored on this
-  // path — they're surfaced via `get()` for the orchestrator to
-  // replay through the logger.
+  // In-process extraction, no `tar` subprocess. The skip-if-current check ran
+  // before this; here the restore is committed. `stdout` entries are ignored:
+  // `get()` surfaces them for replay.
   const src = tarPath(ix, hash)
-  // The caller already committed to this hit and WIPED the declared
-  // outputs, so a restore that did not fail here would report a green cache
-  // hit over an emptied output tree. The artifact existed when `get()`
-  // probed it, so its absence now means something removed it underneath us
-  // (a `vx cache clean` in another shell, here or for another workspace
-  // on a shared `--cache-dir`) — `ArtifactVanishedError`, which the caller
-  // turns into a miss: the task runs.
-  //
-  // The FAILING is held twice: the decode below reaches the missing file
-  // and throws `CorruptArtifactError` from the extract catch either way.
-  // What the `ENOENT` mapping in that catch carries alone is the CLASS,
-  // and the two ask for opposite answers — a prune raced this run (run
-  // the task) versus the cache holds bad bytes (fail, and say so). The
-  // roundtrip row asserts the class; a row that only asserts
-  // "the restore fails" passes with the mapping deleted. A separate
-  // `exists()` probe would cost one thread-pool round trip per restore, to
-  // learn what the read reports itself.
+  // The caller WIPED the outputs already, so a restore must fail rather than
+  // report a green hit over an empty tree. The artifact existed at `get()`, so
+  // its absence means another process removed it: `ArtifactVanishedError`,
+  // which the caller turns into a miss. The `ENOENT` mapping below carries that
+  // CLASS (a raced prune runs the task; bad bytes fail), so tests assert the
+  // class, not only the failure.
   const endRows = span('restore: rows')
-  // The index says exactly which files this entry materializes. If the
-  // archive cannot produce one of them, restoring "successfully" leaves a
-  // hole that no later run detects: the skip-restore check compares the
-  // same truncated expectation against the same truncated tree and agrees
-  // forever. Refuse instead of silently under-restoring — checked before
-  // anything is renamed into place.
+  // The index says exactly which files this entry restores; an archive missing
+  // one would leave a hole no later check detects. Refused before anything is
+  // renamed into place.
   //
-  // An inline artifact and its rows are read in one read transaction, so
-  // one snapshot: a re-save of the key in another process replaces both
-  // in one commit, and two reads could pair its rows with the old bytes.
-  // The probe's held rows serve only while the blob carries the
-  // `at` the probe saw: a re-save or a renewal since moves it, and then
-  // the rows are read again in the blob's snapshot. A file artifact's
-  // re-save is caught after, by its rows (`restoreOutputs`).
+  // An inline artifact and its rows are read in one transaction, one snapshot,
+  // since a re-save replaces both in one commit. The probe's held rows serve
+  // only while the blob carries the `at` the probe saw. A file artifact's
+  // re-save is caught after, by its rows.
   let rows: readonly OutputFileRow[] = []
   let inline: Uint8Array | undefined
-  // With the probe's rows held, no transaction: a file artifact's tree,
-  // standing now, is the live one, read with no statement (an inline save
-  // moves the tree aside in the commit that adds its blob, and one moved
-  // aside mid-copy is the race `copyTree` catches); an inline one is the
-  // blob read alone, its own snapshot. The blob read and its transaction
-  // cost a 1,600-restore run ~70 ms of its main thread.
+  // With the probe's rows held, no transaction: a standing file artifact's tree
+  // is the live one, and an inline blob is read alone, its own snapshot.
   const held = fresh ? undefined : ix.outputs.heldRowsOf(hash)
   const heldAt = ix.heldInlineAt.get(hash)
   let treeIno: number | undefined
@@ -702,24 +645,17 @@ async function restoreOutputsOnce(
     }
   }
 
-  // One tar reader and one extractor either way; only the decode differs
-  // by size. A large artifact is decoded and read as it streams, so the
-  // restore costs a chunk of memory, not 4× the artifact (measured
-  // on 150 MiB: +644 MiB in memory, +49 MiB streamed, same
-  // wall time). A small one is decoded in one call: the stream setup
-  // costs ~35 µs per artifact, which is 4% of the headline restore row
-  // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
-  // per 1 000). The local artifact was validated at ingest, so a missing
-  // declared size is allowed; the output ceiling applies to both.
+  // One tar reader and extractor; only the decode differs. A large artifact is
+  // decoded as it streams, a chunk of memory instead of 4× the artifact. A
+  // small one is decoded in one call: stream setup costs ~35 µs each. Validated
+  // at ingest, so a missing declared size is allowed; the ceiling applies to
+  // both.
   const tree = treeIno === undefined ? undefined : treePathOf(ix, hash)
   const written = new Map<string, number>()
   const endExtract = span('restore: extract')
   try {
-    // Every step here is an async filesystem call on purpose: a
-    // synchronous restore of a small artifact is 2× faster ALONE (1.25 →
-    // 0.62 ms sequential) and 30% slower in the run, where
-    // four workers overlap their round trips and a blocking one stalls
-    // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
+    // Every step is async on purpose: a synchronous small restore is 2× faster
+    // alone and 30% slower in a run, where workers overlap their round trips.
     const accept = outputs === undefined ? undefined : declaredName(outputs)
     if (tree !== undefined) {
       await restoreTree(
@@ -767,27 +703,19 @@ async function restoreOutputsOnce(
       err instanceof ArtifactVanishedError
     )
       throw err
-    // The save and the ingest proved every name safe, so one that reads
-    // unsafe now is damaged or tampered bytes: a long name's pax record
-    // has no header checksum, and the name is judged before the CRC at
-    // the end is read. Thrown as is, it failed the task on every run with
-    // the entry kept.
+    // Save and ingest proved every name safe, so one that reads unsafe now is
+    // damaged or tampered (a pax record has no header checksum, and the name is
+    // judged before the CRC). Corrupt, not a task failure every run.
     if (err instanceof ArchiveSecurityError) throw new CorruptArtifactError(hash, err.message, err)
-    // What is on disk, not what is in the archive: a directory standing
-    // where the entry holds a file, or a file where it needs a directory.
-    // The restore removes the FILES the output globs select that block it
-    // and the directories that removal emptied, so this is a path it left: one
-    // the globs do not cover, or an empty directory where a file goes,
-    // which `dist/**` covers and the clean does not take.
-    // Named as such, not as a corrupt artifact. A
-    // link on the way never lands here: the extractor writes through one
-    // that stays in the project, dangling or not, and names one that
-    // leaves it or loops.
+    // What is on disk, not in the archive: a directory where the entry holds a
+    // file, or the reverse. The restore removed what the globs select, so this
+    // is a path it left (one the globs do not cover, or an empty directory
+    // where a file goes). Named as such, not as a corrupt artifact. A link on
+    // the way never lands here.
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'EISDIR' || code === 'ENOTDIR' || code === 'EEXIST' || code === 'ENOTEMPTY') {
-      // Bun's message already opens with the code: `EEXIST: EEXIST: …` read
-      // as a stutter. EEXIST and ENOTDIR are a FILE in a directory's
-      // place; the told-backwards sentence named only the reverse.
+      // Bun's message already opens with the code. EEXIST and ENOTDIR are a
+      // FILE in a directory's place.
       const msg = (err as Error).message
       const what =
         code === 'EISDIR' || code === 'ENOTEMPTY'
@@ -798,21 +726,17 @@ async function restoreOutputsOnce(
           `A restore replaces what the output globs select, not this — remove it and re-run.`,
       )
     }
-    // A legal name under a destination deep enough that the two together
-    // pass PATH_MAX: the artifact is fine, the workspace's location is
-    // not.
+    // A legal name under a destination deep enough to pass PATH_MAX together:
+    // the workspace's location is the problem.
     if (code === 'ENAMETOOLONG') {
       throw new UserError(
         `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${(err as Error).message}). ` +
           `An output path under this directory is longer than the file system allows — move the workspace to a shorter path.`,
       )
     }
-    // Same distinction for a tree the process cannot write into — a
-    // `dist/` another user owns, a read-only checkout, a full disk: the
-    // artifact is intact, the tree is not the process's to change.
-    // A refusal to READ the artifact is the cache directory's, not the
-    // outputs': the old line sent the reader to the wrong tree.
-    // A tree copy's error can name its source; no read fails ENOSPC.
+    // A tree the process cannot write (another user's `dist/`, a read-only
+    // checkout, a full disk): the artifact is intact. A refusal to READ the
+    // artifact is the cache directory's.
     if (
       isFsRefusal(err) &&
       code !== 'ENOSPC' &&
@@ -824,9 +748,8 @@ async function restoreOutputsOnce(
           `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
       )
     }
-    // The outputs may be writable while `.vx/tmp/`, where a restore
-    // stages, is not: a read-only source mount with writable output
-    // volumes. The outputs' remedy sent the user to the wrong path.
+    // The outputs may be writable while `.vx/tmp/`, where a restore stages, is
+    // not.
     if (isFsRefusal(err)) {
       const top = workspaceRoot === undefined ? undefined : stagingRoot(workspaceRoot)
       if (top !== undefined && code !== 'ENOSPC' && code !== 'EDQUOT' && inTree(err.path, top)) {
@@ -855,11 +778,8 @@ async function restoreOutputsOnce(
     if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
       throw new ArtifactVanishedError(hash)
     }
-    // So is a tree a prune or another process's re-save moved aside
-    // mid-copy. The tree the restore found, still in place, lacking a
-    // file is damage at rest (a hand-deleted file): called vanished "(a
-    // vx cache clean)" that never ran, and kept, so the demoted task's
-    // own probe hit it again and said so twice.
+    // So is a tree a prune or re-save moved aside mid-copy. The tree still in
+    // place lacking a file is damage at rest, not a clean that never ran.
     const missing = (err as NodeJS.ErrnoException).path
     if (code === 'ENOENT' && tree !== undefined && inTree(missing, tree)) {
       if (lstatSync(tree, { throwIfNoEntry: false })?.ino !== treeIno)
@@ -867,11 +787,9 @@ async function restoreOutputsOnce(
       const rel = path.relative(tree, missing!).split(path.sep).join('/')
       throw new CorruptArtifactError(hash, `${rel} is missing from its stored tree`)
     }
-    // A staged file the restore itself just wrote is gone before its
-    // commit: another process cleaned the same outputs under us (two runs
-    // on one workspace, a `vx watch` beside a `vx run` — a clean landing
-    // 4–32 ms into a 2,000-file restore reproduces it). The
-    // artifact is intact; the tree was not ours alone.
+    // A file the restore just staged is gone before its commit: another process
+    // cleaned the same outputs (a `vx watch` beside a `vx run`). The artifact
+    // is intact; the tree was not ours alone.
     if (code === 'ENOENT' && /\.vx-tmp-|[\\/]\.vx[\\/]tmp[\\/]/.test((err as Error).message)) {
       throw new UserError(
         `restore of ${hash} into ${projectDir} was interrupted: a file it had just written vanished (${(err as Error).message}). ` +

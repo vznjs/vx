@@ -34,9 +34,9 @@ import {
 const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 /**
- * What the orphan sweep may judge: a row-less artifact file or inline
- * artifact (`blob`, its hash), or a dead file — a temp, or a file an
- * inline artifact of its key shadows — which goes whatever the policy.
+ * What the orphan sweep may judge: a row-less artifact (file or inline) or a
+ * dead file (a temp, or a file an inline artifact of its key shadows), which
+ * goes whatever the policy.
  */
 interface RowlessFile {
   file?: string
@@ -47,9 +47,8 @@ interface RowlessFile {
 }
 
 /**
- * What a prune takes under `policy`: index rows by `accessed_at` and
- * row-less artifacts by file time, under one rule (a temp always). The
- * rows are the non-phantom ones; the files are past the in-flight grace.
+ * What a prune takes under `policy`: rows by `accessed_at`, row-less artifacts
+ * by file time, under one rule (a temp always).
  */
 function pickVictims(
   rows: ReadonlyArray<{ hash: string; size_bytes: number; accessed_at: number }>,
@@ -97,10 +96,8 @@ function pickVictims(
 
 /**
  * Artifacts `indexed` does not hold, and temps, past the in-flight grace
- * window: one readdir, one stat per candidate. `indexed` is asked only
- * once the readdir succeeded: with the directory gone, macOS answers a
- * read of the index SQLITE_IOERR_VNODE, and an unreadable directory
- * reports nothing.
+ * window. `indexed` is asked only once the readdir succeeded: with the
+ * directory gone, macOS answers SQLITE_IOERR_VNODE.
  */
 async function scanOrphanFiles(
   cacheDir: string,
@@ -192,21 +189,17 @@ async function pruneIndex(
   now: number = Date.now(),
 ): Promise<PruneResult> {
   flushAccessed(ix)
-  // Before any entry is deleted, so a kept entry's pending snapshot is on
-  // disk whatever the eviction does next. A pruned hash's snapshot cannot
-  // orphan rows in either order: landed first, the cascade takes them;
-  // landed after, the flush's own entry check drops them.
+  // Before any entry is deleted, so a kept entry's pending snapshot is on disk.
+  // A pruned hash's snapshot orphans no rows in either order.
   ix.outputs.flushOutputDirs()
   const { olderThanMs, maxBytes, dry = false } = options
   if (olderThanMs === undefined && maxBytes === undefined) {
     throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
   }
 
-  // Rows whose artifact is gone (deleted by hand, or by a disk cleaner):
-  // never a hit, and their bytes are on no disk, but `--max-size` counted
-  // them and evicted real entries to make room for them. None
-  // is evicted or freed, whatever its age; the ones past the
-  // grace window are dropped.
+  // Rows whose artifact is gone: never a hit, so `--max-size` must not count
+  // them and evict real entries for them. Past the grace window they are
+  // dropped.
   const { phantoms, stale, rows, inline } = await phantomRows(ix)
   const picked = pickVictims(
     rows.filter((r) => !phantoms.has(r.hash)),
@@ -221,23 +214,18 @@ async function pruneIndex(
   let orphanBytes = 0
   for (const o of picked.files) orphanBytes += o.size
 
-  // Delete DB rows in a single transaction (one fsync; ON DELETE
-  // CASCADE clears `output_files`) and unlink artifacts in parallel.
-  // Replaces N round-trips + serialized rm with one transaction + a
-  // Promise.all over the unlinks. The hash list binds as one `json_each`
-  // parameter, so a huge eviction stays under any build's bound-parameter
-  // ceiling.
+  // Delete rows in one transaction (CASCADE clears `output_files`) and unlink
+  // artifacts in parallel. The hashes bind as one `json_each` parameter, under
+  // any bound-parameter ceiling.
   if (dry) {
     return { evicted: victims.size, bytesFreed, orphans: picked.files.length, orphanBytes }
   }
   if (victims.size > 0 || stale.length > 0) {
     const hashes = [...victims]
     const rows = [...hashes, ...stale]
-    // Artifacts first: a row whose artifact is gone reads as a miss, so the
-    // order is safe, and on a full disk the delete's own journal needs the
-    // space the unlinks free. Rows-first failed there before any file went,
-    // and the one verb meant to free a full disk freed nothing. An
-    // inline artifact goes with its rows, in their transaction.
+    // Artifacts first: a row without its artifact reads as a miss, and on a
+    // full disk the delete's journal needs the space the unlinks free. An
+    // inline artifact goes with its rows.
     await Promise.all(
       hashes
         .filter((h) => !inline.has(h))
@@ -267,15 +255,12 @@ async function pruneIndex(
   } catch (err) {
     if (!isIndexFull(err)) throw err
   }
-  // History and memo rows a month old go with a prune, never a run's close:
-  // five DELETEs on every run's exit was its slowest step. `invocations` shares
-  // the window with `runs`, or `vx last` would list a run whose task rows are
-  // gone.
+  // History and memo rows a month old go with a prune, never a run's close.
+  // `invocations` shares the window with `runs`, or `vx last` lists a run whose
+  // task rows are gone.
   const orphans = await reapOrphans(ix, picked.files)
-  // An evicted entry's deleted pages (an inline artifact, a row and a
-  // stamp per output file) go to SQLite's free list and the file keeps its
-  // size: give them back, or the bytes said freed are not, and a
-  // `--max-size` clean left the store's index 90% free pages.
+  // An eviction's freed pages go to SQLite's free list and the file keeps its
+  // size: give them back, or the freed bytes are not.
   if (victims.size > 0 || stale.length > 0) {
     releaseFreePages(ix, 'main')
     if (ix.storeDir !== undefined) releaseFreePages(ix, 'store')
@@ -320,13 +305,10 @@ function releaseFreePages(ix: StoreIndex, schema: 'main' | 'store'): void {
 }
 
 /**
- * Unlink the row-less files `pickVictims` took: a `<hash>.tar.zst` with
- * no `entries` row (another vx version's open dropped it, a `cache.db`
- * deleted by hand) past the policy, a `<hash>.tar.zst.tmp-*` a crashed
- * save never renamed, and a file an inline artifact shadows; and delete
- * the row-less inline artifacts it took. Nothing else reaps them — a
- * lookup starts at the row, and a save of the same key replaces the
- * bytes, so a key that never recurs leaks its bytes forever.
+ * Unlink the row-less files `pickVictims` took (an artifact past the policy, a
+ * crashed save's temp, a file an inline artifact shadows) and delete the
+ * row-less inline artifacts. Nothing else reaps them: a key that never recurs
+ * would leak forever.
  */
 export async function reapOrphans(
   ix: StoreIndex,
@@ -372,13 +354,10 @@ export async function reapOrphans(
 }
 
 /**
- * Index rows whose artifact is not in the directory, with their recorded
- * sizes, and the ones among them last used before the grace window. The
- * rows are read BEFORE the directory: a save renames its artifact in
- * before its row commits, so every row read has its artifact listed
- * unless it is gone, and the count is exact. Only `stale` rows are
- * dropped — a row is never deleted on one listing's word while it may be
- * in use. An unreadable directory judges nothing.
+ * Rows whose artifact is not in the directory, with their sizes, and those last
+ * used before the grace window. Rows are read BEFORE the directory (a save
+ * renames its artifact in before its row commits), so the count is exact. Only
+ * `stale` rows are dropped: never on one listing's word while in use.
  */
 async function phantomRows(ix: StoreIndex): Promise<{
   phantoms: Map<string, number>
@@ -427,9 +406,8 @@ export async function orphanStats(
 }
 
 /**
- * Row-less artifacts and temps past the in-flight grace window: one
- * readdir, one stat per candidate, and the row-less inline artifacts,
- * their `at` standing for the file time.
+ * Row-less artifacts and temps past the grace window, and the row-less inline
+ * artifacts, their `at` as file time.
  */
 async function scanOrphans(ix: StoreIndex): Promise<RowlessFile[]> {
   // Asked once the directory read succeeded, as the rows are (scanOrphanFiles).
