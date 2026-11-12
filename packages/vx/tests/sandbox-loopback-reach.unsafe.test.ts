@@ -58,7 +58,7 @@ describe.skipIf(!available || Bun.which('curl') === null)(
             client: {
               dependsOn: ['serve'],
               exec: {
-                command: 'curl -sS --max-time 10 http://localhost:${o.port}/',
+                command: 'curl -sS --max-time 10 http://localhost:${o.port}/; c=$?; echo curl=$c; exit $c',
                 sandbox: { allow: { read: ['.']${o.client} } },
               },
             },
@@ -187,13 +187,16 @@ describe.skipIf(!available || Bun.which('curl') === null)(
           // The refusal names the grant that relays the port on Linux; on
           // macOS, which has no network namespace, seatbelt's own record
           // names the port.
-          expect(
-            r.outcomes.find((o) => o.node.id === 'web#client')?.sandboxViolationLines?.join('\n'),
-          ).toContain(
+          const want =
             process.platform === 'linux'
               ? `allow: { network: ['localhost:${port}'] }`
-              : `network-outbound remote:*:${port}`,
-          )
+              : `network-outbound remote:*:${port}`
+          const lines =
+            r.outcomes.find((o) => o.node.id === 'web#client')?.sandboxViolationLines ?? []
+          if (!lines.join('\n').includes(want))
+            throw new Error(
+              `no line names ${want} (client${client}); sandbox:\n${lines.join('\n')}\ntask output:\n${fixture.log.join('\n')}`,
+            )
         }
       },
       TIMEOUT,

@@ -1129,8 +1129,8 @@ Bun.spawn = (cmd, opts) => {
         [process.execPath, ...(stall ? ['--preload', preload] : []), BIN, 'run', 'dev', '--all'],
         {
           cwd: root,
-          stdout: 'ignore',
-          stderr: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
           ...(deaf ? { env: { ...process.env, PATH: `${shims}:${process.env['PATH']}` } } : {}),
         },
       )
@@ -1155,7 +1155,15 @@ Bun.spawn = (cmd, opts) => {
         }
       })
       for (const p of alive) process.kill(p, 'SIGKILL')
-      return { started: pids.length, alive, leaders }
+      // What vx said, when the task never started: CI only (Ubuntu 26.04).
+      const said =
+        pids.length === 2
+          ? {}
+          : {
+              said:
+                (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()),
+            }
+      return { started: pids.length, alive, leaders, ...said }
     }
 
     it(

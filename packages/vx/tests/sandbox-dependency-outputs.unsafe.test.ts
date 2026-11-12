@@ -153,7 +153,12 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
       const before = statSync(tool).mtimeMs
       fixture.log.length = 0
       const r = await run({ cwd: fixture.root, tasks: ['use'], log })
-      expect([r.ok, fixture.log.join('\n').includes('no grant covers')]).toEqual([true, false])
+      const refused = r.outcomes.flatMap((o) => o.sandboxViolationLines ?? [])
+      expect({
+        ok: r.ok,
+        hinted: fixture.log.join('\n').includes('no grant covers'),
+        ...(r.ok ? {} : { refused, log: fixture.log }),
+      }).toEqual({ ok: true, hinted: false })
       expect(statSync(tool).mtimeMs).toBe(before)
     },
     TIMEOUT,
@@ -350,13 +355,10 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
       expect(use.sandboxFix?.write).toBeUndefined()
       const lines = use.sandboxViolationLines ?? []
       expect(lines.filter((l) => l.includes('outside the project'))).toEqual([])
-      expect(
-        lines
-          .filter((l) => l.includes("a dependency's declared outputs"))
-          .map((l) =>
-            ['../tools/out/bin/tool.txt', '../tools/root.txt'].every((p) => l.includes(p)),
-          ),
-      ).toEqual([true])
+      const named = lines
+        .filter((l) => l.includes("a dependency's declared outputs"))
+        .map((l) => ['../tools/out/bin/tool.txt', '../tools/root.txt'].every((p) => l.includes(p)))
+      expect(named.length === 1 ? named : { named, lines, log: fixture.log }).toEqual([true])
     },
     TIMEOUT,
   )
