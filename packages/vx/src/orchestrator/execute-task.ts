@@ -179,7 +179,7 @@ export interface RunContext {
    * with this task and nothing built on it is saved.
    */
   leftRunning?: (node: TaskNode) => void
-  /** A `vx watch` cycle (`RunOptions.watch`): an input edited mid-run is the next cycle's. */
+  /** A `vx watch` cycle (`RunHandoff.watch`): an input edited mid-run is the next cycle's. */
   watch?: true
 }
 
@@ -387,8 +387,7 @@ function groupOutcome(
     // What this group stands for. A dependent expands it to describe the
     // real tasks in its input closure — see `TaskOutcome.groupUpstream`.
     groupUpstream: upstream,
-    wallclockStartNs: wallclockNs,
-    wallclockEndNs: wallclockNs,
+    timing: { startNs: wallclockNs, endNs: wallclockNs },
   }
 }
 

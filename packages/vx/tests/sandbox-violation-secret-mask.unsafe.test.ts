@@ -33,7 +33,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a violation line', 
       } } } }\n`,
     })
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-    return r.outcomes[0]?.sandboxViolationLines
+    return r.outcomes[0]?.sandbox?.lines
   }
 
   it('masks a secret in the path it names', async () => {
@@ -73,7 +73,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a retry after a vio
     const o = r.outcomes[0]!
     expect(o.status).toBe('success')
     expect(err.join('')).toContain('vx: retrying p#build (attempt 2/2) after 1 sandbox violation\n')
-    const kept = decodeOutputLog(o.attemptOutputs![0]!)
+    const kept = decodeOutputLog(o.attempts!.outputs![0]!)
       .map((c) => c.text)
       .join('')
     expect(kept).toContain(`${root}/packages/p/undeclared`)

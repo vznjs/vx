@@ -106,7 +106,7 @@ describe('a flaky record on the history server', () => {
   it('retries a task the server names flaky, and reports it flaky', async () => {
     const t = await runOnce('t')
     expect(t.status).toBe('success')
-    expect(t.attempts).toBe(2)
+    expect(t.attempts?.count).toBe(2)
     const sent = uploads.at(-1)?.outcomes ?? []
     expect(sent.map((o) => `${o.key} ${o.outcome}`)).toEqual([`${t.hash} flaky`])
   }, 30_000)

@@ -15,7 +15,7 @@ function outcome(id: string, status: TaskOutcome['status'], cache?: object): Tas
     status,
     exitCode: status === 'failed' ? 1 : 0,
     durationMs: 100,
-  }
+  } as TaskOutcome
 }
 
 const footer = (outcomes: TaskOutcome[]): string[] =>

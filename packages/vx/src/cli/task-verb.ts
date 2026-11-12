@@ -98,7 +98,7 @@ export async function taskNamesHere(
 export async function undeclaredTasks(
   tasks: readonly string[],
   cwd: string,
-  /** The selection's discovery (`RunOptions.discovered`): discovering again ran every `discover` hook twice. */
+  /** The selection's discovery (`RunHandoff.discovered`): discovering again ran every `discover` hook twice. */
   discovered?: { root: string; projects: ProjectMeta[] },
 ): Promise<string | undefined> {
   const projects = await workspaceProjects(cwd, discovered)

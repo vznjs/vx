@@ -44,12 +44,12 @@ it(
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
     const first = await run(opts)
-    expect(first.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', true]])
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
     const second = await run(opts)
     // The clean took b.txt and the state kept the tool from emitting it.
     expect(await readdir(path.join(app, 'dist'))).toEqual(['a.txt'])
-    expect(second.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', undefined]])
+    expect(second.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', undefined]])
     expect(fx.log.join('\n')).toContain(
       "app#build: state changed while the task ran, but git ignores it and the task declares it neither input nor output — the result stands, but is not saved: a tool that reads such a file back (an incremental build's state) builds from it, not from the inputs; declare it in outputs.files ('state'), so a miss starts without it and a hit restores it",
     )
@@ -69,7 +69,7 @@ it(
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
     const first = await run(opts)
     expect(await readdir(path.join(app, 'dist'))).toEqual([])
-    expect(first.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', undefined]])
+    expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', undefined]])
     expect(fx.log.join('\n')).toContain(
       "app#build: outputs matched no files (dist/**) while state, which git ignores and the task declares neither input nor output, survived the clean — the result stands, but is not saved: a tool that reads such a file back (an incremental build's state) may take the cleaned outputs as built; declare it in outputs.files ('state'), so a miss starts without it and a hit restores it",
     )
@@ -85,10 +85,12 @@ it(
     const { root, app } = await workspace("['dist/**', 'state']")
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
     const second = await run(opts)
-    expect(second.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect(second.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', true]])
     expect((await readdir(path.join(app, 'dist'))).sort()).toEqual(['a.txt', 'b.txt'])
     expect(fx.log.join('\n')).not.toContain('neither input nor output')
   },
@@ -118,9 +120,13 @@ it(
     const { root, app } = await stateOnly('date +%s%N > .eslintcache')
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['lint'], log: silentLogger(fx) }
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     expect((await run(opts)).outcomes.map((o) => o.status)).toEqual(['cache-hit'])
     expect(fx.log.join('\n')).not.toContain('neither input nor output')
   },
@@ -159,7 +165,7 @@ it(
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
     const second = await run(opts)
     expect(
-      Object.fromEntries(second.outcomes.map((o) => [o.node.id, [o.status, o.saved]])),
+      Object.fromEntries(second.outcomes.map((o) => [o.node.id, [o.status, o.cache?.saved]])),
     ).toEqual({
       'app#build': ['success', true],
       'app#lint': ['success', true],
@@ -181,7 +187,7 @@ it(
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
     const second = await run(opts)
     expect(
-      Object.fromEntries(second.outcomes.map((o) => [o.node.id, [o.status, o.saved]])),
+      Object.fromEntries(second.outcomes.map((o) => [o.node.id, [o.status, o.cache?.saved]])),
     ).toEqual({
       'app#build': ['success', undefined],
       'app#lint': ['success', true],
@@ -218,11 +224,13 @@ it.each([
     })
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
     const second = await run(opts)
     expect(await readdir(path.join(app, 'dist'))).toEqual(['a.txt'])
-    expect(second.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', undefined]])
+    expect(second.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', undefined]])
     expect(fx.log.join('\n')).toContain(`app#build: ${state} changed while the task ran`)
   },
   TIMEOUT,

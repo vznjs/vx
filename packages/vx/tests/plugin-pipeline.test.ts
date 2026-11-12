@@ -601,7 +601,7 @@ describe('graph stage', () => {
       expect(log.started.indexOf('a#build')).toBeLessThan(log.started.indexOf('b#build'))
       const b = summary.outcomes.find((o) => o.node.id === 'b#build')!
       const a = summary.outcomes.find((o) => o.node.id === 'a#build')!
-      expect(b.wallclockStartNs! >= a.wallclockEndNs!).toBe(true)
+      expect(b.timing!.startNs! >= a.timing!.endNs!).toBe(true)
     },
     TIMEOUT,
   )
@@ -1264,7 +1264,9 @@ describe('admit stage', () => {
       expect(overlap(log, 'a#build', 'b#build')).toBe(false)
       // The run says what the policy cost: the task it held carries the
       // wait, the one it admitted first does not.
-      const waits = summary.outcomes.map((o) => o.admissionHeldMs).filter((w) => w !== undefined)
+      const waits = summary.outcomes
+        .map((o) => o.timing?.admissionHeldMs)
+        .filter((w) => w !== undefined)
       expect(waits.length).toBe(1)
       expect(waits[0]!).toBeGreaterThanOrEqual(100)
       // CONTROL: the same two tasks with no policy overlap at concurrency 2.
@@ -1278,7 +1280,7 @@ describe('admit stage', () => {
         handleSignals: false,
       })
       expect(overlap(plain, 'a#build', 'b#build')).toBe(true)
-      for (const o of control.outcomes) expect(o.admissionHeldMs).toBeUndefined()
+      for (const o of control.outcomes) expect(o.timing?.admissionHeldMs).toBeUndefined()
     },
     TIMEOUT,
   )

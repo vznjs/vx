@@ -1144,7 +1144,7 @@ no job under dash).
   (`orchestrator/local-executor.ts`) calls `runSandboxed` instead of
   `runCommand` when the request carries `sandbox`. On violations
   `execute-task.ts` forces exit 1, appends violation lines to stderr,
-  and surfaces the count on `TaskOutcome.sandboxViolations`.
+  and surfaces the count on `TaskOutcome.sandbox.violations`.
 
 ### Why fail-on-violation?
 

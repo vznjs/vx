@@ -405,7 +405,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
       projects: ['app'],
       log: silent,
       handleSignals: false,
-      holdPersistent: true,
+      handoff: { holdPersistent: true },
       signal: ac.signal,
     })
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)

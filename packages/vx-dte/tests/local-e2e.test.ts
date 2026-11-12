@@ -59,7 +59,7 @@ it('only the orchestrator reports timings: every task a worker ran, once, as the
 import { definePlugin } from ${JSON.stringify(path.resolve(import.meta.dir, '../../vx/src/index.ts'))}
 const timings = definePlugin({ dir: ${JSON.stringify(dir)} }, {
   setup(ctx) {
-    ctx.on('onTaskComplete', (n, o) => ${line('id: n.id, status: o.status, durationMs: o.durationMs, cpuMs: o.cpuMs, rss: o.peakRssBytes, where: o.where')})
+    ctx.on('onTaskComplete', (n, o) => ${line('id: n.id, status: o.status, durationMs: o.durationMs, cpuMs: o.usage?.cpuMs, rss: o.usage?.peakRssBytes, where: o.placement?.where')})
     ctx.on('onMeasure', (m) => ${line('measure: m.id, def: m.def, ms: m.durationMs')})
   },
   teardown() { ${line('flush: true')} },

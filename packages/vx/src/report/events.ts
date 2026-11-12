@@ -8,7 +8,13 @@
 
 import { exitSignal } from '../exec/index.js'
 import type { InputChanges, TaskNode, TaskOutcome } from '../graph/index.js'
-import { isGroupTask, isKeyFailed, markOutputsFailed, outputsFailedOf } from '../graph/index.js'
+import {
+  exitCodeOf,
+  isGroupTask,
+  isKeyFailed,
+  markOutputsFailed,
+  outputsFailedOf,
+} from '../graph/index.js'
 import { heldSecrets, maskedCommand, type SecretMask, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
@@ -18,8 +24,8 @@ import type { RunContext } from './summary.js'
  * read and wrote nothing. Its run is `no-cache`, never a miss, on every
  * surface — `--dry`'s plan, the frame, the footer, the run history.
  */
-export function ranNoCache(o: { node: TaskNode; cacheOff?: boolean }): boolean {
-  return o.node.config.cache !== true || o.cacheOff === true
+export function ranNoCache(o: { node: TaskNode; cache?: { off?: true } }): boolean {
+  return o.node.config.cache !== true || o.cache?.off === true
 }
 
 /** Payload of the `run:start` event — mirrors the Logger.runStart hook. */
@@ -265,7 +271,7 @@ export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscri
 // The in-process bus carries live refs; crossing a worker postMessage or
 // an RPC needs a JSON/structured-clone-safe form. Two concrete blockers
 // make the raw objects un-sendable:
-//   1. `TaskOutcome.wallclockStartNs/EndNs` are bigint — JSON.stringify
+//   1. `TaskOutcome.timing.startNs/endNs` are bigint — JSON.stringify
 //      THROWS on a bigint.
 //   2. `TaskOutcome.node` back-references the whole TaskNode graph (its
 //      config + dep nodes), so every event would drag the graph across
@@ -352,12 +358,15 @@ export interface OutcomeView {
  * materialized nothing is up-to-date; a remote hit always restored
  * (`hitOutcome`), so it is never up to date.
  */
-export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string {
+export function outcomeWord(
+  o: TaskOutcome | Pick<OutcomeView, 'taskId' | 'status' | 'restored'>,
+): string {
+  const restored = 'taskId' in o ? o.restored : o.cache?.restored
   switch (o.status) {
     case 'cache-hit':
-      return o.restored === false ? 'up-to-date' : 'restored-local'
+      return restored === false ? 'up-to-date' : 'restored-local'
     case 'cache-hit-remote':
-      return o.restored === false ? 'up-to-date' : 'restored-remote'
+      return restored === false ? 'up-to-date' : 'restored-remote'
     default:
       return o.status
   }
@@ -370,27 +379,32 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
  * output clean or save vx refused (`outputsFailedOf`): the step reads.
  */
 export function outcomeLabel(
-  o: Pick<
-    OutcomeView,
-    | 'status'
-    | 'restored'
-    | 'restoreFailed'
-    | 'exitCode'
-    | 'timedOut'
-    | 'sandboxViolations'
-    | 'notReady'
-    | 'inputMoved'
-    | 'blockedBy'
-    | 'otherPlatform'
-  >,
+  o:
+    | TaskOutcome
+    | Pick<
+        OutcomeView,
+        | 'taskId'
+        | 'status'
+        | 'restored'
+        | 'restoreFailed'
+        | 'exitCode'
+        | 'timedOut'
+        | 'sandboxViolations'
+        | 'notReady'
+        | 'inputMoved'
+        | 'blockedBy'
+        | 'otherPlatform'
+      >,
 ): string {
   if (o.status === 'failed' && o.restoreFailed === true) return 'failed (cache restore failed)'
   if (o.status === 'failed' && isKeyFailed(o)) return 'failed (cache key not derived)'
   const step = o.status === 'failed' ? outputsFailedOf(o) : undefined
   if (step !== undefined)
     return step === 'save' ? 'failed (cache save failed)' : 'failed (output clean failed)'
-  if (o.status === 'failed')
-    return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved)
+  if (o.status === 'failed') {
+    const violations = 'taskId' in o ? o.sandboxViolations : o.sandbox?.violations
+    return failedLabel(o.exitCode, o.timedOut, violations, o.notReady, o.inputMoved)
+  }
   if (o.status === 'skipped') return skippedLabel(o)
   return outcomeWord(o)
 }
@@ -474,7 +488,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   const view: OutcomeView = {
     taskId: outcome.node.id,
     status: outcome.status,
-    exitCode: outcome.exitCode,
+    exitCode: exitCodeOf(outcome),
     durationMs: outcome.durationMs,
   }
   if (isGroupTask(outcome.node)) view.isGroup = true
@@ -482,31 +496,34 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.restoreFailed === true) view.restoreFailed = true
   const step = outputsFailedOf(outcome)
   if (step !== undefined) markOutputsFailed(view, step)
-  if (outcome.storedDurationMs !== undefined) view.storedDurationMs = outcome.storedDurationMs
-  if (outcome.storedCpuMs !== undefined) view.storedCpuMs = outcome.storedCpuMs
-  if (outcome.storedPeakRssBytes !== undefined) view.storedPeakRssBytes = outcome.storedPeakRssBytes
+  if (outcome.cache?.stored?.durationMs !== undefined)
+    view.storedDurationMs = outcome.cache?.stored?.durationMs
+  if (outcome.cache?.stored?.cpuMs !== undefined) view.storedCpuMs = outcome.cache.stored.cpuMs
+  if (outcome.cache?.stored?.peakRssBytes !== undefined)
+    view.storedPeakRssBytes = outcome.cache?.stored?.peakRssBytes
   if (outcome.hash !== undefined) view.hash = outcome.hash
-  if (outcome.cpuMs !== undefined) view.cpuMs = outcome.cpuMs
-  if (outcome.peakRssBytes !== undefined) view.peakRssBytes = outcome.peakRssBytes
-  if (outcome.admissionHeldMs !== undefined) view.admissionHeldMs = outcome.admissionHeldMs
-  if (outcome.queuedMs !== undefined) view.queuedMs = outcome.queuedMs
-  if (outcome.inputFiles !== undefined) view.inputFiles = outcome.inputFiles
-  if (outcome.inputChanges !== undefined) view.inputChanges = outcome.inputChanges
-  if (outcome.artifactBytes !== undefined) view.artifactBytes = outcome.artifactBytes
-  if (outcome.fetchMs !== undefined) view.fetchMs = outcome.fetchMs
-  if (outcome.saveMs !== undefined) view.saveMs = outcome.saveMs
+  if (outcome.usage?.cpuMs !== undefined) view.cpuMs = outcome.usage.cpuMs
+  if (outcome.usage?.peakRssBytes !== undefined) view.peakRssBytes = outcome.usage.peakRssBytes
+  if (outcome.timing?.admissionHeldMs !== undefined)
+    view.admissionHeldMs = outcome.timing?.admissionHeldMs
+  if (outcome.timing?.queuedMs !== undefined) view.queuedMs = outcome.timing.queuedMs
+  if (outcome.cache?.inputFiles !== undefined) view.inputFiles = outcome.cache.inputFiles
+  if (outcome.cache?.inputChanges !== undefined) view.inputChanges = outcome.cache.inputChanges
+  if (outcome.cache?.artifactBytes !== undefined) view.artifactBytes = outcome.cache.artifactBytes
+  if (outcome.timing?.fetchMs !== undefined) view.fetchMs = outcome.timing.fetchMs
+  if (outcome.timing?.saveMs !== undefined) view.saveMs = outcome.timing.saveMs
   if (outcome.timedOut === true) view.timedOut = true
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
   if (outcome.inputMoved !== undefined) view.inputMoved = outcome.inputMoved
   if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy
   if (outcome.otherPlatform !== undefined) view.otherPlatform = outcome.otherPlatform
-  if (outcome.restored !== undefined) view.restored = outcome.restored
-  if (outcome.sandboxViolations !== undefined) view.sandboxViolations = outcome.sandboxViolations
-  if (outcome.sandboxViolationLines !== undefined)
-    view.sandboxViolationLines = outcome.sandboxViolationLines
-  if (outcome.wallclockStartNs !== undefined)
-    view.wallclockStartNs = outcome.wallclockStartNs.toString()
-  if (outcome.wallclockEndNs !== undefined) view.wallclockEndNs = outcome.wallclockEndNs.toString()
+  if (outcome.cache?.restored !== undefined) view.restored = outcome.cache.restored
+  if (outcome.sandbox?.violations !== undefined)
+    view.sandboxViolations = outcome.sandbox?.violations
+  if (outcome.sandbox?.lines !== undefined) view.sandboxViolationLines = outcome.sandbox.lines
+  if (outcome.timing?.startNs !== undefined)
+    view.wallclockStartNs = outcome.timing?.startNs.toString()
+  if (outcome.timing?.endNs !== undefined) view.wallclockEndNs = outcome.timing.endNs.toString()
   return view
 }
 

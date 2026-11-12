@@ -22,9 +22,9 @@ const SNAPSHOT = /(?:^|[\\/])__snapshots__[\\/]|\.snap$/
 
 /** What the re-check found; read by the outcome. */
 export interface KeyCheck {
-  /** The key no longer describes the bytes on disk (`TaskOutcome.unkeyed`). */
+  /** The key no longer describes the bytes on disk (`TaskOutcome.cache.unkeyed`). */
   unkeyed: boolean
-  /** The input found moved under the command (`TaskOutcome.driftedInput`). */
+  /** The input found moved under the command (`TaskOutcome.cache.driftedInput`). */
   drifted?: string | null
   /** `inputs.stability.severity: 'error'`: the moved input that fails the task. */
   movedFails?: string

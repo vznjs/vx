@@ -63,7 +63,7 @@ describe('a server behind remote hits', () => {
       tasks: ['t1', 't2'],
       log: silentLogger(fixture),
       remoteCache: remote,
-      remoteReadOnlyByDefault: false,
+      handoff: { remoteReadOnlyByDefault: false },
     })
     expect(r.ok).toBe(true)
     return new Map(
@@ -143,7 +143,7 @@ describe('a server behind remote hits', () => {
         tasks: ['t1', 't2'],
         log: silentLogger(fixture),
         remoteCache: remote,
-        remoteReadOnlyByDefault: false,
+        handoff: { remoteReadOnlyByDefault: false },
       })
       expect(plan.tasks.map((t) => `${t.node.id} ${t.cacheStatus}`).sort()).toEqual([
         'app#t1 hit-remote',
@@ -166,7 +166,7 @@ describe('a server behind remote hits', () => {
         tasks: ['t1', 't2'],
         log: silentLogger(fixture),
         remoteCache: remote,
-        remoteReadOnlyByDefault: false,
+        handoff: { remoteReadOnlyByDefault: false },
       })
       expect(plan.tasks.map((t) => `${t.node.id} ${t.cacheStatus}`).sort()).toEqual([
         'app#t1 hit-remote',
@@ -249,7 +249,7 @@ describe('a server behind remote hits, through a group or another server', () =>
       tasks: ['t1'],
       log: silentLogger(fixture),
       remoteCache: remote,
-      remoteReadOnlyByDefault: false,
+      handoff: { remoteReadOnlyByDefault: false },
     })
     expect(r.ok).toBe(true)
     return r.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()

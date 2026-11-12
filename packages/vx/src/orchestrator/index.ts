@@ -1,7 +1,15 @@
 // Module contract for `orchestrator`. Cross-module imports must come
 // through here (enforced by tests/module-boundaries.test.ts).
 
-export { run, planRun, nxProjectTarget, projectAtDir, projectNamed } from './run.js'
+export {
+  run,
+  runCore,
+  planRun,
+  planCore,
+  nxProjectTarget,
+  projectAtDir,
+  projectNamed,
+} from './run.js'
 export { CYCLE_INTERRUPT } from './run-stop.js'
 export {
   namesRemote,
@@ -31,7 +39,13 @@ export {
   type LoadProjectsArgs,
 } from './projects.js'
 export { computeTaskHash, createHashCache, type HashCache } from './task-hash.js'
-export type { HeldPersistent, RunOptions, RunSummary } from './options.js'
+export type {
+  CoreRunOptions,
+  HeldPersistent,
+  RunHandoff,
+  RunOptions,
+  RunSummary,
+} from './options.js'
 export { commandWindows, type CommandWindows } from './command-windows.js'
 // Re-surface the cache policy contract (defined in the cache module) so
 // embedders constructing RunOptions.cache and the package façade can

@@ -139,7 +139,7 @@ export class ChangeJudge {
   /**
    * The cycle the last change-finding judgement started: from that
    * judgement on the mtime clock, until the loop sets `to` when its run
-   * ends, with the run's command windows (`RunOptions.commandWindows`).
+   * ends, with the run's command windows (`RunHandoff.commandWindows`).
    */
   cycle: { from: number; to: number; windows: CommandWindows } | undefined
   // Declared outputs are ignored by PATH above. A task with no `cache`
@@ -220,7 +220,7 @@ export class ChangeJudge {
   }
 
   /**
-   * The inputs a run read in a state no judgement saw (`TaskOutcome.driftedInput`):
+   * The inputs a run read in a state no judgement saw (`TaskOutcome.cache.driftedInput`):
    * edited and put back while the task ran, a file settles to the state this
    * loop last saw, and judged against it, the output built from the other
    * state stood with no cycle after it. Each is a change at its next

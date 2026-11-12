@@ -425,7 +425,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         log: collectingLogger(fixture),
       })
       expect(r.outcomes[0]?.status).toBe('success')
-      expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
+      expect(r.outcomes[0]?.sandbox?.violations).toBeUndefined()
     },
     TIMEOUT,
   )
@@ -457,7 +457,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       const first = await run(opts)
       expect(first.ok).toBe(true)
       expect(first.outcomes[0]?.status).toBe('success')
-      expect(first.outcomes[0]?.sandboxViolations).toBeUndefined()
+      expect(first.outcomes[0]?.sandbox?.violations).toBeUndefined()
 
       const second = await run({ ...opts, log: collectingLogger(fixture) })
       expect(second.outcomes[0]?.status).toBe('cache-hit')
@@ -524,10 +524,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         `,
       })
       const r = await run({ cwd: fixture.root, tasks: ['peek'], log: collectingLogger(fixture) })
-      expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]).toEqual([
-        'success',
-        [],
-      ])
+      expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines ?? []]).toEqual(['success', []])
       expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('none\nhost\n')
     },
     TIMEOUT,
@@ -719,10 +716,10 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         // macOS logs a seatbelt record late or not at all, so there only
         // the count is held.
         expect(existsSync(path.join(link, 'packages', 'app', 'out.txt'))).toBe(false)
-        expect(r.outcomes[0]?.sandboxViolations ?? 0).toBe(0)
+        expect(r.outcomes[0]?.sandbox?.violations ?? 0).toBe(0)
         if (process.platform !== 'linux') return
         const root = realpathSync(fixture.root)
-        expect([r.outcomes[0]?.sandboxViolations, r.outcomes[0]?.sandboxViolationLines]).toEqual([
+        expect([r.outcomes[0]?.sandbox?.violations, r.outcomes[0]?.sandbox?.lines]).toEqual([
           0,
           [
             `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
@@ -936,12 +933,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.ok).toBe(false)
         const outcome = r.outcomes.find((o) => o.node.id === 'outsidewriter#build')
-        const hints = (outcome?.sandboxViolationLines ?? []).filter((l) =>
+        const hints = (outcome?.sandbox?.lines ?? []).filter((l) =>
           l.includes('refused writes outside the project'),
         )
         expect(hints.map((l) => l.includes(target))).toEqual([true])
         // A note beside the failure, never a counted denial.
-        expect(outcome?.sandboxViolations).toBe(0)
+        expect(outcome?.sandbox?.violations).toBe(0)
         expect(existsSync(target)).toBe(false)
       } finally {
         await rm(outside, { recursive: true, force: true })
@@ -973,7 +970,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
       expect(r.ok).toBe(false)
       const outcome = r.outcomes.find((o) => o.node.id === 'rootwriter#build')
-      const hints = (outcome?.sandboxViolationLines ?? []).filter((l) =>
+      const hints = (outcome?.sandbox?.lines ?? []).filter((l) =>
         l.includes('refused writes outside the project'),
       )
       expect(hints).toHaveLength(1)
@@ -1014,11 +1011,11 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
       expect(r.ok).toBe(false)
       const outcome = r.outcomes.find((o) => o.node.id === 'dirgrant#build')
-      const lines = outcome?.sandboxViolationLines ?? []
+      const lines = outcome?.sandbox?.lines ?? []
       expect(lines.some((l) => l.includes('write grant `dist` named nothing on disk'))).toBe(true)
       // The note is vx's, beside a failure of the task's own: no denial is
       // counted (B-20; the label read "1 sandbox violation").
-      expect(outcome?.sandboxViolations).toBe(0)
+      expect(outcome?.sandbox?.violations).toBe(0)
       expect(lines.some((l) => l.includes('spell the grant `dist/`'))).toBe(true)
       expect(existsSync(path.join(projDir, 'dist'))).toBe(false)
     },
@@ -1473,7 +1470,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         log: collectingLogger(fixture),
       })
       // Task succeeds (|| true), no violations after filter → cache saves.
-      expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
+      expect(r.outcomes[0]?.sandbox?.violations).toBeUndefined()
     },
     TIMEOUT,
   )

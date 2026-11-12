@@ -2,7 +2,7 @@
 // after the run stopped or fail-fast tripped.
 
 import type { ExecuteResult } from '../exec/index.js'
-import type { TaskOutcome } from '../graph/index.js'
+import type { OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import { printable } from '../util/index.js'
 import { failedOutputLog } from './output-log.js'
 import { runAttempt } from './attempt.js'
@@ -50,26 +50,16 @@ export async function runAttempts(
   let leftRunning = false
   const failedAttempts: FailedAttempt[] = []
   const attemptOutputs: string[] = []
-  const ended = (
-    status: 'aborted' | 'skipped',
-    exitCode: number,
-    durationMs: number,
-  ): { outcome: TaskOutcome } => ({
-    outcome: {
-      node,
-      status,
-      exitCode,
-      durationMs,
-      hash,
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-    },
+  const timing = (): OutcomeTiming => ({
+    startNs: wallclockStartNs,
+    endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
   })
   for (;;) {
     m.attempt++
     const a = await runAttempt(m, prior, spentMs)
     // Never started: skipped, as fail-fast skips a task not yet dispatched.
-    if (a.unbegun) return ended('skipped', 1, 0)
+    if (a.unbegun)
+      return { outcome: { node, status: 'skipped', durationMs: 0, hash, timing: timing() } }
     const result = a.result
     prior = { result, exitCode: a.exitCode }
     if (a.withdrawn) {
@@ -109,9 +99,16 @@ export async function runAttempts(
       shutdown = args.run.stopSignal?.aborted === true
     }
     if (shutdown) {
-      const out = ended('aborted', a.exitCode, spentMs)
-      if (result.where !== undefined) out.outcome.where = result.where
-      return out
+      const outcome: TaskOutcome = {
+        node,
+        status: 'aborted',
+        exitCode: a.exitCode,
+        durationMs: spentMs,
+        hash,
+        timing: timing(),
+      }
+      if (result.where !== undefined) outcome.placement = { where: result.where }
+      return { outcome }
     }
 
     // A known flake gets the one retry its config did not ask for; a

@@ -100,10 +100,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       status: 'success',
       exitCode: 0,
       durationMs: 0,
-      carried: true,
+      placement: { carried: true },
       ...(hash === undefined ? {} : { hash }),
-      wallclockStartNs,
-      wallclockEndNs: wallclockStartNs,
+      timing: { startNs: wallclockStartNs, endNs: wallclockStartNs },
     }
 
   // The args after `--` reach a server as they reach any task. A readyWhen
@@ -222,8 +221,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       // The signal a spawned server would have been sent (a hang-up forwards SIGTERM).
       exitCode: signalExitCode(forwardedSignal(args.run.stopSignal.reason)),
       durationMs: 0,
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      timing: {
+        startNs: wallclockStartNs,
+        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      },
     }
   }
   // A server's 127, 126 or signal death needs the line a one-shot task's
@@ -329,8 +330,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
         status: 'aborted',
         exitCode: err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1,
         durationMs: spawn.readyMs(),
-        wallclockStartNs,
-        wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+        timing: {
+          startNs: wallclockStartNs,
+          endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+        },
       }
     }
     const message = err instanceof Error ? err.message : String(err)
@@ -367,8 +370,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
           : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
       ...(ready !== undefined ? { notReady: ready.reason } : {}),
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      timing: {
+        startNs: wallclockStartNs,
+        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      },
     }
   }
 
@@ -382,8 +387,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       status: 'aborted',
       exitCode: signalExitCode(forwardedSignal(args.run.stopSignal!.reason)),
       durationMs: spawn.readyMs(),
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      timing: {
+        startNs: wallclockStartNs,
+        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      },
     }
   }
   // Ready, so it spawned: only a failed spawn has no child.
@@ -407,7 +414,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     durationMs: spawn.readyMs(),
     ...(exited === null ? {} : { serverExit: exited }),
     ...(hash !== undefined ? { hash } : {}),
-    wallclockStartNs,
-    wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+    timing: {
+      startNs: wallclockStartNs,
+      endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+    },
   }
 }

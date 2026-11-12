@@ -93,7 +93,7 @@ describe.skipIf(!available)('a sandboxed task and a git dir outside the workspac
     git('commit', '-qm', 'init')
     const r = await run({ cwd: ws, tasks: ['a#t'] })
     expect(r.outcomes[0]?.status).toBe('failed')
-    const lines = r.outcomes[0]?.sandboxViolationLines ?? []
+    const lines = r.outcomes[0]?.sandbox?.lines ?? []
     // Linux traces no stat, so git's own words bring the hint; macOS
     // reports the hidden read itself. Either names the .git, and no grant.
     const named = lines.filter((l) => l.includes(`${repo}/.git`))

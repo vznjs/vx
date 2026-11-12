@@ -76,7 +76,7 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
   const keylessBy = isKeyless(cfg)
     ? node.id
     : foldedTasks
-        .map((u) => u.keylessBy ?? (isKeyless(u.node.config) ? u.node.id : undefined))
+        .map((u) => u.cache?.keylessBy ?? (isKeyless(u.node.config) ? u.node.id : undefined))
         .find((id) => id !== undefined)
   const keyless = keylessBy !== undefined
   const reads = policy.localRead || policy.remoteRead
@@ -88,7 +88,7 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
   // under a key folding `gen`'s, and once `a.txt` was put back `use` hit
   // the edit's output. Only an upstream whose key this one folds: one read
   // by content (`tasks: []` and a file input) is judged by its bytes.
-  const unkeyedUpstream = foldedTasks.find((u) => u.unkeyed === true)
+  const unkeyedUpstream = foldedTasks.find((u) => u.cache?.unkeyed === true)
   const willSave =
     willWrite &&
     args.taintedUpstream !== true &&

@@ -50,12 +50,13 @@ describe('writeRunProfile', () => {
     await rm(tmp, { recursive: true, force: true })
   })
 
-  const outcome = (overrides: Partial<TaskOutcome> & { node: TaskNode }): TaskOutcome => ({
-    status: 'success',
-    exitCode: 0,
-    durationMs: 100,
-    ...overrides,
-  })
+  const outcome = (overrides: Partial<TaskOutcome> & { node: TaskNode }): TaskOutcome =>
+    ({
+      status: 'success',
+      exitCode: 0,
+      durationMs: 100,
+      ...overrides,
+    }) as TaskOutcome
 
   it('emits a Chrome-trace JSON shape with one complete event per task', async () => {
     const out = await writeRunProfile({
@@ -65,8 +66,7 @@ describe('writeRunProfile', () => {
       outcomes: [
         outcome({
           node: execNode('app', 'build'),
-          wallclockStartNs: 100_000n,
-          wallclockEndNs: 200_000n,
+          timing: { startNs: 100_000n, endNs: 200_000n },
           hash: 'h1',
         }),
       ],
@@ -95,9 +95,7 @@ describe('writeRunProfile', () => {
       runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
-      outcomes: [
-        outcome({ node: execNode('a', 'build'), wallclockStartNs: hr, wallclockEndNs: hr }),
-      ],
+      outcomes: [outcome({ node: execNode('a', 'build'), timing: { startNs: hr, endNs: hr } })],
       executors: [
         [
           { ph: 'M', name: 'process_name', pid: 1, tid: 0, args: { name: 'orchestrator' } },
@@ -130,18 +128,15 @@ describe('writeRunProfile', () => {
       outcomes: [
         outcome({
           node: execNode('a', 'build'),
-          wallclockStartNs: 0n,
-          wallclockEndNs: 1_000n,
+          timing: { startNs: 0n, endNs: 1_000n },
         }),
         outcome({
           node: execNode('a', 'test'),
-          wallclockStartNs: 1_000n,
-          wallclockEndNs: 2_000n,
+          timing: { startNs: 1_000n, endNs: 2_000n },
         }),
         outcome({
           node: execNode('b', 'build'),
-          wallclockStartNs: 0n,
-          wallclockEndNs: 1_000n,
+          timing: { startNs: 0n, endNs: 1_000n },
         }),
       ],
     })
@@ -159,7 +154,7 @@ describe('writeRunProfile', () => {
   // one thread must nest: Perfetto drew one and dropped the other.
   it('a task beside another of its project takes the next lane, never one in use', async () => {
     const span = (project: string, task: string, from: bigint, to: bigint): TaskOutcome =>
-      outcome({ node: execNode(project, task), wallclockStartNs: from, wallclockEndNs: to })
+      outcome({ node: execNode(project, task), timing: { startNs: from, endNs: to } })
     const out = await writeRunProfile({
       runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
@@ -197,7 +192,7 @@ describe('writeRunProfile', () => {
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
-        outcome({ node: execNode('pkg', 'build'), wallclockStartNs: nowNs, wallclockEndNs: nowNs }),
+        outcome({ node: execNode('pkg', 'build'), timing: { startNs: nowNs, endNs: nowNs } }),
       ],
       spans: [{ name: 'probe', ph: 'X', ts: nowUs, dur: 0, pid: 1, tid: 0 }],
       executors: [[{ name: 'mark', ph: 'i', ts: nowUs, pid: 1, tid: 1 }]],
@@ -220,8 +215,7 @@ describe('writeRunProfile', () => {
         outcome({ node: groupNode('pkg', 'ci') }),
         outcome({
           node: execNode('pkg', 'build'),
-          wallclockStartNs: 0n,
-          wallclockEndNs: 1_000n,
+          timing: { startNs: 0n, endNs: 1_000n },
         }),
       ],
     })
@@ -236,7 +230,7 @@ describe('writeRunProfile', () => {
       runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
-      outcomes: [outcome({ node: execNode('pkg', 'cut'), wallclockStartNs: 5_000n })],
+      outcomes: [outcome({ node: execNode('pkg', 'cut'), timing: { startNs: 5_000n } })],
     })
     const parsed = JSON.parse(await readFile(out, 'utf8')) as { traceEvents: unknown[] }
     expect(parsed.traceEvents).toEqual([])
@@ -261,10 +255,8 @@ describe('writeRunProfile', () => {
       outcomes: [
         outcome({
           node: execNode('pkg', 'build'),
-          wallclockStartNs: 0n,
-          wallclockEndNs: 1_000n,
-          cpuMs: 50,
-          peakRssBytes: 1_000_000,
+          timing: { startNs: 0n, endNs: 1_000n },
+          usage: { cpuMs: 50, peakRssBytes: 1_000_000 },
           hash: 'abc',
         }),
       ],
@@ -285,8 +277,7 @@ describe('writeRunProfile', () => {
       outcome({
         node: execNode('pkg', `t-${status}`),
         status,
-        wallclockStartNs: 0n,
-        wallclockEndNs: 1_000n,
+        timing: { startNs: 0n, endNs: 1_000n },
       })
     const out = await writeRunProfile({
       runStartNs: 0n,
@@ -322,8 +313,7 @@ describe('writeRunProfile', () => {
       outcomes: [
         outcome({
           node: execNode('pkg', 'build'),
-          wallclockStartNs: 9_007_199_254_741_000n, // > 2^53
-          wallclockEndNs: 9_007_199_254_742_000n,
+          timing: { startNs: 9_007_199_254_741_000n, endNs: 9_007_199_254_742_000n }, // > 2^53
         }),
       ],
     })

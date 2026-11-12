@@ -30,6 +30,7 @@ import {
   isCacheHit,
   isGroupTask,
   isKeyFailed,
+  type SandboxFix,
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
@@ -354,9 +355,9 @@ function cacheOf(o: TaskOutcome): { word: string; color: Style } {
       // A task no cache answered for never consulted one: not a miss.
       return ranNoCache(o) ? NO_CACHE : MISS // dim
     case 'cache-hit':
-      return o.restored === false ? FRESH : LOCAL
+      return o.cache?.restored === false ? FRESH : LOCAL
     case 'cache-hit-remote':
-      return o.restored === false ? FRESH : REMOTE
+      return o.cache?.restored === false ? FRESH : REMOTE
     default:
       return NO_CACHE_WORD
   }
@@ -476,7 +477,9 @@ function workerName(name: string): string {
 
 /** A task's average cores over its run: CPU time over wall time. */
 function coresOf(o: TaskOutcome): number | undefined {
-  return o.cpuMs === undefined || o.durationMs <= 0 ? undefined : o.cpuMs / o.durationMs
+  return o.usage?.cpuMs === undefined || o.durationMs <= 0
+    ? undefined
+    : o.usage?.cpuMs / o.durationMs
 }
 
 /**
@@ -578,11 +581,15 @@ export function formatRecordedRow(
     ...(r.status === 'failed' && r.cached === true && r.cacheHit === null
       ? { restoreFailed: true }
       : {}),
-    ...(r.restored !== null ? { restored: r.restored } : {}),
-    ...(r.cpuMs !== null ? { cpuMs: r.cpuMs } : {}),
-    ...(r.peakRssBytes !== null ? { peakRssBytes: r.peakRssBytes } : {}),
-    ...(r.placement !== null ? { where: r.placement } : {}),
-    ...(r.outputBytes !== null ? { outputBytes: r.outputBytes } : {}),
+    cache: {
+      ...(r.restored !== null ? { restored: r.restored } : {}),
+      ...(r.outputBytes !== null ? { outputBytes: r.outputBytes } : {}),
+    },
+    usage: {
+      ...(r.cpuMs !== null ? { cpuMs: r.cpuMs } : {}),
+      ...(r.peakRssBytes !== null ? { peakRssBytes: r.peakRssBytes } : {}),
+    },
+    ...(r.placement !== null ? { placement: { where: r.placement } } : {}),
   } as TaskOutcome
   const blocks = r.blocks ?? undefined
   const row =
@@ -721,7 +728,7 @@ export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCe
   const cells = ranCells(o, blocks)
   if (cores !== undefined) cells.cpu = cores
   else if (ran) cells.cpu = null
-  if (o.peakRssBytes !== undefined) cells.memBytes = o.peakRssBytes
+  if (o.usage?.peakRssBytes !== undefined) cells.memBytes = o.usage.peakRssBytes
   else if (ran) cells.memBytes = null
   return cells
 }
@@ -734,10 +741,10 @@ export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCe
 function ranCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cells: RowCells = {}
   // A skip reached no machine.
-  if (o.status !== 'skipped') cells.worker = o.where ?? 'local'
+  if (o.status !== 'skipped') cells.worker = o.placement?.where ?? 'local'
   if (blocks !== undefined) cells.blocks = String(blocks)
   // A row with no outputs size says so (`—`); blank read as a column left out.
-  if (o.status !== 'skipped') cells.outputBytes = o.outputBytes ?? null
+  if (o.status !== 'skipped') cells.outputBytes = o.cache?.outputBytes ?? null
   return cells
 }
 
@@ -768,7 +775,7 @@ function formatOutcomeRow(
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
 function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
-  return o.where === undefined ? '' : placeNote(o.where, colors)
+  return o.placement?.where === undefined ? '' : placeNote(o.placement?.where, colors)
 }
 
 /**
@@ -788,15 +795,15 @@ function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
 export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
   // A retry with no key to prove a flake (no `cache: true`) still ran:
   // the row is the only place a live run says so (`vx last` did).
-  if (o.flaky === undefined)
-    return (o.attempts ?? 1) > 1 ? ` ${paint('muted', `${o.attempts} attempts`, colors)}` : ''
+  const count = o.attempts?.count ?? 1
+  const flaky = o.attempts?.flaky
+  if (flaky === undefined) return count > 1 ? ` ${paint('muted', `${count} attempts`, colors)}` : ''
   const said: string[] = []
-  if (o.status === 'failed' && o.flaky.passes > 0)
-    said.push(`passed ${o.flaky.passes}\u00d7 before`)
-  if (o.status !== 'failed' && o.flaky.failures > 0) {
-    said.push(`failed ${o.flaky.failures}\u00d7 before`)
+  if (o.status === 'failed' && flaky.passes > 0) said.push(`passed ${flaky.passes}\u00d7 before`)
+  if (o.status !== 'failed' && flaky.failures > 0) {
+    said.push(`failed ${flaky.failures}\u00d7 before`)
   }
-  if ((o.attempts ?? 1) > 1) said.push(`${o.attempts} attempts`)
+  if (count > 1) said.push(`${count} attempts`)
   const text = said.length === 0 ? 'flaky' : `flaky - ${said.join(' \u00b7 ')}`
   return ` ${paint('muted', text, colors)}`
 }
@@ -874,7 +881,7 @@ export function formatFrameOpen(
  * (2026-09-05).
  */
 function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] {
-  const vlines = outcome.sandboxViolationLines
+  const vlines = outcome.sandbox?.lines
   if (!vlines || vlines.length === 0) return []
   // Unique lines only — a task's children trip the same denial many times
   // and the repeats bury everything else. The lines themselves are printed
@@ -889,7 +896,7 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // A read the output depends on is a key input too; the sandbox never
   // adds one (2026-10-09), so the note names the reads no input
   // glob matches and the user decides.
-  const fix = outcome.sandboxFix
+  const fix = outcome.sandbox?.fix
   const line = fix === undefined ? undefined : sandboxFixLine(fix)
   const dim = (text: string): string => paint('muted', text, colors)
   const note =
@@ -1039,7 +1046,7 @@ function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
       return `${paint('ok', word, colors)} ${dim(`• ${shortHash}`)}`
     case 'cache-hit-remote':
       // A remote restore is the one hit painted accent: bytes came off the wire.
-      return `${paint(o.restored === false ? 'ok' : 'info', word, colors)} ${dim(`• ${shortHash}`)}`
+      return `${paint(o.cache?.restored === false ? 'ok' : 'info', word, colors)} ${dim(`• ${shortHash}`)}`
     case 'failed':
       // The command lives in its own `├─ command` section; the header
       // carries the outcome like every other status.
@@ -1059,7 +1066,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // the exec time the entry was stored with. (The comment here used to claim
   // the opposite; the code never did, and `--report` summed these as "time
   // saved" on the strength of it. The stored time lives on
-  // `TaskOutcome.storedDurationMs`.) Status differs by outcome — see
+  // `TaskOutcome.cache.stored.durationMs`.) Status differs by outcome — see
   // formatStatusTag.
   const dur = paint('muted', `(${formatElapsed(o.durationMs)})`, colors)
   const tag = formatStatusTag(o, colors)
@@ -1087,13 +1094,11 @@ const jsString = (p: string): string => `'${printable(p.replace(/[\\']/g, '\\$&'
  * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
  * or undefined when every denial was a withheld credential path.
  */
-function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | undefined {
-  const fix = Object.entries(f).filter(
+function sandboxFixLine(f: SandboxFix): string | undefined {
+  const fix = Object.entries(f as Record<string, string[]>).filter(
     ([k]) => k !== 'withheld' && k !== 'inputs' && k !== 'workspaceFiles',
   )
   if (fix.length === 0) return undefined
-  const parts = fix.map(
-    ([k, list]: [string, string[]]) => `${k}: [${list.map(jsString).join(', ')}]`,
-  )
+  const parts = fix.map(([k, list]) => `${k}: [${list.map(jsString).join(', ')}]`)
   return `exec.sandbox.allow: { ${parts.join(', ')} }`
 }

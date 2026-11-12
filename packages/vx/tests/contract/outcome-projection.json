@@ -1,0 +1,487 @@
+{
+  "runs": [
+    {
+      "project": "a",
+      "task": "build",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 120,
+      "startedAt": 1000001,
+      "endedAt": 1000121,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "hash": "h-build",
+      "cpuMs": 90,
+      "peakRssBytes": 4096,
+      "peakCores": 1.5,
+      "avgRssBytes": 2048,
+      "placement": "worker-1",
+      "placementCores": 8,
+      "placementMemoryBytes": 1024,
+      "cpuShare": 0.5,
+      "queuedMs": 4,
+      "outputBytes": 900,
+      "flakyPasses": 1,
+      "flakyFailures": 1,
+      "wallclockStartNs": "1000000n",
+      "wallclockEndNs": "121000000n",
+      "attempts": 2,
+      "def": "6a9d94b35959d296"
+    },
+    {
+      "project": "a",
+      "task": "lint",
+      "status": "cache-hit-remote",
+      "exitCode": 0,
+      "durationMs": 9,
+      "startedAt": 1000002,
+      "endedAt": 1000011,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": true,
+      "hash": "h-lint",
+      "outputBytes": 70,
+      "wallclockStartNs": "2000000n",
+      "wallclockEndNs": "11000000n",
+      "restored": true,
+      "def": "2802e6914c0d5d52"
+    },
+    {
+      "project": "a",
+      "task": "types",
+      "status": "cache-hit",
+      "exitCode": 0,
+      "durationMs": 1,
+      "startedAt": 1004999,
+      "endedAt": 1005000,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": true,
+      "hash": "h-types",
+      "restored": false,
+      "def": "12563c83c84127a1"
+    },
+    {
+      "project": "b",
+      "task": "test",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 300,
+      "startedAt": 1000003,
+      "endedAt": 1000303,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "hash": "h-test",
+      "wallclockStartNs": "3000000n",
+      "wallclockEndNs": "303000000n",
+      "attempts": 2,
+      "timedOut": true,
+      "sandboxViolations": 1,
+      "keylessBy": "b#gen",
+      "def": "ce95aa474dfd8bfe"
+    },
+    {
+      "project": "b",
+      "task": "serve",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 50,
+      "startedAt": 1004950,
+      "endedAt": 1005000,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "notReady": "timeout",
+      "def": "88bb5f14dfb0cfab"
+    },
+    {
+      "project": "b",
+      "task": "restore",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 3,
+      "startedAt": 1004997,
+      "endedAt": 1005000,
+      "runId": "run-1",
+      "cached": true,
+      "hash": "h-restore",
+      "def": "799528e02eedfeac"
+    },
+    {
+      "project": "c",
+      "task": "docs",
+      "status": "skipped",
+      "exitCode": 1,
+      "durationMs": 0,
+      "startedAt": 1005000,
+      "endedAt": 1005000,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "blockedBy": "b#test",
+      "def": "b9c44be48e929c4d"
+    },
+    {
+      "project": "c",
+      "task": "mac",
+      "status": "skipped",
+      "exitCode": 0,
+      "durationMs": 0,
+      "startedAt": 1005000,
+      "endedAt": 1005000,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "def": "703aa68c14679b40"
+    },
+    {
+      "project": "c",
+      "task": "off",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 5,
+      "startedAt": 1004995,
+      "endedAt": 1005000,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "def": "6baf2f90f0add168"
+    },
+    {
+      "project": "d",
+      "task": "unbegun",
+      "status": "skipped",
+      "exitCode": 1,
+      "durationMs": 0,
+      "startedAt": 1000005,
+      "endedAt": 1000006,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "hash": "h-unbegun",
+      "wallclockStartNs": "5000000n",
+      "wallclockEndNs": "6000000n",
+      "def": "9959410054c500ec"
+    }
+  ],
+  "telemetryTasks": [
+    {
+      "taskId": "a#build",
+      "project": "a",
+      "task": "build",
+      "status": "success",
+      "cacheSource": "miss",
+      "exitCode": 0,
+      "durationMs": 120,
+      "hash": "h-build",
+      "cpuMs": 90,
+      "peakRssBytes": 4096,
+      "where": "worker-1",
+      "attempts": 2,
+      "flaky": {
+        "passes": 1,
+        "failures": 1
+      },
+      "admissionHeldMs": 2,
+      "queuedMs": 4,
+      "inputFiles": 12,
+      "inputChanges": {
+        "count": 1,
+        "first": [
+          {
+            "kind": "file",
+            "name": "src/a.ts",
+            "change": "changed"
+          }
+        ]
+      },
+      "artifactBytes": 300,
+      "saveMs": 6,
+      "wallclockStartNs": "1000000",
+      "wallclockEndNs": "121000000"
+    },
+    {
+      "taskId": "a#lint",
+      "project": "a",
+      "task": "lint",
+      "status": "cache-hit-remote",
+      "cacheSource": "remote",
+      "exitCode": 0,
+      "durationMs": 9,
+      "hash": "h-lint",
+      "storedDurationMs": 900,
+      "storedCpuMs": 800,
+      "storedPeakRssBytes": 700,
+      "artifactBytes": 50,
+      "fetchMs": 7,
+      "restored": true,
+      "wallclockStartNs": "2000000",
+      "wallclockEndNs": "11000000"
+    },
+    {
+      "taskId": "a#types",
+      "project": "a",
+      "task": "types",
+      "status": "cache-hit",
+      "cacheSource": "local",
+      "exitCode": 0,
+      "durationMs": 1,
+      "hash": "h-types",
+      "outputs": "deferred",
+      "restored": false
+    },
+    {
+      "taskId": "b#test",
+      "project": "b",
+      "task": "test",
+      "status": "failed",
+      "cacheSource": "miss",
+      "exitCode": 1,
+      "durationMs": 300,
+      "hash": "h-test",
+      "attempts": 2,
+      "timedOut": true,
+      "sandboxViolations": 1,
+      "failedAttempts": [
+        {
+          "endedAt": 5,
+          "exitCode": 1
+        }
+      ],
+      "sandboxViolationLines": ["deny file-read /etc"],
+      "wallclockStartNs": "3000000",
+      "wallclockEndNs": "303000000"
+    },
+    {
+      "taskId": "b#serve",
+      "project": "b",
+      "task": "serve",
+      "status": "failed",
+      "cacheSource": "miss",
+      "exitCode": 1,
+      "durationMs": 50,
+      "carried": true,
+      "notReady": "timeout"
+    },
+    {
+      "taskId": "b#restore",
+      "project": "b",
+      "task": "restore",
+      "status": "failed",
+      "cacheSource": "none",
+      "exitCode": 1,
+      "durationMs": 3,
+      "hash": "h-restore"
+    },
+    {
+      "taskId": "c#e2e",
+      "project": "c",
+      "task": "e2e",
+      "status": "aborted",
+      "cacheSource": "none",
+      "exitCode": 130,
+      "durationMs": 40,
+      "hash": "h-e2e",
+      "wallclockStartNs": "4000000",
+      "wallclockEndNs": "44000000"
+    },
+    {
+      "taskId": "c#docs",
+      "project": "c",
+      "task": "docs",
+      "status": "skipped",
+      "cacheSource": "none",
+      "exitCode": 1,
+      "durationMs": 0,
+      "blockedBy": "b#test"
+    },
+    {
+      "taskId": "c#mac",
+      "project": "c",
+      "task": "mac",
+      "status": "skipped",
+      "cacheSource": "none",
+      "exitCode": 0,
+      "durationMs": 0,
+      "otherPlatform": {
+        "needs": ["darwin"],
+        "host": "linux"
+      }
+    },
+    {
+      "taskId": "c#off",
+      "project": "c",
+      "task": "off",
+      "status": "success",
+      "cacheSource": "miss",
+      "exitCode": 0,
+      "durationMs": 5
+    },
+    {
+      "taskId": "d#unbegun",
+      "project": "d",
+      "task": "unbegun",
+      "status": "skipped",
+      "cacheSource": "none",
+      "exitCode": 1,
+      "durationMs": 0,
+      "hash": "h-unbegun",
+      "wallclockStartNs": "5000000",
+      "wallclockEndNs": "6000000"
+    }
+  ],
+  "views": [
+    {
+      "taskId": "a#build",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 120,
+      "hash": "h-build",
+      "cpuMs": 90,
+      "peakRssBytes": 4096,
+      "admissionHeldMs": 2,
+      "queuedMs": 4,
+      "inputFiles": 12,
+      "inputChanges": {
+        "count": 1,
+        "first": [
+          {
+            "kind": "file",
+            "name": "src/a.ts",
+            "change": "changed"
+          }
+        ]
+      },
+      "artifactBytes": 300,
+      "saveMs": 6,
+      "wallclockStartNs": "1000000",
+      "wallclockEndNs": "121000000",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "a#lint",
+      "status": "cache-hit-remote",
+      "exitCode": 0,
+      "durationMs": 9,
+      "storedDurationMs": 900,
+      "storedCpuMs": 800,
+      "storedPeakRssBytes": 700,
+      "hash": "h-lint",
+      "artifactBytes": 50,
+      "fetchMs": 7,
+      "restored": true,
+      "wallclockStartNs": "2000000",
+      "wallclockEndNs": "11000000",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "a#types",
+      "status": "cache-hit",
+      "exitCode": 0,
+      "durationMs": 1,
+      "hash": "h-types",
+      "restored": false,
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "b#test",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 300,
+      "hash": "h-test",
+      "timedOut": true,
+      "inputMoved": "b/x.ts",
+      "sandboxViolations": 1,
+      "sandboxViolationLines": ["deny file-read /etc"],
+      "wallclockStartNs": "3000000",
+      "wallclockEndNs": "303000000",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "b#serve",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 50,
+      "notReady": "timeout",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "b#restore",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 3,
+      "restoreFailed": true,
+      "hash": "h-restore",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "c#e2e",
+      "status": "aborted",
+      "exitCode": 130,
+      "durationMs": 40,
+      "hash": "h-e2e",
+      "wallclockStartNs": "4000000",
+      "wallclockEndNs": "44000000",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "c#deploy",
+      "status": "aborted",
+      "exitCode": 1,
+      "durationMs": 0,
+      "blockedBy": "b#test",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "c#docs",
+      "status": "skipped",
+      "exitCode": 1,
+      "durationMs": 0,
+      "blockedBy": "b#test",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "c#mac",
+      "status": "skipped",
+      "exitCode": 0,
+      "durationMs": 0,
+      "otherPlatform": {
+        "needs": ["darwin"],
+        "host": "linux"
+      },
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "c#off",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 5,
+      "noCache": true,
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "d#unbegun",
+      "status": "skipped",
+      "exitCode": 1,
+      "durationMs": 0,
+      "hash": "h-unbegun",
+      "wallclockStartNs": "5000000",
+      "wallclockEndNs": "6000000",
+      "startedAt": 0,
+      "endedAt": 0
+    }
+  ]
+}

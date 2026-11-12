@@ -48,7 +48,7 @@ function outcome(
     exitCode: status === 'failed' ? 1 : 0,
     durationMs: 0,
     ...extra,
-  }
+  } as TaskOutcome
 }
 
 describe('identity hues never read as an outcome', () => {
@@ -154,7 +154,7 @@ describe('the compact one-liners', () => {
       ...outcome('@vzn/vx#lint', 'cache-hit', {
         durationMs: 12,
         hash: 'abcdef0123456789',
-        restored: true,
+        cache: { restored: true },
       }),
       node: cached,
     })
@@ -173,7 +173,7 @@ describe('the compact one-liners', () => {
 
   it('a task an executor ran elsewhere says where, on its row and its frame', () => {
     const o = {
-      ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, where: 'small#2' }),
+      ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, placement: { where: 'small#2' } }),
       node: cached,
     }
     expect(formatTaskExecutedLine(cached, o)).toMatch(/ small#2 +@vzn\/vx#lint$/)
@@ -201,10 +201,10 @@ describe('the compact one-liners', () => {
       row(cached, 'failed'),
       row(uncached, 'failed'),
       row(cached, 'skipped'),
-      row(cached, 'cache-hit', { restored: true }),
-      row(cached, 'cache-hit', { restored: false }),
-      row(cached, 'cache-hit-remote', { restored: true }),
-      row(cached, 'cache-hit-remote', { restored: false }),
+      row(cached, 'cache-hit', { cache: { restored: true } }),
+      row(cached, 'cache-hit', { cache: { restored: false } }),
+      row(cached, 'cache-hit-remote', { cache: { restored: true } }),
+      row(cached, 'cache-hit-remote', { cache: { restored: false } }),
     ]).toEqual([
       '            success miss           —   1.23s     —      —       —       — local          @vzn/vx#lint',
       '            success no-cache       —   1.23s     —      —       —       — local          @vzn/vx#fmt',
@@ -230,13 +230,21 @@ describe('the compact one-liners', () => {
     expect(words(painted('failed'), ['error', 'failed'], ['muted', 'miss'])).toEqual([true, true])
     expect(words(painted('skipped'), ['warn', 'skipped'])).toEqual([true])
     expect(
-      words(painted('cache-hit', { restored: true }), ['ok', 'success'], ['local', 'local']),
+      words(
+        painted('cache-hit', { cache: { restored: true } }),
+        ['ok', 'success'],
+        ['local', 'local'],
+      ),
     ).toEqual([true, true])
-    expect(words(painted('cache-hit', { restored: false }), ['ok', 'fresh'])).toEqual([true])
-    expect(words(painted('cache-hit-remote', { restored: true }), ['remote', 'remote'])).toEqual([
+    expect(words(painted('cache-hit', { cache: { restored: false } }), ['ok', 'fresh'])).toEqual([
       true,
     ])
-    expect(words(painted('cache-hit-remote', { restored: false }), ['ok', 'fresh'])).toEqual([true])
+    expect(
+      words(painted('cache-hit-remote', { cache: { restored: true } }), ['remote', 'remote']),
+    ).toEqual([true])
+    expect(
+      words(painted('cache-hit-remote', { cache: { restored: false } }), ['ok', 'fresh']),
+    ).toEqual([true])
     // The hues differ, or the colour says nothing a word did not.
     expect(
       new Set([paint('local', 'x', on), paint('remote', 'x', on), paint('ok', 'x', on)]).size,
@@ -439,9 +447,8 @@ describe('formatTaskBlock', () => {
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'cache-hit', {
         durationMs: 12,
-        storedDurationMs: 4310,
+        cache: { restored: true, stored: { durationMs: 4310 } },
         hash: 'abcdef0123456789',
-        restored: true,
       }),
       { output: [{ text: 'Found 0 warnings and 0 errors.\n', err: false }] },
     )
@@ -464,7 +471,7 @@ describe('formatTaskBlock', () => {
       outcome('@vzn/vx#lint', 'cache-hit', {
         durationMs: 3,
         hash: 'abcdef0123456789',
-        restored: false,
+        cache: { restored: false },
       }),
       {},
     )
@@ -479,7 +486,7 @@ describe('formatTaskBlock', () => {
       outcome('@vzn/vx#lint', 'cache-hit-remote', {
         durationMs: 156,
         hash: 'fedcba9876543210',
-        restored: true,
+        cache: { restored: true },
       }),
       {},
     )
@@ -514,11 +521,13 @@ describe('formatTaskBlock', () => {
       outcome('@bench/top#build', 'failed', {
         durationMs: 3060,
         exitCode: 1,
-        sandboxViolations: 2,
-        sandboxViolationLines: [
-          'touch(32784) deny(1) sysctl-read kern.iossupportversion',
-          'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js',
-        ],
+        sandbox: {
+          violations: 2,
+          lines: [
+            'touch(32784) deny(1) sysctl-read kern.iossupportversion',
+            'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js',
+          ],
+        },
       }),
       { output: [{ text: 'touch: dist/index.js: Operation not permitted\n', err: true }] },
     )
@@ -546,9 +555,11 @@ describe('formatTaskBlock', () => {
         node('a#build', 'cat tsconfig.json'),
         outcome('a#build', 'failed', {
           exitCode: 1,
-          sandboxViolations: 1,
-          sandboxViolationLines: ['openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]'],
-          sandboxFix,
+          sandbox: {
+            violations: 1,
+            lines: ['openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]'],
+            fix: sandboxFix,
+          },
         }),
         {},
       ).split('\n')
@@ -621,7 +632,7 @@ describe('formatTaskBlock', () => {
       outcome('@vzn/vx#lint', 'cache-hit', {
         durationMs: 8,
         hash: 'abcdef0123456789',
-        restored: true,
+        cache: { restored: true },
       }),
       {},
       { enabled: true },
@@ -770,7 +781,7 @@ describe('persistent task framing', () => {
       formatFrameClose(n, {
         ...outcome('@vzn/vx#fmt', 'failed', { durationMs: 1234 }),
         node: n,
-        sandboxViolationLines: [],
+        sandbox: { violations: 0, lines: [] },
       }),
     ).toBe('└─ @vzn/vx#fmt ── (1.23s) failed (exit 1)')
   })
@@ -786,8 +797,7 @@ describe('persistent task framing', () => {
       outcome('@vzn/vx#test', 'failed', {
         durationMs: 10,
         exitCode: 1,
-        sandboxViolations: 3,
-        sandboxViolationLines: [line, line, 'bun(2) deny(1) file-read-data /repo'],
+        sandbox: { violations: 3, lines: [line, line, 'bun(2) deny(1) file-read-data /repo'] },
       }),
     )
     expect(close).toContain('SANDBOX VIOLATIONS (2)')
@@ -803,9 +813,11 @@ describe('persistent task framing', () => {
       n,
       outcome('a#build', 'failed', {
         exitCode: 1,
-        sandboxViolations: 1,
-        sandboxViolationLines: ['cat(1) deny(1) file-read-data /w/a/x\x1b]0;t\x07'],
-        sandboxFix: { read: ['x\x1b]0;t\x07'], inputs: ['x\r'], withheld: ['~/.ssh/\x1b'] },
+        sandbox: {
+          violations: 1,
+          lines: ['cat(1) deny(1) file-read-data /w/a/x\x1b]0;t\x07'],
+          fix: { read: ['x\x1b]0;t\x07'], inputs: ['x\r'], withheld: ['~/.ssh/\x1b'] },
+        },
       }),
     )
     expect(close).toContain('/w/a/x\\x1b]0;t\\x07')
@@ -822,9 +834,11 @@ describe('persistent task framing', () => {
       node('a#build', 'cat x'),
       outcome('a#build', 'failed', {
         exitCode: 1,
-        sandboxViolations: 1,
-        sandboxViolationLines: ['cat(1) deny(1) file-read-data /w/a/x'],
-        sandboxFix: { read: ['qu\'ote".txt', 'pages/\\[id\\].tsx'], inputs: ['qu\'ote".txt'] },
+        sandbox: {
+          violations: 1,
+          lines: ['cat(1) deny(1) file-read-data /w/a/x'],
+          fix: { read: ['qu\'ote".txt', 'pages/\\[id\\].tsx'], inputs: ['qu\'ote".txt'] },
+        },
       }),
     )
     const line = close.split('\n').find((l) => l.startsWith('fix: '))!
@@ -846,8 +860,7 @@ describe('persistent task framing', () => {
       outcome('@vzn/vx#test', 'failed', {
         durationMs: 10,
         exitCode: 1,
-        sandboxViolations: 1,
-        sandboxViolationLines: [denial, note],
+        sandbox: { violations: 1, lines: [denial, note] },
       }),
     )
     expect(counted).toContain('SANDBOX VIOLATIONS (1)')
@@ -856,8 +869,7 @@ describe('persistent task framing', () => {
       outcome('@vzn/vx#test', 'failed', {
         durationMs: 10,
         exitCode: 1,
-        sandboxViolations: 0,
-        sandboxViolationLines: [note],
+        sandbox: { violations: 0, lines: [note] },
       }),
     )
     expect(noted).toBe(
@@ -879,8 +891,7 @@ describe('persistent task framing', () => {
       outcome('@vzn/vx#test', 'failed', {
         durationMs: 1090,
         exitCode: 1,
-        sandboxViolations: 1,
-        sandboxViolationLines: ['bun(49255) deny(1) file-read-data /repo/packages/vx'],
+        sandbox: { violations: 1, lines: ['bun(49255) deny(1) file-read-data /repo/packages/vx'] },
       }),
     )
     expect(close).toBe(

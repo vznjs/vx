@@ -22,7 +22,7 @@ function outcome(id: string, status: TaskOutcome['status'], exitCode = 0): TaskO
     status,
     exitCode,
     durationMs: 100,
-  }
+  } as TaskOutcome
 }
 
 describe('formatRunSummary', () => {
@@ -81,15 +81,16 @@ describe('formatRunSummary', () => {
   })
 
   it('a hit whose restore failed counts as failed only: no miss, no hit, no spread', () => {
-    const cached = (id: string, o: Partial<TaskOutcome>): TaskOutcome => ({
-      ...outcome(id, 'success'),
-      node: { id, config: { exec: { command: 'noop' }, cache: true } } as TaskNode,
-      ...o,
-    })
+    const cached = (id: string, o: Partial<TaskOutcome>): TaskOutcome =>
+      ({
+        ...outcome(id, 'success'),
+        node: { id, config: { exec: { command: 'noop' }, cache: true } } as TaskNode,
+        ...o,
+      }) as TaskOutcome
     const lines = formatRunSummary(
       [
         cached('a#x', { status: 'failed', exitCode: 1, durationMs: 5, restoreFailed: true }),
-        cached('b#x', { status: 'cache-hit', restored: true }),
+        cached('b#x', { status: 'cache-hit', cache: { restored: true } }),
       ],
       50,
     )
@@ -134,7 +135,7 @@ describe('formatRunSummary', () => {
       status: 'cache-hit',
       exitCode: 0,
       durationMs: 1,
-      restored: true,
+      cache: { restored: true },
     })
     // The last frame's footer (a running row says `miss` until it ends).
     const footer = chunks.join('').split('Summary').at(-1)!
@@ -340,20 +341,21 @@ describe('formatRunSummary', () => {
       id: string,
       status: TaskOutcome['status'],
       extra: Partial<TaskOutcome> = {},
-    ): TaskOutcome => ({
-      ...outcome(id, status),
-      node: { id, config: { exec: { command: 'noop' }, cache: true } } as unknown as TaskNode,
-      hash: `h-${id}`,
-      ...extra,
-    })
+    ): TaskOutcome =>
+      ({
+        ...outcome(id, status),
+        node: { id, config: { exec: { command: 'noop' }, cache: true } } as unknown as TaskNode,
+        hash: `h-${id}`,
+        ...extra,
+      }) as TaskOutcome
     const run = [
-      cached('a#build', 'success', { saved: true }),
-      cached('b#build', 'success', { saved: true }),
+      cached('a#build', 'success', { cache: { saved: true } }),
+      cached('b#build', 'success', { cache: { saved: true } }),
       cached('c#build', 'success'),
-      cached('d#build', 'cache-hit-remote', { restored: true }),
-      cached('e#build', 'cache-hit-remote', { restored: false }),
-      cached('f#build', 'cache-hit', { restored: true }),
-      cached('g#build', 'cache-hit', { restored: false }),
+      cached('d#build', 'cache-hit-remote', { cache: { restored: true } }),
+      cached('e#build', 'cache-hit-remote', { cache: { restored: false } }),
+      cached('f#build', 'cache-hit', { cache: { restored: true } }),
+      cached('g#build', 'cache-hit', { cache: { restored: false } }),
       outcome('h#dev', 'success'),
     ]
     type Traffic = Record<string, { uploading?: number; failures?: string[] }>
@@ -466,7 +468,7 @@ describe('formatRunSummary', () => {
     // 2026-10-21: a red cell with no count under it.
     it('a miss that was not saved for failing is a red count of its own', () => {
       const lines = formatRunSummary(
-        [cached('a#build', 'success', { saved: true }), cached('b#build', 'failed')],
+        [cached('a#build', 'success', { cache: { saved: true } }), cached('b#build', 'failed')],
         10,
         { enabled: false },
         {
@@ -492,7 +494,7 @@ describe('formatRunSummary', () => {
     // "not saved" beside its "not downloaded".
     it('a task whose outputs stayed remote is no "not saved"', () => {
       const lines = formatRunSummary(
-        [cached('a#build', 'success', { outputs: 'deferred' })],
+        [cached('a#build', 'success', { cache: { deferred: true } })],
         10,
         { enabled: false },
         {
@@ -517,7 +519,7 @@ describe('formatRunSummary', () => {
     // left its bucket twice, and the bar's repeat threw on a negative count.
     it('a task not saved here that uploaded leaves the not-saved count once', () => {
       const lines = formatRunSummary(
-        [cached('a#build', 'success'), cached('b#build', 'success', { saved: true })],
+        [cached('a#build', 'success'), cached('b#build', 'success', { cache: { saved: true } })],
         10,
         { enabled: false },
         {
@@ -574,7 +576,7 @@ describe('formatRunSummary', () => {
 
   it('the info row sums what an admit policy held; no hold, no words', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false, concurrency: 4 }
-    const held = { ...outcome('a#x', 'success'), admissionHeldMs: 1200 }
+    const held: TaskOutcome = { ...outcome('a#x', 'success'), timing: { admissionHeldMs: 1200 } }
     const lines = formatRunSummary([held, outcome('b#x', 'success')], 10, { enabled: false }, ctx)
     const info = lines.find((l) => l.startsWith('  info'))!
     expect(info).toBe('  info      4 workers · local cache · admit held 1 task, 1.20s in all')
@@ -640,7 +642,7 @@ describe('formatRunSummary', () => {
     const hit: TaskOutcome = {
       ...outcome('a#x', 'cache-hit'),
       durationMs: 2,
-      storedDurationMs: 2010,
+      cache: { stored: { durationMs: 2010 } },
     }
     expect(last([hit, outcome('c#x', 'success')], 90)).toBe('  time      90ms')
     // The wall time is said once (2026-10-14).
@@ -680,7 +682,7 @@ describe('aborted and not-run tasks', () => {
   // wall-clock start; one the stop reached first does not (item 1062).
   const killed = (id: string, exitCode = 130): TaskOutcome => ({
     ...outcome(id, 'aborted', exitCode),
-    wallclockStartNs: 1_000n,
+    timing: { startNs: 1_000n },
   })
   const group: TaskOutcome = {
     node: { id: 'a#all', config: {} } as TaskNode,
@@ -767,12 +769,12 @@ describe('a flaky task says so on its own row', () => {
     passes: number,
     failures: number,
     attempts?: number,
-  ): TaskOutcome => ({
-    ...outcome(id, status, status === 'failed' ? 1 : 0),
-    node: node(id),
-    flaky: { passes, failures },
-    ...(attempts !== undefined && { attempts }),
-  })
+  ): TaskOutcome =>
+    ({
+      ...outcome(id, status, status === 'failed' ? 1 : 0),
+      node: node(id),
+      attempts: { flaky: { passes, failures }, ...(attempts !== undefined && { count: attempts }) },
+    }) as TaskOutcome
 
   it('a pass names the failures before it, a failure the passes, a retry its attempts', () => {
     expect(flakyNote(flaky('a#types', 'success', 1, 1))).toBe(' flaky - failed 1× before')
@@ -815,7 +817,7 @@ describe('docs/modules/report.md shows what the footer prints', () => {
       ...outcome(id, 'success'),
       node: { id, config: { exec: { command: 'noop' }, cache: true } } as TaskNode,
       durationMs,
-      saved: true,
+      cache: { saved: true },
     })
     const lines = formatRunSummary(
       [timed('a#build', 239), timed('a#test', 190), timed('a#lint', 215), timed('a#fmt', 216)],
@@ -861,7 +863,7 @@ describe('the footer never repeats a value or a count', () => {
     return {
       ...o,
       durationMs: ms,
-      ...(status.startsWith('cache-hit') ? { storedDurationMs: 21_290 } : {}),
+      ...(status.startsWith('cache-hit') ? { cache: { stored: { durationMs: 21_290 } } } : {}),
       node: { ...o.node, config: { ...o.node.config, cache: true } } as TaskNode,
     }
   }
@@ -925,7 +927,7 @@ describe('a total is the last word on its line', () => {
         outcome('a#x', 'failed', 1),
         outcome('b#x', 'success'),
         outcome('c#x', 'skipped'),
-        { ...outcome('d#x', 'aborted', 1), durationMs: 50, startedAt: 1 } as TaskOutcome,
+        { ...outcome('d#x', 'aborted', 1), durationMs: 50 },
         outcome('e#x', 'aborted', 1),
       ],
       10,
@@ -947,7 +949,7 @@ describe('formatOutcomeTable', () => {
   const rows: TaskOutcome[] = [
     { node: node('a#build'), status: 'success', exitCode: 0, durationMs: 12 },
     { node: node('a#test'), status: 'failed', exitCode: 3, durationMs: 40 },
-    { node: node('b#test'), status: 'skipped', exitCode: 0, durationMs: 0, blockedBy: 'a#test' },
+    { node: node('b#test'), status: 'skipped', durationMs: 0, blockedBy: 'a#test' },
   ]
 
   it('paints on a colour terminal: no line of it is plain text', () => {
@@ -966,7 +968,7 @@ describe('formatOutcomeTable', () => {
   })
 
   it('names a task the stop reached before it ran `not run`, as its row and the footer do', () => {
-    const killed: TaskOutcome = { ...outcome('a#x', 'aborted', 130), wallclockStartNs: 1n }
+    const killed: TaskOutcome = { ...outcome('a#x', 'aborted', 130), timing: { startNs: 1n } }
     const lines = formatOutcomeTable([killed, outcome('b#x', 'aborted', 1)])
     expect(lines.slice(3).map((l) => l.split(/\s{2,}/)[1])).toEqual(['aborted', 'not run'])
   })

@@ -223,7 +223,7 @@ describe('missOutcome: what a miss adds up to', () => {
     expect(o).toMatchObject({
       status: 'success',
       exitCode: 0,
-      saved: true,
+      cache: { saved: true },
       durationMs: 7,
       hash: 'k',
     })
@@ -234,8 +234,7 @@ describe('missOutcome: what a miss adds up to', () => {
     expect(o).toMatchObject({
       status: 'failed',
       exitCode: 1,
-      unkeyed: true,
-      driftedInput: '/ws/p/a',
+      cache: { unkeyed: true, driftedInput: '/ws/p/a' },
       inputMoved: 'p/a',
     })
   })
@@ -244,7 +243,7 @@ describe('missOutcome: what a miss adds up to', () => {
     const { o, warned } = outcomeOf({
       args: { node: { ...node, config: { exec: { command: 'build' }, cache: true } } },
     })
-    expect(o.keylessBy).toBe('p#build')
+    expect(o.cache?.keylessBy).toBe('p#build')
     expect(warned.join('\n')).toContain('declares no `inputs`')
   })
 })

@@ -69,12 +69,12 @@ export function tallyOutcomes(outcomes: readonly TaskOutcome[]): Tally {
     else if (o.status === 'cache-hit') {
       t.successful++
       t.cachedLocal++
-      if (o.restored === true) t.restoredLocal++
+      if (o.cache?.restored === true) t.restoredLocal++
       else t.upToDate++
     } else if (o.status === 'cache-hit-remote') {
       t.successful++
       t.cachedRemote++
-      if (o.restored === true) t.restoredRemote++
+      if (o.cache?.restored === true) t.restoredRemote++
       else t.upToDate++
     } else if (o.status === 'failed') t.failed++
     else if (o.status === 'skipped') t.skipped++

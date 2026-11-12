@@ -113,7 +113,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
     case 'success':
       return ranNoCache(o)
         ? 'noCache'
-        : o.saved === true
+        : o.cache?.saved === true
           ? 'saved'
           : ranUnsaved(o)
             ? 'notSaved'
@@ -124,9 +124,9 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
       if (o.restoreFailed === true || isKeyFailed(o)) return undefined
       return ranNoCache(o) ? 'noCache' : 'miss'
     case 'cache-hit':
-      return o.restored === false ? 'upToDate' : 'restoredLocal'
+      return o.cache?.restored === false ? 'upToDate' : 'restoredLocal'
     case 'cache-hit-remote':
-      return o.restored === false ? 'upToDate' : 'restoredRemote'
+      return o.cache?.restored === false ? 'upToDate' : 'restoredRemote'
     default:
       return undefined
   }
@@ -535,7 +535,7 @@ function formatOver(ms: number): string {
 }
 
 /**
- * The `--verbosity 1` per-task table (`RunOptions.summaryTable`). Groups are
+ * The `--verbosity 1` per-task table (`RunHandoff.summaryTable`). Groups are
  * left out as the footer leaves them: a group ran no command. Painted in the
  * list's vocabulary: header bold violet, ids in their hues, status in its
  * state colour, rule and durations dim.
@@ -602,9 +602,9 @@ export function ranUnsaved(o: TaskOutcome): boolean {
   return (
     o.status === 'success' &&
     !ranNoCache(o) &&
-    o.saved !== true &&
-    o.where === undefined &&
-    o.outputs !== 'deferred'
+    o.cache?.saved !== true &&
+    o.placement?.where === undefined &&
+    o.cache?.deferred !== true
   )
 }
 
@@ -626,7 +626,7 @@ export function formatRunSummary(
       !isKeyFailed(o),
   ).length
   const restoreFailed = outcomes.filter(
-    (o) => !isGroupTask(o.node) && o.status === 'failed' && o.restoreFailed === true,
+    (o) => !isGroupTask(o.node) && o.restoreFailed === true,
   ).length
   // A task with no key asked no cache and ran nothing: not a miss.
   const keyFailed = outcomes.filter(
@@ -643,7 +643,7 @@ export function formatRunSummary(
         !isGroupTask(o.node),
     )
     .map((o) => o.durationMs)
-  const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
+  const heldOutcomes = outcomes.filter((o) => o.timing?.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
   const emptyGroups = outcomes.every((o) => isGroupTask(o.node))
     ? [...new Set(outcomes.map((o) => o.node.taskName))]
@@ -659,7 +659,7 @@ export function formatRunSummary(
       upToDate: t.upToDate,
       restoredLocal: t.restoredLocal,
       restoredRemote: t.restoredRemote,
-      saved: outcomes.filter((o) => o.saved === true && !isGroupTask(o.node)).length,
+      saved: outcomes.filter((o) => o.cache?.saved === true && !isGroupTask(o.node)).length,
       notSaved: outcomes.filter((o) => !isGroupTask(o.node) && ranUnsaved(o)).length,
       miss:
         t.total -
@@ -683,7 +683,7 @@ export function formatRunSummary(
         ? {
             held: {
               count: heldOutcomes.length,
-              sumMs: heldOutcomes.reduce((sum, o) => sum + o.admissionHeldMs!, 0),
+              sumMs: heldOutcomes.reduce((sum, o) => sum + (o.timing?.admissionHeldMs ?? 0), 0),
             },
           }
         : {}),
@@ -715,8 +715,6 @@ function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, TaskBucket> {
  * it an invented exit 1; only a started task carries a wall-clock start, so
  * that is what tells "never ran" from "killed" (item 1062).
  */
-export function neverStarted(
-  o: Pick<TaskOutcome, 'status'> & { wallclockStartNs?: unknown },
-): boolean {
-  return o.status === 'aborted' && o.wallclockStartNs === undefined
+export function neverStarted(o: TaskOutcome): boolean {
+  return o.status === 'aborted' && o.timing?.startNs === undefined
 }

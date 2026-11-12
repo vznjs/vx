@@ -19,7 +19,7 @@ import {
   sweepRestoreTemps,
 } from '../cache/index.js'
 import { OUTPUT_DIRS_OVER_CAP, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
-import type { TaskOutcome } from '../graph/index.js'
+import type { OutcomeCache, OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import {
   asTrees,
   relPosix,
@@ -498,28 +498,31 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   // a fresh. It should not require any cache").
   // Assigned, not spread: one outcome per hit, and five conditional
   // spreads were ~3 ms of an 8,002-hit warm run (2026-11-07).
+  const skipped: NonNullable<OutcomeCache['stored']> = { durationMs: hit.durationMs }
+  if (hit.cpuMs !== undefined) skipped.cpuMs = hit.cpuMs
+  if (hit.peakRssBytes !== undefined) skipped.peakRssBytes = hit.peakRssBytes
+  const cache: OutcomeCache = { stored: skipped, restored: restored || hit.source === 'remote' }
+  if (hit.sizeBytes !== undefined) cache.artifactBytes = hit.sizeBytes
+  if (hit.outputRows !== undefined) {
+    let bytes = 0
+    for (const r of hit.outputRows) bytes += r.size
+    cache.outputBytes = bytes
+  }
+  const timing: OutcomeTiming = {
+    startNs: taskStartNs,
+    endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+  }
+  if (hit.fetchMs !== undefined) timing.fetchMs = hit.fetchMs
   const outcome: TaskOutcome = {
     node,
     status,
     exitCode: hit.exitCode,
-    // What THIS run spent: probe + restore. NOT the stored exec time — see
-    // `storedDurationMs`, which is what the hit skipped.
+    // What THIS run spent: probe + restore. `cache.stored` is what the hit skipped.
     durationMs: Math.round(performance.now() - cacheOpStart),
-    storedDurationMs: hit.durationMs,
     hash,
-    restored: restored || hit.source === 'remote',
-    wallclockStartNs: taskStartNs,
-    wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+    cache,
+    timing,
   }
-  if (hit.cpuMs !== undefined) outcome.storedCpuMs = hit.cpuMs
-  if (hit.peakRssBytes !== undefined) outcome.storedPeakRssBytes = hit.peakRssBytes
-  if (hit.sizeBytes !== undefined) outcome.artifactBytes = hit.sizeBytes
-  if (hit.outputRows !== undefined) {
-    let bytes = 0
-    for (const r of hit.outputRows) bytes += r.size
-    outcome.outputBytes = bytes
-  }
-  if (hit.fetchMs !== undefined) outcome.fetchMs = hit.fetchMs
   return outcome
 }
 

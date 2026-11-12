@@ -84,9 +84,10 @@ export interface ScheduleOptions {
    * save that runs off the execution slot (the orchestrator's save lane):
    * a dependent reads the upstream's entry (its output rows travel in the
    * execute request), so it waits for the save to land, while the freed
-   * slot admits other work at once. Undefined: nothing owed.
+   * slot admits other work at once; it resolves to the outcome with what
+   * was owed folded in. Undefined: nothing owed.
    */
-  settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
+  settledOf?: (outcome: TaskOutcome) => Promise<TaskOutcome | void> | undefined
   /**
    * A task the caller settles in place: a thunk returning its outcome, or
    * undefined to dispatch it through `execute`. Asked of a task its lane
@@ -778,18 +779,20 @@ class GraphRun {
       viaSkip?.blockedBy ??
       (viaSkip?.otherPlatform !== undefined ? viaSkip.node.id : undefined) ??
       (viaRestore === undefined ? undefined : this.blockedRestores.get(viaRestore))
-    const aborted = this.aborted()
-    // Behind a platform skip is no failure: the run passes, so the exit does.
-    const notHere =
-      !aborted &&
-      blockedBy !== undefined &&
-      this.outcomes.get(blockedBy)?.otherPlatform !== undefined
+    const blocked = blockedBy !== undefined ? { blockedBy } : {}
+    if (this.aborted()) {
+      this.finishOne(id, { node, status: 'aborted', exitCode: 1, durationMs: 0, ...blocked })
+      return
+    }
+    // Behind a platform skip is no failure: the run passes.
+    const platform =
+      blockedBy !== undefined && this.outcomes.get(blockedBy)?.otherPlatform !== undefined
     this.finishOne(id, {
       node,
-      status: aborted ? 'aborted' : 'skipped',
-      exitCode: notHere ? 0 : 1,
+      status: 'skipped',
       durationMs: 0,
-      ...(blockedBy !== undefined ? { blockedBy } : {}),
+      ...blocked,
+      ...(platform ? { platform: true as const } : {}),
     })
   }
 
@@ -808,7 +811,7 @@ class GraphRun {
       }
     }
     if (now !== undefined) {
-      if (queuedMs !== 0) now.queuedMs = queuedMs
+      if (queuedMs !== 0) (now.timing ??= {}).queuedMs = queuedMs
       this.finishOne(id, now)
       return
     }
@@ -828,8 +831,11 @@ class GraphRun {
         ? o
         : {
             ...o,
-            ...(heldMs > 0 ? { admissionHeldMs: heldMs } : {}),
-            ...(queuedMs > 0 ? { queuedMs } : {}),
+            timing: {
+              ...o.timing,
+              ...(heldMs > 0 ? { admissionHeldMs: heldMs } : {}),
+              ...(queuedMs > 0 ? { queuedMs } : {}),
+            },
           }
     const free = (): void => {
       leave()
@@ -871,8 +877,8 @@ class GraphRun {
     }
     this.tick()
     // What the save cost rides the outcome it settles.
-    const done = (owed?: Partial<TaskOutcome> | void): void => {
-      this.finishOne(id, owed ? { ...outcome, ...owed } : outcome)
+    const done = (settledOutcome?: TaskOutcome | void): void => {
+      this.finishOne(id, settledOutcome ?? outcome)
       this.tick()
     }
     void settled.then(done, () => done())
@@ -900,13 +906,19 @@ class GraphRun {
     // After the run's stop a rejection is the stop's doing (a probe
     // it killed, C-65): aborted, as any task it kills, and unsaid.
     const stopped = this.aborted()
-    const outcome: TaskOutcome = withHold({
-      node,
-      status: stopped ? 'aborted' : 'failed',
-      exitCode: thrown instanceof OutputsFailed ? thrown.exitCode : 1,
-      durationMs: thrown instanceof OutputsFailed ? thrown.durationMs : 0,
-      ...(thrown instanceof RestoreFailed && !stopped ? { restoreFailed: true } : {}),
-    })
+    const exitCode = thrown instanceof OutputsFailed ? thrown.exitCode : 1
+    const durationMs = thrown instanceof OutputsFailed ? thrown.durationMs : 0
+    const outcome: TaskOutcome = withHold(
+      stopped
+        ? { node, status: 'aborted', exitCode, durationMs }
+        : {
+            node,
+            status: 'failed',
+            exitCode,
+            durationMs,
+            ...(thrown instanceof RestoreFailed ? { restoreFailed: true as const } : {}),
+          },
+    )
     if (thrown instanceof KeyFailed && !stopped) markKeyFailed(outcome)
     if (thrown instanceof OutputsFailed && !stopped) markOutputsFailed(outcome, thrown.step)
     free()

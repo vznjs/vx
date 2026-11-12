@@ -119,7 +119,7 @@ it("a hit's restore is a writer of the run's command windows", async () => {
   const out = path.join(dir, 'dist', 'a.txt')
   await writeFile(out, 'edited\n')
   const windows = commandWindows()
-  const hit = await run({ ...once, commandWindows: windows })
+  const hit = await run({ ...once, handoff: { commandWindows: windows } })
   const t = (await stat(out)).ctimeMs
   expect([hit.outcomes[0]?.status, windows.writerDuring('', out, t, t)]).toEqual([
     'cache-hit',

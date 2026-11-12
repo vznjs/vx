@@ -539,9 +539,9 @@ describe('execute-task — what the outcome and the request carry', () => {
       const run = (changed: string[]) =>
         executeTask({ ...baseArgs(b, cached, log), executor: elsewhere(changed) })
       const moved = await run(['proj/package.json'])
-      expect([moved.status, moved.saved]).toEqual(['success', undefined])
+      expect([moved.status, moved.cache?.saved]).toEqual(['success', undefined])
       expect(f.err.join('')).toContain('`proj/package.json` changed after its key was taken')
-      expect((await run(['proj/other.txt'])).saved).toBe(true)
+      expect((await run(['proj/other.txt'])).cache?.saved).toBe(true)
     } finally {
       await closeBench(b)
     }
@@ -577,11 +577,11 @@ describe('execute-task — what the outcome and the request carry', () => {
       const run = (changed: string[]) =>
         executeTask({ ...baseArgs(b, cached, log), executor: elsewhere(changed) })
       const stray = await run(['proj/src/zz.txt'])
-      expect([stray.status, stray.saved]).toEqual(['success', undefined])
+      expect([stray.status, stray.cache?.saved]).toEqual(['success', undefined])
       expect(f.err.join('')).toContain('`proj/src/zz.txt` changed after its key was taken')
       expect(f.err.join('')).not.toContain('declare it in outputs')
       // Under its own outputs it is none of the key's.
-      expect((await run(['proj/out/r.txt'])).saved).toBe(true)
+      expect((await run(['proj/out/r.txt'])).cache?.saved).toBe(true)
     } finally {
       await closeBench(b)
     }
@@ -611,11 +611,8 @@ describe('execute-task — what the outcome and the request carry', () => {
       } as never
       const o = await executeTask({ ...baseArgs(b, n, log), executor: denied })
       expect(o.status).toBe('failed')
-      expect(o.sandboxViolations).toBe(2)
-      expect(o.sandboxViolationLines).toEqual([
-        'deny file-read-data /etc/hosts',
-        'deny network-outbound',
-      ])
+      expect(o.sandbox?.violations).toBe(2)
+      expect(o.sandbox?.lines).toEqual(['deny file-read-data /etc/hosts', 'deny network-outbound'])
     } finally {
       await closeBench(b)
     }
@@ -630,9 +627,9 @@ describe('execute-task — what the outcome and the request carry', () => {
       const log = capturingLogger({ root: '', out: [], err: [] })
       const n = node(b, { exec: { command: 'true' } })
       const o = await executeTask({ ...baseArgs(b, n, log), executor: localExecutor() })
-      expect(o.wallclockStartNs).toBeDefined()
-      expect(o.wallclockEndNs).toBeDefined()
-      expect(o.wallclockEndNs!).toBeGreaterThan(o.wallclockStartNs!)
+      expect(o.timing?.startNs).toBeDefined()
+      expect(o.timing?.endNs).toBeDefined()
+      expect(o.timing!.endNs!).toBeGreaterThan(o.timing!.startNs!)
     } finally {
       await closeBench(b)
     }
@@ -667,7 +664,7 @@ describe('execute-task — what the outcome and the request carry', () => {
       } as never
       const o = await executeTask({ ...baseArgs(b, n, log), executor: clean })
       expect([o.status, o.exitCode]).toEqual(['success', 0])
-      expect(o.sandboxViolations).toBeUndefined()
+      expect(o.sandbox?.violations).toBeUndefined()
     } finally {
       await closeBench(b)
     }
@@ -897,7 +894,7 @@ describe('execute-task — output cleaning across retry attempts', () => {
         log: capturingLogger(fixture),
       })
       expect(r.ok).toBe(true)
-      expect(r.outcomes[0]!.attempts).toBe(2)
+      expect(r.outcomes[0]!.attempts?.count).toBe(2)
       expect(lsSorted(path.join(dir, 'dist'))).toEqual(['final.txt'])
 
       // The saved ARTIFACT must agree with disk — a run that only cleaned the
@@ -935,7 +932,7 @@ describe('execute-task — output cleaning across retry attempts', () => {
         log: capturingLogger(fixture),
       })
       expect(r.ok).toBe(true)
-      expect(r.outcomes[0]!.attempts).toBe(2)
+      expect(r.outcomes[0]!.attempts?.count).toBe(2)
       expect(lsSorted(path.join(dir, 'dist'))).toEqual(['final.txt', 'partial.txt'])
     },
     TIMEOUT,
@@ -1062,7 +1059,7 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
       const o = r.outcomes[0]!
       expect(o.status).toBe('failed')
       expect(o.exitCode).toBe(143)
-      expect(o.attempts).toBe(2)
+      expect(o.attempts?.count).toBe(2)
       expect((await readFile(path.join(dir, 'tries.txt'), 'utf8')).trim().split('\n')).toHaveLength(
         2,
       )
@@ -1112,7 +1109,7 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
           ...baseArgs(b, n, log, { failFast: failFast.signal }),
           executor: failing,
         })
-        return [calls, o.status, o.exitCode, o.attempts, o.failedAttempts?.length]
+        return [calls, o.status, o.exitCode, o.attempts?.count, o.attempts?.failed?.length]
       }
       expect(await drive(true)).toEqual([1, 'failed', 1, undefined, undefined])
       // CONTROL: no trip, every retry runs.
@@ -1196,7 +1193,7 @@ describe('execute-task — what one attempt may hand the next', () => {
         // a zero exit rewritten to 1 is the only reason a second one happened.
         expect(attempts).toBe(2)
         expect([outcome.status, outcome.exitCode]).toEqual(['success', 0])
-        expect(outcome.sandboxViolationLines).toBeUndefined()
+        expect(outcome.sandbox?.lines).toBeUndefined()
       } finally {
         await closeBench(b)
       }
@@ -1345,7 +1342,7 @@ describe('execute-task — cache-hit materialization', () => {
         log: capturingLogger(fixture),
       })
       expect(untouched.outcomes[0]!.status).toBe('cache-hit')
-      expect(untouched.outcomes[0]!.restored).toBe(false)
+      expect(untouched.outcomes[0]!.cache?.restored).toBe(false)
 
       await rm(path.join(dir, 'dist'), { recursive: true, force: true })
       const wiped = await run({
@@ -1355,7 +1352,7 @@ describe('execute-task — cache-hit materialization', () => {
         log: capturingLogger(fixture),
       })
       expect(wiped.outcomes[0]!.status).toBe('cache-hit')
-      expect(wiped.outcomes[0]!.restored).toBe(true)
+      expect(wiped.outcomes[0]!.cache?.restored).toBe(true)
       expect(await readFile(path.join(dir, 'dist', 'o.txt'), 'utf8')).toBe('v1\n')
     },
     TIMEOUT,
@@ -1390,7 +1387,7 @@ describe('execute-task — cache-hit materialization', () => {
         log: capturingLogger(fixture),
       })
       expect(warm.outcomes[0]!.status).toBe('cache-hit')
-      expect(warm.outcomes[0]!.restored).toBe(false)
+      expect(warm.outcomes[0]!.cache?.restored).toBe(false)
     },
     TIMEOUT,
   )
@@ -1499,14 +1496,12 @@ describe('execute-task — restoreHit classification (entry shapes a run() canno
       taskStartNs: 7n,
     })
     expect(f.out.join('')).toBe('REPLAYED-STDOUT')
-    expect(o.storedDurationMs).toBe(4321)
+    expect(o.cache?.stored?.durationMs).toBe(4321)
     expect(o.durationMs).toBeGreaterThanOrEqual(250)
     expect(o.durationMs).toBeLessThan(4321)
     // The wallclock window is run-relative, from the start it was handed.
-    expect(o.wallclockStartNs).toBe(7n)
-    expect(o.wallclockEndNs).toBeLessThanOrEqual(
-      process.hrtime.bigint() - args.run.runStartHrTimeNs,
-    )
+    expect(o.timing?.startNs).toBe(7n)
+    expect(o.timing?.endNs).toBeLessThanOrEqual(process.hrtime.bigint() - args.run.runStartHrTimeNs)
   })
 })
 
@@ -1569,15 +1564,15 @@ describe('execute-task — what restoreHit reads and records', () => {
     const hash = 'aaaa0000bbbb1111'
     const hit = await seedDist(hash)
     const load = spyOn(b.cache.memo, 'loadOutputFilesBatch')
-    expect((await restore(hash, hit)).restored).toBe(false)
+    expect((await restore(hash, hit)).cache?.restored).toBe(false)
     expect(load).not.toHaveBeenCalled()
     // A layer's entry without rows: the untouched tree is still current…
     const { outputRows: _rows, ...bare } = hit
-    expect((await restore(hash, bare)).restored).toBe(false)
+    expect((await restore(hash, bare)).cache?.restored).toBe(false)
     expect(load).toHaveBeenCalledTimes(1)
     // …and a wiped one is restored, never taken for an entry that saved nothing.
     await rm(path.join(b.dir, 'dist'), { recursive: true })
-    expect((await restore(hash, bare)).restored).toBe(true)
+    expect((await restore(hash, bare)).cache?.restored).toBe(true)
     expect(await readFile(out(), 'utf8')).toBe('v1')
   })
 
@@ -1595,7 +1590,7 @@ describe('execute-task — what restoreHit reads and records', () => {
     expect(hit.outputDirRows?.map((r) => r.path)).toEqual(['dist'])
     const current = spyOn(b.cache.memo, 'outputDirsCurrent')
     const record = spyOn(b.cache.memo, 'recordOutputDirs')
-    expect((await restore(hash, hit)).restored).toBe(false)
+    expect((await restore(hash, hit)).cache?.restored).toBe(false)
     expect(current).toHaveBeenCalledTimes(1)
     expect(await current.mock.results[0]!.value).toBe(true)
     expect(record).not.toHaveBeenCalled()
@@ -1611,7 +1606,7 @@ describe('execute-task — what restoreHit reads and records', () => {
     const now = new Date()
     utimesSync(path.join(b.dir, 'dist'), now, now)
     const snapshots: OutputDirSnapshot[] = []
-    expect((await restore(hash, hit, snapshots)).restored).toBe(true)
+    expect((await restore(hash, hit, snapshots)).cache?.restored).toBe(true)
     expect(record).not.toHaveBeenCalled()
     expect(await readFile(out(), 'utf8')).toBe('v1')
     expect(snapshots.map((s) => [s.hash, s.projectDir, s.prefixes])).toEqual([
@@ -1769,7 +1764,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
       preProbed: { hash: 'deadbeefdeadbeef', hit: null },
     } as never)
     // Still registered: a local consumer fetches the bytes, with no key.
-    expect([stale.status, stale.unkeyed, registered, status]).toEqual([
+    expect([stale.status, stale.cache?.unkeyed, registered, status]).toEqual([
       'success',
       true,
       [['proj#build', undefined]],
@@ -2776,7 +2771,7 @@ describe('execute-task edges', () => {
             exitCode: 0,
             durationMs: 1,
             hash: 'h-gen',
-            ...(unkeyed ? { unkeyed: true } : {}),
+            ...(unkeyed ? { cache: { unkeyed: true as const } } : {}),
           },
         ],
       })
@@ -2799,7 +2794,7 @@ describe('execute-task edges', () => {
       // other otherwise); a later task of the project still reads the facts.
       noDependants: true,
     })
-    expect([o.status, o.unkeyed, await b.cache.get(o.hash!), git.has(b.dir)]).toEqual([
+    expect([o.status, o.cache?.unkeyed, await b.cache.get(o.hash!), git.has(b.dir)]).toEqual([
       'success',
       true,
       null,
@@ -2831,7 +2826,7 @@ describe('execute-task edges', () => {
         fingerprintWatch: watch as never,
       }),
     })
-    expect([o.status, o.unkeyed]).toEqual(['success', true])
+    expect([o.status, o.cache?.unkeyed]).toEqual(['success', true])
   })
 
   it('forwards args to a requested task only', async () => {

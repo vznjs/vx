@@ -98,7 +98,7 @@ async function scenario(seed: number, iter: number, stopAt?: number): Promise<st
     continueMode: mode,
     log: silent,
     handleSignals: false,
-    holdPersistent: hold,
+    handoff: { holdPersistent: hold },
     signal: ac.signal,
   })
   clearTimeout(timer)

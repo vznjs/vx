@@ -5,7 +5,7 @@
 // row. A quicker step shows nowhere, and no step is counted as a task.
 
 import { describe, expect, it } from 'bun:test'
-import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import type { TaskNode } from '../src/graph/index.js'
 import { defaultLogger } from '../src/report/logger.js'
 import type { StatusStream } from '../src/ui/live-region.js'
 
@@ -65,8 +65,8 @@ describe('uploads still running at the end of a run', () => {
       exitCode: 0,
       durationMs: 5,
       hash: 'h-a',
-      saved: true,
-    } as TaskOutcome)
+      cache: { saved: true },
+    })
     const settle = () => {
       key.uploading = 0
       traffic.inFlight = 0

@@ -158,7 +158,7 @@ it("a telemetry sink's edit reaches neither core nor the next sink", async () =>
     ),
   )
   const r = await run({ cwd: root, tasks: ['flaky'], log, handleSignals: false })
-  expect(r.outcomes.map((o) => [o.node.id, o.status, o.failedAttempts?.length])).toEqual([
+  expect(r.outcomes.map((o) => [o.node.id, o.status, o.attempts?.failed?.length])).toEqual([
     ['c#flaky', 'success', 1],
   ])
   expect(r.ok).toBe(true)

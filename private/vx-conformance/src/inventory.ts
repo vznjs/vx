@@ -297,6 +297,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'contract-exit-codes-init',
     'contract-exit-codes-states',
     'contract-lockfile',
+    'contract-outcome-projection',
     'contract-package-api',
     'contract-plugin-api.unsafe',
     'contract-plugin-env.unsafe',

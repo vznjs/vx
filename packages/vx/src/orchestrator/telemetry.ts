@@ -22,6 +22,7 @@ import { sampleTrees, type MachineReport, type WorkerAdvice } from '../exec/inde
 import {
   type CacheSource,
   deriveCacheSource,
+  exitCodeOf,
   isCacheHit,
   isGroupTask,
   type InputChanges,
@@ -885,39 +886,40 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
     status: o.status,
     // A hit whose restore failed is in no cache column: neither a miss nor a hit.
     cacheSource: o.restoreFailed === true ? 'none' : deriveCacheSource(o.status),
-    exitCode: o.exitCode,
+    exitCode: exitCodeOf(o),
     durationMs: o.durationMs,
   }
   if (o.hash !== undefined) t.hash = o.hash
-  if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
-  if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
-  if (o.where !== undefined) t.where = o.where
-  if (o.carried === true) t.carried = true
-  if (o.outputs !== undefined) t.outputs = o.outputs
-  if (o.attempts !== undefined) t.attempts = o.attempts
+  if (o.usage?.cpuMs !== undefined) t.cpuMs = o.usage.cpuMs
+  if (o.usage?.peakRssBytes !== undefined) t.peakRssBytes = o.usage.peakRssBytes
+  if (o.placement?.where !== undefined) t.where = o.placement.where
+  if (o.placement?.carried === true) t.carried = true
+  if (o.cache?.deferred === true) t.outputs = 'deferred'
+  if (o.attempts?.count !== undefined) t.attempts = o.attempts.count
   if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
   if (o.otherPlatform !== undefined) t.otherPlatform = o.otherPlatform
   if (o.timedOut === true) t.timedOut = true
-  if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
+  if (o.sandbox?.violations !== undefined) t.sandboxViolations = o.sandbox.violations
   if (o.notReady !== undefined) t.notReady = o.notReady
-  if (o.failedAttempts !== undefined) t.failedAttempts = o.failedAttempts
-  if (o.flaky !== undefined) t.flaky = o.flaky
-  if (o.sandboxViolationLines !== undefined && o.sandboxViolationLines.length > 0) {
-    t.sandboxViolationLines = o.sandboxViolationLines
+  if (o.attempts?.failed !== undefined) t.failedAttempts = o.attempts.failed
+  if (o.attempts?.flaky !== undefined) t.flaky = o.attempts.flaky
+  if (o.sandbox?.lines !== undefined && o.sandbox.lines.length > 0) {
+    t.sandboxViolationLines = o.sandbox.lines
   }
-  if (o.storedDurationMs !== undefined) t.storedDurationMs = o.storedDurationMs
-  if (o.storedCpuMs !== undefined) t.storedCpuMs = o.storedCpuMs
-  if (o.storedPeakRssBytes !== undefined) t.storedPeakRssBytes = o.storedPeakRssBytes
-  if (o.admissionHeldMs !== undefined) t.admissionHeldMs = o.admissionHeldMs
-  if (o.queuedMs !== undefined) t.queuedMs = o.queuedMs
-  if (o.inputFiles !== undefined) t.inputFiles = o.inputFiles
-  if (o.inputChanges !== undefined) t.inputChanges = o.inputChanges
-  if (o.artifactBytes !== undefined) t.artifactBytes = o.artifactBytes
-  if (o.fetchMs !== undefined) t.fetchMs = o.fetchMs
-  if (o.saveMs !== undefined) t.saveMs = o.saveMs
-  if (isCacheHit(o.status)) t.restored = o.restored === true
-  if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
-  if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
+  if (o.cache?.stored?.durationMs !== undefined) t.storedDurationMs = o.cache.stored.durationMs
+  if (o.cache?.stored?.cpuMs !== undefined) t.storedCpuMs = o.cache.stored.cpuMs
+  if (o.cache?.stored?.peakRssBytes !== undefined)
+    t.storedPeakRssBytes = o.cache?.stored?.peakRssBytes
+  if (o.timing?.admissionHeldMs !== undefined) t.admissionHeldMs = o.timing.admissionHeldMs
+  if (o.timing?.queuedMs !== undefined) t.queuedMs = o.timing.queuedMs
+  if (o.cache?.inputFiles !== undefined) t.inputFiles = o.cache.inputFiles
+  if (o.cache?.inputChanges !== undefined) t.inputChanges = o.cache.inputChanges
+  if (o.cache?.artifactBytes !== undefined) t.artifactBytes = o.cache.artifactBytes
+  if (o.timing?.fetchMs !== undefined) t.fetchMs = o.timing.fetchMs
+  if (o.timing?.saveMs !== undefined) t.saveMs = o.timing.saveMs
+  if (isCacheHit(o.status)) t.restored = o.cache?.restored === true
+  if (o.timing?.startNs !== undefined) t.wallclockStartNs = o.timing.startNs.toString()
+  if (o.timing?.endNs !== undefined) t.wallclockEndNs = o.timing.endNs.toString()
   return t
 }
 

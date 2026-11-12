@@ -100,68 +100,30 @@ export interface InputChanges {
   first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
 }
 
-export interface TaskOutcome {
-  node: TaskNode
-  status: TaskStatus
-  exitCode: number
-  durationMs: number
-  /** Cache key hash, if one was computed. Folded into dependents' keys
-   *  (pure-input transitive — the upstream's input key, not its output). */
-  hash?: string
+/** When the task waited, ran and moved bytes, on the run's clock. */
+export interface OutcomeTiming {
   /**
-   * For cache-hit statuses: the exec time the ENTRY was stored with — i.e.
-   * the work this hit skipped. Distinct from `durationMs`, which is always
-   * what THIS run spent (a hit's restore cost). The two differ by whatever
-   * the exec:restore ratio happens to be, so a surface reporting "time
-   * saved" must read this one; a surface reporting "time spent" must not.
-   * Undefined on every non-hit outcome — nothing was skipped.
-   */
-  storedDurationMs?: number
-  /**
-   * For cache-hit statuses: what the PRODUCING execution used, read from
-   * the entry (it rides the artifact, so a remote hit on a fresh machine
-   * carries it too). The same split as `storedDurationMs`: `cpuMs` /
-   * `peakRssBytes` are what THIS run spent and stay absent on a hit.
-   */
-  storedCpuMs?: number
-  storedPeakRssBytes?: number
-  /**
-   * How long an `admit` policy held this task after it was ready with a
-   * free worker — the wait the plugin, not the count gate, imposed. Set
-   * only when a policy refused it at least once (so a run with no policy
-   * carries the field on no outcome); the event stream and the summary
-   * footer show it.
-   */
-  admissionHeldMs?: number
-  /**
-   * How long this task waited ready (its deps done, or none to wait on)
-   * before it was dispatched: a full worker pool's wait, plus any
-   * `admissionHeldMs`. Absent when it started within the millisecond and
-   * on a task that never ran.
+   * How long it waited ready (its deps done, or none to wait on) before it
+   * was dispatched: a full worker pool's wait, plus `admissionHeldMs`.
+   * Absent when it started within the millisecond.
    */
   queuedMs?: number
-  /** On a cacheable task that ran: how many files its key read. */
-  inputFiles?: number
   /**
-   * The artifact's compressed size: on a hit, the entry's; on a miss, the one
-   * its save wrote (measured only when a telemetry sink listens).
+   * How long an `admit` policy held it after it was ready with a free
+   * worker. Set only when a policy refused it at least once.
    */
-  artifactBytes?: number
-  /**
-   * The raw bytes of the task's outputs: on a hit, the entry's files as
-   * restored; on a miss, the files its save stored (the row waits for it).
-   */
-  outputBytes?: number
+  admissionHeldMs?: number
+  /** Its span, as hrtime offsets from the run's start: the run's timeline. */
+  startNs?: bigint
+  endNs?: bigint
   /** On a remote hit this run pulled: the download and its ingest. */
   fetchMs?: number
   /** On a miss that saved, with a sink listening: the save's own time. */
   saveMs?: number
-  /**
-   * On a cacheable task that ran: what its key changed since the last entry
-   * saved for it. Only when a telemetry sink asked, and the cache holds one.
-   */
-  inputChanges?: InputChanges
-  /** v11 analytics: CPU time + peak RSS for this task's child process. */
+}
+
+/** What this run's execution of the task used; absent on a hit. */
+export interface OutcomeUsage {
   cpuMs?: number
   peakRssBytes?: number
   /**
@@ -170,182 +132,246 @@ export interface TaskOutcome {
    */
   peakCores?: number
   avgRssBytes?: number
+}
+
+/** What the cache and the key said of the task. */
+export interface OutcomeCache {
   /**
-   * A GROUP task's own dependency outcomes — the tasks it stands for.
-   * A group has no `exec` and therefore no outputs and no cache entry: its
-   * hash is a synthetic roll-up (`computeGroupHash`), so asking the local
-   * index what it produced returns nothing. A dependent needs the real
-   * tasks beneath it to describe its own input set, and only the group
-   * itself is ever in a position to say which those are. Set on group
-   * outcomes only; never folded into any key.
+   * On a hit: what the producing execution took and used, read from the
+   * entry. `durationMs` and `usage` stay what THIS run spent, so a surface
+   * reporting time saved reads this and one reporting time spent does not.
    */
-  groupUpstream?: readonly TaskOutcome[]
+  stored?: { durationMs: number; cpuMs?: number; peakRssBytes?: number }
   /**
-   * This task RAN over inputs its key no longer describes: one moved while
-   * it ran, a claimed root file moved, or an upstream carried this
-   * mark. Its save was withheld, and its outputs are not what `hash` names,
-   * so a dependant that folds `hash` saves nothing either (A-12).
+   * On a hit: whether outputs were written to disk this run (false: the
+   * tree already matched the entry, "up-to-date").
+   */
+  restored?: boolean
+  /** The task ran here and its result went to the cache. The footer's `↑`. */
+  saved?: true
+  /** On a cacheable task that ran: how many files its key read. */
+  inputFiles?: number
+  /** The artifact's compressed size: on a hit the entry's, on a miss its save's (a sink listening). */
+  artifactBytes?: number
+  /** The raw bytes of its outputs: on a hit as restored, on a miss as saved. */
+  outputBytes?: number
+  /**
+   * On a cacheable task that ran: what its key changed since the last entry
+   * saved for it. Only when a telemetry sink asked, and the cache holds one.
+   */
+  inputChanges?: InputChanges
+  /**
+   * Its outputs were left in the remote store (`--cache-download=none`)
+   * instead of landing on this machine.
+   */
+  deferred?: true
+  /**
+   * The run's cache policy read and wrote nothing (`--no-cache`): no cache
+   * answered, so a run of it is `no-cache`, not a miss.
+   */
+  off?: true
+  /**
+   * It RAN over inputs its key no longer describes: one moved while it ran,
+   * a claimed root file moved, or an upstream carried this mark. Its save
+   * was withheld, and a dependant that folds `hash` saves nothing either.
    */
   unkeyed?: true
   /**
-   * The input this task's own re-check found moved while it ran (absolute),
-   * or null when the key re-derived before the command already differed.
-   * The command read a state of it no `vx watch` judgement saw, so the
-   * loop counts its next settled state as a change.
+   * The input its own re-check found moved while it ran (absolute), or null
+   * when the key re-derived before the command already differed. `vx watch`
+   * counts its next settled state as a change.
    */
   driftedInput?: string | null
   /**
-   * The task with no `inputs` this task's key folds (this task, or one
-   * upstream): no run can derive that key again, so it neither read nor
-   * saved an entry, and a dependant that folds `hash` does neither.
+   * The task with no `inputs` its key folds (itself, or one upstream): no
+   * run can derive that key again, so it neither read nor saved an entry,
+   * and a dependant that folds `hash` does neither.
    */
   keylessBy?: string
+}
+
+/** A sandboxed task's denials (`exec.sandbox`): any one fails the task. */
+export interface OutcomeSandbox {
+  violations: number
+  /** One per access denial, shown in the task's block. */
+  lines?: string[]
+  /** The `exec.sandbox.allow` entries that would have granted the denials. */
+  fix?: SandboxFix
+}
+
+export interface SandboxFix {
+  read?: string[]
+  write?: string[]
+  network?: string[]
+  systemInfo?: string[]
+  /** Credential paths denied and left out of the grants: an agent applies the fix as given. */
+  withheld?: string[]
   /**
-   * The run's cache policy read and wrote nothing (`--no-cache`,
-   * `--cache-policy=local:`): no cache answered for this task, so a run of it is
-   * `no-cache`, not a miss. Set by `run()`; `ranNoCache` reads it.
+   * Reads of the project its `inputs.files` does not match: add them there
+   * too when the output depends on them, or a hit replays output built from
+   * an older copy. Cached tasks only.
    */
-  cacheOff?: true
+  inputs?: string[]
+  /** The same for reads elsewhere in the workspace, as `inputs.workspaceFiles` names them. */
+  workspaceFiles?: string[]
+}
+
+/** Its retries (`exec.retries`, `--retries`, a known flake's one more). */
+export interface OutcomeAttempts {
+  /** How many times it executed this run; set only when more than one. */
+  count?: number
+  /** The attempts that failed and were run again, in order: when each ended (epoch ms) and how. */
+  failed?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  /** Each failed attempt's output, as `failedOutput` encodes it: what `vx last --log` shows. */
+  outputs?: readonly string[]
   /**
-   * On a `skipped` outcome: the task at the ROOT of what blocked it — the
-   * failed (or aborted) upstream, followed through any chain of skips
-   * between. Absent when the skip was fail-fast's (no upstream failed).
-   * The footer, the telemetry record and the run row all
-   * read this one field.
+   * This run proved it flaky: its key failed after it had passed (this run's
+   * included) or it passed only on a retry.
    */
-  blockedBy?: string
+  flaky?: { passes: number; failures: number }
+}
+
+/** Where an executor ran it, when that is not this host (`ExecuteResult.where`, `.machine`). */
+export interface OutcomePlacement {
+  where?: string
+  /** A persistent task each dependant's executor starts where it runs: nothing ran here. */
+  carried?: true
+  cores?: number
+  memoryBytes?: number
+  /** The share of a core its threads got there. */
+  cpuShare?: number
+}
+
+/** What every outcome has, whatever its status. A group exists only when it holds a value. */
+interface OutcomeBase {
+  node: TaskNode
+  /** What THIS run spent on it: a hit's restore, a miss's execution. */
+  durationMs: number
+  timing?: OutcomeTiming
+  usage?: OutcomeUsage
+  cache?: OutcomeCache
+  sandbox?: OutcomeSandbox
+  attempts?: OutcomeAttempts
+  placement?: OutcomePlacement
   /**
-   * On an outcome that ran behind a failed dependency (`continueMode:
-   * 'always'`), one `--exclude-dependencies` dropped, or a server that died
-   * while it ran: the task at the root of it. Its result is not its key's, so no flaky verdict reads it and
-   * its run row names the root as a skip's `blockedBy` does. Set by `run()`
-   * before any observer (a plugin's `onTaskComplete`) hears the outcome.
+   * A GROUP task's own dependency outcomes, the tasks it stands for: a group
+   * has no exec, outputs or entry, so a dependent reads the real tasks
+   * beneath it to describe its own input set. Never folded into any key.
+   */
+  groupUpstream?: readonly TaskOutcome[]
+  /**
+   * It ran behind a failed dependency (`continueMode: 'always'`), one
+   * `--exclude-dependencies` dropped, or a server that died while it ran:
+   * the task at the root of it. Its result is not its key's, so no flaky
+   * verdict reads it.
    */
   taintedBy?: string
   /**
-   * On a `skipped` outcome: its `exec.platforms` leave out this machine.
-   * Its dependants are skipped with `blockedBy` naming it, and neither
-   * fails the run.
-   */
-  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
-  /**
-   * On a `failed` outcome: vx's own `timeout` killed the final attempt.
-   * The exit is the shell's 143, and every label says "timed out" instead
-   * of reading it as a signal.
-   */
-  timedOut?: true
-  /**
-   * On a `failed` outcome of a command that ran: the final attempt's
-   * output, both streams, as `encodeOutputLog` stores it, secrets masked,
-   * bounded to its first 8 KiB and last 56 KiB. The run's history keeps it.
-   */
-  failedOutput?: string
-  /**
    * When the run keeps its bytes in a remote, a task that ran and saved no
-   * entry (failed, or uncached): its whole output as `encodeOutputLog`
-   * stores it, secrets masked, at the entry's bounds.
+   * entry: its whole output as `encodeOutputLog` stores it, secrets masked.
    */
   runLog?: string
+}
+
+/** It started: a command ran, a hit restored, or the run stopped it. */
+interface StartedOutcome extends OutcomeBase {
+  exitCode: number
   /**
-   * On a failed persistent task: why it never became ready — the readiness
-   * deadline fired, the child exited first (`exitCode` is then its own), or
-   * the spawn itself failed. Every label reads this instead of the exit.
+   * Its key, if one was computed. Folded into dependents' keys (the
+   * upstream's input key, not its output).
+   */
+  hash?: string
+}
+
+/** Why a failed outcome failed, beyond its exit. */
+interface FailureFacts {
+  /** vx's own `timeout` killed the final attempt (the shell's 143). */
+  timedOut?: true
+  /**
+   * A persistent task that never became ready: the deadline fired, the
+   * child exited first (`exitCode` is then its own), or the spawn failed.
    */
   notReady?: 'timeout' | 'exited' | 'spawn'
   /**
-   * On a ready persistent task: its child exited on its own while the run
-   * went on — a setup step's 0 at ready, a crash's code after it — so no
-   * label calls it running.
-   */
-  serverExit?: number
-  /**
-   * The input that changed while the command ran, failing the task under
+   * The input that changed while the command ran, failing it under
    * `inputs.stability.severity: 'error'` (workspace-relative; '' when vx
-   * could not name it). The exit is vx's 1; the label reads this instead.
+   * could not name it). The exit is vx's 1.
    */
   inputMoved?: string
-  /** Executor-reported placement label (`ExecuteResult.where`) — set only
-   *  when the task ran somewhere other than this host: telemetry and the task's row. */
-  where?: string
-  /** A persistent task each dependant's executor starts where it runs: nothing ran here, and it is no execution of its own. */
-  carried?: true
-  /** The cores and memory of the machine `where` names (`ExecuteResult.machine`). */
-  whereCores?: number
-  whereMemoryBytes?: number
-  /** `ExecuteResult.machine.cpuShare`: the share of a core its threads got there. */
-  cpuShare?: number
-  /** `'deferred'` when the task's outputs were left in the remote store
-   *  (`--cache-download=none`) instead of landing on this machine. Absent for
-   *  every ordinary outcome. Telemetry-only. */
-  outputs?: 'deferred'
-  /** The task ran here and its result went to the cache. The footer's `↑`. */
-  saved?: true
-  /**
-   * On a `failed` outcome: a cache hit whose restore threw, so no command
-   * ran. It counts as failed only, in no cache column: not a miss, not
-   * its layer's hit.
-   */
+  /** A cache hit whose restore threw: no command ran, and it is in no cache column. */
   restoreFailed?: true
   /**
-   * v11 analytics: hrtime span relative to the parent run's t=0.
-   * Lets downstream analytics reconstruct the actual parallel timeline
-   * (overlapping tasks, idle gaps) rather than just summing durations.
+   * The final attempt's output, both streams, as `encodeOutputLog` stores
+   * it, secrets masked, bounded to its first 8 KiB and last 56 KiB.
    */
-  wallclockStartNs?: bigint
-  wallclockEndNs?: bigint
+  failedOutput?: string
+}
+
+/** Why a task never ran, or ran no further. */
+interface BlockFacts {
   /**
-   * For cache-hit statuses: true if outputs were actually written to
-   * disk this run, false if the on-disk state already matched the
-   * cached snapshot (no materialization needed). Lets the formatter
-   * surface "up-to-date" vs "local-cache" / "remote-cache" in the
-   * framed block. Undefined on non-cache-hit outcomes (success /
-   * failed / skipped) — irrelevant there.
+   * The task at the ROOT of what blocked it: the failed (or aborted)
+   * upstream, followed through any skips between. Absent when fail-fast
+   * or the run's stop did.
    */
-  restored?: boolean
+  blockedBy?: string
+}
+
+/** Why a task was skipped by platform. */
+interface PlatformFacts {
+  /** Its `exec.platforms` leave out this machine. */
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  /** It, or the task it is blocked behind, is a platform skip: it fails nothing. */
+  platform?: true
+}
+
+/** The fields a variant cannot carry: read as undefined on the union. */
+type None<T> = { [K in keyof T]?: never }
+
+export interface SucceededOutcome
+  extends StartedOutcome, None<FailureFacts>, None<BlockFacts>, None<PlatformFacts> {
+  status: Exclude<TaskStatus, 'failed' | 'aborted' | 'skipped'>
   /**
-   * How many times the task executed this run, when `exec.retries` /
-   * `--retries` re-ran failed attempts. Set only when > 1 — a plain
-   * single-attempt run carries nothing. Not persisted; telemetry-side
-   * flaky detection reads it off the outcome stream.
+   * A ready persistent task whose child exited on its own while the run
+   * went on, so no label calls it running.
    */
-  attempts?: number
-  /** The attempts that failed and were run again, in order: when each ended (epoch ms) and how. */
-  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
-  /** Each of `failedAttempts`' output, as `failedOutput` encodes it: what `vx last --log` shows. */
-  attemptOutputs?: readonly string[]
-  /**
-   * Set when this run proved the task flaky: its key failed after it had
-   * passed (this run's included) or it passed only on a retry. Its row carries it.
-   */
-  flaky?: { passes: number; failures: number }
-  /**
-   * Count of sandbox violations captured during this task's exec (a task
-   * declaring `exec.sandbox`). Non-zero means the task touched something
-   * it did not declare; execute-task fails the task on any violation, so
-   * nothing built that way is ever saved or replayed.
-   */
-  sandboxViolations?: number
-  /**
-   * Raw violation log lines (one per access denial). Populated alongside
-   * `sandboxViolations` so the framed-output renderer can show them
-   * inline in the task's block instead of as loose status output.
-   */
-  sandboxViolationLines?: string[]
-  /** The `exec.sandbox.allow` entries that would have granted the denials. */
-  sandboxFix?: {
-    read?: string[]
-    write?: string[]
-    network?: string[]
-    systemInfo?: string[]
-    /** Credential paths denied and left out of the grants: an agent applies the fix as given. */
-    withheld?: string[]
-    /**
-     * Reads of the project the task's `inputs.files` does not match:
-     * add them there too when the output depends on them, or a hit replays
-     * output built from an older copy. Cached tasks only.
-     */
-    inputs?: string[]
-    /** The same for reads elsewhere in the workspace, as `inputs.workspaceFiles` names them. */
-    workspaceFiles?: string[]
-  }
+  serverExit?: number
+}
+
+export interface FailedOutcome
+  extends StartedOutcome, FailureFacts, None<BlockFacts>, None<PlatformFacts> {
+  status: 'failed'
+  serverExit?: never
+}
+
+/**
+ * A shutdown (SIGINT/SIGTERM) stopped it, or stopped the run before it
+ * began: it never finished on its own terms. `exitCode` is the signal's,
+ * which the run's history keeps.
+ */
+export interface AbortedOutcome
+  extends StartedOutcome, None<FailureFacts>, BlockFacts, None<PlatformFacts> {
+  status: 'aborted'
+  /** A server the session's end stopped, whose child had exited on its own before. */
+  serverExit?: number
+}
+
+/** It never started, so it has no exit; a key only when fail-fast stopped it after deriving one. */
+export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFacts, PlatformFacts {
+  status: 'skipped'
+  exitCode?: never
+  /** Its key, when fail-fast stopped it after the key was derived and before its command began. */
+  hash?: string
+  serverExit?: never
+}
+
+export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | SkippedOutcome
+
+/**
+ * The exit a record or a wire view writes for an outcome: a skip has none of
+ * its own, so it reads as the run sees it, 0 behind a platform skip, else 1.
+ */
+export function exitCodeOf(o: TaskOutcome): number {
+  if (o.status !== 'skipped') return o.exitCode
+  return o.platform === true ? 0 : 1
 }

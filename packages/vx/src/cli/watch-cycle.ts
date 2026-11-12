@@ -5,12 +5,12 @@
 // as Ctrl-C would and the loop starts the next one; a cycle running any
 // other work is never stopped.
 
-import { CYCLE_INTERRUPT, type RunOptions } from '../orchestrator/index.js'
+import { CYCLE_INTERRUPT, type CoreRunOptions } from '../orchestrator/index.js'
 import { createEventBus } from '../report/index.js'
 
 export interface WatchCycle {
   /** The options for this cycle's run: its own bus and a stop of its own beside watch's. */
-  readonly opts: RunOptions
+  readonly opts: CoreRunOptions
   /** Every task in flight is a persistent one not yet ready. */
   waitsOnReadiness(): boolean
   /** The project directories of the servers in flight. */
@@ -23,7 +23,11 @@ export interface WatchCycle {
 }
 
 /** `onWaiting` hears each task event after which the cycle waits on readiness alone. */
-export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () => void): WatchCycle {
+export function watchCycle(
+  opts: CoreRunOptions,
+  stop: AbortSignal,
+  onWaiting: () => void,
+): WatchCycle {
   const own = new AbortController()
   const bus = createEventBus()
   // id → persistent; a group task has no process and holds nothing up.

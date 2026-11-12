@@ -59,6 +59,8 @@ import {
   markSurfacedDeps,
   runGraph,
   taskDefinitions,
+  type AbortedOutcome,
+  type SucceededOutcome,
   type TaskNode,
   type TaskOutcome,
   isDefaultBuild,
@@ -94,7 +96,12 @@ function printTimings(): void {
 import { detectColors, type ColorSupport } from '../ui/index.js'
 import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
 import { commandWriteReach, prepareSandbox } from '../sandbox/index.js'
-import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
+import {
+  recordOutputDirSnapshots,
+  type OutputDirSnapshot,
+  type SaveFacts,
+  withSaveFacts,
+} from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
 import {
   settleProbedHit,
@@ -208,7 +215,7 @@ import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
-import type { HeldPersistent, RunOptions, RunSummary } from './options.js'
+import type { CoreRunOptions, HeldPersistent, RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
 import { cacheFacts, taskArtifacts } from './task-artifacts.js'
 import { resolveSetting } from '../settings.js'
@@ -308,7 +315,7 @@ export function invocationCommand(line: readonly string[] | string): string {
  * nothing; a `projects` string or a `signal` that is no AbortSignal died
  * a TypeError inside the run.
  */
-function refuseRunOptions(options: RunOptions): void {
+function refuseRunOptions(options: CoreRunOptions): void {
   const refuse = (name: string, value: unknown, rule: string): never => {
     const shown =
       typeof value === 'string'
@@ -369,6 +376,11 @@ function refuseRunOptions(options: RunOptions): void {
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
+  return runCore(options)
+}
+
+/** `run` as vx's CLI calls it, with its hand-off. */
+export async function runCore(options: CoreRunOptions): Promise<RunSummary> {
   refuseRunOptions(options)
   // Color decision: a custom logger (tests, embedders) handles its
   // own formatting and asserts on plain strings, so we suppress
@@ -465,7 +477,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 /**
  * The hand-back whose stop also takes the run's renderer off the bus. Once
  * stopped it lets go of the run: the next cycle's run keeps it
- * (`RunOptions.keep`) and every closure of an async `run()` keeps all of
+ * (`RunHandoff.keep`) and every closure of an async `run()` keeps all of
  * that run, its own `keep` too, so `vx watch dev` held every cycle's run
  * from the latest (~13 statements, maps and closures a cycle).
  */
@@ -487,7 +499,7 @@ function detachOnStop(held: HeldPersistent, detach: () => void): HeldPersistent 
 }
 
 async function runOnBus(
-  options: RunOptions,
+  options: CoreRunOptions,
   bus: EventBus,
   warned: readonly string[],
   colors: ColorSupport,
@@ -500,7 +512,7 @@ async function runOnBus(
   const steps = createSteps(log, showsSteps)
   const { step, stepSync } = steps
   // A server's output goes through a cell of its own: a later watch cycle
-  // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
+  // that keeps the server points it at that cycle's bus (`RunHandoff.keep`).
   const serverOuts = new Map<string, { bus: EventBus }>()
   // What a server writes from ready until its outcome is logged: renderers
   // keep output before the outcome for its frame, which a ready server's
@@ -768,9 +780,9 @@ async function runOnBus(
   // stay up; the others go now, before anything binds their ports. A stop
   // that lands meanwhile ends the run here, having run nothing: an aborted
   // graph printed a `not run` row and a footer above `stopped` (WD-22).
-  const heldBefore = takeHeldServers(options.keep?.servers, nodes, options.forwardArgs)
+  const heldBefore = takeHeldServers(options.handoff?.keep?.servers, nodes, options.forwardArgs)
   const keyedHeld: ReadonlySet<string> =
-    options.holdPersistent === true ? keyedServers(nodes) : new Set()
+    options.handoff?.holdPersistent === true ? keyedServers(nodes) : new Set()
   for (const server of heldBefore.kept.values()) server.out.bus = bus
   if (heldBefore.stale.length > 0) {
     await terminateChildren(() => heldBefore.stale)
@@ -836,9 +848,9 @@ async function runOnBus(
       : {
           node,
           status: 'skipped',
-          exitCode: 0,
           durationMs: 0,
           otherPlatform: { needs, host: hostPlatform() },
+          platform: true,
         }
   }
   // Demand: what each executor still has left to run (`executorDemand`),
@@ -928,7 +940,7 @@ async function runOnBus(
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
     warnNoRemote(prepared, options, log)
-    const windows = options.commandWindows ?? commandWindows()
+    const windows = options.handoff?.commandWindows ?? commandWindows()
     const deferredOutputs = new DeferredOutputs({
       nodes,
       cache,
@@ -1408,7 +1420,7 @@ async function runOnBus(
     }
     if (explainMiss !== undefined) scope.explainMiss = explainMiss
     if (keepRun !== undefined) scope.keepRun = keepRun
-    if (options.watch === true) scope.watch = true
+    if (options.handoff?.watch === true) scope.watch = true
     if (sandboxArmer !== null) scope.armSandbox = () => sandboxArmer.arm()
     if (demand.any) scope.executing = demand.executing
     const argsOf = executeArgsOf(scope, {
@@ -1489,12 +1501,12 @@ async function runOnBus(
       try {
         const found = detectFlaky(historyDb, candidates)[0]
         if (found === undefined) return
-        o.flaky = { passes: found.passes, failures: found.failures }
+        ;(o.attempts ??= {}).flaky = { passes: found.passes, failures: found.failures }
       } catch {
         // History is observability: an unreadable one judges nothing.
       }
     }
-    const keepServer = (node: TaskNode): TaskOutcome | undefined => {
+    const keepServer = (node: TaskNode): SucceededOutcome | undefined => {
       const server = heldBefore.kept.get(node.id)
       if (server === undefined) return undefined
       heldBefore.kept.delete(node.id)
@@ -1509,8 +1521,7 @@ async function runOnBus(
         status: 'success',
         exitCode: 0,
         durationMs: 0,
-        wallclockStartNs: at,
-        wallclockEndNs: at,
+        timing: { startNs: at, endNs: at },
       }
     }
     let lockBroken: boolean | undefined
@@ -1528,7 +1539,7 @@ async function runOnBus(
     const streamHit = (o: TaskOutcome): void => {
       if (stream === undefined || isGroupTask(o.node)) return
       if (!isCacheHit(o.status)) return
-      if (o.wallclockStartNs === undefined || o.wallclockEndNs === undefined) return
+      if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
       if (forwards && o.node.requested) return
       stream.add(
         o,
@@ -1545,7 +1556,7 @@ async function runOnBus(
     // end of the graph: it held a worker's cores for nothing. Not under a
     // hold, whose next cycle may reuse it.
     const unneeded =
-      options.holdPersistent === true
+      options.handoff?.holdPersistent === true
         ? undefined
         : unneededServers(nodes, options.log === undefined && (options.handleSignals ?? true))
     const serving = executors.filter((e) => e.servers === true && e.unneeded !== undefined)
@@ -1592,7 +1603,7 @@ async function runOnBus(
       concurrency,
       restoreConcurrency: options.restoreConcurrency ?? 2 * concurrency,
       reverseDeps: blocksNow,
-      settledOf: (o) => deferredSaves.get(o.node.id),
+      settledOf: (o) => deferredSaves.get(o.node.id)?.then((facts) => withSaveFacts(o, facts)),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(holders.size > 0 ? { exclusive: holders } : {}),
@@ -1607,11 +1618,11 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
-        if (thrownOn.size > 0 && o.where === undefined) {
+        if (thrownOn.size > 0 && o.placement?.where === undefined) {
           const where = thrownOn.get(o.node.id)
-          if (where !== undefined) o.where = where
+          if (where !== undefined) (o.placement ??= {}).where = where
         }
-        if (cacheOff) o.cacheOff = true
+        if (cacheOff) (o.cache ??= {}).off = true
         const root = taintedRan.get(o.node.id)
         if (root !== undefined && o.blockedBy === undefined) o.taintedBy = root
         taint.settled(o)
@@ -1734,7 +1745,7 @@ async function runOnBus(
     // An aborted run's children are already being torn down: nothing to
     // hold, but the servers a `CYCLE_INTERRUPT` spared.
     const hold =
-      options.holdPersistent === true &&
+      options.handoff?.holdPersistent === true &&
       (!stop.signal.aborted || stop.signal.reason === CYCLE_INTERRUPT)
     // A stop already signalled every server once and waits out its grace:
     // a SIGTERM here, while a server ran its cleanup, cut it short.
@@ -2043,7 +2054,7 @@ async function runOnBus(
     // own output follows.
     // The footer replaces the live region in place.
     log.runDone?.()
-    if (options.summaryTable === true)
+    if (options.handoff?.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
     // A run a signal stopped records nothing `vx last` opens: no id to copy.
     const footerContext =
@@ -2126,12 +2137,12 @@ async function runOnBus(
         const told = stopped
           ? final.map((o) =>
               keepAlive.nodes.some((n) => n.id === o.node.id) && isPassStatus(o.status)
-                ? {
+                ? ({
                     ...o,
-                    status: 'aborted' as const,
+                    status: 'aborted',
                     exitCode:
                       typeof first.code === 'number' ? first.code : signalExitCode(first.code),
-                  }
+                  } as AbortedOutcome)
                 : o,
             )
           : final
@@ -2179,7 +2190,7 @@ async function runOnBus(
 }
 
 /** Why an `--affected` run has nothing to run, said alike by the run and its `--dry` plan. */
-function noneAffected(prepared: PreparedRun, options: RunOptions): string {
+function noneAffected(prepared: PreparedRun, options: CoreRunOptions): string {
   // A changed project declares the task, so `--affected`'s task walk is
   // what left nothing (affected-tasks.ts), not the scope.
   const inScope = new Set(options.projects ?? [])
@@ -2199,10 +2210,10 @@ function noneAffected(prepared: PreparedRun, options: RunOptions): string {
  * one; a plan (`--dry`) gets it as the run does. The workspace's
  * `cache.policy` asks as a flag does: it was the one source never told.
  */
-function warnNoRemote(prepared: PreparedRun, options: RunOptions, log: Logger): void {
+function warnNoRemote(prepared: PreparedRun, options: CoreRunOptions, log: Logger): void {
   if (prepared.hasRemoteLayer) return
   const remoteNamed =
-    options.remoteRequested ??
+    options.handoff?.remoteRequested ??
     (options.cache === undefined &&
     options.cacheFlags?.noCache !== true &&
     namesRemote(prepared.workspaceConfig?.cache?.policy)
@@ -2228,13 +2239,18 @@ function warnNoRemote(prepared: PreparedRun, options: RunOptions, log: Logger): 
  * ingest, no accessed_at bump.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
+  return planCore(options)
+}
+
+/** `planRun` as vx's CLI calls it, with its hand-off. */
+export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
   refuseRunOptions(options)
   // The plan is the product and goes to stdout (`--dry=json` is parsed):
   // what a stage says on the way goes to stderr (C-6).
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
   const prepared = await prepareRunLocked(
-    { ...options, affectedReasons: reasons },
+    { ...options, handoff: { ...options.handoff, affectedReasons: reasons } },
     log,
     undefined,
     false,
@@ -2646,7 +2662,7 @@ function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
       task: o.node.taskName,
       hash: o.hash,
       status: o.status,
-      attempts: o.attempts ?? 1,
+      attempts: o.attempts?.count ?? 1,
     })
   }
   return out

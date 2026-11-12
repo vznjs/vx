@@ -9,16 +9,14 @@ import path from 'node:path'
 import type { InputsConfig, TaskOutputs } from '../config.js'
 import type { SandboxViolation } from '../exec/index.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from './paths.js'
-import type { TaskOutcome } from '../graph/index.js'
+import type { SandboxFix } from '../graph/index.js'
 import { grantPrefix, isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
 import { credentialStorePaths } from './request.js'
 
-/** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
-type SandboxFix = NonNullable<TaskOutcome['sandboxFix']>
 type Kind = Exclude<keyof SandboxFix, 'withheld' | 'inputs' | 'workspaceFiles'>
 
 // A denial in a credential store is never turned into a grant: an agent
-// applies `sandboxFix` as given, so a dependency probing ~/.ssh would get
+// applies the fix as given, so a dependency probing ~/.ssh would get
 // its grant suggested and applied (Security, 2026-10-12). The stores are
 // the ones the sandbox denies: a hand copy here missed half of them.
 function isCredential(abs: string): boolean {
@@ -215,7 +213,7 @@ export function sandboxFix(
   /** The task's `allow.read` grants, as written: whether it may list its project (`placeheld`). */
   reads: readonly string[] = [],
 ): SandboxFix | undefined {
-  const fix: Record<keyof SandboxFix, Set<string>> = {
+  const fix: Record<Kind | 'withheld' | 'inputs' | 'workspaceFiles', Set<string>> = {
     read: new Set(),
     write: new Set(),
     network: new Set(),

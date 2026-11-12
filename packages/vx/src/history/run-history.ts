@@ -527,13 +527,13 @@ export interface RunRecord {
   placementMemoryBytes?: number
   /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
   cpuShare?: number
-  /** How long it waited ready for a slot (`TaskOutcome.queuedMs`, v51). */
+  /** How long it waited ready for a slot (`TaskOutcome.timing.queuedMs`, v51). */
   queuedMs?: number
-  /** Its output files' bytes (`TaskOutcome.outputBytes`, v51). */
+  /** Its output files' bytes (`TaskOutcome.cache.outputBytes`, v51). */
   outputBytes?: number
   /** The tasks and groups downstream of it in the run, the scheduler's count. */
   blocks?: number
-  /** The flaky record its row's note quoted (`TaskOutcome.flaky`, v51). */
+  /** The flaky record its row's note quoted (`TaskOutcome.attempts.flaky`, v51). */
   flakyPasses?: number
   flakyFailures?: number
 }

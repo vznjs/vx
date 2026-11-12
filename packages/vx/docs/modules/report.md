@@ -418,7 +418,7 @@ export function formatTaskHitLine(node, outcome, colors?, onPath?, blocks?): str
 // `success miss … <id>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?, onPath?, blocks?, usualMs?): string
 // ` flaky - failed N× before · N attempts`, dim — on a flaky task's row and
-// frame footer; '' when the run did not prove it flaky (`outcome.flaky`)
+// frame footer; '' when the run did not prove it flaky (`outcome.attempts.flaky`)
 export function flakyNote(outcome, colors?): string
 // `skipped — … <id> • blocked by <id>` (or `• needs linux-x64,
 // this is darwin-arm64`, its `exec.platforms`) — a skip never ran
@@ -648,7 +648,7 @@ export function formatRunSummary(
   context?: RunContext,
 ): string[]
 
-// The `--verbosity 1` table (RunOptions.summaryTable): one row per real task, groups left out.
+// The `--verbosity 1` table (RunHandoff.summaryTable): one row per real task, groups left out.
 export function formatOutcomeTable(
   outcomes: readonly TaskOutcome[],
   colors?: ColorSupport,
@@ -667,7 +667,7 @@ run · 4 total` (2026-10-14; history and telemetry still record only
 the tasks that ran). A total is always the last word on its line.
 `aborted` is killed by a shutdown
 signal; `not run` is reached by the stop before it ran. `neverStarted`
-tells them apart: an aborted outcome with no `wallclockStartNs`, which
+tells them apart: an aborted outcome with no `timing.startNs`, which
 only a started task carries.
 
 `formatRunSummary` returns an array of lines (caller writes one per
@@ -881,7 +881,7 @@ failed)` / `failed (output clean failed)` for a miss whose save or clean
   vx refused, `outputsFailedOf(outcome)`, which `projectOutcome` copies
   onto the view), `failedLabel`, `skippedReason`, and
   `ranNoCache` (a task no cache answered for: no
-  `cache: true`, or `TaskOutcome.cacheOff` — `no-cache`, never a miss;
+  `cache: true`, or `TaskOutcome.cache.off` — `no-cache`, never a miss;
   `--dry`'s plan asks it too). The frame footer and
   the terminal summary read these.
 

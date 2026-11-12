@@ -62,7 +62,7 @@ async function build(): Promise<{ ok: boolean; restored: boolean | undefined; sa
     },
     handleSignals: false,
   })
-  return { ok: summary.ok, restored: summary.outcomes[0]?.restored, said }
+  return { ok: summary.ok, restored: summary.outcomes[0]?.cache?.restored, said }
 }
 
 it('a file where a glob match needs a directory: the restore is refused and the file kept', async () => {

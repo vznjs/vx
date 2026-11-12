@@ -200,7 +200,10 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
       const reads = policy.localRead || policy.remoteRead
       let status: CacheStatus
-      if (hash === undefined || ranNoCache({ node, cacheOff: cachesNothing(policy) })) {
+      if (
+        hash === undefined ||
+        ranNoCache(cachesNothing(policy) ? { node, cache: { off: true } } : { node })
+      ) {
         status = 'no-cache'
       } else if (!reads) {
         status = 'miss'

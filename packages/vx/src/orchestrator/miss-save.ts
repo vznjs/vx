@@ -20,7 +20,7 @@ import {
   type TaskInputComponent,
 } from '../cache/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
-import type { TaskNode } from '../graph/index.js'
+import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import {
   anyTaskGlob,
   asTrees,
@@ -155,6 +155,18 @@ export interface SaveFacts {
   outputBytes?: number
   /** The entry landed: the outcome's `saved`, set only once it has. */
   saved?: true
+}
+
+/** The outcome a deferred save settles: what the save cost, folded in. */
+export function withSaveFacts(o: TaskOutcome, f: SaveFacts): TaskOutcome {
+  if (f.saveMs !== undefined) (o.timing ??= {}).saveMs = f.saveMs
+  if (f.artifactBytes === undefined && f.outputBytes === undefined && f.saved === undefined)
+    return o
+  const cache = (o.cache ??= {})
+  if (f.artifactBytes !== undefined) cache.artifactBytes = f.artifactBytes
+  if (f.outputBytes !== undefined) cache.outputBytes = f.outputBytes
+  if (f.saved !== undefined) cache.saved = f.saved
+  return o
 }
 
 /**

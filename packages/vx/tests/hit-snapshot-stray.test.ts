@@ -98,7 +98,7 @@ it('a stray written while a hit walks its outputs is not snapshotted as the entr
     }
     return ok
   })
-  expect((await restore(hash, (await b.cache.get(hash))!)).restored).toBe(false)
+  expect((await restore(hash, (await b.cache.get(hash))!)).cache?.restored).toBe(false)
   stat.mockRestore()
   // The next hit: the stray is not the entry's, so it must restore and clean it.
   await restore(hash, (await b.cache.get(hash))!)

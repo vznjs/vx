@@ -82,7 +82,7 @@ async function build(f: Fixture): Promise<{ status: string; restored: boolean | 
   const r = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
   expect(r.ok).toBe(true)
   const o = r.outcomes.find((x) => x.node.id === 'app#build')!
-  return { status: o.status, restored: o.restored }
+  return { status: o.status, restored: o.cache?.restored }
 }
 
 /**

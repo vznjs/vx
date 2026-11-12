@@ -67,7 +67,17 @@ function interfaceFields(text: string, name: string): string[] {
 }
 
 const SHAPES: ReadonlyArray<[source: string, name: string]> = [
-  ['graph/outcome.ts', 'TaskOutcome'],
+  ['graph/outcome.ts', 'OutcomeTiming'],
+  ['graph/outcome.ts', 'OutcomeUsage'],
+  ['graph/outcome.ts', 'OutcomeCache'],
+  ['graph/outcome.ts', 'OutcomeSandbox'],
+  ['graph/outcome.ts', 'SandboxFix'],
+  ['graph/outcome.ts', 'OutcomeAttempts'],
+  ['graph/outcome.ts', 'OutcomePlacement'],
+  ['graph/outcome.ts', 'OutcomeBase'],
+  ['graph/outcome.ts', 'FailureFacts'],
+  ['graph/outcome.ts', 'BlockFacts'],
+  ['graph/outcome.ts', 'PlatformFacts'],
   ['graph/scheduler.ts', 'ScheduleOptions'],
   ['cache/inputs.ts', 'ResolvedInputs'],
   ['cache/inputs.ts', 'ResolveInputsArgs'],

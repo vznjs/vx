@@ -6,6 +6,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { hostPlatform } from '../src/exec/index.js'
+import { exitCodeOf } from '../src/graph/index.js'
 import { type Logger } from '../src/report/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { lock, planRun, run } from './helpers/orchestrator.js'
@@ -60,11 +61,12 @@ describe('exec.platforms', () => {
     expect(by.get('app#other')?.status).toBe('skipped')
     expect(by.get('app#other')?.otherPlatform).toEqual({ needs: [OTHER], host: HOST })
     // No failure blocked it: its exit is the platform skip's 0, not a failure's 1.
+    const after = by.get('app#after')!
     expect([
-      by.get('app#after')?.status,
-      by.get('app#after')?.blockedBy,
-      by.get('app#after')?.exitCode,
-      by.get('app#other')?.exitCode,
+      after.status,
+      after.blockedBy,
+      exitCodeOf(after),
+      exitCodeOf(by.get('app#other')!),
     ]).toEqual(['skipped', 'app#other', 0, 0])
     expect(by.get('app#here')?.status).toBe('success')
     expect(await Bun.file(path.join(dir, 'other.txt')).exists()).toBe(false)

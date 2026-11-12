@@ -107,8 +107,7 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
       exitCode: 0,
       durationMs: 0,
       hash,
-      wallclockStartNs: taskStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      timing: { startNs: taskStartNs, endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs },
     }
   }
 
@@ -153,8 +152,10 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
       exitCode: signalExitCode(forwardedSignal(args.run.stopSignal?.reason)),
       durationMs: 0,
       hash,
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      timing: {
+        startNs: wallclockStartNs,
+        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      },
     }
   }
   const stamp = stampState(m)
@@ -247,8 +248,7 @@ async function fetchDeferredUpstream(
       exitCode: 1,
       durationMs: 0,
       hash,
-      wallclockStartNs: taskStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+      timing: { startNs: taskStartNs, endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs },
     }
   }
 }

@@ -13,12 +13,13 @@ const node = (id: string): TaskNode => {
   const [projectName, taskName] = id.split('#')
   return { id, projectName, taskName, config: { exec: { command: 'x' } } } as unknown as TaskNode
 }
-const outcome = (id: string, status: TaskOutcome['status']): TaskOutcome => ({
-  node: node(id),
-  status,
-  exitCode: status === 'failed' ? 1 : 0,
-  durationMs: 5,
-})
+const outcome = (id: string, status: TaskOutcome['status']): TaskOutcome =>
+  ({
+    node: node(id),
+    status,
+    exitCode: status === 'failed' ? 1 : 0,
+    durationMs: 5,
+  }) as TaskOutcome
 const CONTEXT = {
   version: '1.2.3',
   packageCount: 3,

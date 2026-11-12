@@ -115,7 +115,7 @@ async function runAs(ci: boolean, tasks: string[], extra: object = {}) {
       tasks,
       handleSignals: false,
       log: quiet,
-      ...(ci ? {} : { remoteReadOnlyByDefault: true }),
+      ...(ci ? {} : { handoff: { remoteReadOnlyByDefault: true } }),
       ...extra,
     })
   } finally {
@@ -177,7 +177,9 @@ it("a local run that writes the remote keeps an uncached task's log, and no fail
   // 2026-10-16: "Always keep". The uncached log goes up whenever the
   // remote takes the run's writes; `cache.upload.failures` gates failures only.
   await fixture()
-  expect((await runAs(false, ['test'], { remoteReadOnlyByDefault: false })).ok).toBe(false)
+  expect((await runAs(false, ['test'], { handoff: { remoteReadOnlyByDefault: false } })).ok).toBe(
+    false,
+  )
   const run = await shown()
   const task = (id: string) => run.tasks.find((t) => t.id === id)
   expect(task('docs#test')).toMatchObject({ status: 'success', log: 'links ok\n' })

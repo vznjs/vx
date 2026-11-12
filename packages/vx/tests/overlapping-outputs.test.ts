@@ -113,7 +113,7 @@ async function coldTree(a: string, b: string, config: string): Promise<Array<[st
 
 const statusOf = (r: Awaited<ReturnType<typeof run>>): Record<string, string> =>
   Object.fromEntries(
-    r.outcomes.map((o) => [o.node.taskName, o.status + (o.restored ? '+restored' : '')]),
+    r.outcomes.map((o) => [o.node.taskName, o.status + (o.cache?.restored ? '+restored' : '')]),
   )
 
 describe('overlapping outputs under the default rules', () => {
@@ -402,7 +402,7 @@ describe("overlapping outputs: a root-anchored upstream under a project's depend
       })
       const byId = (r: Awaited<ReturnType<typeof run>>): Record<string, string> =>
         Object.fromEntries(
-          r.outcomes.map((o) => [o.node.id, o.status + (o.restored ? '+restored' : '')]),
+          r.outcomes.map((o) => [o.node.id, o.status + (o.cache?.restored ? '+restored' : '')]),
         )
       const cold = await run({ cwd: root, tasks: ['build'], log: silent })
       expect(byId(cold)).toEqual({ 'a#build': 'success', 'b#build': 'success' })

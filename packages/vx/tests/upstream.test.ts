@@ -58,16 +58,19 @@ describe('filterUpstreamHashes', () => {
     // the function's own boundary, where the contract is statable, rather
     // than by asserting that nothing upstream can reach it. That second
     // claim would pin the reachability, i.e. the implementation.
-    const hashless = { ...outcome('dep#b', 'x'), status: 'skipped' as const }
-    delete (hashless as { hash?: string }).hash
+    const hashless: TaskOutcome = {
+      node: outcome('dep#b', 'x').node,
+      status: 'skipped',
+      durationMs: 0,
+    }
     const up = [outcome('self#a', 'h-a'), hashless]
 
     expect(filterUpstreamHashes(up, undefined, 'self', 'self#build')).toEqual([['self#a', 'h-a']])
     expect(filterUpstreamHashes(up, ['*', '^*'], 'self', 'self#build')).toEqual([['self#a', 'h-a']])
 
-    // CONTROL: the same outcome WITH a hash does contribute, so the row
+    // CONTROL: the same task WITH a hash does contribute, so the row
     // above is the missing hash and not a mis-built fixture.
-    const withHash = { ...hashless, hash: 'h-b' }
+    const withHash = outcome('dep#b', 'h-b')
     expect(
       filterUpstreamHashes([outcome('self#a', 'h-a'), withHash], ['*', '^*'], 'self', 'self#build'),
     ).toEqual([

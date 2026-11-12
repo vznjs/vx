@@ -387,7 +387,7 @@ function mkOutcome(
     durationMs: 100,
     hash: 'abcdef0123456789',
     ...extra,
-  }
+  } as TaskOutcome
 }
 
 const NO_COLORS = { enabled: false }
@@ -521,7 +521,10 @@ describe('defaultLogger status line integration', () => {
     const finish = (id: string, status: TaskOutcome['status'], restored?: boolean): void => {
       const n = mkNode(id)
       log.taskStart?.(n)
-      log.taskComplete(n, mkOutcome(n, status, restored === undefined ? {} : { restored }))
+      log.taskComplete(
+        n,
+        mkOutcome(n, status, restored === undefined ? {} : { cache: { restored } }),
+      )
     }
     finish('a#x', 'cache-hit', false)
     finish('b#x', 'cache-hit', true)
@@ -1269,7 +1272,7 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     // hit kind — up-to-date included (execute-task.ts replay is
     // unconditional). The logger must pass it through verbatim.
     log.taskStdout(req, 'replayed build output\n')
-    log.taskComplete(req, mkOutcome(req, 'cache-hit', { restored: false }))
+    log.taskComplete(req, mkOutcome(req, 'cache-hit', { cache: { restored: false } }))
     log.runEnd?.()
     expect(s.text()).toContain('┌─ one#build > $ noop')
     expect(s.text()).toContain('replayed build output\n')
@@ -1477,11 +1480,10 @@ describe('list headers', () => {
         status: 'success',
         exitCode: 0,
         durationMs: 24_000,
-        queuedMs: 1200,
-        cpuMs: 57_600,
-        peakRssBytes: 1.1 * 1024 * MB,
-        outputBytes: 12 * MB,
-        where: 'linux-arm-runner-3',
+        timing: { queuedMs: 1200 },
+        usage: { cpuMs: 57_600, peakRssBytes: 1.1 * 1024 * MB },
+        cache: { outputBytes: 12 * MB },
+        placement: { where: 'linux-arm-runner-3' },
       },
       NO,
       false,
@@ -1509,8 +1511,7 @@ describe('list headers', () => {
         status: 'cache-hit',
         exitCode: 0,
         durationMs: 12,
-        restored: true,
-        outputBytes: 900,
+        cache: { restored: true, outputBytes: 900 },
       },
       NO,
       false,

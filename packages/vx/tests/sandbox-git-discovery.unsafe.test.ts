@@ -107,7 +107,7 @@ describe.skipIf(!available || process.platform !== 'linux')('git in a sandboxed 
     git('commit', '-qm', 'app')
     const r = await run({ cwd: root, tasks: ['t'] })
     expect(r.outcomes[0]?.status).toBe('failed')
-    const lines = r.outcomes[0]?.sandboxViolationLines ?? []
+    const lines = r.outcomes[0]?.sandbox?.lines ?? []
     expect(lines.filter((l) => l.includes("allow: { read: ['../../.git'] }"))).toHaveLength(1)
   })
 

@@ -104,9 +104,9 @@ describe('taskPolicy: what a cached task may read, write and plan to save', () =
         ...u,
       }) as TaskOutcome
     const n = { ...node(), deps: ['q#build'] }
-    const viaKeyless = taskPolicy(args({ upstream: [up({ keylessBy: 'r#gen' })] }, n))
+    const viaKeyless = taskPolicy(args({ upstream: [up({ cache: { keylessBy: 'r#gen' } })] }, n))
     expect([viaKeyless.keylessBy, viaKeyless.save]).toEqual(['r#gen', false])
-    const unkeyed = up({ unkeyed: true })
+    const unkeyed = up({ cache: { unkeyed: true } })
     const viaUnkeyed = taskPolicy(args({ upstream: [unkeyed] }, n))
     expect([viaUnkeyed.unkeyedUpstream, viaUnkeyed.read, viaUnkeyed.save]).toEqual([
       unkeyed,
@@ -121,7 +121,8 @@ describe('taskPolicy: what a cached task may read, write and plan to save', () =
       status: 'success',
       exitCode: 0,
       hash: 'h',
-      unkeyed: true,
+      durationMs: 0,
+      cache: { unkeyed: true },
     } as TaskOutcome
     const n = {
       ...node({ ...cached, inputs: { files: ['src/**'], tasks: [] } }),

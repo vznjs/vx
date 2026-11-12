@@ -76,7 +76,7 @@ it('twenty runs in one process hold their descriptors and listeners steady', asy
       tasks: sandboxed ? ['a#t', 'a#sb'] : ['a#t'],
       log: silent,
       handleSignals: i % 2 === 0,
-      holdPersistent: i % 3 === 0,
+      handoff: { holdPersistent: i % 3 === 0 },
     })
     expect(r.ok).toBe(true)
     await r.persistent?.stop()

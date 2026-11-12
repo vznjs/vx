@@ -702,8 +702,8 @@ describe('a burst of task events builds the live region once per draw', () => {
           status: 'cache-hit',
           exitCode: 0,
           durationMs: 0,
-          restored: false,
-        } as TaskOutcome)
+          cache: { restored: false },
+        })
       }
       // A hundred events past the first draw: none of them built a region.
       expect(built).toBe(0)

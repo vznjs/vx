@@ -352,7 +352,7 @@ export interface ExecuteResult extends RunResult {
   /**
    * Executor-reported placement label — which machine ran the command
    * (a REAPI worker id, a pool member). Absent = this host. Rides
-   * `TaskOutcome.where` into telemetry so a task can be attributed to
+   * `TaskOutcome.placement.where` into telemetry so a task can be attributed to
    * its worker, onto its row and frame (`<id>@<where>`), and into the
    * run history (v44).
    */

@@ -1181,15 +1181,15 @@ export function defaultLogger(
           case 'success':
             succeeded++
             if (ranNoCache(outcome)) noCache++
-            if (outcome.saved === true) saved++
+            if (outcome.cache?.saved === true) saved++
             else if (ranUnsaved(outcome)) notSaved++
             break
           case 'cache-hit':
-            if (outcome.restored === false) upToDate++
+            if (outcome.cache?.restored === false) upToDate++
             else restoredLocal++
             break
           case 'cache-hit-remote':
-            if (outcome.restored === false) upToDate++
+            if (outcome.cache?.restored === false) upToDate++
             else restoredRemote++
             break
           case 'skipped':

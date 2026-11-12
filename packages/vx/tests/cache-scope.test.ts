@@ -75,7 +75,7 @@ async function runScoped(
     tasks: ['build'],
     log: silentLogger(fixture),
     remoteCache: remote,
-    ...(remoteReadOnlyByDefault === undefined ? {} : { remoteReadOnlyByDefault }),
+    ...(remoteReadOnlyByDefault === undefined ? {} : { handoff: { remoteReadOnlyByDefault } }),
     ...(named === undefined ? {} : { cacheScope: named }),
   })
   expect(result.ok).toBe(true)
@@ -145,7 +145,7 @@ describe('cache.scope', () => {
             tasks: ['build'],
             log: silentLogger(fixture),
             remoteCache: counted,
-            remoteReadOnlyByDefault: false,
+            handoff: { remoteReadOnlyByDefault: false },
             ...(scope === undefined ? {} : { cacheScope: scope }),
           })
         expect((await once()).outcomes[0]!.status).toBe('success')
@@ -250,7 +250,7 @@ describe('cache.scope', () => {
       if (ci === undefined) delete process.env['CI']
       else process.env['CI'] = ci
       const opts = await resolveRunOptions(parseRunArgs(args), fixture.root, ['build'])
-      return (opts as { remoteReadOnlyByDefault?: unknown }).remoteReadOnlyByDefault
+      return 'handoff' in opts ? opts.handoff?.remoteReadOnlyByDefault : undefined
     }
     try {
       await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: BUILD_CONFIG })
@@ -280,7 +280,7 @@ describe('cache.scope', () => {
           tasks: ['build'],
           log: silentLogger(fixture),
           remoteCache: layer,
-          remoteReadOnlyByDefault: false,
+          handoff: { remoteReadOnlyByDefault: false },
         })
         expect(r.ok).toBe(true)
         return r.outcomes[0]!.hash!
@@ -459,7 +459,7 @@ describe('cache.policy', () => {
         const writes = memoryRemote()
         expect(
           await runUnder(fixture, writes.layer, `{ cache: { policy: 'remote:rw' } }`, {
-            remoteReadOnlyByDefault: true,
+            handoff: { remoteReadOnlyByDefault: true },
           }),
         ).toBe('success')
         expect(writes.store.size).toBe(1)
