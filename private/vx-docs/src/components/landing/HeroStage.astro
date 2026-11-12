@@ -1,8 +1,9 @@
 ---
-// The hero is the system graph: every piece one CI run talks to, before a
-// retro sunset, a striped sun sinking into an endless grid. The graph rises
-// in, then plays one CI run on its own, a step every few seconds; the rail
-// jumps to a step. At rest (no script, reduced motion) it is a plain
+// The hero is the copy alone, a screen tall, over a retro sunset sky. Below
+// it, as its own section, the system graph: every piece one CI run talks to,
+// before a striped sun sinking into an endless grid. When the graph comes
+// into view it rises in, then plays one CI run on its own, a step every few
+// seconds; the rail jumps to a step. At rest (no script, reduced motion) it is a plain
 // section: the copy, the graph, and every step listed.
 import SystemMap from './SystemMap.astro'
 import { STEPS } from './system-map.ts'
@@ -53,6 +54,10 @@ const specs = [
         }
       </ul>
     </div>
+    <header class="stage-head">
+      <p class="kicker">One CI run, step by step</p>
+      <h2>One run.<br /><em>Every piece.</em></h2>
+    </header>
     <div class="stage-world" aria-hidden="true">
       <div class="stage-tilt">
         <SystemMap />
@@ -195,7 +200,17 @@ const specs = [
 
     // ---- the run plays on its own, a step every few seconds ----
     const STEP_MS = 3800
-    const born = performance.now()
+    // The play starts when the graph comes into view, not at page load.
+    let born = Infinity
+    new IntersectionObserver(
+      (entries, io) => {
+        if (!entries.some((e) => e.isIntersecting)) return
+        born = Math.min(born, performance.now())
+        stage.classList.add('seen')
+        io.disconnect()
+      },
+      { threshold: 0.25 },
+    ).observe(stage.querySelector('.stage-world')!)
     // How far the entrance has played: the sun rises with the graph.
     let rise = 0
     let shownAt = 0
@@ -214,7 +229,11 @@ const specs = [
     )
     // An old link to a step's anchor lands on that step.
     const landed = steps.findIndex((s) => s.anchor !== '' && `#${s.anchor}` === location.hash)
-    if (landed >= 0) show(landed, born)
+    if (landed >= 0) {
+      born = performance.now()
+      stage.classList.add('seen')
+      show(landed, born)
+    }
 
     // ---- the sky: a retro sunset, a striped sun sinking into the grid ----
     // Everything still (sky, stars, floor, the grid's long lines) is painted

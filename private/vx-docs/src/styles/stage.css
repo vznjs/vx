@@ -120,6 +120,17 @@
   max-width: 1240px;
   margin: 0 auto;
 }
+/* The graph is its own section under the hero, with its own heading. */
+.stage-head {
+  position: relative;
+  z-index: 3;
+  max-width: 1240px;
+  margin: clamp(72px, 10vw, 140px) auto 0;
+}
+.stage-head h2 {
+  margin: 16px 0 0;
+  font-size: clamp(44px, 7.4vw, 112px);
+}
 .stage-release {
   display: inline-flex;
   align-items: center;
@@ -436,14 +447,22 @@
   width: 100%;
   height: 100%;
 }
+/* The copy fills the first screen, so the graph starts below the fold. */
 .stage.js .stage-copy {
-  position: relative;
-  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: calc(100svh - var(--nav-h) - 112px);
 }
 .stage.js .stage-world {
   max-width: 1180px;
   margin: 40px auto 0;
-  animation: rise-in 1.2s var(--ease-out) 0.15s backwards;
+  opacity: 0;
+}
+.stage.js.seen .stage-world {
+  opacity: 1;
+  animation: rise-in 1.2s var(--ease-out) backwards;
 }
 @keyframes rise-in {
   from {
@@ -753,10 +772,19 @@
 }
 .lane {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 84px;
+  grid-template-columns: 84px minmax(0, 1fr) 40px 84px;
   align-items: center;
   gap: 12px;
   height: 34px;
+}
+.lane-laps {
+  font: 600 12px var(--font-mono);
+  color: #69726d;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.lane.vx .lane-laps {
+  color: var(--tone-core);
 }
 .lane-name {
   font: 600 13px var(--font-body);
@@ -809,13 +837,42 @@
   background: #f4ffd6;
   box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
 }
-.band.play .streak {
-  animation: dash var(--t) cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+/* Live, the lengths give way to runners: one track, each at its own pace. */
+.runner {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 62%, rgba(148, 170, 200, 0.5)) center / 100% 3px
+    no-repeat;
+  transform: translateX(-100%);
 }
-@keyframes dash {
-  from {
-    transform: translateY(-50%) scaleX(0);
-  }
+.runner::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: #c9d2dc;
+}
+.lane.vx .runner {
+  background: linear-gradient(90deg, transparent 30%, var(--tone-core)) center / 100% 4px no-repeat;
+}
+.lane.vx .runner::after {
+  background: #f4ffd6;
+  box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
+}
+.band.play .lane-track {
+  overflow: hidden;
+  border-right: 1px solid var(--hair);
+}
+.band.play .streak {
+  display: none;
+}
+.band.play .runner {
+  display: block;
 }
 
 /* ---- Distributed task execution: the run in 3D ---- */
@@ -1296,7 +1353,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .lane {
-    grid-template-columns: 70px minmax(0, 1fr) 64px;
+    grid-template-columns: 70px minmax(0, 1fr) 30px 64px;
     gap: 8px;
   }
   .lane-name,

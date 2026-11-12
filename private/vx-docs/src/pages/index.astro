@@ -44,6 +44,7 @@ const RACERS = [
   ['nx', 'Nx'],
   ['vt', 'Vite Task'],
 ] as const
+const LAP_S = 12
 const races = (
   [
     ['warm', 'Nothing changed'],
@@ -54,7 +55,13 @@ const races = (
 ).map(([k, title]) => {
   const lanes = RACERS.map(([r, name]) => ({ r, name, value: bench(`${r}.${k}`), ms: parseDuration(bench(`${r}.${k}`))! }))
   const max = Math.max(...lanes.map((l) => l.ms))
-  return { k, title, lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, t: 0.35 + 2.4 * (l.ms / max) })) }
+  // Live, every tool runs the same track at its measured pace: the slowest
+  // takes LAP_S a lap, the rest lap it as often as they are faster.
+  return {
+    k,
+    title,
+    lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, lap: (l.ms / max) * LAP_S })),
+  }
 })
 const benchFormula = 'Time each tool adds over the ideal run; lower is better.'
 const benchWorkload = fillBench(
@@ -144,11 +151,13 @@ const startCommands = [
               <figure class="race">
                 <figcaption>{race.title}</figcaption>
                 {race.lanes.map((l) => (
-                  <div class:list={['lane', { vx: l.r === 'vx' }]} style={`--w:${l.w.toFixed(1)}; --t:${l.t.toFixed(2)}s`}>
+                  <div class:list={['lane', { vx: l.r === 'vx' }]} style={`--w:${l.w.toFixed(1)}; --lap:${l.lap.toFixed(3)}s`}>
                     <span class="lane-name">{l.name}</span>
                     <span class="lane-track">
                       <span class="streak" />
+                      <span class="runner" />
                     </span>
+                    <span class="lane-laps" aria-hidden="true" />
                     <span class="lane-value">{l.value}</span>
                   </div>
                 ))}
@@ -255,7 +264,7 @@ const startCommands = [
 
   <script>
     // Bands play once as they come near: the count runs up, the columns
-    // rise, the streaks race. Everything already shows at rest; the play
+    // rise, the race starts. Everything already shows at rest; the play
     // class only replays it, and never with reduced motion.
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const count = (el: HTMLElement): void => {
@@ -280,6 +289,40 @@ const startCommands = [
         { rootMargin: '0px 0px -15% 0px' },
       )
       document.querySelectorAll('.band').forEach((el) => seen.observe(el))
+      // The race runs only while it is in view, and costs nothing out of it
+      // (tests/motion-budget.test.ts): sixteen transform-only runners, each
+      // lapping at its measured pace. Laps count against the slowest, and
+      // start over when it finishes one.
+      const speed = document.getElementById('speed')!
+      const fields = [...speed.querySelectorAll<HTMLElement>('.race')].map((race) =>
+        [...race.querySelectorAll<HTMLElement>('.lane')].map((lane) => {
+          const ms = parseFloat(getComputedStyle(lane).getPropertyValue('--lap')) * 1000
+          const run = lane
+            .querySelector('.runner')!
+            .animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' }], { duration: ms, iterations: Infinity })
+          run.pause()
+          return { ms, run, laps: lane.querySelector<HTMLElement>('.lane-laps')! }
+        }),
+      )
+      const tally = (): void => {
+        for (const lanes of fields) {
+          const lap = Math.max(...lanes.map((l) => l.ms))
+          const into = Number(lanes[0]!.run.currentTime ?? 0) % lap
+          for (const l of lanes) {
+            const n = Math.floor(into / l.ms)
+            l.laps.textContent = n > 0 ? `×${n + 1}` : ''
+          }
+        }
+      }
+      let tick = 0
+      new IntersectionObserver(([e]) => {
+        clearInterval(tick)
+        for (const l of fields.flat()) {
+          if (e!.isIntersecting) l.run.play()
+          else l.run.pause()
+        }
+        if (e!.isIntersecting) tick = window.setInterval(tally, 120)
+      }).observe(speed)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {
