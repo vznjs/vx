@@ -571,7 +571,12 @@ Only `vx run` and `vx watch` forward. Any other core verb refuses a `--`
 
 vx takes no short flag, so a `-x` before `--` that no vx flag hint claims
 is refused with the run that forwards it: `vx run test -t adds` says
-`unknown flag: -t (did you mean vx run test -- -t adds?)`. A long flag
+`unknown flag: -t (did you mean vx run test -- -t adds?)`. Only the
+flag and the words after it up to the next flag move; vx's own flags
+stay before `--` (`vx run test -t adds --all` suggests
+`vx run test --all -- -t adds`). Another tool's name for a vx flag is
+named instead: `-j`, `--jobs` and `--parallel` hint `--concurrency`,
+`-F`, `--scope` and `--projects` hint `--filter`. A long flag
 far from every vx flag gets no such guess: a typo of a vx flag
 forwarded would be ignored by the task unseen.
 
