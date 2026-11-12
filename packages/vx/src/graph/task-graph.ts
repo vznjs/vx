@@ -28,7 +28,7 @@ import {
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild } from './default-build.js'
 import { foldedDeps, isGroupTask } from './folds.js'
-import type { TaskOutcome } from './scheduler.js'
+import type { TaskOutcome } from './outcome.js'
 import { addStandIn } from './stand-ins.js'
 
 // Re-exported so existing importers keep working while the type's home

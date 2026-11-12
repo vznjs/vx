@@ -1012,7 +1012,7 @@ export interface IngestMeta {
 }
 == type Inline (src/ui/components.ts)
 export type Inline = string | Token | readonly Inline[]
-== type InputChanges (src/graph/scheduler.ts)
+== type InputChanges (src/graph/outcome.ts)
 export interface InputChanges {
   count: number
   first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
@@ -2123,7 +2123,7 @@ export interface TaskNode {
   outputsAddedToBy?: string[]
   excludedUpstream?: TaskOutcome[]
 }
-== type TaskOutcome (src/graph/scheduler.ts)
+== type TaskOutcome (src/graph/outcome.ts)
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus

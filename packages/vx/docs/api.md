@@ -21,7 +21,7 @@ export interface AdmitContext {
 
 type · `src/workspace/affected.ts`
 
-What `--affected` seeds its tasks from (2026-10-04): the changed
+What `--affected` seeds its tasks from: the changed
 projects, each one's changed paths relative to it, and the projects a
 change reaches as a whole — every task in one is affected whatever its
 inputs say, because the reason was no path of its own (a lockfile claim,
@@ -182,7 +182,7 @@ export class BoundedCapture {
 function · `src/workspace/config-schema.ts`
 
 A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
-branch and a laptop on it reads (2026-10-17). The repository's
+branch and a laptop on it reads. The repository's
 identity, not a remote's local name, so a clone whose `origin` is a fork
 names the fork. A name may hold characters a scope may not; each
 becomes `_`.
@@ -3028,7 +3028,7 @@ export interface TaskLogEntry {
 
 function · `src/workspace/config-schema.ts`
 
-Why `name` cannot be a task name, or null; `vx init` skips such a script (item 1033).
+Why `name` cannot be a task name, or null; `vx init` skips such a script.
 
 ```ts
 export function taskNameProblem(name: string): string | null
@@ -3060,7 +3060,7 @@ export interface TaskNode {
 
 ## `TaskOutcome`
 
-type · `src/graph/scheduler.ts`
+type · `src/graph/outcome.ts`
 
 ```ts
 export interface TaskOutcome {

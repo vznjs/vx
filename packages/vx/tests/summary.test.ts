@@ -9,7 +9,7 @@ import {
 import { defaultLogger } from '../src/report/logger.js'
 import { formatOutcomeTable, formatRunSummary } from '../src/report/summary.js'
 import { formatElapsed } from '../src/util/index.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function outcome(id: string, status: TaskOutcome['status'], exitCode = 0): TaskOutcome {

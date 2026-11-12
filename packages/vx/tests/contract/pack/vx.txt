@@ -62,6 +62,7 @@ src/cli/watch-cycle.ts
 src/cli/watch-filter.ts
 src/cli/watch-fs.ts
 src/cli/watch-judge.ts
+src/cli/watch-loop.ts
 src/cli/watch-set.ts
 src/cli/watch.ts
 src/cli/why.ts
@@ -81,7 +82,10 @@ src/graph/default-build.ts
 src/graph/definition.ts
 src/graph/folds.ts
 src/graph/index.ts
+src/graph/lanes.ts
+src/graph/outcome.ts
 src/graph/priorities.ts
+src/graph/ready-heap.ts
 src/graph/scheduler.ts
 src/graph/stand-ins.ts
 src/graph/task-graph.ts

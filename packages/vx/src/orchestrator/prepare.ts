@@ -275,6 +275,125 @@ export async function prepareRunLocked(
 ): Promise<PreparedRun> {
   beginRun()
   mark('startup')
+  const ws = await startWorkspace(options, log, planning)
+  const scope = scopeOf(options, ws)
+  const store = await openStore(options, log, ws, beforeOpen, planning)
+  const load = await loadScope(options, log, ws, scope, store.localCache)
+  const asked = await judgeRequests(options, ws, scope, load)
+  const layer = await openLayer(options, log, ws, store)
+  const { workspaceRoot, workspaceConfig, plugins, cacheDir, projectMetas } = ws
+  const { localCache, policy } = store
+  const { cache } = layer
+  // From here the plugins' factories have run and the cache is open: a
+  // throw (a stage hook, a `^name` nobody declares, a cycle, an unknown
+  // exclude name) closed neither and tore nothing down, once per failed
+  // cycle under `vx watch`. run() owns both only once this
+  // returns. A hook here that never settles strands the process, which
+  // tears the plugins down before it ends (bin.ts).
+  const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
+  try {
+    const hashCache = createHashCache(
+      localCache.memo.folds,
+      resolveSetting('outputs.clean', workspaceConfig).value as boolean | undefined,
+      {
+        run: settingEnv('inputs.stability.strategy') as InputStability['strategy'],
+        workspace: workspaceConfig?.inputs?.stability?.strategy,
+      },
+    )
+    const fingerprintWatch = new FingerprintWatch(
+      workspaceRoot,
+      store.claimed,
+      store.claimedBytes,
+      store.fingerprintsAt,
+    )
+    // What a run holds whether or not it has tasks: an empty run still
+    // carries the cache and watch, so the caller closes them uniformly.
+    const held = {
+      workspaceRoot,
+      workspaceConfig,
+      plugins,
+      cacheDir,
+      cache,
+      localCache,
+      hasRemoteLayer: layer.hasRemoteLayer,
+      cachePolicy: policy,
+      cacheScope: ws.cacheScope,
+      remotes: layer.remotes,
+      cacheRefs: layer.refs,
+      branch: ws.branch,
+      unresolvedTasks: asked.unresolvedTasks,
+      declaredElsewhere: asked.declaredElsewhere,
+      projects: load.projects,
+      hintProjects: asked.hintProjects,
+      anyProjectConfig: load.projectsWithConfigs.length > 0,
+      taskless: asked.taskless,
+      unlockedConfig: () => unlockedConfigOf(load.projectsWithConfigs, projectMetas, workspaceRoot),
+      fingerprintWatch,
+      nestedDirsByProject: asked.nestedDirsByProject,
+      hashCache,
+      workspaceProjectCount: projectMetas.length,
+    }
+    const emptyRun = (reason?: 'none-affected'): PreparedRun => ({
+      ...held,
+      keepRunEntry: undefined,
+      priorities: () => Promise.resolve(new Map()),
+      cacheFor: () => absentPluginCache,
+      nodes: new Map(),
+      keyOnly: new Map(),
+      gitFilesCache: new GitFilesCache(),
+      empty:
+        reason ??
+        (options.selectedByDiff === true && asked.unresolvedTasks.length === 0
+          ? 'none-affected'
+          : 'no-tasks-declared'),
+    })
+    if (asked.requested.length === 0) return emptyRun()
+
+    const graph = await buildGraph(options, log, ws, scope, load, asked, hashCache, cache)
+    if (graph === 'none-affected') return emptyRun('none-affected')
+    const { nodes } = graph
+    const git = await enumerateGit(options, ws, store, asked, graph, hashCache, countDependents)
+    const keyOnly = await applyKeyStages(
+      options,
+      log,
+      ws,
+      store,
+      load,
+      asked,
+      graph,
+      git,
+      hashCache,
+      cache,
+    )
+    const access = pluginAccess(log, ws, store, layer, nodes)
+    return {
+      ...held,
+      priorities: access.priorities,
+      cacheFor: access.cacheFor,
+      keepRunEntry: writesRunStore(layer.remotes)
+        ? (name, bytes) => putRunEntry(layer.remotes, ws.cacheScope, name, bytes)
+        : undefined,
+      nodes,
+      keyOnly,
+      gitFilesCache: git.gitFilesCache,
+      ...(git.dependents !== undefined ? { dependents: git.dependents } : {}),
+      empty: nodes.size === 0 ? 'empty-graph' : null,
+    }
+  } catch (err) {
+    await teardownPlugins(plugins, warnOf(log))
+    cache.close()
+    throw err
+  } finally {
+    unowe()
+  }
+}
+
+/**
+ * The workspace a run starts from: its root, its declared plugins, where
+ * its cache lives, and its projects, with the lock read and git's walk
+ * started as early as they can be.
+ */
+async function startWorkspace(options: RunOptions, log: Logger, planning: boolean) {
   // A claimed root file is read once. A watch cycle is a new run and reads
   // them afresh.
   const reads: LoadReads = new Map()
@@ -304,7 +423,7 @@ export async function prepareRunLocked(
   // A `discover` hook that reads the worktree (nx()'s graph key) starts the
   // whole-tree enumeration a scoped run would otherwise scope later, here or
   // in the CLI's selection pass; the run reuses it instead of walking the
-  // tree twice (G-75).
+  // tree twice.
   const git =
     (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
     lazyGitEnumeration(workspaceRoot)
@@ -351,7 +470,28 @@ export async function prepareRunLocked(
       : discoverProjects(workspaceRoot, readLock, git)
   const projectMetas = await discovering
   mark('discover projects')
+  return {
+    reads,
+    workspaceRoot,
+    reused,
+    readLock,
+    git,
+    workspaceConfig,
+    plugins,
+    branchFacts,
+    baseBranch,
+    cacheScope,
+    branch,
+    cacheDir,
+    storeRoot,
+    projectMetas,
+  }
+}
+type Workspace = Awaited<ReturnType<typeof startWorkspace>>
 
+/** The package graph and which projects' configs the run's task specs need. */
+function scopeOf(options: RunOptions, ws: Workspace) {
+  const { reused, projectMetas } = ws
   // SCOPED config loading: configs are programs, and evaluating 1090
   // of them costs ~200 ms — the dominant fixed cost of small runs.
   // Only the in-scope projects, their transitive dependency closure
@@ -369,8 +509,8 @@ export async function prepareRunLocked(
   // anchors alone are the scope and nothing else needs its config
   // evaluated.
   // `vx run //#lint` is Turbo's `turbo run //#lint`: the root project's
-  // task, under the name it has when something names it (D-39).
-  const root = path.resolve(workspaceRoot)
+  // task, under the name it has when something names it.
+  const root = path.resolve(ws.workspaceRoot)
   const rootName = projectMetas.find((m) => path.resolve(m.dir) === root)?.name
   const tasks =
     rootName === undefined
@@ -386,23 +526,40 @@ export async function prepareRunLocked(
   const seeds: 'all' | string[] =
     options.projects !== undefined ? [...options.projects, ...anchored] : hasBare ? 'all' : anchored
   // Its own mark: the package graph is the bulk of what used to be charged
-  // to `open cache` (measured on a 1,000-project tree, 2026-09-20 — the
+  // to `open cache` (measured on a 1,000-project tree — the
   // graph 3-8 ms against the cache open's ~1 ms and the root files' ~0.3),
   // so a reader profiling that stage was sent to the wrong code.
   mark('package graph')
+  return { packageGraph, tasks, seeds }
+}
+type Scope = ReturnType<typeof scopeOf>
 
+/**
+ * The local cache, opened under the run's policy, and the root files the
+ * plugins claim, read before any task can rewrite them.
+ */
+async function openStore(
+  options: RunOptions,
+  log: Logger,
+  ws: Workspace,
+  beforeOpen:
+    | ((workspaceRoot: string, sharedCacheDir: string | undefined) => Promise<void>)
+    | undefined,
+  planning: boolean,
+) {
+  const { workspaceRoot, workspaceConfig, plugins, cacheDir, git } = ws
   const workspacePolicy = workspaceCachePolicy(workspaceConfig)
   const asked =
     options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags)
   // A laptop reads the shared cache and does not write it unless a policy
-  // names the remote (2026-10-03; Security F1, 2026-10-14): a key
+  // names the remote: a key
   // holds only declared inputs, so a laptop's write could be replayed on CI.
   // A workspace policy naming the remote asks to write it, as `--cache-policy` does.
   const readOnly =
     options.remoteReadOnlyByDefault === true &&
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
   const wanted: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
-  const resolvedStore = await storeRoot
+  const resolvedStore = await ws.storeRoot
   // A cache directory with no store may be another workspace's too: the
   // run holds it shared (`holdCacheDir`).
   await beforeOpen?.(workspaceRoot, resolvedStore === null ? cacheDir : undefined)
@@ -411,7 +568,7 @@ export async function prepareRunLocked(
   // leaves (`'preview'`), and upserts no file-hash memo. One with a remote
   // keeps the hits its probe finds, for the `vx run` that follows (an
   // index made for them if need be): that run GETs them before its own
-  // probe answers (2026-10-23).
+  // probe answers.
   const planReadOnly =
     planning &&
     (!wanted.remoteRead ||
@@ -454,22 +611,34 @@ export async function prepareRunLocked(
   // their claimants fold: read now so a task that rewrites one is caught.
   const fingerprintsAt = Date.now()
   const claimed = [...fingerprintClaims(plugins).keys()]
-  const claimedBytes = await readClaimedFiles(workspaceRoot, claimed, reads)
+  const claimedBytes = await readClaimedFiles(workspaceRoot, claimed, ws.reads)
   // What `vx lock` recorded of them: a run keys from it (locked-digests.ts).
-  const dependenciesLock = claimed.length > 0 ? readDependenciesLock(workspaceRoot, reads) : null
+  const dependenciesLock = claimed.length > 0 ? readDependenciesLock(workspaceRoot, ws.reads) : null
   dependenciesLock?.catch(() => {})
   // A whole-tree run's blob-size check starts with the cache it reads its
   // verdict from, beside the config load and graph build: after them, a cold
-  // 100-package run waited 40-50 ms on it before its first task (2026-11-03).
+  // 100-package run waited 40-50 ms on it before its first task.
   if (git.started !== undefined) {
     localCache.memo.holdBlobSizes()
     git.started.then((e) => checkBlobSizes(e, localCache.memo)).catch(() => {})
   }
   mark('open cache')
+  return { localCache, policy, fingerprintsAt, claimed, claimedBytes, dependenciesLock }
+}
+type Store = Awaited<ReturnType<typeof openStore>>
 
+/** The configs in scope, from the lock; `everyProject` loads the rest when a refusal needs them. */
+async function loadScope(
+  options: RunOptions,
+  log: Logger,
+  ws: Workspace,
+  scope: Scope,
+  localCache: Cache,
+) {
+  const { projectMetas, readLock } = ws
   // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
   // the configs (`vx lock --check` re-evaluates them; a run does not):
-  // only `vx lock` evaluates (2026-10-14).
+  // only `vx lock` evaluates.
   // See docs/design/config-lock-2026-06.md.
   // Read once, and only when a config is to be read from it: the CLI's
   // selection pass may have staged every config (`options.staged`), and
@@ -485,11 +654,11 @@ export async function prepareRunLocked(
   if (!allStaged) await readLock()
 
   const loadArgs = {
-    workspaceRoot,
-    cacheDir,
-    plugins,
+    workspaceRoot: ws.workspaceRoot,
+    cacheDir: ws.cacheDir,
+    plugins: ws.plugins,
     projectMetas,
-    packageGraph,
+    packageGraph: scope.packageGraph,
     configs: readLock,
     warn: warnOf(log),
   }
@@ -497,7 +666,7 @@ export async function prepareRunLocked(
   try {
     loaded = await loadProjects({
       ...loadArgs,
-      seeds,
+      seeds: scope.seeds,
       closure: true,
       ...(options.staged !== undefined ? { staged: options.staged } : {}),
     })
@@ -509,6 +678,20 @@ export async function prepareRunLocked(
   }
   const { projects, configured: projectsWithConfigs } = loaded
   mark('load configs')
+  const everyProject = (): Promise<LoadedProjects> =>
+    loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects })
+  return { allStaged, projects, projectsWithConfigs, everyProject }
+}
+type Load = Awaited<ReturnType<typeof loadScope>>
+
+/**
+ * What the task specs ask for over the loaded projects, and what is said
+ * of a name they cannot find: unresolved, declared elsewhere, or hinted at.
+ */
+async function judgeRequests(options: RunOptions, ws: Workspace, scope: Scope, load: Load) {
+  const { workspaceRoot, projectMetas } = ws
+  const { tasks } = scope
+  const { projects, projectsWithConfigs, everyProject } = load
   // A config the load left out may declare what nothing loaded does. Asked by
   // name, never by count: a config-less project counts as loaded, so a
   // scope holding one hid an unloaded declarer (X-129, X-182).
@@ -560,9 +743,7 @@ export async function prepareRunLocked(
     // unjudged pays for the rest of the workspace.
     unresolvedTasks = undeclaredIn(unresolvedTasks, projects)
     if (partialLoad && unresolvedTasks.some((t) => !t.includes('#'))) {
-      unresolvedTasks = await declaredNowhere(unresolvedTasks, () =>
-        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
-      )
+      unresolvedTasks = await declaredNowhere(unresolvedTasks, everyProject)
     }
   }
   // Run inside a project that lacks the task (`vx run typecheck` at a
@@ -577,9 +758,7 @@ export async function prepareRunLocked(
   if (options.projects !== undefined && options.selectedByDiff !== true && bare.length > 0) {
     let nowhere = undeclaredIn(bare, projects)
     if (nowhere.length > 0 && partialLoad) {
-      nowhere = await declaredNowhere(nowhere, () =>
-        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
-      )
+      nowhere = await declaredNowhere(nowhere, everyProject)
     }
     declaredElsewhere = bare.filter((t) => !nowhere.includes(t))
   }
@@ -598,14 +777,27 @@ export async function prepareRunLocked(
     (unresolvedTasks.some((t) => !t.includes('#')) && !declaresAny(projects))
   ) {
     try {
-      hintProjects = (
-        await loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects })
-      ).projects
+      hintProjects = (await everyProject()).projects
     } catch {
       // A config the scope skipped fails to load: no hint, the run's refusal stands.
     }
   }
+  return {
+    partialLoad,
+    taskless,
+    nestedDirsByProject,
+    requested,
+    unresolvedTasks,
+    declaredElsewhere,
+    hintProjects,
+  }
+}
+type Asked = Awaited<ReturnType<typeof judgeRequests>>
 
+/** The cache the run reads and writes: the local one, layered over the run's remotes. */
+async function openLayer(options: RunOptions, log: Logger, ws: Workspace, store: Store) {
+  const { workspaceRoot, plugins } = ws
+  const { localCache, policy } = store
   // Cache seam precedence: an EXPLICITLY injected remote layer
   // (RunOptions.remoteCache — a distribution agent or daemon that already
   // holds a wire client) wins outright; else a plugin's `cache` capability;
@@ -624,15 +816,17 @@ export async function prepareRunLocked(
     })
   }
   // An injected remote is no plugin's: nothing reads refs for it.
-  const refs = options.remoteCache ? [] : cacheRefs(workspaceRoot, baseBranch, branchFacts.refs)
+  const refs = options.remoteCache
+    ? []
+    : cacheRefs(workspaceRoot, ws.baseBranch, ws.branchFacts.refs)
   try {
     cache = options.remoteCache
       ? new LayeredCache(localCache, remotes, options.uploadConcurrency)
       : await resolveCache(plugins, {
           workspaceRoot,
-          cacheDir,
+          cacheDir: ws.cacheDir,
           warn: warnOf(log),
-          scope: cacheScope,
+          scope: ws.cacheScope,
           refs,
           localCache,
           policy,
@@ -645,7 +839,7 @@ export async function prepareRunLocked(
     // A cache plugin that throws or returns something off-contract is
     // refused by name; the local handle opened above must not leak with it,
     // nor what another plugin's factory opened: the factories have run
-    // (C-4, item 1029's contract).
+    // (C-4).
     await teardownPlugins(plugins, warnOf(log))
     localCache.close()
     throw err
@@ -658,387 +852,353 @@ export async function prepareRunLocked(
   // layer's own truthful answer; `LayeredCache` sets it, a bare `Cache`
   // doesn't, and a third-party layer opts in when it really has a remote.
   const hasRemoteLayer = cache.hasRemote === true
-  // From here the plugins' factories have run and the cache is open: a
-  // throw (a stage hook, a `^name` nobody declares, a cycle, an unknown
-  // exclude name) closed neither and tore nothing down, once per failed
-  // cycle under `vx watch` (item 1029). run() owns both only once this
-  // returns. A hook here that never settles strands the process, which
-  // tears the plugins down before it ends (bin.ts).
-  const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
-  try {
-    const hashCache = createHashCache(
-      localCache.memo.folds,
-      resolveSetting('outputs.clean', workspaceConfig).value as boolean | undefined,
+  return { cache, remotes, refs, hasRemoteLayer }
+}
+type Layer = Awaited<ReturnType<typeof openLayer>>
+
+/**
+ * The task graph the requests build, narrowed to what `--affected`'s diff
+ * reaches; or `'none-affected'` when it reaches no request.
+ */
+async function buildGraph(
+  options: RunOptions,
+  log: Logger,
+  ws: Workspace,
+  scope: Scope,
+  load: Load,
+  asked: Asked,
+  hashCache: HashCache,
+  cache: CacheLayer,
+) {
+  const { workspaceRoot, workspaceConfig, plugins, projectMetas } = ws
+  const { projects, everyProject } = load
+  const { requested, partialLoad } = asked
+  // The whole graph, whatever `--exclude-dependencies` says: the stages
+  // below shape and key the tasks it drops as a full run would, because
+  // a dropped task is still keyed (excluded-keys.ts). A scoped load is not
+  // the whole workspace: a `^name` nothing loaded declares may be declared
+  // by a config the scope left out, so the builder hands it back instead of
+  // refusing it, and the rest decide.
+  // A run never checks the graph rules: `vx lock` and `vx lock --check`
+  // do. `exclusiveOutputs: false` still asks the walk
+  // for its addition marks.
+  const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
+  const unproven: Array<[taskId: string, name: string]> = []
+  // Every config is the lock's when it was read: a `project` plugin's
+  // edits are the lock's record too (graph-memo.ts).
+  const lock =
+    hashCache.folds !== undefined && options.staged === undefined && !load.allStaged
+      ? lockDigest(await ws.readLock())
+      : undefined
+  const graphMemo: GraphMemo | undefined =
+    lock === undefined ? undefined : { folds: hashCache.folds!, lock, metas: projectMetas }
+  const graphOf = (req: typeof requested) => {
+    const built = memoGraph(
       {
-        run: settingEnv('inputs.stability.strategy') as InputStability['strategy'],
-        workspace: workspaceConfig?.inputs?.stability?.strategy,
-      },
-    )
-    const fingerprintWatch = new FingerprintWatch(
-      workspaceRoot,
-      claimed,
-      claimedBytes,
-      fingerprintsAt,
-    )
-
-    // Empty-cases bookkeeping. We still construct the cache + watch
-    // so the caller's try/finally pattern can close it uniformly.
-    const emptyRun = (reason?: 'none-affected'): PreparedRun => ({
-      workspaceRoot,
-      workspaceConfig,
-      plugins,
-      cacheDir,
-      cache,
-      localCache,
-      hasRemoteLayer,
-      cachePolicy: policy,
-      cacheScope,
-      remotes,
-      cacheRefs: refs,
-      keepRunEntry: undefined,
-      priorities: () => Promise.resolve(new Map()),
-      branch,
-      cacheFor: () => absentPluginCache,
-      nodes: new Map(),
-      keyOnly: new Map(),
-      unresolvedTasks,
-      declaredElsewhere,
-      projects,
-      hintProjects,
-      anyProjectConfig: projectsWithConfigs.length > 0,
-      taskless,
-      unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
-      fingerprintWatch,
-      nestedDirsByProject,
-      gitFilesCache: new GitFilesCache(),
-      hashCache,
-      workspaceProjectCount: projectMetas.length,
-      empty:
-        reason ??
-        (options.selectedByDiff === true && unresolvedTasks.length === 0
-          ? 'none-affected'
-          : 'no-tasks-declared'),
-    })
-    if (requested.length === 0) return emptyRun()
-
-    // The whole graph, whatever `--exclude-dependencies` says: the stages
-    // below shape and key the tasks it drops as a full run would, because
-    // a dropped task is still keyed (excluded-keys.ts). A scoped load is not
-    // the whole workspace: a `^name` nothing loaded declares may be declared
-    // by a config the scope left out, so the builder hands it back instead of
-    // refusing it, and the rest decide.
-    // A run never checks the graph rules: `vx lock` and `vx lock --check`
-    // do (2026-10-14). `exclusiveOutputs: false` still asks the walk
-    // for its addition marks.
-    const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
-    const unproven: Array<[taskId: string, name: string]> = []
-    // Every config is the lock's when it was read: a `project` plugin's
-    // edits are the lock's record too (graph-memo.ts).
-    const lock =
-      hashCache.folds !== undefined && options.staged === undefined && !allStaged
-        ? lockDigest(await readLock())
-        : undefined
-    const graphMemo: GraphMemo | undefined =
-      lock === undefined ? undefined : { folds: hashCache.folds!, lock, metas: projectMetas }
-    const graphOf = (req: typeof requested) => {
-      const built = memoGraph(
-        {
-          projects,
-          packageGraph,
-          requested: req,
-          workspaceRoot,
-          rules: graphRules,
-          ...(partialLoad
-            ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
-            : {}),
-        },
-        graphMemo,
-      )
-      hashCache.graph = built.token
-      return built.nodes
-    }
-    let nodes = graphOf(requested)
-    const hasGraphHook = hasHook(plugins, 'graph')
-    const graphStage = (): Promise<void> =>
-      applyGraphStage(plugins, nodes, {
-        workspaceRoot,
-        cacheDir,
-        projectMetas,
-        warn: warnOf(log),
-        rules: graphRules,
-      })
-    // `--affected` selects over the FINAL graph: an edge or an input a
-    // `graph` hook adds moves a key, so the hooks run first, over every
-    // candidate, and the selection prunes what they left.
-    const hooksFirst = hasGraphHook && options.affected !== undefined
-    // `--affected` keeps a bare request only when the diff reaches its
-    // closure; a `pkg#task` the user named runs as it always does.
-    if (options.affected !== undefined) {
-      const before = hooksFirst ? new Set(nodes.keys()) : null
-      if (hooksFirst) await graphStage()
-      const kept = keptByAffected(
-        nodes,
-        requested,
-        options.affected,
         projects,
-        packageGraph,
+        packageGraph: scope.packageGraph,
+        requested: req,
         workspaceRoot,
-        {
-          named: new Set(tasks.filter((t) => t.includes('#'))),
-          outright: new Set(options.selectedOutright),
-        },
-        options.affectedReasons && { reasons: options.affectedReasons },
-      )
-      if (kept.length === 0) return emptyRun('none-affected')
-      if (before !== null) {
-        const asked = new Set(requested.map((r) => `${r.project}#${r.task}`))
-        // What a hook added or asked for is the plugin's choice, kept as it
-        // would be on a run without the diff.
-        const roots = [
-          ...kept.map((r) => `${r.project}#${r.task}`),
-          ...[...nodes.values()]
-            .filter((n) => !before.has(n.id) || (n.requested && !asked.has(n.id)))
-            .map((n) => n.id),
-        ]
-        pruneToClosure(nodes, new Set(roots))
-        for (let i = unproven.length - 1; i >= 0; i--)
-          if (!nodes.has(unproven[i]![0])) unproven.splice(i, 1)
-      } else if (kept.length < requested.length) {
-        unproven.length = 0
-        nodes = graphOf(kept)
-      }
-    }
-    if (unproven.length > 0) {
-      await refuseUndeclaredDeps(unproven, () =>
-        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
-      )
-    }
-    // An `--exclude-dependencies` name no project declares drops nothing:
-    // `=biuld` planned the whole chain and ran it, exit 0 (item 1026). Every
-    // other name the user types must resolve; so must this one. After the
-    // graph, so a config error (`^biuld` nobody declares) is named first.
-    const excludeNames = options.excludeDependencies
-    if (Array.isArray(excludeNames) && excludeNames.length > 0) {
-      const declared = new Set<string>()
-      for (const p of projects.values())
-        for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
-      let unknown = excludeNames.filter((n) => !declared.has(n))
-      if (unknown.length > 0 && partialLoad) {
-        unknown = await declaredNowhere(unknown, () =>
-          loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
-        )
-      }
-      if (unknown.length > 0) {
-        cache.close()
-        const hints = new Set(unknown.flatMap((n) => nearest(n, declared) ?? []))
-        const hint = hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
-        throw new UserError(
-          `--exclude-dependencies names a task no project declares: ${unknown.join(', ')}.${hint}`,
-        )
-      }
-    }
-    // The graph is built; what follows is git's enumeration over its
-    // projects, then the plugins' stages (graph, key, schedule). Separate
-    // rows, so a plugin's key stage reads as its own cost and not as graph
-    // building — a lockfile plugin's 1000 stats per run hid inside one
-    // `prepare (graph)` row until 2026-09-10.
-    mark('build graph')
-    const gitFilesCache = new GitFilesCache()
-    gitFilesCache.vxDirs = withinRoot(workspaceRoot, cacheDir)
-    // Bulk-populate via a single `git ls-files` at the workspace root —
-    // partitions the output by project. Avoids one fork+exec per project
-    // (~5-10ms each on Linux; the dominant cold-start cost on big
-    // monorepos). When any task in the graph declares inputs.workspaceFiles,
-    // the enumeration must see every file from the root (no pathspec
-    // scoping) and additionally stores a workspace-wide partition.
-    // Over the projects that own a task, not every project loaded: a scoped
-    // run loads its dependency closure for the `^` walk, and a `lint` of one
-    // package walked the whole tree for it (~60 ms of git where one
-    // project's pathspec takes ~7, 1,000 projects). A node a `graph` hook
-    // adds in another project keys through `resolveFiles`' own spawn.
-    const graphDirs = new Set<string>()
-    let usesWorkspaceInputs = false
-    for (const n of nodes.values()) {
-      graphDirs.add(n.projectDir)
-      if ((n.config.inputs?.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
-    }
-    const projectDirs = [...graphDirs]
-    const enumerating =
-      git.started ??
-      startGitEnumeration(
-        workspaceRoot,
-        gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
-      )
-    // While git walks: the gate's pass over every task cost 2-8 ms at
-    // 1,000 projects when it ran before the spawn.
-    const settleIgnored = askIgnoredOutputs(
-      gatedOutputs(nodes, workspaceRoot),
-      workspaceRoot,
-      nodes,
+        rules: graphRules,
+        ...(partialLoad
+          ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
+          : {}),
+      },
+      graphMemo,
     )
-    const enumeration = await enumerating
-    localCache.memo.holdBlobSizes()
-    const applied = applyGitEnumeration(
-      enumeration,
-      workspaceRoot,
-      projectDirs,
-      gitFilesCache,
-      usesWorkspaceInputs,
-      localCache.memo,
-    )
-    // The dependents count while the blob-size check's `cat-file` runs: the
-    // thread waited ~80 ms on it in a cold 8,002-task run, and counting
-    // after it, before the first task, took 40 ms (2026-11-07). Only when
-    // nothing below edits the nodes: a graph or key hook, or
-    // `--exclude-dependencies`.
-    const excluding =
-      options.excludeDependencies !== undefined &&
-      (options.excludeDependencies === 'all' || options.excludeDependencies.length > 0)
-    const dependents =
-      !countDependents || (hasGraphHook && !hooksFirst) || hasHook(plugins, 'key') || excluding
-        ? undefined
-        : graphCounts(nodes, hashCache.folds, hashCache.graph)
-    await applied
-    await settleIgnored(gitFilesCache)
-    mark('git enumeration')
-    if (hasGraphHook && !hooksFirst) await graphStage()
-    // An upstream run without the dependants that add to its outputs still
-    // ignores what they added (`markOutsideAdditions`): over every project,
-    // so a scoped load loads the rest, only in a workspace that allows it.
-    if (graphRules.exclusiveOutputs === false) {
-      const every = partialLoad
-        ? (await loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }))
-            .projects
-        : projects
-      markOutsideAdditions(nodes, every, workspaceRoot)
-    }
-    // Args after `--` go to requested commands only; with none among them
-    // they reached nothing and the run passed, the `--watch` unheard.
-    if ((options.forwardArgs?.length ?? 0) > 0) {
-      const requestedNodes = [...nodes.values()].filter((n) => n.requested)
-      if (requestedNodes.length > 0 && requestedNodes.every(isGroupTask)) {
-        const ids = requestedNodes.map((n) => n.id)
-        const named = ids.length > 3 ? `${ids.slice(0, 3).join(', ')}, …` : ids.join(', ')
-        throw new UserError(
-          `args after \`--\` reach no task: ${named} ${ids.length === 1 ? 'has' : 'have'} no command (a group); name the task that runs one`,
-        )
-      }
-    }
-    if (hasHook(plugins, 'key')) {
-      const locked = lockedFiles(workspaceRoot, claimed, claimedBytes, await dependenciesLock)
-      await applyKeyHooks(
-        plugins,
-        nodes,
-        withExtraHashes(
-          { workspaceRoot, cacheDir, warn: warnOf(log), locked },
-          extraHashesOfDiscovery(projectMetas),
-        ),
-      )
-    }
-    refuseFiltersThroughGroups(nodes)
-    refuseCacheInOutputs(nodes, gitFilesCache.vxDirs, cacheDir, workspaceRoot, nestedDirsByProject)
-    const exclude = options.excludeDependencies
-    // The nodes are what the graph token names only while nothing edited them.
-    if (
-      hasGraphHook ||
-      hasHook(plugins, 'key') ||
-      (exclude !== undefined && (exclude === 'all' || exclude.length > 0))
-    )
-      hashCache.graph = undefined
-    let keyOnly: ReadonlyMap<string, TaskNode> = new Map()
-    if (exclude !== undefined && (exclude === 'all' || exclude.length > 0)) {
-      const split = excludeDependencies(nodes, exclude)
-      keyOnly = split.keyOnly
-      const dropped = split.dropped
-      if (dropped.size > 0) {
-        await keyExcludedDependencies({
-          nodes,
-          keyOnly,
-          dropped,
-          cache,
-          workspaceRoot,
-          forwardArgs: options.forwardArgs,
-          nestedDirsByProject,
-          gitFilesCache,
-          hashCache,
-        })
-      }
-    }
-    const pluginCaches = new Map<string, PluginCache>()
-    const cacheFor = (plugin: string): PluginCache => {
-      let own = pluginCaches.get(plugin)
-      if (own === undefined) {
-        own = pluginCache(plugin, {
-          db: indexDb(localCache),
-          policy,
-          remotes,
-          scope: cacheScope,
-        })
-        pluginCaches.set(plugin, own)
-      }
-      return own
-    }
-    let scheduled: Promise<ReadonlyMap<string, number>> | undefined
-    const priorities = (run?: ScheduleRun): Promise<ReadonlyMap<string, number>> =>
-      (scheduled ??= hasHook(plugins, 'schedule')
-        ? applyScheduleHooks(
-            plugins,
-            nodes,
-            {
-              workspaceRoot,
-              cacheDir,
-              warn: warnOf(log),
-              localCache,
-              branch: branch(),
-              refs,
-            },
-            cacheFor,
-            run,
-          )
-        : Promise.resolve(new Map()))
-
-    return {
-      workspaceRoot,
-      workspaceConfig,
-      plugins,
-      cacheDir,
-      cache,
-      localCache,
-      hasRemoteLayer,
-      cachePolicy: policy,
-      cacheScope,
-      remotes,
-      cacheRefs: refs,
-      priorities,
-      branch,
-      cacheFor,
-      keepRunEntry: writesRunStore(remotes)
-        ? (name, bytes) => putRunEntry(remotes, cacheScope, name, bytes)
-        : undefined,
-      nodes,
-      keyOnly,
-      unresolvedTasks,
-      declaredElsewhere,
-      projects,
-      hintProjects,
-      anyProjectConfig: projectsWithConfigs.length > 0,
-      taskless,
-      unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
-      fingerprintWatch,
-      nestedDirsByProject,
-      gitFilesCache,
-      hashCache,
-      ...(dependents !== undefined ? { dependents } : {}),
-      workspaceProjectCount: projectMetas.length,
-      empty: nodes.size === 0 ? 'empty-graph' : null,
-    }
-  } catch (err) {
-    await teardownPlugins(plugins, warnOf(log))
-    cache.close()
-    throw err
-  } finally {
-    unowe()
+    hashCache.graph = built.token
+    return built.nodes
   }
+  let nodes = graphOf(requested)
+  const hasGraphHook = hasHook(plugins, 'graph')
+  const graphStage = (of: Map<string, TaskNode>): Promise<void> =>
+    applyGraphStage(plugins, of, {
+      workspaceRoot,
+      cacheDir: ws.cacheDir,
+      projectMetas,
+      warn: warnOf(log),
+      rules: graphRules,
+    })
+  // `--affected` selects over the FINAL graph: an edge or an input a
+  // `graph` hook adds moves a key, so the hooks run first, over every
+  // candidate, and the selection prunes what they left.
+  const hooksFirst = hasGraphHook && options.affected !== undefined
+  // `--affected` keeps a bare request only when the diff reaches its
+  // closure; a `pkg#task` the user named runs as it always does.
+  if (options.affected !== undefined) {
+    const before = hooksFirst ? new Set(nodes.keys()) : null
+    if (hooksFirst) await graphStage(nodes)
+    const kept = keptByAffected(
+      nodes,
+      requested,
+      options.affected,
+      projects,
+      scope.packageGraph,
+      workspaceRoot,
+      {
+        named: new Set(scope.tasks.filter((t) => t.includes('#'))),
+        outright: new Set(options.selectedOutright),
+      },
+      options.affectedReasons && { reasons: options.affectedReasons },
+    )
+    if (kept.length === 0) return 'none-affected' as const
+    if (before !== null) {
+      const askedIds = new Set(requested.map((r) => `${r.project}#${r.task}`))
+      // What a hook added or asked for is the plugin's choice, kept as it
+      // would be on a run without the diff.
+      const roots = [
+        ...kept.map((r) => `${r.project}#${r.task}`),
+        ...[...nodes.values()]
+          .filter((n) => !before.has(n.id) || (n.requested && !askedIds.has(n.id)))
+          .map((n) => n.id),
+      ]
+      pruneToClosure(nodes, new Set(roots))
+      for (let i = unproven.length - 1; i >= 0; i--)
+        if (!nodes.has(unproven[i]![0])) unproven.splice(i, 1)
+    } else if (kept.length < requested.length) {
+      unproven.length = 0
+      nodes = graphOf(kept)
+    }
+  }
+  if (unproven.length > 0) await refuseUndeclaredDeps(unproven, everyProject)
+  // An `--exclude-dependencies` name no project declares drops nothing:
+  // `=biuld` planned the whole chain and ran it, exit 0. Every
+  // other name the user types must resolve; so must this one. After the
+  // graph, so a config error (`^biuld` nobody declares) is named first.
+  const excludeNames = options.excludeDependencies
+  if (Array.isArray(excludeNames) && excludeNames.length > 0) {
+    const declared = new Set<string>()
+    for (const p of projects.values())
+      for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+    let unknown = excludeNames.filter((n) => !declared.has(n))
+    if (unknown.length > 0 && partialLoad) {
+      unknown = await declaredNowhere(unknown, everyProject)
+    }
+    if (unknown.length > 0) {
+      cache.close()
+      const hints = new Set(unknown.flatMap((n) => nearest(n, declared) ?? []))
+      const hint = hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+      throw new UserError(
+        `--exclude-dependencies names a task no project declares: ${unknown.join(', ')}.${hint}`,
+      )
+    }
+  }
+  // The graph is built; what follows is git's enumeration over its
+  // projects, then the plugins' stages (graph, key, schedule). Separate
+  // rows, so a plugin's key stage reads as its own cost and not as graph
+  // building — a lockfile plugin's 1000 stats per run hid inside one
+  // `prepare (graph)` row.
+  mark('build graph')
+  return { nodes, graphRules, hasGraphHook, hooksFirst, graphStage }
+}
+type Graph = Exclude<Awaited<ReturnType<typeof buildGraph>>, 'none-affected'>
+
+/** Whether `--exclude-dependencies` names anything to drop. */
+function excludes(options: RunOptions): boolean {
+  const exclude = options.excludeDependencies
+  return exclude !== undefined && (exclude === 'all' || exclude.length > 0)
+}
+
+/**
+ * Git's file lists for the graph's projects, in one walk, and the
+ * dependents count taken while git's blob-size check runs.
+ */
+async function enumerateGit(
+  options: RunOptions,
+  ws: Workspace,
+  store: Store,
+  asked: Asked,
+  graph: Graph,
+  hashCache: HashCache,
+  countDependents: boolean,
+) {
+  const { workspaceRoot, cacheDir, git, plugins } = ws
+  const { localCache } = store
+  const { nodes } = graph
+  const gitFilesCache = new GitFilesCache()
+  gitFilesCache.vxDirs = withinRoot(workspaceRoot, cacheDir)
+  // Bulk-populate via a single `git ls-files` at the workspace root —
+  // partitions the output by project. Avoids one fork+exec per project
+  // (~5-10ms each on Linux; the dominant cold-start cost on big
+  // monorepos). When any task in the graph declares inputs.workspaceFiles,
+  // the enumeration must see every file from the root (no pathspec
+  // scoping) and additionally stores a workspace-wide partition.
+  // Over the projects that own a task, not every project loaded: a scoped
+  // run loads its dependency closure for the `^` walk, and a `lint` of one
+  // package walked the whole tree for it (~60 ms of git where one
+  // project's pathspec takes ~7, 1,000 projects). A node a `graph` hook
+  // adds in another project keys through `resolveFiles`' own spawn.
+  const graphDirs = new Set<string>()
+  let usesWorkspaceInputs = false
+  for (const n of nodes.values()) {
+    graphDirs.add(n.projectDir)
+    if ((n.config.inputs?.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
+  }
+  const projectDirs = [...graphDirs]
+  const enumerating =
+    git.started ??
+    startGitEnumeration(
+      workspaceRoot,
+      gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
+    )
+  // While git walks: the gate's pass over every task cost 2-8 ms at
+  // 1,000 projects when it ran before the spawn.
+  const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot, nodes)
+  const enumeration = await enumerating
+  localCache.memo.holdBlobSizes()
+  const applied = applyGitEnumeration(
+    enumeration,
+    workspaceRoot,
+    projectDirs,
+    gitFilesCache,
+    usesWorkspaceInputs,
+    localCache.memo,
+  )
+  // The dependents count while the blob-size check's `cat-file` runs: the
+  // thread waited ~80 ms on it in a cold 8,002-task run, and counting
+  // after it, before the first task, took 40 ms. Only when
+  // nothing below edits the nodes: a graph or key hook, or
+  // `--exclude-dependencies`.
+  const dependents =
+    !countDependents ||
+    (graph.hasGraphHook && !graph.hooksFirst) ||
+    hasHook(plugins, 'key') ||
+    excludes(options)
+      ? undefined
+      : graphCounts(nodes, hashCache.folds, hashCache.graph)
+  await applied
+  await settleIgnored(gitFilesCache)
+  mark('git enumeration')
+  return { gitFilesCache, dependents, nestedDirsByProject: asked.nestedDirsByProject }
+}
+type Enumerated = Awaited<ReturnType<typeof enumerateGit>>
+
+/**
+ * The plugins' `graph` and `key` stages over the built graph, the refusals
+ * that read the final nodes, and the `--exclude-dependencies` split: the
+ * tasks only keyed, never run.
+ */
+async function applyKeyStages(
+  options: RunOptions,
+  log: Logger,
+  ws: Workspace,
+  store: Store,
+  load: Load,
+  asked: Asked,
+  graph: Graph,
+  enumerated: Enumerated,
+  hashCache: HashCache,
+  cache: CacheLayer,
+): Promise<ReadonlyMap<string, TaskNode>> {
+  const { workspaceRoot, cacheDir, plugins, projectMetas } = ws
+  const { nodes, hasGraphHook, hooksFirst } = graph
+  const { gitFilesCache } = enumerated
+  const { nestedDirsByProject } = asked
+  if (hasGraphHook && !hooksFirst) await graph.graphStage(nodes)
+  // An upstream run without the dependants that add to its outputs still
+  // ignores what they added (`markOutsideAdditions`): over every project,
+  // so a scoped load loads the rest, only in a workspace that allows it.
+  if (graph.graphRules.exclusiveOutputs === false) {
+    const every = asked.partialLoad ? (await load.everyProject()).projects : load.projects
+    markOutsideAdditions(nodes, every, workspaceRoot)
+  }
+  // Args after `--` go to requested commands only; with none among them
+  // they reached nothing and the run passed, the `--watch` unheard.
+  if ((options.forwardArgs?.length ?? 0) > 0) {
+    const requestedNodes = [...nodes.values()].filter((n) => n.requested)
+    if (requestedNodes.length > 0 && requestedNodes.every(isGroupTask)) {
+      const ids = requestedNodes.map((n) => n.id)
+      const named = ids.length > 3 ? `${ids.slice(0, 3).join(', ')}, …` : ids.join(', ')
+      throw new UserError(
+        `args after \`--\` reach no task: ${named} ${ids.length === 1 ? 'has' : 'have'} no command (a group); name the task that runs one`,
+      )
+    }
+  }
+  if (hasHook(plugins, 'key')) {
+    const locked = lockedFiles(
+      workspaceRoot,
+      store.claimed,
+      store.claimedBytes,
+      await store.dependenciesLock,
+    )
+    await applyKeyHooks(
+      plugins,
+      nodes,
+      withExtraHashes(
+        { workspaceRoot, cacheDir, warn: warnOf(log), locked },
+        extraHashesOfDiscovery(projectMetas),
+      ),
+    )
+  }
+  refuseFiltersThroughGroups(nodes)
+  refuseCacheInOutputs(nodes, gitFilesCache.vxDirs, cacheDir, workspaceRoot, nestedDirsByProject)
+  // The nodes are what the graph token names only while nothing edited them.
+  if (hasGraphHook || hasHook(plugins, 'key') || excludes(options)) hashCache.graph = undefined
+  let keyOnly: ReadonlyMap<string, TaskNode> = new Map()
+  const exclude = options.excludeDependencies
+  if (exclude !== undefined && excludes(options)) {
+    const split = excludeDependencies(nodes, exclude)
+    keyOnly = split.keyOnly
+    const dropped = split.dropped
+    if (dropped.size > 0) {
+      await keyExcludedDependencies({
+        nodes,
+        keyOnly,
+        dropped,
+        cache,
+        workspaceRoot,
+        forwardArgs: options.forwardArgs,
+        nestedDirsByProject,
+        gitFilesCache,
+        hashCache,
+      })
+    }
+  }
+  return keyOnly
+}
+
+/** Each plugin's `ctx.cache`, and the `schedule` stage's priorities, asked once. */
+function pluginAccess(
+  log: Logger,
+  ws: Workspace,
+  store: Store,
+  layer: Layer,
+  nodes: Map<string, TaskNode>,
+) {
+  const { localCache, policy } = store
+  const pluginCaches = new Map<string, PluginCache>()
+  const cacheFor = (plugin: string): PluginCache => {
+    let own = pluginCaches.get(plugin)
+    if (own === undefined) {
+      own = pluginCache(plugin, {
+        db: indexDb(localCache),
+        policy,
+        remotes: layer.remotes,
+        scope: ws.cacheScope,
+      })
+      pluginCaches.set(plugin, own)
+    }
+    return own
+  }
+  let scheduled: Promise<ReadonlyMap<string, number>> | undefined
+  const priorities = (run?: ScheduleRun): Promise<ReadonlyMap<string, number>> =>
+    (scheduled ??= hasHook(ws.plugins, 'schedule')
+      ? applyScheduleHooks(
+          ws.plugins,
+          nodes,
+          {
+            workspaceRoot: ws.workspaceRoot,
+            cacheDir: ws.cacheDir,
+            warn: warnOf(log),
+            localCache,
+            branch: ws.branch(),
+            refs: layer.refs,
+          },
+          cacheFor,
+          run,
+        )
+      : Promise.resolve(new Map()))
+  return { cacheFor, priorities }
 }
 
 /**

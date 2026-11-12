@@ -6,7 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/report/summary.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import { moduleSection } from './helpers/module-page.js'
 
 const DOCS = path.resolve(import.meta.dir, '..', 'docs')
@@ -417,10 +417,8 @@ describe('timing, doctor and plugin-host Purpose sections match the source', () 
     'ten',
   ]
   it("timing.md's prepareRun count is the marks prepareRun records", () => {
-    const prep = src('orchestrator/prepare.ts')
-    const start = prep.indexOf('export async function prepareRunLocked(')
-    const body = prep.slice(start, prep.indexOf('\n}\n', start))
-    const count = [...body.matchAll(/\bmark\('/g)].length
+    // prepareRunLocked's stages are functions of their own in this file.
+    const count = [...src('orchestrator/prepare.ts').matchAll(/\bmark\('/g)].length
     expect(count).toBeGreaterThan(5)
     expect(page('modules/util.md')).toContain(`\`prepareRun\`'s ${WORDS[count]},`)
   })

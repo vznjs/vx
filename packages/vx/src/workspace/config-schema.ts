@@ -1,6 +1,6 @@
 // What a config may SAY — the schema validators for `vx.config.*` and
 // `.vx/workspace.*`, split from the loader (which decides HOW a file is
-// evaluated) on 2026-09-10. Every object level refuses a key it does not
+// evaluated). Every object level refuses a key it does not
 // know (tests/schema-unknown-keys), every message names the level and what
 // it accepts, and `validateProjectConfig` is the one boundary the loader,
 // the lockfile's frozen path and the plugin `project` stage all cross.
@@ -14,6 +14,7 @@ import {
   type InputStability,
   type Plugin,
   type ProjectConfig,
+  type TaskConfig,
   type WorkspaceConfig,
 } from '../config.js'
 import {
@@ -78,7 +79,7 @@ function isBaseBranch(value: unknown): value is string {
 
 /**
  * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
- * branch and a laptop on it reads (2026-10-17). The repository's
+ * branch and a laptop on it reads. The repository's
  * identity, not a remote's local name, so a clone whose `origin` is a fork
  * names the fork. A name may hold characters a scope may not; each
  * becomes `_`.
@@ -169,7 +170,7 @@ function validateSettingsAt(value: unknown, at: string, configPath: string): voi
   if (fields !== undefined) {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       if (at === 'cache')
-        // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx (D-98).
+        // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx.
         throw new UserError(
           `${where} must be an object like { dir, policy }; a task caches through its own \`cache\` in its project's vx.config`,
         )
@@ -344,7 +345,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       // the one boundary every plugin crosses.
       const pkg = (p as Record<symbol, unknown>)[PLUGIN_PACKAGE]
       // An async factory called without `await` was told its plugin did not
-      // come from definePlugin — it had (D-159).
+      // come from definePlugin — it had.
       if (pkg === undefined && typeof (p as { then?: unknown }).then === 'function') {
         throw new UserError(
           `${configPath}: \`plugins[${i}]\` is a Promise — await the factory that returns the plugin`,
@@ -464,7 +465,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         for (const file of claim.files as unknown[]) {
           // A bare name at the workspace root the plugin reads: a lockfile it
           // folds, or a file its stages read (`turbo.json`; `--affected` and
-          // `vx watch` ask the claimant about it, item 961). A path is
+          // `vx watch` ask the claimant about it). A path is
           // refused: the root arm `vx watch` keeps is not recursive.
           if (
             typeof file !== 'string' ||
@@ -479,7 +480,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           }
           const owner = fileClaimants.get(file)
           // One package twice (`plugins: [bun(), bun()]`) read "plugins 'x'
-          // and 'x' both claim" (D-158).
+          // and 'x' both claim".
           if (owner !== undefined && owner.name === plug.name) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' claims fingerprint file '${file}' twice (plugins[${owner.at}] and plugins[${i}]) — a file has one claimant; declare the plugin once`,
@@ -581,524 +582,547 @@ export function validateProjectConfig(
     // that loads, runs nothing the author asked for, and never says why.
     throw new UserError(`${configPath}: \`tasks\` must be an object keyed by task name`)
   }
-  for (const [name, task] of Object.entries(tasks)) {
-    const where = `${configPath}: tasks.${name}`
-    assertTaskName(name, configPath)
-    if (!task || typeof task !== 'object') {
-      // package.json's shape, `name: 'command'`, was refused without the
-      // object that holds the command.
-      const raw: unknown = task
+  for (const [name, task] of Object.entries(tasks)) validateTask(name, task, configPath, ownConfig)
+}
+
+/** One task's fields, in the order a config states them: the first problem is the one said. */
+function validateTask(
+  name: string,
+  task: TaskConfig,
+  configPath: string,
+  ownConfig: string | null,
+): void {
+  const where = `${configPath}: tasks.${name}`
+  assertTaskName(name, configPath)
+  if (!task || typeof task !== 'object') {
+    // package.json's shape, `name: 'command'`, was refused without the
+    // object that holds the command.
+    const raw: unknown = task
+    throw new UserError(
+      typeof raw === 'string' && raw.trim() !== ''
+        ? `${where} must be an object — a command is { exec: { command: ${JSON.stringify(raw)} } }`
+        : `${where} must be an object`,
+    )
+  }
+  assertKnownFields(task, TASK_FIELDS, where)
+  const exec = (task as { exec?: unknown }).exec
+  const dependsOn = (task as { dependsOn?: unknown }).dependsOn
+  const cache = (task as { cache?: unknown }).cache
+  if (cache !== undefined && typeof cache !== 'boolean') {
+    throw new UserError(`${where}.cache must be true or false`)
+  }
+  if (exec !== undefined) validateExec(exec, where, cache)
+  else {
+    // Group task: no exec, just dependencies. Only an ABSENT `dependsOn`
+    // is refused — a task with neither is a typo, not a declaration. An
+    // EMPTY one is deliberate and documented: `build: { dependsOn: [] }`
+    // is how a package consumed as source says it has nothing to build,
+    // so a dependant's `^build` finds it and waits on nothing
+    // (the quickstart). The comment here used to call that case
+    // "almost certainly a config mistake" while the docs taught it.
+    // A keyed group (`inputs` with no `exec`) is a declaration on its own:
+    // its inputs are a key that dependants fold, with no process.
+    if (dependsOn === undefined && (task as { inputs?: unknown }).inputs === undefined) {
       throw new UserError(
-        typeof raw === 'string' && raw.trim() !== ''
-          ? `${where} must be an object — a command is { exec: { command: ${JSON.stringify(raw)} } }`
-          : `${where} must be an object`,
+        `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` ` +
+          `(group tasks exist to chain dependencies or carry a key)`,
       )
     }
-    assertKnownFields(task, TASK_FIELDS, where)
-    const exec = (task as { exec?: unknown }).exec
-    const dependsOn = (task as { dependsOn?: unknown }).dependsOn
-    const cache = (task as { cache?: unknown }).cache
-    if (cache !== undefined && typeof cache !== 'boolean') {
-      throw new UserError(`${where}.cache must be true or false`)
+  }
+  const description = (task as { description?: unknown }).description
+  if (description !== undefined && typeof description !== 'string') {
+    throw new UserError(`${where}.description must be a string`)
+  }
+  if (dependsOn !== undefined) {
+    if (!Array.isArray(dependsOn) || dependsOn.some((s) => typeof s !== 'string')) {
+      // One name, not in a list: the fix is that list.
+      throw new UserError(
+        typeof dependsOn === 'string'
+          ? `${where}.dependsOn must be an array — write dependsOn: [${JSON.stringify(dependsOn)}]`
+          : `${where}.dependsOn must be an array of strings ` +
+              `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')`,
+      )
     }
-    if (exec !== undefined) {
-      if (typeof exec !== 'object' || exec === null) {
-        // A command written as the exec itself, as the task-as-a-string
-        // refusal above spells its fix.
-        throw new UserError(
-          typeof exec === 'string'
-            ? `${where}.exec must be an object — a command is { exec: { command: ${JSON.stringify(exec)} } }`
-            : `${where}.exec must be an object with a \`command\` string`,
-        )
-      }
-      assertKnownFields(exec, EXEC_FIELDS, `${where}.exec`)
-      const sandbox = (exec as { sandbox?: unknown }).sandbox
-      if (sandbox !== undefined) validateSandbox(sandbox, `${where}.exec`)
-      const command = (exec as { command?: unknown }).command
-      // Whitespace alone ran as a shell no-op, green and cached (item 1099).
-      if (typeof command !== 'string' || command.trim().length === 0) {
-        throw new UserError(`${where}.exec.command must be a non-empty string`)
-      }
-      // No argv can carry a NUL: the spawn refused it and the task failed
-      // as exit 127, "not on this task's PATH", with the NUL printed as a
-      // space (D-4), as an env name with one did before item 999.
-      if (command.includes('\0')) {
-        throw new UserError(`${where}.exec.command holds a NUL, which no command line can carry`)
-      }
-      const timeout = (exec as { timeout?: unknown }).timeout
-      if (timeout !== undefined) {
-        validateSettingValue(timeout, 'run.timeout', `${where}.exec.timeout`)
-      }
-      const retries = (exec as { retries?: unknown }).retries
-      if (retries !== undefined) {
-        validateSettingValue(retries, 'run.retries', `${where}.exec.retries`)
-      }
-      const remote = (exec as { remote?: unknown }).remote
-      if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {
-        throw new UserError(`${where}.exec.remote must be a boolean or 'only' (or omitted)`)
-      }
-      // Documented and never held: an uncached 'only' task loaded, and the
-      // REAPI executor refused it at run time for want of described inputs
-      // (item 1001).
-      if (remote === 'only' && cache !== true) {
-        throw new UserError(
-          `${where}.exec.remote 'only' needs \`cache: true\`: its inputs are what a worker reproduces ` +
-            `and its key is the address of its remote record`,
-        )
-      }
-      const platforms = (exec as { platforms?: unknown }).platforms
-      if (platforms !== undefined) {
-        const known = PLATFORMS as readonly unknown[]
-        if (
-          !Array.isArray(platforms) ||
-          platforms.length === 0 ||
-          !platforms.every((p) => known.includes(p)) ||
-          new Set(platforms).size !== platforms.length
-        ) {
-          throw new UserError(
-            `${where}.exec.platforms must be a non-empty array of distinct platforms, each one of ${PLATFORMS.join(', ')}`,
-          )
-        }
-      }
-      const worker = (exec as { worker?: unknown }).worker
-      if (worker !== undefined && (typeof worker !== 'string' || worker.trim().length === 0)) {
-        throw new UserError(`${where}.exec.worker must be a worker type's name (or omitted)`)
-      }
-      const env = (exec as { env?: unknown }).env
-      if (env !== undefined) {
-        if (typeof env !== 'object' || env === null) {
-          throw new UserError(`${where}.exec.env must be an object (or omitted)`)
-        }
-        // `env: { NODE_ENV: 'production' }` (Turbo's and Nx's shape): name
-        // the level the variable belongs at, not only the allowed fields.
-        const plain = Array.isArray(env)
-          ? undefined
-          : Object.entries(env).find(
-              ([k, v]) =>
-                !ENV_FIELDS.has(k) &&
-                // `passthrough` is a typo of a field, not a variable.
-                nearest(k, ENV_FIELDS) === undefined &&
-                ['string', 'number', 'boolean'].includes(typeof v),
-            )
-        if (plain !== undefined) {
-          throw new UserError(
-            `${where}.exec.env has unknown field "${plain[0]}" ` +
-              `(allowed: ${[...ENV_FIELDS].sort().join(', ')}) — vx spells it ` +
-              `exec.env.define: { ${plain[0]}: ${JSON.stringify(String(plain[1]))} }`,
-          )
-        }
-        // `env: { set: {...} }` loaded and defined nothing — the one level
-        // without this check until 2026-09-10 (tests/schema-unknown-keys).
-        assertKnownFields(env, ENV_FIELDS, `${where}.exec.env`)
-        const passThrough = (env as { passThrough?: unknown }).passThrough
-        if (passThrough !== undefined) {
-          // A non-array here reaches `buildIsolatedEnv`'s `for (const name of
-          // passThrough)` — a number throws "not iterable" mid-run, a string
-          // silently char-iterates. Fail loud at load with a config pointer.
-          if (!Array.isArray(passThrough) || passThrough.some((n) => !isEnvName(n))) {
-            throw new UserError(
-              `${where}.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)`,
-            )
-          }
-          // `VITE_*` passed nothing through and loaded clean (Turbo's
-          // passThroughEnv expands it), where `inputs.env` refused the
-          // same text below: one refusal for the class (item 1090).
-          assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
-          const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
-          if (wild !== undefined) {
-            throw new UserError(
-              `${where}.exec.env.passThrough: wildcards in env names are not supported ` +
-                `(got "${wild}") — list explicit env var names instead`,
-            )
-          }
-          for (const n of passThrough as string[])
-            assertShellName(n, `${where}.exec.env.passThrough`)
-        }
-        const secret = (env as { secret?: unknown }).secret
-        if (
-          secret !== undefined &&
-          (!Array.isArray(secret) ||
-            secret.some((n) => !isEnvName(n) || BUN_GLOB_WILDCARDS.test(n)))
-        ) {
-          throw new UserError(
-            `${where}.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
-          )
-        }
-        if (secret !== undefined)
-          assertNoEnvNegation(secret as string[], `${where}.exec.env.secret`)
-        const define = (env as { define?: unknown }).define
-        if (define !== undefined) {
-          if (typeof define !== 'object' || define === null || Array.isArray(define)) {
-            throw new UserError(
-              `${where}.exec.env.define must be an object of name:value string pairs`,
-            )
-          }
-          for (const [k, val] of Object.entries(define as Record<string, unknown>)) {
-            if (!isEnvName(k)) {
-              throw new UserError(
-                `${where}.exec.env.define: ${JSON.stringify(k)} is not an env var name (non-empty, no '=' or NUL)`,
-              )
-            }
-            assertShellName(k, `${where}.exec.env.define`)
-            if (typeof val !== 'string' || val.includes('\0')) {
-              throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
-            }
-          }
-        }
-      }
-      const interactive = (exec as { interactive?: unknown }).interactive
-      if (interactive !== undefined && typeof interactive !== 'boolean') {
-        throw new UserError(`${where}.exec.interactive must be a boolean (or omitted)`)
-      }
-      if (interactive === true) {
-        if (cache === true) {
-          throw new UserError(
-            `${where}: \`cache\` is not allowed on an interactive task — what it does ` +
-              `depends on what is typed, which no key holds`,
-          )
-        }
-        // bwrap's --new-session keeps the terminal usable (probed), but the
-        // sandboxed spawn pipes the task's streams: its stderr is read for
-        // the tracer's own errors (sandbox/runtime.ts).
-        if ((exec as { sandbox?: unknown }).sandbox !== undefined) {
-          throw new UserError(
-            `${where}: \`sandbox\` is not allowed on an interactive task — a sandboxed ` +
-              `task's output passes through vx, and an interactive one writes to the terminal`,
-          )
-        }
-        const ready = (exec as { persistent?: { readyWhen?: unknown } }).persistent
-        if (typeof ready === 'object' && ready !== null && ready.readyWhen !== undefined) {
-          throw new UserError(
-            `${where}: \`persistent.readyWhen\` is not allowed on an interactive task — ` +
-              `its output goes to the terminal, so vx reads none of it; it is ready once spawned`,
-          )
-        }
-      }
-      const persistent = (exec as { persistent?: unknown }).persistent
-      if (persistent !== undefined) {
-        if (typeof persistent !== 'object' || persistent === null) {
-          throw new UserError(
-            `${where}.exec.persistent must be an object (or omitted) — \`persistent: {}\`, or \`{ readyWhen: '<regex>' }\` to wait for a line`,
-          )
-        }
-        // The one nested object that had no unknown-key check while every
-        // sibling did — and the failure it let through is the quiet kind:
-        // `readWhen` (typo) leaves `readyWhen` undefined, so the task is
-        // ready the moment it spawns instead of when its server actually
-        // listens, and the dependents that start too early fail in a way
-        // that points at the user's code rather than at their config.
+  }
+  const inputs = (task as { inputs?: unknown }).inputs
+  if (inputs !== undefined) validateInputs(inputs, task, where)
+  const outputs = (task as { outputs?: unknown }).outputs
+  if (cache === true) {
+    // The key is the task's inputs, and a group runs nothing to cache.
+    if (exec === undefined) {
+      throw new UserError(
+        `${where}: \`cache\` needs \`exec\` — a task with no command produces nothing to cache`,
+      )
+    }
+    if (inputs === undefined) {
+      throw new UserError(
+        `${where}: \`cache\` needs \`inputs\` — the key is the task's inputs, \`inputs: { files: [...] }\``,
+      )
+    }
+    if (outputs === undefined) {
+      throw new UserError(
+        `${where}: \`cache\` needs \`outputs\` — what the task produces, \`outputs: { files: [...] }\` (\`[]\` for none)`,
+      )
+    }
+  }
+  const stability = (inputs as { stability?: unknown } | undefined)?.stability
+  if (stability !== undefined) {
+    validateInputStability(stability, `${where}.inputs.stability`)
+    if (exec === undefined) {
+      throw new UserError(
+        `${where}.inputs.stability needs \`exec\` — a task with no command runs nothing that could write its inputs`,
+      )
+    }
+  }
+  if (outputs !== undefined) validateOutputs(outputs, where, exec, ownConfig)
+}
 
-        assertKnownFields(persistent, PERSISTENT_FIELDS, `${where}.exec.persistent`)
-        const readyWhen = (persistent as { readyWhen?: unknown }).readyWhen
-        if (readyWhen !== undefined && typeof readyWhen !== 'string') {
-          throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
-        }
-        // Compiled here as the runner compiles it: an unbalanced `(` loaded
-        // and then failed the task as "internal error" (item 998).
-        if (readyWhen !== undefined) {
-          try {
-            new RegExp(readyWhen)
-          } catch (err) {
-            throw new UserError(
-              `${where}.exec.persistent.readyWhen is not a valid regex (${(err as Error).message})`,
-            )
-          }
-        }
-        if (cache === true) {
-          throw new UserError(
-            `${where}: \`cache\` is not allowed on a persistent task — persistent tasks ` +
-              `don't terminate, so there's no exit to cache`,
-          )
-        }
-        if (retries !== undefined) {
-          throw new UserError(
-            `${where}: \`retries\` is not allowed on a persistent task — persistent tasks ` +
-              `don't terminate, so there's no failed exit to retry`,
-          )
-        }
-      }
-    } else {
-      // Group task: no exec, just dependencies. Only an ABSENT `dependsOn`
-      // is refused — a task with neither is a typo, not a declaration. An
-      // EMPTY one is deliberate and documented: `build: { dependsOn: [] }`
-      // is how a package consumed as source says it has nothing to build,
-      // so a dependant's `^build` finds it and waits on nothing
-      // (the quickstart). The comment here used to call that case
-      // "almost certainly a config mistake" while the docs taught it.
-      // A keyed group (`inputs` with no `exec`) is a declaration on its own:
-      // its inputs are a key that dependants fold, with no process.
-      if (dependsOn === undefined && (task as { inputs?: unknown }).inputs === undefined) {
+/** A task's `exec`: the command and how it runs. */
+function validateExec(exec: unknown, where: string, cache: unknown): void {
+  if (typeof exec !== 'object' || exec === null) {
+    // A command written as the exec itself, as the task-as-a-string
+    // refusal above spells its fix.
+    throw new UserError(
+      typeof exec === 'string'
+        ? `${where}.exec must be an object — a command is { exec: { command: ${JSON.stringify(exec)} } }`
+        : `${where}.exec must be an object with a \`command\` string`,
+    )
+  }
+  assertKnownFields(exec, EXEC_FIELDS, `${where}.exec`)
+  const sandbox = (exec as { sandbox?: unknown }).sandbox
+  if (sandbox !== undefined) validateSandbox(sandbox, `${where}.exec`)
+  const command = (exec as { command?: unknown }).command
+  // Whitespace alone ran as a shell no-op, green and cached.
+  if (typeof command !== 'string' || command.trim().length === 0) {
+    throw new UserError(`${where}.exec.command must be a non-empty string`)
+  }
+  // No argv can carry a NUL: the spawn refused it and the task failed
+  // as exit 127, "not on this task's PATH", with the NUL printed as a
+  // space, as an env name with one did.
+  if (command.includes('\0')) {
+    throw new UserError(`${where}.exec.command holds a NUL, which no command line can carry`)
+  }
+  const timeout = (exec as { timeout?: unknown }).timeout
+  if (timeout !== undefined) {
+    validateSettingValue(timeout, 'run.timeout', `${where}.exec.timeout`)
+  }
+  const retries = (exec as { retries?: unknown }).retries
+  if (retries !== undefined) {
+    validateSettingValue(retries, 'run.retries', `${where}.exec.retries`)
+  }
+  const remote = (exec as { remote?: unknown }).remote
+  if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {
+    throw new UserError(`${where}.exec.remote must be a boolean or 'only' (or omitted)`)
+  }
+  // Documented and never held: an uncached 'only' task loaded, and the
+  // REAPI executor refused it at run time for want of described inputs.
+  if (remote === 'only' && cache !== true) {
+    throw new UserError(
+      `${where}.exec.remote 'only' needs \`cache: true\`: its inputs are what a worker reproduces ` +
+        `and its key is the address of its remote record`,
+    )
+  }
+  const platforms = (exec as { platforms?: unknown }).platforms
+  if (platforms !== undefined) {
+    const known = PLATFORMS as readonly unknown[]
+    if (
+      !Array.isArray(platforms) ||
+      platforms.length === 0 ||
+      !platforms.every((p) => known.includes(p)) ||
+      new Set(platforms).size !== platforms.length
+    ) {
+      throw new UserError(
+        `${where}.exec.platforms must be a non-empty array of distinct platforms, each one of ${PLATFORMS.join(', ')}`,
+      )
+    }
+  }
+  const worker = (exec as { worker?: unknown }).worker
+  if (worker !== undefined && (typeof worker !== 'string' || worker.trim().length === 0)) {
+    throw new UserError(`${where}.exec.worker must be a worker type's name (or omitted)`)
+  }
+  const env = (exec as { env?: unknown }).env
+  if (env !== undefined) validateExecEnv(env, where)
+  validateLongRunning(exec, where, cache, retries)
+}
+
+/** `exec.env`: what a task's process is given, by name. */
+function validateExecEnv(env: unknown, where: string): void {
+  if (typeof env !== 'object' || env === null) {
+    throw new UserError(`${where}.exec.env must be an object (or omitted)`)
+  }
+  // `env: { NODE_ENV: 'production' }` (Turbo's and Nx's shape): name
+  // the level the variable belongs at, not only the allowed fields.
+  const plain = Array.isArray(env)
+    ? undefined
+    : Object.entries(env).find(
+        ([k, v]) =>
+          !ENV_FIELDS.has(k) &&
+          // `passthrough` is a typo of a field, not a variable.
+          nearest(k, ENV_FIELDS) === undefined &&
+          ['string', 'number', 'boolean'].includes(typeof v),
+      )
+  if (plain !== undefined) {
+    throw new UserError(
+      `${where}.exec.env has unknown field "${plain[0]}" ` +
+        `(allowed: ${[...ENV_FIELDS].sort().join(', ')}) — vx spells it ` +
+        `exec.env.define: { ${plain[0]}: ${JSON.stringify(String(plain[1]))} }`,
+    )
+  }
+  // `env: { set: {...} }` loaded and defined nothing — the one level
+  // without this check once (tests/schema-unknown-keys).
+  assertKnownFields(env, ENV_FIELDS, `${where}.exec.env`)
+  const passThrough = (env as { passThrough?: unknown }).passThrough
+  if (passThrough !== undefined) {
+    // A non-array here reaches `buildIsolatedEnv`'s `for (const name of
+    // passThrough)` — a number throws "not iterable" mid-run, a string
+    // silently char-iterates. Fail loud at load with a config pointer.
+    if (!Array.isArray(passThrough) || passThrough.some((n) => !isEnvName(n))) {
+      throw new UserError(
+        `${where}.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)`,
+      )
+    }
+    // `VITE_*` passed nothing through and loaded clean (Turbo's
+    // passThroughEnv expands it), where `inputs.env` refused the
+    // same text below: one refusal for the class.
+    assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
+    const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
+    if (wild !== undefined) {
+      throw new UserError(
+        `${where}.exec.env.passThrough: wildcards in env names are not supported ` +
+          `(got "${wild}") — list explicit env var names instead`,
+      )
+    }
+    for (const n of passThrough as string[]) assertShellName(n, `${where}.exec.env.passThrough`)
+  }
+  const secret = (env as { secret?: unknown }).secret
+  if (
+    secret !== undefined &&
+    (!Array.isArray(secret) || secret.some((n) => !isEnvName(n) || BUN_GLOB_WILDCARDS.test(n)))
+  ) {
+    throw new UserError(
+      `${where}.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
+    )
+  }
+  if (secret !== undefined) assertNoEnvNegation(secret as string[], `${where}.exec.env.secret`)
+  const define = (env as { define?: unknown }).define
+  if (define !== undefined) {
+    if (typeof define !== 'object' || define === null || Array.isArray(define)) {
+      throw new UserError(`${where}.exec.env.define must be an object of name:value string pairs`)
+    }
+    for (const [k, val] of Object.entries(define as Record<string, unknown>)) {
+      if (!isEnvName(k)) {
         throw new UserError(
-          `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` ` +
-            `(group tasks exist to chain dependencies or carry a key)`,
+          `${where}.exec.env.define: ${JSON.stringify(k)} is not an env var name (non-empty, no '=' or NUL)`,
         )
       }
-    }
-    const description = (task as { description?: unknown }).description
-    if (description !== undefined && typeof description !== 'string') {
-      throw new UserError(`${where}.description must be a string`)
-    }
-    if (dependsOn !== undefined) {
-      if (!Array.isArray(dependsOn) || dependsOn.some((s) => typeof s !== 'string')) {
-        // One name, not in a list: the fix is that list.
-        throw new UserError(
-          typeof dependsOn === 'string'
-            ? `${where}.dependsOn must be an array — write dependsOn: [${JSON.stringify(dependsOn)}]`
-            : `${where}.dependsOn must be an array of strings ` +
-                `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')`,
-        )
+      assertShellName(k, `${where}.exec.env.define`)
+      if (typeof val !== 'string' || val.includes('\0')) {
+        throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
       }
     }
-    const inputs = (task as { inputs?: unknown }).inputs
-    if (inputs !== undefined) {
-      if (typeof inputs !== 'object' || inputs === null) {
-        throw new UserError(`${where}.inputs must be an object — \`inputs: { files: [...] }\``)
-      }
-      assertKnownFields(inputs, INPUT_FIELDS, `${where}.inputs`)
-      if (!Array.isArray((inputs as { files?: unknown }).files)) {
-        throw new UserError(`${where}.inputs.files must be an array of glob strings`)
-      }
-      const envList = (inputs as { env?: unknown }).env
-      if (envList !== undefined) {
-        if (
-          !Array.isArray(envList) ||
-          // A NUL can be in no env name, and the key fold's delimiter is one.
-          envList.some((s) => !isEnvName(s))
-        ) {
-          throw new UserError(
-            `${where}.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
-          )
-        }
-        assertNoEnvNegation(envList as string[], `${where}.inputs.env`)
-        for (const name of envList as string[]) {
-          // Reject wildcards explicitly so users don't silently miss
-          // env vars they thought they were tracking. Turbo supports
-          // `VERCEL_*` expansion; vx requires the literal names. If
-          // we add expansion later it'll be additive — until then,
-          // surface the footgun instead of returning '' for the
-          // literal env name `'VERCEL_*'`.
-          // An env name is no path, so a bracket is no route directory: the
-          // whole `Bun.Glob` alphabet stays refused here.
-          if (BUN_GLOB_WILDCARDS.test(name)) {
-            throw new UserError(
-              `${where}.inputs.env: wildcards in env names are not supported ` +
-                `(got "${name}") — list explicit env var names instead`,
-            )
-          }
-        }
-      }
-      // Same for inputs.files.
-      for (const g of (inputs as { files: unknown[] }).files) {
-        if (typeof g !== 'string' || g.length === 0) {
-          throw new UserError(`${where}.inputs.files must be an array of non-empty strings`)
-        }
-        assertGlobText(g, `${where}.inputs.files`)
-        if (!g.startsWith('!/') && isAbsoluteGlob(g)) {
-          throw new UserError(
-            `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
-              `inputs must be project-relative globs`,
-          )
-        }
-        if (hasParentSegment(g)) {
-          throw new UserError(
-            `${where}.inputs.files: '..' path segments are not allowed (got "${g}") — ` +
-              `inputs must be project-relative (a '..' glob silently matches nothing; ` +
-              `use inputs.workspaceFiles for workspace-root-relative inputs)`,
-          )
-        }
-        assertPosixGlob(g, `${where}.inputs.files`, 'project')
-        assertNoForeignToken(g, `${where}.inputs.files`)
-        assertInputGlob(g, `${where}.inputs.files`)
-        if (namesDirItself(g)) {
-          throw new UserError(
-            `${where}.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
-          )
-        }
-        // A negated absolute path subtracts nothing (the positive globs are
-        // project-relative), so it would sit in the config as a silent no-op;
-        // `workspaceFiles` refuses both spellings the same way (item 679).
-        if (g.startsWith('!/')) {
-          throw new UserError(
-            `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
-              `inputs must be project-relative globs`,
-          )
-        }
-        assertNotDoubleNegated(g, `${where}.inputs.files`)
-      }
-      // A list of ONLY negations selects nothing at all. `resolveFiles`
-      // builds the file set from the POSITIVE globs and uses the `!` entries
-      // purely to subtract, so with no positive pattern it returns `[]` — the
-      // task folds ZERO file inputs and its key stops moving with its source,
-      // which is a stale hit waiting to happen.
-      //
-      // Every gitignore-trained reader parses `['!**/*.spec.ts']` as
-      // "everything except specs", and Turbo makes exactly this a hard config
-      // error for the same reason. Refusing costs nothing: such a config was
-      // already silently broken, so no working key changes.
-      assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.inputs.files`)
-      assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.inputs.files`)
-      // The only InputsConfig field that reached the run unvalidated: a
-      // non-string entry crashes deep in `filterUpstreamHashes` /
-      // `parseDependencySpec` with a raw TypeError naming neither the task
-      // nor the config. Each entry's syntax too: a malformed one (`^`,
-      // `a#`) passed `vx lock` and failed the task at hash time, after its
-      // upstream ran.
-      const taskFilters = (inputs as { tasks?: unknown }).tasks
-      if (taskFilters !== undefined) {
-        if (
-          !Array.isArray(taskFilters) ||
-          taskFilters.some((s) => typeof s !== 'string' || s.length === 0)
-        ) {
-          throw new UserError(
-            `${where}.inputs.tasks must be an array of non-empty strings ` +
-              `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
-          )
-        }
-        for (const raw of taskFilters as string[]) {
-          try {
-            parseDependencySpec(raw, 'inputs.tasks')
-          } catch (err) {
-            if (err instanceof DependencySpecError) throw new UserError(`${where}: ${err.message}`)
-            throw err
-          }
-        }
-        // The selection starts empty and a `!` entry only subtracts, so a
-        // list of negations folded no dependency and the key stopped moving
-        // with every upstream, as a negation-only inputs.files does.
-        assertTaskFiltersNotNegationOnly(taskFilters, `${where}.inputs.tasks`)
-        assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
-      }
-      for (const field of ['runtime', 'workspaceRuntime'] as const) {
-        const list = (inputs as Record<string, unknown>)[field]
-        if (list !== undefined) {
-          if (
-            !Array.isArray(list) ||
-            // Whitespace alone ran as a no-op probe that folds nothing, as
-            // a blank `exec.command` did before item 1099 (X-22).
-            list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
-          ) {
-            throw new UserError(
-              `${where}.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
-            )
-          }
-        }
-      }
-      // workspaceFiles mirror the files validation: non-empty strings,
-      // never absolute (they're workspace-root-relative by definition).
-      const wsInputs = (inputs as { workspaceFiles?: unknown }).workspaceFiles
-      if (wsInputs !== undefined) {
-        validateWorkspaceGlobs(wsInputs, `${where}.inputs.workspaceFiles`, true)
-      }
-    }
-    const outputs = (task as { outputs?: unknown }).outputs
+  }
+}
+
+/** `exec.interactive` and `exec.persistent`: a task that holds the terminal or never exits. */
+function validateLongRunning(exec: object, where: string, cache: unknown, retries: unknown): void {
+  const interactive = (exec as { interactive?: unknown }).interactive
+  if (interactive !== undefined && typeof interactive !== 'boolean') {
+    throw new UserError(`${where}.exec.interactive must be a boolean (or omitted)`)
+  }
+  if (interactive === true) {
     if (cache === true) {
-      // The key is the task's inputs, and a group runs nothing to cache.
-      if (exec === undefined) {
+      throw new UserError(
+        `${where}: \`cache\` is not allowed on an interactive task — what it does ` +
+          `depends on what is typed, which no key holds`,
+      )
+    }
+    // bwrap's --new-session keeps the terminal usable (probed), but the
+    // sandboxed spawn pipes the task's streams: its stderr is read for
+    // the tracer's own errors (sandbox/runtime.ts).
+    if ((exec as { sandbox?: unknown }).sandbox !== undefined) {
+      throw new UserError(
+        `${where}: \`sandbox\` is not allowed on an interactive task — a sandboxed ` +
+          `task's output passes through vx, and an interactive one writes to the terminal`,
+      )
+    }
+    const ready = (exec as { persistent?: { readyWhen?: unknown } }).persistent
+    if (typeof ready === 'object' && ready !== null && ready.readyWhen !== undefined) {
+      throw new UserError(
+        `${where}: \`persistent.readyWhen\` is not allowed on an interactive task — ` +
+          `its output goes to the terminal, so vx reads none of it; it is ready once spawned`,
+      )
+    }
+  }
+  const persistent = (exec as { persistent?: unknown }).persistent
+  if (persistent !== undefined) {
+    if (typeof persistent !== 'object' || persistent === null) {
+      throw new UserError(
+        `${where}.exec.persistent must be an object (or omitted) — \`persistent: {}\`, or \`{ readyWhen: '<regex>' }\` to wait for a line`,
+      )
+    }
+    // The one nested object that had no unknown-key check while every
+    // sibling did — and the failure it let through is the quiet kind:
+    // `readWhen` (typo) leaves `readyWhen` undefined, so the task is
+    // ready the moment it spawns instead of when its server actually
+    // listens, and the dependents that start too early fail in a way
+    // that points at the user's code rather than at their config.
+
+    assertKnownFields(persistent, PERSISTENT_FIELDS, `${where}.exec.persistent`)
+    const readyWhen = (persistent as { readyWhen?: unknown }).readyWhen
+    if (readyWhen !== undefined && typeof readyWhen !== 'string') {
+      throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
+    }
+    // Compiled here as the runner compiles it: an unbalanced `(` loaded
+    // and then failed the task as "internal error".
+    if (readyWhen !== undefined) {
+      try {
+        new RegExp(readyWhen)
+      } catch (err) {
         throw new UserError(
-          `${where}: \`cache\` needs \`exec\` — a task with no command produces nothing to cache`,
-        )
-      }
-      if (inputs === undefined) {
-        throw new UserError(
-          `${where}: \`cache\` needs \`inputs\` — the key is the task's inputs, \`inputs: { files: [...] }\``,
-        )
-      }
-      if (outputs === undefined) {
-        throw new UserError(
-          `${where}: \`cache\` needs \`outputs\` — what the task produces, \`outputs: { files: [...] }\` (\`[]\` for none)`,
+          `${where}.exec.persistent.readyWhen is not a valid regex (${(err as Error).message})`,
         )
       }
     }
-    const stability = (inputs as { stability?: unknown } | undefined)?.stability
-    if (stability !== undefined) {
-      validateInputStability(stability, `${where}.inputs.stability`)
-      if (exec === undefined) {
+    if (cache === true) {
+      throw new UserError(
+        `${where}: \`cache\` is not allowed on a persistent task — persistent tasks ` +
+          `don't terminate, so there's no exit to cache`,
+      )
+    }
+    if (retries !== undefined) {
+      throw new UserError(
+        `${where}: \`retries\` is not allowed on a persistent task — persistent tasks ` +
+          `don't terminate, so there's no failed exit to retry`,
+      )
+    }
+  }
+}
+
+/** A task's `inputs`: what its key reads. */
+function validateInputs(inputs: unknown, task: TaskConfig, where: string): void {
+  if (typeof inputs !== 'object' || inputs === null) {
+    throw new UserError(`${where}.inputs must be an object — \`inputs: { files: [...] }\``)
+  }
+  assertKnownFields(inputs, INPUT_FIELDS, `${where}.inputs`)
+  if (!Array.isArray((inputs as { files?: unknown }).files)) {
+    throw new UserError(`${where}.inputs.files must be an array of glob strings`)
+  }
+  const envList = (inputs as { env?: unknown }).env
+  if (envList !== undefined) {
+    if (
+      !Array.isArray(envList) ||
+      // A NUL can be in no env name, and the key fold's delimiter is one.
+      envList.some((s) => !isEnvName(s))
+    ) {
+      throw new UserError(
+        `${where}.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
+      )
+    }
+    assertNoEnvNegation(envList as string[], `${where}.inputs.env`)
+    for (const name of envList as string[]) {
+      // Reject wildcards explicitly so users don't silently miss
+      // env vars they thought they were tracking. Turbo supports
+      // `VERCEL_*` expansion; vx requires the literal names. If
+      // we add expansion later it'll be additive — until then,
+      // surface the footgun instead of returning '' for the
+      // literal env name `'VERCEL_*'`.
+      // An env name is no path, so a bracket is no route directory: the
+      // whole `Bun.Glob` alphabet stays refused here.
+      if (BUN_GLOB_WILDCARDS.test(name)) {
         throw new UserError(
-          `${where}.inputs.stability needs \`exec\` — a task with no command runs nothing that could write its inputs`,
+          `${where}.inputs.env: wildcards in env names are not supported ` +
+            `(got "${name}") — list explicit env var names instead`,
         )
       }
     }
-    if (outputs !== undefined) {
-      if (outputs === null || typeof outputs !== 'object') {
-        throw new UserError(`${where}.outputs must be an object — \`outputs: { files: [...] }\``)
-      }
-      assertKnownFields(outputs, OUTPUT_FIELDS, `${where}.outputs`)
-      if (exec === undefined) {
-        throw new UserError(
-          `${where}.outputs needs \`exec\` — a task with no command writes nothing`,
-        )
-      }
-      const clean = (outputs as { clean?: unknown }).clean
-      if (clean !== undefined && typeof clean !== 'boolean') {
-        throw new UserError(`${where}.outputs.clean must be true or false`)
-      }
-      const outFiles = (outputs as { files?: unknown }).files
-      if (!Array.isArray(outFiles)) {
-        throw new UserError(`${where}.outputs.files must be an array of glob strings`)
-      }
-      // Reject zero-length strings and absolute paths up front.
-      // Both reach `resolveOutputs` as undefined behavior; the error
-      // surfaces deep inside the glob resolver with no line pointing
-      // at the user's config. Fail loud at load time.
-      for (const g of outFiles as unknown[]) {
-        if (typeof g !== 'string' || g.length === 0) {
-          throw new UserError(`${where}.outputs.files must be an array of non-empty strings`)
-        }
-        assertGlobText(g, `${where}.outputs.files`)
-        if (isAbsoluteGlob(g)) {
-          throw new UserError(
-            `${where}.outputs.files: absolute paths are not allowed (got "${g}") — ` +
-              `outputs must be project-relative globs`,
-          )
-        }
-        if (hasParentSegment(g)) {
-          throw new UserError(
-            `${where}.outputs.files: '..' path segments are not allowed (got "${g}") — ` +
-              `outputs must stay within the project (vx clears a task's outputs before it runs, ` +
-              `so a glob that escapes the project would delete files outside it; ` +
-              `use outputs.workspaceFiles for workspace-root-relative outputs)`,
-          )
-        }
-        assertPosixGlob(g, `${where}.outputs.files`, 'project')
-        assertNoForeignToken(g, `${where}.outputs.files`)
-        if (namesDirItself(g)) {
-          throw new UserError(
-            `${where}.outputs.files: "${g}" names the project directory itself and selects nothing — ` +
-              `name the directory the task writes, such as "dist/**"`,
-          )
-        }
-        // An artifact stores workspace outputs under `workspace-outputs/`,
-        // and its index read a project output there as one: every hit was
-        // a "corrupt artifact", dropped and run again.
-        if (!g.startsWith('!') && normalizeGlob(g).split('/')[0] === 'workspace-outputs') {
-          throw new UserError(
-            `${where}.outputs.files: "${g}" is under workspace-outputs/, a name vx's ` +
-              `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
-          )
-        }
-        // A `!` entry takes a path back from the outputs (A-44): it is not
-        // cleaned, saved or restored, and it stays an input.
-        assertNotDoubleNegated(g, `${where}.outputs.files`)
-        // Taken back by a `!`, the file is never cleaned or restored.
-        const own = g.startsWith('!')
-          ? undefined
-          : ownFilesCovered(g, ownConfig).find((f) => !takenBack(outFiles as unknown[], f))
-        if (own !== undefined) {
-          throw new UserError(
-            `${where}.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
-              `task's outputs before it runs and restores them on a hit, so the project would lose ` +
-              `its config. Name the directory the task writes, such as "dist/**", ` +
-              `or take the file back with "!${own}".`,
-          )
-        }
-      }
-      assertOutputsNotNegationOnly(outFiles as string[], `${where}.outputs.files`)
-      assertNoLiteralTakenBack(outFiles as string[], `${where}.outputs.files`, OUTPUT_LOST)
-      const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
-      if (wsOutputs !== undefined) {
-        validateWorkspaceGlobs(wsOutputs, `${where}.outputs.workspaceFiles`, false)
+  }
+  // Same for inputs.files.
+  for (const g of (inputs as { files: unknown[] }).files) {
+    if (typeof g !== 'string' || g.length === 0) {
+      throw new UserError(`${where}.inputs.files must be an array of non-empty strings`)
+    }
+    assertGlobText(g, `${where}.inputs.files`)
+    if (!g.startsWith('!/') && isAbsoluteGlob(g)) {
+      throw new UserError(
+        `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
+          `inputs must be project-relative globs`,
+      )
+    }
+    if (hasParentSegment(g)) {
+      throw new UserError(
+        `${where}.inputs.files: '..' path segments are not allowed (got "${g}") — ` +
+          `inputs must be project-relative (a '..' glob silently matches nothing; ` +
+          `use inputs.workspaceFiles for workspace-root-relative inputs)`,
+      )
+    }
+    assertPosixGlob(g, `${where}.inputs.files`, 'project')
+    assertNoForeignToken(g, `${where}.inputs.files`)
+    assertInputGlob(g, `${where}.inputs.files`)
+    if (namesDirItself(g)) {
+      throw new UserError(
+        `${where}.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
+      )
+    }
+    // A negated absolute path subtracts nothing (the positive globs are
+    // project-relative), so it would sit in the config as a silent no-op;
+    // `workspaceFiles` refuses both spellings the same way.
+    if (g.startsWith('!/')) {
+      throw new UserError(
+        `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
+          `inputs must be project-relative globs`,
+      )
+    }
+    assertNotDoubleNegated(g, `${where}.inputs.files`)
+  }
+  // A list of ONLY negations selects nothing at all. `resolveFiles`
+  // builds the file set from the POSITIVE globs and uses the `!` entries
+  // purely to subtract, so with no positive pattern it returns `[]` — the
+  // task folds ZERO file inputs and its key stops moving with its source,
+  // which is a stale hit waiting to happen.
+  //
+  // Every gitignore-trained reader parses `['!**/*.spec.ts']` as
+  // "everything except specs", and Turbo makes exactly this a hard config
+  // error for the same reason. Refusing costs nothing: such a config was
+  // already silently broken, so no working key changes.
+  assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.inputs.files`)
+  assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.inputs.files`)
+  // The only InputsConfig field that reached the run unvalidated: a
+  // non-string entry crashes deep in `filterUpstreamHashes` /
+  // `parseDependencySpec` with a raw TypeError naming neither the task
+  // nor the config. Each entry's syntax too: a malformed one (`^`,
+  // `a#`) passed `vx lock` and failed the task at hash time, after its
+  // upstream ran.
+  const taskFilters = (inputs as { tasks?: unknown }).tasks
+  if (taskFilters !== undefined) {
+    if (
+      !Array.isArray(taskFilters) ||
+      taskFilters.some((s) => typeof s !== 'string' || s.length === 0)
+    ) {
+      throw new UserError(
+        `${where}.inputs.tasks must be an array of non-empty strings ` +
+          `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
+      )
+    }
+    for (const raw of taskFilters as string[]) {
+      try {
+        parseDependencySpec(raw, 'inputs.tasks')
+      } catch (err) {
+        if (err instanceof DependencySpecError) throw new UserError(`${where}: ${err.message}`)
+        throw err
       }
     }
+    // The selection starts empty and a `!` entry only subtracts, so a
+    // list of negations folded no dependency and the key stopped moving
+    // with every upstream, as a negation-only inputs.files does.
+    assertTaskFiltersNotNegationOnly(taskFilters, `${where}.inputs.tasks`)
+    assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
+  }
+  for (const field of ['runtime', 'workspaceRuntime'] as const) {
+    const list = (inputs as Record<string, unknown>)[field]
+    if (list !== undefined) {
+      if (
+        !Array.isArray(list) ||
+        // Whitespace alone ran as a no-op probe that folds nothing, as
+        // a blank `exec.command` did (X-22).
+        list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
+      ) {
+        throw new UserError(
+          `${where}.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
+        )
+      }
+    }
+  }
+  // workspaceFiles mirror the files validation: non-empty strings,
+  // never absolute (they're workspace-root-relative by definition).
+  const wsInputs = (inputs as { workspaceFiles?: unknown }).workspaceFiles
+  if (wsInputs !== undefined) {
+    validateWorkspaceGlobs(wsInputs, `${where}.inputs.workspaceFiles`, true)
+  }
+}
+
+/** A task's `outputs`: what a run cleans, saves and restores. */
+function validateOutputs(
+  outputs: unknown,
+  where: string,
+  exec: unknown,
+  ownConfig: string | null,
+): void {
+  if (outputs === null || typeof outputs !== 'object') {
+    throw new UserError(`${where}.outputs must be an object — \`outputs: { files: [...] }\``)
+  }
+  assertKnownFields(outputs, OUTPUT_FIELDS, `${where}.outputs`)
+  if (exec === undefined) {
+    throw new UserError(`${where}.outputs needs \`exec\` — a task with no command writes nothing`)
+  }
+  const clean = (outputs as { clean?: unknown }).clean
+  if (clean !== undefined && typeof clean !== 'boolean') {
+    throw new UserError(`${where}.outputs.clean must be true or false`)
+  }
+  const outFiles = (outputs as { files?: unknown }).files
+  if (!Array.isArray(outFiles)) {
+    throw new UserError(`${where}.outputs.files must be an array of glob strings`)
+  }
+  // Reject zero-length strings and absolute paths up front.
+  // Both reach `resolveOutputs` as undefined behavior; the error
+  // surfaces deep inside the glob resolver with no line pointing
+  // at the user's config. Fail loud at load time.
+  for (const g of outFiles as unknown[]) {
+    if (typeof g !== 'string' || g.length === 0) {
+      throw new UserError(`${where}.outputs.files must be an array of non-empty strings`)
+    }
+    assertGlobText(g, `${where}.outputs.files`)
+    if (isAbsoluteGlob(g)) {
+      throw new UserError(
+        `${where}.outputs.files: absolute paths are not allowed (got "${g}") — ` +
+          `outputs must be project-relative globs`,
+      )
+    }
+    if (hasParentSegment(g)) {
+      throw new UserError(
+        `${where}.outputs.files: '..' path segments are not allowed (got "${g}") — ` +
+          `outputs must stay within the project (vx clears a task's outputs before it runs, ` +
+          `so a glob that escapes the project would delete files outside it; ` +
+          `use outputs.workspaceFiles for workspace-root-relative outputs)`,
+      )
+    }
+    assertPosixGlob(g, `${where}.outputs.files`, 'project')
+    assertNoForeignToken(g, `${where}.outputs.files`)
+    if (namesDirItself(g)) {
+      throw new UserError(
+        `${where}.outputs.files: "${g}" names the project directory itself and selects nothing — ` +
+          `name the directory the task writes, such as "dist/**"`,
+      )
+    }
+    // An artifact stores workspace outputs under `workspace-outputs/`,
+    // and its index read a project output there as one: every hit was
+    // a "corrupt artifact", dropped and run again.
+    if (!g.startsWith('!') && normalizeGlob(g).split('/')[0] === 'workspace-outputs') {
+      throw new UserError(
+        `${where}.outputs.files: "${g}" is under workspace-outputs/, a name vx's ` +
+          `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
+      )
+    }
+    // A `!` entry takes a path back from the outputs (A-44): it is not
+    // cleaned, saved or restored, and it stays an input.
+    assertNotDoubleNegated(g, `${where}.outputs.files`)
+    // Taken back by a `!`, the file is never cleaned or restored.
+    const own = g.startsWith('!')
+      ? undefined
+      : ownFilesCovered(g, ownConfig).find((f) => !takenBack(outFiles as unknown[], f))
+    if (own !== undefined) {
+      throw new UserError(
+        `${where}.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
+          `task's outputs before it runs and restores them on a hit, so the project would lose ` +
+          `its config. Name the directory the task writes, such as "dist/**", ` +
+          `or take the file back with "!${own}".`,
+      )
+    }
+  }
+  assertOutputsNotNegationOnly(outFiles as string[], `${where}.outputs.files`)
+  assertNoLiteralTakenBack(outFiles as string[], `${where}.outputs.files`, OUTPUT_LOST)
+  const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
+  if (wsOutputs !== undefined) {
+    validateWorkspaceGlobs(wsOutputs, `${where}.outputs.workspaceFiles`, false)
   }
 }
 
@@ -1139,7 +1163,7 @@ const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
 
 /**
  * Another runner's spelling of a field vx has under another name, by the
- * level that meets it (D-37): a Turbo `outputs: [...]` or Nx `command` on
+ * level that meets it: a Turbo `outputs: [...]` or Nx `command` on
  * a task was refused as an unknown field that named neither the field
  * nor where vx keeps it.
  */
@@ -1163,7 +1187,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       options: '`exec.command` (a run-commands `options.command`) and `exec.env`',
       outputLogs: 'the `--output-logs` flag of `vx run`',
       // Turbo's `interactive` / `with`, Nx's `cwd` / `parallelism` /
-      // `configurations`: refused with no word on where they went (D-89).
+      // `configurations`: refused with no word on where they went.
       interactive: '`exec.interactive: true`',
       with: '`dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
       cwd: '`cd <dir> && …` in `exec.command`: a task runs in its project directory',
@@ -1179,7 +1203,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       cmd: '`command`',
       script: '`command`',
       // Nx run-commands' options and shell-runner habits, refused with no
-      // word on where they go (D-100).
+      // word on where they go.
       cwd: '`cd <dir> && …` in `command`: a task runs in its project directory',
       args: 'the arguments written into `command`, or after `--` on `vx run`',
       commands: 'one `command` (`a && b`, or `a & b; wait` to run them at once), or one task each',
@@ -1206,7 +1230,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     },
   ],
   // A package's turbo.json and Nx's project.json keys, written into a
-  // project's vx.config (D-56).
+  // project's vx.config.
   [
     PROJECT_FIELDS,
     {
@@ -1214,7 +1238,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       extends: 'an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
       implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
       // A package.json's, turbo.json's and project.json's keys, and a
-      // task's fields one level too high (D-99).
+      // task's fields one level too high.
       scripts:
         "`tasks` (a script is a task's `exec.command`; `vx init` writes them from package.json)",
       pipeline: '`tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
@@ -1231,8 +1255,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       env: '`tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
-  // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace
-  // (D-38).
+  // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace.
   [
     WORKSPACE_FIELDS,
     {
@@ -1254,7 +1277,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
       // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
       // pasted into .vx/workspace: refused with no word on where vx reads
-      // them (D-98).
+      // them.
       packages: 'a `vx.config` in each project directory: a project is a directory holding one',
       workspaces: 'a `vx.config` in each project directory: a project is a directory holding one',
       projects: 'a `vx.config` in each project directory: a project is a directory holding one',
@@ -1341,7 +1364,7 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
 /**
  * The project's config file if an output glob would take it. `outputs:
  * ['**']` loaded, and the clean before the run deleted the project's
- * source and `vx.config` while the run reported success (item 1002); the
+ * source and `vx.config` while the run reported success; the
  * message for `'.'` had even suggested `**`. Core names no other project
  * file: a file a plugin keys on is an input, and an output takes it out of
  * the input set like any other.
@@ -1362,8 +1385,8 @@ function takenBack(globs: readonly unknown[], file: string): boolean {
 }
 
 /**
- * Turbo's and Nx's glob tokens, pasted from turbo.json or project.json
- * (D-50). vx expands none of them, so each is a literal that matches no
+ * Turbo's and Nx's glob tokens, pasted from turbo.json or project.json.
+ * vx expands none of them, so each is a literal that matches no
  * file: an input list of `$TURBO_DEFAULT$` keyed the task on nothing and
  * replayed a stale output after its source changed.
  */
@@ -1459,7 +1482,7 @@ function backwardClassRange(glob: string): [number, string, string] | null {
 }
 
 function assertNoForeignToken(glob: string, where: string): void {
-  // `^production`: Nx's named input of the dependencies (D-51). No file
+  // `^production`: Nx's named input of the dependencies. No file
   // starts with `^` in practice, while a bare `default` can be a directory,
   // so only the upstream form is refused; the bare one keeps the warning.
   if ((glob.startsWith('!') ? glob.slice(1) : glob).startsWith('^')) {
@@ -1567,7 +1590,7 @@ function assertNoBraceRange(glob: string, where: string): void {
  * `./src/**
  * Turbo's `!NAME` takes a name back out of a wildcard (`env`,
  * `passThroughEnv`). vx has no wildcards, so the entry was a variable
- * named `!NAME`: nothing excluded, nothing said (D-53).
+ * named `!NAME`: nothing excluded, nothing said.
  */
 function assertNoEnvNegation(names: readonly string[], where: string): void {
   const neg = names.find((n) => n.startsWith('!'))
@@ -1726,7 +1749,7 @@ function assertNotDoubleNegated(glob: string, where: string): void {
  * reach the same node, exactly or by that entry's own `*` pattern. The form
  * matters: `build` selects this project's `build` and `^build` only other
  * projects', so `['build']` against `dependsOn: ['^build']` folded nothing
- * and served a stale hit (item 994). A `pkg#task` entry may name this
+ * and served a stale hit. A `pkg#task` entry may name this
  * project or a dependency, which the schema cannot tell apart, so it pairs
  * with any form whose task half matches. `[]` is the explicit way to
  * decouple.
@@ -1749,7 +1772,7 @@ function assertFilterNamesDeclaredDeps(
     })
   for (const raw of filters) {
     // `*` and `^*` need no arm of their own: their task half is `*`, which
-    // the wildcard skip below takes (item 678).
+    // the wildcard skip below takes.
     if (raw.startsWith('!')) continue
     const f = specForm(raw)
     if (f.task.includes('*') || named(f)) continue
@@ -1803,7 +1826,7 @@ function isEnvName(name: unknown): name is string {
  * refused shape loaded and could not be referenced: `x#y` read as project
  * `x`, `^gen` as every dependency's `gen`, a `*` as a pattern, `''` ran
  * under `--all` as `a#` and `vx run a#` refused it, `-x` as a flag, and a
- * padded name was trimmed away by the reader (item 1000).
+ * padded name was trimmed away by the reader.
  */
 function assertTaskName(name: string, configPath: string): void {
   const why = taskNameProblem(name)
@@ -1814,7 +1837,7 @@ function assertTaskName(name: string, configPath: string): void {
   )
 }
 
-/** Why `name` cannot be a task name, or null; `vx init` skips such a script (item 1033). */
+/** Why `name` cannot be a task name, or null; `vx init` skips such a script. */
 export function taskNameProblem(name: string): string | null {
   return name.trim().length === 0
     ? 'is empty'
@@ -2125,7 +2148,7 @@ function validateSandbox(sandbox: unknown, where: string): void {
     // Only these reach the report's filter (`matchesIgnore`): a denial is
     // classed read, write, systemInfo or network, and nothing else. Every
     // grant name loaded here once, so `ignore.machLookup` silenced nothing
-    // and said so nowhere (D-4).
+    // and said so nowhere.
     assertKnownFields(ignore, IGNORE_FIELDS, `${where}.sandbox.ignore`)
     const g = ignore as Record<string, unknown>
     // Patterns, not prefixes — `ignore` is vx's own filter over lines it

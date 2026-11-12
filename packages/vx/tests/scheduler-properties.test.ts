@@ -7,7 +7,8 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/index.js'
-import { RestoreDemoted, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { runGraph } from '../src/graph/scheduler.js'
+import { RestoreDemoted, type TaskOutcome } from '../src/graph/outcome.js'
 import { taintTracker } from '../src/orchestrator/admission.js'
 import { rng } from './helpers/rng.js'
 

@@ -3,7 +3,7 @@
 // block.
 import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/report/summary.js'
-import { markKeyFailed, type TaskOutcome } from '../src/graph/scheduler.js'
+import { markKeyFailed, type TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function outcome(id: string, status: TaskOutcome['status'], cache?: object): TaskOutcome {

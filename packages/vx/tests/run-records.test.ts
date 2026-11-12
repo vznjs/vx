@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { taskDefinition } from '../src/graph/definition.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { assembleRunRecords, type RunRecordsInput } from '../src/orchestrator/run-records.js'
 import { formatRunSummary } from '../src/report/summary.js'
