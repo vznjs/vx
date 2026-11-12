@@ -478,4 +478,34 @@ export default [
       },
     ],
   }),
+  defineCase({
+    id: 'sandbox/root-output-beside-output-dir-lands',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task’s output file at its project root lands beside its output directory',
+    why: 'TypeScript writes `dist/` and a `tsconfig.tsbuildinfo` at the project root, and a build declares both. An isolated task whose write to the root file is kept in a throwaway layer reports success while that output is gone: the next build has no buildinfo, and a hit restores nothing for it.',
+    from: ['sandbox-grants.unsafe'],
+    needs: ['sandbox'],
+    workspace: one({
+      command: 'mkdir -p dist && cat src/a.txt > dist/out.txt && cat src/a.txt > build.log',
+      inputs: ['src/**'],
+      outputs: ['dist/**', '*.log'],
+      sandbox: { read: ['.'] },
+    }),
+    steps: [
+      {
+        run: 'build',
+        expect: { exit: 0, files: { [out('a')]: 'a\n', 'packages/a/build.log': 'a\n' } },
+      },
+      { sh: 'rm -rf packages/a/dist packages/a/build.log' },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          notRan: ['a#build'],
+          files: { [out('a')]: 'a\n', 'packages/a/build.log': 'a\n' },
+        },
+      },
+    ],
+  }),
 ]

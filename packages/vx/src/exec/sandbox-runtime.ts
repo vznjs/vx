@@ -93,6 +93,7 @@ import {
   readOnlyMasks,
   withCwd,
   scratchWrites,
+  globDir,
   widenedEntries,
   withLinkedWrites,
 } from './sandbox-binds.js'
@@ -1243,6 +1244,8 @@ export interface SandboxedRunArgs {
   readonly reportLinked: readonly string[]
   /** `ExecuteSandbox.keyRoot`. */
   readonly keyRoot?: string
+  /** `ExecuteSandbox.dependencyReads` and `dependencyReported`: the dependencies' outputs. */
+  readonly upstreamOutputs?: readonly string[]
   /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
@@ -1589,6 +1592,8 @@ export async function wrapSandboxedCommand(
   baselines: CanonicalBaselines
   /** The pending write globs a write may still land under (`scratchWrites`). */
   scratch: string[]
+  /** The pending write globs `punchedWriteGlobs` bound, and their directories. */
+  held: { dirs: string[]; globs: string[] }
   /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
   forwardsSignals: boolean
   /** The command writes its trace to fd TRACE_FD: spawn it with the log there. */
@@ -1633,6 +1638,13 @@ async function wrapIn(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
+  // The directories `punchedWriteGlobs` bound, and the globs they hold.
+  const own = new Set(bindableWrites(args.config.allowWrite))
+  const heldDirs = customConfig.filesystem!.allowWrite.filter((w) => !own.has(w))
+  const globsHeld = {
+    dirs: heldDirs,
+    globs: (args.config.pendingWrites ?? []).filter((g) => heldDirs.includes(globDir(g))),
+  }
   const scratch = pendingWriteGrants(
     args.config,
     customConfig!.filesystem!,
@@ -1786,6 +1798,7 @@ async function wrapIn(
     srtCommand: inner,
     baselines,
     scratch,
+    held: globsHeld,
     forwardsSignals: grouped.forwards,
     traced: grouped.traced,
   }
@@ -2609,7 +2622,17 @@ async function runSandboxedOnce(
       ranMs: 0,
     }
   }
-  const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } = wrap
+  const { wrapped, tag, srtCommand, baselines, scratch, held, forwardsSignals, traced } = wrap
+  // Before the spawn too: a directory bound for a glob is judged as a
+  // widened one, its other entries reported (`refusedWrites`).
+  const heldEntries = new Map(widened)
+  for (const dir of held.dirs) {
+    try {
+      heldEntries.set(dir, new Set(readdirSync(dir).map((e) => path.join(dir, e))))
+    } catch {
+      // Gone: nothing there to judge.
+    }
+  }
   const takeRecords = collectRecords(
     SandboxManager.getSandboxViolationStore(),
     srtCommand,
@@ -2827,10 +2850,10 @@ async function runSandboxedOnce(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
             // included, not by the tagged command macOS is keyed by.
             records.map((v) => v.line),
-            bindableWrites(args.config.allowWrite),
-            scratch,
+            [...bindableWrites(args.config.allowWrite), ...held.dirs],
+            [...scratch, ...held.globs],
             [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
-            { entries: widened, granted: args.config.allowWrite },
+            { entries: heldEntries, granted: args.config.allowWrite },
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
@@ -2855,13 +2878,27 @@ async function runSandboxedOnce(
   // A write refused past the wall is not a violation (nothing a key reads),
   // but it may be why the task failed: name it, never counted, and only on
   // a failure, so it can never redden a pass.
+  // A write refused in a dependency's outputs is that project's task's
+  // work, never a grant here: `tsc -b` under --exclude-dependencies
+  // rebuilt its upstream, and the hints named `write: ['../p00/']`.
+  const upstream = (args.upstreamOutputs ?? []).map(toRealPath)
+  const isUpstream = (p: string | undefined): p is string =>
+    p !== undefined && upstream.some((u) => atOrUnder(p, u))
+  const upstreamWrites = new Set(
+    violations
+      .filter((v) => v.hint !== true && v.opened !== 'read' && v.ignorable?.includes('write'))
+      .map((v) => v.path)
+      .filter(isUpstream),
+  )
   if (exitCode !== 0) {
-    const outside = refusedWritesOutside(recorded, {
+    const refused = refusedWritesOutside(recorded, {
       within: args.reportWithin,
       linked: args.reportLinked,
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
+    for (const p of refused.filter(isUpstream)) upstreamWrites.add(p)
+    const outside = refused.filter((p) => !isUpstream(p))
     if (outside.length > 0) {
       const made = new Set(
         recorded.filter((v) => /^mkdir(?:at)?\(/.test(v.line)).map((v) => v.path),
@@ -2878,6 +2915,8 @@ async function runSandboxedOnce(
       if (removed !== undefined) violations.push(removed)
     }
   }
+  if (upstreamWrites.size > 0)
+    violations.push(upstreamWritesHint([...upstreamWrites], args.reportWithin))
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
   // runs differing only in the grant: with the cwd granted a failing task
@@ -3017,6 +3056,29 @@ export function outsideWritesHint(
       : `${refused} If the task needs ${grants.length === 1 ? 'one, grant its directory' : 'them, grant their directories'}, e.g. ` +
         `\`allow: { write: [${spelled.join(', ')}] }\`.${temp}`
   return { timestamp: new Date(), hint: true, line }
+}
+
+/**
+ * The note for writes refused in a dependency's declared outputs: that
+ * project's own task writes them, so the remedy is to run it, or to keep
+ * this task from rebuilding it, never a grant to write there.
+ */
+function upstreamWritesHint(paths: readonly string[], within: string): SandboxViolation {
+  const real = toRealPath(within)
+  const shown = paths
+    .slice(0, 5)
+    .map((p) => path.relative(real, p))
+    .join(', ')
+  const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the task tried to write a dependency's declared outputs (${shown}${more}), which that ` +
+      `project's own task writes. Run it with its dependencies (drop --exclude-dependencies), ` +
+      `or keep the task from rebuilding them (\`tsc -p\`, not \`tsc -b\`); a write grant there ` +
+      `is not the fix.`,
+  }
 }
 
 /**

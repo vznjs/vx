@@ -1118,6 +1118,89 @@ describe.skipIf(!available || process.platform !== 'linux')(
   },
 )
 
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a write glob beside a directory grant, in the directory a read grant shows',
+  () => {
+    // `read: ['.']` is punched around `dist/` into the project's children,
+    // so no bind held the project directory itself: `*.log`, matching
+    // nothing yet, was taken for scratch, and `out.log`, a declared output,
+    // vanished with the sandbox under a green run. `write: ['*.log']`
+    // alone is refused with a warning; this shape said nothing. So is
+    // `['dist/', '*.tsbuildinfo']`, the docs' TypeScript shape.
+    let fixture: Fixture
+
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const project = (command: string, write: string, read = '.') =>
+      addProject(fixture.root, 'app', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: '${command}',
+                  sandbox: { allow: { read: ['${read}'], write: ['dist/', '${write}'] } },
+                },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '*.log'] }, cache: true,
+              },
+            },
+          }
+        `,
+      })
+
+    it(
+      'lands what the glob matches on the host',
+      async () => {
+        const dir = await project('echo hi > out.log; mkdir -p dist; echo d > dist/x', '*.log')
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(dir, 'out.log'), 'utf8')).toBe('hi\n')
+        expect(await readFile(path.join(dir, 'dist', 'x'), 'utf8')).toBe('d\n')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'reports a write beside the glob in that directory',
+      async () => {
+        // The directory is bound writable, as a file grant there widens to;
+        // a write the glob does not cover is judged as one there is.
+        await project('echo hi > out.log; echo x > other.txt', '*.log')
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(r.outcomes[0]?.sandboxViolationLines?.some((l) => l.includes('other.txt'))).toBe(
+          true,
+        )
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'fails, naming the file, when no grant shows the directory and the write is left there',
+      async () => {
+        // No read grant shows the project directory, so `*.log` is the deny
+        // anchor's scratch, kept for a tool's temp directory; `out.log` is
+        // left there and goes with the sandbox, so it is reported.
+        await project('echo hi > out.log; mkdir -p dist; echo d > dist/x', '*.log', 'src/')
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(
+          r.outcomes[0]?.sandboxViolationLines?.some(
+            (l) => l.includes('out.log') && l.includes("sandbox's scratch"),
+          ),
+        ).toBe(true)
+      },
+      TIMEOUT,
+    )
+  },
+)
+
 describe.skipIf(!available)('the sandbox temp directory', () => {
   // SRT overrides TMPDIR so temp writers land where its filesystem policy
   // allows, and does not create the directory ("/tmp/claude may not exist",
@@ -2175,12 +2258,30 @@ describe('reportableViolations', () => {
       `deny mkdirat ${PROJ}/.a.tmp`,
       `deny openat ${PROJ}/.a.tmp/bun`,
       `deny openat ${PROJ}/other.tmp.txt`,
+      `deny renameat2 ${PROJ}/.a.tmp/bun`,
+      `deny renameat2 ${PROJ}/dist/bun`,
+      `deny unlinkat ${PROJ}/.a.tmp`,
     ]
-    expect(lines(refusedWrites(records, [], [`${PROJ}/.*.tmp`]))).toEqual([
+    expect(lines(refusedWrites(records, [`${PROJ}/dist`], [`${PROJ}/.*.tmp`]))).toEqual([
       `openat(${PROJ}/other.tmp.txt) = a write no grant covers  [${PROJ}/other.tmp.txt]`,
     ])
-    // CONTROL: with no scratch glob all three are refused.
-    expect(refusedWrites(records, []).length).toBe(3)
+    // CONTROL: with no scratch glob each record outside `dist` is refused.
+    expect(refusedWrites(records, [`${PROJ}/dist`]).length).toBe(5)
+  })
+
+  it('a write left under a scratch glob when the task ends is reported', () => {
+    // The scratch goes with the sandbox: what the task did not remove or
+    // move out is a write that vanished, an output's included.
+    const records = [
+      `deny openat ${PROJ}/gone.log`,
+      `deny openat ${PROJ}/out.log`,
+      `deny unlink ${PROJ}/gone.log`,
+    ]
+    expect(lines(refusedWrites(records, [], [`${PROJ}/*.log`]))).toEqual([
+      `openat(${PROJ}/out.log) = a write into the sandbox's scratch, gone when the task ended  [${PROJ}/out.log]`,
+    ])
+    // Under a write bind it landed.
+    expect(refusedWrites(records, [PROJ], [`${PROJ}/*.log`])).toEqual([])
   })
 
   it('a pending write glob is scratch only where no bind holds its directory', () => {

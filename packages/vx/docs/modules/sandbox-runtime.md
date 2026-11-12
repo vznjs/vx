@@ -236,6 +236,7 @@ export interface SandboxedRunArgs {
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
   keyRoot?: string // a cached task's workspace root: a hidden read under it is named for inputs.workspaceFiles too
+  upstreamOutputs?: readonly string[] // the dependencies' outputs: a write refused there gets a note to run their task, no grant
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
 }
 
@@ -342,8 +343,11 @@ export function punchWritePaths(
   reachable?: (real: string) => boolean, // may a linked child's real path be bound
 ): string[]
 // The write globs that matched nothing at the start, split by whether a
-// bind holds their directory (below, "A write grant that mounts nothing")
+// bind holds their directory (below, "A write grant that mounts nothing");
+// one a write bind holds is in neither
 export function scratchWrites(pending, fs, anchors): { scratch: string[]; mountless: string[] }
+// The directory a write glob's matches land in: its head's
+export const globDir: (glob: string) => string
 // The SRT customConfig: the baselines merged with the resolved block
 export function buildCustomConfig(args, baselines): SrtCustomConfig
 // Linux: SRT's bwrap line with its --tmpfs masks remounted read-only, the
@@ -373,7 +377,7 @@ export function reportableViolations(
 export function refusedWrites(
   records: readonly string[],
   writable: readonly string[],
-  scratch?: readonly string[], // pending write globs a write may land under
+  scratch?: readonly string[], // pending write globs a write may land under; one left in the scratch at the end is reported
   readable?: readonly string[], // what the sandbox mounts readable: a mkdir or openat2 there wrote nothing
   widened?: { entries; granted }, // `widenedEntries` at task start and the write grants: a write there is judged by the grants
 ): SandboxViolation[]
@@ -970,6 +974,20 @@ granted, and the strace pass a missed read under any pending glob (cp
 probes its destination before creating it, which failed a clean task
 until 2026-10-08). Before 2026-09-29 it was reported as a write no grant covers
 and failed the task. An output never belongs there: grant its directory.
+What the task leaves there (written, never removed or moved out, in the
+observer's records) went with the sandbox, so `refusedWrites` reports it:
+`out.log` under `*.log` with only `read: ['src/']` vanished under a green
+run.
+
+A read grant the punch split is not scratch: `read: ['.']` beside
+`write: ['dist/', '*.log']` binds the project's children around `dist`,
+not the project, so `*.log` lay under no bind and `out.log`, a declared
+output, vanished under a green run (`['dist/', '*.tsbuildinfo']` the
+same). `buildCustomConfig` binds such a glob's directory writable, as a
+file grant there is widened to it (`punchedWriteGlobs`); a write there
+the glob does not cover is judged as one under a widened grant
+(`refusedWrites`), and `bun build --compile`'s temp directory beside
+`dist/` lands on the host and is removed there.
 
 On macOS a collapsed `<glob>/**` keeps `<glob>/**/*` beside the
 directory: seatbelt reads a glob as an exact regex and a literal as a

@@ -1801,7 +1801,11 @@ holds the directory, it is the sandbox's own scratch, the one mask left
 writable: the task may create, write and remove what the glob matches
 (anything else it writes there too), and nothing it leaves there
 outlives the task. That is right for a tool's temp directory and
-wrong for an output. A read grant matching nothing is ordinary
+wrong for an output: a file the task leaves there is reported, and
+fails the task. A directory a read grant shows but a write grant beside
+it split (`read: ['.']` with `write: ['dist/', '*.tsbuildinfo']`) is
+bound writable for the glob, as a file grant there is, so what it
+matches lands on the host. A read grant matching nothing is ordinary
 (an optional file, a cache not yet populated) and is not reported. A
 pattern under a directory that does not exist yet matches nothing the
 same way, where the scan once failed the task with a bare `ENOENT` (B-6).
@@ -2046,7 +2050,10 @@ project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
 that make a cache key wrong. A write refused past the wall is named
-beside a FAILED task, never counted, with the directory to grant, spelled
+beside a FAILED task, never counted, with the directory to grant (none
+for a dependency's declared outputs: that project's task writes them, so
+the note says to run it, without `--exclude-dependencies`, or to keep
+the task from rebuilding it, `tsc -p` rather than `tsc -b`), spelled
 from the project when it is in the workspace (under the host's temp
 directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says

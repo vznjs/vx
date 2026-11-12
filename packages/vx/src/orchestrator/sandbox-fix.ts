@@ -123,6 +123,11 @@ export function sandboxFix(
    * the old bytes.
    */
   inputs?: Pick<InputsConfig, 'files' | 'workspaceFiles'>,
+  /**
+   * The dependencies' declared outputs: a write there is their task's
+   * work, never a grant here (`upstreamWritesHint` says what is).
+   */
+  upstream: readonly string[] = [],
 ): SandboxFix | undefined {
   const fix: Record<keyof SandboxFix, Set<string>> = {
     read: new Set(),
@@ -163,6 +168,7 @@ export function sandboxFix(
         if (!keyed.workspaceFiles(wsRel)) fix.workspaceFiles.add(taskGlobOf(wsRel))
       }
     } else if (isPerRunTemp(v.path)) continue
+    else if (upstream.some((u) => atOrUnder(v.path!, toRealPath(u)))) continue
     else {
       const isDir =
         v.line.startsWith('mkdir') ||

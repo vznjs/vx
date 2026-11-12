@@ -979,10 +979,19 @@ export function refusedWrites(
   }
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
+  // What the task left in the scratch, by path, in the order it wrote:
+  // a temp directory goes when the task removes it, an output never
+  // does, and `out.log` under a `*.log` no bind held vanished with the
+  // sandbox under a green run.
+  const left = new Map<string, { syscall: string; raw: string }>()
+  let source = false
   for (const record of records) {
     const m = /^deny (\S+) (\/.*)$/.exec(record)
     if (m === null) continue
     const [, syscall, raw] = m as unknown as [string, string, string]
+    // A move is recorded source first, then destination.
+    const moveSource: boolean = MOVES.test(syscall) && !source
+    source = moveSource
     // A descriptor or pseudo-file is the task's, and resolving it here
     // reads vx's own: strace's log is `/dev/fd/5`, and a vx started with
     // `5>out.log` in the project reported a write to `out.log` and failed
@@ -994,8 +1003,14 @@ export function refusedWrites(
     const abs = NAME_SYSCALL.test(syscall)
       ? path.join(toRealPath(path.dirname(raw)), path.basename(raw))
       : toRealPath(raw)
-    if (underGlob(abs, globs)) continue
     const bound = isUnderAny(abs, binds)
+    if (underGlob(abs, globs)) {
+      if (bound || OPEN_EITHER.test(syscall)) continue
+      if (/^(?:unlink|rmdir)/.test(syscall) || (moveSource && syscall.startsWith('rename')))
+        left.delete(abs)
+      else if (!(moveSource && syscall.startsWith('link'))) left.set(abs, { syscall, raw })
+      continue
+    }
     if (bound && !undeclared(syscall, abs)) continue
     const moved = bound && MOVES.test(syscall)
     // A directory a write bind lies in exists, since bwrap made it to mount
@@ -1035,6 +1050,16 @@ export function refusedWrites(
             opened: 'read' as const,
           }
         : {}),
+    })
+  }
+  for (const [abs, { syscall, raw }] of left) {
+    if (seen.has(`${syscall}|${abs}`)) continue
+    out.push({
+      line: `${syscall}(${raw}) = a write into the sandbox's scratch, gone when the task ended  [${abs}]`,
+      timestamp: new Date(),
+      target: abs,
+      path: abs,
+      ignorable: ['write'],
     })
   }
   return out

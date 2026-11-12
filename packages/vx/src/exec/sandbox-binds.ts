@@ -174,11 +174,47 @@ export function scratchWrites(
   const scratch: string[] = []
   const mountless: string[] = []
   for (const glob of pending) {
-    const dir = path.dirname(glob.slice(0, glob.search(MOUNT_WILDCARDS) + 1))
+    const dir = globDir(glob)
+    // A write bind holds it: what the task writes there lands.
+    if ((fs.allowWrite ?? []).some((w) => atOrUnder(dir, w))) continue
     const free = anchors.some((a) => atOrUnder(dir, a)) && !binds.some((b) => atOrUnder(dir, b))
     ;(free ? scratch : mountless).push(glob)
   }
   return { scratch, mountless }
+}
+
+/** The directory a write glob's matches land in: its head's. */
+export const globDir = (glob: string): string =>
+  path.dirname(glob.slice(0, glob.search(MOUNT_WILDCARDS) + 1))
+
+/**
+ * Linux: the directories of the pending write globs (`dir` → its globs)
+ * that a declared read grant shows but the punch around a write grant left
+ * under no bind. `read: ['.']` beside `write: ['dist/', '*.log']` binds
+ * the project's children, not the project: `out.log`, a declared output,
+ * fell into the deny anchor's scratch and vanished under a green run.
+ * Each is bound writable, as a file grant there is widened to its
+ * directory, and a write there the glob does not cover is judged as one
+ * under a widened grant (`refusedWrites`).
+ */
+function punchedWriteGlobs(
+  pending: readonly string[],
+  shown: readonly string[],
+  binds: readonly string[],
+): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  if (process.platform !== 'linux') return out
+  for (const glob of pending) {
+    const dir = globDir(glob)
+    if (!shown.some((r) => atOrUnder(dir, r)) || binds.some((b) => atOrUnder(dir, b))) continue
+    try {
+      if (!statSync(dir).isDirectory()) continue
+    } catch {
+      continue
+    }
+    out.set(dir, [...(out.get(dir) ?? []), glob])
+  }
+  return out
 }
 
 /**
@@ -473,7 +509,15 @@ export function buildCustomConfig(
       !fence.denied.some((d) => atOrUnder(real, d)) || fence.granted.some((g) => atOrUnder(real, g))
     )
   }
-  const allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
+  let allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
+  const split = [
+    ...punchedWriteGlobs(c.pendingWrites ?? [], c.allowRead, [...allowRead, ...allowWrite]).keys(),
+  ]
+  if (split.length > 0) {
+    allowWrite.push(...split)
+    punched.push(...split)
+    allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
+  }
 
   const custom: TaskSandboxConfig = {
     filesystem: {
@@ -527,7 +571,7 @@ export function readOnlyMasks(wrapped: string, scratch: readonly string[] = []):
   for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
     if (m[0] === '--') {
       const held = scratch.map((g) => {
-        const dir = toRealPath(path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS) + 1)))
+        const dir = toRealPath(globDir(g))
         const holding = masks.filter((w) => atOrUnder(dir, unquoted(w)))
         return holding.sort((a, b) => unquoted(b).length - unquoted(a).length)[0]
       })

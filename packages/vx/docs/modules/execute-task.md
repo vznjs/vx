@@ -294,6 +294,10 @@ A write refused at a per-run temp name (`bun build --compile`'s
 `.<hex>-<n>.bun-build`) gets no `sandboxFix` grant, which the next run's
 name would miss: the outcome's violation lines gain a hint naming the
 `ignore: { write: ['*.bun-build'] }` glob instead (`perRunWriteHint`).
+A write refused in a dependency's declared outputs (the request's
+`dependencyReads` and `dependencyReported`) gets none either: that
+project's task writes them, and the runtime's note says so
+(`upstreamWritesHint`).
 
 ## Verdict
 

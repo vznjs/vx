@@ -268,4 +268,58 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
     },
     TIMEOUT,
   )
+
+  it(
+    'a write into them is the dependency’s work: no grant to write there is suggested',
+    async () => {
+      // `tsc -b` under --exclude-dependencies rebuilt the upstream project,
+      // and the hints suggested `write: ['../tools/out/bin/tool.txt']` and
+      // `['../']` for a refused write of its headless `*.txt` output.
+      await addProject(fixture.root, 'tools', {
+        files: { 'src/s.txt': 'SRC\n' },
+        config: `
+          export default {
+            tasks: {
+              node: {
+                exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo ROOT > root.txt' },
+                inputs: { files: ['src/**'] },
+                outputs: { files: ['out/**', '*.txt'] },
+                cache: true,
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'A\n' },
+        config: `
+          export default {
+            tasks: {
+              use: {
+                exec: {
+                  command: 'echo X > ../tools/out/bin/tool.txt; echo X > ../tools/root.txt',
+                  sandbox: { allow: { read: ['.'] } },
+                },
+                dependsOn: ['tools#node'],
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['use'], log: collectingLogger(fixture) })
+      const use = r.outcomes.find((o) => o.node.id === 'app#use')!
+      expect(use.status).toBe('failed')
+      expect(use.sandboxFix?.write).toBeUndefined()
+      const lines = use.sandboxViolationLines ?? []
+      expect(lines.filter((l) => l.includes('outside the project'))).toEqual([])
+      expect(
+        lines
+          .filter((l) => l.includes("a dependency's declared outputs"))
+          .map((l) =>
+            ['../tools/out/bin/tool.txt', '../tools/root.txt'].every((p) => l.includes(p)),
+          ),
+      ).toEqual([true])
+    },
+    TIMEOUT,
+  )
 })
