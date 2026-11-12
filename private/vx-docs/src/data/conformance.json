@@ -1077,17 +1077,17 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1004,
+        "pass": 1002,
         "can": 1004,
         "of": 1006
       },
       "correctness": {
-        "pass": 828,
+        "pass": 827,
         "can": 828,
         "of": 830
       },
       "efficiency": {
-        "pass": 167,
+        "pass": 166,
         "can": 167,
         "of": 167
       },
@@ -1102,7 +1102,7 @@
         "of": 150
       },
       "config": {
-        "pass": 8,
+        "pass": 7,
         "can": 8,
         "of": 8
       },
@@ -1122,7 +1122,7 @@
         "of": 42
       },
       "inputs": {
-        "pass": 307,
+        "pass": 306,
         "can": 307,
         "of": 307
       },
@@ -8917,7 +8917,9 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
         },
         "turbo": {
           "status": "fail",
@@ -34018,7 +34020,9 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 2,
+          "detail": "succeeded, expected a failure"
         },
         "turbo": {
           "status": "pass"
