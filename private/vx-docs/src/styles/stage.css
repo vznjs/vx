@@ -125,7 +125,7 @@
   position: relative;
   z-index: 3;
   max-width: 1240px;
-  margin: clamp(72px, 10vw, 140px) auto 0;
+  margin: clamp(160px, 35vw, 500px) auto 0;
 }
 .stage-head h2 {
   margin: 16px 0 0;
@@ -446,14 +446,6 @@
   inset: 0;
   width: 100%;
   height: 100%;
-}
-/* The copy fills the first screen, so the graph starts below the fold. */
-.stage.js .stage-copy {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  min-height: calc(100svh - var(--nav-h) - 112px);
 }
 .stage.js .stage-world {
   max-width: 1180px;
@@ -949,44 +941,6 @@
   font-weight: 600;
   color: var(--tone-core);
 }
-.meter {
-  display: block;
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(148, 170, 200, 0.12);
-  overflow: hidden;
-}
-.meter i {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--sun-3), var(--tone-core));
-  box-shadow: 0 0 12px rgba(198, 248, 78, 0.5);
-  transition: width 0.9s var(--ease-out);
-}
-.dial-cpu {
-  padding-right: 120px;
-}
-.ring {
-  position: absolute;
-  right: 22px;
-  top: 50%;
-  width: 84px;
-  height: 84px;
-  transform: translateY(-50%) rotate(-90deg);
-}
-.ring circle {
-  fill: none;
-  stroke: rgba(148, 170, 200, 0.12);
-  stroke-width: 9;
-}
-.ring .ring-on {
-  stroke: var(--tone-core);
-  stroke-linecap: round;
-  stroke-dasharray: 100;
-  transition: stroke-dashoffset 0.9s var(--ease-out);
-  filter: drop-shadow(0 0 6px rgba(198, 248, 78, 0.6));
-}
 .scope [data-f='cache'] {
   color: var(--tone-remote);
 }
@@ -1033,15 +987,164 @@
   .dial {
     padding: 18px 16px;
   }
-  .dial-cpu {
-    padding-right: 16px;
+}
+
+/* ---- flaky: a failed task hops to another worker ---- */
+.hop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(60px, 12vw, 180px) minmax(0, 1fr);
+  align-items: center;
+  margin-top: 56px;
+}
+.hop-worker {
+  display: grid;
+  gap: 14px;
+  padding: 22px 24px 20px;
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  background: var(--panel);
+  transition: border-color 0.4s;
+}
+.hop-name {
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7f8a85;
+}
+.hop-slot {
+  display: block;
+  height: 46px;
+  border-radius: 8px;
+  background: rgba(148, 170, 200, 0.06);
+}
+.hop-task {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 14px;
+  border-radius: 8px;
+  overflow: hidden;
+  font: 600 14px var(--font-mono);
+  color: #f5f8f0;
+  isolation: isolate;
+  transition: opacity 0.3s;
+}
+.hop-task i {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  transform-origin: left;
+  transition:
+    transform 0s,
+    background 0.3s;
+}
+.hop-from .hop-task i {
+  background: color-mix(in srgb, #ff5d5d 34%, #0d1016);
+}
+.hop-to .hop-task i {
+  background: color-mix(in srgb, var(--tone-core) 30%, #0d1016);
+}
+.hop-mark {
+  font: 600 13px var(--font-mono);
+  transition: opacity 0.3s;
+}
+.hop-from .hop-mark {
+  color: #ff7b7b;
+}
+.hop-to .hop-mark {
+  color: var(--tone-core);
+}
+.hop-arc {
+  position: relative;
+  height: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(148, 170, 200, 0.4) 0 6px,
+    transparent 6px 12px
+  );
+}
+.hop-arc span {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #f4ffd6;
+  box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
+  opacity: 0;
+}
+/* Played: 0 runs on worker 1, 1 fails, 2 runs on worker 2, 3 passes. */
+.band.play .hop[data-at='0'] .hop-from .hop-task i {
+  background: color-mix(in srgb, var(--tone-read) 26%, #0d1016);
+  transform: scaleX(0.7);
+  transition: transform 1.4s linear;
+}
+.band.play .hop[data-at='0'] .hop-from .hop-mark,
+.band.play .hop:is([data-at='0'], [data-at='1']) .hop-to :is(.hop-task, .hop-mark),
+.band.play .hop[data-at='2'] .hop-to .hop-mark {
+  opacity: 0;
+}
+.band.play .hop[data-at='1'] .hop-from,
+.band.play .hop[data-at='2'] .hop-from {
+  border-color: #ff5d5d;
+}
+.band.play .hop[data-at='2'] .hop-arc span {
+  left: 100%;
+  opacity: 1;
+  transition:
+    left 0.7s var(--ease-out),
+    opacity 0.2s;
+}
+.band.play .hop[data-at='2'] .hop-to .hop-task i {
+  background: color-mix(in srgb, var(--tone-read) 26%, #0d1016);
+  transform: scaleX(0);
+}
+.band.play .hop[data-at='3'] .hop-to .hop-task i {
+  transition: transform 0.5s var(--ease-out);
+}
+.band.play .hop[data-at='3'] .hop-to {
+  border-color: var(--tone-core);
+  box-shadow: 0 0 40px -12px rgba(198, 248, 78, 0.6);
+}
+@media (max-width: 720px) {
+  .hop {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .ring {
-    width: 44px;
-    height: 44px;
-    right: 12px;
-    top: 34px;
+  .hop-arc {
+    width: 2px;
+    height: 40px;
+    margin: 0 auto;
+    background: repeating-linear-gradient(rgba(148, 170, 200, 0.4) 0 6px, transparent 6px 12px);
   }
+  .hop-arc span {
+    display: none;
+  }
+}
+
+/* At rest the sun is printed behind the graph. */
+.stage:not(.js) .stage-world::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 74%;
+  width: min(54%, 640px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -74%);
+  border-radius: 50%;
+  background: linear-gradient(var(--sun-1), var(--sun-2) 45%, var(--sun-3));
+  clip-path: inset(0 0 32% 0);
+  mask-image: linear-gradient(
+    #000 50%,
+    transparent 50% 52%,
+    #000 52% 57%,
+    transparent 57% 60%,
+    #000 60% 64%,
+    transparent 64% 68%
+  );
 }
 
 /* ---- Distributed task execution: the run in 3D ---- */
