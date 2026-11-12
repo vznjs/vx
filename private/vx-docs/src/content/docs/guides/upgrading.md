@@ -24,6 +24,10 @@ them out or `vx cache clean` clears the cache.
 
 the relay no longer exports parseAllow, TokenError, Allowed, repositoryClaimOf or workflowClaimOf: use @vzn/vx-devtools' parseAllow, Refusal and Admits. Its refusal texts change: "this relay's ALLOW" is "this server's ALLOW"; "repository <r>" names the claim, "repository" or "project_path", lowercased; "workflow <w>" is "job_workflow_ref <w>" or "ci_config_ref_uri <w>"; the audience hint ends "or set the server's AUDIENCE"; the issuer is judged before the header's alg, and a signature no key makes is "bad signature" once the keys are held. The image bundles devtools, so it builds from the repo root.
 
+### vx: drop core's root and config entry shims
+
+@vzn/vx no longer ships index.ts or config/index.ts; a vx binary from 0.0.484 or older cannot load it.
+
 ### vx-dte: time worker warm-ups as tasks in history
 
 PLUGIN_HOOKS gains measures, before schedule.
