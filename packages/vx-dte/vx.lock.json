@@ -97,9 +97,12 @@
         "test.wire-faults",
         "test.wire-dials",
         "test.local-e2e",
+        "test.local-e2e-workers",
         "test.local-e2e-saves",
+        "test.local-e2e-worktrees",
         "test.units",
         "test.gitlab",
+        "test.github",
         "test.rest"
       ]
     },
@@ -275,10 +278,96 @@
       },
       "cache": true
     },
+    "test.local-e2e-workers": {
+      "description": "bun test ./tests/local-e2e-workers.test.ts",
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/local-e2e-workers.test.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "machLookup": [
+              "com.apple.sysmond"
+            ],
+            "localBinding": true
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "package.json"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
     "test.local-e2e-saves": {
       "description": "bun test ./tests/local-e2e-saves.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/local-e2e-saves.test.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "machLookup": [
+              "com.apple.sysmond"
+            ],
+            "localBinding": true
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "package.json"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.local-e2e-worktrees": {
+      "description": "bun test ./tests/local-e2e-worktrees.test.ts",
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/local-e2e-worktrees.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -404,10 +493,53 @@
       },
       "cache": true
     },
+    "test.github": {
+      "description": "bun test ./tests/github.test.ts",
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/github.test.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "machLookup": [
+              "com.apple.sysmond"
+            ],
+            "localBinding": true
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "package.json"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
     "test.rest": {
       "description": "bun test the files no other shard runs",
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /wire-faults.test.ts -e /wire-dials.test.ts -e /local-e2e.test.ts -e /local-e2e-saves.test.ts -e /units.test.ts -e /gitlab.test.ts)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /wire-faults.test.ts -e /wire-dials.test.ts -e /local-e2e.test.ts -e /local-e2e-workers.test.ts -e /local-e2e-saves.test.ts -e /local-e2e-worktrees.test.ts -e /units.test.ts -e /gitlab.test.ts -e /github.test.ts)",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
