@@ -248,7 +248,8 @@ held to its start; at the exit, `end` lets everything go; and an
   writer (`ui/live-region.ts`) and the stored log (`cache/archive.ts`,
   `entry_stdout`) turn back into the byte (`rawBytes` / `rawEncode`), so
   the terminal and a hit's replay get the bytes the task wrote, not
-  U+FFFD (`tests/raw-output-bytes.test.ts`). Valid UTF-8 costs one
+  U+FFFD (`tests/raw-output-bytes.test.ts`); a whole buffer decodes with
+  `decodeRaw`. Valid UTF-8 costs one
   native decode, as before.
 
 The promise from `runCommand` always resolves (never rejects) with a
