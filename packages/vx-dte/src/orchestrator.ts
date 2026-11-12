@@ -158,7 +158,7 @@ interface Worker {
   usedCores: number
   usedMemory: number
   /** Its machine's use as its last frame said, and when this machine heard it. */
-  load?: { cpu: number; memory: number; at: number }
+  load?: { cpu: number; memory: number; at: number; tasks?: number }
   /** Cores its machine spends on no task of the run while it runs some, averaged over its frames (`heard`). */
   other?: number
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
@@ -980,7 +980,12 @@ export class Orchestrator {
     const booked = { cores: a.usedCores + this.otherOf(a), memory: a.usedMemory }
     const l = a.load
     if (l === undefined || a.cores !== a.reported.cores) return booked
-    let cores = l.cpu
+    // Its tasks' own use where it says it, beside the other cores booked:
+    // the machine's whole reading counted those twice, so a small at 3.7
+    // of 4 cores under 3 shards never took the fourth the plan gave it,
+    // and a Mac whose shard's CPU goes unread ran one where the plan
+    // placed two (main 12a2f64: 63 s waiting for room, 2026-11-12).
+    let cores = l.tasks === undefined ? l.cpu : l.tasks + this.otherOf(a)
     let memory = l.memory
     for (const j of a.busy.values())
       if (j.held !== undefined && (j.sentAt ?? 0) > l.at) {
@@ -1059,6 +1064,7 @@ export class Orchestrator {
         if (typeof cores === 'number' && Number.isFinite(cores) && cores >= 0 && cores <= a.cores)
           this.o.bases?.set(id, cores)
     const tasks = Number(load.tasks)
+    if (Number.isFinite(tasks) && tasks >= 0) a.load.tasks = tasks
     // What the machine spends besides the run's tasks: GitHub's runner
     // agent alone took 0.2 to 0.6 of a 4-core small's cores, and its
     // machine 0.6 to 1.1 past its tasks, so shards booked on all 4 ran

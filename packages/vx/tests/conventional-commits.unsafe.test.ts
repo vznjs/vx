@@ -87,6 +87,8 @@ const KNOWN = new Set([
   // Chunk pA's, folded before the row ran on it: 74 and 72 chars.
   'c4fb2047d4ee0bb68da45db241b0b38ac87fed12',
   '35ccab7810060f0eb477fd68f74b447d8b6c3013',
+  // The task-load gate's, pushed before its subject was cut: 72 chars.
+  '8c5d2cb4612c61737de9937b997e99faf5f190b1',
   // The third mega branch's, pushed before the row ran on it: 72 chars.
   '163e07ec32743c7b8eca637e09c4175d461e7952',
   // The third mega branch's, pushed before the row ran on it: 74 chars.
