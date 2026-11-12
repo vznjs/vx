@@ -64,6 +64,7 @@ import {
   type ResolvedSandboxConfig,
   type RunResult,
   type SandboxViolation,
+  type TreeUsage,
 } from '../exec/index.js'
 import { TaskPipes } from '../exec/index.js'
 import { startTaskProxy, type TaskProxy } from './task-proxy.js'
@@ -2590,47 +2591,73 @@ function observerCaughtUp(socket: string): Promise<void> {
  */
 const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
 
+/** One attempt's result, with what `runSandboxed` decides a second on. */
+type AttemptResult = SandboxedRunResult & {
+  tracerFailed: boolean
+  mountGone: boolean
+  ranMs: number
+}
+
+/** An attempt whose command never ran: nothing to report, nothing to retry. */
+function notRun(
+  start: number,
+  ended: { exitCode: number; stderr: string; spawnFailed?: true; signal?: NodeJS.Signals },
+): AttemptResult {
+  return {
+    exitCode: ended.exitCode,
+    durationMs: Math.round(runTime() - start),
+    stdout: '',
+    stderr: ended.stderr,
+    ...(ended.spawnFailed ? { spawnFailed: true } : {}),
+    ...(ended.signal !== undefined ? { signal: ended.signal } : {}),
+    violations: [],
+    tracerFailed: false,
+    mountGone: false,
+    ranMs: 0,
+  }
+}
+
+type Wrap = Awaited<ReturnType<typeof wrapSandboxedCommand>>
+
+/** The wrap, and what the task's widened and held grants held before it ran. */
+interface Prepared {
+  wrap: Wrap
+  /** Each widened grant's entries before the spawn: what the task creates there is its own. */
+  widened: Map<string, Set<string>>
+  /** `widened`, plus each directory bound for a glob, judged as a widened one (`refusedWrites`). */
+  heldEntries: Map<string, Set<string>>
+}
+
 /**
- * One attempt of `runSandboxed`.
+ * Linux: SRT's store sees only writes, so read denials need the command
+ * traced and the trace parsed for denied syscalls. The trace is per-task
+ * (a log keyed by the command tag) so parallel tasks don't share a
+ * stream. Skipped when strace isn't on PATH — bwrap still enforces
+ * structurally; we just lose the structured violation list.
  *
- * Violations are matched by a unique per-task command prefix — SRT's
- * `getViolationsForCommand` keys by base64 of the first 100 chars, so
- * two tasks running the same underlying command (e.g. parallel `tsc`
- * across packages) would otherwise collide. We prepend `: '<tag>';`
- * (shell no-op) to make every command's first 100 chars unique.
+ * We trace the opens, the read itself, plus `execve` and the access
+ * probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
+ * is a tax on every stat-heavy task. A probe's ENOENT counts only where
+ * the host has the path (`parseStraceViolations`), so a PATH walk past
+ * a missing `node_modules/.bin` entry reports nothing.
+ *
+ * `--seccomp-bpf` is what makes that filter cheap: without it strace
+ * ptrace-stops the tracee on EVERY syscall and discards the untraced ones
+ * in userspace, so a stat-heavy task ran many times slower under the
+ * sandbox than outside it (plain `bun test` 24/24; under
+ * `strace -f -e trace=openat` four failed at 2.5–7× their budget; with
+ * `--seccomp-bpf` 24/24 again). With the flag the kernel filter stops only
+ * on the traced calls. strace ≥ 5.3 (2019); an older one gets the slow
+ * form rather than no detection.
  */
-async function runSandboxedOnce(
+async function prepareAttempt(
   args: SandboxedRunArgs,
-): Promise<SandboxedRunResult & { tracerFailed: boolean; mountGone: boolean; ranMs: number }> {
-  // Elapsed time, not wall time, less time vx was stopped: see runCommand.
-  const start = runTime()
-  const { SandboxManager } = await loadSrt()
-  // Linux: SRT's store sees only writes (below), so read denials need
-  // the command traced and the trace parsed for denied syscalls. The trace
-  // is per-task (a log keyed by the command tag) so parallel tasks don't
-  // share a stream. Skipped when strace isn't on PATH — bwrap still
-  // enforces structurally; we just lose the structured violation list.
-  //
-  // We trace the opens, the read itself, plus `execve` and the access
-  // probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
-  // is a tax on every stat-heavy task. A probe's ENOENT counts only where
-  // the host has the path (`parseStraceViolations`), so a PATH walk past
-  // a missing `node_modules/.bin` entry reports nothing.
-  //
-  // `--seccomp-bpf` is what makes that filter cheap: without it strace
-  // ptrace-stops the tracee on EVERY syscall and discards the untraced
-  // ones in userspace, so a stat-heavy task ran many times slower under
-  // the sandbox than outside it. That is what failed the cache perf
-  // baselines on the Linux job (reproduced 2026-09-09: plain `bun test`
-  // 24/24; under `strace -f -e trace=openat` the same four fail with
-  // medians 2.5–7× over budget; with `--seccomp-bpf` 24/24 again), and
-  // it taxed every other sandboxed task the same way. With the flag the
-  // kernel filter stops only on the traced calls. strace ≥ 5.3 (2019); an older
-  // one gets the slow form rather than no detection.
+  SandboxManager: SrtModule['SandboxManager'],
+  start: number,
+): Promise<{ prepared: Prepared } | { result: AttemptResult }> {
   const useStrace = await wantsStraceDetection()
-  // Before the spawn: what the task creates under a widened grant is its own.
   const widened = widenedEntries(args.config.allowWrite)
-  let wrap: Awaited<ReturnType<typeof wrapSandboxedCommand>>
+  let wrap: Wrap
   try {
     wrap = await wrapSandboxedCommand({
       ...args,
@@ -2645,52 +2672,44 @@ async function runSandboxedOnce(
     )
     args.onStderr?.(stderr)
     afterCommand(SandboxManager)
-    return {
-      exitCode: 127,
-      durationMs: Math.round(runTime() - start),
-      stdout: '',
-      stderr,
-      spawnFailed: true,
-      violations: [],
-      tracerFailed: false,
-      mountGone: false,
-      ranMs: 0,
-    }
+    return { result: notRun(start, { exitCode: 127, stderr, spawnFailed: true }) }
   }
-  const { wrapped, tag, srtCommand, baselines, scratch, held, forwardsSignals, traced } = wrap
-  // Before the spawn too: a directory bound for a glob is judged as a
-  // widened one, its other entries reported (`refusedWrites`).
   const heldEntries = new Map(widened)
-  for (const dir of held.dirs) {
+  for (const dir of wrap.held.dirs) {
     try {
       heldEntries.set(dir, new Set(readdirSync(dir).map((e) => path.join(dir, e))))
     } catch {
       // Gone: nothing there to judge.
     }
   }
-  const takeRecords = collectRecords(
-    SandboxManager.getSandboxViolationStore(),
-    srtCommand,
-    observerSocket(wrapped),
-  )
-  // A stop that landed during the awaits above leaves nothing to kill yet:
-  // spawned now, the task ran after the teardown swept the run's children.
+  return { prepared: { wrap, widened, heldEntries } }
+}
+
+/** The sandboxed command, spawned, and the trace log it writes. */
+interface Spawned {
+  proc: ReturnType<typeof Bun.spawn>
+  pipes: TaskPipes
+  straceLog: string | undefined
+}
+
+/** Spawn the wrapped command, or say why it did not start. */
+function spawnAttempt(
+  args: SandboxedRunArgs,
+  wrap: Wrap,
+  takeRecords: (settle: boolean) => Promise<SandboxViolation[]>,
+  SandboxManager: SrtModule['SandboxManager'],
+  start: number,
+): { spawned: Spawned } | { result: AttemptResult } {
+  const { wrapped, tag, forwardsSignals, traced } = wrap
+  // A stop that landed during the awaits before this leaves nothing to
+  // kill yet: spawned now, the task ran after the teardown swept the run's
+  // children.
   if (args.signal?.aborted === true) {
     releaseBridges(tag)
     void takeRecords(false)
     afterCommand(SandboxManager)
     const signal = stopSignal(args.signal.reason)
-    return {
-      exitCode: signalExitCode(signal),
-      durationMs: Math.round(runTime() - start),
-      stdout: '',
-      stderr: '',
-      signal,
-      violations: [],
-      tracerFailed: false,
-      mountGone: false,
-      ranMs: 0,
-    }
+    return { result: notRun(start, { exitCode: signalExitCode(signal), stderr: '', signal }) }
   }
   // Beside the task directories, which every sandbox replaces with its own:
   // in the shared temp dir a concurrent task read this log, every path
@@ -2735,41 +2754,67 @@ async function runSandboxedOnce(
     releaseBridges(tag)
     void takeRecords(false)
     afterCommand(SandboxManager)
-    return {
-      exitCode: 127,
-      durationMs: Math.round(runTime() - start),
-      stdout: '',
-      stderr,
-      spawnFailed: true,
-      violations: [],
-      tracerFailed: false,
-      mountGone: false,
-      ranMs: 0,
-    }
+    return { result: notRun(start, { exitCode: 127, stderr, spawnFailed: true }) }
   } finally {
     // The child holds its own copy; ours would keep nothing but a descriptor.
     if (traceFd !== undefined) closeSync(traceFd)
     pipes.spawned()
   }
+  return { spawned: { proc, pipes, straceLog } }
+}
 
+/** What the command's stderr said about the attempt, read whatever the capture setting. */
+interface StderrSigns {
+  /** The unfinished last line. */
+  partial: string
+  /** A line was strace's own: the trace stopped short. */
+  straceSpoke: boolean
+  /** bwrap's refusal of a mount gone as it set up (`BWRAP_MOUNT_GONE`). */
+  mountGone: boolean
+  /** `hiddenGitHint`. */
+  gitNoRepo: boolean
+  /** `grantRemovalHint`: a run captures no output. */
+  readOnlyLines: string[]
+}
+
+/** The attempt, ended: its exit, its streams, and what was seen while it ran. */
+interface Ended {
+  exitCode: number
+  stdout: string
+  stderr: string
+  ranMs: number
+  /** Linux: the tree's use, looked at while it ran (`watchTree`). */
+  looked: TreeUsage | undefined
+  /** Something of the group outlived the command. */
+  left: boolean
+  timeout: ReturnType<typeof armTimeout>
+  signs: StderrSigns
+  /**
+   * The last 16 KiB of each stream, chunks kept by reference, read on a
+   * failure only (`statedHiddenHint`, `refusedLoopbackHint`). Two chunks
+   * were kept, and a pipe that split curl's one refusal line in three
+   * left the port out of the tail.
+   */
+  outTail: Tail
+  errTail: Tail
+}
+
+/** Read the command's streams until it exits, then let its group and bridges go. */
+async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: string): Promise<Ended> {
+  const { proc, pipes } = spawned
   args.liveChildren?.add(proc)
   args.onSpawn?.(proc.pid)
   const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, args.timeoutMs)
   const armedAt = runTime()
   const ac = new AbortController()
-  // The unfinished last line of stderr, and whether a line was strace's.
-  let partial = ''
-  let straceSpoke = false
-  let mountGone = false
-  // Read whatever the capture setting, as the two above: `hiddenGitHint`.
-  let gitNoRepo = false
-  // The same for `grantRemovalHint`: a run captures no output.
-  const readOnlyLines: string[] = []
-  // And for `statedHiddenHint` and `refusedLoopbackHint`: the last 16 KiB
-  // of each stream, chunks kept by reference, read on a failure only. Two
-  // chunks were kept, and a pipe that split curl's one refusal line in
-  // three (CI, 2026-11-12) left the port out of the tail.
+  const signs: StderrSigns = {
+    partial: '',
+    straceSpoke: false,
+    mountGone: false,
+    gitNoRepo: false,
+    readOnlyLines: [],
+  }
   const outTail = new Tail()
   const errTail = new Tail()
   const [out, err] = pipes.streams(proc)
@@ -2787,15 +2832,13 @@ async function runSandboxedOnce(
     streamToString(
       err,
       (chunk) => {
-        // Read whatever the capture setting: a line of strace's own says
-        // the trace stopped short.
-        const lines = (partial + chunk).split('\n')
-        partial = (lines.pop() ?? '').slice(0, 512)
-        if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
-        if (lines.some((l) => BWRAP_MOUNT_GONE.test(l))) mountGone = true
-        if (lines.some((l) => GIT_NO_REPO.test(l))) gitNoRepo = true
+        const lines = (signs.partial + chunk).split('\n')
+        signs.partial = (lines.pop() ?? '').slice(0, 512)
+        if (lines.some((l) => STRACE_OWN_ERROR.test(l))) signs.straceSpoke = true
+        if (lines.some((l) => BWRAP_MOUNT_GONE.test(l))) signs.mountGone = true
+        if (lines.some((l) => GIT_NO_REPO.test(l))) signs.gitNoRepo = true
         for (const l of lines)
-          if (readOnlyLines.length < 64 && READ_ONLY_FS.test(l)) readOnlyLines.push(l)
+          if (signs.readOnlyLines.length < 64 && READ_ONLY_FS.test(l)) signs.readOnlyLines.push(l)
         errTail.push(chunk)
         ends.onStderr?.(chunk)
       },
@@ -2833,40 +2876,48 @@ async function runSandboxedOnce(
   // A timeout is a failure, whatever the child said: one that traps the
   // TERM and exits 0 reported success to every executor built on this.
   const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
+  return { exitCode, stdout, stderr, ranMs, looked, left, timeout, signs, outTail, errTail }
+}
 
-  // macOS: read the violation store keyed by our tagged command.
-  //
-  // The store is fed ASYNCHRONOUSLY — SRT's monitor ingests macOS unified-log
-  // records, and log delivery lags under load — so reading it immediately
-  // after child exit races the pipeline: the denial happened, the child died
-  // on it, and the store is still empty. Observed locally as the 1-in-N
-  // "denied but zero violation lines" flake (decision log 2026-08-23/24).
-  // When the exit is a FAILURE and the store is empty, give the pipeline a
-  // bounded settle window; a clean exit skips the poll entirely, so the warm
-  // path pays nothing.
-  //
-  // MEASURED (2026-08-24, ~430 runs/arm under full-suite load): the poll
-  // HALVES the loss (5.0% → 2.2%) but cannot eliminate it — the residual
-  // failures survive the whole 1 s window, meaning those records were
-  // DROPPED by the unified log under pressure, not delayed. Reporting on
-  // macOS is therefore lossy-by-OS under load; ENFORCEMENT is unaffected
-  // (every observed loss still denied the read and failed the child).
-  // EVERY record SRT's store saw for this command, unfiltered
-  // (2026-09-05). A sandboxed task that fails must say what it was denied;
-  // deciding on the user's behalf that a record was "just traversal" is how
-  // a failure ends up with an empty violations section and no explanation.
-  // Linux: the write observer's records arrive over a socket, not with the
-  // exit; `takeRecords(true)` waits until all it sent are read.
-  const records = await takeRecords(true)
-  // Read as is on darwin only. Since SRT 0.0.75 the store is fed on Linux
-  // too, by the seccomp helper's write observer — but SRT judges those
-  // reports against the GLOBAL `filesystem.allowWrite` from `initialize`
-  // (empty here; the per-task list travels in `customConfig`, which the
-  // monitor never sees), so every write a task makes to its own declared
-  // output arrived as `deny openat <output>` and, read as is, failed the
-  // task (reproduced 2026-09-04 in a Linux container: exit 1, empty
-  // stderr). On Linux the records are judged against the task's own binds
-  // below (`refusedWrites`).
+/** Every denial the attempt recorded, and those of them its config reports. */
+interface Denials {
+  recorded: SandboxViolation[]
+  violations: SandboxViolation[]
+  /** The baselines' reads and the task's own. */
+  grantedRead: string[]
+}
+
+/**
+ * The attempt's denials. `records` are EVERY record SRT's store saw for
+ * this command, unfiltered: a sandboxed task that fails must say what it
+ * was denied, and deciding on the user's behalf that a record was "just
+ * traversal" is how a failure ends up with no explanation.
+ *
+ * macOS: the store is fed asynchronously from the unified log, read once
+ * right after the child exits, with no settle window: one cost 300 ms on
+ * every clean sandboxed task (clean `echo` 331 ms sandboxed vs 16 ms
+ * plain), and a poll only halved the loss, since the log drops records
+ * under load. Reporting there is lossy; enforcement is not, and a command
+ * that could not proceed still fails on its own exit code.
+ *
+ * Linux: the store is fed by SRT's write observer, judged against the
+ * GLOBAL `allowWrite` from `initialize` (empty here; the per-task list
+ * travels in `customConfig`, which the monitor never sees), so read as
+ * is, every write to a declared output failed the task. strace never sees
+ * a write: SRT's seccomp step hands every write-intent syscall to its
+ * observer (USER_NOTIF takes precedence over strace's TRACE). So the
+ * records are judged here against the task's own binds (`refusedWrites`),
+ * and what is left is a write bwrap refused, or one into the anchor's
+ * scratch that vanished with the sandbox (B-5). Reads come from the strace
+ * log, best-effort: a parse that fails reports no Linux read.
+ */
+async function attemptDenials(
+  args: SandboxedRunArgs,
+  prepared: Prepared,
+  records: readonly SandboxViolation[],
+  straceLog: string | undefined,
+): Promise<Denials> {
+  const { baselines, scratch, held } = prepared.wrap
   const grantedRead = [...baselines.allowRead, ...args.config.allowRead]
   // A timestamp change seatbelt refused where the task may read landed
   // nothing, as on Linux (`refusedWrites`): `tsc -b` touches an up-to-date
@@ -2878,33 +2929,13 @@ async function runSandboxedOnce(
           return touched === undefined || !readableUnder(touched, grantedRead)
         })
       : []
-  // No settle window: the store is read once, right after the child exits
-  // (2026-09-05). It cost 300ms on EVERY clean sandboxed task — the
-  // full budget, since a task with nothing to report can only prove that by
-  // waiting — against 26ms for one that reports something and breaks out
-  // early. Measured: clean `echo` 331ms sandboxed vs 16ms plain.
-  //
-  // The price is that macOS feeds this store asynchronously, so a record
-  // that has not arrived yet is not reported. Enforcement is unaffected —
-  // the OS denied the operation either way, and a command that could not
-  // proceed still fails on its own exit code.
-  // Linux: parse the strace log and emit one violation per denied
-  // syscall on a path inside denyRead that wasn't unconditionally
-  // allowed. Best-effort — if parsing fails we surface no Linux
-  // violations rather than fail the whole task.
-  //
-  // strace never sees a write: SRT's seccomp step hands every write-intent
-  // syscall to its observer (USER_NOTIF, which takes precedence over
-  // strace's TRACE), and the observer feeds the store with every ATTEMPT,
-  // judged against the run-wide config, which grants no write. Judged here
-  // against this task's own binds, what is left is a write bwrap refused,
-  // or one into the anchor's scratch that vanished with the sandbox: a
-  // task that swallowed it exited 0 with nothing reported (B-5).
   const linuxViolations: SandboxViolation[] =
     process.platform === 'linux'
       ? [
           ...(straceLog
-            ? await parseStraceViolations(straceLog, args, baselines, widened).catch(() => [])
+            ? await parseStraceViolations(straceLog, args, baselines, prepared.widened).catch(
+                () => [],
+              )
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
@@ -2913,7 +2944,7 @@ async function runSandboxedOnce(
             [...bindableWrites(args.config.allowWrite), ...held.dirs],
             [...scratch, ...held.globs],
             [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
-            { entries: heldEntries, granted: args.config.allowWrite },
+            { entries: prepared.heldEntries, granted: args.config.allowWrite },
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
@@ -2923,24 +2954,36 @@ async function runSandboxedOnce(
     await unlink(straceLog).catch(() => undefined)
     liveTempFiles.delete(straceLog)
   }
-
-  // Apply the task's own ignoreViolations on top of the global defaults.
-  // SRT's wrapCommandWithSandboxMacOS doesn't actually thread customConfig.
-  // ignoreViolations through to the log monitor — that filter is set
-  // once globally at initSandbox time. So per-task user overrides have
-  // to be applied here, after read-back.
+  // The task's own `ignore` lists, on top of the global defaults: SRT's
+  // macOS wrap does not thread `customConfig.ignoreViolations` through to
+  // the log monitor, whose filter is set once at `initSandbox`.
   const recorded = [...macViolations, ...linuxViolations]
   const violations = reportableViolations(recorded, {
     within: args.reportWithin,
     linked: args.reportLinked,
     config: args.config,
   })
+  return { recorded, violations, grantedRead }
+}
+
+/**
+ * vx's own notes beside the denials, each a `hint` never counted as one,
+ * and all but the upstream note on a failure only, so none can redden a
+ * pass. Pushed onto `denials.violations`.
+ */
+function addHints(
+  args: SandboxedRunArgs,
+  ended: Ended,
+  denials: Denials,
+  baselines: Wrap['baselines'],
+): void {
+  const { exitCode, signs, outTail, errTail } = ended
+  const { recorded, violations, grantedRead } = denials
   // A write refused past the wall is not a violation (nothing a key reads),
-  // but it may be why the task failed: name it, never counted, and only on
-  // a failure, so it can never redden a pass.
-  // A write refused in a dependency's outputs is that project's task's
-  // work, never a grant here: `tsc -b` under --exclude-dependencies
-  // rebuilt its upstream, and the hints named `write: ['../p00/']`.
+  // but it may be why the task failed. A write refused in a dependency's
+  // outputs is that project's task's work, never a grant here: `tsc -b`
+  // under --exclude-dependencies rebuilt its upstream, and the hints named
+  // `write: ['../p00/']`.
   const upstream = (args.upstreamOutputs ?? []).map(toRealPath)
   const isUpstream = (p: string | undefined): p is string =>
     p !== undefined && upstream.some((u) => atOrUnder(p, u))
@@ -2970,7 +3013,7 @@ async function runSandboxedOnce(
         // Playwright says it on stdout, removing its own outputDir: its
         // tail, read on a failure only, as `statedHiddenHint` reads it.
         [
-          ...readOnlyLines,
+          ...signs.readOnlyLines,
           ...outTail
             .text()
             .split('\n')
@@ -2987,17 +3030,12 @@ async function runSandboxedOnce(
   if (upstreamWrites.size > 0)
     violations.push(upstreamWritesHint([...upstreamWrites], args.reportWithin))
 
-  // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
-  // runs differing only in the grant: with the cwd granted a failing task
-  // reports its denials normally; WITHOUT it the store stays empty across
-  // the whole settle window (11 reads, 0 records) and the child reports
-  // whatever it likes — `bun test` says only `error: An unknown error
-  // occurred (Unexpected)`. The process dies before macOS logs anything, so
-  // no amount of un-filtering can surface it.
-  //
-  // Not a guess about the cause: the cwd lying outside every allowRead
-  // prefix is a fact of the resolved baselines. Added only when the task
-  // ALREADY failed with nothing to show, so it can never redden a pass.
+  // The one denial macOS never logs: with the cwd outside every read
+  // grant the process dies before macOS logs anything, and the child
+  // reports what it likes (`bun test`: `An unknown error occurred`). Not a
+  // guess: the cwd lying outside every allowRead prefix is a fact of the
+  // resolved baselines. Added only when the task already failed with
+  // nothing to show.
   if (exitCode !== 0 && violations.length === 0 && !readableUnder(args.cwd, grantedRead)) {
     violations.push({
       timestamp: new Date(),
@@ -3019,7 +3057,7 @@ async function runSandboxedOnce(
     })
     if (hidden.length > 0)
       violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, keyOf(args)))
-    const git = gitNoRepo
+    const git = signs.gitNoRepo
       ? hiddenGitHint(args.cwd, grantedRead, baselines.denyRead, args.reportWithin)
       : undefined
     if (git !== undefined && !hidden.some((p) => atOrUnder(p, git.dir))) violations.push(git.hint)
@@ -3051,19 +3089,51 @@ async function runSandboxedOnce(
       if (refused !== undefined) violations.push(refused)
     }
   }
+}
 
+/**
+ * One attempt of `runSandboxed`: wrap, spawn, wait, read the denials, add
+ * the hints.
+ *
+ * Violations are matched by a unique per-task command prefix — SRT's
+ * `getViolationsForCommand` keys by base64 of the first 100 chars, so
+ * two tasks running the same underlying command (e.g. parallel `tsc`
+ * across packages) would otherwise collide. We prepend `: '<tag>';`
+ * (shell no-op) to make every command's first 100 chars unique.
+ */
+async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> {
+  // Elapsed time, not wall time, less time vx was stopped: see runCommand.
+  const start = runTime()
+  const { SandboxManager } = await loadSrt()
+  const ready = await prepareAttempt(args, SandboxManager, start)
+  if ('result' in ready) return ready.result
+  const { prepared } = ready
+  const { wrapped, tag, srtCommand, baselines } = prepared.wrap
+  const takeRecords = collectRecords(
+    SandboxManager.getSandboxViolationStore(),
+    srtCommand,
+    observerSocket(wrapped),
+  )
+  const started = spawnAttempt(args, prepared.wrap, takeRecords, SandboxManager, start)
+  if ('result' in started) return started.result
+  const { proc, straceLog } = started.spawned
+  const ended = await awaitAttempt(args, started.spawned, tag)
+  // Linux: the write observer's records arrive over a socket, not with the
+  // exit; `takeRecords(true)` waits until all it sent are read.
+  const denials = await attemptDenials(args, prepared, await takeRecords(true), straceLog)
+  addHints(args, ended, denials, baselines)
   afterCommand(SandboxManager)
-
+  const { exitCode, timeout, looked, signs } = ended
   return {
     exitCode,
     durationMs: Math.round(runTime() - start),
-    stdout,
-    stderr,
-    violations,
+    stdout: ended.stdout,
+    stderr: ended.stderr,
+    violations: denials.violations,
     ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
-    ...(left ? { leftRunning: true } : {}),
+    ...(ended.left ? { leftRunning: true } : {}),
     // Linux: the task's CPU and peak never reach this wait. bwrap runs it
     // in a pid namespace (`--unshare-pid`), and what the namespace's
     // processes used is not folded into bwrap's usage: a 500 ms busy loop
@@ -3077,12 +3147,12 @@ async function runSandboxedOnce(
       : looked === undefined
         ? {}
         : { cpuMs: looked.cpuMs, peakRssBytes: looked.rssBytes }),
-    ranMs,
-    mountGone: exitCode !== 0 && (mountGone || BWRAP_MOUNT_GONE.test(partial)),
+    ranMs: ended.ranMs,
+    mountGone: exitCode !== 0 && (signs.mountGone || BWRAP_MOUNT_GONE.test(signs.partial)),
     tracerFailed:
       straceLog !== undefined &&
       !timeout.timedOut() &&
-      (straceSpoke || STRACE_OWN_ERROR.test(partial)),
+      (signs.straceSpoke || STRACE_OWN_ERROR.test(signs.partial)),
   }
 }
 
