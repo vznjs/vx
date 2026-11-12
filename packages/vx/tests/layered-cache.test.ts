@@ -1455,7 +1455,7 @@ describe('LayeredCache', () => {
         'probe h3 failed: 14 UNAVAILABLE: no connection',
         'download h4 failed: HTTP 500 for h4',
         '1 more request failed the same way: 4 DEADLINE_EXCEEDED: after 0.001s',
-        '1 more request failed the same way: HTTP 500 for h4',
+        '1 more request failed the same way: HTTP 500 for <hash>',
       ])
     })
 

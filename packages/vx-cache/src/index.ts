@@ -291,6 +291,38 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
 }
 
 /**
+ * A download held to the size its `vx-size` names. Bun.serve sends a
+ * streamed answer chunked, with no Content-Length, so a body cut short
+ * ends as cleanly as a whole one; read on, it failed as a corrupt
+ * artifact, and the re-run's save said the held one never heals though
+ * the bucket's copy was whole. A transfer that failed is a miss, asked
+ * again next run. A server that names no size is not held to one.
+ */
+function sized(res: Response): Response {
+  const named = res.headers.get('vx-size')
+  if (res.body === null || named === null) return res
+  const size = Number(named)
+  let seen = 0
+  const body = res.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, out) {
+        seen += chunk.byteLength
+        if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
+        out.enqueue(chunk)
+      },
+      flush() {
+        if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
+      },
+    }),
+  )
+  return new Response(body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+  })
+}
+
+/**
  * An upload's body, held to `pace` while the fetch takes it, then `ms`
  * for the answer (`sent`). A deadline over the whole upload failed every
  * artifact slower than its size over it: 100 MB under 1.7 MB a second at
@@ -818,7 +850,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         }
         throw await refusal(res, this.hidden)
       }
-      return { body: res, durationMs: undefined }
+      return { body: sized(res), durationMs: undefined }
     }
     return null
   }

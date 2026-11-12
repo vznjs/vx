@@ -781,7 +781,8 @@ Hard invariants of the remote prefetch:
   `upload <hash> to <endpoint> failed: HTTP 413`. One failure class
   (the error's `code` when it has one, else its message with the hash
   taken out) is said once per run, and the repeats are counted at
-  close: `2 more requests failed the same way: <cause>`.
+  close: `2 more requests failed the same way: <cause>`, the cause's
+  hash written `<hash>`.
 
 ### Remote uploads (background, drained at run end)
 

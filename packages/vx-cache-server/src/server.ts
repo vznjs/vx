@@ -170,6 +170,9 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       if (blob === null) continue
       return new Response(blob.body, {
         headers: {
+          // Bun.serve drops Content-Length from a streamed body and sends it
+          // chunked, whose clean end says nothing of a body cut short.
+          'vx-size': String(blob.size),
           'content-length': String(blob.size),
           'content-type': 'application/octet-stream',
           'cache-control': cacheOf(at),
@@ -188,7 +191,11 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       const size = await read(blobs.size(nameOf(access, scope, hash)))
       if (size === null) continue
       return new Response(null, {
-        headers: { 'content-length': String(size), 'cache-control': cacheOf(at) },
+        headers: {
+          'vx-size': String(size),
+          'content-length': String(size),
+          'cache-control': cacheOf(at),
+        },
       })
     }
     return new Response(null, { status: 404 })

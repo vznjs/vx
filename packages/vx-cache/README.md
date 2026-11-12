@@ -93,7 +93,9 @@ An artifact is immutable on the server: one that did not read back
 (corrupt) is not replaced. Its re-run's upload is not sent and not
 counted as landed (a DTE worker is not told it did), and the run says
 once that the remote misses the key until the bucket's lifecycle rule
-expires it (`@vzn/vx-cache-server`'s Expiry).
+expires it (`@vzn/vx-cache-server`'s Expiry). A download that ends
+short of the size the server names (`vx-size`) is a transfer that
+failed, not a corrupt artifact: a miss, asked again next run.
 
 A refused token, or a read with no answer in time, is said once (the run's, counted on no task) and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
