@@ -79,8 +79,8 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
         .find((id) => id !== undefined)
   const keyless = keylessBy !== undefined
   const reads = policy.localRead || policy.remoteRead
-  const read = !remoteOnly && cacheable && !keyless && reads
-  const write = !remoteOnly && cacheable && (policy.localWrite || policy.remoteWrite)
+  const willRead = !remoteOnly && cacheable && !keyless && reads
+  const willWrite = !remoteOnly && cacheable && (policy.localWrite || policy.remoteWrite)
   // This key folds the key of an upstream that ran over moved inputs, while
   // the bytes on disk are not the ones that key names. With `a.txt` edited
   // while `gen` ran, `gen` withheld its save, `use` saved over the edit
@@ -88,8 +88,8 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
   // the edit's output. Only an upstream whose key this one folds: one read
   // by content (`tasks: []` and a file input) is judged by its bytes.
   const unkeyedUpstream = foldedTasks.find((u) => u.unkeyed === true)
-  const save =
-    write &&
+  const willSave =
+    willWrite &&
     args.taintedUpstream !== true &&
     unkeyedUpstream === undefined &&
     !keyless &&
@@ -110,9 +110,9 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
     remoteOnly,
     keylessBy,
     unkeyedUpstream,
-    read,
-    write,
-    save,
+    read: willRead,
+    write: willWrite,
+    save: willSave,
     deferred: args.download === 'deferred',
     outputs: cfgOut?.files ?? [],
     wsOutputs: cfgOut?.workspaceFiles ?? [],
@@ -130,7 +130,7 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
     retryCanFollow:
       maxAttempts > 1 || (!retriesSet && cacheable && !keyless && args.knownFlaky !== undefined),
     stability: inputStabilityOf(cfg.inputs, args.inputStability),
-    unsaved: cacheable && ((!remoteOnly && !save) || remoteOff('remoteWrite')),
+    unsaved: cacheable && ((!remoteOnly && !willSave) || remoteOff('remoteWrite')),
     refresh: cacheable && (!reads || remoteOff('remoteRead')),
   }
 }
