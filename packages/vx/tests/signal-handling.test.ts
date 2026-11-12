@@ -8,7 +8,7 @@
 
 import { getEventListeners } from 'node:events'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -1239,13 +1239,18 @@ describe.skipIf(process.platform !== 'linux')('Ctrl-Z (SIGTSTP) during vx run', 
     async () => {
       // The deadline passed while vx was stopped; the timer re-armed for the
       // whole stop, not the run time left, so the task outlived its 2 s.
+      // The test ends the task, 6 s after `fg`: between the deadline (2 s
+      // less the time ran) and the whole stop's re-arm (8 s). A chain of
+      // `sleep`s ended it, and `sleep` counts the stop as slept, so the
+      // task ended within ms of its deadline and a loaded vx saw it exit
+      // first (CI, 2026-11-12).
       const dir = await addProject(
         fixture.root,
         'app',
         `
           export default {
             tasks: {
-              slow: { exec: { command: 'echo $$ > pid.txt; sleep 1; sleep 1; sleep 1', timeout: '2s' } },
+              slow: { exec: { command: 'echo $$ > pid.txt; until [ -e release ]; do sleep 0.05; done', timeout: '2s' } },
             },
           }
         `,
@@ -1260,8 +1265,10 @@ describe.skipIf(process.platform !== 'linux')('Ctrl-Z (SIGTSTP) during vx run', 
       try {
         proc.kill('SIGTSTP')
         expect(await untilState(proc.pid, 'stopped', 5_000)).toBe('stopped')
-        await Bun.sleep(5_000)
+        await Bun.sleep(8_000)
         proc.kill('SIGCONT')
+        await Promise.race([proc.exited, Bun.sleep(6_000)])
+        await writeFile(path.join(dir, 'release'), '')
         const out =
           (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text())
         expect([await proc.exited, out.includes('timed out')]).toEqual([1, true])
