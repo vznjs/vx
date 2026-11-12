@@ -55,7 +55,7 @@ export const RSS_DECAY = 0.9
  * duration's mean hides, and a run 40% over it is taken at once, where
  * the mean takes three runs to reach it.
  */
-export const SLOW_DECAY = 0.9
+const SLOW_DECAY = 0.9
 
 /**
  * A report within this share of the row (and no new memory peak) leaves
