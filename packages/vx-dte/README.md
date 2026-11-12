@@ -1022,7 +1022,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     it: once on each worker that starts it, from its first dependant
     there until its last dependant anywhere ends. It then packs again in other orders, up to 64 times (fewer
     past 100 tasks, none past 6400), each new worker's task a random way
-    into its slack, and keeps the one holding least by the same end. It
+    into its slack, and keeps the one holding least by the same end. How far that is from the least
+    a run can hold: `scripts/optimum.ts` plays small graphs and
+    `scripts/optimum.py` solves each exactly (CP-SAT). It
     packs the whole run, past the window. Each next new
     worker of a size is counted as joining later by the spread this run's
     joins of it showed (the slowest less the fastest, over the joins
