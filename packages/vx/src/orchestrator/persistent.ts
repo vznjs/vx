@@ -303,6 +303,26 @@ export function onServerExit(child: Child, slot: string, fn: (code: number) => v
   slots.set(slot, fn)
 }
 
+const exitNotes = new WeakMap<Child, (code: number) => string[]>()
+
+/**
+ * What a ready server's own failing exit needs said beside its code: the
+ * shell verdict and sandbox note one dead before ready gets
+ * (persistent-task.ts `exitNotes`). Each place that names the exit
+ * asks `takeExitNotes`; the first one says them.
+ */
+export function explainServerExit(child: Child, notes: (code: number) => string[]): void {
+  exitNotes.set(child, notes)
+}
+
+/** The notes for a server's exit, once: a crash named twice explains itself once. */
+export function takeExitNotes(child: Child | undefined, code: number): string[] {
+  const notes = child === undefined ? undefined : exitNotes.get(child)
+  if (notes === undefined) return []
+  exitNotes.delete(child!)
+  return notes(code)
+}
+
 /** The child has exited or been killed; Bun sets these once it reaps it. */
 export function hasEnded(child: Child): boolean {
   return child.exitCode !== null || child.signalCode !== null
@@ -435,7 +455,8 @@ function sayHeldExit(
 ): void {
   onServerExit(child, 'held', (code) => {
     if (!state.stopping && !handed.has(child) && code !== 0)
-      out.bus.emit({ kind: 'run:status', line: `vx: ${id} exited with code ${code}`, warn: true })
+      for (const line of [`vx: ${id} exited with code ${code}`, ...takeExitNotes(child, code)])
+        out.bus.emit({ kind: 'run:status', line, warn: true })
   })
 }
 

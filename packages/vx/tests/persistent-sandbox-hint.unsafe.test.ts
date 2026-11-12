@@ -2,6 +2,7 @@
 // outside its grants read only as the tool's own "not found", with no word
 // of the sandbox (2026-10-03).
 import { realpathSync } from 'node:fs'
+import path from 'node:path'
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
@@ -53,5 +54,49 @@ describe.skipIf(!available)('a server that exits before it is ready', () => {
   // Exit 0 before ready is ready: nothing failed, so nothing is hinted.
   it('CONTROL: in the sandbox, exiting 0, is not', async () => {
     expect(await said('exit 0', `sandbox: { allow: { read: ['.'] } },`)).toEqual(['success', []])
+  })
+})
+
+// `persistent: {}` is ready at its spawn, so its failing exit came after
+// ready and was said only as "exited with code 1".
+describe.skipIf(!available)('a server that exits after it is ready', () => {
+  let root: string
+  beforeEach(async () => {
+    root = realpathSync(await makeWorkspace({ prefix: 'vx-server-hint-ready-' }))
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  const said = async (command: string, sandbox: string) => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { dev: { exec: {
+        command: ${JSON.stringify(command)},
+        persistent: {},
+        ${sandbox}
+      } } } }\n`,
+    })
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts'),
+        'run',
+        'dev',
+        '--all',
+      ],
+      { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [out, err] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    return (out + err).split('\n').filter((l) => l.includes('ran in the sandbox'))
+  }
+
+  it('in the sandbox, failing, is told the sandbox reports nothing for it', async () => {
+    expect(await said('exit 1', `sandbox: { allow: { read: ['.'] } },`)).toEqual([HINT])
+  })
+
+  it('CONTROL: unsandboxed, is not', async () => {
+    expect(await said('exit 1', '')).toEqual([])
   })
 })

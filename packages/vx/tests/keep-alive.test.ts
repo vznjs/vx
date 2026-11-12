@@ -857,6 +857,54 @@ describe('a persistent server that dies before the run stops it', () => {
     })
   }, 30_000)
 
+  // A server dead after ready said only "exited with code 127": the shell's
+  // verdict went to one that died before it, so `persistent: {}` (ready at
+  // spawn) never had it.
+  const verdicts = async (tasks: string[]) => {
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', ...tasks, '--all', '--output-logs=none'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const lines = (out + err).split('\n')
+    return { code, said: lines.filter((l) => l.startsWith('vx: ') || l.startsWith('[vx] exit')) }
+  }
+
+  it('a server not found after ready is told the shell verdict', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: 'vitee --port 3', persistent: {} } } } }`,
+    )
+    const r = await verdicts(['dev'])
+    expect(r.code).toBe(1)
+    expect(r.said[0]).toBe('vx: app#dev exited with code 127')
+    expect(r.said[1]).toStartWith(
+      `[vx] exit 127 is the shell's "command not found": vitee is not on this task's PATH — vx puts `,
+    )
+    expect(r.said).toHaveLength(2)
+  }, 30_000)
+
+  it('a dependency-only server that crashes after ready is told the verdict once', async () => {
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; kill -SEGV $$'))
+    expect(await verdicts(['e2e'])).toEqual({
+      code: 1,
+      said: [
+        'vx: app#srv exited with code 139 while the run went on',
+        '[vx] exit 139 is how the shell reports a death by SIGSEGV (11): the program crashed in native code (a native module, or the runtime itself) — re-run the command by hand to reproduce',
+        'vx: app#srv exited with code 139 before the run stopped it',
+      ],
+    })
+  }, 30_000)
+
   // C-46: a kept server that ended cleanly before the end is no crash.
   it('a requested server that exited 0 while its dependant ran leaves the run green', async () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 0'))

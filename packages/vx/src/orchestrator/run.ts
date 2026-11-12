@@ -186,6 +186,7 @@ import {
   sessionEnd,
   serverUsers,
   stopServer,
+  takeExitNotes,
   takeHeldServers,
   unneededServers,
 } from './persistent.js'
@@ -1780,6 +1781,7 @@ async function runOnBus(
     for (const c of crashedPersistent) {
       const code = typeof c.code === 'number' ? c.code : signalExitCode(c.code)
       warnOf(log)(`vx: ${c.id} exited with code ${code} before the run stopped it`)
+      for (const line of takeExitNotes(persistentRegistry.get(c.id), code)) warnOf(log)(line)
     }
     // Outputs that never came home are not an error, but a silent `dist/`
     // that is empty-or-stale would be: name every task whose bytes are
@@ -2076,6 +2078,7 @@ async function runOnBus(
               ? `; stopping ${others} other persistent task${others === 1 ? '' : 's'}`
               : ''),
         )
+        for (const line of takeExitNotes(keepAlive.children[first.i], first.code)) warnOf(log)(line)
       }
       // Under a stop the abort is already taking them down with the stop's
       // signal; a second SIGTERM in its grace cut short the graceful

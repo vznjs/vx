@@ -617,7 +617,9 @@ Semantics:
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
-the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
+the run went on`), so a dependant failing against it reads why, with the line a crash
+  before ready gets (an exit 127's PATH verdict, a sandboxed server's
+  note), said once. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). A task that reaches it
   through a group or another server (`e2e` on `web` on `api`) depends on
   it too. A cached dependant that
