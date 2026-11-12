@@ -294,7 +294,7 @@ function printPruned(
   const { historyRows = 0, historyBytes = 0 } = result
   if (json) {
     const { evicted, bytesFreed, orphans, orphanBytes } = result
-    const history = dry ? {} : { historyRows, historyBytes }
+    const history = dry || historyRows === 0 ? {} : { historyRows, historyBytes }
     ui.data(
       'out',
       `${JSON.stringify({ dry: dry, evicted, bytesFreed, orphans, orphanBytes, ...history })}\n`,

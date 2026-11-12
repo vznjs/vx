@@ -107,7 +107,7 @@ bunx @vzn/vx init   # installs vx, writes .vx/workspace.ts and a root vx.config.
 bun add -g @vzn/vx
 ```
 
-A local install's `vx` is not on PATH: run it as `bunx vx` (or `npx vx`).
+A local install's `vx` is not on PATH: run it as `bunx @vzn/vx` (or `npx @vzn/vx`).
 A global vx run inside a project that installs `@vzn/vx` hands the call
 to that project's own, so the lockfile's version runs.
 

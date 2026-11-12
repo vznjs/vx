@@ -8,8 +8,8 @@ pipeline with a plugin hook at every stage.
 
 ```sh
 bunx @vzn/vx init       # installs vx; .vx/workspace.ts and a vx.config.ts (per package in a Turbo or Nx repo)
-bunx vx lock            # after editing a vx.config: runs read the lock
-bunx vx run build --all # a local install's vx is not on PATH: bunx (or npx) runs it
+bunx @vzn/vx lock            # after editing a vx.config: runs read the lock
+bunx @vzn/vx run build --all # a local install's vx is not on PATH: bunx (or npx) runs it
 ```
 
 - Documentation: <https://vznjs.github.io/vx/>

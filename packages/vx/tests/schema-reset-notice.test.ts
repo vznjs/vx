@@ -12,7 +12,7 @@ import { Database } from 'bun:sqlite'
 import { run } from './helpers/orchestrator.js'
 import { run as cli } from './helpers/cli.js'
 import { SCHEMA_VERSION } from '../src/cache/index.js'
-import { formatBytes } from '../src/util/index.js'
+import { formatBytes, treeBytes } from '../src/util/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 let root: string
@@ -195,14 +195,12 @@ describe('an upgrade resets the cache in silence', () => {
         ...rows.map((r) => ({ key: r.hash, bytes: r.bytes, inline: true })),
         ...files.map((f) => ({
           key: f.slice(0, -'.tar.zst'.length),
-          bytes: Bun.file(path.join(cacheDir, f)).size,
+          bytes: treeBytes(path.join(cacheDir, f)),
           inline: false,
         })),
         ...trees.map((t) => ({
           key: t.slice(0, -'.tree'.length),
-          bytes: Array.from(
-            new Bun.Glob('**').scanSync({ cwd: path.join(cacheDir, t), dot: true }),
-          ).reduce((n, f) => n + Bun.file(path.join(cacheDir, t, f)).size, 0),
+          bytes: treeBytes(path.join(cacheDir, t)),
           inline: false,
         })),
       ]

@@ -1,25 +1,21 @@
 // A sandboxed `go build` on a fresh home was refused its telemetry file,
 // then `mkdir ~/.cache`, and failed on the second. The hint granted only
 // the first one's directory, which left the build failing (2026-11-11).
-import { mkdirSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { outsideWritesHint } from '../src/exec/sandbox-runtime.js'
 
 describe('the refused outside writes hint', () => {
-  // Not under the host temp root: a write there is told to use $TMPDIR.
-  const base = path.join(import.meta.dir, '.tmp-outside-writes-hint')
-  let home = ''
+  // Not under the host temp root (a write there is told to use $TMPDIR),
+  // and never made: the test checkout is read-only in a sandboxed run.
+  const base = `/vx-outside-writes-hint-${process.pid}`
+  const home = path.join(base, 'home')
   beforeEach(() => {
-    mkdirSync(path.join(base, 'home'), { recursive: true })
-    mkdirSync(path.join(base, 'ws', 'app'), { recursive: true })
-    home = realpathSync(path.join(base, 'home'))
     spyOn(os, 'homedir').mockReturnValue(home)
   })
   afterEach(() => {
     mock.restore()
-    rmSync(base, { recursive: true, force: true })
   })
   const hint = (paths: string[], made: string[]): string =>
     outsideWritesHint(paths, new Set(made), [path.join(base, 'ws')], path.join(base, 'ws', 'app'))

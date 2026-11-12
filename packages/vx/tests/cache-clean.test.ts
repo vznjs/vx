@@ -624,7 +624,7 @@ describe('vx cache clean with no bound clears the cache', () => {
       const old = Date.now() - 40 * 86_400_000
       const db = new Database(dbFile)
       db.run('PRAGMA journal_mode = DELETE')
-      const insert = db.prepare(
+      const insert = db.query(
         "INSERT INTO runs (hash, project, task, status, exit_code, duration_ms, started_at, ended_at) VALUES (?, 'app', 'build', 'success', 0, 1, ?, ?)",
       )
       db.transaction(() => {
