@@ -330,8 +330,7 @@ on the base branch (main): run --all (the cache skips what did not
 change), or name the last good commit, --affected=<sha>`. `HEAD~1`
   would see only one commit of a multi-commit push. A rebase stopped on
   a conflict or an `edit` is on the branch it rebases, not the detached
-  HEAD it stopped at: the base is the merge base with the branch it
-  rebases onto.
+  HEAD it stopped at, so the default base holds.
 - CI on the base branch needs only the current commit: `--all` reads no
   history, and the cache runs only what changed.
 - A shallow clone needs no more history. vx fetches what the merge base

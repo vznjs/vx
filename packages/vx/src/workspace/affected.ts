@@ -7,7 +7,7 @@
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
 import { lstatSync } from 'node:fs'
-import { lstat, readlink, realpath, stat } from 'node:fs/promises'
+import { lstat, readFile, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   CHECK_ATTR,
@@ -1485,7 +1485,9 @@ async function baseBranchRef(
         : [`refs/remotes/origin/${configured}`]),
       ...names.map((n) => `refs/heads/${n}`),
     ]),
-    text(['symbolic-ref', '--short', '-q', 'HEAD']),
+    text(['symbolic-ref', '--short', '-q', 'HEAD']).then(
+      async (h) => h || (await rebasing(workspaceRoot, text)),
+    ),
   ])
   const have = new Set(refs.split('\n'))
   const at = (branch: string, ref: string) => ({
@@ -1500,6 +1502,32 @@ async function baseBranchRef(
   for (const n of names) if (have.has(`origin/${n}`)) return at(n, `origin/${n}`)
   for (const n of names) if (have.has(n)) return at(n, n)
   return undefined
+}
+
+/**
+ * The branch a rebase in progress replays, or `''`: it stops on a detached
+ * HEAD (a conflict, an `edit`), the base branch's tip when the first
+ * commit stops, and that HEAD is the rebased branch, not the base branch.
+ * Asked only when HEAD is detached; `--git-path` finds a linked
+ * worktree's own git dir.
+ */
+async function rebasing(
+  workspaceRoot: string,
+  text: (args: string[]) => Promise<string>,
+): Promise<string> {
+  const paths = await text([
+    'rev-parse',
+    '--git-path',
+    'rebase-merge/head-name',
+    '--git-path',
+    'rebase-apply/head-name',
+  ])
+  for (const p of paths.split('\n')) {
+    if (p === '') continue
+    const name = await readFile(path.resolve(workspaceRoot, p), 'utf8').catch(() => '')
+    if (name.startsWith('refs/heads/')) return name.trim().slice('refs/heads/'.length)
+  }
+  return ''
 }
 
 /**
