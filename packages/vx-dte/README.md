@@ -1001,6 +1001,10 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     asked to join as that task gets ready. The plan packs to the longest
     chain from now first, then past it by a warm-up, then to the best
     end; a packing that leaves out a task fits no worker and is not
+    used. A task reading files an uncached upstream left on its worker
+    is packed there, or anywhere else with that upstream's time added, as
+    the run makes it again first; the worker holding them stays while it
+    has such a task to come.
     used. It then packs again in other orders, up to 64 times (fewer
     past 100 tasks, none past 6400), each new worker's task a random way
     into its slack, and keeps the one holding least by the same end. It

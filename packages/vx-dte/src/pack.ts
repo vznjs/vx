@@ -277,14 +277,36 @@ export function pack(
     }
     return top
   }
+  // Where each upstream's files lie that only its worker holds (`PlanTask.reads`).
+  const heldOn = new Map<string, { worker: string; ms: number }>()
+  for (const w of workers)
+    for (const [id, ms] of w.holds ?? []) heldOn.set(id, { worker: w.id, ms })
   for (let i = 0; i < n; i++) if (waits[i] === 0) push(i)
   while (ready.length > 0) {
     const i = pop()
     const t = tasks[i]!
-    const ms = t.ms!
     const r = readyAt[i]!
-    const by = latest(i)
+    const reads = t.reads
+    // On a worker other than the one holding an upstream's files, that
+    // upstream runs again first: main's deploy ran its 25 s build again
+    // when the build's worker left (2026-11-11).
+    const again = (bay: string): number => {
+      if (reads === undefined) return 0
+      let more = 0
+      for (const u of reads) {
+        const p = placed.get(u)
+        if (p !== undefined) {
+          if (p.worker !== bay) more += tasks[index.get(u)!]!.ms!
+          continue
+        }
+        const h = heldOn.get(u)
+        if (h !== undefined && h.worker !== bay) more += h.ms
+      }
+      return more
+    }
+    let ms = t.ms!
     let best: Bay | undefined
+    let bestMs = ms
     let bestAt = Infinity
     let bestCost = Infinity
     // One idle now could take it: letting it go to ask another later is churn.
@@ -294,17 +316,23 @@ export function pack(
     let real = false
     for (const bay of bays) {
       if (!suits(bay, t)) continue
-      const at = first(bay, r, by, ms, t.cores, t.memory)
+      const more = again(bay.id)
+      const len = t.ms! + more
+      const at = first(bay, r, latest(i) - more, len, t.cores, t.memory)
       if (at === undefined) continue
       if (bay.end === 0 && bay.given.length === 0) idle = true
-      const cost = bay.cores * Math.max(0, at + ms - bay.end)
+      const cost = bay.cores * Math.max(0, at + len - bay.end)
       if (cost < bestCost || (cost === bestCost && at < bestAt)) {
         real = bay.size === undefined
         best = bay
         bestAt = at
         bestCost = cost
+        bestMs = len
       }
     }
+    const fresh = t.ms! + again('')
+    const by = latest(i) - (fresh - t.ms!)
+    ms = fresh
     // A new one, the smallest it fits, joining as the task is ready (or
     // later, as `late` asks): taken when none has room by its latest start,
     // or when keeping one idle until then costs more than a warm-up.
@@ -347,6 +375,7 @@ export function pack(
         }
         bays.push(best)
         bestAt = at
+        bestMs = ms
       }
     }
     if (best === undefined) {
@@ -354,22 +383,24 @@ export function pack(
       // None left to start: the soonest room any has, late.
       for (const bay of bays) {
         if (!suits(bay, t)) continue
-        const at = first(bay, r, Infinity, ms, t.cores, t.memory)
+        const len = t.ms! + again(bay.id)
+        const at = first(bay, r, Infinity, len, t.cores, t.memory)
         if (at !== undefined && at < bestAt) {
           best = bay
           bestAt = at
+          bestMs = len
         }
       }
       if (best === undefined) continue
     }
-    if (strict && bestAt > by + 1e-6) return undefined
-    hold(best, bestAt, bestAt + ms, t.cores, t.memory)
-    best.end = Math.max(best.end, bestAt + ms)
+    if (strict && bestAt + bestMs > latest(i) + t.ms! + 1e-6) return undefined
+    hold(best, bestAt, bestAt + bestMs, t.cores, t.memory)
+    best.end = Math.max(best.end, bestAt + bestMs)
     best.given.push(t.id)
     placed.set(t.id, { worker: best.id, at: bestAt, ready: r })
-    end = Math.max(end, bestAt + ms)
+    end = Math.max(end, bestAt + bestMs)
     for (const j of after[i]!) {
-      readyAt[j] = Math.max(readyAt[j]!, bestAt + ms)
+      readyAt[j] = Math.max(readyAt[j]!, bestAt + bestMs)
       if (--waits[j]! === 0) push(j)
     }
   }

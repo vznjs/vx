@@ -39,6 +39,11 @@ export interface SimTask {
   readonly platform?: string
   /** Core's probe found it held, and its restore then failed: it runs (`ran`) once ready. */
   readonly restoreFails?: boolean
+  /**
+   * Uncached, it leaves files its dependants read (`leaves`): they run on
+   * its worker, or run it again first. Else an uncached one leaves none.
+   */
+  readonly leaves?: boolean
 }
 
 export interface SimOptions {
@@ -141,7 +146,14 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         deps: [...t.deps],
         ...(t.platform === undefined ? {} : { platform: t.platform }),
         config: {
-          ...(t.exec ? { exec: { command: 'x' } } : {}),
+          ...(t.exec
+            ? {
+                exec: {
+                  command: 'x',
+                  ...(t.cache || t.leaves === true ? {} : { sandbox: { allow: {} } }),
+                },
+              }
+            : {}),
           ...(t.cache ? { cache: true } : {}),
         },
       } as unknown as TaskNode,
@@ -177,6 +189,25 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   let tails = tailsMs(nodes, durationMs)
   const tail = (id: string): number => tails(id)
 
+  // Each task that leaves files, and the workers holding them (`Orchestrator.kept`).
+  const keptOn = new Map<string, Set<string>>()
+  const keep = (task: string, worker: string): void => {
+    const on = keptOn.get(task)
+    if (on === undefined) keptOn.set(task, new Set([worker]))
+    else on.add(worker)
+  }
+  const readsOf = new Map<string, string[]>()
+  const reads = (id: string): string[] => {
+    let r = readsOf.get(id)
+    if (r !== undefined) return r
+    const out = new Set<string>()
+    for (const d of byId.get(id)!.deps) {
+      if (byId.get(d)!.leaves === true) out.add(d)
+      for (const x of reads(d)) out.add(x)
+    }
+    readsOf.set(id, (r = [...out]))
+    return r
+  }
   let now = 0
   const done = new Set<string>()
   const queue = new Queue(how, tail, need)
@@ -240,6 +271,14 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     workers.filter((w) => w.joinedAt !== undefined && w.leftAt === undefined)
   const starting = (): Live[] =>
     workers.filter((w) => w.joinedAt === undefined && w.cancelledAt === undefined)
+  const live = (id: string): boolean =>
+    workers.some((w) => w.id === id && w.joinedAt !== undefined && w.leftAt === undefined)
+  // As `Orchestrator.planState`: what each worker holds that no cache does.
+  const holdsOf = (id: string): { holds?: ReadonlyMap<string, number> } => {
+    let held: Map<string, number> | undefined
+    for (const [u, on] of keptOn) if (on.has(id)) (held ??= new Map()).set(u, durationMs(u) ?? 0)
+    return held === undefined ? {} : { holds: held }
+  }
 
   // Workers whose tasks use all their cores now, and tasks sent to one.
   const overloaded = new Set<string>()
@@ -336,7 +375,15 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
             ? {}
             : { soon: soon.slice(0, 4 * bins.length + 8), next: (id) => nextOf(id, endsAt) }),
           want: (id) => placing.want(id),
-          gate: (id) => placing.gate(id, now),
+          // As `Orchestrator.pin`: on the live worker holding its upstreams' files.
+          gate: (id) => {
+            const g = placing.gate(id, now)
+            if (g === 'wait') return g
+            for (const u of reads(id))
+              for (const on of keptOn.get(u) ?? [])
+                if (live(on)) return g.only === undefined || g.only === on ? { only: on } : 'wait'
+            return g
+          },
         })) {
           to.set(id, b)
         }
@@ -344,11 +391,18 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       const w = bin.w
       if (overloaded.has(w.id)) overSent++
       const ran = byId.get(id)!.ran!
+      // Its upstreams' files not here: each runs again first (`Orchestrator.remake`).
+      let again = 0
+      for (const u of reads(id))
+        if (keptOn.get(u)?.has(w.id) !== true) {
+          again += byId.get(u)!.ran?.ms ?? 0
+          keep(u, w.id)
+        }
       w.running.set(id, {
         id,
         booked: need(id),
         cores: ran.cores,
-        left: ran.ms,
+        left: ran.ms + again,
         startedAt: now,
         knownMs: durationMs(id),
       })
@@ -417,6 +471,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         size: sizeOf.get(w.id)?.name,
         at: 0,
         ...(drainAt.has(w.id) ? { drainIn: Math.max(0, drainAt.get(w.id)! - now) } : {}),
+        ...holdsOf(w.id),
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
           id: r.id,
@@ -603,6 +658,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         if (r.left <= 1e-6) {
           w.running.delete(r.id)
           w.has.add(r.id)
+          if (byId.get(r.id)!.leaves === true) keep(r.id, w.id)
           endedAt.set(r.id, now)
           if (r.knownMs !== undefined && r.knownMs > 0) {
             finished.took += now - r.startedAt
