@@ -9,7 +9,12 @@ import { describe, expect, it } from 'bun:test'
 import { taskDefinition } from '../src/graph/definition.js'
 import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { assembleRunRecords, type RunRecordsInput } from '../src/orchestrator/run-records.js'
+import {
+  assembleRunRecords,
+  foldOutcomes,
+  type RunRecordsInput,
+} from '../src/orchestrator/run-records.js'
+import { type Notice, onNotice } from '../src/util/notice.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { VERSION } from '../src/version.js'
 
@@ -199,6 +204,28 @@ describe('assembleRunRecords', () => {
     const totals = formatRunSummary(outcomes, 10).filter((l) => l.includes(' total'))
     expect(totals).toStrictEqual([
       '            1 failed · 4 success · 1 skipped · 1 not run · 7 total',
+    ])
+  })
+})
+
+describe('foldOutcomes', () => {
+  it('keeps the outcome and says the fault when what it hands a task to throws', () => {
+    const said: Notice[] = []
+    onNotice((n) => said.push(n))
+    const a = outcome('a#build', 'success')
+    const b = outcome('b#build', 'success')
+    const nodes = new Map([
+      [a.node.id, a.node],
+      [b.node.id, b.node],
+    ])
+    const fold = foldOutcomes(nodes, (o) => {
+      if (o === a) throw new Error('disk full')
+    })
+    fold.subscriber({ kind: 'task:complete', node: a.node, outcome: a })
+    fold.subscriber({ kind: 'task:complete', node: b.node, outcome: b })
+    expect(fold.outcomes).toEqual([a, b])
+    expect(said).toEqual([
+      { kind: 'line', tone: 'warn', text: '[vx] onFinish observer threw for a#build: disk full\n' },
     ])
   })
 })

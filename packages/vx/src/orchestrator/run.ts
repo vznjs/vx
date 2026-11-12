@@ -193,6 +193,7 @@ import { askRemote, serversToHold } from './held-servers.js'
 import { writeRunFailures } from './run-failures.js'
 import {
   assembleRunRecords,
+  foldOutcomes,
   recordLateRemoteErrors,
   type RecordedOutcome,
   runRecordOf,
@@ -901,6 +902,7 @@ async function runOnBus(
   // holding the handle open for a dev server's whole lifetime would be
   // worse.
   let live: ReturnType<typeof serveLive> | undefined
+  let unfold = (): void => {}
   let cacheClosed = false
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
@@ -1552,6 +1554,18 @@ async function runOnBus(
         }),
       )
     }
+    // History, the kept bytes and the report read the graph's outcomes
+    // from the stream, as every other surface does.
+    const fold = foldOutcomes(
+      nodes,
+      keeper === undefined && stream === undefined
+        ? undefined
+        : (o) => {
+            keeper?.taskDone(o)
+            streamHit(o)
+          },
+    )
+    unfold = bus.subscribe(fold.subscriber)
     // A dependency-only server stops once no task left uses it, not at the
     // end of the graph: it held a worker's cores for nothing. Not under a
     // hold, whose next cycle may reuse it.
@@ -1627,10 +1641,8 @@ async function runOnBus(
         if (root !== undefined && o.blockedBy === undefined) o.taintedBy = root
         taint.settled(o)
         judgeFlaky(o)
-        keeper?.taskDone(o)
         log.taskComplete(o.node, o)
         if (sinceReady.size > 0) releaseSinceReady(o.node.id)
-        streamHit(o)
         demand.finished(o.node.id)
         release(o.node.id)
         // A server that dies while the graph runs is no longer running:
@@ -1763,13 +1775,14 @@ async function runOnBus(
     })
 
     // Every batch the stream sent has answered: what landed is not written again.
+    unfold()
     const streamed = await stream?.finish()
     const landed = new Set(streamed?.landed.map((s) => s.item))
     mark('run graph')
 
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
-    const list = [...outcomes.values()]
+    const list = fold.outcomes
     // A platform skip, and a skip it blocked, is no failure: the task is not this machine's.
     const ok = list.every(
       (o) =>
@@ -1985,15 +1998,19 @@ async function runOnBus(
     // After the drain, so the summary says what the uploads moved; a live
     // sink's task records went out as each task ended.
     const sinks = telemetry
+    // At the graph's end, or with `after` once a kept server's wait has
+    // decided: its outcome changed in place, so its records are built again.
     const summarize = async (
       final: TaskOutcome[],
       runOk: boolean,
-      timed?: typeof step,
-      ended = { at: endedAtMs, totalMs },
+      after?: { at: number; totalMs: number },
     ): Promise<void> => {
       if (sinks === undefined || runContextRecord === undefined) return
       sinks.endServers(final)
-      const tasks = final === list ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
+      const ended = after ?? { at: endedAtMs, totalMs }
+      const timed = after === undefined ? step : undefined
+      const tasks =
+        after === undefined ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
       const summary = assembleRunSummary(runContextRecord, tasks, {
         startedAt: endedAtMsAtStart,
         endedAt: ended.at,
@@ -2014,7 +2031,7 @@ async function runOnBus(
     // A kept server can still fail the run in the wait below: its summary
     // goes out once the wait has decided, as its history does, or every
     // sink (vx-ci's job summary) read a pass over the exit 1.
-    if (!historyAfterWait) await summarize(list, ok, step)
+    if (!historyAfterWait) await summarize(list, ok)
     // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
     // + time-bounded inside teardownPlugins, so a faulty plugin can neither
     // fail nor hang the run. Here on the normal path, after the drains
@@ -2114,16 +2131,15 @@ async function runOnBus(
       // A stop's own kill is no crash: the user ended the session.
       const crashed = !stop.signal.aborted && first.code !== 0
       if (crashed) failServer(outcomes, node.id, first.code)
-      const final = [...outcomes.values()]
       if (historyAfterWait) {
         recordHistory(() => {
           // A writer's open: another vx version may have reset the index
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            runHistory(local).recordRunBundle(recordsOf(final, ok && !crashed))
+            runHistory(local).recordRunBundle(recordsOf(list, ok && !crashed))
             runHistory(local).recordMeasures([...measured.values()], head)
-            recordFailures(final, local)
+            recordFailures(list, local)
           } finally {
             local.close()
           }
@@ -2135,7 +2151,7 @@ async function runOnBus(
         // usual end (item 854).
         const stopped = stop.signal.aborted
         const told = stopped
-          ? final.map((o) =>
+          ? list.map((o) =>
               keepAlive.nodes.some((n) => n.id === o.node.id) && isPassStatus(o.status)
                 ? ({
                     ...o,
@@ -2145,13 +2161,13 @@ async function runOnBus(
                   } as AbortedOutcome)
                 : o,
             )
-          : final
-        await summarize(told, ok && !crashed && !stopped, undefined, {
+          : list
+        await summarize(told, ok && !crashed && !stopped, {
           at: Date.now(),
           totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
         })
       }
-      return { ok: ok && !crashed, outcomes: final }
+      return { ok: ok && !crashed, outcomes: list }
     }
 
     return { ok, outcomes: list }
@@ -2165,6 +2181,7 @@ async function runOnBus(
     // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
     log.runDone?.()
+    unfold()
     live?.dispose()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
