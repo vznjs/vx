@@ -618,7 +618,7 @@ x64, 4 cores, vx from source, Turborepo 2.11.7:
 | Turborepo 2.11.7                                  | 276 ms     |
 
 vx now starts its first task about 20% sooner than Turborepo; the rest
-of the cold run is unchanged. History: `docs/history/ws-x.md` X-212, X-216.
+of the cold run is unchanged.
 
 ## CI timings file (2026-10-09)
 

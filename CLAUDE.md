@@ -110,7 +110,7 @@ private/vx-servers      compose.yaml: the dte, cache and history servers' images
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
                         `metadata.internal`, so that command offers nothing else; tests/skills-install.unsafe.test.ts)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
-                        history/ holds the shipped record STATUS moved out (read it only when an item's why matters)
+                        history/lessons.md holds the rules learned the hard way
 ```
 
 `packages/` holds what ships to npm; `private/` holds what never ships (the site,
