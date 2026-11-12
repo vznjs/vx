@@ -1,6 +1,6 @@
-/* The landing (2026-11-12): one dark world. The hero is a stage (the
-   graph in perspective over an endless grid), every band below is a panel
-   of light on black. Display type is set huge and tight; labels are mono
+/* The landing (2026-11-12): one dark world under a retro sunset. The hero
+   is a stage (the graph, gently tilted, before a striped sun sinking into
+   an endless grid), every band below is a panel of light on black. Display type is set huge and tight; labels are mono
    capitals. Tones match the graph: core chartreuse, reads cyan, remotes
    orange, Distributed task execution violet, reports pink.
    Motion lives in .js / .play, which only scripts set. */
@@ -12,6 +12,10 @@
   --tone-dte: #b794ff;
   --tone-report: #f472b6;
   --void: #05060a;
+  --sun-1: #ffd36e;
+  --sun-2: #ff8a3d;
+  --sun-3: #ff4f8b;
+  --sun-4: #b26bff;
   --panel: rgba(16, 19, 26, 0.72);
   --hair: rgba(148, 170, 200, 0.14);
   --nav-h: var(--sl-nav-height, 4rem);
@@ -33,7 +37,12 @@
   --tone: var(--tone-report);
 }
 :root:has(.vx-stage-page) header.header {
-  background: var(--void);
+  background: #06051a;
+}
+/* The stage and the bands run edge to edge, under the nav. */
+:root:has(.vx-stage-page) main .content-panel {
+  padding: 0;
+  border: 0;
 }
 
 /* Display type shared by the hero and every band. */
@@ -49,11 +58,13 @@
 .vx-stage-page h1 em,
 .vx-stage-page h2 em {
   font-style: normal;
+  text-shadow: none;
   background: linear-gradient(
     100deg,
-    var(--tone-core) 10%,
-    var(--tone-read) 60%,
-    var(--tone-dte) 95%
+    var(--sun-1) 5%,
+    var(--sun-2) 35%,
+    var(--sun-3) 65%,
+    var(--sun-4) 95%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -70,9 +81,14 @@
 /* ================= the stage ================= */
 .stage {
   position: relative;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% 34%, rgba(198, 248, 78, 0.07), transparent 70%),
-    var(--void);
+  background: linear-gradient(
+    #06051a 0%,
+    #120a2e 30%,
+    #3a1146 52%,
+    #6b1d4f 58%,
+    #0b0616 58.2%,
+    #05040c 100%
+  );
 }
 .stage-pin {
   position: relative;
@@ -87,8 +103,8 @@
   position: absolute;
   inset: 40% -50% -20%;
   background-image:
-    linear-gradient(rgba(94, 224, 255, 0.16) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(94, 224, 255, 0.16) 1px, transparent 1px);
+    linear-gradient(rgba(255, 79, 139, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 79, 139, 0.3) 1px, transparent 1px);
   background-size: 64px 64px;
   transform: perspective(500px) rotateX(62deg);
   transform-origin: 50% 0;
@@ -141,6 +157,7 @@
   min-width: 0;
 }
 .stage h1 {
+  text-shadow: 0 6px 48px rgba(6, 5, 26, 0.7);
   margin: 28px 0 0;
   font-size: clamp(54px, 10.5vw, 168px);
 }
@@ -155,7 +172,8 @@
   max-width: 34em;
   margin: 28px 0 0;
   font: 400 clamp(17px, 1.6vw, 21px) / 1.5 var(--font-body);
-  color: #aeb8ad;
+  color: #e4dbe8;
+  text-shadow: 0 2px 18px rgba(6, 5, 26, 0.9);
 }
 .stage-actions {
   display: flex;
@@ -239,7 +257,7 @@
   perspective-origin: 50% 20%;
 }
 .stage-tilt {
-  transform: rotateX(30deg);
+  transform: rotateX(14deg);
   transform-origin: 50% 40%;
   transform-style: preserve-3d;
 }
@@ -339,8 +357,12 @@
 .map-svg .node.on .node-sub {
   fill: var(--tone);
 }
-.stage.telling .map-svg .node:not(.on) {
-  opacity: 0.55;
+/* Unlit boxes dim their ink, not their face, so the sun stays behind them. */
+.stage.telling .map-svg .node:not(.on) :is(.edge, .node-label, .node-sub) {
+  opacity: 0.5;
+}
+.stage.telling .map-svg .node:not(.on) .face {
+  stroke-opacity: 0.5;
 }
 .map-svg .core .face {
   stroke: var(--tone-core);
@@ -462,7 +484,7 @@
   left: 50%;
   top: 56%;
   width: min(1180px, 92vw);
-  transform: translate(-50%, -50%) translateY(22%) rotateX(62deg) scale(1.02);
+  transform: translate(-50%, -50%) translateY(22%) rotateX(24deg) scale(1.02);
   will-change: transform;
 }
 .stage.js .stage-story {

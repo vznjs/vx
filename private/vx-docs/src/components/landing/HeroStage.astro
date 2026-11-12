@@ -1,7 +1,7 @@
 ---
-// The hero is the system graph: every piece one CI run talks to, tilted in
-// perspective over an endless grid with light streaking past. Scrolling
-// stands the graph up, then plays the run one step at a time.
+// The hero is the system graph: every piece one CI run talks to, gently
+// tilted before a retro sunset, a striped sun sinking into an endless grid.
+// Scrolling stands the graph up, then plays the run one step at a time.
 // At rest (no script, reduced motion) it is a plain section: the copy, the
 // graph tilted once, and every step listed.
 import SystemMap from './SystemMap.astro'
@@ -103,6 +103,9 @@ const specs = [
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches
     const steps = JSON.parse(stage.dataset['steps'] ?? '[]') as Play[]
     const INTRO = 0.14
+    // The graph lies back a little in the intro and stands flat for the run.
+    const RX0 = 24
+    const RX1 = 0
     const tilt = stage.querySelector<HTMLElement>('.stage-tilt')!
     const copy = stage.querySelector<HTMLElement>('.stage-copy')!
     const story = stage.querySelector<HTMLElement>('.stage-story')!
@@ -200,6 +203,8 @@ const specs = [
 
     // ---- scroll: the graph stands up, then the steps play ----
     let speedBoost = 0
+    // How far the intro has played: the sun rises with the graph.
+    let rise = 0
     let lastY = scrollY
     const narrow = (): boolean => matchMedia('(max-width: 720px)').matches
     // Where the graph sits at both ends of the intro, measured once per
@@ -223,7 +228,7 @@ const specs = [
     }
     const measure = (): NonNullable<typeof fit> => {
       const s0 = narrow() ? 1.12 : 1.02
-      const drop = converge(copy.offsetTop + copy.offsetHeight + 28, 62, s0, 0)
+      const drop = converge(copy.offsetTop + copy.offsetHeight + 28, RX0, s0, 0)
       // The tallest step panel sets the room the standing graph gets.
       const items = [...story.querySelectorAll<HTMLElement>('.story-steps li')]
       const was = items.map((li) => li.classList.contains('on'))
@@ -234,16 +239,17 @@ const specs = [
       }
       items.forEach((x, i) => x.classList.toggle('on', was[i]))
       const room = panelTop - 20 - 12
-      const s1 = Math.min(s0 - 0.1, (s0 - 0.1) * (room / place(0, 12, s0 - 0.1).height))
-      const lift = converge(12, 12, s1, -Infinity)
+      const s1 = Math.min(s0 - 0.1, (s0 - 0.1) * (room / place(0, RX1, s0 - 0.1).height))
+      const lift = converge(12, RX1, s1, -Infinity)
       return { drop, s0, s1, lift }
     }
     const layout = (): void => {
       const total = stage.offsetHeight - innerHeight
       const p = clamp(-stage.getBoundingClientRect().top / Math.max(1, total))
       const a = ease(clamp(p / INTRO))
+      rise = a
       fit ??= measure()
-      const rx = 62 - 50 * a
+      const rx = RX0 + (RX1 - RX0) * a
       const sc = fit.s0 + (fit.s1 - fit.s0) * a
       const ty = fit.drop * (1 - a) + fit.lift * a
       tilt.style.transform = `translate(-50%, -50%) translateY(${ty}px) rotateX(${rx}deg) scale(${sc})`
@@ -269,24 +275,10 @@ const specs = [
     const landed = steps.findIndex((s) => s.anchor !== '' && `#${s.anchor}` === location.hash)
     if (landed >= 0) requestAnimationFrame(() => goto(landed, false))
 
-    // ---- the sky: an endless floor grid and light streaking past ----
-    type Streak = { x: number; y: number; z: number; len: number; c: string; w: number }
-    const COLORS = Object.values(TONES)
+    // ---- the sky: a retro sunset, a striped sun sinking into the grid ----
     let W = 0
     let H = 0
-    let streaks: Streak[] = []
-    const newStreak = (far: boolean): Streak => {
-      const side = Math.random() < 0.5 ? -1 : 1
-      const high = Math.random() < 0.45
-      return {
-        x: side * (1.2 + Math.random() * 14),
-        y: high ? 1.6 + Math.random() * 5 : Math.random() * 0.6,
-        z: far ? 40 + Math.random() * 30 : 2 + Math.random() * 68,
-        len: 3 + Math.random() * 10,
-        c: Math.random() < 0.55 ? COLORS[0]! : COLORS[1 + Math.floor(Math.random() * (COLORS.length - 1))]!,
-        w: 0.6 + Math.random() * 1.6,
-      }
-    }
+    let stars: [number, number, number][] = []
     const size = (): void => {
       const dpr = Math.min(2, devicePixelRatio || 1)
       W = canvas.clientWidth
@@ -294,39 +286,80 @@ const specs = [
       canvas.width = Math.round(W * dpr)
       canvas.height = Math.round(H * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      const n = W < 720 ? 34 : 70
-      streaks = Array.from({ length: n }, () => newStreak(false))
+      stars = Array.from({ length: W < 720 ? 40 : 90 }, () => [Math.random(), Math.random() ** 1.6, Math.random()])
     }
     let travel = 0
+    let clock = 0
     const draw = (dt: number): void => {
-      const hy = H * 0.36
+      const hy = H * 0.58
       const cx = W / 2
-      const f = H * 0.95
-      const cam = 1
-      const proj = (x: number, y: number, z: number): [number, number] => [cx + (x * f) / z, hy + ((cam - y) * f) / z]
-      ctx.clearRect(0, 0, W, H)
-      // horizon glow
-      const g = ctx.createLinearGradient(0, hy - H * 0.25, 0, hy + H * 0.2)
-      g.addColorStop(0, 'rgba(94,224,255,0)')
-      g.addColorStop(0.55, 'rgba(198,248,78,0.10)')
-      g.addColorStop(1, 'rgba(183,148,255,0)')
-      ctx.fillStyle = g
-      ctx.fillRect(0, hy - H * 0.25, W, H * 0.45)
-      ctx.fillStyle = 'rgba(216,255,107,0.55)'
-      ctx.fillRect(0, hy - 0.5, W, 1)
+      clock += dt
+      // sky: night above, sunset warming toward the horizon
+      const sky = ctx.createLinearGradient(0, 0, 0, hy)
+      sky.addColorStop(0, '#06051a')
+      sky.addColorStop(0.5, '#120a2e')
+      sky.addColorStop(0.85, '#3a1146')
+      sky.addColorStop(1, '#7a2253')
+      ctx.fillStyle = sky
+      ctx.fillRect(0, 0, W, hy)
+      for (const [x, y, t] of stars) {
+        ctx.fillStyle = `rgba(255,236,250,${0.25 + 0.35 * Math.sin(clock * 0.8 + t * 9) ** 2})`
+        ctx.fillRect(x * W, y * hy * 0.8, 1.4, 1.4)
+      }
+      // the sun: a disc of warm bands, its lower half cut by widening stripes
+      const r = Math.min(W * 0.2, H * 0.3)
+      const glow = ctx.createRadialGradient(cx, hy, r * 0.6, cx, hy, r * 2.6)
+      glow.addColorStop(0, 'rgba(255,79,139,0.35)')
+      glow.addColorStop(1, 'rgba(255,79,139,0)')
+      ctx.fillStyle = glow
+      ctx.fillRect(0, hy - r * 2.6, W, r * 2.6)
+      // set low behind the copy, it rises as the graph stands up
+      const cy = hy - r * 0.32 + (1 - rise) * r * 1.05
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, W, hy)
+      ctx.clip()
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.clip()
+      const sun = ctx.createLinearGradient(0, cy - r, 0, cy + r * 0.32)
+      sun.addColorStop(0, '#ffd36e')
+      sun.addColorStop(0.45, '#ff8a3d')
+      sun.addColorStop(1, '#ff4f8b')
+      ctx.fillStyle = sun
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+      ctx.globalCompositeOperation = 'destination-out'
+      const drift = (clock * 0.12) % 1
+      for (let i = 0; i < 8; i++) {
+        const k = (i + drift) / 8
+        const y = cy - r * 0.05 + k * r * 0.4 + k * k * r * 0.25
+        ctx.fillRect(cx - r, y, r * 2, 1 + k * r * 0.07)
+      }
+      ctx.restore()
+      // the floor: dark, with a magenta grid running toward you
+      ctx.fillStyle = '#0b0616'
+      ctx.fillRect(0, hy, W, H - hy)
+      const haze = ctx.createLinearGradient(0, hy, 0, hy + H * 0.12)
+      haze.addColorStop(0, 'rgba(255,79,139,0.35)')
+      haze.addColorStop(1, 'rgba(255,79,139,0)')
+      ctx.fillStyle = haze
+      ctx.fillRect(0, hy, W, H * 0.12)
+      ctx.fillStyle = 'rgba(255,170,120,0.9)'
+      ctx.fillRect(0, hy - 0.5, W, 1.2)
 
-      const speed = 5 + speedBoost
-      speedBoost *= Math.pow(0.04, dt)
+      const speed = 0.9 + speedBoost * 0.12
+      speedBoost *= Math.pow(0.05, dt)
       travel = (travel + speed * dt) % 1
-      // floor: lines along the run, then lines across it rushing closer
-      const ZF = 42
+      const f = H * 0.9
+      const proj = (x: number, z: number): [number, number] => [cx + (x * f) / z, hy + f / z]
+      const ZF = 36
       ctx.lineWidth = 1
-      for (let i = -24; i <= 24; i++) {
-        const [x1, y1] = proj(i * 1.2, 0, 0.7)
-        const [x2, y2] = proj(i * 1.2, 0, ZF)
+      for (let i = -30; i <= 30; i++) {
+        const [x1, y1] = proj(i * 1.1, 0.6)
+        const [x2, y2] = proj(i * 1.1, ZF)
         const lg = ctx.createLinearGradient(x1, y1, x2, y2)
-        lg.addColorStop(0, `rgba(94,224,255,${i === 0 ? 0.35 : 0.2})`)
-        lg.addColorStop(1, 'rgba(94,224,255,0)')
+        lg.addColorStop(0, 'rgba(255,79,139,0.5)')
+        lg.addColorStop(1, 'rgba(255,79,139,0.05)')
         ctx.strokeStyle = lg
         ctx.beginPath()
         ctx.moveTo(x1, y1)
@@ -334,32 +367,14 @@ const specs = [
         ctx.stroke()
       }
       for (let k = 1; k <= ZF; k++) {
-        const z = k - travel
-        if (z < 0.7) continue
-        const y = hy + (cam * f) / z
-        const a = Math.pow(1 - z / ZF, 2) * 0.32
-        ctx.strokeStyle = `rgba(183,148,255,${a})`
+        const z = (k - travel) * 0.9
+        if (z < 0.6) continue
+        const y = hy + f / z
+        if (y > H) continue
+        ctx.strokeStyle = `rgba(255,79,139,${0.55 * (1 - z / (ZF * 0.9)) ** 1.5})`
         ctx.beginPath()
         ctx.moveTo(0, y)
         ctx.lineTo(W, y)
-        ctx.stroke()
-      }
-      // streaks: long lines of light rushing past the camera
-      ctx.lineCap = 'round'
-      for (const s of streaks) {
-        s.z -= speed * 1.6 * dt
-        if (s.z < 0.6) Object.assign(s, newStreak(true))
-        const [hx, hyy] = proj(s.x, s.y, s.z)
-        const [tx, ty] = proj(s.x, s.y, s.z + s.len)
-        const fade = Math.min(1, (70 - s.z) / 25)
-        const sg = ctx.createLinearGradient(tx, ty, hx, hyy)
-        sg.addColorStop(0, `${s.c}00`)
-        sg.addColorStop(1, `${s.c}${Math.round(fade * 200).toString(16).padStart(2, '0')}`)
-        ctx.strokeStyle = sg
-        ctx.lineWidth = Math.min(4, (s.w * 6) / s.z + 0.4)
-        ctx.beginPath()
-        ctx.moveTo(tx, ty)
-        ctx.lineTo(hx, hyy)
         ctx.stroke()
       }
     }
