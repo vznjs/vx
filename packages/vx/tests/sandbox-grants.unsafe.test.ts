@@ -171,6 +171,49 @@ describe.skipIf(!available)("a root project's read grant stops at the walls", ()
     },
     TIMEOUT,
   )
+  // The grant is bound as its children around the walls, so no bind is an
+  // ancestor of a file missing in the root: every tool that tries an
+  // optional file (Angular's esbuild opens `angular:styles/…`) failed a
+  // single-package workspace's task as a violation.
+  it.skipIf(process.platform !== 'linux')(
+    'a file missing in the root is the task’s own; a wall is still refused',
+    async () => {
+      const node = {
+        id: 'root#build',
+        projectName: 'root',
+        projectDir: root,
+        taskName: 'build',
+        config: { exec: { command: 'true' } },
+      } as unknown as TaskNode
+      const { sandbox } = await sandboxRequestFor(
+        node,
+        { allow: { read: ['.'] } },
+        root,
+        undefined,
+        [path.join(root, 'packages', 'b')],
+      )
+      const run = (command: string) =>
+        runSandboxed({ command, cwd: root, env: process.env, ...sandbox })
+      // The shell opens each: Ubuntu 26's cat (uutils) stats first, and a
+      // stat is not traced.
+      const missing = await run('true < nope.txt; true < src/nope.txt; true < "a:b/c;d"; true')
+      expect(missing.violations.map((v) => v.line)).toEqual([])
+      // Nor is a failure there told to grant the directory it was granted.
+      expect((await run('exit 3')).violations.map((v) => v.line)).toEqual([])
+      const walled = await run('true < packages/b/nope.txt; true < .git/HEAD; true')
+      // Refused, and each refusal reported.
+      expect([walled.stdout, ...walled.stderr.trim().split('\n')]).toEqual([
+        '',
+        expect.stringContaining('packages/b/nope.txt'),
+        expect.stringContaining('.git/HEAD'),
+      ])
+      expect(walled.violations.map((v) => v.path)).toEqual([
+        path.join(root, 'packages', 'b', 'nope.txt'),
+        path.join(root, '.git', 'HEAD'),
+      ])
+    },
+    TIMEOUT,
+  )
   // B-12: a GLOB's hit on a wall. Linux drops it before the bind (B-1);
   // seatbelt matched the glob as a regex, and SRT re-emits a wall's deny
   // only under a literal allow, so on darwin both walls read.

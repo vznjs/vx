@@ -29,6 +29,8 @@ export class AttemptStream {
   midLine = false
   /** The last stderr: the shell's "not found" line names the word a compound command missed. */
   errTail = ''
+  /** The last of both streams: a failure's own words name a variable the task was not given (`unpassedEnv`). */
+  tail = ''
   /** Ends the masked streams, letting go what they held back. */
   flushMasked: () => void = () => {}
 
@@ -49,8 +51,10 @@ export class AttemptStream {
     this.output = kept
     this.midLine = false
     this.errTail = ''
+    this.tail = ''
     const toOut = (t: string): void => {
       kept.push(t)
+      this.tail = (this.tail + t).slice(-4096)
       if (t.length > 0) this.midLine = !t.endsWith('\n')
       log.taskStdout(node, t)
     }
@@ -58,6 +62,7 @@ export class AttemptStream {
       kept.push(t, true)
       if (t.length > 0) this.midLine = !t.endsWith('\n')
       this.errTail = (this.errTail + t).slice(-2048)
+      this.tail = (this.tail + t).slice(-4096)
       log.taskStderr(node, t)
     }
     if (secrets) taskLogMasks.set(node, secrets)

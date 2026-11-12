@@ -1,7 +1,7 @@
 // `cache.store`: every combination of embeddings × decompress saves,
 // restores and uploads the same bytes; only where they live differs.
 import { existsSync, readdirSync, readlinkSync, statSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -290,6 +290,53 @@ describe('a tree hit under a source directory', () => {
     }
     expect(new Uint8Array(await readFile(path.join(proj, 'store/out/a.bin')))).toEqual(LARGE)
     expect(await readFile(path.join(proj, 'store/src.ts'), 'utf8')).toBe('source')
+    cache.close()
+  })
+})
+
+describe("a tree hit over the last build's files", () => {
+  // A hit after a branch switch finds the other build's files in place:
+  // the copy-out asked each file's place be absent, so 20,000 files were
+  // packed into a tar and unpacked, 6.5 s against 1.6 s into an empty tree.
+  it('copies each file beside the one it replaces and renames it over', async () => {
+    const { cache, proj } = await saved({ embeddings: 0, decompress: true }, LARGE)
+    const out = path.join(proj, 'out/a.bin')
+    await mkdir(path.dirname(out), { recursive: true })
+    await writeFile(out, 'the other build')
+    // A hard link elsewhere to the file replaced keeps its bytes: a rename
+    // over the name, never a write through it.
+    const other = path.join(root, 'linked.bin')
+    await link(out, other)
+    const write = spyOn(Bun, 'write')
+    try {
+      await cache.restoreOutputs(HASH, proj)
+      const fromTree = write.mock.calls.filter(
+        ([, from]) =>
+          from instanceof Blob && String((from as { name?: string }).name).includes('.tree'),
+      )
+      expect(fromTree).toHaveLength(1)
+    } finally {
+      write.mockRestore()
+    }
+    expect(new Uint8Array(await readFile(out))).toEqual(LARGE)
+    expect(await readFile(other, 'utf8')).toBe('the other build')
+    expect(readdirSync(path.dirname(out))).toEqual(['a.bin'])
+    cache.close()
+  })
+
+  // Rewritten, a hit over an unchanged tree dated every output now: a
+  // noop whose stamps a restore must re-prove rewrote dist/ (pr-bench).
+  it('leaves a file that already holds the bytes, and its mtime', async () => {
+    const { cache, proj } = await saved({ embeddings: 0, decompress: true }, LARGE)
+    const out = path.join(proj, 'out/a.bin')
+    await mkdir(path.dirname(out), { recursive: true })
+    await writeFile(out, LARGE)
+    const then = new Date(1_000_000_000_000)
+    await utimes(out, then, then)
+    const ino = statSync(out).ino
+    await cache.restoreOutputs(HASH, proj)
+    expect(statSync(out).mtimeMs).toBe(then.getTime())
+    expect(statSync(out).ino).toBe(ino)
     cache.close()
   })
 })

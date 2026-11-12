@@ -3027,6 +3027,19 @@ function addHints(
         args.reportWithin,
       )
       if (removed !== undefined) violations.push(removed)
+      const hidden = hiddenUnderGrantHint(
+        [
+          ...signs.readOnlyLines,
+          ...outTail
+            .text()
+            .split('\n')
+            .filter((l) => READ_ONLY_FS.test(l))
+            .slice(-64),
+        ],
+        bindableWrites(args.config.allowWrite),
+        baselines.denyRead,
+      )
+      if (hidden !== undefined) violations.push(hidden)
     }
   }
   if (upstreamWrites.size > 0)
@@ -3089,6 +3102,38 @@ function addHints(
         [...loopbackPorts(args.config.network), ...bridgedPorts(args.config)],
       )
       if (refused !== undefined) violations.push(refused)
+      // Last, and only when nothing else was said: a grant inside the cwd
+      // lists it (bwrap builds the path to a bind), but only that grant, so
+      // `bun test` and Vitest scan it, find no test file, and fail with no
+      // read to report.
+      const cwd = toRealPath(args.cwd)
+      // A grant cut around the walls (a root's `read: ['.']`) covers the cwd.
+      const granted = [...grantedRead, ...(args.config.walled?.reads ?? [])].map(toRealPath)
+      if (violations.length === 0 && !granted.some((g) => atOrUnder(cwd, g))) {
+        const inside = [
+          ...new Set(
+            granted
+              // A baseline the host lacks (no node_modules) is bound to nothing.
+              .filter(
+                (g) =>
+                  g !== cwd &&
+                  atOrUnder(g, cwd) &&
+                  statSync(g, { throwIfNoEntry: false }) !== undefined,
+              )
+              .map((g) => relPosix(cwd, g)),
+          ),
+        ]
+        violations.push({
+          timestamp: new Date(),
+          hint: true,
+          line:
+            `vx: this sandbox grants no read of the task's own working directory (${args.cwd}), ` +
+            `only of ${inside.length > 4 ? `${inside.slice(0, 4).join(', ')}, …` : inside.join(', ')} inside it, ` +
+            'so a command that lists it (a test runner looking for its files) sees nothing else, ' +
+            'and no violation names that. Grant what it lists, or the directory: ' +
+            "`sandbox: { allow: { read: ['.'] } }`.",
+        })
+      }
     }
   }
 }
@@ -3298,6 +3343,38 @@ function grantRemovalHint(
       `but not remove or rename it ("Read-only file system"). Remove its contents ` +
       `instead, e.g. \`rm -rf ${contents}/*\`, and give a tool that removes its own ` +
       `output directory one inside it (Playwright: \`--output ${contents}/run\`).`,
+  }
+}
+
+/**
+ * Linux: a path the sandbox hides inside a write grant (a credential store,
+ * `~/.expo/state.json` under `write: ['~/.expo/']`) is masked by a mount, so
+ * a tool that writes it by rename fails with "resource busy", the grant
+ * looking whole. A failure whose output names one gets the grant that
+ * opens it: by name, as a store is granted.
+ */
+function hiddenUnderGrantHint(
+  lines: readonly string[],
+  roots: readonly string[],
+  denied: readonly string[],
+): SandboxViolation | undefined {
+  if (lines.length === 0) return undefined
+  const named = denied.filter(
+    (d) =>
+      roots.some((r) => d !== r && atOrUnder(d, r)) &&
+      lines.some((l) => new RegExp(`(^|[\\s'"\`(])${RegExp.escape(d)}($|[\\s'"\`:,)])`).test(l)),
+  )
+  if (named.length === 0) return undefined
+  const home = toRealPath(os.homedir())
+  const spelled = named.map((d) => `'${atOrUnder(d, home) ? `~/${path.relative(home, d)}` : d}'`)
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: ${spelled.join(', ')} ${named.length === 1 ? 'lies' : 'lie'} inside a write grant, but the sandbox hides ` +
+      `${named.length === 1 ? 'it' : 'them'} (a credential store), so the task can neither read ` +
+      `nor replace ${named.length === 1 ? 'it' : 'them'} ("resource busy"). If the task must, grant ` +
+      `${named.length === 1 ? 'it' : 'them'} by name: \`allow: { write: [${spelled.join(', ')}] }\`.`,
   }
 }
 

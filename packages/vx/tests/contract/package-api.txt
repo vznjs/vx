@@ -95,6 +95,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   committedIn(dir: string): (abs: string) => boolean
   enumeratedAtMs: number | undefined
   ignoredOutputs: ReadonlySet<string>
+  setUntracked(root: string, paths: readonly string[]): void
+  untrackedFilesIn(dir: string): string[]
   setIgnored(root: string, paths: readonly string[]): void
   ignoredFilesIn(dir: string): string[]
   newFilesIgnored(dir: string): boolean
@@ -1645,6 +1647,7 @@ export interface ResolvedSandboxConfig {
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
   hermetic?: boolean
+  walled?: { reads: readonly string[]; walls: readonly string[] }
   wallsReached?: { read: readonly string[]; write: readonly string[] }
   ignore?: {
     read?: readonly string[]

@@ -118,6 +118,8 @@ export interface JudgeContext {
   clock?(): number
   /** The files git tracked at the arm; absent when git could not answer. */
   trackedAtArm?: ReadonlySet<string>
+  /** Whether the watched set waits on a re-read, which only a cycle makes. */
+  rereadPending?(): boolean
 }
 
 export class ChangeJudge {
@@ -261,7 +263,19 @@ export class ChangeJudge {
       const listed = this.ctx.existedAtArm
       return !ignored && listed !== undefined && !listed.has(spell(abs)) && !this.inNestedRepo(abs)
     }
-    return modifiedBefore(abs, this.ctx.armedAt)
+    return modifiedBefore(abs, this.readSince())
+  }
+
+  // A first sighting is a change only if written after the last run began,
+  // less the racy window: that run read the tree as it was. macOS FSEvents
+  // can split one `git checkout` into batches past a debounce window, and
+  // the late half, already read by the cycle the first half started, ran a
+  // second cycle (macOS CI, 2026-11-12). A pending re-read still needs a
+  // cycle, so then only the arm counts, as before.
+  private readSince(): number {
+    const ran = this.lastCycle?.start
+    if (ran === undefined || this.ctx.rereadPending?.() === true) return this.ctx.armedAt
+    return Math.max(this.ctx.armedAt, ran - racyWindowMs(ran, FILE_HASH_RACY_MS))
   }
 
   // Git lists a nested repository (a submodule, a vendored clone) as one

@@ -665,6 +665,45 @@ describe('a release from the npm registry', () => {
     }
   })
 
+  // A 0.3 s silence timer once fired across a 5.5 s freeze of the test's own
+  // event loop: the registry's next chunk was already due, but the timer ran
+  // first and refused (CI, 2026-11-12). A laptop asleep or a Ctrl-Z'd `vx
+  // upgrade` is the same freeze: only time vx was awake to hear counts.
+  it('a freeze of vx itself is not a silent registry, before the headers or between chunks', async () => {
+    const doc = JSON.stringify({ version: '9.9.9' })
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: async (req) => {
+        if (new URL(req.url).pathname === '/headers/latest') {
+          await Bun.sleep(100)
+          return Response.json(JSON.parse(doc))
+        }
+        return new Response(
+          new ReadableStream({
+            async start(controller) {
+              controller.enqueue(new TextEncoder().encode(doc.slice(0, 5)))
+              await Bun.sleep(100)
+              controller.enqueue(new TextEncoder().encode(doc.slice(5)))
+              controller.close()
+            },
+          }),
+        )
+      },
+    })
+    try {
+      const registry = { url: `http://127.0.0.1:${server.port}/`, auth: () => undefined }
+      for (const pkg of ['headers', 'body']) {
+        const read = fetchManifest(pkg, 'latest', 'vx upgrade', registry, 300)
+        // Frozen past both the server's 100 ms and the 300 ms silence.
+        setTimeout(() => Bun.sleepSync(1000), 30)
+        expect(await read).toEqual(JSON.parse(doc))
+      }
+    } finally {
+      await server.stop(true)
+    }
+  })
+
   it('a tarball that stops arriving is refused and replaces nothing', async () => {
     const stall = (): Response =>
       new Response(

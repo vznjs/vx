@@ -1,6 +1,14 @@
 // Restoring an entry's outputs into the tree, and replaying its log.
 
-import { chmodSync, lstatSync, readlinkSync, renameSync, type Stats, statSync } from 'node:fs'
+import {
+  chmodSync,
+  lstatSync,
+  readFileSync,
+  readlinkSync,
+  renameSync,
+  type Stats,
+  statSync,
+} from 'node:fs'
 import { chmod, mkdir, rename, rm, symlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
 import { isIndexFull } from '../index-db/index.js'
@@ -28,6 +36,7 @@ import {
   stagingRoot,
   packArtifactStream,
   planOfTree,
+  siblingTemp,
   stagesInto,
 } from './archive.js'
 import { ArtifactVanishedError, CorruptArtifactError, type DeclaredOutputs } from './layer.js'
@@ -361,6 +370,11 @@ async function copyTree(
   // writes into a directory that stood: what a failure removes, and only that.
   const made = new Set<string>()
   const placed: string[] = []
+  // A file the walk left in place (a hit over the last build's tree): its
+  // copy goes to a temp beside it, renamed over it once every copy landed.
+  // Sent to the extractor instead, its 20,000 files were packed into a tar
+  // and unpacked, 4x the copy (6.5 s against 1.6).
+  const replaced = new Map<string, string>()
   const fits = rows.every((r) => {
     const segs = r.path.replace(/\/$/, '').split('/')
     for (let i = 1; i <= segs.length; i++) {
@@ -370,6 +384,12 @@ async function copyTree(
       if (state === 'absent') {
         if (!isLeaf || r.path.endsWith('/')) made.add(rel)
         else placed.push(rel)
+        return true
+      }
+      if (isLeaf && state === 'other' && !r.path.endsWith('/') && r.mode !== LINK_MODE) {
+        const abs = path.join(projectDir, rel)
+        if (lstatSync(abs, { throwIfNoEntry: false })?.isFile() !== true) return false
+        replaced.set(r.path, siblingTemp(abs))
         return true
       }
       if (state === 'other' || (isLeaf && !r.path.endsWith('/'))) return false
@@ -401,7 +421,7 @@ async function copyTree(
   // A missing top directory is built in staging and renamed in once, as the
   // extractor does. A file missing from a standing directory is copied straight
   // to its place: a temp and rename cost a fifth to a third more.
-  if (roots.length === 0 && placed.length === 0) return true
+  if (roots.length === 0 && placed.length === 0 && replaced.size === 0) return true
   // A restore into a project directory not there yet makes it. Its stat also
   // answers what a rename into it keeps.
   let projectStat: Stats | undefined
@@ -430,6 +450,8 @@ async function copyTree(
   }
   const temps = new Map(roots.map((rel) => [rel, staging!.temp(path.join(projectDir, rel))]))
   const target = (rel: string): string => {
+    const temp = replaced.get(rel)
+    if (temp !== undefined) return temp
     for (const d of roots) {
       if (rel === d || rel.startsWith(`${d}/`)) return temps.get(d)! + rel.slice(d.length)
     }
@@ -448,6 +470,19 @@ async function copyTree(
       if ((err as NodeJS.ErrnoException).code !== 'EACCES' || !reopen(path.dirname(to))) throw err
       return await Bun.write(to, Bun.file(from), { createPath: false })
     }
+  }
+  // A file left in place that already holds the entry's bytes stays, its
+  // mtime with it, as the extractor keeps one: rewritten, a hit over an
+  // unchanged tree dated every output now (a noop's restore rewrote dist/).
+  const keptAsIs = (r: OutputFileRow): boolean => {
+    const abs = path.join(projectDir, r.path)
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (st?.isFile() !== true || st.nlink !== 1 || st.size !== r.size || r.size === 0) return false
+    if (!readFileSync(abs).equals(readFileSync(path.join(tree, r.path)))) return false
+    if ((st.mode & 0o7777) !== restoredMode(r.mode)) chmodSync(abs, restoredMode(r.mode))
+    replaced.delete(r.path)
+    dated.set(`outputs/${r.path}`, Math.floor(st.mtimeMs))
+    return true
   }
   const landed: string[] = []
   let landing = false
@@ -469,6 +504,7 @@ async function copyTree(
     // after the cleanup. A link is undated, as the extractor lays it.
     const copied = await Promise.allSettled([
       ...files.map(async (r) => {
+        if (replaced.has(r.path) && keptAsIs(r)) return
         const to = target(r.path)
         const n = await copy(to, path.join(tree, r.path), r.path)
         if (n !== r.size)
@@ -491,13 +527,23 @@ async function copyTree(
       landed.push(rel)
     }
     if (roots.length === 1) await land(roots[0]!)
-    else {
+    else if (roots.length > 1) {
       const renamed = await Promise.allSettled(roots.map(land))
       const unrenamed = renamed.find((c) => c.status === 'rejected')
       if (unrenamed !== undefined) throw unrenamed.reason
     }
+    if (replaced.size > 0) {
+      const over = await Promise.allSettled(
+        [...replaced].map(([rel, temp]) => rename(temp, path.join(projectDir, rel))),
+      )
+      const failed = over.find((c) => c.status === 'rejected')
+      if (failed !== undefined) throw failed.reason
+    }
   } catch (err) {
-    await Promise.all([...temps.values()].map((t) => rm(t, { recursive: true, force: true })))
+    await Promise.all([
+      ...[...temps.values()].map((t) => rm(t, { recursive: true, force: true })),
+      ...[...replaced.values()].map((t) => rm(t, { force: true })),
+    ])
     // Something made at a missing directory's place since the walk: what
     // landed holds the entry's bytes, and the extractor restores the rest.
     const code = landing ? (err as NodeJS.ErrnoException).code : undefined

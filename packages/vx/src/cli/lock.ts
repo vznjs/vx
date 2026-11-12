@@ -618,7 +618,8 @@ const INLINED_ENV =
  * every task: an ignored file a glob's last segment matches (a run names it
  * only on a miss, which a stale hit never brings, and Vite loads an ignored
  * `.env.production.local`), and, for a cached task, a `passThrough` name a
- * bundler inlines that `inputs.env` does not key. One git spawn at most.
+ * bundler inlines that `inputs.env` does not key, or one `inputs.env` keys
+ * that the command never gets. One git spawn at most.
  */
 function unkeyedReads(root: string, check: GraphCheck): string[] {
   const lines: string[] = []
@@ -649,6 +650,16 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
       if (unkeyed.length > 0)
         lines.push(
           `${task}: exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
+        )
+      // The reverse: the key moves with the value, but the build never sees it.
+      const given = new Set([
+        ...(t.exec?.env?.passThrough ?? []),
+        ...Object.keys(t.exec?.env?.define ?? {}),
+      ])
+      const unseen = (t.inputs?.env ?? []).filter((v) => INLINED_ENV.test(v) && !given.has(v))
+      if (unseen.length > 0)
+        lines.push(
+          `${task}: inputs.env keys ${unseen.join(', ')}, which a bundler writes into its output, but the command never gets ${unseen.length === 1 ? 'it' : 'them'} — add ${unseen.length === 1 ? 'it' : 'them'} to exec.env.passThrough`,
         )
     }
   }

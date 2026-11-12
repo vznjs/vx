@@ -10,10 +10,6 @@ import { CORE_BIN, CORE_INDEX, DTE, root, setup, teardown, vx } from './local-e2
 beforeEach(setup)
 afterEach(teardown)
 
-// 2026-10-21: "After I kill it, long delay". Removing a worktree an
-// install filled took seconds, all of them before vx exited. An `rm` that
-// takes 3 s stands in for that install's 300k files, which took 45 s to
-// make on a CI-sized machine.
 // A task the stopped run cancelled exited 0 from a trapped SIGTERM, and its
 // worker saved it under its key: the next run hit it (2026-10-24).
 it('saves no entry for a task a stopped run cancelled, even on a 0 exit', async () => {
@@ -48,6 +44,13 @@ it('saves no entry for a task a stopped run cancelled, even on a 0 exit', async 
   expect([again.exitCode, again.stdout.toString().includes('linux.small#')]).toEqual([0, true])
 }, 60_000)
 
+// 2026-10-21: "After I kill it, long delay". Removing a worktree an
+// install filled took seconds, all of them before vx exited. An `rm` that
+// waits for this test stands in for that install's 300k files, which took
+// 45 s to make on a CI-sized machine. No clock: a stop under 1 s was the
+// proof, and a 4-core worker with three shards beside it took longer
+// (2026-11-12). A vx that removes them itself, with no teardown deadline to
+// let it go, never exits here.
 it('a stopped run exits before its installed worktrees are removed', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
@@ -63,24 +66,28 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
   )
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-stop-'))
   const bin = path.join(tmp, 'bin')
+  const release = path.join(tmp, 'release')
   await mkdir(bin)
-  await writeFile(path.join(bin, 'rm'), `#!/bin/sh\nsleep 3\nexec ${Bun.which('rm')} "$@"\n`, {
-    mode: 0o755,
+  await writeFile(
+    path.join(bin, 'rm'),
+    `#!/bin/sh\nuntil [ -e ${release} ]; do sleep 0.05; done\nexec ${Bun.which('rm')} "$@"\n`,
+    { mode: 0o755 },
+  )
+  const { VX_DTE_RUN: _, ...env } = process.env
+  const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
+    cwd: root,
+    env: {
+      ...env,
+      VX_DTE_RUN: crypto.randomUUID(),
+      NO_COLOR: '1',
+      TMPDIR: tmp,
+      PATH: `${bin}:${env['PATH']}`,
+      VX_TEST_TEARDOWN_TIMEOUT: '600000ms',
+    },
+    stdout: 'ignore',
+    stderr: 'ignore',
   })
   try {
-    const { VX_DTE_RUN: _, ...env } = process.env
-    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
-      cwd: root,
-      env: {
-        ...env,
-        VX_DTE_RUN: crypto.randomUUID(),
-        NO_COLOR: '1',
-        TMPDIR: tmp,
-        PATH: `${bin}:${env['PATH']}`,
-      },
-      stdout: 'ignore',
-      stderr: 'ignore',
-    })
     const started = async (): Promise<boolean> => {
       for (const d of await readdir(tmp)) {
         if (await Bun.file(path.join(tmp, d, '1', 'b', 'started')).exists()) return true
@@ -89,10 +96,8 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     }
     for (let i = 0; i < 1200 && !(await started()); i++) await Bun.sleep(50)
     expect(await started()).toBe(true)
-    const t0 = performance.now()
     run.kill('SIGINT')
     await run.exited
-    const stopMs = performance.now() - t0
     // What is left names itself, so a failure says which part stayed.
     const left = async (): Promise<string[]> => [
       ...(await readdir(tmp)).filter((d) => d.startsWith('vx-dte-')),
@@ -102,15 +107,14 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
         .filter((l) => l.startsWith('worktree '))
         .slice(1),
     ]
-    // Still there as vx exits, however it removes them; gone after.
+    // Still there as vx exits, their removal held; gone once it is let go.
     const atExit = (await left()).length
-    for (let i = 0; i < 400 && (await left()).length > 0; i++) await Bun.sleep(50)
-    expect({ atExit: atExit > 0, left: await left(), fast: stopMs < 1000 }).toEqual({
-      atExit: true,
-      left: [],
-      fast: true,
-    })
+    await writeFile(release, '')
+    for (let i = 0; i < 800 && (await left()).length > 0; i++) await Bun.sleep(50)
+    expect({ atExit: atExit > 0, left: await left() }).toEqual({ atExit: true, left: [] })
   } finally {
+    run.kill('SIGKILL')
+    await writeFile(release, '')
     await rm(tmp, { recursive: true, force: true })
   }
 }, 60_000)

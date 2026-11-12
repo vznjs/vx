@@ -639,7 +639,12 @@ git checkout packages`) was no event to its own arm, nor to the
      edit, a deletion or a first sighting modified after the arm
      passes (`modifiedBefore`: the initial run's own writes arrive
      after the arm on macOS, and their mtime and ctime both predate it;
-     the ctime is what catches a file moved in with an old mtime, item 945) — so a self-write
+     the ctime is what catches a file moved in with an old mtime, item 945).
+     After a run, "the arm" is that run's start less the racy window:
+     macOS can deliver half a `git checkout` past the debounce window,
+     and the late half, already read by that run, started a second
+     cycle (`watch-late-batch.test.ts`). Not while a re-read is pending,
+     which only a cycle makes — so a self-write
      costs one redundant cycle, not an unbounded number. Debounce time,
      not event time: on Linux a shell redirect truncates the file (one
      event, empty) and then writes it (another, full), so consecutive

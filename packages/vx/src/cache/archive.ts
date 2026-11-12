@@ -2171,7 +2171,7 @@ export function stagesInto(staging: Stats, dir: Stats | undefined): boolean {
  * A temp beside `target` with its own short name, never `<target>.suffix`,
  * which pushes a legal 242–255 byte name past NAME_MAX.
  */
-function siblingTemp(target: string): string {
+export function siblingTemp(target: string): string {
   return path.join(
     path.dirname(target),
     `.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`,

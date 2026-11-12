@@ -825,7 +825,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     // (`wallOff`), and bwrap builds the path to a bind: the cwd lists. The
     // note fired on every failing root task that listed its cwd (B-20).
     it.skipIf(process.platform !== 'linux')(
-      'is not added on Linux when a grant lies inside the cwd, which then lists',
+      'on Linux, where a grant inside the cwd lists it, names what it lists instead',
       async () => {
         await mkdir(path.join(dir, 'sub'))
         const r = await runSandboxed(
@@ -835,9 +835,29 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
             config: resolveSandboxConfig({}, dir),
           }),
         )
-        expect([r.exitCode, notes(r)]).toEqual([3, []])
+        expect([r.exitCode, notes(r)]).toEqual([3, [false]])
+        // It lists only that grant: `bun test` and Vitest scan it, find no
+        // test file and fail with no read to report, so a note names it.
+        expect(r.violations.map((v) => [v.hint, v.line])).toEqual([
+          [
+            true,
+            `vx: this sandbox grants no read of the task's own working directory (${dir}), only of sub inside it, so a command that lists it (a test runner looking for its files) sees nothing else, and no violation names that. Grant what it lists, or the directory: \`sandbox: { allow: { read: ['.'] } }\`.`,
+          ],
+        ])
       },
     )
+
+    it('is not added when the cwd itself is granted', async () => {
+      await mkdir(path.join(dir, 'sub'))
+      const r = await runSandboxed(
+        args('ls >/dev/null && exit 3', {
+          baseAllowRead: [path.join(dir, 'sub')],
+          baseDenyRead: [dir],
+          config: resolveSandboxConfig({ allow: { read: ['.'] } }, dir),
+        }),
+      )
+      expect([r.exitCode, r.violations]).toEqual([3, []])
+    })
 
     it('is added when the only grant is a sibling whose name prefixes the cwd', async () => {
       // `<dir>/proj` is a string prefix of `<dir>/proj-x` and covers none

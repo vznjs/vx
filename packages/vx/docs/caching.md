@@ -1058,17 +1058,22 @@ output directory linked out of the project refuses the task instead, X-88). `out
 no-op and says nothing; a task with no `cache: true` is never checked.
 
 **Undeclared state is not saved** (`orchestrator/undeclared-state.ts`).
-A git-ignored file in the task's project that is neither an input nor
-an output survives the clean before a miss, and a hit never restores
-it. An incremental tool keeps its state there: `tsc -b` writes
+A file in the task's project that git ignores, or a `.tsbuildinfo` it
+does not track, neither an input nor an output, survives the clean before a miss, and a
+hit never restores it. So does a committed `.tsbuildinfo` (`git add -A`
+before `.gitignore` named it). An incremental tool keeps its state there: `tsc -b` writes
 `tsconfig.tsbuildinfo` beside the tsconfig, so after vx emptied `dist/`
 it emitted only the changed file, and the partial `dist/` was saved. A
 miss stamps those files, as `git status` listed them at run start,
 before its command; if one changed (and a sandbox let the task write
-it), or the outputs matched no files while one is there, the result
+it), or the outputs matched no files while one is there (an ignored
+file or a `.tsbuildinfo`: before a first commit every source is
+untracked), the result
 stands but is not saved, and the line names the file and the fix:
 declare it in `outputs.files`, so a miss starts without it and a hit
-restores it. Of a directory git ignores whole (`.cache/`,
+restores it. Any other untracked file is a generator's own, rewritten
+each build (Astro's `.astro/` with no `.gitignore` entry): stamped, no
+such build was ever saved. Of a directory git ignores whole (`.cache/`,
 `node_modules/`), only the `.tsbuildinfo` files under it count, found
 once per run, a `node_modules` searched only in its own dot directories
 (`.tmp`): a bundler's cache there (`.next/cache`) is rewritten on every
@@ -1078,7 +1083,14 @@ the command creates is not listed, so a first build is still saved
 (`tests/undeclared-state.test.ts`). The rule guards a partial output, so
 a task that declares no outputs is exempt (`eslint --cache`, `tsc
 --noEmit --incremental`), and a file another task of the project declares
-as its output is that task's. An undeclared file a task of the same
+as its output is that task's. A file an output's `!` entry takes back is
+declared kept: `'.next/**', '!.next/cache/**'` keeps Next's type-check
+`.tsbuildinfo` across builds without withholding a save. Nor does a
+`.tsbuildinfo` a non-incremental `tsc -b` writes (`{"root":[…],"version":…}`,
+Vite's template in `node_modules/.tmp`): that build emits its whole
+project and rebuilds missing outputs, so it holds no state. Nor does an
+incremental one whose every root file is still pending emit, as a
+`noEmit` build leaves it (create-vue's `vue-tsc --build`). An undeclared file a task of the same
 project running alongside may have written still withholds the save (an
 unsandboxed task's write cannot be told from it); the line names that
 task, and declaring the file in its outputs ends it.

@@ -12,6 +12,8 @@ import {
   mkdirSync,
   readdirSync,
   realpathSync,
+  rmdirSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -21,7 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { holdCacheDir, holdStore } from '../src/cache/index.js'
+import { holdCacheDir, holdStore, vxCacheEntries } from '../src/cache/index.js'
 import { acquireRunLock } from '../src/orchestrator/index.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -387,6 +389,20 @@ describe('vx cache clean with no bound clears the cache', () => {
     },
     TIMEOUT,
   )
+  // A run waiting on a clear takes a missing lock as the clear's end. Deleted
+  // in listing order, the lock went before `cache.db`: the run opened the old
+  // index and the clear took it (and CI saw the run open a directory gone).
+  it('a clear deletes the lock of a shared cache directory last', () => {
+    const dir = path.join(home, 'order')
+    mkdirSync(dir)
+    const names = Array.from({ length: 40 }, (_, i) => `${i.toString(16).padStart(16, '0')}.tree`)
+    for (const n of ['cache.db', ...names, 'cache.lock', 'mine.txt'])
+      writeFileSync(path.join(dir, n), '')
+    const listed = vxCacheEntries(dir)
+    expect([listed.length, listed.at(-1)]).toEqual([42, 'cache.lock'])
+    rmSync(path.join(dir, 'cache.lock'))
+    expect(vxCacheEntries(dir)).not.toContain('cache.lock')
+  })
   it(
     'a run on a shared cache directory waits for a clear of it before it opens the cache',
     async () => {
@@ -404,9 +420,14 @@ describe('vx cache clean with no bound clears the cache', () => {
         )
         expect(run.said).toContain(`waiting for a vx cache clean of ${shared} to finish`)
         expect(run.proc.exitCode).toBe(null)
-        // The clear deletes the directory while it holds it; the run then
-        // opens a cache of its own there, misses and saves.
-        await rm(shared, { recursive: true })
+        // The clear deletes the directory while it holds it, the lock last;
+        // the run then opens a cache of its own there, misses and saves.
+        for (const e of vxCacheEntries(shared)) rmSync(path.join(shared, e), { recursive: true })
+        try {
+          rmdirSync(shared)
+        } catch {
+          // The run's new lock is already there.
+        }
         release()
         released = true
         const r = await run.ended

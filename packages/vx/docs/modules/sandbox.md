@@ -607,7 +607,10 @@ fail-on-violation count denials only; the placeholder's note had read
 asks whether a read grant covers the cwd, and on Linux also whether one
 lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
 root's `read: ['.']`, bound as its children around the walls, drew the
-note on every failure (B-20).
+note on every failure (B-20). A grant only inside it (the project's
+`node_modules`, a file) gets the Linux note instead, naming what the cwd
+lists: `bun test` and Vitest scan it, find no test file and fail with no
+read to report.
 
 A failed task's note also names the paths outside the project the wall
 hid that exist on the host (`hiddenReadsOutside`), with a grant to add,
@@ -825,7 +828,13 @@ around it (`punchWalls`, the write-path punch with the wall dropped), on
 macOS each wall is a read deny, which SRT emits after a literal grant
 holding it so that the deny wins (B-4), and
 a write grant whose bind, widened or not, would hold one is refused,
-naming the wall. A grant that names a wall or a path inside it is the
+naming the wall. The punched grant still grants its directory: the request
+keeps the grant as declared beside the walls (`walled`), and a path under
+it, outside every wall and missing on the host is the task's own missing
+file, not a refusal. No bind is its ancestor, so every tool that tries an
+optional file (`.env.local`, esbuild's `angular:styles/…`) failed a
+single-package workspace's sandboxed task. The fix line never names `.git`
+for the key. A grant that names a wall or a path inside it is the
 user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
 `~`) unless it reaches the repository's git dir there (a workspace below
 the top-level, a linked worktree: `orchestrator.md`). A glob's hit that is a wall or lies inside one was matched, not
@@ -948,6 +957,16 @@ system`, `EROFS`, `EBUSY` or `resource busy` gets a hint naming the grant
 and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
 `sandbox-grant-remove.unsafe.test.ts`). The lines are kept as stderr
 streams, as `GIT_NO_REPO`'s are: a run captures no output.
+
+### A credential store inside a write grant (Linux)
+
+A grant above a credential store does not name it, so the store stays
+hidden behind a mount: under `write: ['~/.expo/']`, Expo's rename onto
+`~/.expo/state.json` fails with "resource busy" on every run once that
+file exists. A failed task whose output names a hidden path under one of
+its write grants, on such a line, gets a hint naming it and the grant
+that opens it, by name (`hiddenUnderGrantHint`,
+`sandbox-grant-remove.unsafe.test.ts`).
 
 ### git and a hidden `.git`
 
@@ -1574,7 +1593,19 @@ export function misrootedWriteHint(
   projectDir,
   workspaceRoot,
 ): SandboxViolation | undefined
+// a refused write of a file in the workspace root: no grant, the tool writes it in a directory
+export function rootFileWriteHint(
+  violations,
+  projectDir,
+  workspaceRoot,
+): SandboxViolation | undefined
 ```
+
+On Linux a file written in the workspace root (`.eslintcache`,
+`tsconfig.tsbuildinfo` of a single-package workspace) takes no grant: a file's grant binds its
+directory, and vx refuses a bind that holds `.git`. `sandboxFix` named
+`'.'` or the file, which the next run turned down, so it names neither
+and `rootFileWriteHint` says to have the tool write it in a directory.
 
 ### Tests
 

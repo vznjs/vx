@@ -240,7 +240,7 @@ export async function keyStillTrue(
 }
 
 /**
- * The command changed an undeclared ignored file in its project
+ * The command changed an undeclared untracked file in its project
  * (`undeclared-state.ts`). One a sandbox let it write none of is another
  * process's. One another command of the project may have written while
  * this one ran cannot be told from this one's write: still not saved, and
@@ -270,7 +270,7 @@ export function noStateWritten(m: MissRun, { state, from }: StateStamp): boolean
   }
   warnOf(log)(
     `[vx] ${node.id}: ${changed.map(printable).join(', ')} changed while the task ran, ` +
-      `but git ignores ${changed.length === 1 ? 'it' : 'them'} and the task declares ` +
+      `but the task declares ` +
       `${changed.length === 1 ? 'it' : 'them'} neither input nor output — the result stands, but is not saved: ` +
       `a tool that reads such a file back (an incremental build's state) builds from it, not from the inputs` +
       declareStateHint(changed, alongside),

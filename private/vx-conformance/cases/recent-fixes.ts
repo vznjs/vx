@@ -96,6 +96,98 @@ export default [
   }),
 
   defineCase({
+    id: 'outputs/untracked-incremental-state-caches-no-partial-build',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An incremental tool’s state file git does not ignore never leaves a partial build in the cache',
+    why: 'A `.gitignore` that names `dist` but not `*.tsbuildinfo` leaves `tsc -b`’s state untracked, not ignored. It is still state: emptied `dist`, kept state, and the next build emits one changed file. A tool that guards only ignored state stores that partial `dist`, and a fresh checkout restores it.',
+    from: ['undeclared-state'],
+    workspace: one(build({ command: INCREMENTAL.replaceAll('state', 'tsconfig.tsbuildinfo') }), {
+      'src/a.txt': 'a\n',
+      'src/b.txt': 'b\n',
+      '.gitignore': 'dist/\n',
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0 } },
+      // A fresh checkout: neither the outputs nor the state.
+      {
+        write: {
+          'packages/a/dist/a.txt': null,
+          'packages/a/dist/b.txt': null,
+          'packages/a/tsconfig.tsbuildinfo': null,
+        },
+      },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/dist/a.txt': 'a2\n', 'packages/a/dist/b.txt': 'b\n' },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/kept-cache-beside-outputs-still-saves',
+    category: 'outputs',
+    kind: 'efficiency',
+    title: 'A tool cache the outputs take back with `!` does not stop the build from caching',
+    why: 'Next keeps its type-check state in `.next/cache`, and the usual outputs are `.next/**` without `.next/cache/**`, so the cache stays across builds. That state changes on every build. A tool that treats it as undeclared state stops saving every build after the first, and switching back to an earlier source rebuilds instead of replaying.',
+    from: ['undeclared-state'],
+    workspace: one(
+      build({
+        command:
+          'mkdir -p .next/cache && cat src/a.txt > .next/out.txt && date +%s%N > .next/cache/.tsbuildinfo',
+        outputs: ['.next/**', '!.next/cache/**'],
+      }),
+      { 'src/a.txt': 'a\n', '.gitignore': '.next/\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { 'packages/a/.next/out.txt': 'a2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/whole-build-info-beside-outputs-still-saves',
+    category: 'outputs',
+    kind: 'efficiency',
+    title: 'A build-info file that records no per-file state does not stop the build from caching',
+    why: 'Vite’s template runs `tsc -b` with `noEmit` before `vite build`, and tsc writes `node_modules/.tmp/tsconfig.app.tsbuildinfo` holding only its root files and version. That file changes on every build but cannot leave outputs half-built: the build emits its whole project. A tool that treats it as incremental state stops saving every build after the first.',
+    from: ['undeclared-state'],
+    workspace: one(
+      build({
+        command:
+          'mkdir -p node_modules/.tmp dist && echo "{\\"root\\":[\\"../../src/a.txt\\"],\\"version\\":\\"5.9.3\\",\\"at\\":\\"$(date +%s%N)\\"}" > node_modules/.tmp/tsconfig.app.tsbuildinfo && cat src/a.txt > dist/out.txt',
+      }),
+      { 'src/a.txt': 'a\n', '.gitignore': 'dist/\nnode_modules/\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { [A]: 'a\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { write: { [A]: 'a2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { [out('a')]: 'a2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/retry-saves-only-the-passing-attempt',
     category: 'outputs',
     kind: 'correctness',
@@ -630,5 +722,34 @@ export default [
         expect: { exit: 0, ran: ['app#pack'], files: { [out('app')]: '"lib": "1.0.0"\n' } },
       },
     ],
+  }),
+
+  defineCase({
+    id: 'sandbox/root-package-missing-optional-file-passes',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task of the root package may look for a file that is not there',
+    why: 'Most tools try optional files first: a local override, a config in one of five spellings. In a workspace that is one package, or whose root has tasks of its own, those lookups happen in the root. A sandbox that reports a file that does not exist as a refused read fails every such tool, and isolation cannot be turned on there.',
+    from: ['sandbox-grants.unsafe'],
+    needs: ['sandbox'],
+    workspace: {
+      projects: {
+        root: {
+          dir: '.',
+          tasks: {
+            build: {
+              command:
+                'mkdir -p out && { { cat < local.txt; } 2>/dev/null || cat tools/gen.txt; } > out/gen.txt',
+              inputs: ['tools/**'],
+              outputs: ['out/**'],
+              sandbox: { read: ['.'] },
+            },
+          },
+          files: { 'tools/gen.txt': 'one\n' },
+        },
+        a: { tasks: { build: { command: 'true', cache: false } }, files: { 'src/a.txt': 'a\n' } },
+      },
+    },
+    steps: [{ run: 'build', expect: { exit: 0, files: { 'out/gen.txt': 'one\n' } } }],
   }),
 ]

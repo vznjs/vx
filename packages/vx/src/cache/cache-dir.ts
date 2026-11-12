@@ -33,20 +33,26 @@ import {
  */
 export const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.(?:tar\.zst|tree)(\.tmp-\d+-\d+-[0-9a-z]*)?$/
 
+/** The file in a cache directory with no store that its runs hold shared and a clean alone (`holdCacheDir`). */
+const DIR_LOCK = 'cache.lock'
+
 /** What vx writes in a cache directory besides its artifacts. */
 const VX_CACHE_NAMES = new Set([
   'cache.db',
   'cache.db-wal',
   'cache.db-shm',
   'cache.db-journal',
-  'cache.lock',
+  DIR_LOCK,
   // Every record vx keeps lives in cache.db, and the config bundle always
   // in `.vx/cache/compiled`, so any directory here is the user's.
 ])
 
 /**
  * The entries of `cacheDir` vx wrote. A clear of a directory the user named
- * deletes these and nothing else.
+ * deletes these and nothing else. The lock is listed last: a clear deletes in
+ * this order, and a run waiting on it takes a missing lock as the clear's end
+ * (`holdCacheDir`). Deleted before `cache.db`, the run opened an index the
+ * clear then took.
  */
 export function vxCacheEntries(cacheDir: string): string[] {
   let names: string[]
@@ -55,7 +61,8 @@ export function vxCacheEntries(cacheDir: string): string[] {
   } catch {
     return []
   }
-  return names.filter((name) => {
+  const own = names.filter((name) => {
+    if (name === DIR_LOCK) return false
     if (VX_CACHE_NAMES.has(name) || VX_ARTIFACT_NAME.test(name)) return true
     if (name !== '.gitignore') return false
     try {
@@ -64,6 +71,7 @@ export function vxCacheEntries(cacheDir: string): string[] {
       return false
     }
   })
+  return names.includes(DIR_LOCK) ? [...own, DIR_LOCK] : own
 }
 
 /**
@@ -344,9 +352,6 @@ export async function holdStore(
   }
   return () => closeDb(db)
 }
-
-/** The file in a cache directory with no store that its runs hold shared and a clean alone (`holdCacheDir`). */
-const DIR_LOCK = 'cache.lock'
 
 /**
  * Hold a cache directory with no store (`--cache-dir`, `cache.dir`,

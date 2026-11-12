@@ -72,6 +72,24 @@ describe('vx lock and what a key never sees', () => {
     expect(r.err.match(/packages\/app#build/g)?.length).toBe(2)
   })
 
+  it('names a bundler variable inputs.env keys that the child never gets', async () => {
+    const r = await lock(
+      task(
+        'build',
+        { files: ['src/**'], env: ['VITE_API_URL', 'NODE_ENV', 'VITE_MODE', 'BUILD_ID'] },
+        {
+          define: { VITE_MODE: 'prod' },
+        },
+      ),
+    )
+    expect(r.code).toBe(0)
+    expect(r.err).toContain(
+      'packages/app#build: inputs.env keys VITE_API_URL, NODE_ENV, which a bundler writes into its output, but the command never gets them — add them to exec.env.passThrough',
+    )
+    expect(r.err).not.toContain('VITE_MODE')
+    expect(r.err).not.toContain('BUILD_ID')
+  })
+
   it('says nothing once the file is named, the name is keyed, or the task is not cached', async () => {
     const r = await lock(
       [

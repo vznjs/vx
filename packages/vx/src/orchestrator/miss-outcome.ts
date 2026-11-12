@@ -14,7 +14,12 @@ import type { Attempts } from './attempts.js'
 import type { KeyCheck } from './input-recheck.js'
 import type { MissRun } from './miss-run.js'
 import { failedOutputLog } from './output-log.js'
-import { misrootedWriteHint, perRunWriteHint, sandboxFix } from '../sandbox/index.js'
+import {
+  misrootedWriteHint,
+  perRunWriteHint,
+  rootFileWriteHint,
+  sandboxFix,
+} from '../sandbox/index.js'
 
 export function missOutcome(
   m: MissRun,
@@ -51,6 +56,7 @@ export function missOutcome(
       : [
           perRunWriteHint(violations, node.projectDir, args.run.workspaceRoot),
           misrootedWriteHint(violations, node.projectDir, args.run.workspaceRoot),
+          rootFileWriteHint(violations, node.projectDir, args.run.workspaceRoot),
         ].filter((n) => n !== undefined)
   const finalViolations = notes.length === 0 ? violations : [...violations, ...notes]
   const keepsWhole = policy.save || args.run.keepRun !== undefined
