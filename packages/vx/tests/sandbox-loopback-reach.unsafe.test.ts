@@ -184,10 +184,16 @@ describe.skipIf(!available || Bun.which('curl') === null)(
           expect(r.ok).toBe(false)
           expect(r.outcomes.find((o) => o.node.id === 'web#client')?.status).toBe('failed')
           expect(fixture.log.join('\n')).not.toContain('hi-from-server')
-          // The refusal names the grant that relays the port.
+          // The refusal names the grant that relays the port on Linux; on
+          // macOS, which has no network namespace, seatbelt's own record
+          // names the port.
           expect(
             r.outcomes.find((o) => o.node.id === 'web#client')?.sandboxViolationLines?.join('\n'),
-          ).toContain(`allow: { network: ['localhost:${port}'] }`)
+          ).toContain(
+            process.platform === 'linux'
+              ? `allow: { network: ['localhost:${port}'] }`
+              : `network-outbound remote:*:${port}`,
+          )
         }
       },
       TIMEOUT,

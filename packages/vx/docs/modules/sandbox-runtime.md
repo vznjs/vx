@@ -908,8 +908,12 @@ touches an up-to-date dependency's buildinfo when its sources are newer
 than it (a branch switched and back, the dependency a hit, whose restore
 keeps the outputs' times) and swallows the refusal; judged a write, the
 dependant failed every run until `--force` (2026-11-12,
-`sandbox-dependency-outputs.unsafe.test.ts`). Linux only; the macOS
-report is unchanged and unproven for this case.
+`sandbox-dependency-outputs.unsafe.test.ts`). So is a refused `open` or
+`openat` of an existing file a refused timestamp change of the same path
+follows: `touch` opens its file for writing first, GNU's without `-c`,
+uutils' (Ubuntu 26.04) with it too, and on the refusal sets the times by
+path. On macOS a seatbelt `file-write-times` denial on a path a read
+grant covers is dropped the same way.
 
 The directory is writable in full too, and a hard link reads without an
 open: `ln -f README.md out.txt` beside `write: ['out.txt']` passed
@@ -1237,7 +1241,7 @@ bridge, and refused with no grant or another port's.
 A failed Linux task whose output's tail says a loopback port refused it
 (`ECONNREFUSED 127.0.0.1:<port>`, `ERR_CONNECTION_REFUSED at
 http://localhost:<port>/`, curl's `localhost port <port>: Couldn't
-connect`, `[::1]:<port>`) gets a hint naming the grant
+connect` or, since 8.7, `Could not connect`, `[::1]:<port>`) gets a hint naming the grant
 (`refusedLoopbackHint`) when the host listens on that port, on loopback
 or every address (`/proc/net/tcp`, `tcp6`), and the task neither grants
 nor binds it. Before, it got a bare refusal and no word of vx

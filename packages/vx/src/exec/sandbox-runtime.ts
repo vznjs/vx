@@ -2919,7 +2919,17 @@ async function runSandboxedOnce(
   // task (reproduced 2026-09-04 in a Linux container: exit 1, empty
   // stderr). On Linux the records are judged against the task's own binds
   // below (`refusedWrites`).
-  const macViolations = process.platform === 'darwin' ? records : []
+  const grantedRead = [...baselines.allowRead, ...args.config.allowRead]
+  // A timestamp change seatbelt refused where the task may read landed
+  // nothing, as on Linux (`refusedWrites`): `tsc -b` touches an up-to-date
+  // dependency's buildinfo and swallows the refusal.
+  const macViolations =
+    process.platform === 'darwin'
+      ? records.filter((v) => {
+          const touched = /deny\(\d+\)\s+file-write-times\s+(\/.*?)\s*$/.exec(v.line)?.[1]
+          return touched === undefined || !readableUnder(touched, grantedRead)
+        })
+      : []
   // No settle window: the store is read once, right after the child exits
   // (2026-09-05). It cost 300ms on EVERY clean sandboxed task — the
   // full budget, since a task with nothing to report can only prove that by
@@ -3040,7 +3050,6 @@ async function runSandboxedOnce(
   // Not a guess about the cause: the cwd lying outside every allowRead
   // prefix is a fact of the resolved baselines. Added only when the task
   // ALREADY failed with nothing to show, so it can never redden a pass.
-  const grantedRead = [...baselines.allowRead, ...args.config.allowRead]
   if (exitCode !== 0 && violations.length === 0 && !readableUnder(args.cwd, grantedRead)) {
     violations.push({
       timestamp: new Date(),
@@ -3319,10 +3328,12 @@ function hiddenGitHint(
 
 /**
  * An output line saying a connection was refused (Node's `ECONNREFUSED`,
- * a browser's `ERR_CONNECTION_REFUSED`, curl's "Couldn't connect"), and
- * the loopback ports it names (`refusedLoopbackHint`).
+ * a browser's `ERR_CONNECTION_REFUSED`, curl's "Couldn't connect" or,
+ * since 8.7, "Could not connect"), and the loopback ports it names
+ * (`refusedLoopbackHint`).
  */
-const REFUSED = /ECONNREFUSED|ERR_CONNECTION_REFUSED|Connection refused|Couldn't connect to server/i
+const REFUSED =
+  /ECONNREFUSED|ERR_CONNECTION_REFUSED|Connection refused|Could(?:n't| not) connect to server/i
 const LOOPBACK_PORT = /(?:localhost|127\.0\.0\.1|\[::1\]|::1)(?::| port )(\d{1,5})\b/gi
 
 /**

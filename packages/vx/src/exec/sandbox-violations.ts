@@ -924,6 +924,8 @@ const MOVES = /^(?:rename|link)/
 const OPEN_EITHER = /^openat2$/
 /** The calls that change only a path's timestamps. */
 const TIMES = /^(?:utimensat|utimes|futimesat|utime)$/
+/** The plain opens a write-intent record names (no `openat2`: `OPEN_EITHER`). */
+const OPENS = /^(?:open|openat)$/
 
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
@@ -986,6 +988,15 @@ export function refusedWrites(
   // does, and `out.log` under a `*.log` no bind held vanished with the
   // sandbox under a green run.
   const left = new Map<string, { syscall: string; raw: string }>()
+  // The paths a record changes the timestamps of. `touch` opens its file
+  // for writing first and, refused, sets the times by path: GNU without
+  // `-c` (`O_CREAT`), uutils even with it (Ubuntu 26.04's touch, CI's
+  // runners, 2026-11-12).
+  const timed = new Set<string>()
+  for (const record of records) {
+    const m = /^deny (\S+) (\/.*)$/.exec(record)
+    if (m !== null && TIMES.test(m[1]!)) timed.add(toRealPath(m[2]!))
+  }
   let source = false
   for (const record of records) {
     const m = /^deny (\S+) (\/.*)$/.exec(record)
@@ -1033,6 +1044,16 @@ export function refusedWrites(
     // hit), and swallows the refusal; judged a write, the dependant failed
     // every run until `--force`.
     if (!bound && TIMES.test(syscall) && inSandbox(abs, binds, readable)) continue
+    // So did the open of an existing file such a change follows: the
+    // touch's own first try.
+    if (
+      !bound &&
+      OPENS.test(syscall) &&
+      timed.has(abs) &&
+      exists(abs) &&
+      inSandbox(abs, binds, readable)
+    )
+      continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)

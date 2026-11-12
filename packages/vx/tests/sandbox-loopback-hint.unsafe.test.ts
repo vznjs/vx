@@ -74,6 +74,12 @@ describe.skipIf(!available || process.platform !== 'linux')(
         (p: number) =>
           `curl: (7) Failed to connect to localhost port ${p} after 0 ms: Couldn't connect to server`,
       ],
+      // curl 8.7 says it in full (Ubuntu 26.04, CI's runners, 2026-11-12).
+      [
+        'curl 8.7',
+        (p: number) =>
+          `curl: (7) Failed to connect to localhost port ${p} after 0 ms: Could not connect to server`,
+      ],
       ['IPv6', (p: number) => `Error: connect ECONNREFUSED [::1]:${p}`],
     ])(
       "%s's refusal names the grant",

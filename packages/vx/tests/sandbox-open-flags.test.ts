@@ -86,5 +86,15 @@ it.skipIf(process.platform !== 'linux')(
     expect(refusedWrites([`deny openat ${file}`], [], [], readable).map((v) => v.line)).toEqual([
       `openat(${file}) = a write no grant covers  [${file}]`,
     ])
+    // `touch` opens for writing first (GNU without `-c`, uutils always),
+    // then, refused, sets the times by path: one touch, no write.
+    const touch = (p: string) => [`deny openat ${p}`, `deny utimensat ${p}`]
+    expect(refusedWrites(touch(file), [], [], readable)).toEqual([])
+    // A file it would have created is no touch of what is there.
+    const made = path.join(dir, 'src', 'new.js')
+    expect(refusedWrites(touch(made), [], [], readable).map((v) => v.line)).toEqual([
+      `openat(${made}) = a write no grant covers  [${made}]`,
+      `utimensat(${made}) = a write no grant covers  [${made}]`,
+    ])
   },
 )

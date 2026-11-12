@@ -126,6 +126,8 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
   // and swallows the refusal; judged a write, the dependant failed every
   // run until `--force` (tsref repro1, 2026-11-12). The bind is read-only:
   // the touch lands nothing, and the dependency's file keeps its time.
+  // `touch` without `-c` opens the file for writing first, and so does
+  // uutils' (Ubuntu 26.04) with it: that refused open is the touch too.
   it(
     'a refused timestamp change on a dependency’s output is no violation and moves nothing',
     async () => {
@@ -136,7 +138,8 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
           inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '*.txt'] }, cache: true,
         } } }`,
       })
-      const touch = `touch -c ../tools/out/bin/tool.txt 2>/dev/null; ${PEEK}`
+      const rel = '../tools/out/bin/tool.txt'
+      const touch = `touch -c ${rel} 2>/dev/null; touch ${rel} 2>/dev/null; ${PEEK}`
       await addProject(fixture.root, 'app', {
         files: { 'src/a.txt': 'A\n' },
         config: `export default { tasks: { use: {
