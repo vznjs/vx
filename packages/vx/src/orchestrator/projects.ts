@@ -1,9 +1,7 @@
-// The project-config load every consumer of "what tasks exist" shares:
-// `prepareRun` (a run, a plan) and `vx show` (introspection). One code
-// path, so what `show` prints is what a run would see — including the
-// plugin `project` stage, which can give tasks to a package that never
-// wrote a `vx.config.ts`. `vx lock` runs that stage and records what it
-// left (`Lockfile.projectStage`); every other reader takes the record.
+// The project-config load every reader of "what tasks exist" shares
+// (`prepareRun`, `vx show`), so `show` prints what a run sees, including the
+// plugin `project` stage. `vx lock` runs that stage and records what it left
+// (`Lockfile.projectStage`); others read the record.
 
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -87,11 +85,9 @@ export async function loadWorkspacePlugins(
   const settingPlugins = new Map<string, string>()
   if (loaded === null || !hasHook(plugins, 'config'))
     return { workspaceConfig: loaded, plugins, branch, settingPlugins }
-  // Bun keeps one module per specifier, so the file's export is one object
-  // per process: the CLI's selection pass, the run and each `vx watch`
-  // cycle handed the hooks what the last load's hooks had edited
-  // (`concurrency *= 2` doubled per load). The hooks edit a copy; the file
-  // holds data and plugins, and validation refused anything else.
+  // Bun keeps one module per specifier, so the file's export is one object per
+  // process, and each load's hooks edited the last load's result (`concurrency
+  // *= 2` doubled per load). The hooks edit a copy.
   const { plugins: list, ...data } = loaded
   const workspaceConfig: WorkspaceConfig = {
     ...structuredClone(data),
@@ -180,9 +176,8 @@ export function pluginsOfDiscovery(projects: readonly ProjectMeta[]): WorkspaceP
 }
 
 /**
- * The run's extra-file hashes (`ExtraHashes`), by the discovery's array: a
- * discovery is one run's (`vx watch` discovers each cycle), and the CLI's
- * `--affected` pass, the `project` stage and the key share what `discover`
+ * The run's extra-file hashes by discovery array: a discovery is one run's, and
+ * the `--affected` pass, the `project` stage and the key share what `discover`
  * hashed.
  */
 const discoveredHashes = new WeakMap<readonly ProjectMeta[], ExtraHashes>()
@@ -246,11 +241,9 @@ export function lockedDirGone(root: string, name: string, dir: string): string {
 const addedBy = new WeakMap<object, string>()
 
 /**
- * Why a project a `discover` plugin added holds no config while its
- * directory has one git ignores, or undefined: `vx lock` reads only the
- * configs git lists, so "run `vx lock`" could never fix it. `config` is
- * the file on disk, looked for when not given. One git spawn, asked only
- * of a directory holding a config.
+ * Why a `discover`-added project holds no config while its directory has one
+ * git ignores: `vx lock` reads only configs git lists, so "run `vx lock`"
+ * cannot fix it. One git spawn, only for a directory holding a config.
  */
 export function ignoredConfigRefusal(
   root: string,
@@ -268,11 +261,9 @@ export function ignoredConfigRefusal(
 }
 
 /**
- * The workspace's projects: the directories the lock records (a run never walks
- * for configs), with what the plugin `discover` stage added, named and linked
- * as `vx lock` recorded it (`Lockfile.discoverStage`). No hook runs, whatever
- * plugins the workspace declares now. Sorted by name; two projects of one name
- * are refused.
+ * The workspace's projects: the lock's directories (a run never walks for
+ * configs) plus what `discover` added, as `vx lock` recorded it. No hook runs.
+ * Sorted by name; duplicate names are refused.
  */
 export async function discoverProjects(
   workspaceRoot: string,
@@ -301,10 +292,9 @@ export async function discoverProjects(
     if (rec.deps !== undefined) meta.deps = [...rec.deps]
     if (rec.reach !== undefined) meta.reach = [...rec.reach]
   }
-  // A run follows the lock blindly: an edge to no project was dropped (the
-  // dependant ran, and hit, without it), a stage config for no project was
-  // never read, and a clash with a recorded name sent the user to a
-  // vx.config. `vx lock` writes none of them.
+  // A run follows the lock blindly: `vx lock` writes no edge to a missing
+  // project, no orphan stage config, no name clash, so a run need not judge
+  // them.
   const names = new Map<string, ProjectMeta>()
   for (const p of projects) {
     const other = names.get(p.name)
@@ -438,12 +428,10 @@ interface LoadProjectsBase {
   plugins: readonly VxPlugin[]
   projectMetas: readonly ProjectMeta[]
   /**
-   * Projects whose configs must load — `'all'`, or names (unknown and
-   * config-less ones are ignored, unless a configured project's closure
-   * reaches them, as in the `'all'` load). With `closure`, each seed's transitive
-   * package dependencies load too, which bounds `^task` frontier
-   * expansion; a `pkg#task` dependsOn entry pulls its project in either
-   * way, since the package graph cannot see the cross form.
+   * Projects whose configs must load: `'all'`, or names (unknown and
+   * config-less ones ignored unless a configured project's closure reaches
+   * them). With `closure`, each seed's package dependencies load too, bounding
+   * `^task`; a `pkg#task` entry pulls its project in either way.
    */
   seeds: 'all' | Iterable<string>
   /**
@@ -460,13 +448,9 @@ interface LoadProjectsBase {
    */
   lock?: boolean
   /**
-   * Entries a load in this same process already produced with the same
-   * cache dir and lock (the CLI's selection pass, which stages every
-   * config to walk `pkg#task` edges). Seeding and scoping run exactly as
-   * without it; a project found here is taken as is instead of being
-   * evaluated and put through the `project` stage a second time — the
-   * stage's cost, and its warnings, once per run. Never carried across
-   * runs: a config can change between them.
+   * Entries this process already loaded with the same cache dir and lock (the
+   * CLI's selection pass): taken as is instead of evaluated and staged again,
+   * so the stage's cost and warnings come once per run. Never across runs.
    */
   staged?: ReadonlyMap<string, ProjectEntry>
 }
@@ -487,31 +471,22 @@ export interface LoadedProjects {
 }
 
 /**
- * SCOPED config loading: configs are programs, and evaluating 1090 of
- * them costs ~200 ms — the dominant fixed cost of small runs. Only the
- * seeds, their closure and any project a `pkg#task` entry names can
- * contribute graph nodes, so only those configs are evaluated. Side
- * effect, deliberate and Turbo-like: a broken config in an unrelated
- * package does not fail a scoped run — it surfaces when that package
- * enters scope.
+ * Scoped loading: evaluating 1,090 configs costs ~200 ms. Only seeds, their
+ * closure and `pkg#task`-named projects can add nodes. Like Turbo, an unrelated
+ * broken config fails a scoped run only once in scope.
  */
 export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects> {
   const { plugins, workspaceRoot } = args
   const lock = args.configs
   const graph = args.closure ? args.packageGraph : null
-  // A package with no config file declares no tasks — unless a plugin fills the
-  // `project` stage, in which case it is a project the stage may give tasks to
-  // (the zero-migration shape: `turbo.json` or `package.json` scripts mapped
-  // onto packages that never wrote a `vx.config.ts`). Under `vx lock` it then
-  // loads as `{ tasks: {} }` — nothing to evaluate — and the stage runs on that
-  // like on any loaded config; a run loads what the lock recorded of it. With
-  // no `project` plugin a plain run never seeds a config-less package, but
-  // loads one a loaded project's closure reaches: it gets the default `build`,
-  // so a dependant bundling its source is keyed on it behind `^build`. Left
-  // out, its edit replayed the dependant's stale output as a hit. Only `vx
-  // lock` runs the hooks. A run follows the configs they left, as `vx lock`
-  // recorded them, blindly: whatever plugins the workspace declares now, and
-  // reading nothing a mapping reads.
+  // A package with no config declares no tasks, unless a `project` plugin may
+  // give it some (`turbo.json` or scripts mapped onto packages with no
+  // `vx.config.ts`): under `vx lock` it loads as `{ tasks: {} }` and the stage
+  // runs on it. Without such a plugin a run never seeds a config-less package,
+  // but loads one a loaded closure reaches: its default `build` keys a
+  // dependant bundling its source behind `^build` (left out, its edit replayed
+  // a stale hit). Only `vx lock` runs the hooks; a run follows what it
+  // recorded.
   const hooks = args.lock === true && hasHook(plugins, 'project')
   const stage = hooks ? new Map<string, ProjectConfig>() : undefined
   // Asked only when a config is to be read: a run whose every project the
@@ -555,19 +530,15 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   const walked = new Set<string>()
   const considerWithDeps = (packageGraph: PackageGraph, name: string): void => {
     consider(name)
-    // Every config-bearing project already considered: the closure can
-    // add nothing, and asking for it would build the package graph's
-    // transitive bitsets — a cost the unscoped run (every project a seed)
-    // otherwise never pays. A closure already walked adds nothing either.
+    // Every config-bearing project already considered: the closure can add
+    // nothing, and asking would build the package graph's bitsets for nothing.
     if (neededConfigured === metaByName.size || walked.has(name)) return
     walked.add(name)
     for (const dep of packageGraph.transitiveDeps(name)) consider(dep)
   }
   const seedAll = (): Iterable<string> => configured.map((m) => m.name)
-  // A named config-less seed loads only where the `'all'` load would load
-  // it: a configured project's closure reaches it. Seeded as itself, it got
-  // a default build `vx show` listed nowhere and no run of the workspace had
-  // (`vx run lone#build` ran a group no dependant reaches).
+  // A named config-less seed loads only where `'all'` would load it: seeded
+  // alone it got a default build no run of the workspace had.
   const configuredNames = new Set(configured.map((m) => m.name))
   const seedable = (name: string): boolean =>
     configuredNames.has(name) ||
@@ -582,16 +553,11 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     }
   }
 
-  // Load in rounds to a fixpoint. A `pkg#task` dependsOn entry names a
-  // project the PACKAGE graph cannot reach (the cross form ignores npm
-  // deps by design), so its config has to be pulled in — and that config
-  // may declare cross edges of its own. The common case (no cross deps)
-  // is a single round, identical to loading the closure in one batch.
-  // Turbo spells the root package `//` (`dependsOn: ['//#lint']`), as vx
-  // names the root project unless something names it; a named root's
-  // spelling is rewritten to its name once, here, for the closure, the
-  // graph and `inputs.tasks` alike. With no root project it stays,
-  // and the graph's refusal says so.
+  // Load in rounds to a fixpoint: a `pkg#task` entry names a project the
+  // package graph cannot reach, and its config may name more. Usually one
+  // round. Turbo's root spelling `//` (`dependsOn: ['//#lint']`) is rewritten
+  // once here to a named root's name, for closure, graph and `inputs.tasks`;
+  // with no root project it stays, and the graph refuses it.
   const root = path.resolve(workspaceRoot)
   const rootName = args.projectMetas.find((m) => path.resolve(m.dir) === root)?.name
   const projects = new Map<string, ProjectEntry>()
@@ -671,9 +637,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       let config: ProjectConfig = hooks ? JSON.parse(JSON.stringify(frozen)) : frozen
       if (hooks) {
         // The `project` stage edits the validated object in place; core
-        // re-validates after EACH plugin so a plugin can only produce what
-        // the loader accepts from a user, and the refusal names both the
-        // config file and the plugin whose edit broke it.
+        // re-validates after each plugin, so a plugin produces only what a user
+        // could write, and the refusal names config and plugin.
         const where = meta.configPath ?? `${meta.name} (no config file)`
         const name = config.name
         await applyProjectHooks(
@@ -704,10 +669,9 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             }
           },
         )
-        // The run takes a copy of what the hooks left: a plugin that kept
-        // the object and wrote it later (from `admit`, or another project's
-        // hook) ran a command its key never saw, past the validation above.
-        // A copy, not a deep freeze: 1.5 ms of 1,000 projects against 4.4.
+        // The run takes a copy of what the hooks left: a plugin that kept the
+        // object and wrote it later ran a command its key never saw. A copy,
+        // not a deep freeze: 1.5 ms against 4.4 at 1,000 projects.
         config = JSON.parse(JSON.stringify(config))
         stage!.set(meta.dir, config)
       }

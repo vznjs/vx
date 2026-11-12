@@ -1,14 +1,11 @@
-// Per-run context capture for the Tier-3 `invocations` header row:
-// git (commit / branch / dirty), CI provider, and host/os/arch. All
-// probes are best-effort — a missing git binary, a non-repo cwd, or an
-// unset env degrades each field to null and NEVER throws. Telemetry must
-// not be able to fail a build.
+// Per-run context for the `invocations` header row: git (commit, branch,
+// dirty), CI provider, host/os/arch. Best-effort: a missing git, non-repo cwd
+// or unset env makes a field null, never a throw. Telemetry must not fail a
+// build.
 //
-// Cost: HEAD read from `.git` on every run (`captureGitContext`), plus
-// `refs/remotes/origin/HEAD` and the enumeration's `remote.origin.url`
-// only when a plugin declares the `telemetry` capability — nobody else
-// needs those fields. Each falls back to a `git` spawn where the files or
-// the enumeration cannot answer.
+// Cost: HEAD read from `.git` every run; `origin/HEAD` and `remote.origin.url`
+// only with a `telemetry` plugin. Each falls back to a `git` spawn when the
+// files cannot answer.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -60,17 +57,11 @@ export interface HostContext {
 }
 
 /**
- * One short `git` spawn per run (not per task), behind try/catch.
- * `git rev-parse HEAD --symbolic-full-name HEAD` returns the commit on
- * line 1 and the ref on line 2 in a SINGLE invocation — half the spawns
- * of two separate `rev-parse` calls. The full name, not `--abbrev-ref`:
- * a tag named like the branch made that answer `heads/main`
- * (vercel/turborepo#13882). `dirty` is NOT probed here: the run's
- * `GitFilesCache` populate already ran `git status --porcelain` for
- * input enumeration, so the orchestrator passes that aggregate in
- * (`dirty`) rather than paying for a second status spawn. Pass
- * `dirty: null` when unavailable. Each field degrades to null
- * independently — telemetry never fails a run.
+ * One `git` spawn per run: `rev-parse HEAD --symbolic-full-name HEAD` gives
+ * commit and ref in one call. The full name, not `--abbrev-ref`: a tag named
+ * like the branch made it `heads/main` (vercel/turborepo#13882). `dirty` comes
+ * from the run's own `git status` (pass null when unknown). Each field degrades
+ * to null alone.
  */
 export function captureGitContext(
   workspaceRoot: string,
@@ -79,11 +70,9 @@ export function captureGitContext(
 ): GitContext {
   let commitSha: string | null = null
   let branch: string | null = null
-  // Read `.git` directly first: HEAD plus one ref file (or packed-refs) is
-  // ~0.1 ms, where the spawn below is ~8 ms — on EVERY run, including a
-  // 60 ms warm one. The spawn stays as the fallback for whatever the reader
-  // does not understand (a ref format this code has not seen, a gitdir it
-  // cannot resolve), so an unusual repo is slower, never wrong.
+  // Read `.git` directly first: ~0.1 ms against the spawn's ~8 ms, on every
+  // run. The spawn is the fallback for anything unfamiliar, so an unusual repo
+  // is slower, never wrong.
   const direct = readHeadDirect(workspaceRoot)
   if (direct !== null) {
     branch = direct.branch ?? ciBranch(env)
@@ -109,14 +98,9 @@ export function captureGitContext(
       const sha = lines[0]?.trim()
       const br = lines[1]?.trim()
       if (sha) commitSha = sha
-      // A detached HEAD answers the literal string `HEAD`, never `refs/heads/…`.
-      // Recording that verbatim INVENTS a branch: every detached
-      // run shares a pseudo-branch "HEAD", which is how `actions/checkout`
-      // leaves a pull_request build. The trust boundary (`branch ===
-      // defaultBranch`) means it is at least never mistaken for trunk, but
-      // every PR collapses into one scope — so one PR's timings feed another's
-      // baseline, cross-branch regression detection counts them as a single
-      // branch, and a consumer grouping runs by branch reads "HEAD".
+      // A detached HEAD answers `HEAD`. Recorded, every detached run (a
+      // pull_request checkout) shares a pseudo-branch: never trunk, but all PRs
+      // collapse into one scope and feed each other's baselines.
       if (br?.startsWith('refs/heads/')) branch = br.slice('refs/heads/'.length)
     } else {
       // No commit yet: `rev-parse HEAD` fails, yet HEAD already names the
@@ -126,11 +110,9 @@ export function captureGitContext(
   } catch {
     // git unavailable / non-repo: both fields stay null.
   }
-  // A detached CI checkout still knows the branch it came from; the provider
-  // says so even though git cannot. Same most-reliable-first ladder as
-  // `captureDefaultBranch`, and consulted only when git had no answer — an
-  // attached branch is ground truth for what this working tree IS, so a stale
-  // exported variable must never relabel it.
+  // A detached CI checkout still knows its branch from the provider. Consulted
+  // only when git had none: an attached branch is ground truth, and a stale
+  // variable must never relabel it.
   branch ??= ciBranch(env)
   return { commitSha, branch, dirty }
 }
@@ -148,11 +130,10 @@ function unbornBranch(workspaceRoot: string): string | null {
 }
 
 /**
- * `HEAD`'s commit and branch from the `.git` files, or null when anything
- * about the layout is unfamiliar (the caller then spawns git). Handles a
- * `.git` directory, a `.git` FILE (`gitdir: …` — a linked worktree, whose
- * refs live under `commondir`), a symbolic HEAD, a detached HEAD, loose refs
- * and `packed-refs`. A reftable repository is always null.
+ * `HEAD`'s commit and branch from `.git` files, or null on anything unfamiliar
+ * (the caller spawns git). Handles a `.git` dir or file (a linked worktree,
+ * refs under `commondir`), symbolic and detached HEAD, loose refs and
+ * `packed-refs`. Reftable is always null.
  */
 function readHeadDirect(
   workspaceRoot: string,
@@ -193,12 +174,9 @@ function readHeadDirect(
 
 /**
  * The git dir and common dir behind `workspaceRoot` when its refs are files
- * this code reads: a `.git` directory or a `.git` FILE (`gitdir: …`, a linked
- * worktree, whose shared refs live under `commondir`). Null for a reftable
- * repository (`git init --ref-format=reftable`, git 2.45): HEAD names
- * `refs/heads/.invalid` and the refs live in `reftable/`, so the files say
- * nothing true. A leftover `packed-refs` there was read as the answer.
- * Throws when there is no `.git` at the root (a workspace in a subdirectory).
+ * this reads. Null for reftable (git 2.45): HEAD names `refs/heads/.invalid`,
+ * so the files say nothing true, and a leftover `packed-refs` was read as the
+ * answer. Throws with no `.git` at the root.
  */
 function refDirsOf(workspaceRoot: string): { gitDir: string; commonDir: string } | null {
   let gitDir = path.join(workspaceRoot, '.git')
@@ -243,11 +221,8 @@ function readOriginHeadDirect(workspaceRoot: string): string | null | undefined 
 }
 
 /**
- * The branch a CI provider says this checkout came from, or null.
- *
- * On a GitHub pull_request `GITHUB_REF_NAME` is `<n>/merge` — the merge ref,
- * not a branch anyone works on — so `GITHUB_HEAD_REF` (the contributor's
- * actual branch, set only for pull_request events) has to win.
+ * The branch a CI provider says this checkout came from, or null. On a GitHub
+ * pull_request `GITHUB_REF_NAME` is `<n>/merge`, so `GITHUB_HEAD_REF` wins.
  */
 function ciBranch(env: NodeJS.ProcessEnv | Record<string, string | undefined>): string | null {
   for (const key of ['GITHUB_HEAD_REF', 'GITHUB_REF_NAME', 'CI_COMMIT_REF_NAME']) {
@@ -258,18 +233,12 @@ function ciBranch(env: NodeJS.ProcessEnv | Record<string, string | undefined>): 
 }
 
 /**
- * The repository's DEFAULT (trunk) branch — the axis that separates a
- * mainline run from a PR / feature-branch experiment. A run whose `branch`
- * equals this is a trunk run; everything else is branch work whose timings
- * must NOT pollute the shared scheduling baseline: a branch experiment may slow every task. Resolution ladder, most-reliable first:
- *   1. GitLab: `CI_DEFAULT_BRANCH` (the project's configured default).
- *   2. GitHub Actions: the event payload's `repository.default_branch`
- *      (present on push AND pull_request events) — one best-effort JSON read.
- *   3. Local / other: `git symbolic-ref --short refs/remotes/origin/HEAD`,
- *      stripping the `origin/` prefix.
- * Returns null when none resolve (a detached checkout with no remote HEAD, a
- * non-repo cwd) — the consumer then counts ALL runs, so an undetectable
- * default never regresses today's behavior. Never throws.
+ * The default (trunk) branch: a run on it is trunk, anything else is branch
+ * work whose timings must not pollute the shared baseline. Most reliable first:
+ * 1. GitLab `CI_DEFAULT_BRANCH`.
+ * 2. GitHub Actions: the event payload's `repository.default_branch`.
+ * 3. `git symbolic-ref --short refs/remotes/origin/HEAD`, without `origin/`.
+ *    Null when none resolve; consumers then count all runs. Never throws.
  */
 export function captureDefaultBranch(
   env: NodeJS.ProcessEnv | Record<string, string | undefined>,
@@ -450,12 +419,10 @@ function workTreePath(root: string): string | undefined {
 }
 
 /**
- * Normalize a git remote URL so every checkout of the same repository
- * derives the SAME workspace id: `git@github.com:o/r.git`,
- * `ssh://git@github.com/o/r`, and `https://github.com/o/r.git` all
- * reduce to `github.com/o/r`. No credential survives: the userinfo ends
- * at the last `@` before the path, as a URL parser splits it (a password
- * may hold `@`), and a query or fragment (`?private_token=`) is dropped.
+ * Normalize a remote URL so every checkout of a repository derives the same id:
+ * scp, ssh and https forms reduce to `github.com/o/r`. No credential survives:
+ * userinfo ends at the last `@` before the path (a password may hold `@`), and
+ * query and fragment are dropped.
  */
 export function normalizeRemoteUrl(raw: string): string {
   let s = raw.trim().toLowerCase()
@@ -464,11 +431,9 @@ export function normalizeRemoteUrl(raw: string): string {
   s = s.replace(/[?#].*$/s, '') // ?query, #fragment
   // user[:pass]@; scp shorthand has no password, and its path follows a `:`.
   s = s.replace(hadProtocol ? /^[^/]*@/ : /^[^@/]+@/, '')
-  // A `:port` only appears in a protocol-form URL (`ssh://host:2222/path`); the
-  // scp shorthand `host:path` has no port. STRIP it (the old code reinserted it
-  // as a path segment, so `ssh://host:2222/o/r` and `https://host/o/r` — the
-  // SAME repo — derived different workspace ids). Gated on `hadProtocol` so a
-  // scp path whose first segment is numeric isn't mistaken for a port.
+  // Strip a `:port` (protocol form only; scp has none), or
+  // `ssh://host:2222/o/r` and `https://host/o/r` derived different ids. Gated
+  // on `hadProtocol` so a numeric scp segment is not taken for a port.
   if (hadProtocol) s = s.replace(/:\d+(\/|$)/, '$1')
   s = s.replace(/:/, '/') // scp-style host:path
   s = s.replace(/\.git$/, '').replace(/\/+$/, '')
@@ -476,17 +441,11 @@ export function normalizeRemoteUrl(raw: string): string {
 }
 
 /**
- * Stable workspace identity for the multi-workspace server story
- * (telemetry schema v2). Derivation ladder:
- *   1. git remote origin URL, normalized → xxh3 (same id from any
- *      machine's checkout of the same repo);
- *   2. no remote → a salt persisted at `<root>/.vx/cache/workspace-id`
- *      (the checkout keeps a stable identity across runs; `.vx/cache` holds
- *      the machine-local state, never committed);
- *   3. unwritable `.vx/cache` → the root path itself (stable per machine).
- * The URL comes from the run's own `git var -l` when it has one, else one
- * `git` spawn behind try/catch; call sites gate on telemetry being active
- * so a plain run never pays it. Never throws.
+ * Stable workspace identity (telemetry v2):
+ * 1. the normalized origin URL, hashed (same id on every machine);
+ * 2. no remote: a salt persisted at `<root>/.vx/cache/workspace-id`;
+ * 3. unwritable: the root path. The URL comes from the run's `git var -l`, else
+ *    one spawn; callers gate on telemetry. Never throws.
  */
 export function captureWorkspaceIdentity(
   workspaceRoot: string,
@@ -503,10 +462,9 @@ export function captureWorkspaceIdentity(
     let url = originUrl ?? ''
     if (originUrl === undefined) {
       const proc = Bun.spawnSync({
-        // `config --get`, NOT `remote get-url`: get-url applies insteadOf
-        // rewrites, so two developers mirroring the same repo through
-        // different proxies would derive different workspace ids. The raw
-        // configured URL is the identity.
+        // `config --get`, not `remote get-url`: get-url applies insteadOf
+        // rewrites, so mirrors through different proxies would derive different
+        // ids.
         cmd: [executablePath('git'), '-C', workspaceRoot, 'config', '--get', 'remote.origin.url'],
         env: gitEnv(),
         stdout: 'pipe',
@@ -562,12 +520,11 @@ export function currentBranch(
 }
 
 /**
- * The cache scope a checkout on a branch reads, from the `.git` files alone:
- * `<owner>/<repo>:<branch>`, the branch it tracks (`branch.<name>.merge` on
- * `branch.<name>.remote`), else its own name on `origin`, the repository named
- * by that remote's URL. None on the default branch, on a detached HEAD, or with
- * no remote URL. CI writes that scope for the same branch (`github()`), so a
- * laptop reads what its branch's CI saved.
+ * The cache scope a branch checkout reads, from `.git` files alone:
+ * `<owner>/<repo>:<branch>`, the tracked branch (`branch.<name>.merge` on its
+ * remote) else its own name on `origin`. None on the default branch, a detached
+ * HEAD or with no remote URL. CI writes that scope (`github()`), so a laptop
+ * reads its branch's CI entries.
  */
 export function localBranchScope(
   workspaceRoot: string,
@@ -589,10 +546,9 @@ export function localBranchScope(
 
 /**
  * The default branch a cache reads: `baseBranch`, else
- * `captureDefaultBranch`'s, else, as `--affected` finds its base, the
- * first of `origin/main`, `origin/master`, `main`, `master` that exists.
- * The repo creator's clone (`git push -u origin main`) has no
- * `origin/HEAD`, and a feature branch there read none of CI's main entries.
+ * `captureDefaultBranch`'s, else the first existing of `origin/main`,
+ * `origin/master`, `main`, `master`: a creator's clone has no `origin/HEAD`,
+ * and a feature branch there read none of CI's main entries.
  */
 function trunkBranch(
   workspaceRoot: string,
