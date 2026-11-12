@@ -1,10 +1,11 @@
 // What a finished run leaves behind, folded from its event stream: the
 // `runs` rows, the `invocations` header row, and — only when a telemetry
-// sink is active — the per-task telemetry mirror. One pass over the outcome list builds all three, so
-// `invocations.task_count` and the number of telemetry tasks agree by
-// construction; the terminal's "N total" agrees because `tallyOutcomes`
-// applies the same group/aborted filter, a second copy of the rule that
-// tests/run-records.test.ts holds to this one.
+// sink is active — the per-task telemetry mirror. One pass over the
+// outcome list builds all three, so `invocations.task_count` and the
+// number of telemetry tasks agree by construction; the terminal's "N
+// total" agrees because `tallyOutcomes` applies the same group/aborted
+// filter, a second copy of the rule that tests/run-records.test.ts holds
+// to this one.
 
 import { type Cache } from '../cache/index.js'
 import { type InvocationRecord, type RunRecord, runHistory } from '../history/index.js'
@@ -17,6 +18,7 @@ import {
   isCacheHit,
 } from '../graph/index.js'
 import { VERSION } from '../version.js'
+import { notify, thrownMessage } from '../util/index.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
 import { taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
 import { neverStarted, type RunEventSubscriber } from '../report/index.js'
@@ -44,7 +46,17 @@ export function foldOutcomes(
     subscriber: (e) => {
       if (e.kind !== 'task:complete' || nodes.get(e.node.id) !== e.node) return
       outcomes.push(e.outcome)
-      each?.(e.outcome)
+      if (each === undefined) return
+      // The bus would swallow it unsaid: a lost keep or history row is told.
+      try {
+        each(e.outcome)
+      } catch (err) {
+        notify({
+          kind: 'line',
+          tone: 'warn',
+          text: `[vx] onFinish observer threw for ${e.node.id}: ${thrownMessage(err)}\n`,
+        })
+      }
     },
   }
 }
