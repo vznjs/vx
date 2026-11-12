@@ -1032,6 +1032,27 @@ describe('an input file added during the run', () => {
     TIMEOUT,
   )
 
+  // `jest -u` rewrote a committed snapshot: the line said to declare it in
+  // outputs or set the stability to mutable, neither of which a file the
+  // task checks against is. It is committed, as a new one is.
+  it(
+    'a committed snapshot the task updated: the line says to commit it',
+    async () => {
+      await addProject(root, 'app', {
+        config: ADDS(`echo v2 > src/__snapshots__/a.snap; ${BUILD}`),
+        files: { 'src/in.txt': 'hi\n', 'src/__snapshots__/a.snap': 'v1\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
+      commit()
+      await writeFile(path.join(root, 'packages', 'app', 'go'), '')
+      await runTask('build')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#build: `packages/app/src/__snapshots__/a.snap` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; it is a test snapshot the task updated: commit it',
+      ])
+    },
+    TIMEOUT,
+  )
+
   it(
     'control: an ignored file, or one no glob matches, added during the run is no move',
     async () => {

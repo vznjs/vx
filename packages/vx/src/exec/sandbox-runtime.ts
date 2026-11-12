@@ -104,6 +104,7 @@ import {
   grantAlternatives,
   isMountableLiteral,
   localBindingOn,
+  loopbackPorts,
   MOUNT_WILDCARDS,
   namedPath,
   toRealPath,
@@ -1694,6 +1695,12 @@ async function wrapIn(
   // user command, so it goes INTO the sandboxed command; the host side is
   // spawned here and released when the task's process ends.
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
+  // And the host loopback ports its `network` list names are relayed in,
+  // the other way: its own listener on each, the host's side dialling out.
+  const reach =
+    process.platform === 'linux'
+      ? loopbackPorts(args.config.network).filter((p) => !ports.includes(p))
+      : []
   // Before the wrap, which holds the runtime's stub cleanup until `afterCommand`.
   const held = portsHeld(ports)
   if (held.length > 0) {
@@ -1704,8 +1711,8 @@ async function wrapIn(
         `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
     )
   }
-  if (ports.length > 0) {
-    hostBridges.set(tag, { ports, procs: [] })
+  if (ports.length > 0 || reach.length > 0) {
+    hostBridges.set(tag, { ports, reach, procs: [] })
     writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
   }
   const grouped =
@@ -1717,6 +1724,7 @@ async function wrapIn(
   const inner = [
     process.platform === 'linux' ? `: 'vx-${tag}';` : '',
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
+    reach.length > 0 ? reachBridgeInner(reach, tag, hostHasIpv6()) : '',
     process.platform === 'linux' && SandboxManager.getLinuxHttpSocketPath() !== undefined
       ? PROXY_BRIDGE_WAIT
       : '',
@@ -1732,7 +1740,7 @@ async function wrapIn(
       : process.platform === 'darwin'
         ? seatbeltBrackets(customConfig, baselines.allowRead)
         : customConfig,
-    ports.length > 0 || asksUnixSockets(args.config),
+    ports.length > 0 || reach.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
   if (process.platform === 'linux' && args.config.hermetic === true) {
@@ -1744,7 +1752,7 @@ async function wrapIn(
         SandboxManager,
         inner,
         literalReadPaths(customConfig),
-        ports.length > 0 || asksUnixSockets(args.config),
+        ports.length > 0 || reach.length > 0 || asksUnixSockets(args.config),
         args.config.gitConfig === true,
       )
     }
@@ -1795,9 +1803,9 @@ async function wrapIn(
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   if (args.server === true) liveServers.add(tag)
-  if (ports.length > 0) {
-    spawnHostBridges(ports, tag)
-    await hostBridgesListen(ports, tag)
+  if (ports.length > 0 || reach.length > 0) {
+    spawnHostBridges(tag)
+    if (ports.length > 0) await hostBridgesListen(ports, tag)
   }
   return {
     wrapped,
@@ -2251,9 +2259,58 @@ export function portBridgeHostArgv(tag: string, port: number): string[] {
   ]
 }
 
+/** Where a reached port's unix socket lives: beside the bridge's, in the sandbox tmpdir. */
+function reachBridgeSocket(tag: string, port: number): string {
+  return path.join(taskTmpdir(tag), `vx-reach-${tag}-${port}.sock`)
+}
+
+/**
+ * The task's side of a reached loopback port (`network: ['localhost:4173']`),
+ * in front of the user command: a listener on the port in the task's own
+ * namespace (127.0.0.1, and ::1 where the host has IPv6: a client that
+ * resolves `localhost` to ::1 first is refused there otherwise), relaying
+ * each connection to the unix socket the host's side holds, with a retry
+ * as the host's side of a port bridge has. Then a wait, bounded at ~5 s
+ * as `PROXY_BRIDGE_WAIT`'s, until each listens: the client dials at once.
+ */
+function reachBridgeInner(ports: readonly number[], tag: string, ipv6: boolean): string {
+  const listens = ports.flatMap((p) => {
+    const to = shellQuote(`UNIX-CONNECT:${reachBridgeSocket(tag, p)},retry=40,interval=0.25`)
+    return [
+      `socat TCP4-LISTEN:${p},bind=127.0.0.1,fork,reuseaddr ${to} >/dev/null 2>&1 &`,
+      ...(ipv6
+        ? [`socat TCP6-LISTEN:${p},bind=[::1],ipv6only=1,fork,reuseaddr ${to} >/dev/null 2>&1 &`]
+        : []),
+    ]
+  })
+  const waits = ports.map(
+    (p) =>
+      `( i=0; until grep -qsE ':${p.toString(16).toUpperCase().padStart(4, '0')} [0-9A-F]+:0000 0A' /proc/net/tcp; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );`,
+  )
+  return `${listens.join(' ')} trap 'kill $(jobs -p) 2>/dev/null' EXIT; ${waits.join(' ')}`
+}
+
+/**
+ * The host's side of a reached port: a unix socket in the task's tmpdir,
+ * dialling the host's loopback per connection through `PORT_DIAL_SCRIPT`
+ * (::1 when only it holds the port: Vite's `localhost`).
+ */
+function reachBridgeHostArgv(tag: string, port: number): string[] {
+  return [
+    'socat',
+    `UNIX-LISTEN:${reachBridgeSocket(tag, port)},fork,unlink-early`,
+    `SYSTEM:sh ${portDialScript(tag)} ${port}`,
+  ]
+}
+
 const hostBridges = new Map<
   string,
-  { ports: readonly number[]; procs: Array<ReturnType<typeof Bun.spawn>> }
+  {
+    ports: readonly number[]
+    /** The host loopback ports the task reaches (`reachBridgeInner`). */
+    reach: readonly number[]
+    procs: Array<ReturnType<typeof Bun.spawn>>
+  }
 >()
 
 /**
@@ -2326,15 +2383,19 @@ async function hostBridgesListen(ports: readonly number[], tag: string): Promise
   }
 }
 
-function spawnHostBridges(ports: readonly number[], tag: string): void {
-  const procs = hostBridges.get(tag)!.procs
-  for (const p of ports) {
+function spawnHostBridges(tag: string): void {
+  const { ports, reach, procs } = hostBridges.get(tag)!
+  const argvs = [
+    ...ports.map((p) => portBridgeHostArgv(tag, p)),
+    ...reach.map((p) => reachBridgeHostArgv(tag, p)),
+  ]
+  for (const bridge of argvs) {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
     try {
       // socat resolved on vx's PATH, as every tool vx spawns: by bare name
       // Bun.spawn walked the startup PATH (M-22).
-      const [tool, ...rest] = portBridgeHostArgv(tag, p)
+      const [tool, ...rest] = bridge
       const argv = [executablePath(tool!), ...rest]
       // Guarded, in a group of its own (kill-tree.ts): a plain child of vx
       // was in no group the guard lists, and a `kill -9` of vx left it
@@ -2358,7 +2419,10 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       // see above
     }
   }
-  if (procs.length > 0) for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
+  if (procs.length > 0) {
+    for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
+    for (const p of reach) unlinkOnExit(reachBridgeSocket(tag, p))
+  }
 }
 
 /**
@@ -2387,8 +2451,10 @@ export function releaseBridges(tag: string): void {
   const bridges = hostBridges.get(tag)
   if (bridges === undefined) return
   hostBridges.delete(tag)
-  for (const port of bridges.ports) {
-    const sock = portBridgeSocket(tag, port)
+  for (const sock of [
+    ...bridges.ports.map((p) => portBridgeSocket(tag, p)),
+    ...bridges.reach.map((p) => reachBridgeSocket(tag, p)),
+  ]) {
     try {
       unlinkSync(sock)
     } catch {
@@ -2928,7 +2994,16 @@ async function runSandboxedOnce(
     }
     if (process.platform === 'linux') {
       const removed = grantRemovalHint(
-        readOnlyLines,
+        // Playwright says it on stdout, removing its own outputDir: its
+        // tail, read on a failure only, as `statedHiddenHint` reads it.
+        [
+          ...readOnlyLines,
+          ...outTail
+            .join('')
+            .split('\n')
+            .filter((l) => READ_ONLY_FS.test(l))
+            .slice(-64),
+        ],
         bindableWrites(args.config.allowWrite),
         args.cwd,
         args.reportWithin,
@@ -3145,8 +3220,8 @@ function upstreamWritesHint(paths: readonly string[], within: string): SandboxVi
  * be removed or renamed, so `rm -rf dist` empties it and then fails with
  * "Read-only file system" (EBUSY under a writable parent). Binding the
  * parent instead would let the task write beside the grant, so the
- * removal stays refused; a failure whose stderr names a grant on such an
- * error line gets the spelling that works.
+ * removal stays refused; a failure whose stderr, or stdout's tail, names
+ * a grant on such an error line gets the spelling that works.
  */
 function grantRemovalHint(
   lines: readonly string[],
@@ -3172,11 +3247,12 @@ function grantRemovalHint(
     line:
       `vx: the write grant ${grants} is mounted in place on Linux: the task may empty it ` +
       `but not remove or rename it ("Read-only file system"). Remove its contents ` +
-      `instead, e.g. \`rm -rf ${contents}/*\`.`,
+      `instead, e.g. \`rm -rf ${contents}/*\`, and give a tool that removes its own ` +
+      `output directory one inside it (Playwright: \`--output ${contents}/run\`).`,
   }
 }
 
-/** A stderr line that may say a removal of a write grant was refused (`grantRemovalHint`). */
+/** An output line that may say a removal of a write grant was refused (`grantRemovalHint`). */
 const READ_ONLY_FS = /Read-only file system|EROFS|EBUSY|resource busy/i
 
 /** git's word, on stderr, for a discovery that found no `.git`. */
@@ -3439,6 +3515,11 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[] {
     rules.push('(allow network-bind (local ip "*:*"))')
     rules.push('(allow network-inbound (local ip "*:*"))')
     rules.push('(allow network-outbound (remote ip "localhost:*"))')
+  }
+  // A loopback port the network list names is dialled directly (the
+  // proxy is skipped for loopback), so the profile allows that port alone.
+  for (const p of loopbackPorts(c.network)) {
+    rules.push(`(allow network-outbound (remote ip "localhost:${p}"))`)
   }
   if (c.weakerNetworkIsolation === true) {
     rules.push('(allow mach-lookup (global-name "com.apple.trustd.agent"))')

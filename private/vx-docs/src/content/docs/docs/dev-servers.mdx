@@ -42,6 +42,32 @@ When the run ends, vx sends the server `SIGTERM`. A server still alive
 2 seconds later gets `SIGKILL`.
 
 A persistent task has no `cache: true`. A sandboxed server on Linux
-lists its port in `sandbox.allow.localBinding`.
+lists its port in `sandbox.allow.localBinding`, and a sandboxed `e2e`
+reaches it with `network: ['localhost:<port>']`:
+
+```ts
+dev: {
+  exec: {
+    command: 'vite --port 5173 --strictPort',
+    persistent: { readyWhen: 'Local:' },
+    sandbox: { allow: { read: ['.'], write: ['node_modules/.vite/'], localBinding: [5173] } },
+  },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+},
+e2e: {
+  dependsOn: ['dev'],
+  // Playwright removes its output directory, which a write grant cannot be.
+  exec: {
+    command: 'playwright test --output test-results/run',
+    sandbox: { allow: { read: ['.'], write: ['test-results/'], network: ['localhost:5173'] } },
+  },
+  inputs: { files: ['e2e/**'] },
+  outputs: { files: ['test-results/**'] },
+  cache: true,
+},
+```
+
+A fully cached `vx run e2e` does not start the server. Its write grants
+must miss `e2e`'s inputs for that: `node_modules/.vite/` does.
 
 To re-run tasks as files change, see [`vx watch`](../../cli/watch/).

@@ -443,6 +443,8 @@ export interface SandboxGrants {
    * run's: it filters every sandboxed task against the union of the lists
    * the run's tasks declare, so `true` adds no domain and reaches only
    * those (none in a run with no list). Omitted adds none either.
+   * `'localhost:4173'` reaches that port of a server on this machine (a
+   * dependency's `vite preview`), and no other loopback port.
    */
   network?: true | readonly string[]
   /**

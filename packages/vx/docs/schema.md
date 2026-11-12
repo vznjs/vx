@@ -587,7 +587,13 @@ Semantics:
   },
   e2e: {
     dependsOn: ['dev:run'],
-    exec: { command: 'playwright test' },
+    exec: {
+      // Playwright removes its output directory first, and a write
+      // grant cannot be removed on Linux: it writes one inside it.
+      command: 'playwright test --output test-results/run',
+      // The server's port, and no other host.
+      sandbox: { allow: { read: ['.'], write: ['test-results/'], network: ['localhost:5173'] } },
+    },
     inputs: { files: ['e2e/**'] },
     outputs: { files: ['test-results/**'] },
     cache: true,
@@ -605,8 +611,9 @@ Semantics:
   starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
   and that task runs once it is ready. A dependant whose key the
-  server's writes could change (one in its own project, unless a sandbox
-  bounds the server's writes) is not probed ahead of it, so there the
+  server's writes could change (one in its own project whose inputs the
+  server's write grants reach, or any there when the server is not
+  sandboxed) is not probed ahead of it, so there the
   server still starts. `vx run --dry` says so: such a server is
   `not started` (`not-started` in `--dry=json`), not `would exec`.
 - **Exit before ready.** A persistent task that exits 0 before
@@ -1723,10 +1730,10 @@ interface SandboxConfig {
 interface SandboxGrants {
   read?: readonly string[] // paths or globs, project-relative, `~/`-relative or absolute
   write?: readonly string[] // paths or globs; a write grant is readable too
-  network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
+  network?: true | readonly string[] // an allowlist of domains; `true` adds none; 'localhost:4173' reaches a server on this machine (below)
   systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space'; each grants system-info and sysctl-read (macOS)
   unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host or another running task already holds fails the task)
+  localBinding?: boolean | readonly number[] // bind localhost ports (macOS: and reach any; Linux binds in the task's own network, no grant needed); a list also exposes them to the host (a port the host or another running task already holds fails the task)
   machLookup?: readonly string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
@@ -1877,6 +1884,18 @@ either with a port (`example.com:443`), or `localhost`. A scheme or path
 takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
 entry matched nothing with no word, and an allowed `*` opened every host
 to every sandboxed task of the run.
+
+**A server on this machine is `localhost:<port>`.** A sandboxed client
+of a server another task runs (an e2e against `vite preview`) grants
+its port: `network: ['localhost:4173']` (`127.0.0.1:4173` too). On Linux
+the task has a network of its own, so vx relays that port alone into
+it; on macOS the profile allows that port alone. Nothing else on the
+host's loopback is reachable, and a bare `localhost` reaches no port: a
+client dials loopback directly, never through the proxy that serves the
+rest of the list (`NO_PROXY`; browsers skip a proxy for loopback). A
+sandboxed server lists its port in `localBinding` so it is reachable
+from outside its own sandbox. Until 2026-11-12 Linux relayed nothing,
+and a sandboxed client met `ECONNREFUSED` whatever it granted.
 
 **`network` is per-task.** Each sandboxed task reaches only the hosts
 its own list names, and a task that lists none reaches no host, even
@@ -2056,7 +2075,11 @@ remedy is to declare it: `allow: { write: [...] }`.
 **A write grant cannot be removed on Linux.** A directory grant is
 mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
 empties `dist` and then fails with `Read-only file system`; a failed
-task names the grant. Remove its contents instead: `rm -rf dist/*`.
+task names the grant, whether it said so on stderr or, as Playwright
+does, on stdout. Remove its contents instead: `rm -rf dist/*`. A tool
+that removes its own output directory writes one inside the grant:
+`playwright test --output test-results/run` under
+`write: ['test-results/']`.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
@@ -2739,7 +2762,8 @@ export default defineProject({
     'docker:build': { exec: { command: 'docker build -t app .', remote: false } },
     e2e: {
       exec: {
-        command: 'playwright test',
+        // Playwright removes its output directory: one inside the grant.
+        command: 'playwright test --output test-results/run',
         env: {
           define: { BASE_URL: 'http://localhost:3000' },
           passThrough: ['E2E_TOKEN'],

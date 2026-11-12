@@ -144,6 +144,9 @@ import {
   taskTimeoutMs,
 } from './task-process.js'
 
+/** A test snapshot's path: jest's and vitest's `__snapshots__/`, or a `.snap` file. */
+const SNAPSHOT = /(?:^|[\\/])__snapshots__[\\/]|\.snap$/
+
 export interface ExecuteArgs {
   node: TaskNode
   upstream: TaskOutcome[]
@@ -2176,10 +2179,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
               (args.watch === true ? '' : '; the next run runs on it')
             : !read
               ? appeared(moved)
-              : '; if the task generates it, declare it in outputs' +
-                (stability.strategy !== 'mutable'
-                  ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
-                  : ''))
+              : // `jest -u`: a snapshot the task checks against is committed, as
+                // a new one is, never an output or a mutable input.
+                SNAPSHOT.test(moved)
+                ? '; it is a test snapshot the task updated: commit it'
+                : '; if the task generates it, declare it in outputs' +
+                  (stability.strategy !== 'mutable'
+                    ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+                    : ''))
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +

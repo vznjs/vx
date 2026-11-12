@@ -323,6 +323,10 @@ export function isUnderAny(abs: string, allow: Set<string>): boolean
 export function sandboxReads(sandbox: ExecuteSandbox, file: string): boolean
 export function unique(arr: readonly string[]): string[]
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean
+// The host loopback ports a `network` list names (`localhost:4173`,
+// `127.0.0.1:4173`, `[::1]:4173`): relayed into the namespace on Linux,
+// allowed by name in the profile on macOS.
+export function loopbackPorts(network: true | readonly string[] | undefined): number[]
 
 // sandbox-binds.ts: the binds a write grant becomes on Linux (a file grant
 // widened to its directory), and a read grant cut around the walls a
@@ -1210,6 +1214,25 @@ socat SRT spawns in vx's group, is listed by pid with its sockets and
 the observer directory when `initSandbox` brings a session up, and struck
 when the reset finishes (`guardSession`, `kill-tree.md`;
 `sandbox-session-guard.unsafe.test.ts`).
+
+A loopback port a task's `network` list names (`localhost:4173`) is
+relayed the other way, into the task's namespace: a client there dials
+its own empty loopback, and the proxy that serves `allow.network` is
+skipped for loopback by `NO_PROXY` and by every browser, so a sandboxed
+e2e was refused by a server its dependency ran whatever it granted
+(2026-11-12). In front of the command, one
+`socat TCP4-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<tmpdir>/vx-reach-<tag>-<port>.sock,retry=…`
+per port (and one on `[::1]` where the host has IPv6), then a wait
+until each listens; on the host, one
+`socat UNIX-LISTEN:<sock>,fork 'SYSTEM:sh <dial script> <port>'`, so a
+server on `::1` alone is reached as through a port bridge. Both sides
+are a port bridge's: spawned guarded, released and unlinked with it,
+and the unix-socket lift is set for the task's wrap. A port the task
+also bridges out (`localBinding: [p]`) is its own and not relayed. On
+macOS the profile allows `(remote ip "localhost:<port>")` for each
+(`macProfileRules`). `sandbox-loopback-reach.unsafe.test.ts` holds a
+sandboxed client reaching an unsandboxed server and one behind a port
+bridge, and refused with no grant or another port's.
 
 `releaseBridges` also unlinks each port's socket. The task's socat dies
 with the namespace and never removes it, so every bridged run left one

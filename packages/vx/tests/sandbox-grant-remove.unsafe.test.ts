@@ -17,7 +17,8 @@ const available = await sandboxAvailable('sandbox grant removal test')
 const HINT =
   `vx: the write grant 'dist/' is mounted in place on Linux: the task may empty it ` +
   `but not remove or rename it ("Read-only file system"). Remove its contents ` +
-  'instead, e.g. `rm -rf dist/*`.'
+  'instead, e.g. `rm -rf dist/*`, and give a tool that removes its own output ' +
+  'directory one inside it (Playwright: `--output dist/run`).'
 
 describe.skipIf(!available || process.platform !== 'linux')('removing a write grant', () => {
   let dir = ''
@@ -50,6 +51,10 @@ describe.skipIf(!available || process.platform !== 'linux')('removing a write gr
     ['rm -rf dist && echo new > dist/new.js'],
     [`node -e "require('fs').rmSync('dist', { recursive: true, force: true })"`],
     [`node -e "require('fs').rmSync(require('path').resolve('dist'), { recursive: true })"`],
+    // Playwright removes its outputDir itself and says so on stdout.
+    [
+      `node -e "try { require('fs').rmSync(require('path').resolve('dist'), { recursive: true, force: true }) } catch (e) { console.log('Error: ' + e.message); process.exit(1) }" 2>/dev/null`,
+    ],
   ])(
     'a failed removal of the grant names it: %s',
     async (command) => {

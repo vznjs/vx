@@ -79,6 +79,7 @@ export function withheldLinkLine(
 export type WriteReach = 'none' | 'project' | 'workspace'
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
 export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
+export function grantedWriteGlobs(node: TaskNode): string[] | undefined
 export function mayWriteFingerprint(
   node: TaskNode,
   workspaceRoot: string,
@@ -100,7 +101,7 @@ export function mayWriteFingerprint(
   directory it cannot write) is the same one-line verdict, never a
   stack. The run's proxy allowlist is the union of every sandboxed task's
   domains; each task's own front narrows it to the task's list. Whether any task asks for unix sockets (a `localBinding`
-  port list, or `unixSockets`) is armed the same way, but the lift
+  port list, a loopback port in `network` on Linux, or `unixSockets`) is armed the same way, but the lift
   itself is set per task at its wrap, never for the run's other tasks
   (L-6).
 - `sandboxRunUnion` is that fold, split out so it can be READ without
@@ -161,6 +162,12 @@ export function mayWriteFingerprint(
   uncached task and `'none'` for a cached one; the stability gate reads
   it for a cached task too, as where that task may rewrite its own
   inputs in place (a formatter, item 750).
+- `grantedWriteGlobs` is where a sandboxed task's write grants reach in
+  its own project, as project-relative globs (`dir/**`), so the
+  stability gate checks a same-project reader against them as against
+  declared outputs. A literal grant with no trailing `/` counts as its
+  directory (Linux binds a file grant's directory); undefined when one is
+  the project itself; a grant outside the project is left out.
 - `mayWriteFingerprint` — may the command rewrite a root file a plugin
   claims (`claimed`)? Never when nothing is claimed. An
   unsandboxed task only when the root is its own project; a sandboxed

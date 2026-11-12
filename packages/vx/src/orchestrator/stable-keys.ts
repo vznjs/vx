@@ -30,7 +30,12 @@ import {
   taskGlob,
   wholeIgnored,
 } from '../util/index.js'
-import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
+import {
+  commandWriteReach,
+  grantedWriteGlobs,
+  mayWriteFingerprint,
+  undeclaredWriteReach,
+} from './sandbox-request.js'
 import {
   computeGroupHash,
   computeTaskHash,
@@ -117,7 +122,8 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   //     a keyed task with such a rewriter unfolded is unstable itself, and
   //     instability is inherited below.
   //   - wideById: the subset of outputProjects whose writes are undeclared
-  //     (`undeclaredWriteReach`), so they may land anywhere in the project.
+  //     (`undeclaredWriteReach`), so they may land anywhere in the project;
+  //     a sandboxed one's land only in its write grants (`boundedWriters`).
   //     A declared-output producer reaches a same-project reader only where
   //     its output globs can meet the reader's inputs (`outputsOf`, A-20).
   const projects = new ProjectIndex(args.nodes)
@@ -126,8 +132,22 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   // Every project's declared `outputs.files`, over all its tasks: a superset
   // of what any one reader's upstream producers declare.
   const outputsOf = new Map<string, string[]>()
+  // And where an uncached sandboxed task's write grants let it write in its
+  // project: those writes are bounded like declared outputs, so the task
+  // is not one whose writes land anywhere (`grantedWriteGlobs`).
+  const boundedWriters = new Set<string>()
   for (const n of args.nodes.values()) {
-    const files = n.config.outputs?.files ?? []
+    let files = n.config.outputs?.files ?? []
+    if (
+      n.config.exec?.sandbox !== undefined &&
+      undeclaredWriteReach(n, args.workspaceRoot) === 'project'
+    ) {
+      const granted = grantedWriteGlobs(n)
+      if (granted !== undefined) {
+        boundedWriters.add(n.id)
+        files = [...files, ...granted]
+      }
+    }
     if (files.length === 0) continue
     const list = outputsOf.get(n.projectName)
     if (list === undefined) outputsOf.set(n.projectName, [...files])
@@ -197,7 +217,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         const reach = undeclaredWriteReach(depNode, args.workspaceRoot)
         if (reach === 'project') {
           outputs.add(depNode.projectName)
-          wideUnion.add(depNode.projectName)
+          if (!boundedWriters.has(dep)) wideUnion.add(depNode.projectName)
         } else if (reach === 'workspace') wsOutputUpstream = true
         if (
           depNode.config.cache !== true &&

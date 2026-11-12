@@ -162,7 +162,9 @@ A task with `exec.sandbox` runs where only what it declares exists:
 - the network is closed except to the domains granted, one union per
   run: a task granted any domain reaches every domain the run grants;
   with none, it reaches no listener on the host's loopback and no unix
-  socket outside the workspace (L-46);
+  socket outside the workspace (L-46); `localhost:<port>` reaches that
+  one port of the host's loopback (a dependency's server), relayed into
+  the task's own network on Linux;
 - its temp directory, port-bridge socket and trace log are its own
   (mode 0700), unreachable from another task and another local user;
 - the host's credential stores (`~/.ssh`, `~/.gnupg`, `~/.aws`,

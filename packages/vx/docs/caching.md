@@ -1000,7 +1000,9 @@ output before each run, so a snapshot vitest writes on its first run
 (`src/__snapshots__/*.snap`) was written anew every run and a changed
 value passed. It says to commit a file the task checks against, or to
 exclude a generated one from the inputs (`'!src/gen.ts'`) and then
-declare it in outputs.
+declare it in outputs. A committed test snapshot the task rewrote
+(`jest -u`; a path under `__snapshots__/` or ending `.snap`) gets the
+same word, commit it, never outputs or `'mutable'`.
 A sandboxed task none of whose write grants reach the file (a glob by
 its whole directory) could not have written it, so its line gives no
 outputs or `'mutable'` advice: it says another process changed the file

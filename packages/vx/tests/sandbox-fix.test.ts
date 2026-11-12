@@ -63,6 +63,29 @@ describe('sandboxFix', () => {
     })
   })
 
+  // A snapshot test's refused `mkdir` and the file it then failed to open
+  // under it: the directory's grant covers the file, and the fix named both.
+  it('names no grant a directory grant it names already covers', () => {
+    const at = (p: string) => path.join(dir, p)
+    mkdirSync(at('__tests__'))
+    const fix = sandboxFix(
+      [
+        v('mkdir(__snapshots__) = -1 EROFS', ['write'], at('__tests__/__snapshots__')),
+        v('openat(a.snap) = -1 ENOENT', ['read', 'write'], at('__tests__/__snapshots__/a.snap'), {
+          opened: 'write',
+        }),
+        v('openat(a.snapx) = -1 ENOENT', ['read', 'write'], at('__tests__/__snapshotsx'), {
+          opened: 'write',
+        }),
+      ],
+      dir,
+      dir,
+      undefined,
+      { files: ['**'] },
+    )
+    expect(fix?.write).toEqual(['__tests__/__snapshots__/', '__tests__/__snapshotsx'])
+  })
+
   // The proxy refuses a host on `deny.network` whatever `allow.network`
   // says: the fix named `network: ['example.com']`, already allowed.
   it('suggests no network grant for a host the deny list or its own shape refuses', () => {

@@ -21,13 +21,21 @@ import {
   toRealPath,
   type ExecuteRequest,
   isMountableLiteral,
+  loopbackPorts,
   atOrUnder,
   grantAlternatives,
   replacedBySandbox,
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { grantPrefix, relPosix, restorableOutput, scannable, UserError } from '../util/index.js'
+import {
+  BUN_GLOB_WILDCARDS,
+  grantPrefix,
+  relPosix,
+  restorableOutput,
+  scannable,
+  UserError,
+} from '../util/index.js'
 
 /**
  * Arm the sandbox runtime for a run, lazily: only when at least one task
@@ -100,6 +108,8 @@ export function sandboxRunUnion(nodes: Iterable<SandboxedNode>): SandboxRunUnion
     if (sockets === true || (Array.isArray(sockets) && sockets.length > 0)) unixSockets = true
     const lb = allow?.localBinding
     if (Array.isArray(lb) && lb.length > 0 && process.platform === 'linux') unixSockets = true
+    // A loopback port the task reaches is relayed through a unix socket too.
+    if (process.platform === 'linux' && loopbackPorts(net).length > 0) unixSockets = true
     if (allow?.gitConfig === true) gitConfig = true
   }
   return { domains: [...domains], deniedDomains: [...denied], unixSockets, gitConfig, weakerNested }
@@ -123,8 +133,9 @@ export function sandboxRunUnion(nodes: Iterable<SandboxedNode>): SandboxRunUnion
  * reaches nothing: its profile is not given the proxy's port at all.
  * The unix-socket allowance is per run the same way: SRT's Linux seccomp
  * filter on `socket(AF_UNIX)` is all-or-nothing and read at
- * `initialize()`, so a task declaring `unixSockets`, or a `localBinding`
- * port list (its bridge is a unix socket the task's side creates), lifts
+ * `initialize()`, so a task declaring `unixSockets`, a `localBinding`
+ * port list or a loopback port in `network` (each bridge is a unix socket
+ * the task's side creates), lifts
  * it for the run. macOS keeps per-task precision through vx's own rules.
  */
 export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | null {
@@ -1103,6 +1114,31 @@ export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteR
     else if (atOrUnder(abs, workspaceRoot) || atOrUnder(workspaceRoot, abs)) return 'workspace'
   }
   return reach
+}
+
+/**
+ * Where a sandboxed command's write grants let it write in its own
+ * project, as project-relative globs, so a same-project reader is checked
+ * against them as against declared outputs (A-20): the server granted
+ * `node_modules/.vite/` reaches an e2e reading `e2e/**` nowhere. A literal
+ * without a trailing `/` counts as its directory (Linux binds a file
+ * grant's whole directory). Undefined when a grant is the project itself:
+ * then anywhere. A grant outside the project is not here
+ * (`commandWriteReach`).
+ */
+export function grantedWriteGlobs(node: TaskNode): string[] | undefined {
+  const globs: string[] = []
+  for (const grant of node.config.exec?.sandbox?.allow?.write ?? []) {
+    const prefix = grantPrefix(grant)
+    const literal = !BUN_GLOB_WILDCARDS.test(grant) && !grant.endsWith('/')
+    const dir = literal ? path.dirname(prefix) : prefix
+    const abs = path.resolve(node.projectDir, expandHome(dir))
+    if (!atOrUnder(abs, node.projectDir)) continue
+    const rel = relPosix(node.projectDir, abs)
+    if (rel === '') return undefined
+    globs.push(`${rel}/**`)
+  }
+  return globs
 }
 
 /**

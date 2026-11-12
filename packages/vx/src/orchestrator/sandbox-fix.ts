@@ -253,6 +253,12 @@ export function sandboxFix(
       fix.write.add(writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs))
     }
   }
+  // A refused `mkdir` and the file the task then failed to open under it
+  // (a test's new snapshot): the directory's grant covers the file.
+  for (const k of ['read', 'write'] as const) {
+    const dirsNamed = [...fix[k]].filter((g) => g.endsWith('/'))
+    for (const g of fix[k]) if (dirsNamed.some((d) => d !== g && g.startsWith(d))) fix[k].delete(g)
+  }
   const out: SandboxFix = {}
   for (const k of Object.keys(fix) as (keyof SandboxFix)[])
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
