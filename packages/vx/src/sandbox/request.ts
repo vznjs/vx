@@ -9,24 +9,23 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { repoFacts, repoRootOf } from '../cache/index.js'
 import type { ExecConfig } from '../config.js'
+import type { ExecuteRequest, ResolvedSandboxConfig, SandboxViolation } from '../exec/index.js'
+import { bindableWrites, punchWalls } from './binds.js'
 import {
-  bindableWrites,
-  initSandbox,
-  resetSandbox,
-  probeSandbox,
-  punchWalls,
-  resolveSandboxConfig,
-  type ResolvedSandboxConfig,
-  thrownReason,
-  toRealPath,
-  type ExecuteRequest,
-  isMountableLiteral,
-  loopbackPorts,
   atOrUnder,
   grantAlternatives,
+  isMountableLiteral,
+  loopbackPorts,
   replacedBySandbox,
-  type SandboxViolation,
-} from '../exec/index.js'
+  toRealPath,
+} from './paths.js'
+import {
+  initSandbox,
+  probeSandbox,
+  resetSandbox,
+  resolveSandboxConfig,
+  thrownReason,
+} from './runtime.js'
 import type { TaskNode } from '../graph/index.js'
 import {
   BUN_GLOB_WILDCARDS,

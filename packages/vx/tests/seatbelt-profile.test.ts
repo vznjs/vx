@@ -20,7 +20,7 @@ import {
   sbplResolvedPath,
   seatbeltBrackets,
   wallsGlobsReach,
-} from '../src/exec/sandbox-runtime.js'
+} from '../src/sandbox/runtime.js'
 import { UserError } from '../src/util/index.js'
 
 const base = { allowRead: [], allowWrite: [] }

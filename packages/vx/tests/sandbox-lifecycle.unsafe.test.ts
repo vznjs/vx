@@ -22,25 +22,25 @@ import {
   resetSandbox,
   resolveSandboxConfig,
   wrapSandboxedCommand,
-} from '../src/exec/sandbox-runtime.js'
+} from '../src/sandbox/runtime.js'
 import {
   buildCustomConfig,
   punchedLinks,
   punchWritePaths,
   withPunchedLinks,
-} from '../src/exec/sandbox-binds.js'
+} from '../src/sandbox/binds.js'
 import {
   bridgedPorts,
   portBridgeHostArgv,
   portBridgeInner,
   portBridgeSocket,
-} from '../src/exec/sandbox-runtime.js'
-import { localBindingOn } from '../src/exec/sandbox-paths.js'
+} from '../src/sandbox/runtime.js'
+import { localBindingOn } from '../src/sandbox/paths.js'
 import { run } from './helpers/orchestrator.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import { validateProjectConfig } from '../src/workspace/index.js'
-import { prepareSandbox } from '../src/orchestrator/sandbox-request.js'
+import { prepareSandbox } from '../src/sandbox/request.js'
 import type { TaskNode } from '../src/graph/index.js'
 import {
   TIMEOUT,
@@ -719,7 +719,7 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
     const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-npm-'))
     try {
       await writeFile(path.join(tmp, 'npm'), `#!/bin/sh\necho x >> ${tmp}/asked\n`, { mode: 0o755 })
-      const src = path.resolve(import.meta.dir, '../src/exec/sandbox-runtime.ts')
+      const src = path.resolve(import.meta.dir, '../src/sandbox/runtime.ts')
       const asked = async (init: string): Promise<boolean> => {
         await rm(path.join(tmp, 'asked'), { force: true })
         const p = Bun.spawn(['bun', '-e', `${init}; process.exit(0)`], {
@@ -787,7 +787,7 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
     // its own: SRT's socket sequence keeps counting across resets, so only
     // a fresh process's first listener sits at the seq the sweep starts on.
     const script = [
-      `import { initSandbox, resetSandbox } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'))}`,
+      `import { initSandbox, resetSandbox } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'))}`,
       `import { existsSync } from 'node:fs'`,
       `import path from 'node:path'`,
       `import os from 'node:os'`,
@@ -890,7 +890,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
 describe.skipIf(!available || process.platform !== 'linux')(
   'a brace in a write grant names each alternative, and the grant works',
   () => {
-    // The measurement `MOUNT_WILDCARDS` (sandbox-paths.ts) cites:
+    // The measurement `MOUNT_WILDCARDS` (sandbox/paths.ts) cites:
     // `write: ['g/{a,b}.txt']` is expanded to two file grants, each gets a
     // placeholder file and is widened to `g/` like any file-shaped grant,
     // so the task writes `g/a.txt`. Sent to the scan instead, a grant

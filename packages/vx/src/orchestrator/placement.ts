@@ -10,7 +10,8 @@
 // pin and leaves the floor nothing: a task that would land here refuses.
 
 import { machineParallelism, UserError } from '../util/index.js'
-import { hostPlatform, isLocalExecutor, selectExecutor, type TaskExecutor } from '../exec/index.js'
+import { hostPlatform, selectExecutor, type TaskExecutor } from '../exec/index.js'
+import { isLocalExecutor } from './local-executor.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
 import { type Logger, warnOf } from '../report/index.js'

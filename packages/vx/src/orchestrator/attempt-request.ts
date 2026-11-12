@@ -1,7 +1,7 @@
 // The request one attempt hands its executor.
 
 import type { ExecuteRequest } from '../exec/index.js'
-import { dependencyReads, sandboxRequestFor } from './sandbox-request.js'
+import { dependencyReads, sandboxRequestFor } from '../sandbox/index.js'
 import type { MissRun } from './miss-run.js'
 import { serverSpec } from './task-process.js'
 

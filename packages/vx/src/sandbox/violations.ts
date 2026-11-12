@@ -6,14 +6,11 @@
 
 import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
-import { bindableReads, bindableWrites } from './sandbox-binds.js'
+import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './paths.js'
+import { bindableReads, bindableWrites } from './binds.js'
 import { printable } from '../util/index.js'
-import type {
-  ResolvedSandboxConfig,
-  SandboxedRunArgs,
-  SandboxViolation,
-} from './sandbox-runtime.js'
+import type { ResolvedSandboxConfig, SandboxViolation } from '../exec/index.js'
+import type { SandboxedRunArgs } from './runtime.js'
 
 /**
  * Parse a strace log for denied filesystem syscalls and convert each
@@ -838,7 +835,7 @@ function loopbackNoise(
  * `node_modules` grant because its key does not answer for them. A denial
  * there is the task reaching for a dependency through its own link — the
  * read that would have been a stale hit, a finding and not the wall.
- * Canonical already: sandbox-request.ts takes them from link targets.
+ * Canonical already: sandbox/request.ts takes them from link targets.
  */
 function withinReported(
   violations: SandboxViolation[],

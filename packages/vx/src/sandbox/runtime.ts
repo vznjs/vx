@@ -2,7 +2,7 @@
 // per-task filesystem + network isolation.
 //
 // Design contract:
-//   The caller (sandbox-request.ts) hands over the task's own
+//   The caller (sandbox/request.ts) hands over the task's own
 //   `sandbox.allow` block plus two baselines: the `node_modules` reads a
 //   task's dependencies need, and the workspace-root deny anchor. Writes
 //   are the task's `allow.write` alone — nothing is derived from `cache`.
@@ -61,11 +61,13 @@ import {
   streamToString,
   resourceUsageToCpuRss,
   type CaptureConfig,
+  type ResolvedSandboxConfig,
   type RunResult,
-} from './runner.js'
-import { TaskPipes } from './pipes.js'
+  type SandboxViolation,
+} from '../exec/index.js'
+import { TaskPipes } from '../exec/index.js'
 import { startTaskProxy, type TaskProxy } from './task-proxy.js'
-import { watchTree } from './proc-sample.js'
+import { watchTree } from '../exec/index.js'
 import {
   BUN_GLOB_WILDCARDS,
   ESSENTIAL_ENV,
@@ -98,7 +100,7 @@ import {
   globDir,
   widenedEntries,
   withLinkedWrites,
-} from './sandbox-binds.js'
+} from './binds.js'
 import {
   atOrUnder,
   grantAlternatives,
@@ -109,12 +111,8 @@ import {
   namedPath,
   toRealPath,
   unique,
-} from './sandbox-paths.js'
-import {
-  canScopeDenyScan,
-  scopedMandatoryDenies,
-  srtDefaultWritePaths,
-} from './sandbox-deny-scan.js'
+} from './paths.js'
+import { canScopeDenyScan, scopedMandatoryDenies, srtDefaultWritePaths } from './deny-scan.js'
 import {
   hiddenReadsOutside,
   parseStraceViolations,
@@ -122,7 +120,7 @@ import {
   refusedWrites,
   refusedWritesOutside,
   reportableViolations,
-} from './sandbox-violations.js'
+} from './violations.js'
 import {
   closeSignalChannel,
   groupAlive,
@@ -133,7 +131,7 @@ import {
   guardLine,
   guardSession,
   spawnGuarded,
-} from './kill-tree.js'
+} from '../exec/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
@@ -309,7 +307,7 @@ async function trySandboxedTrue(
  * image with the two failed on the third (2026-09-16). Name the set and
  * the install.
  */
-export function dependencyReason(errors: readonly string[]): string {
+function dependencyReason(errors: readonly string[]): string {
   const need =
     process.platform === 'linux'
       ? 'the sandbox runtime needs bubblewrap (bwrap), socat and ripgrep (rg) on PATH'
@@ -1249,7 +1247,7 @@ export interface SandboxedRunArgs {
    * Baseline reads — paths the sandbox allows beside the task's own
    * `allow.read`. Core passes the project's and the root's
    * `node_modules` and the workspace dependencies linked from them
-   * (sandbox-request.ts); nothing is derived from `cache`.
+   * (sandbox/request.ts); nothing is derived from `cache`.
    */
   baseAllowRead: readonly string[]
   /**
@@ -1277,45 +1275,6 @@ export interface SandboxedRunArgs {
    * unioned with the baselines; bool/object fields fall through to SRT.
    */
   config: ResolvedSandboxConfig
-}
-
-/**
- * Sandbox config with all path fields resolved to absolute paths.
- * Produced by `resolveSandboxConfig`. The shape mirrors `SandboxConfig`
- * but every string in a path list is guaranteed absolute.
- */
-export interface ResolvedSandboxConfig {
-  /** Readable path prefixes, absolute. */
-  allowRead: readonly string[]
-  /** Writable path prefixes, absolute. */
-  allowWrite: readonly string[]
-  /**
-   * Linux: the write globs that matched nothing when the task started, so
-   * no mount holds them. `scratchWrites` decides which still cover a write.
-   */
-  pendingWrites?: readonly string[]
-  /** Linux: write grants spelled through a link in the project, bound there too (`linkedWriteBinds`). */
-  linkedWrites?: readonly { readonly link: string; readonly target: string }[]
-  network?: true | readonly string[]
-  denyNetwork?: readonly string[]
-  systemInfo?: readonly string[]
-  unixSockets?: true | readonly string[]
-  localBinding?: boolean | readonly number[]
-  machLookup?: readonly string[]
-  pty?: boolean
-  gitConfig?: boolean
-  weakerWhenNested?: boolean
-  weakerNetworkIsolation?: boolean
-  /** Reads outside the workspace are refused too (`hermeticReads`). */
-  hermetic?: boolean
-  /** macOS: the walls a glob grant reaches, by kind (`darwinWallRules`). */
-  wallsReached?: { read: readonly string[]; write: readonly string[] }
-  ignore?: {
-    read?: readonly string[]
-    write?: readonly string[]
-    systemInfo?: readonly string[]
-    network?: readonly string[]
-  }
 }
 
 /**
@@ -1442,7 +1401,7 @@ function throughLinks(p: string, hops = 0): string {
 export function resolveSandboxConfig(
   cfg: SandboxConfig,
   projectDir: string,
-  /** Canonical directories a glob's hits stop at (sandbox-request.ts `wallOff`). */
+  /** Canonical directories a glob's hits stop at (sandbox/request.ts `wallOff`). */
   walls: readonly string[] = [],
 ): ResolvedSandboxConfig {
   const resolve = (p: string): string => {
@@ -1522,40 +1481,6 @@ export function resolveSandboxConfig(
     }
   }
   return r
-}
-
-export interface SandboxViolation {
-  /** Raw log line from SRT. Format differs between macOS / Linux. */
-  line: string
-  timestamp: Date
-  /**
-   * What the denial named, and which `ignore` lists could silence it —
-   * filled in by whichever platform produced the record. The filters read
-   * these instead of re-parsing a line whose shape depends on the OS: a
-   * seatbelt `deny(1) file-read-data /x` and a strace
-   * `openat(../x) = -1 ENOENT  [/x]` say the same thing.
-   */
-  target?: string
-  /**
-   * vx's own note beside a failure (the cwd it cannot read, a placeholder
-   * the task never wrote, a withheld link), not a denial: shown with the
-   * denials, never counted as one (B-20).
-   */
-  hint?: true
-  /** Absolute, when `target` is a path at all. */
-  path?: string
-  /**
-   * Linux: the directory holding a link on the path the task opened, not
-   * in the sandbox, so the link was not there: a grant of `path` alone
-   * leaves it hidden.
-   */
-  via?: string
-  /**
-   * Linux: what a refused `openat`'s flags asked for; for an `openat2`,
-   * whose flags no record names, a read.
-   */
-  opened?: 'read' | 'write'
-  ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 
 export interface SandboxedRunResult extends RunResult {
@@ -3927,7 +3852,7 @@ export function darwinWallRules(
  * matches nothing is ordinary (an optional file, a cache not yet
  * populated), so only writes are reported.
  *
- * The classifier is `isMountableLiteral` (sandbox-paths.ts), deliberately
+ * The classifier is `isMountableLiteral` (sandbox/paths.ts), deliberately
  * NOT `isLiteralPattern`: its docblock says why the brace is not a wildcard
  * to a grant.
  */

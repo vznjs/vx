@@ -9,14 +9,12 @@ import {
   type ExecuteRequest,
   type ExecuteResult,
   isExecutorFallback,
-  isLocalExecutor,
-  keyedOutsideGrants,
-  localExecutor,
   maskCaptured,
   type SandboxViolation,
-  sandboxReads,
   signalExitCode,
 } from '../exec/index.js'
+import { keyedOutsideGrants, sandboxReads } from '../sandbox/index.js'
+import { isLocalExecutor, localExecutor } from './local-executor.js'
 import { relPosix, span, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { outputsStep } from './attempt-outputs.js'
@@ -30,8 +28,8 @@ import {
   sweepPlaceholders,
   untouchedPlaceholderLine,
   withheldLinkLine,
-} from './sandbox-request.js'
-import { sandboxFix } from './sandbox-fix.js'
+} from '../sandbox/index.js'
+import { sandboxFix } from '../sandbox/index.js'
 import { shellVerdict } from './shell-verdict.js'
 import { taskBinDirs } from './task-process.js'
 
@@ -329,7 +327,7 @@ function unseenResult(
     g.includes("'") ? JSON.stringify(g) : `'${g.replaceAll('\\', '\\\\')}'`,
   )
   const said = `vx: the sandbox hides a file this task's key holds, so it was not run: ${shown}${more}.`
-  // A credential store is walled on purpose and never suggested (sandbox-fix.ts).
+  // A credential store is walled on purpose and never suggested (sandbox/fix.ts).
   const line =
     grants.length === 0
       ? `${said} It is walled on purpose, so vx suggests no grant for it.`

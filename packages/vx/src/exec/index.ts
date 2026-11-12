@@ -17,6 +17,7 @@ export {
   withForwardArgs,
   shellQuote,
   signalExitCode,
+  stopSignal,
   exitSignal,
   type CaptureConfig,
   execWord,
@@ -25,35 +26,6 @@ export {
   BoundedCapture,
   type CapturedChunk,
 } from './runner.js'
-export {
-  initSandbox,
-  probeSandbox,
-  unavailableReason,
-  resetSandbox,
-  untracedReason,
-  resolveSandboxConfig,
-  runSandboxed,
-  releaseBridges,
-  wrapSandboxedCommand,
-  type ResolvedSandboxConfig,
-  type SandboxViolation,
-  dependencyReason,
-  socketPathRefusal,
-  thrownReason,
-} from './sandbox-runtime.js'
-export { type DeniedCall } from './sandbox-violations.js'
-export {
-  atOrUnder,
-  grantAlternatives,
-  isMountableLiteral,
-  loopbackPorts,
-  MOUNT_WILDCARDS,
-  replacedBySandbox,
-  sandboxReads,
-  toRealPath,
-} from './sandbox-paths.js'
-export { bindableWrites, keyedOutsideGrants, punchWalls } from './sandbox-binds.js'
-export { isLocalExecutor, localExecutor } from './local-executor.js'
 export { holdGroups, killTree, markStopped, pauseTree, untilGroupsGone } from './kill-tree.js'
 export { sampleTrees, type TreeUsage } from './proc-sample.js'
 export {
@@ -72,4 +44,32 @@ export {
   type TaskExecutor,
   type TaskInputs,
   type TaskPlacement,
+  type ResolvedSandboxConfig,
+  type SandboxViolation,
 } from './executor.js'
+
+// The process primitives the sandbox runs a task with. `sandbox` is their
+// only reader outside this module (tests/module-boundaries.test.ts).
+export {
+  armTimeout,
+  drainOrAbort,
+  POST_EXIT_CUT_LINE,
+  SANDBOXED_TASK,
+  sandboxArgTooLongText,
+  spawnFailureText,
+  streamToString,
+  resourceUsageToCpuRss,
+  type RunResult,
+} from './runner.js'
+export { TaskPipes } from './pipes.js'
+export { watchTree } from './proc-sample.js'
+export {
+  closeSignalChannel,
+  groupAlive,
+  releaseGroup,
+  runTime,
+  signalThrough,
+  guardLine,
+  guardSession,
+  spawnGuarded,
+} from './kill-tree.js'

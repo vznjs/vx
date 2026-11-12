@@ -245,7 +245,7 @@ stateDiagram-v2
 
 ## 7. Sandboxed task — violation → failure
 
-Owner: `exec/sandbox-runtime.ts` (SRT wrapper). Activation is
+Owner: `sandbox/runtime.ts` (SRT wrapper). Activation is
 per-task (`exec.sandbox`), no workspace inheritance. Baseline policy:
 read and write nothing, deny-read = workspace root; core adds
 `node_modules` and the workspace packages linked there (never a link to

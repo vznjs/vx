@@ -2277,7 +2277,7 @@ export interface RemoteOpenContext extends PluginSecrets {
 
 ## `ResolvedSandboxConfig`
 
-type · `src/exec/sandbox-runtime.ts`
+type · `src/exec/executor.ts`
 
 Sandbox config with all path fields resolved to absolute paths.
 Produced by `resolveSandboxConfig`. The shape mirrors `SandboxConfig`
@@ -2644,7 +2644,7 @@ from the other coupled them both ways — a declaration added for
 caching silently widened the sandbox, and a path the task needed had
 to be laundered through the cache key to get it (2026-09-05).
 A declared `outputs` is NOT a write grant; the request
-`sandbox-request.ts` builds carries no write of its own and binds
+`sandbox/request.ts` builds carries no write of its own and binds
 `allow.write` alone. This comment claimed the opposite — here and on
 both grant fields — while the file beside it and `schema.md` both said
 the truth, and no test read the bare baseline it described (item 443).
@@ -2701,7 +2701,7 @@ export interface SandboxGrants {
 
 ## `SandboxRequest`
 
-type · `src/orchestrator/sandbox-request.ts`
+type · `src/sandbox/request.ts`
 
 The sandbox half of the request, plus the empty files vx created so a
 literal write grant had something to bind (`placeholders`). They are
@@ -2720,7 +2720,7 @@ export interface SandboxRequest {
 
 ## `sandboxRequestFor`
 
-function · `src/orchestrator/sandbox-request.ts`
+function · `src/sandbox/request.ts`
 
 The sandbox half of an `ExecuteRequest` for one task, shared by the
 cached path (through the executor) and the persistent path (spawned here).
@@ -2871,7 +2871,7 @@ export function splitTaskId(id: string): [project: string, task: string]
 
 ## `sweepPlaceholders`
 
-function · `src/orchestrator/sandbox-request.ts`
+function · `src/sandbox/request.ts`
 
 Remove the placeholder files the task never wrote — still empty, mtime
 untouched — and return their paths. What the task wrote is its output

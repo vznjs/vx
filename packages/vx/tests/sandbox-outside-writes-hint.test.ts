@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { outsideWritesHint } from '../src/exec/sandbox-runtime.js'
+import { outsideWritesHint } from '../src/sandbox/runtime.js'
 
 describe('the refused outside writes hint', () => {
   // Not under the host temp root (a write there is told to use $TMPDIR),

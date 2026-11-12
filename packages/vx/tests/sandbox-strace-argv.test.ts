@@ -2,7 +2,7 @@
 // hold `) = -1 ENOENT` read as a denial of a call that succeeded, since the
 // parse took the last such text on the line rather than the call's result.
 import { expect, it } from 'bun:test'
-import { deniedCalls } from '../src/exec/sandbox-violations.js'
+import { deniedCalls } from '../src/sandbox/violations.js'
 
 it('reads a call result at the line end, never inside its argv', () => {
   const trace = [

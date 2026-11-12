@@ -25,7 +25,7 @@ await mock.module('node:fs/promises', () => ({
   },
 }))
 const { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } =
-  await import('../src/exec/index.js')
+  await import('../src/sandbox/runtime.js')
 const { sandboxAvailable } = await import('./helpers/sandbox-gate.js')
 
 const available = await sandboxAvailable('sandbox trace-log exit test')

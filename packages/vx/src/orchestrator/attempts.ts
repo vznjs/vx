@@ -7,7 +7,7 @@ import { printable } from '../util/index.js'
 import { failedOutputLog } from './output-log.js'
 import { runAttempt } from './attempt.js'
 import type { MissRun } from './miss-run.js'
-import { mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
+import { mayWriteFingerprint, undeclaredWriteReach } from '../sandbox/index.js'
 import { forgetUndeclaredWrites } from './task-process.js'
 
 export interface FailedAttempt {

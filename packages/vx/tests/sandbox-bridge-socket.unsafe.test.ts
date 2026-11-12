@@ -8,8 +8,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
-import { portBridgeSocket } from '../src/exec/sandbox-runtime.js'
+import {
+  initSandbox,
+  resetSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+} from '../src/sandbox/runtime.js'
+import { portBridgeSocket } from '../src/sandbox/runtime.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { freePort } from './helpers/free-port.js'
 
@@ -98,8 +103,8 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     const script = `
       import { readdirSync } from 'node:fs'
       import path from 'node:path'
-      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/index.ts'))})
-      const { portBridgeSocket } = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/sandbox-runtime.ts'))})
+      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/runtime.ts'))})
+      const { portBridgeSocket } = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/runtime.ts'))})
       await exec.initSandbox({ allowAllUnixSockets: true })
       const dir = ${JSON.stringify(dir)}
       const root = path.dirname(path.dirname(portBridgeSocket('t', ${port})))
@@ -154,7 +159,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     'runs after SRT’s own %s cleanup',
     async (event) => {
       const script = `
-      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/index.ts'))})
+      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/runtime.ts'))})
       const dir = ${JSON.stringify(dir)}
       const run = () => exec.runSandboxed({
         command: 'true', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [],
@@ -192,7 +197,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
   // process went on, and every later file of the shard lost its sandbox.
   it('a probe after an emitted exit still finds the sandbox', async () => {
     const script = `
-      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/index.ts'))})
+      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/runtime.ts'))})
       await exec.initSandbox({ allowAllUnixSockets: true })
       process.emit('exit', 0)
       const v = await exec.probeSandbox()

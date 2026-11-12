@@ -6,7 +6,7 @@ import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { sandboxReads } from '../src/exec/index.js'
+import { sandboxReads } from '../src/sandbox/paths.js'
 import { shellVerdict } from '../src/orchestrator/shell-verdict.js'
 
 let dir: string

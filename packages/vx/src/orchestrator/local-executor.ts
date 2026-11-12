@@ -4,9 +4,8 @@
 // plugin claims the task, so it sits at the TAIL of every executor list
 // (2026-09-05). An executor plugin places work ELSEWHERE; its
 // absence is "here".
-import { runCommand, signalExitCode, stopSignal } from './runner.js'
-import { runSandboxed } from './sandbox-runtime.js'
-import type { TaskExecutor } from './executor.js'
+import { runCommand, signalExitCode, stopSignal, type TaskExecutor } from '../exec/index.js'
+import { runSandboxed } from '../sandbox/index.js'
 
 const locals = new WeakSet<TaskExecutor>()
 

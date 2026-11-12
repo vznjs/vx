@@ -112,6 +112,7 @@ export const OPEN_LINE_HOLD_CHARS: number
 export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string; end(): void }
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string, env?: NodeJS.ProcessEnv): string // E2BIG with `command`: its size and the 128 KiB limit, or the environment's size and largest entry when that is the cause
+export function sandboxArgTooLongText(bytes: number): string // the E2BIG line for a sandboxed task's wrap
 export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
@@ -135,7 +136,7 @@ export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
 export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the runtime reported
 
 // A task's stdout and stderr: real pipes on Linux, Bun's 'pipe' elsewhere
-// or for a terminal task. `sandbox-runtime.ts` spawns through it too.
+// or for a terminal task. `sandbox/runtime.ts` spawns through it too.
 export class TaskPipes {
   constructor(terminal?: boolean)
   readonly stdio: readonly [number | 'pipe', number | 'pipe'] // descriptors 1 and 2 for Bun.spawn
@@ -270,7 +271,7 @@ The promise from `runCommand` always resolves (never rejects) with a
 - Signal-killed → `exitCode = signalExitCode(signalCode)` — the POSIX
   128 + signo convention (SIGTERM → 143, SIGKILL → 137), falling back
   to 130 for signal names missing from `os.constants.signals`. The
-  sandboxed runner (`sandbox-runtime.ts`) uses the same helper.
+  sandboxed runner (`sandbox/runtime.ts`) uses the same helper.
 - Timed out (`exec.timeout`) → `armTimeout` SIGTERMs the task's group
   and SIGKILLs it after the kill grace. Once the leader has exited,
   `settle()` waits the rest of that grace for the GROUP and SIGKILLs
@@ -469,7 +470,7 @@ spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
   reads a timeout as a pass (sandboxed runs too).
 - **Doesn't sandbox.** `runCommand` spawns with full process
   privileges; a task's `exec.sandbox` runs through
-  `sandbox-runtime.ts` (`@anthropic-ai/sandbox-runtime`) instead.
+  `sandbox/runtime.ts` (`@anthropic-ai/sandbox-runtime`) instead.
 - **Doesn't install signal handlers.** Signal shutdown is the
   orchestrator's job: it owns the `liveChildren` set this module
   populates, forwards SIGINT/SIGTERM to everything in it, and exits
@@ -1550,7 +1551,7 @@ Cost: 0.65 ms per command on macOS CI (`bun:ffi` load included).
 A helper vx keeps running beside its tasks would show the same values:
 a spawn with no `env` hands the child vx's startup env, and the child is
 readable after its `exec`. `helperEnv()` is `PATH` alone; the group
-guard (`exec/kill-tree.ts`) and the port bridges (`exec/sandbox-runtime.ts`)
+guard (`exec/kill-tree.ts`) and the port bridges (`sandbox/runtime.ts`)
 start with it. `gitEnv()` is what git reads (`GIT_*`, the locale,
 `XDG_CONFIG_HOME`) plus the essentials; every `git` vx runs gets it
 (`tests/git-env.test.ts`). Not covered: the sandbox runtime's own network

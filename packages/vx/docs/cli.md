@@ -1415,7 +1415,7 @@ Default path: `profile.json` (cwd-relative).
 
 Sandbox isolation is opt-in **per task** via an `exec.sandbox` block in
 the task's config — there is no `--sandbox` CLI flag. See
-[`modules/exec.md`](./modules/exec.md#srcexecsandbox-runtimets--sandbox-wrapper-for-per-task-isolation) for the
+[`modules/sandbox.md`](./modules/sandbox.md#srcsandboxruntimets--sandbox-wrapper-for-per-task-isolation) for the
 full reference.
 
 ```ts

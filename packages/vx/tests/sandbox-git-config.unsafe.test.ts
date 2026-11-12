@@ -16,9 +16,9 @@ import {
   resolveSandboxConfig,
   runSandboxed,
   wrapSandboxedCommand,
-} from '../src/exec/index.js'
+} from '../src/sandbox/runtime.js'
 import type { TaskNode } from '../src/graph/index.js'
-import { prepareSandbox } from '../src/orchestrator/sandbox-request.js'
+import { prepareSandbox } from '../src/sandbox/request.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox git-config test')

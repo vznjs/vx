@@ -19,24 +19,24 @@ import {
   pendingWriteGrants,
   probeSandbox,
   resetSandbox,
-  type SandboxViolation,
   resolveSandboxConfig,
   runSandboxed,
-} from '../src/exec/sandbox-runtime.js'
-import { bindableWrites, buildCustomConfig, scratchWrites } from '../src/exec/sandbox-binds.js'
+} from '../src/sandbox/runtime.js'
+import type { SandboxViolation } from '../src/exec/index.js'
+import { bindableWrites, buildCustomConfig, scratchWrites } from '../src/sandbox/binds.js'
 import {
   deniedCalls,
   parseStraceViolations,
   refusedWrites,
   refusedWritesOutside,
   reportableViolations,
-} from '../src/exec/sandbox-violations.js'
+} from '../src/sandbox/violations.js'
 import { type RunSummary } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
 // SRT's own strip and glob compiler: what a macOS grant covers is its answer.
 import { removeTrailingGlobSuffix } from '@anthropic-ai/sandbox-runtime/dist/sandbox/sandbox-utils.js'
 import { globToRegex } from '@anthropic-ai/sandbox-runtime/dist/sandbox/glob-pattern.js'
-import { sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
+import { sandboxRequestFor } from '../src/sandbox/request.js'
 import type { TaskNode } from '../src/graph/index.js'
 import {
   TIMEOUT,
@@ -50,7 +50,7 @@ const available = await sandboxAvailable('sandbox-runtime tests')
 
 describe.skipIf(!available)('a cache declaration grants the sandbox nothing', () => {
   // "The sandbox derives NOTHING from `cache`" (2026-09-05) is stated
-  // in `sandbox-request.ts` and in schema.md — `inputs` says what
+  // in `sandbox/request.ts` and in schema.md — `inputs` says what
   // INVALIDATES a task, `sandbox.allow` says what it may TOUCH, and deriving
   // one from the other coupled them in both directions: a declaration added
   // for caching silently widened the sandbox.

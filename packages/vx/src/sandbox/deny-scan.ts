@@ -17,7 +17,7 @@ import { lstatSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
-import { atOrUnder, MOUNT_WILDCARDS } from './sandbox-paths.js'
+import { atOrUnder, MOUNT_WILDCARDS } from './paths.js'
 
 /** SRT's `DEFAULT_MANDATORY_DENY_SEARCH_DEPTH`; rg lists files one level deeper. */
 const SEARCH_DEPTH = 3

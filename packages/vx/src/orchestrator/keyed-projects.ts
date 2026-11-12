@@ -95,7 +95,7 @@ export function readableDeps(
 /**
  * A run's lookup of the projects nested in a keyed one, by its directory.
  * A sandboxed task granted a linked package is walled from them: that
- * package's key stops at a nested project (sandbox-request.ts). Built on
+ * package's key stops at a nested project (sandbox/request.ts). Built on
  * the first ask, from every node the walk can reach.
  */
 export function nestedDirsOf(

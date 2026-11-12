@@ -15,11 +15,11 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   initSandbox,
-  localExecutor,
   resetSandbox,
   resolveSandboxConfig,
   runSandboxed,
-} from '../src/exec/index.js'
+} from '../src/sandbox/runtime.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox tracer retry test')

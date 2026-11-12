@@ -6,7 +6,7 @@
 // other command that may write it ran between the describe and that write.
 
 import path from 'node:path'
-import type { WriteReach } from './sandbox-request.js'
+import type { WriteReach } from '../sandbox/index.js'
 
 interface Window {
   id: string

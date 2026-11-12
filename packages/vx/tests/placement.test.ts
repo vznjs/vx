@@ -16,7 +16,7 @@ import {
 } from '../src/orchestrator/placement.js'
 import type { Placements } from '../src/orchestrator/placement.js'
 import type { TaskExecutor, TaskPlacement } from '../src/exec/executor.js'
-import { localExecutor } from '../src/exec/local-executor.js'
+import { localExecutor } from '../src/orchestrator/local-executor.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, exec: Record<string, unknown>, deps: string[] = []): TaskNode {

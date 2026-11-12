@@ -4,7 +4,7 @@
 // in `exec.sandbox` met an unknown-field refusal instead of a fix.
 
 import { describe, expect, it } from 'bun:test'
-import { socketPathRefusal, unavailableReason } from '../src/exec/index.js'
+import { socketPathRefusal, unavailableReason } from '../src/sandbox/runtime.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
 
 type Config = Parameters<typeof validateProjectConfig>[0]

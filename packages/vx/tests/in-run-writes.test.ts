@@ -28,7 +28,7 @@ import {
   grantedWriteGlobs,
   mayWriteFingerprint,
   undeclaredWriteReach,
-} from '../src/orchestrator/sandbox-request.js'
+} from '../src/sandbox/request.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { writeEdges, writeLockClaim } from './helpers/plugin.js'

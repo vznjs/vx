@@ -245,6 +245,7 @@ describe('docs/README.md § Repository layout follows src/', () => {
       'ten',
       'eleven',
       'twelve',
+      'thirteen',
     ]
     expect(readme).toContain(`Core \`src/\` is **${WORDS[dirs.length]} modules**`)
   })
@@ -324,7 +325,7 @@ describe('no page describes a Windows branch the source dropped', () => {
   it('src holds no win32 branch, and the pages say WSL', () => {
     const src = walk(path.join(pkg, 'src'), '.ts').map((f) => readFileSync(f, 'utf8'))
     expect(src.filter((s) => s.includes("=== 'win32'") || s.includes("!== 'win32'"))).toEqual([])
-    const row = readFileSync(path.join(pkg, 'docs', 'modules', 'exec.md'), 'utf8')
+    const row = readFileSync(path.join(pkg, 'docs', 'modules', 'sandbox.md'), 'utf8')
       .split('\n')
       .find((l) => l.startsWith('| Windows '))
     expect(row).toContain('WSL')

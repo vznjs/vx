@@ -8,9 +8,14 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
-import { deniedCalls } from '../src/exec/sandbox-violations.js'
-import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import {
+  initSandbox,
+  resetSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+} from '../src/sandbox/runtime.js'
+import { deniedCalls } from '../src/sandbox/violations.js'
+import { sandboxFix } from '../src/sandbox/fix.js'
 import { relPosix } from '../src/util/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 

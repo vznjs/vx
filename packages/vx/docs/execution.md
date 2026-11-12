@@ -422,7 +422,7 @@ task that shells out to `vx run` in its own workspace is refused
 before it forks without bound, and `npm_execpath`, the workspace's
 package manager (unkeyed; `schema.md` § `env`). A sandboxed task also gets the sandbox's own
 proxy, CA and `TMPDIR` values
-([`modules/exec.md`](./modules/exec.md#the-environment-srt-sets)). This prevents incidental env leakage
+([`modules/sandbox.md`](./modules/sandbox.md#the-environment-srt-sets)). This prevents incidental env leakage
 between machines and gives reproducible runs. It is hygiene, not a
 boundary: an unsandboxed task runs as you and can still read your home
 (vx hides its own environment, `modules/util.md`). `exec.sandbox` is the boundary ([`security.md`](./security.md#what-the-sandbox-stops)).

@@ -6,13 +6,11 @@ import type { ExecConfig } from '../config.js'
 import {
   lineEnds,
   PersistentReadyError,
-  releaseBridges,
   runPersistent,
-  sandboxReads,
   signalExitCode,
   withForwardArgs,
-  wrapSandboxedCommand,
 } from '../exec/index.js'
+import { releaseBridges, sandboxReads, wrapSandboxedCommand } from '../sandbox/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import { maskedStreams, secretMask, testTimerMs } from '../util/index.js'
 import { warnOf } from '../report/index.js'
@@ -27,7 +25,7 @@ import {
   sweepPlaceholders,
   undeclaredWriteReach,
   untouchedPlaceholderLine,
-} from './sandbox-request.js'
+} from '../sandbox/index.js'
 import { explainServerExit } from './persistent.js'
 import { shellVerdict } from './shell-verdict.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
@@ -125,7 +123,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // The empty files the request pre-created for a literal write grant; a
   // server that never writes one gets it taken back when it exits, and a
   // server that dies before readiness is told the directory spelling — the
-  // same trap and the same answer as a one-shot task's (sandbox-request.ts).
+  // same trap and the same answer as a one-shot task's (sandbox/request.ts).
   let placeholders: Placeholder[] = []
   let serverSandbox: Awaited<ReturnType<typeof sandboxRequestFor>>['sandbox'] | undefined
   if (step.sandbox !== undefined) {

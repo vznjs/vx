@@ -8,7 +8,8 @@ import { statSync } from 'node:fs'
 import path from 'node:path'
 import { type TaskInputComponent } from '../cache/index.js'
 import { fsClockNow } from '../memo/index.js'
-import { isLocalExecutor, type TaskInputs } from '../exec/index.js'
+import { type TaskInputs } from '../exec/index.js'
+import { isLocalExecutor } from './local-executor.js'
 import type { InputsConfig } from '../config.js'
 import {
   anyTaskGlob,

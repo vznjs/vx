@@ -57,8 +57,8 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         stage applied, cache dir, staged projects); select.ts is what a run
                         is asked to run (filters, --affected owners, cwd project, picker)
   src/orchestrator/     run() pipeline, placement (where a task runs), signals, admission (dedup +
-                        continue-taint), execute-task (+ miss-save,
-                        sandbox-request), task-hash,
+                        continue-taint), execute-task (+ miss-save),
+                        local-executor (the floor), task-hash,
                         projects.ts (the staged config load every reader shares), plugin
                         stages + seams, doctor.ts (the facts `vx info` reports)
   src/report/           the run event stream + terminal output: logger, frames, status line, summary,
@@ -75,7 +75,9 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
   src/memo/             what a warm run remembers: file hashes, folds, lockfile parses, output stamps,
                         remote hits
   src/index-db/         cache.db's one schema and SQLite helpers, below cache, memo and history
-  src/exec/             runner (Bun.spawn), env isolation, sandbox, local-executor (the floor)
+  src/exec/             runner (Bun.spawn), env isolation, kill tree, the executor contract
+  src/sandbox/          a task's sandbox: request in (grants, binds), run under bwrap/seatbelt,
+                        result plus violations out; the grants a failure needed (fix.ts)
   src/util/             incl. timing.ts (`VX_DEBUG_TIMING=1` stage table)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
