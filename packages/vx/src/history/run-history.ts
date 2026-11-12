@@ -4,8 +4,8 @@
 // its statements over the store's handle; `Cache` delegates.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
-import { lazyStatement } from './schema.js'
-import type { InvocationRecord, MeasureRecord, RunRecord } from './layer.js'
+import { lazyStatement } from '../index-db/index.js'
+
 import { isMeasure, splitTaskId } from '../util/index.js'
 
 /** The `main.runs` columns `bindRun` fills, in its order. */
@@ -60,8 +60,7 @@ function insertRunsSql(kept: readonly number[], n: number): string {
 
 /**
  * Bound variables per INSERT: within 999, the oldest default ceiling. A
- * statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
- * (2026-10-03).
+ * statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4.
  */
 const VARIABLES_PER_INSERT = 999
 
@@ -94,7 +93,7 @@ const PASSED_HASHES = `
       WHERE EXISTS (SELECT 1 FROM task_outcomes AS o WHERE o.hash = j.value AND o.status <> 'failed')`
 
 /** The commit a run ran on, as `task_durations` files its timings. */
-type RunHead = Pick<InvocationRecord, 'branch' | 'commitSha'>
+export type RunHead = Pick<InvocationRecord, 'branch' | 'commitSha'>
 const NO_HEAD: RunHead = { branch: null, commitSha: null }
 
 /** A local run's `task_durations.source`: its branch, `''` when it had none. */
@@ -105,8 +104,7 @@ export const branchSource = (branch: string | null): string => `branch:${branch 
  * (`cpuShare` < 1) each runnable thread waited for a core. A task that
  * kept `n` cores busy lost its CPU's wait spread over them, under one
  * core all of it. vx-dte#test (20 s CPU in 75 s) took 81-102 s beside
- * test shards and the plan, reading those, said 118 s for a 92 s run
- * (main fd5c72e, 2026-10-23).
+ * test shards and the plan, reading those, said 118 s for a 92 s run.
  */
 function aloneMs(r: Pick<RunRecord, 'durationMs' | 'cpuMs' | 'cpuShare'>): number {
   const { durationMs: d, cpuMs: c, cpuShare: s } = r
@@ -119,7 +117,7 @@ export class RunHistory {
 
   constructor(
     private readonly db: Database,
-    /** The store's salted value digest (L-4). */
+    /** The store's salted value digest. */
     private readonly digestValue: (value: string) => string,
   ) {
     this.insertInvocation = lazyStatement(
@@ -145,7 +143,7 @@ export class RunHistory {
   }
 
   /**
-   * Rows with no `invocations` header (a stopped run, item 854). `head` is
+   * Rows with no `invocations` header (a stopped run). `head` is
    * the commit the run ran on: its timings file under that branch, as a
    * finished run's do, or the branch's forecast never reads them.
    */
@@ -279,7 +277,7 @@ export class RunHistory {
    * Only the columns some row fills are bound: a hit leaves half of them
    * NULL, and binding 18 of 36 took the 8,002 rows of a warm run from
    * 31.7 to 24.0 ms alone, the whole record stage 86.8 to 83.3 ms (median
-   * of 15 interleaved runs, 2026-11-06).
+   * of 15 interleaved runs).
    */
   private insertRuns(runs: readonly RunRecord[]): void {
     const digests = new Map<string, string>()
@@ -368,34 +366,6 @@ export class RunHistory {
       })
       .immediate()
   }
-
-  /**
-   * Retention: the runs table grows by one row per task per invocation,
-   * hits included — a 2000-task repo accretes ~20k rows in days. 30 days
-   * covers `vx info` (24 h windows) and CI-side consumers. The
-   * `invocations` header is pruned on the SAME window, or a header would
-   * outlive its rows and `vx last` would list a run whose detail is gone.
-   * Returns the rows dropped.
-   */
-  pruneOlderThan(cutoff: number): number {
-    let dropped = this.db.prepare('DELETE FROM main.runs WHERE started_at < ?').run(cutoff).changes
-    // A run's id goes with its last row; ids only grow, so the oldest kept row bounds them.
-    dropped += this.db
-      .prepare(
-        'DELETE FROM run_ids WHERE id < COALESCE((SELECT MIN(run) FROM main.runs), (SELECT MAX(id) + 1 FROM run_ids))',
-      )
-      .run().changes
-    dropped += this.db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff).changes
-    dropped += this.db
-      .prepare('DELETE FROM task_durations WHERE recorded_at < ?')
-      .run(cutoff).changes
-    dropped += this.db
-      .prepare('DELETE FROM task_outcomes WHERE recorded_at < ?')
-      .run(cutoff).changes
-    dropped += this.db.prepare('DELETE FROM plugin_blobs WHERE at < ?').run(cutoff).changes
-    dropped += this.db.prepare('DELETE FROM remote_hits WHERE seen_at < ?').run(cutoff).changes
-    return dropped
-  }
 }
 
 /** A RunRecord as one value per `RUN_COLUMNS` entry, in its order. */
@@ -415,7 +385,7 @@ function bindRun(
     run.durationMs,
     // A digest, as entry_inputs keeps: args after `--` carry tokens
     // (`--token=…`), and cache.db holds no plaintext secret at rest; nothing
-    // reads the column but for whether the args changed (item 1091).
+    // reads the column but for whether the args changed.
     run.forwardArgs ? digestValue(JSON.stringify(run.forwardArgs)) : null,
     run.startedAt,
     run.endedAt,
@@ -484,4 +454,133 @@ function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
     inv.arch,
     inv.vxVersion,
   ]
+}
+
+export interface RunRecord {
+  /**
+   * The task's cache key. ABSENT when the outcome never derived one — a
+   * `skipped` task (its upstream failed, so it never probed) or a
+   * `persistent` one (a dev server is never cached). Such a row is still a
+   * task of the run and must be recorded, so the column keeps a `''`
+   * sentinel rather than going nullable: `''` is impossible for a real key
+   * (`Cache.key` returns 16 hex chars), the reads that must not treat it as
+   * a key already guard it, and it matches what the cloud `task_runs.hash`
+   * column has stored for the same concept since its first migration.
+   */
+  hash?: string
+  project: string
+  task: string
+  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
+  exitCode: number
+  durationMs: number
+  forwardArgs?: readonly string[]
+  startedAt: number // ms-epoch wall clock
+  endedAt: number // ms-epoch wall clock
+  /**
+   * Optional analytics columns. Populated by the orchestrator/runner;
+   * stored as NULL on rows from older runs. Surfaced via `vx info`
+   * and consumable from CI by reading cache.db directly.
+   */
+  runId?: string // ULID shared across every task in one `vx run` invocation
+  cpuMs?: number // sum of user + system CPU time for the child process
+  peakRssBytes?: number // peak resident set size of the child process
+  wallclockStartNs?: bigint // hrtime span relative to run t=0
+  wallclockEndNs?: bigint
+  cacheHit?: boolean // convenience for flamegraph color; derivable from status
+  /**
+   * On a hit: whether outputs were written (`true`) or the disk already
+   * matched the entry (`false`, up-to-date). Absent on other statuses.
+   */
+  restored?: boolean
+  attempts?: number // >1 when the task retried; the direct within-run flaky signal
+  /**
+   * Whether the task declared `cache: true`. An uncached task executes
+   * on every run and its key exists only for dependents to fold, so a
+   * reader (`vx why`, `vx last`) must not present its re-run as a cache
+   * decision. Absent on rows written before the column existed.
+   */
+  cached?: boolean
+  /**
+   * Why the task failed or was skipped, as the run's own footer said it
+   * (v27 columns; NULL on older rows and where the reason does not apply):
+   * a skip's root blocker (or the one a task that ran behind a failure ran
+   * behind), vx's own timeout, the sandbox's violation count,
+   * and why a persistent task never became ready.
+   */
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined. */
+  remoteError?: string
+  /** The sampled peak cores and mean resident memory of the run. */
+  peakCores?: number
+  avgRssBytes?: number
+  /** Where an executor ran it (`small#1`); absent = here. */
+  placement?: string
+  /** The task with no `inputs` its key folded, so it never read or saved. */
+  keylessBy?: string
+  /** The task's definition (`taskDefinition`): what its history is kept under. */
+  def?: string
+  /** That machine's cores and memory. */
+  placementCores?: number
+  placementMemoryBytes?: number
+  /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
+  cpuShare?: number
+  /** How long it waited ready for a slot (`TaskOutcome.queuedMs`, v51). */
+  queuedMs?: number
+  /** Its output files' bytes (`TaskOutcome.outputBytes`, v51). */
+  outputBytes?: number
+  /** The tasks and groups downstream of it in the run, the scheduler's count. */
+  blocks?: number
+  /** The flaky record its row's note quoted (`TaskOutcome.flaky`, v51). */
+  flakyPasses?: number
+  flakyFailures?: number
+}
+
+/**
+ * One header row per `vx run` invocation (the `invocations` table). All
+ * fields mirror the columns; nullable VCS/host columns are `null` when
+ * the probe failed (not a git repo, hostname unavailable). Recorded
+ * once per run inside the same transaction as the per-task `runs` rows.
+ */
+export interface InvocationRecord {
+  runId: string
+  command: string
+  /** JSON-serialized `string[]` of the requested task names. */
+  requestedTasks: string
+  /** The `--cache-policy` spec, e.g. `'local:rw,remote:r'` (a flag omitted = off). */
+  cachePolicy: string
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  /** Hits that restored nothing, and hits that restored outputs per layer; they sum to `hitCount`. */
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+}
+
+/** A plugin's measure kept as a task's timing (`PluginSetupContext.measure`): `id` is `<plugin>#<name>`. */
+export interface MeasureRecord {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
 }

@@ -12,7 +12,6 @@ import {
   cleanWorkspaceOutputs,
   committedFiles,
   committedMoved,
-  type OutputFileRow,
   type OutputStamp,
   ownOutputsSince,
   ownWorkspaceOutputsSince,
@@ -22,8 +21,8 @@ import {
   stampOutputs,
   stampWorkspaceOutputs,
   taskEntryHashes,
-  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
+import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import { OutputsFailed } from '../graph/index.js'
 import { relPosix, span } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
@@ -266,7 +265,7 @@ export class OutputGuard {
       if (byPath === undefined) {
         byPath = new Map()
         const hashes = taskEntryHashes(args.cache, node.id)
-        for (const rows of args.cache.loadOutputFilesBatch(hashes).values()) {
+        for (const rows of args.cache.memo.loadOutputFilesBatch(hashes).values()) {
           for (const row of rows) {
             if (row.ino === undefined) continue
             const ws = row.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
@@ -280,7 +279,9 @@ export class OutputGuard {
           }
         }
       }
-      return (byPath.get(abs) ?? []).some(([root, row]) => args.cache.isOutputsCurrent(root, [row]))
+      return (byPath.get(abs) ?? []).some(([root, row]) =>
+        args.cache.memo.isOutputsCurrent(root, [row]),
+      )
     }
   }
 

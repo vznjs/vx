@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { indexDb, Cache } from '../src/cache/index.js'
+import { runHistory } from '../src/history/index.js'
 import { runFailures, writeRunFailures } from '../src/orchestrator/run-failures.js'
 import type { TaskOutcome } from '../src/graph/index.js'
 
@@ -44,7 +45,7 @@ const failed = (runId: string): void => {
      VALUES (?, 'vx run b', '[]', 'full', 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 'test')`,
     [runId],
   )
-  cache.recordRun({
+  runHistory(cache).recordRun({
     hash: '',
     runId,
     project: 'a',

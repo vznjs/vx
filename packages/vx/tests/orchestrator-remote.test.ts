@@ -21,6 +21,7 @@ import {
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
 import { indexDb, Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { LocalMemo } from '../src/memo/index.js'
 import { ownRssHighWater } from '../src/exec/runner.js'
 import { type RunSummaryRecord, type TelemetryRecord } from '../src/orchestrator/index.js'
 import { cacheKeyDiff, latestRunId, LocalHistoryProvider } from '../src/history/index.js'
@@ -28,6 +29,7 @@ import { planRun, run } from './helpers/orchestrator.js'
 import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
+import { RunHistory } from '../src/history/run-history.js'
 
 /**
  * A stub HTTP artifact ENDPOINT + the RemoteCacheLayer speaking to it —
@@ -1197,7 +1199,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
       // failed the finished run with a stack. History is observability: the
       // verdict stands, the line says what was lost, and close() still runs.
       const closeSpy = spyOn(Cache.prototype, 'close')
-      const recordSpy = spyOn(Cache.prototype, 'recordRunBundle').mockImplementation(() => {
+      const recordSpy = spyOn(RunHistory.prototype, 'recordRunBundle').mockImplementation(() => {
         throw new Error('SQLITE_BUSY: database is locked')
       })
       try {
@@ -2114,9 +2116,9 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
       // run takes its hits and then dies before its own close.
       const fixture = await makeFixture('vx-remote-e2e-')
       const g = globalThis as Record<string, unknown>
-      const record = Cache.prototype.recordOutputDirs
-      const dirs = spyOn(Cache.prototype, 'recordOutputDirs').mockImplementation(function (
-        this: Cache,
+      const record = LocalMemo.prototype.recordOutputDirs
+      const dirs = spyOn(LocalMemo.prototype, 'recordOutputDirs').mockImplementation(function (
+        this: LocalMemo,
         ...args
       ) {
         // Only the run-end snapshot (it passes `holds`): the hit path's own

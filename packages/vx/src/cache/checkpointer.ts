@@ -7,7 +7,7 @@
 // which appends as before; the run's connection checkpoints nothing until
 // its close, which finds the WAL nearly copied.
 
-import { SQLITE_FCNTL_PERSIST_WAL } from './schema.js'
+import { SQLITE_FCNTL_PERSIST_WAL } from '../index-db/index.js'
 
 /** How often the thread checkpoints: about 1,000 pages of a cold run's writes. */
 const EVERY_MS = 100

@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { fsClockNow } from '../src/cache/index.js'
+import { fsClockNow } from '../src/memo/index.js'
 import { ChangeJudge } from '../src/cli/watch-judge.js'
 import { rng } from './helpers/rng.js'
 

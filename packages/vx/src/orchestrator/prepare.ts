@@ -44,9 +44,9 @@ import {
   startGitEnumeration,
   checkBlobSizes,
   lazyGitEnumeration,
-  measureFsClockLag,
   DEFAULT_STORE,
 } from '../cache/index.js'
+import { measureFsClockLag } from '../memo/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
@@ -462,8 +462,8 @@ export async function prepareRunLocked(
   // verdict from, beside the config load and graph build: after them, a cold
   // 100-package run waited 40-50 ms on it before its first task (2026-11-03).
   if (git.started !== undefined) {
-    localCache.holdBlobSizes()
-    git.started.then((e) => checkBlobSizes(e, localCache)).catch(() => {})
+    localCache.memo.holdBlobSizes()
+    git.started.then((e) => checkBlobSizes(e, localCache.memo)).catch(() => {})
   }
   mark('open cache')
 
@@ -667,7 +667,7 @@ export async function prepareRunLocked(
   const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
   try {
     const hashCache = createHashCache(
-      localCache.foldMemo(),
+      localCache.memo.folds,
       resolveSetting('outputs.clean', workspaceConfig).value as boolean | undefined,
       {
         run: settingEnv('inputs.stability.strategy') as InputStability['strategy'],
@@ -877,14 +877,14 @@ export async function prepareRunLocked(
       nodes,
     )
     const enumeration = await enumerating
-    localCache.holdBlobSizes()
+    localCache.memo.holdBlobSizes()
     const applied = applyGitEnumeration(
       enumeration,
       workspaceRoot,
       projectDirs,
       gitFilesCache,
       usesWorkspaceInputs,
-      localCache,
+      localCache.memo,
     )
     // The dependents count while the blob-size check's `cat-file` runs: the
     // thread waited ~80 ms on it in a cold 8,002-task run, and counting

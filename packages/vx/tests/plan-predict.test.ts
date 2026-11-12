@@ -106,6 +106,9 @@ function stubCache(where: (hash: string) => 'local' | 'remote' | null = () => nu
       probes.push(hash)
       return where(hash)
     },
+    get memo() {
+      return this
+    },
     async hashFile(): Promise<string> {
       return 'pkgjson'
     },
@@ -362,6 +365,9 @@ describe('plan() — a key that cannot be derived', () => {
       async has(): Promise<'local' | 'remote' | null> {
         return 'local'
       },
+      get memo() {
+        return this
+      },
       async hashFile(): Promise<string> {
         return 'pkgjson'
       },
@@ -461,6 +467,9 @@ describe('plan() — time prediction', () => {
         },
         async has(): Promise<'local' | 'remote' | null> {
           return null
+        },
+        get memo() {
+          return this
         },
         async hashFile(): Promise<string> {
           return 'pkgjson'

@@ -225,32 +225,25 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
-  runId: string | undefined
-  readonly remoteHits: RemoteHits
-  readonly storeDir: string | undefined
-  readonly schemaReset: SchemaReset | null
-  readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   constructor(
-    private readonly cacheDir: string,
+    cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
-    private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
+    artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
-    private readonly store: StoreOptions = DEFAULT_STORE,
+    store: StoreOptions = DEFAULT_STORE,
   )
-  hashFile(filePath: string): Promise<string>
-  hashBytes(bytes: Uint8Array, nearPath: string): string
-  hashFiles(paths: readonly string[]): Promise<Map<string, string>>
-  knownBlobSizes(oids: readonly string[]): Map<string, number>
-  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
-  holdBlobSizes(): void
-  storeHeldBlobSizes(): void
-  blobVerdict(digest: string): string[] | undefined
-  rememberBlobVerdict(digest: string, paths: readonly string[]): void
-  foldMemo(): FoldMemo
+  get runId(): string | undefined
+  set runId(runId: string | undefined)
+  get remoteHits(): RemoteHits
+  get storeDir(): string | undefined
+  get schemaReset(): SchemaReset | null
+  get storeReset(): SchemaReset | null
+  get memo(): StoreMemo
   key(input: CacheKeyInput): Promise<string>
+  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
   getSaved(hash: string): Promise<CacheEntry | null>
@@ -261,22 +254,10 @@ export class Cache implements CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async localHasMany(hashes: readonly string[]): Promise<Set<string>>
-  async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
   kept(hash: string): boolean
   artifactSize(hash: string): number | undefined
-  async recordOutputDirs(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   async restoreOutputs(
     hash: string,
     projectDir: string,
@@ -300,23 +281,8 @@ export class Cache implements CacheLayer {
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }>
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-    | { compressed: Uint8Array; tar: Uint8Array }
-    | { tmpPath: string }
-    | { plan: true; saved: SavedTree }
-  >
   checkpointOffThread(): void
   async stopCheckpoints(): Promise<void>
-  recordRun(run: RunRecord): void
-  recordRuns(
-    runs: readonly RunRecord[],
-    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void
-  recordMeasures(
-    measures: readonly MeasureRecord[],
-    head: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-  ): void
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
-  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
@@ -372,13 +338,9 @@ export interface CacheFlags {
 
 type · `src/cache/layer.ts`
 
-The shape every cache implementation honors. `Cache` (the local store)
-and `LayeredCache` both `implements` this so the
-orchestrator's `executeTask` can take either without a discriminated
-union and we get a compile-time guarantee the surfaces stay congruent.
-
 ```ts
 export interface CacheLayer {
+  readonly memo: TaskMemo
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
@@ -404,17 +366,6 @@ export interface CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
-  recordOutputDirs?(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   restoreOutputs(
     hash: string,
     projectDir: string,
@@ -434,9 +385,7 @@ export interface CacheLayer {
     absent?: boolean
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
-  hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined
   outputBytes?(hash: string): number | undefined
@@ -1102,7 +1051,7 @@ export interface InputStability {
 
 ## `InvocationRecord`
 
-type · `src/cache/layer.ts`
+type · `src/history/run-history.ts`
 
 One header row per `vx run` invocation (the `invocations` table). All
 fields mirror the columns; nullable VCS/host columns are `null` when
@@ -2489,7 +2438,7 @@ export interface RunPlan {
 
 ## `RunRecord`
 
-type · `src/cache/layer.ts`
+type · `src/history/run-history.ts`
 
 ```ts
 export interface RunRecord {

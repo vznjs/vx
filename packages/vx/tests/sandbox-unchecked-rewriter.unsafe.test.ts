@@ -7,7 +7,7 @@
 import { readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/memo/index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'

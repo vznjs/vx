@@ -15,7 +15,7 @@ readUmask()
  * The permission bits a restore gives a stored `mode`: minus the umask, as
  * tar gives a non-root user and Turbo does. A hit under `umask 077` gave
  * back 0644 / 0755 where the build left 0600 / 0700, readable by every
- * user on the machine (Growth's parity run, 2026-10-16).
+ * user on the machine.
  */
 export function restoredMode(mode: number): number {
   return mode & 0o777 & ~umask

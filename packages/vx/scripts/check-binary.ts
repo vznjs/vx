@@ -60,7 +60,7 @@ run(
     '--bytecode',
     `--target=bun-${host}`,
     'src/bin.ts',
-    'src/cache/history-writer.ts',
+    'src/history/history-writer.ts',
     '--outfile',
     out,
   ],

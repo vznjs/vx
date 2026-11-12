@@ -7,8 +7,8 @@ import { Database } from 'bun:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { indexDb, Cache, type RunRecord } from '../src/cache/index.js'
-import { detectFlaky, flakyTasks } from '../src/history/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { type RunRecord, runHistory, detectFlaky, flakyTasks } from '../src/history/index.js'
 
 let dir: string
 let store: string
@@ -65,19 +65,19 @@ function storeRows(sql: string): unknown[] {
 }
 
 it('a blob size one worktree learned is known to another', () => {
-  worktree('a').rememberBlobSizes(new Map([['oid1', 5]]))
-  expect(worktree('b').knownBlobSizes(['oid1', 'oid2'])).toEqual(new Map([['oid1', 5]]))
+  worktree('a').memo.rememberBlobSizes(new Map([['oid1', 5]]))
+  expect(worktree('b').memo.knownBlobSizes(['oid1', 'oid2'])).toEqual(new Map([['oid1', 5]]))
 })
 
 it('a key that passed in one worktree and fails in another is flaky there', () => {
   const a = worktree('a')
   const b = worktree('b')
-  a.recordRuns([outcome('success')])
+  runHistory(a).recordRuns([outcome('success')])
   const cand = { project: 'p', task: 't', hash: 'K', status: 'failed' as const, attempts: 1 }
   expect(detectFlaky(indexDb(b), [cand])).toEqual([
     { ...cand, taskId: 'p#t', passes: 1, failures: 1 },
   ])
-  b.recordRuns([outcome('failed')])
+  runHistory(b).recordRuns([outcome('failed')])
   expect(flakyTasks(indexDb(a))).toEqual([
     { taskId: 'p#t', project: 'p', task: 't', keys: 1, passes: 1, failures: 1 },
   ])
@@ -88,11 +88,11 @@ it("a hit is kept only as its key's first pass: a warm run on passed keys writes
   const b = worktree('b')
   // An entry with no executed row (adopted from its artifact, or older than
   // the record): its first hit is the pass a later failure relapses from.
-  a.recordRuns([outcome('cache-hit')])
-  b.recordRuns([outcome('cache-hit'), outcome('cache-hit-remote')])
-  a.recordRuns([outcome('success', 'J'), outcome('cache-hit-remote', 'J')])
+  runHistory(a).recordRuns([outcome('cache-hit')])
+  runHistory(b).recordRuns([outcome('cache-hit'), outcome('cache-hit-remote')])
+  runHistory(a).recordRuns([outcome('success', 'J'), outcome('cache-hit-remote', 'J')])
   // A blocked or uncached outcome, or a keyless one, says nothing of a key.
-  a.recordRuns([
+  runHistory(a).recordRuns([
     outcome('failed', 'L', { blockedBy: 'p#x' }),
     outcome('failed', 'M', { cached: false }),
     outcome('skipped', ''),
@@ -101,7 +101,7 @@ it("a hit is kept only as its key's first pass: a warm run on passed keys writes
     { status: 'cache-hit', hash: 'K' },
     { status: 'success', hash: 'J' },
   ])
-  b.recordRuns([outcome('failed')])
+  runHistory(b).recordRuns([outcome('failed')])
   expect(flakyTasks(indexDb(a))).toEqual([
     { taskId: 'p#t', project: 'p', task: 't', keys: 1, passes: 1, failures: 1 },
   ])
@@ -114,13 +114,14 @@ it('worktrees recording in parallel on one store lose no outcome or blob size an
   await Bun.write(
     script,
     `import { Cache } from ${JSON.stringify(path.join(import.meta.dir, '../src/cache/index.js'))}
+import { runHistory } from ${JSON.stringify(path.join(import.meta.dir, '../src/history/index.js'))}
 const [cacheDir, store, w, runs] = process.argv.slice(2)
 const cache = new Cache(cacheDir, undefined, undefined, undefined, 'open', store)
 const at = Date.now()
 for (let i = 0; i < Number(runs); i++) {
   const id = 'w' + w + '-' + i
-  cache.recordRuns([{ hash: id, project: 'p', task: 't', status: i % 2 ? 'failed' : 'success', exitCode: 0, durationMs: 1, startedAt: at + i, endedAt: at + i + 1, runId: id, wallclockStartNs: 0n, wallclockEndNs: 1n, cached: true }])
-  cache.rememberBlobSizes(new Map([[id, i]]))
+  runHistory(cache).recordRuns([{ hash: id, project: 'p', task: 't', status: i % 2 ? 'failed' : 'success', exitCode: 0, durationMs: 1, startedAt: at + i, endedAt: at + i + 1, runId: id, wallclockStartNs: 0n, wallclockEndNs: 1n, cached: true }])
+  cache.memo.rememberBlobSizes(new Map([[id, i]]))
 }
 cache.close()
 `,

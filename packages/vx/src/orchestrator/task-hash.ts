@@ -1,8 +1,16 @@
 import { lstatSync } from 'node:fs'
 import path from 'node:path'
 import type { InputStability, TaskConfig } from '../config.js'
-import type { FoldMemo, ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
+  type FoldMemo,
+  FILE_HASH_RACY_MS,
+  racyWindowMs,
+  stampGrainMs,
+  WORKSPACE_OUTPUT_PREFIX,
+} from '../memo/index.js'
+import {
+  type ProjectFilesCache,
+  type WorkspaceFilesCache,
   ABSENT_INPUT,
   absentOr,
   addedInput,
@@ -14,14 +22,10 @@ import {
   type InputListing,
   type CacheKeyInput,
   type CacheLayer,
-  FILE_HASH_RACY_MS,
-  racyWindowMs,
   resolveInputs,
-  stampGrainMs,
   type ResolveInputsArgs,
   type GitFilesCache,
   type TaskInputComponent,
-  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import {
@@ -226,7 +230,7 @@ async function knownIdentities(
     else ask.push(f)
   }
   const epoch = run.factsEpoch
-  const learned = await hashFilesOf(args.cache, ask)
+  const learned = await hashFilesOf(args.cache.memo, ask)
   run.learnIdentities(learned, epoch)
   for (const [f, id] of learned) known.set(f, id)
   return { ...input, fileHashes: known }
@@ -310,13 +314,13 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     sorted.map(
       (f) =>
         input.fileHashes?.get(f) ??
-        hashFileSeen(args.cache, f, (c) => ctimes.set(f, c)).catch(absentOr),
+        hashFileSeen(args.cache.memo, f, (c) => ctimes.set(f, c)).catch(absentOr),
     ),
   )
   // Learned BEFORE the key folds it: an edit in between then reads as a
   // move at the re-check (a withheld save), never as content the key
   // did not fold matching it (a stale entry).
-  const hashFile = (f: string): Promise<string> => args.cache.hashFile(f)
+  const hashFile = (f: string): Promise<string> => args.cache.memo.hashFile(f)
   const behind = new Map<string, string>()
   await Promise.all(
     sorted.map(async (f, i) => {
@@ -366,7 +370,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   // miss paid a query over the whole closure (execute-task reads it up
   // front for a plugin executor).
   const listUpstream = (onDisk?: ReadonlyMap<string, string[]>): TaskInputs['upstream'] => {
-    const rows = args.cache.loadOutputFilesBatch(graft.map((g) => g.hash))
+    const rows = args.cache.memo.loadOutputFilesBatch(graft.map((g) => g.hash))
     return graft.map((g) => {
       const outputs =
         onDisk?.get(g.taskId) ??
@@ -476,12 +480,12 @@ export async function movedInput(
     if (ctimeMs >= f.since - racyWindowMs(ctimeMs, FILE_HASH_RACY_MS)) suspects.push(f)
   }
   for (const f of suspects) {
-    const now = await cache.hashFile(f.path).catch(() => undefined)
+    const now = await cache.memo.hashFile(f.path).catch(() => undefined)
     if (now !== f.digest) return f.path
   }
   // What a link points to changes without touching the link: each is
   // followed again (links are rare, so a task without one pays nothing).
-  const hashFile = (file: string): Promise<string> => cache.hashFile(file)
+  const hashFile = (file: string): Promise<string> => cache.memo.hashFile(file)
   for (const f of facts) {
     if (f.behind !== undefined && (await behindLink(f.path, hashFile)) !== f.behind) return f.path
   }

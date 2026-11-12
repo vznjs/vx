@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { Cache, indexDb } from '../src/cache/index.js'
 import { foldKey } from '../src/cache/key-fold.js'
 import { relPosix, xxh3hex } from '../src/util/index.js'
 
@@ -52,8 +52,7 @@ describe('the key fold (item 691)', () => {
       expect(key).toBe('463c7e166ffa3d3c')
       // A value-bearing row is a digest under the store's salt (L-4); the
       // Cache-less fold below pins its unsalted default byte for byte.
-      // @ts-expect-error: private member access for testing
-      const db = cache.db as import('bun:sqlite').Database
+      const db = indexDb(cache)
       const salt = (
         db.query("SELECT value FROM store_meta WHERE key = 'value_salt'").get() as {
           value: string

@@ -6,7 +6,8 @@
 
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import { fsClockNow, type TaskInputComponent } from '../cache/index.js'
+import { type TaskInputComponent } from '../cache/index.js'
+import { fsClockNow } from '../memo/index.js'
 import { isLocalExecutor, type TaskInputs } from '../exec/index.js'
 import type { InputsConfig } from '../config.js'
 import {

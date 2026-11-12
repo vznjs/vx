@@ -18,7 +18,7 @@ export function unreadableIndex(err: unknown): boolean {
 /**
  * A statement prepared on its first `run` or `get`. A warm run executes few
  * of the index's statements, and preparing every one at the open cost each
- * run ~0.4 ms (2026-10-03).
+ * run ~0.4 ms.
  */
 export function lazyStatement(db: Database, sql: string): ReturnType<Database['prepare']> {
   let statement: ReturnType<Database['prepare']> | undefined
@@ -54,7 +54,7 @@ export const RUNS_VIEW = `CREATE TEMP VIEW IF NOT EXISTS runs AS
  * the blob sizes (`blob_sizes`), the plugins' blobs (`plugin_blobs`) and
  * the remotes' hits (`remote_hits`):
  * `main` when one `cache.db` holds everything (a `cacheDir`), `store` when
- * they live in the shared store attached beside it (v32). The rest is the
+ * they live in the shared store attached beside it. The rest is the
  * workspace's own: its history, its memos, and what its disk looked like
  * after a save or restore. A store table is never named with its schema in
  * a statement; SQLite finds it in `main` or in `store`, whichever has it.
@@ -73,19 +73,19 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       size_bytes   INTEGER NOT NULL,
       created_at   INTEGER NOT NULL,
       accessed_at  INTEGER NOT NULL,
-      -- v26: the producing execution's usage, from the artifact's sidecar.
+      -- The producing execution's usage, from the artifact's sidecar.
       cpu_ms         INTEGER,
       peak_rss_bytes INTEGER,
-      -- v54: the run whose save or download wrote the entry as it stands
+      -- The run whose save or download wrote the entry as it stands
       -- (created_at is when): \`vx last --log\` shows a run's log from the
       -- entry only when it holds that run's output.
       run_id         TEXT
     );
-    -- v29: an entry's stdout, which the <hash>.tar.zst artifact also
+    -- An entry's stdout, which the <hash>.tar.zst artifact also
     -- carries so it survives a remote round trip; a local hit replays it
     -- from here. Its own table: an UPDATE rewrites a whole record, and the
     -- accessed_at bump rewrote up to 16 MB a hit. No row: empty stdout.
-    -- v52: a zstd frame of the UTF-8 (storedLog); as text, logs were most
+    -- A zstd frame of the UTF-8 (storedLog); as text, logs were most
     -- of a store's bytes.
     CREATE TABLE IF NOT EXISTS ${store}.entry_stdout (
       hash   TEXT PRIMARY KEY,
@@ -105,7 +105,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       forward_args        TEXT,
       started_at          INTEGER NOT NULL,
       ended_at            INTEGER NOT NULL,
-      -- v53: the run's row in run_ids, not its 36-char id: the text
+      -- The run's row in run_ids, not its 36-char id: the text
       -- and its index were a third of what an all-hit run added. The
       -- \`runs\` view below shows it as run_id again.
       run                 INTEGER,
@@ -114,15 +114,15 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       wallclock_start_ns  INTEGER,
       wallclock_end_ns    INTEGER,
       cache_hit           INTEGER,
-      -- v23: attempts a retried task took (>1); NULL for a once-run task.
+      -- Attempts a retried task took (>1); NULL for a once-run task.
       -- The direct within-run flaky signal.
       attempts            INTEGER,
-      -- v25: 1 when the task declared cache: true, 0 when it runs every
+      -- 1 when the task declared cache: true, 0 when it runs every
       -- time by design; NULL on rows older than the column.
       cached              INTEGER,
-      -- v27: why a task failed or was skipped, as the run's own footer
-      -- said it (items 267–270): a skip's root blocker (a task id), or
-      -- the one a task that ran behind a failure ran behind (X-183), vx's
+      -- Why a task failed or was skipped, as the run's own footer
+      -- said it: a skip's root blocker (a task id), or
+      -- the one a task that ran behind a failure ran behind, vx's
       -- own timeout (1), the sandbox's violation count, and why a
       -- persistent task never became ready ('timeout' | 'exited' |
       -- 'spawn'). NULL where the reason does not apply.
@@ -130,30 +130,30 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       timed_out           INTEGER,
       sandbox_violations  INTEGER,
       not_ready           TEXT,
-      -- v31: on a hit, 1 when outputs were restored, 0 when the disk
+      -- On a hit, 1 when outputs were restored, 0 when the disk
       -- already matched (up-to-date); NULL on every other status.
       restored            INTEGER,
-      -- v40: each remote read or write of the key that failed, as
+      -- Each remote read or write of the key that failed, as
       -- 'upload: <message>', '; '-joined; NULL when none did.
       remote_error        TEXT,
-      -- v43: the most cores one sampling interval burned and the mean
+      -- The most cores one sampling interval burned and the mean
       -- resident memory over the looks; NULL when nothing sampled.
       peak_cores          REAL,
       avg_rss_bytes       INTEGER,
-      -- v44: where an executor ran it (ExecuteResult.where) and that
+      -- Where an executor ran it (ExecuteResult.where) and that
       -- machine's cores and memory; NULL = here.
       placement           TEXT,
       placement_cores     INTEGER,
       placement_memory    INTEGER,
-      -- v46: the task with no inputs its key folded (TaskOutcome.keylessBy).
+      -- The task with no inputs its key folded (TaskOutcome.keylessBy).
       keyless_by          TEXT,
-      -- v48: the task's definition (taskDefinition): a history reader
+      -- The task's definition (taskDefinition): a history reader
       -- counts only the rows of the task as it is now.
       def                 TEXT,
-      -- v49: the share of a core each runnable thread got where it ran
+      -- The share of a core each runnable thread got where it ran
       -- (ExecuteResult.machine.cpuShare); NULL = all it wanted.
       cpu_share           REAL,
-      -- v51: the rest of the results row. How long the task waited ready
+      -- The rest of the results row. How long the task waited ready
       -- for a slot (NULL: it started at once); its output files' bytes,
       -- uncompressed (a hit's restored, a miss's saved; NULL: no entry);
       -- the tasks downstream of it in the run; the flaky record its note
@@ -169,17 +169,17 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- 1,000 inserts touch a handful of leaf pages. The dropped ones did
     -- not — the DROPs shed them from existing databases (a schema-meta
     -- bump is for stored shapes, and an index is not one):
-    --   runs_hash (2026-09-03) had no reader; 11.5 → 3.9 ms per 1,000.
-    --   runs_project (project, task) (2026-09-09) scattered every run's
+    --   runs_hash had no reader; 11.5 → 3.9 ms per 1,000.
+    --   runs_project (project, task) scattered every run's
     --     rows over one leaf per pair: the record stage of a 1,000-hit
     --     warm run was 57–79 ms with it and 14–19 ms without, at 166k
     --     rows, and it bought its readers nothing — the history reader
     --     now scans a rowid slice (history.ts), vx why walks
     --     started_at newest-first and stops at the first match.
-    --   runs_ended (2026-09-09) served only the retention DELETE, which
+    --   runs_ended served only the retention DELETE, which
     --     prunes on started_at now (a row ends after it starts, so the
     --     30-day window moves by at most one task's duration).
-    --   runs_failed (v38) served the flakiness probe, which reads the
+    --   runs_failed served the flakiness probe, which reads the
     --     store's task_outcomes now.
     DROP INDEX IF EXISTS main.runs_hash;
     DROP INDEX IF EXISTS main.runs_project;
@@ -187,7 +187,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     DROP INDEX IF EXISTS main.runs_failed;
     CREATE INDEX IF NOT EXISTS main.runs_started_at ON runs(started_at);
     CREATE INDEX IF NOT EXISTS main.runs_run        ON runs(run);
-    -- v53: each run's id once; a runs row names it by this rowid.
+    -- Each run's id once; a runs row names it by this rowid.
     CREATE TABLE IF NOT EXISTS main.run_ids (
       id     INTEGER PRIMARY KEY,
       run_id TEXT NOT NULL UNIQUE
@@ -207,7 +207,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       content_hash TEXT NOT NULL,
       seen_at      INTEGER NOT NULL
     );
-    -- v42: each task's last key by its fold up to the files and a token of
+    -- Each task's last key by its fold up to the files and a token of
     -- the files' git records (fold-memo.ts). A memo: the KEY is unchanged.
     CREATE TABLE IF NOT EXISTS main.fold_memo (
       task_id TEXT PRIMARY KEY,
@@ -216,23 +216,23 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       seen_at INTEGER NOT NULL
     );
     -- The size of each index blob the enumeration checked against the
-    -- worktree size git recorded (A-60). Fixed for its OID, so a warm
+    -- worktree size git recorded. Fixed for its OID, so a warm
     -- run asks git for none; swept with file_hashes by seen_at, the
-    -- time the row was written. v38: in the store, so a worktree reads
-    -- what another learned (2026-10-14).
+    -- time the row was written. In the store, so a worktree reads
+    -- what another learned.
     CREATE TABLE IF NOT EXISTS ${store}.blob_sizes (
       oid     TEXT PRIMARY KEY,
       size    INTEGER NOT NULL,
       seen_at INTEGER NOT NULL
     );
-    -- v30: the paths an index distrusts, by a hash of the index file and the
-    -- pathspecs (A-60): a warm run reads one row, not one per blob.
+    -- The paths an index distrusts, by a hash of the index file and the
+    -- pathspecs: a warm run reads one row, not one per blob.
     CREATE TABLE IF NOT EXISTS main.blob_verdicts (
       digest  TEXT PRIMARY KEY,
       paths   TEXT NOT NULL,
       seen_at INTEGER NOT NULL
     );
-    -- v16: per-output-file fingerprints, scoped by the cache entry
+    -- Per-output-file fingerprints, scoped by the cache entry
     -- that produced them. Lets loadOutputFilesBatch(hashes) answer
     -- "for entry X, what are its outputs supposed to look like?"
     -- with one SELECT, so the orchestrator can stat-and-skip the
@@ -250,15 +250,15 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       PRIMARY KEY (entry_hash, path),
       FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
-    -- v28, its own table since v32: the inode and ctime THIS workspace saw
+    -- The inode and ctime THIS workspace saw
     -- after the save or restore that left the file equal to the entry, and
-    -- since v55 its mtime: a restore dates a file it writes now, not with
+    -- its mtime: a restore dates a file it writes now, not with
     -- the entry's saved mtime, so the row's is not the file's. No
     -- row: never current. Apart from output_files because the entry is
     -- shared and the disk is not: two worktrees on one store overwrote each
     -- other's stamps, and every switch between them restored. No foreign
     -- key (the entry may live in another database); a prune and a re-save
-    -- delete what they orphan. root (v56): a hash of the workspace root's real
+    -- delete what they orphan. root: a hash of the workspace root's real
     -- path in a named cache dir, which clones may share and so overwrote
     -- each other's stamps the same way; 0 in a workspace's own index.
     CREATE TABLE IF NOT EXISTS main.output_stamps (
@@ -271,7 +271,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       PRIMARY KEY (entry_hash, root, path)
     );
     -- Every directory under a whole-subtree output glob, with its mtime
-    -- as of the last save/restore on THIS machine (2026-09-03). On a warm
+    -- as of the last save/restore on THIS machine. On a warm
     -- hit, unchanged mtimes prove the output SET is unchanged, replacing
     -- the glob walk that cost 0.36 ms per hit. Machine-local: a remote
     -- ingest writes none, and the first hit after it walks and records.
@@ -283,7 +283,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       mtime_ms    INTEGER NOT NULL,
       PRIMARY KEY (entry_hash, root, path)
     );
-    -- v22 (Tier 3): one header row per vx-run invocation. The runs
+    -- One header row per vx-run invocation. The runs
     -- table is per-task; this is the per-invocation record that
     -- carries git/CI/host context, the command, and run-level
     -- counts so the dashboard never reconstructs a header with a
@@ -303,7 +303,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       hit_count         INTEGER NOT NULL,
       hit_local_count   INTEGER NOT NULL,
       hit_remote_count  INTEGER NOT NULL,
-      -- v31: the hits by what they did to the disk; they sum to hit_count.
+      -- The hits by what they did to the disk; they sum to hit_count.
       up_to_date_count       INTEGER NOT NULL DEFAULT 0,
       restored_local_count   INTEGER NOT NULL DEFAULT 0,
       restored_remote_count  INTEGER NOT NULL DEFAULT 0,
@@ -318,7 +318,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       arch              TEXT,
       vx_version        TEXT NOT NULL
     );
-    -- v50: what a run said that its runs rows do not hold (run-notes.ts),
+    -- What a run said that its runs rows do not hold (run-notes.ts),
     -- for \`vx last\`: the steps it did not wait on (\`vx:prefetch\`), its
     -- warnings, colour stripped, and each failed task's output, plain,
     -- bounded and masked, with the files it names (JSON). Rows of the
@@ -346,7 +346,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       sandbox_fix TEXT,
       PRIMARY KEY (run_id, task_id)
     );
-    -- v50: a lockfile claimant's parse (orchestrator/lockfile-claim.ts): one
+    -- A lockfile claimant's parse (orchestrator/lockfile-claim.ts): one
     -- row per lockfile and claimant, read while \`version\` and \`lock\` (the
     -- file's xxh3) match, replaced when they do not. JSON: the extra files'
     -- hashes, the importers' digests and edges, the names each records.
@@ -364,10 +364,10 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     CREATE INDEX IF NOT EXISTS main.invocations_started ON invocations(started_at);
     CREATE INDEX IF NOT EXISTS main.invocations_branch  ON invocations(branch);
     CREATE INDEX IF NOT EXISTS main.invocations_ci      ON invocations(ci);
-    -- v22 (Tier 3): the input-fingerprint moat: each cache ENTRY's key
+    -- The input-fingerprint moat: each cache ENTRY's key
     -- components (NOT a run's). Written inside the entry-save transaction,
     -- only on a miss/save, so a warm all-cache-hit run writes nothing
-    -- here. v34: one row per entry, the components a JSON array of
+    -- here. One row per entry, the components a JSON array of
     -- [kind, name, hash] in (kind, name) code-unit order. A row per
     -- component cost a b-tree insert each, and a task with 50 input
     -- files spent ~0.5 ms a save on them; every reader loads the whole
@@ -378,7 +378,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       components TEXT NOT NULL,
       FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
-    -- v32: what belongs to the entries rather than to one workspace: the
+    -- What belongs to the entries rather than to one workspace: the
     -- salt their value digests are taken under, so a digest an entry_inputs
     -- row holds compares with the one another workspace's run takes.
     CREATE TABLE IF NOT EXISTS ${store}.store_meta (
@@ -387,7 +387,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     );
     -- What a duration forecast reads (orchestrator/history.ts), one row per
     -- executed success, shared by every worktree of the repo so a new one
-    -- forecasts on its first run (2026-10-14). Append-only: never
+    -- forecasts on its first run. Append-only: never
     -- updated, pruned by age with the run history. \`source\` tags a local
     -- run 'branch:<name>' ('branch:' detached or outside git); \`sha\` is its
     -- commit. A forecast reads a task's newest rows of one source.
@@ -399,26 +399,26 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       sha         TEXT,
       duration_ms INTEGER NOT NULL,
       recorded_at INTEGER NOT NULL,
-      -- v45: a 'remote' row's measured need (TaskResources); NULL on the
+      -- A 'remote' row's measured need (TaskResources); NULL on the
       -- rest, whose need the run history holds.
       cpu_parallelism        REAL,
       peak_rss_bytes         INTEGER,
       saturated_cores        INTEGER,
       saturated_memory_bytes INTEGER,
-      -- v48: the task's definition (taskDefinition), as on \`runs\`.
+      -- The task's definition (taskDefinition), as on \`runs\`.
       def                    TEXT
     );
     CREATE INDEX IF NOT EXISTS ${store}.task_durations_task
       ON task_durations(project, task, source, id);
-    -- v37: a 'remote' row is a default-branch commit's timing a plugin
+    -- A 'remote' row is a default-branch commit's timing a plugin
     -- imported (\`sha\` that commit): one per task, so a repeat import is a
     -- no-op under INSERT OR IGNORE.
     CREATE UNIQUE INDEX IF NOT EXISTS ${store}.task_durations_remote
       ON task_durations(sha, project, task) WHERE source = 'remote';
-    -- v38: the flaky record (orchestrator/failure-mode.ts): each keyed,
+    -- The flaky record (orchestrator/failure-mode.ts): each keyed,
     -- cached, unblocked outcome that observed its key, shared by every
     -- worktree so a key that passed in one and failed in another is flaky
-    -- in both (2026-10-14). Every executed success or failure, and
+    -- in both. Every executed success or failure, and
     -- a key's first hit (run-history.ts): a later hit replays a pass the
     -- record holds, so a warm run on keys that passed writes no row.
     -- Append-only, ordered by id, pruned by age with the run history.
@@ -432,7 +432,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       recorded_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS ${store}.task_outcomes_hash ON task_outcomes(hash, status);
-    -- v37: what a plugin keeps through \`ctx.cache\` (plugin-cache.ts), by
+    -- What a plugin keeps through \`ctx.cache\` (plugin-cache.ts), by
     -- its namespaced key. Written once, never updated; pruned by age with
     -- the run history.
     CREATE TABLE IF NOT EXISTS ${store}.plugin_blobs (
@@ -455,7 +455,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
 }
 
 /**
- * v33: an artifact of at most `INLINE_MAX` compressed bytes lives here, its
+ * An artifact of at most `INLINE_MAX` compressed bytes lives here, its
  * exact `<hash>.tar.zst` bytes, written in the transaction that writes its
  * rows. No foreign key and outside every drop a `SCHEMA_VERSION` reset makes:
  * the artifact is the record and the entries only its inventory, so a reset
@@ -464,7 +464,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
  * drop it. `at` is the last use a row-less sweep judges, as a file's mtime.
  * A rowid table, not WITHOUT ROWID: there the blob sits in the key's b-tree,
  * so every probe of a hash reads overflow pages; 10 000 lookups took 312 ms
- * against 8.5 (a2, 2026-10-17).
+ * against 8.5.
  */
 export function createArtifactTables(db: Database, store: 'main' | 'store'): void {
   db.exec(artifactTables(store))
@@ -487,7 +487,7 @@ function artifactTables(store: 'main' | 'store'): string {
 /**
  * A `WHERE <column> …` test against many hashes, as one statement whatever
  * their number. A list of `?` is a new statement per length, compiled each
- * run: 2.0 ms against 1.4 for 900 hashes through `json_each` (2026-10-03).
+ * run: 2.0 ms against 1.4 for 900 hashes through `json_each`.
  * One hash keeps `= ?`, ~3 µs cheaper than parsing a one-element array, on
  * the per-hit path that asks for one at a time.
  */
@@ -495,4 +495,85 @@ export function inHashes(hashes: readonly string[]): { test: string; params: str
   return hashes.length === 1
     ? { test: '= ?', params: [hashes[0]!] }
     : { test: 'IN (SELECT value FROM json_each(?))', params: [JSON.stringify(hashes)] }
+}
+
+/**
+ * Retention: the runs table grows by one row per task per invocation,
+ * hits included — a 2000-task repo accretes ~20k rows in days. 30 days
+ * covers `vx info` (24 h windows) and CI-side consumers. The
+ * `invocations` header is pruned on the SAME window, or a header would
+ * outlive its rows and `vx last` would list a run whose detail is gone.
+ * Plugin blobs and remote hits share the window. Returns the rows dropped.
+ */
+export function pruneHistoryRows(db: Database, cutoff: number): number {
+  let dropped = db.prepare('DELETE FROM main.runs WHERE started_at < ?').run(cutoff).changes
+  // A run's id goes with its last row; ids only grow, so the oldest kept row bounds them.
+  dropped += db
+    .prepare(
+      'DELETE FROM run_ids WHERE id < COALESCE((SELECT MIN(run) FROM main.runs), (SELECT MAX(id) + 1 FROM run_ids))',
+    )
+    .run().changes
+  dropped += db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM task_durations WHERE recorded_at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM task_outcomes WHERE recorded_at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM plugin_blobs WHERE at < ?').run(cutoff).changes
+  dropped += db.prepare('DELETE FROM remote_hits WHERE seen_at < ?').run(cutoff).changes
+  return dropped
+}
+
+// The index's schema. A mismatch drops and recreates the index: no
+// migrations, so any change to what it stores bumps this.
+export const SCHEMA_VERSION = 'v56'
+
+/**
+ * SQL predicate selecting `runs` rows that record an EXECUTION.
+ *
+ * Every non-group, non-aborted outcome of a run gets a row, so the header's
+ * `task_count` matches `COUNT(*)` and the run-detail timeline is complete.
+ * But a `skipped` row is a task the run never executed — its upstream failed,
+ * so it has no exit of its own, no duration, and made no cache decision.
+ * Counting it in a RATE or a MEAN dilutes that figure with a non-event: a
+ * task skipped as often as it succeeds reads 50% success, and a zero-duration
+ * row drags every average toward zero.
+ *
+ * Lives here, beside the schema, because the same figure is computed in more
+ * than one place (`Cache.stats` and the run-history queries both answer
+ * "runs in the last 24h") and two copies of a rule are how they drift apart.
+ */
+export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
+
+/**
+ * SQL predicate selecting `runs` rows that recorded a cache key. `hash` is
+ * `''` for an outcome that never derived one (see {@link RunRecord.hash}),
+ * and `''` is not a key: it can neither corroborate flakiness nor say the
+ * inputs changed. Mirrors the `hash <> ''` guards in the cloud analytics copy.
+ */
+export const KEYED_RUNS_SQL = "hash <> ''"
+
+/**
+ * Close for real. A plain `close()` leaves the connection open while any
+ * statement from `db.prepare()` lives (bun:sqlite 1.4.2 defers it, as
+ * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
+ * open after `Cache.close()`: a leaked descriptor per run for an embedder.
+ * `close(true)` finalizes them and closes. Below the Bun floor (1.3.14) it
+ * does not finalize: it answers SQLITE_BUSY, "database is locked", and every
+ * `vx run` exited 1 with that stack after its tasks had passed. There
+ * the deferred close is the one that closes.
+ */
+export function closeDb(db: Database): void {
+  try {
+    db.close(true)
+  } catch {
+    db.close()
+  }
+}
+
+/**
+ * SQLite's answer when the disk under the index is full. It is a code on
+ * the `SQLiteError` (`SQLITE_FULL`), never an `ENOSPC` errno, so
+ * `isDiskFull` does not see it: a memo write, a snapshot flush or a prune's
+ * delete on a full disk reached the user as a stack.
+ */
+export function isIndexFull(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === 'SQLITE_FULL'
 }

@@ -57,7 +57,7 @@ config hash and per-task forwarded-args fold — are documented in
 | Pattern                                                                                                        | Source     | vx source                                                                 |
 | -------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
 | Defer to git: tracked from `git ls-files -s -v`, untracked-but-not-ignored from `git status --porcelain -uall` | Turbo + Nx | `src/cache/git-inputs.ts`, `src/cache/inputs.ts` ("same as Turbo and Nx") |
-| Git blob OIDs as per-file content hashes (index-harvested)                                                     | Turbo      | `src/cache/git-inputs.ts` + `src/cache/file-hashes.ts`                    |
+| Git blob OIDs as per-file content hashes (index-harvested)                                                     | Turbo      | `src/cache/git-inputs.ts` + `src/memo/file-hashes.ts`                     |
 | Project-boundary enforcement (no cross-project globs)                                                          | Turbo + Nx | `src/workspace/nested-dirs.ts`                                            |
 
 (vx hard-requires git — there is no fallback walker; a non-repo
@@ -101,12 +101,12 @@ parser's docblock marks them (`src/util/dependency-spec.ts`).
 
 ### Cache topology
 
-| Layer                                    | Turbo                              | Nx                 | vx                                                             | vx source                                                            |
-| ---------------------------------------- | ---------------------------------- | ------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst`, shared in `~/.vx/<id>/cache/` | `src/cache/cache.ts`                                                 |
-| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date               | `src/cache/output-index.ts`                                          |
-| Read-through then write-through layering | yes                                | yes                | yes                                                            | `src/cache/layered-cache.ts`                                         |
-| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`                    | `src/cache/run-history.ts` (tables created in `src/cache/schema.ts`) |
+| Layer                                    | Turbo                              | Nx                 | vx                                                             | vx source                                                                 |
+| ---------------------------------------- | ---------------------------------- | ------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst`, shared in `~/.vx/<id>/cache/` | `src/cache/cache.ts`                                                      |
+| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date               | `src/memo/output-index.ts`                                                |
+| Read-through then write-through layering | yes                                | yes                | yes                                                            | `src/cache/layered-cache.ts`                                              |
+| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`                    | `src/history/run-history.ts` (tables created in `src/index-db/schema.ts`) |
 
 ### Remote cache wire
 

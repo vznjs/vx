@@ -679,9 +679,12 @@ describe('computeTaskHash — the trusted-OID fast path for an input file', () =
     let hashFileCalls = 0
     const counting = {
       key: cache.key.bind(cache),
+      get memo() {
+        return this
+      },
       hashFile: async (p: string) => {
         hashFileCalls++
-        return await cache.hashFile(p)
+        return await cache.memo.hashFile(p)
       },
     } as unknown as CacheLayer
     await writeFile(path.join(root, 'src.txt'), 'x')

@@ -8,7 +8,7 @@ import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { fsClockNow } from '../src/cache/index.js'
+import { fsClockNow } from '../src/memo/index.js'
 import { ChangeJudge } from '../src/cli/watch-judge.js'
 
 let dir: string | undefined

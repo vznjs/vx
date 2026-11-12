@@ -9,7 +9,7 @@
 // judges a key on what all of them saw.
 
 import type { Database } from 'bun:sqlite'
-import { KEYED_RUNS_SQL } from '../cache/index.js'
+import { KEYED_RUNS_SQL } from '../index-db/index.js'
 import { isCacheHit, TASK_STATUSES } from '../graph/index.js'
 
 // SQL hit set derived from the predicate — never a hand-typed list and never
@@ -236,7 +236,7 @@ export interface FlakyTask {
 
 /**
  * Every task with a key that failed after it had passed anywhere in the retained history
- * (until a bounded clean's `RunHistory.pruneOlderThan`), most failures first: the
+ * (until a bounded clean's `pruneHistoryRows`), most failures first: the
  * doctor's list. A pass that took a retry mixes its key on its own: it is
  * one `success` row whose failed attempts count as failures (`vx info`
  * said `none` over one). Only keys with a failure or a retry can be on it,

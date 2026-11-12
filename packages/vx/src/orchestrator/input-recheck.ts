@@ -4,13 +4,8 @@
 
 import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
-import {
-  ABSENT_INPUT,
-  type CacheLayer,
-  declaresInput,
-  racyWindowMs,
-  stampGrainMs,
-} from '../cache/index.js'
+import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
+import { racyWindowMs, stampGrainMs } from '../memo/index.js'
 import { atOrUnder, type ExecuteResult, MOUNT_WILDCARDS, toRealPath } from '../exec/index.js'
 import { printable, relPosix, span, taskGlobOf } from '../util/index.js'
 import { warnOf } from '../report/index.js'
@@ -298,5 +293,5 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
   }
   if (st.ctimeMs < from - stampGrainMs(st.ctimeMs)) return false
   if (st.mtimeMs >= from - stampGrainMs(st.mtimeMs)) return false
-  return (await cache.hashFile(fact.path).catch(() => undefined)) === fact.digest
+  return (await cache.memo.hashFile(fact.path).catch(() => undefined)) === fact.digest
 }

@@ -58,8 +58,8 @@ import {
   realpathSync,
   statSync,
   utimesSync,
+  type Stats,
 } from 'node:fs'
-import type { Stats } from 'node:fs'
 import {
   copyFile,
   lstat,
@@ -76,9 +76,16 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { decodeRaw, ignoreDir, rawEncode, UserError, writableUnder } from '../util/index.js'
-import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from './layer.js'
-import { LINK_MODE } from './output-index.js'
+import {
+  decodeRaw,
+  ignoreDir,
+  rawEncode,
+  UserError,
+  writableUnder,
+  readUmask,
+  restoredMode,
+} from '../util/index.js'
+import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX, LINK_MODE } from '../memo/index.js'
 import {
   TarFormatError,
   type TarInput,
@@ -89,7 +96,6 @@ import {
   tarSize,
 } from './tar-stream.js'
 import { ON_THREAD_MAX } from './zstd.js'
-import { readUmask, restoredMode } from './umask.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
 const META_ENTRY = '.vx-meta.json'

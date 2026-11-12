@@ -9,7 +9,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
-import { indexDb, networkConcurrency, type InvocationRecord } from '../src/cache/index.js'
+import { indexDb, networkConcurrency } from '../src/cache/index.js'
+import { runHistory, type InvocationRecord } from '../src/history/index.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
 import { TAR_STORE } from './helpers/tar-store.js'
@@ -1249,9 +1250,9 @@ describe('LayeredCache', () => {
     expect(await layered.has('h-has-err')).toBe(null)
   })
 
-  it('stats() / recordRunBundle() / prune() delegate to local', async () => {
+  it('stats() / prune() delegate to local', async () => {
     const layered = makeLayered()
-    layered.recordRunBundle({
+    runHistory(local).recordRunBundle({
       runs: [
         {
           hash: 'h-rec',

@@ -91,7 +91,7 @@ describe('the key of an absent input', () => {
 })
 
 describe('movedInput and an input the key folded as absent', () => {
-  const cache = { hashFile: async () => 'x' } as never
+  const cache = { memo: { hashFile: async () => 'x' } } as never
 
   it('is unmoved while it stays gone, and moved once it is back', async () => {
     const p = path.join(fx.root, 'maybe.txt')
@@ -108,9 +108,9 @@ describe('the inputs an executor is handed', () => {
       files: { 'src/a.txt': 'a', 'src/gen.txt': 'g' },
     })
     const cache = new Cache(path.join(fx.root, '.vx', 'cache'))
-    const read = cache.hashFile.bind(cache)
+    const read = cache.memo.hashFile.bind(cache.memo)
     // Enumerated, then gone before the hash: an upstream's delete.
-    cache.hashFile = (f: string) =>
+    cache.memo.hashFile = (f: string) =>
       f.endsWith('gen.txt')
         ? Promise.reject(Object.assign(new Error('gone'), { code: 'ENOENT' }))
         : read(f)

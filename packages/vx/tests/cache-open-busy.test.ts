@@ -69,7 +69,7 @@ describe('opening the cache under another process’s lock', () => {
       await Bun.write(path.join(cacheDir, '.keep'), '')
       const script = `
         import { Database } from 'bun:sqlite'
-        import { SCHEMA_VERSION } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/cache/cache.ts'))}
+        import { SCHEMA_VERSION } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/index-db/index.ts'))}
         const db = new Database(${JSON.stringify(path.join(cacheDir, 'cache.db'))}, { create: true })
         db.exec('PRAGMA journal_mode = WAL')
         db.exec('CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')

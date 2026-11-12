@@ -39,26 +39,28 @@ snapshot) and the plugin capabilities (below).
 
 ## Module map
 
-Core is organised as **eleven modules** plus five root files. A module
+Core is organised as **thirteen modules** plus five root files. A module
 is a directory under `src/` with an `index.ts` contract — cross-module
 imports go through that contract, never into internal files — or a
 single root file when it has no internals to hide. The design and
 migration history live in
 [`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-| Module         | Form                        | Contract highlights                                                                                                                                 |
-| -------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                    |
-| `ui`           | dir + `index.ts`            | the only module that draws: tokens, components, panels, the live region, `print` / `say` / `data`; the façade's `ui` is its plugin kit              |
-| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                        |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, claimed root files |
-| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                               |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal                      |
-| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                     |
-| `history`      | dir + `index.ts`            | read-only SQL over what runs left: `LocalHistoryProvider`, flakiness, the `vx last` / `vx why` queries, `createMissExplainer`                       |
-| `report`       | dir + `index.ts`            | the run event bus (`createEventBus`, `WireEvent`), `defaultLogger`, the summary and forecast; renders, never runs                                   |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts                                                                                        |
-| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                  |
+| Module         | Form                        | Contract highlights                                                                                                                                     |
+| -------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                        |
+| `ui`           | dir + `index.ts`            | the only module that draws: tokens, components, panels, the live region, `print` / `say` / `data`; the façade's `ui` is its plugin kit                  |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                            |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, claimed root files     |
+| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                                   |
+| `index-db`     | dir + `index.ts`            | cache.db's one schema (`SCHEMA_VERSION`, every table, the `runs` view) and its SQLite helpers, shared by `cache`, `memo` and `history`                  |
+| `memo`         | dir + `index.ts`            | what a warm run remembers: file hashes, task folds, lockfile parses, output stamps, remote hits                                                         |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal                          |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                         |
+| `history`      | dir + `index.ts`            | what runs leave: written (`runHistory`, `HistoryStream`) and read back (`LocalHistoryProvider`, flakiness, `vx last` / `vx why`, `createMissExplainer`) |
+| `report`       | dir + `index.ts`            | the run event bus (`createEventBus`, `WireEvent`), `defaultLogger`, the summary and forecast; renders, never runs                                       |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts                                                                                            |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                      |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:
@@ -114,21 +116,23 @@ graph TD
 
 ### Allowed dependency matrix (rows import columns, via index only)
 
-|                  | util | ui  | config | version | settings | handoff | workspace | graph | cache | exec | history | report | orchestrator | cli | index |
-| ---------------- | ---- | --- | ------ | ------- | -------- | ------- | --------- | ----- | ----- | ---- | ------- | ------ | ------------ | --- | ----- |
-| **ui**           | ✓    | —   |        |         |          |         |           |       |       |      |         |        |              |     |       |
-| **settings**     | ✓    | ✓   |        |         | —        |         |           |       |       |      |         |        |              |     |       |
-| **handoff**      | ✓    | ✓   |        |         |          | —       |           |       |       |      |         |        |              |     |       |
-| **workspace**    | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | —         |       |       |      |         |        |              |     |       |
-| **graph**        | ✓    | ✓   | ✓      |         |          |         | ✓         | —     |       |      |         |        |              |     |       |
-| **cache**        | ✓    | ✓   | ✓      |         |          |         |           |       | —     |      |         |        |              |     |       |
-| **exec**         | ✓    | ✓   | ✓      |         |          |         |           |       |       | —    |         |        |              |     |       |
-| **history**      | ✓    | ✓   |        |         |          |         |           | ✓     | ✓     |      | —       |        |              |     |       |
-| **report**       | ✓    | ✓   |        |         | ✓        |         |           | ✓     |       | ✓    |         | —      |              |     |       |
-| **orchestrator** | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓     | ✓    | ✓       | ✓      | —            |     |       |
-| **cli**          | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓     |      | ✓       | ✓      | ✓            | —   |       |
-| **index**        | ✓    | ✓   | ✓      | ✓       | ✓        |         | ✓         | ✓     | ✓     | ✓    | ✓       | ✓      | ✓            |     | —     |
-| **bin**          | ✓    | ✓   |        | ✓       |          | ✓       |           |       |       |      |         |        |              | ✓   | ✓     |
+|                  | util | ui  | config | version | settings | handoff | workspace | graph | index-db | memo | cache | exec | history | report | orchestrator | cli | index |
+| ---------------- | ---- | --- | ------ | ------- | -------- | ------- | --------- | ----- | -------- | ---- | ----- | ---- | ------- | ------ | ------------ | --- | ----- |
+| **ui**           | ✓    | —   |        |         |          |         |           |       |          |      |       |      |         |        |              |     |       |
+| **settings**     | ✓    | ✓   |        |         | —        |         |           |       |          |      |       |      |         |        |              |     |       |
+| **handoff**      | ✓    | ✓   |        |         |          | —       |           |       |          |      |       |      |         |        |              |     |       |
+| **workspace**    | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | —         |       |          |      |       |      |         |        |              |     |       |
+| **graph**        | ✓    | ✓   | ✓      |         |          |         | ✓         | —     |          |      |       |      |         |        |              |     |       |
+| **index-db**     | ✓    |     |        |         |          |         |           |       | —        |      |       |      |         |        |              |     |       |
+| **memo**         | ✓    |     |        |         |          |         |           |       | ✓        | —    |       |      |         |        |              |     |       |
+| **cache**        | ✓    | ✓   | ✓      |         |          |         |           |       | ✓        | ✓    | —     |      |         |        |              |     |       |
+| **exec**         | ✓    | ✓   | ✓      |         |          |         |           |       |          |      |       | —    |         |        |              |     |       |
+| **history**      | ✓    | ✓   |        |         |          |         |           | ✓     | ✓        |      | ✓     |      | —       |        |              |     |       |
+| **report**       | ✓    | ✓   |        |         | ✓        |         |           | ✓     |          |      |       | ✓    |         | —      |              |     |       |
+| **orchestrator** | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓        | ✓    | ✓     | ✓    | ✓       | ✓      | —            |     |       |
+| **cli**          | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     |          | ✓    | ✓     |      | ✓       | ✓      | ✓            | —   |       |
+| **index**        | ✓    | ✓   | ✓      | ✓       | ✓        |         | ✓         | ✓     |          |      | ✓     | ✓    | ✓       | ✓      | ✓            |     | —     |
+| **bin**          | ✓    | ✓   |        | ✓       |          | ✓       |           |       |          |      |       |      |         |        |              | ✓   | ✓     |
 
 `util`, `config` and `version` import no module.
 Composition happens only at `orchestrator` (wires workspace → graph →

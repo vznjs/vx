@@ -17,26 +17,21 @@
 // surfaces `durationMs` from its response. No stage dirs, no
 // meta.json, no tar.gz wrapping — the artifact is what it is.
 
-import type { Cache } from './cache.js'
-import type {
-  CacheEntry,
-  CacheGetContext,
-  DeclaredOutputs,
-  CacheKeyInput,
-  CacheLayer,
-  CacheStats,
-  CacheStatsOptions,
-  IngestMeta,
-  InvocationRecord,
-  RunRecord,
-  OutputFileRow,
-  PruneOptions,
-  PruneResult,
-  SaveArgs,
+import {
+  type Cache,
+  type CacheEntry,
+  type CacheGetContext,
+  type DeclaredOutputs,
+  type CacheKeyInput,
+  type CacheLayer,
+  type CacheStats,
+  type CacheStatsOptions,
+  type IngestMeta,
+  type PruneOptions,
+  type PruneResult,
+  type SaveArgs,
 } from './cache.js'
-import type { OutputDirRow } from './cache.js'
-import { shareSeenHasher } from './cache.js'
-import { isCorruptArtifact } from './layer.js'
+import { isCorruptArtifact, type TaskMemo } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 import type { PluginSecrets } from '../util/index.js'
 
@@ -270,7 +265,10 @@ export class LayeredCache implements CacheLayer {
     uploadConcurrency?: number,
   ) {
     this.lanes = remotes.map((r) => new RemoteLane(r, local.traffic, uploadConcurrency))
-    shareSeenHasher(local, this)
+  }
+
+  get memo(): TaskMemo {
+    return this.local.memo
   }
 
   // Asked, not kept: a remote whose `open` failed leaves the run after this is built.
@@ -604,10 +602,6 @@ export class LayeredCache implements CacheLayer {
     return this.keptHere.delete(hash) || this.local.kept(hash)
   }
 
-  hashFile(filePath: string): Promise<string> {
-    return this.local.hashFile(filePath)
-  }
-
   async restoreOutputs(
     hash: string,
     projectDir: string,
@@ -722,40 +716,6 @@ export class LayeredCache implements CacheLayer {
 
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     await this.local.ingest(hash, body, meta)
-  }
-
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
-    // Output-file fingerprints live in the local SQLite layer only —
-    // they describe the state on this machine's filesystem.
-    return this.local.loadOutputFilesBatch(hashes)
-  }
-
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
-    return this.local.isOutputsCurrent(projectDir, expected)
-  }
-
-  recordOutputDirs(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void> {
-    return this.local.recordOutputDirs(hash, projectDir, prefixes, holds)
-  }
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
-    this.local.recordOutputStamps(hash, projectDir, workspaceRoot)
-  }
-
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
-    return this.local.loadOutputDirsBatch(hashes)
-  }
-
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean {
-    return this.local.outputDirsCurrent(projectDir, rows)
-  }
-
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
-    this.local.recordRunBundle(bundle)
   }
 
   stats(opts?: CacheStatsOptions): CacheStats {

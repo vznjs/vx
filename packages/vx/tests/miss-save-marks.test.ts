@@ -7,7 +7,8 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { indexDb, Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { OUTPUT_DIRS_RACY_MS } from '../src/memo/output-index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -150,7 +151,9 @@ it(
       const { hash } = indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as {
         hash: string
       }
-      expect((c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)).toEqual(['dist'])
+      expect((c.memo.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)).toEqual([
+        'dist',
+      ])
     } finally {
       c.close()
     }

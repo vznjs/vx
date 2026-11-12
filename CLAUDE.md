@@ -63,14 +63,17 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         stages + seams, doctor.ts (the facts `vx info` reports)
   src/report/           the run event stream + terminal output: logger, frames, status line, summary,
                         forecast, plain output (renders outcomes; never runs or reads the cache)
-  src/history/          what runs leave behind, read back (read-only SQL): the duration table, flakiness,
-                        the `vx last` / `vx why` queries, a miss's key diff
+  src/history/          what runs leave behind: written (the run's rows, at its end or on a thread) and
+                        read back (the duration table, flakiness, `vx last` / `vx why`, a miss's key diff)
   src/workspace/        discovery, config eval, config-schema.ts (what a config
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
                         plan → files seam @vzn/vx-migrate writes through)
   src/graph/            task graph + two-tier scheduler
   src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs (glob
                         resolution, boundaries) + git-inputs (the git enumeration it trusts)
+  src/memo/             what a warm run remembers: file hashes, folds, lockfile parses, output stamps,
+                        remote hits
+  src/index-db/         cache.db's one schema and SQLite helpers, below cache, memo and history
   src/exec/             runner (Bun.spawn), env isolation, sandbox, local-executor (the floor)
   src/util/             incl. timing.ts (`VX_DEBUG_TIMING=1` stage table)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution

@@ -9,7 +9,8 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
+import { type InvocationRecord, type RunRecord, runHistory } from '../src/history/index.js'
 
 let dir: string
 beforeEach(async () => {
@@ -106,13 +107,15 @@ it("a run's history waits for another process's write lock", async () => {
   // A handle of its own for each: the salt is read once per handle.
   const first = new Cache(path.join(dir, 'cache'))
   try {
-    await whileHeld(() => first.recordRunBundle({ runs: [run('a'), run('b')], invocation }))
+    await whileHeld(() =>
+      runHistory(first).recordRunBundle({ runs: [run('a'), run('b')], invocation }),
+    )
   } finally {
     first.close()
   }
   const second = new Cache(path.join(dir, 'cache'))
   try {
-    await whileHeld(() => second.recordRuns([run('c'), run('d')]))
+    await whileHeld(() => runHistory(second).recordRuns([run('c'), run('d')]))
     const rows = indexDb(second).query('SELECT hash FROM runs ORDER BY hash').all()
     expect(rows).toEqual([{ hash: 'a' }, { hash: 'b' }, { hash: 'c' }, { hash: 'd' }])
   } finally {
@@ -132,9 +135,9 @@ it("a hit's output stamps wait for another process's write lock", async () => {
       outputFiles: [path.join(projectDir, 'dist', 'out.txt')],
       entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
     })
-    cache.recordOutputStamps('k', projectDir, dir)
+    cache.memo.recordOutputStamps('k', projectDir, dir)
     // The read that lands pending stamps (`loadOutputDirsBatch` flushes them).
-    await whileHeld(() => cache.loadOutputDirsBatch(['k']))
+    await whileHeld(() => cache.memo.loadOutputDirsBatch(['k']))
     const st = await stat(path.join(projectDir, 'dist', 'out.txt'))
     expect(indexDb(cache).query('SELECT path, ino FROM output_stamps').all()).toEqual([
       { path: 'dist/out.txt', ino: st.ino },

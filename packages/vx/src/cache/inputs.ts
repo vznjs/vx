@@ -67,7 +67,7 @@ import {
   newFilesIgnoredIn,
   runGitLsFiles,
 } from './git-inputs.js'
-import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../memo/index.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
 // re-exported here so a reader that reaches the resolver for it (the

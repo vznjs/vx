@@ -6,12 +6,12 @@
 // applies the same group/aborted filter, a second copy of the rule that
 // tests/run-records.test.ts holds to this one.
 
-import type { InvocationRecord, RunRecord } from '../cache/index.js'
-import { isGroupTask, taskDefinition, type TaskOutcome } from '../graph/index.js'
+import { type Cache } from '../cache/index.js'
+import { type InvocationRecord, type RunRecord, runHistory } from '../history/index.js'
+import { isGroupTask, taskDefinition, type TaskOutcome, isCacheHit } from '../graph/index.js'
 import { VERSION } from '../version.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
 import { taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
-import { isCacheHit } from '../graph/index.js'
 import { neverStarted } from '../report/index.js'
 
 export interface RunRecordsInput {
@@ -216,10 +216,7 @@ export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRec
  * drain later): each row whose text is now short of its key's is rewritten.
  */
 export function recordLateRemoteErrors(
-  cache: {
-    readonly traffic: { readonly keys: ReadonlyMap<string, { failures: readonly string[] }> }
-    recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
-  },
+  cache: Cache,
   runs: readonly RunRecord[],
   runId: string,
 ): void {
@@ -228,5 +225,5 @@ export function recordLateRemoteErrors(
     const now = remoteErrorOf(cache.traffic.keys, r.hash)
     if (now !== undefined && now !== r.remoteError) late.push([r.hash!, now])
   }
-  if (late.length > 0) cache.recordRemoteErrors(runId, late)
+  if (late.length > 0) runHistory(cache).recordRemoteErrors(runId, late)
 }

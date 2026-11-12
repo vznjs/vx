@@ -226,7 +226,7 @@ describe("a module page's ts block gives each function the parameters src does",
 describe('docs/README.md § Repository layout follows src/', () => {
   it('tabulates exactly the module directories, and states their count', () => {
     const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')
-    const rows = [...readme.matchAll(/^\| `([a-z]+)\/`\s+\|/gm)].map((m) => m[1]!).sort()
+    const rows = [...readme.matchAll(/^\| `([a-z-]+)\/`\s+\|/gm)].map((m) => m[1]!).sort()
     const dirs = readdirSync(path.join(pkg, 'src'))
       .filter((name) => statSync(path.join(pkg, 'src', name)).isDirectory())
       .sort()
@@ -243,6 +243,8 @@ describe('docs/README.md § Repository layout follows src/', () => {
       'eight',
       'nine',
       'ten',
+      'eleven',
+      'twelve',
     ]
     expect(readme).toContain(`Core \`src/\` is **${WORDS[dirs.length]} modules**`)
   })

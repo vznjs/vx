@@ -3,8 +3,8 @@
 // so the layers can be swapped without touching the others.
 
 import type { InputStability, TaskConfig } from '../config.js'
-import type { ProjectEntry } from '../workspace/index.js'
 import {
+  type ProjectEntry,
   EMPTY_LOCK,
   findProjectConfigs,
   inputStabilityEnv,
@@ -23,12 +23,20 @@ import {
   cachesNothing,
   formatCachePolicy,
   holdCacheDir,
-  HistoryStream,
   networkConcurrency,
-  keepRunNotes,
   stopRuntimeProbes,
   sweepStaging,
 } from '../cache/index.js'
+import {
+  HistoryStream,
+  runHistory,
+  keepRunNotes,
+  createMissExplainer,
+  detectFlaky,
+  type FlakyCandidate,
+  knownFlaky,
+  LocalHistoryProvider,
+} from '../history/index.js'
 import { VERSION } from '../version.js'
 import {
   hostPlatform,
@@ -36,11 +44,13 @@ import {
   signalExitCode,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
+  type MachineReport,
+  type TaskExecutor,
+  type WorkerAdvice,
 } from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
-import type { MachineReport, TaskExecutor, WorkerAdvice } from '../exec/index.js'
 import {
   deadServerBehind,
   declaredTask,
@@ -51,6 +61,8 @@ import {
   taskDefinitions,
   type TaskNode,
   type TaskOutcome,
+  isDefaultBuild,
+  isPassStatus,
 } from '../graph/index.js'
 import { graphCounts } from './graph-memo.js'
 import {
@@ -81,7 +93,6 @@ function printTimings(): void {
 }
 import { detectColors, type ColorSupport } from '../ui/index.js'
 import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
-import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -124,9 +135,7 @@ import { createSteps } from './steps.js'
 import { liveSocketOf, serveLive } from './run-live.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
-import { assembleRunSummary } from './telemetry.js'
-import { isPassStatus } from '../graph/index.js'
-import type { RunContextRecord } from './telemetry.js'
+import { assembleRunSummary, type RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
 import {
@@ -194,13 +203,6 @@ import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
-import {
-  createMissExplainer,
-  detectFlaky,
-  type FlakyCandidate,
-  knownFlaky,
-  LocalHistoryProvider,
-} from '../history/index.js'
 import type { HeldPersistent, RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
 import { cacheFacts, taskArtifacts } from './task-artifacts.js'
@@ -1507,7 +1509,7 @@ async function runOnBus(
       }
     }
     let lockBroken: boolean | undefined
-    prepared.localCache.storeHeldBlobSizes()
+    prepared.localCache.memo.storeHeldBlobSizes()
     prepared.localCache.checkpointOffThread()
     // A hit's row is whole when it finishes, so it is written while the
     // graph runs (history-stream.ts); every other row waits for the bundle.
@@ -1883,8 +1885,10 @@ async function runOnBus(
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
-        recordHistory(() => cache.recordRunBundle(records))
-        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
+        recordHistory(() => runHistory(prepared.localCache).recordRunBundle(records))
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
+        )
         recordFailures(list)
       })
     } else if (stop.stoppedBy !== undefined) {
@@ -1892,8 +1896,12 @@ async function runOnBus(
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
-        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordRuns(recordsOf(ended, false).runs, head),
+        )
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
+        )
         recordFailures(ended)
       })
     }
@@ -2097,8 +2105,8 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle(recordsOf(final, ok && !crashed))
-            local.recordMeasures([...measured.values()], head)
+            runHistory(local).recordRunBundle(recordsOf(final, ok && !crashed))
+            runHistory(local).recordMeasures([...measured.values()], head)
             recordFailures(final, local)
           } finally {
             local.close()

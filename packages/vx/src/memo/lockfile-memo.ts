@@ -11,8 +11,7 @@
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { closeDb, SCHEMA_VERSION } from './cache.js'
-import { SQLITE_FCNTL_PERSIST_WAL } from './schema.js'
+import { closeDb, SCHEMA_VERSION, SQLITE_FCNTL_PERSIST_WAL } from '../index-db/index.js'
 
 /** One claimant's parse of one lockfile's content. */
 export interface LockfileMemo {
@@ -40,7 +39,7 @@ function withIndex<T>(cacheDir: string, use: (db: Database) => T): T | undefined
   }
   try {
     // As `Cache` opens it: wait for another run's write, and keep `-wal`
-    // and `-shm` when this is the last connection to close (O-10).
+    // and `-shm` when this is the last connection to close.
     db.exec('PRAGMA busy_timeout = 5000')
     db.fileControl(SQLITE_FCNTL_PERSIST_WAL, 1)
     db.exec('PRAGMA journal_size_limit = 67108864')

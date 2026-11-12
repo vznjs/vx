@@ -205,7 +205,7 @@ describe('execute-task drops what the command may have written, and nothing else
     const cache = new Cache(path.join(root, '.vx', 'cache'))
     // The true digest, so a cached task's re-check before its save finds
     // its package.json unmoved and drops nothing of its own.
-    const digest = await cache.hashFile(path.join(dir, 'package.json'))
+    const digest = await cache.memo.hashFile(path.join(dir, 'package.json'))
     const git = new GitFilesCache()
     git.setWorkspaceRoot(root)
     for (const p of [dir, OTHER, root]) {

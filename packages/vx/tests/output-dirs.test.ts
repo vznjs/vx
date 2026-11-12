@@ -26,13 +26,12 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { indexDb, Cache } from '../src/cache/index.js'
 import {
-  indexDb,
-  Cache,
   OUTPUT_DIRS_CAP,
   OUTPUT_DIRS_OVER_CAP,
   OUTPUT_DIRS_RACY_MS,
-} from '../src/cache/index.js'
+} from '../src/memo/output-index.js'
 import { run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/report/logger.js'
 import { outputDirPrefixes, wholeSubtreePrefixes } from '../src/util/index.js'
@@ -152,7 +151,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     cache.close()
     rmSync(root, { recursive: true, force: true })
   })
-  const rows = () => cache.loadOutputDirsBatch(['h1']).get('h1') ?? []
+  const rows = () => cache.memo.loadOutputDirsBatch(['h1']).get('h1') ?? []
 
   // A sweep of output-index.ts (A-27): ctime moves on every write, so on a
   // real file it masks the other fields of the skip-restore proof; each is
@@ -168,33 +167,35 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
       ino: Number(st.ino),
       ctimeMs: Math.floor(st.ctimeMs),
     }
-    expect(await cache.isOutputsCurrent(proj, [row])).toBe(true)
+    expect(await cache.memo.isOutputsCurrent(proj, [row])).toBe(true)
     for (const off of [
       { size: row.size + 1 },
       { mode: row.mode ^ 0o100 },
       { mtimeMs: row.mtimeMs + 5 },
       { ino: row.ino + 1 },
     ]) {
-      expect(await cache.isOutputsCurrent(proj, [{ ...row, ...off }])).toBe(false)
+      expect(await cache.memo.isOutputsCurrent(proj, [{ ...row, ...off }])).toBe(false)
     }
   })
 
   it('a stamp is taken only for a file that still matches its row', async () => {
     // Through the batch read, which overlays the pending stamps.
-    const stamped = () => ({ ino: cache.loadOutputFilesBatch(['h1']).get('h1')![0]!.ino ?? null })
+    const stamped = () => ({
+      ino: cache.memo.loadOutputFilesBatch(['h1']).get('h1')![0]!.ino ?? null,
+    })
     w('dist/a.js', 'changed and longer')
-    cache.recordOutputStamps('h1', proj, root)
+    cache.memo.recordOutputStamps('h1', proj, root)
     expect(stamped().ino).toBeNull()
     // CONTROL: the saved bytes back, same size and mtime as the row: stamped.
     w('dist/a.js', 'x')
-    const r = cache.loadOutputFilesBatch(['h1']).get('h1')![0]!
+    const r = cache.memo.loadOutputFilesBatch(['h1']).get('h1')![0]!
     utimesSync(path.join(proj, 'dist/a.js'), new Date(r.mtimeMs), new Date(r.mtimeMs))
-    cache.recordOutputStamps('h1', proj, root)
+    cache.memo.recordOutputStamps('h1', proj, root)
     expect(stamped().ino).not.toBeNull()
   })
 
   it('a re-save drops the stamp taken for the rows it replaces', async () => {
-    const stamped = () => cache.loadOutputFilesBatch(['h1']).get('h1')![0]!.ino ?? null
+    const stamped = () => cache.memo.loadOutputFilesBatch(['h1']).get('h1')![0]!.ino ?? null
     const save = () =>
       cache.save({
         hash: 'h1',
@@ -203,7 +204,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
         entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
       })
     // CONTROL: the file as saved is stamped, and the stamp is read pending.
-    cache.recordOutputStamps('h1', proj, root)
+    cache.memo.recordOutputStamps('h1', proj, root)
     expect(stamped()).not.toBeNull()
     await save()
     expect(stamped()).toBeNull()
@@ -215,27 +216,27 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
 
   it('a prefix recorded as a file is current while a regular file stands there', async () => {
     const row = [{ path: 'dist/a.js', mtimeMs: -2 }]
-    expect(await cache.outputDirsCurrent(proj, row)).toBe(true)
+    expect(await cache.memo.outputDirsCurrent(proj, row)).toBe(true)
     rmSync(path.join(proj, 'dist/a.js'))
-    expect(await cache.outputDirsCurrent(proj, row)).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, row)).toBe(false)
     symlinkSync(path.join(proj, 'dist/sub/b.js'), path.join(proj, 'dist/a.js'))
-    expect(await cache.outputDirsCurrent(proj, row)).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, row)).toBe(false)
     rmSync(path.join(proj, 'dist/a.js'))
     mkdirSync(path.join(proj, 'dist/a.js'))
-    expect(await cache.outputDirsCurrent(proj, row)).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, row)).toBe(false)
   })
 
   it('a directory recorded absent that now exists is not current', async () => {
-    expect(await cache.outputDirsCurrent(proj, [{ path: 'gone', mtimeMs: -1 }])).toBe(true)
+    expect(await cache.memo.outputDirsCurrent(proj, [{ path: 'gone', mtimeMs: -1 }])).toBe(true)
     mkdirSync(path.join(proj, 'gone'))
-    expect(await cache.outputDirsCurrent(proj, [{ path: 'gone', mtimeMs: -1 }])).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, [{ path: 'gone', mtimeMs: -1 }])).toBe(false)
   })
 
   it('the walk does not descend a symlinked directory', async () => {
     mkdirSync(path.join(root, 'elsewhere', 'inner'), { recursive: true })
     symlinkSync(path.join(root, 'elsewhere'), path.join(proj, 'dist/link'))
     age()
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     expect(
       rows()
         .map((r) => r.path)
@@ -244,18 +245,18 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   })
 
   it('records every directory under the prefix and reports current while nothing moves', async () => {
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     expect(
       rows()
         .map((r) => r.path)
         .sort(),
     ).toEqual(['dist', 'dist/sub', 'dist/sub/deep'])
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(true)
     // An in-place EDIT does not move any directory: the set is unchanged
     // (the per-file check is what catches content).
     await Bun.sleep(5)
     w('dist/sub/b.js', 'edited')
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(true)
   })
 
   it.each([
@@ -266,17 +267,17 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     ['a directory removed', () => rmSync(path.join(proj, 'dist/sub/deep'), { recursive: true })],
     ['the prefix removed', () => rmSync(path.join(proj, 'dist'), { recursive: true })],
   ])('is no longer current after %s', async (_label, change) => {
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     await Bun.sleep(5) // a distinct millisecond for the directory mtime
     change()
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(false)
   })
 
   it('a change OUTSIDE the prefix is invisible, as it is to the glob', async () => {
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     await Bun.sleep(5)
     w('src/other.ts')
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(true)
   })
 
   it('does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap', async () => {
@@ -287,27 +288,27 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     // `not.toContain` passed on nothing until 2026-09-19. `toContain` next
     // is the control that says the walk ran at all.
     age()
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     expect(rows().map((r) => r.path)).toContain('dist/sub')
     expect(rows().map((r) => r.path)).not.toContain('dist/link')
     expect(rows().map((r) => r.path)).not.toContain('dist/link/x')
     // A declared prefix the task never produced is recorded ABSENT (mtime
     // -1) rather than refusing the snapshot: current while it stays
     // absent, stale the moment something creates it.
-    await cache.recordOutputDirs('h1', proj, ['nope'])
+    await cache.memo.recordOutputDirs('h1', proj, ['nope'])
     expect(rows()).toEqual([{ path: 'nope', mtimeMs: -1 }])
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(true)
     mkdirSync(path.join(proj, 'nope'))
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(false)
     rmSync(path.join(proj, 'nope'), { recursive: true })
     for (let i = 0; i < OUTPUT_DIRS_CAP + 1; i++) mkdirSync(path.join(proj, 'dist', `d${i}`))
     age() // the cap is the reason these rows are dropped, not the window
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     // One row says the tree is over the cap: never current, and the hit
     // does not snapshot it again.
     expect(rows()).toEqual([{ path: 'dist', mtimeMs: OUTPUT_DIRS_OVER_CAP }])
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
-    expect(await cache.outputDirsCurrent(proj, [])).toBe(false) // no rows ⇒ never a skip
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, [])).toBe(false) // no rows ⇒ never a skip
     // Removed here, under this row's bound: left to the afterEach (bun's
     // 5 s default), the rm of 8,193 directories timed it out on a loaded
     // box (11.3 s for the row and its hooks, M-19).
@@ -341,24 +342,24 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     // this flake.
     const fresh = new Date(Date.now() + 20 * OUTPUT_DIRS_RACY_MS)
     for (const rel of ['dist', 'dist/fresh']) utimesSync(path.join(proj, rel), fresh, fresh)
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     expect(rows()).toEqual([]) // all or nothing: dist/sub is dropped with them
     age()
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     expect(rows().map((r) => r.path)).toContain('dist/fresh')
   })
 
   it('a forged directory mtime is the accepted trade (documented, like touch -r on a file)', async () => {
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     const recorded = rows().find((r) => r.path === 'dist')!
     await Bun.sleep(5)
     w('dist/stray.js')
     utimesSync(path.join(proj, 'dist'), new Date(recorded.mtimeMs), new Date(recorded.mtimeMs))
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(true) // the stray is invisible
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(true) // the stray is invisible
   })
 
   it('a recorded directory replaced by a file is not current, even with every mtime forged', async () => {
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     const at = (rel: string) => rows().find((r) => r.path === rel)!.mtimeMs
     const deep = at('dist/sub/deep')
     const sub = at('dist/sub')
@@ -366,26 +367,26 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     writeFileSync(path.join(proj, 'dist/sub/deep'), 'not a directory')
     utimesSync(path.join(proj, 'dist/sub/deep'), new Date(deep), new Date(deep))
     utimesSync(path.join(proj, 'dist/sub'), new Date(sub), new Date(sub))
-    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
+    expect(await cache.memo.outputDirsCurrent(proj, rows())).toBe(false)
   })
 
   it("a flushed snapshot is not written again over another process's newer one", async () => {
     // Two handles on one cache: this process flushed its snapshot; another
     // then snapshotted the changed tree. A later flush here (any read) must
     // not put the old rows back.
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     expect(rows().map((r) => r.path)).not.toContain('dist/fresh')
     mkdirSync(path.join(proj, 'dist/fresh'))
     age()
     const other = new Cache(path.join(root, 'cache'))
-    await other.recordOutputDirs('h1', proj, ['dist'])
+    await other.memo.recordOutputDirs('h1', proj, ['dist'])
     other.close()
     rows()
     // A third handle reads what is stored, with no snapshot of its own to add.
     const reader = new Cache(path.join(root, 'cache'))
     try {
       expect(
-        (reader.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path).sort(),
+        (reader.memo.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path).sort(),
       ).toEqual(['dist', 'dist/fresh', 'dist/sub', 'dist/sub/deep'])
     } finally {
       reader.close()
@@ -400,7 +401,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
       entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
     })
     expect(
-      cache
+      cache.memo
         .loadOutputFilesBatch(['h1'])
         .get('h1')
         ?.map((r) => r.path),
@@ -409,17 +410,17 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
 
   it('a file row is current only while the file is there with its recorded size', async () => {
     // Stamped as the miss path does after a save (item 886).
-    cache.recordOutputStamps('h1', proj, proj)
-    const files = cache.loadOutputFilesBatch(['h1']).get('h1')!
-    expect(await cache.isOutputsCurrent(proj, files)).toBe(true)
+    cache.memo.recordOutputStamps('h1', proj, proj)
+    const files = cache.memo.loadOutputFilesBatch(['h1']).get('h1')!
+    expect(await cache.memo.isOutputsCurrent(proj, files)).toBe(true)
     // A different size under a forged identical mtime is not current (the
     // size and, since item 886, the rewrite's ctime both tell).
     const a = path.join(proj, 'dist/a.js')
     writeFileSync(a, 'longer than before')
     utimesSync(a, new Date(files[0]!.mtimeMs), new Date(files[0]!.mtimeMs))
-    expect(await cache.isOutputsCurrent(proj, files)).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(proj, files)).toBe(false)
     rmSync(a)
-    expect(await cache.isOutputsCurrent(proj, files)).toBe(false)
+    expect(await cache.memo.isOutputsCurrent(proj, files)).toBe(false)
   })
   it('snapshots land together: pending until a read, a prune, a stat or close, then one transaction', async () => {
     // A snapshot is read by the NEXT run's hit check, never by the task
@@ -436,32 +437,28 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
       outputFiles: [path.join(proj, 'dist/a.js')],
       entry: { taskId: 'p#build', command: 'y', durationMs: 1, stdout: '' },
     })
-    await cache.recordOutputDirs('h1', proj, ['dist'])
-    await cache.recordOutputDirs('h2', proj, ['dist/a'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h2', proj, ['dist/a'])
     const count = () =>
       (indexDb(cache).query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
     expect(count()).toBe(0)
-    expect((cache.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path).sort()).toEqual([
-      'dist',
-      'dist/a',
-      'dist/b',
-      'dist/sub',
-      'dist/sub/deep',
-    ])
+    expect(
+      (cache.memo.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path).sort(),
+    ).toEqual(['dist', 'dist/a', 'dist/b', 'dist/sub', 'dist/sub/deep'])
     // Both landed in that one flush, the second snapshot included.
     expect(count()).toBe(6)
     // A later snapshot for the same hash replaces the rows, again deferred.
-    await cache.recordOutputDirs('h1', proj, ['dist/b'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist/b'])
     expect(count()).toBe(6)
-    expect((cache.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path)).toEqual([
+    expect((cache.memo.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path)).toEqual([
       'dist/b',
     ])
     expect(count()).toBe(2)
     // A snapshot whose entry another process pruned meanwhile lands as
     // nothing, and does not fail the flush for the rest.
-    await cache.recordOutputDirs('h2', proj, ['dist/a'])
+    await cache.memo.recordOutputDirs('h2', proj, ['dist/a'])
     indexDb(cache).query('DELETE FROM entries WHERE hash = ?').run('h2')
-    expect(cache.loadOutputDirsBatch(['h1', 'h2']).get('h1')?.length).toBe(1)
+    expect(cache.memo.loadOutputDirsBatch(['h1', 'h2']).get('h1')?.length).toBe(1)
     expect(count()).toBe(1)
   })
 
@@ -472,7 +469,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   it('a snapshot pending at close is what the next process reads (the vx watch cycle)', async () => {
     // Each `vx watch` cycle's run() closes its cache; the second cycle's
     // hit check reads rows the first wrote only because close lands them.
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     const dir = path.join(root, 'cache')
     cache.close()
     cache = new Cache(dir)
@@ -484,7 +481,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   })
 
   it('stats() lands a pending snapshot before it counts', async () => {
-    await cache.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
     const count = () =>
       (indexDb(cache).query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
     expect(count()).toBe(0)
@@ -499,8 +496,8 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
       outputFiles: [path.join(proj, 'dist/a.js')],
       entry: { taskId: 'p#build', command: 'y', durationMs: 1, stdout: '' },
     })
-    await cache.recordOutputDirs('h1', proj, ['dist'])
-    await cache.recordOutputDirs('h2', proj, ['dist/sub'])
+    await cache.memo.recordOutputDirs('h1', proj, ['dist'])
+    await cache.memo.recordOutputDirs('h2', proj, ['dist/sub'])
     // Evict h2 by age: its `accessed_at` is set back past the cutoff.
     indexDb(cache).query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h2')
     // Past an hour after it: a row's last use is accessed_at plus the hour.
@@ -556,7 +553,9 @@ describe('warm hits through run() with the short-circuit', () => {
           hash: string
         }
       ).hash
-      const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
+      const recorded = (c.memo.loadOutputDirsBatch([hash]).get(hash) ?? [])
+        .map((r) => r.path)
+        .sort()
       c.close()
       return recorded
     }
@@ -602,7 +601,9 @@ describe('warm hits through run() with the short-circuit', () => {
           hash: string
         }
       ).hash
-      const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
+      const recorded = (c.memo.loadOutputDirsBatch([hash]).get(hash) ?? [])
+        .map((r) => r.path)
+        .sort()
       c.close()
       return recorded
     }
@@ -632,7 +633,7 @@ describe('warm hits through run() with the short-circuit', () => {
           hash: string
         }
       ).hash
-      const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)
+      const recorded = (c.memo.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)
       c.close()
       return recorded
     }
@@ -662,7 +663,7 @@ describe('warm hits through run() with the short-circuit', () => {
     const hash = (
       indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as { hash: string }
     ).hash
-    const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
+    const recorded = (c.memo.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
     c.close()
     return recorded
   }

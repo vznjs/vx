@@ -38,10 +38,10 @@ describe('a batched index read', () => {
   it("answers past SQLite's variable ceiling", async () => {
     const many = [...fakes(250_001), HASH]
     expect(
-      [...cache.loadOutputFilesBatch(many)].map(([h, rows]) => [h, rows.map((r) => r.path)]),
+      [...cache.memo.loadOutputFilesBatch(many)].map(([h, rows]) => [h, rows.map((r) => r.path)]),
     ).toEqual([[HASH, ['dist/out.txt']]])
     // A directory this new is inside the snapshot's racy window: no rows.
-    expect(cache.loadOutputDirsBatch(many).size).toBe(0)
+    expect(cache.memo.loadOutputDirsBatch(many).size).toBe(0)
     expect([...(await cache.getMany(many)).keys()]).toEqual([HASH])
   })
 

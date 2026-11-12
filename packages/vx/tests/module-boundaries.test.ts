@@ -42,11 +42,18 @@ const ALLOWED: Record<string, readonly string[]> = {
   // `handoff`: the git top-level, learned once for the hand-off and the root walk.
   workspace: ['util', 'config', 'version', 'settings', 'handoff', 'ui'],
   graph: ['util', 'config', 'workspace', 'ui'],
-  cache: ['util', 'config', 'ui'],
+  // `index-db`: cache.db's one schema, below every module that reads or
+  // writes a table of it.
+  'index-db': ['util'],
+  // `memo`: what a warm run remembers (file hashes, folds, lockfile parses,
+  // output stamps, remote hits), each over the index the store opens.
+  memo: ['util', 'index-db'],
+  cache: ['util', 'config', 'ui', 'index-db', 'memo'],
   exec: ['util', 'config', 'ui'],
-  // `history`: read-only SQL over what runs left behind; it never runs,
-  // renders or writes a run, so it reaches nothing that does.
-  history: ['util', 'graph', 'cache', 'ui'],
+  // `history`: what runs leave behind, written (the run's rows, on a thread
+  // or at its end) and read back (`vx last`, `vx why`, the duration table).
+  // It never runs or renders a run.
+  history: ['util', 'graph', 'cache', 'ui', 'index-db'],
   // `report`: renders the outcomes it is handed; it never runs a task or
   // reads the cache, so it reaches neither orchestrator nor cache.
   report: ['util', 'settings', 'exec', 'graph', 'ui'],
@@ -59,6 +66,8 @@ const ALLOWED: Record<string, readonly string[]> = {
     'workspace',
     'graph',
     'cache',
+    'memo',
+    'index-db',
     'exec',
     'history',
     'report',
@@ -74,6 +83,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'workspace',
     'graph',
     'cache',
+    'memo',
     'history',
     'orchestrator',
     'report',
@@ -103,6 +113,8 @@ const ALLOWED: Record<string, readonly string[]> = {
 // import target. The ratchet is complete: every directory module.
 const CONTRACTED: readonly string[] = [
   'ui',
+  'index-db',
+  'memo',
   'cache',
   'exec',
   'util',

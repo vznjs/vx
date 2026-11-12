@@ -5,9 +5,8 @@
 // A separate entry point: `bun build --compile` embeds it beside bin.ts.
 
 import { Database } from 'bun:sqlite'
-import type { RunRecord } from './layer.js'
-import { RunHistory } from './run-history.js'
-import { SQLITE_FCNTL_PERSIST_WAL } from './schema.js'
+import { type RunRecord, RunHistory } from './run-history.js'
+import { SQLITE_FCNTL_PERSIST_WAL } from '../index-db/index.js'
 
 export type HistoryWriterIn =
   | { open: { index: string; store?: string } }

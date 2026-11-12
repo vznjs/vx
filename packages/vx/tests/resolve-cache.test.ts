@@ -4,8 +4,9 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { Cache, LayeredCache, type CacheLayer, type RemoteCacheLayer } from '../src/cache/index.js'
+import * as saving from '../src/cache/save.js'
 import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
 import { testPlugin } from './helpers/plugin.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
@@ -237,6 +238,7 @@ describe('LayeredCache — several remotes over one local store', () => {
     // remote must not pack the tar again.
     const { cache: local, dir } = tmpCache('shared')
     const proj = mkdtempSync(path.join(tmpdir(), 'vx-remotes-proj-'))
+    let spy: ReturnType<typeof spyOn<typeof saving, 'packArtifactToTemp'>> | undefined
     try {
       const ra = remoteStub()
       const rb = remoteStub()
@@ -244,19 +246,12 @@ describe('LayeredCache — several remotes over one local store', () => {
         { remote: ra, ...both },
         { remote: rb, ...both },
       ])
-      // packArtifactToTemp is private (the pack step a local save runs);
-      // the structural cast is the narrowest spy that can count the
-      // expensive step without widening the class API.
-      type PackSpy = {
-        packArtifactToTemp(tmp: string, args: unknown): Promise<Uint8Array | { tmpPath: string }>
-      }
-      const spyable = local as unknown as PackSpy
       let packs = 0
-      const orig = spyable.packArtifactToTemp.bind(local)
-      spyable.packArtifactToTemp = (tmp: string, args: unknown) => {
+      const orig = saving.packArtifactToTemp
+      spy = spyOn(saving, 'packArtifactToTemp').mockImplementation((...a) => {
         packs++
-        return orig(tmp, args)
-      }
+        return orig(...a)
+      })
       await saveEntry(layered, 'h-shared', proj)
       await layered.drainUploads()
       expect(packs).toBe(1)
@@ -264,6 +259,7 @@ describe('LayeredCache — several remotes over one local store', () => {
       expect(rb.puts).toEqual(['h-shared'])
       expect((await layered.get('h-shared'))?.hash).toBe('h-shared')
     } finally {
+      spy?.mockRestore()
       local.close()
       for (const d of [dir, proj]) rmSync(d, { recursive: true, force: true })
     }
