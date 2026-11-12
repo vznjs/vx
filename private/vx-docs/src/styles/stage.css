@@ -1034,10 +1034,7 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  transform-origin: left;
-  transition:
-    transform 0s,
-    background 0.3s;
+  transition: background 0.3s;
 }
 .hop-from .hop-task i {
   background: color-mix(in srgb, #ff5d5d 34%, #0d1016);
@@ -1048,6 +1045,13 @@
 .hop-mark {
   font: 600 13px var(--font-mono);
   transition: opacity 0.3s;
+}
+.hop-mark b {
+  font-weight: inherit;
+}
+.hop-run {
+  display: none;
+  color: var(--tone-read);
 }
 .hop-from .hop-mark {
   color: #ff7b7b;
@@ -1076,16 +1080,25 @@
   box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
   opacity: 0;
 }
-/* Played: 0 runs on worker 1, 1 fails, 2 runs on worker 2, 3 passes. */
-.band.play .hop[data-at='0'] .hop-from .hop-task i {
+/* Played: 0 runs on worker 1, 1 fails, 2 runs on worker 2, 3 passes. A
+   running task is a whole block: nobody knows how far along it is. */
+.band.play .hop[data-at='0'] .hop-from .hop-task i,
+.band.play .hop[data-at='2'] .hop-to .hop-task i {
   background: color-mix(in srgb, var(--tone-read) 26%, #0d1016);
-  transform: scaleX(0.7);
-  transition: transform 1.4s linear;
 }
-.band.play .hop[data-at='0'] .hop-from .hop-mark,
-.band.play .hop:is([data-at='0'], [data-at='1']) .hop-to :is(.hop-task, .hop-mark),
-.band.play .hop[data-at='2'] .hop-to .hop-mark {
+.band.play .hop[data-at='0'] .hop-from .hop-run,
+.band.play .hop[data-at='2'] .hop-to .hop-run {
+  display: inline;
+}
+.band.play .hop[data-at='0'] .hop-from .hop-end,
+.band.play .hop[data-at='2'] .hop-to .hop-end {
+  display: none;
+}
+.band.play .hop:is([data-at='0'], [data-at='1']) .hop-to :is(.hop-task, .hop-mark) {
   opacity: 0;
+}
+.band.play .hop[data-at='0'] .hop-from {
+  border-color: color-mix(in srgb, var(--tone-read) 60%, transparent);
 }
 .band.play .hop[data-at='1'] .hop-from,
 .band.play .hop[data-at='2'] .hop-from {
@@ -1098,12 +1111,8 @@
     left 0.7s var(--ease-out),
     opacity 0.2s;
 }
-.band.play .hop[data-at='2'] .hop-to .hop-task i {
-  background: color-mix(in srgb, var(--tone-read) 26%, #0d1016);
-  transform: scaleX(0);
-}
-.band.play .hop[data-at='3'] .hop-to .hop-task i {
-  transition: transform 0.5s var(--ease-out);
+.band.play .hop[data-at='2'] .hop-to {
+  border-color: color-mix(in srgb, var(--tone-read) 60%, transparent);
 }
 .band.play .hop[data-at='3'] .hop-to {
   border-color: var(--tone-core);
