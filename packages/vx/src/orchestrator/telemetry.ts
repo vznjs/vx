@@ -1,22 +1,15 @@
-// The telemetry contract — THE canonical, versioned data-export shape.
-//
-// This is the one neutral boundary the observability/integration design
-// (docs/design/observability-architecture-2026-06.md) is built around.
-// Core projects its live `RunEvent` stream into these records ONCE, in
-// one place (`createTelemetrySource`), and hands them to every registered
-// `TelemetrySink`. Exporters (OTel, a manual HTTP POST, any third-party sink) all read
-// the SAME records — with the analytics fields + git/CI context already
-// folded in — instead of each re-deriving an ad-hoc shape from the raw,
+// The telemetry contract: the one versioned export shape
+// (docs/design/observability-architecture-2026-06.md). Core projects its
+// `RunEvent` stream into these records once (`createTelemetrySource`) and hands
+// them to every `TelemetrySink`, so exporters read the same records, analytics
+// and git/CI context folded in, instead of each re-deriving from the
 // rendering-oriented `WireEvent` stream.
 //
-// A sink is observe-only BY CONSTRUCTION: its only input is a plain-data
-// record (one object every sink receives, frozen once, deep: a sink that
-// cleared a `task.end`'s `failedAttempts` cleared the outcome's own and
-// crashed the run's failure log); its `TelemetryContext` carries read-only metadata and NO mutable
-// run handle (no bus, no Cache, no RunRequest). There is no API path from a
-// sink back into scheduling/caching/exec — telemetry provably cannot change
-// what or how tasks run. Contrast `cache`/`executor`, which return objects
-// core calls INTO; those are the behavior capabilities, kept separate.
+// A sink is observe-only by construction: its input is plain data, deep-frozen
+// once (a sink that cleared a `task.end`'s `failedAttempts` cleared the
+// outcome's own and crashed the failure log), and its `TelemetryContext` holds
+// no run handle. No path leads from a sink back into scheduling, caching or
+// exec, unlike `cache` and `executor`, which core calls into.
 
 import { sampleTrees, type MachineReport, type WorkerAdvice } from '../exec/index.js'
 import {
@@ -42,11 +35,10 @@ import { neverStarted, type RunEvent, type RunEventSubscriber } from '../report/
 import { freezeDeep } from './read-only.js'
 
 /**
- * Each running task's secret mask, set where the task's env is known
- * (`execute-task`). The live chunks a sink gets were masked by a stream
- * that lets a held piece go after a 25 ms pause, so a value printed
- * slowly reached `task.log` in pieces a sink joins whole: telemetry masks
- * them again, holding a piece until more bytes or the task's end.
+ * Each running task's secret mask. Live chunks were masked by a stream that
+ * releases a held piece after a 25 ms pause, so a slowly printed value reached
+ * `task.log` in pieces a sink joins whole: telemetry masks again, holding a
+ * piece until more bytes or the task's end.
  */
 export const taskLogMasks = new WeakMap<TaskNode, SecretMask>()
 
@@ -67,10 +59,9 @@ export interface RunContextRecord {
   concurrency: number
   flow: 'focused' | 'broad' | null
   /**
-   * Stable workspace identity (v2) — the multi-workspace server key.
-   * Derived from the normalized git remote (any checkout of the same
-   * repo → same id); see run-context.ts captureWorkspaceIdentity. A v1
-   * consumer synthesizes 'default' for pushes that predate it.
+   * Stable workspace identity (v2), the multi-workspace server key, from the
+   * normalized git remote (run-context.ts). A v1 consumer synthesizes
+   * 'default'.
    */
   workspaceId: string
   workspaceName: string
@@ -82,13 +73,10 @@ export interface RunContextRecord {
   commitSha: string | null
   branch: string | null
   /**
-   * The repository's DEFAULT (trunk) branch, when detectable (v2 additive).
-   * A run is a TRUNK run iff `branch === defaultBranch` (both non-null);
-   * everything else is PR / feature-branch work. Consumers use it to keep
-   * branch-experiment timings out of the shared scheduling baseline; null
-   * (undetectable) means "count all runs" — no regression. Required of a v2
-   * producer (every one emits it); a reader parsing an older v1 push, which
-   * predates the field, treats absent as null.
+   * The repository's default branch, when detectable (v2). A run is a trunk run
+   * iff `branch === defaultBranch`; consumers keep other branches' timings out
+   * of the shared baseline. Null means count all runs; a v1 push lacks it, read
+   * as null.
    */
   defaultBranch: string | null
   dirty: boolean | null
@@ -199,10 +187,9 @@ export interface TaskTelemetry {
 }
 
 /**
- * A streaming telemetry record — one per lifecycle event. A superset of the
- * rendering-oriented `WireEvent`: it carries the run context + the per-task
- * analytics fields a consumer needs WITHOUT re-deriving from the stream.
- * `task.log` records are large and OPT-IN (see `TelemetrySink.wants`).
+ * A streaming record, one per lifecycle event: the `WireEvent` plus run context
+ * and per-task analytics. `task.log` records are large and opt-in
+ * (`TelemetrySink.wants`).
  */
 export type TelemetryRecord =
   | {
@@ -259,10 +246,8 @@ export type TelemetryRecord =
   | { v: number; kind: 'run.end'; runId: string; ts: number }
 
 /**
- * A per-run SUMMARY record — the denormalized invocation header plus the
- * per-task outcome list, emitted once at run:end. An ingesting store can
- * persist a whole run in one write without replaying the stream. The
- * manual-API exporter + a service's ingest endpoint primarily speak this shape.
+ * A per-run summary, emitted once at run:end: the invocation header plus
+ * per-task outcomes, so a store persists a run in one write.
  */
 export interface RunSummaryRecord {
   v: number
@@ -333,16 +318,11 @@ export interface RunStage {
 }
 
 /**
- * Assemble the canonical per-run summary from the per-task telemetry + the
- * run-level timing/verdict. THE one place the `RunSummaryRecord` tallies are
- * computed: both a local `run()` and the distributed controller build their
- * `TaskTelemetry[]` (each via `deriveCacheSource`) and call this, so a
- * distributed run and a local run produce byte-identical summaries and land in
- * the same ingest. The per-task tallies (failedCount /
- * hitLocal|Remote|Count) derive from `tasks`, and `taskCount` from `tasks`
- * plus `notRunCount`; `totalDurationMs` (wall time) and
- * `exitOk` (the run's overall verdict — which counts skipped tasks beyond the
- * recorded task list) are run-level facts and are passed in.
+ * Assemble the run summary from per-task telemetry and run-level facts. The one
+ * place its tallies are computed: local `run()` and the distributed controller
+ * both call it, so their summaries are identical. Per-task tallies derive from
+ * `tasks`, `taskCount` adds `notRunCount`; wall time and `exitOk` (which counts
+ * skipped tasks beyond the list) are passed in.
  */
 export function assembleRunSummary(
   run: RunContextRecord,
@@ -418,10 +398,8 @@ export function assembleRunSummary(
 export interface TelemetrySink {
   readonly name?: string
   /**
-   * Which streaming record kinds to receive. Default (undefined): all
-   * EXCEPT `task.log` (large; most sinks don't want build-log chunks).
-   * The source checks this before projecting/cloning, so a sink pays
-   * nothing for kinds it declines.
+   * Which streaming kinds to receive. Default: all but `task.log`. Checked
+   * before projecting, so a declined kind costs nothing.
    */
   readonly wants?: ReadonlyArray<TelemetryRecord['kind']>
   /** A streaming record. MUST return promptly — buffer; do NOT await I/O. */
@@ -433,17 +411,13 @@ export interface TelemetrySink {
    */
   onRunSummary?(summary: RunSummaryRecord): void
   /**
-   * Drain buffered data. Awaited at run:end under a deadline — a sink that
-   * has not settled by then is abandoned and its buffered records are lost.
-   * Losing a slow sink's telemetry is strictly better than the alternative:
-   * `run()` never returns, so the cache never closes and `vx` exits 0 on a
-   * failed run.
+   * Drain buffered data. Awaited at run:end under a deadline; a sink not
+   * settled by then is abandoned with its records, better than `run()` never
+   * returning and `vx` exiting 0 on a failed run.
    *
-   * `signal` aborts at that deadline. Abandoning a flush does not end its I/O:
-   * a request still in flight keeps the event loop, and so the process, alive
-   * after the run has returned — a hanging GitHub API held `vx run` open until
-   * the CI job's own timeout. A sink passes the signal to its `fetch` (or
-   * closes its socket on it).
+   * `signal` aborts at that deadline: an abandoned flush's request still in
+   * flight keeps the process alive (a hanging GitHub API held `vx run` open
+   * until the CI job's timeout). Pass it to `fetch`, or close the socket on it.
    */
   flush?(signal: AbortSignal): Promise<void>
 }
@@ -475,10 +449,9 @@ export interface TelemetrySource {
    */
   endServers(final: readonly TaskOutcome[], keep?: ReadonlySet<string>): void
   /**
-   * Sample this task's process tree every `SAMPLE_MS` until the returned
-   * function is called, the root exits, or the run ends. Present only when
-   * a sink wants `task.sample`: nobody asking costs no timer and no read.
-   * The returned stop answers what the samples saw, for the run history.
+   * Sample this task's process tree every `SAMPLE_MS` until stopped, the root
+   * exits, or the run ends. Present only when a sink wants `task.sample`. The
+   * stop returns what the samples saw, for history.
    */
   readonly track?: (taskId: string, pid: number) => () => TreeLoad | undefined
 }
@@ -515,15 +488,13 @@ const DEFAULT_KINDS: ReadonlyArray<TelemetryRecord['kind']> = [
 ]
 
 /**
- * Build a telemetry source over a fixed set of sinks. The returned
- * `subscriber` projects each `RunEvent` into a `TelemetryRecord` and fans
- * it to the sinks that want its kind, under crash isolation (a throwing
- * sink is disabled for the rest of the run, never propagating into the
- * orchestrator). `task.log` is projected ONLY if some sink opted in — so
- * the large-payload path costs nothing by default.
+ * A telemetry source over fixed sinks: `subscriber` projects each `RunEvent`
+ * into a `TelemetryRecord` and fans it to the sinks wanting its kind,
+ * crash-isolated (a throwing sink is disabled for the run). `task.log` is
+ * projected only if some sink opted in.
  *
- * The `run` context (captured once by run.ts) is stamped onto `run.start`
- * and supplies the `runId` every other record carries.
+ * The `run` context is stamped on `run.start` and supplies every record's
+ * `runId`.
  */
 export function createTelemetrySource(args: {
   sinks: readonly TelemetrySink[]
@@ -543,17 +514,12 @@ export function createTelemetrySource(args: {
   // goes by its plugin's name, else its place in the list.
   const label = (sink: TelemetrySink): string =>
     sink.name ?? args.owners?.get(sink) ?? `#${sinks.indexOf(sink) + 1}`
-  // A sink is disabled the first time it throws — its name (or index) goes
-  // here and it's skipped for the rest of the run, FLUSH INCLUDED. Flushing a
-  // disabled sink would write a buffer that is incomplete by construction: it
-  // stopped being fed records at the moment it threw, so the export would look
-  // like a run that simply had fewer tasks.
+  // A sink is disabled the first time it throws, flush included: its buffer
+  // stopped being fed then, so an export would look like a run with fewer
+  // tasks.
   const disabled = new Set<TelemetrySink>()
-  // Never silently. The standing rule is that a never-fail path must still WARN
-  // — telemetry that vanishes without a word is indistinguishable from
-  // telemetry nobody configured. Every hook call site skips a disabled sink
-  // first, but an async hook's rejections land later, several records' worth of
-  // them after the first: those are said once too.
+  // Never silently: telemetry that vanishes without a word looks like telemetry
+  // nobody configured. An async hook's later rejections are said once too.
   const disable = (sink: TelemetrySink, hook: string, err: unknown): void => {
     if (disabled.has(sink)) return
     disabled.add(sink)
@@ -811,14 +777,11 @@ export function createTelemetrySource(args: {
     },
     async flush(step = <T>(_id: string, work: () => Promise<T>): Promise<T> => work()) {
       const ms = teardownTimeoutMs()
-      // Bounded, for the same reason plugin teardown is bounded in
-      // plugin-host.ts: run() awaits this BEFORE closeCache() and before it
-      // returns, and bin.ts exits with run()'s code once it returns (through
-      // stdout's end callback). A sink whose
-      // flush never settles therefore drains the event loop with no exit code
-      // pending — Bun exits 0 and a FAILED run reports green, with the cache's
-      // accessed_at bumps and every later plugin's teardown lost with it.
-      // Sinks race concurrently, so each still gets the whole budget.
+      // Bounded like plugin teardown: run() awaits this before closing the
+      // cache, and bin.ts exits once run() returns, so a flush that never
+      // settles drains the event loop with no exit code pending: Bun exits 0, a
+      // failed run reports green, and the cache's bumps and later teardowns are
+      // lost. Sinks race concurrently, each with the whole budget.
       const deadline = new AbortController()
       // The deadline's warning names the sinks still out, as a throw names its own.
       const pending = new Set<TelemetrySink>()
@@ -871,11 +834,9 @@ function commandDeps(node: TaskNode, nodes: ReadonlyMap<string, TaskNode> | unde
 }
 
 /**
- * The one projection of an outcome into `TaskTelemetry`, for the streaming
- * `task.end` record and the summary's `tasks[]` alike. Two copies drifted:
- * `task.end` dropped `blockedBy`, `timedOut`, `sandboxViolations` and
- * `notReady`, so a streaming sink saw a timed-out or blocked task as a plain
- * failure or skip.
+ * The one projection of an outcome into `TaskTelemetry`, for `task.end` and the
+ * summary alike: two copies drifted, and a streaming sink saw a timed-out or
+ * blocked task as a plain failure.
  */
 export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   const t: TaskTelemetry = {
