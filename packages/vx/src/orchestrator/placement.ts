@@ -10,7 +10,12 @@
 // pin and leaves the floor nothing: a task that would land here refuses.
 
 import { machineParallelism, UserError } from '../util/index.js'
-import { hostPlatform, selectExecutor, type TaskExecutor } from '../exec/index.js'
+import {
+  hostPlatform,
+  selectExecutor,
+  type ExecutorCapabilities,
+  type TaskExecutor,
+} from '../exec/index.js'
 import { isLocalExecutor } from './local-executor.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
@@ -248,7 +253,7 @@ export interface Placements {
  * plan and the run would disagree about what comes home (441, 442, 445).
  */
 export function locallyPlaced(placements: Placements): (id: string) => boolean {
-  return (id) => placements.executors.get(id)?.remote !== true
+  return (id) => placements.executors.get(id)?.capabilities?.remote !== true
 }
 
 /** Why `e`, which runs every task, takes none of this one's: no platform or worker type of it fits. */
@@ -257,14 +262,14 @@ function unrouted(
   named: string | undefined,
   wants: readonly string[] | undefined,
 ): string {
-  const types = e.workers
+  const types = e.distribution?.workers
   if (types !== undefined && named !== undefined) {
     const type = types.find(([n]) => n === named)
     if (type === undefined)
       return `it has no worker type '${named}' that exec.worker names (types: ${types.map(([n]) => n).join(', ')})`
     return `its worker type '${named}' runs ${type[1].join(', ')}, and exec.platforms asks for ${wants!.join(', ')}`
   }
-  return `it offers ${e.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`
+  return `it offers ${e.capabilities?.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`
 }
 
 export function placeTasks(
@@ -273,18 +278,16 @@ export function placeTasks(
 ): Placements {
   // Each executor's pins, computed only when one reads them.
   const pins = new Map<string, Set<string>>()
-  const pinsOf = (
-    e: Pick<TaskExecutor, 'sandbox' | 'servers' | 'runtime' | 'exclusive'>,
-  ): Set<string> => {
-    const k = `${e.sandbox === true}${e.servers === true}${e.runtime === true}${e.exclusive === true}`
+  const pinsOf = (c: ExecutorCapabilities | undefined): Set<string> => {
+    const k = `${c?.sandbox === true}${c?.servers === true}${c?.runtime === true}${c?.exclusive === true}`
     let set = pins.get(k)
     if (set === undefined) {
       set = pinnedLocalSet(
         nodes,
-        e.sandbox !== true,
-        e.servers === true,
-        e.runtime !== true,
-        e.exclusive === true,
+        c?.sandbox !== true,
+        c?.servers === true,
+        c?.runtime !== true,
+        c?.exclusive === true,
       )
       pins.set(k, set)
     }
@@ -327,9 +330,9 @@ export function placeTasks(
     markBelowNoop(nodes, placements)
     return placements
   }
-  const pinned = pinsOf({})
-  const routers = executors.filter((e) => e.platforms !== undefined)
-  const sole = executors.find((e) => e.exclusive === true)
+  const pinned = pinsOf(undefined)
+  const routers = executors.filter((e) => e.capabilities?.platforms !== undefined)
+  const sole = executors.find((e) => e.capabilities?.exclusive === true)
   /** A task an `exclusive` executor leaves to this machine: the run refuses. */
   const refuse = (id: string, why: string): never => {
     throw new UserError(
@@ -342,7 +345,7 @@ export function placeTasks(
     for (const node of nodes.values())
       if (
         node.config.exec?.persistent !== undefined &&
-        !(sole.servers === true && carriable(node, true))
+        !(sole.capabilities?.servers === true && carriable(node, true))
       )
         refuse(node.id, 'it starts a server only beside a task that needs it')
   for (const node of nodes.values()) {
@@ -363,12 +366,12 @@ export function placeTasks(
       wants === undefined || ps.some((p) => wants.includes(p))
     /** Its worker type on `e`, which names types: `exec.worker`'s, else the first that fits. */
     const typeOn = (e: TaskExecutor): readonly [string, readonly string[]] | undefined =>
-      e.workers?.find(([n, ps]) => (named === undefined || n === named) && fits(ps))
+      e.distribution?.workers?.find(([n, ps]) => (named === undefined || n === named) && fits(ps))
     // An executor that names no types ignores `exec.worker`, as this machine does.
     const routes = (e: TaskExecutor): boolean =>
-      e.workers !== undefined
+      e.distribution?.workers !== undefined
         ? typeOn(e) !== undefined
-        : wants === undefined || e.platforms?.some((p) => wants.includes(p)) === true
+        : wants === undefined || e.capabilities?.platforms?.some((p) => wants.includes(p)) === true
     const executor = selectExecutor(
       executors,
       {
@@ -380,15 +383,15 @@ export function placeTasks(
         cacheable: node.config.cache === true,
       },
       executorLabel,
-      (e) => pinsOf(e).has(node.id) || !routes(e),
-      (e) => sandboxed && e.sandbox !== true && e !== floor,
+      (e) => pinsOf(e.capabilities).has(node.id) || !routes(e),
+      (e) => sandboxed && e.capabilities?.sandbox !== true && e !== floor,
     )
     if (sole !== undefined && executor === floor) {
       refuse(
         node.id,
-        sandboxed && sole.sandbox !== true
+        sandboxed && sole.capabilities?.sandbox !== true
           ? 'it does not enforce exec.sandbox'
-          : pinsOf(sole).has(node.id)
+          : pinsOf(sole.capabilities).has(node.id)
             ? 'its key includes a runtime probe, which it does not check'
             : routes(sole)
               ? 'it declined the task'
@@ -399,7 +402,7 @@ export function placeTasks(
     const type = routes(executor) ? typeOn(executor) : undefined
     if (type !== undefined) node.worker = type[0]
     if (wants !== undefined) {
-      const offered = type?.[1] ?? executor.platforms
+      const offered = type?.[1] ?? executor.capabilities?.platforms
       if (offered !== undefined && routes(executor)) {
         node.platform =
           wants.includes(host) && offered.includes(host)
@@ -408,19 +411,21 @@ export function placeTasks(
       } else {
         here(node)
         if (placements.otherPlatform.has(node.id) && routers.length > 0) {
-          placements.unroutable.set(node.id, [...new Set(routers.flatMap((e) => e.platforms!))])
+          placements.unroutable.set(node.id, [
+            ...new Set(routers.flatMap((e) => e.capabilities!.platforms!)),
+          ])
         }
       }
     }
     const servers = serversBehind(nodes, node)
     if (servers.length > 0) {
-      if (executor.servers === true) placements.servers.set(node.id, servers)
+      if (executor.capabilities?.servers === true) placements.servers.set(node.id, servers)
       else for (const s of servers) heldHere.add(s.id)
     }
     if (node.config.exec?.remote === 'only') {
       // A pinned 'only' task (it transitively depends on a persistent one)
       // lands here too: pinning wins, so it noops rather than shipping.
-      if (executor.remote === true) placements.remoteOnly.add(node.id)
+      if (executor.capabilities?.remote === true) placements.remoteOnly.add(node.id)
       else placements.remoteOnlyNoop.add(node.id)
     }
   }
@@ -551,7 +556,7 @@ export const UNPLACED_EXECUTOR: TaskExecutor = {
 }
 
 export function hasPooledExecutor(executors: readonly TaskExecutor[]): boolean {
-  return executors.some((e) => e.capacity !== undefined)
+  return executors.some((e) => e.capabilities?.capacity !== undefined)
 }
 
 /**
@@ -567,11 +572,11 @@ export function poolOfPlacement(
   const pools = new Map<TaskExecutor, { name: string; capacity: number }>()
   const taken = new Set<string>()
   for (const executor of placements.executors.values()) {
-    if (executor.capacity === undefined || pools.has(executor)) continue
+    if (executor.capabilities?.capacity === undefined || pools.has(executor)) continue
     let name = executor.name
     for (let n = 2; taken.has(name); n++) name = `${executor.name}#${n}`
     taken.add(name)
-    pools.set(executor, { name, capacity: executor.capacity })
+    pools.set(executor, { name, capacity: executor.capabilities?.capacity })
   }
   return (id) => {
     const executor = placements.executors.get(id)

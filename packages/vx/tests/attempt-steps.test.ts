@@ -52,7 +52,11 @@ function args(over: ArgsOver = {}): ExecuteArgs {
     node,
     upstream: [],
     log: logged().log,
-    executor: { name: 'remote', remote: true, execute: async () => ({}) } as never,
+    executor: {
+      name: 'remote',
+      capabilities: { remote: true },
+      execute: async () => ({}),
+    } as never,
     nestedProjectDirs: [],
     ...over,
     run: {
@@ -128,7 +132,11 @@ describe('AttemptSignal: what aborts an attempt’s request', () => {
   it('fail-fast withdraws an attempt its executor has not begun, and only then', () => {
     const failFast = new AbortController()
     let begun: string | null = null
-    const executor = { name: 'remote', remote: true, running: () => begun } as never
+    const executor = {
+      name: 'remote',
+      capabilities: { remote: true },
+      distribution: { running: () => begun },
+    } as never
     const sig = new AttemptSignal(args({ run: { failFast: failFast.signal }, executor }), undefined)
     const s = sig.request(false)
     failFast.abort()

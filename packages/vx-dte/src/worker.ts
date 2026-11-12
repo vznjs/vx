@@ -10,23 +10,15 @@ import { lstat, rm } from 'node:fs/promises'
 import os, { constants } from 'node:os'
 import path from 'node:path'
 import {
-  answerRuntime,
-  BoundedCapture,
   hostPlatform,
-  localFloor,
   machineMemoryBytes,
   ui,
   machineParallelism,
-  packageManagerPath,
-  sampleTrees,
-  sandboxRequestFor,
-  sweepPlaceholders,
+  workerRuntime,
   isUserError,
   UserError,
   type CacheFacts,
   type CapturedChunk,
-  type ExecuteRequest,
-  type LocalFloor,
   type TaskArtifacts,
   type TreeUsage,
 } from '@vzn/vx'
@@ -127,7 +119,6 @@ export async function runWorker(opts: {
   let root = opts.root
   let realRoot = opts.root
   const myReal = realpathSync(opts.root)
-  let floor: LocalFloor | undefined
   const load = loadMeter()
   const started = {
     at: performance.now(),
@@ -136,10 +127,23 @@ export async function runWorker(opts: {
     ps: readPs(),
   }
   let tasksCpuMs = 0
-  const trees = treeMeter()
+  // Made before its servers are heard of: `onServer` reads the meters below.
+  const rt = workerRuntime({
+    root: opts.root,
+    onServer: (id, pid) => {
+      if (pid === undefined) {
+        serverTrees.drop(id)
+        usersOf.delete(id)
+      } else {
+        serverTrees.watch(id, pid)
+        usersOf.set(id, usersOf.get(id) ?? new Set())
+      }
+    },
+  })
+  const trees = treeMeter(rt.sample)
   // Its servers' trees, and which dependants each serves now: their CPU is
   // charged to those tasks, and each base reported (`serverFit`).
-  const serverTrees = treeMeter()
+  const serverTrees = treeMeter(rt.sample)
   const fit = serverFit()
   const frame = (): Load => {
     const servers = fit.bases()
@@ -161,16 +165,6 @@ export async function runWorker(opts: {
       fit.sample(server, [...users], serverTrees.coresOf(server), ms, capped)
   }, TREE_EVERY_MS)
   sampler.unref?.()
-  const newFloor = (sandboxes: Parameters<typeof localFloor>[0] = []): LocalFloor =>
-    localFloor(sandboxes, (id, pid) => {
-      if (pid === undefined) {
-        serverTrees.drop(id)
-        usersOf.delete(id)
-      } else {
-        serverTrees.watch(id, pid)
-        usersOf.set(id, usersOf.get(id) ?? new Set())
-      }
-    })
   /**
    * Entries whose files are here, restored or run here, by key: tasks
    * started together wait on one restore, never run before it.
@@ -375,18 +369,11 @@ export async function runWorker(opts: {
     work.add(p)
   }
 
-  // Each probe once per worker, as a run answers it once.
-  const probes = new Map<string, Promise<string>>()
   /** The first probe this machine answers otherwise than the orchestrator did. */
   const runtimeDiffers = async (m: RunOrder): Promise<string | undefined> => {
     for (const r of m.runtime ?? []) {
       const dir = r.workspace === true ? '' : m.project
-      const k = `${dir}\0${r.command}`
-      let p = probes.get(k)
-      if (p === undefined) {
-        p = answerRuntime(r.command, path.join(opts.root, dir), opts.root, r.workspace === true)
-        probes.set(k, p)
-      }
+      const p = rt.probe(r.command, path.join(opts.root, dir), r.workspace === true)
       // Its checkout root read as the run's: a path under it names the same
       // file there, as the task's env does. Compared raw, a probe of a
       // workspace tool's path failed every task on a worker checked out
@@ -473,41 +460,40 @@ export async function runWorker(opts: {
         }
       for (const f of cleared) await rm(path.join(opts.root, f), { force: true })
       // Built here: the walls, real paths and grants are this machine's.
-      const sb =
-        m.sandbox === undefined
-          ? undefined
-          : await sandboxRequestFor(
-              { projectDir: path.join(opts.root, m.project) },
-              m.sandbox.config,
-              opts.root,
-              m.sandbox.keyed === undefined
-                ? undefined
-                : new Set(m.sandbox.keyed.map((k) => path.join(opts.root, k))),
-              m.nested.map((n) => path.join(opts.root, n)),
-              undefined,
-              (m.sandbox.reads ?? []).map((r) => path.join(opts.root, r)),
-              (m.sandbox.reported ?? []).map((r) => path.join(opts.root, r)),
-            )
-      const output = new BoundedCapture()
-      const req: ExecuteRequest = {
+      const serves = (m.servers ?? []).map((sv) => sv.task)
+      // Counted a user once its server is up: `onServer` makes the set.
+      const using = (): void => {
+        for (const sv of serves) usersOf.get(sv)?.add(m.task)
+      }
+      // Built here: the walls, real paths and grants are this machine's.
+      const prepared = await rt.prepare({
         taskId: m.task,
-        workspaceRoot: opts.root,
+        projectDir: path.join(opts.root, m.project),
+        nested: m.nested.map((n) => path.join(opts.root, n)),
         command: m.command,
         forwardArgs: [],
         cwd: path.join(opts.root, m.cwd),
-        env: localEnv(m.env, root, opts.root, m.unset, m.path === true),
+        env: localEnv(m.env, root, opts.root, rt.packageManager(), m.unset, m.path === true),
         envDefine: {},
-        // Both streams as one capture, in the order written, as core keeps a
-        // run's: kept apart, a hit replayed every stdout line before the
-        // stderr between them (2026-10-25).
-        capture: { stdout: false, stderr: false },
-        onStdout: (t) => output.push(t),
-        onStderr: (t) => output.push(t, true),
         signal: stop.signal,
-        onSpawn: (pid) => trees.watch(m.task, pid),
+        onSpawn: (pid) => {
+          using()
+          trees.watch(m.task, pid)
+        },
         outputs: m.outputs,
         ...(m.timeoutMs === undefined ? {} : { timeoutMs: m.timeoutMs }),
-        ...(sb === undefined ? {} : { sandbox: sb.sandbox }),
+        ...(m.sandbox === undefined
+          ? {}
+          : {
+              sandbox: {
+                config: m.sandbox.config,
+                ...(m.sandbox.keyed === undefined
+                  ? {}
+                  : { keyed: m.sandbox.keyed.map((k) => path.join(opts.root, k)) }),
+                reads: (m.sandbox.reads ?? []).map((r) => path.join(opts.root, r)),
+                reported: (m.sandbox.reported ?? []).map((r) => path.join(opts.root, r)),
+              },
+            }),
         ...(m.servers === undefined
           ? {}
           : {
@@ -515,7 +501,7 @@ export async function runWorker(opts: {
                 taskId: s.task,
                 command: s.command,
                 cwd: path.join(opts.root, s.cwd),
-                env: localEnv(s.env, root, opts.root, [], s.path === true),
+                env: localEnv(s.env, root, opts.root, rt.packageManager(), [], s.path === true),
                 ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
                 ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
                 ...(s.sandbox === undefined
@@ -528,38 +514,25 @@ export async function runWorker(opts: {
                     }),
               })),
             }),
-      }
+      })
       // An untracked file under its project is one the orchestrator's key
       // never read (it refuses one it keys), yet the command may: one a
       // checkout left built into the output saved under the clean key, and
       // every later run restored it (2026-11-07). Listed before the command,
       // so a file the task writes is not taken for one it read.
       const strays = await untrackedUnder(opts.root, m, [names(m.project, m.outputs), ...upstream])
-      floor ??= newFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
-      const serves = (m.servers ?? []).map((sv) => sv.task)
-      // Counted a user once its server is up: `onServer` makes the set.
-      const using = (): void => {
-        for (const sv of serves) usersOf.get(sv)?.add(m.task)
-      }
       const {
         outputs: _,
         stdout: _o,
         stderr: _e,
+        output,
         ...res
-      } = await floor
-        .execute({
-          ...req,
-          onSpawn: (pid) => {
-            using()
-            req.onSpawn?.(pid)
-          },
-        })
-        .finally(() => {
-          trees.drop(m.task)
-          for (const sv of serves) usersOf.get(sv)?.delete(m.task)
-        })
+      } = await prepared.run().finally(() => {
+        trees.drop(m.task)
+        for (const sv of serves) usersOf.get(sv)?.delete(m.task)
+      })
       tasksCpuMs += res.cpuMs ?? 0
       // What its servers did for it: its CPU as history books it.
       const served = fit.take(m.task)
@@ -581,7 +554,7 @@ export async function runWorker(opts: {
       // A bind the task never wrote is not its output. By size alone, an
       // empty stamp the task wrote was taken too and saved as no file
       // (2026-10-24).
-      if (sb !== undefined) await sweepPlaceholders(sb.placeholders)
+      await prepared.sweep()
       // Its violations name the orchestrator's paths. As JSON first: the swap
       // round-trips them through JSON, which leaves a Date a string.
       const back = swapRoots(
@@ -630,7 +603,7 @@ export async function runWorker(opts: {
       await reply(m, key, others, {
         ...res,
         ...(served > 0 ? { cpuMs: (res.cpuMs ?? 0) + served } : {}),
-        output: output.chunks(),
+        output,
         violations: back,
         ...(cpuShare === undefined ? {} : { cpuShare }),
         ...(changed.length === 0 ? {} : { changed }),
@@ -691,8 +664,8 @@ export async function runWorker(opts: {
         } else if (m.type === 'unserve') {
           // Not awaited: its grace must not hold the next order.
           const task = m.task
-          void floor
-            ?.stop(task)
+          void rt
+            .stop(task)
             .catch((err: unknown) =>
               ui.print(
                 'err',
@@ -709,8 +682,7 @@ export async function runWorker(opts: {
           realRoot = m.realRoot
           batch = m.n
           if (m.sandboxes !== undefined) {
-            if (floor === undefined) floor = newFloor(m.sandboxes)
-            else await floor.rearm(m.sandboxes)
+            await rt.rearm(m.sandboxes)
           }
           for (const t of m.tasks) {
             const sent = ahead.get(t.task)
@@ -777,7 +749,7 @@ export async function runWorker(opts: {
       ),
     )
     load.stop()
-    await floor?.close()
+    await rt.close()
     await me.leave()
   }
 }
@@ -937,7 +909,7 @@ const TREE_EVERY_MS = 1_000
  * 2026-10-24), and nothing said where the rest went.
  */
 export function treeMeter(
-  sample: (roots: readonly number[]) => Promise<ReadonlyMap<number, TreeUsage>> = sampleTrees,
+  sample: (roots: readonly number[]) => Promise<ReadonlyMap<number, TreeUsage>>,
   every = TREE_EVERY_MS,
 ): {
   watch: (task: string, pid: number) => void
@@ -1153,6 +1125,8 @@ export function localEnv(
   env: Readonly<Record<string, string>>,
   remoteRoot: string,
   root: string,
+  /** This machine's package manager (`WorkerRuntime.packageManager`). */
+  manager: string | null,
   unset: readonly string[] = [],
   ownPath = false,
 ): Record<string, string | undefined> {
@@ -1162,7 +1136,6 @@ export function localEnv(
   // keys it: its value, as keyed.
   // Else this machine's manager, as core sets it on a local task.
   if (!('npm_execpath' in out) && !unset.includes('npm_execpath')) {
-    const manager = packageManagerPath(root)
     if (manager !== null) out['npm_execpath'] = manager
   }
   for (const k of HOST_ENV) if (!(k in out) && !unset.includes(k)) out[k] = process.env[k]

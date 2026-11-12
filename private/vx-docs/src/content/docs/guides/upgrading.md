@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
+### exec: group executor capabilities and distribution
+
+TaskExecutor's remote, sandbox, servers, runtime, exclusive, timeouts, platforms and capacity move under `capabilities`; workers, demand, running, unneeded, footer, machines, idealMs, advice and profile move under `distribution`. Any other executor key refuses the run. @vzn/vx no longer exports localFloor, LocalFloor, sandboxRequestFor, sweepPlaceholders, SandboxRequest, BoundedCapture, answerRuntime, packageManagerPath or sampleTrees: a worker calls workerRuntime({ root }) and uses prepare(task) -> run() / sweep(), probe, packageManager and sample.
+
 ### workspace: keep JS out of the migration seam
 
 foldScriptHooks is no longer exported from @vzn/vx. ApplyMigrationArgs drops `unmapped` (pass `emptyReason` and `example`), MigrationMember's `packageJson` is `esModule`, and core runs no formatter unless the migrator passes `written`.

@@ -230,32 +230,26 @@ export type { Measure, RunStartInfo } from './report/index.js'
 // speaks a wire — and a seam with no consumer is a special case in waiting.)
 // A remote executor gives a task back to the local floor by rejecting with
 // this (B-100): core runs it here and says why once.
-export { executorFallback, hostPlatform, sampleTrees, type TreeUsage } from './exec/index.js'
+export { executorFallback, hostPlatform, type TreeUsage } from './exec/index.js'
 // How the local executor puts the args after `--` on a command, for an
-// executor that runs `ExecuteRequest.command` itself: `@vzn/vx-reapi` and
-// the `vx init --plugin executor` example each joined their own, and a
-// trailing comment or a template literal's closing newline lost the args
-// there while the local floor kept them (X-112).
+// executor that runs `ExecuteRequest.command` itself.
 export { withForwardArgs } from './exec/index.js'
-// The `npm_execpath` core gives a local task: a `@vzn/vx-dte` worker gives
-// its tasks the same, its own machine's, not what launched it.
-export { packageManagerPath } from './exec/index.js'
-// A task's output both streams in the order written, bounded as core's
-// capture is: what a worker saves through `TaskArtifacts` (`@vzn/vx-dte`).
-export { BoundedCapture, type CapturedChunk } from './exec/index.js'
-// Core's local executor, sandbox included, for a plugin that runs tasks
-// itself: `@vzn/vx-dte`'s orchestrator and its workers.
-export { localFloor, type LocalFloor } from './orchestrator/index.js'
-// A task's sandbox request built where a worker runs it: the paths and the
-// walls are that machine's (`@vzn/vx-dte`, an orchestrator of another OS).
-// Its sweep takes back each placeholder the task never wrote, as core does.
-export { sandboxRequestFor, sweepPlaceholders, type SandboxRequest } from './sandbox/index.js'
-// A runtime probe answered where a `runtime` executor runs the task.
-export { answerRuntime } from './cache/index.js'
+export type { CapturedChunk } from './exec/index.js'
+// What a distributed executor's worker runs a task through: the local
+// floor, sandbox, capture, probes and package manager of its own machine.
+export {
+  workerRuntime,
+  type PreparedTask,
+  type WorkerRuntime,
+  type WorkerSandbox,
+  type WorkerTask,
+} from './orchestrator/index.js'
 export type {
+  Distribution,
   ExecuteRequest,
   ExecuteResult,
   ExecuteSandbox,
+  ExecutorCapabilities,
   MachineReport,
   ResolvedSandboxConfig,
   ServerSpec,

@@ -27,7 +27,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, changedSinceParent, homeOf, needOf, pace, serversOf } from '../src/plugin.js'
-import { hostPlatform, isUserError, type Platform, UserError } from '@vzn/vx'
+import { hostPlatform, isUserError, type Platform, UserError, workerRuntime } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -107,9 +107,11 @@ it('a worker leaves unset a host name the key folds as unset', () => {
   const saved = process.env['XDG_CONFIG_HOME']
   process.env['XDG_CONFIG_HOME'] = '/worker/config'
   try {
-    const env = localEnv({ X: '1' }, '/orc/ws', '/worker/ws', ['XDG_CONFIG_HOME'])
+    const env = localEnv({ X: '1' }, '/orc/ws', '/worker/ws', null, ['XDG_CONFIG_HOME'])
     expect('XDG_CONFIG_HOME' in env).toBe(false)
-    expect(localEnv({ X: '1' }, '/orc/ws', '/worker/ws')['XDG_CONFIG_HOME']).toBe('/worker/config')
+    expect(localEnv({ X: '1' }, '/orc/ws', '/worker/ws', null)['XDG_CONFIG_HOME']).toBe(
+      '/worker/config',
+    )
   } finally {
     if (saved === undefined) delete process.env['XDG_CONFIG_HOME']
     else process.env['XDG_CONFIG_HOME'] = saved
@@ -121,10 +123,10 @@ it('a worker keeps a PATH the task defines or keys, its root swapped', () => {
   process.env['PATH'] = '/usr/bin'
   try {
     const env = { PATH: '/orc/ws/node_modules/.bin:/tool:/bin' }
-    expect(localEnv(env, '/orc/ws', '/worker/ws', [], true)['PATH']).toBe(
+    expect(localEnv(env, '/orc/ws', '/worker/ws', null, [], true)['PATH']).toBe(
       '/worker/ws/node_modules/.bin:/tool:/bin',
     )
-    expect(localEnv(env, '/orc/ws', '/worker/ws')['PATH']).toBe(
+    expect(localEnv(env, '/orc/ws', '/worker/ws', null)['PATH']).toBe(
       '/worker/ws/node_modules/.bin:/usr/bin',
     )
   } finally {
@@ -156,6 +158,7 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
         },
         '/orc/ws',
         '/worker/ws',
+        null,
       ),
     ).toMatchObject({
       HOME: '/worker/home',
@@ -186,11 +189,20 @@ it("a worker names the workspace's package manager in npm_execpath, as a local r
     await writeFile(path.join(root, 'node_modules/.bin/pnpm'), '#!/bin/sh\n')
     await chmod(path.join(root, 'node_modules/.bin/pnpm'), 0o755)
     process.env['npm_execpath'] = '/elsewhere/bun'
-    expect(localEnv({ PATH: '/usr/bin' }, '/orc/ws', root)['npm_execpath']).toBe(
-      path.join(root, 'node_modules/.bin/pnpm'),
-    )
+    expect(
+      localEnv({ PATH: '/usr/bin' }, '/orc/ws', root, workerRuntime({ root }).packageManager())[
+        'npm_execpath'
+      ],
+    ).toBe(path.join(root, 'node_modules/.bin/pnpm'))
     // A task's own `define` still wins.
-    expect(localEnv({ npm_execpath: '/mine' }, '/orc/ws', root)['npm_execpath']).toBe('/mine')
+    expect(
+      localEnv(
+        { npm_execpath: '/mine' },
+        '/orc/ws',
+        root,
+        workerRuntime({ root }).packageManager(),
+      )['npm_execpath'],
+    ).toBe('/mine')
   } finally {
     if (saved === undefined) delete process.env['npm_execpath']
     else process.env['npm_execpath'] = saved

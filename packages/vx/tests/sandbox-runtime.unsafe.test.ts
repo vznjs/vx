@@ -306,7 +306,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                return {
                  name: 'thrower',
                  // Only an executor that enforces the sandbox is offered a sandboxed task.
-                 sandbox: true,
+                 capabilities: { sandbox: true },
                  async execute() { throw new Error('WIRE-DOWN') },
                }
              } }`,

@@ -2348,7 +2348,7 @@ export function poolOfPlacement(
 ): (id: string) => { name: string; capacity: number } | undefined
 export const UNPLACED_EXECUTOR: TaskExecutor
 
-// core's local executor for a plugin that runs tasks itself; arms the sandbox outside a run
+// core's local executor outside a run; arms the sandbox itself. Internal: a worker reaches it through workerRuntime
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   stop(taskId: string): Promise<void>
@@ -2358,6 +2358,39 @@ export function localFloor(
   sandboxes?: readonly SandboxConfig[],
   onServer?: (taskId: string, pid: number | undefined) => void,
 ): LocalFloor
+
+// the one entry a distributed executor's worker runs a task through (on @vzn/vx)
+export interface WorkerSandbox {
+  config: SandboxConfig
+  keyed?: string[]
+  reads?: string[]
+  reported?: string[]
+}
+export interface WorkerTask extends Omit<
+  ExecuteRequest,
+  'sandbox' | 'capture' | 'onStdout' | 'onStderr' | 'workspaceRoot'
+> {
+  projectDir: string
+  nested: readonly string[]
+  sandbox?: WorkerSandbox
+}
+export interface PreparedTask {
+  run(): Promise<ExecuteResult & { output: CapturedChunk[] }>
+  sweep(): Promise<void>
+}
+export interface WorkerRuntime {
+  prepare(task: WorkerTask): Promise<PreparedTask>
+  probe(command: string, dir: string, workspace: boolean): Promise<string>
+  packageManager(): string | null
+  sample(roots: readonly number[]): Promise<ReadonlyMap<number, TreeUsage>>
+  rearm(sandboxes: readonly SandboxConfig[]): Promise<void>
+  stop(taskId: string): Promise<void>
+  close(): Promise<void>
+}
+export function workerRuntime(opts: {
+  root: string
+  onServer?: (taskId: string, pid: number | undefined) => void
+}): WorkerRuntime
 ```
 
 - `localExecutor()` — the floor at the tail of every executor list.
@@ -2368,6 +2401,15 @@ export function localFloor(
   children, and a Ctrl-C took 7.6 s (B-55). A sandboxed request asks
   again after its own awaits (the runtime, the tracer probe, the wrap),
   just before the spawn: a stop landing there ran the task (B-72). Internal, not on `@vzn/vx`.
+- `workerRuntime({ root, onServer })` — runs a task another machine
+  placed as the local floor would: `prepare` builds its sandbox here
+  (walls, real paths, placeholders) from the config the task carries,
+  before anything lists the tree; `run` runs it on the floor with both
+  streams in one bounded capture, in written order; `sweep` removes each
+  bind the task never wrote. `probe` answers a runtime probe once per
+  (dir, command), `packageManager` is the `npm_execpath` a local task
+  gets, `sample` reads process trees. The floor and its sandbox arm on
+  the first task or `rearm`.
 - `isLocalExecutor(executor)` — whether it is core's own, by identity (a
   plugin may name its executor 'local'): core bounds a plugin's
   `execute` after the request's abort, never the local one's (H-14).

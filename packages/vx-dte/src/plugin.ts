@@ -1091,35 +1091,25 @@ export function dte(options: DteOptions = {}) {
       const depsOf = (id: string): readonly string[] => (nodes ?? ran)?.get(id)?.deps ?? []
       return {
         name: 'dte',
-        remote: true,
-        // No task runs on the orchestrator; only hits restore here (2026-10-24).
-        exclusive: true,
-        // Each worker times a task from its start: a wait for a booting worker is not its run.
-        timeouts: true,
-        sandbox: true,
-        // A task's persistent dependencies start on its worker, never here.
-        servers: true,
-        // A worker answers a task's runtime probes before it runs it.
-        runtime: true,
-        // Its sizes' platforms; workers that join on their own, this machine's.
-        platforms: sized.length === 0 ? [host] : [...new Set(sized.map((s) => s.platform))],
-        // Its worker types, in declared order, each with its machines' platforms.
-        ...(types.length === 0
-          ? {}
-          : {
-              workers: types.map(
-                (t) =>
-                  [
-                    t,
-                    [...new Set(sized.filter((s) => s.type === t).map((s) => s.platform))],
-                  ] as const,
-              ),
-            }),
-        // Every ready task: the orchestrator's queue knows which platform's
-        // worker is free, core's order does not. A pool of twice the cores,
-        // shared by all platforms, held a 2 s arm task 79 s behind x64 work
-        // with its worker idle (main a1950a2, 2026-11-07).
-        capacity: Number.MAX_SAFE_INTEGER,
+        capabilities: {
+          remote: true,
+          // No task runs on the orchestrator; only hits restore here (2026-10-24).
+          exclusive: true,
+          // Each worker times a task from its start: a wait for a booting worker is not its run.
+          timeouts: true,
+          sandbox: true,
+          // A task's persistent dependencies start on its worker, never here.
+          servers: true,
+          // A worker answers a task's runtime probes before it runs it.
+          runtime: true,
+          // Its sizes' platforms; workers that join on their own, this machine's.
+          platforms: sized.length === 0 ? [host] : [...new Set(sized.map((s) => s.platform))],
+          // Every ready task: the orchestrator's queue knows which platform's
+          // worker is free, core's order does not. A pool of twice the cores,
+          // shared by all platforms, held a 2 s arm task 79 s behind x64 work
+          // with its worker idle (main a1950a2, 2026-11-07).
+          capacity: Number.MAX_SAFE_INTEGER,
+        },
         execute: (req) => {
           // A miss: the run's known work grows.
           missed = true
@@ -1127,26 +1117,40 @@ export function dte(options: DteOptions = {}) {
           replan()
           return o.execute(multi ? { ...req, platform: placeOf(req.worker, req.platform)! } : req)
         },
-        footer: () =>
-          o.footer(
-            () => o.idealMs(depsOf, sizes),
-            () => o.advice(depsOf, sizes),
-            () => o.driftOf(depsOf),
-            () => o.leastHeldMs(depsOf, sizes),
-          ),
-        machines: () => o.machines(),
-        idealMs: () => o.idealMs(depsOf, sizes),
-        advice: () => o.advice(depsOf, sizes),
-        profile: () => o.profile(),
-        running: (id) => o.where(id),
-        unneeded: (id) => o.unneeded(id),
-        demand(remaining, misses) {
-          if (pending === undefined) o.probed(remaining.size, misses.size)
-          o.missed = misses
-          pending = remaining
-          sure = misses
-          if (misses.size > 0) missed = true
-          replan()
+        distribution: {
+          // Its worker types, in declared order, each with its machines' platforms.
+          ...(types.length === 0
+            ? {}
+            : {
+                workers: types.map(
+                  (t) =>
+                    [
+                      t,
+                      [...new Set(sized.filter((s) => s.type === t).map((s) => s.platform))],
+                    ] as const,
+                ),
+              }),
+          footer: () =>
+            o.footer(
+              () => o.idealMs(depsOf, sizes),
+              () => o.advice(depsOf, sizes),
+              () => o.driftOf(depsOf),
+              () => o.leastHeldMs(depsOf, sizes),
+            ),
+          machines: () => o.machines(),
+          idealMs: () => o.idealMs(depsOf, sizes),
+          advice: () => o.advice(depsOf, sizes),
+          profile: () => o.profile(),
+          running: (id) => o.where(id),
+          unneeded: (id) => o.unneeded(id),
+          demand(remaining, misses) {
+            if (pending === undefined) o.probed(remaining.size, misses.size)
+            o.missed = misses
+            pending = remaining
+            sure = misses
+            if (misses.size > 0) missed = true
+            replan()
+          },
         },
       }
     },

@@ -385,11 +385,15 @@ and `execute`, which runs one command. A task every executor declines
 runs on this machine.
 
 A task with `exec.sandbox` is offered only to an
-executor that declares `sandbox: true` and enforces `req.sandbox`;
-otherwise vx runs it here, in its own sandbox.
+executor whose `capabilities` say `sandbox: true` and that enforces
+`req.sandbox`; otherwise vx runs it here, in its own sandbox.
 
 Stop on `req.signal` (Ctrl-C or `exec.timeout`), and stop the shell's
 children too: vx cannot reach them.
+
+For Distributed task execution, the executor also fills `distribution`:
+where each task runs, its footer rows, its machines. Each worker runs its
+tasks through `workerRuntime()`.
 
 ```ts
 import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'

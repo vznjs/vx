@@ -533,7 +533,7 @@ use your own instead.
   free that it fits, so workers fill before the next takes work and the
   ones the rest no longer needs fall idle and leave.
 - A sandboxed task runs on a worker inside the worker's own sandbox, with
-  the same `exec.sandbox`, built there (`sandboxRequestFor`): its paths,
+  the same `exec.sandbox`, built there (`workerRuntime().prepare`): its paths,
   walls and credential stores are the worker's, so an orchestrator on
   Linux can run macOS workers. A violation there fails it here, named in
   this checkout's paths. An empty file it wrote over a write grant's
@@ -902,7 +902,7 @@ does and links it from the job summary.
 After the run, `dte()` replays it perfectly: each task as long as it held
 its worker and with the cores it used meanwhile, on as many
 workers as the sizes allow, each joining after its platform's fastest
-real warm-up. That ideal end (`TaskExecutor.idealMs`) sits beside the
+real warm-up. That ideal end (`distribution.idealMs`) sits beside the
 real time in the run summary and the footer's `ideal` line, and
 `@vzn/vx-ci` prints it.
 

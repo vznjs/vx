@@ -42,6 +42,8 @@ export {
   type WorkerAdvice,
   type ServerSpec,
   type TaskExecutor,
+  type ExecutorCapabilities,
+  type Distribution,
   type TaskInputs,
   type TaskPlacement,
   type ResolvedSandboxConfig,

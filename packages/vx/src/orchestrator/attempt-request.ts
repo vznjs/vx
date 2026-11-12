@@ -12,7 +12,7 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
   // A remote executor enforces it where it runs the task. Armed before the
   // streams' mask: its start holds the proxy's token, which the task's env
   // carries (`initSandbox`).
-  if (policy.sandboxed && args.executor.remote !== true) {
+  if (policy.sandboxed && args.executor.capabilities?.remote !== true) {
     await args.run.armSandbox?.()
     secrets.refresh()
   }

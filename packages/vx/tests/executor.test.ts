@@ -152,7 +152,9 @@ describe('selectExecutor', () => {
   it('never offers a pinned-local task to a remote executor, even one that accepts everything', () => {
     const remote: TaskExecutor = {
       name: 'r',
-      remote: true,
+      capabilities: {
+        remote: true,
+      },
       execute: () => Promise.reject(new Error('unused')),
     }
     expect(selectExecutor([remote, accepting], placement({ pinnedLocal: true }))).toBe(accepting)

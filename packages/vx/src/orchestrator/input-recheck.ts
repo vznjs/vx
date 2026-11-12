@@ -133,7 +133,7 @@ export async function keyStillTrue(
   // keyed after it (stable-keys.ts) must not read the project's run-start
   // facts.
   if (stability.strategy === 'unchecked' && described!.hash === hash) {
-    if (args.executor.remote !== true)
+    if (args.executor.capabilities?.remote !== true)
       forgetUndeclaredWrites(
         args.node,
         args.run.gitFilesCache,

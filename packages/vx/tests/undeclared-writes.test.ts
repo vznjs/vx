@@ -299,9 +299,12 @@ describe('execute-task drops what the command may have written, and nothing else
       const sandboxed = { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } }
       expect(await survivors(sandboxed, ranHere)).toEqual(all)
       await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
-      expect(await survivors({ exec: { command: 'true' } }, { ...ranHere, remote: true })).toEqual(
-        all,
-      )
+      expect(
+        await survivors(
+          { exec: { command: 'true' } },
+          { ...ranHere, capabilities: { remote: true } },
+        ),
+      ).toEqual(all)
       await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
       const cached = {
         exec: { command: 'true' },
