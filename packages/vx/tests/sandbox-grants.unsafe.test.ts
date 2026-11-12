@@ -479,7 +479,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
 describe.skipIf(!available || process.platform !== 'linux')(
   'an undeclared read, run for real',
   () => {
-    // The landing's fifth callout (a workspace file you did not declare is
+    // The landing's sandbox vow (a workspace file you did not declare is
     // out of reach) on the task's own files, as a real trace: `app#build`
     // reads `banner.txt` without declaring it and fails with exactly one
     // violation line naming it, and declaring the file lets the task pass. (The Guide's stale-hit demo,

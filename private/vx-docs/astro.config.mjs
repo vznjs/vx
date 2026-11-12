@@ -154,7 +154,7 @@ export default defineConfig({
           tag: 'meta',
           attrs: {
             property: 'og:image:alt',
-            content: 'vx: Task orchestration you own.',
+            content: 'vx: Run everything. Own everything.',
           },
         },
         {

@@ -36,6 +36,8 @@ export interface Wire {
 
 export interface Step {
   id: string
+  /** The anchor old links land on, where one does. */
+  anchor?: string
   title: string
   /** One sentence, backticks as code. */
   line: string
@@ -92,8 +94,9 @@ export const WIRES: Wire[] = [
 export const STEPS: Step[] = [
   {
     id: 'lock',
+    anchor: 'tasks',
     title: 'Lock',
-    line: 'A run reads only the lock `vx lock` wrote from your configs, so no config is evaluated at run time.',
+    line: 'Your configs resolve once into a lock, and every run reads only the lock.',
     tone: 'read',
     boxes: ['ws'],
     stages: ['lock', 'graph'],
@@ -101,8 +104,9 @@ export const STEPS: Step[] = [
   },
   {
     id: 'key',
+    anchor: 'changed',
     title: 'Key',
-    line: 'Each task’s key covers its files, its config and its own project’s dependencies from the lockfile.',
+    line: 'Each task is keyed on its own files, config and dependencies, so one edit reruns only what it touches.',
     tone: 'read',
     boxes: ['lockfile'],
     stages: ['key'],
@@ -110,8 +114,9 @@ export const STEPS: Step[] = [
   },
   {
     id: 'schedule',
+    anchor: 'parallel',
     title: 'Schedule',
-    line: 'The history server hands over each task’s usual time, so the critical path starts first.',
+    line: 'Every task’s usual time comes from shared history, so the longest chain starts first.',
     tone: 'read',
     boxes: ['history'],
     stages: ['schedule'],
@@ -119,8 +124,9 @@ export const STEPS: Step[] = [
   },
   {
     id: 'cache',
+    anchor: 'cache',
     title: 'Cache',
-    line: 'The local cache answers first, then your remote; a hit restores the files and nothing runs.',
+    line: 'Your local cache answers first, then your remote, and a hit puts the files back without running anything.',
     tone: 'remote',
     boxes: ['cache', 'reapi', 'migrate'],
     stages: ['cache'],
@@ -129,7 +135,7 @@ export const STEPS: Step[] = [
   {
     id: 'distribute',
     title: 'Distribute',
-    line: 'The misses go to workers your CI starts, through a relay that passes orders and stores nothing.',
+    line: 'Whatever is left fans out to workers your own CI starts, through a relay that stores nothing.',
     tone: 'dte',
     boxes: ['relay', 'w1', 'w2', 'w3', 'w4'],
     stages: ['run'],
@@ -138,7 +144,7 @@ export const STEPS: Step[] = [
   {
     id: 'collect',
     title: 'Collect',
-    line: 'Each worker saves its outputs to the cache under the task’s key, and the run restores them as its own.',
+    line: 'Workers push outputs into the cache under each task’s key, and your run pulls them back as its own.',
     tone: 'remote',
     boxes: ['w4', 'cache'],
     stages: ['cache'],
@@ -147,7 +153,7 @@ export const STEPS: Step[] = [
   {
     id: 'report',
     title: 'Report',
-    line: 'Every task lands in your OpenTelemetry backend, the GitHub job summary and the shared history.',
+    line: 'Every task lands as a span in OpenTelemetry, a row in your GitHub summary and a line of shared history.',
     tone: 'report',
     boxes: ['otel', 'ci', 'history'],
     stages: ['report'],

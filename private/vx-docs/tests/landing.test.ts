@@ -1,87 +1,35 @@
-// The landing page is the whole story (2026-09-28; design/site-short-2026-09.md
-// § Laws; 2026-10-02: vx is its own tool, Turbo and Nx only via migration):
-// the hero, the benchmark chart and why, how to start, the one picture with its six
-// callouts, the four pillars, and a strip of the feature pages. These rows read the page as it shipped,
-// `dist/index.html`, which the `build` task writes, and the picture as data
-// (src/components/landing/one-run.ts). What the design says is written out
-// here by hand, never read from the module it holds.
-//
-// The measurements come from src/data/bench.json (bench.data); the chart's
-// figures are held to it below.
+// The landing page (2026-11-12, rebuilt: the system graph is the hero, in
+// 3D over a grid, standing up as you scroll and playing one CI run). These
+// rows read the page as it shipped, `dist/index.html`, which the `build`
+// task writes, and the graph as data (src/components/landing/system-map.ts).
+// What the design says is written out here by hand; every figure is held to
+// the site's data: src/data/bench.json (bench.data) and the conformance
+// results.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
 import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
-import { CALLOUTS, oneRun } from '../src/components/landing/one-run.js'
-import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
 import * as map from '../src/components/landing/system-map.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
-// Every section below the hero, top to bottom.
-const SECTIONS = [
-  'system',
-  'conformance',
-  'bench',
-  'dte',
-  'plugins',
-  'agents',
-  'shipping',
-  'try',
+// Every band under the stage, top to bottom.
+const SECTIONS = ['proof', 'speed', 'dte', 'plugins', 'agents', 'start']
+
+// The anchors the old chapters and landings redirect to (redirects.test.ts),
+// each on the step, vow or card that now says it.
+const ANCHORS = [
   'one-run',
-  'pillars',
-  'features',
-]
-
-// The six lines under the picture, as the design writes them, each at the
-// anchor the old chapters redirect to.
-const LINES = [
-  ['tasks', '1 Tasks. app builds after what it uses.'],
-  ['parallel', '2 Parallel. ui and api build at once.'],
-  ['cache', '3 Cache. Unchanged work comes back from the cache.'],
-  ['changed', '4 Only what changed. You edited app; only app runs.'],
-  ['sandbox', '5 Sandbox. A workspace file you did not declare is out of reach.'],
-  ['plugins', '6 Plugins. Swap the cache, runner or telemetry. No fork.'],
-]
-
-// The picture, as the design draws it: box → tone and label (and sub line),
-// arrows, frames, and the words of its notes by tone.
-const BOXES = [
-  'api ok: api#build / from cache',
-  'app accent: app#build / you edited app',
-  'cache default: cache',
-  'graph default: graph',
-  'key default: key',
-  'otel default: OpenTelemetry',
-  'remote default: remote cache',
-  'run default: run',
-  'schedule default: schedule',
-  'secrets muted: ../secrets.env',
-  'telemetry default: telemetry',
-  'ui ok: ui#build / from cache',
-  'utils ok: utils#build / from cache',
-]
-const ARROWS = [
-  'api → app default',
-  'app → secrets danger: ✕ denied',
-  'otel → telemetry default dashed',
-  'remote → cache default dashed',
-  'ui → app default',
-  'utils → api default',
-  'utils → ui default',
-]
-const FRAMES = ['default: a run’s stages', 'default: at once', 'link: sandbox']
-const STAGES = ['graph', 'key', 'schedule', 'run', 'cache', 'telemetry']
-
-// The four pillars, in order: title, and the Docs page each links.
-const PILLARS = [
-  ['Correctness', 'caching/'],
-  ['Sandbox', 'docs/sandboxing/'],
-  ['Extensibility', 'docs/plugins/'],
-  ['Freedom', 'guides/migrate/'],
+  'tasks',
+  'changed',
+  'parallel',
+  'cache',
+  'sandbox',
+  'extensible',
+  'plugins',
 ]
 
 // Every internal link the page carried before the short site (the built
@@ -199,191 +147,139 @@ function resolves(link: string): string | undefined {
   return undefined
 }
 
-/** What a picture says, apart from where: boxes, arrows and frames as sorted
- *  lines, and its notes' words per tone, in order. */
-function says(p: Picture): {
-  boxes: string[]
-  arrows: string[]
-  frames: string[]
-  notes: string[]
-} {
-  const words = new Map<string, string[]>()
-  for (const n of p.notes ?? []) {
-    const tone = n.tone ?? 'muted'
-    words.set(tone, [...(words.get(tone) ?? []), ...n.text.split(/\s+/)])
-  }
-  return {
-    boxes: p.boxes
-      .map((b) => `${b.id} ${b.tone ?? 'default'}: ${b.label}${b.sub ? ` / ${b.sub}` : ''}`)
-      .sort(),
-    arrows: (p.arrows ?? [])
-      .map(
-        (a) =>
-          `${a.from} → ${a.to} ${a.tone ?? 'default'}${a.dashed ? ' dashed' : ''}${a.label ? `: ${a.label}` : ''}`,
-      )
-      .sort(),
-    frames: (p.frames ?? []).map((f) => `${f.tone ?? 'default'}: ${f.label}`).sort(),
-    notes: [...words].map(([tone, w]) => `${tone}: ${w.join(' ')}`).sort(),
-  }
-}
-
 describe('the landing page', () => {
   const html = page()
-  const h1At = html.indexOf('<h1')
-  const hero = html.slice(h1At, html.indexOf('<section', h1At))
+  const stage = /<section class="stage"[\s\S]*?<\/section>/.exec(html)![0]
 
-  it('says what vx is in one line, then the sections in order', () => {
+  it('says it in one line, then the bands in order', () => {
     const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
-    expect(text(h1[0]![1]!)).toBe('Task orchestration you own.')
-    expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'One graph with every piece wired in: your cache, history, workers and telemetry, all of it yours to host.',
+    expect(text(h1[0]![1]!)).toBe('Run everything. Own everything.')
+    expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(stage)![1]!)).toBe(
+      'One task graph from your laptop to every machine your CI can start, with the cache, the history, the workers and the telemetry all yours to host.',
     )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
-    expect(h1[0]!.index!).toBeLessThan(ids[0]!.index!)
+    expect(html.indexOf('<section class="stage"')).toBeLessThan(ids[0]!.index!)
   })
 
-  it('offers the install command, the quickstart and GitHub, nothing else', () => {
-    expect(hero).toContain('data-copy="bunx @vzn/vx init"')
-    expect(hrefs(hero)).toEqual([`${BASE}quickstart/`, 'https://github.com/vznjs/vx'])
-    const buttons = [...hero.matchAll(/<a\b[^>]*class="btn [^"]*"[^>]*>([\s\S]*?)<\/a>/g)]
-    expect(buttons.map((m) => text(m[1]!))).toEqual(['Quickstart →', 'GitHub'])
-  })
-
-  // The demo is a real run (scripts/terminal-demo.ts); core's
-  // examples.unsafe.test.ts re-runs it against the committed file.
-  it('shows the recorded run under the buttons', () => {
-    const imgs = [...hero.matchAll(/<img\b[^>]*class="demo"[^>]*src="([^"]+)"/g)].map((m) => m[1])
-    expect(imgs).toEqual([`${BASE}demo.svg`])
-    expect(readFileSync(path.join(DIST, 'demo.svg'), 'utf8')).toContain('$ </tspan>')
-  })
-
-  // It prints line by line, but a line is hidden only during its own delay:
-  // a renderer with no animation, or reduced motion, shows the whole run.
-  it('animates the demo without ever depending on the animation', () => {
-    const svg = readFileSync(path.join(DIST, 'demo.svg'), 'utf8')
-    const style = /<style>([\s\S]*?)<\/style>/.exec(svg)![1]!
-    const textRule = /(?:^|\n)\s*text \{([^}]*)\}/.exec(style)![1]!
-    expect(textRule).toContain('animation: hide 0.01s backwards')
-    expect(textRule).not.toContain('opacity')
-    expect(style).toContain('@media (prefers-reduced-motion: reduce) { text { animation: none; } }')
-    const delays = [...svg.matchAll(/<text [^>]*style="animation-delay:([\d.]+)s"/g)].map((m) =>
-      Number(m[1]),
-    )
-    expect(delays.length).toBe([...svg.matchAll(/<text /g)].length)
-    expect(delays).toEqual([...delays].sort((x, y) => x - y))
-  })
-
-  it('draws the one picture, both layouts, and lists its six lines at their anchors', () => {
-    const run = section(html, 'one-run')
-    const figures = [...run.matchAll(/<figure\b[^>]*data-picture="([^"]+)"/g)].map((m) => m[1])
-    expect(figures).toEqual(['one-run'])
-    const svgs = [...run.matchAll(/<svg\b[^>]*data-layout="(\w+)"[^>]*>/g)].map((m) => m[1])
-    expect(svgs).toEqual(['wide', 'narrow'])
-    const items = [...run.matchAll(/<li\b[^>]*\bid="([\w-]+)"[^>]*>([\s\S]*?)<\/li>/g)]
-    const line = (li: string): string => {
-      const [, n, rest] = /<span class="n">(\d)<\/span>\s*<span>([\s\S]*)<\/span>/.exec(li)!
-      return `${n} ${text(rest!)}`
-    }
-    expect(items.map((m) => [m[1], line(m[2]!)])).toEqual(LINES)
-    expect(run).not.toMatch(/<script\b|\son[a-z]+=/)
-  })
-
-  // The numbers are the measured data's; the shape is here: one chart per number,
-  // vx's bar first, no bar saying how much faster vx is (2026-10-12), each bar
-  // as long as its time against the slowest, the formula under the chart,
-  // and three reasons under it.
-  it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
-    const bench = section(html, 'bench')
-    expect(text(bench)).toContain('Fast, never at the cost of a correct cache.')
-    expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
-    expect(bench).not.toContain('<table')
-    const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
-      (m) => m[1]!,
-    )
-    expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
-      'Nothing changed',
-      'Nothing changed, outputs restored',
-      'Cold build',
-      'Cold build: CPU the runner burns',
-    ])
-    // Every chart is the time a runner adds over the ideal run, never a
-    // total (2026-10-09: "the overhead is what matters").
-    for (const f of figures) {
-      const bars = [
-        ...f.matchAll(/<div class="vx-bar([^"]*)" style="--w:([\d.]+)%">([\s\S]*?)<\/div>/g),
-      ]
-      expect(
-        bars.map((m) => text(/<span class="vx-bar-name">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
-      ).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task'])
-      expect(bars.map((m) => m[1])).toEqual([' vx-bar-lead', '', '', ''])
-      expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
-      const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
-      expect(notes).toEqual([undefined, undefined, undefined, undefined])
-    }
-    // Each bar prints the measured data's figure for its runner and row.
-    const ROWS = ['warm', 'restore', 'cold', 'cpu']
-    figures.forEach((f, i) => {
-      const values = [...f.matchAll(/<span class="vx-bar-value">([\s\S]*?)<\/span>/g)].map((m) =>
-        text(m[1]!),
-      )
-      expect(values).toEqual(
-        ['vx', 'turbo', 'nx', 'vt'].map((r) => FIGURES.get(`${r}.${ROWS[i]}`) ?? 'missing'),
-      )
-    })
-    expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'Time each tool adds over the ideal run; lower is better.',
-    )
-    // The workload sits under every bench chart (2026-10-09).
-    expect(
-      text(/<p class="bench-formula bench-workload">([\s\S]*?)<\/p>/.exec(bench)![1]!),
-    ).toMatch(
-      /^Benchmark workload: a synthetic monorepo of [\d,]+ projects and [\d,]+ tasks .* real repos with uneven task times will differ\.$/,
-    )
-    const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
-      text(m[1]!),
-    )
-    expect(notes).toHaveLength(1)
-    const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
-    expect(reasons).toHaveLength(3)
-  })
-
-  // The hero's three facts: ownership and extensibility, never a speed
-  // multiple (2026-10-12: the benchmark shows speed, copy does not).
-  it('leads with seams, no paid tier and nothing to run beside it', () => {
-    const wins = [
-      ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
+  it('offers the install command, the quickstart and GitHub first', () => {
+    const copy = /<div class="stage-copy">([\s\S]*?)<div class="stage-world"/.exec(stage)![1]!
+    expect(copy).toContain('data-copy="bunx @vzn/vx init"')
+    const buttons = [
+      ...copy.matchAll(/<a\b[^>]*class="btn [^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g),
     ]
-    expect(wins.map((m) => text(m[2]!))).toEqual([
-      'pipeline stages a plugin can fill',
-      'sandbox, remote cache and remote execution, no paid tier',
-      'daemons, accounts or cloud services to run it',
+    expect(buttons.map((m) => [text(m[2]!), m[1]])).toEqual([
+      ['Quickstart →', `${BASE}quickstart/`],
+      ['GitHub', 'https://github.com/vznjs/vx'],
     ])
-    expect(wins.map((m) => text(m[1]!))).toEqual(['15', 'MIT', '0'])
   })
 
-  // The first argument after the hero: every tool's score on one suite,
-  // from the site's conformance data, vx first.
-  it('scores every tool on the conformance suite, first after the hero', () => {
-    const cfm = section(html, 'conformance')
-    expect(text(cfm)).toContain(`${RESULTS.cases.length} cases`)
-    expect(text(cfm)).toContain('Every test in vx, Turborepo, Nx, Vite Task, Nix and moon')
-    const rows = [...cfm.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1]!)
-    const shown = rows.map((r) => [
-      text(/class="score-tool"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
-      text(/class="score-pct"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
-      text(/class="score-count"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
+  // Ownership and extensibility, never a speed multiple (2026-10-12: the
+  // benchmark shows speed, copy does not).
+  it('leads with seams, no paid tier and nothing to run beside it', () => {
+    const specs = [
+      ...stage.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
+    ]
+    expect(specs.map((m) => `${text(m[1]!)} ${text(m[2]!)}`)).toEqual([
+      '15 stages a plugin can take over',
+      'MIT every piece, no paid tier',
+      '0 daemons, accounts or clouds',
     ])
-    expect(shown).toEqual(
+  })
+
+  // The graph is drawn once per layout, and every step of the run is in the
+  // HTML, so the page reads whole with no script.
+  it('draws the graph, both layouts, and lists every step of the run', () => {
+    const svgs = [...stage.matchAll(/<svg\b[^>]*data-layout="(\w+)"/g)].map((m) => m[1])
+    expect(svgs).toEqual(['wide', 'narrow'])
+    for (const b of map.BOXES)
+      expect([...stage.matchAll(new RegExp(`data-box="${b.id}"`, 'g'))]).toHaveLength(2)
+    for (const w of map.WIRES)
+      expect([...stage.matchAll(new RegExp(`data-wire="${w.id}"`, 'g'))]).toHaveLength(2)
+    const steps = [...stage.matchAll(/<li\b[^>]*data-step="\d"[^>]*>([\s\S]*?)<\/li>/g)].map(
+      (m) => [
+        text(/<strong class="story-title">([\s\S]*?)<\/strong>/.exec(m[1]!)![1]!),
+        text(/<p>([\s\S]*?)<\/p>/.exec(m[1]!)![1]!),
+      ],
+    )
+    expect(steps).toEqual(map.STEPS.map((s) => [s.title, s.line.replaceAll('`', '')]))
+  })
+
+  it('keeps every anchor the redirects land on', () => {
+    expect(
+      ANCHORS.filter((a) => [...html.matchAll(new RegExp(`\\bid="${a}"`, 'g'))].length !== 1),
+    ).toEqual([])
+  })
+
+  // Passes out of every case, rounded down, from the site's conformance data.
+  it('scores every tool on the conformance suite, first after the stage', () => {
+    const proof = section(html, 'proof')
+    expect(text(proof)).toContain(`${RESULTS.cases.length} cases`)
+    expect(text(proof)).toContain('Every test in vx, Turborepo, Nx, Vite Task, Nix and moon')
+    const vx = RESULTS.scores['vx']!.all!
+    expect(text(/<div class="score-big">([\s\S]*?)<\/div>/.exec(proof)![1]!)).toBe(
+      `${vx.pass} of ${vx.of} cases pass on vx`,
+    )
+    const cols = [...proof.matchAll(/<li\b[^>]*style="--h:[\d.]+"[^>]*>([\s\S]*?)<\/li>/g)].map(
+      (m) => [
+        text(/class="col-name">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
+        text(/class="col-pct">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
+        text(/class="col-sup">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
+      ],
+    )
+    expect(cols).toEqual(
       TOOLS.map((t) => {
         const all = RESULTS.scores[t]!.all!
         return [toolName(t), percent(all), `supports ${supports(all)}`]
       }),
     )
-    expect(shown.map((s) => s[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix', 'moon'])
-    expect(hrefs(cfm)).toEqual([`${BASE}conformance/`])
-    expect(cfm).not.toContain('<table')
+    expect(cols.map((c) => c[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix', 'moon'])
+    expect(hrefs(proof)).toEqual([`${BASE}conformance/`])
+  })
+
+  // Every race is the time a runner adds over the ideal run, never a total
+  // (2026-10-09), each lane as long as its time against the slowest.
+  it('races vx, Turborepo, Nx and Vite Task on the measured figures', () => {
+    const speed = section(html, 'speed')
+    const races = [...speed.matchAll(/<figure class="race">([\s\S]*?)<\/figure>/g)].map(
+      (m) => m[1]!,
+    )
+    expect(races.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
+      'Nothing changed',
+      'Nothing changed, outputs restored',
+      'Cold build',
+      'Cold build: CPU the runner burns',
+    ])
+    const ROWS = ['warm', 'restore', 'cold', 'cpu']
+    races.forEach((f, i) => {
+      const lanes = [
+        ...f.matchAll(/<div class="lane( vx)?" style="--w:([\d.]+);[^"]*">([\s\S]*?)<\/div>/g),
+      ]
+      expect(
+        lanes.map((m) => text(/class="lane-name">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
+      ).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task'])
+      expect(lanes.map((m) => m[1] ?? '')).toEqual([' vx', '', '', ''])
+      expect(Math.max(...lanes.map((m) => Number(m[2])))).toBe(100)
+      expect(
+        lanes.map((m) => text(/class="lane-value">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
+      ).toEqual(['vx', 'turbo', 'nx', 'vt'].map((r) => FIGURES.get(`${r}.${ROWS[i]}`) ?? 'missing'))
+    })
+    const fine = [...speed.matchAll(/<p class="fine">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
+    expect(fine[0]).toBe('Time each tool adds over the ideal run; lower is better.')
+    expect(fine[1]).toMatch(
+      /^Benchmark workload: a synthetic monorepo of [\d,]+ projects and [\d,]+ tasks .* real repos with uneven task times will differ\.$/,
+    )
+    expect(fine[2]).toBe(FIGURES.get('provenance'))
+    expect(hrefs(speed)).toEqual([`${BASE}benchmarks/`])
+  })
+
+  it('draws Distributed task execution as a run, its facts beside it', () => {
+    const dte = section(html, 'dte')
+    expect(text(dte)).toContain('Distributed task execution')
+    expect([...dte.matchAll(/class="dte-lane"/g)]).toHaveLength(4)
+    expect([...dte.matchAll(/class="dte-block dte-crit"/g)].length).toBeGreaterThan(0)
+    expect(hrefs(dte)).toEqual([`${BASE}plugins/vx-dte/`])
   })
 
   // Every package beside core, a server named beside the plugin that talks to it.
@@ -403,72 +299,53 @@ describe('the landing page', () => {
       ...PKGS.map((p) => `${BASE}plugins/${p}/`),
       `${BASE}docs/plugins/`,
     ])
-    for (const p of ['vx-dte', 'vx-cache', 'vx-history'])
-      expect(text(plugins)).toContain(`@vzn/${p} + @vzn/${p}-server`)
-  })
-
-  // The map: every piece, wide and on a phone, the seven steps listed in
-  // the HTML so the page reads whole with no script.
-  it('draws the system map, both layouts, with every step in the HTML', () => {
-    const sys = section(html, 'system')
-    const svgs = [...sys.matchAll(/<svg\b[^>]*data-layout="(\w+)"/g)].map((m) => m[1])
-    expect(svgs).toEqual(['wide', 'narrow'])
-    for (const b of map.BOXES)
-      expect([...sys.matchAll(new RegExp(`data-box="${b.id}"`, 'g'))]).toHaveLength(2)
-    for (const w of map.WIRES)
-      expect([...sys.matchAll(new RegExp(`data-wire="${w.id}"`, 'g'))]).toHaveLength(2)
-    const steps = [...sys.matchAll(/<li\b[^>]*data-step="\d"[^>]*>([\s\S]*?)<\/li>/g)].map((m) =>
-      text(/<p>([\s\S]*?)<\/p>/.exec(m[1]!)![1]!),
+    const servers = [
+      ...plugins.matchAll(/<a\b[^>]*class="part[^"]*"[^>]*>([\s\S]*?)<\/a>/g),
+    ].flatMap((m) => {
+      const s = /class="part-server">([\s\S]*?)<\/span>/.exec(m[1]!)
+      return s
+        ? [`${text(/class="part-pkg">([\s\S]*?)<\/code>/.exec(m[1]!)![1]!)} ${text(s[1]!)}`]
+        : []
+    })
+    expect(servers).toEqual(
+      ['vx-dte', 'vx-cache', 'vx-history'].map((p) => `@vzn/${p} + @vzn/${p}-server`),
     )
-    expect(steps).toEqual(map.STEPS.map((s) => s.line.replaceAll('`', '')))
   })
 
-  it('draws Distributed task execution as a run, its facts beside it', () => {
-    const dte = section(html, 'dte')
-    expect(text(dte)).toContain('Distributed task execution')
-    expect([...dte.matchAll(/class="dte-lane"/g)]).toHaveLength(4)
-    expect([...dte.matchAll(/class="dte-block dte-crit"/g)].length).toBeGreaterThan(0)
-    expect(hrefs(dte)).toEqual([`${BASE}plugins/vx-dte/`])
+  it('installs the agent skill', () => {
+    const agents = section(html, 'agents')
+    expect(agents).toContain('data-copy="bunx skills add vznjs/vx"')
+    expect(hrefs(agents)).toEqual([`${BASE}docs/agents/`])
   })
 
-  // Four commands on native config, and Turbo or Nx only as a temporary
-  // start through migration, with no speed claim for it.
-  it('shows how to start, and Turbo or Nx only through migration', () => {
-    const start = section(html, 'try')
-    const lines = /<pre class="code"><code>([\s\S]*?)<\/code>/
-      .exec(start)![1]!
-      .split('\n')
-      .map((l) => l.replace(/\s+#.*$/, '').trim())
-    expect(lines).toEqual(['bunx @vzn/vx init', 'vx lock', 'vx run build', 'vx run build'])
-    // `vx init` outside Turbo and Nx writes an empty root project (#3778),
-    // so the block that promises a hit names the task the reader declares.
-    expect(/vx lock +# ([^\n]*)/.exec(start)![1]).toContain('declare a task')
-    const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
-    expect(subs).toEqual([
-      // `vx init` is the one way to start, Turbo and Nx included (2026-10-14).
-      'Coming from Turbo or Nx: the same vx init writes the native vx config from it.',
+  // Four commands on native config; Turbo or Nx only through migration,
+  // with no speed claim for it. `vx init` outside Turbo and Nx writes an
+  // empty root project (#3778), so the hit names the task the reader declares.
+  it('ends on how to start', () => {
+    const start = section(html, 'start')
+    const steps = [...start.matchAll(/<li>\s*<code>([\s\S]*?)<\/code>\s*<span>([\s\S]*?)<\/span>/g)]
+    expect(steps.map((m) => text(m[1]!))).toEqual([
+      'bunx @vzn/vx init',
+      'vx lock',
+      'vx run build',
+      'vx run build',
+    ])
+    expect(text(steps[1]![2]!)).toContain('declare a task')
+    expect(hrefs(start)).toEqual([
+      `${BASE}quickstart/`,
+      `${BASE}guides/migrate/`,
+      `${BASE}features/`,
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })
 
-  it('carries the four pillars in order, each an icon, a title, one short sentence and its page', () => {
-    const cards = [
-      ...section(html, 'pillars').matchAll(
-        /<a\b[^>]*class="card"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g,
-      ),
-    ]
-    expect(
-      cards.map((m) => [
-        text(/<h3\b[^>]*>([\s\S]*?)<\/h3>/.exec(m[2]!)![1]!),
-        m[1]!.slice(BASE.length),
-      ]),
-    ).toEqual(PILLARS)
-    for (const [, , body] of cards) {
-      expect(body).toMatch(/<svg\b/)
-      const sentence = text(/<p\b[^>]*>([\s\S]*?)<\/p>/.exec(body!)![1]!)
-      expect({ sentence, one: sentence.split(/[.!?]\s/).length }).toEqual({ sentence, one: 1 })
-      expect(sentence.split(' ').length).toBeLessThanOrEqual(15)
-    }
+  // At rest (no script, reduced motion) the page is whole and still: the
+  // motion is script on top, and no keyframe loops forever (motion-budget).
+  it('keeps the motion off with reduced motion', () => {
+    const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => m[1]!)
+      .join('\n')
+    expect(scripts).toContain('prefers-reduced-motion: reduce')
   })
 
   it('writes no paragraph longer than one sentence', () => {
@@ -493,7 +370,7 @@ describe('the landing page', () => {
   })
 })
 
-describe('the system map, as data', () => {
+describe('the system graph, as data', () => {
   it('places every box and wire in both layouts, inside the drawing', () => {
     for (const L of Object.values(map.LAYOUTS)) {
       for (const b of map.BOXES) {
@@ -519,67 +396,6 @@ describe('the system map, as data', () => {
     // Every piece takes part in the run.
     const lit = new Set(map.STEPS.flatMap((s) => s.boxes))
     expect(map.BOXES.filter((b) => b.id !== 'core' && !lit.has(b.id)).map((b) => b.id)).toEqual([])
-  })
-})
-
-describe('the one picture, as data', () => {
-  it('says what the design draws, wide and on a phone', () => {
-    const want = { boxes: BOXES, arrows: ARROWS, frames: FRAMES }
-    const wide = says(oneRun)
-    const phone = says(narrowOf(oneRun)!)
-    expect({ boxes: wide.boxes, arrows: wide.arrows, frames: wide.frames }).toEqual(want)
-    expect({ boxes: phone.boxes, arrows: phone.arrows, frames: phone.frames }).toEqual(want)
-  })
-
-  it('numbers the six callouts on the drawing, in order, beside the note that app runs', () => {
-    const marks = CALLOUTS.map((c) => c.mark)
-    expect(marks).toEqual(['①', '②', '③', '④', '⑤', '⑥'])
-    for (const p of [oneRun, narrowOf(oneRun)!]) {
-      expect(says(p).notes).toEqual([
-        `accent: ${marks.slice(0, 4).join(' ')} ✎ runs ${marks.slice(4).join(' ')}`,
-        'muted: yours plugs in the same way',
-      ])
-    }
-  })
-
-  it('runs the stages below the run, in the pipeline’s order, the plugins hanging under them', () => {
-    const RUN = ['utils', 'ui', 'api', 'app', 'secrets']
-    const PLUGINS = ['remote', 'otel']
-    for (const p of [oneRun, narrowOf(oneRun)!]) {
-      const ys = (ids: string[]): number[] =>
-        p.boxes.filter((b) => ids.includes(b.id)).map((b) => b.y)
-      const stages = p.boxes.filter((b) => STAGES.includes(b.id))
-      const order = [...stages].sort((a, b) => a.y - b.y || a.x - b.x).map((b) => b.id)
-      expect(order).toEqual(STAGES)
-      expect(Math.min(...ys(STAGES))).toBeGreaterThan(Math.max(...ys(RUN)))
-      expect(Math.min(...ys(PLUGINS))).toBeGreaterThan(Math.max(...ys(STAGES)))
-    }
-  })
-
-  it('keeps utils, ui and api inside neither frame but their own, and app inside the sandbox', () => {
-    for (const p of [oneRun, narrowOf(oneRun)!]) {
-      const inside = (id: string, label: string): boolean => {
-        const b = p.boxes.find((x) => x.id === id)!
-        const f = p.frames!.find((x) => x.label === label)!
-        const w = b.w ?? 130
-        const h = b.h ?? (b.sub === undefined ? 52 : 60)
-        return b.x >= f.x && b.y >= f.y && b.x + w <= f.x + f.w && b.y + h <= f.y + f.h
-      }
-      expect(['utils', 'ui', 'api', 'app', 'secrets'].map((id) => inside(id, 'at once'))).toEqual([
-        false,
-        true,
-        true,
-        false,
-        false,
-      ])
-      expect(['utils', 'ui', 'api', 'app', 'secrets'].map((id) => inside(id, 'sandbox'))).toEqual([
-        false,
-        false,
-        false,
-        true,
-        false,
-      ])
-    }
   })
 })
 

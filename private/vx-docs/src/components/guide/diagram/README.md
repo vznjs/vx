@@ -14,14 +14,13 @@ site at `/internals/diagrams/` (`src/content/docs/internals/diagrams.mdx`).
 ## A page's pictures
 
 A page keeps its pictures as data in a module of their own, so its rows
-read the same values the page draws. The landing's one picture is
-`src/components/landing/one-run.ts`, held by `tests/landing.test.ts`:
+read the same values the page draws:
 
 ```astro
 import Diagram from '../components/guide/diagram/Diagram.astro'
-import { oneRun } from '../components/landing/one-run.js'
+import { picture } from '../components/my-page/pictures.js'
 
-<Diagram {...oneRun} />
+<Diagram {...picture} />
 ```
 
 A new pictures module is listed in `tests/diagram-kit.test.ts`'s

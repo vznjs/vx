@@ -106,8 +106,8 @@ describe('no benchmark figure on the site is typed by hand', () => {
     const landing = readFileSync(path.join(site, 'src', 'pages', 'index.astro'), 'utf8')
     expect(landing).toContain("from '../bench/data.ts'")
     const block = landing.slice(
-      landing.indexOf('const benchTable'),
-      landing.indexOf('const benchBars'),
+      landing.indexOf('// ---- the race'),
+      landing.indexOf('// ---- the parts'),
     )
     expect(block.length).toBeGreaterThan(0)
     expect(block.match(/['`]\d[\d,.]*\s?(?:ms|s|min)\b/g)).toBeNull()

@@ -2175,7 +2175,7 @@ describe('the sandbox pitch claims what the sandbox does', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
     expect(flat(path.join(repo, 'private', 'vx-docs', 'src', 'pages', 'index.astro'))).toContain(
-      "body: 'A sandboxed task cannot read a workspace file it did not declare.'",
+      '<strong>Sandboxed.</strong> A task cannot read a workspace file it did not declare.',
     )
     expect(flat(path.join(repo, 'README.md'))).toContain(
       'a workspace file the task did not declare is out of its reach, so it cannot poison the cache.',
