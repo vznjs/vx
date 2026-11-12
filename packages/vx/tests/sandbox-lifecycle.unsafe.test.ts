@@ -1081,6 +1081,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
       // Blocks vx three seconds after each task spawn returns, so the task
       // runs before vx's next step, as on a loaded box (B-9).
       stall = false,
+      // A `bwrap` first on vx's PATH that drops `--die-with-parent`: the
+      // state bwrap's own startup race leaves (below).
+      deaf = false,
     ): Promise<{ started: number; alive: number[]; leaders: number[] }> => {
       const nonce = `${1000 + Math.floor(Math.random() * 1000)}.${process.pid}`
       await addProject(
@@ -1112,9 +1115,24 @@ Bun.spawn = (cmd, opts) => {
 }
 `,
         )
+      const shims = path.join(root, 'shims')
+      if (deaf) {
+        await mkdir(shims)
+        const real = Bun.which('bwrap')!
+        await writeFile(
+          path.join(shims, 'bwrap'),
+          `#!/bin/sh\nfor a; do shift; [ "$a" = --die-with-parent ] || set -- "$@" "$a"; done\nexec ${real} "$@"\n`,
+          { mode: 0o755 },
+        )
+      }
       const proc = Bun.spawn(
         [process.execPath, ...(stall ? ['--preload', preload] : []), BIN, 'run', 'dev', '--all'],
-        { cwd: root, stdout: 'ignore', stderr: 'ignore' },
+        {
+          cwd: root,
+          stdout: 'ignore',
+          stderr: 'ignore',
+          ...(deaf ? { env: { ...process.env, PATH: `${shims}:${process.env['PATH']}` } } : {}),
+        },
       )
       let pids: number[] = []
       const deadline = Date.now() + 20_000
@@ -1164,6 +1182,37 @@ Bun.spawn = (cmd, opts) => {
       'a traced sandboxed one-shot task’s children die with vx that is descheduled after the spawn',
       async () => {
         expect(await survivors(true, false, true)).toEqual({
+          started: 2,
+          alive: [],
+          leaders: [],
+        })
+      },
+      TIMEOUT,
+    )
+
+    // bwrap sets the namespace's `--die-with-parent` after its monitor
+    // forks it: a monitor killed in those milliseconds (vx's `kill -9`, or
+    // vx stopping a task it just spawned) left the namespace's init, the
+    // command and the proxy bridges under init for good, the port held
+    // (observed 2 h on, 2026-11-12; reproduced with a SIGKILL 2-8 ms into
+    // bwrap's start). The watcher on fd 3 ends the namespace when vx's end
+    // closes, whatever bwrap did.
+    it(
+      'a sandboxed persistent task’s children die with vx when bwrap’s parent-death signal missed',
+      async () => {
+        expect(await survivors(true, true, false, true)).toEqual({
+          started: 2,
+          alive: [],
+          leaders: [],
+        })
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'a traced sandboxed one-shot task’s children die with vx when bwrap’s parent-death signal missed',
+      async () => {
+        expect(await survivors(true, false, false, true)).toEqual({
           started: 2,
           alive: [],
           leaders: [],

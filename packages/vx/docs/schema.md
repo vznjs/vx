@@ -1895,7 +1895,10 @@ client dials loopback directly, never through the proxy that serves the
 rest of the list (`NO_PROXY`; browsers skip a proxy for loopback). A
 sandboxed server lists its port in `localBinding` so it is reachable
 from outside its own sandbox. Until 2026-11-12 Linux relayed nothing,
-and a sandboxed client met `ECONNREFUSED` whatever it granted.
+and a sandboxed client met `ECONNREFUSED` whatever it granted. On
+Linux a failed sandboxed task refused on a loopback port that a process
+on this machine listens on, and that it does not grant, gets the grant
+to add (`allow: { network: ['localhost:4173'] }`) beside its failure.
 
 **`network` is per-task.** Each sandboxed task reaches only the hosts
 its own list names, and a task that lists none reaches no host, even

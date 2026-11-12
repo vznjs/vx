@@ -1821,6 +1821,21 @@ async function wrapIn(
 }
 
 /**
+ * The in-sandbox watcher's body: each signal name vx writes down fd 3 goes
+ * to the command's group, and the end of the channel (vx closed it once
+ * the task exited, or vx is gone) SIGKILLs that group and the watcher's
+ * own, the runtime's shells and bridges. The namespace's init then has no
+ * child left and exits. bwrap's `--die-with-parent` alone missed: it is
+ * set in the namespace only after bwrap's monitor forks it, and a monitor
+ * killed in those milliseconds (a `kill -9` of vx, a task stopped as it
+ * started) left init, the command and its bridges running under the
+ * host's init, the port held, for hours (2026-11-12).
+ */
+function channelWatch(group: string): string {
+  return `while IFS= read -r s; do kill -s "$s" -- "-${group}"; done; kill -s KILL -- "-${group}" 0`
+}
+
+/**
  * Linux: the user command in a session, and so a process group, of its
  * own. bwrap's `--new-session` puts the runtime's shells (the proxy
  * bridges' script, the seccomp step's) in ONE group with the command, and
@@ -1870,7 +1885,7 @@ function ownGroupCommand(
   if (trace === undefined) {
     const run = `exec ${setsid ?? ''}${shellQuote(sh)} -c ${shellQuote(userCommand)}`
     if (setsid === undefined) return { command: `${tag0} ${run}`, forwards: false, traced: false }
-    const watch = `{ IFS= read -r s && kill -s "$s" -- "-$$"; } 2>/dev/null <&3 3<&- &`
+    const watch = `{ ${channelWatch('$$')}; } 2>/dev/null <&3 3<&- &`
     return { command: `${tag0} ${watch} ${run} 3<&-`, forwards: true, traced: false }
   }
   // Traced, strace runs INSIDE the sandbox, around the command alone:
@@ -1921,7 +1936,7 @@ function ownGroupCommand(
   if (setsid === undefined) {
     return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true }
   }
-  const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
+  const watch = `{ ${channelWatch('$c')}; } 2>/dev/null <&3 3<&- &`
   return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 
@@ -3072,6 +3087,11 @@ async function runSandboxedOnce(
         keyOf(args),
       )
       if (named !== undefined) violations.push(named)
+      const refused = refusedLoopbackHint(
+        `${outTail.join('')}\n${errTail.join('')}`.split('\n').slice(-64),
+        [...loopbackPorts(args.config.network), ...bridgedPorts(args.config)],
+      )
+      if (refused !== undefined) violations.push(refused)
     }
   }
 
@@ -3295,6 +3315,77 @@ function hiddenGitHint(
         : `${said} Its data lies outside the workspace, walled on purpose, so vx suggests no grant.`,
     },
   }
+}
+
+/**
+ * An output line saying a connection was refused (Node's `ECONNREFUSED`,
+ * a browser's `ERR_CONNECTION_REFUSED`, curl's "Couldn't connect"), and
+ * the loopback ports it names (`refusedLoopbackHint`).
+ */
+const REFUSED = /ECONNREFUSED|ERR_CONNECTION_REFUSED|Connection refused|Couldn't connect to server/i
+const LOOPBACK_PORT = /(?:localhost|127\.0\.0\.1|\[::1\]|::1)(?::| port )(\d{1,5})\b/gi
+
+/**
+ * The hint for a failed task refused on a loopback port a process on the
+ * host listens on. On Linux a sandboxed task has a loopback of its own, so
+ * a client dialling a dependency's port there got a bare `ECONNREFUSED`
+ * and no word of the grant that relays it (2026-11-12). Only a port the
+ * host listens on, on loopback or every address, and one not granted
+ * already (`granted`: the task's `network` ports and its own `localBinding`).
+ */
+function refusedLoopbackHint(
+  lines: readonly string[],
+  granted: readonly number[],
+): SandboxViolation | undefined {
+  const named = new Set<number>()
+  for (const line of lines) {
+    if (!REFUSED.test(line)) continue
+    for (const m of line.matchAll(LOOPBACK_PORT)) {
+      const port = Number(m[1])
+      if (port > 0 && port < 65536 && !granted.includes(port)) named.add(port)
+    }
+  }
+  if (named.size === 0 || !procfsIsOwn()) return undefined
+  const listening = hostLoopbackListeners()
+  const ports = [...named].filter((p) => listening.has(p))
+  if (ports.length === 0) return undefined
+  const grants = ports.map((p) => `'localhost:${p}'`).join(', ')
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the task was refused on localhost port${ports.length === 1 ? '' : 's'} ` +
+      `${ports.join(', ')}, which a process on this machine listens on: a sandboxed task has ` +
+      `a loopback of its own. Grant ${ports.length === 1 ? 'it' : 'them'}: ` +
+      `\`allow: { network: [${grants}] }\`.`,
+  }
+}
+
+/** The TCP ports the host listens on at a loopback address or every address. */
+function hostLoopbackListeners(): Set<number> {
+  const reachable = new Set([
+    '0100007F',
+    '00000000',
+    '00000000000000000000000001000000',
+    '00000000000000000000000000000000',
+    '0000000000000000FFFF00000100007F',
+  ])
+  const ports = new Set<number>()
+  for (const file of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    let table: string
+    try {
+      table = readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of table.split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f[3] !== '0A' || f[1] === undefined) continue
+      const [addr, port] = f[1].split(':')
+      if (reachable.has(addr!)) ports.add(Number.parseInt(port!, 16))
+    }
+  }
+  return ports
 }
 
 /** An output line that may name a file its tool found missing (`statedHiddenHint`). */
