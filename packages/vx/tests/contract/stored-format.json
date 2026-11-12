@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v55",
+    "version": "v56",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -279,7 +279,7 @@
     ]
   },
   "artifact": {
-    "version": "vx-cache-v55",
+    "version": "vx-cache-v56",
     "layout": {
       "entries": [
         {

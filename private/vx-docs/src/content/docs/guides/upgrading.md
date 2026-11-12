@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
+### cache: bump the cache format to v56
+
+CACHE_VERSION is vx-cache-v56 and the index schema v56: caches start empty once, so every cached task misses once after upgrading. Re-run vx lock after upgrading: vx-lockfile's digests changed (a workspace package's own version under bun() and npm(), pnpm()'s injected copies), so vx lock --check fails on the old lock.
+
 ### vx-dte: time worker warm-ups as tasks in history
 
 PLUGIN_HOOKS gains measures, before schedule.

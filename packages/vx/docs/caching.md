@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v55'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v56'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -2006,7 +2006,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v55', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v56', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2188,7 +2188,7 @@ CREATE TABLE output_files (
 -- current. Apart from the shared entry: two worktrees overwrote each
 -- other's stamps and every switch restored. No foreign key (the entry
 -- may be the store's); prune and re-save delete what they orphan.
--- v55: and its mtime, since a restore dates a file it writes now; and
+-- v55: and its mtime, since a restore dates a file it writes now. v56:
 -- `root`, a hash of the workspace root's real path in a named cache dir
 -- (0 in a workspace's own index): clones naming one dir share this
 -- index, and overwrote each other's stamps the same way.
@@ -2582,6 +2582,12 @@ breaking footer).
 
 ### History
 
+- **v55 → v56**: stored bytes wrong under a key the change does not move
+  (2026-11-12). A task's output bytes that are not UTF-8 are kept as
+  written, in the log and the artifact; a v55 entry holds U+FFFD for them,
+  so it is never read. `SCHEMA_VERSION` moved to v56 with it:
+  `output_stamps` and `output_dirs` gained `root` in their primary key,
+  and a v55 index, which has no such column, failed every run until reset.
 - **v54 → v55**: stored bytes wrong under a key the change does not move
   (2026-11-11). No clean deletes a committed file, so a hit cannot replay
   a run that removed one under its outputs: the restore left it, and the

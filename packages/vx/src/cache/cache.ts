@@ -420,7 +420,12 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //        dependant took a restored upstream as older than its own output
 //        and saved bytes built from another upstream. The cache KEY and
 //        the stored artifact are unchanged.
-export const SCHEMA_VERSION = 'v55'
+//   v56: output_stamps and output_dirs carry root, in their primary key:
+//        clones sharing a named cache dir overwrote each other's stamps.
+//        A v55 index has no such column, so every statement on it failed;
+//        the reset drops it. entry_stdout holds output bytes that are not
+//        UTF-8 as written, which CACHE_VERSION v56 keys apart.
+export const SCHEMA_VERSION = 'v56'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

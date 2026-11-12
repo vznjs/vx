@@ -132,6 +132,29 @@ describe('an upgrade resets the cache in silence', () => {
     expect(index().version).toBe(SCHEMA_VERSION)
   })
 
+  // 2026-11-12: output_stamps and output_dirs gained `root` under an unmoved
+  // v55, and CREATE TABLE IF NOT EXISTS kept a v55 index's tables, so every
+  // run after an upgrade failed `no such column: s.root`.
+  it('a run resets a v55 index whose stamps have no root', async () => {
+    await writeFile(
+      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'mkdir -p dist && echo a > dist/a.txt' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }\n`,
+    )
+    expect(await runOnce()).toEqual([])
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    db.run(`DROP TABLE output_stamps; DROP TABLE output_dirs;
+      CREATE TABLE output_stamps (entry_hash TEXT NOT NULL, path TEXT NOT NULL, ino INTEGER NOT NULL,
+        ctime_ms INTEGER NOT NULL, mtime_ms INTEGER NOT NULL, PRIMARY KEY (entry_hash, path));
+      CREATE TABLE output_dirs (entry_hash TEXT NOT NULL, path TEXT NOT NULL,
+        mtime_ms INTEGER NOT NULL, PRIMARY KEY (entry_hash, path));`)
+    db.close()
+    pokeVersion('v55')
+    expect(await runOnce()).toEqual([])
+    expect(await runOnce()).toEqual([])
+    expect(index()).toMatchObject({ version: SCHEMA_VERSION, entries: 1 })
+  })
+
   // Item 896: a reading verb never resets the index. `vx last`, `vx why`,
   // `vx info` and a dry prune dropped every table of an earlier schema, and
   // of a NEWER one too, announcing "vx upgraded" after a downgrade.

@@ -258,7 +258,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- shared and the disk is not: two worktrees on one store overwrote each
     -- other's stamps, and every switch between them restored. No foreign
     -- key (the entry may live in another database); a prune and a re-save
-    -- delete what they orphan. root: a hash of the workspace root's real
+    -- delete what they orphan. root (v56): a hash of the workspace root's real
     -- path in a named cache dir, which clones may share and so overwrote
     -- each other's stamps the same way; 0 in a workspace's own index.
     CREATE TABLE IF NOT EXISTS main.output_stamps (
