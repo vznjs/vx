@@ -6,9 +6,9 @@
 // What the summary's Workers table would say comes back with it.
 
 import type { TaskNode } from '@vzn/vx'
-import { type Need, Placing, Queue, type Soon } from '../src/dispatch.js'
+import { type Need, Placing, Queue, type Soon } from '../src/plan/dispatch.js'
 import { needOf } from '../src/plugin.js'
-import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
+import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/plan/strategy.js'
 import {
   decide,
   keepLast,
@@ -23,7 +23,7 @@ import {
   leftMs,
   type Size,
   UNKNOWN_MS,
-} from '../src/planner.js'
+} from '../src/plan/planner.js'
 
 /** One task of the run: as the CI graph declares it, and how it ran if it missed. */
 export interface SimTask {

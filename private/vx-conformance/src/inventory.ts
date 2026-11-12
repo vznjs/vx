@@ -590,6 +590,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/noise',
     'vx-dte/outputs',
     'vx-dte/pack',
+    'vx-dte/plan-boundary',
     'vx-dte/planner',
     'vx-dte/planner-properties',
     'vx-dte/plugin-order',

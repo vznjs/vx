@@ -8,8 +8,8 @@ import type { Participant } from '../src/wire.js'
 import type { RelayMessage } from '../src/wire.js'
 import type { ToOrchestrator, ToWorker } from '../src/messages.js'
 import { Orchestrator } from '../src/orchestrator.js'
-import { tailsMs } from '../src/planner.js'
-import type { Need } from '../src/dispatch.js'
+import { tailsMs } from '../src/plan/planner.js'
+import type { Need } from '../src/plan/dispatch.js'
 
 export interface LiveTask {
   readonly id: string

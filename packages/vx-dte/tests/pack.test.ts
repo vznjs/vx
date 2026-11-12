@@ -1,6 +1,6 @@
 import { expect, it } from 'bun:test'
-import { Placing } from '../src/dispatch.js'
-import { pack } from '../src/pack.js'
+import { Placing } from '../src/plan/dispatch.js'
+import { pack } from '../src/plan/pack.js'
 import {
   candidates,
   plan,
@@ -8,7 +8,7 @@ import {
   type PlanTask,
   type PlanWorker,
   type Size,
-} from '../src/planner.js'
+} from '../src/plan/planner.js'
 
 const task = (id: string, ms: number, deps: string[] = [], cores = 1): PlanTask => ({
   id,

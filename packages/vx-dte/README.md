@@ -971,7 +971,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did, and
     every uncached task, which runs every time; groups and hits need no worker. The run plays
-    that work out on its workers and on N more (`src/planner.ts`), each new
+    that work out on its workers and on N more (`src/plan/planner.ts`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and the best end is the one with all N. A worker counts its cores
@@ -1002,7 +1002,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     later. The big one leaves once its running tasks end. While a task
     with no history is left, this happens only for the run's last work.
     With every task's time known, the plan packs the work instead, when
-    that holds less CPU and ends as soon (`src/pack.ts`): each task, in
+    that holds less CPU and ends as soon (`src/plan/pack.ts`): each task, in
     order of its latest start, goes where a worker has room for it
     between its ready time and its latest start less 15% of its chain
     (a margin for a run slower than its history), on the worker whose

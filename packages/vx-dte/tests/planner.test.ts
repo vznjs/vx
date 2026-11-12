@@ -14,7 +14,7 @@ import {
   type PlanTask,
   type PlanWorker,
   type Size,
-} from '../src/planner.js'
+} from '../src/plan/planner.js'
 import replay from './fixtures/main-run-2026-10-23.json'
 import input89 from './fixtures/plan-input-bf52a3e.json'
 

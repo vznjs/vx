@@ -11,9 +11,9 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { assign, ordered } from '../src/dispatch.js'
-import type { PlanTask } from '../src/planner.js'
-import { DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
+import { assign, ordered } from '../src/plan/dispatch.js'
+import type { PlanTask } from '../src/plan/planner.js'
+import { DEFAULT_STRATEGY, type Strategy } from '../src/plan/strategy.js'
 import { simulate, type SimTask } from '../tests/sim.js'
 
 const W = 20_000

@@ -15,11 +15,12 @@ import {
   type TaskResources,
 } from '@vzn/vx'
 import type { DteInit, DteSetup } from './init.js'
-import type { Need, Soon } from './dispatch.js'
-import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
+import type { Need, Soon } from './plan/index.js'
+// Not the index: a config load reads the strategies alone, never the planner.
+import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './plan/strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
-import type { Forecast, Size } from './planner.js'
+import type { Forecast, Size } from './plan/index.js'
 import type { Learned } from './measures.js'
 
 /** One worker type: the machines of it the adapter can start, by name (letters, digits, `_` and `-`). */
@@ -655,7 +656,7 @@ export function dte(options: DteOptions = {}) {
       ] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire-thread.js'),
-        import('./planner.js'),
+        import('./plan/index.js'),
         import('./tree.js'),
         import('./seal.js'),
         import('./measures.js'),

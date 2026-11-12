@@ -56,10 +56,10 @@ import {
   type Size,
   spreadMs,
   type WarmUp,
-} from './planner.js'
+} from './plan/index.js'
 import { Usage, type UsageStats } from './usage.js'
-import { type Need, Placing, Queue, type Soon } from './dispatch.js'
-import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
+import { type Need, Placing, Queue, type Soon } from './plan/index.js'
+import { DEFAULT_STRATEGY, type Strategy } from './plan/index.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 import { leftUnder, names, outputFiles } from './outputs.js'

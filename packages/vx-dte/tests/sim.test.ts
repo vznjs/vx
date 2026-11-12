@@ -4,8 +4,8 @@
 // it fails the suite once fixed, so the mark comes off with the fix.
 
 import { describe, expect, it } from 'bun:test'
-import type { Size } from '../src/planner.js'
-import { DEFAULT_STRATEGY, STRATEGIES } from '../src/strategy.js'
+import type { Size } from '../src/plan/planner.js'
+import { DEFAULT_STRATEGY, STRATEGIES } from '../src/plan/strategy.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
 import q2f0 from './fixtures/pr-run-2f0e2a4.json'

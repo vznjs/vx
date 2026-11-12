@@ -1,7 +1,7 @@
 import { expect, it } from 'bun:test'
-import { assign, ordered, type Bin } from '../src/dispatch.ts'
-import { plan, simulate, type PlanTask, type PlanWorker, type Size } from '../src/planner.ts'
-import { STRATEGIES, type Strategy } from '../src/strategy.ts'
+import { assign, ordered, type Bin } from '../src/plan/dispatch.ts'
+import { plan, simulate, type PlanTask, type PlanWorker, type Size } from '../src/plan/planner.ts'
+import { STRATEGIES, type Strategy } from '../src/plan/strategy.ts'
 
 const UNKNOWN_MS = 30_000
 
