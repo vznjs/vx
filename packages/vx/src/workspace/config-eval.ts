@@ -36,8 +36,7 @@
 // with the message the first load gives (item 701).
 
 import path from 'node:path'
-import * as ui from '../ui/index.js'
-import { MAX_TIMEOUT_MS, parseDuration, testTimerMs, UserError } from '../util/index.js'
+import { MAX_TIMEOUT_MS, notify, parseDuration, testTimerMs, UserError } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 import { changedExports, exportState } from './module-state.js'
 
@@ -326,10 +325,11 @@ export function evalDeadline(
   if (noticeMs < budget) {
     timer = setTimeout(() => {
       const time = (ms: number): string => (ms < 1000 ? `${ms} ms` : `${ms / 1000} s`)
-      ui.sayLine(
-        'warn',
-        `${kind} config ${configPath} still evaluating after ${time(noticeMs)}; vx gives up at ${time(budget)} (VX_CONFIG_WORKER_TIMEOUT)`,
-      )
+      notify({
+        kind: 'notice',
+        tone: 'warn',
+        text: `${kind} config ${configPath} still evaluating after ${time(noticeMs)}; vx gives up at ${time(budget)} (VX_CONFIG_WORKER_TIMEOUT)`,
+      })
       timer = setTimeout(expire, budget - noticeMs)
       if (!hold) timer.unref()
     }, noticeMs)

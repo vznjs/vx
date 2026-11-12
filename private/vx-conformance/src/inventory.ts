@@ -1062,6 +1062,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'no-git-on-path',
     'no-nested-run.unsafe',
     'no-shell-on-path',
+    'notice',
     'npm-launcher',
     'npm-launcher-sh',
     'options-resolve',

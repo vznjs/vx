@@ -9,6 +9,8 @@ import { RestoreDemoted, type TaskOutcome } from '../src/graph/outcome.js'
 import { machineParallelism } from '../src/util/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { cpuClock } from './helpers/cpu-clock.js'
+// ui draws the notices the modules under test say (util/notice.ts), as in vx.
+import '../src/ui/index.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
   return {

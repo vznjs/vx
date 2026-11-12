@@ -3,10 +3,10 @@ import {
   isFsRefusal,
   isOutOfFds,
   isUserError,
+  notify,
   OUT_OF_FDS_HINT,
   thrownMessage,
 } from '../util/index.js'
-import * as ui from '../ui/index.js'
 import {
   computeReverseDepCount,
   mergePriorities,
@@ -501,7 +501,7 @@ class GraphRun {
       this.options.onFinish?.(outcome)
     } catch (err) {
       const m = thrownMessage(err)
-      ui.say('warn', `[vx] onFinish observer threw for ${id}: ${m}\n`)
+      notify({ kind: 'line', tone: 'warn', text: `[vx] onFinish observer threw for ${id}: ${m}\n` })
     }
     // A restore-tier task runs before its deps, but its DEPENDENTS keep
     // the order `dependsOn` states: they are released once its own deps
@@ -629,7 +629,11 @@ class GraphRun {
       this.options.onStart?.(node)
     } catch (err) {
       const m = thrownMessage(err)
-      ui.say('warn', `[vx] onStart observer threw for ${node.id}: ${m}\n`)
+      notify({
+        kind: 'line',
+        tone: 'warn',
+        text: `[vx] onStart observer threw for ${node.id}: ${m}\n`,
+      })
     }
   }
 
@@ -964,10 +968,10 @@ class GraphRun {
       line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`
     } else line = internalErrorLine(id, err, message)
     try {
-      if (this.options.onError === undefined) ui.say('error', line)
+      if (this.options.onError === undefined) notify({ kind: 'line', tone: 'error', text: line })
       else this.options.onError(node, line, err)
     } catch {
-      ui.say('error', line)
+      notify({ kind: 'line', tone: 'error', text: line })
     }
   }
 

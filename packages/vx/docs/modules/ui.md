@@ -37,7 +37,9 @@ colour, the bytes a test or `grep` reads.
   `progressEscape`, `PROGRESS_CLEAR`, `fileLocations`, `fileMemo`,
   `linkPaths`).
 - `refusal.ts`: a refusal or warning as a notice (`refusalNotice`,
-  `lineNotice`, `messageParts`, `sayNotice`, `sayLine`).
+  `lineNotice`, `messageParts`, `sayNotice`, `sayLine`). Loaded, it draws
+  every `Notice` the modules below say (`util/notice.ts`): a `line` as
+  `say`, a `notice` as `sayLine`. One said before is held and drawn then.
 - `version-line.ts`: `vx --version`, imported alone (`printVersion`).
 
 ### Public surface
