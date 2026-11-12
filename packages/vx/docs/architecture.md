@@ -254,6 +254,10 @@ strings, no bus, no cache handle, no request.
 (`report/events.ts`); the terminal logger is just the always-on
 subscriber (`terminalSubscriber`). Fan-out is synchronous and
 order-preserving, so terminal bytes are identical to a direct call.
+The bus is the one source of what a run did: the run's history rows,
+the bytes a remote keeps of each task and the teardown `RunReport` fold
+its `task:complete` events (`foldOutcomes`, `run-records.ts`), as the
+telemetry source and the terminal do.
 Additional subscribers attach without touching the producer: plugins,
 telemetry, any surface a caller wires up through `RunOptions.bus`, and
 `wireForwarder` — which projects events into the serializable

@@ -1,6 +1,6 @@
-// What a finished run leaves behind: the `runs` rows, the `invocations`
-// header row, and — only when a telemetry sink is active — the per-task
-// telemetry mirror. One pass over the outcome list builds all three, so
+// What a finished run leaves behind, folded from its event stream: the
+// `runs` rows, the `invocations` header row, and — only when a telemetry
+// sink is active — the per-task telemetry mirror. One pass over the outcome list builds all three, so
 // `invocations.task_count` and the number of telemetry tasks agree by
 // construction; the terminal's "N total" agrees because `tallyOutcomes`
 // applies the same group/aborted filter, a second copy of the rule that
@@ -12,13 +12,42 @@ import {
   exitCodeOf,
   isGroupTask,
   taskDefinition,
+  type TaskNode,
   type TaskOutcome,
   isCacheHit,
 } from '../graph/index.js'
 import { VERSION } from '../version.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
 import { taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
-import { neverStarted } from '../report/index.js'
+import { neverStarted, type RunEventSubscriber } from '../report/index.js'
+
+/** A run's outcomes as its event stream told them; see {@link foldOutcomes}. */
+export interface OutcomeFold {
+  /** Every task the graph finished, in the order it finished. */
+  readonly outcomes: TaskOutcome[]
+  readonly subscriber: RunEventSubscriber
+}
+
+/**
+ * The run's record of itself, folded from its event stream: each
+ * `task:complete` of the graph's own nodes, handed to `each` as it ends.
+ * A plugin's `ctx.bus.emit` carries a view or an object of its own, never
+ * the graph's node, so it adds no row.
+ */
+export function foldOutcomes(
+  nodes: ReadonlyMap<string, TaskNode>,
+  each: ((o: TaskOutcome) => void) | undefined,
+): OutcomeFold {
+  const outcomes: TaskOutcome[] = []
+  return {
+    outcomes,
+    subscriber: (e) => {
+      if (e.kind !== 'task:complete' || nodes.get(e.node.id) !== e.node) return
+      outcomes.push(e.outcome)
+      each?.(e.outcome)
+    },
+  }
+}
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]
@@ -70,13 +99,9 @@ function remoteErrorOf(
 }
 
 /**
- * Every non-group, non-aborted outcome gets a row. An outcome with NO hash
- * (a `skipped` task never probed the cache; a `persistent` one is never
- * cacheable) used to be dropped because `runs.hash` is NOT NULL — which
- * made a failing persistent task record `0 tasks, 0 failures` on a run the
- * terminal called red, and a failed task with a skipped dependent record
- * 1 of 2. `bindRun` stores `''` for those instead; the key-diff readers
- * guard it.
+ * Every non-group, non-aborted outcome gets a row, one with no hash too (a
+ * skip, a server): `bindRun` stores `''` for it, so the counts match the
+ * terminal's; the key-diff readers guard it.
  */
 export function assembleRunRecords(input: RunRecordsInput): RunRecords {
   const { outcomes, runId, startedAtMs, endedAtMs } = input
@@ -159,13 +184,8 @@ export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRec
     status: o.status,
     exitCode: exitCodeOf(o),
     durationMs: o.durationMs,
-    // Anchor to the REAL per-task wall-clock window: run-start wall time +
-    // the task's ns offset (captured for hits and executed tasks alike).
-    // The `end - duration` fallback applies to outcomes without an offset —
-    // today only `skipped`, which the scheduler finishes synchronously with
-    // no span, so it collapses to a zero-width mark at the run's end. Using
-    // run-end-minus-duration for EVERYTHING was the old bug that piled every
-    // task at the right edge of the timeline.
+    // Run-start wall time plus the task's own ns offset. Only a skip has
+    // none: a zero-width mark at the run's end.
     startedAt:
       o.timing?.startNs !== undefined
         ? startedAtMs + Math.round(Number(o.timing?.startNs) / 1e6)

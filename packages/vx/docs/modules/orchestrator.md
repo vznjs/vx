@@ -115,7 +115,12 @@ export interface RunSummary {
    subscribes on it leaves with the run: the renderer in the wrapper's
    finally (`runOnBus` is the body), a plugin's hooks and its direct
    `ctx.bus.subscribe` with `disposePlugins`, the telemetry source with
-   its handle's `dispose()` (item 635).
+   its handle's `dispose()`, the outcome fold once the graph ends.
+   The outcome fold (`foldOutcomes`, `run-records.ts`) is the run's own
+   subscriber: each `task:complete` of the graph's nodes, in finish
+   order, is the list every later step reads (history, telemetry
+   summary, footer, `RunReport`), and as each lands it hands the task
+   to `RunKeeper` and a hit's row to the history stream.
 2. **`prepareRun(options, log)`** — shared setup: discovery, scoped
    config loading (from the lock), package + task
    graph, cache open (local policy slice; the declared `cache`
