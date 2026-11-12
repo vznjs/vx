@@ -1019,6 +1019,7 @@ export interface HeldPersistent {
 export interface HeldServer {
   child: ReturnType<typeof Bun.spawn>
   config: string
+  key?: string
   out: { bus: EventBus }
   handOver(): void
 }

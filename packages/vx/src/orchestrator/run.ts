@@ -181,6 +181,7 @@ import {
   disposeServers,
   failServer,
   holdServers,
+  keyedServers,
   onServerExit,
   sessionEnd,
   serverUsers,
@@ -756,6 +757,8 @@ async function runOnBus(
   // that lands meanwhile ends the run here, having run nothing: an aborted
   // graph printed a `not run` row and a footer above `stopped` (WD-22).
   const heldBefore = takeHeldServers(options.keep?.servers, nodes, options.forwardArgs)
+  const keyedHeld: ReadonlySet<string> =
+    options.holdPersistent === true ? keyedServers(nodes) : new Set()
   for (const server of heldBefore.kept.values()) server.out.bus = bus
   if (heldBefore.stale.length > 0) {
     await terminateChildren(() => heldBefore.stale)
@@ -1630,13 +1633,25 @@ async function runOnBus(
       execute: (node, upstream) => {
         const skip = platformSkip(node)
         if (skip !== undefined) return Promise.resolve(skip)
-        const kept = keepServer(node)
-        if (kept === undefined) return executeWithDedup(node, keyUpstream(node, upstream))
+        const held = heldBefore.kept.get(node.id)
+        const up = keyUpstream(node, upstream)
+        if (held === undefined) return executeWithDedup(node, up)
         // Keyed as a started server is: a cached dependant folds its key,
         // and without it an edit to the server's sources hit stale.
-        return Promise.resolve(
-          serverKey(argsOf(node, keyUpstream(node, upstream), true, false)),
-        ).then((hash) => (hash === undefined ? kept : { ...kept, hash }))
+        return Promise.resolve(serverKey(argsOf(node, up, true, false))).then(async (hash) => {
+          // A dependency-only server whose key moved is replaced, the old
+          // one gone first so the two never hold one port.
+          if (keyedHeld.has(node.id) && (hash === undefined || hash !== held.key)) {
+            heldBefore.kept.delete(node.id)
+            held.handOver()
+            await stopServer(held.child)
+          }
+          const kept = keepServer(node)
+          if (kept !== undefined) return hash === undefined ? kept : { ...kept, hash }
+          // Computed once: the spawn reads it back.
+          if (hash !== undefined) shortCircuit.uncachedKeys.set(node.id, hash)
+          return executeWithDedup(node, up)
+        })
       },
       // An unkeyed group runs nothing, and a restore-tier hit whose tree is
       // current restores nothing: settled in place, unless a taint may ride
@@ -1718,6 +1733,7 @@ async function runOnBus(
       outcomes,
       keep: foreground || hold,
       hold,
+      keyed: keyedHeld,
       continueAlways: options.continueMode === 'always',
       endedBeforeStop: stop.endedBeforeStop,
     })
@@ -2036,6 +2052,7 @@ async function runOnBus(
         persistent: holdServers(keepAlive, {
           forwardArgs: options.forwardArgs,
           outOf: (id) => serverOuts.get(id) ?? { bus },
+          keyOf: (id) => (keyedHeld.has(id) ? outcomes.get(id)?.hash : undefined),
         }),
       }
     }

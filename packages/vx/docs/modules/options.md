@@ -44,7 +44,7 @@ export interface RunOptions {
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
-  holdPersistent?: boolean // hand requested persistent tasks, and those they depend on, back on RunSummary.persistent
+  holdPersistent?: boolean // hand every persistent task still running (a dependency-only one only with inputs.files) back on RunSummary.persistent
   watch?: boolean // a vx watch cycle: a save withheld over an input edited mid-run says the next cycle runs on it
   keep?: HeldPersistent // an earlier hand-back: a server still up whose task is unchanged stays up; the rest stop first
   commandWindows?: CommandWindows // where the run records when each command ran (and each restore or deferred fetch) and where it may write; vx watch passes its own to tell a user's mid-cycle write from the run's

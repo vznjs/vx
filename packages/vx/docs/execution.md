@@ -339,7 +339,8 @@ terminal and a task succeeding or failing. Read it alongside
        session: the others are torn down (SIGTERM, grace, SIGKILL) and
        a non-zero exit makes the run exit 1, so a script's `vx run dev`
        fails when the server it started fell over. Under
-       `holdPersistent` (the watch loop) run() instead returns them on
+       `holdPersistent` (the watch loop) run() instead returns them, and
+       every dependency-only server with `inputs.files` too, on
        `RunSummary.persistent`, still running, for the caller to stop;
        one that dies on its own after that is said, its `stop()` is not.
 ```

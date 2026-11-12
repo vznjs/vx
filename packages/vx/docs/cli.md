@@ -1773,19 +1773,26 @@ run):
   ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
-A requested persistent task (`exec.persistent`, a dev server) starts
-once and stays up across cycles; each cycle re-runs what it depends on,
-as the cache keys decide. So `vx watch dev`, with `dev` depending on
+A persistent task (`exec.persistent`, a dev server), requested or only
+a dependency, starts once and stays up across cycles; each cycle re-runs
+what it depends on, as the cache keys decide. So `vx watch dev`, with `dev` depending on
 `^build`, rebuilds only the libraries an edit reaches on the way to the
 app and leaves the server running; the dev tool's own reload picks up
 what was rebuilt. What the server writes keeps printing, under its id
-above the rows while a cycle rebuilds. It restarts
+above the rows while a cycle rebuilds. A requested server, and one it
+depends on, restarts
 only when its own task config (or the args forwarded to it) changed, or
-when it died: the old one is stopped first (the kill grace, then
+when it died. A server only another task depends on restarts when its
+key changed (a file in its `inputs.files`, its config, or what it
+depends on), so `vx watch e2e` boots its api once and again only after
+an edit the api's key sees, and `e2e` never tests the old one; with no
+`inputs.files` it restarts every cycle, as no key sees its edits. The
+old one is always stopped first (the kill grace, then
 SIGKILL), so the two never hold one port. One that dies while watch
 idles is said (`vx: app#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
-stops it. An edit while a cycle waits only on a server that has not
+stops it, and so does one that no longer starts it (its dependants all
+hit, or the selection changed). An edit while a cycle waits only on a server that has not
 printed its `readyWhen` line stops that cycle and starts the next, so a
 fix reaches a server stuck before ready, in the initial run too; the
 servers already up stay up through it. A file
