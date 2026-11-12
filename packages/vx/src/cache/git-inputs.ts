@@ -503,7 +503,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * Dropped wholesale on `set` / `delete`: a mid-run re-enumeration
    * proves the project's tree changed, and index OIDs can't be
    * re-trusted without a fresh status — the per-file fallback
-   * (`Cache.hashFile`) computes the identical blob OID from disk, so
+   * (`Cache.memo.hashFile`) computes the identical blob OID from disk, so
    * dropping is a pure perf concession, never a correctness one.
    */
   private oids = new Map<string, OidSlot>()
@@ -1115,7 +1115,7 @@ interface GitLsResult {
    * cwd-relative path → index blob OID, for tracked regular files
    * (mode 100644 / 100755) and symlinks (120000) at stage 0 only. A
    * symlink's OID is the blob of its target string, which is exactly
-   * what `Cache.hashFile` computes for one, so the two paths agree.
+   * what `Cache.memo.hashFile` computes for one, so the two paths agree.
    * Merge-conflict stages and gitlinks are excluded. NOT yet filtered
    * by working-tree dirtiness — callers intersect with `git status`
    * before trusting.

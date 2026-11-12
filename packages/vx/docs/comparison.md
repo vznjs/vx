@@ -577,7 +577,7 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 - **No incremental watcher state.** Turbo's watcher maintains rich
   incremental change-accumulator + rediscover state. vx re-runs the
   orchestrator from scratch on each cycle. Cheap because of
-  `gitFilesCache` + `Cache.hashFile` mtime+size fast path; complexity
+  `gitFilesCache` + `Cache.memo.hashFile` mtime+size fast path; complexity
   not yet justified.
 
 ### Config schema

@@ -4,81 +4,58 @@
 
 ### Purpose
 
-Compute cache keys, store cache entries, retrieve them, restore output
-files on hit, record run history. The on-disk format, SQLite schema,
-and key derivation logic live here.
+Compute cache keys, store cache entries, retrieve them, and restore
+output files on a hit. The on-disk format and key derivation live here;
+the tables are `index-db`'s, the memos `memo`'s, and the run history
+`history`'s.
 
-### Files (2026-09-09 split, pure moves)
+### Files
+
+The store is one class over parts that each take its `StoreIndex`; the
+memos it reads are the `memo` module's (memo.md), the history it writes
+the `history` module's (history.md), and the tables `index-db`'s
+(index-db.md).
 
 - `layer.ts` — the CONTRACT (`CacheLayer`) and every shape that crosses
-  it: `CacheKeyInput`, `CacheEntry`, `RunRecord`, `InvocationRecord`,
-  `MeasureRecord` (a plugin measure `recordMeasures` keeps as a timing),
-  output fingerprint rows, stats and prune options, `CorruptArtifactError`,
+  it: `CacheKeyInput`, `CacheEntry`, `TaskMemo` (what a
+  layer hands a key and a hit), stats and prune options, `CorruptArtifactError`,
   `ArtifactVanishedError`.
   No implementation.
 - `key-fold.ts` — `foldKey`, the whole key derivation as a function of
   `CacheKeyInput`, a file hasher and a relativizer, and `CACHE_VERSION`,
-  its first part. It touches no store; `Cache.key` delegates to it
-  (item 691).
+  its first part. It touches no store; `Cache.key` delegates to it.
   `foldHead` is the same fold up to the input files, which come last.
-- `fold-memo.ts` — `FoldMemo` (`IndexFoldMemo` over the rows): each task's last key over `fold_memo`, by
-  a probe that is `foldHead` seeded into the task's `filesToken`
-  (inputs.md). `computeTaskHash` reads a warm task's key back instead of
-  resolving and folding its files; rows are written at close, and a prune
-  drops a row no run rewrote for 30 days.
 - `policy.ts` — `CachePolicy` (local/remote × read/write) and the
   `--cache-policy=<spec>` grammar.
 - `zstd.ts` — artifact framing: the declared-size gate against a
   decompression bomb, the bounded one-call and streamed decoders.
-- `file-hashes.ts` — `FileHashStore`: the per-file blob-OID memo over
-  `file_hashes` (a symlink hashes as its target string) and the repo's
-  object format.
 - `linked-inputs.ts` — the content behind a symlinked input, folded after
   its target string: a file's identity, or every file under a linked
   directory (caching.md § key). `filesBehind(dir)` lists what a linked
   directory keys; `vx watch` judges a change to one by the same list.
   `behindLink(link, hashFile)` is the digest the key folds for one; the
-  item-743 re-check follows each linked input again with it.
-- `fs-clock.ts` — how far the workspace's file system clock runs behind
-  this process's, measured once a run; `racyWindowMs` adds it. And
-  `fsClockNow`, "now" read off that clock itself.
-- `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
-  and the two proofs a hit runs before skipping a restore. The batched
-  `getMany` hands both batch reads its live hashes as one JSON array,
-  each hash once, and the rows are joined from it: an `IN (SELECT …
-json_each(?))` builds a lookup of every hash first (~3 ms of 8,002
-  hits, 2026-11-07).
-- `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
-  transaction per run, plus one per streamed batch of hits), the SQL
-  binders, and the 30-day retention (run by a prune only, never a run's
-  close; a dry-run prune deletes nothing, item 1004).
-- `history-stream.ts` / `history-writer.ts` — `HistoryStream`: a run's
-  hits written on a thread of their own while the graph runs, 512 to a
-  transaction, through a second connection on the same files
-  (`historyFiles(cache)`). The thread starts only for a run of 2,048
-  hits or more (its confirmed local hits after the classify, or the hit
-  that reaches it): below that its start cost more than it saved. A
-  batch the thread does not land comes back and goes in the bundle. The
-  writer is a second `bun build --compile` entry point.
+  inputs re-check follows each linked input again with it.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
   (`checkpointOffThread`), the index's WAL checkpoints run PASSIVE on a
   thread of their own every 100 ms, through a second connection, and the
   run's connection checkpoints nothing until its close
   (`stopCheckpoints` first). A thread that fails hands them back.
-- `run-notes.ts` — `keepRunNotes` / `keptSteps` / `keptWarnings` /
-  `keptFailures`: what a run said beside its rows (`steps`, `warnings`,
-  `failures`), the newest 50 runs per table (metrics.md), one `RunNotes`.
-- `lockfile-memo.ts` — `readLockfileMemo` / `writeLockfileMemo` over a `LockfileMemo`: a
-  lockfile claimant's parse, one `lockfile_memos` row per file and
-  claimant, on a connection of its own (lockfile-claim.md).
-- `schema.ts` — `createTables`: every table's DDL, the one place each is
-  declared, with what each row means.
-- `cache.ts` — opening the index (`SCHEMA_VERSION` check and reset), the
-  entry store (get / save / ingest / restore / prune), and the `Cache`
-  class that composes the four slices above over one handle and
-  delegates to them. Re-exports `layer.ts`, `policy.ts` and `zstd.ts`
-  so `./cache.js` stays one import path for the index, the sibling
-  layers and the tests.
+- `store-index.ts` — `StoreIndex`: the open index (the `SCHEMA_VERSION`
+  check and reset, the attached store, the prepared statements) and the
+  state every part shares; `guard` refuses an unreadable page by its file.
+- `lookup.ts` — reading entries: `get` / `getMany` (adopting an artifact
+  with no row), `has`, the access times a hit refreshes.
+- `restore.ts` — `restoreOutputs`: an entry's files back onto the tree,
+  from a tar or a tree, re-read when the entry changed under it.
+- `save.ts` — `save` / `ingest`: pack, write and index an entry, batched
+  index writes, the off-thread checkpoints.
+- `prune.ts` — `prune` / `stats` / `orphanStats`: eviction, orphans,
+  and the 30-day history retention.
+- `cache-dir.ts` — the directory itself: made private, its `*` ignore,
+  the manifests and the locks a clean takes (`holdCacheDir`, `holdStore`).
+- `cache.ts` — the `Cache` class: it opens a `StoreIndex` and delegates
+  each layer method to its part. Re-exports `layer.ts`, `policy.ts` and
+  `zstd.ts`.
 
 ### Public surface
 
@@ -98,6 +75,7 @@ export const DEFAULT_STORE: StoreOptions // { embeddings: 32 * 1024, decompress:
 export interface CacheLayer {
   readonly local?: Cache | undefined // the local handle this layer wraps (LayeredCache)
   readonly hasRemote?: boolean
+  readonly memo: TaskMemo // the memos a key and a hit read (file hashes, output rows and stamps); memo.md
   localHasMany?(hashes: readonly string[]): Promise<Set<string>> // the keys the local store holds; the prefetch probes the remote for the rest
   remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo> // the keys the index says a remote holds (remote_hits); their pulls wait on no probe
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> // one hasMany per readable remote; null = a remote cannot batch or did not answer; a whole answer rewrites remote_hits
@@ -118,19 +96,6 @@ export interface CacheLayer {
   ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
-  // The output-directory short-circuit (A-2): record, load, and judge the
-  // stamps of a hit's output dirs, so a current tree is not re-walked.
-  recordOutputDirs?(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (outputs.workspaceFiles); omitted → only `outputs/` restores.
   // outputs: the task's declared globs; an entry outside them fails the
@@ -143,19 +108,30 @@ export interface CacheLayer {
   ): Promise<void>
   save(args: SaveArgs): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> // adopt an artifact a remote served
-  // The run-history write at a run's end, atomically: the per-task
-  // `runs` rows + one `invocations` header row in ONE transaction. The
-  // input-fingerprint rows (entry_inputs) do NOT live here — they ride
-  // the entry-save transaction (miss path only), so a warm run is free.
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats // { project? } narrows both aggregates
-  hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string // a file-backed artifact's path; a small one lives in the index
   artifactSize?(hash: string): number | undefined // the stored artifact's compressed size, wherever it lives
   outputBytes?(hash: string): number | undefined // the entry this process just saved: its files' bytes, uncompressed; asked once
   kept?(hash: string): boolean // the last save found the key stored and kept it (--force): no save; asked once
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
+}
+
+// What a layer hands a task's key and hit (layer.ts): the local store's
+// memo, or a test double's. Core's own is `LocalMemo` (memo.md).
+export interface TaskMemo {
+  hashFile(filePath: string): Promise<string>
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
 }
 
 export type SaveArgs = {
@@ -168,12 +144,6 @@ export type SaveArgs = {
   workspaceRoot?: string // required alongside workspaceOutputFiles; an output symlink must stay inside it
   inputComponents?: readonly TaskInputRow[] // entry_inputs rows, written in the save's transaction
 }
-
-// Namespace discriminator for workspace outputs in the artifact and
-// the output_files rows: project rows store the bare project-relative
-// path; workspace rows store the full `workspace-outputs/<rel-to-root>`
-// archive entry name.
-export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
 // `restoreOutputs` found no artifact where the probe found one, or a
 // corrupt one (A-52): a MISS (execute-task.ts runs the task).
@@ -194,64 +164,21 @@ export interface RemoteTraffic {
   readonly keys: Map<string, RemoteKeyTraffic>
 }
 
-// The output-directory short-circuit's bounds: a hit with more than
-// OUTPUT_DIRS_CAP directories under its outputs records one
-// OUTPUT_DIRS_OVER_CAP row (never current; the hit keeps the walk and does
-// not snapshot again), and a snapshot holding one whose mtime is within
-// OUTPUT_DIRS_RACY_MS of it is dropped (the next hit walks).
-export const OUTPUT_DIRS_CAP = 8192
-export const OUTPUT_DIRS_OVER_CAP = -3
-export const OUTPUT_DIRS_RACY_MS = 50
-
-// git's racy-clean window, in ms: a file changed this close to when its
-// digest was learned is hashed again rather than trusted by its stat —
-// by the file-hash memo, and by the pre-save input re-check (task-hash.md).
-export const FILE_HASH_RACY_MS = 50
-
-// The window for one stamp: `windowMs`, plus a second when the stamp has no
-// sub-second part (a file system that keeps whole seconds), two on an even
-// second (FAT32) — the file hasher, the output-directory snapshot and the
-// re-check all ask it (A-2, A-38). Plus the measured file-system clock lag.
-export function racyWindowMs(stampMs: number, windowMs: number): number
-
-// How far the workspace's file system clock runs behind `Date.now()`
-// (fs-clock.ts): measured once a run from a stamp written in the cache dir
-// (prepare.ts), and every racy window is widened by it when it is past the
-// kernel's 20 ms tick. Set by a test to simulate a lagging file system.
-export function measureFsClockLag(dir: string): void
-export function setFsClockLag(lagMs: number): void
-
-// "Now" on the clock that stamps the next write (fs-clock.ts): a stamp read
-// off a file written and removed in `dir`, `Date.now()` less the lag when
-// it cannot be written. The coarse kernel tick under the measured lag puts a
-// write up to a tick before a `Date.now()` read ahead of it; `vx watch`'s
-// arm and cycle start and the re-check's command start read it instead.
-// The file's times are read before its first stamp, so Linux 6.13+ stamps
-// it from the fine clock: a write made before the call reads as before it.
-export function fsClockNow(dir: string): number
-// What a stamp's own precision may hide: 1000 ms for a whole-second stamp,
-// 2000 for an even one (FAT), else 0.
-export function stampGrainMs(stampMs: number): number
-
-// `layer.hashFile(file)`, and `seen` told the ctime of the stat the digest
-// came from when the layer is core's own `Cache` (or a `LayeredCache` over
-// it): the describe records it for the re-check's tie rule
-// (task-hash.md). Off `CacheLayer`, a public type; any other layer tells
-// nothing, and the tie then counts as the command's write.
+// `memo.hashFile(file)`, and `seen` told the ctime of the stat the digest
+// came from when the memo is core's own `LocalMemo` with its own hasher:
+// the describe records it for the re-check's tie rule (task-hash.md). Any
+// other memo tells nothing, and the tie then counts as the command's write.
 export function hashFileSeen(
-  layer: CacheLayer,
+  memo: TaskMemo,
   file: string,
   seen: (ctimeMs: number) => void,
 ): Promise<string>
 
-// Each of `files` by `layer.hashFile`'s answer, with one memo query for
-// them all when the layer is core's own (`hashFiles`); any other layer is
+// Each of `files` by `memo.hashFile`'s answer, with one memo query for
+// them all when the memo is core's own (`hashFiles`); any other memo is
 // asked per file. A file that cannot be hashed is absent: the key's fold
 // asks `hashFile` for it, and the error is that call's.
-export function hashFilesOf(
-  layer: CacheLayer,
-  files: readonly string[],
-): Promise<Map<string, string>>
+export function hashFilesOf(memo: TaskMemo, files: readonly string[]): Promise<Map<string, string>>
 
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,
@@ -285,6 +212,7 @@ export class Cache implements CacheLayer {
     mode?: 'open' | 'inspect', // 'inspect' (Cache.inspect): a reading verb, never resets the index
   )
   // ... CacheLayer methods
+  get memo(): StoreMemo // the store's own memos over its index (memo.md); a layer's memo is this one
   // Not on the layer contract: what prune's orphan sweep would reap right
   // now — `vx info`'s `orphans` row.
   orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
@@ -333,39 +261,6 @@ export interface CacheKeyInput {
   captureInto?: Array<{ kind: string; name: string; hash: string }>
 }
 
-// (Tier 3) One header row per `vx run` invocation — see the
-// `invocations` table in docs/caching.md.
-export interface InvocationRecord {
-  runId: string
-  command: string
-  requestedTasks: string // JSON string[]
-  cachePolicy: string // the --cache-policy spec, e.g. 'local:rw,remote:r'
-  concurrency: number
-  flow: 'focused' | 'broad' | null
-  startedAt: number
-  endedAt: number
-  totalDurationMs: number
-  taskCount: number
-  failedCount: number
-  hitCount: number
-  hitLocalCount: number
-  hitRemoteCount: number
-  // v31: the hits by what they did to the disk; they sum to hitCount
-  upToDateCount: number
-  restoredLocalCount: number
-  restoredRemoteCount: number
-  exitOk: boolean
-  commitSha: string | null
-  branch: string | null
-  dirty: boolean | null
-  ci: boolean
-  ciProvider: string | null
-  host: string | null
-  os: string | null
-  arch: string | null
-  vxVersion: string
-}
-
 // One key component as `key()` folded it (a `captureInto` row); task-hash,
 // miss-save, metrics and miss-reason pass these, never redeclaring the shape.
 export interface TaskInputComponent {
@@ -402,47 +297,6 @@ export interface CacheEntry {
   fetchMs?: number // (LayeredCache) a remote hit this run pulled: download + ingest
 }
 
-export interface RunRecord {
-  hash?: string // absent = no cache key derived (skipped, or persistent with no dependant); stored as ''
-  project: string
-  task: string
-  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
-  exitCode: number
-  durationMs: number
-  forwardArgs?: readonly string[]
-  startedAt: number // ms-epoch
-  endedAt: number // ms-epoch
-  // v11 analytics columns (all optional; populated by runner / orchestrator)
-  runId?: string // UUIDv7 shared across all tasks in one `vx run`
-  cpuMs?: number // user + system CPU time from Bun.spawn rusage
-  peakRssBytes?: number // peak resident set size
-  wallclockStartNs?: bigint // hrtime span relative to run t=0
-  wallclockEndNs?: bigint
-  cacheHit?: boolean // convenience for flamegraph color; absent (NULL) on a hit whose restore failed
-  restored?: boolean // v31, on a hit: outputs restored (true) or already up to date (false)
-  attempts?: number // >1 when the task retried (the within-run flaky signal)
-  cached?: boolean // the task declared `cache`
-  // v27: why it failed or was skipped, as the run's footer said it
-  blockedBy?: string
-  timedOut?: true
-  sandboxViolations?: number
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  remoteError?: string // v40: each failed remote read or write of its key, `; `-joined
-  peakCores?: number // v43: sampled, most cores one interval burned
-  avgRssBytes?: number // v43: sampled, mean resident memory
-  placement?: string // v44: where an executor ran it (`small#1`)
-  placementCores?: number // v44: that machine's cores
-  placementMemoryBytes?: number // v44: and memory
-  keylessBy?: string // v46: the task with no inputs its key folded
-  def?: string // v48: the task's definition (`taskDefinition`), which history reads by
-  cpuShare?: number // v49: the share of a core its threads got there; history divides its CPU by it
-  queuedMs?: number // v51: waited ready for a slot
-  outputBytes?: number // v51: its output files' bytes, restored or saved
-  blocks?: number // v51: the tasks and groups downstream of it in the run
-  flakyPasses?: number // v51: the flaky record its row quoted
-  flakyFailures?: number
-}
-
 export interface CacheStats {
   entryCount: number
   totalBytes: number
@@ -463,17 +317,14 @@ export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
 // The fold up to the input files, which `foldKey` folds last (key-fold.ts).
 export function foldHead(input: CacheKeyInput, digestValue?: (value: string) => string): bigint
-// Each task's last key by its probe, over `fold_memo` (fold-memo.ts).
-// `Cache.foldMemo()` hands out the interface; the rows' own class,
-// `IndexFoldMemo`, stays in the cache module, as `IndexRemoteHits` does
-// behind `Cache.remoteHits`. No handle reaches a plugin (2026-10-29).
-export interface FoldMemo {
-  get(taskId: string, probe: string): string | undefined
-  set(taskId: string, probe: string, key: string): void
-}
 // Core's own readers (`vx last`, `vx why`, the history provider) take the
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
+// The history writer's two other answers from the store: the salted digest
+// value-bearing rows hold, and whether this open may write the index (one
+// it cannot write keeps no history).
+export function valueDigest(cache: Cache): (value: string) => string
+export function indexWritable(cache: Cache): boolean
 // What such a reader throws for `err`: a page SQLite cannot read is the
 // open's own refusal, naming the file (`vx last`, `vx why`).
 export function indexError(cache: Cache, err: unknown): unknown
@@ -499,15 +350,6 @@ export function holdCacheDir(
 // The files a second connection writes a run's hits through; undefined
 // when the store keeps no history on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
-// A run's hits written on a thread while the graph runs, 512 to a
-// transaction, once `expected` (its confirmed local hits) or the hits
-// added reach 2,048; `finish` hands back what did not land, for the bundle.
-export class HistoryStream<T> {
-  constructor(files: { index: string; store?: string }, expected: number)
-  add(item: T, record: RunRecord): void
-  finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
-}
-export const SCHEMA_VERSION = 'v56'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
@@ -515,13 +357,6 @@ export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] // 
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
-
-// The two WHERE fragments every history query shares, so "a run that
-// executed" and "a run with a key" mean one thing across metrics.ts,
-// history.ts and failure-mode.ts.
-export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
-export const KEYED_RUNS_SQL = "hash <> ''"
-export function branchSource(branch: string | null): string // task_durations.source: 'branch:<name>'
 
 // The four independent cache axes, and the `--cache-policy=<spec>` parser over
 // them. `FULL_CACHE_POLICY` is every axis on — the default a run starts
@@ -580,7 +415,7 @@ The OID arrives from `CacheKeyInput.fileHashes` when the run's bulk
 (clean per `git status`, not `skip-worktree`/`assume-unchanged`, and
 not subject to a `text`/`eol`/`ident`/`filter`/`working-tree-encoding` clean filter — see "Clean
 filters" in `docs/caching.md`) — no I/O at all. Every other path goes
-to `Cache.hashFile`, which hashes the WORKTREE bytes in-process behind
+to `Cache.memo.hashFile`, which hashes the WORKTREE bytes in-process behind
 the `file_hashes` `(mtime, size, ctime, ino)` memo; that is the same
 value the index holds whenever no filter applies. `<relPath>` is
 the POSIX-relative path from `workspaceRoot` (so cache keys are
@@ -2127,8 +1962,6 @@ export function repoFacts(dir: string): RepoFacts | null
 // before the picker; undefined, and free via repoFacts, when git tracks dir.
 export function gitRefusal(dir: string): UserError | undefined
 export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // the repo root, from `--show-prefix`
-// The identity the key folds: the blob OID, prefixed `<mode>:` unless mode is 100644 (item 887)
-export function fileIdentity(mode: string, oid: string): string
 // `lstat`, or undefined for no entry, under a parent that is a file (ENOTDIR) too
 export function lstatOrAbsent(p: string): Stats | undefined
 export function autocrlfConverts(gitVars: string): boolean // over `git var -l`

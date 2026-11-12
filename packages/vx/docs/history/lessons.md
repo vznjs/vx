@@ -351,3 +351,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
 - The suite runs with `FORCE_COLOR=0` because vx.config.ts sets it; a bare
   `bun test` gets it from the `color-env.ts` preload. A test that sets
   `CI=1` for a child gets colour otherwise (2026-11-06).
+- Regenerate records (`VX_UPDATE_CONTRACT=1`) outside a rebase, never in
+  `git rebase -x`: the exec inherits the rebase's git env, and
+  npm-pack.unsafe.test.ts's fixture commit landed in the worktree being
+  rebased and wrote `core.bare=true` and `user.*` into the shared
+  `.git/config` (2026-11-12).

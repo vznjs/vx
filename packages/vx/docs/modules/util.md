@@ -2151,3 +2151,20 @@ read of the machine that must not throw and never exceeds what the OS
 reports. This box (2026-09-12) has a v1 memory limit of 13.3 GiB on a
 15.7 GiB machine and no CPU quota, so the memory arm is proven live and
 the CPU arm by fixture.
+
+## `src/util/umask.ts` — the mode a restore gives
+
+### Purpose
+
+The process umask, read when a restore starts, and the permission bits a
+restore gives a stored mode: minus the umask, as tar gives a non-root
+user. A file on disk holds a stored mode as saved, or as a restore here
+leaves it.
+
+### Public surface
+
+```ts
+export function readUmask(): void
+export function restoredMode(mode: number): number
+export function modeMatches(disk: number, stored: number): boolean
+```

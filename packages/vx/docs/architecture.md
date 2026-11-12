@@ -432,7 +432,7 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       the same way, and a non-zero exit fails the run. Ctrl-C reaps
       them; an embedder aborts through `RunOptions.signal`.
    8. Summary + optional `--profile` (Chrome-trace JSON).
-   9. `cache.recordRunBundle({ runs, invocation })` — every real
+   9. `runHistory(cache).recordRunBundle({ runs, invocation })` — every real
       task's row plus one invocation header row, in one transaction.
       Group and `aborted` tasks are skipped; a run a signal stopped
       records only the tasks that finished (`recordRuns`, no

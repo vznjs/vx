@@ -16,7 +16,7 @@ function index(): Array<[file: string, page: string, slug: string]> {
   for (const line of readFileSync(path.join(DOCS, 'README.md'), 'utf8').split('\n')) {
     if (!line.startsWith('| ')) continue
     const cells = line.split('|')
-    const link = /\[`([a-z]+\.md)`\]\(\.\/[a-z]+\.md#([a-z0-9_-]+)\)/.exec(cells[1] ?? '')
+    const link = /\[`([a-z-]+\.md)`\]\(\.\/[a-z-]+\.md#([a-z0-9_-]+)\)/.exec(cells[1] ?? '')
     if (link !== null) current = [link[1]!, link[2]!]
     else if ((cells[1] ?? '').trim() !== '') continue
     if (current === undefined) continue

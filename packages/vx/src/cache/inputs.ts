@@ -2716,7 +2716,7 @@ async function resolveFiles(
     // The OIDs this spawn could yield are NOT
     // trusted (no fresh `git status` to vouch for them — the project's
     // tree just changed); set() drops the project's OID slot and these
-    // files fall back to Cache.hashFile, which computes the identical
+    // files fall back to Cache.memo.hashFile, which computes the identical
     // blob OID from disk.
     const ls = runGitLsFiles(args.projectDir, listingEnv(args.projectDir, args.workspaceRoot))
     gitFiles = ls.files

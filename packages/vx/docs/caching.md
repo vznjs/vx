@@ -2931,7 +2931,7 @@ breaking footer).
 - **SCHEMA v21 → v22 (no `CACHE_VERSION` bump)**: Tier-3 dashboard
   tables — `invocations` (one header row per `vx run` with command,
   git/CI/host context, and run-level counts, recorded with `runs`
-  via `Cache.recordRunBundle`) and `entry_inputs` (one row per cache-key
+  via `runHistory(cache).recordRunBundle`) and `entry_inputs` (one row per cache-key
   component, keyed by the cache-ENTRY hash — the input-fingerprint
   moat). `entry_inputs` is written **inside the entry-save transaction,
   only on a cache miss** (`INSERT OR IGNORE`), so a warm all-cache-hit
@@ -3072,7 +3072,7 @@ breaking footer).
   until 2026-09-09, when the fallback started hashing a link the way
   the index does). A clean
   tree's key derivation does zero reads / stats / SQLite per file.
-  Everything else falls back to `Cache.hashFile`, which now computes
+  Everything else falls back to `Cache.memo.hashFile`, which now computes
   the identical blob OID in-process (object format auto-detected via
   `git rev-parse --show-object-format`, sha1 default) behind the
   existing mtime+size memo. `SCHEMA_VERSION` bumps to `v18` in the

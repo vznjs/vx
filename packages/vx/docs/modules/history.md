@@ -1,4 +1,4 @@
-# `src/history/` — what runs leave behind, read back
+# `src/history/` — what runs leave behind, written and read back
 
 ## `src/history/history.ts` — per-task duration history
 
@@ -301,7 +301,7 @@ controls).
 Pure functions over the run-history tables (`runs`, `invocations`,
 `entries`, `entry_inputs`) — one canonical home for every aggregate,
 so `vx last`, `vx why` and any other reader ask the same questions the
-same way. The schema itself is owned by `src/cache/schema.ts`; this
+same way. The schema itself is owned by `src/index-db/schema.ts`; this
 module only reads it.
 
 ### Public surface
@@ -380,7 +380,7 @@ the newest 50 runs that had any (run ids are UUIDv7, so they sort by
 age). `vx last --sql` reads them as it reads `runs`.
 
 ```ts
-keepRunNotes(db, runId, { steps?, warnings?, failures? }): void // one IMMEDIATE transaction, then the trim; nothing when all are empty
+keepRunNotes(db, runId, notes: RunNotes): void // RunNotes: { steps?, warnings?, failures? } // one IMMEDIATE transaction, then the trim; nothing when all are empty
 keptSteps(db, runId): RunStep[] // [] when the run kept none
 keptWarnings(db, runId): string[] // [] when it said none or they are gone
 keptFailures(db, runId): Map<string, KeptFailure> // by task id
@@ -511,3 +511,147 @@ export function createMissExplainer(db: Database): MissExplainer
 reads the newest entry per task (one `GROUP BY` over `entries`); each
 miss then reads its entry's `entry_inputs` by primary key. A hit asks
 nothing.
+
+## `src/history/history-writes.ts` — a run's rows into the store's index
+
+### Purpose
+
+`runHistory(cache)` is the one writer of a run's history: `RunHistory`
+over the handle the cache exposes (`indexDb`), gated as the cache's own
+writes are (`indexWritable`) and digesting value-bearing rows with its
+salt (`valueDigest`). Core records each run itself; no plugin writes the
+history.
+
+`recordRunBundle()` is the write at a run's end: one `runs` row for every
+task (hits and misses, successes and failures) and one `invocations`
+header row (command, git/CI/host context, run-level counts) **atomically
+in one transaction**, less the hits a `HistoryStream` already wrote while
+the graph ran, with one shared-store `task_durations` row per executed
+success, tagged `branchSource(branch)` (`'branch:<name>'`, `'branch:'`
+with none) and the commit: what a duration forecast reads. The
+input-fingerprint rows (`entry_inputs`) are NOT written here: they ride
+each entry's save transaction (miss path only), so a warm all-hit run
+writes none.
+
+### Public surface
+
+```ts
+export interface HistoryWrites {
+  recordRun(run: RunRecord): void
+  recordRuns(runs: readonly RunRecord[], head?: RunHead): void
+  recordMeasures(measures: readonly MeasureRecord[], head: RunHead): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
+}
+export function runHistory(cache: Cache): HistoryWrites
+```
+
+## `src/history/run-history.ts` — the `runs`, `invocations` and timing rows
+
+### Purpose
+
+`RunHistory`: `runs` + `invocations` writes (one transaction per run, plus one per streamed batch of hits), the SQL binders, and the 30-day retention (run by a prune only, never a run's close; a dry-run prune deletes nothing, item 1004).
+
+### Public surface
+
+```ts
+// (Tier 3) One header row per `vx run` invocation — see the
+// `invocations` table in docs/caching.md.
+export interface InvocationRecord {
+  runId: string
+  command: string
+  requestedTasks: string // JSON string[]
+  cachePolicy: string // the --cache-policy spec, e.g. 'local:rw,remote:r'
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  // v31: the hits by what they did to the disk; they sum to hitCount
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
+  exitOk: boolean
+  commitSha: string | null
+  branch: string | null
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string | null
+  arch: string | null
+  vxVersion: string
+}
+
+export interface RunRecord {
+  hash?: string // absent = no cache key derived (skipped, or persistent with no dependant); stored as ''
+  project: string
+  task: string
+  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
+  exitCode: number
+  durationMs: number
+  forwardArgs?: readonly string[]
+  startedAt: number // ms-epoch
+  endedAt: number // ms-epoch
+  // v11 analytics columns (all optional; populated by runner / orchestrator)
+  runId?: string // UUIDv7 shared across all tasks in one `vx run`
+  cpuMs?: number // user + system CPU time from Bun.spawn rusage
+  peakRssBytes?: number // peak resident set size
+  wallclockStartNs?: bigint // hrtime span relative to run t=0
+  wallclockEndNs?: bigint
+  cacheHit?: boolean // convenience for flamegraph color; absent (NULL) on a hit whose restore failed
+  restored?: boolean // v31, on a hit: outputs restored (true) or already up to date (false)
+  attempts?: number // >1 when the task retried (the within-run flaky signal)
+  cached?: boolean // the task declared `cache`
+  // v27: why it failed or was skipped, as the run's footer said it
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  remoteError?: string // v40: each failed remote read or write of its key, `; `-joined
+  peakCores?: number // v43: sampled, most cores one interval burned
+  avgRssBytes?: number // v43: sampled, mean resident memory
+  placement?: string // v44: where an executor ran it (`small#1`)
+  placementCores?: number // v44: that machine's cores
+  placementMemoryBytes?: number // v44: and memory
+  keylessBy?: string // v46: the task with no inputs its key folded
+  def?: string // v48: the task's definition (`taskDefinition`), which history reads by
+  cpuShare?: number // v49: the share of a core its threads got there; history divides its CPU by it
+  queuedMs?: number // v51: waited ready for a slot
+  outputBytes?: number // v51: its output files' bytes, restored or saved
+  blocks?: number // v51: the tasks and groups downstream of it in the run
+  flakyPasses?: number // v51: the flaky record its row quoted
+  flakyFailures?: number
+}
+
+// A plugin measure kept as a timing (the `measures` seam).
+export interface MeasureRecord {
+  // …
+}
+export class RunHistory {}
+```
+
+## `src/history/history-stream.ts` — a run's hits written on a thread
+
+### Purpose
+
+`HistoryStream`: a run's hits written on a thread of their own while the graph runs, 512 to a transaction, through a second connection on the same files (`historyFiles(cache)`). The thread starts only for a run of 2,048 hits or more (its confirmed local hits after the classify, or the hit that reaches it): below that its start cost more than it saved. A batch the thread does not land comes back and goes in the bundle. The writer is a second `bun build --compile` entry point. `src/history/history-writer.ts` is
+the thread's own entry point.
+
+### Public surface
+
+```ts
+// A run's hits written on a thread while the graph runs, 512 to a
+// transaction, once `expected` (its confirmed local hits) or the hits
+// added reach 2,048; `finish` hands back what did not land, for the bundle.
+export class HistoryStream<T> {
+  constructor(files: { index: string; store?: string }, expected: number)
+  add(item: T, record: RunRecord): void
+  finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
+}
+```

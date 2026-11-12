@@ -69,8 +69,9 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
                         plan → files seam @vzn/vx-migrate writes through)
   src/graph/            task graph + two-tier scheduler
-  src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs (glob
-                        resolution, boundaries) + git-inputs (the git enumeration it trusts)
+  src/cache/            the local store (cache.ts over store-index, lookup, restore, save, prune),
+                        layered/chained remote seam, inputs (glob resolution, boundaries) +
+                        git-inputs (the git enumeration it trusts)
   src/memo/             what a warm run remembers: file hashes, folds, lockfile parses, output stamps,
                         remote hits
   src/index-db/         cache.db's one schema and SQLite helpers, below cache, memo and history

@@ -338,6 +338,11 @@ export interface CacheFlags {
 
 type · `src/cache/layer.ts`
 
+The shape every cache implementation honors. `Cache` (the local store)
+and `LayeredCache` both `implements` this so the
+orchestrator's `executeTask` can take either without a discriminated
+union and we get a compile-time guarantee the surfaces stay congruent.
+
 ```ts
 export interface CacheLayer {
   readonly memo: TaskMemo

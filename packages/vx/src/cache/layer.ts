@@ -339,12 +339,6 @@ export class ArtifactVanishedError extends Error {
 }
 
 /**
- * The shape every cache implementation honors. `Cache` (the local store)
- * and `LayeredCache` both `implements` this so the
- * orchestrator's `executeTask` can take either without a discriminated
- * union and we get a compile-time guarantee the surfaces stay congruent.
- */
-/**
  * The machine-local memos a task's key and hit read: file hashes and
  * the output rows and stamps that prove a tree current. Always the local
  * store's, whatever layers sit above it.
@@ -415,6 +409,12 @@ export interface TaskMemo {
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
 }
 
+/**
+ * The shape every cache implementation honors. `Cache` (the local store)
+ * and `LayeredCache` both `implements` this so the
+ * orchestrator's `executeTask` can take either without a discriminated
+ * union and we get a compile-time guarantee the surfaces stay congruent.
+ */
 export interface CacheLayer {
   /** The local store's memos (`TaskMemo`). */
   readonly memo: TaskMemo

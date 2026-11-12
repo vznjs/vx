@@ -211,7 +211,7 @@ export interface RunSummary {
     cache meters + info + time).
 12. **Optional artifacts.** `writeRunProfile` (`--profile`).
     Errors logged, exit code unchanged.
-13. **`assembleRunRecords` → `cache.recordRunBundle`**
+13. **`assembleRunRecords` → `runHistory(cache).recordRunBundle`**
     (`run-records.ts`). One pass over the outcomes builds the `runs`
     rows (one per real task; group + `aborted` skipped), the
     `invocations` header row (command, policy, git/CI/host context,
@@ -1588,7 +1588,7 @@ Error(`). Each switch missed the memo and parsed the lockfile again,
   run hashes before any task starts, so no task's write falls between;
   a `vx watch` cycle discovers, and hashes, afresh.
 - **Once per process.** The file's size, mtime, ctime and inode gate the
-  read within a process (a `vx watch` cycle), as `Cache.hashFile`'s memo
+  read within a process (a `vx watch` cycle), as `Cache.memo.hashFile`'s memo
   keys a file: size and mtime alone kept the digests of a same-size
   lockfile copied in with its mtime (`cp -p`). A file changed within the
   racy window of its read (50 ms, or its second where the file system
