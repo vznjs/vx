@@ -1366,6 +1366,16 @@ it("books a joining worker's other cores as an earlier run learned its size's", 
     await Bun.sleep(50)
     for (const id of ids) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    // Its first frame moves it a step from its size's, not all the way.
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3'],
+      batch: 1,
+      load: { cpu: 3, memory: 0, tasks: 1 },
+    })
+    await Bun.sleep(50)
+    const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
+    expect(w.cores).toBeCloseTo(2.75)
   } finally {
     await h.stop()
   }

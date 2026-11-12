@@ -974,7 +974,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     less what its machine spends besides the run's tasks, and a new one
     of a size what this run's of that size spent, else an earlier run's
     (kept in history, as warm-ups are), else none; so does one just joined,
-    until its own load says, as tasks are placed on it. A new worker starts only when
+    until its own load says, which then moves it from there a step a frame,
+    as tasks are placed on it. A new worker starts only when
     a task reaches its latest start (the best end less three times its
     chain, as history is a guess) with no room sooner on a worker running
     or starting: a task with slack waits for room the run pays for

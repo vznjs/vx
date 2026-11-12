@@ -182,7 +182,6 @@ interface Worker {
 /** How far each frame moves a worker's `other`: a frame read as a task starts lags it. */
 const OTHER_WEIGHT = 0.25
 
-/** `a`'s `other`, where its machine is the size it was given: a bigger one's spare cores take it. */
 /** What a worker was started as: its size's `cpu` and `memory` in bytes. */
 export interface Declared {
   readonly size: string
@@ -990,18 +989,24 @@ export class Orchestrator {
   }
 
   /**
-   * What `a`'s machine spends besides the run's tasks: as it said, or
-   * before its first frame, as its size's did. Booked on all 4 cores until
+   * What `a`'s machine spends besides the run's tasks, where its machine is
+   * the size it was given (a bigger one's spare cores take it): as it said,
+   * or before its first frame, as its size's did. Booked on all 4 cores until
    * it said, a small just joined took six shards the plan gave three; its
    * machine ran busy for 50 s and they ran 1.7 times their history (main
    * f2ddcb6, 2026-11-12).
    */
   private otherOf(a: Worker): number {
     if (a.cores !== a.reported.cores) return 0
-    if (a.other !== undefined) return a.other
+    return a.other ?? this.sizeOther(a) ?? 0
+  }
+
+  /** What machines of `a`'s size spent besides the run's tasks: this run's, else an earlier run's. */
+  private sizeOther(a: Worker): number | undefined {
     const size = a.declared?.size
-    if (size === undefined) return 0
-    return Math.min(a.cores / 2, this.othersOf().get(size) ?? this.o.learnedOther?.(size) ?? 0)
+    if (size === undefined) return undefined
+    const o = this.othersOf().get(size) ?? this.o.learnedOther?.(size)
+    return o === undefined ? undefined : Math.min(a.cores / 2, o)
   }
 
   /** Whether a task of `a`'s holds its cores: its command still runs, or has yet to. */
@@ -1058,7 +1063,12 @@ export class Orchestrator {
     // 30% past their history (main 36e410f, 2026-11-10).
     if (Number.isFinite(tasks) && a.busy.size > 0) {
       const o = Math.min(a.cores / 2, Math.max(0, a.load.cpu - tasks))
-      a.other = a.other === undefined ? o : a.other + (o - a.other) * OTHER_WEIGHT
+      // Moved from its size's, not set by its first frame: that frame, its
+      // tasks' setup counted and their commands not yet, read 2 of a small's
+      // 4 cores, and every small after it was booked and planned at 2
+      // (2026-11-12).
+      const was = a.other ?? this.sizeOther(a)
+      a.other = was === undefined ? o : was + (o - was) * OTHER_WEIGHT
     }
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
