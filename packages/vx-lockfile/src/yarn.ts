@@ -11,8 +11,8 @@
 // come from the workspaces' own `package.json` (`classicLinks`), and its
 // one digest is the root's reach through every entry the file resolves.
 
-import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { reachedImporters, withTransitive } from './graph.js'
+import { reachDigests } from '@vzn/vx'
+import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
 import { depsOf, record, stable } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
 import { parseSyml } from './syml.js'

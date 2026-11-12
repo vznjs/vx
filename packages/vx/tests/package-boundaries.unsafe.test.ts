@@ -9,6 +9,8 @@
 //         caught from any depth (the pattern that stood here matched only
 //         `../src/`, core's path before it moved under packages/, and let
 //         any reach from a sibling through).
+// Rule 1 holds private/vx-plugin-examples too: no src/, but its files are
+//         what a plugin author copies.
 // Rule 2: core (src/**) never imports a sibling @vzn/vx-* package or any
 //         packages/* path — the dependency direction is sibling → core, never
 //         the reverse. The OTel/HTTP SDK closures stay out of core's budget.
@@ -94,6 +96,29 @@ describe('package boundaries', () => {
     expect(allViolations).toEqual([])
   })
 
+  it('the plugin examples import vx only via the bare @vzn/vx specifier', async () => {
+    // They are what a plugin author copies, so they hold to the public API.
+    const examples = path.join(PRIVATE_DIR, 'vx-plugin-examples')
+    const dirs = (
+      await Array.fromAsync(new Bun.Glob('*').scan({ cwd: examples, onlyFiles: false }))
+    )
+      .filter((d) => d !== 'node_modules' && !d.includes('.'))
+      .sort()
+    expect(dirs).toContain('fingerprint')
+    const violations: string[] = []
+    for (const dir of dirs)
+      for (const i of await importsOf(path.join(examples, dir))) {
+        const outside =
+          i.specifier.startsWith('.') &&
+          !path
+            .resolve(examples, dir, path.dirname(i.file), i.specifier)
+            .startsWith(examples + path.sep)
+        if ((i.specifier.startsWith('@vzn/') && i.specifier !== '@vzn/vx') || outside)
+          violations.push(`${dir}/${i.file} → ${i.specifier}`)
+      }
+    expect(violations).toEqual([])
+  })
+
   it('core (src/**) never imports a sibling @vzn/vx-* package or packages/*', async () => {
     const imports = await importsOf(CORE_SRC)
     const violations = imports.filter(
@@ -147,7 +172,6 @@ describe('package boundaries', () => {
       'executorFallback',
       'exitSignal',
       'findWorkspaceRoot',
-      'foldScriptHooks',
       'hostPlatform',
       'isCacheHit',
       // Widened 2026-09-23 (item 667): `@vzn/vx-reapi` maps declared output

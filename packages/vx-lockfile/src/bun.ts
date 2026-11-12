@@ -10,8 +10,8 @@
 //
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
-import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { reachedImporters, withTransitive } from './graph.js'
+import { reachDigests } from '@vzn/vx'
+import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
 import { depsOf, peerOnly, record, sectionsOf, stable, type Json } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
 

@@ -29,6 +29,8 @@ export interface PackageJson {
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
+  /** `module`: tsc reads a `.ts` here as an ES module. */
+  type?: string
   /** npm / yarn / bun workspaces. May be a glob array or { packages: [...] }. */
   workspaces?: string[] | { packages?: string[] }
 }

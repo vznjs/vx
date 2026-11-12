@@ -104,8 +104,9 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
-  unmapped?: boolean
   emptyReason?: string
+  example?: boolean
+  written?: (relPaths: readonly string[]) => readonly string[]
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<{ code: number; said: string }>
@@ -936,33 +937,6 @@ export interface FingerprintDigests {
 }
 ```
 
-## `foldScriptHooks`
-
-function · `src/workspace/migration.ts`
-
-A package.json script with the `pre<name>` / `post<name>` hooks npm runs
-around it, as ONE sh command. Each part runs in its own subshell, so a
-`;` or an `exit` in one ends that part alone, and the chain stops at the
-first that fails, as npm stops. The parts sit in a function the
-forwarded `--` args are appended to, and only the body takes them, as
-npm appends them to the script and never to its hooks. A plain ` && `
-join handed them to the post hook, and `test -f x && echo A; echo B` ran
-`echo B` after a failed pre hook and went green (item 905). npm appends
-them as TEXT: no part sees them as `$1`…, so the function quotes them
-into `vx_a`, clears its positional parameters, and evals the body with
-`vx_a` after it; `"$@"` on the body made a script's `$1` the first
-forwarded arg and its `$*` print them twice. Each part ends on its own
-line, so a trailing `# comment` cannot swallow the paren. A script with
-no hooks is its body, verbatim.
-
-```ts
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string
-```
-
 ## `GeneratedProject`
 
 type · `src/workspace/migration.ts`
@@ -1367,23 +1341,25 @@ export interface LockedFile {
 function · `src/orchestrator/lockfile-claim.ts`
 
 ```ts
-export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
+export function lockfileClaim<L = unknown>(
+  options: LockfileClaimOptions<L>,
+): LockfileClaimHooks<L>
 ```
 
 ## `LockfileClaimHooks`
 
 type · `src/orchestrator/lockfile-claim.ts`
 
-What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `importers` for its own stages.
+What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `links` for its own stages.
 
 ```ts
-export interface LockfileClaimHooks {
+export interface LockfileClaimHooks<L = unknown> {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
-  importers(ctx: {
+  links(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
-  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  }): Promise<ReadonlyMap<string, L> | undefined>
   recorded(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
@@ -1396,7 +1372,7 @@ export interface LockfileClaimHooks {
 type · `src/orchestrator/lockfile-claim.ts`
 
 ```ts
-export interface LockfileClaimOptions {
+export interface LockfileClaimOptions<L = unknown> {
   readonly file: string
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly extraFiles?: (text: string) => readonly string[]
@@ -1404,24 +1380,8 @@ export interface LockfileClaimOptions {
   readonly identity?: string
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
-  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly links?: (text: string) => ReadonlyMap<string, L>
   readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
-}
-```
-
-## `LockfileImporter`
-
-type · `src/orchestrator/lockfile-claim.ts`
-
-What a lockfile records of one importer's links to the workspace's other
-importers: dependency name → importer directory (root-relative POSIX,
-`.` for the root).
-
-```ts
-export interface LockfileImporter {
-  readonly deps: Readonly<Record<string, string>>
-  readonly peers: Readonly<Record<string, string>>
-  readonly transitive?: readonly string[]
 }
 ```
 
@@ -1584,16 +1544,14 @@ export type MigrationFormat = 'ts' | 'mjs'
 
 type · `src/workspace/migration.ts`
 
-A project the adoption tool found: its name, directory and the vx config
-it already has. `packageJson.type` picks `vx.config.mts` for a CommonJS
-TypeScript package.
+A project the adoption tool found: its name, directory and the vx config it already has.
 
 ```ts
 export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  readonly esModule?: boolean
 }
 ```
 
@@ -2328,8 +2286,8 @@ does not. Lockfiles carry dependency cycles, so the unit is the
 strongly connected component: Tarjan's walk (iterative — a dependency
 chain can be thousands deep) emits components children-first, and each
 folds its members (sorted), each as its material and the materials its
-edges land on, and its child components' digests (sorted). O(nodes + edges): 1000 importers over 3000 packages digest in
-~20 ms where one traversal per importer took 400.
+edges land on, and its child components' digests (sorted).
+O(nodes + edges), where one traversal per member is O(members × nodes).
 
 ```ts
 export function reachDigests(g: ReachGraph): string[]

@@ -1,7 +1,6 @@
 // The command a package.json script becomes. Inlining the body is the
 // rule — one process less per task than `<pm> run <name>` — with two npm
-// conventions mapped rather than lost, the way core's `vx init` maps
-// them (workspace/migrate-scripts.ts):
+// conventions mapped rather than lost:
 //
 // - `pre<name>` / `post<name>` hooks, which npm and pnpm run around
 //   `<name>` without being asked, are folded into the command in that
@@ -23,7 +22,6 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { foldScriptHooks } from '@vzn/vx'
 import { shellQuote } from './nx-command.js'
 
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
@@ -47,6 +45,42 @@ export function scriptCommand(
   if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return yarnRun(name)
   return foldScriptHooks(parts[0], body, parts[2])
 }
+
+/**
+ * A script with the `pre<name>` / `post<name>` hooks npm runs around it,
+ * as ONE sh command. Each part runs in its own subshell, so a `;` or an
+ * `exit` in one ends that part alone, and the chain stops at the first
+ * that fails, as npm stops. The parts sit in a function the forwarded
+ * `--` args are appended to, and only the body takes them, as npm appends
+ * them to the script and never to its hooks: a plain ` && ` join handed
+ * them to the post hook, and `test -f x && echo A; echo B` ran `echo B`
+ * after a failed pre hook. npm appends them as TEXT: no part sees them as
+ * `$1`…, so the function quotes them into `vx_a`, clears its positional
+ * parameters, and evals the body with `vx_a` after it. Each part ends on
+ * its own line, so a trailing `# comment` cannot swallow the paren. A
+ * script with no hooks is its body, verbatim.
+ */
+export function foldScriptHooks(
+  pre: string | undefined,
+  body: string,
+  post: string | undefined,
+): string {
+  if (pre === undefined && post === undefined) return body
+  const quoted = `'${body.replaceAll("'", `'\\''`)}'`
+  const parts = [
+    ...(pre === undefined ? [] : [`(${pre}\n)`]),
+    `(eval ${quoted}"$vx_a"\n)`,
+    ...(post === undefined ? [] : [`(${post}\n)`]),
+  ]
+  return `vx_script() {\n${QUOTE_ARGS}\nset --\n${parts.join(' && ')}\n}\nvx_script`
+}
+
+/** Each argument single-quoted into `vx_a`, in sh alone (no spawn per arg). */
+const QUOTE_ARGS =
+  `vx_q="'" vx_a=\n` +
+  `for vx_s in "$@"; do vx_r=; while :; do case $vx_s in *"$vx_q"*) ` +
+  `vx_r="$vx_r\${vx_s%%"$vx_q"*}'\\''"; vx_s=\${vx_s#*"$vx_q"};; *) break;; esac; done; ` +
+  `vx_a="$vx_a '$vx_r$vx_s'"; done`
 
 /** `yarn run <name>`, the name one shell word: `a b` ran script `a` with an argument. */
 export function yarnRun(name: string): string {

@@ -262,13 +262,13 @@ describe('a module page lists exactly the fields its interface has', () => {
 // J2-43: #2546 made `vx init` keep each config a member already has and
 // write the rest; migration.md still said any existing config aborts the
 // whole run.
-describe("migration.md's overwrite guard says a scripts migration keeps a member's config", () => {
+describe("migration.md's overwrite guard says an init migration keeps a member's config", () => {
   it('the page names the kept list the report prints', () => {
     expect(src('report/migration.ts')).toContain("rows.push(['kept', ...r.kept])")
     const guard = blocks('modules/workspace.md', 'Nothing is overwritten without')
     expect(guard).toHaveLength(1)
     expect(guard[0]).toContain(
-      'Under a scripts migration (`init`) a project that already has a config keeps it',
+      'Under an `init` migration a project that already has a config keeps it',
     )
     expect(guard[0]).toContain('under `kept`')
   })

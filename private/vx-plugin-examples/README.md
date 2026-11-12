@@ -21,6 +21,16 @@ shows `config`, `discover` and `fingerprint`.
 | `graph`     | [`plugins/graph.ts`](plugins/graph.ts)         | tasks of a name run one after another across projects                              |
 | `key`       | [`plugins/key.ts`](plugins/key.ts)             | folds environment variables into every cache key                                   |
 
+Lockfile support is not JS-only: [`fingerprint/uv.ts`](fingerprint/uv.ts)
+claims Python's `uv.lock` through core's `lockfileClaim`, so each member
+keys on its own dependency closure. It lives outside `plugins/`, so
+`vx init --plugin` does not offer it.
+
+A migrator is not a seam: it reads another tool's files and hands core's
+migration seam (`applyMigration`) a plan, which core renders, guards,
+writes and reports. [`migrators/makefile.ts`](migrators/makefile.ts)
+turns each project's Makefile targets into tasks, beside its test.
+
 Use one in `.vx/workspace.ts`:
 
 ```ts

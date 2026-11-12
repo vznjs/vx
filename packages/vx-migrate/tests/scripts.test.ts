@@ -4,12 +4,13 @@
 // init.test.ts; `vx init` hands such a repo to this bin
 // (init-no-manifest.test.ts in core holds the hand-off).
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { foldScriptHooks, loadProjectConfig, PERSISTENT_TODO, ui, VERSION } from '@vzn/vx'
+import { loadProjectConfig, PERSISTENT_TODO, ui, VERSION } from '@vzn/vx'
+import { foldScriptHooks } from '../src/script-command.js'
 import { delegatedScript, migrateScripts } from '../src/migrate-scripts.js'
 import { adoptionNext } from '../src/migrate.js'
 
@@ -115,6 +116,85 @@ async function addPackage(
   return dir
 }
 
+describe('vx init writes configs the repo’s own tools accept', () => {
+  const prettier = async (root: string, body: string): Promise<void> => {
+    await mkdir(path.join(root, 'node_modules', '.bin'), { recursive: true })
+    await writeFile(path.join(root, 'node_modules', '.bin', 'prettier'), `#!/bin/sh\n${body}\n`, {
+      mode: 0o755,
+    })
+  }
+
+  it(
+    'runs the repo’s formatter over what it wrote, and says so',
+    async () => {
+      const root = await makeRoot('vx-init-format-')
+      try {
+        await addPackage(root, 'a', { build: 'tsc' })
+        await prettier(root, `echo "$@" > "${root}/.prettier-args"`)
+        const r = await vx(root, ['init'])
+        expect(readFileSync(path.join(root, '.prettier-args'), 'utf8').trim()).toBe(
+          '--write packages/a/vx.config.ts .vx/workspace.ts',
+        )
+        expect(row(r.out, 'note')).toContain('formatted 2 files with prettier')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a dry run formats nothing; a failing formatter leaves the files and names the error',
+    async () => {
+      const root = await makeRoot('vx-init-format-fail-')
+      try {
+        await addPackage(root, 'a', { build: 'tsc' })
+        await prettier(root, `touch "${root}/.prettier-ran"; echo "no parser" >&2; exit 2`)
+        await vx(root, ['init', '--dry'])
+        expect(existsSync(path.join(root, '.prettier-ran'))).toBe(false)
+        const r = await vx(root, ['init'])
+        expect(existsSync(path.join(root, 'packages', 'a', 'vx.config.ts'))).toBe(true)
+        expect(row(r.out, 'note')).toContain(
+          'prettier did not format the written files (exit 2): no parser',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a TypeScript CommonJS package gets vx.config.mts; one with "type": "module" behind a BOM, .ts',
+    async () => {
+      const root = await makeRoot('vx-init-mts-')
+      try {
+        for (const [name, pkg] of [
+          ['cjs', JSON.stringify({ name: 'cjs', scripts: { build: 'tsc' } })],
+          [
+            'esm',
+            '\uFEFF' + JSON.stringify({ name: 'esm', type: 'module', scripts: { build: 'tsc' } }),
+          ],
+        ] as const) {
+          const dir = path.join(root, 'packages', name)
+          await mkdir(dir, { recursive: true })
+          await writeFile(path.join(dir, 'package.json'), pkg)
+          await writeFile(path.join(dir, 'tsconfig.json'), '{}')
+        }
+        await vx(root, ['init'])
+        expect(
+          ['cjs/vx.config.mts', 'cjs/vx.config.ts', 'esm/vx.config.ts', 'esm/vx.config.mts'].map(
+            (f) => existsSync(path.join(root, 'packages', f)),
+          ),
+        ).toEqual([true, false, true, false])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // ─── Source detection ────────────────────────────────────────────────
 
 describe('vx init names what it wrote', () => {
@@ -129,7 +209,7 @@ describe('vx init names what it wrote', () => {
       expect(lines.slice(from, from + 3)).toEqual([
         '  files     .vx/workspace.ts',
         '            .vx/.gitignore',
-        '            and 12 more in package directories',
+        '            and 12 more in project directories',
       ])
       // CONTROL: ten or fewer are each named.
       for (let i = 2; i < 12; i++)

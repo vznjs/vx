@@ -85,7 +85,6 @@ export {
 export type { LoadReads } from './load-reads.js'
 // The migration seam (see migration.ts).
 export {
-  foldScriptHooks,
   isStarterConfig,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,

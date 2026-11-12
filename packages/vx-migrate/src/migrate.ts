@@ -35,6 +35,7 @@ import {
   VERSION,
   type GeneratedProject,
   type MigrationFormat,
+  type MigrationMember,
   type MigrationPlan,
   UserError,
   ui,
@@ -412,10 +413,11 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
         ]
   const code = await applyMigration({
     root,
-    metas,
+    metas: migrationMembers(metas, plan),
     plan,
     source,
     verb: 'vx-migrate',
+    written: formatWritten(root),
     steps,
     notes: refused || bare || cacheNote === undefined ? [] : [cacheNote],
     dry: parsed.dry,
@@ -854,14 +856,22 @@ async function scripts(
   const installed = await prepareRepo(root, [...new Set(plugins.map((p) => p.pkg))], args)
   const code = await applyMigration({
     root,
-    metas,
+    metas: migrationMembers(metas, plan),
     plan,
     source: 'package.json scripts',
     verb: 'vx-migrate',
+    written: formatWritten(root),
     notes: [...noMembers, ...(await unreadWorkspaces(root, workspace.packageGlobs)), ...unmapped],
     steps: installed,
-    unmapped: unmapped.length > 0,
-    ...(unreached.length > 0 ? { emptyReason: unreachedHint(unreached, root) } : {}),
+    ...(unreached.length > 0
+      ? { emptyReason: unreachedHint(unreached, root) }
+      : {
+          emptyReason:
+            unmapped.length > 0
+              ? 'no package.json script became a task'
+              : 'no package.json scripts to turn into tasks',
+          example: true,
+        }),
     dry: args.dry,
     json: args.json === true,
     force: args.force,
@@ -871,6 +881,76 @@ async function scripts(
     ...(args.noInstall === true ? {} : { lock: lockWorkspace }),
   })
   return exitAfter(code, installed)
+}
+
+/**
+ * The members as the migration seam takes them, each planned directory
+ * none names among them: whether tsc reads a `.ts` there as an ES module
+ * picks `vx.config.ts` or `vx.config.mts`.
+ */
+function migrationMembers(metas: readonly PackageMeta[], plan: MigrationPlan): MigrationMember[] {
+  const members: MigrationMember[] = metas.map((m) => ({
+    name: m.name,
+    dir: m.dir,
+    configPath: m.configPath,
+    esModule: m.packageJson.type === 'module',
+  }))
+  const named = new Set(metas.map((m) => m.dir))
+  for (const p of plan.projects) {
+    if (named.has(p.dir)) continue
+    named.add(p.dir)
+    members.push({ name: p.name, dir: p.dir, configPath: null, esModule: esModuleAt(p.dir) })
+  }
+  return members
+}
+
+function esModuleAt(dir: string): boolean {
+  try {
+    // A byte-order mark is stripped, as npm strips it.
+    const text = readFileSync(path.join(dir, 'package.json'), 'utf8').replace(/^\uFEFF/, '')
+    return (JSON.parse(text) as { type?: unknown } | null)?.type === 'module'
+  } catch {
+    return false
+  }
+}
+
+/** The formatters a repo installs at its root, each with its write command. */
+const FORMATTERS: readonly (readonly [string, readonly string[]])[] = [
+  ['prettier', ['--write']],
+  ['biome', ['format', '--write']],
+  ['oxfmt', []],
+  ['dprint', ['fmt']],
+]
+
+/**
+ * Runs the repo's own formatter over the configs just written, as Nx's
+ * generators do: a repo's `prettier --check` failed on the quotes of a
+ * config vx wrote. Returns the report's note.
+ */
+function formatWritten(root: string): (relPaths: readonly string[]) => string[] {
+  return (written) => {
+    // A formatter has no parser for `.vx/.gitignore`.
+    const relPaths = written.filter((f) => /\.[cm]?[jt]s$/.test(f))
+    if (relPaths.length === 0) return []
+    for (const [name, args] of FORMATTERS) {
+      const bin = path.join(root, 'node_modules', '.bin', name)
+      if (!existsSync(bin)) continue
+      const r = Bun.spawnSync({
+        cmd: [bin, ...args, ...relPaths],
+        cwd: root,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        timeout: 60_000,
+      })
+      if (r.exitCode === 0) {
+        return [`formatted ${relPaths.length} file${relPaths.length === 1 ? '' : 's'} with ${name}`]
+      }
+      const why = (r.stderr.toString() || r.stdout.toString()).trim().split('\n')[0] ?? ''
+      return [`${name} did not format the written files (exit ${r.exitCode ?? 'signal'}): ${why}`]
+    }
+    return []
+  }
 }
 
 function upstream(task: Record<string, unknown> | null): string[] | undefined {

@@ -312,12 +312,6 @@ export async function findWorkspaceRoot(
 ): Promise<string>
 == function fix (src/ui/components.ts)
 export function fix(action: Inline): Block
-== function foldScriptHooks (src/workspace/migration.ts)
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string
 == function gap (src/ui/components.ts)
 export function gap(): Block
 == function hostPlatform (src/exec/executor.ts)
@@ -353,7 +347,9 @@ export function localFloor(
 == function localHistory (src/history/history.ts)
 export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
 == function lockfileClaim (src/orchestrator/lockfile-claim.ts)
-export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
+export function lockfileClaim<L = unknown>(
+  options: LockfileClaimOptions<L>,
+): LockfileClaimHooks<L>
 == function machineMemoryBytes (src/util/cgroup.ts)
 export function machineMemoryBytes(probe: CgroupProbe = {}): number
 == function machineParallelism (src/util/cgroup.ts)
@@ -504,8 +500,9 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
-  unmapped?: boolean
   emptyReason?: string
+  example?: boolean
+  written?: (relPaths: readonly string[]) => readonly string[]
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<{ code: number; said: string }>
@@ -1147,20 +1144,20 @@ export interface LockedFile {
   digest(projectDir: string): string | undefined
 }
 == type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
-export interface LockfileClaimHooks {
+export interface LockfileClaimHooks<L = unknown> {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
-  importers(ctx: {
+  links(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
-  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  }): Promise<ReadonlyMap<string, L> | undefined>
   recorded(ctx: {
     readonly workspaceRoot: string
     readonly cacheDir: string
   }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 == type LockfileClaimOptions (src/orchestrator/lockfile-claim.ts)
-export interface LockfileClaimOptions {
+export interface LockfileClaimOptions<L = unknown> {
   readonly file: string
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly extraFiles?: (text: string) => readonly string[]
@@ -1168,14 +1165,8 @@ export interface LockfileClaimOptions {
   readonly identity?: string
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
-  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly links?: (text: string) => ReadonlyMap<string, L>
   readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
-}
-== type LockfileImporter (src/orchestrator/lockfile-claim.ts)
-export interface LockfileImporter {
-  readonly deps: Readonly<Record<string, string>>
-  readonly peers: Readonly<Record<string, string>>
-  readonly transitive?: readonly string[]
 }
 == type LockSettings (src/config.ts)
 export interface LockSettings {
@@ -1240,7 +1231,7 @@ export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  readonly esModule?: boolean
 }
 == type MigrationPlan (src/workspace/migration.ts)
 export interface MigrationPlan {

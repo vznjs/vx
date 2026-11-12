@@ -7,8 +7,8 @@
 // at path `p` is `p/node_modules/d` when that key exists, else the nearest
 // ancestor directory's, else `node_modules/d` — Node's own walk.
 
-import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { reachedImporters, withTransitive } from './graph.js'
+import { reachDigests } from '@vzn/vx'
+import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
 import { depsOf, peerOnly, record, sectionsOf } from './json.js'
 
 // The graph the digest built from this parse, for `importerLinks`: `vx

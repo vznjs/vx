@@ -25,7 +25,6 @@ import {
   UserError,
   type DiscoveredProject,
   type LockfileClaimHooks,
-  type LockfileImporter,
   type PluginOptionKinds,
   type ProjectMeta,
   definePlugin,
@@ -33,6 +32,7 @@ import {
   reachDigests,
   type VxPlugin,
 } from '@vzn/vx'
+import type { LockfileImporter } from './graph.js'
 
 // Each parser loads when first used: every run evaluates
 // `.vx/workspace.ts`, and the four parsers were ~2.5 ms of it for a
@@ -364,9 +364,13 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         }
       }
   }
-  const claimOf = (file: string, root: string, affected: boolean): LockfileClaimHooks => {
+  const claimOf = (
+    file: string,
+    root: string,
+    affected: boolean,
+  ): LockfileClaimHooks<LockfileImporter> => {
     const guarded = guardedFor(file)
-    return lockfileClaim({
+    return lockfileClaim<LockfileImporter>({
       file,
       part: manager.name,
       version: digestVersion(),
@@ -375,7 +379,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       // load and the config's bytecode bundle.
       identity: `@vzn/vx-lockfile/${manager.name}@${digestVersion()}`,
       scope,
-      importers: guarded((text: string) => manager.importers(text)),
+      links: guarded((text: string) => manager.importers(text)),
       recorded: guarded((text: string) => {
         const recorded = new Map<string, readonly string[]>(
           [...manager.recorded(text)].map(([i, deps]) => [i, [...deps.keys()]]),
@@ -398,12 +402,15 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   // read a root settings file. `--affected` reads its claims with no root
   // for links: a path under a workspace is its project's change there,
   // never a lockfile's.
-  const rooted = new Map<string, { file: string; claim: LockfileClaimHooks }[]>()
-  const rootless = new Map<string, { file: string; claim: LockfileClaimHooks }[]>()
+  const rooted = new Map<string, { file: string; claim: LockfileClaimHooks<LockfileImporter> }[]>()
+  const rootless = new Map<
+    string,
+    { file: string; claim: LockfileClaimHooks<LockfileImporter> }[]
+  >()
   const claimsAt = (
     root: string,
     affected = false,
-  ): { file: string; claim: LockfileClaimHooks }[] => {
+  ): { file: string; claim: LockfileClaimHooks<LockfileImporter> }[] => {
     const memo = affected ? rootless : rooted
     let at = memo.get(root)
     if (at === undefined) {
@@ -430,7 +437,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     { importers: ReadonlyMap<string, LockfileImporter>; file: string | undefined } | undefined
   > => {
     for (const { file, claim } of claimsAt(ctx.workspaceRoot)) {
-      const importers = await claim.importers(ctx)
+      const importers = await claim.links(ctx)
       if (importers === undefined) continue
       if (importers.size > 0 || manager.manifestImporters === undefined) return { importers, file }
       const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()

@@ -29,7 +29,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import {
-  foldScriptHooks,
   type GeneratedProject,
   type GeneratedTask,
   type MigrationPlan,
@@ -39,7 +38,7 @@ import {
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { relPosix } from './paths.js'
-import { type Owner, ownerOf, runsScriptHooks } from './script-command.js'
+import { foldScriptHooks, type Owner, ownerOf, runsScriptHooks } from './script-command.js'
 import { onceReader, tscBuildInfo } from './tsc-buildinfo.js'
 
 /**

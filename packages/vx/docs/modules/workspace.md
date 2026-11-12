@@ -2156,15 +2156,15 @@ re-hashes them, as its memo did on every run before, and digests anew
 
 ### Purpose
 
-What any adoption tool needs once it has decided what a package's tasks
+What any migrator needs once it has decided what a project's tasks
 are: the plan's shape, TypeScript emission, the overwrite guard, the
 writes and the lock step. It draws nothing: `writeMigration` answers with
 a `MigrationReport`; `applyMigration` (`src/orchestrator/migration.ts`)
-writes, then `report` draws it. Core knows no source format here — a mapper returns
-a `MigrationPlan` and `applyMigration` does the rest. `@vzn/vx-migrate` maps package.json scripts, Turbo, Nx
-and Vite Task through it. Before 2026-09-10 the Turbo and Nx mappers
-lived in `src/cli/`, and the scripts mapper until 2026-10-14; core reads
-no `package.json` for an adoption.
+writes, then `report` draws it. Core knows no source format or ecosystem
+here: a mapper returns a `MigrationPlan` and `applyMigration` does the
+rest. `@vzn/vx-migrate` is one migrator; a Moon or Bazel one writes
+through the same seam (`private/vx-plugin-examples/migrators/makefile.ts`
+maps a Makefile).
 
 ### Public surface (exported from `@vzn/vx`)
 
@@ -2179,38 +2179,40 @@ export interface GeneratedProject {
   name: string
   dir: string
   importLines: string[]
-  tags?: readonly string[] // written as the config's `tags` when non-empty (an Nx project's)
-  writeName?: boolean // writes `name`: no manifest names the project (an Nx repo with no package.json)
+  tags?: readonly string[] // written as the config's `tags` when non-empty
+  writeName?: boolean // writes `name`: no manifest names the project
   tasks: GeneratedTask[]
 }
 export interface GeneratedTask {
   name: string
-  todos: string[] // rendered as `// TODO(vx-migrate): …` (a line break continues the comment) and listed in the report
+  todos: string[] // rendered as `// TODO(<verb>): …` (a line break continues the comment) and listed in the report
   task: Record<string, unknown> | null // TaskConfig-shaped; arrays may hold a RawExpr splice
 }
 export interface RawExpr {
   readonly raw: string
 } // a verbatim TS expression
 export type MigrationFormat = 'ts' | 'mjs'
-// A project the tool found; `packageJson.type` picks `vx.config.mts`.
+// A project the tool found. Beside a tsconfig.json, `esModule` not true
+// writes `vx.config.mts`.
 export interface MigrationMember {
   readonly name: string
   readonly dir: string
   readonly configPath: string | null
-  readonly packageJson?: object
+  readonly esModule?: boolean
 }
 export interface ApplyMigrationArgs {
   root: string
   metas: readonly MigrationMember[]
   plan: MigrationPlan
-  source: string
-  verb: string
+  source: string // what the plan was read from, e.g. turbo.json
+  verb: string // the tool's name: the report title and each TODO(<verb>)
   dry: boolean
   force: boolean
   init?: boolean
   notes?: readonly string[]
-  unmapped?: boolean // init: scripts exist, none became a task (M-59)
-  emptyReason?: string // init: why the plan is empty, the report's line in place of the example
+  emptyReason?: string // why the plan is empty: init's `tasks` row, else the refusal; default `no tasks in <source>`
+  example?: boolean // an empty init plan shows a worked example; default when emptyReason is unset
+  written?: (relPaths: readonly string[]) => readonly string[] // after the write, not under dry: the tool's own step (a formatter); its lines join the notes
   format?: MigrationFormat // default 'ts'
   json?: boolean // with dry: one JSON document (schemas/init.json) for files + report
   lock?: (root: string) => Promise<{ code: number; said: string }> // after the write: vx lock's step, its line the `lock` row; a refusal prints above the report, the files stay, exit 1
@@ -2224,7 +2226,7 @@ export function writeMigration(
 ): Promise<MigrationReport | { json: string }>
 // On the façade from src/orchestrator/migration.ts: write, then draw. The exit code.
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
-// The files `vx init` writes outside a Turbo or Nx repo (type-only import,
+// The files `vx init` writes when no migrator maps the workspace (type-only import,
 // so a user's tsc checks them against config.ts alone), and whether a file
 // is that root config, untouched: a migration maps over it (no conflict).
 export function starterProject(format: MigrationFormat): string
@@ -2248,15 +2250,6 @@ export function pruneOrphanPersistentNotes(
   }[],
   note: string,
 ): void
-// A script with the pre/post hooks npm runs around it, as one sh command:
-// each part a subshell, the chain stopping at the first that fails, and the
-// forwarded `--` args reaching the body alone (item 905). No hooks: the
-// body, verbatim. Every scripts mapper folds through it.
-export function foldScriptHooks(
-  pre: string | undefined,
-  body: string,
-  post: string | undefined,
-): string
 // Why `name` cannot be a task's (the schema's rule), or null: a mapper
 // leaves such a script out with a TODO.
 export function taskNameProblem(name: string): string | null
@@ -2268,35 +2261,32 @@ export function taskNameProblem(name: string): string | null
   `satisfies ProjectConfig`: the type-only form loads in a workspace that
   runs the binary without the package installed. `format: 'mjs'`
   (`--mjs`) writes the same object untyped as `vx.config.mjs`, for a
-  package whose `tsconfig` `include` would not cover a `.ts` config.
-- A `ts` config is `vx.config.mts` in a package with a `tsconfig.json`
-  and no `"type": "module"`: tsc reads a `.ts` there as CommonJS and its
-  type import of the ESM `@vzn/vx/config` fails (TS1479, TS1541). An
+  project whose `tsconfig` `include` would not cover a `.ts` config.
+- A `ts` config is `vx.config.mts` beside a `tsconfig.json` unless the
+  member says `esModule: true`: tsc reads a `.ts` there as CommonJS and
+  its type import of the ESM `@vzn/vx/config` fails (TS1479, TS1541). An
   output's `!vx.config.ts` take-back there becomes `!vx.config.mts`.
-- After the write, the files go through the first formatter the root's
-  `node_modules/.bin` holds (prettier, biome, oxfmt, dprint), as Nx's
-  generators do, so the repo's own format check passes them; a `note`
-  row says which, or the error a failing one printed. Not under `dry`.
+- After the write (not under `dry`), `written` gets the paths: the
+  tool's own step over them. vx-migrate runs the first formatter the
+  root's `node_modules/.bin` holds, so the repo's format check passes
+  them; its lines join the `note` row.
 - A written file `.gitignore` drops gets a `note`: the `!file` line
   that keeps it, or, inside an ignored directory (an old `/.vx/` line),
   that directory, since no `!` line re-includes a file there. vx never
   edits `.gitignore`.
-- An empty plan in a single-project workspace whose root `package.json`
-  has no `workspaces` field, while packages with scripts sit beneath it,
-  is reported as such: the report names the packages the missing field
-  never reaches (item 248) instead of "nothing to migrate".
+- An empty plan says why: `emptyReason`, in the tool's words, or
+  `no tasks in <source>`.
 - The workspace file is written when no `.vx/workspace.{ts,mts,js,mjs,cts,cjs}` exists:
-  a migrated workspace declares its plugins (`plugins`; vx-migrate's
-  scripts path passes the lockfile's `@vzn/vx-lockfile` one), and an empty list is a
-  complete workspace (the floor). A plan that brings its own (vx-migrate's,
-  declaring plugins) replaces it. Neither the configs nor the workspace
+  a migrated workspace declares its plugins (`plugins`), and an empty
+  list is a complete workspace (the floor). A plan that brings its own
+  replaces it. Neither the configs nor the workspace
   file carries a "generated by" header or explanatory comment.
-- Nothing is overwritten without `force`. Under a scripts migration (`init`) a
+- Nothing is overwritten without `force`. Under an `init` migration a
   project that already has a config keeps it, untouched, and the report
-  lists it under `kept`; the rest are written (M-52). For a migration, a
+  lists it under `kept`; the rest are written. For a migration, a
   discovered project with any existing config, and under either caller
-  every actual write target (a synthesized root project, the Turbo
-  preset), abort the whole run before a byte lands. `vx init`'s untouched
+  every actual write target (a synthesized root project, an extra
+  file), abort the whole run before a byte lands. `vx init`'s untouched
   root starter is no conflict: a root config of another extension
   replaces it, and the report lists it under `replaced`.
 - No write goes through a symlink (`src/util/write-file.ts`, shared with
@@ -2306,10 +2296,10 @@ export function taskNameProblem(name: string): string | null
   `writeNoFollow` writes a temp beside the file, renamed over it, so a
   link put there after the check is replaced, not followed. A directory
   where the file goes is named (`directoryInTheWay`), not shown as `EISDIR`.
-- `init` distinguishes the two callers on an empty plan: a scripts
-  migration of a workspace with no scripts still writes the workspace
-  file and shows a worked example (or `emptyReason`); a migration with
-  nothing to convert is an error.
+- `init` distinguishes the two callers on an empty plan: an `init`
+  migration still writes the workspace file and shows a worked example
+  (unless `emptyReason` replaces it and `example` is unset); any other
+  migration with nothing to convert is an error.
 - A plan that names a file outside the root (a project dir, an
   `extraFiles` path) is refused before anything is written, by its
   spelling and by its real directory: a member linked out of the root
@@ -2322,12 +2312,11 @@ export function taskNameProblem(name: string): string | null
 
 ### What it does NOT do
 
-- Read `package.json`, `turbo.json`, an Nx graph, or any other runner's
-  format. That is `@vzn/vx-migrate`, whose `turbo()` and `nx()` plugins
-  run the same mappings live.
+- Read any source format or ecosystem file (`package.json`, `turbo.json`,
+  `Cargo.toml`). That is the migrator's job.
 
 ### Tests
 
 `tests/migration.test.ts` (rendering, the overwrite guard, the report);
-`packages/vx-migrate/tests/` (scripts, Turbo, Nx and Vite Task end to
-end through the seam).
+`private/vx-plugin-examples/migrators/makefile.test.ts` (a Makefile
+migrator on the public seam alone); `packages/vx-migrate/tests/`.

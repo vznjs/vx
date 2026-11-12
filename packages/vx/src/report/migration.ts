@@ -18,16 +18,16 @@ export function drawMigration(done: MigrationReport | { readonly json: string })
   return drawReport(done)
 }
 
-/** Files named one per line; past this, the root's and a count (TanStack form: 97). */
+/** Files named one per line; past this, the root's and a count. */
 const FILES_SHOWN = 10
 
 function fileLines(paths: readonly string[]): string[] {
   if (paths.length <= FILES_SHOWN) return [...paths]
   const root = paths.filter((p) => !p.includes('/') || p.startsWith('.vx/'))
-  return [...root, `and ${paths.length - root.length} more in package directories`]
+  return [...root, `and ${paths.length - root.length} more in project directories`]
 }
 
-/** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */
+/** Ids named per shared TODO; the files carry each one. */
 const TODO_IDS_SHOWN = 5
 
 function drawReport(r: MigrationReport): number {
