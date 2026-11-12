@@ -246,8 +246,7 @@ function workspaceFilesToken(
   }
   // No positive entry lists no workspace file (`resolveWorkspaceFiles`).
   if (plan.positive.length === 0) return ''
-  const snapshot = cache.snapshotFor(workspaceRoot, plan.globs)
-  if (snapshot === undefined) return undefined
+  const snapshot = workspaceSnapshot(workspaceRoot, plan.globs, cache).files
   if (ignoredReach(plan.reach, snapshot, { dir: workspaceRoot, cache }).length > 0) return undefined
   const digest = cache.declarationDigest(workspaceRoot, snapshot, key, plan.takes, plan.heads)
   return digest === undefined ? undefined : `\0ws\0${key}\0${digest}`
@@ -377,6 +376,25 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
 }
 
 /**
+ * The workspace partition `globs` may read: the run's snapshot, or one
+ * `git ls-files` at the root once a write dropped it. The key and its
+ * fold memo token read the same listing, so a task after an unsandboxed
+ * one still remembers its key (`declarationDigest` vouches for each path
+ * by its stat when no index OID does).
+ */
+function workspaceSnapshot(
+  root: string,
+  globs: readonly Bun.Glob[],
+  cache: GitFilesCache | undefined,
+): { files: readonly string[]; undecodable: ReadonlySet<string> | undefined } {
+  const files = cache?.snapshotFor(root, globs)
+  if (files !== undefined) return { files, undecodable: cache!.undecodableNames }
+  const ls = runGitLsFiles(root)
+  cache?.set(root, ls.files)
+  return { files: ls.files, undecodable: noteUndecodable(cache, root, ls.undecodable) }
+}
+
+/**
  * Resolve `inputs.workspaceFiles` against the workspace-wide git file set. No
  * project-boundary rule: this is the documented way to declare shared root
  * inputs. The boundary applies to `files` globs only.
@@ -409,14 +427,11 @@ function resolveWorkspaceFiles(args: {
   const positiveGlobs = asTrees(positive).map(globFor)
   // Workspace-wide partition, keyed by the root; populated up-front when any
   // task declares workspaceFiles, else spawned on demand.
-  let gitFiles = args.gitFilesCache?.snapshotFor(args.workspaceRoot, positiveGlobs)
-  let undecodable = args.gitFilesCache?.undecodableNames
-  if (gitFiles === undefined) {
-    const ls = runGitLsFiles(args.workspaceRoot)
-    gitFiles = ls.files
-    args.gitFilesCache?.set(args.workspaceRoot, gitFiles)
-    undecodable = noteUndecodable(args.gitFilesCache, args.workspaceRoot, ls.undecodable)
-  }
+  const { files: gitFiles, undecodable } = workspaceSnapshot(
+    args.workspaceRoot,
+    positiveGlobs,
+    args.gitFilesCache,
+  )
   // Valid for one snapshot: a task that wrote workspace outputs replaces the
   // partition.
   let isExcluded: ((rel: string) => boolean) | undefined
