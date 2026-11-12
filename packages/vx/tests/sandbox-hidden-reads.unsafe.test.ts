@@ -317,7 +317,16 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
   })
 
   it('CONTROL: a path the host lacks too is not named', async () => {
-    expect(await outcome(tsc('tsconfig.other.json'))).toEqual(['failed', []])
+    // Only the note on what the cwd lists, which names no path of the task's.
+    expect(await outcome(tsc('tsconfig.other.json'))).toEqual([
+      'failed',
+      [
+        `vx: this sandbox grants no read of the task's own working directory (${root}/packages/app), ` +
+          'only of src inside it, so a command that lists it (a test runner looking for its files) ' +
+          'sees nothing else, and no violation names that. Grant what it lists, or the directory: ' +
+          "`sandbox: { allow: { read: ['.'] } }`.",
+      ],
+    ])
   })
 
   // cargo and make say neither "not found" nor "no such file": their

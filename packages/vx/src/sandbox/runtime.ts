@@ -3089,6 +3089,37 @@ function addHints(
         [...loopbackPorts(args.config.network), ...bridgedPorts(args.config)],
       )
       if (refused !== undefined) violations.push(refused)
+      // Last, and only when nothing else was said: a grant inside the cwd
+      // lists it (bwrap builds the path to a bind), but only that grant, so
+      // `bun test` and Vitest scan it, find no test file, and fail with no
+      // read to report.
+      const cwd = toRealPath(args.cwd)
+      const granted = grantedRead.map(toRealPath)
+      if (violations.length === 0 && !granted.some((g) => atOrUnder(cwd, g))) {
+        const inside = [
+          ...new Set(
+            granted
+              // A baseline the host lacks (no node_modules) is bound to nothing.
+              .filter(
+                (g) =>
+                  g !== cwd &&
+                  atOrUnder(g, cwd) &&
+                  statSync(g, { throwIfNoEntry: false }) !== undefined,
+              )
+              .map((g) => relPosix(cwd, g)),
+          ),
+        ]
+        violations.push({
+          timestamp: new Date(),
+          hint: true,
+          line:
+            `vx: this sandbox grants no read of the task's own working directory (${args.cwd}), ` +
+            `only of ${inside.length > 4 ? `${inside.slice(0, 4).join(', ')}, …` : inside.join(', ')} inside it, ` +
+            'so a command that lists it (a test runner looking for its files) sees nothing else, ' +
+            'and no violation names that. Grant what it lists, or the directory: ' +
+            "`sandbox: { allow: { read: ['.'] } }`.",
+        })
+      }
     }
   }
 }

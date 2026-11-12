@@ -607,7 +607,10 @@ fail-on-violation count denials only; the placeholder's note had read
 asks whether a read grant covers the cwd, and on Linux also whether one
 lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
 root's `read: ['.']`, bound as its children around the walls, drew the
-note on every failure (B-20).
+note on every failure (B-20). A grant only inside it (the project's
+`node_modules`, a file) gets the Linux note instead, naming what the cwd
+lists: `bun test` and Vitest scan it, find no test file and fail with no
+read to report.
 
 A failed task's note also names the paths outside the project the wall
 hid that exist on the host (`hiddenReadsOutside`), with a grant to add,
