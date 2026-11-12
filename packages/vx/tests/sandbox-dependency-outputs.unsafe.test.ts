@@ -128,7 +128,9 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
   // the touch lands nothing, and the dependency's file keeps its time.
   // `touch` without `-c` opens the file for writing first, and so does
   // uutils' (Ubuntu 26.04) with it: that refused open is the touch too.
-  it(
+  // Linux only: seatbelt logs a refused utimes as `file-write*`, as it logs
+  // a refused write, so macOS cannot tell the touch from a write.
+  it.skipIf(process.platform !== 'linux')(
     'a refused timestamp change on a dependency’s output is no violation and moves nothing',
     async () => {
       await addProject(fixture.root, 'tools', {
@@ -358,7 +360,7 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
       const named = lines
         .filter((l) => l.includes("a dependency's declared outputs"))
         .map((l) => ['../tools/out/bin/tool.txt', '../tools/root.txt'].every((p) => l.includes(p)))
-      expect(named.length === 1 ? named : { named, lines, log: fixture.log }).toEqual([true])
+      expect(named.join() === 'true' ? named : { named, lines, log: fixture.log }).toEqual([true])
     },
     TIMEOUT,
   )

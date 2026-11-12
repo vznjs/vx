@@ -123,6 +123,8 @@ describe('macProfileRules, capability by capability', () => {
       [
         '(allow network-outbound (remote ip "localhost:4173"))',
         '(allow network-outbound (remote ip "localhost:4174"))',
+        // curl reads the proxy settings first; refused, the record failed it.
+        '(allow mach-lookup (global-name "com.apple.SystemConfiguration.configd"))',
       ],
     ],
     [

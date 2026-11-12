@@ -7,6 +7,7 @@
 // into the namespace. Before it did, the documented setup was refused
 // whatever the grant (2026-11-12).
 
+import { readFileSync, readlinkSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
@@ -29,6 +30,31 @@ function ipv6Loopback(): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+// What the host's procfs says of the port, for a CI-only failure.
+function listeners(port: number): string {
+  const hex = port.toString(16).toUpperCase().padStart(4, '0')
+  const rows: string[] = [
+    `/proc/self -> ${String(readlinkSafe('/proc/self'))} (pid ${process.pid})`,
+  ]
+  for (const f of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    try {
+      for (const l of readFileSync(f, 'utf8').split('\n'))
+        if (l.includes(`:${hex} `)) rows.push(`${f}: ${l.trim()}`)
+    } catch (err) {
+      rows.push(`${f}: ${String(err)}`)
+    }
+  }
+  return rows.join('\n')
+}
+
+function readlinkSafe(p: string): string | undefined {
+  try {
+    return readlinkSync(p)
+  } catch {
+    return undefined
   }
 }
 
@@ -195,7 +221,7 @@ describe.skipIf(!available || Bun.which('curl') === null)(
             r.outcomes.find((o) => o.node.id === 'web#client')?.sandboxViolationLines ?? []
           if (!lines.join('\n').includes(want))
             throw new Error(
-              `no line names ${want} (client${client}); sandbox:\n${lines.join('\n')}\ntask output:\n${fixture.log.join('\n')}`,
+              `no line names ${want} (client${client}); sandbox:\n${lines.join('\n')}\ntask output:\n${fixture.log.join('\n')}\n${listeners(port)}`,
             )
         }
       },

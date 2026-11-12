@@ -3641,9 +3641,14 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   }
   // A loopback port the network list names is dialled directly (the
   // proxy is skipped for loopback), so the profile allows that port alone.
-  for (const p of loopbackPorts(c.network)) {
+  const ports = loopbackPorts(c.network)
+  for (const p of ports) {
     rules.push(`(allow network-outbound (remote ip "localhost:${p}"))`)
   }
+  // curl asks configd for the proxy settings before it dials; refused, the
+  // record failed a client that had its answer (exit 0, CI 2026-11-12).
+  if (ports.length > 0)
+    rules.push('(allow mach-lookup (global-name "com.apple.SystemConfiguration.configd"))')
   if (c.weakerNetworkIsolation === true) {
     rules.push('(allow mach-lookup (global-name "com.apple.trustd.agent"))')
   }

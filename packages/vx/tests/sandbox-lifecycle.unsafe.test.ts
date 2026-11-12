@@ -60,6 +60,33 @@ const available = await sandboxAvailable('sandbox-runtime tests')
  * memoized answers exactly what the real one does — so the rows below
  * hand it a wrapper that fails, and count what it asked for.
  */
+
+/** Every process under `root`, one `pid ppid cmdline` row each: a CI-only diagnostic. */
+function treeOf(root: number): string {
+  const rows = new Map<number, { ppid: number; cmd: string }>()
+  for (const d of readdirSync('/proc')) {
+    if (!/^\d+$/.test(d)) continue
+    try {
+      const stat = readFileSync(`/proc/${d}/stat`, 'utf8')
+      const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1])
+      const cmd = readFileSync(`/proc/${d}/cmdline`, 'utf8').replaceAll('\0', ' ').slice(0, 160)
+      rows.set(Number(d), { ppid, cmd })
+    } catch {
+      // gone
+    }
+  }
+  const under = new Set([root])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [pid, r] of rows)
+      if (!under.has(pid) && under.has(r.ppid)) {
+        under.add(pid)
+        grew = true
+      }
+  }
+  return [...under].map((p) => `${p} ${rows.get(p)?.ppid} ${rows.get(p)?.cmd}`).join('\n')
+}
+
 describe.skipIf(!available || process.platform !== 'linux')(
   'the probe, through its wrapper',
   () => {
@@ -1141,6 +1168,7 @@ Bun.spawn = (cmd, opts) => {
         if (pids.length === 2) break
         await Bun.sleep(20)
       }
+      const tree = pids.length === 2 ? '' : treeOf(proc.pid)
       process.kill(proc.pid, 'SIGKILL')
       expect(await proc.exited).toBe(137)
       await Promise.all(pids.map((p) => waitForDead(p, 2_000)))
@@ -1162,6 +1190,7 @@ Bun.spawn = (cmd, opts) => {
           : {
               said:
                 (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()),
+              tree,
             }
       return { started: pids.length, alive, leaders, ...said }
     }
