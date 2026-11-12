@@ -1380,7 +1380,8 @@ it("books a joining worker's other cores as an earlier run learned its size's", 
     await Bun.sleep(50)
     for (const id of ids) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
-    // Its first frame moves it a step from its size's, not all the way.
+    // Its first frame moves it a step from its size's, not all the way:
+    // 1.25, booked as the one whole core.
     await a.say({
       type: 'report',
       running: ['t1', 't2', 't3'],
@@ -1389,7 +1390,30 @@ it("books a joining worker's other cores as an earlier run learned its size's", 
     })
     await Bun.sleep(50)
     const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
-    expect(w.cores).toBeCloseTo(2.75)
+    expect(w.cores).toBeCloseTo(3)
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main afb260a: 0.93 core taken off each 4-core small left room for 3
+// shards; they ran at 2.6 of 4 cores while the rest waited 150-200 s.
+it('books what a machine spends besides the tasks in whole cores', async () => {
+  const ids = ['t1', 't2', 't3', 't4']
+  const h = await harness(
+    new Map(ids.map((id) => node(id))),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { learnedOther: (size) => (size === 'small' ? 0.93 : undefined) },
+  )
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 100 })
+    const a = await h.worker(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
   } finally {
     await h.stop()
   }

@@ -35,12 +35,15 @@ export default defineWorkspace({
       // small one run filled it, and the next run's workers queued: a
       // quarter of 975 small jobs waited 78-384 s for a runner, while
       // each run's own advice wanted 6-9 small (60 runs, 2026-11-07).
+      // Three Macs: at 4 a run, two runs at once passed the account's 5
+      // and every Mac queued 320-340 s, three runs in a row (2026-11-12).
+      // At 2 the Mac work was the run's end: 210 s, its ideal 122 s.
       workers: {
         hosted: {
           machines: {
             small: { max: 9, cpu: 4, memory: '16GB', platform: 'linux-x64' },
             arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' },
-            mac: { max: 4, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+            mac: { max: 3, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
           },
         },
       },

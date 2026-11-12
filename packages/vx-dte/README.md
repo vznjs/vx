@@ -975,7 +975,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and the best end is the one with all N. A worker counts its cores
-    less what its machine spends besides the run's tasks, and a new one
+    less what its machine spends besides the run's tasks, in whole cores
+    (a task's whole core covers a fraction), and a new one
     of a size what this run's of that size spent, else an earlier run's
     (kept in history, as warm-ups are), else none; so does one just joined,
     until its own load says, which then moves it from there a step a frame,
