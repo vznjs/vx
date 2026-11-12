@@ -261,7 +261,8 @@ export function wholeIgnored(
  * `.env*` replayed a stale hit after an edit to `.env.local`. A run reads
  * it on the miss path only, one directory listing per such glob, no git;
  * `vx lock` passes no `files` and asks git which candidates it ignores. A
- * `**` glob is skipped, so an ignored `node_modules` or `dist` says nothing.
+ * `**` glob is skipped, so an ignored `node_modules` or `dist` says nothing,
+ * and so is `vx lock`'s review copy, which no key folds.
  */
 export function ignoredByGlobs(
   declared: readonly string[] | undefined,
@@ -292,6 +293,8 @@ export function ignoredByGlobs(
       if (!e.isFile()) continue
       const rel = dir === '' ? e.name : `${dir}/${e.name}`
       if (!match(rel) || excluded(rel)) continue
+      // vx's own review copy is in no key, whatever git says of it.
+      if (e.name === 'vx.lock.json' || e.name.startsWith('vx.lock.json.tmp-')) continue
       const abs = path.join(base, rel)
       keyed ??= new Set(files.map((f) => f.path))
       if (keyed.has(relPosix(root, abs)) || found.some(([a]) => a === abs)) continue

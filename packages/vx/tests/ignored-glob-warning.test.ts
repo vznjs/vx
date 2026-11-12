@@ -65,6 +65,7 @@ describe('a glob input that matches a git-ignored file', () => {
         named: ${task('named-out', ['src/**', '.env*', '.env.local'])},
         excluded: ${task('excluded-out', ['src/**', '.env*', '!.env.local'])},
         deep: ${task('deep-out', ['src/**'])},
+        own: ${task('own-out', ['src/**', '*.json', 'vx.lock.json*'])},
       } }\n`,
     )
     await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
@@ -84,5 +85,14 @@ describe('a glob input that matches a git-ignored file', () => {
     expect(await runTask('named')).toEqual([])
     expect(await runTask('excluded')).toEqual([])
     expect(await runTask('deep')).toEqual([])
+  })
+
+  // vx leaves its own review copy out of every key, ignored by git or not:
+  // `*.json` named a committed vx.lock.json "git-ignored" on every miss.
+  it('says nothing of the review copy vx itself leaves out', async () => {
+    const app = path.join(root, 'packages', 'app')
+    await writeFile(path.join(app, 'vx.lock.json'), '{}\n')
+    await writeFile(path.join(app, 'vx.lock.json.tmp-12'), '{}\n')
+    expect(await runTask('own')).toEqual([])
   })
 })
