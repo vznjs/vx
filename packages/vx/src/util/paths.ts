@@ -4,18 +4,15 @@ const IS_POSIX = path.sep === '/'
 
 /** Convert a path to POSIX-style for cross-platform stable cache keys. */
 export function toPosix(p: string): string {
-  // Fast path: on Linux/macOS the separator is already '/'. This
-  // function is called for every input file on every cache-key
-  // derivation; skipping the split+join is free perf on the dominant
-  // dev platform.
+  // Fast path: on Linux/macOS the separator is already '/', and this runs for
+  // every input file of every key.
   return IS_POSIX ? p : p.split(path.sep).join('/')
 }
 
 /**
- * `.vx/.gitignore`: git ignores the machine-local `.vx/cache`, `.vx/tmp`
- * (where restores stage) and nothing else in `.vx`, so the workspace
- * config and the lock beside it are committed. `vx init` and the cache
- * write it when missing.
+ * `.vx/.gitignore`: git ignores `.vx/cache` and `.vx/tmp` and nothing else, so
+ * the workspace config and lock are committed. `vx init` and the cache write it
+ * when missing.
  */
 export const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 
@@ -27,25 +24,14 @@ export function relPosix(from: string, to: string): string {
 }
 
 /**
- * The leading, wildcard-free part of a glob, trimmed back to whole path
- * components (`dist/sub-**` → `dist`). `.` when the first component is
- * already a wildcard, i.e. the glob can reach anything in its anchor dir.
+ * The leading wildcard-free part of a glob, cut to whole components
+ * (`dist/sub-**` → `dist`); `.` when the first component is a wildcard.
  *
- * Two callers with different needs share it deliberately: the sandbox
- * baseline joins it onto a dir to get a write prefix, and the deferral
- * eligibility gate compares two of them for overlap. A second copy is
- * how the two would disagree about what a prefix is.
- *
- * The spelling is normalized FIRST, here rather than at each call site, because
- * sharing the function was not enough to make the two callers agree: the
- * sandbox joins the prefix onto a directory and `path.join` folds `./`, `//`
- * and `/./` on the way, while the deferral gate compares the raw strings and
- * does not. So `./out/**` and `out/**` named the same tree to the resolver, the
- * sandbox and the watcher, and two DIFFERENT prefixes to the gate — which then
- * deferred a producer a same-project reader's key could see, moving that key
- * with a transfer flag (measured through a real run: `./out/**` keyed the
- * consumer two ways). Every glob reaching here is user-written, so every one
- * takes the rule.
+ * Shared by the sandbox (a write prefix) and the deferral gate (overlap of two
+ * prefixes), so they agree on what a prefix is. The spelling is normalized here
+ * first: the sandbox's `path.join` folds `./` and `//` while the gate compared
+ * raw strings, so `./out/**` and `out/**` were one tree to the sandbox and two
+ * prefixes to the gate, which deferred a producer a reader's key could see.
  */
 export function staticPrefix(rawGlob: string): string {
   // An escaped character is part of the prefix and names itself:
@@ -60,25 +46,21 @@ export function staticPrefix(rawGlob: string): string {
 }
 
 /**
- * {@link staticPrefix} under `Bun.Glob`'s own alphabet, for a sandbox GRANT:
- * the grant is expanded by a `Bun.Glob` scan that reads `[ab]` as a class, so
- * its prefix must stop there too, or `write: ['g/[ab].txt']` would create a
- * DIRECTORY named `g/[ab].txt`.
+ * {@link staticPrefix} in `Bun.Glob`'s alphabet, for a sandbox grant: the scan
+ * expanding it reads `[ab]` as a class, so the prefix stops there, or `write:
+ * ['g/[ab].txt']` created a directory of that name.
  */
 export function grantPrefix(rawGlob: string): string {
   return prefixOf(normalizeBunGlob(rawGlob), BUN_GLOB_WILDCARDS)
 }
 
 function prefixOf(glob: string, wildcards: RegExp): string {
-  // A brace set is a wildcard too: `{dist,build}/**` reaches either dir, and
-  // reading it as the literal directory `{dist,build}` gave the sandbox
-  // baseline a prefix that exists nowhere.
+  // A brace set is a wildcard too: `{dist,build}` as a literal dir is a prefix
+  // that exists nowhere.
   const wildcardIdx = glob.search(wildcards)
-  // A LITERAL keeps its trailing slash through `normalizeGlob` on purpose
-  // (`asTrees` is what turns `out/` into the tree `out` + `out/**`), but a
-  // prefix with a slash on the end compares as a different string: `out/`
-  // against `out/sub` found no overlap where `out` does. The prefix is a
-  // directory either way. `/` is the root, not a trailing slash.
+  // A literal keeps its trailing slash through `normalizeGlob` (`asTrees` needs
+  // it), but `out/` against `out/sub` found no overlap where `out` does. `/` is
+  // the root.
   if (wildcardIdx === -1) return glob === '/' ? '/' : glob.replace(/\/+$/, '')
   const head = glob.slice(0, wildcardIdx)
   const lastSep = head.lastIndexOf('/')
@@ -87,20 +69,13 @@ function prefixOf(glob: string, wildcards: RegExp): string {
 }
 
 /**
- * The directories a task's declared outputs cover WHOLE — every glob is
- * `<dir>/**` or a bare literal (which `asTrees` reads as the path or the
- * tree under it), with a plain, non-root, non-escaping `<dir>` — or `null`
- * when any glob is shaped otherwise. The directory-mtime short-circuit on a
- * warm hit (`Cache.outputDirsCurrent`) is sound only for whole subtrees:
- * with every directory under `<dir>` recorded, a file added or removed
- * anywhere the glob could see bumps a recorded directory's mtime (its
- * parent, or a new directory whose creation bumped a recorded ancestor). A
- * root-anchored `**\/*.js` has no such closed set, so it keeps the walk.
- * A literal that names a FILE is no directory: the snapshot refuses it
- * whole (`recordOutputDirs`) and that task keeps the walk too, so the
- * literal costs nothing it did not cost before; one that names a directory
- * gets the same stats a `<dir>/**` does (Next 27: an nx() output file
- * had to be `<dir>/**` to keep the short-circuit, and saved nothing).
+ * The directories a task's outputs cover whole (every glob `<dir>/**` or a bare
+ * literal, with a plain, non-root, non-escaping dir), or null. The warm hit's
+ * directory-mtime short-circuit (`Cache.outputDirsCurrent`) is sound only for
+ * whole subtrees: any add or remove under them bumps a recorded mtime. A
+ * root-anchored `**\/*.js` keeps the walk. A literal naming a file is refused
+ * by the snapshot (`recordOutputDirs`) and keeps the walk too; one naming a
+ * directory gets the same stats as `<dir>/**`.
  */
 export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null {
   if (globs.length === 0) return null
@@ -118,15 +93,11 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null 
 }
 
 /**
- * The directories whose snapshot covers every path the positive `globs`
- * can match, or `null` when one reaches outside the project. A
- * whole-subtree glob or a literal is its own tree
- * ({@link wholeSubtreePrefixes}); any other glob is the tree under its
- * static prefix, and a root-anchored one (`**\/dist/**`, Turbo's shape) is
- * the whole project, `''`. Sound for the same reason: a file added or
- * removed anywhere under a recorded directory bumps a recorded mtime. The
- * snapshot's file list is then held to the entry's rows through the globs
- * themselves, so a source file beside the outputs is no stray.
+ * The directories whose snapshot covers every path the positive `globs` can
+ * match, or null when one leaves the project: a whole subtree or literal is its
+ * own tree, other globs the tree under their static prefix, a root-anchored one
+ * the whole project (`''`). The snapshot's file list is held to the entry's
+ * rows through the globs, so a source file beside outputs is no stray.
  */
 export function outputDirPrefixes(globs: readonly string[]): string[] | null {
   if (globs.length === 0) return null
@@ -148,22 +119,19 @@ export function outputDirPrefixes(globs: readonly string[]): string[] | null {
 }
 
 /**
- * The spellings a reader, Turbo and `.gitignore` all accept but a matcher fed
- * the raw string turns into NOTHING — and a task keyed on nothing replays old
- * outputs as a green hit (probed one by one): a leading `./`, an inner `/./`
- * segment, a doubled `//`, and a trailing `/` on a pattern (`src/*\/` means the
- * trees under `src`, so it becomes `src/*\/**`; a trailing slash on a LITERAL
- * is `asTrees`' job), and a trailing `/.`, read as a trailing `/`. Applied
- * after an optional `!`; a bare `.` is the empty entry the schema refuses.
+ * Spellings readers, Turbo and `.gitignore` accept but a raw matcher turns into
+ * nothing (a task keyed on nothing replays old outputs green): leading `./`,
+ * inner `/./`, doubled `//`, a trailing `/` on a pattern (`src/*\/` becomes
+ * `src/*\/**`; a literal's is `asTrees`'), and trailing `/.`. After an optional
+ * `!`; a bare `.` is refused by the schema.
  */
 export function normalizeGlob(glob: string): string {
   return normalizeWith(glob, GLOB_WILDCARDS)
 }
 
 /**
- * {@link normalizeGlob} for a glob in `Bun.Glob`'s own alphabet (a workspace
- * member glob, a sandbox grant): the same spellings, but `\[` stays escaped,
- * since there it is what keeps a bracket from opening a class.
+ * {@link normalizeGlob} in `Bun.Glob`'s alphabet (member globs, grants): `\[`
+ * stays escaped, since there it keeps a bracket from opening a class.
  */
 export function normalizeBunGlob(glob: string): string {
   return normalizeWith(glob, BUN_GLOB_WILDCARDS)
@@ -182,41 +150,28 @@ function normalizeWith(glob: string, wildcards: RegExp): string {
 }
 
 /**
- * True when a pattern carries no wildcard — it names exactly one path.
- *
- * The character SET is the whole content: in a task glob `*`, `?` and a brace
- * alternation are wildcards, so a pattern holding any of them must be MATCHED,
- * never compared as a string. It lives here, exported, because four places
- * asked the same question and one of them asked it with a smaller set:
- * `graph/task-graph.ts` omitted `{}`, so `dist/{a,b}.txt` counted as a literal
- * and the overlapping-output refusal compared it to `dist/a.txt` as two unequal
- * strings — the two tasks were accepted and then deleted each other's outputs,
- * green, every run. One copy here keeps them from diverging.
+ * True when a pattern has no wildcard and names one path. One copy for every
+ * caller: graph/task-graph.ts once omitted `{}`, so `dist/{a,b}.txt` compared
+ * unequal to `dist/a.txt` and two tasks deleted each other's outputs, green.
  */
 export function isLiteralPattern(glob: string): boolean {
   return !GLOB_WILDCARDS.test(glob)
 }
 
 /**
- * The alphabet of a TASK glob (`inputs.files`, `outputs.files`,
- * `workspaceFiles`), behind {@link isLiteralPattern}, for the callers that
- * need the POSITION of the first wildcard rather than a verdict. Every site
- * that asks "must this declaration be matched?" reads this one regex: a spelling that drifts is how two guards
- * come to answer differently for one pattern.
- *
- * A task glob is a standard glob: `[...]` is a character class and `\[id\]`
- * names the route directory `[id]`. An escape counts as a wildcard too: such a
- * pattern is matched by `Bun.Glob`, which reads the escape, never compared as a
- * string; `asTrees` still reads an escaped-only pattern as one path.
+ * A task glob's alphabet (`inputs.files`, `outputs.files`, `workspaceFiles`)
+ * for callers needing the first wildcard's position: one regex, so guards
+ * cannot disagree. `[...]` is a class and `\[id\]` names `[id]`; an escape
+ * counts as a wildcard (matched by `Bun.Glob`, never compared as a string),
+ * though `asTrees` reads an escaped-only pattern as one path.
  */
 export const GLOB_WILDCARDS = /[*?{}[\]\\]/
 
 /**
- * A path as a task glob names it, matching that path alone, in a spelling
- * the config check accepts (a hint is applied as given). `*` and `?` take
- * a class: the check reads `\*` as a Windows separator. A leading `!` is
- * escaped, or the entry is a negation that keys nothing, and a space at
- * either end takes a class, which the surrounding-whitespace check spares.
+ * A path as a task glob naming it alone, in a spelling the config check
+ * accepts. `*` and `?` become classes (`\*` reads as a Windows separator); a
+ * leading `!` is escaped, or it is a negation; a space at either end becomes a
+ * class, which the whitespace check spares.
  */
 export function taskGlobOf(rel: string): string {
   return rel
@@ -228,21 +183,17 @@ export function taskGlobOf(rel: string): string {
 }
 
 /**
- * `Bun.Glob`'s own alphabet, for the globs vx does not own: package-manager
- * workspace members and `--filter` path globs follow npm/pnpm semantics,
- * and a sandbox grant's prefix must stop where the scan that expands the
- * grant (`Bun.Glob`, `MOUNT_WILDCARDS`) sees a wildcard.
+ * `Bun.Glob`'s alphabet, for globs vx does not own: workspace members and
+ * `--filter` paths follow npm/pnpm, and a grant's prefix stops where
+ * `Bun.Glob`'s scan sees a wildcard.
  */
 export const BUN_GLOB_WILDCARDS = /[*?[\]{}]/
 
 /**
- * An extglob group: `!(…)`, `@(…)`, `+(…)`, `*(…)`, `?(…)`. npm, yarn,
- * Nx and Turbo read it; `Bun.Glob` had none before 1.4.4, and vx's own
- * matchers still read the group as literal text or as a plain wildcard.
- * A task input `src/@(x|y).ts` keyed
- * no file, so an edit to `src/x.ts` replayed a stale hit, and a member
- * glob `packages/!(x)` took in x (turborepo#3766). Every glob vx hands
- * `Bun.Glob` from a config refuses it.
+ * An extglob group (`!(…)`, `@(…)`, `+(…)`, `*(…)`, `?(…)`): npm, yarn, Nx and
+ * Turbo read it, but vx's matchers read it as text or a plain wildcard, so
+ * `src/@(x|y).ts` keyed nothing and `packages/!(x)` took in x (turborepo#3766).
+ * Refused in every config glob vx hands `Bun.Glob`.
  */
 export const EXTGLOB = /[!@+*?]\(/
 
@@ -256,10 +207,9 @@ export function taskGlob(pattern: string): Bun.Glob {
 
 /**
  * Compiled once per pattern: a Turbo-mapped config repeats one 400-entry list
- * across two thousand tasks, and the graph's overlap checks compiled each entry
- * per task pair, 3.3 s of an astro plan. A pattern comes from a config, so the
- * set is bounded by what the configs say. Kept per `Bun.Glob` in force: a test
- * swaps it, and a glob built by one is not the other's.
+ * across thousands of tasks, and per-pair compiles were 3.3 s of an astro plan.
+ * Bounded by what configs say. Kept per `Bun.Glob` in force, since a test swaps
+ * it.
  */
 const taskGlobs = new WeakMap<object, Map<string, Bun.Glob>>()
 const anyTaskGlobs = new WeakMap<object, Map<string, (rel: string) => boolean>>()
@@ -286,24 +236,20 @@ function compileTaskGlob(pattern: string): Bun.Glob {
   }
   const compiled = new RegExp(`^${re}$`, 'u')
   const native = Object.getPrototypeOf(glob) as Bun.Glob
-  // A path with a slash on the end names no file vx lists; `Bun.Glob` reads
-  // it by rules of its own (`src/**` takes `src/`, never `src`). `scan`
-  // stays `Bun.Glob`'s. Set on the instance, not by a subclass, so the glob
-  // is built by whatever `Bun.Glob` is at the call.
+  // A path ending in a slash names no file vx lists; `Bun.Glob` has its own
+  // rules for it. Set on the instance, so the glob comes from whatever
+  // `Bun.Glob` is at the call.
   glob.match = (rel: string): boolean =>
     rel.endsWith('/') ? native.match.call(glob, rel) : compiled.test(rel)
   return glob
 }
 
 /**
- * `pattern` as `Bun.Glob`'s scan must read it to find what the task glob
- * names. Each `\]`, `\}` and `\\` outside a class is spelled as a class of
- * that one character: the scan reads those escapes, in a segment holding no
- * wildcard, as the backslash and the character, so an output `dist/\]b`
- * saved nothing and a hit cleaned `dist/]b` and restored none of it, green.
- * Each `!` outside a class is escaped: the scan reads one that starts a
- * name as a negation, so `out/*\/!a` saved every other file there and
- * `out/!*` none. A pattern reaching here is never an entry's own `!`.
+ * `pattern` as `Bun.Glob`'s scan must read it. Each `\]`, `\}` and `\\` outside
+ * a class becomes a one-character class: in a wildcard-free segment the scan
+ * read them as backslash plus character, so `dist/\]b` saved nothing and a hit
+ * deleted `dist/]b`. Each `!` outside a class is escaped: the scan reads a
+ * name-leading one as negation. Never an entry's own `!`.
  */
 export function scannable(pattern: string): string {
   if (!/\\[\]}\\]|!/.test(pattern)) return pattern
@@ -311,12 +257,11 @@ export function scannable(pattern: string): string {
 }
 
 /**
- * `pattern` in the spelling both of `Bun.Glob`'s readings share with the
- * task glob: every `!` outside a class is literal (`Bun.Glob` reads a
- * leading one as a negation, and a brace alternative can lead: `{x,!a}`
- * matched every path), and a negated class never takes a `/`, which its
- * match did (`gen[!.]*` took `gen/notes.txt`, so a clean deleted it). The
- * scan also gets the class spellings {@link scannable} gives.
+ * `pattern` in the spelling `Bun.Glob`'s readings share with task globs: `!`
+ * outside a class is literal (a leading brace alternative `{x,!a}` matched
+ * every path), and a negated class never takes `/` (`gen[!.]*` took
+ * `gen/notes.txt` and a clean deleted it). Plus {@link scannable}'s class
+ * spellings.
  */
 function rewriteGlob(pattern: string, scan: boolean): string {
   let out = ''
@@ -352,14 +297,12 @@ function rewriteGlob(pattern: string, scan: boolean): string {
 }
 
 /**
- * Whether a path matches any of `patterns`, each a task glob: one compiled
- * RegExp for the lot when every pattern has one, else a glob each. An input
- * file was matched against a dozen globs (its positives, the always-ignored
- * list, its negatives) one native call at a time.
+ * Whether a path matches any task glob: one compiled RegExp for all when each
+ * has one, else a glob each (a native call per glob per file was slow).
  *
- * A brace is expanded first, never matched by `Bun.Glob`: its match reads a
- * `**` that ends an alternative as one name, so `{src/**,lib/**}` took
- * `src/a.ts` and never `src/deep/a.ts`, and an edit there was a stale hit.
+ * Braces are expanded first, never matched by `Bun.Glob`, which read a `**`
+ * ending an alternative as one name: `{src/**,lib/**}` missed `src/deep/a.ts`,
+ * a stale hit.
  */
 export function anyTaskGlob(rawPatterns: readonly string[]): (rel: string) => boolean {
   const memo = memoFor(anyTaskGlobs)
@@ -375,9 +318,8 @@ function compileAnyTaskGlob(rawPatterns: readonly string[]): (rel: string) => bo
   const sources = patterns.map(regExpSource)
   const globs = patterns.map(taskGlob)
   if (!sources.every((r) => r !== null)) return (rel) => globs.some((g) => g.match(rel))
-  // Each `**/` alternative opened with its own prefix, retried at every
-  // slash of the path: 1000 `**/fileN.ts` globs took 24 s over 200,000
-  // paths. One shared prefix before their alternation takes 50 ms.
+  // `**/` alternatives each opened with their own prefix, retried at every
+  // slash: 1,000 globs over 200,000 paths took 24 s; one shared prefix, 50 ms.
   const deep: string[] = []
   const rest: string[] = []
   for (const s of sources as string[]) {
@@ -398,11 +340,9 @@ function compileAnyTaskGlob(rawPatterns: readonly string[]): (rel: string) => bo
 }
 
 /**
- * Alternatives per compiled RegExp. Bun's engine falls off a cliff past a
- * few thousand: over 200k paths, 2000 literal-file alternatives took 32 ms,
- * 4000 took 482 ms and 8000 took 15 s, so a project listing 4000 files in
- * `inputs.files` paid that on every key. Below the cliff, the cost of
- * splitting is flat.
+ * Alternatives per RegExp: Bun's engine falls off a cliff past a few thousand
+ * (8,000 literal alternatives: 15 s over 200k paths). Below it, splitting costs
+ * nothing.
  */
 const ALTERNATIVES_PER_REGEXP = 1000
 
@@ -422,11 +362,10 @@ const REGEXP_SYNTAX = /[\\^$.*+?()[\]{}|]/g
 
 /**
  * The RegExp source of a task glob, matching what `Bun.Glob` matches
- * (`tests/util-paths.test.ts` holds the two to the same verdict on every
- * shape): `*` any run within a name, `?` one character, a `**` segment any
- * number of directories, a `!` the character. Null for the syntax left to
- * `Bun.Glob`: a brace, a character class, an escape, an empty, `.` or `..`
- * segment, a `**` inside a name, or two `**` segments in a row.
+ * (`tests/util-paths.test.ts` holds them equal): `*` within a name, `?` one
+ * character, a `**` segment any depth, `!` literal. Null for syntax left to
+ * `Bun.Glob`: braces, classes, escapes, empty/`.`/`..` segments, `**` inside a
+ * name, consecutive `**`.
  */
 function regExpSource(pattern: string): string | null {
   if (/[\\{}[\]]/.test(pattern)) return null
@@ -456,26 +395,17 @@ export function stripTrailingSlash(p: string): string {
 }
 
 /**
- * A literal entry names a file OR a directory tree: `src/` and `src` both
- * mean everything under `src`, as they do in Turbo and every `.gitignore`.
- * A glob matcher sees only the literal path, so `['src/']` folded ZERO
- * files — a key that never moves with its source, and the most common
- * turbo.json shape (`"outputs": ["dist"]`) captured nothing. Every
- * literal therefore compiles to itself plus its subtree; a literal that
- * names a file still matches exactly that file, since `x/**` matches
- * nothing under a file.
+ * A literal names a file or a tree: `src/` and `src` both mean everything under
+ * `src`, as in Turbo and `.gitignore`. A raw matcher folded zero files for
+ * `['src/']` and captured nothing for `"outputs": ["dist"]`. So each literal
+ * compiles to itself plus its subtree (`x/**` matches nothing under a file).
  *
- * It lives in `util` rather than beside the resolver because it is not only the
- * resolver's rule. It decides what a clean DELETES, so the graph's
- * overlapping-output refusal has to read the same one: while it did not, `dist`
- * and `dist/app.js` compared as two unequal literals and the run that wiped
- * `dist/app.js` reported success. `graph` may not import `cache`, and a second
- * copy is how the two would disagree.
+ * In `util` because it also decides what a clean deletes, so the graph's
+ * overlap refusal reads the same rule: `dist` and `dist/app.js` compared
+ * unequal and the run wiping `dist/app.js` passed.
  *
- * A brace is expanded first and each alternative read alone: as one
- * pattern, `{src,lib}` never became the two trees and `{./src,lib}/**`
- * kept a `./` no git path holds, so an edit under either was a stale hit
- * and the same output glob saved an empty artifact.
+ * Braces expand first, each alternative read alone, or `{src,lib}` never became
+ * two trees.
  */
 export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
@@ -510,10 +440,9 @@ function namesOnePath(glob: string): boolean {
 }
 
 /**
- * An output list's positive globs, and what its `!` entries take back. A reader
- * that only needs where outputs MIGHT land (an overlap refusal, a preliminary
- * key) takes `positive` alone; one that decides whether a path IS an output
- * takes both, through `outputMatcher`.
+ * An output list's positive globs and its `!` take-backs. Where outputs might
+ * land needs `positive`; whether a path is an output needs both
+ * (`outputMatcher`).
  */
 export function splitNegations(globs: readonly string[]): {
   positive: string[]
@@ -529,9 +458,9 @@ export function splitNegations(globs: readonly string[]): {
 }
 
 /**
- * Whether a relative path is one of the outputs `globs` declare: a positive
- * glob selects it and no `!` entry takes it back. A `!` entry fed to a matcher
- * as-is would be `Bun.Glob`'s own negation, true of every OTHER path.
+ * Whether a path is a declared output: a positive glob selects it and no `!`
+ * takes it back. A raw `!` in a matcher is `Bun.Glob`'s negation, true of every
+ * other path.
  */
 export function outputMatcher(globs: readonly string[]): (rel: string) => boolean {
   const { positive, negative } = splitNegations(globs)
@@ -542,26 +471,19 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
 }
 
 /**
- * What no output glob reaches, relative to the project: its root's `.git` and
- * `.vx`, and the `vx.lock.json` beside its config. An output is otherwise taken
- * as written — `node_modules/**` IS an install task's output — but a root
- * project declaring `**` would otherwise wipe its repository and the cache it
- * is restoring from, the clean deleted an uncommitted workspace config, and a
- * hit restored a lock or ignore file the key does not see over the current one.
- * Only where vx writes them: reserved at any depth, a hit dropped a build's own
- * `dist/.git/**` and `dist/sub/vx.lock.json`.
+ * What no output glob reaches: the project root's `.git` and `.vx`, and the
+ * `vx.lock.json` beside its config. A root project declaring `**` would wipe
+ * its repository and cache, a clean deleted an uncommitted workspace config,
+ * and a hit restored a lock over the current one. Only where vx writes them: at
+ * any depth, a hit dropped a build's own `dist/.git/**`.
  */
 const OUTPUT_NEVER = ['.git/**', '.vx/**', 'vx.lock.json']
 
 /**
- * Whether vx may write or delete at `real`, a path a link on the way
- * resolved: under `realBase` and not in its `.git`, in any case (a
- * case-insensitive disk reads `.GIT` as `.git`). Names are held to
- * `OUTPUT_NEVER` lexically; this holds where a link lands
- * (vercel/turborepo#14808). Only the base's own: a deeper `.git` (a
- * submodule under `gen/**`, a build's `dist/.git`) is an output an entry
- * may name, and refused only once it existed on disk, a restore failed by
- * what the last run left.
+ * Whether vx may write or delete at `real` (a path a link resolved): under
+ * `realBase` and not in its `.git`, case-insensitively. `OUTPUT_NEVER` holds
+ * names lexically; this holds where a link lands (vercel/turborepo#14808). Only
+ * the base's own: a deeper `.git` may be a declared output.
  */
 export function writableUnder(real: string, realBase: string): boolean {
   if (real === realBase) return true
@@ -571,20 +493,17 @@ export function writableUnder(real: string, realBase: string): boolean {
 }
 
 /**
- * `OUTPUT_NEVER` relative to the workspace root, for `outputs.workspaceFiles`:
- * those globs cross into other projects, and every project's `vx.lock.json`
- * is vx's.
+ * `OUTPUT_NEVER` from the workspace root, for `outputs.workspaceFiles`, which
+ * cross projects.
  */
 const WORKSPACE_OUTPUT_NEVER = [...OUTPUT_NEVER, '**/vx.lock.json']
 
 /**
- * Whether `globs` may not reach `rel` in `scope`: its never-list, and a
- * `node_modules` no glob owns. A glob naming one owns every one (an install
- * task's `node_modules/**`); a project glob owns those under its own literal
- * directory (Nitro's `.output/server/node_modules/**` under `.output/**`),
- * which only the build writes. One that reaches them by a wildcard alone
- * (`**\/*.js`) never does: its clean deleted every installed `.js`. The save,
- * the restore and the clean all ask this, so none takes what another skips.
+ * Whether `globs` may not reach `rel`: its never-list, and a `node_modules` no
+ * glob owns. A glob naming one owns every one (an install task); a project glob
+ * owns those under its literal dir (`.output/server/node_modules/**`). One
+ * reaching them by wildcard alone (`**\/*.js`) never does: its clean deleted
+ * every installed `.js`. Save, restore and clean all ask this.
  */
 export function outputExcluded(
   globs: readonly string[],
@@ -613,10 +532,9 @@ function namesNodeModules(globs: readonly string[]): boolean {
 }
 
 /**
- * Whether a restore may write `rel`: one of the outputs `globs` declare and not
- * `outputExcluded` — what the save side could have packed (`resolveOutputs`).
- * An artifact naming anything else was not written by this task's save, and
- * none of it is restored.
+ * Whether a restore may write `rel`: a declared output not `outputExcluded`,
+ * what the save could have packed. Anything else in an artifact is not
+ * restored.
  */
 export function restorableOutput(
   globs: readonly string[],
@@ -628,10 +546,9 @@ export function restorableOutput(
 }
 
 /**
- * The directory a `<dir>/**` glob is rooted at, or undefined for any other
- * glob. The glob does not match the root itself, yet a task that declares
- * `public/uploads/**` and leaves the directory empty made it: a save keeps
- * that empty root, so a hit makes it too.
+ * The root dir of a `<dir>/**` glob, else undefined. The glob does not match
+ * its root, yet a task leaving `public/uploads/` empty made it: a save keeps
+ * that root, so a hit makes it too.
  */
 export function treeRoot(pattern: string): string | undefined {
   if (!pattern.endsWith('/**')) return undefined
@@ -657,10 +574,9 @@ export function restorableOutputDir(
 }
 
 /**
- * `pattern` with its first brace group expanded, recursively, while that
- * group holds a `/`; any other pattern as itself, since `Bun.Glob`
- * expands a slash-free brace on its own. An unbalanced or escaped brace
- * is left to the glob.
+ * `pattern` with its first brace group expanded, recursively, while the group
+ * holds a `/`; `Bun.Glob` expands slash-free braces itself. Unbalanced or
+ * escaped braces are left alone.
  */
 export function slashBraceExpansions(pattern: string): string[] {
   return expandBraces(pattern, true)
@@ -672,20 +588,17 @@ export function braceAlternatives(pattern: string): string[] {
 }
 
 /**
- * Where the `[`…`]` class opening at `i` ends, as `bracket-literal.ts`
- * reads one (a `]` right after the `[` is a member); `i` for a `[` with no
- * `]`, which `Bun.Glob` takes literally. A `,` `{` or `}` inside a class
- * is a member: split there, `src/{a[,]b,x}.ts` became `src/a[.ts` and
- * `src/]b.ts`, so an edit to `src/a,b.ts` kept the key (turborepo#13763).
+ * Where a `[`…`]` class opening at `i` ends, as `bracket-literal.ts` reads one;
+ * `i` for a `[` with no `]`. `,` `{` `}` inside a class are members: split
+ * there, `src/{a[,]b,x}.ts` broke apart (turborepo#13763).
  */
 function classEnd(pattern: string, i: number): number {
   const end = pattern.indexOf(']', i + 2)
   return end === -1 ? i : end
 }
 
-// A `\x` is one character to both scans: it opens, closes and cuts nothing,
-// and stays in its alternative for the glob to read. Expansion turned off
-// at any escape, `{src,app/\[id\]}` named neither tree.
+// A `\x` is one character to both scans and stays in its alternative. Expansion
+// stopped at any escape, so `{src,app/\[id\]}` named neither tree.
 function expandBraces(pattern: string, slashOnly: boolean): string[] {
   for (let open = 0; open < pattern.length; open++) {
     if (pattern[open] === '\\') {
@@ -725,10 +638,9 @@ function expandBraces(pattern: string, slashOnly: boolean): string[] {
 }
 
 /**
- * How many globs `braceAlternatives(pattern)` would return, counted
- * without expanding and capped at `cap + 1`: twenty `{a,b}` groups held a
- * million alternatives, and expanding them only to count took seconds.
- * Duplicates count, so the answer is an upper bound.
+ * How many alternatives a pattern expands to, counted without expanding, capped
+ * at `cap + 1`: twenty `{a,b}` groups are a million. Duplicates count: an upper
+ * bound.
  */
 export function braceExpansionCount(pattern: string, cap: number): number {
   for (let open = 0; open < pattern.length; open++) {
@@ -770,11 +682,10 @@ const LETTER_RANGE = /^(?:([a-z])\.\.([a-z])|([A-Z])\.\.([A-Z]))(?:\.\.(-?\d+))?
 export const BRACE_RANGE_LIMIT = 1024
 
 /**
- * A brace range's names, as `Bun.Glob` reads them since 1.4.4 (bash's
- * rule): `1..3`, `3..1`, `01..03` padded, `a..c`, `1..10..3` stepped; null
- * for any other body, a mixed-case one (`A..c` spans `[`, `\` and `]`) and
- * one past `BRACE_RANGE_LIMIT`. vx expands it like a comma brace, so every matcher
- * names the files `Bun.Glob` does.
+ * A brace range's names as `Bun.Glob` reads them since 1.4.4 (bash's rule:
+ * `1..3`, `01..03`, `a..c`, `1..10..3`); null for anything else, mixed case
+ * (`A..c` spans punctuation) or past `BRACE_RANGE_LIMIT`. Expanded like a comma
+ * brace so every matcher agrees with `Bun.Glob`.
  */
 export function braceRange(body: string): string[] | null {
   const num = NUMERIC_RANGE.exec(body)
@@ -798,10 +709,9 @@ export function braceRange(body: string): string[] | null {
 }
 
 /**
- * Whether a path git lists as UNTRACKED is an installed dependency: it sits
- * under a `node_modules` directory. Such a file is never an input, and the
- * enumeration drops it. A TRACKED file there (a committed test fixture) is
- * a source like any other: dropped by path, an edit to it was a stale hit.
+ * Whether an untracked path is an installed dependency (under `node_modules`):
+ * never an input. A tracked file there (a fixture) is a source: dropped by
+ * path, its edit was a stale hit.
  */
 export function isInstalledPath(rel: string): boolean {
   return rel.startsWith('node_modules/') || rel.includes('/node_modules/')
@@ -811,9 +721,9 @@ export function isInstalledPath(rel: string): boolean {
 const CONTROL = /[\x00-\x1f\x7f-\x9f]/g
 
 /**
- * `s` with every C0/C1 control and DEL written as `\xNN`: a file name is
- * anyone's bytes, and one holding `ESC ]` or `\r` printed raw retitled the
- * terminal or overwrote the line vx printed before it.
+ * `s` with every C0/C1 control and DEL as `\xNN`: a file name is anyone's
+ * bytes, and `ESC ]` or `\r` printed raw retitled the terminal or overwrote a
+ * line.
  */
 export function printable(s: string): string {
   return s.replace(CONTROL, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
