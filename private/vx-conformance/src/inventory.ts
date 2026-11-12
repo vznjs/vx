@@ -1055,6 +1055,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'local-shortcircuit',
     'log-spacing',
     'logger-concurrency-slots',
+    'memo-parts',
     'miss-save-marks',
     'narrow-terminal',
     'no-auto-install.unsafe',

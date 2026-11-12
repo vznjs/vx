@@ -30,6 +30,16 @@ export { envFlagOn } from './env-flag.js'
 export { decodeRaw, rawBytes, rawEncode, RawUtf8Decoder } from './raw-utf8.js'
 export { keysSorted, xxh3, xxh3hex } from './hash.js'
 export {
+  type Depends,
+  type MemoParts,
+  memoParts,
+  onlyAbsent,
+  type OnlyAbsent,
+  type Part,
+  unread,
+  type Unread,
+} from './memo-parts.js'
+export {
   beginRun,
   mark,
   timingLines,
