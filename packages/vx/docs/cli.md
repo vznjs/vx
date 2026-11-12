@@ -1467,8 +1467,12 @@ write with a bracket; `schema.md`) is granted as the directory above it.
 On Linux a refused open is a read or a write by the flags it asked
 with: a missing file opened to read is a read grant, never a file vx
 would create. A host `deny.network` holds gets no network grant.
-A write grants the top directory it landed in, so the next file there
-passes too, unless `inputs.files` reads that directory: then it
+A write grants the narrowest directory the next file there lands in
+too: under a declared output, that output's directory
+(`src/generated/`, never `src/`); in `node_modules`, the tool's own
+directory (`node_modules/.vite/`, `node_modules/.cache/storybook/`,
+`node_modules/.prisma/`, never every installed package); else the top
+directory it landed in. When `inputs.files` reads that directory it
 grants the file alone, so the task cannot write its own inputs. A file
 named for the millisecond it was made (13 digits, vite's
 `vite.config.ts.timestamp-<ms>-<hex>.mjs`) is new each run, so its

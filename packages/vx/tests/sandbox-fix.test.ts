@@ -323,4 +323,92 @@ describe('sandboxFix', () => {
       write: ['node_modules/.vite-temp/'],
     })
   })
+
+  // A write in `node_modules` granted the whole of it: every installed
+  // package writable, so a test could rewrite a dependency the next task
+  // runs. The grant is the tool's own directory there.
+  it('grants a tool its own directory in node_modules, never node_modules whole', () => {
+    const write = (p: string) => v(`openat(${p}) = -1 EROFS`, ['write'], path.join(dir, p))
+    const fix = (ps: string[], inputs?: { files: string[] }) =>
+      sandboxFix(ps.map(write), dir, dir, undefined, inputs)?.write
+    expect(fix(['node_modules/.vite/vitest/da39a3ee5e6b4b0d/results.json'])).toEqual([
+      'node_modules/.vite/',
+    ])
+    expect(fix(['node_modules/.cache/storybook/dev-server/a.json'])).toEqual([
+      'node_modules/.cache/storybook/',
+    ])
+    expect(
+      fix(['node_modules/.prisma/client/index.js', 'node_modules/.prisma/client/a.d.ts']),
+    ).toEqual(['node_modules/.prisma/'])
+    // Two tools' directories stay two: their common one is node_modules.
+    expect(
+      fix(['node_modules/.vite/deps/a.js', 'node_modules/.cache/storybook/b.json'], {
+        files: ['src/**'],
+      }),
+    ).toEqual(['node_modules/.cache/storybook/', 'node_modules/.vite/'])
+    expect(fix(['packages/x/node_modules/@scope/pkg/gen.js'])).toEqual([
+      'packages/x/node_modules/@scope/pkg/',
+    ])
+    expect(fix(['node_modules/.package-lock.json'])).toEqual(['node_modules/.package-lock.json'])
+    // `mkdir -p` is refused at its first missing directory: no tool named yet.
+    const mkdir = v(
+      'mkdir(node_modules/.cache) = -1 EROFS',
+      ['write'],
+      path.join(dir, 'node_modules/.cache'),
+    )
+    expect(sandboxFix([mkdir], dir, dir)?.write).toEqual(['node_modules/.cache/'])
+    // An input that reaches there still takes the file alone.
+    expect(fix(['node_modules/.vite/deps/a.js'], { files: ['**/*.js'] })).toEqual([
+      'node_modules/.vite/deps/a.js',
+    ])
+  })
+
+  // graphql-codegen writes its declared output `src/generated/`: the grant
+  // was `src/`, every source file writable.
+  it('grants a write under a declared output that output’s directory', () => {
+    const write = (p: string) => v(`openat(${p}) = -1 EROFS`, ['write'], path.join(dir, p))
+    const outputs = { files: ['src/generated/**', 'out.txt'] }
+    const fix = (files: string[]) =>
+      sandboxFix(
+        [write('src/generated/a/graphql.ts'), write('out.txt'), write('dist/x/y.js')],
+        dir,
+        dir,
+        undefined,
+        { files },
+        [],
+        outputs,
+      )?.write
+    expect(fix(['schema.graphql'])).toEqual(['dist/', 'out.txt', 'src/generated/'])
+    expect(fix(['src/**', '!src/generated/**'])).toEqual(['dist/', 'out.txt', 'src/generated/'])
+    // CONTROL: the inputs read it, so the task may not write there.
+    expect(fix(['src/**'])).toEqual(['dist/', 'out.txt', 'src/generated/a/graphql.ts'])
+    // Its first write is often the directory itself (`mkdir -p src/generated`).
+    const mkdir = v('mkdir(src/generated) = -1 EROFS', ['write'], path.join(dir, 'src/generated'))
+    expect(sandboxFix([mkdir], dir, dir, undefined, undefined, [], outputs)?.write).toEqual([
+      'src/generated/',
+    ])
+  })
+
+  // Prisma writes the client beside `@prisma/client` in the workspace's
+  // install, here bun's store: its declared output's directory is the
+  // store whole, the tool's own directory is narrower.
+  it('grants a write in the workspace’s node_modules the tool’s directory there', () => {
+    const project = path.join(dir, 'packages', 'db')
+    const client = 'node_modules/.bun/@prisma+client@6/node_modules/.prisma/client'
+    const denied = ['default.js', 'index.d.ts'].map((f) =>
+      v('deny(1) file-write-create', ['write'], path.join(dir, client, f)),
+    )
+    const outputs = {
+      files: [],
+      workspaceFiles: [`node_modules/.bun/@prisma+client@*/node_modules/.prisma/client/**`],
+    }
+    expect(
+      sandboxFix(denied, project, dir, undefined, { files: ['**'] }, [], outputs)?.write,
+    ).toEqual(['../../node_modules/.bun/@prisma+client@6/node_modules/.prisma/'])
+    // Elsewhere outside the project, the path alone, as before.
+    const other = v('deny(1) file-write-create', ['write'], path.join(dir, 'packages/a/dist/o.js'))
+    expect(sandboxFix([other], project, dir, undefined, undefined, [], outputs)?.write).toEqual([
+      '../a/dist/o.js',
+    ])
+  })
 })

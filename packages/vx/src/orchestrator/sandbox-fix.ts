@@ -6,10 +6,10 @@
 import { lstatSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { InputsConfig } from '../config.js'
+import type { InputsConfig, TaskOutputs } from '../config.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath, type SandboxViolation } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
+import { grantPrefix, isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
 import { credentialStorePaths } from './sandbox-request.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
@@ -51,7 +51,10 @@ function grantPath(abs: string, dirs: Dirs): string {
  * bracket too: sandbox-binds.ts) is granted as the directory above it.
  */
 function grantFor(abs: string, dirs: Dirs, kind: 'read' | 'write'): string {
-  const raw = grantPath(abs, dirs)
+  return spell(grantPath(abs, dirs), kind)
+}
+
+function spell(raw: string, kind: 'read' | 'write'): string {
   const wild = raw.search(
     kind === 'write' && process.platform === 'linux' ? MOUNT_WILDCARDS : /[*?]/,
   )
@@ -61,25 +64,76 @@ function grantFor(abs: string, dirs: Dirs, kind: 'read' | 'write'): string {
 }
 
 /**
- * A write grant covers the top directory the write landed in: granting
- * `dist/a.js` alone fails the run again on `dist/b.js`. Not when the task
+ * A write grant covers the narrowest directory the next run's writes land
+ * in too: granting `dist/a.js` alone fails the run again on `dist/b.js`.
+ * That is the deeper of a declared output's directory (`src/generated/`,
+ * not `src/`) and, in `node_modules`, the tool's own directory (`.vite/`,
+ * `.cache/storybook/`, `.prisma/`): node_modules whole made every
+ * installed package writable. Else it is the top directory, and outside
+ * the project, where the top is a `..`, the path alone. Not when the task
  * reads that directory as an input: the grant would let it write its own
- * inputs, so it names the path alone. Outside the project the top is a
- * `..`, so it names the path alone there too.
+ * inputs, so it names the path alone.
  */
-function writeGrant(grant: string, isDir: boolean, inputs: readonly string[]): string {
-  const slash = grant.indexOf('/')
-  const exact = isDir && !grant.endsWith('/') ? `${grant}/` : grant
-  if (!inProject(grant) || slash === -1) return exact
-  const top = grant.slice(0, slash)
-  return inputs.some((g) => readsDir(g, top)) ? exact : `${top}/`
+function writeGrant(
+  abs: string,
+  dirs: Dirs,
+  isDir: boolean,
+  inputs: readonly string[],
+  outDirs: readonly string[],
+): string {
+  const raw = grantPath(abs, dirs)
+  const exact = spell(isDir && !raw.endsWith('/') ? `${raw}/` : raw, 'write')
+  if (!atOrUnder(abs, dirs.root)) return exact
+  const parts = raw.split('/')
+  const nm = parts.lastIndexOf('node_modules')
+  const depths = [
+    ...outDirs.filter((d) => `${raw}/`.startsWith(`${d}/`)).map((d) => d.split('/').length),
+    nm === -1 ? 0 : nm + (/^(?:\.cache|@.*)$/.test(parts[nm + 1] ?? '') ? 3 : 2),
+    inProject(raw) ? 1 : 0,
+  ]
+  const depth = Math.max(...depths)
+  if (depth === 0 || depth >= parts.length) return exact
+  const dir = parts.slice(0, depth).join('/')
+  const read =
+    inProject(dir) && inputs.some((g) => readsDir(g, dir)) && !inputs.some((g) => dropsDir(g, dir))
+  return read ? exact : spell(`${dir}/`, 'write')
 }
 
-/** Whether input glob `g` can match under top directory `top`. */
-function readsDir(g: string, top: string): boolean {
+/** The directories a task's declared outputs name, spelled as a grant names a path. */
+function outputDirs(outputs: Partial<TaskOutputs> | undefined, dirs: Dirs): string[] {
+  const at = (base: string, g: string) => grantPath(path.join(base, grantPrefix(g)), dirs)
+  return [
+    ...(outputs?.files ?? []).map((g) => at(dirs.project, g)),
+    ...(outputs?.workspaceFiles ?? []).map((g) => at(dirs.root, g)),
+  ].filter(
+    (d) =>
+      !path.isAbsolute(d) &&
+      !d.startsWith('~/') &&
+      d.split('/').some((p) => p !== '..' && p !== '.'),
+  )
+}
+
+/** Whether input glob `g` can match under directory `dir`. */
+function readsDir(g: string, dir: string): boolean {
   if (g.startsWith('!')) return false
-  const first = g.replace(/^\.\//, '').split('/')[0] ?? ''
-  return first === top || !isLiteralPattern(first)
+  const segs = g.replace(/^\.\//, '').split('/')
+  const at = dir.split('/')
+  for (let i = 0; i < at.length; i++) {
+    const seg = segs[i]
+    // The glob ends at or above `dir`: a directory named whole.
+    if (seg === undefined) return true
+    if (seg === '**') return true
+    if (isLiteralPattern(seg) ? seg !== at[i] : !new Bun.Glob(seg).match(at[i]!)) return false
+  }
+  return true
+}
+
+/** Whether input glob `g` is a `!dir/**` that takes back all of `dir`. */
+function dropsDir(g: string, dir: string): boolean {
+  const head = /^!(?:\.\/)?(.+)\/\*\*(?:\/\*)?$/.exec(g)?.[1]
+  return (
+    head !== undefined && isLiteralPattern(head) && (dir === head || dir.startsWith(`${head}/`))
+  )
 }
 
 const inProject = (grant: string): boolean =>
@@ -128,6 +182,8 @@ export function sandboxFix(
    * work, never a grant here (`upstreamWritesHint` says what is).
    */
   upstream: readonly string[] = [],
+  /** The task's own outputs: a write under one is granted its directory. */
+  outputs?: Partial<TaskOutputs>,
 ): SandboxFix | undefined {
   const fix: Record<keyof SandboxFix, Set<string>> = {
     read: new Set(),
@@ -140,6 +196,7 @@ export function sandboxFix(
   }
   // Canonical, as a violation's path is: macOS holds `/var` for `/private/var`.
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
+  const outDirs = outputDirs(outputs, dirs)
   const keyed =
     inputs === undefined
       ? undefined
@@ -170,14 +227,12 @@ export function sandboxFix(
     } else if (isPerRunTemp(v.path)) continue
     else if (upstream.some((u) => atOrUnder(v.path!, toRealPath(u)))) continue
     else if (isTimeNamed(v.path)) {
-      fix.write.add(
-        writeGrant(grantFor(path.dirname(v.path), dirs, 'write'), true, inputs?.files ?? []),
-      )
+      fix.write.add(writeGrant(path.dirname(v.path), dirs, true, inputs?.files ?? [], outDirs))
     } else {
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
-      fix.write.add(writeGrant(grantFor(v.path, dirs, 'write'), isDir, inputs?.files ?? []))
+      fix.write.add(writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs))
     }
   }
   const out: SandboxFix = {}

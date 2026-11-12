@@ -77,6 +77,7 @@ import {
   type SecretMask,
   secretNamed,
   span,
+  taskGlobOf,
   UserError,
 } from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
@@ -2089,6 +2090,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const read =
       moved !== null &&
       keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
+    // One that appeared is not an output to declare: vx deletes an
+    // uncommitted output before each run, so a snapshot vitest writes on
+    // its first run was written anew every run and a changed value passed.
+    // A file the task checks against is committed; a generated one leaves
+    // the inputs before it joins the outputs.
+    const appeared = (rel: string): string => {
+      const own = relPosix(node.projectDir, rel)
+      const [field, at] = own.startsWith('../')
+        ? ['inputs.workspaceFiles', relPosix(args.workspaceRoot, rel)]
+        : ['inputs.files', own]
+      return (
+        '; it appeared during the run: if the task checks against it (a test snapshot), ' +
+        `commit it; if the task generates it, exclude it from ${field} ` +
+        `('!${printable(taskGlobOf(at)).replace(/[\\']/g, '\\$&')}') and declare it in outputs`
+      )
+    }
     // Under watch the edit starts the next cycle, which runs on it: said
     // first, or the way out read as the fix for the user's own edit.
     const hint =
@@ -2097,10 +2114,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ? "; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }"
         : moved === null || rewroteBy !== undefined || !existsSync(moved)
           ? ''
-          : '; if the task generates it, declare it in outputs' +
-            (read && stability.strategy !== 'mutable'
-              ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
-              : ''))
+          : !read
+            ? appeared(moved)
+            : '; if the task generates it, declare it in outputs' +
+              (stability.strategy !== 'mutable'
+                ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+                : ''))
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +
@@ -2206,6 +2225,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
               (t) => secrets?.mask(t) ?? t,
               cfg.inputs,
               upstreamOutputs,
+              cfg.outputs,
             ),
           ),
         }
