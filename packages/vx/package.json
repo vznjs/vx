@@ -22,7 +22,6 @@
     "remote-cache",
     "sandbox",
     "incremental-build",
-    "mcp",
     "pnpm"
   ],
   "type": "module",
