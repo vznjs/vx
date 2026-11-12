@@ -284,6 +284,17 @@ describe('the shared store', () => {
     expect(storedKeys(await store(), 'store.db')).toHaveLength(1)
   })
 
+  it("a repository's first commit keeps the outputs up to date", async () => {
+    // The stamps were keyed by whether a store held the entries: none
+    // before the first commit, one after, so the run after restored all.
+    const a = await workspace('hi\n', null)
+    await writeFile(path.join(a.root, '.gitignore'), 'out.txt\n')
+    await build(a)
+    gitIn(a.root)('add', '-A')
+    gitIn(a.root)('-c', 'user.email=t@vx', '-c', 'user.name=t', 'commit', '-q', '-m', 'first')
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
+  })
+
   it('another repository keeps its own store', async () => {
     const a = await workspace()
     const b = await workspace('hi\n', 'git@github.com:acme/other.git')

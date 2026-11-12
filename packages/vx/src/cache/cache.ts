@@ -1605,8 +1605,12 @@ export class Cache implements CacheLayer {
     this.outputs = new OutputIndex(
       this.db,
       this.writeBlocked === null && !this.inspecting,
-      // The index holds the entries: a named cache dir other clones may name.
-      this.storeDir === undefined ? repoDir : undefined,
+      // Only the workspace's own `.vx/cache` is no other clone's: a named
+      // directory may be shared. Not keyed by the store, which a
+      // repository's first commit adds, and the run after restored all.
+      repoDir !== undefined && cacheDir !== path.join(repoDir, '.vx', 'cache')
+        ? repoDir
+        : undefined,
     )
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
