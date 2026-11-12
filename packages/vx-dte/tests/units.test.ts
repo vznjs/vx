@@ -985,6 +985,7 @@ async function harness(
     sent?: Map<string, number>
     pinWaitMs?: number
     warn?: (m: string) => void
+    learnedOther?: (size: string) => number | undefined
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -1309,6 +1310,62 @@ it("books a worker's cores its machine spends besides the run's tasks", async ()
     const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
     expect(w.cores).toBeCloseTo(3)
     expect(w.running.reduce((n, r) => n + r.cores, 0)).toBeCloseTo(3)
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main f2ddcb6: a small just joined, booked on all 4 cores until its
+// first frame, took six shards where the plan gave three; its machine ran
+// busy for 50 s and they ran 1.7 times their history. Before it says, it
+// spends what its size's machines did.
+it("books a joining worker's other cores as its size's, before it says its own", async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 100 })
+    h.o.spawned('small#2', { size: 'small', cpu: 4, memory: 100 })
+    const a = await h.worker(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ids.slice(0, 4)) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3', 't4'],
+      batch: 1,
+      load: { cpu: 4, memory: 0, tasks: 3 },
+    })
+    await Bun.sleep(50)
+    const b = await h.worker(4, 'small#2')
+    await Bun.sleep(50)
+    for (const id of ids.slice(4)) void h.o.execute(h.req(id))
+    expect(await b.batches()).toEqual([['t5', 't6', 't7']])
+    const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === b.id)!
+    expect(w.cores).toBeCloseTo(3)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A size no machine of this run has spoken for yet: as an earlier run's did.
+it("books a joining worker's other cores as an earlier run learned its size's", async () => {
+  const ids = ['t1', 't2', 't3', 't4']
+  const h = await harness(
+    new Map(ids.map((id) => node(id))),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      learnedOther: (size) => (size === 'small' ? 1 : undefined),
+    },
+  )
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 100 })
+    const a = await h.worker(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
   } finally {
     await h.stop()
   }

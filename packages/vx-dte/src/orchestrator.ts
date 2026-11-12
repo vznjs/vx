@@ -183,9 +183,6 @@ interface Worker {
 const OTHER_WEIGHT = 0.25
 
 /** `a`'s `other`, where its machine is the size it was given: a bigger one's spare cores take it. */
-const otherOf = (a: Worker): number =>
-  a.other === undefined || a.cores !== a.reported.cores ? 0 : a.other
-
 /** What a worker was started as: its size's `cpu` and `memory` in bytes. */
 export interface Declared {
   readonly size: string
@@ -206,6 +203,8 @@ export interface OrchestratorOptions {
   readonly need: (taskId: string) => Need
   /** Each server's base, cores, as workers fit them: updated in place. */
   readonly bases?: Map<string, number>
+  /** A size's cores its machines spent besides an earlier run's tasks (`othersOf`). */
+  readonly learnedOther?: (size: string) => number | undefined
   /** The run's cache, by key: what workers save to and this machine restores from. */
   readonly artifacts: TaskArtifacts
   /** What workers read the cache under (`ExecutorContext.cacheFacts`). */
@@ -977,7 +976,7 @@ export class Orchestrator {
    * shards on 4 cores at once, 28 failed (main bf77a58, 2026-10-23).
    */
   private used(a: Worker): { cores: number; memory: number } {
-    const booked = { cores: a.usedCores + otherOf(a), memory: a.usedMemory }
+    const booked = { cores: a.usedCores + this.otherOf(a), memory: a.usedMemory }
     const l = a.load
     if (l === undefined || a.cores !== a.reported.cores) return booked
     let cores = l.cpu
@@ -988,6 +987,21 @@ export class Orchestrator {
         memory += j.held.memory
       }
     return { cores: Math.max(booked.cores, cores), memory: Math.max(booked.memory, memory) }
+  }
+
+  /**
+   * What `a`'s machine spends besides the run's tasks: as it said, or
+   * before its first frame, as its size's did. Booked on all 4 cores until
+   * it said, a small just joined took six shards the plan gave three; its
+   * machine ran busy for 50 s and they ran 1.7 times their history (main
+   * f2ddcb6, 2026-11-12).
+   */
+  private otherOf(a: Worker): number {
+    if (a.cores !== a.reported.cores) return 0
+    if (a.other !== undefined) return a.other
+    const size = a.declared?.size
+    if (size === undefined) return 0
+    return Math.min(a.cores / 2, this.othersOf().get(size) ?? this.o.learnedOther?.(size) ?? 0)
   }
 
   /** Whether a task of `a`'s holds its cores: its command still runs, or has yet to. */
@@ -2182,10 +2196,10 @@ export class Orchestrator {
       // Its tasks use more than their history said (a suite given more
       // workers): the plan holds them at what the load says, this run.
       const over =
-        a.usedCores > 0 ? Math.max(1, (this.used(a).cores - otherOf(a)) / a.usedCores) : 1
+        a.usedCores > 0 ? Math.max(1, (this.used(a).cores - this.otherOf(a)) / a.usedCores) : 1
       workers.push({
         id: a.id,
-        cores: a.cores - otherOf(a),
+        cores: a.cores - this.otherOf(a),
         memory: a.memory,
         platform: a.platform,
         ...(a.serving.size === 0 ? {} : { serving: new Map(a.serving) }),
