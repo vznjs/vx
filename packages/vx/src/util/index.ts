@@ -111,6 +111,8 @@ export {
   checkIgnoreSync,
   gitCaseArgs,
   ignoreCaseLies,
+  ignoredByGlobs,
+  ignoredInputLine,
   ignoreProbes,
   listedSync,
   skipWorktreeSync,

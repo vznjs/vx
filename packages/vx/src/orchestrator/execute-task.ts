@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
@@ -66,6 +66,8 @@ import {
 import {
   anyTaskGlob,
   heldSecrets,
+  ignoredByGlobs,
+  ignoredInputLine,
   isLiteralPattern,
   killGraceMs,
   MASKED,
@@ -1066,11 +1068,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         inputs.files,
       ),
     ].filter(([abs]) => !isOwnOutput(abs))
-    for (const [, rel, glob] of left)
-      warnOf(log)(
-        `[vx] ${node.id}: inputs leave out git-ignored ${rel} (matched by ${glob}) — ` +
-          `a glob reads only what git lists; name it as a literal input ('${rel}') to key on it`,
-      )
+    for (const [, rel, glob] of left) warnOf(log)(`[vx] ${ignoredInputLine(node.id, rel, glob)}`)
   }
 
   // Sandbox is opt-in per task via `exec.sandbox: {}` (or `{...}`) in the
@@ -2321,52 +2319,6 @@ function deadSourceGlobs(
   // called dead though an edit through it moved the key.
   for (const { path: p } of files) if (linksToDir(path.join(root, p))) return []
   return [...own, ...ws]
-}
-
-/**
- * The files on disk a wildcard glob's last segment matches directly
- * (`.env*`, `config/*.json`) that the key left out, as `[abs, rel, glob]`:
- * a glob is a filter over what git lists, so these are git-ignored, and
- * `.env*` replayed a stale hit after an edit to `.env.local`. Read on the
- * miss path only, one directory listing per such glob, no git; a `**`
- * glob is skipped, so an ignored `node_modules` or `dist` says nothing.
- */
-function ignoredByGlobs(
-  declared: readonly string[] | undefined,
-  base: string,
-  root: string,
-  files: readonly { readonly path: string }[],
-): [abs: string, rel: string, glob: string][] {
-  if (declared === undefined) return []
-  const shallow = declared.filter((g) => {
-    if (g.startsWith('!') || isLiteralPattern(g) || g.includes('**')) return false
-    const segments = g.split('/')
-    return segments.slice(0, -1).every((s) => isLiteralPattern(s) && s !== '..' && s !== '.')
-  })
-  if (shallow.length === 0) return []
-  const excluded = anyTaskGlob(declared.filter((g) => g.startsWith('!')).map((g) => g.slice(1)))
-  let keyed: Set<string> | undefined
-  const found: [string, string, string][] = []
-  for (const glob of shallow) {
-    const dir = glob.split('/').slice(0, -1).join('/')
-    let entries
-    try {
-      entries = readdirSync(path.join(base, dir), { withFileTypes: true })
-    } catch {
-      continue
-    }
-    const match = anyTaskGlob([glob])
-    for (const e of entries) {
-      if (!e.isFile()) continue
-      const rel = dir === '' ? e.name : `${dir}/${e.name}`
-      if (!match(rel) || excluded(rel)) continue
-      const abs = path.join(base, rel)
-      keyed ??= new Set(files.map((f) => f.path))
-      if (keyed.has(relPosix(root, abs)) || found.some(([a]) => a === abs)) continue
-      found.push([abs, rel, glob])
-    }
-  }
-  return found
 }
 
 /**

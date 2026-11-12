@@ -322,7 +322,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     it on an edit there.
     A glob whose last segment matches an ignored file directly
     (`.env*` over an ignored `.env.local`, `config/*.json`) still leaves
-    it out, but the miss names it: `inputs leave out git-ignored
+    it out, but `vx lock` and the miss name it: `inputs leave out git-ignored
 .env.local (matched by .env*)`, with the literal that folds it. A
     `**` glob is not asked, so an ignored `node_modules` says nothing.
     A **glob** matching nothing stays silent, and so does a literal
@@ -2475,10 +2475,14 @@ moat.
   Workspace-root configs (`tsconfig.base.json`, etc.) are not
   auto-included — declare them via `inputs.workspaceFiles`
   (root-anchored globs).
-- **Gitignored files no entry names.** Vite and Next load `.env.local`
-  on their own; a broad glob skips it, so editing it replays the old
-  build (`.env*` skips it too; the miss warns). Name it:
-  `files: ['src/**', '.env.local']`. Its bytes are
+- **Gitignored files no entry names.** Vite and Next load `.env`,
+  `.env.local`, `.env.[mode]` and `.env.[mode].local` on their own (a
+  production build reads `.env.production.local`), and their default
+  `.gitignore` ignores `*.local`. A broad glob skips an ignored file,
+  `.env*` included, so editing one replays the old build under a hit.
+  Name each local file outright and let `.env*` take the tracked ones:
+  `files: ['src/**', '.env*', '.env.local', '.env.production.local', '.env.development.local']`.
+  `vx lock` and a miss name an ignored file a glob skips. Its bytes are
   hashed, never stored, and a missing file is simply not an input.
   Machines with different files compute different keys, so they miss
   each other's shared entries. `--affected` ignores it (only what git

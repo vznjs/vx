@@ -26,15 +26,20 @@ import {
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
+  checkIgnoreSync,
   configErrorFrame,
   configRefusal,
   DOT_VX_GITATTRIBUTES,
   fsRefusalHint,
+  ignoredByGlobs,
+  ignoredInputLine,
   isFsRefusal,
+  isLiteralPattern,
   isOutOfFds,
   isUserError,
   listed,
   maskedLine,
+  outputMatcher,
   relPosix,
   type RefusalParts,
   UserError,
@@ -595,7 +600,64 @@ async function writeLock(
         'vx lock',
         `${name}: its config holds this checkout's path (${root}), so another checkout locks it otherwise and keys it apart — use a path relative to the project, or $VX_RUN_WORKSPACE in the command`,
       )
+  for (const line of unkeyedReads(root, check)) sayNotice('warn', 'vx lock', line)
   return 0
+}
+
+/**
+ * Variables a bundler writes into what it builds: Vite's, Next's, CRA's,
+ * Astro's and SvelteKit's, Expo's, Gatsby's, Storybook's and Vue CLI's
+ * public prefixes, and `NODE_ENV`. Only these: `passThrough` exists for
+ * values that do not change the output (`CI`, a region, a token).
+ */
+const INLINED_ENV =
+  /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_)|^NODE_ENV$/
+
+/**
+ * What a task reads that its key never sees, said where the lock evaluates
+ * every task: an ignored file a glob's last segment matches (a run names it
+ * only on a miss, which a stale hit never brings, and Vite loads an ignored
+ * `.env.production.local`), and, for a cached task, a `passThrough` name a
+ * bundler inlines that `inputs.env` does not key. One git spawn at most.
+ */
+function unkeyedReads(root: string, check: GraphCheck): string[] {
+  const lines: string[] = []
+  const found: { task: string; ws: string; rel: string; glob: string }[] = []
+  for (const m of check.all) {
+    for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
+      const task = `${m.name}#${name}`
+      const own = outputMatcher(t.outputs?.files ?? [])
+      const ownWs = outputMatcher(t.outputs?.workspaceFiles ?? [])
+      // A literal entry keys the ignored file it names, as a run's walk does.
+      const named = (globs: readonly string[] | undefined, base: string) =>
+        (globs ?? [])
+          .filter((g) => !g.startsWith('!') && isLiteralPattern(g))
+          .map((g) => ({ path: relPosix(root, path.join(base, g)) }))
+      const literals = [...named(t.inputs?.files, m.dir), ...named(t.inputs?.workspaceFiles, root)]
+      for (const [abs, rel, glob] of [
+        ...ignoredByGlobs(t.inputs?.files, m.dir, root, literals),
+        ...ignoredByGlobs(t.inputs?.workspaceFiles, root, root, literals),
+      ]) {
+        const ws = relPosix(root, abs)
+        if (!own(relPosix(m.dir, abs)) && !ownWs(ws)) found.push({ task, ws, rel, glob })
+      }
+      if (t.cache !== true) continue
+      const quiet = new Set([...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])])
+      const unkeyed = (t.exec?.env?.passThrough ?? []).filter(
+        (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),
+      )
+      if (unkeyed.length > 0)
+        lines.push(
+          `${task}: exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
+        )
+    }
+  }
+  const ignored =
+    found.length === 0 ? null : checkIgnoreSync(root, [...new Set(found.map((f) => f.ws))])
+  const said = found
+    .filter((f) => ignored?.has(f.ws) === true)
+    .map((f) => ignoredInputLine(f.task, f.rel, f.glob))
+  return [...said, ...lines]
 }
 
 /**

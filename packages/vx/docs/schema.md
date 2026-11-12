@@ -754,6 +754,13 @@ highest priority:
    spawn time. A project config cannot set one for it: a first load
    that writes `process.env` is refused (D-76). _NOT_ folded into the cache key — for secrets,
    regional values, CI flags that legitimately vary between machines.
+   A value a bundler writes into its output is none of these: `vx lock`
+   names a cached task's `passThrough` name with a public bundler prefix
+   (`VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, `PUBLIC_`, `EXPO_PUBLIC_`,
+   `GATSBY_`, `STORYBOOK_`, `VUE_APP_`) or `NODE_ENV` that `inputs.env`
+   leaves out and that is no secret (by name or `secret`), once per task: add it to
+   `inputs.env`, or a build with another `VITE_API_URL` replays the old
+   bundle. It is a note; the lock is written.
 3. **`define`** → explicit literal values. _ARE_ folded into the
    cache key via the task config hash (the values are in your config
    file, so they participate naturally).
@@ -1073,7 +1080,9 @@ lockfile change when a lockfile plugin (`@vzn/vx-lockfile`) is declared.
 Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`, unless
-  an entry names the ignored path outright: a literal (`.env.local`), or
+  an entry names the ignored path outright: a literal (`.env.local`,
+  `.env.production.local`; `vx lock` and a miss name an ignored file a
+  glob's last segment matches, `.env*` over it), or
   a glob whose fixed prefix git ignores (`dist/**`, `dist/*.js`,
   `.cache/gen/**`), which is then walked on disk under that prefix only.
   A directory git ignores but for a file it lists (`gen/*` with

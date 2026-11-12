@@ -2195,6 +2195,13 @@ with the rule's refusal under it and writes nothing.
 A lock or review copy that is a symlink, or whose directory resolves
 outside the workspace (a `.vx` linked out of it), is refused the same
 way, before anything is written.
+After writing, it notes what a task reads that its key never sees, and
+still exits 0: a gitignored file a glob's last segment matches (`.env*`
+over an ignored `.env.production.local`, which Vite loads for a
+production build; a run says it only on a miss, which a stale hit never
+brings), asked of git in one `check-ignore`, and a cached task's
+`exec.env.passThrough` name a bundler inlines (`VITE_API_URL`) that
+`inputs.env` leaves out (schema.md § `ExecEnv`).
 
 `.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
 faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For

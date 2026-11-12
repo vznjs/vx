@@ -29,6 +29,13 @@ export function wholeIgnored(
   ignored: ReadonlySet<string> | null,
   listedMatch: (glob: string) => boolean,
 ): Set<string>
+export function ignoredByGlobs(
+  declared: readonly string[] | undefined,
+  base: string,
+  root: string,
+  files: readonly { readonly path: string }[],
+): [abs: string, rel: string, glob: string][]
+export function ignoredInputLine(task: string, rel: string, glob: string): string
 ```
 
 - `ignoreProbes`: the paths that stand for a root-relative glob: its
@@ -69,11 +76,25 @@ export function wholeIgnored(
 - `wholeIgnored`: the globs whose probes git ignores, by one of their
   `rules` when they have some, and, when deep, no listed file matches.
   Undecided is not ignored.
+- `ignoredByGlobs`: the files on disk under `base` that an input glob's
+  last segment matches directly (`.env*`, `config/*.json`; no `**`) and
+  `files` (root-relative) does not hold, one `readdir` per such glob, no
+  git. A run's miss passes its keyed files, so what is left is ignored;
+  `vx lock` passes the entries' literals and asks `checkIgnoreSync` of
+  what is left. `ignoredInputLine` is the line both print.
 
 Callers: `graph/task-graph.ts` `refuseOverlaps` (at `vx lock`) and
-`orchestrator/stable-keys.ts` `askIgnoredOutputs` (once per run).
+`orchestrator/stable-keys.ts` `askIgnoredOutputs` (once per run);
+`ignoredByGlobs`: `orchestrator/execute-task.ts` (the miss) and
+`cli/lock.ts` `unkeyedReads`.
 
 ## Tests
+
+`tests/ignored-glob-warning.test.ts` (the miss) and
+`tests/lock-unkeyed-inputs.test.ts` (`vx lock`, with the `passThrough`
+note): an ignored file a glob's last segment matches is named, and not
+once a literal names it, a `!` takes it back, or it is the task's own
+output.
 
 `tests/ignored-outputs.test.ts`: the rule passes and the key is taken up
 front, the same before and after the build, with the rule in the root,
