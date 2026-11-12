@@ -1,15 +1,6 @@
 // The task graph memo: the graph a run built, read back whole when nothing
-// it is built from has moved. Building 1,206 tasks' graph was 4.5 ms of a
-// warm run (2026-10-23), nearly all of it code a short process runs cold;
-// reading it back is half that.
-//
-// A run's configs come from the lock and nowhere else when no plugin fills
-// the `project` stage, so the token names them by the lock's bytes instead
-// of serializing them (3 ms at 1,206 tasks): the bytes, the projects
-// discovered and loaded, their package edges, the requested tasks, the
-// rules, the root and the code are everything `buildTaskGraph` reads. A
-// scoped load hands undeclared `^name`s back instead of refusing them, so
-// it is never remembered.
+// it is built from has moved (`GRAPH_PARTS`). Reading it back is half the
+// cost of building it, most of which is code a short process runs cold.
 
 import type { FoldMemo } from '../memo/index.js'
 import {
@@ -20,7 +11,7 @@ import {
   standInsOf,
   type TaskNode,
 } from '../graph/index.js'
-import { xxh3hex } from '../util/index.js'
+import { memoParts, onlyAbsent, xxh3hex } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import { codeIdentity } from './run-keys.js'
 
@@ -35,6 +26,35 @@ export interface GraphMemo {
   lock: string
   metas: readonly ProjectMeta[]
 }
+
+/**
+ * Everything `buildTaskGraph` reads. The configs come from the lock and
+ * nowhere else when no plugin fills the `project` stage, so the lock's
+ * bytes name them instead of a serialization (3 ms at 1,206 tasks).
+ */
+const GRAPH_PARTS = memoParts<BuildGraphOptions & Omit<GraphMemo, 'folds'>>({
+  lock: (lock) => lock,
+  workspaceRoot: (root) => root ?? '',
+  rules: (rules) => JSON.stringify(rules ?? null),
+  packageGraph: (graph) => String(graph.edgeSource),
+  requested: (requested) => JSON.stringify(requested),
+  metas: (metas, of) =>
+    metas
+      .map((m) =>
+        [
+          m.name,
+          m.dir,
+          m.configPath ?? '\u0001',
+          of.packageGraph.directDeps(m.name).join('\u0001'),
+        ].join('\0'),
+      )
+      .join('\0'),
+  projects: (projects) => [...projects.keys()].join('\0'),
+  // A scoped load hands undeclared `^name`s back instead of refusing them.
+  undeclaredDeps: onlyAbsent('a scoped load judges its graph against the rest'),
+  nestedProjects: onlyAbsent('a refusal is never decided from a memo'),
+  projectConfigs: onlyAbsent('a refusal is never decided from a memo'),
+})
 
 /**
  * A node as the memo holds it: its project and task, requested, its deps
@@ -62,30 +82,15 @@ export function memoGraph(
   options: BuildGraphOptions,
   memo: GraphMemo | undefined,
 ): { nodes: Map<string, TaskNode>; token: string | undefined } {
-  if (memo === undefined || options.undeclaredDeps !== undefined) {
-    return { nodes: buildTaskGraph(options), token: undefined }
-  }
-  const { projects, packageGraph } = options
-  const parts: string[] = [
-    GRAPH_MEMO_VERSION,
-    codeIdentity(),
-    memo.lock,
-    options.workspaceRoot ?? '',
-    JSON.stringify(options.rules ?? null),
-    String(packageGraph.edgeSource),
-    JSON.stringify(options.requested),
-  ]
-  for (const m of memo.metas) {
-    parts.push(
-      m.name,
-      m.dir,
-      m.configPath ?? '\u0001',
-      packageGraph.directDeps(m.name).join('\u0001'),
-    )
-  }
-  for (const name of projects.keys()) parts.push(name)
+  if (memo === undefined) return { nodes: buildTaskGraph(options), token: undefined }
+  const token = GRAPH_PARTS.token(`${GRAPH_MEMO_VERSION}\0${codeIdentity()}`, {
+    ...options,
+    lock: memo.lock,
+    metas: memo.metas,
+  })
+  if (token === undefined) return { nodes: buildTaskGraph(options), token: undefined }
+  const { projects } = options
   const id = `\0graph\0${xxh3hex(JSON.stringify(options.requested))}`
-  const token = xxh3hex(parts.join('\0'))
   const row = memo.folds.get(id, token)
   if (row !== undefined) {
     const nodes = rebuilt(row, projects)
@@ -166,6 +171,13 @@ function rebuilt(
   return nodes
 }
 
+const DEPENDENTS_MEMO_VERSION = 'dependents-memo-v1'
+
+/** The graph's edges are in the row's id (its token); which nodes this run kept, here. */
+const COUNT_PARTS = memoParts<{ nodes: ReadonlyMap<string, TaskNode> }>({
+  nodes: (nodes) => [...nodes.keys()].join('\0'),
+})
+
 /**
  * The run's dependents count, the scheduler's baseline and every row's
  * `blocks`, read back with the graph it was counted on: the closure over a
@@ -182,7 +194,7 @@ export function graphCounts(
   if (folds === undefined || token === undefined) return computeReverseDepCount(nodes)
   // Not `counts`: those rows held a second count the rows no longer show.
   const id = `\0dependents\0${token}`
-  const probe = xxh3hex([...nodes.keys()].join('\0'))
+  const probe = COUNT_PARTS.token(DEPENDENTS_MEMO_VERSION, { nodes })!
   const row = folds.get(id, probe)
   if (row !== undefined) {
     const back = countsOf(row, nodes)

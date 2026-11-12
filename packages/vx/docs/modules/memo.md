@@ -7,6 +7,12 @@ a refusal and never answers for a file a task may have written since it
 learned it (CLAUDE.md, rule 9). The store hands them out as one object,
 `Cache.memo` (cache.md).
 
+A memo whose answer is named by a token declares what it depends on with
+`memoParts` (util.md): the run keys, the graph, its dependents count, the
+fold probe, the config bundle. A memo whose row records its dependencies
+compares them on read instead: a file's stat stamp, a lockfile parse's
+version, bytes and extra files. A remote hit depends on its key alone.
+
 ## `src/memo/local-memo.ts` — the store's memos as one object
 
 ### Purpose

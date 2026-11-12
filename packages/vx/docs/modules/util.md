@@ -846,6 +846,51 @@ common tail, and 2^17 `Cache.key` calls over one env value with no two
 keys equal; both collision rows are red without the feed-forward.
 `tests/task-hash.test.ts`: a config keys alike whatever its key order.
 
+## `src/util/memo-parts.ts` — what a memo's answer depends on
+
+### Purpose
+
+The one way a memo declares its token. `Depends<T>` names every field of
+the memo's input: a part of the token, `unread(why)`, or
+`onlyAbsent(why)` (the memo cannot answer while it is set). A field added
+to the input is a type error at the memo until the declaration says which.
+Used by the run key, graph, dependents count, fold probe and config bundle
+memos.
+
+### Public surface
+
+```ts
+export interface Unread {
+  readonly unread: string
+}
+export interface OnlyAbsent {
+  readonly onlyAbsent: string
+}
+export const unread: (why: string) => Unread
+export const onlyAbsent: (why: string) => OnlyAbsent
+// The field's part of the token; undefined when the memo cannot vouch for this value.
+export type Part<V, T, C> = (value: V, of: T, ctx: C) => string | undefined
+export type Depends<T, C = void> = {
+  readonly [K in keyof T]-?: Part<ValueOf<T, K>, T, C> | Unread | OnlyAbsent
+}
+export interface MemoParts<T, C = void> {
+  push(of: T, ctx: C, out: string[]): boolean // false: the memo cannot answer
+  token(head: string, of: T, ctx: C): string | undefined // xxh3 of head and parts, `\0`-joined
+  without(keys: readonly (keyof T & string)[]): MemoParts<T, C> // parts another token names
+}
+export function memoParts<T, C = void>(depends: Depends<T, C>): MemoParts<T, C>
+```
+
+### Invariants
+
+- Parts are pushed in declaration order; an unread field adds nothing.
+- `without` keeps every `onlyAbsent` check.
+
+### Tests
+
+`tests/memo-parts.test.ts`: order, unread and only-absent fields, a part
+that cannot vouch, `without`, and a missing field as a type error.
+
 ## `src/util/ulid.ts` — run-id generator
 
 ### Purpose

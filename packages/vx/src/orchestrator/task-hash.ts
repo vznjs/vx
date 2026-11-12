@@ -39,6 +39,7 @@ import { GROUP_VIA } from '../history/index.js'
 import {
   isUserError,
   keysSorted,
+  memoParts,
   relPosix,
   secretMask,
   span,
@@ -186,7 +187,7 @@ async function taskHash(args: ComputeHashArgs): Promise<string> {
     // The files fold last, so a fold up to them seeded into their token
     // names the key the whole fold would: the files go unresolved.
     const head = foldHead((await resolveKeyInput(args, true)).input)
-    const probe = xxh3hex(`${FOLD_MEMO_VERSION}\0${token}`, head)
+    const probe = FOLD_PARTS.token(FOLD_MEMO_VERSION, { head, files: token })!
     const known = folds.get(args.node.id, probe)
     if (known !== undefined) return known
     const key = await args.cache.key(
@@ -241,6 +242,12 @@ async function knownIdentities(
  * changes, as when `resolveFiles` picks other files from the same records.
  */
 const FOLD_MEMO_VERSION = 'fold-memo-v1'
+
+/** A task's fold up to its files (`foldHead`) and the token of the files it would resolve. */
+const FOLD_PARTS = memoParts<{ head: bigint; files: string }>({
+  head: (head) => head.toString(36),
+  files: (files) => files,
+})
 
 /**
  * A task that runs a command and declares no `inputs`: nothing says what
