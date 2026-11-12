@@ -6,7 +6,7 @@
 // naming the task and the directory.
 
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
@@ -19,11 +19,11 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { gitIn } from './helpers/workspace.js'
 
-const config = (outputs: string) => `
+const config = (outputs: string, command = 'mkdir -p dist && cat src/x > dist/out') => `
   export default {
     tasks: {
       build: {
-        exec: { command: 'mkdir -p dist && cat src/x > dist/out' },
+        exec: { command: '${command}' },
         cache: true,
         inputs: { files: ['src/**'] },
         outputs: ${outputs},
@@ -87,6 +87,34 @@ describe('a cache directory under a task’s outputs', () => {
       const opts = { cwd: fx.root, tasks: ['build'], cacheDir, log: silentLogger(fx) }
       const first = await run(opts)
       expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
+      const second = await run(opts)
+      expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    },
+    TIMEOUT,
+  )
+
+  // vx writes its cache directory while a task runs (SQLite's WAL): read as
+  // the task's undeclared ignored state, it withheld the save, so the next
+  // run missed whenever a write landed inside the command (2 of 10 under
+  // load). The command's own write there stands in for vx's.
+  it(
+    'a write to the cache directory while the task runs is not the task’s state',
+    async () => {
+      await addProject(fx.root, 'a', {
+        config: config(
+          `{ files: ['dist/**', '!dist/cc/**'] }`,
+          'mkdir -p dist && cat src/x > dist/out && touch dist/cc/vx-write',
+        ),
+        files: { 'src/x': 'v1\n' },
+      })
+      commit()
+      const cacheDir = path.join(fx.root, 'packages', 'a', 'dist', 'cc')
+      await mkdir(cacheDir, { recursive: true })
+      await writeFile(path.join(cacheDir, 'vx-write'), '')
+      const opts = { cwd: fx.root, tasks: ['build'], cacheDir, log: silentLogger(fx) }
+      const first = await run(opts)
+      expect(first.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+      expect(fx.log.join('\n')).not.toContain('changed while the task ran')
       const second = await run(opts)
       expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
     },

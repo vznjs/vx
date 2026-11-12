@@ -62,9 +62,12 @@ export function stampUndeclaredState(args: {
       if (nested.has(d)) return true
     return false
   }
+  // vx writes its cache directory (SQLite's WAL) while the task runs.
+  const vxDirs = args.gitFilesCache?.vxDirs ?? []
   const out = new Map<string, string | undefined>()
   for (const abs of found) {
     if (nested.size > 0 && inNested(abs)) continue
+    if (vxDirs.some((d) => abs.startsWith(d + path.sep))) continue
     const rel = relPosix(projectDir, abs)
     // vx's own files at the workspace root.
     if (rel.startsWith('.vx/') || rel.startsWith('.git/')) continue
