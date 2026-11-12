@@ -132,7 +132,7 @@ export interface CacheLayer {
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (outputs.workspaceFiles); omitted → only `outputs/` restores.
   // outputs: the task's declared globs; an entry outside them fails the
-  // whole restore (restorableOutput).
+  // whole restore (restorableOutput; an empty directory, restorableOutputDir).
   restoreOutputs(
     hash: string,
     projectDir: string,
@@ -270,6 +270,8 @@ export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
   // workspace root in a run, so it shares the enumeration's `rev-parse`
   // (git-inputs.md). Absent, the directory of the first file hashed.
+  // In a named cache dir it also keys the output stamps and directory
+  // snapshots this handle reads and writes: clones sharing one keep their own.
   // artifactCeiling: the largest artifact, decoded, this cache saves,
   // ingests or restores — 2 GiB; lowered only by a test, through
   // `RunOptions.artifactCeiling` (tests/artifact-ceiling.test.ts).
@@ -503,7 +505,7 @@ export class HistoryStream<T> {
   add(item: T, record: RunRecord): void
   finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
 }
-export const SCHEMA_VERSION = 'v55'
+export const SCHEMA_VERSION = 'v56'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
@@ -635,11 +637,14 @@ rows, each link held to its row's length and CRC-32. A tree restore checks nothi
 the filesystem has one; never a hard link): a missing top directory is
 built in `.vx/tmp/` (`copyStaging`) and renamed into place once, a
 missing file in a directory that stands is copied straight to its place.
-Every copy settles before a failure's cleanup. Into existing outputs, a workspace output, a link, or
-where that rename would cross a filesystem or a setgid directory it feeds `extractArtifactStream` the
-tree packed back (`packArtifactStream(planOfTree(…))`), so the extract at
-ingest leaves where a link points to that restore, the one that knows the
-workspace: bounded by the tree, a link into a sibling project was refused. `pinArtifact`
+A link, held to its row's length and CRC-32, is laid as written once
+`linksRestorable` finds the extractor would lay it (the same checks, bounded by the
+workspace). Every copy settles before a failure's cleanup. Into existing outputs, a workspace
+output, a link the extractor refuses, or where that rename would cross a filesystem or a setgid
+directory it feeds `extractArtifactStream` the tree packed back
+(`packArtifactStream(planOfTree(…))`), so the extract at ingest leaves where a link points to
+that restore, the one that knows the workspace: bounded by the tree, a link into a sibling
+project was refused. `pinArtifact`
 packs a tree into the upload's tar.zst.
 
 `exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution
@@ -698,7 +703,7 @@ SQLite stores metadata, and the small artifacts above:
   `run_id` and `created_at` name the run that wrote the entry as it stands and when (v54).
 - **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
   so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
-  UTF-8 (v52), as text the logs outweighed every inline artifact.
+  bytes as the task wrote them (v52, `rawEncode`), as text the logs outweighed every inline artifact.
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at, run, …)`.
   `run` is the run's row in **`run_ids`** `(id, run_id)` (v53): the
@@ -914,8 +919,8 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v55'`; `SCHEMA_VERSION` is
-`'v55'`. Bump `CACHE_VERSION` when:
+`CACHE_VERSION` is currently `'vx-cache-v56'`; `SCHEMA_VERSION` is
+`'v56'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

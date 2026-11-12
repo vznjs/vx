@@ -292,3 +292,17 @@ it("a run's log is its own output, never another run's saved under its key", asy
   expect(vx('last', first, '--log', 'd#v')).toEqual(notKept)
   expect(vx('last', hit, '--log', 'd#v')).toEqual(notKeptAs('cache-hit'))
 })
+
+// A scoped project asked without its scope was named only as not run;
+// `vx why` offers the scoped id.
+it('a task id without its project scope is offered the scoped one', async () => {
+  await addProject(
+    root,
+    '@w/envy',
+    `export default { tasks: { probe: { exec: { command: 'true' } } } }\n`,
+  )
+  expect(vx('run', '@w/envy#probe').code).toBe(0)
+  expect(vx('last', '--log', 'envy#probe').err).toBe(
+    noticed('vx last: no recorded run of envy#probe — did you mean @w/envy#probe?\n'),
+  )
+})

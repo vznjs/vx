@@ -4,7 +4,7 @@
 // them: a dependency's key folds the files that made its outputs. The
 // dependency's sources, and the outputs of a task it does not depend on,
 // stay behind the project wall.
-import { realpathSync } from 'node:fs'
+import { realpathSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -117,6 +117,51 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
       expect(
         await peek(`dependsOn: ['tools#node'],`, `{ hermetic: true, allow: { read: ['.'] } }`),
       ).toEqual(['OUT', 'NOSRC', 'ROOT'])
+    },
+    TIMEOUT,
+  )
+
+  // `tsc -b` touches an up-to-date dependency's buildinfo when its sources
+  // are newer than it (a branch switched and back, the dependency a hit),
+  // and swallows the refusal; judged a write, the dependant failed every
+  // run until `--force` (tsref repro1, 2026-11-12). The bind is read-only:
+  // the touch lands nothing, and the dependency's file keeps its time.
+  // `touch` without `-c` opens the file for writing first, and so does
+  // uutils' (Ubuntu 26.04) with it: that refused open is the touch too.
+  // Linux only: seatbelt logs a refused utimes as `file-write*`, as it logs
+  // a refused write, so macOS cannot tell the touch from a write.
+  it.skipIf(process.platform !== 'linux')(
+    'a refused timestamp change on a dependency’s output is no violation and moves nothing',
+    async () => {
+      await addProject(fixture.root, 'tools', {
+        files: { 'src/s.txt': 'SRC\n' },
+        config: `export default { tasks: { node: {
+          exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo ROOT > root.txt' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '*.txt'] }, cache: true,
+        } } }`,
+      })
+      const rel = '../tools/out/bin/tool.txt'
+      const touch = `touch -c ${rel} 2>/dev/null; touch ${rel} 2>/dev/null; ${PEEK}`
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'A\n' },
+        config: `export default { tasks: { use: {
+          exec: { command: ${JSON.stringify(touch)}, sandbox: { allow: { read: ['.'] } } },
+          dependsOn: ['tools#node'],
+        } } }`,
+      })
+      const log = collectingLogger(fixture)
+      expect((await run({ cwd: fixture.root, tasks: ['node'], log })).ok).toBe(true)
+      const tool = path.join(fixture.root, 'packages', 'tools', 'out', 'bin', 'tool.txt')
+      const before = statSync(tool).mtimeMs
+      fixture.log.length = 0
+      const r = await run({ cwd: fixture.root, tasks: ['use'], log })
+      const refused = r.outcomes.flatMap((o) => o.sandboxViolationLines ?? [])
+      expect({
+        ok: r.ok,
+        hinted: fixture.log.join('\n').includes('no grant covers'),
+        ...(r.ok ? {} : { refused, log: fixture.log }),
+      }).toEqual({ ok: true, hinted: false })
+      expect(statSync(tool).mtimeMs).toBe(before)
     },
     TIMEOUT,
   )
@@ -265,6 +310,61 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
       const r = await run({ cwd: fixture.root, tasks: ['use'], log: collectingLogger(fixture) })
       if (!r.ok) throw new Error(`run failed:\n${fixture.log.join('\n')}`)
       expect(fixture.log.join('\n')).toContain('TOOLRAN')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a write into them is the dependency’s work: no grant to write there is suggested',
+    async () => {
+      // `tsc -b` under --exclude-dependencies rebuilt the upstream project,
+      // and the hints suggested `write: ['../tools/out/bin/tool.txt']` and
+      // `['../']` for a refused write of its headless `*.txt` output.
+      await addProject(fixture.root, 'tools', {
+        files: { 'src/s.txt': 'SRC\n' },
+        config: `
+          export default {
+            tasks: {
+              node: {
+                exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo ROOT > root.txt' },
+                inputs: { files: ['src/**'] },
+                outputs: { files: ['out/**', '*.txt'] },
+                cache: true,
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'A\n' },
+        config: `
+          export default {
+            tasks: {
+              use: {
+                exec: {
+                  command: 'echo X > ../tools/out/bin/tool.txt; echo X > ../tools/root.txt',
+                  sandbox: { allow: { read: ['.'] } },
+                },
+                dependsOn: ['tools#node'],
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['use'], log: collectingLogger(fixture) })
+      const use = r.outcomes.find((o) => o.node.id === 'app#use')!
+      expect(use.status).toBe('failed')
+      expect(use.sandboxFix?.write).toBeUndefined()
+      const lines = use.sandboxViolationLines ?? []
+      expect(lines.filter((l) => l.includes('outside the project'))).toEqual([])
+      const named = lines
+        .filter((l) => l.includes("a dependency's declared outputs"))
+        .map((l) => ['../tools/out/bin/tool.txt', '../tools/root.txt'].every((p) => l.includes(p)))
+      // Seatbelt logs a short task's refusals only now and then (CI: one of
+      // two, or none), and the hint names what was logged: on macOS the
+      // check is that no write grant is offered, above.
+      if (process.platform === 'linux')
+        expect(named.join() === 'true' ? named : { named, lines, log: fixture.log }).toEqual([true])
     },
     TIMEOUT,
   )

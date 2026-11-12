@@ -412,6 +412,24 @@ describe('OTLP builders', () => {
     ])
   })
 
+  // A skipped task never ran: core's outcome carries exit 1 (a blocked
+  // skip) or 0 (a platform skip) for its own exit, not a process's.
+  it('a skipped task carries no exit code; one that ran does', () => {
+    const t: TaskTelemetry = {
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      status: 'skipped',
+      cacheSource: 'none',
+      exitCode: 1,
+      durationMs: 0,
+      blockedBy: 'a#build',
+    }
+    const exit = (s: TaskTelemetry['status']): unknown =>
+      attrMap(taskSpanAttributes({ ...t, status: s }, TASK_RUN))['vx.task.exit_code']
+    expect([exit('skipped'), exit('failed')]).toEqual([undefined, '1'])
+  })
+
   it('surfaces retry attempts on the task span', () => {
     const t: TaskTelemetry = {
       taskId: 'a#flaky',

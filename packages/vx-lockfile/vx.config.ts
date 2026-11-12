@@ -46,6 +46,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'discover-parity',
     'discover',
     'entry-shapes',
+    'installed-tree',
     'io-refusals',
     'link-outside-root',
     'linked-dirs',

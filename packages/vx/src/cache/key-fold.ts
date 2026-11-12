@@ -131,7 +131,9 @@ import type { CacheKeyInput } from './layer.js'
 // v55: a run that removed a committed file under its outputs saves nothing
 // (2026-11-11); a v54 entry of one holds no removal, and its hit left the
 // file standing.
-export const CACHE_VERSION = 'vx-cache-v55'
+// v56: an entry keeps a task's output bytes that are not UTF-8 as written
+// (2026-11-12); a v55 one holds U+FFFD for them, and its hit replayed that.
+export const CACHE_VERSION = 'vx-cache-v56'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

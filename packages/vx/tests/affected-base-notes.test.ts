@@ -118,6 +118,31 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     )
   })
 
+  // A fresh feature branch (`checkout -b feature origin/main`, or one
+  // whose only edit is stashed) sits on its base without being it: the
+  // note advised --affected=origin/main, the base already in use.
+  it('a feature branch not yet past its base gets the plain note, no advice to use that base', async () => {
+    git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    git(root, 'checkout', '-q', '-b', 'feature')
+    const plain = noticed('vx run: nothing affected since origin/main', 'info').trimEnd()
+    expect(vx(root, 'run', 'build', '--affected=origin/main').out.trim()).toBe(plain)
+    await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a2\n')
+    git(root, 'stash', '-q')
+    expect(vx(root, 'run', 'build', '--affected=origin/main').out.trim()).toBe(plain)
+  })
+
+  it('on the base branch itself, the note never suggests the base already in use', () => {
+    git(root, 'checkout', '-q', '-b', 'main')
+    git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    const r = vx(root, 'run', 'build', '--affected=origin/main')
+    expect(r.out.trim()).toBe(
+      noticed(
+        'vx run: nothing affected since origin/main — origin/main is HEAD itself: compare with the previous commit (--affected=HEAD~1)',
+        'info',
+      ).trimEnd(),
+    )
+  })
+
   // Turbo's CI spelling reads as its base, so the note had to read it so
   // too: `origin/feat...HEAD` said nothing of the base being HEAD.
   for (const ref of ['origin/feat...HEAD', 'origin/feat..HEAD']) {

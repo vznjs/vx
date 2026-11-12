@@ -76,6 +76,25 @@ function keptServers(
   return reached
 }
 
+/**
+ * The servers a hold keeps only while their key is unchanged: those no
+ * requested task stands on as `selectKeepAlive` reads it. A requested dev
+ * server reloads itself, and is replaced only on a config edit; e2e
+ * against an api kept over an edit to its source tested the old api.
+ */
+export function keyedServers(nodes: ReadonlyMap<string, TaskNode>): ReadonlySet<string> {
+  const isServer = (id: string): boolean => nodes.get(id)!.config.exec?.persistent !== undefined
+  const kept = keptServers(nodes, isServer)
+  const out = new Set<string>()
+  for (const id of nodes.keys()) if (isServer(id) && !kept.has(id)) out.add(id)
+  return out
+}
+
+/** No input file: no key sees an edit to what it serves, so no hold may keep it. */
+function keyBlind(node: TaskNode): boolean {
+  return (node.config.inputs?.files?.length ?? 0) === 0
+}
+
 const NONE: string[] = []
 
 function someNode(nodes: ReadonlyMap<string, TaskNode>, is: (n: TaskNode) => boolean): boolean {
@@ -284,6 +303,26 @@ export function onServerExit(child: Child, slot: string, fn: (code: number) => v
   slots.set(slot, fn)
 }
 
+const exitNotes = new WeakMap<Child, (code: number) => string[]>()
+
+/**
+ * What a ready server's own failing exit needs said beside its code: the
+ * shell verdict and sandbox note one dead before ready gets
+ * (persistent-task.ts `exitNotes`). Each place that names the exit
+ * asks `takeExitNotes`; the first one says them.
+ */
+export function explainServerExit(child: Child, notes: (code: number) => string[]): void {
+  exitNotes.set(child, notes)
+}
+
+/** The notes for a server's exit, once: a crash named twice explains itself once. */
+export function takeExitNotes(child: Child | undefined, code: number): string[] {
+  const notes = child === undefined ? undefined : exitNotes.get(child)
+  if (notes === undefined) return []
+  exitNotes.delete(child!)
+  return notes(code)
+}
+
 /** The child has exited or been killed; Bun sets these once it reaps it. */
 export function hasEnded(child: Child): boolean {
   return child.exitCode !== null || child.signalCode !== null
@@ -346,6 +385,8 @@ export function sessionEnd(keepAlive: KeepAlive): Promise<{ code: number; i: num
 
 export interface HoldArgs {
   forwardArgs: readonly string[] | undefined
+  /** A keyed server's key (`keyedServers`); undefined for the rest. */
+  keyOf: (id: string) => string | undefined
   /** Where a held server's output, and the notice of its death, go. */
   outOf: (id: string) => HeldServer['out']
 }
@@ -386,9 +427,11 @@ function heldServerMap(
     const n = keepAlive.nodes[i]!
     const child = keepAlive.children[i]!
     const out = args.outOf(n.id)
+    const key = args.keyOf(n.id)
     servers.set(n.id, {
       child,
       config: serverConfig(n, args.forwardArgs),
+      ...(key === undefined ? {} : { key }),
       out,
       handOver: () => void handed.add(child),
     })
@@ -412,7 +455,8 @@ function sayHeldExit(
 ): void {
   onServerExit(child, 'held', (code) => {
     if (!state.stopping && !handed.has(child) && code !== 0)
-      out.bus.emit({ kind: 'run:status', line: `vx: ${id} exited with code ${code}`, warn: true })
+      for (const line of [`vx: ${id} exited with code ${code}`, ...takeExitNotes(child, code)])
+        out.bus.emit({ kind: 'run:status', line, warn: true })
   })
 }
 
@@ -436,8 +480,24 @@ export function failServer(
   o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
 }
 
+function holdAll(
+  registry: ReadonlyMap<string, Child>,
+  nodes: ReadonlyMap<string, TaskNode>,
+  keyed: ReadonlySet<string>,
+): KeepAlive {
+  const out: KeepAlive = { nodes: [], children: [] }
+  for (const [id, child] of registry) {
+    const node = nodes.get(id)!
+    if (keyed.has(id) && keyBlind(node)) continue
+    out.nodes.push(node)
+    out.children.push(child)
+  }
+  return out
+}
+
 /**
- * The end of the graph for its servers: which stay up (`selectKeepAlive`),
+ * The end of the graph for its servers: which stay up (`selectKeepAlive`,
+ * or every one under a hold),
  * the bounded shutdown of the rest, and each one that died on its own
  * failed. A run that failed elsewhere keeps nothing: `vx run dev --all`
  * with one server that never became ready sat on the others for good, so
@@ -452,9 +512,11 @@ export async function disposeServers(args: {
   registry: ReadonlyMap<string, Child>
   nodes: ReadonlyMap<string, TaskNode>
   outcomes: ReadonlyMap<string, TaskOutcome>
-  /** Keep the requested servers up: the CLI foreground, or a hold. */
+  /** Keep the requested servers up: the CLI foreground, or a hold (which keeps them all). */
   keep: boolean
   hold: boolean
+  /** Under a hold, `keyedServers`: one of them with no input file is not kept (`keyBlind`). */
+  keyed: ReadonlySet<string>
   continueAlways: boolean
   /** The servers that had ended when a stop landed; undefined without a stop. */
   endedBeforeStop: ReadonlySet<Child> | undefined
@@ -468,7 +530,12 @@ export async function disposeServers(args: {
   // footer counted it a success, pinned it `running`, and a teardown read
   // the run ok over vx's exit 1.
   if (registry.size > 0) await new Promise((resolve) => setTimeout(resolve, 0))
-  let keepAlive = selectKeepAlive(registry, args.nodes, args.keep)
+  // A hold keeps a dependency-only server too, for its next cycle to keep
+  // while its key is unchanged: `vx watch e2e` over its db and api booted
+  // the stack again every edit.
+  let keepAlive = args.hold
+    ? holdAll(registry, args.nodes, args.keyed)
+    : selectKeepAlive(registry, args.nodes, args.keep)
   const failedElsewhere =
     ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
     [...registry.values()].some(

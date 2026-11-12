@@ -21,6 +21,7 @@ export interface TaskHistory {
   maxCpuParallelism?: number
   saturatedCores?: number // the most cores of a machine it filled (resourcesFor)
   saturatedMemoryBytes?: number // and the most memory
+  slowDurationMs?: number // a slow run: the slowest the forecast read, or the server's (resourcesFor)
 }
 export type HistoryTable = ReadonlyMap<string, TaskHistory>
 export type TaskResources = Pick<
@@ -30,6 +31,7 @@ export type TaskResources = Pick<
   | 'maxCpuParallelism'
   | 'saturatedCores'
   | 'saturatedMemoryBytes'
+  | 'slowDurationMs'
 >
 
 export interface HistoryProvider {

@@ -441,7 +441,7 @@ describe('overlapping outputs: the run-end snapshot of each side', () => {
     }
   `
   const recordedFor = (root: string, task: string): string[] => {
-    const c = new Cache(path.join(root, '.vx/cache'))
+    const c = new Cache(path.join(root, '.vx/cache'), undefined, root)
     try {
       const { hash } = indexDb(c).query('SELECT hash FROM entries WHERE task = ?').get(task) as {
         hash: string

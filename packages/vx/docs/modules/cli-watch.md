@@ -395,8 +395,8 @@ reasons:
 ## Persistent tasks across cycles
 
 Watch mode re-invokes `orchestrator.run` per cycle with
-`holdPersistent: true`, so the requested persistent tasks a cycle
-started, and the persistent tasks they depend on, are handed back
+`holdPersistent: true`, so every persistent task a cycle started,
+requested or only a dependency, is handed back
 running (`RunSummary.persistent`) instead of being stopped when its
 graph ends. The loop holds them while it idles and hands them to the
 next cycle as `RunOptions.keep`: a server still up whose task that
@@ -409,8 +409,17 @@ from there. A server whose config changed, or that died, is stopped
 before the cycle's graph and started again; a stop that lands while it
 is going ends the cycle there, having run nothing (WD-22). One the
 cycle never reaches (a dependency failed) is stopped after it, by the
-hand-back it came from. Any other persistent task is still stopped at
-the end of its cycle, as under `vx run`. Until 2026-10-08 every cycle
+hand-back it came from. A dependency-only server (`keyedServers`: none
+of the requested tasks stands on it) is kept only while its key is
+too: the hand-back carries the key (`HeldServer.key`), the cycle
+computes its own once when the task is reached, and on a change stops
+the old one and starts it again with that key; e2e against an api kept
+over an edit to its source tested the old api. One with no
+`inputs.files` (`keyBlind`) is not held: no key sees its edits, so it
+restarts each cycle. Until 2026-11-12 every dependency-only server was
+stopped at the end of each cycle, so `vx watch e2e` booted its whole
+stack on every edit (`tests/held-persistent.test.ts` › "a held run
+keeps a dependency-only server while its key is unchanged"). Until 2026-10-08 every cycle
 restarted the server, and until 2026-09-24 it was stopped at the END of
 each cycle and was dead whenever watch sat idle
 (`tests/watch-loop.test.ts` › "the dev server stays up across cycles

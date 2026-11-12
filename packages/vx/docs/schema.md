@@ -65,9 +65,10 @@ interface ProjectConfig {
 `defineProject` is an identity function — it exists purely so
 TypeScript narrows literal types in your config (clean autocomplete,
 strict validation against the schema). It has zero runtime effect.
-The same typing without a runtime import is
+The same key checking without a runtime import is
 `import type { ProjectConfig } from '@vzn/vx/config'` plus
-`export default { … } satisfies ProjectConfig` — the form `vx init`
+`export default { … } satisfies ProjectConfig` (it does not check
+`dependsOn` names against the task keys) — the form `vx init`
 and `@vzn/vx-migrate` generate, because Bun erases the type import and the
 file then loads in a workspace that runs the `vx` binary without the
 package installed. Either form is fine; the object is what vx reads.
@@ -586,7 +587,13 @@ Semantics:
   },
   e2e: {
     dependsOn: ['dev:run'],
-    exec: { command: 'playwright test' },
+    exec: {
+      // Playwright removes its output directory first, and a write
+      // grant cannot be removed on Linux: it writes one inside it.
+      command: 'playwright test --output test-results/run',
+      // The server's port, and no other host.
+      sandbox: { allow: { read: ['.'], write: ['test-results/'], network: ['localhost:5173'] } },
+    },
     inputs: { files: ['e2e/**'] },
     outputs: { files: ['test-results/**'] },
     cache: true,
@@ -604,8 +611,9 @@ Semantics:
   starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
   and that task runs once it is ready. A dependant whose key the
-  server's writes could change (one in its own project, unless a sandbox
-  bounds the server's writes) is not probed ahead of it, so there the
+  server's writes could change (one in its own project whose inputs the
+  server's write grants reach, or any there when the server is not
+  sandboxed) is not probed ahead of it, so there the
   server still starts. `vx run --dry` says so: such a server is
   `not started` (`not-started` in `--dry=json`), not `would exec`.
 - **Exit before ready.** A persistent task that exits 0 before
@@ -617,7 +625,9 @@ Semantics:
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
-the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
+the run went on`), so a dependant failing against it reads why, with the line a crash
+  before ready gets (an exit 127's PATH verdict, a sandboxed server's
+  note), said once. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). A task that reaches it
   through a group or another server (`e2e` on `web` on `api`) depends on
   it too. A cached dependant that
@@ -632,8 +642,11 @@ the run went on`), so a dependant failing against it reads why. Its own outcome 
   server that uses another counts as finished once it is stopped, and
   the one it uses gets its `SIGTERM` only then, here and at the end of
   the graph: its shutdown may still talk to it. The
-  stop is no crash. `vx watch` holds its servers for the next cycle, and
-  a Ctrl-C stops them all as before. In the foreground vx KEEPS the
+  stop is no crash. `vx watch` holds its servers for the next cycle,
+  which keeps each one it starts again unchanged: a requested one while
+  its config is, a dependency-only one while its key is (one with no
+  `inputs.files` restarts each cycle) (`cli.md` § watch). A Ctrl-C stops
+  them all as before. In the foreground vx KEEPS the
   persistent tasks you requested, those a requested group stands for,
   and the persistent tasks they depend on: vx stays up after the summary
   until one of them exits or you press Ctrl-C, streaming what they write.
@@ -703,7 +716,8 @@ highest priority:
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
    `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   `COREPACK_HOME`, `PNPM_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+   `COREPACK_HOME`, `PNPM_HOME`, `RUSTUP_HOME`, `CARGO_HOME`, `GOPATH`,
+   `GOMODCACHE`, `GOCACHE`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
    `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `XDG_RUNTIME_DIR`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
@@ -748,6 +762,13 @@ highest priority:
    spawn time. A project config cannot set one for it: a first load
    that writes `process.env` is refused (D-76). _NOT_ folded into the cache key — for secrets,
    regional values, CI flags that legitimately vary between machines.
+   A value a bundler writes into its output is none of these: `vx lock`
+   names a cached task's `passThrough` name with a public bundler prefix
+   (`VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, `PUBLIC_`, `EXPO_PUBLIC_`,
+   `GATSBY_`, `STORYBOOK_`, `VUE_APP_`) or `NODE_ENV` that `inputs.env`
+   leaves out and that is no secret (by name or `secret`), once per task: add it to
+   `inputs.env`, or a build with another `VITE_API_URL` replays the old
+   bundle. It is a note; the lock is written.
 3. **`define`** → explicit literal values. _ARE_ folded into the
    cache key via the task config hash (the values are in your config
    file, so they participate naturally).
@@ -1067,7 +1088,9 @@ lockfile change when a lockfile plugin (`@vzn/vx-lockfile`) is declared.
 Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`, unless
-  an entry names the ignored path outright: a literal (`.env.local`), or
+  an entry names the ignored path outright: a literal (`.env.local`,
+  `.env.production.local`; `vx lock` and a miss name an ignored file a
+  glob's last segment matches, `.env*` over it), or
   a glob whose fixed prefix git ignores (`dist/**`, `dist/*.js`,
   `.cache/gen/**`), which is then walked on disk under that prefix only.
   A directory git ignores but for a file it lists (`gen/*` with
@@ -1707,10 +1730,10 @@ interface SandboxConfig {
 interface SandboxGrants {
   read?: readonly string[] // paths or globs, project-relative, `~/`-relative or absolute
   write?: readonly string[] // paths or globs; a write grant is readable too
-  network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
+  network?: true | readonly string[] // an allowlist of domains; `true` adds none; 'localhost:4173' reaches a server on this machine (below)
   systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space'; each grants system-info and sysctl-read (macOS)
   unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host or another running task already holds fails the task)
+  localBinding?: boolean | readonly number[] // bind localhost ports (macOS: and reach any; Linux binds in the task's own network, no grant needed); a list also exposes them to the host (a port the host or another running task already holds fails the task)
   machLookup?: readonly string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
@@ -1754,9 +1777,34 @@ exec: {
 }
 ```
 
-A write to such a per-run temp name (`.<hex>-<n>.bun-build`) gets no
-`fix:` grant, which the next run's new name would miss; the failure
-names this `ignore` glob instead.
+A write to a temp name Bun makes anew each run (`.<hex>-<n>.bun-build`,
+`bun pm pack`'s `.bun-pack.<hex>-<n>.tmp`) gets no `fix:` grant, which
+the next run's new name would miss; the failure names its `ignore` glob
+(`*.bun-build`, `.bun-pack.*.tmp`) instead.
+
+`bun pm pack` reads its project whole and writes the tarball into it,
+so the grant is the project itself, `'.'`:
+
+```ts
+pack: {
+  exec: { command: 'bun pm pack', sandbox: { allow: { read: ['.', '~/.bun'], write: ['.'] } } },
+  cache: true,
+  inputs: { files: ['src/**', 'package.json', 'CHANGELOG.md'] },
+  outputs: { files: ['*.tgz'] },
+}
+```
+
+Not `write: ['*.tgz']`: on Linux a write glob covers only what exists
+when the task starts, and the tarball does not. Not the tarball's name
+either: vx makes an empty file for a literal grant before the run (see
+a write grant's shape below), and the pack packed it,
+`package/x-1.0.0.tgz` at 0 bytes, under a green run, as would any tool
+that archives or copies its directory. So when a task that may list its
+project (a read grant of `.`, `./**` or above) is refused a file at the
+project's top that vx would make empty, the `fix:` line names `'.'`,
+never the file. `'.'` makes the sources writable too;
+`bun pm pack --destination dist` with `write: ['dist/']` and
+`outputs: { files: ['dist/*.tgz'] }` keeps them read-only.
 
 **Home.** In `allow` and `ignore`, `~` and `~/…` are the home
 directory; `~user/…` is refused when the config loads, naming the entry:
@@ -1798,7 +1846,11 @@ holds the directory, it is the sandbox's own scratch, the one mask left
 writable: the task may create, write and remove what the glob matches
 (anything else it writes there too), and nothing it leaves there
 outlives the task. That is right for a tool's temp directory and
-wrong for an output. A read grant matching nothing is ordinary
+wrong for an output: a file the task leaves there is reported, and
+fails the task. A directory a read grant shows but a write grant beside
+it split (`read: ['.']` with `write: ['dist/', '*.tsbuildinfo']`) is
+bound writable for the glob, as a file grant there is, so what it
+matches lands on the host. A read grant matching nothing is ordinary
 (an optional file, a cache not yet populated) and is not reported. A
 pattern under a directory that does not exist yet matches nothing the
 same way, where the scan once failed the task with a bare `ENOENT` (B-6).
@@ -1857,6 +1909,21 @@ either with a port (`example.com:443`), or `localhost`. A scheme or path
 takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
 entry matched nothing with no word, and an allowed `*` opened every host
 to every sandboxed task of the run.
+
+**A server on this machine is `localhost:<port>`.** A sandboxed client
+of a server another task runs (an e2e against `vite preview`) grants
+its port: `network: ['localhost:4173']` (`127.0.0.1:4173` too). On Linux
+the task has a network of its own, so vx relays that port alone into
+it; on macOS the profile allows that port alone. Nothing else on the
+host's loopback is reachable, and a bare `localhost` reaches no port: a
+client dials loopback directly, never through the proxy that serves the
+rest of the list (`NO_PROXY`; browsers skip a proxy for loopback). A
+sandboxed server lists its port in `localBinding` so it is reachable
+from outside its own sandbox. Until 2026-11-12 Linux relayed nothing,
+and a sandboxed client met `ECONNREFUSED` whatever it granted. On
+Linux a failed sandboxed task refused on a loopback port that a process
+on this machine listens on, and that it does not grant, gets the grant
+to add (`allow: { network: ['localhost:4173'] }`) beside its failure.
 
 **`network` is per-task.** Each sandboxed task reaches only the hosts
 its own list names, and a task that lists none reaches no host, even
@@ -2036,22 +2103,37 @@ remedy is to declare it: `allow: { write: [...] }`.
 **A write grant cannot be removed on Linux.** A directory grant is
 mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
 empties `dist` and then fails with `Read-only file system`; a failed
-task names the grant. Remove its contents instead: `rm -rf dist/*`.
+task names the grant, whether it said so on stderr or, as Playwright
+does, on stdout. Remove its contents instead: `rm -rf dist/*`. A tool
+that removes its own output directory writes one inside the grant:
+`playwright test --output test-results/run` under
+`write: ['test-results/']`.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
 that make a cache key wrong. A write refused past the wall is named
-beside a FAILED task, never counted, with the directory to grant, spelled
+beside a FAILED task, never counted, with the directory to grant (none
+for a dependency's declared outputs: that project's task writes them, so
+the note says to run it, without `--exclude-dependencies`, or to keep
+the task from rebuilding it, `tsc -p` rather than `tsc -b`), spelled
 from the project when it is in the workspace (under the host's temp
 directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
 and, for a cached task, the `inputs.workspaceFiles` entry that keys it
-(`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`; a grant alone leaves an edit there a stale hit):
-the tool said only "not found". A cached task whose key holds a file
+(`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`, a directory `'golib/**'`; a grant alone leaves an edit there a stale hit):
+the tool said only "not found". On Linux so is a path a failed task's
+output calls missing ("does not exist", cargo's "could not find", make's
+"No rule to make target") that the wall hides and the host has: a stat
+is not traced, so no violation names it. A cached task is told the key
+entry beside that grant too: `inputs.files` for a path in the project,
+`inputs.workspaceFiles` for one elsewhere in the workspace. A refused
+write under `~/.cache` names the tool's own directory there
+(`'~/.cache/go-build/'`), as a home kept under the host's temp
+directory does. A cached task whose key holds a file
 outside the project that no grant reaches (`inputs.workspaceFiles:
 ['.oxlintrc.json']` beside `read: ['.']`) fails before it runs, on Linux and macOS alike, with the
 read to grant: oxlint without its `.oxlintrc.json` passes on its
@@ -2075,6 +2157,18 @@ workspace readable: `read: ['../..', '../../.git']` from a project two levels do
 A task git finds no repository for (git probes `.git` by `stat`, which the trace does not
 report) fails with a hint naming the `.git` grant, or saying it lies outside the workspace and
 is walled on purpose.
+
+**A root found by a hidden file.** A tool that finds the workspace root by
+looking up the tree for a lockfile (`next build`'s tracing root) takes the
+project for the root when the sandbox hides the lockfile, and writes under
+the project what belongs above it: Next's standalone copy wrote
+`node_modules/.bun/next@…/…` under the app. A refused write into an
+installed package's files, or the store holding them (`node_modules/.bun`,
+`.pnpm`), that a directory above the project holds too gets no write
+grant: the fix names the lockfiles above the project as reads
+(`'../../bun.lock'`) and, for a cached task, as `inputs.workspaceFiles`
+entries, and a note says why. Granted the write, the build passed, was
+cached, and its server could not start.
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
@@ -2573,9 +2667,9 @@ rather than at `vx run` time.
 
 They cost one runtime import of `@vzn/vx/config` per config file:
 `src/config.ts`, which imports nothing, so it is cheap, but it must
-resolve from the config's directory. The type-only form gives the same
-editor checking with no runtime import, and is what `vx init` /
-`@vzn/vx-migrate` write:
+resolve from the config's directory. The type-only form checks the
+same keys with no runtime import, but not `dependsOn` names (a typo is a
+plain string), and is what `vx init` / `@vzn/vx-migrate` write:
 
 ```ts
 import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'
@@ -2696,7 +2790,8 @@ export default defineProject({
     'docker:build': { exec: { command: 'docker build -t app .', remote: false } },
     e2e: {
       exec: {
-        command: 'playwright test',
+        // Playwright removes its output directory: one inside the grant.
+        command: 'playwright test --output test-results/run',
         env: {
           define: { BASE_URL: 'http://localhost:3000' },
           passThrough: ['E2E_TOKEN'],
@@ -2718,7 +2813,8 @@ export default defineProject({
         },
       },
       inputs: {
-        files: ['e2e/**'],
+        // The app playwright's webServer starts: a page edit makes e2e run again.
+        files: ['e2e/**', 'src/**', 'playwright.config.ts'],
         runtime: ['playwright --version'],
         workspaceRuntime: ['node -v'],
       },
@@ -2762,7 +2858,9 @@ export default defineProject({
 
 ### Presets
 
-A preset is a TypeScript function that returns a `TaskConfig`:
+A preset is a TypeScript function that returns a `TaskConfig`.
+`defineProject` checks `dependsOn` names written inline; a preset's
+`dependsOn` is `string[]`, so its names are not checked:
 
 ```ts
 // presets/ts-build.ts
@@ -2807,21 +2905,24 @@ for the bootstrap-cycle tradeoff.
 
 When a `dependsOn` exists for ordering only, and the upstream's
 output doesn't influence this task's output. Common case: an
-integration test that depends on a dev server starting up but whose
-own inputs are just the test source.
+integration test that needs a database container up first, whose
+image the test's own inputs already pin.
 
 ```ts
-e2e: {
-  dependsOn: ['dev'],
-  exec: { command: 'playwright test' },
+'test:integration': {
+  dependsOn: ['db:up'], // docker compose up -d postgres
+  exec: { command: 'bun test integration/' },
   inputs: {
-    files: ['e2e/**'],
-    tasks: [],   // dev's hash does not affect e2e's cache identity
+    files: ['src/**', 'integration/**', 'compose.yaml'],
+    tasks: [],   // db:up only orders; compose.yaml pins what it starts
   },
-  outputs: { files: ['playwright-report/**'] },
   cache: true,
 }
 ```
+
+Not for a dev server: it serves the app's source, so `e2e` must fold
+its key (the `persistent` example above), or a broken page replays a
+green `e2e`.
 
 ### When to use `--no-cache` instead of removing `cache`
 
@@ -2866,8 +2967,13 @@ opens it on click), and the lines up to it with a caret under the field
   fix  use command
 ```
 
-A field the file does not hold (a required one missing, or one a plugin
-set) prints without the frame. Every config that does not load is
+A value the config imports (`test: testTask`, `...lib()`) is followed to
+the file that declares it, a relative import or a workspace package's,
+and that file is framed, with the configs it reaches as `used by …`:
+a typo in a shared preset prints once, not once per config. An import
+of a name its module does not export is framed at that import. A field
+no file holds (a required one missing, or one a plugin set) prints at
+its file, without the frame. Every config that does not load is
 named in one run: the first in full, then up to four more as `✗ vx lock
 also refused`, then a count of the rest. The table below lists the messages
 a user meets most:
@@ -2940,8 +3046,8 @@ built from different inputs; a silently-dropped `env: { set: … }` would
 run the task without the variables it was written to have. The error
 names the offending key, lists what that level accepts, and adds the
 nearest accepted spelling when one is within two edits:
-`tasks.build.exec.env has unknown field "passthrough" (allowed: define,
-passThrough, secret) — did you mean passThrough?`. A field another runner spells
+`tasks.build.exec.env has unknown field "passthrough"`, then
+`allowed: define, passThrough, secret` and `fix  use passThrough`. A field another runner spells
 on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
 (`exec.interactive`) and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,

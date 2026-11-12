@@ -25,6 +25,7 @@ import { probesAfterWrites } from '../src/orchestrator/stable-keys.js'
 import { readClaimedFiles } from '../src/workspace/index.js'
 import {
   commandWriteReach,
+  grantedWriteGlobs,
   mayWriteFingerprint,
   undeclaredWriteReach,
 } from '../src/orchestrator/sandbox-request.js'
@@ -865,6 +866,24 @@ describe('commandWriteReach and mayWriteFingerprint — where a command may writ
     // Nothing claimed: no root file reaches a key, the root task's writes included.
     expect(mayWriteFingerprint(node({ exec: { command: 'x' } }, ws), ws, [])).toBe(false)
     expect(mayWriteFingerprint(sandboxed(['../../**']), ws, [])).toBe(false)
+  })
+
+  it('a sandboxed command writes its project only where its grants reach', () => {
+    const globs = (write: string[]) => grantedWriteGlobs(sandboxed(write))
+    expect(globs([])).toEqual([])
+    expect(globs(['node_modules/.vite/', 'dist/**', 'out/*.js'])).toEqual([
+      'node_modules/.vite/**',
+      'dist/**',
+      'out/**',
+    ])
+    // Linux binds a file grant's directory: the file's siblings too.
+    expect(globs(['gen/types.d.ts'])).toEqual(['gen/**'])
+    // A grant outside the project is not its project's.
+    expect(globs(['../../tmp/', '~/.cache/'])).toEqual([])
+    // The project itself: anywhere in it.
+    expect(globs(['dist/', 'tsconfig.tsbuildinfo'])).toBeUndefined()
+    expect(globs(['**'])).toBeUndefined()
+    expect(globs(['./'])).toBeUndefined()
   })
 })
 

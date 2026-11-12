@@ -443,6 +443,8 @@ export interface SandboxGrants {
    * run's: it filters every sandboxed task against the union of the lists
    * the run's tasks declare, so `true` adds no domain and reaches only
    * those (none in a run with no list). Omitted adds none either.
+   * `'localhost:4173'` reaches that port of a server on this machine (a
+   * dependency's `vite preview`), and no other loopback port.
    */
   network?: true | readonly string[]
   /**
@@ -767,6 +769,18 @@ type DependsOnEntry<K extends string> =
   | `${string}*${string}`
 
 /**
+ * The entries a task's `dependsOn` may hold. Literal entries are held to the
+ * task keys `K`; a list typed `string[]` (a preset annotated `TaskConfig`)
+ * has no literals to check, and refusing it refused every such preset.
+ */
+type DependsOn<D, K extends string> =
+  NonNullable<D> extends readonly (infer E)[]
+    ? string extends E
+      ? readonly string[]
+      : readonly DependsOnEntry<K>[]
+    : readonly DependsOnEntry<K>[]
+
+/**
  * The keys of `T` that `Shape` does not declare, typed `never`. A generic
  * argument skips TypeScript's excess-property check, so a Turbo-shaped
  * `outputs` on a task, or `cwd` in `exec`, type-checked and failed only
@@ -810,7 +824,10 @@ export function defineProject<const T extends ProjectConfig>(
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
-          dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+          dependsOn?: DependsOn<
+            At<NonNullable<T['tasks']>[K], 'dependsOn'>,
+            Extract<keyof NonNullable<T['tasks']>, string>
+          >
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
           inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
           outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>

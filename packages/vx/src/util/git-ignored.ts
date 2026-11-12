@@ -4,10 +4,10 @@
 // knows every rule source (nested files, `info/exclude`, `core.excludesFile`)
 // and that a directory holding a tracked file is not ignored.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { gitEnv } from './hide-env.js'
-import { isLiteralPattern, normalizeGlob } from './paths.js'
+import { anyTaskGlob, isLiteralPattern, normalizeGlob, relPosix } from './paths.js'
 import { executablePath } from './which.js'
 
 /** A directory name no ignore rule names, standing for one a task may create. */
@@ -252,4 +252,59 @@ export function wholeIgnored(
     out.add(g)
   }
   return out
+}
+
+/**
+ * The files on disk a wildcard glob's last segment matches directly
+ * (`.env*`, `config/*.json`) that the key left out, as `[abs, rel, glob]`:
+ * a glob is a filter over what git lists, so these are git-ignored, and
+ * `.env*` replayed a stale hit after an edit to `.env.local`. A run reads
+ * it on the miss path only, one directory listing per such glob, no git;
+ * `vx lock` passes no `files` and asks git which candidates it ignores. A
+ * `**` glob is skipped, so an ignored `node_modules` or `dist` says nothing.
+ */
+export function ignoredByGlobs(
+  declared: readonly string[] | undefined,
+  base: string,
+  root: string,
+  files: readonly { readonly path: string }[],
+): [abs: string, rel: string, glob: string][] {
+  if (declared === undefined) return []
+  const shallow = declared.filter((g) => {
+    if (g.startsWith('!') || isLiteralPattern(g) || g.includes('**')) return false
+    const segments = g.split('/')
+    return segments.slice(0, -1).every((s) => isLiteralPattern(s) && s !== '..' && s !== '.')
+  })
+  if (shallow.length === 0) return []
+  const excluded = anyTaskGlob(declared.filter((g) => g.startsWith('!')).map((g) => g.slice(1)))
+  let keyed: Set<string> | undefined
+  const found: [string, string, string][] = []
+  for (const glob of shallow) {
+    const dir = glob.split('/').slice(0, -1).join('/')
+    let entries
+    try {
+      entries = readdirSync(path.join(base, dir), { withFileTypes: true })
+    } catch {
+      continue
+    }
+    const match = anyTaskGlob([glob])
+    for (const e of entries) {
+      if (!e.isFile()) continue
+      const rel = dir === '' ? e.name : `${dir}/${e.name}`
+      if (!match(rel) || excluded(rel)) continue
+      const abs = path.join(base, rel)
+      keyed ??= new Set(files.map((f) => f.path))
+      if (keyed.has(relPosix(root, abs)) || found.some(([a]) => a === abs)) continue
+      found.push([abs, rel, glob])
+    }
+  }
+  return found
+}
+
+/** What a run's miss and `vx lock` say of a file {@link ignoredByGlobs} found. */
+export function ignoredInputLine(task: string, rel: string, glob: string): string {
+  return (
+    `${task}: inputs leave out git-ignored ${rel} (matched by ${glob}) — ` +
+    `a glob reads only what git lists; name it as a literal input ('${rel}') to key on it`
+  )
 }

@@ -636,7 +636,10 @@ export function defineProject<const T extends ProjectConfig>(
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
-          dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+          dependsOn?: DependsOn<
+            At<NonNullable<T['tasks']>[K], 'dependsOn'>,
+            Extract<keyof NonNullable<T['tasks']>, string>
+          >
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
           inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
           outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
@@ -814,6 +817,7 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly keyRoot?: string
+  readonly keyNested?: readonly string[]
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
 }
@@ -3013,6 +3017,7 @@ export interface TaskHistory {
   maxCpuParallelism?: number
   saturatedCores?: number
   saturatedMemoryBytes?: number
+  slowDurationMs?: number
 }
 ```
 
@@ -3211,6 +3216,7 @@ export type TaskResources = Pick<
   | 'maxCpuParallelism'
   | 'saturatedCores'
   | 'saturatedMemoryBytes'
+  | 'slowDurationMs'
 ```
 
 ## `TaskStatus`

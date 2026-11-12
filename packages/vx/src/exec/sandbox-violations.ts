@@ -922,6 +922,10 @@ const MOVES = /^(?:rename|link)/
  * TRACE), so this record is the only trace of an `openat2` read.
  */
 const OPEN_EITHER = /^openat2$/
+/** The calls that change only a path's timestamps. */
+const TIMES = /^(?:utimensat|utimes|futimesat|utime)$/
+/** The plain opens a write-intent record names (no `openat2`: `OPEN_EITHER`). */
+const OPENS = /^(?:open|openat)$/
 
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
@@ -979,10 +983,28 @@ export function refusedWrites(
   }
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
+  // What the task left in the scratch, by path, in the order it wrote:
+  // a temp directory goes when the task removes it, an output never
+  // does, and `out.log` under a `*.log` no bind held vanished with the
+  // sandbox under a green run.
+  const left = new Map<string, { syscall: string; raw: string }>()
+  // The paths a record changes the timestamps of. `touch` opens its file
+  // for writing first and, refused, sets the times by path: GNU without
+  // `-c` (`O_CREAT`), uutils even with it (Ubuntu 26.04's touch, CI's
+  // runners, 2026-11-12).
+  const timed = new Set<string>()
+  for (const record of records) {
+    const m = /^deny (\S+) (\/.*)$/.exec(record)
+    if (m !== null && TIMES.test(m[1]!)) timed.add(toRealPath(m[2]!))
+  }
+  let source = false
   for (const record of records) {
     const m = /^deny (\S+) (\/.*)$/.exec(record)
     if (m === null) continue
     const [, syscall, raw] = m as unknown as [string, string, string]
+    // A move is recorded source first, then destination.
+    const moveSource: boolean = MOVES.test(syscall) && !source
+    source = moveSource
     // A descriptor or pseudo-file is the task's, and resolving it here
     // reads vx's own: strace's log is `/dev/fd/5`, and a vx started with
     // `5>out.log` in the project reported a write to `out.log` and failed
@@ -994,8 +1016,14 @@ export function refusedWrites(
     const abs = NAME_SYSCALL.test(syscall)
       ? path.join(toRealPath(path.dirname(raw)), path.basename(raw))
       : toRealPath(raw)
-    if (underGlob(abs, globs)) continue
     const bound = isUnderAny(abs, binds)
+    if (underGlob(abs, globs)) {
+      if (bound || OPEN_EITHER.test(syscall)) continue
+      if (/^(?:unlink|rmdir)/.test(syscall) || (moveSource && syscall.startsWith('rename')))
+        left.delete(abs)
+      else if (!(moveSource && syscall.startsWith('link'))) left.set(abs, { syscall, raw })
+      continue
+    }
     if (bound && !undeclared(syscall, abs)) continue
     const moved = bound && MOVES.test(syscall)
     // A directory a write bind lies in exists, since bwrap made it to mount
@@ -1010,6 +1038,22 @@ export function refusedWrites(
     // judged a write, a granted `openat2(O_RDONLY)` failed a clean task.
     const either = OPEN_EITHER.test(syscall)
     if (!bound && either && inSandbox(abs, binds, readable)) continue
+    // A timestamp change there met the read-only bind too: no byte and no
+    // time moved. `tsc -b` touches an up-to-date dependency's buildinfo when
+    // its sources are newer (a branch switched and back, the dependency a
+    // hit), and swallows the refusal; judged a write, the dependant failed
+    // every run until `--force`.
+    if (!bound && TIMES.test(syscall) && inSandbox(abs, binds, readable)) continue
+    // So did the open of an existing file such a change follows: the
+    // touch's own first try.
+    if (
+      !bound &&
+      OPENS.test(syscall) &&
+      timed.has(abs) &&
+      exists(abs) &&
+      inSandbox(abs, binds, readable)
+    )
+      continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -1035,6 +1079,16 @@ export function refusedWrites(
             opened: 'read' as const,
           }
         : {}),
+    })
+  }
+  for (const [abs, { syscall, raw }] of left) {
+    if (seen.has(`${syscall}|${abs}`)) continue
+    out.push({
+      line: `${syscall}(${raw}) = a write into the sandbox's scratch, gone when the task ended  [${abs}]`,
+      timestamp: new Date(),
+      target: abs,
+      path: abs,
+      ignorable: ['write'],
     })
   }
   return out

@@ -67,7 +67,11 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   where `undeclaredWriteReach` (`sandbox-request.md`) says it may write:
   its own project counts as an `outputs.files` project, the rest of the
   workspace as an `outputs.workspaceFiles` producer, and a sandboxed one
-  with no write grant as nothing (item 743: an uncached `gen` writing a
+  with no write grant as nothing; a sandboxed one's grants in its project
+  are checked against a same-project reader's inputs as declared outputs
+  are (`grantedWriteGlobs`: a server granted `node_modules/.vite/` leaves
+  an e2e reading `e2e/**` stable, so a hit no longer boots it, 2026-11-12)
+  (item 743: an uncached `gen` writing a
   same-project `build`'s declared input was classed stable, and seeds
   A,B,B,A replayed B on the fourth run, turborepo#13788).
 

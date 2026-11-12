@@ -89,7 +89,7 @@ const defaultPost =
   async (url, json, headers, deadline, tls) => {
     // Compressed once, not per attempt; the header says the sink asked.
     const body = headers['content-encoding'] === 'gzip' ? Bun.gzipSync(json) : json
-    // A collector that sheds load (429, 502, 503, 504, or a reset
+    // A collector that sheds load (429, 502, 503, 504, or a dropped
     // connection) is retried twice, as the OTLP spec asks of exporters: the
     // export was dropped whole on the first 503 (F-28). The flush deadline
     // still bounds it all.
@@ -193,9 +193,11 @@ async function postOnce(
       })
     } catch (err) {
       // A connection that failed is worth a retry; one this side aborted is
-      // not, nor a certificate this side refused: it fails the same way each
-      // time, and the retries spent a second of the flush on it (F-40).
+      // not, nor a certificate this side refused, nor a port nothing listens
+      // on: each fails the same way every time, and the retries spent a
+      // second of the flush on it (F-40), a warm no-op's too.
       if (controller.signal.aborted) throw err
+      if ((err as { code?: unknown } | null)?.code === 'ECONNREFUSED') throw err
       if (isCertificateRefusal(err)) {
         throw new Error(
           `${err instanceof Error ? err.message : String(err)} — for a collector behind a private CA, set OTEL_EXPORTER_OTLP_CERTIFICATE to its CA's PEM file`,

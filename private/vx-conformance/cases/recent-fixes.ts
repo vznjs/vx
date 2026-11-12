@@ -49,7 +49,52 @@ const besideOutputs = (read: string): WorkspaceSpec => ({
 
 const A = 'packages/a/src/a.txt'
 
+/**
+ * An incremental tool, as `tsc -b` is: it emits a source only when its
+ * state file's record of it differs, and rewrites the state only when it
+ * emitted.
+ */
+const INCREMENTAL =
+  'mkdir -p dist; e=0; for f in src/*.txt; do n=$(basename $f); h=$(cksum < $f); ' +
+  'grep -qxF "$n $h" state 2>/dev/null || { cp $f dist/$n; e=1; }; done; ' +
+  '[ $e = 0 ] || for f in src/*.txt; do echo "$(basename $f) $(cksum < $f)"; done > state'
+
 export default [
+  defineCase({
+    id: 'outputs/incremental-state-beside-outputs-caches-no-partial-build',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An incremental tool’s state file beside its outputs never leaves a partial build in the cache',
+    why: 'An incremental tool keeps its state outside its outputs (`tsc -b` writes `tsconfig.tsbuildinfo` beside the tsconfig) and emits only what its state calls changed. A tool that empties `dist` before a run but keeps the state gets one changed file from the next build, and stores that partial `dist` as the result. A fresh checkout then restores it, and everything that imports the missing files fails.',
+    from: ['undeclared-state'],
+    workspace: one(build({ command: INCREMENTAL }), {
+      'src/a.txt': 'a\n',
+      'src/b.txt': 'b\n',
+      '.gitignore': 'dist/\nstate\n',
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0 } },
+      // A fresh checkout: neither the outputs nor the state.
+      {
+        write: {
+          'packages/a/dist/a.txt': null,
+          'packages/a/dist/b.txt': null,
+          'packages/a/state': null,
+        },
+      },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/dist/a.txt': 'a2\n', 'packages/a/dist/b.txt': 'b\n' },
+        },
+      },
+    ],
+  }),
+
   defineCase({
     id: 'outputs/retry-saves-only-the-passing-attempt',
     category: 'outputs',
@@ -475,6 +520,114 @@ export default [
             'packages/a/.output/server/node_modules/dep/index.mjs': 'a\n',
           },
         },
+      },
+    ],
+  }),
+  defineCase({
+    id: 'sandbox/root-output-beside-output-dir-lands',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task’s output file at its project root lands beside its output directory',
+    why: 'TypeScript writes `dist/` and a `tsconfig.tsbuildinfo` at the project root, and a build declares both. An isolated task whose write to the root file is kept in a throwaway layer reports success while that output is gone: the next build has no buildinfo, and a hit restores nothing for it.',
+    from: ['sandbox-grants.unsafe'],
+    needs: ['sandbox'],
+    workspace: one({
+      command: 'mkdir -p dist && cat src/a.txt > dist/out.txt && cat src/a.txt > build.log',
+      inputs: ['src/**'],
+      outputs: ['dist/**', '*.log'],
+      sandbox: { read: ['.'] },
+    }),
+    steps: [
+      {
+        run: 'build',
+        expect: { exit: 0, files: { [out('a')]: 'a\n', 'packages/a/build.log': 'a\n' } },
+      },
+      { sh: 'rm -rf packages/a/dist packages/a/build.log' },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          notRan: ['a#build'],
+          files: { [out('a')]: 'a\n', 'packages/a/build.log': 'a\n' },
+        },
+      },
+    ],
+  }),
+  defineCase({
+    id: 'sandbox/write-under-node-modules-keeps-package-links',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task that may write into node_modules still resolves its linked packages',
+    why: 'pnpm installs each package as a link into a store beside it, and `tsc -b` in Vite’s template writes `node_modules/.tmp/*.tsbuildinfo`. An isolation that turns those links into plain folders once the task may write under node_modules leaves each package unable to find its own dependencies, and the build fails on files the install put there.',
+    from: ['sandbox-write-through-link.unsafe'],
+    needs: ['sandbox'],
+    workspace: one(
+      {
+        command:
+          'mkdir -p dist && cat node_modules/pkg/../dep/f > dist/out.txt && echo b > node_modules/.tmp/t.info',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+        sandbox: { read: ['.'], write: ['node_modules/.tmp/'] },
+      },
+      {
+        'src/a.txt': 'a\n',
+        'node_modules/.store/dep/f': 'a\n',
+        'node_modules/.store/pkg/index.js': '',
+        'node_modules/.tmp/.keep': '',
+      },
+    ),
+    steps: [
+      { sh: 'ln -s .store/pkg packages/a/node_modules/pkg' },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { [out('a')]: 'a\n', 'packages/a/node_modules/.tmp/t.info': 'b\n' },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/workspace-dependency-version-bump-repacks',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A new version of a workspace package a project depends on runs that project’s pack again',
+    why: 'Packing or publishing a package writes the version each `workspace:*` dependency has now in place of the range. Here `app` packs a tarball that names `lib`, and `lib`’s version moves from 0.0.0 to 1.0.0 with no other change. A tool that keys `app` on what `lib` installs but not on `lib`’s own version replays the old tarball, and the release ships depending on a version of `lib` that is not the one released with it.',
+    from: ['vx-lockfile/bun', 'vx-lockfile/npm'],
+    workspace: {
+      projects: {
+        lib: { files: { 'src/a.txt': 'lib\n' } },
+        app: {
+          deps: ['lib'],
+          tasks: {
+            pack: {
+              command:
+                'mkdir -p dist && bun pm pack --destination dist --quiet >/dev/null && tar -xzOf dist/*.tgz package/package.json | grep -o \'"lib": *"[^"]*"\' > dist/out.txt',
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'app\n' },
+        },
+      },
+    },
+    steps: [
+      { run: 'pack', expect: { exit: 0, files: { [out('app')]: '"lib": "0.0.0"\n' } } },
+      {
+        write: {
+          'packages/lib/package.json': JSON.stringify(
+            { name: 'lib', version: '1.0.0', private: true, dependencies: {} },
+            null,
+            2,
+          ),
+        },
+      },
+      { install: true },
+      {
+        run: 'pack',
+        expect: { exit: 0, ran: ['app#pack'], files: { [out('app')]: '"lib": "1.0.0"\n' } },
       },
     ],
   }),

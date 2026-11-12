@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v55",
+    "version": "v56",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -141,9 +141,10 @@
       "",
       "CREATE TABLE output_dirs (",
       "entry_hash  TEXT NOT NULL,",
+      "root        INTEGER NOT NULL,",
       "path        TEXT NOT NULL,",
       "mtime_ms    INTEGER NOT NULL,",
-      "PRIMARY KEY (entry_hash, path)",
+      "PRIMARY KEY (entry_hash, root, path)",
       ")",
       "",
       "CREATE TABLE output_files (",
@@ -158,11 +159,12 @@
       "",
       "CREATE TABLE output_stamps (",
       "entry_hash  TEXT NOT NULL,",
+      "root        INTEGER NOT NULL,",
       "path        TEXT NOT NULL,",
       "ino         INTEGER NOT NULL,",
       "ctime_ms    INTEGER NOT NULL,",
       "mtime_ms    INTEGER NOT NULL,",
-      "PRIMARY KEY (entry_hash, path)",
+      "PRIMARY KEY (entry_hash, root, path)",
       ")",
       "",
       "CREATE TABLE plugin_blobs (",
@@ -277,7 +279,7 @@
     ]
   },
   "artifact": {
-    "version": "vx-cache-v55",
+    "version": "vx-cache-v56",
     "layout": {
       "entries": [
         {

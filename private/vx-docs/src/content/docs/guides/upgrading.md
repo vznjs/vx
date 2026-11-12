@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
+### everyday workspaces never cache a wrong build
+
+CACHE_VERSION is vx-cache-v56 and the index schema v56: caches start empty once, so every cached task misses once after upgrading. Re-run vx lock after upgrading: vx-lockfile's digests changed (a workspace package's own version under bun() and npm(), pnpm()'s injected copies), so vx lock --check fails on the old lock.
+
 ### vx-dte-server: check tokens with @vzn/vx-devtools
 
 the relay no longer exports parseAllow, TokenError, Allowed, repositoryClaimOf or workflowClaimOf: use @vzn/vx-devtools' parseAllow, Refusal and Admits. Its refusal texts change: "this relay's ALLOW" is "this server's ALLOW"; "repository <r>" names the claim, "repository" or "project_path", lowercased; "workflow <w>" is "job_workflow_ref <w>" or "ci_config_ref_uri <w>"; the audience hint ends "or set the server's AUDIENCE"; the issuer is judged before the header's alg, and a signature no key makes is "bad signature" once the keys are held. The image bundles devtools, so it builds from the repo root.

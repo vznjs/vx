@@ -145,6 +145,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   enumeratedAtMs: number | undefined
   ignoredOutputs: ReadonlySet<string>
   setIgnored(root: string, paths: readonly string[]): void
+  ignoredFilesIn(dir: string): string[]
   newFilesIgnored(dir: string): boolean
   answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void
   get undecodableNames(): ReadonlySet<string>
@@ -303,7 +304,10 @@ export function defineProject<const T extends ProjectConfig>(
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
-          dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+          dependsOn?: DependsOn<
+            At<NonNullable<T['tasks']>[K], 'dependsOn'>,
+            Extract<keyof NonNullable<T['tasks']>, string>
+          >
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
           inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
           outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
@@ -814,6 +818,13 @@ export interface DependencyRule {
   allow?: readonly string[]
   deny?: readonly string[]
 }
+== type DependsOn (src/config.ts)
+type DependsOn<D, K extends string> =
+  NonNullable<D> extends readonly (infer E)[]
+    ? string extends E
+      ? readonly string[]
+      : readonly DependsOnEntry<K>[]
+    : readonly DependsOnEntry<K>[]
 == type DependsOnEntry (src/config.ts)
 type DependsOnEntry<K extends string> =
   | K
@@ -913,6 +924,7 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly keyRoot?: string
+  readonly keyNested?: readonly string[]
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
 }
@@ -1019,6 +1031,7 @@ export interface HeldPersistent {
 export interface HeldServer {
   child: ReturnType<typeof Bun.spawn>
   config: string
+  key?: string
   out: { bus: EventBus }
   handOver(): void
 }
@@ -2074,6 +2087,7 @@ export interface TaskHistory {
   maxCpuParallelism?: number
   saturatedCores?: number
   saturatedMemoryBytes?: number
+  slowDurationMs?: number
 }
 == type TaskInputRow (src/cache/layer.ts)
 export interface TaskInputRow {
@@ -2215,6 +2229,7 @@ export type TaskResources = Pick<
   | 'maxCpuParallelism'
   | 'saturatedCores'
   | 'saturatedMemoryBytes'
+  | 'slowDurationMs'
 == type TaskStatus (src/graph/task-status.ts)
 export type TaskStatus =
   | 'success'

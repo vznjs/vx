@@ -418,7 +418,7 @@ describe('no numbered list item was swallowed by a paragraph', () => {
 // 2026-09-19).
 describe('every page listing the env allowlist lists all of it', () => {
   it('each names every essential', () => {
-    expect(ESSENTIAL_ENV.length).toBe(24)
+    expect(ESSENTIAL_ENV.length).toBe(29)
     const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
     // schema.md (pinned separately), execution.md, modules/env.md, and the
     // environment-variables page. A fifth copy lands here unpinned no more.

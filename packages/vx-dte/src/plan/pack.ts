@@ -130,8 +130,9 @@ function first(
 }
 
 /**
- * The share of its chain a task's room leaves spare before the deadline,
- * as runs take up to a third more or less than their history: placed at
+ * How much slower than its history a task with no slow run known
+ * (`PlanTask.slowMs`) is counted when its room is sought, as runs take up
+ * to a third more or less than their history: placed at
  * its latest start, a task 30% slow ended the run late. With ±30% noise,
  * graph families ended 2-8% past their chain, not 5-11%, on 0-2% more
  * worker time (tests/sim-theory.test.ts).
@@ -229,8 +230,10 @@ export function pack(
         waits[i]!++
       } else readyAt[i] = Math.max(readyAt[i]!, runningEnd.get(d) ?? 0)
     }
-  // Latest start: the deadline less its chain.
+  // Latest start: the deadline less its chain. Room is sought by the
+  // deadline less its chain run slow (`slow`).
   const tail = new Float64Array(n)
+  const slow = new Float64Array(n)
   const order: number[] = []
   {
     const left = Int32Array.from(waits)
@@ -243,13 +246,18 @@ export function pack(
     for (let k = order.length - 1; k >= 0; k--) {
       const i = order[k]!
       let most = 0
-      for (const j of after[i]!) most = Math.max(most, tail[j]!)
-      tail[i] = tasks[i]!.ms! + most
+      let slowest = 0
+      for (const j of after[i]!) {
+        most = Math.max(most, tail[j]!)
+        slowest = Math.max(slowest, slow[j]!)
+      }
+      const t = tasks[i]!
+      tail[i] = t.ms! + most
+      slow[i] = slowest + (t.slowMs === undefined ? t.ms! * (1 + HEDGE) : Math.max(t.ms!, t.slowMs))
     }
   }
   const latest = (i: number): number => deadline - tail[i]!
-  // Room is sought by a start that leaves its chain a margin (`HEDGE`).
-  const hedged = (i: number, r: number): number => Math.max(r, deadline - tail[i]! * (1 + HEDGE))
+  const hedged = (i: number, r: number): number => Math.max(r, deadline - slow[i]!)
   const rank = noise === undefined ? latest : (i: number): number => latest(i) + noise[i]!
   // A server runs on each worker that started it until no task left
   // needs it (`Orchestrator.unneeded`): booked there from then on, until

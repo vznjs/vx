@@ -218,7 +218,7 @@ function scalar(v: unknown): string {
  * taking the version first made it a leaf: a bump behind a directory
  * dependency moved no digest (item 802).
  */
-function snapshotKey(lock: Lockfile, name: string, version: string): string {
+export function snapshotKey(lock: Lockfile, name: string, version: string): string {
   if (version.startsWith('/')) return version
   const major = Number.parseInt(lock.version, 10)
   const own =
@@ -364,7 +364,8 @@ function importerNode(dir: string): string {
  * the second, and records only their path, so an edit in one moved no key
  * (Growth, file-dir-dep-stale.sh): the claim hashes its content. A
  * `file:` to an importer (an injected workspace package) is an edge
- * (`importerLinks`), not content: its build output re-keyed its dependants.
+ * (`importerLinks`), and its directory is not content: its build output
+ * re-keyed its dependants. Its copies are (`injectedCopies`).
  */
 export function fileDeps(lock: Lockfile): string[] {
   const out = new Set(
@@ -376,7 +377,12 @@ export function fileDeps(lock: Lockfile): string[] {
       if (target !== undefined && importerAt(lock, target) === undefined) out.add(target)
     }
   }
-  for (const [dir, deps] of lock.importers) add(dir, deps)
+  for (const [dir, deps] of lock.importers) {
+    add(dir, deps)
+    for (const [name, version] of deps) {
+      for (const copy of injectedCopies(lock, dir, name, version)) out.add(copy)
+    }
+  }
   // An override to a `link:` directory reaches a package's own
   // dependencies, written root-relative in its snapshot: one no importer
   // names was never read, so an edit in it moved no key.
@@ -425,6 +431,25 @@ export function manifestLinks(lock: Lockfile, root: string): string[] {
     }
   }
   return [...out].sort()
+}
+
+/**
+ * Where importer `dir` finds an injected workspace package's copy, the
+ * directory it reads: its own `node_modules` (the isolated linker links
+ * it from `node_modules/.pnpm`), then the root's (the hoisted linker).
+ * pnpm re-syncs the copy at install, not after a build vx runs, so keyed
+ * as an edge alone a dependant read the old copy and saved its output
+ * under the key of the package's new inputs, which hit once an install
+ * re-synced it. Empty for any other dependency.
+ */
+function injectedCopies(lock: Lockfile, dir: string, name: string, version: string): string[] {
+  if (!version.startsWith('file:')) return []
+  const at = fileTarget(lock, version)
+  const target = at === undefined ? undefined : importerAt(lock, at)
+  if (target === undefined || target === dir) return []
+  const own = joinPosix(dir, `node_modules/${name}`)!
+  const root = `node_modules/${name}`
+  return own === root ? [own] : [own, root]
 }
 
 function linkTarget(lock: Lockfile, dir: string, version: string): string | undefined {
@@ -501,7 +526,12 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   for (const [dir, deps] of lock.importers) {
     const from = index.get(importerNode(dir))!
     named(from, deps)
-    for (const [name, version] of deps) link(from, `importer ${dir}`, dir, name, version)
+    for (const [name, version] of deps) {
+      link(from, `importer ${dir}`, dir, name, version)
+      for (const copy of injectedCopies(lock, dir, name, version)) {
+        material[from] += `\ninjected\0${copy}\0${files.get(copy) ?? ''}`
+      }
+    }
   }
   for (const [key, deps] of lock.snapshots) {
     const from = index.get(key)!
@@ -530,10 +560,10 @@ function fileTarget(lock: Lockfile, version: string): string | undefined {
  * Each importer's `link:` dependencies on other importers, and its
  * `file:` ones that install an importer's directory: an injected
  * workspace package (`dependenciesMeta.<name>.injected`, or pnpm 10
- * `injectWorkspacePackages` with `dedupeInjectedDeps: false`). pnpm
- * hard-links that copy and re-syncs it after the package's own scripts,
- * so it is the workspace package and `^build` waits for it; yarn's
- * packed `file:` copy is not. pnpm records
+ * `injectWorkspacePackages` with `dedupeInjectedDeps: false`), so
+ * `^build` waits for its build. The dependant reads pnpm's copy, which
+ * pnpm re-syncs at install, not after a build vx runs: the digest keys
+ * the copy's content (`injectedCopies`). pnpm records
  * an auto-installed peer (`autoInstallPeers`, the default) under
  * `dependencies` like any other, so `peers` is empty here: the plugin
  * asks the importer's manifest which of these are peers. An importer a

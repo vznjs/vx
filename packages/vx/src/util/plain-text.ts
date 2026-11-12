@@ -3,8 +3,9 @@
 // everything after it, so a stray title escape ate the failure reason
 // printed below it. An ESC that is not ST ends it too and is left for
 // Bun.stripANSI, as a terminal aborts the string there. C1 openers are not
-// looked for: output is decoded UTF-8, where an 8-bit C1 byte reads as
-// U+FFFD, and scanning for them doubled the cost on non-Latin-1 text.
+// looked for: output is decoded UTF-8, where an 8-bit C1 byte reads as a
+// lone surrogate (raw-utf8.ts), and scanning for them doubled the cost on
+// non-Latin-1 text.
 // eslint-disable-next-line no-control-regex -- ESC is the point
 const STRING_OPENER = /\x1b[\]P_^X]/
 // eslint-disable-next-line no-control-regex -- ESC is the point

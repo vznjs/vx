@@ -145,7 +145,7 @@ it(
       } }`,
     })
     expect((await run({ cwd: root, tasks: ['tail'], log: silent })).ok).toBe(true)
-    const c = new Cache(path.join(root, '.vx/cache'))
+    const c = new Cache(path.join(root, '.vx/cache'), undefined, root)
     try {
       const { hash } = indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as {
         hash: string

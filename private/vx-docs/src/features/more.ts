@@ -736,7 +736,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: ['dist/**'] }, cache: true,\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,\n    },\n  },\n})",
     },
     image: 'explicit-inputs.png',
     imageAlt: 'A task naming its inputs and outputs, with cache: true.',
@@ -1386,7 +1386,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      dependsOn: ['^build'],\n      description: 'Type-check and emit',\n      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      dependsOn: ['^build'],\n      description: 'Type-check and emit',\n      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,\n    },\n  },\n})",
     },
     image: 'one-command-tasks.png',
     imageAlt: 'A task: a command, its edges, its outputs and cache: true.',

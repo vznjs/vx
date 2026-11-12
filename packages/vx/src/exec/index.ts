@@ -46,6 +46,7 @@ export {
   atOrUnder,
   grantAlternatives,
   isMountableLiteral,
+  loopbackPorts,
   MOUNT_WILDCARDS,
   replacedBySandbox,
   sandboxReads,

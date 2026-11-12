@@ -40,6 +40,7 @@ import {
 import type { PackageMeta } from './packages.js'
 import { relPosix } from './paths.js'
 import { type Owner, ownerOf, runsScriptHooks } from './script-command.js'
+import { onceReader, tscBuildInfo } from './tsc-buildinfo.js'
 
 /**
  * Task names that conventionally never exit. Every mapper guesses the same
@@ -112,12 +113,21 @@ function namedOutputs(command: string): string[] | undefined {
   return undefined
 }
 
-/** The cache block the task that builds `command` should declare, as a TODO on it. */
-export function cacheTodo(command: string): string {
+/**
+ * The cache block the task that builds `command` should declare, as a TODO
+ * on it. `buildInfo` is what its `tsc` writes (`tscBuildInfo`): outside the
+ * outputs it survives the clean before a miss, and tsc then emits only what
+ * changed into an empty `dist/`.
+ */
+export function cacheTodo(command: string, buildInfo: readonly string[] = []): string {
   // Padded, separators as spaces: `next build && …` and `(next build)` match.
   const words = ` ${command.replace(/[;&|()]/g, ' ')} `
   const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
-  const outputs = (hit?.[1] ?? namedOutputs(command) ?? ['dist/**']).map((o) => `'${o}'`).join(', ')
+  const dirs = hit?.[1] ?? namedOutputs(command) ?? ['dist/**']
+  const outside = buildInfo.filter(
+    (rel) => !dirs.some((d) => d.endsWith('/**') && rel.startsWith(d.slice(0, -2))),
+  )
+  const outputs = [...dirs, ...outside].map((o) => `'${o}'`).join(', ')
   return `cache: add \`inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real inputs and outputs — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
 }
 
@@ -352,7 +362,10 @@ function scriptsOf(meta: PackageMeta): Record<string, unknown> {
  * TODO a delegating `build` never got was the one the header promised
  * (item 1045).
  */
-function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
+function upstreamBuildOnWorker(
+  tasks: GeneratedTask[],
+  buildInfo: (command: string) => readonly string[],
+): void {
   const byName = new Map(tasks.map((t) => [t.name, t]))
   const seen = new Set<string>()
   let at = byName.get('build')
@@ -374,7 +387,8 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
   }
   const deps = Array.isArray(at.task['dependsOn']) ? (at.task['dependsOn'] as string[]) : []
   if (!deps.includes('^build')) at.task['dependsOn'] = ['^build', ...deps]
-  const todo = cacheTodo(String((at.task['exec'] as { command?: unknown }).command))
+  const command = String((at.task['exec'] as { command?: unknown }).command)
+  const todo = cacheTodo(command, buildInfo(command))
   if (!at.todos.includes(todo)) at.todos.push(todo)
 }
 
@@ -658,6 +672,7 @@ export function migrateScripts(
 ): MigrationPlan {
   const projects: GeneratedProject[] = []
   const hookMemo = new Map<string, Owner>()
+  const tsc = onceReader()
   // The workspace root among members: many of its scripts run the
   // workspace (`npm run build --workspaces`, `pnpm -r build`), and a root
   // task made of one ran every member's build again under `--all`. Since
@@ -951,7 +966,7 @@ export function migrateScripts(
       }
       if (name === 'build') {
         task['dependsOn'] = ['^build']
-        todos.push(cacheTodo(own))
+        todos.push(cacheTodo(own, tscBuildInfo(tsc.read, meta.dir, own)))
       } else if (AFTER_BUILD.has(name) && hasBuild) {
         task['dependsOn'] = ['build']
       }
@@ -966,7 +981,7 @@ export function migrateScripts(
         task: null,
       })
     }
-    upstreamBuildOnWorker(tasks)
+    upstreamBuildOnWorker(tasks, (command) => tscBuildInfo(tsc.read, meta.dir, command))
     if (tasks.length > 0) {
       const importLines = readsManifest ? [MANIFEST_IMPORT] : []
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })

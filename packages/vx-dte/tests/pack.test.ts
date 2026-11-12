@@ -262,3 +262,25 @@ it('says why it played the work rather than packed it', () => {
   const blind = plan([{ ...task('a', 1_000), ms: undefined }], [], sizes, WARM)
   expect(blind.unpacked).toBe('a task has no history')
 })
+
+// A task known to run slow seeks room by its slow run, not its history
+// and the flat margin: queued 40 s behind the cheaper worker, its 60 s
+// slow run would end past the deadline, so it takes the dearer room now.
+it('seeks room for a task by its slow run when one is known', () => {
+  const workers = [
+    worker('one', { idle: false, running: [{ id: 'x', cores: 4, memory: 1e8, endsIn: 40_000 }] }),
+    worker('two', {
+      cores: 8,
+      idle: false,
+      running: [{ id: 'y', cores: 4, memory: 1e8, endsIn: 10_000 }],
+    }),
+  ]
+  const tasks = (slowMs?: number): PlanTask[] => [
+    { ...task('b', 40_000, [], 4), ...(slowMs === undefined ? {} : { slowMs }) },
+  ]
+  const plain = pack(tasks(), workers, [size('w', 4)], () => WARM, 90_000)
+  expect(plain.placed.get('b')).toMatchObject({ worker: 'one', at: 40_000 })
+  const slow = pack(tasks(60_000), workers, [size('w', 4)], () => WARM, 90_000)
+  expect(slow.placed.get('b')).toMatchObject({ worker: 'two', at: 0 })
+  expect(slow.starts).toEqual([])
+})

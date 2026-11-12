@@ -158,7 +158,7 @@ $ vx run build --all
 
   Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 affected · 2 total
+            2 in run · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -174,7 +174,7 @@ $ vx run build --all
 
   Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 affected · 2 total
+            2 in run · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -328,7 +328,9 @@ Run the task only in projects whose files changed since `<base>`.
   commit) is on it too: `--affected has no default
 on the base branch (main): run --all (the cache skips what did not
 change), or name the last good commit, --affected=<sha>`. `HEAD~1`
-  would see only one commit of a multi-commit push.
+  would see only one commit of a multi-commit push. A rebase stopped on
+  a conflict or an `edit` is on the branch it rebases, not the detached
+  HEAD it stopped at, so the default base holds.
 - CI on the base branch needs only the current commit: `--all` reads no
   history, and the cache runs only what changed.
 - A shallow clone needs no more history. vx fetches what the merge base
@@ -570,8 +572,14 @@ Only `vx run` and `vx watch` forward. Any other core verb refuses a `--`
 (`vx show forwards nothing after --`, `VX_E_USAGE`).
 
 vx takes no short flag, so a `-x` before `--` that no vx flag hint claims
-is refused with the run that forwards it: `vx run test -t adds` says
-`unknown flag: -t (did you mean vx run test -- -t adds?)`. A long flag
+is refused with the run that forwards it: `vx run test -t adds` prints
+`✗ vx run  unknown flag: -t`, `see vx run --help` and
+`fix  vx run test -- -t adds`. Only the
+flag and the words after it up to the next flag move; vx's own flags
+stay before `--` (`vx run test -t adds --all` suggests
+`vx run test --all -- -t adds`). Another tool's name for a vx flag is
+named instead: `-j`, `--jobs` and `--parallel` hint `--concurrency`,
+`-F`, `--scope` and `--projects` hint `--filter`. A long flag
 far from every vx flag gets no such guess: a typo of a vx flag
 forwarded would be ignored by the task unseen.
 
@@ -651,8 +659,8 @@ Mutual exclusion:
   about.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
-nearest flag the verb accepts when one is within two edits
-(`unknown flag: --concurency (did you mean --concurrency?)`); a name of
+nearest flag the verb accepts when one is within two edits on a `fix`
+line (`unknown flag: --concurency`, then `fix  --concurrency`); a name of
 four letters or fewer gets one edit or a swap of two letters, so
 `--poll` is not hinted `--all` nor `vx test` `last`. The same name in
 another case is always hinted (`--ALL` hints `--all`), as is a task or
@@ -1181,7 +1189,9 @@ cache entry for them, so the next run is a plain local hit.
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
+and each task hears it once: from vx, as SIGINT. Through `bun vx`, which
+passes the Ctrl-C on to vx as well, it is still one stop; a second
+press is the second signal. Ctrl-Z (SIGTSTP) stops
 each task's process group, then vx; `fg` or `bg` continues vx, and vx
 continues them. Neither a `timeout` nor a task's duration counts the time stopped. A Linux sandboxed task's command is not stopped, only
 held once its output pipe fills. A stop starts no more remote
@@ -1458,9 +1468,18 @@ write with a bracket; `schema.md`) is granted as the directory above it.
 On Linux a refused open is a read or a write by the flags it asked
 with: a missing file opened to read is a read grant, never a file vx
 would create. A host `deny.network` holds gets no network grant.
-A write grants the top directory it landed in, so the next file there
-passes too, unless `inputs.files` reads that directory: then it
-grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
+A write grants the narrowest directory the next file there lands in
+too: under a declared output, that output's directory
+(`src/generated/`, never `src/`); in `node_modules`, the tool's own
+directory (`node_modules/.vite/`, `node_modules/.cache/storybook/`,
+`node_modules/.prisma/`, never every installed package); else the top
+directory it landed in. When `inputs.files` reads that directory it
+grants the file alone, so the task cannot write its own inputs. A file
+named for the millisecond it was made (13 digits, vite's
+`vite.config.ts.timestamp-<ms>-<hex>.mjs`) is new each run, so its
+directory is granted in its place (`node_modules/.vite-temp/`), or, where
+that directory is the project itself, a glob from the clock on
+(`vite.config.ts.timestamp-*.mjs`); a read the output depends on is a key input as well, and
 the line says so, since a grant never adds one: `inputs.files` for a
 read of the project, `inputs.workspaceFiles` (workspace-relative) for one
 elsewhere in the workspace. Applied as given, the two lines key every
@@ -1773,19 +1792,26 @@ run):
   ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
-A requested persistent task (`exec.persistent`, a dev server) starts
-once and stays up across cycles; each cycle re-runs what it depends on,
-as the cache keys decide. So `vx watch dev`, with `dev` depending on
+A persistent task (`exec.persistent`, a dev server), requested or only
+a dependency, starts once and stays up across cycles; each cycle re-runs
+what it depends on, as the cache keys decide. So `vx watch dev`, with `dev` depending on
 `^build`, rebuilds only the libraries an edit reaches on the way to the
 app and leaves the server running; the dev tool's own reload picks up
 what was rebuilt. What the server writes keeps printing, under its id
-above the rows while a cycle rebuilds. It restarts
+above the rows while a cycle rebuilds. A requested server, and one it
+depends on, restarts
 only when its own task config (or the args forwarded to it) changed, or
-when it died: the old one is stopped first (the kill grace, then
+when it died. A server only another task depends on restarts when its
+key changed (a file in its `inputs.files`, its config, or what it
+depends on), so `vx watch e2e` boots its api once and again only after
+an edit the api's key sees, and `e2e` never tests the old one; with no
+`inputs.files` it restarts every cycle, as no key sees its edits. The
+old one is always stopped first (the kill grace, then
 SIGKILL), so the two never hold one port. One that dies while watch
 idles is said (`vx: app#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
-stops it. An edit while a cycle waits only on a server that has not
+stops it, and so does one that no longer starts it (its dependants all
+hit, or the selection changed). An edit while a cycle waits only on a server that has not
 printed its `readyWhen` line stops that cycle and starts the next, so a
 fix reaches a server stuck before ready, in the initial run too; the
 servers already up stay up through it. A file
@@ -1886,8 +1912,9 @@ their lengths. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
 
 A clean with a bound also drops run
-history and hash memos older than 30 days, and gives their pages back
-to the disk (a `VACUUM` of the index, once rows went); a run never does.
+history and hash memos older than 30 days, and gives the pages of the
+rows it dropped and the entries it evicted back to the disk (a `VACUUM`
+of the index, once rows went); a run never does.
 It reports the rows and the bytes the index shrank by
 (`historyRows`, `historyBytes`); a dry run reports neither.
 
@@ -2172,6 +2199,13 @@ with the rule's refusal under it and writes nothing.
 A lock or review copy that is a symlink, or whose directory resolves
 outside the workspace (a `.vx` linked out of it), is refused the same
 way, before anything is written.
+After writing, it notes what a task reads that its key never sees, and
+still exits 0: a gitignored file a glob's last segment matches (`.env*`
+over an ignored `.env.production.local`, which Vite loads for a
+production build; a run says it only on a miss, which a stale hit never
+brings), asked of git in one `check-ignore`, and a cached task's
+`exec.env.passThrough` name a bundler inlines (`VITE_API_URL`) that
+`inputs.env` leaves out (schema.md § `ExecEnv`).
 
 `.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
 faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
@@ -3124,7 +3158,7 @@ $ vx show app#build
   dependsOn      ^build
   inputs.files   src/**
   inputs.env     NODE_ENV
-  outputs.files  dist/**
+  outputs.files  dist/**, *.tsbuildinfo
   cache          yes
 ```
 
@@ -3195,9 +3229,9 @@ has that name) and `vx show project <name>` say `vx show` and
 
 Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
-neither reads `unknown project or task: "buidl" — did you mean build?`,
-and a `pkg#task` hints whole specs (`unknown task: "app#bui" — did you
-mean app#build?`). A project's directory, relative to the root, hints
+neither reads `unknown project or task: "buidl"` with a `fix  build`
+line, and a `pkg#task` hints whole specs (`unknown task: "app#bui"`,
+`fix  app#build`). A project's directory, relative to the root, hints
 that project (`p/a` hints `alpha`, `p/a#build` `alpha#build`). With nothing near, it lists what exists instead: `unknown
 project: "zzz"; projects: app, lib`, `; its tasks: app#build, app#test`,
 or `; projects and tasks: …` (M-57).
@@ -3248,7 +3282,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v55 · index schema v55
+  cache versions    keys vx-cache-v56 · index schema v56
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3293,7 +3327,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `measures`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
-  that declines a task at run time still lists its seam here.
+  that declines a task at run time still lists its seam here (`otel()` with
+  no endpoint). A factory that returned `undefined` (`github()` off
+  Actions) declared no plugin, so it is not listed.
 - `workers` is the count a run defaults to and where it comes from:
   `VX_RUN_CONCURRENCY` when set, else `.vx/workspace.ts`'s `run.concurrency`, else the cores this
   process may use — the CPU count, capped by the cgroup CPU quota a
@@ -3469,7 +3505,7 @@ because it ran beside a failed task (a task run past a failed dependency
 under `--continue` is never cached; said ahead of a prune, and as
 "neither run saved it" when this run ran beside one too), or the previous run executed and no entry
 holds the key (its save failed, or a prune took it; a previous run whose
-policy wrote no cache says that instead, and one that built on a
+policy wrote no cache says that instead, ahead of a prune, and one that built on a
 dependency `--exclude-dependencies` left out names that dependency). Otherwise, with this run's
 policy recorded as reading the cache, it says it cannot name the cause;
 only a run with no recorded policy names `--no-cache` / `--force`.
@@ -3550,7 +3586,8 @@ only the previous run failed, or passed beside a failed task
 `--cache-policy` without write), the diff is taken against the last run
 that saved an entry instead, and the detail line names that run, even
 when the diff has rows. When
-this run wrote no cache, the detail line says so rather than a prune. A
+this run wrote no cache, or passed beside a failed task (`--continue`),
+the detail line says so rather than a prune. A
 task with `inputs` and no `cache: true` derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report
 the key change and says so.
@@ -3739,7 +3776,9 @@ last `passed` when a retry passed; a retried attempt's sandbox
 violations end its output. With
 `--format json` it is `{ runId, taskId, status, source, output }`,
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
-refused, exit 1, naming a recorded task one or two edits away. A bare name (`--log build`) is the one project that ran
+refused, exit 1, naming recorded tasks as `vx why` does: one or two
+edits away, or the id inside a longer one (`@w/envy#test` for
+`envy#test`). A bare name (`--log build`) is the one project that ran
 it; with several, the one the cwd is in, else it is refused listing them.
 `//#<task>` is the root project's, here and in `--stats`.
 `vx last app#build --log` reads the same as `--log app#build`: a `--log`
@@ -3782,7 +3821,7 @@ run 019a2f3c-5b1e-7c2d-9a40-1f3e5d7c8b21 — running 4.21s
   waiting  a#after
 
   warnings
-    [vx] a#lost: inputs.files matched no files …
+    [vx] a#lost: inputs matched no files (nope/**) — the key will not change when this project's source does
 ```
 
 With `--format json` it prints `{ live, tasks, warnings }`: `live` is
@@ -3880,7 +3919,7 @@ passed, so a replayed failure that is already fixed says so. A
 sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`
-(none for a per-run temp name such as `*.bun-build`, whose `ignore` glob a hint line names);
+(none for a per-run temp name such as `*.bun-build` or `.bun-pack.*.tmp`, whose `ignore` glob a hint line names);
 `withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`), and, for
 a cached task, `inputs` the reads of its project no `inputs.files`
 glob matches and `workspaceFiles` its reads elsewhere in the workspace no
@@ -4152,7 +4191,7 @@ A broad run looks like:
 
   Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-            1 affected · 3 total
+            1 in run · 3 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -4346,8 +4385,8 @@ that forces colour for a run's log still parses them
 
 Two runs on one workspace take turns: the second waits for the first's
 run lock and, after a second, says `[vx] waiting for another vx run
-(pid N) on this workspace to finish…` (see caching.md § Concurrent
-runs). The lock lives in this user's own directory in the temp
+(pid N) on this workspace to finish…`, a status line the footer does
+not count as a warning (see caching.md § Concurrent runs). The lock lives in this user's own directory in the temp
 directory, so two runs take turns only when they are one user's and
 share `TMPDIR`: a `nix develop` shell sets its own.
 

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { SandboxViolation } from '../src/exec/index.js'
-import { perRunWriteHint, sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import { misrootedWriteHint, perRunWriteHint, sandboxFix } from '../src/orchestrator/sandbox-fix.js'
 import { CREDENTIAL_STORES } from '../src/orchestrator/sandbox-request.js'
 import { anyTaskGlob } from '../src/util/index.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
@@ -61,6 +61,29 @@ describe('sandboxFix', () => {
       systemInfo: ['kern.x'],
       withheld: ['~/.npmrc'],
     })
+  })
+
+  // A snapshot test's refused `mkdir` and the file it then failed to open
+  // under it: the directory's grant covers the file, and the fix named both.
+  it('names no grant a directory grant it names already covers', () => {
+    const at = (p: string) => path.join(dir, p)
+    mkdirSync(at('__tests__'))
+    const fix = sandboxFix(
+      [
+        v('mkdir(__snapshots__) = -1 EROFS', ['write'], at('__tests__/__snapshots__')),
+        v('openat(a.snap) = -1 ENOENT', ['read', 'write'], at('__tests__/__snapshots__/a.snap'), {
+          opened: 'write',
+        }),
+        v('openat(a.snapx) = -1 ENOENT', ['read', 'write'], at('__tests__/__snapshotsx'), {
+          opened: 'write',
+        }),
+      ],
+      dir,
+      dir,
+      undefined,
+      { files: ['**'] },
+    )
+    expect(fix?.write).toEqual(['__tests__/__snapshots__/', '__tests__/__snapshotsx'])
   })
 
   // The proxy refuses a host on `deny.network` whatever `allow.network`
@@ -135,6 +158,22 @@ describe('sandboxFix', () => {
     })
     // CONTROL: a task with no cache has no key to name it for.
     expect(sandboxFix(denials, project, dir)?.workspaceFiles).toBeUndefined()
+  })
+
+  // A root task's `inputs.files` stops at a member project, and `vx lock`
+  // refuses a glob into one: the read there is named for workspaceFiles.
+  it('names a read in a nested project for inputs.workspaceFiles', () => {
+    const at = (p: string) => path.join(dir, p)
+    const read = (p: string) => v('deny(1) file-read-data', ['read'], at(p))
+    const denials = [read('packages/a/tsconfig.json'), read('tsconfig.json')]
+    const inputs = { files: ['src/**'] }
+    expect(
+      sandboxFix(denials, dir, dir, undefined, inputs, [], undefined, [at('packages/a')]),
+    ).toEqual({
+      read: ['packages/a/tsconfig.json', 'tsconfig.json'],
+      inputs: ['tsconfig.json'],
+      workspaceFiles: ['packages/a/tsconfig.json'],
+    })
   })
 
   it('never turns a credential path into a grant', () => {
@@ -311,5 +350,187 @@ describe('sandboxFix', () => {
     expect(hint?.hint).toBe(true)
     expect(hint?.line).toContain("ignore: { write: ['*.bun-build', 'sub/*.bun-build'] }")
     expect(perRunWriteHint(denied.slice(2), dir, dir)).toBeUndefined()
+  })
+  // `bun pm pack` stages `.bun-pack.<hex>-<n>.tmp` beside its tarball: the
+  // fix granted that one name, which the next run's misses.
+  it('knows bun pack’s per-run temp as one, and names its ignore glob', () => {
+    const t = '.bun-pack.cace8122e1f2fbdf-00000000.tmp'
+    const denied = [v(`openat(${t}) = a write no grant covers`, ['write'], path.join(dir, t))]
+    expect(sandboxFix(denied, dir, dir)).toBeUndefined()
+    // CONTROL: `bun build --compile`'s extraction directory is written, not ignored.
+    const x = '.cace8122e1f2fbdf-00000000.tmp'
+    expect(
+      sandboxFix([v(`mkdir(${x}) = -1 EROFS`, ['write'], path.join(dir, x))], dir, dir),
+    ).toEqual({ write: [`${x}/`] })
+    expect(perRunWriteHint(denied, dir, dir)?.line).toContain(
+      "ignore: { write: ['.bun-pack.*.tmp'] }",
+    )
+  })
+  // `bun pm pack` reads its project whole and writes its tarball there: the
+  // literal grant the fix named made vx create an empty one before the run,
+  // and bun packed it, `package/s-alpha-1.1.0.tgz` at 0 bytes, under a green run.
+  it('grants a file the task makes in the project it lists the project, never the file', () => {
+    const tgz = 's-alpha-1.1.0.tgz'
+    const denied = [
+      v(`openat(${tgz}) = a write no grant covers`, ['write'], path.join(dir, tgz)),
+      v('mkdir(out) = -1 EROFS', ['write'], path.join(dir, 'out')),
+    ]
+    const fix = (reads: string[], outputs?: { files: string[] }) =>
+      sandboxFix(denied, dir, dir, undefined, undefined, [], outputs, [], reads)?.write
+    for (const reads of [['.', '~/.bun'], ['./'], ['**'], ['./**/*'], ['..']])
+      expect(fix(reads)).toEqual(['.'])
+    // CONTROL: the task may not list the project, so the empty file is unseen.
+    expect(fix(['src/', 'package.json'])).toEqual(['out/', tgz])
+    expect(fix([])).toEqual(['out/', tgz])
+    // CONTROL: the file is there and no output clean takes it, so no empty one is made.
+    writeFileSync(path.join(dir, tgz), 'x')
+    expect(fix(['.'])).toEqual(['out/', tgz])
+    expect(fix(['.'], { files: ['*.tgz'] })).toEqual(['.'])
+  })
+  // `next build` found its tracing root by the lockfile, which the sandbox
+  // hid, and copied `node_modules/.bun/next@…` under the app: the fix
+  // granted that write, and the green, cached build's server could not start.
+  it('grants no write into a package that a directory above holds; names the root marker', () => {
+    const app = path.join(dir, 'apps', 'web')
+    const pkg = 'node_modules/.bun/next@1/node_modules/next'
+    mkdirSync(path.join(dir, pkg), { recursive: true })
+    mkdirSync(path.join(app, 'node_modules/.vite'), { recursive: true })
+    mkdirSync(path.join(dir, 'node_modules/.vite'), { recursive: true })
+    writeFileSync(path.join(dir, 'bun.lock'), '')
+    const copied = v(
+      `openat(${pkg}/dist/x.js) = a write no grant covers`,
+      ['write'],
+      path.join(app, pkg, 'dist/x.js'),
+    )
+    const vite = v(
+      'mkdir(node_modules/.vite/deps) = -1 EROFS',
+      ['write'],
+      path.join(app, 'node_modules/.vite/deps'),
+    )
+    expect(sandboxFix([copied, vite], app, dir, undefined, { files: ['app/**'] })).toEqual({
+      read: ['../../bun.lock'],
+      write: ['node_modules/.vite/'],
+      workspaceFiles: ['bun.lock'],
+    })
+    expect(misrootedWriteHint([copied, vite], app, dir)?.line).toBe(
+      `vx: the task wrote installed packages' files under the project (${pkg}/dist/x.js), which ` +
+        `../../node_modules/.bun holds: it took the project for its root, as a tool does that ` +
+        `finds its root by a file the sandbox hides. A write grant there is not the fix; grant ` +
+        "what it looks for: `allow: { read: ['../../bun.lock'] }`.",
+    )
+    // CONTROL: no package above holds it, so it is the task's own write.
+    rmSync(path.join(dir, 'node_modules'), { recursive: true })
+    expect(sandboxFix([copied], app, dir)).toEqual({ write: [`${pkg}/`] })
+    expect(misrootedWriteHint([copied, vite], app, dir)).toBeUndefined()
+  })
+  // vite bundles its config to `node_modules/.vite-temp/vite.config.ts.timestamp-<ms>-<hex>.mjs`,
+  // a new name each run: the fix granted that one name, and the next run
+  // failed on the next. Its directory is the grant.
+  it('grants the directory of a file named for the time it was made', () => {
+    const t = 'node_modules/.vite-temp/vite.config.ts.timestamp-1794447859277-f7b41ce9b866.mjs'
+    const denied = [v(`openat(${t}) = -1 EROFS`, ['write'], path.join(dir, t))]
+    const inputs = { files: ['src/**', 'tsconfig*.json'] }
+    expect(sandboxFix(denied, dir, dir, undefined, inputs)).toEqual({
+      write: ['node_modules/.vite-temp/'],
+    })
+  })
+
+  // vite 5 bundles it beside the config, in the project itself: its
+  // directory was `./`, the whole project writable, sources too. A glob over
+  // the name's clock and what follows it covers every run's file.
+  it('grants a file named for the time it was made in the project itself by a glob, never the project', () => {
+    const t = 'vite.config.ts.timestamp-1794464558889-c9bf267daafa9.mjs'
+    const denied = [v(`openat(${t}) = -1 EROFS`, ['write'], path.join(dir, t))]
+    expect(sandboxFix(denied, dir, dir, undefined, { files: ['src/**'] })).toEqual({
+      write: ['vite.config.ts.timestamp-*.mjs'],
+    })
+  })
+
+  // A write in `node_modules` granted the whole of it: every installed
+  // package writable, so a test could rewrite a dependency the next task
+  // runs. The grant is the tool's own directory there.
+  it('grants a tool its own directory in node_modules, never node_modules whole', () => {
+    const write = (p: string) => v(`openat(${p}) = -1 EROFS`, ['write'], path.join(dir, p))
+    const fix = (ps: string[], inputs?: { files: string[] }) =>
+      sandboxFix(ps.map(write), dir, dir, undefined, inputs)?.write
+    expect(fix(['node_modules/.vite/vitest/da39a3ee5e6b4b0d/results.json'])).toEqual([
+      'node_modules/.vite/',
+    ])
+    expect(fix(['node_modules/.cache/storybook/dev-server/a.json'])).toEqual([
+      'node_modules/.cache/storybook/',
+    ])
+    expect(
+      fix(['node_modules/.prisma/client/index.js', 'node_modules/.prisma/client/a.d.ts']),
+    ).toEqual(['node_modules/.prisma/'])
+    // Two tools' directories stay two: their common one is node_modules.
+    expect(
+      fix(['node_modules/.vite/deps/a.js', 'node_modules/.cache/storybook/b.json'], {
+        files: ['src/**'],
+      }),
+    ).toEqual(['node_modules/.cache/storybook/', 'node_modules/.vite/'])
+    expect(fix(['packages/x/node_modules/@scope/pkg/gen.js'])).toEqual([
+      'packages/x/node_modules/@scope/pkg/',
+    ])
+    expect(fix(['node_modules/.package-lock.json'])).toEqual(['node_modules/.package-lock.json'])
+    // `mkdir -p` is refused at its first missing directory: no tool named yet.
+    const mkdir = v(
+      'mkdir(node_modules/.cache) = -1 EROFS',
+      ['write'],
+      path.join(dir, 'node_modules/.cache'),
+    )
+    expect(sandboxFix([mkdir], dir, dir)?.write).toEqual(['node_modules/.cache/'])
+    // An input that reaches there still takes the file alone.
+    expect(fix(['node_modules/.vite/deps/a.js'], { files: ['**/*.js'] })).toEqual([
+      'node_modules/.vite/deps/a.js',
+    ])
+  })
+
+  // graphql-codegen writes its declared output `src/generated/`: the grant
+  // was `src/`, every source file writable.
+  it('grants a write under a declared output that output’s directory', () => {
+    const write = (p: string) => v(`openat(${p}) = -1 EROFS`, ['write'], path.join(dir, p))
+    const outputs = { files: ['src/generated/**', 'out.txt'] }
+    const fix = (files: string[]) =>
+      sandboxFix(
+        [write('src/generated/a/graphql.ts'), write('out.txt'), write('dist/x/y.js')],
+        dir,
+        dir,
+        undefined,
+        { files },
+        [],
+        outputs,
+      )?.write
+    expect(fix(['schema.graphql'])).toEqual(['dist/', 'out.txt', 'src/generated/'])
+    expect(fix(['src/**', '!src/generated/**'])).toEqual(['dist/', 'out.txt', 'src/generated/'])
+    // CONTROL: the inputs read it, so the task may not write there.
+    expect(fix(['src/**'])).toEqual(['dist/', 'out.txt', 'src/generated/a/graphql.ts'])
+    // Its first write is often the directory itself (`mkdir -p src/generated`).
+    const mkdir = v('mkdir(src/generated) = -1 EROFS', ['write'], path.join(dir, 'src/generated'))
+    expect(sandboxFix([mkdir], dir, dir, undefined, undefined, [], outputs)?.write).toEqual([
+      'src/generated/',
+    ])
+  })
+
+  // Prisma writes the client beside `@prisma/client` in the workspace's
+  // install, here bun's store: its declared output's directory is the
+  // store whole, the tool's own directory is narrower.
+  it('grants a write in the workspace’s node_modules the tool’s directory there', () => {
+    const project = path.join(dir, 'packages', 'db')
+    const client = 'node_modules/.bun/@prisma+client@6/node_modules/.prisma/client'
+    const denied = ['default.js', 'index.d.ts'].map((f) =>
+      v('deny(1) file-write-create', ['write'], path.join(dir, client, f)),
+    )
+    const outputs = {
+      files: [],
+      workspaceFiles: [`node_modules/.bun/@prisma+client@*/node_modules/.prisma/client/**`],
+    }
+    expect(
+      sandboxFix(denied, project, dir, undefined, { files: ['**'] }, [], outputs)?.write,
+    ).toEqual(['../../node_modules/.bun/@prisma+client@6/node_modules/.prisma/'])
+    // Elsewhere outside the project, the path alone, as before.
+    const other = v('deny(1) file-write-create', ['write'], path.join(dir, 'packages/a/dist/o.js'))
+    expect(sandboxFix([other], project, dir, undefined, undefined, [], outputs)?.write).toEqual([
+      '../a/dist/o.js',
+    ])
   })
 })

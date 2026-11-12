@@ -3,7 +3,7 @@
 // a read grant punched around the write grants inside it, the network
 // lists SRT insists on receiving in full.
 
-import { lstatSync, readdirSync, statSync } from 'node:fs'
+import { lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   atOrUnder,
@@ -99,6 +99,54 @@ export function withLinkedWrites(
 }
 
 /**
+ * Linux: the links `punchWritePaths` handed over as read grants, taken out
+ * of `allowRead` and returned as `[text, at]`, each laid by vx as the link
+ * it is (`withPunchedLinks`). SRT binds a read path by what it resolves
+ * to, so a link there was a plain directory inside the sandbox. A grant
+ * the punch did not make (in `granted`) is left as it is.
+ */
+export function punchedLinks(
+  granted: readonly string[],
+  allowRead: string[],
+): Array<readonly [string, string]> {
+  if (process.platform !== 'linux') return []
+  const whole = new Set(granted)
+  const out: Array<readonly [string, string]> = []
+  for (let i = allowRead.length - 1; i >= 0; i--) {
+    const at = allowRead[i]!
+    if (whole.has(at)) continue
+    let text: string
+    try {
+      text = readlinkSync(at)
+    } catch {
+      // Not a link: a bind.
+      continue
+    }
+    out.push([text, at])
+    allowRead.splice(i, 1)
+  }
+  return out
+}
+
+/**
+ * Linux: SRT's bwrap line with each `punchedLinks` pair laid as a link,
+ * before the `--` that ends bwrap's options and before the masks'
+ * read-only remount (`readOnlyMasks`), which would refuse it.
+ */
+export function withPunchedLinks(
+  wrapped: string,
+  links: ReadonlyArray<readonly [string, string]>,
+): string {
+  if (links.length === 0) return wrapped
+  for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
+    if (m[0] !== '--') continue
+    const words = links.map(([t, a]) => `--symlink ${shellQuote(t)} ${shellQuote(a)} `).join('')
+    return `${wrapped.slice(0, m.index)}${words}${wrapped.slice(m.index)}`
+  }
+  return wrapped
+}
+
+/**
  * Linux: the denied cwd made inside the tmpfs that hides it. bwrap enters
  * the old cwd only if it exists in the new root, else `$HOME`, with no
  * word; SRT (0.0.81) lays no mount at a deny an ancestor's tmpfs already
@@ -174,11 +222,47 @@ export function scratchWrites(
   const scratch: string[] = []
   const mountless: string[] = []
   for (const glob of pending) {
-    const dir = path.dirname(glob.slice(0, glob.search(MOUNT_WILDCARDS) + 1))
+    const dir = globDir(glob)
+    // A write bind holds it: what the task writes there lands.
+    if ((fs.allowWrite ?? []).some((w) => atOrUnder(dir, w))) continue
     const free = anchors.some((a) => atOrUnder(dir, a)) && !binds.some((b) => atOrUnder(dir, b))
     ;(free ? scratch : mountless).push(glob)
   }
   return { scratch, mountless }
+}
+
+/** The directory a write glob's matches land in: its head's. */
+export const globDir = (glob: string): string =>
+  path.dirname(glob.slice(0, glob.search(MOUNT_WILDCARDS) + 1))
+
+/**
+ * Linux: the directories of the pending write globs (`dir` → its globs)
+ * that a declared read grant shows but the punch around a write grant left
+ * under no bind. `read: ['.']` beside `write: ['dist/', '*.log']` binds
+ * the project's children, not the project: `out.log`, a declared output,
+ * fell into the deny anchor's scratch and vanished under a green run.
+ * Each is bound writable, as a file grant there is widened to its
+ * directory, and a write there the glob does not cover is judged as one
+ * under a widened grant (`refusedWrites`).
+ */
+function punchedWriteGlobs(
+  pending: readonly string[],
+  shown: readonly string[],
+  binds: readonly string[],
+): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  if (process.platform !== 'linux') return out
+  for (const glob of pending) {
+    const dir = globDir(glob)
+    if (!shown.some((r) => atOrUnder(dir, r)) || binds.some((b) => atOrUnder(dir, b))) continue
+    try {
+      if (!statSync(dir).isDirectory()) continue
+    } catch {
+      continue
+    }
+    out.set(dir, [...(out.get(dir) ?? []), glob])
+  }
+  return out
 }
 
 /**
@@ -210,9 +294,6 @@ export function punchWalls(readPath: string, walls: readonly string[]): string[]
   }
   return out
 }
-
-/** Directories already warned about below — once per process, not per spawn. */
-const warnedSymlinkPunch = new Set<string>()
 
 /**
  * Expand a read grant so it is never an ANCESTOR of a write grant.
@@ -260,70 +341,30 @@ export function punchWritePaths(
     return [readPath]
   }
   const out: string[] = []
-  const linked: string[] = []
   for (const entry of entries) {
     const child = path.join(readPath, entry)
     // A write path is already bound read-write, which is readable.
     if (under.includes(child)) continue
-    // bwrap resolves a bind SOURCE, so a symlinked child is mounted as the
-    // directory it points at: inside the sandbox the link is gone. For a
-    // package in Bun's isolated node_modules layout that severs it from
-    // the `.bun/` siblings its own dependencies resolve through — astro
-    // could not find `yargs-parser` for four days of red CI (2026-09-09).
-    // SRT's config carries no `--symlink`, so the only fix is the grant:
-    // say which one, loudly.
+    // bwrap resolves a bind SOURCE, so a linked child bound as a read
+    // grant is mounted as the directory it points at, and a package in a
+    // pnpm or Bun isolated `node_modules` loses the store siblings its own
+    // dependencies resolve through (vite: `Cannot find package
+    // 'picomatch'`). vx lays it as the link it is instead
+    // (`punchedLinks`), so its target must be in the sandbox already.
     try {
       if (lstatSync(child).isSymbolicLink()) {
-        // Bound by its target, a link out to a denied place (`node_modules
-        // -> ..`, `shared -> ../b`) granted what the whole grant never did:
-        // bound unpunched, the link stays a link into the deny (item 1006's
-        // glob hit, through the punch).
+        // A link out to a denied place (`node_modules -> ..`, `shared ->
+        // ../b`) bound by its target granted what the whole grant never
+        // did: bound unpunched, the link stays a link into the deny (item
+        // 1006's glob hit, through the punch).
         if (!reachable(toRealPath(child))) continue
-        linked.push(child)
+        out.push(child)
+        continue
       }
     } catch {
       // vanished between readdir and lstat: nothing to bind either way
     }
     out.push(...punchWritePaths(child, under, reachable))
-  }
-  if (linked.length > 0 && !warnedSymlinkPunch.has(readPath)) {
-    warnedSymlinkPunch.add(readPath)
-    // A link INTO a write grant is that grant under a second name, mounted
-    // read-only: the remedy is to grant the name (`linkedWriteBinds` binds
-    // it writable), not to move the grant.
-    const plain: string[] = []
-    for (const l of linked) {
-      const w = writePaths.find((w) => atOrUnder(toRealPath(l), w))
-      if (w === undefined) {
-        plain.push(l)
-        continue
-      }
-      let dir = false
-      try {
-        dir = statSync(l).isDirectory()
-      } catch {
-        // dangling: granted as a file
-      }
-      ui.say(
-        'warn',
-        `[vx] sandbox: ${l} is a symlink into the write grant ${w}, and the Linux sandbox ` +
-          `mounts it read-only, so a write through it is refused. Grant the link itself to ` +
-          `write through it: ${l}${dir ? '/' : ''}\n`,
-      )
-    }
-    if (plain.length > 0) {
-      ui.say(
-        'warn',
-        `[vx] sandbox: a write grant under ${readPath} makes its ${plain.length} symlinked ` +
-          `entr${plain.length === 1 ? 'y' : 'ies'} (${plain
-            .slice(0, 3)
-            .map((l) => path.basename(l))
-            .join(', ')}${plain.length > 3 ? ', …' : ''}) plain directories inside the sandbox — ` +
-          `a package resolved through one loses its siblings. Move the write grant (${under
-            .map((w) => path.relative(readPath, w))
-            .join(', ')}) out of it.\n`,
-      )
-    }
   }
   return out
 }
@@ -473,7 +514,15 @@ export function buildCustomConfig(
       !fence.denied.some((d) => atOrUnder(real, d)) || fence.granted.some((g) => atOrUnder(real, g))
     )
   }
-  const allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
+  let allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
+  const split = [
+    ...punchedWriteGlobs(c.pendingWrites ?? [], c.allowRead, [...allowRead, ...allowWrite]).keys(),
+  ]
+  if (split.length > 0) {
+    allowWrite.push(...split)
+    punched.push(...split)
+    allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
+  }
 
   const custom: TaskSandboxConfig = {
     filesystem: {
@@ -527,7 +576,7 @@ export function readOnlyMasks(wrapped: string, scratch: readonly string[] = []):
   for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
     if (m[0] === '--') {
       const held = scratch.map((g) => {
-        const dir = toRealPath(path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS) + 1)))
+        const dir = toRealPath(globDir(g))
         const holding = masks.filter((w) => atOrUnder(dir, unquoted(w)))
         return holding.sort((a, b) => unquoted(b).length - unquoted(a).length)[0]
       })

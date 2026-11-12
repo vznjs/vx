@@ -23,7 +23,12 @@ import {
   resolveSandboxConfig,
   wrapSandboxedCommand,
 } from '../src/exec/sandbox-runtime.js'
-import { buildCustomConfig, punchWritePaths } from '../src/exec/sandbox-binds.js'
+import {
+  buildCustomConfig,
+  punchedLinks,
+  punchWritePaths,
+  withPunchedLinks,
+} from '../src/exec/sandbox-binds.js'
 import {
   bridgedPorts,
   portBridgeHostArgv,
@@ -55,6 +60,33 @@ const available = await sandboxAvailable('sandbox-runtime tests')
  * memoized answers exactly what the real one does — so the rows below
  * hand it a wrapper that fails, and count what it asked for.
  */
+
+/** Every process under `root`, one `pid ppid cmdline` row each: a CI-only diagnostic. */
+function treeOf(root: number): string {
+  const rows = new Map<number, { ppid: number; cmd: string }>()
+  for (const d of readdirSync('/proc')) {
+    if (!/^\d+$/.test(d)) continue
+    try {
+      const stat = readFileSync(`/proc/${d}/stat`, 'utf8')
+      const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1])
+      const cmd = readFileSync(`/proc/${d}/cmdline`, 'utf8').replaceAll('\0', ' ').slice(0, 160)
+      rows.set(Number(d), { ppid, cmd })
+    } catch {
+      // gone
+    }
+  }
+  const under = new Set([root])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [pid, r] of rows)
+      if (!under.has(pid) && under.has(r.ppid)) {
+        under.add(pid)
+        grew = true
+      }
+  }
+  return [...under].map((p) => `${p} ${rows.get(p)?.ppid} ${rows.get(p)?.cmd}`).join('\n')
+}
+
 describe.skipIf(!available || process.platform !== 'linux')(
   'the probe, through its wrapper',
   () => {
@@ -188,60 +220,25 @@ describe.skipIf(process.platform !== 'linux')(
       expect(got).not.toContain(deepOut)
     })
 
-    it('names the symlinked entries a punch would flatten, once per grant', async () => {
-      // The one diagnostic for a failure with no other symptom. bwrap
-      // resolves a bind SOURCE, so punching a directory mounts each
-      // symlinked child as the directory it points AT — inside the
-      // sandbox the link is gone, and a package resolved through it
-      // loses the siblings its own dependencies need. That cost four
-      // days of red CI (astro / `yargs-parser`, 2026-09-09) and SRT's
-      // config carries no `--symlink`, so the warning IS the fix: it
-      // says which grant to move. Silencing it breaks nothing else in
-      // the repo, which is why this row exists.
-      await symlink(path.join(dir, 'src'), path.join(dir, 'linked'))
-      const written: string[] = []
-      const real = process.stderr.write.bind(process.stderr)
-      process.stderr.write = ((chunk: unknown): boolean => {
-        written.push(String(chunk))
-        return true
-      }) as typeof process.stderr.write
-      try {
-        punchWritePaths(dir, [path.join(dir, 'dist')])
-        // Once per grant: a second punch of the same read path is silent,
-        // so a thousand-task run says it once.
-        punchWritePaths(dir, [path.join(dir, 'dist')])
-      } finally {
-        process.stderr.write = real
-      }
-      const notices = written.filter((w) => w.includes('symlinked'))
-      expect(notices).toHaveLength(1)
-      // It has to name BOTH halves to be actionable: what got flattened
-      // and which grant to move.
-      expect(notices[0]).toContain('linked')
-      expect(notices[0]).toContain('dist')
-    })
-
-    // Item 652: the row above has a symlink in every punch it makes, so the
-    // notice could lose its `linked.length > 0` gate — and tell every
-    // punched grant it flattened "0 symlinked entries" — with the suite
-    // green.
-    it('says nothing when the punched directory holds no symlink', async () => {
-      const written: string[] = []
-      const real = process.stderr.write.bind(process.stderr)
-      process.stderr.write = ((chunk: unknown): boolean => {
-        written.push(String(chunk))
-        return true
-      }) as typeof process.stderr.write
-      try {
-        punchWritePaths(dir, [path.join(dir, 'dist')])
-        // CONTROL, on a directory of its own: one symlink there is named.
-        await symlink(path.join(dir, 'src'), path.join(dir, 'nested', 'linked'))
-        punchWritePaths(path.join(dir, 'nested'), [path.join(dir, 'nested', 'deep')])
-      } finally {
-        process.stderr.write = real
-      }
-      const notices = written.filter((w) => w.includes('symlinked'))
-      expect(notices.map((n) => n.includes(`under ${path.join(dir, 'nested')} `))).toEqual([true])
+    it('hands a symlinked entry over as the link, laid by vx, never bound by its target', async () => {
+      // bwrap resolves a bind SOURCE, so a punched link was mounted as the
+      // directory it points at, and a package resolved through it lost the
+      // siblings its own dependencies need (astro / `yargs-parser`,
+      // 2026-09-09; vite / `picomatch` under pnpm). The punch keeps the
+      // link's name; `punchedLinks` takes it out of the binds as a link.
+      await symlink('src', path.join(dir, 'linked'))
+      const reads = punchWritePaths(dir, [path.join(dir, 'dist')])
+      expect(reads).toContain(path.join(dir, 'linked'))
+      const links = punchedLinks([dir, path.join(dir, 'src')], reads)
+      expect(links).toEqual([['src', path.join(dir, 'linked')]])
+      expect(reads).not.toContain(path.join(dir, 'linked'))
+      expect(reads).toContain(path.join(dir, 'src'))
+      // A grant given as such is never re-laid, link or not.
+      const granted = [path.join(dir, 'linked')]
+      expect(punchedLinks(granted, [...granted])).toEqual([])
+      expect(withPunchedLinks("bwrap --ro-bind / / -- sh -c 'x'", links)).toBe(
+        `bwrap --ro-bind / / --symlink src ${path.join(dir, 'linked')} -- sh -c 'x'`,
+      )
     })
 
     // Item 652: two file-shaped grants in one directory both widen to it.
@@ -1111,6 +1108,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
       // Blocks vx three seconds after each task spawn returns, so the task
       // runs before vx's next step, as on a loaded box (B-9).
       stall = false,
+      // A `bwrap` first on vx's PATH that drops `--die-with-parent`: the
+      // state bwrap's own startup race leaves (below).
+      deaf = false,
     ): Promise<{ started: number; alive: number[]; leaders: number[] }> => {
       const nonce = `${1000 + Math.floor(Math.random() * 1000)}.${process.pid}`
       await addProject(
@@ -1142,9 +1142,27 @@ Bun.spawn = (cmd, opts) => {
 }
 `,
         )
+      const shims = path.join(root, 'shims')
+      if (deaf) {
+        await mkdir(shims)
+        const real = Bun.which('bwrap')!
+        await writeFile(
+          path.join(shims, 'bwrap'),
+          // Only the task's own wrap: a probe's sandbox without the flag
+          // left the runtime's in-sandbox bridges holding the probe's
+          // stderr, and vx waited on it for good (CI, Ubuntu 26.04).
+          `#!/bin/sh\ncase "$*" in *${nonce}*) ;; *) exec ${real} "$@";; esac\nfor a; do shift; [ "$a" = --die-with-parent ] || set -- "$@" "$a"; done\nexec ${real} "$@"\n`,
+          { mode: 0o755 },
+        )
+      }
       const proc = Bun.spawn(
         [process.execPath, ...(stall ? ['--preload', preload] : []), BIN, 'run', 'dev', '--all'],
-        { cwd: root, stdout: 'ignore', stderr: 'ignore' },
+        {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          ...(deaf ? { env: { ...process.env, PATH: `${shims}:${process.env['PATH']}` } } : {}),
+        },
       )
       let pids: number[] = []
       const deadline = Date.now() + 20_000
@@ -1153,8 +1171,15 @@ Bun.spawn = (cmd, opts) => {
         if (pids.length === 2) break
         await Bun.sleep(20)
       }
-      process.kill(proc.pid, 'SIGKILL')
-      expect(await proc.exited).toBe(137)
+      let tree = ''
+      if (pids.length !== 2) {
+        // What is under vx, and what vx says when asked to stop.
+        tree = treeOf(proc.pid)
+        process.kill(proc.pid, 'SIGTERM')
+        await Promise.race([proc.exited, Bun.sleep(3_000)])
+      }
+      if (proc.exitCode === null) process.kill(proc.pid, 'SIGKILL')
+      expect(await proc.exited).toBe(pids.length === 2 ? 137 : (proc.exitCode ?? 137))
       await Promise.all(pids.map((p) => waitForDead(p, 2_000)))
       const alive = pids.filter(isAlive)
       // A session leader's session id is its own pid: the `setsid` child.
@@ -1167,7 +1192,16 @@ Bun.spawn = (cmd, opts) => {
         }
       })
       for (const p of alive) process.kill(p, 'SIGKILL')
-      return { started: pids.length, alive, leaders }
+      // What vx said, when the task never started: CI only (Ubuntu 26.04).
+      const said =
+        pids.length === 2
+          ? {}
+          : {
+              said:
+                (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()),
+              tree,
+            }
+      return { started: pids.length, alive, leaders, ...said }
     }
 
     it(
@@ -1194,6 +1228,37 @@ Bun.spawn = (cmd, opts) => {
       'a traced sandboxed one-shot task’s children die with vx that is descheduled after the spawn',
       async () => {
         expect(await survivors(true, false, true)).toEqual({
+          started: 2,
+          alive: [],
+          leaders: [],
+        })
+      },
+      TIMEOUT,
+    )
+
+    // bwrap sets the namespace's `--die-with-parent` after its monitor
+    // forks it: a monitor killed in those milliseconds (vx's `kill -9`, or
+    // vx stopping a task it just spawned) left the namespace's init, the
+    // command and the proxy bridges under init for good, the port held
+    // (observed 2 h on, 2026-11-12; reproduced with a SIGKILL 2-8 ms into
+    // bwrap's start). The watcher on fd 3 ends the namespace when vx's end
+    // closes, whatever bwrap did.
+    it(
+      'a sandboxed persistent task’s children die with vx when bwrap’s parent-death signal missed',
+      async () => {
+        expect(await survivors(true, true, false, true)).toEqual({
+          started: 2,
+          alive: [],
+          leaders: [],
+        })
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'a traced sandboxed one-shot task’s children die with vx when bwrap’s parent-death signal missed',
+      async () => {
+        expect(await survivors(true, false, false, true)).toEqual({
           started: 2,
           alive: [],
           leaders: [],

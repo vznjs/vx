@@ -332,3 +332,63 @@ it(
   },
   TIMEOUT,
 )
+
+for (const outputs of [['public/uploads/**'], ['public/uploads/**', '**/*.map']]) {
+  it(
+    `a hit makes an empty directory at an output glob's own root: ${outputs.join(' ')}`,
+    async () => {
+      // `public/uploads/**` walked from `public/uploads` and never took the
+      // root itself, so an empty one was not saved and a hit left it out:
+      // the dependant's `test -d` failed after `rm -rf public`.
+      const root = await makeWorkspace({ prefix: 'vx-empty-root-' })
+      made.push(root)
+      const dir = await addProject(root, 'app', {
+        config: `
+        export default { tasks: { gen: {
+          exec: { command: 'mkdir -p public/uploads' },
+          inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
+        } } }`,
+        files: { 'src/in.txt': 'v1\n' },
+      })
+      // A root the entry holds files under, beside it: recorded once, as a tree.
+      const web = await addProject(root, 'web', {
+        config: `
+        export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist/empty && echo real > dist/real.txt' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        } } }`,
+        files: { 'src/in.txt': 'v1\n' },
+      })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      const run = async (): Promise<string> => {
+        const r = await vx(root, [
+          'run',
+          'gen',
+          'build',
+          '--all',
+          '--cache-dir',
+          path.join(root, '.cache'),
+        ])
+        expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+        return r.out
+      }
+      await run()
+      await rm(path.join(dir, 'public'), { recursive: true })
+      await rm(path.join(web, 'dist'), { recursive: true })
+      expect(await run()).toContain('2↓')
+      expect(statSync(path.join(dir, 'public/uploads')).isDirectory()).toBe(true)
+      expect(statSync(path.join(web, 'dist/empty')).isDirectory()).toBe(true)
+      expect(existsSync(path.join(web, 'dist/real.txt'))).toBe(true)
+      expect(await run()).toContain('2✓')
+      // An empty root the entry holds files under is filled, not taken.
+      await rm(path.join(web, 'dist'), { recursive: true })
+      mkdirSync(path.join(web, 'dist'))
+      expect(await run()).toContain('1↓')
+      expect(existsSync(path.join(web, 'dist/real.txt'))).toBe(true)
+      expect(statSync(path.join(web, 'dist/empty')).isDirectory()).toBe(true)
+    },
+    TIMEOUT,
+  )
+}

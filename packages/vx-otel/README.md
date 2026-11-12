@@ -105,7 +105,8 @@ otel({
   run or a hit, `failure`, `timeout` (vx's own `timeout`, or a server's readiness wait), `skip`, `cancellation`), vx's own
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran or a failed hit whose restore threw),
   on a hit `vx.cache.restored` (`true` when it restored outputs, `false` when they were already up to date),
-  `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
+  `vx.task.hash`, the exit code (`vx.task.exit_code`; none on a skipped task, which never ran),
+  duration, CPU ms, peak RSS, and on a skipped task its root
   blocker (`vx.task.blocked_by`) or, skipped for its `exec.platforms`, what it
   needs and this machine's (`vx.task.platforms_needed`, `vx.task.platform_host`),
   on a server each dependant's worker ran `vx.task.carried`, on a timed-out one `vx.task.timed_out`, on
@@ -211,6 +212,7 @@ A collector shedding load (`429`, `502`, `503`, `504`, or a dropped
 connection) is retried twice, 200 then 800 ms apart or after the
 `Retry-After` it names, in seconds or as a date (at most 2 s), inside the end-of-run deadline; a
 deadline that passes mid-wait ends the retries and warns the last answer.
+A refused connection (nothing listening) is not retried: it warns at once.
 
 Swallowed, but not silent: an export that does not land warns once per
 signal URL, naming what happened — a collector that cannot be reached, one

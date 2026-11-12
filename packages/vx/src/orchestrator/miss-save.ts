@@ -25,6 +25,7 @@ import {
   asTrees,
   isLiteralPattern,
   outputDirPrefixes,
+  printable,
   relPosix,
   span,
   splitNegations,
@@ -32,6 +33,7 @@ import {
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { TaskInputComponent } from '../cache/index.js'
+import { declareStateHint, stateLeft, type StateStamps } from './undeclared-state.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */
 export interface OutputDirSnapshot {
@@ -141,6 +143,8 @@ export interface SaveMissArgs {
   deferSave?: ((save: () => Promise<void>, taskId: string) => Promise<boolean>) | undefined
   /** Time the save and size its artifact, for a telemetry sink: one stat. */
   measure?: boolean | undefined
+  /** The undeclared ignored files the miss stamped (`undeclared-state.ts`). */
+  state?: StateStamps | undefined
 }
 
 /** What a measured save cost, on the outcome once it lands. */
@@ -210,12 +214,35 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   // the build that ran nowhere looks like a build that ran. `files: []`
   // is a deliberate cached no-op and says nothing; a glob that matched
   // nothing is a glob against the wrong directory.
-  if (
-    a.outputs.length + a.wsOutputs.length > 0 &&
-    outputFiles.length + wsOutputFiles.length === 0 &&
-    // Empty directories are saved and a hit makes them.
-    tree.emptyDirs.length + wsTree.emptyDirs.length === 0
-  ) {
+  const noFiles =
+    a.outputs.length + a.wsOutputs.length > 0 && outputFiles.length + wsOutputFiles.length === 0
+  // Empty directories are saved and a hit makes them.
+  const empty = noFiles && tree.emptyDirs.length + wsTree.emptyDirs.length === 0
+  const dead = empty
+    ? []
+    : deadOutputGlobs(
+        a,
+        node.projectDir,
+        [...outputFiles, ...tree.emptyDirs],
+        [...wsOutputFiles, ...wsTree.emptyDirs],
+      )
+  // Outputs that came out empty beside an undeclared ignored file: an
+  // incremental tool's state said the cleaned outputs were built, and it
+  // wrote nothing (`tsc -b` after vx deleted `dist/`, which the clean left).
+  const left =
+    (noFiles || dead.length > 0) && a.state !== undefined ? stateLeft(a.state, node.projectDir) : []
+  if (left.length > 0) {
+    warnOf(log)(
+      `[vx] ${node.id}: outputs matched no files (${(noFiles ? [...a.outputs, ...a.wsOutputs] : dead).join(', ')}) ` +
+        `while ${left.map(printable).join(', ')}, which git ignores and the task declares neither input nor output, ` +
+        `survived the clean — the result stands, but is not saved: a tool that reads such a file back ` +
+        `(an incremental build's state) may take the cleaned outputs as built` +
+        declareStateHint(left),
+    )
+    markWritten(a, outputFiles, wsOutputFiles)
+    return { landed: Promise.resolve({}) }
+  }
+  if (empty) {
     // One cause is common enough to name, because the task shows no other
     // symptom: a sandboxed task with no write grant. Its writes land in the
     // sandbox's own scratch and never reach disk, and whether the shell
@@ -238,12 +265,6 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
         ]),
     )
   } else {
-    const dead = deadOutputGlobs(
-      a,
-      node.projectDir,
-      [...outputFiles, ...tree.emptyDirs],
-      [...wsOutputFiles, ...wsTree.emptyDirs],
-    )
     if (dead.length > 0) {
       const literal = [...a.outputs, ...a.wsOutputs].filter(
         (g) => !g.startsWith('!') && isLiteralPattern(g),

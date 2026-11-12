@@ -6,10 +6,10 @@
 import { lstatSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { InputsConfig } from '../config.js'
+import type { InputsConfig, TaskOutputs } from '../config.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath, type SandboxViolation } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
+import { grantPrefix, isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
 import { credentialStorePaths } from './sandbox-request.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
@@ -51,7 +51,10 @@ function grantPath(abs: string, dirs: Dirs): string {
  * bracket too: sandbox-binds.ts) is granted as the directory above it.
  */
 function grantFor(abs: string, dirs: Dirs, kind: 'read' | 'write'): string {
-  const raw = grantPath(abs, dirs)
+  return spell(grantPath(abs, dirs), kind)
+}
+
+function spell(raw: string, kind: 'read' | 'write'): string {
   const wild = raw.search(
     kind === 'write' && process.platform === 'linux' ? MOUNT_WILDCARDS : /[*?]/,
   )
@@ -61,25 +64,76 @@ function grantFor(abs: string, dirs: Dirs, kind: 'read' | 'write'): string {
 }
 
 /**
- * A write grant covers the top directory the write landed in: granting
- * `dist/a.js` alone fails the run again on `dist/b.js`. Not when the task
+ * A write grant covers the narrowest directory the next run's writes land
+ * in too: granting `dist/a.js` alone fails the run again on `dist/b.js`.
+ * That is the deeper of a declared output's directory (`src/generated/`,
+ * not `src/`) and, in `node_modules`, the tool's own directory (`.vite/`,
+ * `.cache/storybook/`, `.prisma/`): node_modules whole made every
+ * installed package writable. Else it is the top directory, and outside
+ * the project, where the top is a `..`, the path alone. Not when the task
  * reads that directory as an input: the grant would let it write its own
- * inputs, so it names the path alone. Outside the project the top is a
- * `..`, so it names the path alone there too.
+ * inputs, so it names the path alone.
  */
-function writeGrant(grant: string, isDir: boolean, inputs: readonly string[]): string {
-  const slash = grant.indexOf('/')
-  const exact = isDir && !grant.endsWith('/') ? `${grant}/` : grant
-  if (!inProject(grant) || slash === -1) return exact
-  const top = grant.slice(0, slash)
-  return inputs.some((g) => readsDir(g, top)) ? exact : `${top}/`
+function writeGrant(
+  abs: string,
+  dirs: Dirs,
+  isDir: boolean,
+  inputs: readonly string[],
+  outDirs: readonly string[],
+): string {
+  const raw = grantPath(abs, dirs)
+  const exact = spell(isDir && !raw.endsWith('/') ? `${raw}/` : raw, 'write')
+  if (!atOrUnder(abs, dirs.root)) return exact
+  const parts = raw.split('/')
+  const nm = parts.lastIndexOf('node_modules')
+  const depths = [
+    ...outDirs.filter((d) => `${raw}/`.startsWith(`${d}/`)).map((d) => d.split('/').length),
+    nm === -1 ? 0 : nm + (/^(?:\.cache|@.*)$/.test(parts[nm + 1] ?? '') ? 3 : 2),
+    inProject(raw) ? 1 : 0,
+  ]
+  const depth = Math.max(...depths)
+  if (depth === 0 || depth >= parts.length) return exact
+  const dir = parts.slice(0, depth).join('/')
+  const read =
+    inProject(dir) && inputs.some((g) => readsDir(g, dir)) && !inputs.some((g) => dropsDir(g, dir))
+  return read ? exact : spell(`${dir}/`, 'write')
 }
 
-/** Whether input glob `g` can match under top directory `top`. */
-function readsDir(g: string, top: string): boolean {
+/** The directories a task's declared outputs name, spelled as a grant names a path. */
+function outputDirs(outputs: Partial<TaskOutputs> | undefined, dirs: Dirs): string[] {
+  const at = (base: string, g: string) => grantPath(path.join(base, grantPrefix(g)), dirs)
+  return [
+    ...(outputs?.files ?? []).map((g) => at(dirs.project, g)),
+    ...(outputs?.workspaceFiles ?? []).map((g) => at(dirs.root, g)),
+  ].filter(
+    (d) =>
+      !path.isAbsolute(d) &&
+      !d.startsWith('~/') &&
+      d.split('/').some((p) => p !== '..' && p !== '.'),
+  )
+}
+
+/** Whether input glob `g` can match under directory `dir`. */
+function readsDir(g: string, dir: string): boolean {
   if (g.startsWith('!')) return false
-  const first = g.replace(/^\.\//, '').split('/')[0] ?? ''
-  return first === top || !isLiteralPattern(first)
+  const segs = g.replace(/^\.\//, '').split('/')
+  const at = dir.split('/')
+  for (let i = 0; i < at.length; i++) {
+    const seg = segs[i]
+    // The glob ends at or above `dir`: a directory named whole.
+    if (seg === undefined) return true
+    if (seg === '**') return true
+    if (isLiteralPattern(seg) ? seg !== at[i] : !new Bun.Glob(seg).match(at[i]!)) return false
+  }
+  return true
+}
+
+/** Whether input glob `g` is a `!dir/**` that takes back all of `dir`. */
+function dropsDir(g: string, dir: string): boolean {
+  const head = /^!(?:\.\/)?(.+)\/\*\*(?:\/\*)?$/.exec(g)?.[1]
+  return (
+    head !== undefined && isLiteralPattern(head) && (dir === head || dir.startsWith(`${head}/`))
+  )
 }
 
 const inProject = (grant: string): boolean =>
@@ -91,6 +145,27 @@ function keyedBy(globs: readonly string[]): (rel: string) => boolean {
   const take = globs.filter((g) => !g.startsWith('!')).map((g) => new Bun.Glob(strip(g)))
   const drop = globs.filter((g) => g.startsWith('!')).map((g) => new Bun.Glob(strip(g.slice(1))))
   return (rel) => take.some((g) => g.match(rel)) && !drop.some((g) => g.match(rel))
+}
+
+/**
+ * Whether a literal grant of the project file `abs` has vx make an empty
+ * one before the run (`prepareOutputsForBind`): it is not there, or it is
+ * a declared output, which the clean before the run takes. A task that
+ * lists its project reads that file: `bun pm pack` packed an empty
+ * `package/s-alpha-1.1.0.tgz` under a green run. Its grant is then the
+ * project, `'.'`, which makes no empty file: on Linux it is the bind the
+ * file grant made anyway, and a glob is none (a write glob covers only
+ * what exists when the task starts).
+ */
+function placeheld(abs: string, output: (rel: string) => boolean): boolean {
+  return lstatSync(abs, { throwIfNoEntry: false }) === undefined || output(path.basename(abs))
+}
+
+/** Whether read grant `g`, as written, covers directory `dir` whole: `.`, `./**`, `..`. */
+function readsWhole(g: string, dir: string): boolean {
+  const at = g.replace(/(?:^|\/)\*\*(?:\/\*)?$/, '') || '.'
+  if (!isLiteralPattern(at) || at.startsWith('~')) return false
+  return atOrUnder(dir, toRealPath(path.resolve(dir, at)))
 }
 
 /** The task proxy's refusals an `allow.network` entry cannot lift (task-proxy.ts). */
@@ -123,6 +198,21 @@ export function sandboxFix(
    * the old bytes.
    */
   inputs?: Pick<InputsConfig, 'files' | 'workspaceFiles'>,
+  /**
+   * The dependencies' declared outputs: a write there is their task's
+   * work, never a grant here (`upstreamWritesHint` says what is).
+   */
+  upstream: readonly string[] = [],
+  /** The task's own outputs: a write under one is granted its directory. */
+  outputs?: Partial<TaskOutputs>,
+  /**
+   * The projects nested in this one (absolute): `inputs.files` stops at
+   * them, and `vx lock` refuses a glob into one, so a read there is named
+   * for `inputs.workspaceFiles`.
+   */
+  nested: readonly string[] = [],
+  /** The task's `allow.read` grants, as written: whether it may list its project (`placeheld`). */
+  reads: readonly string[] = [],
 ): SandboxFix | undefined {
   const fix: Record<keyof SandboxFix, Set<string>> = {
     read: new Set(),
@@ -135,6 +225,10 @@ export function sandboxFix(
   }
   // Canonical, as a violation's path is: macOS holds `/var` for `/private/var`.
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
+  const outDirs = outputDirs(outputs, dirs)
+  const listsProject = reads.some((g) => readsWhole(g, dirs.project))
+  const output = keyedBy(outputs?.files ?? [])
+  let markers: string[] | undefined
   const keyed =
     inputs === undefined
       ? undefined
@@ -156,30 +250,91 @@ export function sandboxFix(
       // target alone stays unreachable, and the fix named it again forever.
       if (v.via !== undefined) fix.read.add(grantFor(v.via, dirs, 'read'))
       if (keyed === undefined) continue
-      if (inProject(rel)) {
+      if (inProject(rel) && !nested.some((d) => atOrUnder(v.path!, toRealPath(d)))) {
         if (!keyed.files(rel)) fix.inputs.add(taskGlobOf(rel))
       } else if (atOrUnder(v.path, dirs.root)) {
         const wsRel = relPosix(dirs.root, v.path)
         if (!keyed.workspaceFiles(wsRel)) fix.workspaceFiles.add(taskGlobOf(wsRel))
       }
-    } else if (isPerRunTemp(v.path)) continue
-    else {
+    } else if (isPerRunTemp(v)) continue
+    else if (upstream.some((u) => atOrUnder(v.path!, toRealPath(u)))) continue
+    else if (misrooted(v.path, dirs) !== undefined) {
+      // No write grant: the files belong where the tool missed its root.
+      // What it looked for is the grant (`misrootedWriteHint`).
+      markers ??= rootMarkers(dirs)
+      for (const m of markers) {
+        fix.read.add(grantFor(m, dirs, 'read'))
+        const wsRel = relPosix(dirs.root, m)
+        if (keyed !== undefined && !keyed.workspaceFiles(wsRel))
+          fix.workspaceFiles.add(taskGlobOf(wsRel))
+      }
+    } else if (isTimeNamed(v.path)) {
+      const grant = writeGrant(path.dirname(v.path), dirs, true, inputs?.files ?? [], outDirs)
+      fix.write.add(grant === './' ? (timeGlob(path.basename(v.path)) ?? grant) : grant)
+    } else {
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
-      fix.write.add(writeGrant(grantFor(v.path, dirs, 'write'), isDir, inputs?.files ?? []))
+      const grant = writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs)
+      fix.write.add(
+        !isDir && listsProject && path.dirname(v.path) === dirs.project && placeheld(v.path, output)
+          ? '.'
+          : grant,
+      )
     }
   }
+  // A refused `mkdir` and the file the task then failed to open under it
+  // (a test's new snapshot): the directory's grant covers the file.
+  for (const k of ['read', 'write'] as const) {
+    const dirsNamed = [...fix[k]].filter((g) => g.endsWith('/'))
+    for (const g of fix[k]) if (dirsNamed.some((d) => d !== g && g.startsWith(d))) fix[k].delete(g)
+  }
+  // The project named whole (`placeheld`) covers every write grant in it.
+  if (fix.write.has('.'))
+    for (const g of fix.write) if (g !== '.' && inProject(g)) fix.write.delete(g)
   const out: SandboxFix = {}
   for (const k of Object.keys(fix) as (keyof SandboxFix)[])
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-// `bun build --compile` stages `.<16 hex>-<n>.bun-build` in its cwd, a new
-// name each run: a grant naming one failed the next run on another, and a
-// Linux grant is a mount, so a glob grant covers no file made later.
-const isPerRunTemp = (abs: string): boolean => abs.endsWith('.bun-build')
+// Bun names a temp `.<prefix><hash in hex>-<8 hex>.<ext>`, a new name each run:
+// `bun build --compile`'s `.<hex>-<n>.bun-build`, `bun pm pack`'s
+// `.bun-pack.<hex>-<n>.tmp`. A grant naming one failed the next run on
+// another, and a Linux grant is a mount, so a glob grant covers no file
+// made later. Not a directory: `bun build --compile` extracts a runtime
+// into `.<hex>-<n>.tmp/`, which the task must write (schema.md grants
+// `.*.tmp/**`). Group 1 is the name before the hash (`bun-pack.`), 2 the extension.
+const BUN_TEMP = /^\.((?:[\w-]+\.)?)[0-9a-f]{12,16}-[0-9a-fA-F]{8}(\.[\w-]+)$/
+const isPerRunTemp = (v: SandboxViolation): boolean =>
+  v.path !== undefined && !v.line.startsWith('mkdir') && BUN_TEMP.test(path.basename(v.path))
+
+/** The `ignore` glob for a per-run temp's name: `*.bun-build`, `.bun-pack.*.tmp`. */
+function perRunGlob(base: string): string {
+  const [, prefix, ext] = BUN_TEMP.exec(base)!
+  return `${prefix === '' ? '' : `.${prefix}`}*${ext}`
+}
+
+// A name holding a millisecond clock (13 digits, until 2286) is new each
+// run, as vite's `vite.config.ts.timestamp-<ms>-<hex>.mjs`: granted by
+// name, the next run failed on the next. Its directory is the grant.
+const isTimeNamed = (abs: string): boolean => /(?:^|\D)\d{13}(?:\D|$)/.test(path.basename(abs))
+
+/**
+ * A time-named file in the project itself as a glob from its clock on,
+ * keeping its extension (`vite.config.ts.timestamp-*.mjs`): its directory,
+ * vite 5's config beside `vite.config.ts`, was the whole project. Undefined
+ * when the fixed part holds a character a grant cannot name literally.
+ */
+function timeGlob(base: string): string | undefined {
+  const at = /(?:^|\D)(\d{13})(?:\D|$)/.exec(base)
+  if (at === null) return undefined
+  const start = at.index + at[0].indexOf(at[1]!)
+  const ext = path.extname(base)
+  const tail = base.length - ext.length >= start + 13 ? ext : ''
+  const glob = `${base.slice(0, start)}*${tail}`
+  return isLiteralPattern(glob.replace('*', '')) ? glob : undefined
+}
 
 /**
  * The note for a write refused at a per-run temp name, which `sandboxFix`
@@ -194,9 +349,11 @@ export function perRunWriteHint(
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
   const globs = new Set<string>()
   for (const v of violations)
-    if (v.hint !== true && v.path !== undefined && isPerRunTemp(v.path) && kindOf(v) === 'write') {
-      const dir = path.posix.dirname(grantPath(v.path, dirs))
-      globs.add(dir === '.' ? '*.bun-build' : `${dir}/*.bun-build`)
+    if (v.hint !== true && v.path !== undefined && isPerRunTemp(v) && kindOf(v) === 'write') {
+      const rel = grantPath(v.path, dirs)
+      const dir = path.posix.dirname(rel)
+      const glob = perRunGlob(path.posix.basename(rel))
+      globs.add(dir === '.' ? glob : `${dir}/${glob}`)
     }
   if (globs.size === 0) return undefined
   const list = [...globs].sort().map((g) => `'${g.replace(/[\\']/g, '\\$&')}'`)
@@ -204,7 +361,111 @@ export function perRunWriteHint(
     timestamp: new Date(),
     hint: true,
     line:
-      `vx: a temp file named anew each run (bun build --compile's) cannot be granted; ` +
+      `vx: a temp file Bun names anew each run (bun build --compile's, bun pm pack's) ` +
+      `cannot be granted; ` +
       `ignore it instead: \`sandbox: { ignore: { write: [${list.join(', ')}] } }\`.`,
+  }
+}
+
+/**
+ * The files a tool looks up the tree for to find the workspace root: the
+ * package managers' lockfiles (Next's tracing root, `findRootDir`). Not
+ * `package.json`: every project has its own, so a find-up for it stops in
+ * the project.
+ */
+const ROOT_MARKERS = [
+  'bun.lock',
+  'bun.lockb',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+]
+
+/**
+ * Where a write in the project lands in an installed package's files, or
+ * the store holding them, that a directory above the project holds too:
+ * the project-relative path of that package (or store) in the directory
+ * above. A tool that finds its root by a file it looks up the tree for, and
+ * the sandbox hides, takes the project for the root and writes
+ * there what belongs above: `next build`'s standalone copy wrote
+ * `node_modules/.bun/next@…/…` under the app, and the write grant the fix
+ * named gave a green, cached build whose server could not start
+ * (2026-11-12). Undefined for any other write.
+ */
+function misrooted(abs: string, dirs: Dirs): string | undefined {
+  if (dirs.project === dirs.root || !atOrUnder(abs, dirs.project)) return undefined
+  const parts = relPosix(dirs.project, abs).split('/')
+  let end = -1
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i] !== 'node_modules') continue
+    const name = parts[i + 1]!
+    if (STORES.has(name)) end = i + 2
+    else if (/^[^._]/.test(name)) end = Math.min(parts.length, i + (name.startsWith('@') ? 3 : 2))
+    if (end !== -1) break
+  }
+  if (end === -1) return undefined
+  const held = parts.slice(0, end).join('/')
+  for (let dir = path.dirname(dirs.project); atOrUnder(dir, dirs.root); dir = path.dirname(dir)) {
+    if (lstatSync(path.join(dir, held), { throwIfNoEntry: false }) !== undefined)
+      return relPosix(dirs.project, path.join(dir, held))
+    if (dir === dirs.root) break
+  }
+  return undefined
+}
+
+/** The package stores under `node_modules`: bun's isolated linker's, pnpm's. */
+const STORES = new Set(['.bun', '.pnpm'])
+
+/** The root markers on this machine above the project, up to the workspace root. */
+function rootMarkers(dirs: Dirs): string[] {
+  const out: string[] = []
+  for (let dir = path.dirname(dirs.project); atOrUnder(dir, dirs.root); dir = path.dirname(dir)) {
+    for (const m of ROOT_MARKERS) {
+      const p = path.join(dir, m)
+      if (lstatSync(p, { throwIfNoEntry: false })?.isFile() === true) out.push(p)
+    }
+    if (dir === dirs.root) break
+  }
+  return out
+}
+
+/**
+ * The note for writes `misrooted` names, which `sandboxFix` grants no
+ * write for: the tool missed its root, and what it looks for is the
+ * grant. Undefined when there is none.
+ */
+export function misrootedWriteHint(
+  violations: readonly SandboxViolation[],
+  projectDir: string,
+  workspaceRoot: string,
+): SandboxViolation | undefined {
+  const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
+  const written: string[] = []
+  const held = new Set<string>()
+  for (const v of violations) {
+    if (v.hint === true || v.path === undefined || kindOf(v) !== 'write') continue
+    const at = misrooted(v.path, dirs)
+    if (at === undefined) continue
+    written.push(relPosix(dirs.project, v.path))
+    held.add(at)
+  }
+  if (written.length === 0) return undefined
+  const shown = written.slice(0, 3).join(', ')
+  const more = written.length > 3 ? ` and ${written.length - 3} more` : ''
+  const markers = rootMarkers(dirs).map(
+    (m) => `'${grantFor(m, dirs, 'read').replace(/[\\']/g, '\\$&')}'`,
+  )
+  const said =
+    `vx: the task wrote installed packages' files under the project (${shown}${more}), which ` +
+    `${[...held].slice(0, 2).join(', ')} holds: it took the project for its root, as a tool ` +
+    `does that finds its root by a file the sandbox hides. A write grant there is not the fix`
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      markers.length === 0
+        ? `${said}; grant a read of the file it looks for above the project.`
+        : `${said}; grant what it looks for: \`allow: { read: [${markers.join(', ')}] }\`.`,
   }
 }

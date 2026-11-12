@@ -485,6 +485,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
               p50DurationMs: t.durationMs,
               ...(t.cores === undefined ? {} : { maxCpuParallelism: t.cores }),
               ...(t.rssBytes === undefined ? {} : { maxPeakRssBytes: t.rssBytes }),
+              ...(t.slowMs === undefined ? {} : { slowDurationMs: t.slowMs }),
             })
           }
           // A run that ended first writes nothing: its cache is closing.

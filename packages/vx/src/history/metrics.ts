@@ -496,6 +496,16 @@ function unchangedKeyNote(
   ) {
     return `cache key unchanged — the previous run on this key built on a dependency it left out (${prev.blockedBy}, --exclude-dependencies), so it saved nothing and there was nothing to hit`
   }
+  // The previous run executed and passed but wrote nothing: before the
+  // prune, or a key this run saved named an eviction that never happened.
+  if (
+    (createdAt === undefined || createdAt >= this_.startedAt) &&
+    prev.status === 'success' &&
+    prev.cacheHit === 0 &&
+    !runWritesCache(db, prev.runId)
+  ) {
+    return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
+  }
   if (createdAt !== undefined && createdAt >= this_.startedAt) {
     return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
   }
@@ -508,19 +518,6 @@ function unchangedKeyNote(
     return 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
   }
   if (createdAt === undefined && prev.status === 'success' && prev.cacheHit === 0) {
-    const prevPolicy =
-      prev.runId === null
-        ? undefined
-        : (
-            db
-              .query('SELECT cache_policy AS p FROM invocations WHERE run_id = ?')
-              .get(prev.runId) as {
-              p: string
-            } | null
-          )?.p
-    if (prevPolicy !== undefined && !writesCache(prevPolicy)) {
-      return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
-    }
     return 'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
   }
   return 'cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause'
@@ -904,13 +901,15 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
         ? `this run ended ${this_.status}`
         : cur.length === 0 && !runWritesCache(db, runId)
           ? `this run did not write the cache (${NO_WRITE})`
-          : old.length === 0 && !isPassStatus(prev.status)
-            ? `the previous run ended ${prev.status}`
-            : old.length === 0 && tainted
-              ? 'the previous run ran beside a failed task'
-              : old.length === 0 && prevNoWrite
-                ? `the previous run did not write the cache (${NO_WRITE})`
-                : null
+          : cur.length === 0 && failedWithWrites(db, runId) > 0
+            ? 'this run ran beside a failed task (--continue)'
+            : old.length === 0 && !isPassStatus(prev.status)
+              ? `the previous run ended ${prev.status}`
+              : old.length === 0 && tainted
+                ? 'the previous run ran beside a failed task'
+                : old.length === 0 && prevNoWrite
+                  ? `the previous run did not write the cache (${NO_WRITE})`
+                  : null
     // An entry a remote put here arrives with no fingerprints (the artifact
     // carries none): that is why, not a prune (2026-11-11).
     const remote =

@@ -476,7 +476,10 @@ export class RemoteLane {
       seen.repeats++
       return
     }
-    this.reported.set(cls, { cause: e.message, repeats: 0 })
+    // The repeats are other artifacts, so the line that counts them must not
+    // name this one.
+    const cause = hash === undefined ? e.message : e.message.replaceAll(hash, '<hash>')
+    this.reported.set(cls, { cause, repeats: 0 })
     const what = typeof subject === 'string' ? subject : subject.batch
     const where = this.endpoint === undefined ? '' : ` ${PREPOSITION[op]} ${this.endpoint}`
     this.emit(new Error(`${op} ${what}${where} failed: ${e.message}`, { cause: e }))

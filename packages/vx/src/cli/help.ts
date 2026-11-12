@@ -389,6 +389,16 @@ export function flagHint(verb: string, arg: string): string {
   if (name === '--json' && flags.includes('--format')) return ' (did you mean --format json?)'
   // pnpm's and Turbo's short `--filter`.
   if (name === '-F') return flags.includes('--filter') ? ' (did you mean --filter?)' : ''
+  // make's and Ninja's `-j`, Nx's `--parallel`, Lerna's `--scope`, Nx's
+  // `--projects`: no edit budget reaches vx's name, and a short one was
+  // offered to the task.
+  const other =
+    /^-j\d*$/.test(name) || name === '--jobs' || name === '--parallel'
+      ? '--concurrency'
+      : name === '--scope' || name === '--projects'
+        ? '--filter'
+        : undefined
+  if (other !== undefined && flags.includes(other)) return ` (did you mean ${other}?)`
   // `vx run` prints no JSON of its own, and edit distance reached `--force`
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))

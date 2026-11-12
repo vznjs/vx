@@ -380,3 +380,62 @@ it("a server kept over many cycles does not keep the earlier cycles' runs", asyn
     await held.stop()
   }
 }, 30_000)
+
+// `vx watch e2e` over servers e2e only depends on stopped them at the end
+// of each cycle, so every edit booted the whole stack again; only a
+// requested server was held. A dependency-only server is held too, but
+// kept only while its key is: e2e against an api whose source changed
+// tested the old api. One with no input files has no key that sees an
+// edit, so it restarts each cycle. A requested one reloads itself and
+// restarts only on a config edit.
+it('a held run keeps a dependency-only server while its key is unchanged', async () => {
+  const app = await addProject(root, 'app', {
+    config: `export default { tasks: {
+      db: { inputs: { files: ['db.txt'] }, exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+      mq: { exec: { command: 'echo up >> ../../mq.log; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+      web: { inputs: { files: ['web.txt'] }, exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+      e2e: { dependsOn: ['db', 'mq'], exec: { command: 'true' } },
+    } }`,
+    files: { 'db.txt': 'v1', 'web.txt': 'v1' },
+  })
+  const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+  const cycle = async (keep?: HeldPersistent) => {
+    const r = await run({
+      cwd: root,
+      tasks: ['e2e', 'web'],
+      projects: ['app'],
+      log: quiet,
+      handleSignals: false,
+      holdPersistent: true,
+      ...(keep !== undefined ? { keep } : {}),
+    })
+    // As the watch loop does: what this cycle did not take goes.
+    await keep?.stop()
+    expect(r.ok).toBe(true)
+    return r.persistent!
+  }
+  const pids = (h: HeldPersistent): (number | undefined)[] =>
+    ['app#db', 'app#mq', 'app#web'].map((id) => h.servers.get(id)?.child.pid)
+  const all: HeldPersistent[] = []
+  try {
+    all.push(await cycle())
+    const [db1, , web1] = pids(all[0]!)
+    expect([db1, web1].every((p) => p !== undefined)).toBe(true)
+    all.push(await cycle(all[0]))
+    const [db2, , web2] = pids(all[1]!)
+    expect([db2 === db1, web2 === web1]).toEqual([true, true])
+    writeFileSync(path.join(app, 'db.txt'), 'v2')
+    writeFileSync(path.join(app, 'web.txt'), 'v2')
+    const old = all[1]!.servers.get('app#db')!.child
+    all.push(await cycle(all[1]))
+    const [db3, , web3] = pids(all[2]!)
+    expect([
+      db3 !== undefined && db3 !== db2,
+      old.signalCode ?? old.exitCode,
+      web3 === web1,
+    ]).toEqual([true, 'SIGTERM', true])
+    expect(readFileSync(path.join(root, 'mq.log'), 'utf8')).toBe('up\nup\nup\n')
+  } finally {
+    for (const h of all.reverse()) await h.stop()
+  }
+}, 30_000)

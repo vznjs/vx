@@ -46,6 +46,7 @@ const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 const pnpmBlocks = (): typeof import('./pnpm-blocks.js') => load('./pnpm-blocks.js')
 const pnpmSettings = (): typeof import('./pnpm-settings.js') => load('./pnpm-settings.js')
 const yarnSettings = (): typeof import('./yarn-settings.js') => load('./yarn-settings.js')
+const installCheck = (): typeof import('./installed.js') => load('./installed.js')
 
 export interface LockfileOptions {
   /**
@@ -62,7 +63,7 @@ export interface LockfileOptions {
 const FACTS = '\0'
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 25
+const DIGEST_VERSION = 26
 
 let memoVersion: number | undefined
 /**
@@ -175,6 +176,13 @@ const pnpmParse = lastParse((t: string) => pnpmLock().parseLockfile(t))
 const bunParse = lastParse((t: string) => bunLock().parseLockfile(t))
 const npmParse = lastParse((t: string) => npmLock().parseLockfile(t))
 const yarnParse = lastParse((t: string) => yarnLock().parseLockfile(t))
+// The install check's parse of the lockfile: the claim's, when it parsed this text.
+const PARSE: Readonly<Record<string, (t: string) => unknown>> = {
+  pnpm: pnpmParse,
+  bun: bunParse,
+  npm: npmParse,
+  yarn: yarnParse,
+}
 
 const MANAGERS = {
   pnpm: {
@@ -444,6 +452,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   >()
   const settingsPerRun = new WeakMap<object, Promise<Record<string, string>>>()
   const refusedPerRun = new WeakMap<object, Promise<void>>()
+  const installedPerRun = new WeakMap<object, Promise<void>>()
   return definePlugin(import.meta, {
     fingerprint: {
       files: [...manager.files, ...manager.settings],
@@ -485,9 +494,27 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         settingsPerRun.set(ctx, settings)
       }
       let deps: Readonly<Record<string, string>> | undefined
-      for (const { claim } of claimsAt(ctx.workspaceRoot)) {
+      for (const { file, claim } of claimsAt(ctx.workspaceRoot)) {
         deps = await claim.key(task, ctx)
-        if (deps !== undefined) break
+        if (deps === undefined) continue
+        // A key from this lockfile names its install: refused, once per run,
+        // while node_modules holds another (installed.ts).
+        let installed = installedPerRun.get(ctx)
+        if (installed === undefined) {
+          installed = Promise.resolve().then(() =>
+            installCheck().checkInstalled(
+              manager.name,
+              ctx.workspaceRoot,
+              ctx.cacheDir,
+              file,
+              digestVersion(),
+              PARSE[manager.name]!,
+            ),
+          )
+          installedPerRun.set(ctx, installed)
+        }
+        await installed
+        break
       }
       if (deps === undefined) {
         let refused = refusedPerRun.get(ctx)

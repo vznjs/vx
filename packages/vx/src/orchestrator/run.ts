@@ -2,7 +2,7 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
-import type { InputStability } from '../config.js'
+import type { InputStability, TaskConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import {
   EMPTY_LOCK,
@@ -181,10 +181,12 @@ import {
   disposeServers,
   failServer,
   holdServers,
+  keyedServers,
   onServerExit,
   sessionEnd,
   serverUsers,
   stopServer,
+  takeExitNotes,
   takeHeldServers,
   unneededServers,
 } from './persistent.js'
@@ -536,13 +538,17 @@ async function runOnBus(
       held !== undefined && options.signal !== undefined
         ? AbortSignal.any([options.signal, held])
         : (held ?? options.signal)
-    const lock = await step('vx:run-lock', () => acquireRunLock(root, { log: warnOf(log), signal }))
+    // Waiting is taking turns, a status line; only a lock vx could not take warns.
+    const wait = (line: string): void => log.status(line)
+    const lock = await step('vx:run-lock', () =>
+      acquireRunLock(root, { log: warnOf(log), wait, signal }),
+    )
     heldLock = lock
     // Another workspace's clean of a shared cache directory takes no lock of
     // this one's: it waits for this hold, and this for it. Released with the
     // run lock.
     if (sharedCacheDir !== undefined) {
-      const dir = await holdCacheDir(sharedCacheDir, 'shared', warnOf(log), signal, root)
+      const dir = await holdCacheDir(sharedCacheDir, 'shared', wait, signal, root)
       heldLock = Object.assign(
         async (): Promise<void> => {
           dir()
@@ -756,6 +762,8 @@ async function runOnBus(
   // that lands meanwhile ends the run here, having run nothing: an aborted
   // graph printed a `not run` row and a footer above `stopped` (WD-22).
   const heldBefore = takeHeldServers(options.keep?.servers, nodes, options.forwardArgs)
+  const keyedHeld: ReadonlySet<string> =
+    options.holdPersistent === true ? keyedServers(nodes) : new Set()
   for (const server of heldBefore.kept.values()) server.out.bus = bus
   if (heldBefore.stale.length > 0) {
     await terminateChildren(() => heldBefore.stale)
@@ -1331,6 +1339,7 @@ async function runOnBus(
       deferSave: saveLane.defer,
       deferredSaves,
       commandWindows: windows,
+      projectTasks: projectTasksOf(prepared.projects),
       stopSignal: stop.signal,
       failFast: failFast.signal,
       inputStability,
@@ -1630,13 +1639,25 @@ async function runOnBus(
       execute: (node, upstream) => {
         const skip = platformSkip(node)
         if (skip !== undefined) return Promise.resolve(skip)
-        const kept = keepServer(node)
-        if (kept === undefined) return executeWithDedup(node, keyUpstream(node, upstream))
+        const held = heldBefore.kept.get(node.id)
+        const up = keyUpstream(node, upstream)
+        if (held === undefined) return executeWithDedup(node, up)
         // Keyed as a started server is: a cached dependant folds its key,
         // and without it an edit to the server's sources hit stale.
-        return Promise.resolve(
-          serverKey(argsOf(node, keyUpstream(node, upstream), true, false)),
-        ).then((hash) => (hash === undefined ? kept : { ...kept, hash }))
+        return Promise.resolve(serverKey(argsOf(node, up, true, false))).then(async (hash) => {
+          // A dependency-only server whose key moved is replaced, the old
+          // one gone first so the two never hold one port.
+          if (keyedHeld.has(node.id) && (hash === undefined || hash !== held.key)) {
+            heldBefore.kept.delete(node.id)
+            held.handOver()
+            await stopServer(held.child)
+          }
+          const kept = keepServer(node)
+          if (kept !== undefined) return hash === undefined ? kept : { ...kept, hash }
+          // Computed once: the spawn reads it back.
+          if (hash !== undefined) shortCircuit.uncachedKeys.set(node.id, hash)
+          return executeWithDedup(node, up)
+        })
       },
       // An unkeyed group runs nothing, and a restore-tier hit whose tree is
       // current restores nothing: settled in place, unless a taint may ride
@@ -1718,6 +1739,7 @@ async function runOnBus(
       outcomes,
       keep: foreground || hold,
       hold,
+      keyed: keyedHeld,
       continueAlways: options.continueMode === 'always',
       endedBeforeStop: stop.endedBeforeStop,
     })
@@ -1760,6 +1782,7 @@ async function runOnBus(
     for (const c of crashedPersistent) {
       const code = typeof c.code === 'number' ? c.code : signalExitCode(c.code)
       warnOf(log)(`vx: ${c.id} exited with code ${code} before the run stopped it`)
+      for (const line of takeExitNotes(persistentRegistry.get(c.id), code)) warnOf(log)(line)
     }
     // Outputs that never came home are not an error, but a silent `dist/`
     // that is empty-or-stale would be: name every task whose bytes are
@@ -2036,6 +2059,7 @@ async function runOnBus(
         persistent: holdServers(keepAlive, {
           forwardArgs: options.forwardArgs,
           outOf: (id) => serverOuts.get(id) ?? { bus },
+          keyOf: (id) => (keyedHeld.has(id) ? outcomes.get(id)?.hash : undefined),
         }),
       }
     }
@@ -2055,6 +2079,7 @@ async function runOnBus(
               ? `; stopping ${others} other persistent task${others === 1 ? '' : 's'}`
               : ''),
         )
+        for (const line of takeExitNotes(keepAlive.children[first.i], first.code)) warnOf(log)(line)
       }
       // Under a stop the abort is already taking them down with the stop's
       // signal; a second SIGTERM in its grace cut short the graceful
@@ -2559,6 +2584,20 @@ export function projectNamed(
   if (typed.includes('/')) return undefined
   const scoped = [...projects.keys()].filter((n) => n.startsWith('@') && n.endsWith(`/${typed}`))
   return scoped.length === 1 ? scoped[0] : undefined
+}
+
+/** Each project's tasks by its directory, built on the first ask: a miss beside an ignored file. */
+function projectTasksOf(
+  projects: ReadonlyMap<string, ProjectEntry>,
+): (projectDir: string) => readonly TaskConfig[] {
+  let byDir: Map<string, readonly TaskConfig[]> | undefined
+  return (dir) => {
+    if (byDir === undefined) {
+      byDir = new Map()
+      for (const p of projects.values()) byDir.set(p.dir, Object.values(p.config.tasks ?? {}))
+    }
+    return byDir.get(dir) ?? []
+  }
 }
 
 /**

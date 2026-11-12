@@ -846,6 +846,10 @@ export function dte(options: DteOptions = {}) {
           const m = p50(id)
           return m === undefined ? undefined : m * slow
         }
+        const slowMs = (id: string): number | undefined => {
+          const m = peaks.get(id)?.slowDurationMs
+          return m === undefined ? undefined : m * slow
+        }
         const state = o.planState(ms, warmUp)
         const running = state.running
         // Each size as the plan counts it: its cores less what its
@@ -870,6 +874,7 @@ export function dte(options: DteOptions = {}) {
           // As the run books them: a plan of history alone asks for workers it then fills less.
           need: (id) => o.booking(need(id)),
           durationMs: ms,
+          slowMs,
           workers,
           running,
           sizes: planned,

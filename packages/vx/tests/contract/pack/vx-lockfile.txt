@@ -5,6 +5,7 @@ package.json
 src/bun.ts
 src/graph.ts
 src/index.ts
+src/installed.ts
 src/json.ts
 src/npm.ts
 src/pnpm-blocks.ts

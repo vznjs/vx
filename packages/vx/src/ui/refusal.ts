@@ -46,24 +46,30 @@ export function messageParts(message: string): RefusalParts {
 /**
  * `✗ <verb>  <headline>` with what is wrong, why, and the fix under it.
  * `headline` set: that is the status line and the refusal's own headline
- * joins what is wrong (`vx lock  lock not written`).
+ * joins what is wrong (`vx lock  lock not written`). `usedBy`: the configs
+ * a refusal framed in a file they import reaches, said once for all.
  */
 export function refusalNotice(
   verb: string,
   message: string,
   parts?: RefusalParts,
-  opts: { headline?: string; cwd?: string } = {},
+  opts: { headline?: string; cwd?: string; usedBy?: readonly string[] } = {},
 ): Block {
   const c = parts === undefined ? configRefusal(message, opts.cwd ?? process.cwd()) : undefined
   if (c !== undefined) {
-    const what: Inline[] = [{ style: 'strong', text: c.where }, c.problem]
+    const usedBy = opts.usedBy ?? (c.via === undefined ? [] : [c.via])
+    const what: Inline[] = [
+      { style: 'strong', text: c.where },
+      c.problem,
+      ...(usedBy.length > 0 ? [`used by ${usedBy.join(', ')}`] : []),
+    ]
     return notice({
       tone: 'error',
       verb,
       headline: opts.headline ?? 'config refused',
       what,
       ...(c.allowed !== undefined ? { why: `allowed: ${c.allowed}` } : {}),
-      code: c.frame,
+      ...(c.frame !== '' ? { code: c.frame } : {}),
       ...(c.fix !== undefined ? { fix: c.fix } : {}),
     })
   }

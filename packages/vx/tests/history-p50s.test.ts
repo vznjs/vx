@@ -140,7 +140,13 @@ it('answers the p50 and resource maxima loadFor answers for each task', async ()
       }
       return r.p50DurationMs === undefined && Object.keys(r).length === 1 ? [] : [[id, r]]
     })
-    expect([recent, [...got]]).toEqual([recent, expected])
+    // A slow duration rides beside each forecast (history-forecast-branch.test.ts).
+    const sansSlow = [...got].map(([id, { slowDurationMs, ...r }]) => {
+      if (slowDurationMs !== undefined)
+        expect(slowDurationMs).toBeGreaterThanOrEqual(r.p50DurationMs!)
+      return [id, r] as const
+    })
+    expect([recent, sansSlow]).toEqual([recent, expected])
     // CONTROL: a hit-only task carries its entry's numbers, its time the
     // longest producer's.
     if (recent >= 7) {

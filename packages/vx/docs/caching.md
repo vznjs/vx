@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v55'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v56'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -147,7 +147,13 @@ over (in order):
    this repo declares `bun()`. Each also claims its manager's install
    settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
    `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, `.npmrc`, the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions` and dependency ranges)
-   and folds each whole into every task.
+   and folds each whole into every task. The key folds the lockfile,
+   never `node_modules`, so a run after a `git pull` that brought a
+   lockfile change, with no install, would save a build made against the
+   old packages under the new lockfile's key; each plugin refuses such a
+   run, naming the package and the install that fixes it (`bun install`),
+   by the record the manager leaves of its install (`@vzn/vx-lockfile`'s
+   README, "The installed tree").
 
    The run reads each claimed root file once, before any task. A task
    in the root project may rewrite one — `pnpm install` without
@@ -314,8 +320,16 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     restored. `--affected` reflects only what git sees, so an edit to
     one never selects a task on its own (as in Nx); `vx watch` re-runs
     it on an edit there.
-    A **glob** matching nothing stays silent, and so does a literal
-    naming a path that does not exist, until it does. An ignored
+    A glob whose last segment matches an ignored file directly
+    (`.env*` over an ignored `.env.local`, `config/*.json`) still leaves
+    it out, but `vx lock` and the miss name it: `inputs leave out git-ignored
+.env.local (matched by .env*)`, with the literal that folds it. A
+    `**` glob is not asked, so an ignored `node_modules` says nothing.
+    A **glob** matching nothing stays silent while another glob of the
+    task matches a file, and so does a literal naming a path that does
+    not exist, until it does. When no glob matches (a literal does not
+    count) or the inputs resolve to nothing, the miss warns
+    `inputs matched no files (nope/**)` (see below). An ignored
     directory named outright folds every file under it; an empty one
     folds nothing.
 
@@ -776,7 +790,8 @@ Hard invariants of the remote prefetch:
   `upload <hash> to <endpoint> failed: HTTP 413`. One failure class
   (the error's `code` when it has one, else its message with the hash
   taken out) is said once per run, and the repeats are counted at
-  close: `2 more requests failed the same way: <cause>`.
+  close: `2 more requests failed the same way: <cause>`, the cause's
+  hash written `<hash>`.
 
 ### Remote uploads (background, drained at run end)
 
@@ -979,6 +994,19 @@ ignored ones, or none) and was not itself created mid-run. Cost: one
 `lstat` per input and per reached directory on a miss that saves, a
 `readdir` per directory that changed, and a `git ls-files` only when a
 candidate turned up; a hit runs no command and checks nothing.
+The line for a file that appeared (added, or a literal input absent
+before) does not say to declare it an output: vx deletes an uncommitted
+output before each run, so a snapshot vitest writes on its first run
+(`src/__snapshots__/*.snap`) was written anew every run and a changed
+value passed. It says to commit a file the task checks against, or to
+exclude a generated one from the inputs (`'!src/gen.ts'`) and then
+declare it in outputs. A committed test snapshot the task rewrote
+(`jest -u`; a path under `__snapshots__/` or ending `.snap`) gets the
+same word, commit it, never outputs or `'mutable'`.
+A sandboxed task none of whose write grants reach the file (a glob by
+its whole directory) could not have written it, so its line gives no
+outputs or `'mutable'` advice: it says another process changed the file
+during the run (an editor, a checkout) and that the next run runs on it.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run
@@ -1027,6 +1055,32 @@ writes never reached disk, or a `workspaceFiles` directory that is a
 symlink out of the workspace, whose files vx drops as outside (a project
 output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache: true` is never checked.
+
+**Undeclared state is not saved** (`orchestrator/undeclared-state.ts`).
+A git-ignored file in the task's project that is neither an input nor
+an output survives the clean before a miss, and a hit never restores
+it. An incremental tool keeps its state there: `tsc -b` writes
+`tsconfig.tsbuildinfo` beside the tsconfig, so after vx emptied `dist/`
+it emitted only the changed file, and the partial `dist/` was saved. A
+miss stamps those files, as `git status` listed them at run start,
+before its command; if one changed (and a sandbox let the task write
+it), or the outputs matched no files while one is there, the result
+stands but is not saved, and the line names the file and the fix:
+declare it in `outputs.files`, so a miss starts without it and a hit
+restores it. Of a directory git ignores whole (`.cache/`,
+`node_modules/`), only the `.tsbuildinfo` files under it count, found
+once per run, a `node_modules` searched only in its own dot directories
+(`.tmp`): a bundler's cache there (`.next/cache`) is rewritten on every
+build without cutting its outputs short. A miss costs a stat per such
+file; a hit, nothing. A file
+the command creates is not listed, so a first build is still saved
+(`tests/undeclared-state.test.ts`). The rule guards a partial output, so
+a task that declares no outputs is exempt (`eslint --cache`, `tsc
+--noEmit --incremental`), and a file another task of the project declares
+as its output is that task's. An undeclared file a task of the same
+project running alongside may have written still withholds the save (an
+unsandboxed task's write cannot be told from it); the line names that
+task, and declaring the file in its outputs ends it.
 
 **The outputs are what exists when the task's command exits.** The run
 waits for the command's own process, not for everything it started — a
@@ -1628,7 +1682,10 @@ decide it the same way, the reading ones without making or changing
 anything, so they read the entries runs use. Name a
 cache directory (`--cache-dir`, relative to the working directory; else
 `VX_CACHE_DIR`, else `cache.dir` in .vx/workspace.ts, each relative to the
-workspace root) and it holds everything, shared with no other workspace.
+workspace root) and it holds everything, with no repository store
+beside it. Two clones naming one directory share its entries; each keeps its own
+output stamps and directory snapshots (keyed by its root), so switching
+between them stays up to date instead of restoring every output.
 One under a selected task's declared outputs is refused before any task,
 naming the task: the task's output clean would delete it mid-run. Its layout:
 
@@ -1676,8 +1733,10 @@ straight to its place, its files were there empty, then short). A
 missing file in a folder that stands is copied straight to its place: a
 reader can meet it short while it copies, as the price of a restore
 that renaming each such file in made a fifth to a third slower (3,000
-files, 2026-11-06). A restore into outputs already on disk, a workspace output, a
-symlink, or a folder on another filesystem than `.vx/tmp/` takes the archive extractor, fed the tree packed back into its
+files, 2026-11-06). A symlink is laid as written, after the extractor's
+own checks of where it points; one it would refuse, a restore into outputs
+already on disk, a workspace output, or a folder on another filesystem than
+`.vx/tmp/` takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
 the save. A hit trusts the tree and checks none of its files' bytes: the store
 is vx's own, and a check could not stop a write to it. Each file's size
@@ -1808,7 +1867,9 @@ reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
 save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
-`outputs.workspaceFiles`): a tar of regular files cannot hold them, and
+`outputs.workspaceFiles`), and the empty root of a `<dir>/**` glob,
+which the glob itself does not match (`public/uploads` a task made empty
+under `public/uploads/**`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 A miss's clean removes the empty directories it finds under the outputs
 too, so one an older build left is not saved as this run's, and a hit
@@ -1979,7 +2040,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v55', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v56', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2161,14 +2222,18 @@ CREATE TABLE output_files (
 -- current. Apart from the shared entry: two worktrees overwrote each
 -- other's stamps and every switch restored. No foreign key (the entry
 -- may be the store's); prune and re-save delete what they orphan.
--- v55: and its mtime, since a restore dates a file it writes now.
+-- v55: and its mtime, since a restore dates a file it writes now. v56:
+-- `root`, a hash of the workspace root's real path in a named cache dir
+-- (0 in a workspace's own index): clones naming one dir share this
+-- index, and overwrote each other's stamps the same way.
 CREATE TABLE output_stamps (
   entry_hash  TEXT NOT NULL,
+  root        INTEGER NOT NULL,
   path        TEXT NOT NULL,
   ino         INTEGER NOT NULL,
   ctime_ms    INTEGER NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  PRIMARY KEY (entry_hash, path)
+  PRIMARY KEY (entry_hash, root, path)
 );
 
 -- Every directory under a whole-subtree output glob, with its mtime as
@@ -2177,9 +2242,10 @@ CREATE TABLE output_stamps (
 -- ingest writes none, and the first hit after it walks and records.
 CREATE TABLE output_dirs (
   entry_hash  TEXT NOT NULL,
+  root        INTEGER NOT NULL,        -- per workspace root, as output_stamps
   path        TEXT NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  PRIMARY KEY (entry_hash, path)       -- no foreign key since v32, as output_stamps
+  PRIMARY KEY (entry_hash, root, path) -- no foreign key since v32, as output_stamps
 );
 
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
@@ -2446,9 +2512,14 @@ moat.
   Workspace-root configs (`tsconfig.base.json`, etc.) are not
   auto-included — declare them via `inputs.workspaceFiles`
   (root-anchored globs).
-- **Gitignored files no entry names.** Vite and Next load `.env.local`
-  on their own; a broad glob skips it, so editing it replays the old
-  build. Name it: `files: ['src/**', '.env.local']`. Its bytes are
+- **Gitignored files no entry names.** Vite and Next load `.env`,
+  `.env.local`, `.env.[mode]` and `.env.[mode].local` on their own (a
+  production build reads `.env.production.local`), and their default
+  `.gitignore` ignores `*.local`. A broad glob skips an ignored file,
+  `.env*` included, so editing one replays the old build under a hit.
+  Name each local file outright and let `.env*` take the tracked ones:
+  `files: ['src/**', '.env*', '.env.local', '.env.production.local', '.env.development.local']`.
+  `vx lock` and a miss name an ignored file a glob skips. Its bytes are
   hashed, never stored, and a missing file is simply not an input.
   Machines with different files compute different keys, so they miss
   each other's shared entries. `--affected` ignores it (only what git
@@ -2462,6 +2533,14 @@ moat.
   under the lock. Avoid baking versions via
   `define: { X: execSync(...) }` — that value freezes into the config
   object at lock time and goes stale.
+- **Another language's manifests and lockfiles.** A lockfile plugin
+  keys JS dependencies only; name the rest in `inputs.files`: Go's
+  `go.mod` and `go.sum`, Rust's `Cargo.toml` and `Cargo.lock`, Python's
+  `pyproject.toml`, `uv.lock` and `requirements*.txt`. A sibling a
+  `replace … => ../golib` or a path dependency reads is
+  `inputs.workspaceFiles: ['golib/**']` beside its read grant. `go build`
+  stamps the commit (`vcs.revision`) into the binary, which no input
+  holds, so a hit replays the old one: build with `-buildvcs=false`.
 - **`.vx/projects.lock.json`** — globally excluded (v24); also filtered out of
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,
@@ -2545,6 +2624,12 @@ breaking footer).
 
 ### History
 
+- **v55 → v56**: stored bytes wrong under a key the change does not move
+  (2026-11-12). A task's output bytes that are not UTF-8 are kept as
+  written, in the log and the artifact; a v55 entry holds U+FFFD for them,
+  so it is never read. `SCHEMA_VERSION` moved to v56 with it:
+  `output_stamps` and `output_dirs` gained `root` in their primary key,
+  and a v55 index, which has no such column, failed every run until reset.
 - **v54 → v55**: stored bytes wrong under a key the change does not move
   (2026-11-11). No clean deletes a committed file, so a hit cannot replay
   a run that removed one under its outputs: the restore left it, and the

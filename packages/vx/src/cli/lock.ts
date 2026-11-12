@@ -26,14 +26,20 @@ import {
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
+  checkIgnoreSync,
   configErrorFrame,
+  configRefusal,
   DOT_VX_GITATTRIBUTES,
   fsRefusalHint,
+  ignoredByGlobs,
+  ignoredInputLine,
   isFsRefusal,
+  isLiteralPattern,
   isOutOfFds,
   isUserError,
   listed,
   maskedLine,
+  outputMatcher,
   relPosix,
   type RefusalParts,
   UserError,
@@ -414,10 +420,18 @@ export async function lockAfterMigration(root: string): Promise<{ code: number; 
 /** Refusals shown in full past the first; the rest are counted. */
 const ALSO_SHOWN = 4
 
+/** One refusal `notWritten` prints, and the configs it reaches when it is in a file they import. */
+interface Refused {
+  message: string
+  parts?: RefusalParts
+  usedBy: string[]
+}
+
 /**
  * The lock refused: the refusal's own parts, or its config line and frame,
  * or its message; then each other config that does not load, so one run
- * names what a repo must fix.
+ * names what a repo must fix. A field set in a file several configs import
+ * is one refusal, said once with the configs it reaches.
  */
 function notWritten(
   message: string,
@@ -426,16 +440,32 @@ function notWritten(
 ): void {
   // Masked: a config's own throw is its author's text, and quotes what
   // it read (L-11). bin.ts masks what reaches it; this is printed here.
-  ui.print(
-    'err',
-    refusalNotice('vx lock', maskedLine(message), parts, { headline: 'lock not written' }),
-  )
-  for (const e of also.slice(0, ALSO_SHOWN))
+  const groups = new Map<string, Refused>()
+  for (const [i, e] of [{ message, parts }, ...also].entries()) {
+    const masked = maskedLine(e.message)
+    const c = e.parts === undefined ? configRefusal(masked, process.cwd()) : undefined
+    const key = c?.via === undefined ? `#${i}` : `${c.where}\0${c.problem}`
+    const group = groups.get(key)
+    if (group !== undefined) group.usedBy.push(c!.via!)
+    else
+      groups.set(key, {
+        message: masked,
+        ...(e.parts !== undefined ? { parts: e.parts } : {}),
+        usedBy: c?.via === undefined ? [] : [c.via],
+      })
+  }
+  const [first, ...rest] = [...groups.values()]
+  const say = (g: Refused, headline: string) =>
     ui.print(
       'err',
-      refusalNotice('vx lock', maskedLine(e.message), e.parts, { headline: 'also refused' }),
+      refusalNotice('vx lock', g.message, g.parts, {
+        headline,
+        ...(g.usedBy.length > 1 ? { usedBy: g.usedBy } : {}),
+      }),
     )
-  const more = also.length - ALSO_SHOWN
+  say(first!, 'lock not written')
+  for (const g of rest.slice(0, ALSO_SHOWN)) say(g, 'also refused')
+  const more = rest.slice(ALSO_SHOWN).reduce((n, g) => n + Math.max(1, g.usedBy.length), 0)
   if (more > 0)
     sayNotice('error', 'vx lock', `${more} more configs refused; fix these, then run vx lock again`)
 }
@@ -570,7 +600,64 @@ async function writeLock(
         'vx lock',
         `${name}: its config holds this checkout's path (${root}), so another checkout locks it otherwise and keys it apart — use a path relative to the project, or $VX_RUN_WORKSPACE in the command`,
       )
+  for (const line of unkeyedReads(root, check)) sayNotice('warn', 'vx lock', line)
   return 0
+}
+
+/**
+ * Variables a bundler writes into what it builds: Vite's, Next's, CRA's,
+ * Astro's and SvelteKit's, Expo's, Gatsby's, Storybook's and Vue CLI's
+ * public prefixes, and `NODE_ENV`. Only these: `passThrough` exists for
+ * values that do not change the output (`CI`, a region, a token).
+ */
+const INLINED_ENV =
+  /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_)|^NODE_ENV$/
+
+/**
+ * What a task reads that its key never sees, said where the lock evaluates
+ * every task: an ignored file a glob's last segment matches (a run names it
+ * only on a miss, which a stale hit never brings, and Vite loads an ignored
+ * `.env.production.local`), and, for a cached task, a `passThrough` name a
+ * bundler inlines that `inputs.env` does not key. One git spawn at most.
+ */
+function unkeyedReads(root: string, check: GraphCheck): string[] {
+  const lines: string[] = []
+  const found: { task: string; ws: string; rel: string; glob: string }[] = []
+  for (const m of check.all) {
+    for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
+      const task = `${m.name}#${name}`
+      const own = outputMatcher(t.outputs?.files ?? [])
+      const ownWs = outputMatcher(t.outputs?.workspaceFiles ?? [])
+      // A literal entry keys the ignored file it names, as a run's walk does.
+      const named = (globs: readonly string[] | undefined, base: string) =>
+        (globs ?? [])
+          .filter((g) => !g.startsWith('!') && isLiteralPattern(g))
+          .map((g) => ({ path: relPosix(root, path.join(base, g)) }))
+      const literals = [...named(t.inputs?.files, m.dir), ...named(t.inputs?.workspaceFiles, root)]
+      for (const [abs, rel, glob] of [
+        ...ignoredByGlobs(t.inputs?.files, m.dir, root, literals),
+        ...ignoredByGlobs(t.inputs?.workspaceFiles, root, root, literals),
+      ]) {
+        const ws = relPosix(root, abs)
+        if (!own(relPosix(m.dir, abs)) && !ownWs(ws)) found.push({ task, ws, rel, glob })
+      }
+      if (t.cache !== true) continue
+      const quiet = new Set([...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])])
+      const unkeyed = (t.exec?.env?.passThrough ?? []).filter(
+        (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),
+      )
+      if (unkeyed.length > 0)
+        lines.push(
+          `${task}: exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
+        )
+    }
+  }
+  const ignored =
+    found.length === 0 ? null : checkIgnoreSync(root, [...new Set(found.map((f) => f.ws))])
+  const said = found
+    .filter((f) => ignored?.has(f.ws) === true)
+    .map((f) => ignoredInputLine(f.task, f.rel, f.glob))
+  return [...said, ...lines]
 }
 
 /**

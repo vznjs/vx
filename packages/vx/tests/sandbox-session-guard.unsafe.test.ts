@@ -7,7 +7,7 @@
 // Unsafe: it spawns vx with a sandboxed task and reads the host's procfs.
 
 import { existsSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -147,6 +147,78 @@ describe.skipIf(!available || process.platform !== 'linux')(
           alive: [],
           left: [],
         })
+      },
+      TIMEOUT,
+    )
+  },
+)
+
+// A SIGINT or SIGTERM while the runtime starts (a Ctrl-C in a sandboxed
+// run's first ~300 ms) ran its own reset before the session existed: the
+// reset found no bridge, the start then made one, and that socat outlived
+// vx for good (regr1112: 9 of 20 early stops). The signal is emitted the
+// moment the runtime registers its handler, mid-start, in a child, so the
+// test process's own handlers stay out of it.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a stop signal while the sandbox runtime starts',
+  () => {
+    let root = ''
+    beforeEach(async () => {
+      root = await makeWorkspace({ prefix: 'vx-srt-cut-' })
+    })
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true })
+    })
+
+    it(
+      'leaves no bridge socat running',
+      async () => {
+        const script = path.join(root, 'cut.ts')
+        const exec = path.resolve(import.meta.dir, '../src/exec/index.ts')
+        await writeFile(
+          script,
+          `
+          import { initSandbox } from ${JSON.stringify(exec)}
+          const once = process.once.bind(process)
+          let cut = false
+          process.once = ((ev, l) => {
+            const r = once(ev, l)
+            if (ev === 'SIGTERM' && l.name === 'cleanupHandler' && !cut) {
+              cut = true
+              queueMicrotask(() => process.emit('SIGTERM'))
+            }
+            return r
+          }) as typeof process.once
+          await initSandbox()
+          await Bun.sleep(500)
+          console.log(cut ? 'cut' : 'not cut')
+          await Bun.sleep(30_000)
+          `,
+        )
+        const proc = Bun.spawn([process.execPath, script], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'inherit',
+        })
+        let said = ''
+        let socats: { pid: number; socket: string }[] = []
+        try {
+          const reader = proc.stdout.getReader()
+          const deadline = Date.now() + 20_000
+          while (!said.includes('\n') && Date.now() < deadline) {
+            const { value, done } = await reader.read()
+            if (done) break
+            said += new TextDecoder().decode(value)
+          }
+          socats = bridges(proc.pid)
+        } finally {
+          proc.kill('SIGKILL')
+          await proc.exited
+          for (const s of socats) if (isAlive(s.pid)) process.kill(s.pid, 'SIGKILL')
+        }
+        // The positive: the signal landed inside the start.
+        expect(said.trim()).toBe('cut')
+        expect(socats).toEqual([])
       },
       TIMEOUT,
     )

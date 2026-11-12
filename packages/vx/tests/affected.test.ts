@@ -1480,6 +1480,43 @@ describe('defaultAffectedBase', () => {
     }
   })
 
+  // A rebase whose first replayed commit conflicts stops on a detached HEAD
+  // at the base branch's tip: the branch being rebased is what is checked
+  // out, not the base branch (both backends, a linked worktree too).
+  it('a rebase stopped on a conflict is on the branch it rebases, not the base branch', async () => {
+    const root = await repo('vx-affected-rebase-', 'main')
+    const tree = `${root}-wt`
+    try {
+      await git(root, 'checkout', '-q', '-b', 'feat-a')
+      await writeFile(path.join(root, 'a'), 'feat')
+      await git(root, 'commit', '-q', '-am', 'feat')
+      await git(root, 'checkout', '-q', 'main')
+      await writeFile(path.join(root, 'a'), 'main')
+      await git(root, 'commit', '-q', '-am', 'main moved')
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      await git(root, 'branch', '-q', 'feat-b', 'feat-a')
+      await git(root, 'worktree', 'add', '-q', tree, 'feat-b')
+      await git(root, 'checkout', '-q', 'feat-a')
+      for (const [cwd, backend] of [
+        [root, '--merge'],
+        [tree, '--apply'],
+      ] as const) {
+        await expect(git(cwd, 'rebase', backend, 'origin/main')).rejects.toThrow(/conflict/i)
+        expect(await defaultAffectedBase(cwd, undefined)).toBe('origin/main')
+        await git(cwd, 'rebase', '--abort')
+      }
+      // CONTROL: rebasing the base branch itself is still on it.
+      await git(root, 'checkout', '-q', '-B', 'main', 'feat-a')
+      await expect(git(root, 'rebase', 'origin/main')).rejects.toThrow(/conflict/i)
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        'no default on the base branch (main)',
+      )
+    } finally {
+      await rm(tree, { recursive: true, force: true })
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it("the remote's HEAD branch names the base branch when origin/HEAD is set", async () => {
     const root = await repo('vx-affected-symref-', 'feat')
     try {

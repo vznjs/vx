@@ -7,7 +7,7 @@
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
 import { lstatSync } from 'node:fs'
-import { lstat, readlink, realpath, stat } from 'node:fs/promises'
+import { lstat, readFile, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   CHECK_ATTR,
@@ -1485,7 +1485,9 @@ async function baseBranchRef(
         : [`refs/remotes/origin/${configured}`]),
       ...names.map((n) => `refs/heads/${n}`),
     ]),
-    text(['symbolic-ref', '--short', '-q', 'HEAD']),
+    text(['symbolic-ref', '--short', '-q', 'HEAD']).then(
+      async (h) => h || (await rebasing(workspaceRoot, text)),
+    ),
   ])
   const have = new Set(refs.split('\n'))
   const at = (branch: string, ref: string) => ({
@@ -1503,15 +1505,47 @@ async function baseBranchRef(
 }
 
 /**
+ * The branch a rebase in progress replays, or `''`: it stops on a detached
+ * HEAD (a conflict, an `edit`), the base branch's tip when the first
+ * commit stops, and that HEAD is the rebased branch, not the base branch.
+ * Asked only when HEAD is detached; `--git-path` finds a linked
+ * worktree's own git dir.
+ */
+async function rebasing(
+  workspaceRoot: string,
+  text: (args: string[]) => Promise<string>,
+): Promise<string> {
+  const paths = await text([
+    'rev-parse',
+    '--git-path',
+    'rebase-merge/head-name',
+    '--git-path',
+    'rebase-apply/head-name',
+  ])
+  for (const p of paths.split('\n')) {
+    if (p === '') continue
+    const name = await readFile(path.resolve(workspaceRoot, p), 'utf8').catch(() => '')
+    if (name.startsWith('refs/heads/')) return name.trim().slice('refs/heads/'.length)
+  }
+  return ''
+}
+
+/**
  * The base `ref` names (`<base>...HEAD` reads as `<base>`, as
- * `affectedChanges` reads it) when it is the commit HEAD is on, else
- * undefined. A base that IS HEAD can never mark anything affected — the
- * shape of a single-branch clone whose `origin/HEAD` is the branch under test.
+ * `affectedChanges` reads it) when it is the commit HEAD is on and HEAD is
+ * that branch (or detached), else undefined. A base that IS HEAD can never
+ * mark anything affected — the shape of a single-branch clone whose
+ * `origin/HEAD` is the branch under test. Another branch on the same commit
+ * (a fresh `checkout -b feature origin/main`) has only not moved past it.
  */
 export function headBase(workspaceRoot: string, ref: string): string | undefined {
   const head = revParse(workspaceRoot, 'HEAD')
   const base = HEAD_RANGE.exec(ref)?.[1] ?? ref
-  return head !== undefined && head === revParse(workspaceRoot, base) ? base : undefined
+  if (head === undefined || head !== revParse(workspaceRoot, base)) return undefined
+  if (base === 'HEAD') return base
+  const proc = spawnGitSync(['symbolic-ref', '--short', '-q', 'HEAD'], workspaceRoot, 'ignore')
+  const branch = new TextDecoder().decode(proc.stdout).trim()
+  return branch === '' || base === branch || base.endsWith(`/${branch}`) ? base : undefined
 }
 
 /** The commit `ref` names, or undefined when it does not resolve here. */

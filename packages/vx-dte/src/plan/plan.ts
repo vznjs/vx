@@ -543,6 +543,8 @@ export function decide(input: {
   readonly executed: ReadonlySet<string>
   readonly need: (id: string) => Need
   readonly durationMs: (id: string) => number | undefined
+  /** A slow run's time of each task (`PlanTask.slowMs`). */
+  readonly slowMs?: ((id: string) => number | undefined) | undefined
   readonly workers: readonly PlanWorker[]
   readonly running: ReadonlySet<string>
   readonly sizes: readonly Size[]
@@ -609,6 +611,7 @@ export function decide(input: {
     input.need,
     input.durationMs,
     input.home,
+    input.slowMs,
   ).filter((t) => !input.running.has(t.id))
   const platforms = new Map<string, number>()
   for (const t of tasks)

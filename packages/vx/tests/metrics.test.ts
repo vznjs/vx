@@ -774,6 +774,30 @@ describe('cacheKeyDiff', () => {
       )
     })
   })
+  // This run passed past a failed dependency (--continue) and saved nothing:
+  // the note blamed a prune for it.
+  it('names this run beside a failure, not a prune, when it saved no entry', () => {
+    withCache((cache) => {
+      for (const [hash, runId, startedAt, failedCount] of [
+        ['hA', 'r-1', 1000, 0],
+        ['hB', 'r-2', 2000, 1],
+      ] as const) {
+        cache.recordRunBundle({
+          runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
+          invocation: mkInvocation({
+            runId,
+            startedAt,
+            cachePolicy: 'local:rw,remote:',
+            failedCount,
+          }),
+        })
+      }
+      seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
+      expect(cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test').note).toBe(
+        'cache key changed but input fingerprints are unavailable — this run ran beside a failed task (--continue) and saved no entry; only the key change is known',
+      )
+    })
+  })
   // `--no-cache` / `--cache-policy=local:r` passes and saves nothing: the
   // note blamed a prune for it.
   it('names a run that did not write the cache, not a prune', () => {
@@ -1234,6 +1258,11 @@ describe('whyDidThisRerunQuery', () => {
     // CONTROL: a blocker that run recorded is no left-out dependency.
     expect(verdict({ prevBlockedBy: ['pkg#build', true] })).toBe(unsaved)
     expect(verdict({ prevPolicy: 'local:r,remote:' })).toBe(
+      'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit',
+    )
+    // This run saved the key the `--no-cache` run before it left unsaved:
+    // that named a prune, and no entry was ever pruned.
+    expect(verdict({ prevPolicy: 'local:,remote:', entryAt: 2500 })).toBe(
       'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit',
     )
     // CONTROL: a previous run that was a hit saved nothing of its own.
