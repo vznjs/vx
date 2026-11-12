@@ -1460,7 +1460,10 @@ with: a missing file opened to read is a read grant, never a file vx
 would create. A host `deny.network` holds gets no network grant.
 A write grants the top directory it landed in, so the next file there
 passes too, unless `inputs.files` reads that directory: then it
-grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
+grants the file alone, so the task cannot write its own inputs. A file
+named for the millisecond it was made (13 digits, vite's
+`vite.config.ts.timestamp-<ms>-<hex>.mjs`) is new each run, so its
+directory is granted in its place; a read the output depends on is a key input as well, and
 the line says so, since a grant never adds one: `inputs.files` for a
 read of the project, `inputs.workspaceFiles` (workspace-relative) for one
 elsewhere in the workspace. Applied as given, the two lines key every

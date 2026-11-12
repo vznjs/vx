@@ -68,7 +68,10 @@ denied unless `allow.read` names one.
 
    An undeclared read or write fails it, names the path, and prints a
    `fix:` line with the grants that would have allowed it
-   (`sandboxFix` in `vx last --format json`).
+   (`sandboxFix` in `vx last --format json`). On Linux a tool that only
+   stats a path (`existsSync`, `test -e`) is not traced: it sees the file
+   as missing. A failed task whose output names such a path gets a hint
+   with its grant; a task that passes on its fallback is not caught.
 
 5. **Declare the path**
 

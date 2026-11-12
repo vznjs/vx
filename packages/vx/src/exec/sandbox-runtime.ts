@@ -90,6 +90,8 @@ import {
   buildCustomConfig,
   type TaskSandboxConfig,
   linkedWriteBinds,
+  punchedLinks,
+  withPunchedLinks,
   readOnlyMasks,
   withCwd,
   scratchWrites,
@@ -1638,6 +1640,10 @@ async function wrapIn(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
+  const links = punchedLinks(
+    [...baselines.allowRead, ...args.config.allowRead],
+    customConfig.filesystem!.allowRead!,
+  )
   // The directories `punchedWriteGlobs` bound, and the globs they hold.
   const own = new Set(bindableWrites(args.config.allowWrite))
   const heldDirs = customConfig.filesystem!.allowWrite.filter((w) => !own.has(w))
@@ -1782,7 +1788,7 @@ async function wrapIn(
     )
     wrapped =
       (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
-      `exec ${readOnlyMasks(withCwd(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), cwdDenied ? baselines.cwd : undefined), scratch)}`
+      `exec ${readOnlyMasks(withCwd(withPunchedLinks(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), links), cwdDenied ? baselines.cwd : undefined), scratch)}`
   }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
@@ -2731,10 +2737,22 @@ async function runSandboxedOnce(
   let gitNoRepo = false
   // The same for `grantRemovalHint`: a run captures no output.
   const readOnlyLines: string[] = []
+  // And for `statedHiddenHint`: the last two chunks of each stream, kept
+  // by reference, read on a failure only.
+  let outTail = ['', '']
+  let errTail = ['', '']
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
-    streamToString(out, ends.onStdout, ac.signal, args.capture?.stdout ?? true),
+    streamToString(
+      out,
+      (chunk) => {
+        outTail = [outTail[1]!, chunk]
+        ends.onStdout?.(chunk)
+      },
+      ac.signal,
+      args.capture?.stdout ?? true,
+    ),
     streamToString(
       err,
       (chunk) => {
@@ -2747,6 +2765,7 @@ async function runSandboxedOnce(
         if (lines.some((l) => GIT_NO_REPO.test(l))) gitNoRepo = true
         for (const l of lines)
           if (readOnlyLines.length < 64 && READ_ONLY_FS.test(l)) readOnlyLines.push(l)
+        errTail = [errTail[1]!, chunk]
         ends.onStderr?.(chunk)
       },
       ac.signal,
@@ -2955,6 +2974,21 @@ async function runSandboxedOnce(
       ? hiddenGitHint(args.cwd, grantedRead, baselines.denyRead, args.reportWithin)
       : undefined
     if (git !== undefined && !hidden.some((p) => atOrUnder(p, git.dir))) violations.push(git.hint)
+    if (process.platform === 'linux') {
+      // tsc prints its errors on stdout.
+      const named = statedHiddenHint(
+        `${outTail.join('')}\n${errTail.join('')}`
+          .split('\n')
+          .filter((l) => NOT_FOUND.test(l))
+          .slice(-64),
+        args.cwd,
+        [...grantedRead, ...args.config.allowWrite],
+        baselines.denyRead,
+        args.reportWithin,
+        [...violations.map((v) => v.path), ...hidden, ...(git === undefined ? [] : [git.dir])],
+      )
+      if (named !== undefined) violations.push(named)
+    }
   }
 
   afterCommand(SandboxManager)
@@ -3159,6 +3193,61 @@ function hiddenGitHint(
         ? `${said} Grant it: \`allow: { read: [${jsString(path.relative(toRealPath(within), git))}] }\`.`
         : `${said} Its data lies outside the workspace, walled on purpose, so vx suggests no grant.`,
     },
+  }
+}
+
+/** An output line that may name a file its tool found missing (`statedHiddenHint`). */
+const NOT_FOUND = /does not exist|not found|no such file|cannot find|can't find|ENOENT|missing/i
+
+/**
+ * The hint for a failed task whose last output calls missing a path the
+ * sandbox hides and the host has. A tool that stats before it opens (tsc's
+ * `-p tsconfig.json`: "TS5058: The specified path does not exist") leaves
+ * no record: strace does not stop on the stat family (`TRACED_CALLS`), so
+ * the task failed with no violation and no fix. Each word of those lines
+ * is asked of the host only on a failure; one already named is skipped.
+ */
+function statedHiddenHint(
+  lines: readonly string[],
+  cwd: string,
+  granted: readonly string[],
+  walled: readonly string[],
+  within: string,
+  named: readonly (string | undefined)[],
+): SandboxViolation | undefined {
+  const deny = walled.map(toRealPath)
+  const grants = granted.map(toRealPath)
+  const seen = new Set<string>()
+  const found: string[] = []
+  for (const line of lines) {
+    for (const word of line.split(/[\s'"`,:()]+/)) {
+      const w = word.replace(/\.+$/, '')
+      if (w === '' || w.startsWith('-') || w.length > 4096) continue
+      const abs = path.resolve(cwd, w)
+      if (seen.has(abs)) continue
+      seen.add(abs)
+      if (!lstatSync(abs, { throwIfNoEntry: false })) continue
+      const real = toRealPath(abs)
+      if (!deny.some((d) => atOrUnder(real, d)) || grants.some((g) => atOrUnder(real, g))) continue
+      if (named.some((n) => n !== undefined && atOrUnder(real, n))) continue
+      if (!found.includes(real)) found.push(real)
+    }
+  }
+  if (found.length === 0) return undefined
+  const project = toRealPath(within)
+  const grantable = found.find((p) => !deny.some((w) => atOrUnder(p, w) && !atOrUnder(project, w)))
+  const said =
+    `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
+    `${found.slice(0, 5).join(', ')}${found.length > 5 ? ` and ${found.length - 5} more` : ''}. ` +
+    `A stat is not traced on Linux, so no violation names them.`
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      grantable === undefined
+        ? `${said} They are walled on purpose, so vx suggests no grant for them.`
+        : `${said} If the task reads one, grant it, e.g. ` +
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`.`,
   }
 }
 

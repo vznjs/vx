@@ -312,4 +312,15 @@ describe('sandboxFix', () => {
     expect(hint?.line).toContain("ignore: { write: ['*.bun-build', 'sub/*.bun-build'] }")
     expect(perRunWriteHint(denied.slice(2), dir, dir)).toBeUndefined()
   })
+  // vite bundles its config to `node_modules/.vite-temp/vite.config.ts.timestamp-<ms>-<hex>.mjs`,
+  // a new name each run: the fix granted that one name, and the next run
+  // failed on the next. Its directory is the grant.
+  it('grants the directory of a file named for the time it was made', () => {
+    const t = 'node_modules/.vite-temp/vite.config.ts.timestamp-1794447859277-f7b41ce9b866.mjs'
+    const denied = [v(`openat(${t}) = -1 EROFS`, ['write'], path.join(dir, t))]
+    const inputs = { files: ['src/**', 'tsconfig*.json'] }
+    expect(sandboxFix(denied, dir, dir, undefined, inputs)).toEqual({
+      write: ['node_modules/.vite-temp/'],
+    })
+  })
 })

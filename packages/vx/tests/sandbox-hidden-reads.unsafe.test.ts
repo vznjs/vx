@@ -275,3 +275,48 @@ describe.skipIf(!available)('a file the key holds that no grant reaches', () => 
     expect((await t())?.status).toBe('success')
   })
 })
+
+// `tsc -p tsconfig.json` with the file not granted stats it first, which
+// no trace records: it failed "TS5058: The specified path does not exist"
+// with no violation and no word of the sandbox. A failed task whose
+// stderr calls missing a path the sandbox hides and the host has names it.
+describe.skipIf(!available || process.platform !== 'linux')('a stat refused by the wall', () => {
+  let root: string
+  beforeEach(async () => {
+    root = realpathSync(await makeWorkspace({ prefix: 'vx-stat-hidden-' }))
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  const outcome = async (command: string) => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: { t: { exec: {
+        command: ${JSON.stringify(command)},
+        sandbox: { allow: { read: ['src/'] } },
+      } } } }\n`,
+      files: { 'tsconfig.json': '{}\n', 'src/a.ts': '' },
+    })
+    const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+    return [r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]
+  }
+  // tsc prints its diagnostics on stdout; most tools, on stderr.
+  const tsc = (file: string, to = '') =>
+    `[ -e ${file} ] || { echo "error TS5058: The specified path does not exist: '${file}'." ${to}; exit 1; }`
+
+  it('is named beside the failure, with the grant', async () => {
+    const named = await outcome(tsc('tsconfig.json'))
+    await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
+    expect(await outcome(tsc('tsconfig.json', '>&2'))).toEqual(named)
+    expect(named).toEqual([
+      'failed',
+      [
+        `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
+          `${root}/packages/app/tsconfig.json. A stat is not traced on Linux, so no violation ` +
+          "names them. If the task reads one, grant it, e.g. `allow: { read: ['tsconfig.json'] }`.",
+      ],
+    ])
+  })
+
+  it('CONTROL: a path the host lacks too is not named', async () => {
+    expect(await outcome(tsc('tsconfig.other.json'))).toEqual(['failed', []])
+  })
+})

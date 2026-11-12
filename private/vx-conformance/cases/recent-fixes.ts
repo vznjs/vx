@@ -508,4 +508,38 @@ export default [
       },
     ],
   }),
+  defineCase({
+    id: 'sandbox/write-under-node-modules-keeps-package-links',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task that may write into node_modules still resolves its linked packages',
+    why: 'pnpm installs each package as a link into a store beside it, and `tsc -b` in Vite’s template writes `node_modules/.tmp/*.tsbuildinfo`. An isolation that turns those links into plain folders once the task may write under node_modules leaves each package unable to find its own dependencies, and the build fails on files the install put there.',
+    from: ['sandbox-write-through-link.unsafe'],
+    needs: ['sandbox'],
+    workspace: one(
+      {
+        command:
+          'mkdir -p dist && cat node_modules/pkg/../dep/f > dist/out.txt && echo b > node_modules/.tmp/t.info',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+        sandbox: { read: ['.'], write: ['node_modules/.tmp/'] },
+      },
+      {
+        'src/a.txt': 'a\n',
+        'node_modules/.store/dep/f': 'a\n',
+        'node_modules/.store/pkg/index.js': '',
+        'node_modules/.tmp/.keep': '',
+      },
+    ),
+    steps: [
+      { sh: 'ln -s .store/pkg packages/a/node_modules/pkg' },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { [out('a')]: 'a\n', 'packages/a/node_modules/.tmp/t.info': 'b\n' },
+        },
+      },
+    ],
+  }),
 ]

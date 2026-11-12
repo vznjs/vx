@@ -169,7 +169,11 @@ export function sandboxFix(
       }
     } else if (isPerRunTemp(v.path)) continue
     else if (upstream.some((u) => atOrUnder(v.path!, toRealPath(u)))) continue
-    else {
+    else if (isTimeNamed(v.path)) {
+      fix.write.add(
+        writeGrant(grantFor(path.dirname(v.path), dirs, 'write'), true, inputs?.files ?? []),
+      )
+    } else {
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
@@ -186,6 +190,11 @@ export function sandboxFix(
 // name each run: a grant naming one failed the next run on another, and a
 // Linux grant is a mount, so a glob grant covers no file made later.
 const isPerRunTemp = (abs: string): boolean => abs.endsWith('.bun-build')
+
+// A name holding a millisecond clock (13 digits, until 2286) is new each
+// run, as vite's `vite.config.ts.timestamp-<ms>-<hex>.mjs`: granted by
+// name, the next run failed on the next. Its directory is the grant.
+const isTimeNamed = (abs: string): boolean => /(?:^|\D)\d{13}(?:\D|$)/.test(path.basename(abs))
 
 /**
  * The note for a write refused at a per-run temp name, which `sandboxFix`

@@ -340,8 +340,16 @@ export function keyedOutsideGrants(
 export function punchWritePaths(
   readPath: string,
   writePaths: readonly string[],
-  reachable?: (real: string) => boolean, // may a linked child's real path be bound
+  reachable?: (real: string) => boolean, // may a linked child's target be reached
 ): string[]
+// Linux: the links a punch handed over as read grants, taken out of
+// `allowRead` as `[text, at]` and laid by vx with `--symlink` before
+// bwrap's `--` (a grant in `granted` is left as it is)
+export function punchedLinks(
+  granted: readonly string[],
+  allowRead: string[],
+): Array<[string, string]>
+export function withPunchedLinks(wrapped: string, links: ReadonlyArray<[string, string]>): string
 // The write globs that matched nothing at the start, split by whether a
 // bind holds their directory (below, "A write grant that mounts nothing");
 // one a write bind holds is in neither
@@ -515,7 +523,7 @@ On Linux the command runs in a session, and so a process group, of its own insid
 
 On Linux the wrapped command is `exec /abs/bwrap …`, behind `GIT_DISCOVERY_ACROSS_FILESYSTEM=${…-1}` for a task whose grants name a `.git`: every mask and bind is a mount point, and git's discovery stops at one, so such a task read "Stopping at filesystem boundary" (2026-10-03, `sandbox-git-discovery.unsafe.test.ts`). Only such a task: git-aware tools read the variable, vx's own repo probe among them. The bwrap: SRT wrote a bare `bwrap` into a command the task's shell runs with the TASK's environment, so a dependency's `node_modules/.bin/bwrap` ran in its place and the task ran unsandboxed, exit 0; `initSandbox` now hands SRT vx's own paths for `bwrap` and `socat` (B-19). the spawn's shell execs bwrap, so bwrap is vx's own child and its `--die-with-parent` fires when vx dies, a `kill -9` included. The pid namespace then takes every descendant, one that called `setsid` too. Behind a shell that waited on it, bwrap's parent was that shell, which outlived vx, and a sandboxed server's whole tree ran on under init (turborepo#9666; item 801, `sandbox-runtime.unsafe.test.ts` › "a sandboxed server’s backgrounded and setsid children die with vx"). A one-shot task traced for violations is the same `exec bwrap …`: its strace runs inside (B-11). A persistent task is never traced. strace failing on its own (a stderr line of its own, `strace: …`) ends only the attempt: the task runs once more, with a line saying why, and the second attempt is its verdict — unless the run is stopping (`ExecuteRequest.signal` aborted): its kill already took the children it held, and a retry would be spawned after it (B-36). The second attempt runs in what the first left of `timeoutMs`, not a fresh window: `timeout` bounds the task's whole run (`schema.md`), and a fresh one let a task run near twice its timeout. Its exit is no longer the task's — a tracer that dies leaves the command running untraced — so the line, not the exit, is the sign: the trace stopped short, and a denial after it would go unreported. Inside, the tracer shares the task's pid namespace and uid, so a task can end it or reach its log through `/proc`: the violation REPORT is at the task's mercy, as it never is for enforcement, which is bwrap's mounts. The sandbox kept the first attempt's writes to what it declared, so the second redoes rather than doubles them (STATUS Next 24, `sandbox-tracer-retry.unsafe.test.ts`). A mount gone as bwrap set the sandbox up (`bwrap: Can't …: No such file or directory`: a `docker build` beside the task left a transient mount under /tmp, read from the mount table and gone by its remount; `… remount "…": Invalid argument` when the mount is gone but its directory is not yet) is retried the same way, once: the command never started (`sandbox-mount-race.unsafe.test.ts`). The trace log is the task's own file beside the task directories (L-25), removed once it is read; a second signal's exit (`process.exit`) never reaches that read, so the process's `exit` event removes every log still listed (item 848, `sandbox-runtime.unsafe.test.ts` › "a second signal exit leaves no strace log behind"). A first signal lets the run end and read the log itself (item 849).
 
-A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). `punchWritePaths` warns naming the grant; the fix is to keep writable caches out of `node_modules` (astro's `cache.dir`, vite's `cache.dir`), since SRT's config has no `--symlink`. A linked child that points INTO a write grant is that grant under a second name, mounted read-only: the warning names the link and says to grant it. A write grant spelled through a link in the project (`gen/` over `gen -> real`) resolves to `real`, and SRT skips a sibling link as a write path, so `resolveSandboxConfig` records it (`linkedWrites`) and vx binds the target at the link's spelling itself, last before bwrap's `--` (`linkedWriteBinds`, `withLinkedWrites`); the read punch goes around that bind too. A linked child whose target lies under the deny anchor (the workspace root) and inside no read grant is dropped, not bound: `node_modules -> ..` or `shared -> ../b` under a `read: ['.']` punched around `dist/` bound the root or a sibling no key answers for, where the grant bound whole keeps the link a link into the deny (item 1006's glob hit, through the punch).
+A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). SRT's config has no `--symlink`, so the punch hands a linked child over by its name and vx lays it as the link it is, before bwrap's `--` and the masks' read-only remount (`punchedLinks`, `withPunchedLinks`): pnpm's Vite template, whose `tsc -b` writes `node_modules/.tmp/*.tsbuildinfo`, failed `Cannot find package 'picomatch'` under the grant the fix line named, and a warning said to move the grant (`sandbox-write-through-link.unsafe.test.ts`). A linked child that points INTO a write grant writes through to it. A write grant spelled through a link in the project (`gen/` over `gen -> real`) resolves to `real`, and SRT skips a sibling link as a write path, so `resolveSandboxConfig` records it (`linkedWrites`) and vx binds the target at the link's spelling itself, last before bwrap's `--` (`linkedWriteBinds`, `withLinkedWrites`); the read punch goes around that bind too. A linked child whose target lies under the deny anchor (the workspace root) and inside no read grant is dropped, not bound: `node_modules -> ..` or `shared -> ../b` under a `read: ['.']` punched around `dist/` bound the root or a sibling no key answers for, where the grant bound whole keeps the link a link into the deny (item 1006's glob hit, through the punch).
 
 The strace pass closes the silent-swallow gap on Linux (tools that read
 an undeclared path, catch the `ENOENT`, and keep running): the denial is
@@ -557,7 +565,17 @@ execs and probes cost nothing measurable (688 and 58). Tracing it was tried
 again on 2026-10-23 and cost vx's own no-op run 69% (pr-bench, 495 → 835
 ms). So `test -e`, bash's PATH search and a tool that stats before it
 opens (Ubuntu 26's `cat`, uutils) still go unreported: a read through
-the shell (`cat < x`) or any tool that opens first is reported. A path is
+the shell (`cat < x`) or any tool that opens first is reported. A failed
+task whose last output (the last two chunks of each stream, kept by
+reference) calls missing a path the sandbox hides and the host has (tsc's
+`TS5058: The specified path does not exist: 'tsconfig.json'`, on stdout)
+gets a hint naming it and its grant (`statedHiddenHint`,
+`sandbox-hidden-reads.unsafe.test.ts`). A task that passes on its
+fallback (`existsSync('build.json')` false) is not caught: hidden, the
+file answers the same `ENOENT` every run, so the cache replays what the
+sandbox built, but the build differs from an unsandboxed one. macOS
+reports the stat: seatbelt's `file-read*` deny covers a file's
+`file-read-metadata`. A path is
 strace's C string, decoded: read raw, `q"t.txt` was cut at `q\` and
 `é.txt` named `\303\251.txt`, so the report and every `ignore` pattern
 missed the file (B-54). A miss under a grant is the task's own missing

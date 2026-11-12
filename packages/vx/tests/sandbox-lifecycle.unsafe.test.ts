@@ -23,7 +23,12 @@ import {
   resolveSandboxConfig,
   wrapSandboxedCommand,
 } from '../src/exec/sandbox-runtime.js'
-import { buildCustomConfig, punchWritePaths } from '../src/exec/sandbox-binds.js'
+import {
+  buildCustomConfig,
+  punchedLinks,
+  punchWritePaths,
+  withPunchedLinks,
+} from '../src/exec/sandbox-binds.js'
 import {
   bridgedPorts,
   portBridgeHostArgv,
@@ -188,60 +193,25 @@ describe.skipIf(process.platform !== 'linux')(
       expect(got).not.toContain(deepOut)
     })
 
-    it('names the symlinked entries a punch would flatten, once per grant', async () => {
-      // The one diagnostic for a failure with no other symptom. bwrap
-      // resolves a bind SOURCE, so punching a directory mounts each
-      // symlinked child as the directory it points AT — inside the
-      // sandbox the link is gone, and a package resolved through it
-      // loses the siblings its own dependencies need. That cost four
-      // days of red CI (astro / `yargs-parser`, 2026-09-09) and SRT's
-      // config carries no `--symlink`, so the warning IS the fix: it
-      // says which grant to move. Silencing it breaks nothing else in
-      // the repo, which is why this row exists.
-      await symlink(path.join(dir, 'src'), path.join(dir, 'linked'))
-      const written: string[] = []
-      const real = process.stderr.write.bind(process.stderr)
-      process.stderr.write = ((chunk: unknown): boolean => {
-        written.push(String(chunk))
-        return true
-      }) as typeof process.stderr.write
-      try {
-        punchWritePaths(dir, [path.join(dir, 'dist')])
-        // Once per grant: a second punch of the same read path is silent,
-        // so a thousand-task run says it once.
-        punchWritePaths(dir, [path.join(dir, 'dist')])
-      } finally {
-        process.stderr.write = real
-      }
-      const notices = written.filter((w) => w.includes('symlinked'))
-      expect(notices).toHaveLength(1)
-      // It has to name BOTH halves to be actionable: what got flattened
-      // and which grant to move.
-      expect(notices[0]).toContain('linked')
-      expect(notices[0]).toContain('dist')
-    })
-
-    // Item 652: the row above has a symlink in every punch it makes, so the
-    // notice could lose its `linked.length > 0` gate — and tell every
-    // punched grant it flattened "0 symlinked entries" — with the suite
-    // green.
-    it('says nothing when the punched directory holds no symlink', async () => {
-      const written: string[] = []
-      const real = process.stderr.write.bind(process.stderr)
-      process.stderr.write = ((chunk: unknown): boolean => {
-        written.push(String(chunk))
-        return true
-      }) as typeof process.stderr.write
-      try {
-        punchWritePaths(dir, [path.join(dir, 'dist')])
-        // CONTROL, on a directory of its own: one symlink there is named.
-        await symlink(path.join(dir, 'src'), path.join(dir, 'nested', 'linked'))
-        punchWritePaths(path.join(dir, 'nested'), [path.join(dir, 'nested', 'deep')])
-      } finally {
-        process.stderr.write = real
-      }
-      const notices = written.filter((w) => w.includes('symlinked'))
-      expect(notices.map((n) => n.includes(`under ${path.join(dir, 'nested')} `))).toEqual([true])
+    it('hands a symlinked entry over as the link, laid by vx, never bound by its target', async () => {
+      // bwrap resolves a bind SOURCE, so a punched link was mounted as the
+      // directory it points at, and a package resolved through it lost the
+      // siblings its own dependencies need (astro / `yargs-parser`,
+      // 2026-09-09; vite / `picomatch` under pnpm). The punch keeps the
+      // link's name; `punchedLinks` takes it out of the binds as a link.
+      await symlink('src', path.join(dir, 'linked'))
+      const reads = punchWritePaths(dir, [path.join(dir, 'dist')])
+      expect(reads).toContain(path.join(dir, 'linked'))
+      const links = punchedLinks([dir, path.join(dir, 'src')], reads)
+      expect(links).toEqual([['src', path.join(dir, 'linked')]])
+      expect(reads).not.toContain(path.join(dir, 'linked'))
+      expect(reads).toContain(path.join(dir, 'src'))
+      // A grant given as such is never re-laid, link or not.
+      const granted = [path.join(dir, 'linked')]
+      expect(punchedLinks(granted, [...granted])).toEqual([])
+      expect(withPunchedLinks("bwrap --ro-bind / / -- sh -c 'x'", links)).toBe(
+        `bwrap --ro-bind / / --symlink src ${path.join(dir, 'linked')} -- sh -c 'x'`,
+      )
     })
 
     // Item 652: two file-shaped grants in one directory both widen to it.
