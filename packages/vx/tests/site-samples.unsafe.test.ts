@@ -471,7 +471,14 @@ describe('the why pages name every component kind the key records', () => {
 })
 
 describe('the watch-mode post states what watch.ts does', () => {
-  const src = ['watch.ts', 'watch-fs.ts', 'watch-filter.ts', 'watch-set.ts', 'watch-judge.ts']
+  const src = [
+    'watch.ts',
+    'watch-loop.ts',
+    'watch-fs.ts',
+    'watch-filter.ts',
+    'watch-set.ts',
+    'watch-judge.ts',
+  ]
     .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', f), 'utf8'))
     .join('\n')
   const page = readFileSync(path.join(DOCS, 'blog', 'watch-mode.md'), 'utf8')
@@ -555,10 +562,9 @@ describe('the telemetry post shows the sink contract the source declares', () =>
 })
 
 describe('the bitsets post states what the scheduler source measured', () => {
-  const src = readFileSync(
-    path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
-    'utf8',
-  )
+  const src = ['scheduler.ts', 'ready-heap.ts', 'lanes.ts']
+    .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', 'graph', f), 'utf8'))
+    .join('\n')
   const page = readFileSync(path.join(DOCS, 'blog', 'bitsets-and-the-scheduler.md'), 'utf8')
   const flat = page.replace(/\s+/g, ' ')
   it('its closure figures are the ones computeReverseDepCount records', () => {
@@ -588,11 +594,9 @@ describe('the bitsets post states what the scheduler source measured', () => {
     expect(flat).toContain('binary max-heap')
   })
   it('its restore lane is capped where the scheduler caps it', () => {
-    expect(src).toContain(
-      'const restoreConcurrency = options.restoreConcurrency ?? 2 * concurrency',
-    )
+    expect(src).toContain('this.restoreConcurrency = restoreConcurrency ?? 2 * concurrency')
     // At 1 the two lanes share the one slot (item 1103).
-    expect(src).toContain('const serial = concurrency === 1')
+    expect(src).toContain('this.serial = concurrency === 1')
     expect(flat).toContain('twice the worker count')
     expect(flat).toContain('`--concurrency 1` stays serial')
   })
