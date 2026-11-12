@@ -210,6 +210,21 @@ it('lets a starting worker go only when the whole run has no task for it', () =>
   expect(new Set(p.placed!.values())).toEqual(new Set(['one', 'three']))
 })
 
+// PR #5271's run: GitHub gave 4 asked workers no runner for 113-138 s.
+// Planned to join at once, they held 4 lints 126-147 s while a plan let
+// an idle joined one go.
+it('keeps an idle joined worker over one the CI has not started past its warm-up', () => {
+  const busy = worker('busy', {
+    idle: false,
+    running: [{ id: 'r', cores: 4, memory: 1e8, endsIn: 10_000 }],
+  })
+  const late = worker('late', { idle: false, starting: true, overdue: true })
+  const tasks = [task('l1', 40_000, ['r'], 3.6), task('l2', 40_000, ['r'], 3.6)]
+  const p = plan(tasks, [busy, late, worker('idle')], [], WARM)
+  expect(p.release).toEqual(['late'])
+  expect(new Set(p.placed!.values())).toEqual(new Set(['busy', 'idle']))
+})
+
 it('waits a task on the running task it depends on', () => {
   const busy = worker('busy', {
     idle: false,

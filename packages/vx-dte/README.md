@@ -1079,7 +1079,9 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan gives it no task (its warm-up is spent), or,
     when its next task is two warm-ups away, with one started in its place
-    a warm-up after it left: none is let go and started again. A worker still
+    a warm-up after it left: none is let go and started again. An idle
+    worker takes the work of one its CI has not started past its warm-up,
+    which is cancelled. A worker still
     starting that the plan gives no task (asked, a worker stays while the
     plan has work for it, though the run would end no later without) is
     cancelled: the adapter
