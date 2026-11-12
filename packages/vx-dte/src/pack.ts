@@ -137,11 +137,11 @@ function first(
   return undefined
 }
 
-/** Whether a task may run on `bay`: its platform, and its whole need in the worker's size. */
+/** Whether a task may run on `bay`: its platform, and its whole need in the worker's size (`Infinity` cores: the whole worker). */
 const suits = (bay: Bay, t: PlanTask): boolean =>
   bay.open &&
   (t.platform === undefined || bay.platform === t.platform) &&
-  t.cores <= bay.cores + 1e-9 &&
+  (t.cores === Infinity || t.cores <= bay.cores + 1e-9) &&
   t.memory <= bay.memory &&
   (t.above === undefined || bay.cores > t.above.cores || bay.memory > t.above.memory)
 
@@ -200,8 +200,17 @@ export function pack(
       const { above: _, ...rest } = t
       u = rest
     }
-    const cap = of.reduce((most, k) => Math.max(most, k.cores), 0)
-    return u.above === undefined && cap > 0 && u.cores > cap ? { ...u, cores: cap } : u
+    // Over every size it could start, it takes any worker whole: held to
+    // the biggest running one, at 3.2 cores of the sizes' 3.1, the lints
+    // at 3.5 fit only that one, queued 12 deep there, and the packing
+    // ended at 113 s where the play ended at 65 s (main 440f9dc,
+    // 2026-11-12).
+    const sized = fresh.filter((f) => t.platform === undefined || f.platform === t.platform)
+    const cap = (sized.length > 0 ? sized.map((f) => ({ cores: f.cpu })) : of).reduce(
+      (most, k) => Math.max(most, k.cores),
+      0,
+    )
+    return u.above === undefined && cap > 0 && u.cores > cap ? { ...u, cores: Infinity } : u
   })
   const n = tasks.length
   const index = new Map(tasks.map((t, i) => [t.id, i]))
@@ -409,14 +418,15 @@ export function pack(
       // A new one, the smallest it fits, joining as the task is ready (or
       // later, as `late` asks): taken when none has room by its latest start,
       // or when keeping one idle until then costs more than a warm-up.
-      const size = kinds.find(
+      // The smallest it fits, or one taking a whole worker the biggest.
+      const open = kinds.filter(
         (s) =>
           left.get(s.name)! > 0 &&
           (t.platform === undefined || s.platform === t.platform) &&
-          s.cpu >= t.cores - 1e-9 &&
           s.memory >= t.memory &&
           (t.above === undefined || s.cpu > t.above.cores || s.memory > t.above.memory),
       )
+      const size = open.find((s) => s.cpu >= t.cores - 1e-9) ?? open.at(-1)
       if (size !== undefined) {
         const nth = asked.get(size.name) ?? 0
         const w = warm(size.name, nth)
@@ -472,7 +482,7 @@ export function pack(
       }
       if (strict && bestAt + bestMs > latest(i) + t.ms! + 1e-6) return undefined
       const to = bestAt + bestMs
-      hold(best, bestAt, to, t.cores, t.memory)
+      hold(best, bestAt, to, Math.min(t.cores, best.cores), t.memory)
       for (const sv of t.servers ?? []) {
         const d = serving(sv.id)
         const from = best.serves.get(sv.id)
