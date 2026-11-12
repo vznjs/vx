@@ -1,17 +1,14 @@
-// The output fingerprint index: per-entry `output_files` rows (size, mode,
-// millisecond mtime), this workspace's `output_stamps` (inode and ctime) and
-// `output_dirs` rows (directory mtimes), and the two
-// proofs a cache hit runs against the tree before deciding not to restore.
-// Owns its statements over the store's handle; `Cache` delegates, and
-// writes the file rows through `replaceFileRows` inside its own save
+// The output fingerprint index: per-entry `output_files` rows (size, mode, ms
+// mtime), this workspace's `output_stamps` (inode, ctime) and `output_dirs`
+// (directory mtimes), and the two proofs a hit runs before deciding not to
+// restore. `Cache` delegates; file rows are written inside its save
 // transaction.
 
 /** `mtime_ms` of a recorded output prefix that did not exist when the snapshot was taken. */
 const ABSENT_DIR_MTIME = -1
 /**
- * `mtime_ms` of a recorded output prefix that was a regular file: a literal
- * output naming one (`public/app.js`). The set under it is the file alone
- * while it stays a regular file; its bytes are the per-file check's.
+ * `mtime_ms` of a recorded output prefix that was a regular file (a literal
+ * output naming one): its set is the file alone.
  */
 const FILE_PREFIX_MTIME = -2
 
@@ -35,19 +32,16 @@ export const LINK_MODE = 0o120000
 export const DIR_MODE = 0o040000
 
 /**
- * A directory the entry records no mode for holds what it was left with: the
- * save records only a mode that withholds what 0755 grants
- * (`narrowDirModes`), and a restore here leaves 0755 minus the umask.
+ * A directory with no recorded mode holds what it was left with: the save
+ * records only modes narrower than 0755 (`narrowDirModes`).
  */
 export function wideDirMode(disk: number): boolean {
   return (disk & 0o755) === 0o755 || modeMatches(disk, 0o755)
 }
 
 /**
- * The directories on the way to `rows` below their namespace that have no
- * row of their own, by row path without the slash: those the entry records
- * no mode for besides its empty ones. Climbs from each row until a
- * directory already met.
+ * The directories on the way to `rows` with no row of their own: those the
+ * entry records no mode for besides its empty ones.
  */
 export function rowAncestors(rows: readonly OutputFileRow[]): string[] {
   const seen = new Set<string>()
@@ -88,9 +82,8 @@ const FILES_STAMPS =
   'LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.root = ? AND s.path = f.path'
 const FILES_JOINED = `${FILES_SELECT} FROM json_each(?) q JOIN output_files f ON f.entry_hash = q.value ${FILES_STAMPS}`
 /**
- * A row as this index loads it: with its stamp, the mtime the file carried
- * when stamped, which a restore that wrote the file dated now and so is
- * not the row's saved one.
+ * A row as loaded, with its stamp's mtime: a restore that wrote the file dated
+ * it now.
  */
 interface StampedRow extends OutputFileRow {
   stampMtimeMs?: number
@@ -108,48 +101,37 @@ export class OutputIndex {
   private readonly stampOutputFile: ReturnType<Database['prepare']>
   private readonly deleteStamps: ReturnType<Database['prepare']>
   /**
-   * Snapshots taken and not yet written, the last per hash. A snapshot is
-   * read by the NEXT run's hit check, never by the task that took it, so
-   * the rows land in one transaction at the first read, at prune, at
-   * stats or at close — the way `accessed_at` bumps do — instead of one
-   * commit per task: 1,000 of them were the whole `output dir snapshots`
-   * stage, 47–72 ms at run end.
+   * Snapshots not yet written, last per hash. Read only by the next run's hit
+   * check, so they land in one transaction at the first read, prune, stats or
+   * close, like `accessed_at` bumps: a commit per task was 47-72 ms at run end
+   * for 1,000.
    */
   private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
   /**
-   * The modes of the directories a `true` `outputDirsCurrent` just
-   * lstat'ed, by absolute path: the `isOutputsCurrent` a hit asks next, in
-   * the same synchronous check, reads an ancestor's mode here, not from a
-   * second stat of the same directory (1,600 of a 9,603-task warm run's
-   * stats). Taken by that call whatever it asks, so a mode is
-   * never read past it.
+   * Directory modes a `true` `outputDirsCurrent` just read, so the
+   * `isOutputsCurrent` asked next in the same check reads them here, not by a
+   * second stat. Taken by that call, never read past it.
    */
   private dirModes: Map<string, number> | undefined
   /**
-   * Stamps taken and not yet written, flushed with the directory snapshots:
-   * inode and ctime by path, so a batch read finds a row's stamp without
-   * scanning them all (rows × stamps was ~7 s for a 40,000-file output).
+   * Stamps not yet written, flushed with the snapshots, by path: rows × stamps
+   * scanning was ~7 s for a 40,000-file output.
    */
   private readonly pendingStamps = new Map<string, Map<string, [number, number, number]>>()
   /**
-   * The rows the last batched probe loaded, by hash: a hit's restore and
-   * the stamps after it read their rows here instead of the index, twice
-   * a restore. Read for path, size, mode and mtime only; a stamp
-   * taken since is the overlay `loadOutputFilesBatch` adds. Dropped when
-   * an entry's rows are replaced, and replaced by the next probe; rows
-   * held for an entry since pruned serve a restore that finds no artifact.
-   * Another process's save under the same key is the race the hit's own
-   * skip-restore check, which reads these rows, already runs.
+   * The rows the last batched probe loaded: a hit's restore and the stamps
+   * after it read here, not the index. A stamp taken since is overlaid by
+   * `loadOutputFilesBatch`. Dropped when an entry's rows are replaced; rows of
+   * a since-pruned entry serve a restore that finds no artifact.
    */
   private readonly held = new Map<string, readonly OutputFileRow[]>()
   private rootKey: number | undefined
 
   /**
-   * `memo` false: a cache directory this run cannot write. A restore still
-   * serves the hit, but its stamps and directory snapshots are not queued:
-   * the next lookup flushed them and failed its task (SQLITE_READONLY).
-   * `sharedRoot`: the workspace root of an index other workspaces may
-   * share (a named cache dir), which keys this one's stamps and snapshots.
+   * `memo` false: an unwritable cache dir. Hits still restore, but stamps and
+   * snapshots are not queued (the flush failed the task with SQLITE_READONLY).
+   * `sharedRoot`: the root of an index other workspaces may share, which keys
+   * this one's stamps and snapshots.
    */
   constructor(
     private readonly db: Database,
@@ -185,10 +167,9 @@ export class OutputIndex {
   }
 
   /**
-   * The `root` column of this workspace's stamps and snapshots: clones
-   * naming one cache dir share one index, and the disk each saw is its
-   * own. A hash of the real path, so every spelling of the root agrees;
-   * 0 for an index only this workspace opens. Taken at the first read.
+   * The `root` column of this workspace's stamps and snapshots: clones sharing
+   * a cache dir each saw their own disk. A hash of the real path; 0 for an
+   * index only this workspace opens.
    */
   private get root(): number {
     if (this.rootKey !== undefined) return this.rootKey
@@ -205,9 +186,8 @@ export class OutputIndex {
   }
 
   /**
-   * Drop the stamps and snapshots of `hashes`, every workspace's, whose entries
-   * are gone: they live apart from the entry (it may be another database's),
-   * so no cascade takes them.
+   * Drop every workspace's stamps and snapshots of `hashes`: they live apart
+   * from the entry, so no cascade takes them.
    */
   forget(hashes: readonly string[]): void {
     if (hashes.length === 0) return
@@ -230,9 +210,8 @@ export class OutputIndex {
   }
 
   /**
-   * Replace an entry's file rows. Called INSIDE the store's save transaction,
-   * so an entry and its fingerprints land together (an UPDATE on the same
-   * hash refreshes rather than appends). Answers the files' bytes.
+   * Replace an entry's file rows, inside the store's save transaction, so entry
+   * and fingerprints land together. Answers the files' bytes.
    */
   replaceFileRows(hash: string, rows: ReadonlyArray<[string, number, number, number]>): number {
     // A stamp taken for the rows this replaces describes their files, not these.
@@ -265,22 +244,17 @@ export class OutputIndex {
   }
 
   /**
-   * `distinct`: `hashes` as a JSON array with no hash twice, which the probe
-   * has to hand. The rows are then joined from it, not filtered by an `IN`
-   * that builds a lookup of every hash first: ~1.5 ms of 8,002 hits, and as
-   * much again for `loadOutputDirsBatch`. A repeated hash
-   * would repeat its rows, hence the caller's promise.
+   * `distinct`: `hashes` as a JSON array with no repeats, which the probe has.
+   * Rows are joined from it, not filtered by an `IN` that builds a lookup first
+   * (~1.5 ms of 8,002 hits).
    */
   loadOutputFilesBatch(hashes: readonly string[], distinct?: string): Map<string, OutputFileRow[]> {
     const out = new Map<string, OutputFileRow[]>()
     if (hashes.length === 0) return out
-    // `db.query` (not `db.prepare`) caches the compiled statement keyed by
-    // the SQL text, which `inHashes` keeps to two: the single-hash warm-hit
-    // path (called up to 3× per hit) reuses one instead of recompiling.
-    // A reader in the same process (`vx watch`'s next cycle, a test) sees
-    // the stamps taken, not only the ones flushed: overlaid below from
-    // memory. A flush here committed a transaction per read, and a restore
-    // reads its rows twice.
+    // `db.query` caches the compiled statement by SQL text, which `inHashes`
+    // keeps to two. A reader in this process sees stamps taken, not only
+    // flushed: overlaid from memory, since a flush per read committed a
+    // transaction each.
     let sql = FILES_JOINED
     let params: Array<string | number> = [distinct!, this.root]
     if (distinct === undefined || hashes.length === 1) {
@@ -327,19 +301,13 @@ export class OutputIndex {
   }
 
   isOutputsCurrent(projectDir: string, expected: readonly StampedRow[]): boolean {
-    // Empty manifest case (a task produced no outputs) → trivially
-    // current; the on-disk tree under projectDir is whatever it was,
-    // and nothing was supposed to land there.
+    // No outputs: trivially current.
     const known = this.dirModes
     this.dirModes = undefined
     if (expected.length === 0) return true
-    // statSync, deliberately. The async form measured faster when a hit
-    // walked its whole output tree; since the directory
-    // short-circuit (`outputDirsCurrent`) a warm hit stats a handful of
-    // paths, and each async stat costs a thread-pool round trip the
-    // scheduler cannot overlap away (its concurrency is the worker count).
-    // Re-measured on 1,000 warm hits, interleaved A/B: the run
-    // graph stage 100 → 54 ms, the whole process 422 → 368 ms.
+    // statSync, deliberately: since the directory short-circuit a warm hit
+    // stats a handful of paths, and an async stat's thread-pool round trip
+    // cannot be overlapped (1,000 warm hits: 422 to 368 ms).
     const results = expected.map((e) => {
       try {
         if (e.mode === LINK_MODE) return linkCurrent(path.join(projectDir, e.path), e)
@@ -354,23 +322,16 @@ export class OutputIndex {
         return (
           s.size === e.size &&
           modeMatches(s.mode, e.mode) &&
-          // MILLISECOND comparison (sub-ms tolerance for the float
-          // round-trip through utimes), against the mtime the file carried
-          // when stamped: the row's after a save; after a restore, now for
-          // a file it wrote and the file's own where its bytes stood.
+          // Millisecond comparison (sub-ms tolerance for the utimes round trip)
+          // against the mtime the file carried when stamped.
           Math.abs(s.mtimeMs - (e.stampMtimeMs ?? e.mtimeMs)) < 1 &&
-          // And the file is the one THIS machine last saw under this
-          // entry: two entries whose outputs carry one fixed mtime (a
-          // `tar -x`, `cp -p`, SOURCE_DATE_EPOCH) and one size matched
-          // each other's rows, and a hit left the other entry's bytes in
-          // place under a green run. No task sets a ctime; the
-          // inode is weaker than it looks, since ext4 gives a restore's new
-          // file the inode the clean freed. A row without a stamp
-          // (an ingest, a changed file at stamping) is never current. The
-          // residual: a same-size rewrite, in place or as a new file on the
-          // same inode, inside the coarse clock tick of the stamp, with the
-          // mtime forged back or written in that tick (a save's or a
-          // restore's file is dated in it).
+          // And the file is the one this machine last saw: two entries whose
+          // outputs share a fixed mtime (`tar -x`, `cp -p`, SOURCE_DATE_EPOCH)
+          // and size matched each other's rows, leaving the other's bytes under
+          // a green run. No task sets a ctime; the inode is weak (ext4 reuses a
+          // freed one). A row without a stamp is never current. Residual: a
+          // same-size rewrite inside the stamp's clock tick with the mtime
+          // forged back.
           e.ino !== undefined &&
           s.ino === e.ino &&
           Math.floor(s.ctimeMs) === e.ctimeMs
@@ -391,14 +352,11 @@ export class OutputIndex {
   }
 
   /**
-   * Snapshot every directory under each of `prefixes` for `hash`, for a
-   * tree that equals the entry's set. The run takes it at run end, when
-   * the directories are past the racy window, and by then another task or
-   * process may have written into them: `holds` is asked with the files
-   * the walk saw, and a tree it refuses records nothing.
-   * Symlinked directories are not descended (the output walk refuses them
-   * too). Over `OUTPUT_DIRS_CAP` directories the one row left says so; on
-   * any error the rows are cleared. Either way the next hit keeps the walk.
+   * Snapshot every directory under `prefixes` for `hash`, for a tree equal to
+   * the entry. Taken at run end, past the racy window, when others may have
+   * written: `holds` is asked with the files seen, and a refused tree records
+   * nothing. Symlinked dirs are not descended. Over `OUTPUT_DIRS_CAP` one row
+   * says so; on any error rows are cleared. Either way the next hit walks.
    */
   async recordOutputDirs(
     hash: string,
@@ -410,10 +368,8 @@ export class OutputIndex {
     const rows: Array<[string, number]> = []
     const files: string[] = []
     let overCap = false
-    // Synchronous, like the stats of `isOutputsCurrent`: an async lstat and
-    // readdir per directory are two thread-pool round trips, and a
-    // root-anchored glob's snapshot of solid's 47 directories took 4 ms of
-    // the run's end that way.
+    // Synchronous: async lstat and readdir per directory are two thread-pool
+    // round trips.
     const walk = (rel: string, isPrefix = false): boolean => {
       const abs = path.join(projectDir, rel)
       let st
@@ -421,10 +377,9 @@ export class OutputIndex {
         st = lstatSync(abs)
       } catch {
         // A declared prefix the task never produced (`build/**` beside
-        // `dist/**`, medusa's `.medusa/**`) is recorded ABSENT: the check
-        // then asks that it still not exist. Refusing the snapshot instead
-        // made every such task re-glob its outputs on every warm hit — all
-        // 83 of medusa's, 210 ms of a 2.5 s no-op.
+        // `dist/**`) is recorded absent, checked to still not exist. Refusing
+        // the snapshot made every such task re-glob each warm hit (medusa: 210
+        // ms of a 2.5 s no-op).
         if (isPrefix) {
           rows.push([rel, ABSENT_DIR_MTIME])
           return true
@@ -481,14 +436,11 @@ export class OutputIndex {
   }
 
   /**
-   * Stamp `hash`'s rows with each file's inode, ctime and mtime, once a
-   * save or a restore has left the tree equal to the entry. `dated` holds
-   * the mtime a restore left each file with, by row path (now for one it
-   * wrote); any other file is held to its row's. A file whose size, mode or mtime no
-   * longer matches, or whose whole-second ctime is still racy, is left
-   * unstamped, so a write that landed since is never vouched for; the
-   * next hit restores. Written with the directory
-   * snapshots, in one transaction.
+   * Stamp `hash`'s rows with each file's inode, ctime and mtime once a save or
+   * restore left the tree equal to the entry. `dated` holds the mtime a restore
+   * left each file with. A file whose size, mode or mtime differs, or whose
+   * whole-second ctime is still racy, stays unstamped, so a later write is
+   * never vouched for. Written with the snapshots in one transaction.
    */
   recordOutputStamps(
     hash: string,
@@ -513,12 +465,9 @@ export class OutputIndex {
           s.size === e.size &&
           modeMatches(s.mode, e.mode) &&
           (Math.abs(s.mtimeMs - at) < 1 || secondOf(s.mtimeMs, at)) &&
-          // Git's racy-clean rule: on a file system that keeps whole
-          // seconds, a same-size rewrite later in the second of this
-          // write keeps every field the stamp holds, and every run after
-          // it said up-to-date over the wrong bytes. Such a file is left
-          // unstamped; the next hit re-checks it. A sub-second ctime is
-          // trusted as before: a rewrite moves it.
+          // Git's racy-clean rule: on whole-second file systems a same-size
+          // rewrite in the same second keeps every stamped field. Left
+          // unstamped; a sub-second ctime is trusted.
           (stampGrainMs(s.ctimeMs) === 0 || s.ctimeMs < now - racyWindowMs(s.ctimeMs, 0))
         ) {
           stamps.set(e.path, [s.ino, Math.floor(s.ctimeMs), Math.floor(s.mtimeMs)])
@@ -545,9 +494,8 @@ export class OutputIndex {
     if (this.pendingStamps.size > 0) {
       const stamps = [...this.pendingStamps]
       this.pendingStamps.clear()
-      // IMMEDIATE: the body reads `entries` before it writes, and a
-      // deferred transaction that did could not wait for the lock
-      // (run-history.ts).
+      // IMMEDIATE: the body reads before it writes, and a deferred transaction
+      // could not wait for the lock (run-history.ts).
       this.db
         .transaction(() => {
           for (const [hash, rows] of stamps) {
@@ -631,30 +579,20 @@ export class OutputIndex {
 }
 
 /**
- * Artifact + `output_files` namespace prefix for workspace-root-
- * anchored outputs (`outputs.workspaceFiles`). Project outputs
- * keep their bare project-relative `path` rows; workspace rows store
- * the full `workspace-outputs/<rel-to-root>` tar entry name as the
- * discriminator — least-invasive row format, no schema change. A
- * project output dir literally named `workspace-outputs/` would
- * collide with the namespace; the name is reserved, and a project
- * output glob under it is refused at load (config-schema.ts), a file
- * another glob reaches there at save (`planArtifact`).
+ * Artifact and `output_files` prefix for `outputs.workspaceFiles`: project
+ * outputs keep project-relative rows, workspace rows the full
+ * `workspace-outputs/<rel-to-root>` entry name, with no schema change. The name
+ * is reserved: a project glob under it is refused at load (config-schema.ts), a
+ * file another glob reaches there at save (`planArtifact`).
  */
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
 /**
- * Per-output-file fingerprint, scoped by the cache entry that
- * produced it. Batch-loaded once at the top of a run via
- * `loadOutputFilesBatch(hashes)` so the orchestrator's "is this
- * tree already current?" probe becomes an in-memory Map lookup
- * plus N parallel stat calls.
+ * Per-output-file fingerprint by entry, batch-loaded once per run
+ * (`loadOutputFilesBatch`), so the currency probe is a Map lookup plus stats.
  *
- * `path` is project-relative (e.g. `dist/index.js`), matching how
- * outputs are addressed under `<projectDir>/` — except workspace
- * outputs, which carry the full `workspace-outputs/<rel-to-root>`
- * tar entry name (see `WORKSPACE_OUTPUT_PREFIX`); callers split on
- * the prefix and anchor those at the workspace root.
+ * `path` is project-relative, except workspace outputs, which carry the
+ * `WORKSPACE_OUTPUT_PREFIX` entry name and anchor at the root.
  */
 export interface OutputFileRow {
   path: string
@@ -662,9 +600,8 @@ export interface OutputFileRow {
   mode: number
   mtimeMs: number
   /**
-   * The inode and ctime THIS machine saw the file carry after the save or
-   * restore that left it equal to the entry (`recordOutputStamps`).
-   * Absent until then, and from any ingest: a row without them is never
+   * The inode and ctime this machine saw after the save or restore that left
+   * the file equal to the entry. Absent until then and on any ingest: never
    * current.
    */
   ino?: number
@@ -679,29 +616,22 @@ export interface OutputDirRow {
 
 /**
  * More directories than this under a task's output prefixes: record
- * nothing, keep the walk. 256 refused payload's `@payloadcms/ui#build`
- * (535 directories, 4,069 files), which then paid the refused snapshot's
- * walk AND the output glob on every warm no-op — 65 ms of a 320 ms run
- *. Rows are 60 bytes each and the check is one stat per
- * directory, so the cap is a bound on pathological trees, not a budget.
+ * nothing, keep the walk. Rows are 60 bytes and the check one stat per
+ * directory, so the cap bounds pathological trees, not a budget (256
+ * refused a real 535-directory build, which then walked every warm hit).
  */
 export const OUTPUT_DIRS_CAP = 8192
 
 /**
- * `mtime_ms` of the one row a snapshot over `OUTPUT_DIRS_CAP` leaves: never
- * current, so the hit walks, and it tells the hit not to snapshot again.
- * Cleared rows sent every hit through the walk AND a capped snapshot.
+ * `mtime_ms` of the row a snapshot over `OUTPUT_DIRS_CAP` leaves: never
+ * current, so the hit walks and does not snapshot again.
  */
 export const OUTPUT_DIRS_OVER_CAP = -3
 
 /**
- * A directory whose mtime lies within this many ms of the snapshot is RACY
- * and the whole snapshot is dropped. File timestamps are coarse on Linux
- * (a kernel tick, up to 10 ms), so a write landing in the same tick as the
- * one that made the directory's recorded mtime leaves the mtime unchanged
- * and the change invisible — git's index distrusts stats this young for
- * the same reason (a stray survived a hit on a Linux CI job).
- * The next hit walks, and once the tree is older than the window it is
- * recorded for good.
+ * A directory mtime within this many ms of the snapshot is racy and drops the
+ * snapshot: Linux timestamps are a kernel tick coarse (up to 10 ms), so a
+ * same-tick write is invisible (git distrusts young stats for this too). Once
+ * older, the tree is recorded.
  */
 export const OUTPUT_DIRS_RACY_MS = 50
