@@ -85,6 +85,7 @@ import {
   OWN_DIR_HINT,
   refuseForeignCacheDir,
   restorableOutput,
+  restorableOutputDir,
   relPosix,
   span,
   splitTaskId,
@@ -2478,7 +2479,7 @@ export class Cache implements CacheLayer {
     projectDir: string,
     workspaceRoot: string | undefined,
     verify: (provided: ReadonlySet<string>) => void,
-    accept: ((name: string) => boolean) | undefined,
+    accept: ((name: string, dir?: boolean) => boolean) | undefined,
     dated: Map<string, number>,
     absentDirs: Set<string>,
   ): Promise<void> {
@@ -4593,8 +4594,9 @@ function assertArtifactNames(
   }
   if (declared === undefined) return
   const ok = declaredName(declared)
+  const dirSet = new Set(dirs)
   for (const name of names) {
-    if (!ok(name)) {
+    if (!ok(name, dirSet.has(name))) {
       throw new CorruptArtifactError(
         hash,
         `artifact carries ${name}, which is not one of the task's declared outputs`,
@@ -4696,14 +4698,16 @@ export function storedLog(blob: Uint8Array | null): string {
  * again at every restore, so an entry that reached the local store by any
  * route still writes nothing it should not (2026-10-16).
  */
-function declaredName(declared: DeclaredOutputs): (name: string) => boolean {
+function declaredName(declared: DeclaredOutputs): (name: string, dir?: boolean) => boolean {
   const isFile = restorableOutput(declared.files)
   const isWsFile = restorableOutput(declared.workspaceFiles, 'workspace')
-  return (name) =>
+  const isDir = restorableOutputDir(declared.files)
+  const isWsDir = restorableOutputDir(declared.workspaceFiles, 'workspace')
+  return (name, dir = false) =>
     name.startsWith('outputs/')
-      ? isFile(name.slice('outputs/'.length))
+      ? (dir ? isDir : isFile)(name.slice('outputs/'.length))
       : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
-        ? isWsFile(name.slice(WORKSPACE_OUTPUT_PREFIX.length))
+        ? (dir ? isWsDir : isWsFile)(name.slice(WORKSPACE_OUTPUT_PREFIX.length))
         : true
 }
 

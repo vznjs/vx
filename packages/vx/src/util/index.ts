@@ -53,6 +53,8 @@ export {
   outputMatcher,
   outputExcluded,
   restorableOutput,
+  restorableOutputDir,
+  treeRoot,
   printable,
   hasControl,
   relPosix,

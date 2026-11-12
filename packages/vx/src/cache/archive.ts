@@ -1096,7 +1096,7 @@ export async function extractArtifactStream(
   destDir: string,
   workspaceDest: string | undefined,
   verify?: (provided: ReadonlySet<string>) => void,
-  accept?: (name: string) => boolean,
+  accept?: (name: string, dir?: boolean) => boolean,
   /** The workspace root whose `.vx/tmp/` stages the entries; absent, each stages beside its target. */
   stageRoot?: string,
   /** Handed what `scanArtifact` would read of the same bytes, once their sum has checked. */
@@ -1164,7 +1164,7 @@ export async function extractArtifactStream(
     check.done()
     if (fold !== undefined) onScan!(fold.result())
     for (const name of dirs) {
-      if (accept !== undefined && !accept(name)) {
+      if (accept !== undefined && !accept(name, true)) {
         throw new ArchiveSecurityError(
           `archive directory is not one of the task's declared outputs: ${name}`,
         )

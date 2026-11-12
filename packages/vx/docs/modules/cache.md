@@ -132,7 +132,7 @@ export interface CacheLayer {
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (outputs.workspaceFiles); omitted → only `outputs/` restores.
   // outputs: the task's declared globs; an entry outside them fails the
-  // whole restore (restorableOutput).
+  // whole restore (restorableOutput; an empty directory, restorableOutputDir).
   restoreOutputs(
     hash: string,
     projectDir: string,
