@@ -50,7 +50,7 @@ export const RANKED = [...TOOLS].sort(
 
 const TOOL_NAMES: Record<string, string> = {
   vx: 'vx',
-  turbo: 'Turborepo',
+  turbo: 'Turbo',
   nx: 'Nx',
   'vite-task': 'Vite Task',
   nix: 'Nix',

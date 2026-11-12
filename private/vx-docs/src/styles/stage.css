@@ -1,6 +1,6 @@
-/* The landing (2026-11-12): one dark world. The hero is a stage (the
-   graph in perspective over an endless grid), every band below is a panel
-   of light on black. Display type is set huge and tight; labels are mono
+/* The landing (2026-11-12): one dark world under a retro sunset. The hero
+   is a stage (the graph, gently tilted, before a striped sun sinking into
+   an endless grid), every band below is a panel of light on black. Display type is set huge and tight; labels are mono
    capitals. Tones match the graph: core chartreuse, reads cyan, remotes
    orange, Distributed task execution violet, reports pink.
    Motion lives in .js / .play, which only scripts set. */
@@ -12,6 +12,10 @@
   --tone-dte: #b794ff;
   --tone-report: #f472b6;
   --void: #05060a;
+  --sun-1: #f4ff9a;
+  --sun-2: #c6f84e;
+  --sun-3: #3fe0a0;
+  --sun-4: #22b8d6;
   --panel: rgba(16, 19, 26, 0.72);
   --hair: rgba(148, 170, 200, 0.14);
   --nav-h: var(--sl-nav-height, 4rem);
@@ -33,7 +37,12 @@
   --tone: var(--tone-report);
 }
 :root:has(.vx-stage-page) header.header {
-  background: var(--void);
+  background: #040b08;
+}
+/* The stage and the bands run edge to edge, under the nav. */
+:root:has(.vx-stage-page) main .content-panel {
+  padding: 0;
+  border: 0;
 }
 
 /* Display type shared by the hero and every band. */
@@ -49,11 +58,13 @@
 .vx-stage-page h1 em,
 .vx-stage-page h2 em {
   font-style: normal;
+  text-shadow: none;
   background: linear-gradient(
     100deg,
-    var(--tone-core) 10%,
-    var(--tone-read) 60%,
-    var(--tone-dte) 95%
+    var(--sun-1) 5%,
+    var(--sun-2) 35%,
+    var(--sun-3) 65%,
+    var(--sun-4) 95%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -70,9 +81,14 @@
 /* ================= the stage ================= */
 .stage {
   position: relative;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% 34%, rgba(198, 248, 78, 0.07), transparent 70%),
-    var(--void);
+  background: linear-gradient(
+    #040b08 0%,
+    #07170f 30%,
+    #0d2e1c 52%,
+    #17502d 58%,
+    #030805 58.2%,
+    #020503 100%
+  );
 }
 .stage-pin {
   position: relative;
@@ -87,8 +103,8 @@
   position: absolute;
   inset: 40% -50% -20%;
   background-image:
-    linear-gradient(rgba(94, 224, 255, 0.16) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(94, 224, 255, 0.16) 1px, transparent 1px);
+    linear-gradient(rgba(120, 245, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 245, 150, 0.3) 1px, transparent 1px);
   background-size: 64px 64px;
   transform: perspective(500px) rotateX(62deg);
   transform-origin: 50% 0;
@@ -116,7 +132,6 @@
   color: #dfe6da;
   font: 500 13px/1.2 var(--font-body);
   text-decoration: none;
-  backdrop-filter: blur(6px);
 }
 .stage-release:hover {
   border-color: var(--tone-core);
@@ -155,7 +170,7 @@
   max-width: 34em;
   margin: 28px 0 0;
   font: 400 clamp(17px, 1.6vw, 21px) / 1.5 var(--font-body);
-  color: #aeb8ad;
+  color: #dbe8de;
 }
 .stage-actions {
   display: flex;
@@ -235,27 +250,9 @@
   z-index: 1;
   margin: 24px auto 0;
   max-width: 1240px;
-  perspective: 1500px;
-  perspective-origin: 50% 20%;
 }
 .stage-tilt {
-  transform: rotateX(30deg);
   transform-origin: 50% 40%;
-  transform-style: preserve-3d;
-}
-.stage-tilt::before {
-  /* a pool of light under the graph */
-  content: '';
-  position: absolute;
-  inset: 8% 4% 0;
-  background: radial-gradient(
-    ellipse at 50% 45%,
-    rgba(198, 248, 78, 0.1),
-    rgba(94, 224, 255, 0.05) 40%,
-    transparent 70%
-  );
-  filter: blur(10px);
-  pointer-events: none;
 }
 .map-svg {
   position: relative;
@@ -331,7 +328,6 @@
 .map-svg .node.on .face {
   fill: color-mix(in srgb, var(--tone) 16%, #0d1016);
   stroke: var(--tone);
-  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--tone) 60%, transparent));
 }
 .map-svg .node.on .edge {
   fill: color-mix(in srgb, var(--tone) 55%, #05060a);
@@ -339,14 +335,17 @@
 .map-svg .node.on .node-sub {
   fill: var(--tone);
 }
-.stage.telling .map-svg .node:not(.on) {
-  opacity: 0.55;
+/* Unlit boxes dim their ink, not their face, so the sun stays behind them. */
+.stage.telling .map-svg .node:not(.on) :is(.edge, .node-label, .node-sub) {
+  opacity: 0.5;
+}
+.stage.telling .map-svg .node:not(.on) .face {
+  stroke-opacity: 0.5;
 }
 .map-svg .core .face {
   stroke: var(--tone-core);
   stroke-width: 2;
   fill: #0e1309;
-  filter: drop-shadow(0 0 26px rgba(198, 248, 78, 0.35));
 }
 .map-svg .core-label {
   font: 700 50px var(--font-display);
@@ -427,16 +426,7 @@
   display: none;
 }
 
-/* ---- with the script: a pinned stage you scroll through ---- */
-.stage.js {
-  height: 560vh;
-}
-.stage.js .stage-pin {
-  position: sticky;
-  top: var(--nav-h);
-  height: calc(100svh - var(--nav-h));
-  padding-block: 0;
-}
+/* ---- with the script: the sky moves and the run plays on its own ---- */
 .stage.js .stage-sky {
   display: block;
   position: absolute;
@@ -445,57 +435,48 @@
   height: 100%;
 }
 .stage.js .stage-copy {
-  position: absolute;
-  inset: clamp(24px, 6vh, 72px) max(16px, env(safe-area-inset-right, 0px)) auto
-    max(16px, env(safe-area-inset-left, 0px));
-  margin: 0 auto;
-  will-change: transform, opacity;
+  position: relative;
+  z-index: 3;
 }
 .stage.js .stage-world {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  max-width: none;
+  max-width: 1180px;
+  margin: 40px auto 0;
+  animation: rise-in 1.2s var(--ease-out) 0.15s backwards;
 }
-.stage.js .stage-tilt {
-  position: absolute;
-  left: 50%;
-  top: 56%;
-  width: min(1180px, 92vw);
-  transform: translate(-50%, -50%) translateY(22%) rotateX(62deg) scale(1.02);
-  will-change: transform;
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(48px);
+  }
 }
 .stage.js .stage-story {
-  position: absolute;
-  left: max(16px, env(safe-area-inset-left, 0px));
-  right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: max(20px, env(safe-area-inset-bottom, 0px));
-  margin: 0 auto;
-  opacity: 0;
+  max-width: 1180px;
+  margin: 28px auto 0;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  pointer-events: none;
 }
 .stage.js .story-kicker {
   display: none;
 }
+/* Every step sits in one cell, so the panel is as tall as the tallest and
+   the page never jumps as the steps change. */
 .stage.js .story-steps {
-  display: block;
-  max-width: 640px;
+  display: grid;
+  grid-template-columns: minmax(0, 640px);
 }
 .stage.js .story-steps li {
-  display: none;
-}
-.stage.js .story-steps li.on {
-  display: block;
+  grid-area: 1 / 1;
+  visibility: hidden;
   padding: 18px 22px;
   border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
   border-left: 3px solid var(--tone);
   border-radius: 10px;
-  background: rgba(8, 10, 14, 0.78);
-  backdrop-filter: blur(10px);
+  background: rgba(8, 10, 14, 0.92);
+}
+.stage.js .story-steps li.on {
+  visibility: visible;
   animation: step-in 0.45s var(--ease-out);
 }
 .stage.js .story-title {
@@ -514,7 +495,6 @@
 .stage.js .story-rail {
   display: flex;
   gap: 6px;
-  pointer-events: auto;
 }
 .story-rail button {
   all: unset;
@@ -529,34 +509,7 @@
   background: var(--tone);
   box-shadow: 0 0 10px var(--tone);
 }
-.stage.js .stage-hint {
-  display: block;
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  margin: 0;
-  transform: translateX(-50%);
-  font: 500 11px var(--font-mono);
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: #7f8a85;
-}
-.stage.js .stage-story,
-.stage.js .stage-story * {
-  pointer-events: none;
-}
-.stage.js .story-rail,
-.stage.js .story-rail button {
-  pointer-events: auto;
-}
 @media (max-width: 720px) {
-  .stage.js {
-    height: 520vh;
-  }
-  .stage.js .stage-tilt {
-    width: min(92vw, calc((100svh - var(--nav-h)) * 0.5));
-    top: 50%;
-  }
   .stage h1 .l2 {
     padding-left: 0;
   }
@@ -564,7 +517,7 @@
     flex-direction: column;
     align-items: stretch;
   }
-  .stage.js .story-steps li.on {
+  .stage.js .story-steps li {
     padding: 14px 16px;
   }
   .stage.js .specs {

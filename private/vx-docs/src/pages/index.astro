@@ -30,16 +30,17 @@ const latest = (await posts('releases'))[0]!
 // ---- the scoreboard: every tool's passes out of every case, rounded down ----
 const caseCount = RESULTS.cases.length
 const vxAll = RESULTS.scores['vx']!.all!
+// Highest score first.
 const board = TOOLS.map((t) => {
   const all = RESULTS.scores[t]!.all!
   return { tool: t, name: toolName(t), pct: percent(all), sup: supports(all), h: (all.pass / all.of) * 100 }
-})
+}).sort((x, y) => y.h - x.h)
 
 // ---- the race: what each tool adds over the ideal run, from bench.json ----
 const bench = (key: string): string => FIGURES.get(key)!
 const RACERS = [
   ['vx', 'vx'],
-  ['turbo', 'Turborepo'],
+  ['turbo', 'Turbo'],
   ['nx', 'Nx'],
   ['vt', 'Vite Task'],
 ] as const
@@ -102,7 +103,7 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">Conformance · {caseCount} cases · {TOOLS.length} tools</p>
           <h2>Their tests.<br /><em>Our score.</em></h2>
-          <p class="band-sub">Every test in vx, Turborepo, Nx, Vite Task, Nix and moon, turned into one suite and run sandboxed against each tool.</p>
+          <p class="band-sub">Every test in vx, Turbo, Nx, Vite Task, Nix and moon, turned into one suite and run sandboxed against each tool.</p>
         </header>
         <div class="score">
           <div class="score-big">

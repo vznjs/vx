@@ -19,15 +19,6 @@ const layouts: LayoutName[] = ['wide', 'narrow']
         viewBox={`${-L.pad} -6 ${L.width + L.pad * 2} ${L.height + 20}`}
         aria-hidden="true"
       >
-        <defs>
-          <filter id={`map-glow-${name}`} x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="4" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
         <g class="wires">
           {WIRES.map((w) => (
             <path class:list={['wire', { dashed: w.dashed }]} data-wire={w.id} d={wirePath(name, w)} />
@@ -72,7 +63,7 @@ const layouts: LayoutName[] = ['wide', 'narrow']
             </g>
           ))}
         </g>
-        <g class="packets" filter={`url(#map-glow-${name})`} />
+        <g class="packets" />
       </svg>
     )
   })

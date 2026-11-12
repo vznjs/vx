@@ -42,7 +42,7 @@ const ROW_LABELS = new Set([
   'Cold build',
   'Cold build: CPU the runner burns',
 ])
-const TOOLS = new Set(['vx', 'Turborepo', 'Nx', 'Vite Task'])
+const TOOLS = new Set(['vx', 'Turbo', 'Nx', 'Vite Task'])
 const cellsOf = (line: string): string[] =>
   line
     .trim()
@@ -94,7 +94,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
       for (const para of text.split(/\n\s*\n/)) {
         const flat = para.replace(/\s+/g, ' ').replace(TOKEN, 'TOKEN')
         for (const m of flat.matchAll(
-          /\b(?:vx|Turborepo|Nx|Vite Task)(?:'s)? (?:adds|finishes in|takes) (\d[\d,.]*\s?(?:ms|s|min)\b)/g,
+          /\b(?:vx|Turbo|Turborepo|Nx|Vite Task)(?:'s)? (?:adds|finishes in|takes) (\d[\d,.]*\s?(?:ms|s|min)\b)/g,
         ))
           typed.push(`${path.relative(site, file)}: ${m[0]}`)
       }

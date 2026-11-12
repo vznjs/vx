@@ -48,7 +48,7 @@ export interface BenchData {
 const ALIAS: Record<string, Runner> = { vx: 'vx', turbo: 'turbo', nx: 'nx', vt: 'vite-task' }
 export const NAMES: Record<Runner, string> = {
   vx: 'vx',
-  turbo: 'Turborepo',
+  turbo: 'Turbo',
   nx: 'Nx',
   'vite-task': 'Vite Task',
 }
