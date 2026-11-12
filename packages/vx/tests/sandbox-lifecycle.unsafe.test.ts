@@ -9,7 +9,7 @@
 
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { freePort } from './helpers/free-port.js'
-import { existsSync, readdirSync, readFileSync, readlinkSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import os from 'node:os'
@@ -1148,7 +1148,10 @@ Bun.spawn = (cmd, opts) => {
         const real = Bun.which('bwrap')!
         await writeFile(
           path.join(shims, 'bwrap'),
-          `#!/bin/sh\nfor a; do shift; [ "$a" = --die-with-parent ] || set -- "$@" "$a"; done\nexec ${real} "$@"\n`,
+          // Only the task's own wrap: a probe's sandbox without the flag
+          // left the runtime's in-sandbox bridges holding the probe's
+          // stderr, and vx waited on it for good (CI, Ubuntu 26.04).
+          `#!/bin/sh\ncase "$*" in *${nonce}*) ;; *) exec ${real} "$@";; esac\nfor a; do shift; [ "$a" = --die-with-parent ] || set -- "$@" "$a"; done\nexec ${real} "$@"\n`,
           { mode: 0o755 },
         )
       }
@@ -1170,40 +1173,8 @@ Bun.spawn = (cmd, opts) => {
       }
       let tree = ''
       if (pids.length !== 2) {
-        // CI-only (Ubuntu 26.04): what is under vx, what the shim does
-        // alone, and what vx says when asked to stop.
+        // What is under vx, and what vx says when asked to stop.
         tree = treeOf(proc.pid)
-        // Where vx's threads wait, and what it holds open.
-        for (const t of readdirSync(`/proc/${proc.pid}/task`)) {
-          const read = (f: string) => {
-            try {
-              return readFileSync(`/proc/${proc.pid}/task/${t}/${f}`, 'utf8').trim()
-            } catch (err) {
-              return String(err)
-            }
-          }
-          const stat = read('stat')
-          tree += `\nthread ${t} ${stat.charAt(stat.lastIndexOf(')') + 2)} wchan=${read('wchan')} syscall=${read('syscall').split(' ')[0]}`
-        }
-        try {
-          const fds = readdirSync(`/proc/${proc.pid}/fd`).map((fd) => {
-            try {
-              return readlinkSync(`/proc/${proc.pid}/fd/${fd}`)
-            } catch {
-              return '?'
-            }
-          })
-          tree += `\nfds: ${fds.filter((f) => !f.startsWith('anon_inode') && !f.startsWith('socket:') && !f.startsWith('pipe:')).join(' ')}`
-        } catch (err) {
-          tree += `\nfds: ${String(err)}`
-        }
-        if (deaf) {
-          const alone = Bun.spawnSync(
-            [path.join(shims, 'bwrap'), '--ro-bind', '/', '/', '--unshare-all', '/bin/true'],
-            { stdout: 'pipe', stderr: 'pipe' },
-          )
-          tree += `\nshim alone: exit ${alone.exitCode} ${alone.stderr.toString().trim()}`
-        }
         process.kill(proc.pid, 'SIGTERM')
         await Promise.race([proc.exited, Bun.sleep(3_000)])
       }

@@ -359,14 +359,12 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
       expect(lines.filter((l) => l.includes('outside the project'))).toEqual([])
       const named = lines
         .filter((l) => l.includes("a dependency's declared outputs"))
-        // Seatbelt logs a process's second refusal only now and then.
-        .map((l) =>
-          (process.platform === 'linux'
-            ? ['../tools/out/bin/tool.txt', '../tools/root.txt']
-            : ['../tools/out/bin/tool.txt']
-          ).every((p) => l.includes(p)),
-        )
-      expect(named.join() === 'true' ? named : { named, lines, log: fixture.log }).toEqual([true])
+        .map((l) => ['../tools/out/bin/tool.txt', '../tools/root.txt'].every((p) => l.includes(p)))
+      // Seatbelt logs a short task's refusals only now and then (CI: one of
+      // two, or none), and the hint names what was logged: on macOS the
+      // check is that no write grant is offered, above.
+      if (process.platform === 'linux')
+        expect(named.join() === 'true' ? named : { named, lines, log: fixture.log }).toEqual([true])
     },
     TIMEOUT,
   )
