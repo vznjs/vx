@@ -297,6 +297,8 @@ export interface PruneResult {
   bytesFreed: number
   orphans: number // row-less artifacts the policy takes by file time, and temps an hour old
   orphanBytes: number
+  historyRows?: number // run history and memo rows past 30 days dropped; absent when none went
+  historyBytes?: number // bytes the index files shrank by once those rows' pages went back
 }
 
 export interface CacheKeyInput {

@@ -1408,6 +1408,14 @@ export async function defaultAffectedBase(
   if (found === undefined) {
     const noHistory = noHistoryRefusal(workspaceRoot)
     if (noHistory !== undefined) throw noHistory
+    const failed = fetchFailures.get(workspaceRoot)
+    if (failed !== undefined) {
+      throw new UserError(
+        `--affected has no base here: fetching it from origin failed (${failed}): ` +
+          'make origin reachable, or name the base: --affected=origin/main',
+        'VX_E_AFFECTED_BASE',
+      )
+    }
     throw new UserError(
       `--affected has no base here: ${baseBranch === undefined ? 'no origin/HEAD, main or master' : `no ${baseBranch} or origin/${baseBranch}`} ` +
         'to compare with: set `baseBranch`, or name the base: --affected=origin/main',
@@ -1586,7 +1594,7 @@ async function verifyTreeRef(workspaceRoot: string, ref: string): Promise<void> 
 
 /**
  * The merge base of `ref` and HEAD, or undefined when there is none. A
- * shallow clone fetches what it needs from origin (`reachMergeBase`):
+ * clone that lacks it fetches what it needs from origin (`reachMergeBase`):
  * a plugin reading the base branch's history (shared timings) asks this,
  * not `git merge-base`, so a one-commit checkout serves it too.
  */
@@ -1621,16 +1629,23 @@ async function gitMergeBase(workspaceRoot: string, ref: string): Promise<string 
  * both tips deepened 1, 2, 4… commits until git finds the merge base;
  * commits and trees only, as `--name-only` reads no blob. A pull request's
  * merge checkout has its base as HEAD's parent, so it needs one fetch.
- * Undefined when the clone is whole, has no origin, or the fetch failed.
+ * A whole clone that fetched one branch (GitLab's, at any GIT_DEPTH)
+ * lacks only a base it cannot name: that tip's history is fetched, so
+ * the merge base is here at once. Undefined when the clone has the base,
+ * has no origin, or the fetch failed.
  */
 async function reachMergeBase(workspaceRoot: string, ref: string): Promise<string | undefined> {
-  if (!isShallow(workspaceRoot)) return undefined
+  if (!isShallow(workspaceRoot)) {
+    if (HEAD_ANCESTOR.test(ref) || revParse(workspaceRoot, ref) !== undefined) return undefined
+    const tip = await fetchTip(workspaceRoot, ref, false)
+    return tip === undefined ? undefined : gitMergeBase(workspaceRoot, tip)
+  }
   const head = revParse(workspaceRoot, 'HEAD')
   if (head === undefined) return undefined
   const ancestor = HEAD_ANCESTOR.test(ref)
   let tip = ancestor ? undefined : revParse(workspaceRoot, ref)
   if (tip === undefined && !ancestor) {
-    tip = await fetchTip(workspaceRoot, ref)
+    tip = await fetchTip(workspaceRoot, ref, true)
     if (tip === undefined) return undefined
   }
   if (tip !== undefined && parentsOf(workspaceRoot, head).includes(tip)) return tip
@@ -1650,25 +1665,36 @@ async function reachMergeBase(workspaceRoot: string, ref: string): Promise<strin
   return undefined
 }
 
-/** `ref`'s commit fetched from origin at depth 1, or undefined when origin cannot name it. */
-async function fetchTip(workspaceRoot: string, ref: string): Promise<string | undefined> {
+/**
+ * `ref`'s commit fetched from origin, or undefined when origin cannot name
+ * it: at depth 1 into a shallow clone, with its history into a whole one
+ * (`--depth` would make it shallow).
+ */
+async function fetchTip(
+  workspaceRoot: string,
+  ref: string,
+  shallow: boolean,
+): Promise<string | undefined> {
   const spec = originSpec(ref)
-  if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
+  if (
+    spec === undefined ||
+    !(await fetchOrigin(workspaceRoot, shallow ? ['--depth=1', spec] : [spec]))
+  ) {
     return undefined
   }
   return revParse(workspaceRoot, ref)
 }
 
 /**
- * The base of a two-dot `<ref>..HEAD`: `ref` itself, which a shallow clone
- * fetches as the three-dot form fetches its tip (CI's depth-1 checkout
+ * The base of a two-dot `<ref>..HEAD`: `ref` itself, which a clone that
+ * lacks it fetches as the three-dot form fetches its tip (CI's depth-1 checkout
  * refused `origin/main..HEAD` while `origin/main...HEAD` worked). HEAD's
  * own ancestor is its merge base with HEAD, reached by deepening.
  */
 async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
   if (HEAD_ANCESTOR.test(ref)) return mergeBase(workspaceRoot, ref)
-  if (revParse(workspaceRoot, ref) === undefined && isShallow(workspaceRoot)) {
-    await fetchTip(workspaceRoot, ref)
+  if (revParse(workspaceRoot, ref) === undefined) {
+    await fetchTip(workspaceRoot, ref, isShallow(workspaceRoot))
   }
   await verifyTreeRef(workspaceRoot, ref)
   return ref
@@ -1676,6 +1702,9 @@ async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
 
 /** The clones `fetchOrigin` fetched into, so made partial: `gitConfigFacts` may have answered first. */
 const fetchedInto = new Set<string>()
+
+/** Why a fetch from origin (or asking origin its default branch) failed, by workspace: git's first line. */
+const fetchFailures = new Map<string, string>()
 
 /** Deepening stops here (2,047 commits on each side): past it, the base is the user's to fetch. */
 const MAX_DEEPEN = 1024
@@ -1686,8 +1715,7 @@ function isShallow(workspaceRoot: string): boolean {
 }
 
 /**
- * Whether origin has a URL. Asked only in a shallow clone, before a fetch
- * or on a refusal. Not `git remote get-url`: a `[remote "origin"]` of
+ * Whether origin has a URL. Asked only before a fetch or on a refusal. Not `git remote get-url`: a `[remote "origin"]` of
  * promisor keys alone (git's filtered fetch from no origin writes one) it
  * names as a URL.
  */
@@ -1731,19 +1759,21 @@ function originSpec(ref: string): string | undefined {
 }
 
 /**
- * A shallow clone with no base branch at all (a CI checkout of one
- * commit): fetch it from origin at depth 1, the configured one or
- * origin's default.
+ * A clone with no base branch at all (a CI checkout of one commit, or of
+ * one branch's whole history): fetch it from origin, the configured one
+ * or origin's default, at depth 1 into a shallow clone, with the history
+ * the merge base needs into a whole one.
  */
 async function fetchBaseBranch(
   workspaceRoot: string,
   configured: string | undefined,
 ): Promise<{ ref: string; branch: string; onIt: boolean; detached: boolean } | undefined> {
-  if (!isShallow(workspaceRoot)) return undefined
+  if (!hasOrigin(workspaceRoot)) return undefined
   const branch = configured ?? (await originDefaultBranch(workspaceRoot))
   if (branch === undefined) return undefined
   const spec = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
-  if (!(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) return undefined
+  const depth = isShallow(workspaceRoot) ? ['--depth=1'] : []
+  if (!(await fetchOrigin(workspaceRoot, [...depth, spec]))) return undefined
   const proc = spawnGitSync(['symbolic-ref', '--short', '-q', 'HEAD'], workspaceRoot, 'ignore')
   const head = new TextDecoder().decode(proc.stdout).trim()
   return { ref: `origin/${branch}`, branch, onIt: head === branch, detached: head === '' }
@@ -1752,13 +1782,20 @@ async function fetchBaseBranch(
 /** The branch origin's HEAD names, asked of origin (a one-commit checkout has no `origin/HEAD`). */
 async function originDefaultBranch(workspaceRoot: string): Promise<string | undefined> {
   const proc = spawnGit(['ls-remote', '--symref', 'origin', 'HEAD'], workspaceRoot)
-  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  if (exit !== 0) return undefined
+  const [out, err, exit] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exit !== 0) {
+    noteFetchFailure(workspaceRoot, err)
+    return undefined
+  }
   return /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(out)?.[1]
 }
 
 /**
- * `git fetch` from origin into a shallow clone, without blobs: the diff
+ * `git fetch` from origin into a clone that lacks the base, without blobs: the diff
  * names paths, and the lockfile a claim reads at the base is fetched on
  * demand. Never prompts for credentials; false when it failed.
  */
@@ -1782,20 +1819,42 @@ async function fetchOrigin(workspaceRoot: string, args: string[]): Promise<boole
       cwd: workspaceRoot,
       stdin: 'ignore',
       stdout: 'ignore',
-      stderr: 'ignore',
+      stderr: 'pipe',
     })
     fetchedInto.add(workspaceRoot)
-    return (await proc.exited) === 0
+    const [err, exit] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+    if (exit === 0) fetchFailures.delete(workspaceRoot)
+    else noteFetchFailure(workspaceRoot, err)
+    return exit === 0
   } catch (err) {
     if (isExecutableMissing(err)) throw gitSpawnRefusal(workspaceRoot)
     throw err
   }
 }
 
+function noteFetchFailure(workspaceRoot: string, stderr: string): void {
+  const line = stderr
+    .split('\n')
+    .find((l) => l.trim().length > 0)
+    ?.trim()
+    .replace(/^(fatal|error): /, '')
+  fetchFailures.set(workspaceRoot, line ?? 'git gave no reason')
+}
+
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   if (resolvedRefs.has(`${workspaceRoot}\0${ref}`)) return
+  // A full commit id resolves whether or not its object is here (a base
+  // origin could not give), and the diff then failed with git's dump.
+  // `^{object}` asks for the object, and still passes a tree; a `<rev>:<path>`
+  // would read it as part of the path.
   const proc = spawnGitSync(
-    ['rev-parse', '--verify', '--quiet', '--end-of-options', ref],
+    [
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      '--end-of-options',
+      ref.includes(':') ? ref : `${ref}^{object}`,
+    ],
     workspaceRoot,
     'pipe',
   )
@@ -1834,14 +1893,18 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
       'VX_E_GIT',
     )
   }
-  // A shallow clone whose base origin could not give (`reachMergeBase`):
-  // no origin, no network, a name only another clone has.
+  // A base origin could not give (`reachMergeBase`): no origin, no
+  // network, a name only another clone has.
+  const failed = fetchFailures.get(workspaceRoot)
   throw new UserError(
     `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
       (!isShallow(workspaceRoot)
-        ? ''
+        ? failed === undefined
+          ? ''
+          : ` Fetching it from origin failed: ${failed.replace(/\.?$/, '.')}`
         : hasOrigin(workspaceRoot)
-          ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
+          ? ` This clone is shallow and ${failed === undefined ? 'origin did not give it' : `fetching it from origin failed (${failed})`}: ` +
+            'fetch the base (`git fetch --depth=1 origin <base>`).'
           : ' This clone is shallow and has no origin remote: fetch the base from where it lives ' +
             '(`git fetch --depth=1 <url> <base>`), or add one (`git remote add origin <url>`).'),
     'VX_E_AFFECTED_BASE',

@@ -47,11 +47,12 @@ export interface JudgeContext {
   workspaceRoot: string
   armedAt: number
   held(): boolean
+  serverDirs?(): readonly string[] // the held servers' projects: a write outside them is not a server's; absent, anywhere
   uncached(): ReadonlySet<string>
   namedIgnored?(): readonly string[] // paths inputs name outright that a key reads ignored files under (namedIgnoredReach): a git-ignored file at or under one is an edit
   fenced?(ownDir: string, abs: string): boolean // in a project nested under ownDir (makeFence)
   existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
-  trackedAtArm?: ReadonlySet<string> // what git tracked at the arm: a held server is never blamed for one
+  trackedAtArm?: ReadonlySet<string> // what git tracked at the arm (`tracked` asks git for the rest); absent when it could not answer
   clock?(): number // now on the mtime clock (fsClockNow); Date.now() when absent
 }
 export class ChangeJudge {
@@ -61,6 +62,7 @@ export class ChangeJudge {
   constructor(ctx: JudgeContext)
   seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
   sawEvent(abs: string): void // an event: a write during `cycle` no command of it (nor a held server) may have made is a change next time, whatever it settles to
+  tracked(abs: string): boolean // git tracks it: at the arm, or now (one `gitTracks`, only where a server would be blamed)
   unseen(moved: readonly (string | null)[]): void // inputs a run read in a state no judgement saw (TaskOutcome.driftedInput): each is a change next time; null marks every pending path
   judge(): string | undefined // the least changed path's label (a file before a directory, a live path before a gone one), or none
 }
@@ -89,6 +91,7 @@ export function gitFiles(
   dirty?: boolean, // add `-m`: `dirty` is the untracked files and the tracked ones modified
 ): { listed: Set<string>; tracked: Set<string>; links: Set<string>; dirty: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
 export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
+export function gitTracks(workspaceRoot: string, abs: string): boolean // git tracks `abs` (spelled by gitSpeller) now: one `git ls-files --cached`
 export function lockedExtras(workspaceRoot: string): Set<string> // the files the recorded digests read besides a claimed file (.vx/dependencies.lock.json extras), absolute: watch arms them
 export function makeRootEventFilter(
   workspaceRoot: string,
@@ -442,8 +445,10 @@ on, as the cache keys decide.
   it is neither ignored nor declared: the loop re-runs on it, and after
   three cycles in a row started by the same path after a run, watch
   names it and the remedy once (`watch-loop-selfwrite.test.ts`). A
-  held server is blamed only for a file git did not track at the arm
-  (`gitFiles`' `tracked`; `watch-server-blame.test.ts`). A judgement
+  held server is blamed only for a file in its own project (`serverDirs`,
+  not a nested project's) that git does not track: `gitFiles`' `tracked`
+  at the arm, then `gitTracks` when it would be blamed, so a file
+  committed since is the user's (`watch-server-blame.test.ts`). A judgement
   that finds nothing changed starts no cycle and breaks no streak: a
   log stamped to the second rewrites the same bytes between changes.
 - Start a cycle on a file born and gone since the arm (vim's `4913`

@@ -953,7 +953,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   it.skipIf(process.platform !== 'linux')(
     'the refused-write note spells a grant for a directory at the filesystem root',
     async () => {
-      // The parent of `/x` is `/`, and the grant was spelled `'//'`.
+      // A grant at the filesystem root was once spelled `'//'`.
       const target = `/vx-refused-${process.pid}-${Date.now()}`
       await addProject(fixture.root, 'rootwriter', {
         files: { 'src/x.txt': 'hi' },
@@ -978,7 +978,9 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       )
       expect(hints).toHaveLength(1)
       expect(hints[0]).toContain(`violations: ${target}.`)
-      expect(hints[0]).toContain("allow: { write: ['/'] }")
+      // A refused mkdir is granted as the directory itself, never as `'//'`.
+      expect(hints[0]).toContain(`allow: { write: ['${target}/'] }`)
+      expect(hints[0]).not.toContain("'//'")
       expect(existsSync(target)).toBe(false)
     },
     TIMEOUT,

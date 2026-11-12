@@ -867,7 +867,8 @@ The workspace root for `start`: the directory holding the first
 outside git ({@link workspaceFile}, shared with the hand-off). Nothing
 else decides it (2026-10-13: "Workspace file is the ultimate"):
 not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
-`VX_E_NO_WORKSPACE` when there is none.
+`VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add`
+when a sparse checkout left the git top-level's out.
 
 Outside git, a file another user owns is refused (root aside): a
 `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
@@ -1561,7 +1562,7 @@ export interface MeasureForecast {
 function · `src/workspace/affected.ts`
 
 The merge base of `ref` and HEAD, or undefined when there is none. A
-shallow clone fetches what it needs from origin (`reachMergeBase`):
+clone that lacks it fetches what it needs from origin (`reachMergeBase`):
 a plugin reading the base branch's history (shared timings) asks this,
 not `git merge-base`, so a one-commit checkout serves it too.
 
@@ -2290,6 +2291,7 @@ plugin guide's example shows it).
 ```ts
 export interface RemoteCacheLayer {
   readonly endpoint?: string
+  readonly off?: boolean
   open?(ctx: RemoteOpenContext): Promise<void>
   lend?(): Promise<LentAccess | undefined>
   has(hash: string): Promise<ArtifactInfo | null>
@@ -2354,11 +2356,10 @@ export interface ResolvedSandboxConfig {
 
 function · `src/util/paths.ts`
 
-Whether a restore may write `rel`: one of the outputs `globs` declare,
-never under `OUTPUT_NEVER`, and under `node_modules` only where a glob
-names it — what the save side could have packed (`resolveOutputs`). An
-artifact naming anything else was not written by this task's save, and
-none of it is restored (2026-10-16).
+Whether a restore may write `rel`: one of the outputs `globs` declare and
+not `outputExcluded` — what the save side could have packed
+(`resolveOutputs`). An artifact naming anything else was not written by
+this task's save, and none of it is restored (2026-10-16).
 
 ```ts
 export function restorableOutput(

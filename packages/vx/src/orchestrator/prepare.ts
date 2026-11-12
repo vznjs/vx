@@ -1276,10 +1276,11 @@ function unlockedConfig(
 
 /**
  * The config `vx lock` would find in the directory a name no project has
- * reads as (`packages/d`, `c`): with no discover plugin a config written
- * after the lock makes no project, so `unlockedConfig` never sees it.
- * Asked only for a name that matches nothing, a run or `vx show` about to
- * be refused; the listing is paid only when the directory holds a config.
+ * reads as (`packages/d`, `c`), or in an unlocked directory whose
+ * `package.json` has that name (`@s/new`): a config written after the lock
+ * makes no project, so `unlockedConfig` never sees it. Asked only for a
+ * name that matches nothing, a run or `vx show` about to be refused, so a
+ * run that matches pays nothing for it.
  */
 export async function unlockedDir(
   name: string,
@@ -1288,11 +1289,20 @@ export async function unlockedDir(
 ): Promise<string | undefined> {
   const dir = path.resolve(workspaceRoot, name)
   // A project's directory typed for its name is that project, hinted as such.
-  if (!dir.startsWith(workspaceRoot + path.sep) || metas.some((m) => m.dir === dir))
-    return undefined
-  if (!PROJECT_CONFIG_FILENAMES.some((n) => existsSync(path.join(dir, n)))) return undefined
+  if (metas.some((m) => m.dir === dir)) return undefined
   const { configs } = await findProjectConfigs(workspaceRoot)
-  return configs.find((c) => c.dir === dir)?.configPath
+  const atDir = configs.find((c) => c.dir === dir)
+  if (atDir !== undefined) return atDir.configPath
+  for (const c of configs) {
+    if (metas.some((m) => m.dir === c.dir)) continue
+    try {
+      const pkg = (await Bun.file(path.join(c.dir, 'package.json')).json()) as { name?: unknown }
+      if (pkg.name === name) return c.configPath
+    } catch {
+      // No package.json, or not JSON: no package name to match.
+    }
+  }
+  return undefined
 }
 
 /**

@@ -330,6 +330,42 @@ describe('resolveFilters', () => {
   })
 })
 
+describe('an exclusion that matches nothing', () => {
+  let ws = ''
+  beforeAll(async () => {
+    ws = realpathSync(await makeWorkspace({ prefix: 'vx-select-neg-' }))
+    for (const name of ['@m/slow-tests', '@m/app'])
+      await addProject(ws, name, {
+        config: `export default { tasks: { test: { exec: { command: 'true' } } } }\n`,
+      })
+    await lock(ws)
+  })
+  afterAll(async () => {
+    await rm(ws, { recursive: true, force: true })
+  })
+
+  it('warns, naming the one project the name opens', async () => {
+    // `--filter '!@m/slow'` for `@m/slow-tests` excluded nothing, and the
+    // warning listed every project: six edits is past the typo budget.
+    const { value, stderr } = await quiet(() => resolveFilters(ws, ['!@m/slow']))
+    expect((value as { names: string[] }).names).toEqual(['@m/app', '@m/slow-tests'])
+    expect(stderr).toBe(
+      noticed(
+        'vx run: filter "!@m/slow" matched no projects. Did you mean !@m/slow-tests?\n',
+        'warn',
+      ),
+    )
+    // CONTROL: a name two projects open is no single guess.
+    const both = await quiet(() => resolveFilters(ws, ['!@m/']))
+    expect(both.stderr).toBe(
+      noticed(
+        'vx run: filter "!@m/" matched no projects. Projects: @m/app, @m/slow-tests\n',
+        'warn',
+      ),
+    )
+  })
+})
+
 describe('taskEdgesFrom', () => {
   it('a project is no dependency of itself, and a negated spec is no edge', () => {
     // A self edge put `app` among its own dependencies (`app^...` selected

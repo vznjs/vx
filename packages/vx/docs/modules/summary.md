@@ -170,7 +170,8 @@ skipped (yellow), and the live gray remainder. A task counts under its strongest
 `✗`, then `⇡`, then remote `↑`, then local `↑`, then its own (`↓`,
 `✓`, `∅` or miss). The task's own bucket is `cacheBucketOf`; its remote
 state is its key's entry in `traffic.keys` (failures, then uploads
-running, then one landed), which moves it. A task still running is
+running, then one landed), which moves it. A failure that turned its
+remote off (the layer's `off`) lands on no key: it is the run's. A task still running is
 counted once it ends. The legend's numbers are the segments', each in
 its segment's colour, number and glyph alike; the `local` and `remote`
 words are dim (2026-10-15).

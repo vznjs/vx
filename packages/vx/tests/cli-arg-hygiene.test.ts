@@ -154,6 +154,23 @@ describe('vx watch rejects flags it cannot honor', () => {
     expect(parseRunArgs(['build', '--poll'], 'watch').poll).toBe(true)
   })
 
+  it("names the `--` form for a flag that is the task's, not vx's", () => {
+    // `vx run test -t adds` was refused `unknown flag: -t` with no way on.
+    expect(parseRunArgs(['test', '-t', 'adds']).error).toBe(
+      'unknown flag: -t (did you mean vx run test -- -t adds?)',
+    )
+    // Forwarded args already given join after the moved ones, quoted as typed.
+    expect(parseRunArgs(['test', '-t', 'a b', '--', '--bail'], 'watch').error).toBe(
+      "unknown flag: -t (did you mean vx watch test -- -t 'a b' --bail?)",
+    )
+    // CONTROL: a typo of vx's own flag keeps its own hint, and a long flag
+    // far from any is no guess: a vx typo forwarded is ignored unseen.
+    expect(parseRunArgs(['test', '--filtr', 'app']).error).toBe(
+      'unknown flag: --filtr (did you mean --filter?)',
+    )
+    expect(parseRunArgs(['test', '--zzz']).error).toBe('unknown flag: --zzz')
+  })
+
   it('still parses --verbosity for vx run', () => {
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
   })

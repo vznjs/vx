@@ -165,7 +165,7 @@ one core) and `vx.task.memory` (resident bytes). Sampling runs only while
 metrics export; a remote task, or a task under 1 s, has no samples.
 
 **Logs per run** (on by default): the captured output tail of each executed
-task, as one log record at the task's end, linked to its task span (unlinked
+task, as plain text (colour and other terminal escapes dropped), as one log record at the task's end, linked to its task span (unlinked
 when traces are off: the span is never exported). Build output can hold
 secrets, and this sends it to the collector; `logs: false` or
 `OTEL_LOGS_EXPORTER=none` turns it off.

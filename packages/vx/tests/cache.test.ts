@@ -16,7 +16,7 @@ import {
   zstdContentSize,
 } from '../src/cache/cache.js'
 import { decodedTar, STREAM_DECODE_FROM } from '../src/cache/zstd.js'
-import { UserError, xxh3hex } from '../src/util/index.js'
+import { diskBytes, UserError, xxh3hex } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from './helpers/orchestrator.js'
@@ -1886,7 +1886,8 @@ describe('Cache storage (v10)', () => {
     expect(dry.evicted).toBe(1)
     expect(dry.bytesFreed).toBeGreaterThanOrEqual(3)
     expect(dry.orphans).toBe(1)
-    expect(dry.orphanBytes).toBe(64)
+    const onDisk = diskBytes(statSync(aged))
+    expect(dry.orphanBytes).toBe(onDisk)
     // Nothing moved: the row and artifact are still there (has() does not
     // refresh the access time, so the same cutoff still applies below).
     expect(await cache.has('h-dry')).toBe('local')
@@ -1897,7 +1898,7 @@ describe('Cache storage (v10)', () => {
     expect({ evicted: wet.evicted, orphans: wet.orphans, orphanBytes: wet.orphanBytes }).toEqual({
       evicted: 1,
       orphans: 1,
-      orphanBytes: 64,
+      orphanBytes: onDisk,
     })
     expect(await cache.get('h-dry')).toBeNull()
     expect(existsSync(aged)).toBe(false)
@@ -1945,11 +1946,12 @@ describe('Cache storage (v10)', () => {
     // `cache.db`'s mtime stays where this put it.
     await age(path.join(cacheDir, 'cache.db'))
 
-    expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: 11 })
+    const onDisk = diskBytes(statSync(orphan))
+    expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: onDisk })
     const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 1,
-      orphanBytes: 11,
+      orphanBytes: onDisk,
     })
     expect(existsSync(orphan)).toBe(false)
     expect(existsSync(foreign)).toBe(true)
@@ -1987,7 +1989,10 @@ describe('Cache storage (v10)', () => {
       await agedFile('0123456789abcdef.tar.zst.tmp-1-2-abc'),
     ]
 
-    expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: 2 })
+    expect(await cache.orphanStats()).toEqual({
+      orphans: 2,
+      orphanBytes: reaped.reduce((n, f) => n + diskBytes(statSync(f)), 0),
+    })
     await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(reaped.filter((f) => existsSync(f))).toEqual([])
     expect(kept.filter((f) => existsSync(f))).toEqual(kept)
@@ -2181,12 +2186,13 @@ describe('Cache storage (v10)', () => {
     await writeFile(freshTmp, 'z')
 
     // What `vx info` reports before anyone prunes is exactly what prune reaps.
-    expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: 15 })
+    const onDisk = diskBytes(statSync(orphanTar)) + diskBytes(statSync(orphanTmp))
+    expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: onDisk })
     const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(result.evicted).toBe(0)
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 2,
-      orphanBytes: 15,
+      orphanBytes: onDisk,
     })
     expect(await cache.orphanStats()).toEqual({ orphans: 0, orphanBytes: 0 })
     expect(existsSync(orphanTar)).toBe(false)
@@ -2210,6 +2216,7 @@ describe('Cache storage (v10)', () => {
     // Linux give the loser ENOENT. The code is right for the rule; the
     // runtime there is not, and the Linux job is the gate for this claim.
     const again = await aged('00000000000000dd.tar.zst', 'w'.repeat(7))
+    const againOnDisk = diskBytes(statSync(again))
     const other = new Cache(
       cacheDir,
       { read: true, write: true },
@@ -2241,7 +2248,7 @@ describe('Cache storage (v10)', () => {
       }).toEqual({
         evicted: 0,
         orphans: [0, 1],
-        orphanBytes: 7,
+        orphanBytes: againOnDisk,
         artifacts: [
           '00000000000000cc.tar.zst',
           '00000000000000cc.tar.zst.tmp-1-2-3',

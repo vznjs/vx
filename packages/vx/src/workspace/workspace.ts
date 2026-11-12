@@ -71,7 +71,8 @@ export const PROJECT_CONFIG_FILENAMES = [
  * outside git ({@link workspaceFile}, shared with the hand-off). Nothing
  * else decides it (2026-10-13: "Workspace file is the ultimate"):
  * not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
- * `VX_E_NO_WORKSPACE` when there is none.
+ * `VX_E_NO_WORKSPACE` when there is none, naming `git sparse-checkout add`
+ * when a sparse checkout left the git top-level's out.
  *
  * Outside git, a file another user owns is refused (root aside): a
  * `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
@@ -88,7 +89,19 @@ export async function findWorkspaceRoot(
   start = path.resolve(start)
   const file = await workspaceFile(start)
   if (file === null) {
-    const headline = `no .vx/workspace.ts in ${start} or a parent${(await gitTop(start)) === null ? '' : ' up to the git root'}`
+    const top = await gitTop(start)
+    const sparse = top === null ? null : sparseWorkspaceFile(top)
+    if (sparse !== null) {
+      const fix = `git sparse-checkout add ${path.posix.dirname(sparse)}`
+      throw refusal(
+        { headline: `\`${sparse}\` is outside this sparse checkout`, fix },
+        {
+          code: 'VX_E_NO_WORKSPACE',
+          message: `\`${sparse}\` is outside this sparse checkout — run \`${fix}\``,
+        },
+      )
+    }
+    const headline = `no .vx/workspace.ts in ${start} or a parent${top === null ? '' : ' up to the git root'}`
     throw refusal(
       { headline, fix: 'vx init' },
       { code: 'VX_E_NO_WORKSPACE', message: `${headline} — run \`vx init\` to create one` },
@@ -117,6 +130,20 @@ export async function findWorkspaceRoot(
     }
   }
   return root
+}
+
+/**
+ * The workspace file a sparse checkout left out at git top-level `top`
+ * (skip-worktree in the index; cone mode keeps the root's files, not its
+ * `.vx`), as git names it, else null. Asked only once no workspace file
+ * was found, so a run pays no git spawn.
+ */
+function sparseWorkspaceFile(top: string): string | null {
+  for (const name of WORKSPACE_CONFIG_FILENAMES) {
+    const at = skipWorktreeSync(top, name)
+    if (at !== null) return at
+  }
+  return null
 }
 
 /**

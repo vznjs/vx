@@ -195,3 +195,36 @@ it(
   },
   TIMEOUT,
 )
+
+// A package added after the lock, named by its package.json name and not
+// its directory: `--filter`, `vx show` and `name#build` said only
+// "no projects matched" or "unknown project", where `packages/x#build` asked for `vx lock`.
+it(
+  'a package the lock has not seen, named by its package name, asks for `vx lock`',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-pkgname-', edges: {} })
+    try {
+      await addProject(root, 'p9', {
+        config: "export default { tasks: { build: { exec: { command: 'echo p9' } } } }\n",
+      })
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      await addProject(root, '@s/newpkg', {
+        config: "export default { tasks: { build: { exec: { command: 'echo new' } } } }\n",
+      })
+      for (const args of [
+        ['run', 'build', '--filter', '@s/newpkg'],
+        ['show', '@s/newpkg'],
+        ['run', '@s/newpkg#build'],
+      ]) {
+        const r = await vx(root, args)
+        expect({ args, code: r.code }).toEqual({ args, code: 1 })
+        expect(r.text).toContain(
+          'packages/s-newpkg/vx.config.mjs is not in the lock yet — run `vx lock`',
+        )
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)

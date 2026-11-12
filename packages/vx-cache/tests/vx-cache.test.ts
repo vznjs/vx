@@ -395,6 +395,9 @@ describe('VxCacheLayer', () => {
     await expect(c.get('aa11')).rejects.toThrow(
       ': the token was refused (this workspace names acme/app at https://token.actions.githubusercontent.com); remote cache off for this run',
     )
+    // Off: core counts the refusal on no task (the footer read `local 1↑ ·
+    // remote 1✗` for two tasks saved alike).
+    expect(c.off).toBe(true)
     const n = srv.seen.length
     expect(await c.has('aa11')).toBeNull()
     // No answer, not "none held": core rewrites the keys a has-many answers
@@ -651,6 +654,50 @@ describe('download deadline', () => {
       await s.stop(true)
     }
   })
+})
+
+// A server that takes the connection and never answers cost every task
+// the whole read deadline: 300 cached tasks took 2m32s, 15 s with the
+// server down (2026-11-11).
+it('a read with no answer within the deadline turns the remote off for the run, said once', async () => {
+  let connections = 0
+  const mute = Bun.listen({
+    hostname: '127.0.0.1',
+    port: 0,
+    socket: {
+      open() {
+        connections++
+      },
+      data() {},
+    },
+  })
+  try {
+    const c = new VxCacheLayer(
+      {
+        url: `http://127.0.0.1:${mute.port}`,
+        timeoutMs: 200,
+        uploadTimeoutMs: 200,
+        headers: {},
+        issuer: GITHUB,
+        repository: REPO,
+      },
+      fetch,
+      { VX_CACHE_TOKEN: 't' },
+    )
+    c.refs = [MAIN]
+    await expect(c.hasMany(['aa', 'bb'])).rejects.toThrow(
+      'no answer within 200 ms; remote cache off for this run',
+    )
+    expect(c.off).toBe(true)
+    const started = performance.now()
+    expect(await c.has('aa')).toBeNull()
+    expect(await c.get('aa')).toBeUndefined()
+    expect(await c.put('aa', new Blob(['x']), { durationMs: 1 })).toBe(false)
+    expect(performance.now() - started).toBeLessThan(100)
+    expect(connections).toBe(1)
+  } finally {
+    mute.stop(true)
+  }
 })
 
 describe('upload deadline', () => {

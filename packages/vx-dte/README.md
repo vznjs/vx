@@ -134,7 +134,7 @@ open it first or join it; vx and the relay refuse any other. `local()` starts ea
 git worktree of the tracked files as they are, uncommitted changes
 included, and a file mid-merge or flagged `assume-unchanged` or
 `skip-worktree` as it is on disk (untracked files are not: a task that keys
-one fails), at the
+one fails until it is `git add`ed), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
 A run from a git hook works too: the worktree and its worker drop the
@@ -633,7 +633,10 @@ use your own instead.
 - A worker whose tracked files differ from the orchestrator's (another
   tree, or the same commit with a tracked file changed, such as by a
   prepare step) is refused, and the orchestrator says so as it happens:
-  `[vx] dte: refused worker <id>: <reason>`. Both sides read their tracked files as they
+  `[vx] dte: refused worker <id>: <reason>`. The reason names a project
+  of the run git does not track first (`git add` it: a worktree lacks it,
+  so its install rewrites the lockfile), then up to three tracked files
+  the worker changed after checkout. Both sides read their tracked files as they
   are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
   (one a sparse checkout left off disk is its index's), so the same change
   on both is the same tree.
@@ -649,6 +652,8 @@ use your own instead.
 - A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
+  `git add` puts it in the tree `local()` and `docker()` workers check out;
+  workers on CI check out the pushed commit, so there it must be committed.
   A dependency's declared output is not one: its worker restores it first,
   or, uncached, ran it there.
   A task whose project the commit lacks (no file under it tracked) fails,

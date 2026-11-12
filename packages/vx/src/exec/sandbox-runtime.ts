@@ -2704,6 +2704,10 @@ async function runSandboxedOnce(
   let partial = ''
   let straceSpoke = false
   let mountGone = false
+  // Read whatever the capture setting, as the two above: `hiddenGitHint`.
+  let gitNoRepo = false
+  // The same for `grantRemovalHint`: a run captures no output.
+  const readOnlyLines: string[] = []
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
@@ -2717,6 +2721,9 @@ async function runSandboxedOnce(
         partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
         if (lines.some((l) => BWRAP_MOUNT_GONE.test(l))) mountGone = true
+        if (lines.some((l) => GIT_NO_REPO.test(l))) gitNoRepo = true
+        for (const l of lines)
+          if (readOnlyLines.length < 64 && READ_ONLY_FS.test(l)) readOnlyLines.push(l)
         ends.onStderr?.(chunk)
       },
       ac.signal,
@@ -2855,11 +2862,15 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
-    if (outside.length > 0)
-      violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
+    if (outside.length > 0) {
+      const made = new Set(
+        recorded.filter((v) => /^mkdir(?:at)?\(/.test(v.line)).map((v) => v.path),
+      )
+      violations.push(outsideWritesHint(outside, made, baselines.denyRead, args.reportWithin))
+    }
     if (process.platform === 'linux') {
       const removed = grantRemovalHint(
-        `${stdout}\n${stderr}`,
+        readOnlyLines,
         bindableWrites(args.config.allowWrite),
         args.cwd,
         args.reportWithin,
@@ -2901,6 +2912,10 @@ async function runSandboxedOnce(
     })
     if (hidden.length > 0)
       violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, args.keyRoot))
+    const git = gitNoRepo
+      ? hiddenGitHint(args.cwd, grantedRead, baselines.denyRead, args.reportWithin)
+      : undefined
+    if (git !== undefined && !hidden.some((p) => atOrUnder(p, git.dir))) violations.push(git.hint)
   }
 
   afterCommand(SandboxManager)
@@ -2951,30 +2966,56 @@ function afterCommand(SandboxManager: SrtModule['SandboxManager']): void {
   }
 }
 
-/** The hint for writes refused outside the project, a few paths named. */
-function outsideWritesHint(
+/**
+ * The hint for writes refused outside the project, a few paths named, and
+ * a grant for each: a sandboxed `go build` on a fresh home was refused its
+ * telemetry file and then `mkdir ~/.cache`, and the hint granted only the
+ * first one's directory, which left the build failing (2026-11-11).
+ * `made` holds the paths a refused `mkdir` named: the directory itself is
+ * the grant, not its parent.
+ */
+export function outsideWritesHint(
   paths: readonly string[],
+  made: ReadonlySet<string | undefined>,
   walled: readonly string[],
   within: string,
 ): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
-  const spelled = grantSpelling(path.dirname(paths[0]!), walled, within)
   const refused =
     `vx: the sandbox refused writes outside the project, which are not reported as ` +
     `violations: ${shown}${more}.`
+  const home = toRealPath(os.homedir())
+  const walls = walled.map(toRealPath)
   // Granting a system temp directory opens it to every write of the task;
   // the task already has a temp directory of its own. A workspace kept
   // under one is the workspace, and its directory is the grant.
-  const first = paths[0]!
-  const scratchTemp =
-    hostTempRoots().some((t) => atOrUnder(first, t)) &&
-    !walled.some((w) => atOrUnder(first, toRealPath(w)))
-  const line = scratchTemp
-    ? `${refused} The task has its own temp directory, empty at its start: write under ` +
+  const scratchTemp = (p: string): boolean =>
+    hostTempRoots().some((t) => atOrUnder(p, t)) && !walls.some((w) => atOrUnder(p, w))
+  const isDir = (p: string): boolean =>
+    made.has(p) || statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  // Never home or above it: a tool's own `~/.cache` (or `~/.npmrc`) is the grant.
+  const grantOf = (p: string): string =>
+    isDir(p) ? `${p}/` : atOrUnder(home, path.dirname(p)) ? p : `${path.dirname(p)}/`
+  const grants = [...new Set(paths.filter((p) => !scratchTemp(p)).map(grantOf))].filter(
+    (g, _, all) =>
+      !all.some(
+        (o) => o !== g && o.endsWith('/') && atOrUnder(g.replace(/\/$/, ''), o.slice(0, -1)),
+      ),
+  )
+  const temp = paths.some(scratchTemp)
+    ? ` The task has its own temp directory, empty at its start: write under ` +
       `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
-    : `${refused} If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: [${jsString(spelled.endsWith('/') ? spelled : `${spelled}/`)}] }\`.`
+    : ''
+  const spelled = grants.slice(0, 3).map((g) => {
+    const s = grantSpelling(g.endsWith('/') ? g.slice(0, -1) : g, walled, within)
+    return jsString(g.endsWith('/') && !s.endsWith('/') ? `${s}/` : s)
+  })
+  const line =
+    grants.length === 0
+      ? `${refused}${temp}`
+      : `${refused} If the task needs ${grants.length === 1 ? 'one, grant its directory' : 'them, grant their directories'}, e.g. ` +
+        `\`allow: { write: [${spelled.join(', ')}] }\`.${temp}`
   return { timestamp: new Date(), hint: true, line }
 }
 
@@ -2983,18 +3024,15 @@ function outsideWritesHint(
  * be removed or renamed, so `rm -rf dist` empties it and then fails with
  * "Read-only file system" (EBUSY under a writable parent). Binding the
  * parent instead would let the task write beside the grant, so the
- * removal stays refused; a failure whose output names a grant on such an
+ * removal stays refused; a failure whose stderr names a grant on such an
  * error line gets the spelling that works.
  */
 function grantRemovalHint(
-  output: string,
+  lines: readonly string[],
   roots: readonly string[],
   cwd: string,
   within: string,
 ): SandboxViolation | undefined {
-  const lines = output
-    .split('\n')
-    .filter((l) => /Read-only file system|EROFS|EBUSY|resource busy/i.test(l))
   if (lines.length === 0) return undefined
   const named = roots.filter((root) => {
     const rel = path.relative(cwd, root)
@@ -3014,6 +3052,51 @@ function grantRemovalHint(
       `vx: the write grant ${grants} is mounted in place on Linux: the task may empty it ` +
       `but not remove or rename it ("Read-only file system"). Remove its contents ` +
       `instead, e.g. \`rm -rf ${contents}/*\`.`,
+  }
+}
+
+/** A stderr line that may say a removal of a write grant was refused (`grantRemovalHint`). */
+const READ_ONLY_FS = /Read-only file system|EROFS|EBUSY|resource busy/i
+
+/** git's word, on stderr, for a discovery that found no `.git`. */
+const GIT_NO_REPO = /not a git repository/i
+
+/**
+ * The hint for git finding no repository because the sandbox hid `.git`.
+ * git probes it by `stat` alone, which strace does not stop on
+ * (`TRACED_CALLS`: a stop per stat cost every sandboxed task), so no
+ * record names it; git's own words (`GIT_NO_REPO`) do, and a failed task
+ * that said them is the only one looked at. The `.git`
+ * nearest the cwd is the one git looked for. Grantable only where its
+ * directory is a deny anchor the task stands in (the workspace root); one
+ * outside the workspace, or a worktree's `.git` file, whose data lies
+ * outside, is walled on purpose.
+ */
+function hiddenGitHint(
+  cwd: string,
+  granted: readonly string[],
+  walled: readonly string[],
+  within: string,
+): { dir: string; hint: SandboxViolation } | undefined {
+  let dir = toRealPath(cwd)
+  let st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
+  while (st === undefined && path.dirname(dir) !== dir) {
+    dir = path.dirname(dir)
+    st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
+  }
+  const git = path.join(dir, '.git')
+  if (st === undefined || readableUnder(git, granted)) return undefined
+  const said = `vx: git found no repository: the sandbox hides ${git}, and its probe is not reported.`
+  const grantable = st.isDirectory() && walled.some((w) => toRealPath(w) === dir)
+  return {
+    dir: git,
+    hint: {
+      timestamp: new Date(),
+      hint: true,
+      line: grantable
+        ? `${said} Grant it: \`allow: { read: [${jsString(path.relative(toRealPath(within), git))}] }\`.`
+        : `${said} Its data lies outside the workspace, walled on purpose, so vx suggests no grant.`,
+    },
   }
 }
 

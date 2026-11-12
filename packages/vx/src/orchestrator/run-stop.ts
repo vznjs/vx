@@ -14,7 +14,7 @@
 
 import { killGraceMs, teardownTimeoutMs } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
-import { hasEnded } from './persistent.js'
+import { hasEnded, onServerExit } from './persistent.js'
 import {
   forwardedSignal,
   forwardSignals,
@@ -97,7 +97,7 @@ export function runStop(args: {
   const persistentRegistry = new (class extends Map<string, Child> {
     override set(id: string, child: Child): this {
       super.set(id, child)
-      void child.exited.then((code) => {
+      onServerExit(child, 'graph', (code) => {
         if (code !== 0 && !graphDone && !controller.signal.aborted && this.get(id) === child)
           warnOf(log)(`vx: ${id} exited with code ${code} while the run went on`)
       })

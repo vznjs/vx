@@ -69,14 +69,14 @@ describe('vx cache clean', () => {
       const dry = await vx(root, ['cache', 'clean', '--max-size', '1B', '--dry'])
       expect({ code: dry.code, err: dry.err }).toEqual({ code: 0, err: '' })
       expect(dry.out).toMatch(
-        /^› vx cache clean {2}would free \d+ B \(dry run\)\n\n {2}1 entry · 1 orphaned artifact\n$/,
+        /^› vx cache clean {2}would free [\d.]+ K?B \(dry run\)\n\n {2}1 entry · 1 orphaned artifact\n$/,
       )
       expect(await artifacts()).toEqual([...saved, 'ab'.repeat(8)].sort())
 
       const real = await vx(root, ['cache', 'clean', '--max-size', '1B'])
       expect({ code: real.code, err: real.err }).toEqual({ code: 0, err: '' })
       expect(real.out).toMatch(
-        /^✓ vx cache clean {2}freed \d+ B\n\n {2}1 entry · 1 orphaned artifact\n$/,
+        /^✓ vx cache clean {2}freed [\d.]+ K?B\n\n {2}1 entry · 1 orphaned artifact\n$/,
       )
       expect(await artifacts()).toEqual([])
     },

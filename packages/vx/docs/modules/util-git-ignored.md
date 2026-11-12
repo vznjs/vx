@@ -12,7 +12,9 @@ tracked file is not ignored.
 ## Public surface
 
 ```ts
-export function ignoreProbes(glob: string): { paths: string[]; deep: boolean; dir: string } | null
+export function ignoreProbes(
+  glob: string,
+): { paths: string[]; deep: boolean; dir: string; rules?: string[] } | null
 export async function checkIgnore(
   cwd: string,
   paths: readonly string[],
@@ -34,9 +36,17 @@ export function wholeIgnored(
   for `**/<name>…` the name at the prefix and under a fresh
   `__vx_probe__/` (a directory a task may create). `deep` marks the last:
   a file below them (a tracked one, or one a `!` rule takes back) must be
-  looked for in git's listing. Null when no few paths stand (`*.js`).
-- `checkIgnore` / `checkIgnoreSync`: one `git check-ignore --stdin -z`;
-  null when git cannot answer (no work tree). Each path is sent as
+  looked for in git's listing. A root glob with no literal directory
+  whose one wildcard part is a name of `*` and `?` (`*.tgz`,
+  `**/*.tgz`) is asked as a fresh name it matches (`__vx_probe__.tgz`,
+  and under `__vx_probe__/` for `**`), deep, with `rules`: the rule texts
+  git must name for each probe (the name pattern itself, `**/` or, at the
+  root only, `/` before it), since `pkg-*.tgz` ignores the probe and not
+  `a.tgz`. Null when no few paths stand (`*.{js,ts}`).
+- `checkIgnore` / `checkIgnoreSync`: one `git check-ignore --stdin -z -v`;
+  a path a `!` rule matched last is dropped, and the rule beside each
+  ignored path is kept for `wholeIgnored`; null when git cannot answer
+  (no work tree). Each path is sent as
   `./<path>`: git reads a line as a pathspec, so `:top/dist/` was asked as
   `top/dist/` (the command refuses `:(literal)`). `migration.ts` asks
   through `checkIgnoreSync` too.
@@ -56,8 +66,9 @@ export function wholeIgnored(
   git could fold prepends it: these checks and `listedSync`, the
   enumeration's, `--affected`'s, watch's inventory and `vx lock`'s
   discovery, so a new `a.txt` beside the tracked `A.txt` is listed.
-- `wholeIgnored`: the globs whose probes git ignores and, when deep, no
-  listed file matches. Undecided is not ignored.
+- `wholeIgnored`: the globs whose probes git ignores, by one of their
+  `rules` when they have some, and, when deep, no listed file matches.
+  Undecided is not ignored.
 
 Callers: `graph/task-graph.ts` `refuseOverlaps` (at `vx lock`) and
 `orchestrator/stable-keys.ts` `askIgnoredOutputs` (once per run).

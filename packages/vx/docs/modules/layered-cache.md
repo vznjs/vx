@@ -56,6 +56,8 @@ export interface ArtifactInfo {
 export interface RemoteCacheLayer {
   /** Where the artifacts live, named in every degrade warning; never a credential. */
   readonly endpoint?: string
+  /** Optional: true once a failure turned the layer off for the run (a refused token, no answer): that failure is the run's, said once, on no task's key, so the footer's `✗` counts no task for it. */
+  readonly off?: boolean
   /** Optional: get ready (a credential). Once per run, before the first task, only when the policy reads or writes it. */
   open?(ctx: RemoteOpenContext): Promise<void>
   /** Optional: this run's access (an OIDC exchange's token, never a stored secret), lent to a machine that runs its tasks; asked after `open`. */

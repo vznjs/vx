@@ -446,4 +446,36 @@ export default [
       },
     ],
   }),
+  defineCase({
+    id: 'outputs/hit-restores-node-modules-the-build-wrote',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A hit restores the node_modules a build wrote inside its output directory',
+    why: 'Nuxt writes its server to `.output/server`, with the packages it imports in `.output/server/node_modules`, and the build declares `.output/**`. That folder is the build’s own, not an install. A tool that skips every `node_modules` when it saves replays a server whose imports are gone.',
+    from: ['output-nested-node-modules'],
+    workspace: one(
+      {
+        command:
+          'mkdir -p .output/server/node_modules/dep && cat src/a.txt > .output/server/node_modules/dep/index.mjs && echo app > .output/server/index.mjs',
+        inputs: ['src/**'],
+        outputs: ['.output/**'],
+      },
+      { 'src/a.txt': 'a\n', '.gitignore': '.output\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { sh: 'rm -rf packages/a/.output' },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          notRan: ['a#build'],
+          files: {
+            'packages/a/.output/server/index.mjs': 'app\n',
+            'packages/a/.output/server/node_modules/dep/index.mjs': 'a\n',
+          },
+        },
+      },
+    ],
+  }),
 ]

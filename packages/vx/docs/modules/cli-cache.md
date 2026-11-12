@@ -30,7 +30,7 @@ export interface ClearResult {
   bytesFreed: number
 }
 export { parseDuration, parseSize } from '../util/index.js'
-// util's treeBytes (bytes on disk under a path) sizes a clear and `vx info`'s rows
+// util's treeBytes (the blocks under a path, as `du` counts them: diskBytes of each lstat) sizes a clear and `vx info`'s rows
 ```
 
 ## Subcommand surface

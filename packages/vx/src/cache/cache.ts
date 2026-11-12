@@ -52,6 +52,7 @@ import {
 } from 'node:fs'
 import {
   chmod,
+  lstat,
   mkdir,
   readdir,
   rename,
@@ -73,6 +74,7 @@ import {
 } from './schema.js'
 import {
   UserError,
+  diskBytes,
   DOT_VX_GITIGNORE,
   IGNORE_ALL,
   formatBytes,
@@ -94,6 +96,7 @@ import {
   type ExecUsage,
   copyStaging,
   extractArtifactStream,
+  stagingRoot,
   scanArtifact,
   scanTarBytes,
   packArtifactBytes,
@@ -610,7 +613,7 @@ async function scanOrphanFiles(
       try {
         const st = await stat(file)
         if ((name.includes('.tree') ? st.isDirectory() : st.isFile()) && st.mtimeMs <= cutoff) {
-          const size = st.isDirectory() ? await treeBytes(file) : st.size
+          const size = st.isDirectory() ? await treeBytes(file) : diskBytes(st)
           found.push({ file, size, mtimeMs: st.mtimeMs, temp })
         }
       } catch {
@@ -621,12 +624,12 @@ async function scanOrphanFiles(
   return found
 }
 
-/** The bytes a tree-form artifact's files hold. */
+/** The bytes a tree-form artifact holds on disk, its directories too, as `vx info` counts them. */
 async function treeBytes(dir: string): Promise<number> {
-  let n = 0
+  const none = { size: 0, blocks: 0 }
+  let n = diskBytes(await lstat(dir).catch(() => none))
   for (const e of await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])) {
-    if (e.isFile())
-      n += (await stat(path.join(e.parentPath, e.name)).catch(() => ({ size: 0 }))).size
+    n += diskBytes(await lstat(path.join(e.parentPath, e.name)).catch(() => none))
   }
   return n
 }
@@ -977,6 +980,13 @@ function inTheWay(dir: string): string {
       if (path.dirname(at) === at) return dir
     }
   }
+}
+
+/** Bytes the files hold now; one gone counts 0. */
+function sizeOf(files: readonly string[]): number {
+  let total = 0
+  for (const f of files) total += statSync(f, { throwIfNoEntry: false })?.size ?? 0
+  return total
 }
 
 function errorText(err: unknown): string {
@@ -3047,7 +3057,18 @@ export class Cache implements CacheLayer {
             `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
         )
       }
+      // The outputs may be writable while `.vx/tmp/`, where a restore
+      // stages, is not: a read-only source mount with writable output
+      // volumes. The outputs' remedy sent the user to the wrong path.
       if (isFsRefusal(err)) {
+        const top = workspaceRoot === undefined ? undefined : stagingRoot(workspaceRoot)
+        if (top !== undefined && code !== 'ENOSPC' && code !== 'EDQUOT' && inTree(err.path, top)) {
+          throw new UserError(
+            `restore of ${hash} into ${projectDir} could not stage its outputs: restores stage in ${top}, ` +
+              `which is not writable (${codeFirst(code, err.message)}). ` +
+              `Make it writable by this user (a writable mount or volume over a read-only checkout).`,
+          )
+        }
         const remedy = isDiskFull(err)
           ? 'Free space on that disk and re-run.'
           : 'Make the declared output paths writable by this user, or stop declaring them as outputs.'
@@ -3477,9 +3498,7 @@ export class Cache implements CacheLayer {
     const tree = this.tempTreePath(args.hash)
     try {
       const scan = await writeTree(plan, tree)
-      let bytes = 0
-      for (const e of scan.entries) bytes += e.size
-      return { plan: true, saved: { tree, scan, bytes } }
+      return { plan: true, saved: { tree, scan, bytes: await treeBytes(tree) } }
     } catch (err) {
       await rm(tree, { recursive: true, force: true })
       throw err
@@ -3662,12 +3681,9 @@ export class Cache implements CacheLayer {
       tmpPath = undefined
       tree = dir
     }
-    // A tree keeps its files as they are: counted as a saved tree counts
-    // them, not as the archive it was unpacked from (`--max-size`, stats).
-    if (tree !== undefined && saved === undefined) {
-      totalBytes = 0
-      for (const e of entries) totalBytes += e.size
-    }
+    // A tree keeps its files as they are: counted on disk as a saved tree
+    // counts them, not as the archive it was unpacked from (`--max-size`, stats).
+    if (tree !== undefined && saved === undefined) totalBytes = await treeBytes(tree)
     const outputFileRows: Array<[string, number, number, number]> = []
     // Per-output-file fingerprint rows feed the skip-restore check.
     // Row paths: project entries store the bare rel (`outputs/`
@@ -4119,20 +4135,36 @@ export class Cache implements CacheLayer {
     // close: five DELETEs on every run's exit was its slowest step
     // (2026-10-18). `invocations` shares the window with `runs`, or `vx last`
     // would list a run whose task rows are gone.
-    const cutoff = now - HISTORY_RETENTION_MS
-    this.history.pruneOlderThan(cutoff)
-    this.files.pruneOlderThan(cutoff)
-    this.folds.prune(cutoff)
     const orphans = await this.reapOrphans(picked.files)
     // An inline artifact's deleted pages go to SQLite's free list and the
     // file keeps its size: give them back, or the bytes said freed are not.
-    if ([...victims].some((h) => inline.has(h))) this.releaseFreePages()
-    return { evicted: victims.size, bytesFreed, ...orphans }
+    if ([...victims].some((h) => inline.has(h))) {
+      this.releaseFreePages(this.storeDir === undefined ? 'main' : 'store')
+    }
+    // After the inline release, so the shrink measured here is the history's
+    // alone: a year of runs left 28k of 36k pages free in a 140 MB index.
+    const cutoff = now - HISTORY_RETENTION_MS
+    const historyRows =
+      this.history.pruneOlderThan(cutoff) +
+      this.files.pruneOlderThan(cutoff) +
+      this.folds.prune(cutoff)
+    const result = { evicted: victims.size, bytesFreed, ...orphans }
+    if (historyRows === 0) return result
+    const files = [
+      this.dbFile,
+      ...(this.storeDir === undefined ? [] : [path.join(this.storeDir, 'store.db')]),
+    ]
+    const before = sizeOf(files)
+    this.releaseFreePages('main')
+    if (this.storeDir !== undefined) this.releaseFreePages('store')
+    return { ...result, historyRows, historyBytes: Math.max(0, before - sizeOf(files)) }
   }
 
-  /** VACUUM the schema holding inline artifacts; busy or no room to rewrite keeps the pages for reuse. */
-  private releaseFreePages(): void {
-    const schema = this.storeDir === undefined ? 'main' : 'store'
+  /**
+   * VACUUM `schema` when it has free pages; busy or no room to rewrite
+   * keeps the pages for reuse. A clean's step only: a run never pays it.
+   */
+  private releaseFreePages(schema: 'main' | 'store'): void {
     try {
       const { freelist_count: free } = this.db.prepare(`PRAGMA ${schema}.freelist_count`).get() as {
         freelist_count: number

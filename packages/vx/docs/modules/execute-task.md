@@ -290,6 +290,11 @@ a config before opening it (oxlint) leaves no record, and a read past
 the wall is no violation. A project file is left to the trace: an open
 of it is a violation, and a key may hold one the task never reads.
 
+A write refused at a per-run temp name (`bun build --compile`'s
+`.<hex>-<n>.bun-build`) gets no `sandboxFix` grant, which the next run's
+name would miss: the outcome's violation lines gain a hint naming the
+`ignore: { write: ['*.bun-build'] }` glob instead (`perRunWriteHint`).
+
 ## Verdict
 
 A step that exits 127 or 126, or a persistent task that exits so

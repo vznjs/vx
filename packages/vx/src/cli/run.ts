@@ -23,6 +23,7 @@ import {
   type AffectedFilter,
   affectedFilterFor,
   findCwdSelection,
+  NO_TASKS_DECLARED,
   pickTask,
   resolveFilters,
 } from './select.js'
@@ -341,7 +342,17 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
       out.settings[set.path] = value
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
+      // vx takes no short flag, so one no hint claims (`vx run test -t
+      // adds`) is the task's: it goes after `--`, the words from it on
+      // moved. A long one far from any vx flag gets no guess: a typo of
+      // vx's own sent to the task would be ignored there unseen.
+      const own = flagHint(verb, a)
+      const moved = [...before.slice(0, i), '--', ...before.slice(i), ...out.forwardArgs]
+      const hint =
+        own !== '' || !/^-[^-]/.test(a)
+          ? own
+          : ` (did you mean vx ${verb} ${moved.map(shellQuote).join(' ')}?)`
+      return { ...out, error: `unknown flag: ${a}${hint}` }
     } else if (a !== undefined) {
       // A config may not declare such a name (`taskNameProblem`); a pasted
       // newline was refused as an unknown task, printed raw.
@@ -643,6 +654,19 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       const shown = names.slice(0, TASKS_SHOWN)
       const more = names.length - shown.length
       const list = `${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+      // A workspace with no task yet is told how to declare one, as the
+      // picker tells it; the example line is for outside a workspace.
+      if (
+        here !== null &&
+        shown.length === 0 &&
+        typeof asked !== 'object' &&
+        // Only the cwd project's names were read: another project may have one.
+        (asked === undefined && here.inProject
+          ? ((await taskNamesHere(cwd, 'all'))?.names.length ?? 0)
+          : 0) === 0
+      ) {
+        return refuse('run', args, NO_TASKS_DECLARED, 'VX_E_USAGE')
+      }
       // Outside a project a bare name is refused without --all: the list
       // said "tasks here", and `vx run build` then said "not inside a project".
       const tasksHere =

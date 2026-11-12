@@ -10,6 +10,7 @@ import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isDefaultBuild, isGroupTask, splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
+  diffsOlderRun,
   explainCacheKey,
   inputWriters,
   latestRunId,
@@ -394,7 +395,10 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         ],
       )
     }
-    if (diff.entries.length === 0 && why.hashChanged === true) head.push(['detail', diff.note])
+    // The rows below may be against an older run than `previous`: the
+    // last that saved an entry. The note names it.
+    if ((diff.entries.length === 0 && why.hashChanged === true) || diffsOlderRun(diff))
+      head.push(['detail', diff.note])
     const blocks: ui.Block[] = [ui.section('Why', taskId, ui.fields(head))]
 
     if (diff.entries.length > 0) {
@@ -470,6 +474,14 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
       )
       if (kinds.length > 0) {
+        // The task whose config moved: this one, or a root cause's, never
+        // the asked task for an upstream's change.
+        const configOf = [
+          ...new Set([
+            ...(diff.entries.some((e) => e.kind === 'config') ? [taskId] : []),
+            ...roots.filter((r) => r.entries.some((e) => e.kind === 'config')).map((r) => r.task),
+          ]),
+        ]
         const todo: ui.FieldRow[] = []
         for (const k of kinds) {
           if (k === 'upstream') {
@@ -479,7 +491,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           todo.push([
             k,
             k === 'config'
-              ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
+              ? WHAT_TO_DO[k]!.replace(
+                  '`vx show <that task>`',
+                  `${configOf
+                    .slice(0, 3)
+                    .map((id) => `\`vx show ${id}\``)
+                    .join(', ')}${configOf.length > 3 ? ` (and ${configOf.length - 3} more)` : ''}`,
+                )
               : WHAT_TO_DO[k]!,
           ])
         }

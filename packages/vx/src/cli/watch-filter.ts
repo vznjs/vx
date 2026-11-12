@@ -568,6 +568,35 @@ export function gitFiles(
   return { listed: files, tracked, links, dirty: modified }
 }
 
+/**
+ * Whether git tracks `abs` now, `abs` spelled as `gitSpeller` spells it: a
+ * file committed or checked out since the arm is tracked though
+ * `gitFiles` did not say so then. One spawn, so asked only where the
+ * answer is rare to need.
+ */
+export function gitTracks(workspaceRoot: string, abs: string): boolean {
+  try {
+    const proc = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        ...gitCaseArgs(workspaceRoot),
+        'ls-files',
+        '-z',
+        '--cached',
+        '--',
+        `:(literal)${abs}`,
+      ],
+      env: gitEnv(),
+      cwd: workspaceRoot,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    return proc.exitCode === 0 && proc.stdout.length > 0
+  } catch {
+    return false
+  }
+}
+
 function isLink(abs: string): boolean {
   try {
     return fs.lstatSync(abs).isSymbolicLink()

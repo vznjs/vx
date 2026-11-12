@@ -261,6 +261,29 @@ export interface CrashedPersistent {
   code: number | string
 }
 
+const exitSlots = new WeakMap<Child, Map<string, (code: number) => void>>()
+
+/**
+ * Runs `fn` when `child` exits, replacing what an earlier call put in the
+ * same `slot`. A held server outlives the runs that keep it, and each
+ * `.then` on its `exited` closed over that run until the server exited:
+ * `vx watch dev` grew by its whole run graph every cycle (90 MB of RSS
+ * over 460 saves). A later run's listener supersedes the earlier one's,
+ * which by then has nothing left to say.
+ */
+export function onServerExit(child: Child, slot: string, fn: (code: number) => void): void {
+  let slots = exitSlots.get(child)
+  if (slots === undefined) {
+    const own = new Map<string, (code: number) => void>()
+    exitSlots.set(child, own)
+    slots = own
+    void child.exited.then((code) => {
+      for (const f of own.values()) f(code)
+    })
+  }
+  slots.set(slot, fn)
+}
+
 /** The child has exited or been killed; Bun sets these once it reaps it. */
 export function hasEnded(child: Child): boolean {
   return child.exitCode !== null || child.signalCode !== null
@@ -333,12 +356,35 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
   // A held server that dies on its own is said, as the foreground's
   // keep-alive says it: `vx watch` sat on "watching" over a dead dev
   // server. The holder's own stop() is not such a death.
-  let stopping = false
+  const state = { stopping: false }
   // Taken by a later run (`RunOptions.keep`): kept or stopped there.
   const handed = new Set<Child>()
+  return {
+    ids: keepAlive.nodes.map((n) => n.id),
+    servers: heldServerMap(keepAlive, args, state, handed),
+    stop: (signal) => {
+      state.stopping = true
+      return terminateChildren(() => held.filter((c) => !handed.has(c)), signal)
+    },
+  }
+}
+
+/**
+ * Apart from `holdServers`, and in a loop, so that no closure the
+ * hand-back keeps sees `args`: its `outOf` reads the run that held it,
+ * which the next cycle's run keeps through this hand-back
+ * (`RunOptions.keep`).
+ */
+function heldServerMap(
+  keepAlive: KeepAlive,
+  args: HoldArgs,
+  state: { stopping: boolean },
+  handed: Set<Child>,
+): Map<string, HeldServer> {
   const servers = new Map<string, HeldServer>()
-  keepAlive.nodes.forEach((n, i) => {
-    const child = held[i]!
+  for (let i = 0; i < keepAlive.nodes.length; i++) {
+    const n = keepAlive.nodes[i]!
+    const child = keepAlive.children[i]!
     const out = args.outOf(n.id)
     servers.set(n.id, {
       child,
@@ -347,26 +393,27 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
       handOver: () => void handed.add(child),
     })
     // One that died during the graph was said then.
-    if (hasEnded(child)) return
-    // Said where its output goes: a later run that keeps it owns the
-    // terminal from its start, and this run's renderer wrote over its rows.
-    void child.exited.then((code) => {
-      if (!stopping && !handed.has(child) && code !== 0)
-        out.bus.emit({
-          kind: 'run:status',
-          line: `vx: ${n.id} exited with code ${code}`,
-          warn: true,
-        })
-    })
-  })
-  return {
-    ids: keepAlive.nodes.map((n) => n.id),
-    servers,
-    stop: (signal) => {
-      stopping = true
-      return terminateChildren(() => held.filter((c) => !handed.has(c)), signal)
-    },
+    if (!hasEnded(child)) sayHeldExit(child, n.id, out, state, handed)
   }
+  return servers
+}
+
+/**
+ * A held server's own death, said where its output goes: a later run
+ * that keeps it owns the terminal from its start, and this run's renderer
+ * wrote over its rows.
+ */
+function sayHeldExit(
+  child: Child,
+  id: string,
+  out: HeldServer['out'],
+  state: { stopping: boolean },
+  handed: ReadonlySet<Child>,
+): void {
+  onServerExit(child, 'held', (code) => {
+    if (!state.stopping && !handed.has(child) && code !== 0)
+      out.bus.emit({ kind: 'run:status', line: `vx: ${id} exited with code ${code}`, warn: true })
+  })
 }
 
 /**

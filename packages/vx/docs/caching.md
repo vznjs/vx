@@ -597,7 +597,14 @@ reaches an output: one `git check-ignore` over each such
 output's directory (`dist/`, and a fresh `__vx_probe__/dist/` for a
 glob that starts with `**`), and the walk's listing must hold no file
 the glob matches (a tracked output, a directory a `!` rule takes back);
-anything git cannot answer keeps the key late. Undeclared writes, an
+anything git cannot answer keeps the key late. A root glob with no
+literal directory whose one wildcard part is a name of `*` and `?`
+(`*.tgz`, `**/*.tsbuildinfo`) is asked as a fresh name it matches
+(`__vx_probe__.tgz`, and `__vx_probe__/__vx_probe__.tgz` under `**`), and
+counts as ignored whole only when the rule git names for each is that
+name pattern itself (`*.tgz`, `**/*.tgz`, or `/*.tgz` for a root-only
+glob): `pkg-*.tgz` or `?.tgz` ignore some names, not every one. Any other
+glob with no literal directory (`*.{js,ts}`) stays undecided, an overlap. Undeclared writes, an
 `outputs.workspaceFiles` producer upstream, a rewriter the key does not
 fold, and runtime probes after a writer still leave a key preliminary.
 With a
@@ -1077,7 +1084,13 @@ a build's own `dist/.git` or `dist/sub/vx.lock.json` is an output like any other
 `.vx` holds the workspace config and the lock, which a clean deleted and a
 hit restored stale while `.vx/cache` alone was listed). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
-legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
+legitimate output) or sits under the glob's own literal directory: a
+build's own, Nitro's `.output/server/node_modules/**` under `.output/**`
+or Next standalone's under `.next/standalone/**`, is saved, restored and
+cleaned like the rest (until 2026-11-12 the save dropped it, and a hit
+restored a server missing its imports); a project's installed one, reached
+only by a wildcard (`**/*.js`) or by any `workspaceFiles` glob, never is.
+Until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
 No clean deletes a file git tracks (2026-10-14). Under an output
 glob it is still an output: the task may rewrite it (TanStack Router's
@@ -1106,7 +1119,9 @@ to its producer failed naming only the file (A-48, vueuse's
 before. Paths compare as
 git compares them: case-folded under `core.ignorecase` where the disk
 folds case too (macOS), and a
-file inside a submodule counts as committed.
+file inside a submodule counts as committed. A file past a committed
+symbolic link (`dist -> real`) does not: git tracks none through one, so
+it is asked by its target's name (`real/x`).
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.
 Skipped when:
@@ -1139,7 +1154,12 @@ user wrote, a read-only checkout) fails the task with `cannot remove
 declared output <path>: EACCES — …`, and a restore that cannot write
 into such a directory with `restore of <hash> into <dir> could not write its outputs
 (EACCES: …)`: the environment's failure, reported plainly, never as an
-internal error or a corrupt artifact.
+internal error or a corrupt artifact. A restore stages in the
+workspace's `.vx/tmp/`, so a read-only checkout with writable output
+volumes needs `.vx/tmp/` writable too (a mount or volume of its own);
+where it is not, the restore fails with `could not stage its outputs:
+restores stage in <root>/.vx/tmp, which is not writable (EROFS: …)`,
+naming that path, not the outputs.
 
 Why so strict? Turbo and Nx restore additively — files from a prior
 state can survive. We've seen this cause:
@@ -1251,10 +1271,14 @@ project's directory, even if a `**/*` pattern would otherwise match.
 
 `workspace/nested-dirs.ts` computes the set of nested project
 directories (projects rooted inside this one) once per `vx run`. A
-workspace package counts whether or not it has a vx config: it is the
+workspace package a `discover` plugin lists (a lockfile plugin such as
+`bun()`) counts whether or not it has a vx config: it is the
 project `--affected` gives its files to, and its default `build` keys
 them (X-57). The same set fences the output clean, so a root
-`outputs.files: ['**/*.js']` never removes a member's source. Every
+`outputs.files: ['**/*.js']` never removes a member's source. Core reads
+no `package.json`, so with no such plugin a directory with no vx config is
+no project: it is the root's, its files are the root's inputs, and a root
+output glob (`**/*.tsbuildinfo`) cleans its untracked matches. Every
 glob pass drops a path under one of them (an ancestor lookup,
 A-11). A nested workspace (a directory holding its own
 `.vx/workspace.*`, which `vx lock` records in the lock) joins the set for
@@ -1558,13 +1582,22 @@ saved (a second clone, a worktree), and none reads another's history.
 Task timings are shared too: `task_durations`, what a duration forecast
 reads, so a new worktree has one on its first run. So are plugins' own
 entries (`plugin_blobs`, a plugin's `ctx.cache`).
+A hit in one checkout replays the bytes another saved, so an output must
+be relocatable: one that bakes in its checkout's absolute path (Next's
+`required-server-files.json` holds the build's directory) points the
+other checkout at the first. Give such a workspace its own store
+(`cache.dir` in `.vx/workspace.ts`), or key the task per checkout
+(`import.meta.dir` in its command, [schema](./schema.md)).
 The id is Nx 23's: 16 hex of a sha256 of the remote (`origin`, then
 `upstream`, `base`, the first; `host/owner/repo` in lower case, so ssh
 and https agree) and the workspace's path in the repository; with no
 remote, the first commit. A repository with neither (no commit yet, a
 shallow clone with no remote) shares nothing: its workspace holds its
 entries, and once it has an identity (its first commit) the next run
-moves them into the store, so they still replay. Each level of `~/.vx` is
+moves them into the store, so they still replay. Rewriting the first
+commit with no remote (`commit --amend`, `rebase --root`) is a new id and
+an empty store; the old one stays in `~/.vx` until removed by hand.
+Each level of `~/.vx` is
 owner-only; vx closes one of yours that others can read (chmod 700), and one others can write, or owned by another user, is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
 
 ```
@@ -1660,7 +1693,9 @@ and the files below stay files: the config bundle in
 before the workspace config names the cache dir), the no-remote workspace
 id `.vx/cache/workspace-id` (outlives a cleared or reset index), restore
 staging in `.vx/tmp/` (output bytes), and the probes a run writes and
-removes at once (`.vx-clock-<pid>`, the watch stamps). A failed run's
+removes at once (`.vx-clock-<pid>`, the watch stamps). A hit needs
+`.vx/tmp/` writable even where `--cache-dir` points elsewhere: a
+read-only checkout mounts one over it. A failed run's
 task output is `failures` rows (one per task: `output` plain text, ANSI
 stripped, secrets masked, the first 8 KiB and last 56 KiB; `locations`
 and `sandbox_fix` JSON), written at run end only when a task failed with
@@ -1787,7 +1822,9 @@ symlink under the outputs to its target as written (`outputs/dist/latest`
 → `v2.txt`). A hit makes the link apart from its place and renames it
 over the target like a file, and only if the target is relative and
 stays inside the workspace at every step, read segment by segment from
-the link's own directory; any other fails the whole restore. A target
+the link's own directory, and through no other link it restores except
+as its last hop (a soname chain, at most 8 links, no loop); any other
+fails the whole restore. A target
 that climbs above the root and comes back (`../../../ws/app/x`) is out:
 judged by where it ends, it resolved inside only on a checkout whose root
 is named `ws`, saved there and was refused as corrupt everywhere else

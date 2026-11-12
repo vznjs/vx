@@ -125,6 +125,12 @@ describe('docs/cli.md — `vx lock` names the lock version it writes', () => {
     const named = [...doc.matchAll(/post-evaluation objects, by directory\s+\(version (\d+);/g)]
     expect(named.map((m) => Number(m[1]))).toEqual([LOCKFILE_VERSION])
   })
+  // schema.md's error rows said 5 after the lock moved to 6.
+  it('schema.md quotes it in the lock-version errors', async () => {
+    const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url)).text()
+    const named = [...doc.matchAll(/this vx (?:expects|reads) (\d+)\)/g)]
+    expect(named.map((m) => Number(m[1]))).toEqual([LOCKFILE_VERSION, LOCKFILE_VERSION])
+  })
 })
 
 describe('docs/cli.md — the `vx info` sample quotes the current versions', () => {

@@ -18,11 +18,18 @@ const FRESH = '__vx_probe__'
  * ignores each, it ignores every untracked path the glob can match. `deep`:
  * the glob reaches below them (a `dist` at any depth is asked as `dist/` and
  * a fresh `__vx_probe__/dist/`), so a listed file it matches must be looked
- * for too (a tracked one, or one a `!` rule takes back). Null when no few paths
- * stand for the glob (`*.js`): undecided, the output overlaps as before.
+ * for too (a tracked one, or one a `!` rule takes back). A glob with no
+ * literal directory whose one wildcard part is a name of `*` and `?` (`*.tgz`,
+ * at the root or at any depth) is asked as a fresh name it matches, and holds only when
+ * the rule git names for each probe is one of `rules`: the name pattern
+ * itself matches every name the glob does, where `pkg-*.tgz` or `?.tgz`
+ * would ignore the probe and not `a.tgz`. Null when no few paths stand for
+ * the glob (`*.{js,ts}`): undecided, the output overlaps as before.
  * `dir`: the glob's literal directory, where a listed file it matches lies.
  */
-export function ignoreProbes(glob: string): { paths: string[]; deep: boolean; dir: string } | null {
+export function ignoreProbes(
+  glob: string,
+): { paths: string[]; deep: boolean; dir: string; rules?: string[] } | null {
   const segs = normalizeGlob(glob).split('/')
   let i = 0
   while (i < segs.length && isLiteralPattern(segs[i]!)) i++
@@ -34,10 +41,21 @@ export function ignoreProbes(glob: string): { paths: string[]; deep: boolean; di
     const leaf = i + 2 < segs.length ? `${name}/` : name
     return { paths: [at + leaf, `${at}${FRESH}/${leaf}`], deep: true, dir: lit }
   }
-  return lit === '' ? null : { paths: [`${lit}/`], deep: false, dir: lit }
+  if (lit !== '') return { paths: [`${lit}/`], deep: false, dir: lit }
+  const base = segs.length === 1 ? segs[0]! : segs.length === 2 && segs[0] === '**' ? segs[1]! : ''
+  if (!/^[^[\]{}\\!][^[\]{}\\]*$/.test(base) || base.includes('**')) return null
+  const probe = base.replaceAll('*', FRESH).replaceAll('?', '_')
+  // `/*.tgz` anchors at the probe's directory: every root name, never a deeper one.
+  return segs.length === 1
+    ? { paths: [probe], deep: true, dir: '', rules: [base, `/${base}`, `**/${base}`] }
+    : { paths: [probe, `${FRESH}/${probe}`], deep: true, dir: '', rules: [base, `**/${base}`] }
 }
 
-const CHECK_IGNORE = ['check-ignore', '--stdin', '-z']
+/** The rule `check-ignore -v` named for each path git ignores, per answer it gave. */
+const rulesOf = new WeakMap<ReadonlySet<string>, ReadonlyMap<string, string>>()
+
+// `-v`: the rule beside each path, for a probe that stands for a name pattern.
+const CHECK_IGNORE = ['check-ignore', '--stdin', '-z', '-v']
 
 /**
  * Per directory git runs in, whether its `core.ignorecase=true` is false on
@@ -90,16 +108,20 @@ const stdinOf = (paths: readonly string[]): Buffer =>
   Buffer.from(paths.map((p) => `./${p}\0`).join(''))
 
 function ignoredOf(exitCode: number, stdout: Uint8Array): Set<string> | null {
-  // 0: some ignored; 1: none; anything else (no work tree): undecided.
+  // 0: some matched a rule; 1: none; anything else (no work tree): undecided.
   if (exitCode === 1) return new Set()
   if (exitCode !== 0) return null
-  return new Set(
-    new TextDecoder()
-      .decode(stdout)
-      .split('\0')
-      .filter((p) => p !== '')
-      .map((p) => p.slice(2)),
-  )
+  // -v: source, line, rule, path per record. A path a `!` rule matched last
+  // is listed too, and is not ignored.
+  const fields = new TextDecoder().decode(stdout).split('\0')
+  const rules = new Map<string, string>()
+  for (let i = 0; i + 3 < fields.length; i += 4) {
+    const rule = fields[i + 2]!
+    if (!rule.startsWith('!')) rules.set(fields[i + 3]!.slice(2), rule)
+  }
+  const out = new Set(rules.keys())
+  rulesOf.set(out, rules)
+  return out
 }
 
 /** The `paths` (relative to `cwd`) git ignores; null when git cannot say. */
@@ -220,6 +242,12 @@ export function wholeIgnored(
   for (const g of globs) {
     const ask = ignoreProbes(g)
     if (ask === null || !ask.paths.every((p) => ignored.has(p))) continue
+    const rules = ask.rules
+    if (
+      rules !== undefined &&
+      !ask.paths.every((p) => rules.includes(rulesOf.get(ignored)?.get(p) ?? ''))
+    )
+      continue
     if (ask.deep && listedMatch(g)) continue
     out.add(g)
   }

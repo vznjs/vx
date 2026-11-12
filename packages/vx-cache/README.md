@@ -45,7 +45,9 @@ export default {
   over each `timeoutMs`; an upload must send at least 1 MiB a second over
   each `uploadTimeoutMs`, then be answered within one. A big artifact
   still moving is not cut off, and one trickling or stalled is: it fails
-  the transfer, said as any cache error. Each is ms above 0 and up to 2³¹−1 (the
+  the transfer, said as any cache error. A read or check the server does
+  not answer within `timeoutMs` is said once and turns the remote off for
+  the run, reads and writes: the next would wait as long. Each is ms above 0 and up to 2³¹−1 (the
   longest a timer holds), or `vxCache()` refuses it.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:
@@ -93,14 +95,16 @@ counted as landed (a DTE worker is not told it did), and the run says
 once that the remote misses the key until the bucket's lifecycle rule
 expires it (`@vzn/vx-cache-server`'s Expiry).
 
-A refused token is said once and turns the remote off for the run; a
+A refused token, or a read with no answer in time, is said once (the run's, counted on no task) and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
 as a miss. A token the request sent (the job's OIDC token, a lent one,
 `VX_CACHE_TOKEN`) that those words or any error quote is written `***`.
 
 Every read names scopes, each a ref, percent-encoded. A check names the run's refs in order (its branch, then the
-branch it merges into, then the default branch; on CI `github()` or
+branch it merges into, then the default branch: `baseBranch`, else `origin/HEAD`'s, else the
+first of `origin/main`, `origin/master`, `main`, `master` that exists, as
+`--affected` finds its base; on CI `github()` or
 `gitlab()` from `@vzn/vx-ci` names them, so declare it too: without it
 a run reads git's branch and the default branch only), and the first ref
 holding a hash answers it; its download names that ref, and one the

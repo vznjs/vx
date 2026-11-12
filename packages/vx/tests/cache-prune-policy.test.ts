@@ -4,13 +4,14 @@
 
 import { Database } from 'bun:sqlite'
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { indexDb, Cache } from '../src/cache/index.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
+import { diskBytes } from '../src/util/index.js'
 
 const DAY = 86_400_000
 
@@ -252,13 +253,60 @@ describe('Cache.prune', () => {
       // use may be up to an hour after it.
       const edge = await orphan('00000000000000a3', 1024, DAY + 1_800_000)
       const old = await orphan('00000000000000a2', 1024, 2 * DAY)
+      const onDisk = diskBytes(statSync(old))
       expect(await cache.prune({ olderThanMs: Date.now() - DAY })).toEqual({
         evicted: 0,
         bytesFreed: 0,
         orphans: 1,
-        orphanBytes: 1024,
+        orphanBytes: onDisk,
       })
       expect([recent, edge, old].map((f) => existsSync(f))).toEqual([true, true, false])
+    } finally {
+      cache.close()
+    }
+  })
+
+  // `--max-size` bounds the disk the store uses, as `du` counts it: a tree of
+  // small files holds a block or more each, so their lengths' sum left a
+  // store capped at 200M using 340M.
+  it('maxSize bounds the blocks a tree of small files holds, not its lengths', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      for (const hash of ['00000000000000b1', '00000000000000b2', '00000000000000b3']) {
+        const outs: string[] = []
+        for (let i = 0; i < 40; i++) {
+          const out = path.join(projectDir, 'dist', `${hash}-${i}.js`)
+          await writeFile(out, crypto.getRandomValues(new Uint8Array(1000)))
+          outs.push(out)
+        }
+        await cache.save({
+          hash,
+          projectDir,
+          outputFiles: outs,
+          entry: { taskId: `p#${hash}`, command: `echo ${hash}`, durationMs: 1, stdout: '' },
+        })
+      }
+      const now = Date.now()
+      age('00000000000000b1', now - 3000)
+      age('00000000000000b2', now - 2000)
+      age('00000000000000b3', now - 1000)
+      const trees = (): string[] =>
+        readdirSync(cacheDir)
+          .filter((n) => n.endsWith('.tree'))
+          .map((n) => path.join(cacheDir, n))
+      // What `du` counts, where the filesystem reports blocks.
+      const du = (p: string): number => {
+        const st = lstatSync(p)
+        const own = st.blocks > 0 ? st.blocks * 512 : st.size
+        return st.isDirectory()
+          ? readdirSync(p).reduce((n, e) => n + du(path.join(p, e)), own)
+          : own
+      }
+      const one = Math.max(...trees().map(du))
+      const cap = one + 1024
+      await cache.prune({ maxBytes: cap })
+      expect(hashes(cache)).toEqual(['00000000000000b3'])
+      expect(trees().reduce((n, t) => n + du(t), 0)).toBeLessThanOrEqual(cap)
     } finally {
       cache.close()
     }
@@ -284,12 +332,13 @@ describe('Cache.prune', () => {
       ).s
       const recent = await orphan('00000000000000a1', 1024, 3 * 3_600_000)
       const old = await orphan('00000000000000a2', 1024, 3 * DAY)
+      const onDisk = diskBytes(statSync(old))
       // Room for the recent artifact alone: the older artifact and the row go.
-      expect(await cache.prune({ maxBytes: 1024 + one - 1 })).toEqual({
+      expect(await cache.prune({ maxBytes: onDisk + one - 1 })).toEqual({
         evicted: 1,
         bytesFreed: one,
         orphans: 1,
-        orphanBytes: 1024,
+        orphanBytes: onDisk,
       })
       expect([existsSync(recent), existsSync(old)]).toEqual([true, false])
       expect(hashes(cache)).toEqual([])

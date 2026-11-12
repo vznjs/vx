@@ -1350,3 +1350,90 @@ describe('vx why — an upstream that ran alone between the dependant runs', () 
     TIMEOUT,
   )
 })
+
+describe('vx why — after a failed run', () => {
+  // The pretty view labelled the failed run "previous" above a diff taken
+  // against the last run that saved an entry, so it named an edit made
+  // before the failure as made since (2026-11-11). JSON's note said so.
+  it(
+    'names the run the diff is against when it is not the previous one',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-failed-', git: false })
+      try {
+        const app = path.join(root, 'packages', 'app')
+        await mkdir(path.join(app, 'src'), { recursive: true })
+        await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+        await writeFile(
+          path.join(app, 'vx.config.mjs'),
+          `export default { tasks: { build: {
+            exec: { command: 'grep -q good src/input.txt && cat src/*.txt > out.txt' },
+            inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
+          } } }`,
+        )
+        await writeFile(path.join(app, 'src', 'input.txt'), 'good\n')
+        await writeFile(path.join(app, 'src', 'build.txt'), 'v1\n')
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        await writeFile(path.join(app, 'src', 'build.txt'), 'v2\n')
+        await writeFile(path.join(app, 'src', 'input.txt'), 'bad\n')
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(1)
+        await writeFile(path.join(app, 'src', 'input.txt'), 'good\n')
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+
+        const json = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out) as {
+          diff: { previousRunId: string; note: string }
+        }
+        const r = await vx(root, ['why', 'app#build'])
+        expect(r.code).toBe(0)
+        const detail = r.out.split('\n').find((l) => l.trimStart().startsWith('detail'))
+        expect(detail?.trim()).toBe(`detail    ${json.diff.note}`)
+        expect(json.diff.note).toBe(
+          `1 cache-key component(s) changed since run ${json.diff.previousRunId}, the last that saved an entry (the previous run ended failed)`,
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('vx why — an upstream whose config moved', () => {
+  // "What to do" told the asked task's `vx show` for a config change the
+  // root cause made upstream, which prints a config that did not move.
+  it(
+    "points `vx show` at the root cause's task, not the asked one",
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-upconfig-', git: false })
+      try {
+        const dir = path.join(root, 'packages', 'app')
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+        await writeFile(path.join(dir, 'a.txt'), 'a')
+        const config = (command: string): string =>
+          `export default { tasks: {
+            t0: { exec: { command: '${command}' }, inputs: { files: ['a.txt'] }, outputs: { files: [] }, cache: true },
+            t1: { dependsOn: ['t0'], exec: { command: 'true' }, inputs: { files: ['a.txt'] }, outputs: { files: [] }, cache: true },
+          } }`
+        await writeFile(path.join(dir, 'vx.config.mjs'), config('true'))
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        expect((await vx(root, ['run', 'app#t1'])).code).toBe(0)
+        await writeFile(path.join(dir, 'vx.config.mjs'), config('true; true'))
+        expect((await vx(root, ['run', 'app#t1'])).code).toBe(0)
+
+        const r = await vx(root, ['why', 'app#t1'])
+        expect(r.out).toContain('app#t1 ← app#t0 ← config')
+        expect(r.out).toEndWith(
+          `  config    ${WHAT_TO_DO['config']!.replace('`vx show <that task>`', '`vx show app#t0`')}\n`,
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

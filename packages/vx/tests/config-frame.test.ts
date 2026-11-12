@@ -277,6 +277,28 @@ describe('configRefusal', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('a dependsOn entry to remove is the fix', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-frame-'))
+    try {
+      const file = path.join(dir, 'vx.config.ts')
+      await writeFile(
+        file,
+        "export default {\n  tasks: {\n    compile: { dependsOn: ['d#compile', 'd2#compile'] },\n  },\n}\n",
+      )
+      expect(
+        configRefusal(
+          `${file}: tasks.compile.dependsOn names d2#compile, but no project is named d2 — remove d2#compile from dependsOn`,
+          dir,
+        ),
+      ).toMatchObject({
+        problem: 'tasks.compile.dependsOn names d2#compile, but no project is named d2',
+        fix: 'remove d2#compile from dependsOn',
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('vx lock prints a config refusal with its frame', () => {

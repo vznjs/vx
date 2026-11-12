@@ -74,3 +74,39 @@ it('vx lock and its --check refuse what the sparse checkout left out, the lock u
   }
   expect(await Bun.file(lockFile).text()).toBe(before)
 }, 30_000)
+
+it('every left-out project is named in one command, by a run and by vx lock', async () => {
+  gitIn(root)('sparse-checkout', 'set', '--no-cone', '/*', '!/packages/lib/', '!/packages/other/')
+  const run = await vx(root, ['run', 'build', '--all'])
+  expect([run.code, run.err.trim()]).toEqual([
+    1,
+    '✗ vx run  packages/lib ("lib"), packages/other ("other") are outside this sparse checkout, but this run needs their configs — run `git sparse-checkout add packages/lib packages/other`',
+  ])
+  const lock = await vx(root, ['lock'])
+  expect([lock.code, lock.err]).toEqual([
+    1,
+    expect.stringContaining(
+      'packages/lib, packages/other are outside this sparse checkout, so vx lock cannot read their configs — run `git sparse-checkout add packages/lib packages/other`',
+    ),
+  ])
+}, 30_000)
+
+// Cone mode keeps the root's files, not its directories: `.vx` is left out,
+// and `vx init` would have written a new workspace file over the real one.
+it('a cone checkout without .vx names the sparse checkout, and vx init writes nothing', async () => {
+  gitIn(root)('sparse-checkout', 'set', '--cone', 'packages/app')
+  expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).exists()).toBe(false)
+  for (const args of [['run', 'build'], ['init']]) {
+    const r = await vx(path.join(root, 'packages/app'), args)
+    expect([args[0], r.code, r.err.trim().split('\n').filter(Boolean)]).toEqual([
+      args[0],
+      1,
+      [
+        `✗ vx ${args[0]}  \`.vx/workspace.mjs\` is outside this sparse checkout`,
+        '  fix  git sparse-checkout add .vx',
+      ],
+    ])
+  }
+  expect(await Bun.file(path.join(root, '.vx/workspace.ts')).exists()).toBe(false)
+  expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).exists()).toBe(false)
+}, 30_000)

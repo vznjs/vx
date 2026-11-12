@@ -46,7 +46,7 @@ import {
 } from './messages.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
 import { serverFit } from './server-fit.js'
-import { snapshot, unfilter } from './tree.js'
+import { changedFiles, snapshot, unfilter } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, ORCHESTRATOR_SILENT, RelayError, unsent as unsentBy } from './wire.js'
 
@@ -71,6 +71,7 @@ export async function runWorker(opts: {
   await unfilter(opts.root)
   const base = await snapshot(opts.root)
   const tree = base.tree
+  const changed = await changedFiles(opts.root, base)
   // Never an output, as core never cleans one: the checkout is the run's
   // commit, so this is the run's tracked set.
   const tracked = trackedFiles(opts.root)
@@ -83,6 +84,7 @@ export async function runWorker(opts: {
     memory,
     platform: hostPlatform(),
     tree,
+    ...(changed.length === 0 ? {} : { changed }),
     booted: Math.round(performance.timeOrigin),
   }
   let me

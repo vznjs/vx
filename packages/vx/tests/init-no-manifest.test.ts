@@ -101,6 +101,34 @@ describe('vx init with no package.json', () => {
     )
   })
 
+  // The run ends with `vx lock`, which writes these too: --dry named none.
+  it('--dry names the files the lock writes', async () => {
+    const root = await tmp('vx-init-bare-dry-lock-')
+    const lockRow = async (env: Record<string, string>): Promise<string> => {
+      const r = await vx(root, ['init', '--dry'], env)
+      expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([0, '', false])
+      return r.out.slice(r.out.indexOf('  lock '), r.out.indexOf('\n\n', r.out.indexOf('  lock ')))
+    }
+    expect(await lockRow({ VX_LOCK_REVIEW_FILES: 'true' })).toBe(
+      '  lock      .vx/projects.lock.json\n' +
+        '            .vx/dependencies.lock.json\n' +
+        '            vx.lock.json beside each vx.config',
+    )
+    expect(await lockRow({ VX_LOCK_REVIEW_FILES: 'false' })).toBe(
+      '  lock      .vx/projects.lock.json\n            .vx/dependencies.lock.json',
+    )
+    // A kept workspace file's own setting is the lock's.
+    await mkdir(path.join(root, '.vx'))
+    await writeFile(
+      path.join(root, '.vx', 'workspace.mjs'),
+      'export default { lock: { reviewFiles: false } }\n',
+    )
+    const r = await vx(root, ['init', '--dry'])
+    expect(r.out).toContain(
+      '  lock      .vx/projects.lock.json\n            .vx/dependencies.lock.json\n\n',
+    )
+  })
+
   it('keeps the files already here, and --force replaces them', async () => {
     const root = await tmp('vx-init-bare-kept-')
     const mine = 'export default { tasks: { hi: { exec: { command: "echo hi" } } } }\n'

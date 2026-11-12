@@ -518,6 +518,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // that must restart it (its config changed, it died) stops it before its
   // graph, so the new one never meets the old one's port.
   let held = args.held
+  /** The watched projects: `rearm` replaces them. */
+  let watched = projects
 
   // Reentrancy guard — never two orchestrator runs in flight. Events that
   // land while one is running wait in `changes.pending` and are judged, on
@@ -551,7 +553,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       // and in a waiting server's project, is that server's own write.
       const dirs = c.serverDirs()
       const own = changes.changed.filter(
-        (p) => !changes.trackedAtArm(p) && dirs.some((d) => p.startsWith(d + path.sep)),
+        (p) => dirs.some((d) => p.startsWith(d + path.sep)) && !changes.tracked(p),
       )
       const again = own.length === changes.changed.length && own.every((p) => stoppedLast.has(p))
       stoppedLast = new Set(own)
@@ -777,6 +779,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     armedAt,
     clock: () => fsClockNow(cacheDir),
     held: () => held !== undefined,
+    serverDirs: () => {
+      const names = new Set(held?.ids.map((id) => id.slice(0, id.lastIndexOf('#'))))
+      return watched.filter((p) => names.has(p.name)).map((p) => p.dir)
+    },
     uncached: () => uncached,
     namedIgnored: () => {
       if (reachOf !== namedIgnored) {
@@ -1089,7 +1095,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
    */
   const linkArms = new Map<string, { target: string; handle: WatchHandle }>()
   let links = atArm?.links ?? new Set<string>()
-  let watched = projects
   /** A link came, went or moved: the set `armLinks` reads is stale. */
   const linkChanged = (abs: string): boolean => {
     if (links.has(abs)) return true

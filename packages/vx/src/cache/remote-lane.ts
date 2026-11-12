@@ -463,8 +463,9 @@ export class RemoteLane {
     const e = err instanceof Error ? err : new Error(thrownMessage(err))
     const hash = typeof subject === 'string' ? subject : undefined
     // A batch probe's failure is no one task's: each of its hashes is asked
-    // again on its own, and that ask is the one counted.
-    if (hash !== undefined) {
+    // again on its own, and that ask is the one counted. Nor is one that
+    // turned the remote off (`off`): it is the run's.
+    if (hash !== undefined && this.remote.off !== true) {
       const failures = this.trafficOf(hash).failures
       const said = `${op}: ${e.message}`
       if (!failures.includes(said)) failures.push(said)

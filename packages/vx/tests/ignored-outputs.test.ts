@@ -143,6 +143,95 @@ describe('an output git ignores is no overlap', () => {
   }, 30_000)
 })
 
+// A root output glob with no literal directory (`*.tgz`, `**/*.tsbuildinfo`)
+// had no path to ask git of, so `vx lock` refused a `**` reader beside it
+// even with the glob itself in .gitignore. Git now names the rule that
+// ignores a probe; only the glob's own name pattern speaks for every name.
+describe('a root output glob with no literal directory', () => {
+  const rootConfig = (out: string): string => `export default { tasks: {
+  pack: {
+    exec: { command: '${out.startsWith('**') ? 'mkdir -p d && touch a.tgz d/b.tgz' : 'touch a.tgz'}' },
+    inputs: { files: ['src/**'] }, outputs: { files: [${JSON.stringify(out)}] }, cache: true,
+  },
+  test: {
+    dependsOn: ['pack'],
+    exec: { command: 'true' },
+    inputs: { files: ['**'] }, outputs: { files: [] }, cache: true,
+  },
+} }`
+  const rootKey = async (root: string): Promise<string | null> => {
+    const prepared = await prepareRun({ cwd: root, tasks: ['test'], log: silent }, silent)
+    try {
+      const stable = await deriveStableKeys({
+        nodes: prepared.nodes,
+        cache: prepared.cache,
+        workspaceRoot: prepared.workspaceRoot,
+        claimedFiles: prepared.fingerprintWatch.names,
+        nestedDirsByProject: prepared.nestedDirsByProject,
+        gitFilesCache: prepared.gitFilesCache,
+        hashCache: prepared.hashCache,
+      })
+      return stable.find((k) => k.node.id === 'fixture-root#test')?.hash ?? null
+    } finally {
+      prepared.cache.close()
+    }
+  }
+  const at = async (
+    out: string,
+    ignore: string,
+    files: Record<string, string> = {},
+  ): Promise<string> => {
+    const root = await makeWorkspace({ prefix: 'vx-ignored-rootglob-' })
+    await writeFile(path.join(root, 'vx.config.mjs'), rootConfig(out))
+    await writeFile(path.join(root, '.gitignore'), ignore)
+    for (const [rel, text] of Object.entries({ 'src/a.txt': 'A', ...files })) {
+      await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
+      await writeFile(path.join(root, rel), text)
+    }
+    return root
+  }
+  const refused = (out: string): RegExp =>
+    new RegExp(
+      `fixture-root#test reads "\\*\\*" in inputs\\.files, which matches fixture-root#pack's output "${out.replaceAll('*', '\\*')}"`,
+    )
+
+  for (const [out, ignore] of [
+    ['*.tgz', '*.tgz\n'],
+    ['*.tgz', '/*.tgz\n'],
+    ['**/*.tgz', '*.tgz\n'],
+    ['**/*.tgz', '**/*.tgz\n'],
+  ] as const) {
+    it(`${out} with ${JSON.stringify(ignore.trim())} ignored keys up front, unchanged by the build`, async () => {
+      const root = await at(out, ignore)
+      try {
+        const before = await rootKey(root)
+        expect(before).not.toBeNull()
+        expect((await run({ cwd: root, tasks: ['pack'], log: silent })).ok).toBe(true)
+        expect(await rootKey(root)).toBe(before)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }, 30_000)
+  }
+
+  for (const [why, out, ignore, files] of [
+    ['nothing ignored', '*.tgz', '', {}],
+    ['a rule for some names only', '*.tgz', 'pkg-*.tgz\n__vx*\n', {}],
+    ['a one-character rule', '*.tgz', '?.tgz\n__vx_probe__.tgz\n', {}],
+    ['a root-only rule beside a deep glob', '**/*.tgz', '/*.tgz\n', {}],
+    ['a file a ! line takes back', '*.tgz', '*.tgz\n!keep.tgz\n', { 'keep.tgz': 'k' }],
+  ] as const) {
+    it(`CONTROL: ${why} is still an overlap`, async () => {
+      const root = await at(out, ignore, files)
+      try {
+        await expect(rootKey(root)).rejects.toThrow(refused(out))
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }, 30_000)
+  }
+})
+
 // `check-ignore` reads each path as a pathspec: `:top/dist/` was asked as
 // `top/dist/`, so a rule for `top/` answered for a project dir `:top`.
 describe('a path that reads as pathspec magic', () => {

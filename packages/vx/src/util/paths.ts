@@ -590,12 +590,32 @@ export function writableUnder(real: string, realBase: string): boolean {
 const WORKSPACE_OUTPUT_NEVER = [...OUTPUT_NEVER, '**/vx.lock.json']
 
 /**
- * What `globs` may not reach in `scope`: its never-list, and every
- * `node_modules` unless a glob names one.
+ * Whether `globs` may not reach `rel` in `scope`: its never-list, and a
+ * `node_modules` no glob owns. A glob naming one owns every one (an
+ * install task's `node_modules/**`); a project glob owns those under its
+ * own literal directory (Nitro's `.output/server/node_modules/**` under
+ * `.output/**`), which only the build writes. One that reaches them by a
+ * wildcard alone (`**\/*.js`) never does: its clean deleted every
+ * installed `.js` (A-13). The save, the restore and the clean all ask
+ * this, so none takes what another skips.
  */
-export function outputNever(globs: readonly string[], scope: 'project' | 'workspace'): string[] {
-  const never = scope === 'project' ? OUTPUT_NEVER : WORKSPACE_OUTPUT_NEVER
-  return namesNodeModules(globs) ? never : [...never, '**/node_modules/**']
+export function outputExcluded(
+  globs: readonly string[],
+  scope: 'project' | 'workspace',
+): (rel: string) => boolean {
+  const never = anyTaskGlob(scope === 'project' ? OUTPUT_NEVER : WORKSPACE_OUTPUT_NEVER)
+  if (namesNodeModules(globs)) return never
+  const installed = anyTaskGlob(['**/node_modules/**'])
+  const owners =
+    scope === 'workspace'
+      ? []
+      : asTrees(splitNegations(globs).positive).flatMap((g) => {
+          const base = staticPrefix(g)
+          if (base === '.' || base === '/') return []
+          const match = anyTaskGlob([g])
+          return [(rel: string) => rel.startsWith(`${base}/`) && match(rel)]
+        })
+  return (rel) => never(rel) || (installed(rel) && !owners.some((own) => own(rel)))
 }
 
 /** Whether a positive glob in `globs` names a `node_modules` directory. */
@@ -606,19 +626,18 @@ function namesNodeModules(globs: readonly string[]): boolean {
 }
 
 /**
- * Whether a restore may write `rel`: one of the outputs `globs` declare,
- * never under `OUTPUT_NEVER`, and under `node_modules` only where a glob
- * names it — what the save side could have packed (`resolveOutputs`). An
- * artifact naming anything else was not written by this task's save, and
- * none of it is restored (2026-10-16).
+ * Whether a restore may write `rel`: one of the outputs `globs` declare and
+ * not `outputExcluded` — what the save side could have packed
+ * (`resolveOutputs`). An artifact naming anything else was not written by
+ * this task's save, and none of it is restored (2026-10-16).
  */
 export function restorableOutput(
   globs: readonly string[],
   scope: 'project' | 'workspace' = 'project',
 ): (rel: string) => boolean {
   const isOutput = outputMatcher(globs)
-  const never = anyTaskGlob(outputNever(globs, scope))
-  return (rel) => isOutput(rel) && !never(rel)
+  const excluded = outputExcluded(globs, scope)
+  return (rel) => isOutput(rel) && !excluded(rel)
 }
 
 /**

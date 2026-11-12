@@ -699,5 +699,23 @@ describe('cacheRefs', () => {
       ])
       expect(cacheRefs(dir, 'feature', undefined, {})).toEqual(['refs/heads/feature'])
     })
+
+    // The repo creator's clone: `git push -u origin main` writes no
+    // origin/HEAD, so the default branch was dropped and every task on a
+    // feature branch missed what CI saved for main, with no warning.
+    it('with no origin/HEAD, the default is origin/main, then origin/master, then a local one', () => {
+      expect(cacheRefs(dir, undefined, undefined, {})).toEqual(['refs/heads/feature'])
+      git(dir, ['branch', 'master'])
+      expect(cacheRefs(dir, undefined, undefined, {})).toEqual([
+        'refs/heads/feature',
+        'refs/heads/master',
+      ])
+      git(dir, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+      git(dir, ['pack-refs', '--all'])
+      expect(cacheRefs(dir, undefined, undefined, {})).toEqual([
+        'refs/heads/feature',
+        'refs/heads/main',
+      ])
+    })
   })
 })

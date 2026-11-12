@@ -51,7 +51,7 @@ export {
   normalizeBunGlob,
   normalizeGlob,
   outputMatcher,
-  outputNever,
+  outputExcluded,
   restorableOutput,
   printable,
   hasControl,
@@ -83,7 +83,7 @@ export {
   teardownTimeoutMs,
   testTimerMs,
 } from './settle.js'
-export { formatBytes, parseDuration, parseSize, treeBytes } from './size.js'
+export { diskBytes, formatBytes, parseDuration, parseSize, treeBytes } from './size.js'
 export {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,

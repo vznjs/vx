@@ -22,7 +22,15 @@
           "type": "integer",
           "description": "artifacts and temp files with no index row, reaped"
         },
-        "orphanBytes": { "type": "integer" }
+        "orphanBytes": { "type": "integer" },
+        "historyRows": {
+          "type": "integer",
+          "description": "run history and hash-memo rows older than 30 days, dropped; absent on a dry run"
+        },
+        "historyBytes": {
+          "type": "integer",
+          "description": "bytes the index files shrank by once those rows' pages were given back"
+        }
       }
     },
     "clear": {

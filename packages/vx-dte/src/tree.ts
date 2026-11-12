@@ -8,12 +8,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { PROJECT_CONFIG_FILENAMES, UserError } from '@vzn/vx'
 import { repoEnv } from './local.js'
+import { CHANGED_NAMED } from './messages.js'
 
 /**
  * A commit of the tracked files as they are now (`HEAD`'s when none changed),
- * and its tree; both empty when git cannot say.
+ * and its tree; both empty when git cannot say. `edited`: some changed, so
+ * the commit is one made on `HEAD`.
  */
-export async function snapshot(root: string): Promise<{ commit: string; tree: string }> {
+export async function snapshot(
+  root: string,
+): Promise<{ commit: string; tree: string; edited?: true }> {
   const none = { commit: '', tree: '' }
   const head = (await git(['rev-parse', '--verify', '-q', 'HEAD^{commit}'], root))?.trim()
   if (head === undefined || head === '') return none
@@ -63,10 +67,31 @@ export async function snapshot(root: string): Promise<{ commit: string; tree: st
     const commit = (
       await git(['commit-tree', tree, '-p', head, '-m', 'vx dte'], root, IDENTITY)
     )?.trim()
-    return commit === undefined || commit === '' ? none : { commit, tree }
+    return commit === undefined || commit === '' ? none : { commit, tree, edited: true }
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+}
+
+/**
+ * The tracked files `snap` changed from the `HEAD` it was made on, sorted,
+ * at most `CHANGED_NAMED + 1`: what a worker refused for another tree names
+ * (a prepare's install rewrote bun.lock, and the refusal gave two hashes,
+ * 2026-11-11). No spawn when none changed.
+ */
+export async function changedFiles(
+  root: string,
+  snap: { commit: string; edited?: true },
+): Promise<string[]> {
+  if (snap.edited !== true) return []
+  const out = await git(
+    ['diff-tree', '-r', '--name-only', '-z', '--no-commit-id', snap.commit],
+    root,
+  )
+  return (out ?? '')
+    .split('\0')
+    .filter((f) => f !== '')
+    .slice(0, CHANGED_NAMED + 1)
 }
 
 /**

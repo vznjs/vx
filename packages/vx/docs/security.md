@@ -185,7 +185,11 @@ A task with `exec.sandbox` runs where only what it declares exists:
   restore, where a link out of it fails the whole restore. Nor may it
   reach its target through another link of the same outputs: each
   target is checked as text, and `up -> ..` with `esc -> up/../../x`
-  each read as inside while `esc` lands outside. An output
+  each read as inside while `esc` lands outside. Another link as the
+  target's LAST hop is no such step (a shared library's soname chain,
+  `libu.so -> libu.so.1`): the kernel lands where that link lands, and
+  that link is checked on its own, so the chain is
+  kept unless it loops or runs past 8 hops. An output
   directory linked out of the project refuses the task by name (X-88).
   Linux judges making a link by the link, never its target
   (`tests/sandbox-output-link.unsafe.test.ts`).
@@ -231,7 +235,7 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
 The value, of 6 characters or more, of a variable whose name holds
 `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (not one
 ending `_FILE`, `_PATH` or `_DIR`, nor `GIT_CONFIG_KEY_<n>`), or that a
-task lists in `exec.env.secret`, the password of a URL
+task lists in `exec.env.secret`, the password, also of 6 characters or more, of a URL
 (`scheme://user:<password>@`, split at the last `@` before the path as a
 URL parser splits it) in any variable's value, and the sandbox proxy's
 session token a networked task's env carries, is printed as `***` wherever vx shows, stores or
@@ -249,8 +253,12 @@ action's Command, which the remote stores in its CAS, as Bazel's
 remote. `vx lock` refuses to write a lock holding a secret value, or
 any piece of one the output masks (a URL's password, a key's line),
 including a secret-named `define` read from a variable of any name
-(`API_TOKEN: process.env.MY_CREDS`): the lock is committed (L-42). A
-define the config spells literally is its own committed text and locks.
+(`API_TOKEN: process.env.MY_CREDS`): the lock is committed (L-42), and
+`vx lock --check` fails such a lock. A value the config's own text
+spells, in the config or a local module it imports (not one under
+`node_modules`), is committed already and locks: a literal define, or
+`docker compose up postgres` while `DATABASE_URL`'s password is
+`postgres`.
 
 Masking covers the text vx shows and stores, not a task's outputs: they
 are cached and uploaded as the task wrote them, so a build that bakes a

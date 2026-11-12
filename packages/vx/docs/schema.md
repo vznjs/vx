@@ -88,14 +88,20 @@ each), and any object that is not a
 plain object or an array (a `Date`, `Map`, `Set`, `RegExp` or class
 instance), and nesting deeper than 256 levels. An
 `undefined` property is fine: JSON drops it and the schema reads it as
-absent, which is what a conditional spread
-(`...(ci ? { retries: 2 } : {})`) relies on. The workspace config is not
+absent, which is what a preset's optional field
+(`description: opts.description`) relies on. A config is evaluated once,
+by `vx lock`, so a branch on `process.env` (`CI`) is fixed by whoever
+locked it, and `vx lock --check` under the other value fails. The workspace config is not
 held to this: its plugins are objects of functions.
 
 `vx lock` evaluates a project config with the workspace root as
 `process.cwd()` and `PWD`, from whichever directory it runs, so the lock does not
 depend on where you ran it; `import.meta.dir` is the config's own
-directory. What it prints goes to stderr, a child it spawns
+directory, an absolute path: in a command it locks this checkout's path,
+so another checkout fails `vx lock --check` and keys apart (`vx lock`
+warns). A command runs in its project's directory: name a script by a
+path relative to it, or `$VX_RUN_WORKSPACE/scripts/gen.ts` from the
+workspace root. What it prints goes to stderr, a child it spawns
 included: a verb's stdout is its output.
 
 `tasks` is a `Record<string, TaskConfig>`. Task names are strings
@@ -291,6 +297,14 @@ right granularity for invalidation. If you'd benefit from caching each
 step independently (e.g. `codegen` then `build`), split into two
 tasks linked by `dependsOn`. If you don't need that, `&&` in shell is
 the right tool.
+
+**npm's `pre`/`post` scripts.** vx runs `command` as written: a
+`prebuild` or `postbuild` in package.json runs only when the command is
+`npm run build` (npm runs the hooks), and then that package.json is an
+input — list it in `inputs.files`, or an edited hook replays a stale hit.
+Better: put the steps in the command (`rimraf dist && tsc && node
+scripts/copy.js`), as `bunx @vzn/vx-migrate` does when it maps
+scripts.
 
 #### `retries` (optional)
 
@@ -856,7 +870,8 @@ dependsOn: ['^build.*'] // all build.<x> tasks of the nearest deps
 Semantics:
 
 - **Cross-project (`'pkg#name'`)** — the project and its task must
-  exist; a miss is a hard error that offers the nearest declared one.
+  exist; a miss is a hard error that offers the nearest declared one
+  the list does not already name, or else to remove the entry.
   A project is named by its path unless its config sets `name`, so
   `a#build` offers `packages/a#build`.
 
@@ -1506,6 +1521,11 @@ Outputs are **NOT** filtered through gitignore — typical artifact
 dirs like `dist/`, `coverage/`, `.next/`, `pkg/` are captured normally
 even when gitignored (they usually are).
 
+An installed `node_modules` is no output unless a glob names it
+(`node_modules/**`): `**/*.js` never saves, restores or cleans the
+project's dependencies. One under a glob's own literal directory is the
+build's: `.output/**` takes Nitro's `.output/server/node_modules/**`.
+
 Like inputs, outputs stop at a project boundary: an entry rooted inside
 a nested project (`sub/dist/**` when `sub/` holds its own config) would
 save nothing, so `vx lock` refuses it (`VX_E_NESTED_OUTPUT`): let that
@@ -1521,7 +1541,10 @@ as the link, its target as written (a link to a file, to a directory,
 or to nothing yet), and the clean unlinks it (never following it). No
 byte of its target is read. A link must be relative and lead somewhere
 inside the workspace, out of `.git`: an absolute one, `../../../etc/hosts`, or
-`../../.git/config` fails the save by name and caches nothing, so the next run executes again. An
+`../../.git/config` fails the save by name and caches nothing, so the next run executes again.
+A link may name another output link as its target (`libu.so -> libu.so.1`, a
+soname chain), but never pass through one on the way (`up/../x`), loop, or
+chain past 8 links. An
 output DIRECTORY that is a symlink (`dist -> real-out`) is followed: its
 target is cleaned, saved and restored as the output; one that resolves
 outside the project refuses the task, naming the link. The clean also prunes the directories it
@@ -1730,6 +1753,10 @@ exec: {
   },
 }
 ```
+
+A write to such a per-run temp name (`.<hex>-<n>.bun-build`) gets no
+`fix:` grant, which the next run's new name would miss; the failure
+names this `ignore` glob instead.
 
 **Home.** In `allow` and `ignore`, `~` and `~/…` are the home
 directory; `~user/…` is refused when the config loads, naming the entry:
@@ -2002,7 +2029,9 @@ reported, items 444 and 1011). One exception: the observer cannot see an
 swallowed `openat2` write there passes, having written nothing; one it
 may not read is reported as an open, its fix a read grant. A write
 outside the project is refused the same way and named on a failed
-task, never counted. The remedy is to declare it: `allow: { write: [...] }`.
+task, never counted, with a grant for each refused write (a refused
+`mkdir ~/.cache` is granted as `'~/.cache/'`, never home itself). The
+remedy is to declare it: `allow: { write: [...] }`.
 
 **A write grant cannot be removed on Linux.** A directory grant is
 mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
@@ -2039,7 +2068,13 @@ wall, so `read: ['.']` in a root project leaves it out too). On Linux
 a task whose grants name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1`
 (a value the task sets wins), since every sandbox mount is a filesystem
 boundary git's discovery stops at. `git rev-parse` and `git log` then answer as outside;
-`git status` reports a file the task may not read as deleted.
+`git status` reports a file the task may not read as deleted, so `git describe --dirty`
+(and anything built on status) says dirty on a clean tree. A version stamp needs the whole
+workspace readable: `read: ['../..', '../../.git']` from a project two levels down. git's
+`HEAD` is in no key, so such a task is uncached or keys it: `inputs: { workspaceRuntime: ['git describe --always --dirty'] }`.
+A task git finds no repository for (git probes `.git` by `stat`, which the trace does not
+report) fails with a hint naming the `.git` grant, or saying it lies outside the workspace and
+is walled on purpose.
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
@@ -2932,8 +2967,8 @@ Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projec
 | `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                              |
 | `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                                       | A locked project's config was deleted or renamed (X-144).                                                   |
 | `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`                           | This user may not search the project's directory (D-132).                                                   |
-| `.vx/projects.lock.json has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``                        | A lock an earlier vx wrote.                                                                                 |
-| `.vx/projects.lock.json was written by a newer vx (version <n>; this vx reads 5) — upgrade vx`                       | A lock a later vx wrote: re-locking would write the older version.                                          |
+| `.vx/projects.lock.json has unsupported version <n> (this vx expects 6) — re-run \`vx lock\``                        | A lock an earlier vx wrote.                                                                                 |
+| `.vx/projects.lock.json was written by a newer vx (version <n>; this vx reads 6) — upgrade vx`                       | A lock a later vx wrote: re-locking would write the older version.                                          |
 | `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                           |
 | `.vx/projects.lock.json: no <pool> <n> in its pool — re-run \`vx lock\``                                             | A hand-edited lock names a pooled value it does not hold.                                                   |
 | `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it` | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task. |

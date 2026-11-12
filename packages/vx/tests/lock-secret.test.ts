@@ -18,9 +18,15 @@ afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })
 })
 
-async function lock(config: string, env: Record<string, string>) {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-lock-secret-'))
-  roots.push(root)
+async function lock(
+  config: string,
+  env: Record<string, string>,
+  files: Record<string, string> = {},
+  args: string[] = [],
+  at?: string,
+) {
+  const root = at ?? (await mkdtemp(path.join(os.tmpdir(), 'vx-lock-secret-')))
+  if (at === undefined) roots.push(root)
   await writeFile(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
@@ -30,19 +36,27 @@ async function lock(config: string, env: Record<string, string>) {
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  for (const [name, text] of Object.entries(files)) await Bun.write(path.join(root, name), text)
   const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, 'lock'],
+    cmd: [process.execPath, BIN, 'lock', ...args],
     cwd: root,
     env: { ...process.env, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
   return {
+    root,
     code: r.exitCode,
     err: r.stderr.toString(),
     written: existsSync(path.join(root, '.vx/projects.lock.json')),
   }
 }
+
+const bare = (r: Awaited<ReturnType<typeof lock>>) => ({
+  code: r.code,
+  err: r.err,
+  written: r.written,
+})
 
 const INTERPOLATED = `export default { tasks: {
   deploy: { exec: {
@@ -55,7 +69,7 @@ const INTERPOLATED = `export default { tasks: {
 describe('vx lock and a secret in an evaluated config', () => {
   it('refuses, names each place, and writes nothing', async () => {
     const r = await lock(INTERPOLATED, { API_TOKEN: SECRET, GH_PAT: 'ghp_patvalue456' })
-    expect(r).toEqual({
+    expect(bare(r)).toEqual({
       code: 1,
       err:
         '✗ vx lock  lock not written\n\n' +
@@ -81,7 +95,7 @@ describe('vx lock and a secret in an evaluated config', () => {
 
   it('locks the same config when the environment holds no secret (control)', async () => {
     const r = await lock(INTERPOLATED, { API_TOKEN: '', GH_PAT: '' })
-    expect(r).toEqual({ code: 0, err: '', written: true })
+    expect(bare(r)).toEqual({ code: 0, err: '', written: true })
   })
 
   // The output masks a URL's password and each line of a PEM key: the lock
@@ -128,7 +142,7 @@ describe('vx lock and a secret in an evaluated config', () => {
       `export default { tasks: { up: { exec: { command: 'up', env: { define: { NODE_AUTH_TOKEN: '\${NPM_TOKEN}' } } } } } }\n`,
       { MY_CREDS: 'creds-value-789' },
     )
-    expect(r).toEqual({ code: 0, err: '', written: true })
+    expect(bare(r)).toEqual({ code: 0, err: '', written: true })
   })
 
   it('locks a command the shell expands (control)', async () => {
@@ -136,6 +150,75 @@ describe('vx lock and a secret in an evaluated config', () => {
       `export default { tasks: { deploy: { exec: { command: 'deploy --token $API_TOKEN', env: { passThrough: ['API_TOKEN'] } } } } }\n`,
       { API_TOKEN: SECRET },
     )
-    expect(r).toEqual({ code: 0, err: '', written: true })
+    expect(bare(r)).toEqual({ code: 0, err: '', written: true })
+  })
+
+  // The everyday dev database: the URL's password is `postgres`, and a
+  // config that names the service in its own text evaluated no secret.
+  it('locks a value the config spells itself, a URL password among them', async () => {
+    const r = await lock(
+      `export default { tasks: { 'db:up': { exec: { command: 'docker compose up -d postgres' } } } }\n`,
+      {
+        DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/app',
+        POSTGRES_PASSWORD: 'postgres',
+      },
+    )
+    expect(bare(r)).toEqual({ code: 0, err: '', written: true })
+  })
+
+  it('still refuses that value read from the environment', async () => {
+    const r = await lock(
+      `export default { tasks: { psql: { exec: { command: 'psql ' + process.env.DATABASE_URL } } } }\n`,
+      { DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/app' },
+    )
+    expect([r.code, r.written]).toEqual([1, false])
+    expect(r.err).toContain('a: tasks.psql.exec.command holds $DATABASE_URL\n')
+  })
+
+  // The text that counts is each module the config evaluates: a preset
+  // that reads the environment is caught though the config never spells it.
+  it('refuses a secret an imported preset reads, and locks one it spells', async () => {
+    const files = {
+      'shared/env.mjs': `export const deploy = { exec: { command: 'deploy --token ' + process.env.API_TOKEN } }\n`,
+      'shared/spelled.mjs': `export const up = { exec: { command: 'up --as ${SECRET}' } }\n`,
+    }
+    const r = await lock(
+      `import { deploy } from '../../shared/env.mjs'\nexport default { tasks: { deploy } }\n`,
+      { API_TOKEN: SECRET },
+      files,
+    )
+    expect([r.code, r.written]).toEqual([1, false])
+    expect(r.err).toContain('a: tasks.deploy.exec.command holds $API_TOKEN\n')
+    const ok = await lock(
+      `import { up } from '../../shared/spelled.mjs'\nexport default { tasks: { up } }\n`,
+      { API_TOKEN: SECRET },
+      files,
+    )
+    expect(bare(ok)).toEqual({ code: 0, err: '', written: true })
+  })
+
+  // `--check` audits what `vx lock` would write here: it passed a lock
+  // holding a value that is a secret in this environment.
+  it('--check agrees with vx lock about a secret value', async () => {
+    const config = `export default { tasks: { up: { exec: { command: 'up --as ' + process.env.WHO } } } }\n`
+    const first = await lock(config, { WHO: SECRET })
+    expect(bare(first)).toEqual({ code: 0, err: '', written: true })
+    const env = { WHO: SECRET, API_TOKEN: SECRET }
+    const relock = await lock(config, env, {}, [], first.root)
+    expect([relock.code, relock.err]).toEqual([
+      1,
+      expect.stringContaining('a: tasks.up.exec.command holds $API_TOKEN\n'),
+    ])
+    const check = await lock(config, env, {}, ['--check'], first.root)
+    expect([check.code, check.err]).toEqual([
+      1,
+      expect.stringContaining('a: tasks.up.exec.command holds $API_TOKEN'),
+    ])
+    const literal = `export default { tasks: { 'db:up': { exec: { command: 'docker compose up -d postgres' } } } }\n`
+    const db = { DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/app' }
+    const locked = await lock(literal, db)
+    expect(locked.code).toBe(0)
+    const checked = await lock(literal, db, {}, ['--check'], locked.root)
+    expect([checked.code, checked.err]).toEqual([0, ''])
   })
 })

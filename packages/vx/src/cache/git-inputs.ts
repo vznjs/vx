@@ -545,18 +545,32 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * delete committed file"). A directory no enumeration covered (a
    * nested repository, a cache no enumeration filled) is listed once.
    * git lists a submodule as its gitlink path alone, so a file under a
-   * tracked path is committed too.
+   * tracked directory is committed too. Not under a tracked symlink
+   * (`dist -> real`): git tracks no file through one, and as an ancestor
+   * it kept every file past it, so each miss saved the earlier runs'
+   * files. Its target's own name is asked (`committedPastLinks`). The
+   * lstat is fresh per clean (a task may replace the link) and only for
+   * a tracked ancestor.
    */
   committedIn(dir: string): (abs: string) => boolean {
     let listed = false
+    const linkAncestors = new Map<string, boolean>()
     return (abs) => {
       if (!listed) {
         listed = true
         const covered = this.trackedScopes.some((s) => dir === s || dir.startsWith(s + path.sep))
         if (!covered) this.noteTracked([dir], listTracked(dir))
       }
-      for (let p = abs; p.length > dir.length; p = path.dirname(p))
-        if (this.isTracked(p)) return true
+      for (let p = abs; p.length > dir.length; p = path.dirname(p)) {
+        if (!this.isTracked(p)) continue
+        if (p === abs) return true
+        let link = linkAncestors.get(p)
+        if (link === undefined) {
+          link = lstatOrAbsent(p)?.isSymbolicLink() === true
+          linkAncestors.set(p, link)
+        }
+        if (!link) return true
+      }
       return false
     }
   }

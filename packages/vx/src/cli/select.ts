@@ -694,6 +694,10 @@ interface PickedTask {
   description?: string
 }
 
+/** What a workspace with no task yet says, picker or not. */
+export const NO_TASKS_DECLARED =
+  'no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`'
+
 /**
  * The task the user picks from a numbered menu; null when nothing was
  * picked (said on stderr), `'interrupted'` for a Ctrl-C at the prompt.
@@ -735,11 +739,7 @@ export async function pickTask(
     return null
   }
   if (entries.length === 0) {
-    sayNotice(
-      'error',
-      'vx run',
-      'no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`',
-    )
+    sayNotice('error', 'vx run', NO_TASKS_DECLARED)
     return null
   }
   // The menu is a conversation with the terminal, not the run's output: on
@@ -801,11 +801,10 @@ export async function pickTask(
 }
 
 /**
- * The first unmatched include naming, by path or by a config-only
- * project's directory name, a config `vx lock` would make a project: one
- * written after the lock is none yet, and "Projects: …" without it read as
- * a typo. Asked on the no-match path only; `unlockedDir` lists the tree
- * only when that directory holds a config.
+ * The first unmatched include naming, by path, by a config-only
+ * project's directory name or by a package name, a config `vx lock` would
+ * make a project: one written after the lock is none yet, and "Projects: …"
+ * without it read as a typo. Asked on the no-match path only.
  */
 async function unlockedFilter(
   root: string,
@@ -957,6 +956,9 @@ function didYouMeanProject(
     const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())
     const scoped = bare === undefined ? undefined : byBare.get(bare)
     if (scoped?.length === 1) return meant(scoped[0]!)
+    // A name cut short (`@m/slow` for `@m/slow-tests`) is past the edit budget.
+    const opened = names.filter((n) => n.startsWith(typed))
+    if (typed !== '' && opened.length === 1) return meant(opened[0]!)
   }
   return names.length === 0 ? '' : `. Projects: ${listed(names)}`
 }

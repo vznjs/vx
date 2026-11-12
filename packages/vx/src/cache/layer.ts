@@ -355,6 +355,13 @@ export interface PruneResult {
   orphans: number
   /** Bytes the reaped orphans occupied on disk. */
   orphanBytes: number
+  /**
+   * Run history and hash-memo rows older than 30 days, dropped. Absent
+   * when none went, and on a dry run.
+   */
+  historyRows?: number
+  /** Bytes the index files shrank by once those rows' pages were given back. */
+  historyBytes?: number
 }
 
 /**

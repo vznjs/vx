@@ -26,6 +26,13 @@ function gb(bytes: number): string {
   return (bytes / 1e9).toFixed(1)
 }
 
+/** A peak beside its machine's memory: in MB below what reads as 1.0 GB, where `0.0` hid tens of MB. */
+function peakOf(peak: number, total: number): string {
+  return peak < 0.95e9
+    ? `${Math.round(peak / 1e6)} MB of ${gb(total)} GB`
+    : `${gb(peak)} of ${gb(total)} GB`
+}
+
 function fmtMs(ms: number): string {
   if (Math.round(ms) < 1000) return `${Math.round(ms)}ms`
   if (Math.round(ms / 100) < 600) return `${(ms / 1000).toFixed(1)}s`
@@ -340,7 +347,7 @@ function renderWorkers(
         tasksCell(m.done, m.failed),
         m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
         `${m.cpuAvg.toFixed(1)} of ${m.cores}`,
-        `${gb(m.memoryPeakBytes)} of ${gb(m.memoryBytes)} GB`,
+        peakOf(m.memoryPeakBytes, m.memoryBytes),
         pct(m.utilization),
       ].join(' | ')} |`,
     )

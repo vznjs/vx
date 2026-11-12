@@ -511,6 +511,23 @@ describe('discover', () => {
       expect(await discover(c.make(), ok)).toEqual(EXPECTED)
     })
 
+    it(`${c.name}(): a dependency on a workspace deleted from disk refuses`, async () => {
+      // `rm -rf packages/e` while b still names it: the install fails, the
+      // lockfile keeps b → e, and the lock dropped the edge with a ✓.
+      await writeFile(path.join(root, c.file), c.text)
+      await workspaces()
+      const spec = c.name === 'npm' ? '*' : 'workspace:*'
+      const metas = await projects({ root: rootPkg, b: { name: 'b', dependencies: { e: spec } } })
+      await expect(discover(c.make(), metas)).rejects.toThrow(
+        `${c.file} is out of date: packages/b depends on the workspace e (packages/e), which is not on disk — remove the dependency and run \`${c.name} install\``,
+      )
+      // CONTROL: the workspace back on disk.
+      await mkdir(path.join(root, 'packages/e'), { recursive: true })
+      await writeFile(path.join(root, 'packages/e/package.json'), JSON.stringify({ name: 'e' }))
+      const got = await discover(c.make(), metas)
+      expect(got.find((p) => p.dir === 'packages/b')?.deps).toEqual(['packages/e'])
+    })
+
     it(`${c.name}(): the names the lockfile records are read once per content`, async () => {
       // Parsing them was ~2 ms of every warm run on solid; only the
       // lockfile text decides them, so they are kept under its hash.

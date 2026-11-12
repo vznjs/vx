@@ -1,6 +1,7 @@
 == class VxCacheLayer (src/index.ts)
 export class VxCacheLayer implements RemoteCacheLayer {
   readonly endpoint: string
+  get off(): boolean
   refs: readonly string[]
   warn: (message: string) => void = () => {}
   constructor(

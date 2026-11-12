@@ -29,6 +29,7 @@ import {
 } from '@vzn/vx'
 import {
   bytesOf,
+  CHANGED_NAMED,
   HOST_ENV,
   PART_LISTS,
   type PartList,
@@ -503,7 +504,7 @@ export class Orchestrator {
       const tree = await this.inTree
       if (tree !== undefined && !holds(tree, dir))
         throw new UserError(
-          `${req.taskId} runs in ${dir}, which is not in the commit workers check out: commit its project (no file under ${dir} is tracked)`,
+          `${req.taskId} runs in ${dir}, where git tracks no file, so no worker has it: git add its project (and commit it for workers on CI)`,
         )
     }
     // A worker runs the run's tree: a file its key includes that the tree
@@ -539,7 +540,7 @@ export class Orchestrator {
         const link = tree?.links.find((l) => stray.path.startsWith(`${l}/`))
         throw new UserError(
           link === undefined
-            ? `${req.taskId} keys ${stray.path}, which is not in the commit workers check out: commit it, or leave it out of the task's inputs`
+            ? `${req.taskId} keys ${stray.path}, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs`
             : `${req.taskId} keys ${stray.path}, in submodule ${link}, whose files workers do not check out: leave it out of the task's inputs`,
         )
       }
@@ -1687,6 +1688,40 @@ export class Orchestrator {
       })
   }
 
+  /**
+   * Why a worker's tree is not the run's: a project of the run its tree
+   * lacks first, the likely cause (a worktree without it, whose install
+   * rewrote bun.lock), then the tracked files the worker changed. Two
+   * hashes alone sent every worker away with no lead (2026-11-11).
+   */
+  private async otherTree(tree: unknown, changed: unknown): Promise<string> {
+    const why = [`checked out tree ${String(tree)}, the run is on ${this.o.tree}`]
+    const nodes = this.o.nodes()
+    if (nodes !== undefined) {
+      this.inTree ??= listTree(this.o.root, this.o.tree)
+      const listed = await this.inTree
+      for (const n of listed === undefined ? [] : nodes.values()) {
+        const dir = path.relative(this.o.root, n.projectDir)
+        if (dir === '' || dir.startsWith('..') || holds(listed!, dir)) continue
+        why.push(
+          `${dir} is untracked, so no worker has it: git add its project (and commit it for workers on CI)`,
+        )
+        break
+      }
+    }
+    if (
+      Array.isArray(changed) &&
+      changed.length > 0 &&
+      changed.every((f) => typeof f === 'string')
+    ) {
+      const named = changed.slice(0, CHANGED_NAMED).join(', ')
+      why.push(
+        `it changed tracked ${named}${changed.length > CHANGED_NAMED ? ' and more' : ''} after checkout, as a prepare step (an install) can`,
+      )
+    }
+    return why.length === 1 ? why[0]! : `${why[0]}: ${why.slice(1).join('; ')}`
+  }
+
   private onRelay(body: { type?: string; id?: string; info?: unknown }): void {
     if (body.type === 'joined') {
       const info = body.info as Partial<WorkerInfo> | null
@@ -1709,7 +1744,8 @@ export class Orchestrator {
         return refuse('speaks another vx-dte protocol')
       }
       if (info.tree !== this.o.tree) {
-        return refuse(`checked out tree ${info.tree}, the run is on ${this.o.tree}`)
+        void this.otherTree(info.tree, info.changed).then(refuse)
+        return
       }
       const platform = typeof info.platform === 'string' ? info.platform : undefined
       const sized = info.id === undefined ? undefined : this.spawnedAt.get(info.id)?.declared

@@ -684,7 +684,7 @@ export function dte(options: DteOptions = {}) {
       const untracked = await untrackedWorkspace(ctx.workspaceRoot, tree)
       if (untracked !== undefined)
         throw new UserError(
-          `dte(): ${untracked} is untracked, so the commit workers check out lacks it: commit it`,
+          `dte(): ${untracked} is untracked, so no worker has it: git add it (and commit it for workers on CI)`,
         )
       const serves = new Map<string, readonly string[]>()
       const need = (id: string): Need => {

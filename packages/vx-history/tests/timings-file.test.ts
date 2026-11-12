@@ -447,6 +447,21 @@ it('says a timings file git does not ignore re-keys the tasks over it and re-run
   ])
 })
 
+// git check-ignore answers no for a tracked file whatever .gitignore says,
+// so a committed timings file was told to go in the .gitignore it was in.
+it('a tracked timings file is told to leave the index, not to join the .gitignore it is in', async () => {
+  Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  const file = path.join(root, '.vx-timings.json')
+  await writeFile(file, '{}')
+  Bun.spawnSync({ cmd: ['git', 'add', '.vx-timings.json'], cwd: root })
+  await writeFile(path.join(root, '.gitignore'), '.vx-timings.json\n')
+  const said: string[] = []
+  await warnUnignored(file, root, (m) => said.push(m))
+  expect(said).toEqual([
+    '[vx] vx-history: timings file .vx-timings.json is tracked by git, so a task whose inputs cover it re-keys on every rewrite and vx watch re-runs on it — untrack it: git rm --cached .vx-timings.json, and keep it in .gitignore',
+  ])
+})
+
 // A chain's weight is its durations summed: two `1e308`s from a CI cache's
 // file (or `assume`) summed to Infinity, and core refused the weight —
 // `failed in schedule` — so an ordering hint failed every run.

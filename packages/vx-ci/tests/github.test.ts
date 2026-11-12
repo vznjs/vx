@@ -155,6 +155,32 @@ describe('renderJobSummary', () => {
     expect(md).toContain('| a#skip | ⏭️ skipped |  |')
   })
 
+  // A worker whose tasks peaked at tens of MB read `0.0 of 14.3 GB`.
+  it('gives a worker peak under 1 GB in MB', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'a#test', where: 'small#1' })], {
+        machines: [
+          {
+            name: 'small#1',
+            status: 'left',
+            cores: 4,
+            memoryBytes: 14.3e9,
+            done: 1,
+            failed: 0,
+            onlineMs: 10_000,
+            busyMs: 5_000,
+            cpuAvg: 1,
+            cpuPeak: 1,
+            memoryPeakBytes: 42.4e6,
+            memoryAvgBytes: 3e7,
+            utilization: 0.5,
+          },
+        ],
+      }),
+    )
+    expect(md).toContain('| 42 MB of 14.3 GB |')
+  })
+
   // Owner, 2026-10-23: the page shows each DTE worker, expected beside used.
   it('names each worker the run used, expected beside used, its peak RAM, and the totals', () => {
     const m = {

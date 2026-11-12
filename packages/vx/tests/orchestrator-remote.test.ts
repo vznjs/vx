@@ -23,7 +23,7 @@ import {
 import { indexDb, Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { ownRssHighWater } from '../src/exec/runner.js'
 import { type RunSummaryRecord, type TelemetryRecord } from '../src/orchestrator/index.js'
-import { LocalHistoryProvider } from '../src/history/index.js'
+import { cacheKeyDiff, latestRunId, LocalHistoryProvider } from '../src/history/index.js'
 import { planRun, run } from './helpers/orchestrator.js'
 import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
@@ -1701,6 +1701,62 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
         expect(second.ok).toBe(true)
         expect(mem.gets).toBeGreaterThanOrEqual(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // A remote hit keeps no input fingerprints (the artifact carries none),
+  // and the next miss's `vx why` said the entry "was pruned" (2026-11-11:
+  // a fresh checkout's first edit). It names the remote instead.
+  it(
+    "the next miss's diff says the previous entry came from the remote, not that it was pruned",
+    async () => {
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const mem = memoryLayer()
+      try {
+        await addProject(fixture.root, 'a', { files: { 'src/in.txt': 'v1' }, config: BUILD_CONFIG })
+        await writeEdges(fixture.root, { b: ['a'] })
+        await addProject(fixture.root, 'b', {
+          files: { 'src/in.txt': 'b' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  dependsOn: ['^build'],
+                  exec: { command: 'echo built > out.txt' },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
+                },
+              },
+            }
+          `,
+        })
+        const opts = { cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }
+        expect((await run({ ...opts, remoteCache: mem.layer })).ok).toBe(true)
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+        const hits = await run({ ...opts, remoteCache: mem.layer })
+        expect(hits.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote', 'cache-hit-remote'])
+        await Bun.write(path.join(fixture.root, 'packages', 'a', 'src', 'in.txt'), 'v2')
+        expect((await run({ ...opts, remoteCache: mem.layer })).ok).toBe(true)
+
+        const cache = Cache.inspect(path.join(fixture.root, '.vx', 'cache'))
+        try {
+          const db = indexDb(cache)
+          const diffOf = (taskId: string) => {
+            const d = cacheKeyDiff(db, latestRunId(db, taskId)!, taskId)
+            return { note: d.note, changed: d.entries.map((e) => `${e.kind} ${e.name}`) }
+          }
+          const note =
+            'cache key changed but input fingerprints are unavailable — the previous entry was restored from the remote cache, which keeps no input fingerprints, so vx cannot name what changed; only the key change is known'
+          expect([diffOf('a#build'), diffOf('b#build')]).toEqual([
+            { note, changed: [] },
+            { note, changed: [] },
+          ])
+        } finally {
+          cache.close()
+        }
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

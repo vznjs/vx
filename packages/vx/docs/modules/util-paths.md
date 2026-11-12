@@ -31,9 +31,13 @@ export function splitNegations(globs: readonly string[]): { positive: string[]; 
 export function outputMatcher(globs: readonly string[]): (rel: string) => boolean
 // What no output glob selects in `scope`: the project root's `.git`, `.vx`
 // and `vx.lock.json` (the workspace's: every project's `vx.lock.json`), and
-// `node_modules` unless a glob names it
-export function outputNever(globs: readonly string[], scope: 'project' | 'workspace'): string[]
-// What a restore may write: a declared output, never under `outputNever`
+// a `node_modules` unless a glob names it or, in a project, it is under
+// the literal directory of a glob that matches it (`.output/**`)
+export function outputExcluded(
+  globs: readonly string[],
+  scope: 'project' | 'workspace',
+): (rel: string) => boolean
+// What a restore may write: a declared output, not `outputExcluded`
 // (the save side's set)
 export function restorableOutput(
   globs: readonly string[],

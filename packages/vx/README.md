@@ -7,9 +7,9 @@ content-addressed build cache for JavaScript monorepos, built as a
 pipeline with a plugin hook at every stage.
 
 ```sh
-bun add -d @vzn/vx      # or npm / pnpm / yarn
-vx init                 # .vx/workspace.ts and a vx.config.ts (per package in a Turbo or Nx repo)
-vx run build --all
+bunx @vzn/vx init       # installs vx; .vx/workspace.ts and a vx.config.ts (per package in a Turbo or Nx repo)
+bunx @vzn/vx lock            # after editing a vx.config: runs read the lock
+bunx @vzn/vx run build --all # a local install's vx is not on PATH: bunx (or npx) runs it
 ```
 
 - Documentation: <https://vznjs.github.io/vx/>

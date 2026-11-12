@@ -33,6 +33,7 @@ import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '.
 import {
   checkIgnoreSync,
   isUserError,
+  listed,
   relPosix,
   skipWorktreeSync,
   UserError,
@@ -612,18 +613,30 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     // though nothing declares it any more (X-144): asked only of the
     // configs this run reads.
     const present = await Promise.all(withFile.map((m) => Bun.file(m.configPath).exists()))
-    const gone = withFile.find((_, i) => !present[i])
+    const goneAll = withFile.filter((_, i) => !present[i])
+    const gone = goneAll[0]
     if (gone !== undefined) {
-      const locked = lockedProject(workspaceRoot, gone.name, gone.dir)
-      const file = relPosix(gone.dir, gone.configPath)
       // A sparse checkout left it out, not deleted: `vx lock` there
-      // refuses too. Asked only on this failure path.
-      const sparse = skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, gone.configPath))
-      if (sparse !== null) {
+      // refuses too. Asked only on this failure path, of every gone config
+      // of the round, so one command brings them all back.
+      const sparse = goneAll.flatMap((m) => {
+        const at = skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, m.configPath))
+        return at === null ? [] : [{ meta: m, add: path.posix.dirname(at) }]
+      })
+      if (sparse.length > 0) {
+        const add = `git sparse-checkout add ${[...new Set(sparse.map((s) => s.add))].join(' ')}`
+        const one = sparse.length === 1 ? sparse[0]!.meta : null
         throw new UserError(
-          `${locked} is outside this sparse checkout, but this run needs its ${file} — run \`git sparse-checkout add ${path.posix.dirname(sparse)}\``,
+          one !== null
+            ? `${lockedProject(workspaceRoot, one.name, one.dir)} is outside this sparse checkout, but this run needs its ${relPosix(one.dir, one.configPath)} — run \`${add}\``
+            : `${listed(
+                sparse.map((s) => lockedProject(workspaceRoot, s.meta.name, s.meta.dir)),
+                5,
+              )} are outside this sparse checkout, but this run needs their configs — run \`${add}\``,
         )
       }
+      const locked = lockedProject(workspaceRoot, gone.name, gone.dir)
+      const file = relPosix(gone.dir, gone.configPath)
       // exists() says false for a file behind a directory this user may not
       // search too; asked only on this failure path, so a run pays no stat.
       const denied = await stat(gone.configPath).then(

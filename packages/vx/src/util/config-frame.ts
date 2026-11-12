@@ -331,9 +331,9 @@ export function configRefusal(message: string, cwd: string): ConfigRefusal | und
   // A path may hold spaces (`packages/my app/`); the first `:line:col` ends it.
   const at = /^([^\n]+?:\d+:\d+):? (.*)$/s.exec(line)
   if (at === null) return { where: line, problem: '', frame }
-  // After ` — `: the field meant, or how vx spells another runner's field.
+  // After ` — `: the field meant, how vx spells another runner's field, or what to remove.
   const said =
-    /^(.*?)(?: \(allowed: ([^)]*)\))?(?: — (?:did you mean ([^?]+)\?|vx spells it (.+)))?$/s.exec(
+    /^(.*?)(?: \(allowed: ([^)]*)\))?(?: — (?:did you mean ([^?]+)\?|vx spells it (.+)|(remove .+)))?$/s.exec(
       at[2]!,
     )!
   return {
@@ -342,6 +342,7 @@ export function configRefusal(message: string, cwd: string): ConfigRefusal | und
     ...(said[2] !== undefined ? { allowed: said[2] } : {}),
     ...(said[3] !== undefined ? { fix: `use ${said[3]}` } : {}),
     ...(said[4] !== undefined ? { fix: `use ${said[4]}` } : {}),
+    ...(said[5] !== undefined ? { fix: said[5] } : {}),
     frame,
   }
 }

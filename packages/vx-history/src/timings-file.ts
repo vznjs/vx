@@ -122,7 +122,29 @@ export async function warnUnignored(
   ignored: Promise<boolean> = askIgnored(file, root),
 ): Promise<void> {
   if (await ignored) return
+  const rel = path.relative(root, file)
+  const effect =
+    'so a task whose inputs cover it re-keys on every rewrite and vx watch re-runs on it'
   warn(
-    `[vx] vx-history: timings file ${path.relative(root, file)} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite and vx watch re-runs on it — add it to .gitignore`,
+    (await isTracked(rel, root))
+      ? `[vx] vx-history: timings file ${rel} is tracked by git, ${effect} — untrack it: git rm --cached ${rel}, and keep it in .gitignore`
+      : `[vx] vx-history: timings file ${rel} is not git-ignored, ${effect} — add it to .gitignore`,
   )
+}
+
+/** Asked only on the warning's path: check-ignore says no for any tracked file, listed in .gitignore or not. */
+async function isTracked(rel: string, root: string): Promise<boolean> {
+  try {
+    const p = Bun.spawn({
+      cmd: ['git', 'ls-files', '--error-unmatch', '--', rel],
+      cwd: root,
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    return (await p.exited) === 0
+  } catch {
+    // quiet: the warning still stands, with the untracked file's advice.
+    return false
+  }
 }

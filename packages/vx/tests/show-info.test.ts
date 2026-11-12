@@ -4,7 +4,7 @@
 // bottom against the cli contract re-export.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -13,6 +13,7 @@ import { describeMemory, describeWorkers, renderInfo } from '../src/cli/info.js'
 import { collectInfo, type InfoFacts } from '../src/orchestrator/index.js'
 import { stableSandboxReason } from '../src/orchestrator/doctor.js'
 import { VERSION } from '../src/version.js'
+import { diskBytes, formatBytes } from '../src/util/index.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -648,7 +649,10 @@ describe('vx info (e2e)', () => {
         const r = await vx(root, ['info'])
         expect(r.code).toBe(0)
         expect(r.out).toMatch(
-          /^  orphans +1 artifact \(2\.0 KB\) the index does not know — `vx cache clean` reaps them$/m,
+          new RegExp(
+            `^  orphans +1 artifact \\(${formatBytes(diskBytes(statSync(aged)))}\\) the index does not know — \`vx cache clean\` reaps them$`,
+            'm',
+          ),
         )
       } finally {
         await rm(aged, { force: true })

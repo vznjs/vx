@@ -12,6 +12,7 @@ import {
   type ProjectEntry,
   type TaskNode,
 } from '../src/graph/task-graph.js'
+import { DEFAULT_BUILD } from '../src/graph/default-build.js'
 import { foldedDeps } from '../src/graph/folds.js'
 import { UserError } from '../src/util/index.js'
 
@@ -380,6 +381,32 @@ describe('buildTaskGraph', () => {
     ).toThrow('b#lint: dependsOn a#deploy, but a declares no task deploy (its tasks: build)')
   })
 
+  // d2 deleted, `dependsOn: ['d#compile', 'd2#compile']`: the fix offered
+  // d#compile, which the list already has.
+  it('a pkg#task miss never offers a target the same list already names', () => {
+    const graph =
+      (...more: ReturnType<typeof project>[]) =>
+      () =>
+        buildTaskGraph({
+          projects: projects(
+            project('d', { compile: cmd('d') }),
+            ...more,
+            project('root', {
+              compile: { ...cmd('r'), dependsOn: ['d#compile', 'd2#compile'] },
+            }),
+          ),
+          packageGraph: packageGraph({}),
+          requested: [{ project: 'root', task: 'compile' }],
+        })
+    expect(graph()).toThrow(
+      /^root#compile: dependsOn d2#compile, but no project is named d2 — remove d2#compile from dependsOn$/,
+    )
+    // CONTROL: another near target is still offered.
+    expect(graph(project('d3', { compile: cmd('d3') }))).toThrow(
+      /^root#compile: dependsOn d2#compile, but no project is named d2\. Did you mean d3#compile\?$/,
+    )
+  })
+
   // `a#build` against a project named by its path (`packages/a`) named
   // neither the project nor what to type instead.
   // A project that exists was told "no such project or task", though only
@@ -399,6 +426,46 @@ describe('buildTaskGraph', () => {
         requested: [{ project: 'packages/app', task: 'test' }],
       }),
     ).toThrow(`packages/app#test: dependsOn ${dep}, but ${what}. Did you mean ${meant}?`)
+  })
+
+  // `packages/a#build` where packages/a is named `web` was offered
+  // `packages/b#build`, nearest by spelling, though b's `build` is only
+  // its default build: following it ran green without the edge.
+  it('a pkg#task miss by directory names the project there', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          { name: 'web', dir: '/ws/packages/a', config: { tasks: { build: cmd('a') } } },
+          {
+            name: 'packages/b',
+            dir: '/ws/packages/b',
+            config: { tasks: { lint: cmd('l'), build: DEFAULT_BUILD } },
+          },
+          project('packages/app', { test: { ...cmd('t'), dependsOn: ['packages/a#build'] } }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'packages/app', task: 'test' }],
+      }),
+    ).toThrow(
+      'packages/app#test: dependsOn packages/a#build, but no project is named packages/a. Did you mean web#build?',
+    )
+  })
+
+  it('a pkg#task miss never offers a default build', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          {
+            name: 'packages/b',
+            dir: '/ws/packages/b',
+            config: { tasks: { lint: cmd('l'), build: DEFAULT_BUILD } },
+          },
+          project('packages/app', { test: { ...cmd('t'), dependsOn: ['packages/c#build'] } }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'packages/app', task: 'test' }],
+      }),
+    ).toThrow(/no project is named packages\/c$/)
   })
 
   it('detects a same-project task self-cycle', () => {

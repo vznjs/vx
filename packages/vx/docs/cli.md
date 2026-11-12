@@ -83,7 +83,10 @@ declares a task yet: add one under `tasks` in a vx.config, then run
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
 --all, or a --filter that includes them.` when the run was scoped and a project
-  outside the scope declares it.
+  outside the scope declares it, then the lock line, since a task just added
+  to a selected project's config is not in the lock yet. A selected project
+  whose `build` is the default one (a root with an empty config) is named
+  instead: `vx show` counts that build, but no bare name runs it.
 
 A name declared by only some projects is fine; the check fires only when
 a name matches nowhere. So `vx run lint test typecheck` fails on CI the
@@ -202,7 +205,7 @@ If no task name is given:
   `not inside a project, the workspace's tasks with --all: build, test`
   (twelve, then `and N more`). Under `--all` it names
   `every project's tasks: …`; under `--filter` or `--affected`,
-  `the selected projects' tasks: …`, or why nothing was selected. Outside a workspace it reads `vx run <task>, e.g. vx run build`.
+  `the selected projects' tasks: …`, or why nothing was selected. Outside a workspace it reads `vx run <task>, e.g. vx run build`. A workspace with no task says how to declare one, as the picker does.
 - **Under `--dry=json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
@@ -237,6 +240,8 @@ filter(s): …`, plus a hint:
   `@vzn/vx-otel`). The hint is the pattern as typed with the name put
   right, operators kept (`--filter apq...` hints `app...`). A task id
   (`--filter app#build`) hints its project: a filter names projects.
+  A name only one project's name opens with hints that project
+  (`--filter '!@m/slow'` hints `!@m/slow-tests`).
 - `A filter is one pattern: --filter a --filter b` for a comma list
   (`--filter a,b`, Nx's `--projects` habit), and `--filter {a} --filter {b}`
   for a braced one (`{a,b}`); a comma inside a glob's braces
@@ -247,6 +252,9 @@ filter(s): …`, plus a hint:
 - When an exclusion took back everything the filters matched, it names
   it: `no projects
 selected: !app excluded every project the other filters matched`.
+- An exclusion (`!<pattern>`) that matches nothing excludes nothing and
+  prints the same line as a warning, hint included; the run goes on, so
+  a CI script may exclude a project some checkouts lack.
 
 | Form               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -329,8 +337,12 @@ change), or name the last good commit, --affected=<sha>`. `HEAD~1`
   fetch. A base it lacks is fetched as named: a commit id, `origin/<branch>`,
   or a tag (`v1`, `refs/tags/v1`). When origin cannot give that history, vx refuses (`has no merge
 base with HEAD in this shallow clone`) rather than diff from the base's tip.
+- A whole clone that fetched only its own branch (GitLab at any
+  `GIT_DEPTH`, Jenkins "honor refspec") fetches the base branch, or the
+  base you name, with the history the merge base needs.
 - With no base branch and no origin to fetch from, vx says `--affected has
-no base here`.
+no base here`. When the fetch from origin failed, it says so with git's
+  reason: `fetching it from origin failed (...)`.
 - When the base you name is the commit you are on, the
   `nothing affected since <ref>` note says so and names the bases you
   probably meant (`--affected=origin/main`, `--affected=HEAD~1`).
@@ -556,6 +568,12 @@ vx run build -- --sourcemap         # build command gets "--sourcemap"
 
 Only `vx run` and `vx watch` forward. Any other core verb refuses a `--`
 (`vx show forwards nothing after --`, `VX_E_USAGE`).
+
+vx takes no short flag, so a `-x` before `--` that no vx flag hint claims
+is refused with the run that forwards it: `vx run test -t adds` says
+`unknown flag: -t (did you mean vx run test -- -t adds?)`. A long flag
+far from every vx flag gets no such guess: a typo of a vx flag
+forwarded would be ignored by the task unseen.
 
 They are appended to the command's last line (trailing blank lines are
 dropped first, so a multi-line command's closing newline does not run
@@ -1607,8 +1625,13 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    server the last cycle left running counts as that cycle for as long
    as it runs, so a log it rewrites in its project is named too, with
    `.gitignore` as the remedy (a persistent task declares no outputs;
-   item 948). A file git tracks is never blamed on the server: three
-   saves of a source file are the user's (WD-7). When any project's config declares
+   item 948). Only a file in a running server's own project, outside any
+   project nested there, is blamed on it, and never one git tracks, as
+   git answers when it would be blamed, so a file committed or checked
+   out since watch started counts: three saves of a source file are the
+   user's (WD-7). A new file not yet added to git in the server's own
+   project is the one case where the server and the user look alike:
+   `git add` it. When any project's config declares
    `inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
@@ -1815,7 +1838,7 @@ bound clears the cache. It operates on the entries and
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
-vx cache clean ... --format json            # { dry, evicted, bytesFreed, orphans, orphanBytes }
+vx cache clean ... --format json            # { dry, evicted, bytesFreed, orphans, orphanBytes, historyRows, historyBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
 vx cache clean --global                     # Also clear every other workspace's store.
@@ -1833,6 +1856,11 @@ $ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
 ✓ vx cache clean  freed 1.3 GB
 
   42 orphaned artifacts
+
+$ vx cache clean --older-than 30d      # months of runs, nothing evicted
+✓ vx cache clean  freed 112 MB
+
+  722193 history rows past 30 days
 
 $ vx cache clean --older-than 30d --dry
 › vx cache clean  would free 1.3 GB (dry run)
@@ -1852,11 +1880,16 @@ $ vx cache clean --older-than 30d --dry
 | `--cache-dir <path>`      | the cache a run with the same flag uses                 |
 
 Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
-total is still over the size cap. No run evicts anything: to bound the
+total is still over the size cap. Sizes are on disk, as `du` counts them: a
+5 KB file holds a whole block, so a store of small files is bigger than
+their lengths. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
 
 A clean with a bound also drops run
-history and hash memos older than 30 days; a run never does.
+history and hash memos older than 30 days, and gives their pages back
+to the disk (a `VACUUM` of the index, once rows went); a run never does.
+It reports the rows and the bytes the index shrank by
+(`historyRows`, `historyBytes`); a dry run reports neither.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
@@ -2191,7 +2224,18 @@ named as `$MY_CREDS`). It names each place
 (`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
 Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in
-`exec.env.passThrough` (L-42).
+`exec.env.passThrough` (L-42). A value the config's own text spells
+(the config or a local module it imports) is committed already and
+locks: `docker compose up -d postgres` beside
+`DATABASE_URL=postgres://postgres:postgres@…`. `vx lock --check` fails
+a lock that holds such a secret here, as `vx lock` refuses to write it.
+
+For the same reason it warns of a config that evaluated to this
+checkout's absolute path (`` `bun ${import.meta.dir}/gen.ts` ``):
+another checkout's `vx lock --check` fails and its cache keys differ
+(`packages/a: its config holds this checkout's path (…)`). Use a path
+relative to the project (the command's cwd) or `$VX_RUN_WORKSPACE` in
+the command.
 
 The review copies are written before the lock: one that cannot be
 written (a directory in its place, a read-only file) is named and the
@@ -2212,13 +2256,15 @@ a config-less one (a `project` plugin's, such as `turbo()`'s) whose
 directory is gone fails its task with the same `vx lock` hint, asked only
 once its spawn failed, so a run stats no project directory;
 one a sparse checkout left out is refused only when the run selects it or
-depends on it, naming the `git sparse-checkout add` that brings it back
-(`vx lock` and `vx lock --check` there refuse too, naming the same
-command: the lock they wrote would have dropped it); a config added since the lock is no project until
+depends on it, naming every such project and the one `git sparse-checkout
+add a b c` that brings them all back (the message lists the first five and
+counts the rest; the command lists all; `vx lock` and `vx lock --check`
+there refuse too, naming the same command: the lock they wrote would have
+dropped them); a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`; so does a bare `build` that the
+around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`, `c` its directory or its `package.json` name; so does a bare `build` that the
 cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
@@ -2384,7 +2430,11 @@ outside git it looks up to `/`. Nothing else marks the root: not a
 Any entry by one of those names marks the root: one that is a broken
 link or a directory, with no file beside it, is refused by name
 (`<path>: is a broken link — fix or remove it`), not walked past, as
-`vx lock` counts it a nested workspace. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
+`vx lock` counts it a nested workspace. A workspace file a sparse checkout
+left out (a cone checkout keeps the root's files, not its `.vx`) is
+refused as such, `VX_E_NO_WORKSPACE` with the fix `git sparse-checkout add
+.vx`, by every verb, `vx init` too: a new one would replace the tracked
+one. Git is asked only once no file was found. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
 `vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json`,
 `nx.json`, exported Nx graph or Lerna on Nx). A project inside the
 root is a directory holding a `vx.config.*`, which `vx lock` finds
@@ -2631,6 +2681,9 @@ $ vx init --dry
             vx.config.ts
             .vx/.gitignore
             .vx/.gitattributes
+  lock      .vx/projects.lock.json
+            .vx/dependencies.lock.json
+            vx.lock.json beside each vx.config
 
   next      declare a task in vx.config.ts, then vx lock && vx run <task>
 ```
@@ -2639,7 +2692,7 @@ $ vx init --dry
 
 | Option               | Meaning                                                                   |
 | -------------------- | ------------------------------------------------------------------------- |
-| `--dry`              | print the files; write nothing                                            |
+| `--dry`              | print the files, and the lock's; write nothing                            |
 | `--format json`      | with `--dry`, the plan as one document                                    |
 | `--force`            | replace a file already there                                              |
 | `--mjs`              | write `.mjs` files instead of `.ts`                                       |
@@ -2884,7 +2937,9 @@ on CI fails one that no longer matches the configs.
 No `.vx/workspace.*` in the working directory or a parent, up to the git
 top-level (a file above the checkout never counts). The file marks the
 workspace root, so run `vx init` to create one. Outside git, one another
-user owns does not count (`security.md`); the message names it.
+user owns does not count (`security.md`); the message names it. One a
+sparse checkout left out names `git sparse-checkout add .vx` instead, and
+`vx init` refuses rather than write a second one.
 
 #### `VX_E_CACHE_VERSION`
 
@@ -3429,7 +3484,9 @@ row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
 them under `root cause`, one chain per root (five at most, then a
 count; a chain of more than six tasks prints its first two and last
-three around `N more`), and `what to do` speaks to those kinds instead. Each upstream is
+three around `N more`), and `what to do` speaks to those kinds instead
+(a `config` line names the `vx show` of the root's task, not the asked
+one). Each upstream is
 compared between the two keys the dependant folded, so a run of the
 upstream alone in between changes nothing it names:
 
@@ -3484,11 +3541,15 @@ the terminal; `--format json` carries the name as it is.
 **When there is no diff.** The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
-names the hash change and says the component diff is unavailable. When
+names the hash change and says the component diff is unavailable. An
+entry restored from a remote cache came with no fingerprints (the
+artifact carries none), and the detail line says so rather than a
+prune. When
 only the previous run failed, or passed beside a failed task
 (`--continue`, never saved), or wrote no cache (`--no-cache`, or a
 `--cache-policy` without write), the diff is taken against the last run
-that saved an entry instead, and the detail line names that run. When
+that saved an entry instead, and the detail line names that run, even
+when the diff has rows. When
 this run wrote no cache, the detail line says so rather than a prune. A
 task with `inputs` and no `cache: true` derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report
@@ -3818,7 +3879,8 @@ agent reads why without the terminal. `fixedIn` names the first later run where 
 passed, so a replayed failure that is already fixed says so. A
 sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
-granted its denials, the same grants the terminal prints as `fix:`;
+granted its denials, the same grants the terminal prints as `fix:`
+(none for a per-run temp name such as `*.bun-build`, whose `ignore` glob a hint line names);
 `withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`), and, for
 a cached task, `inputs` the reads of its project no `inputs.files`
 glob matches and `workspaceFiles` its reads elsewhere in the workspace no
@@ -4109,7 +4171,9 @@ per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`. `✓` is a
 hit (the local cache answered and its outputs were already on disk; a
 remote hit is never fresh, outputs or none: it is `↓` from the remote), `∅` a task with no cache, `↓` is restored from that
 layer and `↑` saved to it, `✗` a task a remote read or write failed
-for, and `⇡` an upload still running (live only, always last). The
+for (not one that turned the remote off for the run, a refused token or
+no answer: that is the run's, on the `warn` row, and its task counts as
+the others), and `⇡` an upload still running (live only, always last). The
 region stays through vx's closing steps, worker rows gone, and the
 final footer replaces it in place. Each task counts once, under its strongest state: a
 failed remote read or write, then an upload running, then saved to a
