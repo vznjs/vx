@@ -51,7 +51,8 @@ it('each target becomes a task, written as a config vx lock loads', async () => 
     gen: { exec: { command: 'go generate ./...' } },
     test: { exec: { command: 'go test ./...' }, dependsOn: ['build'] },
   })
-  expect(out).toContain('from      Makefile')
+  // CI draws in colour: the styles sit between the label and its value.
+  expect(out.replace(/\x1b\[[0-9;:]*m/g, '')).toContain('from      Makefile')
   const lock = Bun.spawnSync({ cmd: [process.execPath, VX, 'lock'], cwd: root })
   expect([lock.exitCode, lock.stderr.toString()]).toEqual([0, ''])
 }, 20_000)
