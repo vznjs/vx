@@ -1057,8 +1057,8 @@ output directory linked out of the project refuses the task instead, X-88). `out
 no-op and says nothing; a task with no `cache: true` is never checked.
 
 **Undeclared state is not saved** (`orchestrator/undeclared-state.ts`).
-A file in the task's project that git ignores or does not track, and is
-neither an input nor an output, survives the clean before a miss, and a
+A file in the task's project that git ignores, or a `.tsbuildinfo` it
+does not track, neither an input nor an output, survives the clean before a miss, and a
 hit never restores it. So does a committed `.tsbuildinfo` (`git add -A`
 before `.gitignore` named it). An incremental tool keeps its state there: `tsc -b` writes
 `tsconfig.tsbuildinfo` beside the tsconfig, so after vx emptied `dist/`
@@ -1070,7 +1070,9 @@ file or a `.tsbuildinfo`: before a first commit every source is
 untracked), the result
 stands but is not saved, and the line names the file and the fix:
 declare it in `outputs.files`, so a miss starts without it and a hit
-restores it. Of a directory git ignores whole (`.cache/`,
+restores it. Any other untracked file is a generator's own, rewritten
+each build (Astro's `.astro/` with no `.gitignore` entry): stamped, no
+such build was ever saved. Of a directory git ignores whole (`.cache/`,
 `node_modules/`), only the `.tsbuildinfo` files under it count, found
 once per run, a `node_modules` searched only in its own dot directories
 (`.tmp`): a bundler's cache there (`.next/cache`) is rewritten on every

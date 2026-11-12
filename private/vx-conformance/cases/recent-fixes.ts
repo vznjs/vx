@@ -103,7 +103,7 @@ export default [
       'An incremental tool’s state file git does not ignore never leaves a partial build in the cache',
     why: 'A `.gitignore` that names `dist` but not `*.tsbuildinfo` leaves `tsc -b`’s state untracked, not ignored. It is still state: emptied `dist`, kept state, and the next build emits one changed file. A tool that guards only ignored state stores that partial `dist`, and a fresh checkout restores it.',
     from: ['undeclared-state'],
-    workspace: one(build({ command: INCREMENTAL }), {
+    workspace: one(build({ command: INCREMENTAL.replaceAll('state', 'tsconfig.tsbuildinfo') }), {
       'src/a.txt': 'a\n',
       'src/b.txt': 'b\n',
       '.gitignore': 'dist/\n',
@@ -117,7 +117,7 @@ export default [
         write: {
           'packages/a/dist/a.txt': null,
           'packages/a/dist/b.txt': null,
-          'packages/a/state': null,
+          'packages/a/tsconfig.tsbuildinfo': null,
         },
       },
       {

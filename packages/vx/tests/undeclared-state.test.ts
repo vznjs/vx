@@ -66,7 +66,7 @@ it(
 it(
   'a miss that rewrites an undeclared untracked file is not saved',
   async () => {
-    const { root, app } = await workspace("['dist/**']", 'dist/\n')
+    const { root, app } = await workspace("['dist/**']", 'dist/\n', 'x.tsbuildinfo')
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
     expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
@@ -77,8 +77,35 @@ it(
     expect(await readdir(path.join(app, 'dist'))).toEqual(['a.txt'])
     expect(second.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', undefined]])
     expect(fx.log.join('\n')).toContain(
-      'app#build: state changed while the task ran, but the task declares it neither input nor output',
+      'app#build: x.tsbuildinfo changed while the task ran, but the task declares it neither input nor output',
     )
+  },
+  TIMEOUT,
+)
+
+// Any other untracked file a build rewrites is a generator's own (Astro's
+// `.astro/types.d.ts` with no `.gitignore` entry): stamped, no build of
+// such a project was ever saved (2026-11-12).
+it(
+  'an untracked file rewritten each build that is no .tsbuildinfo does not withhold the save',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+    made.push(root)
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'mkdir -p dist gen && cp src/a.txt dist/ && date +%s%N > gen/types.d.ts' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    gitInitCommit(root)
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    await run(opts)
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    const second = await run(opts)
+    expect(second.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', true]])
+    expect(fx.log.join('\n')).not.toContain('neither input nor output')
   },
   TIMEOUT,
 )
@@ -123,9 +150,13 @@ it(
     })
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     expect(fx.log.join('\n')).not.toContain('neither input nor output')
   },
   TIMEOUT,
@@ -157,9 +188,13 @@ it.each([
     })
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     expect(fx.log.join('\n')).not.toContain('neither input nor output')
   },
   TIMEOUT,
@@ -181,9 +216,11 @@ it(
     })
     const fx = { root, log: [] as string[], err: [] as string[] }
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+      ['success', true],
+    ])
     await writeFile(path.join(app, 'src/a.txt'), 'a2')
-    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
       ['success', undefined],
     ])
   },

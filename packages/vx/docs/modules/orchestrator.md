@@ -1131,7 +1131,7 @@ export function stampUndeclaredState(args: {
   nestedProjectDirs: readonly string[]
   gitFilesCache: GitFilesCache | undefined
   projectTasks: readonly TaskConfig[]
-}): StateStamps // the files `git status` listed ignored or untracked in the project, and its .tsbuildinfo files, neither input nor output; none when the task declares no outputs
+}): StateStamps // the files `git status` listed ignored in the project, and its untracked or committed .tsbuildinfo files, neither input nor output; none when the task declares no outputs
 export function stateChanged(stamps: StateStamps, projectDir: string): string[] // changed and still there, project-relative
 export function stateLeft(stamps: StateStamps, projectDir: string): string[] // still there, project-relative
 export function declareStateHint(rels: readonly string[], alongside?: string): string // the way out: declare them in outputs.files (of the task that writes them, when `alongside` ran with it)
@@ -1172,8 +1172,8 @@ the upstream's output rows, which the save writes.
 
 ### Undeclared state (2026-11-12)
 
-An untracked file in the task's project (ignored or not, or a committed
-`.tsbuildinfo`) that is neither an input nor an output survives the clean and is never restored by a hit; an
+A git-ignored file in the task's project (or a `.tsbuildinfo`, untracked
+or committed) that is neither an input nor an output survives the clean and is never restored by a hit; an
 incremental tool keeps its state there (`tsc -b`'s
 `tsconfig.tsbuildinfo` beside the tsconfig). With `dist/` cleaned and
 the state still calling it built, tsc emitted only the changed file,

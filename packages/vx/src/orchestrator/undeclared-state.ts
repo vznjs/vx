@@ -54,10 +54,15 @@ export function stampUndeclaredState(args: {
 }): StateStamps {
   const { config, projectDir, workspaceRoot } = args
   if (!declaresOutputs(config)) return new Map()
-  // Untracked too: a `.gitignore` that names `dist` and not
-  // `*.tsbuildinfo` left the state untracked, and the partial `dist/` saved.
+  // An untracked `.tsbuildinfo` too: a `.gitignore` that names `dist` and
+  // not `*.tsbuildinfo` left the state untracked, and the partial `dist/`
+  // saved. No other untracked file: a generator rewrites its own each build
+  // (Astro's `.astro/`, a route tree before its first commit), and stamped,
+  // no such build was ever saved.
   const ignored = args.gitFilesCache?.ignoredFilesIn(projectDir) ?? []
-  const untracked = args.gitFilesCache?.untrackedFilesIn(projectDir) ?? []
+  const untracked = (args.gitFilesCache?.untrackedFilesIn(projectDir) ?? []).filter((f) =>
+    f.endsWith('.tsbuildinfo'),
+  )
   // A committed `.tsbuildinfo` (`git add -A` before `.gitignore` named it)
   // is state all the same; no other tracked file is stamped.
   const loose = new Set(untracked)
