@@ -17,6 +17,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
+import { sections } from './helpers/module-page.js'
 
 const DOCS = path.resolve(
   import.meta.dir,
@@ -43,24 +44,18 @@ const CLASS_PAGES = {
     'README.md',
     'api.md',
     'architecture.md',
+    'cache.md',
     'cli.md',
     'comparison.md',
     'extend-vx.md',
     'flows.md',
     'index.md',
-    'layered-cache.md',
-    'options.md',
+    'orchestrator.md',
     'patterns.md',
-    'plugin-host.md',
-    'plugin.md',
-    // docs/modules/plugins.md; the site's page is writing-plugins.mdx.
-    'plugins.md',
-    'remote-lane.md',
-    'scoped-cache.md',
     'upgrading.md',
     'writing-plugins.mdx',
   ],
-  retryLine: ['execute-task.md', 'schema.md'],
+  retryLine: ['orchestrator.md', 'schema.md'],
   outputFingerprint: [
     'caching.md',
     'flows.md',
@@ -270,7 +265,7 @@ describe('no doc describes exec.resources as a field a config can declare', () =
 // Two claims about one stderr line: `attempts.ts` ends the retry notice
 // `after a timeout` when the kill was the timeout's and `after exit <code>`
 // otherwise, and both pages that quote the line quoted only the second —
-// modules/execute-task.md in the same bullet that says "timeouts included"
+// modules/orchestrator.md in the same bullet that says "timeouts included"
 // (item 357, 2026-09-19). A user greps the message they got; half a message
 // finds nothing.
 describe('every page quoting the retry line quotes both its endings', () => {
@@ -420,11 +415,11 @@ describe('every page listing the env allowlist lists all of it', () => {
   it('each names every essential', () => {
     expect(ESSENTIAL_ENV.length).toBe(29)
     const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
-    // schema.md (pinned separately), execution.md, modules/env.md, and the
+    // schema.md (pinned separately), execution.md, modules/exec.md, and the
     // environment-variables page. A fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'env.md',
       'environment-variables.mdx',
+      'exec.md',
       'execution.md',
       'schema.md',
     ])
@@ -704,9 +699,9 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
 // `task-hash.ts` computes `xxh3hex(JSON.stringify(hashableConfig(cfg)))`,
 // and `hashableConfig` drops `exec.remote` — placement is not key
 // material, which is the whole point of the executor seam.
-// modules/config.md had it. caching.md (the stale-hit-critical contract
+// modules/index.md had it. caching.md (the stale-hit-critical contract
 // page) and the blog post both omitted the projection, so read literally
-// they put `exec.remote` IN the key; modules/execute-task.md omitted it
+// they put `exec.remote` IN the key; modules/orchestrator.md omitted it
 // AND named `sha256`, a function core replaced with xxh3 long ago and
 // which appears in no `src/` file (item 396, 2026-09-19).
 describe('every page stating the task-config hash states the projection', () => {
@@ -794,7 +789,7 @@ describe('every page numbering the key parts folds plugin before inputs', () => 
 // `signals.ts` registers THREE handlers, and the third is the one the
 // docs kept dropping: SIGHUP, which matters precisely because a task runs
 // in its own session, so a closing terminal reaches vx and nothing else —
-// without the forward, the tree outlives the window. `modules/signals.md`
+// without the forward, the tree outlives the window. `modules/orchestrator.md`
 // and `cli.md` had all three. `execution.md` said "SIGINT/SIGTERM
 // handlers", `modules/orchestrator.md` said "SIGINT + SIGTERM handlers",
 // and `blog/ctrl-c.md` — a post whose thesis is that EVERY way a run can
@@ -816,8 +811,13 @@ describe('every page enumerating the run signal handlers names all three', () =>
 
     const pages: string[] = []
     const wrong: string[] = []
-    for (const page of handAuthoredDocs()) {
-      const text = readFileSync(page, 'utf8')
+    // A module page holds many files' accounts; each section is judged alone.
+    const units = handAuthoredDocs().flatMap((page) =>
+      path.basename(path.dirname(page)) === 'modules' && path.basename(page) !== 'README.md'
+        ? [...sections(path.basename(page)).values()].map((text) => ({ page, text }))
+        : [{ page, text: readFileSync(page, 'utf8') }],
+    )
+    for (const { page, text } of units) {
       // A page ENUMERATES the set when it names the exit code SIGINT gets
       // on the vx process. 143 alone is a timeout's SIGTERM, 137 a SIGKILL;
       // 130 is only ever this.

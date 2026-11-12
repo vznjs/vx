@@ -137,11 +137,11 @@ describe('a project hue is a function of its name', () => {
 })
 
 describe('the compact one-liners', () => {
-  // docs/modules/framed-output.md showed `◌ <id> ── restored-local • <hash8>`,
+  // docs/modules/report.md showed `◌ <id> ── restored-local • <hash8>`,
   // a shape and a glyph nothing prints (item 312, 2026-09-16): the row is
   // status · cache · usual · time · … · name, and the page's sample says so.
   const doc = readFileSync(
-    path.resolve(import.meta.dir, '..', 'docs', 'modules', 'framed-output.md'),
+    path.resolve(import.meta.dir, '..', 'docs', 'modules', 'report.md'),
     'utf8',
   )
   const cached = {

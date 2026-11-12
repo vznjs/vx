@@ -170,7 +170,7 @@ over (in order):
    rewrite restored a build made against the old install, and a save
    filed a build against the new install under the old lockfile's key,
    replayed whenever the tree went back (item 750,
-   [`modules/fingerprint-watch.md`](./modules/fingerprint-watch.md)).
+   [`modules/orchestrator.md`](./modules/orchestrator.md#srcorchestratorfingerprint-watchts--has-a-task-rewritten-the-lockfile)).
    With nothing claimed, no root file is read or watched.
 
 10. **Task platform** — the platform core placed a task naming
@@ -1093,7 +1093,7 @@ files` line), and the next hit's restore removes what the
 descendant wrote and restores the saved entry in its place (upstream
 survey, turborepo#12786). vx does not wait for it and cannot see it: a
 process that left the task's session is outside the process group vx
-tracks and signals ([kill-tree](./modules/kill-tree.md)). So a command
+tracks and signals ([kill-tree](./modules/exec.md#srcexeckill-treets--a-task-dies-with-everything-it-forked)). So a command
 finishes writing its outputs before it exits — `wait` for what it
 backgrounds, or do not detach it.
 

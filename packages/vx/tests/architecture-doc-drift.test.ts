@@ -35,8 +35,8 @@ describe('architecture.md follows the source it describes', () => {
     expect([...named].sort()).toEqual(files.sort())
   })
 
-  it('quotes the current TELEMETRY_SCHEMA_VERSION, as does modules/telemetry.md', () => {
-    for (const file of ['architecture.md', 'modules/telemetry.md']) {
+  it('quotes the current TELEMETRY_SCHEMA_VERSION, as does modules/orchestrator.md', () => {
+    for (const file of ['architecture.md', 'modules/orchestrator.md']) {
       const text = readFileSync(path.join(pkg, 'docs', file), 'utf8')
       const m = /`TELEMETRY_SCHEMA_VERSION = (\d+)`/.exec(text)
       expect(m).not.toBeNull()

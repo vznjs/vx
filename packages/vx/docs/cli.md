@@ -19,7 +19,7 @@ warns. What breaks is the output, not the start:
 - a config syntax error shows as an internal error.
 
 The released binary carries its own Bun, so the row never warns there.
-[`modules/util-bun-version.md`](./modules/util-bun-version.md) has the
+[`modules/util.md`](./modules/util.md#srcutilbun-versionts--the-runtime-floor-read-at-run-time) has the
 measurements.
 
 ## Top-level shape
@@ -534,7 +534,7 @@ imports it, directly or through another shared file.
 
 To opt a project config's helper out, import it by a bare package
 name. See
-[`docs/modules/config-imports.md`](./modules/config-imports.md).
+[`docs/modules/workspace.md`](./modules/workspace.md#srcworkspaceconfig-importsts--the-config-import-selection-channel).
 
 **Nothing changed exits 0.** When only `--affected` or `[<ref>]`
 selects and nothing matches, vx prints `nothing affected since <ref>`
@@ -1415,7 +1415,7 @@ Default path: `profile.json` (cwd-relative).
 
 Sandbox isolation is opt-in **per task** via an `exec.sandbox` block in
 the task's config — there is no `--sandbox` CLI flag. See
-[`modules/sandbox-runtime.md`](./modules/sandbox-runtime.md) for the
+[`modules/exec.md`](./modules/exec.md#srcexecsandbox-runtimets--sandbox-wrapper-for-per-task-isolation) for the
 full reference.
 
 ```ts
@@ -4118,7 +4118,7 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `@vzn/vx-ci`'s. A sandboxed
 task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
 else `/tmp/claude`), the sandbox runtime's own convention
-(`docs/modules/sandbox-runtime.md`). Both it and `TMPDIR` hold sockets
+(`docs/modules/exec.md`). Both it and `TMPDIR` hold sockets
 whose paths pass unquoted through a shell, so a sandboxed task is refused
 unless each is an absolute path of ASCII letters, digits and `. _ - / + @`.
 

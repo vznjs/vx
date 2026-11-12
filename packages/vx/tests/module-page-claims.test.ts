@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/report/summary.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
+import { moduleSection } from './helpers/module-page.js'
 
 const DOCS = path.resolve(import.meta.dir, '..', 'docs')
 
@@ -47,7 +48,7 @@ describe('summary.md says the footer never repeats a fact', () => {
     )
     expect(lines.filter((l) => l.includes('1 skipped'))).toHaveLength(1)
     expect(lines.some((l) => l.includes('result'))).toBe(false)
-    const para = blocks('modules/summary.md', 'never says a fact twice')
+    const para = blocks('modules/report.md', 'never says a fact twice')
     expect(para.length).toBe(1)
     expect(para[0]).toMatch(/no `result` row/)
     expect(para[0]).toMatch(/skipped count on the tasks legend alone/)
@@ -55,7 +56,7 @@ describe('summary.md says the footer never repeats a fact', () => {
 })
 
 describe('every page explaining the blob-size check names what it cannot see', () => {
-  it.each(['caching.md', 'modules/git-inputs.md'])('%s', (rel) => {
+  it.each(['caching.md', 'modules/cache.md'])('%s', (rel) => {
     // #2226: a filter that keeps the size, removed after an add, passes.
     const explained = blocks(rel, 'blob').filter((b) =>
       /another size is dropped|The check is by size/.test(b),
@@ -74,29 +75,29 @@ const page = (rel: string): string =>
 describe('module pages state what their file does since the fix', () => {
   it('bin.md: a lone --version is answered before the dispatcher loads (#1961)', () => {
     expect(src('bin.ts')).toMatch(/argv\[0\] === '--version'/)
-    expect(page('modules/bin.md')).toMatch(/lone `--version`.{0,80}answered.{0,80}before/)
+    expect(page('modules/index.md')).toMatch(/lone `--version`.{0,80}answered.{0,80}before/)
   })
 
   it('metrics.md: an unchanged key names the continue-taint before --no-cache (#1928)', () => {
     expect(src('history/metrics.ts')).toContain('each ran beside a failed task')
-    const why = blocks('modules/metrics.md', '`whyDidThisRerun` compares')
+    const why = blocks('modules/history.md', '`whyDidThisRerun` compares')
     expect(why.length).toBe(1)
     expect(why[0]).toMatch(/beside a failed task.*Only when none applies/)
   })
 
   it('cli-watch.md: only the tasks the watch reaches keep a path from being dropped', () => {
     expect(src('cli/watch-set.ts')).toContain('function reachableNames(')
-    const rule = blocks('modules/cli-watch.md', 'item 946')
+    const rule = blocks('modules/cli.md', 'item 946')
     expect(rule.length).toBe(1)
     expect(rule[0]).toMatch(/a task the watch reaches declares as an input/)
-    expect(page('modules/cli-watch.md')).toContain('`discoverCliProjects`')
+    expect(page('modules/cli.md')).toContain('`discoverCliProjects`')
     expect(src('cli/watch.ts')).not.toMatch(/\blistProjects\(/)
   })
 
   it('package-graph.md: the first transitiveDeps asks are a search, not the bitsets (#2323)', () => {
     const n = /const EARLY_SEARCHES = (\d+)/.exec(src('workspace/package-graph.ts'))?.[1]
     expect(n).toBeDefined()
-    const rule = blocks('modules/package-graph.md', 'built on the FIRST query')
+    const rule = blocks('modules/workspace.md', 'built on the FIRST query')
     expect(rule.length).toBe(1)
     expect(rule[0]).toContain(`\`transitiveDeps\` answers its first ${n} asks by a search`)
     expect(rule[0]).toMatch(
@@ -108,10 +109,10 @@ describe('module pages state what their file does since the fix', () => {
     const src_ = src('workspace/affected.ts')
     expect(src_).toContain('if (resolvedRefs.has(`${workspaceRoot}\\0${ref}`)) return')
     expect(src_).toContain('const HEAD_ANCESTOR = ')
-    const verify = blocks('modules/affected.md', '`verifyRef(workspaceRoot, since)`')
+    const verify = blocks('modules/workspace.md', '`verifyRef(workspaceRoot, since)`')
     expect(verify.length).toBe(1)
     expect(verify[0]).toContain('is not asked again (#2288)')
-    const diff = blocks('modules/affected.md', '`git diff --raw <merge-base(since, HEAD)>`')
+    const diff = blocks('modules/workspace.md', '`git diff --raw <merge-base(since, HEAD)>`')
     expect(diff.length).toBe(1)
     expect(diff[0]).toContain('no `git merge-base` spawns (#2288)')
     expect(diff[0]).toContain('committed, staged and unstaged changes')
@@ -137,7 +138,7 @@ describe('module pages state what their file does since the fix', () => {
 
   it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
     expect(src('report/logger.ts')).toContain('formatKeptLines(')
-    expect(page('modules/logger.md')).toMatch(
+    expect(page('modules/report.md')).toMatch(
       /streams below the summary a line at a time under its id/,
     )
   })
@@ -258,7 +259,7 @@ describe('a module page lists exactly the fields its interface has', () => {
 describe("migration.md's overwrite guard says a scripts migration keeps a member's config", () => {
   it('the page names the kept list the report prints', () => {
     expect(src('workspace/migration.ts')).toContain("rows.push(['kept', ...keptLines])")
-    const guard = blocks('modules/migration.md', 'Nothing is overwritten without')
+    const guard = blocks('modules/workspace.md', 'Nothing is overwritten without')
     expect(guard).toHaveLength(1)
     expect(guard[0]).toContain(
       'Under a scripts migration (`init`) a project that already has a config keeps it',
@@ -317,7 +318,7 @@ describe("upgrade.md's detection invariant names every path it checks", () => {
     const check = src('cli/upgrade.ts').match(/function isCompiledBinary\(\)[^}]*\}/)![0]
     expect(check).toContain('isBunfsPath(Bun.main)')
     expect(check).toContain('isBunfsPath(import.meta.path)')
-    const rule = blocks('modules/upgrade.md', 'Compiled-binary detection')
+    const rule = blocks('modules/cli.md', 'Compiled-binary detection')
     expect(rule).toHaveLength(1)
     expect(rule[0]).not.toContain('NOT `import.meta.path`')
     expect(rule[0]).toContain('`import.meta.path` is only a last fallback')
@@ -333,7 +334,7 @@ describe("plugin.md's fail-the-run list is the hooks plugin-host guards", () => 
       (m) => m[1]!,
     )
     expect(new Set(hooks).size).toBeGreaterThanOrEqual(9)
-    const rule = blocks('modules/plugin.md', 'A throw in `setup`')
+    const rule = blocks('modules/orchestrator.md', 'A throw in `setup`')
     expect(rule).toHaveLength(1)
     expect([...new Set(hooks)].filter((h) => !rule[0]!.includes(`\`${h}\``))).toEqual([])
   })
@@ -348,7 +349,7 @@ describe('task-hash.md claims the bump rule caching.md states', () => {
     expect(page('caching.md')).toContain(
       'Behavioural changes that adjust _which_ values flow into existing key components',
     )
-    const rule = blocks('modules/task-hash.md', 'CACHE_VERSION` bump')
+    const rule = blocks('modules/orchestrator.md', 'CACHE_VERSION` bump')
     expect(rule).toHaveLength(1)
     expect(rule[0]).toContain('a change in which values flow into an existing field does not')
     expect(rule[0]).not.toContain('Any change to what participates')
@@ -362,7 +363,7 @@ describe("cli-help.md's Purpose names the paths that print the text", () => {
     const index = src('cli/index.ts')
     const unknown = index.slice(index.indexOf('`vx: unknown command: ${command}'))
     expect(unknown.slice(0, unknown.indexOf('return 1'))).not.toContain('printHelp')
-    const purpose = blocks('modules/cli-help.md', 'Static help text')
+    const purpose = blocks('modules/cli.md', 'Static help text')
     expect(purpose).toHaveLength(1)
     expect(purpose[0]).not.toContain('fall-through')
     expect(purpose[0]).toContain('an unknown command prints one line')
@@ -374,7 +375,7 @@ describe("cli-help.md's Purpose names the paths that print the text", () => {
     const index = src('cli/index.ts')
     const bare = index.slice(index.indexOf('case undefined: {'))
     expect(bare.slice(0, bare.indexOf('return 0'))).toContain('findWorkspaceRoot(')
-    const purpose = blocks('modules/cli-help.md', 'Static help text')[0]!
+    const purpose = blocks('modules/cli.md', 'Static help text')[0]!
     expect(purpose).toContain('a bare `vx` inside a workspace')
     expect(purpose).toContain('exits 1')
     expect(page('modules/cli.md')).toContain(
@@ -391,7 +392,7 @@ describe("sandbox-runtime.md's Purpose names who calls it", () => {
     expect(src('exec/local-executor.ts')).toContain('runSandboxed(')
     expect(src('orchestrator/attempt.ts')).not.toContain('runSandboxed(')
     expect(src('orchestrator/persistent-task.ts')).toContain('wrapSandboxedCommand(')
-    const purpose = blocks('modules/sandbox-runtime.md', 'Thin wrapper around')
+    const purpose = blocks('modules/exec.md', 'Thin wrapper around')
     expect(purpose).toHaveLength(1)
     expect(purpose[0]).toContain('`local-executor.ts`')
     expect(purpose[0]).not.toContain('Used by `executeCachedTask`')
@@ -421,21 +422,21 @@ describe('timing, doctor and plugin-host Purpose sections match the source', () 
     const body = prep.slice(start, prep.indexOf('\n}\n', start))
     const count = [...body.matchAll(/\bmark\('/g)].length
     expect(count).toBeGreaterThan(5)
-    expect(page('modules/timing.md')).toContain(`\`prepareRun\`'s ${WORDS[count]},`)
+    expect(page('modules/util.md')).toContain(`\`prepareRun\`'s ${WORDS[count]},`)
   })
 
   it("doctor.md's sandbox shape is InfoFacts'", () => {
     const shape = src('orchestrator/doctor.ts').match(/sandbox: \{([^}]*)\}/)![1]!
     const keys = [...shape.matchAll(/(\w+):/g)].map((m) => m[1]!)
     expect(keys).toContain('untraced')
-    expect(page('modules/doctor.md')).toContain(`(\`{ ${keys.join(', ')} }\`:`)
+    expect(page('modules/orchestrator.md')).toContain(`(\`{ ${keys.join(', ')} }\`:`)
   })
 
   it('plugin-host.md names every stage the host runs', () => {
     const hooks = src('orchestrator/plugin-host.ts').match(/hook: ('[a-z]+'(?: \| '[a-z]+')*)/)![1]!
     const names = [...hooks.matchAll(/'([a-z]+)'/g)].map((m) => m[1]!)
     expect(names.length).toBeGreaterThanOrEqual(7)
-    const purpose = blocks('modules/plugin-host.md', 'Runs the pipeline stages')
+    const purpose = blocks('modules/orchestrator.md', 'Runs the pipeline stages')
     expect(purpose).toHaveLength(1)
     expect(names.filter((n) => !purpose[0]!.includes(`\`${n}\``))).toEqual([])
   })
@@ -447,7 +448,7 @@ describe('util-settle.md names every grace killGraceMs serves', () => {
   it('each file that calls killGraceMs for its own grace constant is named', () => {
     const users = ['exec/runner.ts', 'orchestrator/signals.ts', 'orchestrator/persistent.ts']
     for (const f of users) expect(src(f)).toMatch(/killGraceMs\([A-Z_]+_GRACE_MS\)/)
-    const rule = blocks('modules/util-settle.md', '`killGraceMs` is the SIGTERM')
+    const rule = blocks('modules/util.md', '`killGraceMs` is the SIGTERM')
     expect(rule).toHaveLength(1)
     for (const f of users) expect(rule[0]).toContain(`\`${f}\``)
     expect(rule[0]).toContain('shortens all three')
@@ -461,12 +462,12 @@ describe('util-settle.md names every grace killGraceMs serves', () => {
 describe("cli-watch.md's account of the watched set is the loop's", () => {
   it('says the lock re-reads the set, and names no package glob', () => {
     expect(src('cli/watch-filter.ts')).not.toContain('pnpm-workspace')
-    const text = page('modules/cli-watch.md')
+    const text = moduleSection('cli/watch.ts').split(/\s+/).join(' ')
     expect(text).toContain('so `.vx/projects.lock.json` is the event that changes the set')
     expect(text).not.toContain('package glob')
-    const at = text.indexOf('## What this does NOT do')
+    const at = text.indexOf('### What this does NOT do')
     expect(at).toBeGreaterThan(-1)
-    const notDo = text.slice(at, text.indexOf('## ', at + 3))
+    const notDo = text.slice(at, text.indexOf('### ', at + 4))
     expect(notDo).toContain('declared input globs')
   })
 })

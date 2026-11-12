@@ -1,13 +1,15 @@
-# `src/history/history.ts` — per-task duration history
+# `src/history/` — what runs leave behind, read back
 
-## Purpose
+## `src/history/history.ts` — per-task duration history
+
+### Purpose
 
 A per-run, read-only `HistoryTable` snapshot: each `(project, task)`
 pair's rows over the last N **invocations**, folded into one row each
 (p50 / p99 duration, success rate, hit rate, failure mode) by one
 aggregate over a rowid slice of `cache.db.runs`.
 
-## Public surface
+### Public surface
 
 ```ts
 export interface TaskHistory {
@@ -118,7 +120,7 @@ export class LocalHistoryProvider implements HistoryProvider {
 }
 ```
 
-## The forecast
+### The forecast
 
 Every `p50DurationMs` (and `p50sFor`) is a forecast (2026-10-14):
 the median of the task's last five timings on this run's branch, else
@@ -161,7 +163,7 @@ definition it was taken of (the blob's `defs`); a row of none (a blob
 shared before definitions were kept) is read by every reader, or a PR's
 first run would have read every task unmeasured. `tests/history-definition.test.ts`.
 
-## Who reads it
+### Who reads it
 
 - Every row's `usual` (running and finished, terminal and log) and the
   live region's end-of-run forecast (`p50sNow`), read once per run on
@@ -183,7 +185,7 @@ first run would have read every task unmeasured. `tests/history-definition.test.
   runs).
 - Nothing on the default `vx run` path.
 
-## The window is a rowid slice
+### The window is a rowid slice
 
 `runs` has no `(project, task)` index (it cost every run a scattered
 B-tree write per task and bought this reader nothing; `caching.md`). Rows
@@ -198,7 +200,7 @@ and prediction, not a ledger (`vx why` / `vx last` read by `run_id` and
 stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
 550 ms for the ranked-per-pair query the index served → 50 ms.
 
-## Invariants
+### Invariants
 
 - Zero cost on a plain run: no history query is issued.
 - `LocalHistoryProvider(db, window)` (and `localHistory`) reads only; `importTimings` is its one write; `EmptyHistoryProvider`
@@ -236,7 +238,7 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   `@vzn/vx-history` turns them into the reservations its
   `admit` hook packs (`docs/design/resource-estimates-2026-09.md`).
 
-## The per-run surfaces (`failure-mode.ts`)
+### The per-run surfaces (`failure-mode.ts`)
 
 The same rule, applied at the end of every run and by the doctor:
 
@@ -282,7 +284,7 @@ The same rule, applied at the end of every run and by the doctor:
   every executed row. A hit is a success in `successRate` (the pass
   statuses, from `isPassStatus`).
 
-## Tests
+### Tests
 
 `tests/history.test.ts`, `tests/plan-predict.test.ts`,
 `tests/run-record-completeness.test.ts`, `tests/history-scale.test.ts` (the plans of
@@ -291,3 +293,221 @@ The same rule, applied at the end of every run and by the doctor:
 its creation on an older database); `tests/flaky.test.ts` (end to end:
 footer, `vx last`, `vx info`, with a hit and a changed-key break as
 controls).
+
+## `src/history/metrics.ts` — run-history queries
+
+### Purpose
+
+Pure functions over the run-history tables (`runs`, `invocations`,
+`entries`, `entry_inputs`) — one canonical home for every aggregate,
+so `vx last`, `vx why` and any other reader ask the same questions the
+same way. The schema itself is owned by `src/cache/schema.ts`; this
+module only reads it.
+
+### Public surface
+
+```ts
+listRuns(db, { limit?, project?, task?, runId? }): RunSummaryRow[]
+getRun(db, runId): RunDetail | null                 // one invocation's task rows
+listInvocations(db, { limit? }): InvocationDetail[]
+getInvocation(db, runId): InvocationDetail | null   // the header row, tags parsed
+explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
+latestRunId(db, taskId): string | null              // the run a caller without one means
+whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
+cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
+diffsOlderRun(diff): boolean                         // the diff is against the last run that saved an entry, not the previous one (its note names it)
+rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upstreams (through groups), the tasks whose own inputs moved between the keys the dependant folded; on its own stack, each visit linked to the one that reached it, so no chain is copied per level
+recordedTasks(db, runId): Set<string>               // the run's rows as project#task, read once
+upstreamTask(name): string                           // the task an upstream row names, past a group (GROUP_VIA)
+inputWriters(db, runId, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed, if not after run runId ended (stats and asks once per file)
+loadEntryInputs(db, entryHash): TaskInputComponent[] // one entry's key components, [] when none
+diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
+
+// The argument and row types, exported from the module index:
+ListRunsArgs        // { limit?, project?, task?, runId? }
+ListInvocationsArgs // { limit? }
+CacheEntryRow       // an entries row: hash, project, task, command, exitCode, durationMs, sizeBytes, createdAt, accessedAt
+InputDiffEntry      // one moved component: kind, name, change ('added' | 'removed' | 'changed'), before, after
+RootCause           // { chain: the asked task down to the root, built on each read; task: the root; entries: its own moved components }; JSON is { chain, entries }
+InputWriter         // { taskId, file, writers: the tasks running when the file last changed }
+```
+
+`run-failures.ts` beside it keeps a failed run's task output as rows of
+cache.db's `failures` (caching.md § Schema), through
+`cache/run-notes.ts`:
+
+```ts
+writeRunFailures(cache, runId, outcomes, warn): void // at run end; only when an outcome carries failedOutput or inputMoved; newest 50 failed runs kept; a refused write warns
+runFailures(db, runId?): RunFailures | null // default the latest failed run; a failed task with no kept row reads output ''
+taskLog(db, taskId, runId?): TaskLog | null // default the latest run that recorded the task
+
+export interface RunFailures {
+  runId: string
+  tasks: TaskFailure[]
+}
+export interface TaskFailure {
+  taskId: string
+  exitCode: number
+  timedOut?: true
+  inputMoved?: string // the input that changed during the run (inputs.stability 'error')
+  output: string // '' when the run kept none
+  locations: OutputLocation[]
+  sandboxFix?: NonNullable<TaskOutcome['sandboxFix']> // the grants that would have allowed its sandbox denials
+  fixedIn?: string // the first later run where the task passed
+}
+export interface TaskLog {
+  runId: string
+  taskId: string
+  status: string
+  source: 'failure' | 'cache' | null // the kept failure output, the cache entry's log, or none kept
+  output: string // '' when source is null
+}
+```
+
+`taskLog` reads one task's output: a failed task's from its `failures`
+row, any other from the cache entry its key names (the log a hit
+replays, masked as it was), and nothing for an uncached pass or a skip.
+`vx last --log` answers from it.
+
+`runFailures` lists the run's failed `runs` rows and fills each from its
+`failures` row; `vx last --format json` answers from it.
+
+`cache/run-notes.ts` holds the statements over `steps`, `warnings` and
+`failures`: what a run said that its `runs` rows do not hold. A run's
+steps it did not wait on (`vx:prefetch`), which its output never shows,
+and its warnings go in at run end, in one transaction; each table keeps
+the newest 50 runs that had any (run ids are UUIDv7, so they sort by
+age). `vx last --sql` reads them as it reads `runs`.
+
+```ts
+keepRunNotes(db, runId, { steps?, warnings?, failures? }): void // one IMMEDIATE transaction, then the trim; nothing when all are empty
+keptSteps(db, runId): RunStep[] // [] when the run kept none
+keptWarnings(db, runId): string[] // [] when it said none or they are gone
+keptFailures(db, runId): Map<string, KeptFailure> // by task id
+
+export interface RunStep {
+  id: string // 'vx:prefetch'
+  durationMs: number
+  ok: boolean
+}
+```
+
+The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`
+and `whyDidThisRerun` as `whyDidThisRerunQuery`.
+
+`run-id.ts` beside it resolves the run id a caller types:
+`resolveRunId(db, raw, verb)` answers the whole id, or the one run it is
+a prefix of (null for none; a prefix several runs share is refused,
+naming them), and `shortRunId(db, id)` is the shortest unique prefix, at
+least 13 characters, `vx last --list` prints. `vx why` and `vx last`
+take ids through it.
+
+Every function but `diffKeyComponents` and `upstreamTask` takes an open `bun:sqlite`
+`Database` (the caller owns the `Cache` lifecycle — `indexDb(cache)`),
+returns JSON-safe shapes (bigint spans as decimal strings, like
+`WireEvent.timeUnixNano`), and never throws on a missing row:
+`found: false`, `null`, or an empty list, with a `note` that says which
+case it is.
+
+### The two explanations
+
+- `whyDidThisRerun` compares a task's row in `runId` with its
+  immediately previous row: `hashChanged` when the keys differ; when
+  they do not, the note says whether the run was served from cache,
+  recorded no cache outcome at all, or re-executed on the same key — and
+  why, from what the index holds: the previous run on the key failed
+  (saving nothing), the invocation's `cache_policy` read no cache, or
+  the key's entry was created by this run (none was there when it ran),
+  or the previous run was not saved because it ran beside a failed task
+  (a task run past a failed dependency under `--continue` is never
+  cached; ahead of the prune verdict, and "neither run saved it" when
+  this run ran beside one too and saved nothing either), or
+  the previous run executed and succeeded and no entry holds the key (its
+  save failed or was pruned: no row records a failed save, only this
+  trace; a previous policy that wrote nothing is named instead, ahead of
+  the prune verdict, and so
+  is a `blocked_by` that run has no row of: the dependency
+  `--exclude-dependencies` left out).
+  Only when none applies does it name `--no-cache` / `--force` (item
+  1009), and only with no recorded policy: a recorded one that read the
+  cache rules the flags out, and the note says vx cannot name the cause
+  (X-46).
+- `cacheKeyDiff` is the moat: it resolves both runs to their task
+  hashes and full-outer-joins the two `entry_inputs` fingerprint sets
+  over `(kind, name)` — `changed` / `added` / `removed`, unchanged ones
+  counted — with no config re-evaluation and no re-hash. A side with no
+  fingerprints is named for why: a run that failed, wrote no cache, or
+  passed beside a failed task (`--continue`),
+  an entry a remote hit restored (a `cache-hit-remote` row of that key:
+  the artifact carries none), and only then a prune. Values are
+  digests, never the material (an env value can be a secret), and a
+  secret-named env input's digest leaves as `***` (unsalted, a short
+  value is recoverable from it, M-62), as does one its task's
+  `exec.env.secret` names, whose stored row carries a `***` mark (M-63); STATUS
+  § Next 8(g) records why a plugin part's raw value is not stored.
+- `diffKeyComponents` is that join with no store under it: two keys'
+  `{ kind, name, hash }` sets in, the entries (ordered by kind, then
+  name, in code units, not `localeCompare`, whose order follows the
+  machine's locale, item 707) and the unchanged count out. `cacheKeyDiff`
+  calls it on the two `entry_inputs` sets (item 703).
+
+Keyed-run filtering (`KEYED_RUNS_SQL`, the cache module's) is
+imported, not restated, so a rule written once cannot drift between
+readers.
+
+### What it does NOT do
+
+- Open or close anything; no `Cache` lifecycle.
+- Evaluate configs or recompute a key — `explainCacheKey` says so in
+  its note: it returns persisted entry metadata.
+- Write rows. `recordRunBundle` (`cache/run-history.ts`) is the writer.
+
+### Tests
+
+`tests/metrics.test.ts` (every query, the three unchanged-key notes,
+the diff's four verdicts and its order by kind and by name, degraded
+rows whose fingerprints were pruned; the root-cause walk and the
+writers over a 10,000-task chain, by memory and statement count);
+`tests/run-record-completeness.test.ts` (a run writes what these read);
+`tests/status-vocabulary.test.ts` (no hand-typed status lists).
+
+### Replacing this module
+
+A reader over another store implements the same twelve signatures (the
+join, `diffKeyComponents`, needs no store and is reused as it is, and
+`diffsOlderRun` answers only for this module's own `cacheKeyDiff`
+results, so such a reader supplies its own); the CLI verbs format, they
+do not query.
+
+## `src/history/miss-reason.ts` — what a miss's key changed
+
+### Purpose
+
+A telemetry sink wants to say why a task ran: "rebuilt because a source file changed". `vx why` answers that after a run, from the run
+history; this answers it during one, so a live export carries it. A
+missed task's key components (captured before its command spawns)
+are joined with those of the last entry the cache saved for the same
+task, by `diffKeyComponents`, the rule `vx why` uses.
+
+### Public surface
+
+```ts
+export type MissExplainer = (
+  taskId: string,
+  components: readonly TaskInputComponent[],
+) => InputChanges | undefined
+export function createMissExplainer(db: Database): MissExplainer
+```
+
+- Undefined when the cache holds no earlier entry for the task, or its
+  fingerprint rows are gone; a count of 0 when the key is the entry's
+  own (the entry went, so the task ran).
+- Names the first ten changes; `count` is all of them. Hashes are left
+  out, so a secret input's value never reaches a sink.
+
+### Cost
+
+`run()` creates one only when a telemetry sink exists. The first miss
+reads the newest entry per task (one `GROUP BY` over `entries`); each
+miss then reads its entry's `entry_inputs` by primary key. A hit asks
+nothing.

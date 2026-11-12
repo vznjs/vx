@@ -802,10 +802,10 @@ describe('a flaky task says so on its own row', () => {
   })
 })
 
-describe('docs/modules/summary.md shows what the footer prints', () => {
+describe('docs/modules/report.md shows what the footer prints', () => {
   it('its Format block is formatRunSummary on four successes with the run context it names', () => {
     const doc = readFileSync(
-      path.resolve(import.meta.dir, '..', 'docs', 'modules', 'summary.md'),
+      path.resolve(import.meta.dir, '..', 'docs', 'modules', 'report.md'),
       'utf8',
     )
     const block = /## Format\n\n```\n([\s\S]*?)```/.exec(doc)

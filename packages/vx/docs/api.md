@@ -3,7 +3,7 @@
 Every export of `@vzn/vx`, generated from `src/index.ts` by
 `tests/api-reference.test.ts`: the declaration (comments dropped, a
 function to its signature, a class to its public members) and the doc
-comment above it. [The public surface](modules/index.md) groups the
+comment above it. [The public surface](modules/index.md#srcindexts--public-package-surface) groups the
 same names by what they are for; the plugins guide shows them in use.
 
 ## `AdmitContext`
@@ -2285,7 +2285,7 @@ contract (implementations THROW on failure; every throw degrades to a
 cache miss, reported to the remote's `onError`). The artifact bytes are the
 local `<hash>.tar.zst` verbatim. The wires live in plugin packages
 (`@vzn/vx-migrate`'s `turboCache()` and `nxCache()`, `@vzn/vx-reapi`); see
-docs/modules/layered-cache.md.
+docs/modules/cache.md.
 
 Core awaits every call and bounds none: a `get` that never settles
 holds its task and a `put` the run's upload drain, so each request
