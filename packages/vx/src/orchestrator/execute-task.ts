@@ -47,6 +47,9 @@ import {
   maskCaptured,
   BoundedCapture,
   keyedOutsideGrants,
+  atOrUnder,
+  MOUNT_WILDCARDS,
+  toRealPath,
 } from '../exec/index.js'
 import {
   encodeOutputLog,
@@ -1084,6 +1087,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let withheld: WithheldLink[] = []
   // The dependencies' outputs: a write refused there is granted no fix.
   let upstreamOutputs: string[] = []
+  // Where this machine's sandbox let the task write (absolute, globs kept):
+  // an input changed outside them was not the task's doing. Undefined when
+  // unsandboxed or run elsewhere.
+  let sandboxWrites: readonly string[] | undefined
 
   // Cache miss path (or caching disabled), up to `1 + retries` attempts.
   // Explicit config wins over the run-level `--retries` default, including
@@ -1788,6 +1795,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     placeholders = sb.placeholders
     withheld = sb.withheld
     upstreamOutputs = [...deps.reads, ...deps.reported]
+    const c = sb.sandbox.config
+    sandboxWrites = local
+      ? [
+          ...c.allowWrite,
+          ...(c.pendingWrites ?? []),
+          ...(c.linkedWrites ?? []).flatMap((l) => [l.link, l.target]),
+        ]
+      : undefined
     return { ...base, sandbox: sb.sandbox, signal: requestSignal(local) }
   }
 
@@ -2104,6 +2119,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         `('!${printable(taskGlobOf(at)).replace(/[\\']/g, '\\$&')}') and declare it in outputs`
       )
     }
+    // A sandboxed task none of whose write grants reach the file could not
+    // have written it: the outputs and 'mutable' advice read as if it had.
+    const notTheTask =
+      moved !== null &&
+      sandboxWrites !== undefined &&
+      !sandboxWrites.some((w) => mayWrite(toRealPath(moved), w))
     // Under watch the edit starts the next cycle, which runs on it: said
     // first, or the way out read as the fix for the user's own edit.
     const hint =
@@ -2112,12 +2133,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ? "; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }"
         : moved === null || rewroteBy !== undefined || !existsSync(moved)
           ? ''
-          : !read
-            ? appeared(moved)
-            : '; if the task generates it, declare it in outputs' +
-              (stability.strategy !== 'mutable'
-                ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
-                : ''))
+          : notTheTask
+            ? '; the sandbox let the task write none of it, so another process changed it during the run (an editor, a checkout)' +
+              (args.watch === true ? '' : '; the next run runs on it')
+            : !read
+              ? appeared(moved)
+              : '; if the task generates it, declare it in outputs' +
+                (stability.strategy !== 'mutable'
+                  ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+                  : ''))
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +
@@ -2229,6 +2253,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
       : {}),
   }
+}
+
+/** Whether write grant `grant` (absolute) may reach `abs`: a glob by its whole directory, to err toward "it could". */
+function mayWrite(abs: string, grant: string): boolean {
+  const at = grant.search(MOUNT_WILDCARDS)
+  return atOrUnder(abs, at === -1 ? grant : path.dirname(grant.slice(0, at + 1)))
 }
 
 /** The workspace-relative paths of `files` outside project `project` (workspace-relative). */

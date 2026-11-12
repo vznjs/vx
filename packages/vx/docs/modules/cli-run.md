@@ -106,8 +106,9 @@ the plugin's edges exist only in the run's graph. The no-value form takes
 a plugin's base commit (`setBranch({ base })`), else
 `defaultAffectedBase(root, baseBranch)`: the merge base with
 `origin/<baseBranch>`, refused on that branch (`affected.md`); an explicit
-base that is HEAD itself (a single-branch clone) is named, with the
-two bases that would compare something; `HEAD` by name is told its
+base that is HEAD itself on its own branch (a single-branch clone) is
+named, with the bases that would compare something, never the one in use
+(a fresh feature branch on its base gets the plain note); `HEAD` by name is told its
 working tree has no change when the diff named none (an edit to a root
 file no task declares gets the bare note).
 

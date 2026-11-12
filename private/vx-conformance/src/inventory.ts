@@ -1031,6 +1031,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'index-write-wait',
     'inflight',
     'inputs-glob-fuzz',
+    'inputs-moved-sandbox.unsafe',
     'invocation-secret-mask',
     'keep-alive',
     'keep-alive-sigkill',

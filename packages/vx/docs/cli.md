@@ -1477,7 +1477,9 @@ directory it landed in. When `inputs.files` reads that directory it
 grants the file alone, so the task cannot write its own inputs. A file
 named for the millisecond it was made (13 digits, vite's
 `vite.config.ts.timestamp-<ms>-<hex>.mjs`) is new each run, so its
-directory is granted in its place; a read the output depends on is a key input as well, and
+directory is granted in its place (`node_modules/.vite-temp/`), or, where
+that directory is the project itself, a glob from the clock on
+(`vite.config.ts.timestamp-*.mjs`); a read the output depends on is a key input as well, and
 the line says so, since a grant never adds one: `inputs.files` for a
 read of the project, `inputs.workspaceFiles` (workspace-relative) for one
 elsewhere in the workspace. Applied as given, the two lines key every

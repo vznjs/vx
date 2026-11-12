@@ -1532,14 +1532,20 @@ async function rebasing(
 
 /**
  * The base `ref` names (`<base>...HEAD` reads as `<base>`, as
- * `affectedChanges` reads it) when it is the commit HEAD is on, else
- * undefined. A base that IS HEAD can never mark anything affected — the
- * shape of a single-branch clone whose `origin/HEAD` is the branch under test.
+ * `affectedChanges` reads it) when it is the commit HEAD is on and HEAD is
+ * that branch (or detached), else undefined. A base that IS HEAD can never
+ * mark anything affected — the shape of a single-branch clone whose
+ * `origin/HEAD` is the branch under test. Another branch on the same commit
+ * (a fresh `checkout -b feature origin/main`) has only not moved past it.
  */
 export function headBase(workspaceRoot: string, ref: string): string | undefined {
   const head = revParse(workspaceRoot, 'HEAD')
   const base = HEAD_RANGE.exec(ref)?.[1] ?? ref
-  return head !== undefined && head === revParse(workspaceRoot, base) ? base : undefined
+  if (head === undefined || head !== revParse(workspaceRoot, base)) return undefined
+  if (base === 'HEAD') return base
+  const proc = spawnGitSync(['symbolic-ref', '--short', '-q', 'HEAD'], workspaceRoot, 'ignore')
+  const branch = new TextDecoder().decode(proc.stdout).trim()
+  return branch === '' || base === branch || base.endsWith(`/${branch}`) ? base : undefined
 }
 
 /** The commit `ref` names, or undefined when it does not resolve here. */

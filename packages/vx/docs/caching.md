@@ -1001,6 +1001,10 @@ output before each run, so a snapshot vitest writes on its first run
 value passed. It says to commit a file the task checks against, or to
 exclude a generated one from the inputs (`'!src/gen.ts'`) and then
 declare it in outputs.
+A sandboxed task none of whose write grants reach the file (a glob by
+its whole directory) could not have written it, so its line gives no
+outputs or `'mutable'` advice: it says another process changed the file
+during the run (an editor, a checkout) and that the next run runs on it.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run

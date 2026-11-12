@@ -86,8 +86,10 @@ export interface FingerprintClaims {
 }
 
 /** The base `ref` names (`<base>...HEAD` reads as `<base>`) when it is the
- *  current HEAD, else undefined. A base that is already HEAD selects
- *  nothing, which is a clean exit rather than an empty run. */
+ *  current HEAD and HEAD is that branch (or detached), else undefined. A
+ *  base that is already HEAD selects nothing, which is a clean exit rather
+ *  than an empty run; another branch on that commit (a fresh feature
+ *  branch) has only not moved past it, and gets no hint. */
 export function headBase(workspaceRoot: string, ref: string): string | undefined
 ```
 

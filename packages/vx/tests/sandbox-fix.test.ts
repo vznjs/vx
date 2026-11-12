@@ -324,6 +324,17 @@ describe('sandboxFix', () => {
     })
   })
 
+  // vite 5 bundles it beside the config, in the project itself: its
+  // directory was `./`, the whole project writable, sources too. A glob over
+  // the name's clock and what follows it covers every run's file.
+  it('grants a file named for the time it was made in the project itself by a glob, never the project', () => {
+    const t = 'vite.config.ts.timestamp-1794464558889-c9bf267daafa9.mjs'
+    const denied = [v(`openat(${t}) = -1 EROFS`, ['write'], path.join(dir, t))]
+    expect(sandboxFix(denied, dir, dir, undefined, { files: ['src/**'] })).toEqual({
+      write: ['vite.config.ts.timestamp-*.mjs'],
+    })
+  })
+
   // A write in `node_modules` granted the whole of it: every installed
   // package writable, so a test could rewrite a dependency the next task
   // runs. The grant is the tool's own directory there.

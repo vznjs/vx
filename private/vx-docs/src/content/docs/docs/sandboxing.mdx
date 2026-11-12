@@ -20,7 +20,9 @@ export default defineProject({
         sandbox: {
           allow: {
             read: ['.', '~/.cache/ms-playwright'],
-            write: ['dist/**'],
+            // vite bundles vite.config.ts to a temp file it imports: vite 6+ in
+            // the nearest node_modules/.vite-temp/, vite 5 beside the config.
+            write: ['dist/**', 'node_modules/.vite-temp/', 'vite.config.ts.timestamp-*.mjs'],
             network: ['registry.npmjs.org'],
           },
           deny: { network: ['telemetry.example.com'] },

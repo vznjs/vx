@@ -227,7 +227,8 @@ export function sandboxFix(
     } else if (isPerRunTemp(v.path)) continue
     else if (upstream.some((u) => atOrUnder(v.path!, toRealPath(u)))) continue
     else if (isTimeNamed(v.path)) {
-      fix.write.add(writeGrant(path.dirname(v.path), dirs, true, inputs?.files ?? [], outDirs))
+      const grant = writeGrant(path.dirname(v.path), dirs, true, inputs?.files ?? [], outDirs)
+      fix.write.add(grant === './' ? (timeGlob(path.basename(v.path)) ?? grant) : grant)
     } else {
       const isDir =
         v.line.startsWith('mkdir') ||
@@ -250,6 +251,22 @@ const isPerRunTemp = (abs: string): boolean => abs.endsWith('.bun-build')
 // run, as vite's `vite.config.ts.timestamp-<ms>-<hex>.mjs`: granted by
 // name, the next run failed on the next. Its directory is the grant.
 const isTimeNamed = (abs: string): boolean => /(?:^|\D)\d{13}(?:\D|$)/.test(path.basename(abs))
+
+/**
+ * A time-named file in the project itself as a glob from its clock on,
+ * keeping its extension (`vite.config.ts.timestamp-*.mjs`): its directory,
+ * vite 5's config beside `vite.config.ts`, was the whole project. Undefined
+ * when the fixed part holds a character a grant cannot name literally.
+ */
+function timeGlob(base: string): string | undefined {
+  const at = /(?:^|\D)(\d{13})(?:\D|$)/.exec(base)
+  if (at === null) return undefined
+  const start = at.index + at[0].indexOf(at[1]!)
+  const ext = path.extname(base)
+  const tail = base.length - ext.length >= start + 13 ? ext : ''
+  const glob = `${base.slice(0, start)}*${tail}`
+  return /[*?[\]{}\\]/.test(glob.replace('*', '')) ? undefined : glob
+}
 
 /**
  * The note for a write refused at a per-run temp name, which `sandboxFix`
