@@ -62,6 +62,7 @@ src/cli/watch-cycle.ts
 src/cli/watch-filter.ts
 src/cli/watch-fs.ts
 src/cli/watch-judge.ts
+src/cli/watch-loop.ts
 src/cli/watch-set.ts
 src/cli/watch.ts
 src/cli/why.ts
