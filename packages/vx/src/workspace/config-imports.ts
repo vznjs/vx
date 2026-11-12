@@ -1,35 +1,22 @@
-// The third `changed file → project` channel for `--affected`.
+// The third changed-file-to-project channel for `--affected`. Containment says
+// which project owns a file, `inputs.workspaceFiles` which declared it; neither
+// sees a project's `vx.config.*` importing it. Resolved-config hashing folds
+// imported values into the key, so editing such a file re-keys the task, and
+// selection must follow.
 //
-// Directory containment answers "which project owns this file", and
-// `inputs.workspaceFiles` answers "which project declared it". Neither
-// can see the one remaining way a file reaches a task: a project's
-// `vx.config.*` IMPORTS it. Resolved-config hashing folds the imported values
-// into the cache key (architecture principle #4), so editing such a file
-// re-keys the task — and `affected.ts` states the rule this exists to keep:
-// "input hashing sees it, so `--affected` must too."
+// A static scan: `Bun.Transpiler.scanImports` reads specifiers,
+// `Bun.resolveSync` makes paths. Nothing is evaluated.
 //
-// This is a STATIC scan. Nothing is evaluated: `Bun.Transpiler.scanImports`
-// reads the specifiers and `Bun.resolveSync` turns them into paths. The
-// `project-loader.ts` note that a bust "cannot reach the config's import
-// closure" is about `import()` at runtime, not about reading the source.
+// - Local specifiers only (`localTarget`): relative, `#imports`, or a tsconfig
+//   `paths`/`baseUrl` alias. Other bare specifiers are packages, covered by a
+//   lockfile plugin's key.
+// - One reversed BFS from every config at once, each file read once. It
+//   descends into other projects' files too: a site config importing
+//   `../core/src/index.ts` evaluates what that imports, so an edit there moves
+//   the site's key.
 //
-// Two rules keep the walk small, and the second is the one that makes it
-// affordable at all:
-//
-//   - LOCAL specifiers only (`localTarget`): relative, package.json
-//     `#imports`, or a tsconfig `paths` / `baseUrl` alias, each of which
-//     Bun loads from disk. Any other bare specifier is a package; it
-//     moves when the lockfile moves, which a lockfile plugin's key covers.
-//   - One reversed BFS from every config at once, each file read once
-//     however many configs reach it. It descends through every file in
-//     the workspace, another project's included: a site's `vx.config.ts`
-//     importing `../core/src/index.ts` evaluates what that file imports
-//     too, so an edit there moves the site's key. The walk stopped at the
-//     first file of another project, and containment selected core alone
-//     while the site's key moved.
-//
-// `configImports` walks one config's local closure forward, by the same
-// rule, for the files `vx watch` watches.
+// `configImports` walks one config's closure forward, by the same rule, for `vx
+// watch`.
 
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
@@ -42,8 +29,8 @@ const BUILTINS = new Set(builtinModules)
 
 /**
  * One transpiler per loader, made on first use: constructing one costs 42 µs
- * against 12 µs for the scan itself (measured), and a fresh one per config put
- * 1000 cold evaluations 130 ms behind.
+ * against the scan's 12, and one per config put 1,000 cold evaluations 130 ms
+ * behind.
  */
 const transpilers: Partial<Record<'ts' | 'js', Bun.Transpiler>> = {}
 function scanner(loader: 'ts' | 'js'): Bun.Transpiler {
@@ -51,11 +38,10 @@ function scanner(loader: 'ts' | 'js'): Bun.Transpiler {
 }
 
 /**
- * Whether Bun's own parser finds an ESM `export` in `source` — the one
- * syntax that makes Bun evaluate a file as a module whatever else it says.
- * Without one, a file that touches `module`, `exports`, `require`, `this`
- * or `__dirname` at the top level is CommonJS to Bun. False on source the
- * parser refuses: the evaluation names that error.
+ * Whether Bun's parser finds an ESM `export` in `source`, the one syntax that
+ * makes Bun evaluate a module regardless. Without it, top-level `module`,
+ * `exports`, `require`, `this` or `__dirname` make it CommonJS. False on
+ * unparseable source: evaluation names that error.
  */
 export function hasEsmExport(source: string, loader: 'ts' | 'js'): boolean {
   try {
@@ -83,12 +69,10 @@ function needsLookup(spec: string): boolean {
 }
 
 /**
- * A textual pass before the transpiler's: its scan costs ~50 µs per config in
- * situ (1000 cold evaluations: 50 ms, measured), and most configs import
- * `@vzn/vx` and nothing else. Every static specifier is a quoted string after
- * `from`, `import` or `require(`; a candidate found here is checked exactly by
- * the scan (a comment or a type-only import is the scan's to drop), and a
- * source with no candidate skips it.
+ * A textual pass before the transpiler's ~50 µs scan: most configs import only
+ * `@vzn/vx`. Every static specifier is a quoted string after `from`, `import`
+ * or `require(`; candidates go to the scan, which decides, and a source with
+ * none skips it.
  */
 function hasBareCandidate(source: string): boolean {
   SPECIFIER.lastIndex = 0
@@ -99,16 +83,12 @@ function hasBareCandidate(source: string): boolean {
 }
 
 /**
- * The bare specifiers of `source` that no `node_modules/<package>` above
- * `fromDir` provides — the imports Bun would AUTO-INSTALL from the npm registry
- * rather than fail, when no `node_modules` exists anywhere above (measured:
- * sixteen registry connections and 150 ms before "cannot find"; with one
- * present, 0 and 1 ms). A config is evaluated in the user's process with the
- * user's network: a fresh clone before its install, or a typo, must be a
- * refusal, never a download. Builtins (`node:fs`, `fs`, `bun:sqlite`) and
- * `@vzn/vx` (served by the core alias inside the compiled binary) are never in
- * the list; relative and absolute specifiers resolve by path and are the
- * loader's to refuse.
+ * The bare specifiers no `node_modules/<package>` above `fromDir` provides:
+ * imports Bun would auto-install from the registry when no `node_modules`
+ * exists above (16 registry connections, 150 ms). A config evaluates with the
+ * user's network, so a fresh clone or a typo must be a refusal, never a
+ * download. Builtins and `@vzn/vx` (the core alias) are never listed; path
+ * specifiers are the loader's to refuse.
  */
 export function unprovidedBareImports(
   source: string,
@@ -159,9 +139,9 @@ interface CompilerPaths {
 }
 
 /**
- * `compilerOptions.paths` and `baseUrl` after `extends`, each resolved
- * against the config that set it. A package `extends` is not followed: its
- * paths are unseen, so a specifier only they map stays refused.
+ * `compilerOptions.paths` and `baseUrl` after `extends`, each against the
+ * config that set it. A package `extends` is not followed: specifiers only it
+ * maps stay refused.
  */
 function compilerPaths(file: string, memo?: TsconfigMemo, depth = 0): CompilerPaths {
   const known = memo?.get(file)
@@ -229,8 +209,7 @@ function pathsAt(dir: string, memo?: TsconfigMemo): CompilerPaths {
 
 /**
  * Whether `source` quotes a bare specifier the nearest tsconfig maps: the
- * textual pass that keeps a config importing only packages unscanned, as the
- * relative-import pass keeps one importing nothing relative.
+ * textual pass that keeps a packages-only config unscanned.
  */
 function hasAliasCandidate(source: string, fromDir: string, memo: TsconfigMemo): boolean {
   SPECIFIER.lastIndex = 0
@@ -242,9 +221,9 @@ function hasAliasCandidate(source: string, fromDir: string, memo: TsconfigMemo):
 }
 
 /**
- * The paths a bare specifier names through the nearest tsconfig's `paths`
- * (each matching target, in order) or `baseUrl`, before extensions: Bun
- * tries them ahead of `node_modules`.
+ * The paths a bare specifier names through the nearest tsconfig's `paths` (each
+ * matching target, in order) or `baseUrl`, before extensions: Bun tries them
+ * before `node_modules`.
  */
 function tsconfigBases(spec: string, fromDir: string, memo?: TsconfigMemo): string[] {
   const { paths, pathsBase, baseUrl } = pathsAt(path.resolve(fromDir), memo)
@@ -271,8 +250,7 @@ function tsconfigBases(spec: string, fromDir: string, memo?: TsconfigMemo): stri
 
 /**
  * The local file a bare specifier names through the nearest tsconfig, as Bun
- * resolves it: an alias whose target exists loads from disk and never reaches
- * the registry.
+ * resolves it: an existing alias target never reaches the registry.
  */
 function tsconfigTarget(spec: string, fromDir: string, memo?: TsconfigMemo): string | undefined {
   for (const base of tsconfigBases(spec, fromDir, memo)) {
@@ -298,9 +276,8 @@ function expansions(named: string): string[] {
 }
 
 /**
- * Whether `pkg` names the package `fromDir` sits in, and that package has
- * `exports`: Bun resolves such a self-reference inside it and never asks the
- * registry, an unexported subpath included (strace).
+ * Whether `pkg` is the package `fromDir` sits in and has `exports`: Bun
+ * resolves such a self-reference locally, unexported subpaths included.
  */
 function selfReference(pkg: string, fromDir: string): boolean {
   for (let dir = path.resolve(fromDir); ;) {
@@ -372,9 +349,8 @@ function targetStrings(target: unknown): string[] {
 
 /**
  * The paths a `#` specifier's entry names in the nearest `package.json`
- * `imports` (exact key, else the `*` pattern with the longest head, as
- * Node picks), and whether every target is local. An entry mapping to a
- * package is the lockfile's, as any bare specifier.
+ * `imports` (exact key, else the longest-head `*` pattern, as Node picks), and
+ * whether all are local. An entry mapping to a package is the lockfile's.
  */
 function packageImportPaths(
   spec: string,
@@ -408,17 +384,14 @@ function packageImportPaths(
 }
 
 /**
- * The local file `spec` names from `fromDir`, by the rules Bun loads one with:
- * a relative path (`.`, `..`, `./x`, `../x`), a package.json `#imports` entry,
- * or a tsconfig `paths` / `baseUrl` alias. `file` is the hit, realpath'd as
- * `Bun.resolveSync` names one. With none, `named` lists the paths the specifier
- * names (and, bare of an extension, the files Bun would have tried): most often
- * the change itself deleted or renamed the target, and the config importing it
- * is the project the change broke. Undefined for a package, a builtin or
+ * The local file `spec` names from `fromDir`, by Bun's rules: a relative path,
+ * a `#imports` entry, or a tsconfig alias. `file` is the realpath'd hit. With
+ * none, `named` lists the paths it names (and, without an extension, the files
+ * Bun would try): usually the change deleted or renamed the target, and its
+ * importer is the project it broke. Undefined for packages, builtins and
  * `@vzn/vx`.
  *
- * Both walks ask this, so what `--affected` follows and what `vx watch`
- * watches cannot part: the watch walk once kept `./` and `../` alone.
+ * Both walks ask this, so `--affected` and `vx watch` cannot part.
  */
 function localTarget(
   spec: string,
@@ -435,9 +408,8 @@ function localTarget(
   if (spec.startsWith('#')) {
     const entry = packageImportPaths(spec, fromDir, memo.imports)
     if (entry === undefined) return undefined
-    // Bun picks the condition; it is asked only when no condition names a
-    // package, which it would fetch from the registry with no
-    // node_modules above.
+    // Bun picks the condition; asked only when no condition names a package,
+    // which it would fetch with no node_modules above.
     if (entry.allLocal) {
       try {
         return { file: Bun.resolveSync(spec, fromDir) }
@@ -454,19 +426,15 @@ function localTarget(
 
 /**
  * A textual pass before the scan: a local specifier opens with a quoted `./`,
- * `../`, `.`, `..` or `#`, or spells one with an escape, and most configs hold
- * none, so the scan is skipped for them. A candidate in a comment or string
- * still goes to the scan, which decides.
+ * `../`, `.`, `..` or `#` (or an escape), and most configs hold none.
+ * Candidates go to the scan.
  */
 const LOCAL_CANDIDATE = /["'`](?:\.\.?(?:\/|["'`])|#|[^"'`\n]*\\)/
 
 /**
- * Absolute targets of the local specifiers in `source` ({@link localTarget}).
- *
- * Paths come back realpath'd, as `Bun.resolveSync` names them — see the
- * caller, which realpaths everything it compares against for exactly that
- * reason. `import type` is erased by `scanImports` and so contributes no edge,
- * which is correct: an erased import cannot move a resolved value.
+ * Absolute, realpath'd targets of the local specifiers in `source` ({@link
+ * localTarget}); the caller realpaths what it compares against. `import type`
+ * is erased by `scanImports`, correctly: it cannot move a value.
  */
 function scanLocalImports(
   source: string,
@@ -504,11 +472,10 @@ function scanLocalImports(
 }
 
 /**
- * The file a bare `spec` loads when the nearest `node_modules/<package>`
- * above `fromDir` links to a directory outside any `node_modules`: a
- * workspace package (`workspace:*`), whose source the lockfile does not
- * pin. Realpath'd. Undefined for an installed package, or none installed:
- * resolving then could ask the registry.
+ * The file a bare `spec` loads when the nearest `node_modules/<package>` links
+ * outside any `node_modules`: a workspace package, whose source the lockfile
+ * does not pin. Undefined for an installed package or none (resolving could hit
+ * the registry).
  */
 function linkedPackageFile(spec: string, fromDir: string): string | undefined {
   if (spec.startsWith('.') || spec.startsWith('/') || !needsLookup(spec)) return undefined
@@ -531,10 +498,9 @@ function linkedPackageFile(spec: string, fromDir: string): string | undefined {
 
 export interface ConfigImportOwnersArgs {
   /**
-   * Realpath'd HERE, not by the caller. `Bun.resolveSync` returns realpath'd
-   * targets, so a raw root silently fails every containment check and the
-   * scan reports "no imports" — indistinguishable from a clean tree. Owning
-   * the normalisation in one place makes that misuse unrepresentable.
+   * Realpath'd here, not by the caller: `Bun.resolveSync` returns realpaths, so
+   * a raw root failed every containment check and the scan reported no imports,
+   * indistinguishable from a clean tree.
    */
   workspaceRoot: string
   projects: readonly ProjectMeta[]
@@ -588,9 +554,8 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Con
   const memo = lookupMemo()
   const importedBy = new Map<string, string[]>()
   const visited = new Set<string>()
-  // The workspace config is loaded live, not from the lock, so its walk
-  // goes further: into a workspace package it names (linked into
-  // node_modules), and above the root, which `changed` cannot name.
+  // The workspace config loads live, not from the lock, so its walk goes
+  // further: into workspace packages it names, and above the root.
   const outside = new Set<string>()
   const walkImports = async (start: string[], ws: boolean): Promise<void> => {
     // A level at a time, its files read together: one awaited read per config
@@ -652,9 +617,8 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Con
 }
 
 /**
- * The canonical directory Bun resolves `file`'s imports from: its REAL path's,
- * so a config linked in from elsewhere imports its neighbours there, not beside
- * the link.
+ * The canonical directory Bun resolves `file`'s imports from: its real path's,
+ * so a linked-in config imports its real neighbours.
  */
 function realDirOf(file: string): string {
   if (lstatSync(file).isSymbolicLink()) return path.dirname(realPath(file))
@@ -663,15 +627,11 @@ function realDirOf(file: string): string {
 
 /**
  * Every file a config imports by local specifier, transitively, outside
- * `node_modules`, the config itself excluded. `vx watch` watches these: a
- * shared preset outside the project (`../../shared/preset.mjs`, the way configs
- * compose) changed what a run evaluates and no watcher saw it. A file that
- * cannot be read ends its branch; an import that cannot be resolved is still
- * listed, by the names it would have. `configSource` is the config's, when the
- * caller has read it; `read` reads the rest, for a caller that keeps what was
- * read. `statics`, when given, gets each file the config reaches through static
- * imports alone: the ones its evaluation always evaluates, a dynamic `import()`
- * aside.
+ * `node_modules`, the config excluded: what `vx watch` watches (a shared preset
+ * outside the project changed a run and no watcher saw it). An unreadable file
+ * ends its branch; an unresolvable import is listed by the names it would have.
+ * `configSource` is the config's if already read; `read` reads the rest.
+ * `statics` gets the files reached by static imports alone.
  */
 export async function configImports(
   configPath: string,
@@ -698,9 +658,8 @@ export async function configImports(
     try {
       specs = scanner(TS_EXT.has(path.extname(file)) ? 'ts' : 'js').scanImports(source)
     } catch {
-      // A source the parser refuses (mid-edit) keeps the imports a plain
-      // match sees: watching too few files is what this list exists to
-      // prevent.
+      // A source the parser refuses (mid-edit) keeps the imports a plain match
+      // sees: watching too few files is the failure this prevents.
       specs = [...source.matchAll(/\bfrom\s*['"]([^'"]+)['"]|\bimport\s*['"]([^'"]+)['"]/g)].map(
         (m) => ({ path: (m[1] ?? m[2])!, kind: 'import-statement' }),
       )
@@ -717,9 +676,9 @@ export async function configImports(
       }
       if (t === undefined) continue
       if (!('file' in t)) {
-        // Missing for now, still imported: the config that names it fails
-        // to load until it is back, and a list without it left `vx watch`
-        // deaf to its return. Named as written, and not walked.
+        // Missing for now, still imported: its config fails until it is back,
+        // and leaving it out made `vx watch` deaf to its return. Named as
+        // written, not walked.
         for (const missing of t.named) {
           if (seen.has(missing)) continue
           seen.add(missing)

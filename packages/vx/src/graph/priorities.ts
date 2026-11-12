@@ -153,8 +153,8 @@ function reverseDepCountsOver(
   counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
 ): Map<string, number>[] {
   // Exact transitive counts need closure sets (diamonds double-count when
-  // summed). String sets are O(N²) and took 8.5 s on 1,090 packages; bitsets
-  // are O(E·N/32), single-digit ms there.
+  // summed). String sets are O(N²) and took 8.5s on 1,090 packages; bitsets
+  // are O(E·N/32) over N²/8 bits (3,270 tasks ≈ 1.3 MB), single-digit ms.
   const ids = [...nodes.keys()]
   const n = ids.length
   const index = new Map<string, number>()

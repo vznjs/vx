@@ -5,7 +5,7 @@
 // and git/CI context folded in, instead of each re-deriving from the
 // rendering-oriented `WireEvent` stream.
 //
-// A sink is observe-only by construction: its input is plain data, deep-frozen
+// A sink is observe-only by construction: its input is a plain-data record, deep-frozen
 // once (a sink that cleared a `task.end`'s `failedAttempts` cleared the
 // outcome's own and crashed the failure log), and its `TelemetryContext` holds
 // no run handle. No path leads from a sink back into scheduling, caching or
