@@ -53,6 +53,7 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
     durationMs: 999,
     cores: null,
     rssBytes: null,
+    slowMs: 999,
     runs: 1,
   })
   // A row is kept a day past its last write: a report it skipped may be that recent.
@@ -94,7 +95,7 @@ it('keeps a row reported within TIMING_DAYS, though that report was not written'
     hashes: ['kept'],
   })
   expect(((await res.json()) as { timings: object }).timings).toEqual({
-    kept: { durationMs: 100, cores: null, rssBytes: null, runs: 1 },
+    kept: { durationMs: 100, cores: null, rssBytes: null, slowMs: 100, runs: 1 },
   })
 })
 
@@ -597,4 +598,31 @@ it('builds its image with the dependencies package.json pins, naming no version 
   const dockerfile = await Bun.file(`${import.meta.dir}/../Dockerfile`).text()
   expect(dockerfile).not.toMatch(/bun add/)
   expect(dockerfile).toContain('bun install --production')
+})
+
+it('gives a table made before slow_ms the column, its rows read slow as their duration', async () => {
+  const file = path.join(dir, 'before-slow.sqlite')
+  const old = sqliteDb(file)
+  await old.run(
+    'CREATE TABLE timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID',
+    [],
+  )
+  await old.run(
+    "INSERT INTO timings VALUES ('i', 'r', 'refs/heads/main', 'h', 700, NULL, NULL, 3, 1)",
+    [],
+  )
+  const store = sqliteStore(sqliteDb(file))
+  await store.init()
+  // A second init, as each isolate runs one: the column is there already.
+  await store.init()
+  const repo = { issuer: 'i', repository: 'r' }
+  expect((await store.read(repo, ['refs/heads/main'], ['h'])).get('h')).toMatchObject({
+    durationMs: 700,
+    slowMs: 700,
+  })
+  await store.fold(repo, 'refs/heads/main', 2, [{ hash: 'h', durationMs: 1000 }])
+  expect((await store.read(repo, ['refs/heads/main'], ['h'])).get('h')).toMatchObject({
+    durationMs: 790,
+    slowMs: 1000,
+  })
 })

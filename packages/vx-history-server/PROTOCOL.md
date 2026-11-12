@@ -47,6 +47,9 @@ limits count on. Each folds into its row of the token's repository and ref:
   within about three runs, and one outlier moves it 30%.
 - `rssBytes`: `max(new, old × 0.9)`. A reservation needs the peak; the
   decay lets a task that shrank come down.
+- `slowMs`, from `durationMs`: `max(new, old × 0.9)`. A deadline needs how
+  slow a task gets, which the mean hides: a slow run counts at once,
+  where the mean takes three runs to reach it.
 - `runs`: how many reports moved the row.
 
 A report that would not move the row (`durationMs` and `cores` within
@@ -83,7 +86,9 @@ flaky, by any ref:
 
 ```json
 {
-  "timings": { "3b0d…": { "durationMs": 4200, "cores": 1.8, "rssBytes": 310000000, "runs": 12 } },
+  "timings": {
+    "3b0d…": { "durationMs": 4200, "cores": 1.8, "rssBytes": 310000000, "slowMs": 5100, "runs": 12 }
+  },
   "flaky": ["3b0d…"]
 }
 ```

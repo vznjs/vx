@@ -36,6 +36,8 @@ export interface Timing {
   readonly durationMs: number
   readonly cores: number | null
   readonly rssBytes: number | null
+  /** A slow run's duration: the slowest report, decayed by `SLOW_DECAY` a report. */
+  readonly slowMs: number
   readonly runs: number
 }
 
@@ -47,6 +49,13 @@ export interface Timing {
 export const WEIGHT = 0.3
 /** Peak memory keeps the larger of the new peak and the old one decayed by this: a reservation needs the peak. */
 export const RSS_DECAY = 0.9
+/**
+ * A slow run's duration keeps the larger of the new run and the old slow
+ * one decayed by this: a deadline needs how slow a task gets, which the
+ * duration's mean hides, and a run 40% over it is taken at once, where
+ * the mean takes three runs to reach it.
+ */
+export const SLOW_DECAY = 0.9
 
 /**
  * A report within this share of the row (and no new memory peak) leaves
@@ -67,7 +76,10 @@ export interface Repo {
 // 2026-10-27: rows were keyed by hashes of these; nothing that table
 // holds can be read by plain values.
 const DROP_OLD = 'DROP TABLE IF EXISTS task_timings'
-const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
+const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, slow_ms INTEGER, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
+// A table made before `slow_ms` gains it; its rows read their duration as
+// their slow one until a report sets it.
+const ADD_SLOW = 'ALTER TABLE timings ADD COLUMN slow_ms INTEGER'
 
 // The flaky record (2026-11-06): a row only for a task definition and
 // cache key that failed, and whether it flaked since. A pass with no row
@@ -83,8 +95,8 @@ const SWEEPS =
 // One statement per 2 MB of a report's rows, passed as one JSON parameter:
 // D1 binds at most 100 parameters, and a free plan's Worker runs at most
 // 50 queries a request.
-const FOLD = `INSERT INTO timings (issuer, repository, ref, hash, duration_ms, cores, rss_bytes, runs, updated_at)
-SELECT ?1, ?2, ?3, j.value ->> '$.hash', j.value ->> '$.durationMs', j.value ->> '$.cores', j.value ->> '$.rssBytes', 1, ?4
+const FOLD = `INSERT INTO timings (issuer, repository, ref, hash, duration_ms, cores, rss_bytes, runs, updated_at, slow_ms)
+SELECT ?1, ?2, ?3, j.value ->> '$.hash', j.value ->> '$.durationMs', j.value ->> '$.cores', j.value ->> '$.rssBytes', 1, ?4, j.value ->> '$.durationMs'
 FROM json_each(?5) AS j WHERE true
 ON CONFLICT (issuer, repository, ref, hash) DO UPDATE SET
   duration_ms = CAST(round(duration_ms * ${1 - WEIGHT} + excluded.duration_ms * ${WEIGHT}) AS INTEGER),
@@ -92,6 +104,7 @@ ON CONFLICT (issuer, repository, ref, hash) DO UPDATE SET
     ELSE cores * ${1 - WEIGHT} + excluded.cores * ${WEIGHT} END,
   rss_bytes = CASE WHEN excluded.rss_bytes IS NULL THEN rss_bytes WHEN rss_bytes IS NULL THEN excluded.rss_bytes
     ELSE max(excluded.rss_bytes, CAST(rss_bytes * ${RSS_DECAY} AS INTEGER)) END,
+  slow_ms = max(excluded.duration_ms, CAST(coalesce(slow_ms, duration_ms) * ${SLOW_DECAY} AS INTEGER)),
   runs = runs + 1,
   updated_at = excluded.updated_at
 WHERE abs(excluded.duration_ms - duration_ms) > duration_ms * ${NOISE}
@@ -117,7 +130,7 @@ const FLAKY = `SELECT DISTINCT hash FROM outcomes
 WHERE issuer = ?1 AND repository = ?2 AND hash IN (SELECT value FROM json_each(?3)) AND flaky = 1`
 
 /** The rows of `refs` for the hashes asked; a hash the first ref lacks reads the next. */
-const READ = `SELECT hash, ref, duration_ms, cores, rss_bytes, runs FROM timings
+const READ = `SELECT hash, ref, duration_ms, cores, rss_bytes, slow_ms, runs FROM timings
 WHERE issuer = ?1 AND repository = ?2 AND ref IN (SELECT value FROM json_each(?3)) AND hash IN (SELECT value FROM json_each(?4))`
 
 export interface Store {
@@ -167,6 +180,9 @@ export function sqliteStore(db: Db): Store {
     async init() {
       await db.run(DROP_OLD, [])
       await db.run(SCHEMA, [])
+      await db.run(ADD_SLOW, []).catch((err: unknown) => {
+        if (!/duplicate column/i.test(String(err))) throw err
+      })
       await db.run(SWEEPS, [])
       await db.run(OUTCOMES, [])
     },
@@ -198,6 +214,7 @@ export function sqliteStore(db: Db): Store {
               duration_ms: number
               cores: number | null
               rss_bytes: number | null
+              slow_ms: number | null
               runs: number
             }>(READ, [repo.issuer, repo.repository, JSON.stringify(refs), part]),
           ),
@@ -208,7 +225,13 @@ export function sqliteStore(db: Db): Store {
       return new Map(
         rows.map((r) => [
           r.hash,
-          { durationMs: r.duration_ms, cores: r.cores, rssBytes: r.rss_bytes, runs: r.runs },
+          {
+            durationMs: r.duration_ms,
+            cores: r.cores,
+            rssBytes: r.rss_bytes,
+            slowMs: r.slow_ms ?? r.duration_ms,
+            runs: r.runs,
+          },
         ]),
       )
     },
