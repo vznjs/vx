@@ -3,7 +3,7 @@
 Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
 A server for the task timings a vx scheduler asks for, that you host. It
-keeps one row per task, already the numbers the scheduler uses (duration,
+keeps one row per task, already the numbers the scheduler uses (duration, a slow run,
 CPU cores, peak memory), and merges each CI run's report into it: a
 history, not a log. It also keeps the flaky record every CI machine
 shares: only the cache keys that failed, each with a flaky flag,

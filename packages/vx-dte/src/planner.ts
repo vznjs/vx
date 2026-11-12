@@ -62,6 +62,8 @@ export interface PlanTask {
   /** It filled a machine this big last time: only a bigger one takes it, if any worker is. */
   readonly above?: { readonly cores: number; readonly memory: number } | undefined
   readonly ms: number | undefined
+  /** A slow run's time (`TaskResources.slowDurationMs`): its room is sought so its chain ends by the deadline run so. */
+  readonly slowMs?: number | undefined
   readonly deps: readonly string[]
   /** The platform core placed it on (`TaskNode.platform`): only a worker of it runs it. */
   readonly platform?: string | undefined
@@ -305,6 +307,7 @@ export function planTasks(
   need: (id: string) => Need,
   durationMs: (id: string) => number | undefined,
   home?: Home,
+  slowMs?: (id: string) => number | undefined,
 ): PlanTask[] {
   // The graph is the run's, fixed: each task is numbered and its deps
   // walked once a run, not at each plan (2026-11-05: a 5000-task sim
@@ -360,12 +363,14 @@ export function planTasks(
       e.depsN = Int32Array.from(deps, (d) => of.get(d)!.n)
       numberedOf.set(e.depsN, num)
     }
+    const slow = slowMs?.(id)
     out.push({
       id,
       cores: n.ask?.cores ?? n.cores,
       memory: n.ask?.memory ?? n.memory,
       above: n.above,
       ms: durationMs(id),
+      ...(slow === undefined ? {} : { slowMs: slow }),
       deps,
       platform: typeof home === 'function' ? home(e.node) : (e.node.platform ?? home),
       n: e.n,
@@ -395,6 +400,7 @@ export function missedWork(
   need: (id: string) => Need,
   durationMs: (id: string) => number | undefined,
   home?: Home,
+  slowMs?: (id: string) => number | undefined,
 ): PlanTask[] {
   const changed = new Map<string, boolean>()
   // Whether `id`'s key changed: a cached task that missed, or one after it.
@@ -413,7 +419,7 @@ export function missedWork(
       executed.has(id) || (n !== undefined && (n.config.cache !== true || n.deps.some(changes)))
     )
   }
-  return planTasks([...remaining].filter(missed), nodes, need, durationMs, home)
+  return planTasks([...remaining].filter(missed), nodes, need, durationMs, home, slowMs)
 }
 
 /**
@@ -2080,6 +2086,8 @@ export function decide(input: {
   readonly executed: ReadonlySet<string>
   readonly need: (id: string) => Need
   readonly durationMs: (id: string) => number | undefined
+  /** A slow run's time of each task (`PlanTask.slowMs`). */
+  readonly slowMs?: ((id: string) => number | undefined) | undefined
   readonly workers: readonly PlanWorker[]
   readonly running: ReadonlySet<string>
   readonly sizes: readonly Size[]
@@ -2148,6 +2156,7 @@ export function decide(input: {
     input.need,
     input.durationMs,
     input.home,
+    input.slowMs,
   ).filter((t) => !input.running.has(t.id))
   const platforms = new Map<string, number>()
   for (const t of tasks)

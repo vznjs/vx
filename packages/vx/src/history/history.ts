@@ -85,6 +85,12 @@ export interface TaskHistory {
    */
   saturatedCores?: number
   saturatedMemoryBytes?: number
+  /**
+   * A slow run's duration (ms): the slowest of the runs `p50DurationMs`
+   * reads, or a history server's (`importTimings`). A deadline needs how
+   * slow a task gets, which the median hides. Set by `resourcesFor`.
+   */
+  slowDurationMs?: number
 }
 
 /** Map keyed by `project#task`. */
@@ -98,6 +104,7 @@ export type TaskResources = Pick<
   | 'maxCpuParallelism'
   | 'saturatedCores'
   | 'saturatedMemoryBytes'
+  | 'slowDurationMs'
 >
 
 export interface HistoryProvider {
@@ -338,6 +345,11 @@ export class LocalHistoryProvider implements LocalHistory {
    */
   lackedBranchHistory = false
 
+  /** Each task's slow duration as the last forecast read found it (`slowDurationMs`). */
+  private slows = new Map<string, number>()
+  /** A history server's slow durations, as the last `importTimings` of this process carried them. */
+  private importedSlows = new Map<string, number>()
+
   /**
    * Each plugin measure's forecast, tiered as a task's duration is: the
    * median of its newest `FORECAST_RUNS` rows on this branch, else its
@@ -413,6 +425,10 @@ export class LocalHistoryProvider implements LocalHistory {
        VALUES (?, ?, 'remote', ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     const now = Date.now()
+    this.importedSlows = new Map()
+    for (const [id, n] of needs)
+      if (n.slowDurationMs !== undefined && isMeasure(n.slowDurationMs))
+        this.importedSlows.set(id, n.slowDurationMs)
     this.db
       .transaction(() => {
         for (const [id, ms] of timings) {
@@ -455,6 +471,7 @@ export class LocalHistoryProvider implements LocalHistory {
   private forecasts(wanted: ReadonlySet<string>): Map<string, number> {
     const out = new Map<string, number>()
     this.lackedBranchHistory = false
+    this.slows = new Map()
     if (wanted.size === 0) return out
     // A store that has timed nothing (a cold cache, a first run) answers no
     // tier: one row's probe, where asking every task of 8,002 was 20 ms of
@@ -510,6 +527,12 @@ export class LocalHistoryProvider implements LocalHistory {
           .map(Number)
           .sort((x, y) => x - y)
         out.set(id, pickPercentile(durations, 0.5))
+        this.slows.set(
+          id,
+          tier.where === `source = 'remote'`
+            ? (this.importedSlows.get(id) ?? durations.at(-1)!)
+            : durations.at(-1)!,
+        )
         if (tier === own) ownAnswered++
       }
       pending = left
@@ -549,6 +572,7 @@ export class LocalHistoryProvider implements LocalHistory {
       )
       .all(floor) as Executed[]
     const p50s = this.forecasts(wanted)
+    const slows = this.slows
     for (const row of executed) {
       const key = `${row.project}#${row.task}`
       if (!wanted.has(key) || !this.current(key, row.def)) continue
@@ -625,6 +649,10 @@ export class LocalHistoryProvider implements LocalHistory {
     for (const [key, cpu] of hitCpu) {
       const had = out.get(key)!
       if (had.maxCpuParallelism === undefined) out.set(key, { ...had, maxCpuParallelism: cpu })
+    }
+    for (const [key, slow] of slows) {
+      const had = out.get(key)
+      if (had !== undefined) out.set(key, { ...had, slowDurationMs: slow })
     }
     return out
   }

@@ -13,6 +13,8 @@ export interface ServerTiming {
   readonly durationMs: number
   readonly cores?: number
   readonly rssBytes?: number
+  /** A slow run's duration, as the server folds it (PROTOCOL.md); a query's answer only. */
+  readonly slowMs?: number
 }
 
 /** One cached task's run, as the server's flaky record keeps it (PROTOCOL.md "Outcomes"). */
@@ -514,6 +516,8 @@ export class HistoryServer {
           ? { cores: t.cores }
           : {}),
         ...(isCount(t.rssBytes) ? { rssBytes: t.rssBytes } : {}),
+        // A server before the slow duration answers none.
+        ...(isCount(t.slowMs) ? { slowMs: t.slowMs } : {}),
       })
     }
     return { timings: out, flaky: new Set(parts.flatMap((p) => p.flaky)) }

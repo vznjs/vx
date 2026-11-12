@@ -285,7 +285,7 @@ it('keeps no non-finite or negative timing or need', async () => {
   const ids = ['p#t', 'p#u', 'p#v', 'p#w', 'p#x', 'p#y']
   expect(await provider.p50sFor(ids)).toEqual(new Map([['p#w', 6]]))
   expect(await provider.resourcesFor(ids.slice(0, 4))).toEqual(
-    new Map([['p#w', { p50DurationMs: 6, maxCpuParallelism: 2 }]]),
+    new Map([['p#w', { p50DurationMs: 6, maxCpuParallelism: 2, slowDurationMs: 6 }]]),
   )
 })
 
@@ -313,8 +313,36 @@ it("a task never run here takes its need from the default branch's import", asyn
     maxCpuParallelism: 2.5,
     maxPeakRssBytes: 1e9,
     saturatedCores: 4,
+    slowDurationMs: 7,
   })
-  expect(got.get('p#u')).toEqual({ p50DurationMs: 9 })
+  expect(got.get('p#u')).toEqual({ p50DurationMs: 9, slowDurationMs: 9 })
+})
+
+// A deadline needs how slow a task gets, which the median hides: the
+// slowest of the runs the forecast reads, or the history server's.
+it('answers a slow duration beside the forecast, from the same runs or the import', async () => {
+  for (const ms of [40, 90, 50, 60, 55, 45]) record('feature', 't', ms)
+  const provider = new LocalHistoryProvider(indexDb(cache), undefined, 'feature')
+  // The newest five: 90 through 45, median 55, slowest 90.
+  expect((await provider.resourcesFor(['p#t'])).get('p#t')).toMatchObject({
+    p50DurationMs: 55,
+    slowDurationMs: 90,
+  })
+  provider.importTimings(
+    'abc',
+    new Map([['p#u', 7]]),
+    new Map([['p#u', { p50DurationMs: 7, slowDurationMs: 12 }]]),
+  )
+  expect((await provider.resourcesFor(['p#u'])).get('p#u')).toEqual({
+    p50DurationMs: 7,
+    slowDurationMs: 12,
+  })
+  // Another process's import carried no slow one: the imported time is it.
+  const other = new LocalHistoryProvider(indexDb(cache), undefined, 'feature')
+  expect((await other.resourcesFor(['p#u'])).get('p#u')).toEqual({
+    p50DurationMs: 7,
+    slowDurationMs: 7,
+  })
 })
 
 // A hit's entry keeps its producer's CPU over its time, not its share: a

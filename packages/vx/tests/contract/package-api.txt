@@ -2074,6 +2074,7 @@ export interface TaskHistory {
   maxCpuParallelism?: number
   saturatedCores?: number
   saturatedMemoryBytes?: number
+  slowDurationMs?: number
 }
 == type TaskInputRow (src/cache/layer.ts)
 export interface TaskInputRow {
@@ -2215,6 +2216,7 @@ export type TaskResources = Pick<
   | 'maxCpuParallelism'
   | 'saturatedCores'
   | 'saturatedMemoryBytes'
+  | 'slowDurationMs'
 == type TaskStatus (src/graph/task-status.ts)
 export type TaskStatus =
   | 'success'

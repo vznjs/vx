@@ -57,5 +57,6 @@ export interface Timing {
   readonly durationMs: number
   readonly cores: number | null
   readonly rssBytes: number | null
+  readonly slowMs: number
   readonly runs: number
 }

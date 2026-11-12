@@ -54,17 +54,35 @@ export function conformance(name: string, target: Target): void {
       expect((await upload([{ hash: h, durationMs: 1000, cores: 2, rssBytes: 1000 }])).status).toBe(
         204,
       )
-      expect((await query([h]))[h]).toEqual({ durationMs: 1000, cores: 2, rssBytes: 1000, runs: 1 })
+      expect((await query([h]))[h]).toEqual({
+        durationMs: 1000,
+        cores: 2,
+        rssBytes: 1000,
+        slowMs: 1000,
+        runs: 1,
+      })
       expect((await upload([{ hash: h, durationMs: 2000, cores: 1, rssBytes: 500 }])).status).toBe(
         204,
       )
-      // 70% the old, 30% the new; memory keeps the peak, decayed 10%.
+      // 70% the old, 30% the new; memory and the slow run keep the peak, decayed 10%.
       expect((await query([h]))[h]).toEqual({
         durationMs: 1300,
         cores: 1.7,
         rssBytes: 900,
+        slowMs: 2000,
         runs: 2,
       })
+    })
+
+    it('takes a slow run at once and lets it decay', async () => {
+      const h = hash()
+      await upload([{ hash: h, durationMs: 1000 }])
+      await upload([{ hash: h, durationMs: 1500 }])
+      expect((await query([h]))[h]).toMatchObject({ durationMs: 1150, slowMs: 1500, runs: 2 })
+      await upload([{ hash: h, durationMs: 900 }])
+      expect((await query([h]))[h]).toMatchObject({ durationMs: 1075, slowMs: 1350, runs: 3 })
+      await upload([{ hash: h, durationMs: 1420 }])
+      expect((await query([h]))[h]).toMatchObject({ durationMs: 1179, slowMs: 1420, runs: 4 })
     })
 
     it('names a task flaky when one key failed then passed, or a run saw it flake, by any ref', async () => {
@@ -113,10 +131,22 @@ export function conformance(name: string, target: Target): void {
       expect(
         (await upload([{ hash: h, durationMs: 1040, cores: 2.05, rssBytes: 900 }])).status,
       ).toBe(204)
-      expect((await query([h]))[h]).toEqual({ durationMs: 1000, cores: 2, rssBytes: 1000, runs: 1 })
+      expect((await query([h]))[h]).toEqual({
+        durationMs: 1000,
+        cores: 2,
+        rssBytes: 1000,
+        slowMs: 1000,
+        runs: 1,
+      })
       // A new peak alone moves it.
       await upload([{ hash: h, durationMs: 1000, cores: 2, rssBytes: 1100 }])
-      expect((await query([h]))[h]).toEqual({ durationMs: 1000, cores: 2, rssBytes: 1100, runs: 2 })
+      expect((await query([h]))[h]).toEqual({
+        durationMs: 1000,
+        cores: 2,
+        rssBytes: 1100,
+        slowMs: 1000,
+        runs: 2,
+      })
     })
 
     it('keeps cores and memory when a report omits them', async () => {
@@ -126,6 +156,7 @@ export function conformance(name: string, target: Target): void {
         durationMs: 100,
         cores: null,
         rssBytes: null,
+        slowMs: 100,
         runs: 1,
       })
       await upload([{ hash: h, durationMs: 100, cores: 1, rssBytes: 10 }])
@@ -133,6 +164,7 @@ export function conformance(name: string, target: Target): void {
         durationMs: 100,
         cores: 1,
         rssBytes: 10,
+        slowMs: 100,
         runs: 2,
       })
     })
@@ -176,6 +208,7 @@ export function conformance(name: string, target: Target): void {
           durationMs: 2_147_483_647_000,
           cores: 1.2345678901234567,
           rssBytes: 9_007_199_254_740_991,
+          slowMs: 2_147_483_647_000,
           runs: 1,
         },
       ])
