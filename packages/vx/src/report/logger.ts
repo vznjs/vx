@@ -66,9 +66,9 @@ export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
   status(line: string): void
   /**
-   * A warning: something worked, but look at it. The default logger writes
-   * it to stderr, so stdout carries only the rows and the footer. A logger
-   * without it gets warnings through `status`.
+   * A warning: something worked, but look at it. The default logger writes it
+   * to stderr, so stdout carries only rows and footer. A logger without it gets
+   * warnings through `status`.
    */
   warn?(line: string): void
   /** Streamed stdout chunk for a task. Buffered until `taskComplete`. */
@@ -81,9 +81,8 @@ export interface Logger {
    */
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
   /**
-   * Optional lifecycle hooks. The orchestrator calls them when
-   * present; the default logger uses them to drive its dynamic
-   * status line. Custom loggers can ignore them.
+   * Optional lifecycle hooks; the default logger drives its status line with
+   * them.
    */
   runStart?(info: {
     total: number
@@ -117,23 +116,19 @@ export function warnOf(log: Logger): (line: string) => void {
 /** The logger `run()` builds when none is passed. */
 export interface DefaultLogger extends Logger {
   /**
-   * Hand over any output still coalesced, and write straight through from
-   * now on. `runEnd` does it; the run's own `finally` does it again for a
-   * throw that never reached `runEnd`.
+   * Hand over any coalesced output and write straight through from now on.
+   * `runEnd` does it; the run's `finally` again, for a throw.
    */
   settle(): void
   /**
-   * Whether vx's own steps show: only beside a live region, on a terminal.
-   * A log (CI, a pipe) stays free of rows whose presence is a timing.
-   * When false, run() never times a step (zero cost).
+   * Whether vx's own steps show: only beside a live region. A log stays free of
+   * rows whose presence is a timing. False: run() never times a step.
    */
   readonly showsSteps: boolean
   /**
-   * Hand the live region the run's forecast. Called once at run start:
-   * `graph` (the graph alone: what is blocked, and by what) is built the
-   * first time a worker row is free; `load` adds history's timings, and
-   * runs only if the region is still live a second in, so a run that ends
-   * sooner never reads history for it.
+   * Hand the live region the forecast, once at run start: `graph` is built when
+   * a worker row is first free; `load` adds history's timings only if the
+   * region is still live a second in.
    */
   forecast(graph: () => Forecast, load: () => Promise<Forecast>): void
   /** Draw no live region until the returned release: a prompt waits on the terminal. */
@@ -141,33 +136,19 @@ export interface DefaultLogger extends Logger {
 }
 
 /**
- * The default logger's per-task output policy. Resolved once per run
- * from (in priority order) the explicit `--output-logs` override, a
- * truthy `CI` env, and the CLI-detected flow:
+ * The default logger's per-task output policy, from `--output-logs`, else a
+ * truthy `CI`, else the CLI's flow: full: frames for executed work, one-liners
+ * for quiet hits; CI's and the programmatic default. errors-only: only failed
+ * tasks print. none: no per-task output. hash-only: one line per task (outcome,
+ * id, key), Turbo's parity; the summary still renders. focused: requested nodes
+ * stream raw, live; dependencies are silent unless they fail. broad: a
+ * `success` line per executed task, frames for failures, silent hits.
  *
- *   full — frames for executed work, one-liners for quiet hits.
- *                 Today's CI behavior; also the programmatic default.
- *   errors-only — only failed tasks print.
- *   none — no per-task output at all.
- *   hash-only — one line per task: outcome word, task id, cache key.
- *                 No frames, no log replay (Turbo `--output-logs
- *                 hash-only` parity); the end-of-run summary still
- *                 renders. The line is the run's audit trail: which key
- *                 each task resolved to, without any build output.
- *   focused — requested nodes stream raw output live (running the
- *                 task should feel like running the command directly);
- *                 dependency-pulled nodes are silent unless they fail.
- *   broad — news only: one `success` line per executed task,
- *                 full frames for failures, silence for cache hits.
+ * `gha` (GitHub Actions): task output is fenced from workflow commands; in full
+ * mode each block is a collapsible group, except failures, which stay open with
+ * an `::error` annotation.
  *
- * `gha` (on GitHub Actions, any mode): task output is fenced from
- * workflow commands. In full mode each task's block is also wrapped in
- * `::group::` / `::endgroup::` so tasks collapse in the log viewer —
- * except failed tasks, which stay pre-expanded and emit an `::error`
- * annotation instead.
- *
- * `ci`: a truthy CI env was detected. Suppresses the dynamic status
- * line even if stdout happens to be a TTY.
+ * `ci`: suppresses the status line even on a TTY.
  */
 export interface OutputView {
   mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
@@ -175,14 +156,10 @@ export interface OutputView {
   ci?: boolean
 }
 
-// ── GitHub Actions workflow-command escaping ────────────────────────
-// The runner parses `::`-prefixed LINES out of the log, so anything
-// interpolated into one has to be encoded or it changes the command's shape.
-// Both halves are reachable without malice: a task name is an arbitrary TS
-// object key (the loader accepts newlines — `run-report.ts` already escapes
-// them for the same reason), and a task can legitimately print
-// command-shaped text (a test asserting on annotation formatting, a nested
-// tool emitting its own workflow commands).
+// ── GitHub Actions workflow-command escaping ──────────────────────── The
+// runner parses `::`-prefixed lines, so anything interpolated into one must be
+// encoded. Both halves happen innocently: a task name may hold newlines, and a
+// task may print command-shaped text.
 // https://docs.github.com/actions/reference/workflow-commands-for-github-actions
 
 /** Message text. `%` first, or we would re-escape our own escapes. */
@@ -191,18 +168,16 @@ function ghaData(value: string): string {
 }
 
 /**
- * A property VALUE additionally reserves `:` and `,` — the delimiters
- * between a command's name, its properties and its message. Without this an
- * id containing `::` truncates the annotation mid-title.
+ * A property value also reserves `:` and `,`, or an id containing `::`
+ * truncates the title.
  */
 function ghaProperty(value: string): string {
   return ghaData(value).replace(/:/g, '%3A').replace(/,/g, '%2C')
 }
 
 /**
- * Fence untrusted text so the runner stops interpreting workflow commands
- * inside it. `token` must be unguessable by the fenced text itself — a fixed
- * one could simply be printed by the task — so it is a per-run UUID.
+ * Fence untrusted text from workflow commands. The token must be unguessable by
+ * the fenced text, so it is a per-run UUID.
  */
 function ghaFence(body: string, token: string): string {
   const [open, close] = ghaFenceEnds(token)
@@ -270,21 +245,13 @@ export function defaultLogger(
 ): DefaultLogger {
   const forwardArgs = opts.forwardArgs ?? []
   const errOut = opts.err ?? process.stderr
-  // Per-task buffers, split by stream. Splitting lets the framed-output
-  // renderer put stdout under `├─ stdout` and stderr under `├─ stderr`.
-  // The price: chunks that interleaved at runtime get re-ordered (all
-  // stdout before all stderr).
-  //
-  // Chunks are held as a string[] (push + join on flush) instead of
-  // appending via `+=`; concatenating N small chunks via `+=` is O(N²)
-  // because each `+=` allocates a fresh string of the full accumulated
-  // length. Bun-friendly: join('') is a single contiguous allocation.
+  // Per-task buffers, split by stream so the frame can show stdout and stderr
+  // apart; interleaved chunks are reordered. Held as string[] joined on flush:
+  // `+=` is O(N²).
   const outputBuffers = new Map<string, OutputChunk[]>()
-  // Separator bookkeeping: blocks are blank-line-delimited on BOTH
-  // sides — raw (unprefixed) frame content must never collide with a
-  // neighbouring one-liner (owner feedback). A block leaves its own
-  // trailing blank, so a block following a block needs no leading one;
-  // a one-liner or streamed output since the last block does.
+  // Blocks are blank-line-delimited on both sides, so raw frame content never
+  // touches a one-liner. A block leaves its trailing blank; a one-liner or
+  // streamed output since needs a leading one.
   let lineEmitted = false
   let streamedSinceBlock = false
   // True while the live stream sits mid-line (chunk without trailing
@@ -302,22 +269,11 @@ export function defaultLogger(
     return arr
   }
 
-  // `none` is the ONE mode whose contract guarantees the output is
-  // discarded — "no per-task output at all" (docs/cli.md) — so its chunks
-  // are dropped on arrival instead of accumulated and thrown away at
-  // `taskComplete`. Buffering output the mode promises never to print made
-  // `--output-logs none`, the obvious mitigation for a chatty task, cost
-  // exactly as much memory as printing it: 400 MB of task stdout drove the
-  // vx process to 852 MiB RSS, unbounded and linear, and a warm CACHE HIT
-  // paid it too (the stored stdout is replayed through this same path).
-  //
-  // Deliberately ONLY the modes that PROMISE never to print task output —
-  // `none` and `hash-only`. The boundary is the point: `full`, `broad`,
-  // `focused` and `errors-only` all PRINT this output — for `errors-only` a
-  // failed task's log is precisely what the user asked to see — and
-  // silently truncating someone's build log is a worse failure than the
-  // memory it costs. So those modes stay unbounded by decision, not by
-  // oversight.
+  // `none` and `hash-only` promise never to print task output, so chunks are
+  // dropped on arrival: buffered, 400 MB of stdout drove vx to 852 MiB RSS, on
+  // every warm hit too. The other modes print this output (errors-only's
+  // failure log is the point), so they stay unbounded by decision: silently
+  // truncating a build log is worse.
   const discardsOutput = view.mode === 'none' || view.mode === 'hash-only'
 
   // One per run, and only in GHA mode: the fence token must be something the
@@ -328,9 +284,8 @@ export function defaultLogger(
   const fenced = (block: string): string =>
     view.gha === true && block.length > 0 ? ghaFence(block, ghaToken) : block
 
-  // All stdout flows through the writer so the status line can never
-  // interleave with content. Inert (pure passthrough) on non-TTY
-  // streams and in CI.
+  // All stdout goes through the writer so the status line never interleaves
+  // with content. Passthrough off a TTY and in CI.
   const writer = createOutputWriter(out, {
     enabled: view.ci !== true,
     ...(opts.forceFloorMs !== undefined ? { forceFloorMs: opts.forceFloorMs } : {}),
@@ -339,12 +294,9 @@ export function defaultLogger(
 
   // Status-display state, driven by the optional lifecycle hooks.
   let total = 0
-  // Live open/close framing only works when ONE requested task owns
-  // the terminal between its open and close. With multiple requested
-  // tasks streaming concurrently, frames interleave into garbage —
-  // so we buffer each requested node and emit an atomic block at
-  // completion instead. Default-safe: undefined / 0 / 1 keeps the
-  // single-target live experience byte-identical.
+  // Live open/close framing needs one requested task owning the terminal;
+  // several would interleave, so each is buffered and emitted as one block.
+  // Undefined, 0 or 1 keeps the single live view.
   let requestedCount = 1
   // Run banner context — rendered in the live region's summary section
   // so the in-flight footer matches the final summary exactly.
@@ -377,10 +329,9 @@ export function defaultLogger(
   let progressShown = -1
   let progressRed = false
 
-  // Every interactive view renders the fixed-height running list: one
-  // row per worker, sized at runStart from concurrency, so its height
-  // never changes; a task keeps its slot for its whole life. Excess
-  // running tasks queue for a freed slot, each shown after the slots.
+  // Every interactive view renders the fixed-height running list: one row per
+  // worker, sized at runStart, so its height never changes; a task keeps its
+  // slot for life. Excess tasks queue below the slots.
   let slots: (WorkerSlot | null)[] = []
   const slotQueue: WorkerSlot[] = []
   let succeeded = 0
@@ -417,43 +368,28 @@ export function defaultLogger(
   let spreadMin = Infinity
   let spreadSum = 0
   let spreadCount = 0
-  // The pinned zone above the worker rows: persistent tasks pin at
-  // ready (their outcome lands while the child keeps running) and live
-  // until runEnd kills the region. A failure is not pinned: it is a
-  // permanent failed row the moment it happens, and its full frame is
-  // deferred to runEnd (owner: '✗ line, continue, all full frames at
-  // the end'). 'full'/CI keeps frames inline.
+  // The pinned zone above the worker rows: persistent tasks pin at ready and
+  // stay until runEnd. A failure is not pinned: it is a permanent failed row at
+  // once, its frame deferred to runEnd. 'full'/CI keeps frames inline.
   const deferredFailures: string[] = []
   // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
   const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
-  // A persistent task (dev server, watcher, daemon) is the one task kind
-  // nothing bounds: a one-shot command's output ends when it exits, but a
-  // server writes for as long as the run lasts. So its chunks route into a
-  // bounded tail for its WHOLE life, not the unbounded per-task buffers —
-  // registered at `taskStart` and drained at `taskComplete` for the frame,
-  // then reset to keep capturing what it writes after its outcome landed
-  // (which arrives at READY, while the child keeps running) and flushed as
-  // one trailing block at runEnd.
-  //
-  // Registering only at READY was the defect: a `readyWhen` that never
-  // matches never reaches `taskComplete`, so the 64 KiB cap never engaged
-  // and its output accumulated in the ordinary per-task buffer instead —
-  // ~100 MiB/s, with no `exec.timeout` needed to reach it.
-  //
-  // `outcome` is absent until the task completes. Registration is
-  // unconditional (the bound is a memory invariant, not a display choice);
-  // only the flush is view-gated.
+  // A persistent task writes as long as the run lasts, so its chunks go to a
+  // bounded tail for its whole life: registered at `taskStart`, drained at
+  // `taskComplete` for the frame, then reset to capture what it writes after
+  // ready, flushed at runEnd. Registered at ready, a `readyWhen` that never
+  // matched grew the ordinary buffer at ~100 MiB/s. Registration is
+  // unconditional (a memory invariant); only the flush is view-gated.
   const persistentTails = new Map<
     string,
     { node: TaskNode; outcome?: TaskOutcome; out: Tail; err: Tail }
   >()
   let flushedPersistent = false
-  // After that flush nothing prints a tail again, yet a kept server writes for
-  // as long as vx holds it: `vx run dev --all` showed none of its servers' logs
-  // while it ran. So a ready server's output streams from then on, a line at a
-  // time under its id; the partial line each holds waits for its newline, a
-  // status line, a second runEnd, or `settle`.
+  // After that flush a kept server still writes as long as vx holds it, so a
+  // ready server's output streams from then on, a line at a time under its id;
+  // the partial line waits for its newline, a status line, a second runEnd or
+  // `settle`.
   const KEPT_LINE_CAP = 64 * 1024
   const keptLines = new Map<string, { node: TaskNode; rest: string }>()
   const streamKept = (node: TaskNode, chunk: string): void => {
@@ -482,18 +418,17 @@ export function defaultLogger(
   }
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
-  // A server writing before this run started its task is one an earlier run
-  // left running (`vx watch` keeps its dev server): it streams as a kept
-  // one, live above the rows. Buffered as a task yet to run, it was never shown.
+  // A server writing before this run started its task was left running by an
+  // earlier run (`vx watch`): it streams as a kept one. Buffered, it was never
+  // shown.
   const heldOver = (node: TaskNode): boolean =>
     node.config.exec?.persistent !== undefined && view.mode !== 'errors-only'
 
   // A forced refresh the region has not been built for yet: the build
   // takes the forecast pass the event asked for.
   let forcePending = false
-  // The region is built when the writer draws it (`setRegion`'s function
-  // form), from the state as it is then: the events a forced-redraw floor
-  // coalesces build nothing.
+  // The region is built when the writer draws it, from the state then:
+  // coalesced events build nothing.
   const refresh = (forced: boolean): void => {
     if (statusDead) return
     const first = forecastFn === undefined && graphForecast !== undefined && !tail && !stopping
@@ -630,10 +565,8 @@ export function defaultLogger(
   }
   const tick = (): void => {
     if (!writer.enabled || statusDead || ticker !== null) return
-    // Keeps the per-worker elapsed time ticking between task events
-    // (the time IS the motion — there's no spinner). The writer
-    // throttles unforced redraws, and unref means a stray ticker
-    // can never hold the process open.
+    // Keeps per-worker elapsed times ticking (the time is the motion; no
+    // spinner). The writer throttles redraws; unref'd.
     ticker = setInterval(() => {
       refresh(false)
     }, 100)
@@ -657,18 +590,14 @@ export function defaultLogger(
     writer.clearStatus()
   }
 
-  // The task log opens with one blank line before its first row, on a terminal
-  // and off one. A note vx prints before it is no task row (`status`). Without
-  // a footer, the caller frames the log (`vx watch` opens each cycle with its
-  // own line).
+  // The log opens with one blank line before its first row. A note before it is
+  // no row. Without a footer the caller frames the log.
   let logOpened = opts.footer === false
   // The log ends on a blank line (a block's own): a blank status line
   // after it (the footer's) would make two; one blank line apart is the rule.
   let endsBlank = false
   // A live-streamed task's partial line, and any colour it left on, end before
-  // anything of vx's own: a row or a block written after it (a step that ends
-  // while the task streams, another task's failure, a kept server's line) was
-  // glued to it, `building... time status cache task`, and took its colour.
+  // vx's own text, or a row written after was glued to it and took its colour.
   let streamStyled = false
   const endStreamLine = (): void => {
     const end = (streamStyled ? STYLE_END : '') + (streamMidLine ? '\n' : '')
@@ -703,11 +632,9 @@ export function defaultLogger(
     taskWrite(`${line}\n`)
     lineEmitted = true
   }
-  // The open panel: rows of one kind share one box, the Tasks list on the log's
-  // stream and the Warnings on stderr; anything else said closes it first, and
-  // the next row opens it again. Painted, a box; plain on a terminal, the Tasks
-  // rule and header over the rows, as the live region heads its own; piped, the
-  // bare rows a script reads.
+  // The open panel: rows of one kind share one box (Tasks on the log's stream,
+  // Warnings on stderr); anything else closes it and the next row reopens it.
+  // Painted, a box; plain on a terminal, a rule and header; piped, bare rows.
   const panels = colors.enabled || writer.enabled
   let panelOpen: 'Tasks' | 'Warnings' | undefined
   let inPanel = false
@@ -730,11 +657,9 @@ export function defaultLogger(
     emitLine(line)
     inPanel = false
   }
-  // formatTaskBlock returns '' for group tasks (no exec) — skip the
-  // write so a stray newline doesn't sneak into the output.
-  // `head` and `tail` wrap the block. A big one is written in pieces:
-  // joined into one string, a frame of a 100 MB log was copied whole again
-  // (200 MB, two bytes a character once the frame's corners are in it).
+  // formatTaskBlock returns '' for groups; skip the write. `head` and `tail`
+  // wrap the block, written in pieces: joined, a 100 MB log's frame was copied
+  // whole again.
   const emitBlock = (block: string, head = '', tail = ''): void => {
     if (block.length === 0) return
     endStreamLine()
@@ -757,20 +682,14 @@ export function defaultLogger(
     streamedSinceBlock = false
   }
 
-  // Focused mode streams requested nodes' output live and raw —
-  // `vx run test` should feel like running the command directly.
-  // Cache-hit replay arrives through the same taskStdout path, so it
-  // streams identically. Only with a SINGLE requested task, though:
-  // concurrent live frames interleave (see requestedCount above), so
-  // multiple requested tasks buffer and emit atomic blocks instead.
-  // A requested task — or a non-group dep surfaced from a requested
-  // group (see markSurfacedDeps) — is a "primary" node the focused
-  // view shows. Groups never stream (no output of their own).
+  // Focused mode streams requested output live and raw, hit replays included,
+  // but only with a single requested task (several would interleave). A
+  // requested task, or a dep surfaced from a requested group, is a primary
+  // node. Groups never stream.
   const isPrimary = (node: TaskNode): boolean => node.requested || node.surfaced === true
-  // A task handed the terminal writes to it directly, so the status region
-  // goes for good (it would repaint over a prompt) and, in the views that
-  // frame executed work, a live frame opens before it and closes after;
-  // what vx itself says about it streams inside.
+  // A task handed the terminal writes to it directly: the status region goes
+  // for good (it would repaint over a prompt), and in framing views a live
+  // frame opens before and closes after.
   const holdsTerminal = (node: TaskNode): boolean =>
     opts.tty === true && node.config.exec?.interactive === true
   const framesTerminal = view.mode === 'full' || view.mode === 'focused' || view.mode === 'broad'
@@ -841,9 +760,8 @@ export function defaultLogger(
       runContext = info.context
       startedAtMs = Date.now()
       started = true
-      // No more slots than tasks: one per allowed worker, every frame walked
-      // them all (`--concurrency=100000000` over six tasks took 80 s, and
-      // 2^32 threw here).
+      // No more slots than tasks: `--concurrency=100000000` over six tasks took
+      // 80 s per frame, and 2^32 threw.
       slots = Array.from(
         { length: Math.max(1, Math.min(info.concurrency ?? 10, info.total)) },
         () => null,
@@ -886,10 +804,8 @@ export function defaultLogger(
         // What is coalesced lands before the task writes past it.
         writer.settle()
       }
-      // Focused flow: a requested node streams raw, and the region stays
-      // under its output (the writer erases and redraws it around each
-      // write): taken down, the summary and the run's id were gone until
-      // the task ended.
+      // Focused flow: a requested node streams raw with the region kept under
+      // it, or the summary and run id vanished until the task ended.
       if (streamsLive(node)) {
         // Open the live frame: full task info even when the command
         // streams nothing (or the hit replays nothing).
@@ -949,24 +865,18 @@ export function defaultLogger(
         slotQueue.length = 0
         refresh(true)
       } else if (!tail) killStatus()
-      // Persistent tails first: they are context for whatever ran against the
-      // server, so they read above the failures they explain. `none` prints no
-      // per-task output and `errors-only` only failed tasks: a server that died
-      // on its own before the run stopped it is failed by now (run.ts sets its
-      // outcome in place), and under `errors-only` its tail was dropped with
-      // the healthy ones', so the crash read only as a count. The rest is still
-      // captured and bounded. Guarded like the failures below: run() calls
-      // runEnd twice on the success path (once before the summary, once in its
-      // finally), and though the bus delivers `run:end` once (`busLogger`), a
-      // renderer an embedder drives directly may hear both.
+      // Persistent tails first, as context above the failures they explain.
+      // `none` prints none and `errors-only` only failed ones: a server that
+      // died on its own is failed by now, so its tail shows. The rest stay
+      // captured and bounded. Guarded: an embedder driving a renderer directly
+      // may call runEnd twice.
       if (flushedPersistent) flushKept()
       if (!flushedPersistent) {
         flushedPersistent = true
         if (view.mode !== 'none') {
           for (const t of persistentTails.values()) {
-            // No outcome means the task never completed — it is still
-            // pre-ready, so there is no "since ready" window to render and
-            // its buffered output belongs to the frame it never got.
+            // No outcome: still pre-ready, so no since-ready window; its output
+            // belongs to the frame it never got.
             if (t.outcome === undefined) continue
             if (view.mode === 'errors-only' && t.outcome.status !== 'failed') continue
             emitBlock(
@@ -988,10 +898,8 @@ export function defaultLogger(
           resetTail(t.err)
         }
       }
-      // Failures end the log: every deferred frame replays here, right
-      // above the summary — the failed rows marked them in the stream,
-      // the full diagnostics read last where eyes land.
-      // Guarded for repeat runEnd calls.
+      // Failures end the log: each deferred frame replays above the summary,
+      // where eyes land. Guarded for repeat runEnd calls.
       if (!flushedFailures && deferredFailures.length > 0) {
         flushedFailures = true
         for (const block of deferredFailures) emitBlock(fenced(block))
@@ -1033,10 +941,8 @@ export function defaultLogger(
     },
     taskComplete(node, outcome) {
       if (!statusDead) finished.add(node.id)
-      // A persistent task buffered into its bounded tail rather than the
-      // per-task buffers (see taskStart), so its frame is drained from
-      // there — carrying how much the cap dropped, since a truncated log
-      // that reads as complete is worse than one that says what it lost.
+      // A persistent task's frame drains from its bounded tail, with how much
+      // the cap dropped: a truncated log must say so.
       const preReady = persistentTails.get(node.id)
       // In the order the task wrote it; a bounded tail kept its streams
       // apart, so its stdout reads first.
@@ -1046,10 +952,9 @@ export function defaultLogger(
             { text: tailText(preReady.err), err: true },
           ]
         : takeChunks(node.id)
-      // The live mask lets a held piece go after a pause, so a value the
-      // task wrote in two pieces arrived as two clean chunks. The frame
-      // prints now with the whole text in hand: each stream is masked as
-      // a whole, as the stored log is. A hit's replay already was.
+      // The live mask releases a held piece after a pause, so a value written
+      // in two pieces arrived as two clean chunks: the frame masks each stream
+      // whole, as the stored log is.
       if (!isCacheHit(outcome.status) && output.some((c) => c.text.length > 0)) {
         const mask = secretMask(
           [process.env, node.config.exec?.env?.define],
@@ -1064,9 +969,8 @@ export function defaultLogger(
       // The pre-ready window closed either way: a failed task is over, and
       // a ready one starts a fresh post-ready tail below.
       persistentTails.delete(node.id)
-      // An aborted task (killed by a shutdown signal, or reached by the stop
-      // before it ran) frees its worker slot and counts as the footer will
-      // count it: `aborted` or `not run`, beside no total.
+      // An aborted task frees its slot and counts as the footer will: `aborted`
+      // or `not run`.
       if (outcome.status === 'aborted') {
         if (!isGroupTask(node)) {
           if (neverStarted(outcome)) notRun++
@@ -1080,11 +984,10 @@ export function defaultLogger(
         }
         refresh(true)
         if (isGroupTask(node)) return
-        // What it printed while it stopped (a trap's cleanup) still reaches
-        // the terminal where a frame would have: a task that traps Ctrl-C
-        // and exits 0 is aborted, and its frame is dropped with the count. A task that never started opened no frame.
-        // A list view prints a failure's output; a killed task's partial
-        // output is what tells where a run hung, so it prints too.
+        // What it printed while stopping (a trap's cleanup) still reaches the
+        // terminal: a task trapping Ctrl-C and exiting 0 is aborted, and its
+        // frame is dropped. A list view prints a killed task's partial output
+        // too: it tells where a run hung.
         const framed =
           !neverStarted(outcome) &&
           (view.mode === 'full' ||
@@ -1145,13 +1048,11 @@ export function defaultLogger(
           else if (isKeyFailed(outcome)) keyFailed++
           else if (ranNoCache(outcome)) noCache++
         } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
-          // A persistent task's outcome arrives at READY; the child
-          // keeps running until the orchestrator SIGTERMs it at run
-          // end — pin it so its liveness stays visible.
+          // A persistent task's outcome arrives at ready while it keeps
+          // running: pin it so its liveness stays visible.
           pinnedPersistent.push(outcome)
-          // …and capture what it writes from here on. A live-streaming
-          // node already owns the terminal, so buffering it would emit
-          // its output twice.
+          // …and capture what it writes from here. A live-streaming node
+          // already owns the terminal; buffering would print twice.
           if (!streamsLive(node)) {
             persistentTails.set(node.id, { node, outcome, out: createTail(), err: createTail() })
           }
@@ -1214,9 +1115,8 @@ export function defaultLogger(
         case 'none':
           return
         case 'hash-only': {
-          // The word carries the outcome (skips/failures included); the
-          // key is what this mode exists to show — absent for a task
-          // that never computed one (skipped, uncacheable).
+          // The word carries the outcome; the key is what this mode shows,
+          // absent when never computed.
           emitLine(formatTaskHashLine(node, outcome, colors))
           return
         }
@@ -1240,10 +1140,8 @@ export function defaultLogger(
           )
           return
         case 'broad':
-          // News only: executed work and skips get a one-liner, failures
-          // get the full frame. Hits (including up-to-date) are silent —
-          // their replay buffers are deliberately dropped; the counts
-          // surface in the end-of-run summary.
+          // News only: executed work and skips get a line, failures the frame;
+          // hits are silent, counted in the summary.
           if (outcome.status === 'failed') {
             // failed row now; the full frame replays at runEnd.
             emitRow(failureRow(node, outcome))
@@ -1275,26 +1173,20 @@ export function defaultLogger(
           return
         case 'focused':
           if (isPrimary(node)) {
-            // Skipped tasks never started (blocked upstream, or the run
-            // stopped), so no frame-open fired — and a skip has no output,
-            // so a one-liner carries everything a frame would.
+            // Skipped tasks never started, so no frame opened, and a skip has
+            // no output: a line says it all.
             if (outcome.status === 'skipped') {
               emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
               return
             }
             if (streamsLive(node)) {
-              // Single requested task: output (exec or hit replay)
-              // streamed live between the frame-open (taskStart) and
-              // this close — full task info for every outcome, cached
-              // and up-to-date included (owner: "always full frame
-              // for a single task").
+              // Single requested task: output streamed live between the
+              // frame-open and this close, for every outcome, hits included.
               emitFrameClose(formatFrameClose(node, outcome, colors))
               return
             }
-            // Multiple requested tasks: no live frame was opened (it
-            // would interleave with siblings). Failures still defer
-            // to runEnd like everywhere else; everything else emits
-            // ONE atomic block from the buffered output.
+            // Several requested tasks: no live frame (it would interleave).
+            // Failures defer to runEnd; the rest emit one block.
             if (outcome.status === 'failed') {
               emitRow(failureRow(node, outcome))
               deferredFailures.push(
@@ -1347,11 +1239,9 @@ export function defaultLogger(
           }
           return
         case 'full': {
-          // Cache hits with nothing to replay compress to ONE line — every task
-          // stays visible, but at 2000+ tasks the two-line frames would drown
-          // what actually happened. Hits WITH replayed stdout keep their frame
-          // (the output is the point); misses/failures are always framed.
-          // One-liners stay outside::group:: — there's nothing to collapse.
+          // Hits with nothing to replay are one line, or at 2,000+ tasks frames
+          // drown what happened. Hits with output keep their frame; misses and
+          // failures always framed. One-liners stay outside `::group::`.
           if (isHit && output.every((c) => c.text.trim().length === 0)) {
             emitRow(
               formatTaskHitLine(node, outcome, colors, onPath.has(node.id), blocksOf(node.id)),
@@ -1373,9 +1263,8 @@ export function defaultLogger(
           )
           if (block.length === 0) return
           if (view.gha) {
-            // The block is the task's own output — fenced, so a task that
-            // prints `::endgroup::` can't close vx's group early and an
-            // `::error` line in its output can't become a real annotation.
+            // Fenced, so a task printing `::endgroup::` cannot close vx's
+            // group, nor `::error` become an annotation.
             const [open, close] = ghaFenceEnds(ghaToken)
             // Failed tasks stay pre-expanded in the Actions viewer: an::error
             // annotation instead of a collapsed group.
