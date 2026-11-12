@@ -174,6 +174,9 @@ here, itself or in a brace group.
 | [`graph.md`](./graph.md#srcgraphschedulerts--two-tier-parallel-topological-executor)  | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
 |                                                                                       | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
 |                                                                                       | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |
+|                                                                                       | `src/graph/outcome.ts` — `TaskOutcome`, its errors and marks (see scheduler.md).                          |
+|                                                                                       | `src/graph/lanes.ts` — the slots running tasks hold (see scheduler.md).                                   |
+|                                                                                       | `src/graph/ready-heap.ts` — the ready queue's heap (see scheduler.md).                                    |
 | [`util.md`](./util.md#srcutildependency-spects--turbonx-micro-syntax-parser)          | `src/util/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                      |
 | [`graph.md`](./graph.md#srcgraphfoldsts--which-dependencies-a-key-folds)              | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`).                                   |
 
