@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
+### simplify the architecture, one stream at a time
+
+No migration note.
+
 ### exec: group executor capabilities and distribution
 
 TaskExecutor's remote, sandbox, servers, runtime, exclusive, timeouts, platforms and capacity move under `capabilities`; workers, demand, running, unneeded, footer, machines, idealMs, advice and profile move under `distribution`. Any other executor key refuses the run. @vzn/vx no longer exports localFloor, LocalFloor, sandboxRequestFor, sweepPlaceholders, SandboxRequest, BoundedCapture, answerRuntime, packageManagerPath or sampleTrees: a worker calls workerRuntime({ root }) and uses prepare(task) -> run() / sweep(), probe, packageManager and sample.
