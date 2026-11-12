@@ -1078,10 +1078,10 @@ importers:
 
   // pnpm injects a workspace package (`dependenciesMeta.<name>.injected`,
   // or pnpm 10 `injectWorkspacePackages` with `dedupeInjectedDeps: false`)
-  // as a hard-linked copy of its directory and records `file:<dir>` where a
-  // link is `link:`. Unlike yarn's packed copy, it is the workspace package
-  // itself (pnpm re-syncs it after the package's scripts), so `^build`
-  // must wait for it (vercel/turborepo#12073 keeps the same entries).
+  // as a copy of its directory and records `file:<dir>` where a link is
+  // `link:`. Unlike yarn's packed copy, the dependant reads the workspace
+  // package's own build there (re-synced at install), so `^build` must
+  // wait for it (vercel/turborepo#12073 keeps the same entries).
   for (const [gen, text] of [
     ['v9 (pnpm 9/10)', P_INJECTED_V9],
     ['v6 (pnpm 8)', P_INJECTED_V6],
