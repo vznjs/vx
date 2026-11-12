@@ -192,3 +192,38 @@ it(
   },
   TIMEOUT,
 )
+
+// `git status` names a directory it ignores whole, never its files: the
+// state inside (`tsBuildInfoFile: 'node_modules/.tmp/…'`, a `.cache/`)
+// went unseen and the partial `dist/` was saved (regr1112 repro2). Only
+// `.tsbuildinfo` files are looked for there: a bundler's cache dir
+// (`.next/cache`, `node_modules/.cache/webpack`) is rewritten on every
+// build without cutting its outputs short.
+it.each([
+  ['.cache/tsconfig.tsbuildinfo', '.cache/'],
+  ['node_modules/.tmp/tsconfig.tsbuildinfo', 'node_modules/'],
+])(
+  'state %s inside a directory git ignores whole withholds the save',
+  async (state, ignore) => {
+    const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+    made.push(root)
+    const command =
+      `mkdir -p ${path.posix.dirname(state)}; ` + INCREMENTAL.replaceAll(' state', ` ${state}`)
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', 'src/b.txt': 'b', '.gitignore': `dist/\n${ignore}\n` },
+      config: `export default { tasks: { build: {
+        exec: { command: ${JSON.stringify(command)} },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    expect((await run(opts)).outcomes.map((o) => [o.status, o.saved])).toEqual([['success', true]])
+    await writeFile(path.join(app, 'src/a.txt'), 'a2')
+    const second = await run(opts)
+    expect(await readdir(path.join(app, 'dist'))).toEqual(['a.txt'])
+    expect(second.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', undefined]])
+    expect(fx.log.join('\n')).toContain(`app#build: ${state} changed while the task ran`)
+  },
+  TIMEOUT,
+)

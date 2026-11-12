@@ -1067,7 +1067,12 @@ before its command; if one changed (and a sandbox let the task write
 it), or the outputs matched no files while one is there, the result
 stands but is not saved, and the line names the file and the fix:
 declare it in `outputs.files`, so a miss starts without it and a hit
-restores it. A miss costs a stat per such file; a hit, nothing. A file
+restores it. Of a directory git ignores whole (`.cache/`,
+`node_modules/`), only the `.tsbuildinfo` files under it count, found
+once per run, a `node_modules` searched only in its own dot directories
+(`.tmp`): a bundler's cache there (`.next/cache`) is rewritten on every
+build without cutting its outputs short. A miss costs a stat per such
+file; a hit, nothing. A file
 the command creates is not listed, so a first build is still saved
 (`tests/undeclared-state.test.ts`). The rule guards a partial output, so
 a task that declares no outputs is exempt (`eslint --cache`, `tsc

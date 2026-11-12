@@ -24,6 +24,7 @@ import {
   rmSync,
   utimesSync,
   writeFileSync,
+  type Dirent,
   type Stats,
 } from 'node:fs'
 import {
@@ -371,6 +372,41 @@ interface IgnoredListing {
    * outright, asked beside the enumeration (`answerNewFilesIgnored`).
    */
   answered?: ReadonlyMap<string, boolean>
+  /** The `.tsbuildinfo` files under each ignored directory, root-relative, walked once. */
+  buildInfo?: Map<string, string[]>
+}
+
+// Entries one ignored directory's walk visits at most: a `target/` or a
+// `.next/` of 100k files is not walked whole on every miss.
+const BUILD_INFO_WALK_CAP = 20_000
+
+/**
+ * The `.tsbuildinfo` files under `rel` (root-relative, ending in `/`), an
+ * ignored directory git names whole. In a `node_modules` only its own
+ * dot directories (`.tmp`, `.cache`) are walked, never a package; links
+ * are not followed.
+ */
+function buildInfoUnder(root: string, rel: string): string[] {
+  const out: string[] = []
+  const stack = [rel.slice(0, -1)]
+  let seen = 0
+  while (stack.length > 0 && seen < BUILD_INFO_WALK_CAP) {
+    const dir = stack.pop()!
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(path.join(root, dir), { withFileTypes: true })
+    } catch {
+      continue
+    }
+    const modules = path.posix.basename(dir) === 'node_modules'
+    for (const e of entries) {
+      seen++
+      if (modules && (!e.name.startsWith('.') || e.name === '.bin' || e.name === '.pnpm')) continue
+      if (e.isDirectory()) stack.push(`${dir}/${e.name}`)
+      else if (e.isFile() && e.name.endsWith('.tsbuildinfo')) out.push(`${dir}/${e.name}`)
+    }
+  }
+  return out
 }
 
 /**
@@ -604,8 +640,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   /**
    * The ignored files `git status` named under `dir` (absolute), absolute:
-   * an ignored directory, named whole, is left out. Empty when no
-   * enumeration listed them.
+   * of an ignored directory, named whole, only the `.tsbuildinfo` files
+   * under it (`buildInfoUnder`), found once per enumeration. Empty when
+   * no enumeration listed them.
    */
   ignoredFilesIn(dir: string): string[] {
     const ig = this.ignored
@@ -623,7 +660,14 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     const out: string[] = []
     for (let i = lo; i < ig.paths.length && ig.paths[i]!.startsWith(under); i++) {
       const p = ig.paths[i]!
-      if (!p.endsWith('/')) out.push(path.join(ig.root, p))
+      if (!p.endsWith('/')) {
+        out.push(path.join(ig.root, p))
+        continue
+      }
+      ig.buildInfo ??= new Map()
+      let found = ig.buildInfo.get(p)
+      if (found === undefined) ig.buildInfo.set(p, (found = buildInfoUnder(ig.root, p)))
+      for (const f of found) out.push(path.join(ig.root, f))
     }
     return out
   }
