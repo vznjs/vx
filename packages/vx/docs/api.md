@@ -3013,6 +3013,7 @@ export interface TaskHistory {
   maxCpuParallelism?: number
   saturatedCores?: number
   saturatedMemoryBytes?: number
+  slowDurationMs?: number
 }
 ```
 
@@ -3211,6 +3212,7 @@ export type TaskResources = Pick<
   | 'maxCpuParallelism'
   | 'saturatedCores'
   | 'saturatedMemoryBytes'
+  | 'slowDurationMs'
 ```
 
 ## `TaskStatus`
