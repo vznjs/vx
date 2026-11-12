@@ -173,7 +173,11 @@
       },
       "peerDependencies": {
         "@vzn/vx": "*",
+        "nx": ">=22 <25",
       },
+      "optionalPeers": [
+        "nx",
+      ],
     },
     "packages/vx-otel": {
       "name": "@vzn/vx-otel",

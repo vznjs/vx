@@ -43,6 +43,12 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@vzn/vx": "*"
+    "@vzn/vx": "*",
+    "nx": ">=22 <25"
+  },
+  "peerDependenciesMeta": {
+    "nx": {
+      "optional": true
+    }
   }
 }

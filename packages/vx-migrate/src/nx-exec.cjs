@@ -161,6 +161,11 @@ async function main(argv) {
     return 2
   }
   if (process.env.NX_DAEMON === undefined) process.env.NX_DAEMON = 'false'
+  // Nx 24 loads each plugin in a worker over a unix socket, even in a
+  // sandbox (Nx 22 did not): a sandbox refuses the listen, or its `/` belongs
+  // to no one Nx trusts, so every graph load failed there. One short process
+  // gains nothing from the workers.
+  if (process.env.NX_ISOLATE_PLUGINS === undefined) process.env.NX_ISOLATE_PLUGINS = 'false'
 
   const req = createRequire(path.join(process.cwd(), 'package.json'))
   let nx
