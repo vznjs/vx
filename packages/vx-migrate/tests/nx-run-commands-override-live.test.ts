@@ -81,6 +81,9 @@ describe.skipIf(!MODULES)('a forwarded argument replaces the option, as nx run d
                   NX_DAEMON: 'false',
                   NX_NO_CLOUD: 'true',
                   NX_SKIP_NX_CACHE: 'true',
+                  // Nx 24 loads plugins in socket workers, which the test
+                  // task's sandbox refuses; run-commands is what is compared.
+                  NX_ISOLATE_PLUGINS: 'false',
                 },
                 stdin: 'ignore',
                 stdout: 'ignore',
