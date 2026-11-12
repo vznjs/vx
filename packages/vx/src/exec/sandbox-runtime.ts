@@ -2987,7 +2987,13 @@ async function runSandboxedOnce(
         [...grantedRead, ...args.config.allowWrite],
         baselines.denyRead,
         args.reportWithin,
-        [...violations.map((v) => v.path), ...hidden, ...(git === undefined ? [] : [git.dir])],
+        // `recorded`, not only what is reported: a traced denial an `ignore`
+        // entry silenced was asked for, and naming it here undid the entry.
+        [
+          ...[...recorded, ...violations].map((v) => v.path),
+          ...hidden,
+          ...(git === undefined ? [] : [git.dir]),
+        ],
         keyOf(args),
       )
       if (named !== undefined) violations.push(named)

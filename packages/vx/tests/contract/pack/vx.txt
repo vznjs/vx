@@ -212,6 +212,7 @@ src/util/num.ts
 src/util/paths.ts
 src/util/plain-text.ts
 src/util/procfs.ts
+src/util/raw-utf8.ts
 src/util/real-path.ts
 src/util/secret-mask.ts
 src/util/secrets.ts

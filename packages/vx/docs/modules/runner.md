@@ -142,6 +142,15 @@ export class TaskPipes {
   close(): void // close the read ends once both streams ended or were cancelled
   closeStdin(): void // a persistent task's held stdin: once the child exited AND its output ended
 }
+
+// src/util/raw-utf8.ts: task output as text, each byte that is not UTF-8
+// kept as a lone surrogate U+DC80+byte, and written back as that byte.
+export function decodeRaw(bytes: Uint8Array): string
+export class RawUtf8Decoder {
+  decode(chunk?: Uint8Array, opts?: { stream?: boolean }): string // stream: an incomplete tail sequence is held for the next chunk
+}
+export function rawBytes(text: string): string | Uint8Array // itself when well-formed, else its bytes
+export function rawEncode(text: string): Uint8Array
 ```
 
 Cost of `lineEnds` (2026-10-29, runCommand A/B, interleaved, min of 11,

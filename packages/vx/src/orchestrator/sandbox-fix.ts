@@ -271,7 +271,7 @@ function timeGlob(base: string): string | undefined {
   const ext = path.extname(base)
   const tail = base.length - ext.length >= start + 13 ? ext : ''
   const glob = `${base.slice(0, start)}*${tail}`
-  return /[*?[\]{}\\]/.test(glob.replace('*', '')) ? undefined : glob
+  return isLiteralPattern(glob.replace('*', '')) ? glob : undefined
 }
 
 /**
