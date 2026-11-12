@@ -18,7 +18,13 @@ A release that changes `CACHE_VERSION` leaves the old entries on disk,
 never read again, until `vx cache clean --older-than <duration>` ages
 them out or `vx cache clean` clears the cache.
 
-## After v0.0.653
+## After v0.0.654
+
+### vx-dte: time worker warm-ups as tasks in history
+
+PLUGIN_HOOKS gains measures, before schedule.
+
+## v0.0.654
 
 ### orchestrator: vx lock records the discover stage; runs read it
 
