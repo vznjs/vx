@@ -39,6 +39,12 @@ function args(over: Partial<ExecuteArgs> = {}, n = node()): ExecuteArgs {
   }
 }
 
+const KEYLESS: TaskConfig = {
+  exec: { command: 'build' },
+  cache: true,
+  outputs: { files: ['dist/**'] },
+}
+
 const ALL_ON = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
 
 describe('taskPolicy: what a cached task may read, write and plan to save', () => {
@@ -74,7 +80,7 @@ describe('taskPolicy: what a cached task may read, write and plan to save', () =
       const p = taskPolicy(args(over))
       expect([p.write, p.save]).toEqual([true, false])
     }
-    const keyless = taskPolicy(args({}, node({ ...cached, inputs: undefined })))
+    const keyless = taskPolicy(args({}, node(KEYLESS)))
     expect([keyless.keylessBy, keyless.read, keyless.write, keyless.save]).toEqual([
       'p#build',
       false,
@@ -192,10 +198,13 @@ describe('inputStabilityOf: the run, then the task, then the workspace', () => {
       run: { severity: 'error' as const },
       workspace: { strategy: 'unchecked' as const, severity: 'warn' as const },
     }
-    expect(inputStabilityOf({ stability: { strategy: 'mutable' } }, layers)).toEqual({
+    expect(inputStabilityOf({ files: [], stability: { strategy: 'mutable' } }, layers)).toEqual({
       strategy: 'mutable',
       severity: 'error',
     })
-    expect(inputStabilityOf({}, layers)).toEqual({ strategy: 'unchecked', severity: 'error' })
+    expect(inputStabilityOf({ files: [] }, layers)).toEqual({
+      strategy: 'unchecked',
+      severity: 'error',
+    })
   })
 })

@@ -129,12 +129,13 @@ describe('saveVerdict: may this task save', () => {
   })
 
   it('a task not cached here (no cache block, remote-only, deferred) gets nothing', async () => {
-    const plain = { ...cached, cache: undefined }
-    for (const over of [
+    const plain: TaskConfig = { exec: { command: 'build' }, inputs: { files: ['src/**'] } }
+    const overs: Partial<ExecuteArgs>[] = [
       { node: { ...fake().m.args.node, config: plain } },
       { remoteOnly: true },
-      { download: 'deferred' as const },
-    ]) {
+      { download: 'deferred' },
+    ]
+    for (const over of overs) {
       expect((await verdictOf({ exitCode: 1, over })).v).toEqual({ kind: 'none' })
     }
   })

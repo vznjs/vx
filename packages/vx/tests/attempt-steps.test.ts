@@ -234,7 +234,7 @@ describe('missOutcome: what a miss adds up to', () => {
 
   it('a pass over a keyless upstream says why it is not saved', () => {
     const { o, warned } = outcomeOf({
-      args: { node: { ...node, config: { ...cached, inputs: undefined } } },
+      args: { node: { ...node, config: { exec: { command: 'build' }, cache: true } } },
     })
     expect(o.keylessBy).toBe('p#build')
     expect(warned.join('\n')).toContain('declares no `inputs`')
