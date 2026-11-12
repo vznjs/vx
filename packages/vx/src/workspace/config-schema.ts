@@ -1055,7 +1055,8 @@ export function validateProjectConfig(
           throw new UserError(
             `${where}.outputs.files: '..' path segments are not allowed (got "${g}") — ` +
               `outputs must stay within the project (vx clears a task's outputs before it runs, ` +
-              `so a glob that escapes the project would delete files outside it)`,
+              `so a glob that escapes the project would delete files outside it; ` +
+              `use outputs.workspaceFiles for workspace-root-relative outputs)`,
           )
         }
         assertPosixGlob(g, `${where}.outputs.files`, 'project')
