@@ -52,7 +52,7 @@ import {
 import {
   GitFilesCache,
   listingEnv,
-  looseFilesDigest,
+  relistedFilesDigest,
   lstatOrAbsent,
   newFilesIgnoredIn,
   runGitLsFiles,
@@ -380,9 +380,9 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
 /**
  * A project's files listed again, once a write dropped its partition or
  * moved a path its globs take: one `git ls-files` in the project, kept for
- * the key that follows. Its digest names each file by its stat, so a task
- * after an unsandboxed one in its own project still remembers its key
- * (`filesToken`); a name that does not decode gives none.
+ * the key that follows. Its digest names each file as the enumeration's
+ * does (`relist`), so a task after a write in its own project still
+ * remembers its key (`filesToken`); a name that does not decode gives none.
  */
 function projectListing(
   projectDir: string,
@@ -390,22 +390,48 @@ function projectListing(
   cache: GitFilesCache | undefined,
 ): { files: readonly string[]; undecodable: ReadonlySet<string> } {
   const ls = runGitLsFiles(projectDir, listingEnv(projectDir, workspaceRoot))
-  // set() also clears the project's pending-changed bookkeeping.
-  cache?.set(projectDir, ls.files)
+  const kept = relist(cache, projectDir, ls.files)
   const undecodable = noteUndecodable(cache, projectDir, ls.undecodable)
   if (cache !== undefined && ls.undecodable.length === 0) {
     const files = ls.files
-    cache.noteFilesDigest(projectDir, files, () => looseFilesDigest(cache, projectDir, files))
+    cache.noteFilesDigest(projectDir, files, () =>
+      relistedFilesDigest(cache, projectDir, files, kept),
+    )
   }
   return { files: ls.files, undecodable }
 }
 
 /**
+ * Store a partition listed again mid-run, and keep the index OIDs it still
+ * held. A partition that stands was only marked: a cached task is held to
+ * its outputs, each marked path lost its OID as it was (`recordChanged`),
+ * and every other file is as the enumeration found it, which a task whose
+ * globs take no marked path already relies on. A dropped partition (an
+ * unsandboxed, uncached command) holds none, and every file is named by its
+ * stat. Without them the key after a sibling's save was remembered under a
+ * token no enumeration gives: all ten of vueuse's builds derived theirs
+ * again on the first run after a build (2026-11-12).
+ */
+function relist(
+  cache: GitFilesCache | undefined,
+  dir: string,
+  files: readonly string[],
+): ReadonlyMap<string, string> | undefined {
+  const kept = cache?.oidsFor(dir)
+  // set() also clears the partition's pending-changed bookkeeping and its OIDs.
+  cache?.set(dir, files)
+  if (kept === undefined || kept.size === 0) return undefined
+  const oids = new Map(kept)
+  cache!.setOids(dir, oids)
+  return oids
+}
+
+/**
  * The workspace partition `globs` may read: the run's snapshot, or one
- * `git ls-files` at the root once a write dropped it. The key and its
- * fold memo token read the same listing, so a task after an unsandboxed
- * one still remembers its key (`declarationDigest` vouches for each path
- * by its stat when no index OID does).
+ * `git ls-files` at the root once a write dropped it or moved a path the
+ * globs take. The key and its fold memo token read the same listing, so a
+ * task after a write still remembers its key (`declarationDigest` vouches
+ * for each path by its stat when no index OID does).
  */
 function workspaceSnapshot(
   root: string,
@@ -415,7 +441,7 @@ function workspaceSnapshot(
   const files = cache?.snapshotFor(root, globs)
   if (files !== undefined) return { files, undecodable: cache!.undecodableNames }
   const ls = runGitLsFiles(root)
-  cache?.set(root, ls.files)
+  relist(cache, root, ls.files)
   return { files: ls.files, undecodable: noteUndecodable(cache, root, ls.undecodable) }
 }
 

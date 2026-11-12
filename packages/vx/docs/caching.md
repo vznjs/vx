@@ -347,11 +347,12 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     the `-v` flag on the same `ls-files` spawn drops `skip-worktree` /
     `assume-unchanged` entries, whose OID says nothing about what is
     (or isn't) on disk; and, once those spawns return, a clean-filter
-    gate (a `git check-attr` spawn only when the gate needs one) drops paths where `text` / `eol` / `ident`,
+    gate (a `git check-attr` spawn only when the gate needs one) drops paths where `ident`,
     a `filter` driver, `working-tree-encoding`
-    or `core.autocrlf` can rewrite bytes between index and worktree
-    (the blob would be the LF-normalized form while the task reads the
-    CRLF file). The gate costs nothing in a repo with no attributes
+    or `core.autocrlf` can rewrite bytes between index and worktree.
+    A `text` / `eol` path keeps its OID while its blob is the size of
+    its file (the check above): the conversion only removes a CR.
+    The gate costs nothing in a repo with no such attribute
     and no `core.autocrlf` — see "Clean filters" below. And when the
     repository's config weakens the stat `git status` judges by —
     `core.trustctime=false`, or `core.checkStat=minimal` (whole-second
@@ -1388,14 +1389,24 @@ sequences. Trusting the index OID as the file's content hash would
 then let two genuinely different worktree contents fold the **same**
 cache key, and a real change would be invisible.
 
-So vx does not trust an index OID where a filter can apply. The check
-is gated in three steps, and the common case pays nothing:
+So vx does not trust an index OID where a filter can keep a file's size
+and change its bytes. A line-ending conversion cannot: `text`, `eol` and
+the legacy `crlf` only remove the CR of a CRLF on the way into the index
+and add it on the way out, so a blob as long as its file holds that
+file's bytes. The blob-size check (step 11) drops every OID whose blob
+is another size, and `git status` calls a file clean only at the size
+the index recorded, so those attributes need no check of their own and a
+`.gitattributes` naming only them asks git nothing. Until 2026-11-12
+they dropped the OID outright, and vueuse's `* text=auto eol=lf` had vx
+stat each of its 1,124 inputs on every run (~8 ms). The check for the
+rest is gated in three steps, and the common case pays nothing:
 
 1. `core.autocrlf` is `true`/`input` — conversion applies to every
    auto-detected text file with no attribute needed, so no OID is
    trusted.
 2. Otherwise, if no attributes source exists anywhere (no in-tree
-   `.gitattributes`, an ignored one included, which `git status
+   `.gitattributes` naming `ident`, `filter`, `working-tree-encoding` or
+   a macro, an ignored one included, which `git status
 --ignored=matching` names from the walk it already does, no `$GIT_DIR/info/attributes`, and none of the
    files git reads outside the tree: the global one, which is
    `core.attributesFile` or by default `$XDG_CONFIG_HOME/git/attributes`
@@ -1411,8 +1422,8 @@ is gated in three steps, and the common case pays nothing:
    keyed on its LF blob: a CRLF→LF edit was a stale hit.
 3. Otherwise `git check-attr --all` resolves every attribute a rule
    sets from the index — without reading worktree content — and only the
-   paths carrying `text`, `eol`, `ident`, `filter`,
-   `working-tree-encoding` or the legacy `crlf` lose their OID. Asked by
+   paths carrying `ident`, `filter` or `working-tree-encoding` lose
+   their OID. Asked by
    name, git printed all five for every path, `unspecified` included:
    vueuse's `* text=auto eol=lf` was 473 KB to decode and split each run
    (~5 ms of the main thread), 160 KB under `--all`. A
@@ -1423,18 +1434,22 @@ is gated in three steps, and the common case pays nothing:
    hashed from disk.
 
 `-text` (explicitly unset) and unspecified paths keep their OIDs:
-both leave the blob byte-identical to the worktree file.
+both leave the blob byte-identical to the worktree file. A file added
+as CRLF under `text` has a shorter blob and loses its OID to the size
+check; one rewritten as CRLF since moved its size and is modified to
+`git status`.
 
 Losing an OID is not over-invalidation. It routes that path to the
 content hasher, which hashes the worktree bytes — the correct source
 either way. The only cost is reading the file, which is exactly what
 the gate exists to avoid paying needlessly.
 
-Nor can the index's stat stand in for the file's own `lstat` there. When
-a file's stat moved, git compares content after the filter, calls a
-match clean and keeps the old stat: `a\r\nb\n` rewritten as `a\nb\r\n`
-(same size, same blob) is clean, and the index still describes the
-first file. So each such file is stat'ed once per run.
+Nor can the index's stat stand in for the file's own `lstat` where an
+OID was dropped. When a file's stat moved, git compares content after
+the filter, calls a match clean and keeps the old stat: `a\r\nb\n`
+rewritten as `a\nb\r\n` (same size, same blob) is clean, and the index
+still describes the first file. Both are longer than their blob, so
+neither keeps its OID, and each such file is stat'ed once per run.
 
 `--affected` asks the same question (`core.autocrlf`, then `check-attr`)
 of a file whose stat moved: such a file is a change, though git, which

@@ -545,13 +545,13 @@ describe('stale cache hits', () => {
   it(
     'an input identity the run learned before a task rewrote the file is not reused after',
     async () => {
-      // Every key here hashes its files from the worktree (`text` drops the
+      // Every key here hashes its files from the worktree (`ident` drops the
       // index OIDs), and the run holds each file's identity once learned
       // (`identityOf`). The up-front pass learns `gen/v.ts` as the last run
       // left it; codegen then rewrites it, and consume's key must fold the
       // new bytes: kept past the write, the old identity replayed v1.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await write(path.join(root, '.gitattributes'), '* ident\n')
       await write(path.join(root, 'src', 'v.txt'), 'v1')
       await writeLocalWorkspace(root)
       await write(
@@ -596,7 +596,7 @@ describe('stale cache hits', () => {
       // codegen's hit puts v1 back: consume must key on v1 (run 1's
       // entry), not on the v2 it learned (run 2's).
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await write(path.join(root, '.gitattributes'), '* ident\n')
       await write(path.join(root, 'src', 'v.txt'), 'v1')
       await writeLocalWorkspace(root)
       await write(

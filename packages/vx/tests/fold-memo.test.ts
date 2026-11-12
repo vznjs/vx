@@ -317,8 +317,8 @@ it('a files digest stands past a mark outside its snapshot, and falls to one in 
 // A task whose globs take an output another task of its project just wrote
 // (`**/*` over an ignored `gen.txt`) had no listing to name, and stored no
 // fold row: vueuse's first restore after a build derived that key again
-// (2026-11-12). Under `text=auto` no index OID is trusted, and the listing
-// read again names the token the next run's does.
+// (2026-11-12). The listing read again keeps the index OIDs no write
+// named, and names the token the next run's does.
 it('a task after one that wrote into its globs stores its fold row, and an edit still runs it', async () => {
   await writeFile(
     path.join(pkg, 'vx.config.mjs'),
@@ -352,11 +352,12 @@ it('a task after one that wrote into its globs stores its fold row, and an edit 
   expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('two\n')
 }, 60_000)
 
-// An unsandboxed miss drops the workspace listing (it may have written
-// anywhere in its project), and every later workspaceFiles task stored no
-// fold row: on vueuse the restore after a cold build derived 11 of 12 keys
-// again (2026-11-12). The listing read again vouches for its files by stat.
-it('a workspaceFiles task after an unsandboxed one stores its fold row, and an edit still runs it', async () => {
+// A miss's save dropped the workspace listing, and every later
+// workspaceFiles task stored no fold row, then one under a token of stats
+// alone, which no enumeration that trusts an index OID names: on vueuse the
+// restore after a cold build derived 11 of 12 keys again (2026-11-12). The
+// listing now takes the save's marks and stands.
+it("a workspaceFiles task after a save stores its fold row under the next run's token, and an edit still runs it", async () => {
   const b = path.join(root, 'packages', 'b')
   await mkdir(path.join(root, 'shared'), { recursive: true })
   await mkdir(b, { recursive: true })
@@ -369,10 +370,18 @@ it('a workspaceFiles task after an unsandboxed one stores its fold row, and an e
   await writeFile(path.join(root, '.gitignore'), 'runs.log\npackages/*/out.txt\n')
   git('add', '-A')
   git('commit', '-qm', 'b')
+  const probes = (): string[] =>
+    memoRows()
+      .filter((r) => r.task_id === 'b#build')
+      .map((r) => r.probe)
   build()
-  expect(memoRows().map((r) => r.task_id)).toContain('b#build')
+  const stored = probes()
+  expect(stored).toHaveLength(1)
   build()
   expect(await runs()).toBe(2)
+  // The save marked its outputs and the workspace listing stood, so the row
+  // is under the token the next run's enumeration names: read, not replaced.
+  expect(probes()).toEqual(stored)
   // Same size, so only the stat (or the bytes) can tell it moved.
   await writeFile(path.join(root, 'shared', 'cfg.txt'), 'two\n')
   build()

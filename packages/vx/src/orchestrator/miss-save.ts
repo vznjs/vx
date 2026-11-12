@@ -468,12 +468,13 @@ function markWritten(
       wsOutputFiles.map((f) => relPosix(a.workspaceRoot, f)),
     )
   }
-  // The workspace-wide partition (when one exists) spans this project's
-  // subtree, so it inherits the same "undeclared writes are only visible
-  // to git" rule as the project drop above.
-  if (outputFiles.length + wsOutputFiles.length > 0) {
-    a.gitFilesCache?.invalidateWorkspacePartition()
-  }
+  // The workspace-wide partition spans this project's subtree and takes the
+  // same marks (`markOutputsChanged` forwards them): it stands for a reader
+  // whose globs take none of them, as the project's does. Dropped here, each
+  // `workspaceFiles` task after a save listed the workspace again and was
+  // remembered under a token the next run's enumeration never names, so the
+  // first run after a build derived every such key again (vueuse: ten of
+  // twelve, 2026-11-12).
 }
 
 /**

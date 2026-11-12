@@ -255,7 +255,8 @@ describe('stale cache hits', () => {
     async () => {
       // `.vx/.gitattributes` marks the lock `linguist-generated`, which
       // converts nothing; any .gitattributes used to cost a check-attr per
-      // run (21 ms). Control: a `text` line in the same file does run it.
+      // run (21 ms). Nor does a `text` line, whose conversion the blob-size
+      // check answers for. Control: an `ident` line in the same file does.
       await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
       await write(path.join(root, 'pkg/.gitattributes'), 'projects.lock.json linguist-generated\n')
       git(root, 'init', '-q')
@@ -284,7 +285,10 @@ describe('stale cache hits', () => {
       const generatedOnly = await checkAttrRuns()
       await write(path.join(root, 'pkg/.gitattributes'), '*.ts text eol=lf\n')
       git(root, 'commit', '-qam', 'text')
-      expect([generatedOnly, await checkAttrRuns()]).toEqual([false, true])
+      const lineEndings = await checkAttrRuns()
+      await write(path.join(root, 'pkg/.gitattributes'), '*.ts ident\n')
+      git(root, 'commit', '-qam', 'ident')
+      expect([generatedOnly, lineEndings, await checkAttrRuns()]).toEqual([false, false, true])
     },
     TIMEOUT,
   )
@@ -297,7 +301,7 @@ describe('stale cache hits', () => {
       // `.gitattributes` sets a merge driver. The index listing alone proves
       // the gate will fire. Status is held here until check-attr starts or a
       // second passes, and only the first is the fix.
-      await write(path.join(root, '.gitattributes'), '*.txt text\n')
+      await write(path.join(root, '.gitattributes'), '*.txt ident\n')
       await write(path.join(root, 'pkg/src/a.txt'), 'a\n')
       await write(path.join(root, 'pkg/src/b.ts'), 'export const b = 1\n')
       git(root, 'init', '-q')
@@ -338,11 +342,47 @@ describe('stale cache hits', () => {
         bunMut.spawn = origSpawn
       }
       expect(released).toBe('check-attr')
-      // And its answer still lands: the text file is hashed from disk, the
+      // And its answer still lands: the `ident` file is hashed from disk, the
       // other keeps its index OID.
       const oids = cache.oidsFor(path.join(root, 'pkg'))
       expect(oids?.has(path.join(root, 'pkg/src/a.txt'))).toBe(false)
       expect(oids?.has(path.join(root, 'pkg/src/b.ts'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'under a line-ending attribute an index OID stands only for a blob the size of its file',
+    async () => {
+      // `text` / `eol` only take the CR of a CRLF out on the way in, so a
+      // blob as long as its file is that file's bytes. Every one of vueuse's
+      // 1,124 inputs lost its OID to `* text=auto eol=lf` and was stat'ed by
+      // vx on each run (~8 ms, 2026-11-12). The file added as CRLF has a
+      // shorter blob, and a CRLF rewrite of the LF one moves its size, which
+      // status calls modified before it reads a byte.
+      const pkg = path.join(root, 'pkg')
+      const lf = path.join(pkg, 'src/lf.txt')
+      const crlf = path.join(pkg, 'src/crlf.txt')
+      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await write(lf, 'a\nb\n')
+      await write(crlf, 'a\r\nb\r\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      const trusted = async (): Promise<boolean[]> => {
+        const cache = new GitFilesCache()
+        await populateGitFilesCache(root, [pkg], cache)
+        const oids = cache.oidsFor(pkg)
+        return [oids?.has(lf) ?? false, oids?.has(crlf) ?? false]
+      }
+      const committed = await trusted()
+      await write(lf, 'a\r\nb\r\n')
+      expect([committed, await trusted()]).toEqual([
+        [true, false],
+        [false, false],
+      ])
     },
     TIMEOUT,
   )
@@ -798,6 +838,24 @@ describe('parseCheckAttrOutput', () => {
         ),
       ].sort(),
     ).toEqual(['a.ts', 'c.sh', 'd.c'])
+  })
+
+  it('without line endings, names only what can keep a size and change the bytes', () => {
+    expect([
+      ...parseCheckAttrOutput(
+        triples(
+          ['a.ts', 'text', 'auto'],
+          ['a.ts', 'eol', 'lf'],
+          ['b.bat', 'crlf', 'set'],
+          ['c.c', 'text', 'set'],
+          ['c.c', 'ident', 'set'],
+          ['d.ipynb', 'filter', 'nbstripout'],
+          ['e.rc', 'working-tree-encoding', 'UTF-16LE'],
+          ['f.bin', 'filter', 'unset'],
+        ),
+        false,
+      ),
+    ]).toEqual(['c.c', 'd.ipynb', 'e.rc'])
   })
 
   it('keeps everything when nothing is specified, and tolerates empty input', () => {

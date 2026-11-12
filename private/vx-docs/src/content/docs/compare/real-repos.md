@@ -46,7 +46,9 @@ index, and
 [a conformance case](../../conformance/#inputs/same-size-line-ending-swap-under-text-attribute)
 shows it replaying stale output after a same-size line-ending change.
 
-vx checks each of those files on disk instead of trusting the index.
+vx trusts the index there only for a file whose stored blob is the same
+size as the file, which a line-ending conversion never leaves. Every
+other file is checked on disk.
 
 ## t3-oss/create-t3-turbo
 

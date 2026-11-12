@@ -903,7 +903,12 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     takes: (rel: string) => boolean,
     heads?: readonly string[],
   ): string | undefined {
-    if (this.get(root) !== snapshot || this.changed.has(root)) return
+    if (this.get(root) !== snapshot) return
+    // A marked path the declaration takes moved it, and its task lists the
+    // partition again (`workspaceSnapshot`). One it does not take leaves its
+    // files as listed: a sibling's `dist/` is no part of `meta/**`.
+    const pending = this.changed.get(root)
+    if (pending !== undefined && takesPending(pending, key, takes)) return
     // A listing taken after a write has no OID slot (`set`): each path is
     // vouched for by its stat, as an edited file is under one.
     const slot = this.oids.get(root)
@@ -1114,6 +1119,30 @@ type DeclHeld = { digests: Map<string, string | undefined>; records: Map<string,
 
 /** `declarationDigest`'s memo for a listing with no OID slot, by the listing itself. */
 const slotlessDigests = new WeakMap<readonly string[], DeclHeld>()
+
+/**
+ * How far each declaration (`key`) has read a `changed` list, -1 once it
+ * took a path: each reads each path once, as `pendingMatch` does per glob.
+ */
+const declRead = new WeakMap<readonly string[], Map<string, number>>()
+
+function takesPending(
+  pending: readonly string[],
+  key: string,
+  takes: (rel: string) => boolean,
+): boolean {
+  let upTo = declRead.get(pending)
+  if (upTo === undefined) declRead.set(pending, (upTo = new Map()))
+  let i = upTo.get(key) ?? 0
+  if (i < 0) return true
+  for (; i < pending.length; i++)
+    if (takes(pending[i]!)) {
+      upTo.set(key, -1)
+      return true
+    }
+  upTo.set(key, i)
+  return false
+}
 
 /** No glob metacharacter — the entry names one exact path. */
 
@@ -1760,8 +1789,9 @@ interface GitRun {
  *     default `git init` repo.
  *  3. Otherwise ask `git check-attr` (measured 21 ms; it resolves attributes
  *     from the index WITHOUT reading worktree content) and drop only the
- *     paths that actually carry `text`/`eol`/`ident`/`filter`/
- *     `working-tree-encoding`.
+ *     paths that actually carry `ident`/`filter`/`working-tree-encoding`.
+ *     A `text`/`eol` path keeps its OID while its blob is the file's size
+ *     (`dropResizedOids`), and a file naming only those asks nothing.
  *
  * Never throws: a probe that fails leaves the map as-is, which is exactly the
  * behaviour before this gate existed.
@@ -1840,9 +1870,17 @@ async function dropFilteredOids(
   // blob's OID keyed an edit git calls clean, and the run replayed the old
   // output (item 978). Git LFS is a `filter` as well: its files are hashed
   // from disk now, the one honest identity of what a task reads.
+  //
+  // `text` / `eol` / `crlf` alone drop nothing here: their conversion only
+  // removes the CR of a CRLF on the way in and adds it on the way out, so a
+  // blob the size of its file is that file's bytes, and `dropResizedOids`
+  // holds every trusted OID to that. Status calls a file clean only at the
+  // size the index recorded (a moved size is `M` before git reads a byte).
+  // Dropped here, vueuse's `* text=auto eol=lf` had vx stat all 1,124 of
+  // its inputs itself: ~8 ms of every run (2026-11-12).
   const res = await (args.early ?? args.spawnGit(CHECK_ATTR, [...trusted.keys()].join('\0')))
   if (res === null || res.exitCode !== 0) return
-  for (const rel of parseCheckAttrOutput(res.stdout)) trusted.delete(rel)
+  for (const rel of parseCheckAttrOutput(res.stdout, false)) trusted.delete(rel)
 }
 
 /**
@@ -1876,12 +1914,14 @@ function attributesInIndex(args: {
 }
 
 /**
- * Whether a `.gitattributes` can set an attribute that converts bytes. One
- * that names none of them, nor `binary` (git's one built-in macro) nor a
- * macro definition, cannot: `.vx/.gitattributes`' `linguist-generated`
- * line asked `check-attr` on every run (21 ms) and changed nothing. A macro
- * defined outside the tree already counts as an attributes source. A file
- * that does not read counts as one that converts. Read once per enumeration.
+ * Whether a `.gitattributes` can set an attribute the blob-size check does
+ * not answer for (`dropFilteredOids`): `ident`, `filter`,
+ * `working-tree-encoding`, or a macro definition that could hold one. One
+ * that names none cannot: `.vx/.gitattributes`' `linguist-generated` line
+ * asked `check-attr` on every run (21 ms) and changed nothing, and so did a
+ * `* text=auto`. A macro defined outside the tree already counts as an
+ * attributes source. A file that does not read counts as one that converts.
+ * Read once per enumeration.
  */
 function attributesCanConvert(file: string): boolean {
   let can = attributeReads.get(file)
@@ -1896,8 +1936,7 @@ function attributesCanConvert(file: string): boolean {
   return can
 }
 
-const CONVERTING_ATTRIBUTE =
-  /\[attr\]|\b(?:text|eol|ident|filter|working-tree-encoding|crlf|binary)\b/
+const CONVERTING_ATTRIBUTE = /\[attr\]|\b(?:ident|filter|working-tree-encoding)\b/
 const attributeReads = new Map<string, boolean>()
 
 /**
@@ -2648,11 +2687,12 @@ export async function startGitEnumeration(
   // time-keeping rewrite made: every file is hashed from disk instead.
   if (vars !== null && vars.exitCode === 0 && gitStatWeakened(vars.stdout)) trusted.clear()
   // An index OID is only the file's content hash when git stores the worktree
-  // bytes VERBATIM. Under a clean filter (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) the blob is a
-  // DIFFERENT sequence of bytes — the LF-normalized form — while the task
-  // reads the CRLF worktree file. `git status` compares AFTER filtering, so
-  // such a file reports clean and keeps its OID: the CRLF and LF states then
-  // fold the SAME key and a real content change is invisible.
+  // bytes VERBATIM. Under a clean filter (`ident`/`filter`/`working-tree-encoding`) the blob is a
+  // DIFFERENT sequence of bytes while the task reads the worktree file.
+  // `git status` compares AFTER filtering, so such a file reports clean and
+  // keeps its OID: two states then fold the SAME key and a real content
+  // change is invisible. A line-ending conversion (`text`/`eol`) changes the
+  // size, which the blob-size check after this sees.
   //
   // Dropping an OID is not over-invalidation. It routes the path to
   // `hashFile`, which hashes the worktree bytes — the source that was correct
@@ -2794,24 +2834,33 @@ function statRecords(
 }
 
 /**
- * `noteFilesDigest`'s digest for a partition listed again after a write,
- * where no index OID is trusted: every file by its stat, in the order and
- * form `applyGitEnumeration` gives a project git vouches no OID for, so the
- * next run's enumeration names the same token.
+ * `noteFilesDigest`'s digest for a project listed again after a write: each
+ * file by the index OID the run still holds for it (`oids`, by absolute
+ * path), or by its stat, in the order and form `applyGitEnumeration` gives,
+ * so the next run's enumeration names the same token.
  */
-export function looseFilesDigest(
+export function relistedFilesDigest(
   cache: GitFilesCache,
   dir: string,
   files: readonly string[],
+  oids: ReadonlyMap<string, string> | undefined,
 ): string | undefined {
   const base = dir.endsWith(path.sep) ? dir : dir + path.sep
+  let known = ''
+  const loose: string[] = []
+  for (const rel of [...files].sort()) {
+    const oid = oids?.get(base + rel)
+    if (oid === undefined) loose.push(rel)
+    else if (oid.startsWith('120000:')) return undefined
+    else known += `${rel}\0${oid}\n`
+  }
   const statted = statRecords(
-    [...files].sort(),
+    loose,
     (rel) => base + rel,
     0,
     (p) => cache.statOf(p),
   )
-  return statted === undefined ? undefined : xxh3hex(`\0${statted}`)
+  return statted === undefined ? undefined : xxh3hex(`${known}\0${statted}`)
 }
 
 /** One loose file's record for {@link statRecords}, less its line end. */

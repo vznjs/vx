@@ -383,9 +383,9 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
     'keys with no index OID to trust: a file several tasks read is stat-ed twice a run, not per task',
     async () => {
       const root = await makeWorkspace({ dir, git: false })
-      // `text` drops every index OID (a clean filter may rewrite bytes), so
-      // each input is hashed from the worktree, as in vueuse.
-      await writeFile(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      // `ident` drops every index OID (a clean filter may rewrite bytes at
+      // the same size), so each input is hashed from the worktree.
+      await writeFile(path.join(root, '.gitattributes'), '* ident\n')
       await mkdir(path.join(root, 'shared'))
       await writeFile(path.join(root, 'shared', 'a.txt'), 'a')
       // `gen` runs first and saves, so the cold run's keys are taken after a
@@ -452,7 +452,7 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
     'a miss with no index OID to trust: its key folds the digests it described, no second hash',
     async () => {
       const root = await makeWorkspace({ dir, git: false })
-      await writeFile(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await writeFile(path.join(root, '.gitattributes'), '* ident\n')
       const proj = await addProject(root, 'p', {
         config: `export default { tasks: { build: {
           exec: { command: 'mkdir -p dist && cp src/a.txt dist/' },

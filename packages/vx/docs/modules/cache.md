@@ -1750,9 +1750,11 @@ regular files and symlinks), `git status --porcelain -z` (which of those
 are dirty, plus the untracked; `--no-renames`, so a rename's source,
 the original of a `git add -N` copy (item 976) or a deletion paired with
 an unmerged path (A-59), is a deletion of its own), and `git check-attr --all` where a clean
-filter (`text`, `eol`, `ident`, a `filter` driver, `working-tree-encoding`,
-the legacy `crlf`, `core.autocrlf`) could make the blob
-differ from the bytes on disk. The gate looks for a `.gitattributes`
+filter (`ident`, a `filter` driver, `working-tree-encoding`) could make
+the blob differ from the bytes on disk at the same size. A line-ending
+conversion (`text`, `eol`, the legacy `crlf`) only removes a CR, so the
+blob-size check below answers for it and no `check-attr` is asked;
+`core.autocrlf` trusts no OID. The gate looks for a `.gitattributes`
 among every listed path, untracked and modified ones too: git applies
 those, and a scan of the trusted paths alone never saw them (item 977),
 and an ignored one, which the status walk names with `--ignored=matching`
@@ -1992,22 +1994,27 @@ the same for the workspace partition, per `workspaceFiles` declaration:
 the paths its globs may take in, each by OID, or by its stat and
 whether git tracks it, once per declaration and partition; each path's
 record once for every declaration, and a stat a project's digest took
-is not taken again (`statOf`). An unsandboxed miss drops the workspace
-partition; the next `workspaceFiles` task lists the root again
-(`workspaceSnapshot`), and that listing, which carries no trusted OID,
-is digested by stat alone. Refused there, the restore after a cold
-vueuse build derived 11 of its 12 keys again (2026-11-12).
+is not taken again (`statOf`). A save marks its outputs in the workspace
+partition as in its project's, and the partition stands: a declaration
+that takes no marked path keeps its digest, and a task whose globs take
+one lists the root again (`workspaceSnapshot`). A partition listed again
+keeps the index OIDs no mark named (`relist`), so its digest is the one
+the next run's enumeration gives. Dropped at every save, and digested by
+stat alone, the listing was remembered under a token no enumeration that
+trusts an OID names: the restore after a cold vueuse build derived 11 of
+its 12 keys again (2026-11-12). Only an uncached, unsandboxed command
+still drops it (`forgetUndeclaredWrites`), and that listing holds no OID.
 A project's own partition is listed again the same way
 (`projectListing`) once a path its globs take was marked changed (a
 sibling task's output under `**/*`): the token reads that listing, the
-key that follows reuses it, and `looseFilesDigest` names each file by
-its stat in the form the next run's enumeration gives a project with no
-trusted OID. Refused there, vueuse's `metadata#build` stored no fold row
-after `metadata#update` wrote `index.json`.
+key that follows reuses it, and `relistedFilesDigest` names each file by
+its kept OID or its stat, in the form the next run's enumeration gives.
+Refused there, vueuse's `metadata#build` stored no fold row after
+`metadata#update` wrote `index.json`.
 
-A file the index vouches no OID for (untracked, edited, or under a
-`text`/`eol`/`filter` attribute, which drops every OID) is hashed from
-the worktree. Its identity is held for the run (`identityOf`), so a
+A file the index vouches no OID for (untracked, edited, under an
+`ident`/`filter` attribute, or with a blob another size than the file)
+is hashed from the worktree. Its identity is held for the run (`identityOf`), so a
 file several tasks read is stat'ed and hashed once, not once per task,
 and the listing's existence check reads `statOf` too. A write the run
 marks path by path (a save's or a restore's outputs) drops those paths'

@@ -18,18 +18,32 @@ export const CHECK_ATTR = ['check-attr', '--stdin', '-z', '--all']
  * a converting attribute (`CONVERTS`) that is neither `unset` (`-text`),
  * which leaves the index blob byte-identical to the worktree file, nor
  * `unspecified`, which only a named query prints. `--all` also prints what
- * converts nothing (`diff`, `linguist-generated`).
+ * converts nothing (`diff`, `linguist-generated`). `lineEndings` false
+ * leaves out the paths only `text` / `eol` / `crlf` name: a caller that
+ * holds each blob to its file's size needs no more there (`LINE_ENDINGS`).
  */
-export function parseCheckAttrOutput(out: string): Set<string> {
+export function parseCheckAttrOutput(out: string, lineEndings = true): Set<string> {
   const affected = new Set<string>()
   const fields = out.split('\0')
   for (let i = 0; i + 2 < fields.length; i += 3) {
+    const attr = fields[i + 1]!
     const value = fields[i + 2]
-    if (CONVERTS.has(fields[i + 1]!) && value !== 'unset' && value !== 'unspecified')
+    if (
+      (REWRITES.has(attr) || (lineEndings && LINE_ENDINGS.has(attr))) &&
+      value !== 'unset' &&
+      value !== 'unspecified'
+    )
       affected.add(fields[i]!)
   }
   return affected
 }
 
-// `crlf` is the legacy spelling git still reads as `text` or `eol=lf`.
-const CONVERTS = new Set(['text', 'eol', 'ident', 'filter', 'working-tree-encoding', 'crlf'])
+/**
+ * The attributes whose conversion only removes a CR before an LF on the way
+ * in and adds it on the way out, so a blob the size of its file is that
+ * file's bytes. `crlf` is the legacy spelling git still reads as `text` or
+ * `eol=lf`.
+ */
+const LINE_ENDINGS = new Set(['text', 'eol', 'crlf'])
+/** The ones that can keep a size and change the bytes. */
+const REWRITES = new Set(['ident', 'filter', 'working-tree-encoding'])
