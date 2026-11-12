@@ -90,7 +90,7 @@ function npmCompare(lockText: string, markerText: string): string | undefined {
  * pnpm's current lockfile (`node_modules/.pnpm/lock.yaml`): what each
  * importer it installed links, and every package it installed. A filtered
  * or `--prod` install records less, so only a disagreement, an extra
- * package or a missing production dependency counts.
+ * package an importer reaches or a missing production dependency counts.
  */
 function pnpmCompare(lockText: string, markerText: string): string | undefined {
   const [want, tree] = [pnpmLock().parseLockfile(lockText), pnpmLock().parseLockfile(markerText)]
@@ -113,8 +113,19 @@ function pnpmCompare(lockText: string, markerText: string): string | undefined {
       if (!deps.has(name)) return `${importer}'s ${name} ${wanted.get(name)} is not installed`
     }
   }
-  for (const key of tree.snapshots.keys()) {
-    if (!want.snapshots.has(key)) return `${key} is installed, and the lockfile does not list it`
+  // Only what an importer reaches: `pnpm add`, `update` and `remove` keep
+  // the package they replaced in the record until a plain `pnpm install`.
+  const seen = new Set<string>()
+  const queue = [...tree.importers.values()]
+  for (let deps = queue.pop(); deps !== undefined; deps = queue.pop()) {
+    for (const [name, version] of deps) {
+      const key = pnpmLock().snapshotKey(tree, name, version)
+      const reached = tree.snapshots.get(key)
+      if (reached === undefined || seen.has(key)) continue
+      if (!want.snapshots.has(key)) return `${key} is installed, and the lockfile does not list it`
+      seen.add(key)
+      queue.push(reached)
+    }
   }
   return undefined
 }

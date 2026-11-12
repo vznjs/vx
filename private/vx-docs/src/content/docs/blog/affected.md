@@ -28,7 +28,7 @@ $ vx run build test --affected=master
  ⏺︎     8ms success miss     packages/a#test
  ⏺︎    17ms success miss     packages/a#build
  ⏺︎     8ms success miss     packages/c#build
-  projects  2 affected · 5 total
+  projects  2 in run · 5 total
   tasks     3 success · 3 total
 ```
 

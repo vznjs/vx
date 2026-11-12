@@ -19,7 +19,7 @@ $ vx run build test --all
  ⏺︎    15ms success miss     packages/b#test
 
 ─ vx 0.0.0 ───────────────────────────────────────────────────
-  projects  5 affected · 6 total
+  projects  5 in run · 6 total
   tasks     10 success · 10 total
   cache     local 3✓ 1∅ 4↓ 2↑
   time      61ms · max 15ms · avg 13ms · min 9ms

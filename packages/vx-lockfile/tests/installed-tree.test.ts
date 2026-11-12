@@ -300,6 +300,58 @@ describe('pnpm(): node_modules/.pnpm/lock.yaml', () => {
     await write({ 'node_modules/.pnpm/lock.yaml': pnpmLock('5.0.0') })
     expect(await run(pnpm())).toBe('ok')
   })
+
+  // pnpm 10.28 after `pnpm add -w -D prettier@3.3.3` over 3.4.2 (`pnpm
+  // update`, `pnpm --filter x remove is-odd` alike): the record keeps the
+  // old package, no importer reaching it, until a plain `pnpm install`.
+  const withPrettier = (v: string, orphan: string): string =>
+    pnpmLock('5.0.0')
+      .replace(
+        '  .: {}',
+        `  .:\n    devDependencies:\n      prettier:\n        specifier: ${v}\n        version: ${v}`,
+      )
+      .replace(
+        'packages:\n',
+        `packages:\n\n  prettier@${v}:\n    resolution: {integrity: sha512-${v}}\n    engines: {node: '>=14'}\n    hasBin: true\n${orphan === '' ? '' : `\n  prettier@${orphan}:\n    resolution: {integrity: sha512-${orphan}}\n    engines: {node: '>=14'}\n    hasBin: true\n`}`,
+      )
+      .replace(
+        'snapshots:\n',
+        `snapshots:\n\n  prettier@${v}: {}\n${orphan === '' ? '' : `\n  prettier@${orphan}: {}\n`}`,
+      )
+
+  it('takes a package the install left behind that no importer reaches', async () => {
+    await write({
+      ...MANIFESTS,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': withPrettier('3.3.3', ''),
+      'node_modules/.pnpm/lock.yaml': withPrettier('3.3.3', '3.4.2'),
+    })
+    expect(await run(pnpm())).toBe('ok')
+  })
+
+  // A pull that moves a transitive version under an unchanged importer:
+  // the old one is still reached, so it is another install.
+  it('refuses a package an importer reaches that the lockfile does not list', async () => {
+    const lock = (v: string): string =>
+      pnpmLock('5.0.0')
+        .replace(
+          'packages:\n',
+          `packages:\n\n  kind-of@${v}:\n    resolution: {integrity: sha512-${v}}\n`,
+        )
+        .replace(
+          '  is-number@5.0.0: {}',
+          `  is-number@5.0.0:\n    dependencies:\n      kind-of: ${v}\n\n  kind-of@${v}: {}`,
+        )
+    await write({
+      ...MANIFESTS,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': lock('3.2.2'),
+      'node_modules/.pnpm/lock.yaml': lock('3.2.0'),
+    })
+    expect(await run(pnpm())).toBe(
+      'node_modules was installed from a different pnpm-lock.yaml (kind-of@3.2.0 is installed, and the lockfile does not list it) — run `pnpm install`',
+    )
+  })
 })
 
 const yarnClassic = (

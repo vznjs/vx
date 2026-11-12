@@ -218,7 +218,7 @@ function scalar(v: unknown): string {
  * taking the version first made it a leaf: a bump behind a directory
  * dependency moved no digest (item 802).
  */
-function snapshotKey(lock: Lockfile, name: string, version: string): string {
+export function snapshotKey(lock: Lockfile, name: string, version: string): string {
   if (version.startsWith('/')) return version
   const major = Number.parseInt(lock.version, 10)
   const own =

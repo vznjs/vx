@@ -186,7 +186,7 @@ function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets
  */
 export interface RunContext {
   version: string
-  /** Projects with a real task in the graph — the "affected" half of the bar. */
+  /** Projects with a real task in the graph — the bar's "in run" half. */
   packageCount: number
   /** The run's whole id, as `vx last` takes it; shown on the `info` row. */
   runId?: string | undefined
@@ -311,10 +311,7 @@ export function formatSummarySection(
           : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
       lines.push(
         row('projects', gauge(cells, 'warn', colors)),
-        legend([
-          paint('warn', `${context.packageCount} affected`, colors),
-          dim(`${wsTotal} total`),
-        ]),
+        legend([paint('warn', `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
       )
     }
   }
