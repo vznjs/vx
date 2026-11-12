@@ -140,3 +140,39 @@ describe("architecture.md's absent-JS-tasks bullet names every hook", () => {
     expect(PLUGIN_HOOKS.filter((h) => !bullet.includes(`\`${h}\``))).toEqual([])
   })
 })
+
+describe('architecture.md quotes the module-boundary law', () => {
+  it('the dependency matrix is exactly ALLOWED in tests/module-boundaries.test.ts', () => {
+    const law = readFileSync(path.join(pkg, 'tests', 'module-boundaries.test.ts'), 'utf8')
+    const m = /const ALLOWED: Record<string, readonly string\[\]> = (\{[\s\S]*?\n\})\n/.exec(law)
+    expect(m).not.toBeNull()
+    const allowed = Object.fromEntries(
+      [...m![1]!.replace(/\/\/.*$/gm, '').matchAll(/(\w+): \[([^\]]*)\]/g)].map((e) => [
+        e[1]!,
+        [...e[2]!.matchAll(/'(\w+)'/g)].map((n) => n[1]!),
+      ]),
+    )
+    expect(Object.keys(allowed)).toContain('orchestrator')
+    const rows = section('### Allowed dependency matrix')
+      .split('\n')
+      .filter((l) => l.startsWith('|'))
+      .map((l) =>
+        l
+          .slice(1, -1)
+          .split('|')
+          .map((c) => c.trim()),
+      )
+    const cols = rows[0]!.slice(1)
+    const documented = Object.fromEntries(
+      rows
+        .slice(2)
+        .map((r) => [r[0]!.replace(/\*/g, ''), cols.filter((_, i) => r[i + 1] === '✓').sort()]),
+    )
+    const expected = Object.fromEntries(
+      Object.entries(allowed)
+        .filter(([, to]) => to.length > 0)
+        .map(([from, to]) => [from, [...to].sort()]),
+    )
+    expect(documented).toEqual(expected)
+  })
+})
