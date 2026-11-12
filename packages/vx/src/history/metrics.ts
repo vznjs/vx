@@ -1,14 +1,9 @@
-// Run-history queries — pure functions over a `bun:sqlite` Database.
+// Run-history queries: pure functions over a `bun:sqlite` Database, read by `vx
+// why`, `vx last` and any out-of-process surface. The one home for aggregates
+// over the runs and entries tables (schema: src/cache/cache.ts).
 //
-// `vx why` and `vx last` read through them, and so can any out-of-process
-// surface. One canonical home for every
-// aggregate over the runs / entries tables. The schema itself is owned by
-// src/cache/cache.ts.
-//
-// Pure SQL + JSON-safe return shapes (`inputWriters` also stats the
-// files it names). No Cache lifecycle here; the
-// caller opens and closes. bigints are serialized as decimal strings
-// for JSON compatibility (matches the WireEvent timeUnixNano rule).
+// Pure SQL and JSON-safe shapes (`inputWriters` also stats files). The caller
+// opens and closes. Bigints serialize as decimal strings.
 
 import type { Database } from 'bun:sqlite'
 import { statSync } from 'node:fs'
@@ -115,11 +110,8 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
     cacheHit: number | null
     restored: number | null
     cached: number | null
-    // NOT bigint: `bun:sqlite` hands these back as JS numbers (the handle
-    // does not set `safeIntegers`), so the annotation claimed a precision
-    // the read never had. Harmless in practice — these are ns RELATIVE to
-    // run t=0, and 2^53 ns is 104 days of run time — but a `bigint` here
-    // was simply false. `.toString()` reads the same on either.
+    // Not bigint: `bun:sqlite` returns numbers here (no `safeIntegers`).
+    // Harmless: ns relative to run start, and 2^53 ns is 104 days.
     wallclockStartNs: number | null
     wallclockEndNs: number | null
     timedOut: number | null
@@ -153,10 +145,8 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
 }
 
 /**
- * One `vx run` invocation header — every `invocations` column, camelCased,
- * `dirty`/`ci`/`exitOk` surfaced as booleans. The SPA's
- * existing fields (runId / startedAt / endedAt / taskCount / failedCount /
- * hitCount / totalDurationMs) are all present, so existing views keep working.
+ * One invocation header: every `invocations` column camelCased,
+ * `dirty`/`ci`/`exitOk` as booleans.
  */
 export interface InvocationDetail {
   runId: string
@@ -281,9 +271,8 @@ export interface ListInvocationsArgs {
 }
 
 /**
- * List `vx run` invocations newest-first from the `invocations` header table.
- * Reading the dedicated header table (vs the old `GROUP BY run_id` over
- * `runs`) is lossless — git/ci/tag context survives.
+ * Invocations newest-first from the header table, which keeps git, CI and tag
+ * context.
  */
 export function listInvocations(db: Database, args: ListInvocationsArgs = {}): InvocationDetail[] {
   const limit = clampInt(args.limit ?? 50, 1, 500)
@@ -423,11 +412,9 @@ function runWritesCache(db: Database, id: string | null): boolean {
 }
 
 /**
- * The endings an UNCHANGED cache key can have. A re-execution is told apart by
- * the evidence the index holds: every one used to blame `--no-cache` /
- * `--force`, when the previous run on the key had failed (a failure saves
- * nothing) or the entry had been pruned, and the invocation recorded that no
- * flag was passed.
+ * The endings an unchanged key can have, told apart by the index's evidence:
+ * blaming `--no-cache` / `--force` was wrong when the previous run failed (a
+ * failure saves nothing), the entry was pruned, or no flag was recorded.
  */
 function unchangedKeyNote(
   db: Database,
@@ -460,12 +447,10 @@ function unchangedKeyNote(
       at: number
     } | null
   )?.at
-  // The previous run executed the task and succeeded with the cache
-  // writable beside a failure, and no entry older than this run holds the
-  // key: the continue-taint (admission.ts), which runs a task downstream of
-  // a failure and never saves it. Blaming `--no-cache` / `--force` named a
-  // flag nobody passed, and a prune when this run saved the key named an
-  // eviction that never happened.
+  // The previous run executed and succeeded with the cache writable beside a
+  // failure, and no older entry holds the key: the continue-taint
+  // (admission.ts), which never saves. Not a flag nobody passed, nor a prune
+  // that never happened.
   if (
     (createdAt === undefined || createdAt >= this_.startedAt) &&
     this_.status === 'success' &&
@@ -481,10 +466,9 @@ function unchangedKeyNote(
       return `cache key unchanged — the previous run on this key ran beside a failed task (${before} failed in it) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit`
     }
   }
-  // A task that passed behind a dependency its run never recorded: the
-  // one `--exclude-dependencies` left out, keyed but not run, so nothing
-  // built on it was saved (excluded-keys.ts). Before the prune: a key this
-  // run saved named an eviction that never happened.
+  // A task that passed behind a dependency its run never recorded (left out by
+  // `--exclude-dependencies`, keyed but not run), so nothing built on it was
+  // saved (excluded-keys.ts). Checked before the prune.
   if (
     (createdAt === undefined || createdAt >= this_.startedAt) &&
     prev.status === 'success' &&
@@ -510,11 +494,9 @@ function unchangedKeyNote(
   if (createdAt !== undefined && createdAt >= this_.startedAt) {
     return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
   }
-  // The flags that skip a read were ruled out above whenever the policy was
-  // recorded; blaming them here named a flag the policy shows was not passed
-  // when the previous run's save had failed. No row records a failed save, only
-  // its trace: the previous run executed, succeeded, and no entry holds the
-  // key.
+  // Read-skipping flags were ruled out above when the policy was recorded. A
+  // failed save leaves no row, only its trace: the previous run executed,
+  // succeeded, and no entry holds the key.
   if (policy === undefined) {
     return 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
   }
@@ -574,10 +556,9 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       note: 'no row matching that runId + taskId',
     }
   }
-  // The previous run to compare against is the previous run that RECORDED A
-  // KEY. A skipped or persistent row carries `hash = ''`, and comparing
-  // against it would answer "cache key unchanged" for two runs that never had
-  // a key — a statement about inputs, made from no evidence.
+  // Compare against the previous run that recorded a key: a skipped or
+  // persistent row has `hash = ''`, and comparing would claim "unchanged" from
+  // no evidence.
   const prev = db
     .query(
       `SELECT hash, status, cache_hit AS cacheHit, restored, started_at AS startedAt,
@@ -688,11 +669,9 @@ export function loadEntryInputs(db: Database, entryHash: string): TaskInputCompo
 }
 
 /**
- * The rule `vx why` names a moved key by: join
- * two keys' components over `(kind, name)`. A component in both with a
- * different hash is `changed`, one only in `after` is `added`, one only in
- * `before` is `removed`, and an equal one is counted. Entries are ordered by
- * kind, then name.
+ * How `vx why` names a moved key: join two keys' components on `(kind, name)`:
+ * a different hash is `changed`, only in `after` `added`, only in `before`
+ * `removed`, equal counted. Ordered by kind, then name.
  */
 export function diffKeyComponents(
   before: readonly TaskInputComponent[],
@@ -703,10 +682,9 @@ export function diffKeyComponents(
   const old = new Map(before.map((c) => [id(c), c]))
   const entries: InputDiffEntry[] = []
   let unchangedCount = 0
-  // A secret env input's hash is its value, unsalted: a short one is
-  // recoverable from a log that printed `vx why`. The diff says it changed and
-  // never shows the hash. Secret by name, or by the mark a task's
-  // `exec.env.secret` put on its row.
+  // A secret env input's hash is its unsalted value, recoverable when short:
+  // the diff says it changed and never shows the hash. Secret by name, or by
+  // `exec.env.secret`'s mark on its row.
   const shown = (c: TaskInputComponent): string =>
     c.kind === 'env' && (secretNamed(c.name) || c.hash.startsWith(MASKED)) ? MASKED : c.hash
   const keys = new Set<string>([...cur.keys(), ...old.keys()])
@@ -729,30 +707,19 @@ export function diffKeyComponents(
       entries.push({ kind: b.kind, name: b.name, change: 'removed', before: shown(b), after: null })
     }
   }
-  // Code-unit order, not `localeCompare`: collation follows the machine's
-  // locale, so two machines could list one diff in two orders. Code units
-  // are also SQLite's BINARY order, the `entry_inputs` scan's own.
+  // Code-unit order, not `localeCompare`, which follows the machine's locale.
+  // Also SQLite's BINARY order.
   const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
   entries.sort((x, y) => byCodeUnit(x.kind, y.kind) || byCodeUnit(x.name, y.name))
   return { entries, unchangedCount }
 }
 
 /**
- * The moat: name the exact cache-key components (files / env / runtime /
- * upstream …) that differ between this run of a task and its immediately-
- * previous run. Resolves each run to its task hash via `runs.hash`, then
- * full-outer-joins the two runs' `entry_inputs` rows (keyed by the entry
- * hash) over `(kind, name)`:
- *
- * - present in both with a different hash → `changed`
- * - only in this run → `added`
- * - only in the previous run → `removed`
- * - equal → counted as unchanged
- *
- * Pure SQL + an app-side set join (`diffKeyComponents`) — no config
- * re-evaluation, no re-hash.
- * Always returns a value (never throws); `found:false` when the run/task pair
- * has no row, `entries:[]` for the first run of a task.
+ * Name the key components that differ between this run of a task and its
+ * previous one: each run's `runs.hash` resolves its entry, and the two runs'
+ * `entry_inputs` rows are joined on `(kind, name)` (`diffKeyComponents`). No
+ * config re-evaluation, no re-hash. Never throws: `found:false` when the pair
+ * has no row, `entries:[]` on a task's first run.
  */
 export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff {
   const [project, task] = splitTaskId(taskId)
@@ -782,9 +749,8 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
     }
   }
 
-  // No key on this side → no diff to compute. `''` is the recorded-no-key
-  // sentinel (skipped / persistent); treating it as a key would resolve the
-  // `prev.hash === this_.hash` branch below and claim "same inputs".
+  // No key on this side (`''`, skipped or persistent): no diff, or the
+  // equal-hash branch below would claim same inputs.
   if (this_.hash === '') {
     return {
       runId,
@@ -846,10 +812,9 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const cur = loadEntryInputs(db, this_.hash)
   const old = loadEntryInputs(db, prev.hash)
 
-  // A failed previous run kept no fingerprints; the last run that saved an
-  // entry still names what moved since then (the edit an agent made to fix
-  // the failure, or the one that broke it).
-  // So did one that passed beside a failed task (--continue).
+  // A failed previous run, or one that passed beside a failed task
+  // (--continue), kept no fingerprints; the last run that saved an entry still
+  // names what moved since.
   const tainted = isPassStatus(prev.status) && failedWithWrites(db, prev.runId) > 0
   // So did one whose run wrote no cache (--no-cache, a read-only policy).
   const prevNoWrite = isPassStatus(prev.status) && !runWritesCache(db, prev.runId)
@@ -891,9 +856,8 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
     }
   }
 
-  // Input fingerprints are pruned with their entry (ON DELETE CASCADE); if
-  // either side's rows are gone, we can name the hash change but not the
-  // component-level diff.
+  // Fingerprints are pruned with their entry (ON DELETE CASCADE): with either
+  // side gone, the hash change is named but not the components.
   if (cur.length === 0 || old.length === 0) {
     // A run that did not pass saved no entry, so it kept no fingerprints: that
     // is the cause to name, not a prune.
@@ -975,9 +939,9 @@ function restoredFromRemote(db: Database, project: string, task: string, hash: s
 const olderRun = new WeakSet<CacheKeyDiff>()
 
 /**
- * Whether `diff` compared this run with an older run than the previous
- * one: a reader that labels the previous run must then name the run its
- * diff is from (`diff.note` does).
+ * Whether `diff` compared with a run older than the previous one: a reader
+ * labelling the previous run must then name the run its diff is from
+ * (`diff.note` does).
  */
 export function diffsOlderRun(diff: CacheKeyDiff): boolean {
   return olderRun.has(diff)
@@ -996,9 +960,8 @@ export function upstreamTask(name: string): string {
 }
 
 /**
- * The tasks `runId` recorded a row for, as `project#task`. One read: runs
- * has no (project, task) index (schema.ts), so asking per task scans the
- * run's rows each time, and a 10,000-task fan-in asked 10,000 times.
+ * The tasks `runId` recorded, as `project#task`, in one read: runs has no
+ * (project, task) index, and asking per task scanned the run's rows each time.
  */
 export function recordedTasks(db: Database, runId: string): Set<string> {
   const rows = db.query('SELECT project, task FROM runs WHERE run_id = ?').all(runId) as {
@@ -1010,9 +973,8 @@ export function recordedTasks(db: Database, runId: string): Set<string> {
 
 export interface RootCause {
   /**
-   * From the asked task down to the one whose own inputs moved. Built on
-   * each read, as long as the chain: a deep graph has as many roots as
-   * tasks, so read it only for a root that is shown.
+   * From the asked task down to the one whose own inputs moved, built per read;
+   * a deep graph has as many roots as tasks, so only for a root shown.
    */
   readonly chain: string[]
   /** The task whose own inputs moved: the chain's last id. */
@@ -1046,16 +1008,13 @@ class Cause implements RootCause {
 }
 
 /**
- * The tasks under `taskId`'s moved upstreams whose OWN key components
- * moved, each with the chain that carried it up. An upstream is diffed
- * between the two keys its dependant folded (the upstream row's before
- * and after hashes), not against its own previous run, which names what
- * moved since a run of it alone in between. A task visited once is not
- * walked again (a diamond names its root once). A group records no run,
- * so `groups` (group id → the tasks it gathers) carries the walk through
- * it. Depth first, on a stack of its own: a 20,000-task chain is deeper
- * than recursion goes, and each visit keeps only a link to the one that
- * reached it, so no chain is copied per level.
+ * The tasks under `taskId`'s moved upstreams whose own key components moved,
+ * each with the chain that carried it up. An upstream is diffed between the two
+ * keys its dependant folded, not against its own previous run. Each task is
+ * visited once (a diamond names its root once). `groups` carries the walk
+ * through groups, which record no run. Depth-first on an explicit stack (a
+ * 20,000-task chain overflows recursion), each visit linking only to its
+ * parent.
  */
 export function rootCauses(
   db: Database,
@@ -1082,9 +1041,8 @@ export function rootCauses(
     seen.add(task)
     const reach: Reach = { up: frame.from, step: e.name.split(GROUP_VIA) }
     if (!recorded.has(task)) {
-      // A group: its members carry the walk, by their own rows named
-      // through it (`group ← task`) when the key has them, else by the
-      // graph, whose members carry none of the dependant's keys.
+      // A group: its members carry the walk by their own rows named through it
+      // when the key has them, else by the graph.
       const via = `${e.name}${GROUP_VIA}`
       if (moved.some((x) => x.kind === 'upstream' && x.name.startsWith(via))) continue
       const members = groups.get(task) ?? []
@@ -1127,12 +1085,10 @@ export interface InputWriter {
 const WRITE_SLACK_MS = 5
 
 /**
- * For each moved input file of `taskId` and of each root cause, the
- * recorded tasks that were running when the file last changed: a task
- * that writes a file another key reads re-keys that task on every run.
- * The file's mtime against the recorded windows, so
- * a writer that runs each time is named from its latest run, and an
- * edit made outside a run, or after run `runId` ended, names none.
+ * For each moved input file of `taskId` and each root cause, the recorded tasks
+ * running when the file last changed: a task writing a file another key reads
+ * re-keys it every run. The file's mtime against the recorded windows, so an
+ * edit outside a run, or after `runId`, names none.
  */
 export function inputWriters(
   db: Database,
