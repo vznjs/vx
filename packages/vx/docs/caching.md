@@ -314,6 +314,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     restored. `--affected` reflects only what git sees, so an edit to
     one never selects a task on its own (as in Nx); `vx watch` re-runs
     it on an edit there.
+    A glob whose last segment matches an ignored file directly
+    (`.env*` over an ignored `.env.local`, `config/*.json`) still leaves
+    it out, but the miss names it: `inputs leave out git-ignored
+.env.local (matched by .env*)`, with the literal that folds it. A
+    `**` glob is not asked, so an ignored `node_modules` says nothing.
     A **glob** matching nothing stays silent, and so does a literal
     naming a path that does not exist, until it does. An ignored
     directory named outright folds every file under it; an empty one
@@ -2450,7 +2455,8 @@ moat.
   (root-anchored globs).
 - **Gitignored files no entry names.** Vite and Next load `.env.local`
   on their own; a broad glob skips it, so editing it replays the old
-  build. Name it: `files: ['src/**', '.env.local']`. Its bytes are
+  build (`.env*` skips it too; the miss warns). Name it:
+  `files: ['src/**', '.env.local']`. Its bytes are
   hashed, never stored, and a missing file is simply not an input.
   Machines with different files compute different keys, so they miss
   each other's shared entries. `--affected` ignores it (only what git
