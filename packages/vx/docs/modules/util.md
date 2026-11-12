@@ -2169,3 +2169,12 @@ export function readUmask(): void
 export function restoredMode(mode: number): number
 export function modeMatches(disk: number, stored: number): boolean
 ```
+
+## `src/util/styled.ts` — styled text as data
+
+### Purpose
+
+`Style`, `Tone`, `Token` and `Inline`: text in a named style, as a
+module below the terminal hands it up (an executor's `footer()` cells, a
+notice's tone). Naming a style is not drawing it; the hues stay in `ui`,
+which re-exports these types under the same names.

@@ -245,6 +245,7 @@ src/util/secrets.ts
 src/util/settle.ts
 src/util/signal-relay.ts
 src/util/size.ts
+src/util/styled.ts
 src/util/tail.ts
 src/util/task-id.ts
 src/util/timing.ts

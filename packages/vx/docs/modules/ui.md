@@ -21,7 +21,7 @@ colour, the bytes a test or `grep` reads.
 
 ### Files
 
-- `theme.ts`: the tokens. `Style`, `Tone`, `SYMBOL`, `INDENT`, the hues,
+- `theme.ts`: the tokens. `Style`, `Tone` (types kept in `util/styled.ts`), `SYMBOL`, `INDENT`, the hues,
   `paint`, `detectColors`, `dumbTerminal`, `barWidth`, `ruleWidth`.
 - `components.ts`: inline tokens and blocks, the panel rule, `wrap`,
   `render`.
