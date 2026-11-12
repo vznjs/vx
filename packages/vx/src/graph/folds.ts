@@ -14,14 +14,9 @@ import { standInsOf, type StandIns } from './stand-ins.js'
 import type { TaskNode } from './task-graph.js'
 
 /**
- * A task is a "group" if it has no `exec` — it exists only to chain
- * `dependsOn` (an umbrella for `vx run ci`). Group tasks:
- *   - never spawn a process,
- *   - never read/write the cache (it's a config error to declare one),
- *   - never appear in the run summary or `runs` analytics table,
- *   - render no framed block in the live output.
- * Six call sites used to repeat `node.config.exec === undefined`;
- * centralising the predicate prevents that check from drifting.
+ * A task with no `exec` is a group: it only chains `dependsOn`. It never
+ * spawns, never touches the cache, and appears in no summary, history row or
+ * output frame.
  */
 export function isGroupTask(node: TaskNode): boolean {
   return node.config.exec === undefined
@@ -34,18 +29,13 @@ export function keyedDeps(node: TaskNode): readonly string[] {
 }
 
 /**
- * A filter selects among the task's own dependencies, never through a
- * group: `dependsOn: ['build']` over a group `build` of `build.a` and
- * `build.b` offers the filter `build`, not its members. A pattern that
- * matches a member (`build.*`) the filter folds neither directly nor
- * through a selected group therefore left it out, and the key stopped
- * moving with that member's inputs: a stale hit under a green run. That
- * held when the pattern also matched another dependency directly
- * (`dependsOn: ['build', 'build.a']`), so such a spec is refused, once,
- * over the graph every key site reads, unless it matches the group
- * itself (a negation of the group is a decision). One that matches
- * nothing anywhere stays legal (a preset's pattern needn't match in every
- * project). An exact name is refused earlier, at load, unless `dependsOn`
+ * A filter selects among the task's own dependencies, never through a group:
+ * over a group `build` of `build.a` and `build.b`, a pattern matching only a
+ * member (`build.*`) would fold neither it nor the group, and the key would
+ * stop moving with that member: a stale hit. So such a spec is refused, unless
+ * it matches the group itself (negating the group is a decision). One that
+ * matches nothing anywhere stays legal (a preset's pattern needn't match in
+ * every project). An exact name is refused earlier, at load, unless `dependsOn`
  * names it (`assertFilterNamesDeclaredDeps`).
  */
 export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>): void {
@@ -95,16 +85,12 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
 }
 
 /**
- * An exact filter that matched no dependency, where no `dependsOn` entry
- * may resolve to nothing for it. The load pairs a `pkg#task` entry, or a
- * `pkg#task` dependency, with any form whose task half matches, since it
- * cannot tell this project's name from another's
- * (`assertFilterNamesDeclaredDeps`), so `['nope#build']` over
- * `dependsOn: ['build']`, `['gen']` over `['b#gen']` and `['^gen']` over
- * this project's own `['a#gen']` each selected nothing and the key stopped
- * moving with the dependency: a stale hit. A `^` entry or a pattern naming
- * the task may match nothing in a preset's project, as a `^build` filter
- * may, so it lets the entry through.
+ * An exact filter that matched no dependency, where no `dependsOn` entry may
+ * resolve to nothing for it. The load check pairs `pkg#task` forms by task half
+ * alone (it cannot tell this project's name from another's), so
+ * `['nope#build']` over `dependsOn: ['build']` selected nothing and the key
+ * stopped moving: a stale hit. A `^` entry or a pattern naming the task may
+ * match nothing in a preset's project, so it lets the entry through.
  */
 function namesNoDependency(spec: DependencySpec, dependsOn: readonly string[]): boolean {
   if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps' || isTaskPattern(spec.task))
@@ -123,11 +109,10 @@ function namesNoDependency(spec: DependencySpec, dependsOn: readonly string[]): 
 }
 
 /**
- * An exact `pkg#task` filter that matched no dependency but names a task the
- * key reaches only through one. `namesNoDependency` lets it through when a
- * `^` entry names the task (the preset whose project lacks that dependency),
- * but `a → b → c` with `dependsOn: ['^build']` and `['c#build']` selected
- * none of a's direct dependencies, and an edit to c replayed a's hit.
+ * An exact `pkg#task` filter that matched no dependency but names a task
+ * reached only through one: `a → b → c` with `dependsOn: ['^build']` and
+ * `['c#build']` selected none of a's direct deps, and an edit to c replayed a's
+ * hit.
  */
 function namesTransitiveDependency(
   spec: DependencySpec,
@@ -191,40 +176,24 @@ export interface FoldCandidate {
 /**
  * The dependencies a task's key folds, per its `inputs.tasks`.
  *
- * Patterns (Turbo/Nx micro-syntax + filter extensions):
- *   '*' all same-project upstream
- *   '^*' all dep-workspace upstream
- *   'name' same-project task `name`
- *   '^name' `name` task in every dep workspace
- *   'pkg#name' specific package's `name` task
- *   'name.*' patterns — EITHER half of any form above may contain `*`
- *               (same glob as dependsOn patterns), including the project
- *               half of `pkg#name`. A filter that matched literally here
- *               would silently select ZERO upstream hashes and decouple the
- *               task from its dependencies — a stale-hit trap, so every
- *               name is matched through the shared glob.
- *   '!<form>' exclude — any of the above with a leading `!`
+ * Patterns (Turbo/Nx syntax plus extensions): '*' all same-project upstream
+ * '^*' all dep-workspace upstream 'name' same-project task `name` '^name'
+ * `name` in every dep workspace 'pkg#name' one package's `name` 'name.*' either
+ * half of any form may glob (one matched literally would select nothing and
+ * decouple the task: a stale hit) '!<form>' exclude
  *
- * Patterns are applied in order; last write wins, so
- * `['*', '^*', '!^noisy']` reads as "all minus deps' noisy".
+ * Applied in order, last write wins: `['*', '^*', '!^noisy']` is all minus
+ * deps' noisy. `undefined` is every candidate; `[]` is none.
  *
- * Defaults:
- *   - `filter === undefined` → every candidate, as given.
- *   - `filter === []` → none (fully decoupled).
+ * Deduped by `unit`, the fold's identity (two groups over the same members
+ * share one hash), after every entry: a negation drops only the candidates it
+ * names, so a unit still selected through another stays folded. Deleting by
+ * unit let `['^*', '!c#build']` drop b#build's group with c#build's: a stale
+ * hit.
  *
- * Otherwise deduped by `unit`, first selected candidate kept. The unit is
- * the fold's own identity, not the task's: two groups over the same members
- * share one hash. A negation drops only the candidates it names, and the
- * dedup runs after every entry, so a unit still selected through another
- * candidate stays folded: deleting by unit let `['^*', '!c#build']` drop
- * b#build's group with c#build's, and a change beneath both replayed the
- * old hit.
- *
- * `standIns` is the task's `standInsOf`: an edge added past a
- * default build on a package cycle is selected whenever an edge it went
- * past is. That build folds nothing of its cycle, so `['build']` on
- * `a ↔ b` selected a#build alone, dropped b#build, and an edit to b
- * replayed the old hit.
+ * `standIns`: an edge added past a default build on a package cycle is selected
+ * whenever an edge it went past is, or `['build']` on `a ↔ b` dropped b#build:
+ * a stale hit.
  */
 export function selectFoldedDeps(
   deps: readonly FoldCandidate[],
@@ -271,10 +240,9 @@ function nameMatcher(name: string): (candidate: string) => boolean {
 }
 
 /**
- * Compile one spec into an upstream predicate. BOTH halves of a `pkg#task`
- * form glob: a filter only ever selects from upstreams that already exist,
- * so a package pattern is unambiguous here — unlike dependsOn, which must
- * materialize concrete edges and therefore rejects it.
+ * Compile one spec into an upstream predicate. Both halves of `pkg#task` glob:
+ * a filter only selects among existing upstreams, so a package pattern is
+ * unambiguous here, unlike in dependsOn.
  */
 function specMatcher(spec: DependencySpec): (n: TaskNode, isSelf: boolean) => boolean {
   switch (spec.kind) {
@@ -299,13 +267,10 @@ function specMatcher(spec: DependencySpec): (n: TaskNode, isSelf: boolean) => bo
 }
 
 /**
- * The dependencies `node`'s key folds, per the hash path's rules above, as
- * `keyUpstream` hands them to the key: the scheduled ones less the edges
- * `--exclude-dependencies` left for order alone, plus the dropped ones it
- * keys all the same (`excludedUpstream`), whose own dependencies the walk
- * reads from the run's `keyOnly` map. `node.deps` held the order-only
- * edges and lacked the dropped ones: the sandbox granted a sibling the key
- * does not answer for.
+ * The dependencies `node`'s key folds, as `keyUpstream` hands them to the key:
+ * the scheduled ones less the order-only edges `--exclude-dependencies` left,
+ * plus the dropped ones it keys anyway (`excludedUpstream`), whose own deps
+ * come from the run's `keyOnly` map.
  */
 export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[] {
   const candidates: FoldCandidate[] = []
@@ -327,13 +292,10 @@ export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): Fo
 }
 
 /**
- * What stands in for a dependency's hash in the dedup: equal exactly when
- * the hashes are. An exec task's key folds its own id (`task:<id>`), so its
- * id is enough; a group's hash is a roll-up of its members' ids and hashes
- * with no id of its own, so two groups over the same members hash alike.
- * The members are `keyUpstream`'s, which `computeGroupHash` is handed: under
- * `--exclude-dependencies` `node.deps` holds order-only edges and lacks the
- * dropped ones, and two groups the key told apart shared a unit.
+ * What stands in for a dependency's hash in the dedup, equal exactly when the
+ * hashes are: an exec task's key folds its id, so the id is enough; a group's
+ * hash rolls up its members' (from `keyUpstream`, not `node.deps`) with no id
+ * of its own, so two groups over the same members hash alike.
  */
 function foldUnit(node: TaskNode): string {
   if (!isGroupTask(node) || node.config.inputs !== undefined) return `task|${node.id}`
