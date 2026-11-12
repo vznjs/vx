@@ -1,7 +1,7 @@
-// What a run is asked to run: the projects a `--filter` selects, the
-// ones `--affected` touches (with the `workspaceFiles` owners), the project the
-// cwd sits in, and the interactive picker. Every read of the workspace
-// here goes through the staged load, so the answer is the run's.
+// What a run is asked to run: the projects `--filter` selects, those
+// `--affected` touches (with `workspaceFiles` owners), the cwd's project, and
+// the picker. Every read goes through the staged load, so the answer is the
+// run's.
 
 import path from 'node:path'
 import { settingEnv } from '../settings.js'
@@ -64,13 +64,11 @@ import {
 } from './workspace-config.js'
 
 /**
- * The projects whose tasks declare an `inputs.workspaceFiles` glob
- * matching a changed path, one inside another project included (item
- * 954): `--affected` selects them, since the glob is that task's input. Through the run
- * path's staged load, so a glob a `project` plugin gave a config-less
- * package counts; read from the lock as a run does. A load that fails drops to the lock's
- * entries, one by one — a project the lock does not hold does not fail a
- * scoped run, and must not fail its selection either.
+ * The projects whose tasks declare an `inputs.workspaceFiles` glob matching a
+ * changed path (even inside another project): the glob is that task's input.
+ * Through the staged load, so a `project` plugin's globs count. A failed load
+ * drops to the lock's entries one by one: an unheld project fails neither a
+ * scoped run nor its selection.
  */
 export async function workspaceGlobOwners(
   root: string,
@@ -86,11 +84,10 @@ export async function workspaceGlobOwners(
   /** `AffectedChanges.untracked`. */
   untracked: ReadonlySet<string> = new Set(),
 ): Promise<string[]> {
-  // The changed paths a `workspaceFiles` list matches, asked once per
-  // distinct list rather than once per task: tasks × changed paths was
-  // 14.5 s on 8000 projects with 64k changed paths. A tracked match selects
-  // any task declaring the list; an untracked one only a task whose own
-  // outputs it is not, so those are kept for the per-task check.
+  // The changed paths a `workspaceFiles` list matches, once per distinct list
+  // (per task was 14.5 s on 8,000 projects with 64k changes). A tracked match
+  // selects any task declaring the list; an untracked one only a task whose
+  // outputs it is not.
   const byList = new Map<string, { tracked: boolean; loose: string[] }>()
   const matchesOf = (ws: readonly string[]) => {
     const key = ws.join('\0')
@@ -133,9 +130,8 @@ export async function workspaceGlobOwners(
   } catch {
     // Fall through to the per-file sweep.
   }
-  // No lock is refused here, before the tolerant sweep below could answer
-  // "nothing affected" and exit 0 without ever reaching the run's own
-  // refusal. The sweep reads each entry from the lock: it never evaluates.
+  // No lock is refused here, before the tolerant sweep could answer "nothing
+  // affected" and exit 0. The sweep reads the lock; it never evaluates.
   const lock = await readLockfile(root)
   if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
   const owners: string[] = []
@@ -154,9 +150,8 @@ export async function workspaceGlobOwners(
 }
 
 /**
- * The fingerprint files the workspace's plugins claim, with each claimant
- * asked through the same host the run uses — so a bad answer is refused by
- * the plugin's name here exactly as it would be at key time.
+ * The fingerprint files the plugins claim, asked through the run's host, so a
+ * bad answer is refused by name as at key time.
  */
 async function workspaceFingerprintClaims(
   root: string,
@@ -198,9 +193,8 @@ export async function findCwdProject(
 }
 
 /**
- * The project `cwd` is in, and the discovery that found it, for the run to
- * reuse (`RunHandoff.discovered`): discovering again ran every `discover`
- * hook twice (`nx()`'s graph load and worktree key among them).
+ * The cwd's project and the discovery that found it, for the run to reuse
+ * (`RunHandoff.discovered`): discovering again ran every `discover` hook twice.
  */
 export async function findCwdSelection(
   cwd: string,
@@ -220,11 +214,9 @@ export async function findCwdSelection(
     }
     return best
   }
-  // The cwd is a real path (the kernel's), and a member discovery reached
-  // through a link keeps the link's (`packages/b -> ../ext/b`, item 987),
-  // so inside such a member nothing matched and a run from there was "not
-  // inside a project" (item 1025). Only then are the members realpathed:
-  // one syscall each, paid only by a run no plain match could place.
+  // The cwd is a real path, while a member reached through a link keeps the
+  // link's, so inside one nothing matched. Only then are members realpathed: a
+  // syscall each, paid only when no plain match places the run.
   const found =
     within((p) => p.dir) ??
     within((p) => {
@@ -239,12 +231,9 @@ export async function findCwdSelection(
 }
 
 /**
- * A config `vx lock` would find between the cwd and the project placing it
- * (the root, when none does): a config written after the lock is no project
- * yet, so a run from its directory ran the locked project above it (the
- * root's `build` for a new member) or said "not inside a project". One
- * readdir per directory between them, none from a project's own; the
- * listing that judges a config found is paid only when one is.
+ * A config `vx lock` would find between the cwd and its placing project:
+ * written after the lock it is no project yet, and a run there ran the project
+ * above or said "not inside a project". One readdir per directory between them.
  */
 async function refuseUnlockedConfig(
   root: string,
@@ -298,11 +287,9 @@ export type FilterResolution =
     }
 
 /**
- * The cross-project `dependsOn` edges the configs declare, project → the
- * projects it names (`dependsOn: ['app#build']` makes `app` a dependency
- * of the declaring project). Read from the staged load — the same configs
- * the run will use — only when a filter walks the graph (`...`, `^...`).
- * A spec the loader will reject is skipped here; the run reports it.
+ * Cross-project `dependsOn` edges the configs declare, project → projects it
+ * names, from the staged load, only when a filter walks the graph (`...`,
+ * `^...`). A spec the loader will reject is skipped; the run reports it.
  */
 export async function taskEdges(
   root: string,
@@ -353,9 +340,8 @@ export interface AffectedFilter {
 }
 
 /**
- * The filter `--affected[=<base>]` stands for: `...[<base>]`, the changed
- * projects and their dependents. An empty base is `VX_AFFECTED_BASE`'s,
- * else a plugin's (`setBranch`: a pull request's base commit), else the
+ * The filter `--affected[=<base>]` stands for: `...[<base>]`. An empty base is
+ * `VX_AFFECTED_BASE`'s, else a plugin's (`setBranch`: a PR's base), else the
  * merge base with `baseBranch`.
  */
 export async function affectedFilterFor(
@@ -404,10 +390,9 @@ export async function resolveFilters(
     await loadWorkspaceProjects(cwd, load)
     return refusalOf(err)
   }
-  // A filter that diffs against git reads its untracked files from the
-  // run's whole-tree walk (one walk where it spawned its own), and the run
-  // reuses it with the discovery (I-26). The walk needs only the root, so
-  // it starts before the workspace config and discovery, not after them.
+  // A git-diffing filter reads untracked files from the run's whole-tree walk,
+  // which the run reuses. The walk needs only the root, so it starts before the
+  // workspace config and discovery.
   const git = parsed.some((f) => f.gitSince !== undefined) ? lazyGitEnumeration(root) : undefined
   void git?.start()
   const discovering =
@@ -417,20 +402,16 @@ export async function resolveFilters(
   const walksGraph = parsed.some(
     (f) => f.withDeps || f.withDependents || f.onlyDeps || f.sinceViaDeps === true,
   )
-  // Every reader of the staged configs in this pass — the `pkg#task`
-  // edge walk, the `workspaceFiles` owners of a changed path — shares
-  // ONE load, and the run reuses it (`RunHandoff.staged`): the `project`
-  // stage runs once per project per run.
+  // Every reader of staged configs here shares one load, which the run reuses
+  // (`RunHandoff.staged`): the `project` stage runs once per project per run.
   let stagedPromise: Promise<Map<string, ProjectEntry>> | undefined
   const stagedOnce = (): Promise<Map<string, ProjectEntry>> =>
     (stagedPromise ??= discovering.then((projects) => loadCliProjects(root, projects, 'all', load)))
   // A scoped enumeration lists only its projects: null asks git.
   const enumeration = async () => (git === undefined ? undefined : await git.start())
-  // Each `[<since>]` diff starts now, before discovery ends: merge-base and
-  // diff need only the root and the ref, so they overlap the workspace
-  // config, discovery and the config load, where they waited on all three.
-  // One after another, as a shallow clone's fetches must be; each is
-  // awaited in filter order below, so a refusal comes where it came.
+  // Each `[<since>]` diff starts now: merge-base and diff need only root and
+  // ref, so they overlap config and discovery. Sequential, as a shallow clone's
+  // fetches must be; awaited in filter order, so refusals keep their place.
   const diffs = new Map<(typeof parsed)[number], Promise<AffectedChanges>>()
   let previous: Promise<unknown> | undefined
   for (const f of parsed) {
@@ -522,9 +503,9 @@ export async function resolveFilters(
       if (answer.changed.length > 0 || answer.nested !== undefined) changedAny.add(f)
       if (f.raw === affected?.filter) {
         changes = answer
-        // A `graph` plugin may tie any task to a changed path (an edge, an
-        // input), and the run alone builds that graph: every project is a
-        // candidate, and the run keeps the tasks its final graph reaches.
+        // A `graph` plugin may tie any task to a changed path, and only the run
+        // builds that graph: every project is a candidate, and the run keeps
+        // what its final graph reaches.
         if (
           changes.changed.length > 0 &&
           hasHook(
@@ -551,9 +532,9 @@ export async function resolveFilters(
 
   const unmatched: string[] = []
   const emptyWalks: string[] = []
-  // The `[<since>]` includes whose diff itself matched nothing: only then is
-  // "nothing affected" the fact. A diff that matched, then lost every
-  // project to an exclusion or an empty walk, says which (X-146).
+  // The `[<since>]` includes whose diff matched nothing: only then is "nothing
+  // affected" the fact. One that matched and lost every project to an exclusion
+  // or walk says which.
   const emptyDiffs = new Set<(typeof parsed)[number]>()
   const selected = applyFilters({
     filters: parsed,
@@ -561,15 +542,14 @@ export async function resolveFilters(
     graph,
     affectedByFilter,
     ...(tags !== undefined ? { tags } : {}),
-    // A `[<since>]` selector matching nothing is the ordinary "nothing
-    // changed" outcome, reported below; only a name/path pattern that
-    // matched no project in the workspace, ref or not, is a probable typo.
+    // A `[<since>]` matching nothing is "nothing changed"; only a name or path
+    // pattern matching no project is a likely typo.
     onNoMatch: (f, emptyDiff) => {
       if (emptyDiff) emptyDiffs.add(f)
       else unmatched.push(f.raw)
     },
-    // A pattern that matched, with nothing on the walk it asked for: the
-    // fact to say, where "no projects matched" read as a typo (item 1030).
+    // A pattern that matched, with nothing on the walk it asked for: the fact
+    // to say, where "no projects matched" read as a typo.
     onEmptyWalk: (f, matched) => {
       if (f.negate) return
       const which = matched.join(', ')
@@ -582,9 +562,9 @@ export async function resolveFilters(
     },
   })
   if (selected.size === 0) {
-    // "Nothing changed" is a legitimate outcome, not a typo — a docs-only
-    // commit must not red `vx run … --affected=origin/main`. Only report an
-    // error when the user named something concrete that failed to resolve.
+    // "Nothing changed" is legitimate: a docs-only commit must not fail
+    // `--affected`. Error only when something named concretely failed to
+    // resolve.
     const includes = parsed.filter((f) => !f.negate)
     // Every pattern matched and an exclusion took them all back: "no
     // projects matched filter(s): one, !one" read as a typo of `one`.
@@ -598,9 +578,8 @@ export async function resolveFilters(
     ) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
-        // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
-        // the branch under test) can never mark anything affected, and this
-        // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
+        // A base that is HEAD (a single-branch clone whose `origin/HEAD` is the
+        // branch under test) can mark nothing; say so.
         const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
         // `HEAD` asked by name checks uncommitted work: "HEAD is HEAD itself"
         // read as nonsense for a valid question.
@@ -612,9 +591,8 @@ export async function resolveFilters(
               : ` — ${self} is HEAD itself: compare with ${self === 'origin/main' ? '' : 'the branch you merge into (--affected=origin/main) or '}the previous commit (--affected=HEAD~1)`
         return { empty: `nothing affected since ${refs}${hint}`, discovered: { root, projects } }
       }
-      // The diff matched and a walk or an exclusion left nothing: still the
-      // exit-0 outcome (`--affected --filter '!docs'` on a docs-only change
-      // must not red CI), said as what happened (X-146).
+      // The diff matched and a walk or exclusion left nothing: still exit 0,
+      // said as what happened.
       return {
         empty: `no projects selected: ${emptyWalks.length > 0 ? emptyWalks.join('; ') : excluded}`,
         discovered: { root, projects },
@@ -626,10 +604,9 @@ export async function resolveFilters(
     if (unmatched.length === 0 && negations.length > 0) {
       return { error: `no projects selected: ${excluded}` }
     }
-    // One line, not a warning per pattern and then an error saying the same:
-    // the patterns are in the error, and the nearest project name is the
-    // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
-    // app, and `--affected` a `...[<base>]` nobody typed.
+    // One line, not a warning per pattern then the same error: the patterns are
+    // in it, with the nearest project name as hint. Only patterns that matched
+    // nothing.
     const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
     if (unlocked !== undefined) {
       return {
@@ -653,9 +630,8 @@ export async function resolveFilters(
       `vx ${verb}`,
       `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f], projects)) ?? bracedHint(root, parsed, [f], projects, graph) ?? didYouMean([f], projects, tags)}`,
     )
-  // Each include is a union: what `--filter other` selected runs its tasks
-  // whether or not the `--affected` diff reaches them, and an exclude
-  // still removes it (X-10).
+  // Each include is a union: `--filter other` runs its tasks whether or not the
+  // `--affected` diff reaches them; an exclude still removes.
   const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
   const outright =
     changes !== undefined && others.some((f) => !f.negate)
@@ -761,11 +737,9 @@ export async function pickTask(
     input: io.input ?? process.stdin,
     output: out,
   })
-  // On a terminal readline takes Ctrl-C and Ctrl-D itself, raw, and
-  // rejects the pending question with an AbortError — which reached the
-  // user as `vx: AbortError: Aborted with Ctrl+C` and a stack, exit 1.
-  // A SIGINT listener tells the two apart: Ctrl-C is an interrupt (exit 130,
-  // as a run's), Ctrl-D an answer that never came.
+  // On a terminal readline takes Ctrl-C and Ctrl-D raw and rejects with an
+  // AbortError, shown as a stack. A SIGINT listener tells them apart: Ctrl-C is
+  // an interrupt (exit 130), Ctrl-D an answer that never came.
   const abort = new AbortController()
   let interrupted = false
   rl.on('SIGINT', () => {
@@ -801,10 +775,9 @@ export async function pickTask(
 }
 
 /**
- * The first unmatched include naming, by path, by a config-only
- * project's directory name or by a package name, a config `vx lock` would
- * make a project: one written after the lock is none yet, and "Projects: …"
- * without it read as a typo. Asked on the no-match path only.
+ * The first unmatched include naming (by path, dir name or package name) a
+ * config `vx lock` would make a project: written after the lock it is none yet.
+ * No-match path only.
  */
 async function unlockedFilter(
   root: string,
@@ -841,9 +814,8 @@ async function unlockedHint(
 
 /**
  * `. A directory takes a git ref braced: did you mean {libs}[HEAD]?` for an
- * unmatched `./libs[HEAD]`: an unbraced path keeps its brackets as a glob
- * class, as pnpm and Turbo read it, and the project names listed instead
- * read as a typo of the path. Only when the braced directory matches a project.
+ * unmatched `./libs[HEAD]`: unbraced, the brackets are a glob class (as pnpm
+ * and Turbo read it). Only when the braced directory matches.
  */
 function bracedHint(
   root: string,
@@ -892,10 +864,8 @@ function didYouMean(
 }
 
 /**
- * The patterns a comma list names, or one when it is none. A comma inside
- * a glob's braces is no list (`./packages/{a,b}`), and a braced directory
- * list (Turbo's `{cli,docs}`) is one braced directory each: split at every
- * comma, it hinted `--filter {cli --filter docs}`.
+ * The patterns a comma list names. A comma in a glob's braces is no list, and a
+ * braced dir list (Turbo's `{cli,docs}`) is one braced dir each.
  */
 function commaList(pattern: string): string[] {
   const braced = pattern.length > 2 && pattern.startsWith('{') && pattern.endsWith('}')
@@ -931,7 +901,7 @@ function didYouMeanProject(
   }
   for (const pattern of unmatched) {
     const typed = typedName(pattern)
-    // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
+    // Two edits from any two-letter name: `--filter //` hinted `ui`.
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'
     }

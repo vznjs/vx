@@ -7,10 +7,10 @@ import { join, type Participant } from './wire.js'
 declare const self: Worker
 
 /**
- * The run's loop held this many heartbeats (10 s on the default) is taken
- * as hung: the thread leaves, so the relay closes the run and its workers
- * end, as they would have for an orchestrator quiet that long (owner,
- * 2026-10-23: "if it does not reply for 10s its dead").
+ * The run's loop held this many heartbeats (10 s on the default) is taken as
+ * hung: the thread leaves, so the relay closes the run and its workers end, as
+ * they would have for an orchestrator quiet that long (owner: "if it does not
+ * reply for 10s its dead").
  */
 const HELD_BEATS = 5
 

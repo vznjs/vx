@@ -101,7 +101,7 @@ export class ReapiRemoteCache {
     this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', m))
   }
 
-  /** A fault the cache works around, said once per kind (2026-10-23: none is silent). */
+  /** A fault the cache works around, said once per kind (none is silent). */
   private warn(kind: string, err: unknown): void {
     if (this.said.has(kind)) return
     this.said.add(kind)
@@ -149,14 +149,14 @@ export class ReapiRemoteCache {
   /**
    * The artifact streams from the ByteStream read into core's ingest. The
    * duration (which a server may have moved into CAS) is read alongside the
-   * artifact's open, not before it: one round trip less per remote hit
-   * (130 → 99 ms at 15 ms one-way against bazel-remote, F-24). The open
-   * waits only for its first message, so the call is not left paused.
+   * artifact's open, not before it: one round trip less per remote hit (130 →
+   * 99 ms at 15 ms one-way against bazel-remote). The open waits only for its
+   * first message, so the call is not left paused.
    */
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
     // Inline: a server that honours it answers a small hit in this one round
-    // trip, duration and artifact both (bazel-remote inlines up to ~1 MiB);
-    // one that declines costs nothing (F-25).
+    // trip, duration and artifact both (bazel-remote inlines up to ~1 MiB); one
+    // that declines costs nothing.
     const result = await this.client.getActionResult(actionDigestFor(hash), {
       stdout: true,
       files: [ARTIFACT_PATH],
@@ -168,7 +168,7 @@ export class ReapiRemoteCache {
     // an ordinary state, not a fault.
     if (file === undefined) return null
     // Inline bytes are held to the digest they ride with, as fetched ones
-    // are: a mismatch streams the blob instead (F-8's rule).
+    // are: a mismatch streams the blob instead.
     const inline =
       file.contents !== undefined &&
       file.contents.length > 0 &&
@@ -194,12 +194,11 @@ export class ReapiRemoteCache {
     if (result.stdout_raw !== undefined && result.stdout_raw.length > 0) {
       return this.duration(result.stdout_raw)
     }
-    // The server normalised our inline bytes into CAS (bazel-remote does).
-    // An absent digest arrives as `null` on this path (proto-loader's
-    // message default, as `readStream` in executor.ts records).
-    // The duration is metadata: a read of it that fails (retries spent, a
-    // blob failing its digest) leaves it unknown, where it made core drop a
-    // valid hit as a miss (F-21).
+    // The server normalised our inline bytes into CAS (bazel-remote does). An
+    // absent digest arrives as `null` on this path (proto-loader's message
+    // default, as `readStream` in executor.ts records). The duration is
+    // metadata: a read of it that fails (retries spent, a blob failing its
+    // digest) leaves it unknown, where it made core drop a valid hit as a miss.
     const size = Number(result.stdout_digest?.size_bytes ?? 0)
     if (size > DURATION_BYTES) {
       this.warn(
@@ -246,15 +245,15 @@ export class ReapiRemoteCache {
     // Read once, and those bytes hashed and sent, wherever `writeBlob` would
     // read the Blob whole anyway: a second writer of the key renames its
     // artifact over the file, and two reads sent its bytes under this one's
-    // digest (F-50).
+    // digest.
     const data = body.size <= this.client.wholeWriteBytes ? await body.bytes() : undefined
     const digest = data === undefined ? await streamedDigestOf(body) : digestOf(data)
     if (data !== undefined && data.length <= SMALL_PUT_BYTES) {
-      // A small artifact is sent in one batch without asking first: the
-      // probe was a round trip of its own to save an upload no larger than
-      // it (102 → 71 ms per save at 15 ms one-way, F-26). Content-addressed,
-      // so a re-send is harmless.
-      // A server whose batch limit is smaller refuses it; stream instead.
+      // A small artifact is sent in one batch without asking first: the probe
+      // was a round trip of its own to save an upload no larger than it (102 →
+      // 71 ms per save at 15 ms one-way). Content-addressed, so a re-send is
+      // harmless. A server whose batch limit is smaller refuses it; stream
+      // instead.
       await this.client.batchUpdateBlobs([{ digest, data }]).catch((err: unknown) => {
         this.warn('a batch upload (streamed instead)', err)
         return this.client.writeBlob(digest, data)

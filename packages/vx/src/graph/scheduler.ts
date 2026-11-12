@@ -42,27 +42,20 @@ export interface ScheduleOptions {
    */
   signal?: AbortSignal
   /**
-   * Failure propagation (default 'deps-ok' — the historical behavior):
-   *   - 'deps-ok': a failed/skipped/aborted upstream skips its
-   *     dependents; independent siblings keep running.
-   *   - 'never': the first failure stops dispatch — in-flight tasks
-   *     finish their attempt but start no retry, everything not yet started completes as
-   *     skipped (restore-tier included: a fail-fast run stops
-   *     restoring too).
-   *   - 'always': dependents run even when an upstream failed. Their
-   *     keys are the ones a healthy run derives (failed outcomes carry
-   *     the upstream's INPUT key, computed before exec), which is
-   *     exactly why the orchestrator withholds their SAVE: the bytes
-   *     were built on a partial tree, and a healthy key over them would
-   *     be the next clean run's stale hit (`ExecuteArgs.taintedUpstream`).
+   * Failure propagation:
+   * - 'deps-ok' (default): a failed, skipped or aborted upstream skips its
+   *   dependents; independent siblings keep running.
+   * - 'never': the first failure stops dispatch; in-flight tasks finish but
+   *   start no retry, and the rest (restore tier too) completes skipped.
+   * - 'always': dependents run anyway. Their keys are a healthy run's (a failed
+   *   outcome carries the upstream's input key), so their save is withheld:
+   *   bytes built on a partial tree would be the next clean run's stale hit
+   *   (`ExecuteArgs.taintedUpstream`).
    */
   continueMode?: ContinueMode
   /**
-   * A failure the graph's outcomes do not hold yet: a persistent task
-   * that died after it became ready. Its outcome said `success` when it
-   * was ready, so this is how a dependant not yet started learns of it:
-   * under 'deps-ok' it is skipped as below a failed task, and under
-   * 'never' it stops dispatch.
+   * A persistent task that died after it became ready: its outcome said
+   * `success`, so this is how a dependant not yet started learns of it.
    */
   serverDied?: (id: string) => boolean
   /**
@@ -80,33 +73,24 @@ export interface ScheduleOptions {
    */
   onError?: (node: TaskNode, line: string, err: unknown) => void
   /**
-   * What an outcome still owes before its dependents may start — a cache
-   * save that runs off the execution slot (the orchestrator's save lane):
-   * a dependent reads the upstream's entry (its output rows travel in the
-   * execute request), so it waits for the save to land, while the freed
-   * slot admits other work at once; it resolves to the outcome with what
-   * was owed folded in. Undefined: nothing owed.
+   * A cache save still owed before dependents may start: a dependent reads the
+   * upstream's entry, so it waits for the save, while the freed slot admits
+   * other work. Resolves to the outcome with the save folded in.
    */
   settledOf?: (outcome: TaskOutcome) => Promise<TaskOutcome | void> | undefined
   /**
    * A task the caller settles in place: a thunk returning its outcome, or
-   * undefined to dispatch it through `execute`. Asked of a task its lane
-   * has room for, after the skip check; `onStart` hears it, then the thunk
-   * runs (a hit replays its output there), and its outcome lands in the
-   * same tick, holding no slot. An unkeyed group runs nothing, and the
-   * dispatch, the slot and the promise around it were ~10 µs of each of a
-   * warm run's 1,090 groups (X-192); a hit whose tree is current does no
-   * more. A restore-tier task's `upstream` may hold undefined entries.
-   * The thunk's outcome is the scheduler's: its queue time is set on it,
-   * not on a copy (a copy per hit).
+   * undefined to dispatch it through `execute`. Its outcome lands in the same
+   * tick and holds no slot: the dispatch and promise cost ~10 µs per group or
+   * current hit on a warm run. A restore-tier task's `upstream` may hold
+   * undefined entries. The queue time is set on the thunk's outcome itself, not
+   * a copy.
    */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /**
-   * Optional priority override: callers pass their own per-node weight
-   * (e.g. `computePredictedPriorities` from the orchestrator's history
-   * data). The scheduler picks the highest-weight ready task next.
-   * When undefined, falls back to the static reverse-deps-count
-   * heuristic (the default and historically the only behavior).
+   * Optional per-node weights (e.g. `computePredictedPriorities`); the
+   * highest-weight ready task runs next. Undefined: the reverse-deps-count
+   * heuristic.
    */
   priorities?: ReadonlyMap<string, number>
   /**
@@ -116,7 +100,7 @@ export interface ScheduleOptions {
    */
   reprioritize?: (apply: (priorities: ReadonlyMap<string, number>) => void) => void
   /**
-   * The baseline ranking under `priorities` (`schedule` in .vx/workspace.ts).
+   * The baseline ranking under `priorities` (`schedule` in.vx/workspace.ts).
    * Undefined or `most-work` is the reverse-deps count above.
    */
   strategy?: ScheduleStrategy
@@ -126,26 +110,17 @@ export interface ScheduleOptions {
    */
   reverseDeps?: () => ReadonlyMap<string, number>
   /**
-   * Restore-tier task ids: confirmed stable-key LOCAL cache hits (the
-   * local short-circuit). A restore-tier task:
-   *   - becomes READY IMMEDIATELY — its `pending` does NOT gate it, since
-   *     a stable hit's restore needs none of its deps' output;
-   *   - is LOW priority — exec-tier work (cache misses + unstable tasks)
-   *     owns the worker pool, restores only backfill idle capacity (or
-   *     run when an exec is blocked on a restorable dep and nothing else
-   *     is runnable — then the restore is the only ready task and unblocks
-   *     it);
-   *   - bypasses the `failedDep`→`skipped` check (its key is independent
-   *     of dep success — pure-input transitive hashing — so a valid cached
-   *     output is reported `cache-hit` regardless of a dep failing);
-   *   - leaves the tier when `execute` throws `RestoreDemoted`, and is
-   *     dispatched again once its deps are done, with the dep check.
-   * A persistent task nobody requested whose every dependant is in the
-   * tier starts only when one of them is demoted; once they have all
-   * finished it settles without an outcome, never spawned.
-   * It still runs through `execute()` (so the logger frame is unchanged);
-   * the orchestrator's execute reuses the up-front probe, so there is no
-   * second cache.get. When undefined/empty, behavior is byte-identical.
+   * Restore-tier task ids: confirmed stable local cache hits. A restore-tier
+   * task:
+   * - is ready at once, since its restore needs none of its deps' output;
+   * - is low priority: exec-tier work owns the pool, restores backfill idle
+   *   capacity;
+   * - bypasses the failed-dep skip, since its key does not depend on dep
+   *   success;
+   * - leaves the tier when `execute` throws `RestoreDemoted`, and is dispatched
+   *   again once its deps are done. A persistent task nobody requested whose
+   *   every dependant is in the tier starts only when one is demoted, and
+   *   settles unspawned once all have finished.
    */
   restoreTier?: ReadonlySet<string>
   /**
@@ -157,21 +132,18 @@ export interface ScheduleOptions {
    */
   heldServers?: ReadonlyMap<string, Promise<readonly string[]>>
   /**
-   * Pool assignment for tasks placed on an executor with its own capacity
-   * (a remote pool). Such a task occupies one of the pool's `capacity` slots
-   * instead of a local worker slot and reserves no local resources, so a
-   * remote pool is never throttled by the local CPU count. Undefined (or
-   * a `undefined` result) = the local pool.
+   * Pool assignment for tasks on an executor with its own capacity (a remote
+   * pool): such a task takes one of the pool's slots, not a local one, so a
+   * remote pool is never throttled by the local CPU count. Undefined: the local
+   * pool.
    */
   poolOf?: (id: string) => { name: string; capacity: number } | undefined
   /**
-   * Admission over the worker count: asked for every exec-tier task about
-   * to start on this machine, with the ids of the exec-tier tasks running
-   * here right now (added on dispatch, so two asks in one tick see each
-   * other; removed when `execute` resolves, which for a persistent task is
-   * at ready). `false` parks the task until something finishes. Undefined →
-   * count-only, the legacy path byte for byte. Restore-tier hits, pooled
-   * tasks and groups hold no local resources: never asked, never listed.
+   * Admission over the worker count: asked for every exec-tier task about to
+   * start here, with the ids of exec-tier tasks running here (added on
+   * dispatch, so two asks in one tick see each other). `false` parks the task
+   * until something finishes. Restore-tier hits, pooled tasks and groups hold
+   * no local resources and are never asked.
    */
   admit?: (id: string, running: ReadonlySet<string>) => boolean
   /**
@@ -184,13 +156,10 @@ export interface ScheduleOptions {
 }
 
 /**
- * The dead server a dependency stands for: itself, or one a group or a
- * server reaches. A group is a name for its deps, and it finished the
- * moment the server was ready, so a task behind it ran against the dead
- * one; a server stays up on the servers it depends on, so a task behind
- * `web` runs against the `api` under it too. Walked with a stack and a
- * seen set: recursion threw `RangeError` on a deep chain of groups, and
- * re-walked a group each path reached it by.
+ * The dead server a dependency stands for: itself, or one a group or a server
+ * reaches (a task behind `web` runs against the `api` under it too). A stack
+ * and seen set: recursion overflowed on deep group chains and re-walked shared
+ * groups.
  */
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -213,15 +182,11 @@ export function deadServerBehind(
 }
 
 /**
- * Run the task graph. Independent tasks run in parallel up to `concurrency`.
- * If a task fails, its dependents are marked `skipped` but unrelated tasks
- * keep running so the user gets maximum information per invocation.
+ * Run the task graph, up to `concurrency` tasks at once. A failed task skips
+ * its dependents; unrelated tasks keep running.
  *
- * Scheduling: when more than one task is ready, the scheduler picks the
- * one that blocks the most downstream work (most transitive reverse
- * dependents). Ties break in graph-insertion order (which is the topo
- * order produced by `buildTaskGraph`). Minimizes worker idle at the
- * end of the run.
+ * When several are ready, the one blocking the most downstream work goes first;
+ * ties break in graph-insertion (topo) order.
  */
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>> {
   return new GraphRun(options).run()
@@ -234,15 +199,11 @@ type Parked = Array<[string, number]>
 class GraphRun {
   private readonly nodes: Map<string, TaskNode>
   private readonly continueMode: ContinueMode
-  // 'never': set on the first failed outcome; from then on every
-  // dequeued task is skipped instead of dispatched (in-flight tasks
-  // finish naturally and their dependents drain through the same path).
+  // 'never': set on the first failure; every dequeued task is then skipped.
   private failFastTripped = false
   private readonly outcomes = new Map<string, TaskOutcome>()
-  // Reverse adjacency + pending dep counts. Built once. A task becomes
-  // ready when its `pending` hits 0, at which point it's pushed to the
-  // ready queue. This replaces the old "scan all of scheduleOrder on
-  // every tick" pattern which was O(N²) over a full run.
+  // Reverse adjacency and pending dep counts, built once: a task is ready when
+  // its `pending` hits 0, so no tick scans the whole order.
   private readonly dependents = new Map<string, string[]>()
   private readonly pending = new Map<string, number>()
   private readonly baseline: ReadonlyMap<string, number>
@@ -250,11 +211,10 @@ class GraphRun {
   // Restore-tier tasks whose execute threw `RestoreDemoted`: from then on
   // they are exec-tier tasks, gated on their deps like any other.
   private readonly demoted = new Set<string>()
-  // A server pulled in only for restore-tier hits serves nobody: it waits
-  // (`dormant`) until a dependant is demoted, which starts it, or until
-  // every dependant has finished, which settles it unspawned. Settled
-  // without an outcome: it is not part of the run, as a pruned task is not.
-  // A group or a server between it and its hits is idle with it.
+  // A server pulled in only for restore-tier hits serves nobody: it stays
+  // `dormant` until a dependant is demoted (it starts) or every dependant has
+  // finished (it settles unspawned, outside the run, like a pruned task). A
+  // group or server between it and its hits is idle with it.
   private readonly idleGroups = new Set<string>()
   private readonly idle: Set<string>
   private readonly dormant = new Set<string>()
@@ -262,14 +222,9 @@ class GraphRun {
   private readonly unanswered: Set<string>
   private readonly heldReady = new Set<string>()
   private settledIdle = 0
-  // Two ready queues — exec-tier (cache misses + unstable tasks) and
-  // restore-tier (confirmed stable local hits). Each is a max-heap keyed by
-  // (priority DESC, enqueue-seq ASC), so the highest-priority task pops first
-  // and equal-priority ties break in graph-insertion order — same contract the
-  // prior `scheduleOrder` sort provided via stable sort. The tick loop drains
-  // execReady FIRST, so misses own the worker pool and restores only backfill
-  // idle capacity (or run when an exec is blocked on a restorable dep and
-  // nothing else is runnable).
+  // Two ready queues, exec tier (misses, unstable tasks) and restore tier, each
+  // a max-heap on (priority desc, enqueue seq asc), so ties keep
+  // graph-insertion order. The exec queue drains first.
   private readonly execReady: ReadyHeap
   private readonly restoreReady: ReadyHeap
   // When each queued id became ready; dispatch takes it out.
@@ -282,20 +237,17 @@ class GraphRun {
   // A refusal's text → the first task that said it. A corrupt cache index
   // reaches every lookup as one UserError; on bare stderr a repeat names the first.
   private readonly refusedBy = new Map<string, string>()
-  // Admission policy over the count limit (a plugin's `admit`). Inactive
-  // → the tick loop short-circuits before any of this and behaves
-  // byte-identically to the count-only scheduler.
+  // Admission policy (a plugin's `admit`). Inactive: the tick loop skips all of
+  // this.
   private readonly admitActive: boolean
   private readonly running = new Set<string>()
-  // When a policy first refused each parked task — so its outcome can say
-  // how long the policy, not the count gate, held it. Nothing with no
-  // policy: the map is never touched.
+  // When a policy first refused each parked task, so its outcome can say how
+  // long the policy held it.
   private readonly heldSince = new Map<string, number>()
-  // A restore-tier task whose deps did not all succeed is still a
-  // `cache-hit` (its key is theirs, not their outcome), but it passes the
-  // block down: its dependents are skipped as a failed dep's would be.
-  // Its root: a failed or aborted dep, or the root a skipped or blocked
-  // one carries.
+  // A restore-tier task whose deps did not all succeed is still a `cache-hit`,
+  // but passes the block down: its dependents are skipped as a failed dep's
+  // would be. Its root: a failed or aborted dep, or the root a skipped or
+  // blocked one carries.
   private readonly blockedRestores = new Map<string, string | undefined>()
   private readonly heldRelease = new Set<string>()
   private readonly serverDied: (id: string) => boolean
@@ -315,10 +267,8 @@ class GraphRun {
       }
     }
 
-    // Override hook (predictive scheduling): when the caller passes a
-    // priorities map (e.g. from history-aware critical-path estimation),
-    // use those weights. Falls back to the reverse-deps-count heuristic
-    // for nodes the caller didn't score, so partial coverage works.
+    // Caller weights first; the reverse-deps count covers nodes the caller did
+    // not score.
     const baseline =
       options.strategy !== undefined && options.strategy !== 'most-work'
         ? strategyPriorities(nodes, options.strategy)
@@ -346,12 +296,10 @@ class GraphRun {
       this.execReady.reprioritize(merged)
       this.restoreReady.reprioritize(merged)
     })
-    // A restore-tier task is dep-independent (a stable hit's restore needs
-    // none of its deps' output), so it's ready immediately; its `pending`
-    // decrements still happen (in finishOne) but never re-enqueue it.
-    // Everything else enqueues on the exec-tier the moment its deps
-    // complete.
-    // Elapsed-time stamps (queue and hold waits), immune to wall clock steps.
+    // A restore-tier task is ready at once; its `pending` still decrements but
+    // never re-enqueues it. Everything else enqueues on the exec tier once its
+    // deps complete. Elapsed-time stamps (queue and hold waits) are immune to
+    // wall clock steps.
     const startedAt = performance.now()
     for (const node of nodes.values()) {
       if (this.restoreTier?.has(node.id)) this.restoreReady.push(node.id)
@@ -360,10 +308,8 @@ class GraphRun {
       this.readyAt.set(node.id, startedAt)
     }
 
-    // A restore-tier task is a confirmed local cache hit: its "execution"
-    // is a cheap tar extract, not the task's real work — it reserves ZERO
-    // regardless of what the config declares, so it never holds budget
-    // against a real executor (and never parks).
+    // A restore is a tar extract, not the task's work: it reserves nothing,
+    // whatever the config declares, so it never holds budget or parks.
     this.lanes = new Lanes(
       options.concurrency,
       options.restoreConcurrency,
@@ -379,8 +325,8 @@ class GraphRun {
         : [...nodes.values()]
             .filter((n) => n.config.exec?.persistent !== undefined)
             .map((n) => n.id)
-    // Only a server can die: with none in the graph, no walk (a stack and
-    // a set per dependency of every exec-tier task, X-171).
+    // Only a server can die: with none in the graph, no walk (a stack and a set
+    // per dependency of every exec-tier task).
     this.deadServerVia =
       this.servers.length === 0
         ? (): undefined => undefined
@@ -456,9 +402,8 @@ class GraphRun {
     return true
   }
 
-  // The policy sees exec-tier local tasks only; a restore is a tar
-  // extract, a pooled task runs on someone else's capacity, and a group
-  // runs nothing, so a packing policy that counted one parked work for it.
+  // Exec-tier local tasks only: a restore, a pooled task or a group counted by
+  // a packing policy would park real work for it.
   private local(id: string): boolean {
     return (
       !this.inRestoreTier(id) &&
@@ -491,23 +436,19 @@ class GraphRun {
         if (this.dormant.delete(p)) this.execReady.push(p)
       })
     }
-    // Observer hook (the logger's taskComplete). Crash-isolated: a
-    // throwing observer must NOT break scheduling — it would otherwise
-    // skip the dependent-enqueue + tick below and hang the run. Same
-    // "observability never breaks a run" rule the telemetry
-    // paths hold. Isolated here (not the completion arm) so a throw
-    // can't be mistaken for the task itself failing.
+    // Crash-isolated: a throwing observer would skip the dependent enqueue and
+    // tick below and hang the run. Isolated here, not in the completion arm, so
+    // a throw is never taken for the task failing.
     try {
       this.options.onFinish?.(outcome)
     } catch (err) {
       const m = thrownMessage(err)
       notify({ kind: 'line', tone: 'warn', text: `[vx] onFinish observer threw for ${id}: ${m}\n` })
     }
-    // A restore-tier task runs before its deps, but its DEPENDENTS keep
-    // the order `dependsOn` states: they are released once its own deps
-    // have settled too. Released at its own finish, an `e2e` ran beside
-    // the `db:migrate` two edges up whenever the middle task was a hit,
-    // and ran green after that dep failed.
+    // A restore-tier task runs before its deps, but its dependents are released
+    // only once its own deps have settled too: otherwise an `e2e` ran beside a
+    // `db:migrate` two edges up whenever the middle task was a hit, and ran
+    // green after that dep failed.
     if (this.inRestoreTier(id) && (this.pending.get(id) ?? 0) > 0) {
       this.heldRelease.add(id)
       return
@@ -537,10 +478,9 @@ class GraphRun {
     }
   }
 
-  // Its block, then its dependents: one whose pending hits 0 is enqueued,
-  // or, when it is a held hit, released in turn before the next sibling.
-  // A frame stack, not recursion: a chain of held hits is released in one
-  // walk, and recursion threw RangeError on a 30,000-deep one.
+  // Its block, then its dependents: one whose pending hits 0 is enqueued, or,
+  // if a held hit, released in turn. A frame stack, not recursion: a
+  // 30,000-deep chain of held hits overflowed.
   private release(root: string): void {
     const frames: { ds: readonly string[]; i: number }[] = []
     const enter = (id: string): void => {
@@ -559,9 +499,8 @@ class GraphRun {
       const rem = (this.pending.get(d) ?? 0) - 1
       this.pending.set(d, rem)
       if (rem !== 0) continue
-      // Restore-tier dependents were already enqueued at startup (they
-      // don't wait on deps); one that finished early releases its own
-      // dependents now. Only an exec-tier dependent is enqueued.
+      // Restore-tier dependents were enqueued at startup; one that finished
+      // early releases its own dependents now.
       if (this.heldRelease.delete(d)) enter(d)
       else if (!this.inRestoreTier(d)) {
         this.execReady.push(d)
@@ -570,18 +509,13 @@ class GraphRun {
     }
   }
 
-  // True when the task would be finished as `skipped` without running
-  // (fail-fast tripped, or a failed/skipped/aborted upstream under
-  // continueMode !== 'always'). ONE predicate shared by the admission
-  // parker and the dispatch loop's skip branch — a would-skip task
-  // executes nothing, so it must never park on a resource fit (a
-  // too-big doomed task parking forever would hang the run).
+  // True when the task would finish `skipped` without running (fail-fast
+  // tripped, or a failed upstream unless `continueMode` is 'always'). Shared by
+  // the admission parker and the dispatch loop: a doomed task must never park
+  // on a resource fit, or a too-big one would hang the run.
   //
-  // Restore-tier tasks BYPASS the dep check: their key is independent
-  // of any dep's success (pure-input transitive hashing), so a valid
-  // cached output is reported `cache-hit` even if a dep failed — and
-  // they're dep-independent, so they typically restore before a dep
-  // could fail anyway.
+  // Restore-tier tasks bypass the dep check: their key does not depend on dep
+  // success.
   private willSkip(id: string): boolean {
     if (this.failFastTripped || this.aborted()) return true
     if (this.continueMode === 'never' && this.servers.some(this.serverDied)) {
@@ -598,12 +532,10 @@ class GraphRun {
       )
     return node.deps.some((d) => {
       const u = this.outcomes.get(d)
-      // `aborted` propagates even though it is counted nowhere: the
-      // upstream was killed mid-write, so its declared outputs are
-      // partial. A dependent that ran anyway would CACHE what it built
-      // from them — under the key a healthy run derives, since the fold
-      // takes the upstream's INPUT key — so the next run replays those
-      // bytes as a green hit.
+      // `aborted` propagates though it is counted nowhere: the upstream died
+      // mid-write, so a dependent would cache what it built from partial
+      // outputs under a healthy key, and the next run would replay it as a
+      // green hit.
       return (
         u?.status === 'failed' ||
         u?.status === 'skipped' ||
@@ -639,12 +571,9 @@ class GraphRun {
 
   private tick(): void {
     if (this.resolved) return
-    // Exec-tier tasks parked THIS tick on a refused admission. Within
-    // one synchronous tick `running` only grows (tasks leave it in the
-    // async completion callbacks, which run a fresh tick), so a task
-    // refused now cannot be admitted later in the same tick — parking
-    // it for the tick's remainder is exact, and each id pops at most
-    // once per tick (O(R log R)).
+    // Exec-tier tasks refused admission this tick. Within one synchronous tick
+    // `running` only grows, so a refused task cannot be admitted later in the
+    // tick; each id pops at most once per tick.
     const parked: Parked = []
     for (;;) {
       const id = this.takeFitting(parked)
@@ -652,16 +581,12 @@ class GraphRun {
       this.dispatch(id)
     }
 
-    // Repush parked ids with their ORIGINAL seqs, so the next tick's
-    // admission pass does not depend on `parked` having been built in
-    // ranking order (it is, but see `push`).
+    // Repush with original seqs so the next tick's order does not depend on
+    // `parked`'s.
     for (const [id, seq] of parked) this.execReady.push(id, seq)
 
-    // The outcome count alone: a slot is released before its outcome
-    // lands (`leave()` precedes `finishOne` in both arms, and a skip
-    // takes none), so a task still holding one has no outcome yet, and
-    // the lane counters could add nothing — deleting both from this
-    // condition survived the whole core suite.
+    // The outcome count alone: a slot is released before its outcome lands, so
+    // the lane counters add nothing here.
     if (this.outcomes.size + this.settledIdle === this.nodes.size) {
       this.resolved = true
       this.stopListening()
@@ -669,25 +594,17 @@ class GraphRun {
     }
   }
 
-  // Highest-priority admissible task: exec tier first (misses own
-  // the pool), then restore tier. With no admission policy this
-  // short-circuits to exactly the legacy takeReady. A would-skip
-  // task returns without asking (finishing it is free); restore
-  // tasks are never asked, so they never park.
+  // Highest-priority admissible task: exec tier first, then restore tier. A
+  // would-skip task returns without asking; restore tasks are never asked, so
+  // never park.
   private takeFitting(parked: Parked): string | undefined {
     const lanes = this.lanes
     if (lanes.holding) return undefined
-    // No pools and a full exec lane: nothing on the exec queue can be
-    // admitted, so it is not scanned — an admit policy only narrows
-    // the count gate, never widens it (scanning under one cost the
-    // history plugin's cold bench run 10 s) — scanning it
-    // would pop and re-park every ready exec task on every tick, and
-    // with a wide frontier that is O(R) per tick, O(R²) per run (the
-    // 6,000-task scale pin went 0.5 s → 28 s when the restore lane's
-    // first cut let the scan run past a full exec lane).
-    // This is the legacy O(1) gate, kept per lane. Every pool full is
-    // the same: a remote pool of 6 slots before 2000 ready tasks
-    // re-popped them all on each end (DTE).
+    // A full exec lane with no pools: an admit policy only narrows the count
+    // gate, so nothing there can start and the queue is not scanned. Scanning
+    // re-popped every ready task each tick, O(R²) per run (6,000 tasks: 0.5 s
+    // to 28 s). The same holds per pool: a 6-slot remote pool before 2,000
+    // ready tasks re-popped them all on each end.
     const execAdmissible =
       this.options.poolOf === undefined
         ? lanes.execRoom()
@@ -722,18 +639,16 @@ class GraphRun {
   private dispatch(id: string): void {
     const node = this.nodes.get(id) as TaskNode
 
-    // For a restore-tier task running BEFORE its deps finish, the
-    // `upstream` entries below can be undefined (the cast lies) —
-    // the preProbed hit path in execute-task never reads them, and
-    // nothing on the restore path may.
+    // For a restore-tier task running before its deps finish, `upstream`
+    // entries may be undefined (the cast lies); the restore path never reads
+    // them.
     const upstream = node.deps.map((d) => this.outcomes.get(d) as TaskOutcome)
 
     const settlesIdle = this.settlesIdle(id, node)
 
-    // If any upstream failed/skipped, propagate skip synchronously
-    // without running. Skipped tasks still flow through this queue
-    // because dependents are pushed when `pending` hits 0 regardless
-    // of outcome — keeps the propagation logic in one place.
+    // A failed or skipped upstream skips this task here, synchronously:
+    // dependents are pushed when `pending` hits 0 whatever the outcome, so
+    // propagation lives in one place.
     if (!settlesIdle && this.willSkip(id)) {
       this.skip(id, node, upstream)
       return
@@ -749,10 +664,9 @@ class GraphRun {
     this.start(id, node, upstream)
   }
 
-  // An idle task the stop or fail-fast would skip settles with no
-  // outcome, as it would have run: the run never meant to start it.
-  // Below a failed dep it is skipped as before, so the hits above it
-  // pass the block down.
+  // An idle task the stop or fail-fast would skip settles with no outcome: the
+  // run never meant to start it. Below a failed dep it is skipped, so the hits
+  // above pass the block down.
   private settlesIdle(id: string, node: TaskNode): boolean {
     return (
       this.idle.has(id) &&
@@ -845,24 +759,14 @@ class GraphRun {
       leave()
       untrack()
     }
-    // Crash-isolated observer hook — a throwing onStart must not abort
-    // the dispatch loop (it would strand the tick with the slot held).
-    // A demoted task's second dispatch is the same task, already started,
-    // as is one whose settle threw.
+    // Crash-isolated: a throwing onStart would strand the tick with the slot
+    // held. A demoted task's second dispatch, or one whose settle threw, is
+    // already started.
     if (!this.demoted.has(id) && settle === undefined) this.started(node)
 
-    // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
-    // rejection arm handles ONLY `execute()` rejecting; a throw from
-    // the fulfillment arm must NOT also run the rejection arm, or
-    // `active` releases twice — and a double release wedges the count
-    // gate. NOT `onFinish`, which this comment used to cite: it is
-    // isolated inside `finishOne`, so it never reaches here (which is
-    // why the row named for it cannot tell the two shapes apart).
-    // What is left unisolated is the caller's
-    // `settledOf`, and under THIS shape a throw there strands the
-    // task's outcome and hangs the run rather than double-releasing.
-    // The two-arm form is still the correct choice; there is simply
-    // no reachable throw that makes the difference observable.
+    // Two-arm `.then`, not `.then().catch()`: a throw in the fulfilment arm
+    // must not also run the rejection arm, or `active` is released twice and
+    // the count gate wedges.
     this.options.execute(node, upstream).then(
       (raw) => this.executed(id, withHold(raw), free),
       (thrown: unknown) => this.rejected(id, node, thrown, withHold, free),
@@ -907,8 +811,8 @@ class GraphRun {
       thrown instanceof OutputsFailed
         ? thrown.error
         : thrown
-    // After the run's stop a rejection is the stop's doing (a probe
-    // it killed, C-65): aborted, as any task it kills, and unsaid.
+    // After the run's stop a rejection is the stop's doing (a probe it killed):
+    // aborted, as any task it kills, and unsaid.
     const stopped = this.aborted()
     const exitCode = thrown instanceof OutputsFailed ? thrown.exitCode : 1
     const durationMs = thrown instanceof OutputsFailed ? thrown.durationMs : 0
@@ -949,9 +853,8 @@ class GraphRun {
   // The line naming a rejected `execute`, to `onError` or stderr.
   private report(id: string, node: TaskNode, thrown: unknown, err: unknown): void {
     const message = thrownMessage(err)
-    // A UserError is a config/input failure (e.g. a failed
-    // `inputs.runtime` command), not a vx bug — report it
-    // plainly, never as an "internal error".
+    // A UserError is a config or input failure, not a vx bug: report it
+    // plainly, never as an internal error.
     let line: string
     // Out of descriptors is the environment's limit too: a stack
     // naming a file that was fine sent the user after the file.
@@ -960,9 +863,9 @@ class GraphRun {
         ? message
         : `${message} — ${isOutOfFds(err) ? OUT_OF_FDS_HINT : fsRefusalHint(err)}`
       const text = thrown instanceof KeyFailed ? `cache key not derived: ${said}` : said
-      // In a task's own output block, in full: that block is read
-      // alone, and "as <task> above" named one printed elsewhere or
-      // not at all. On bare stderr the first is above.
+      // In the task's own output block, in full: that block is read alone, so
+      // "as <task> above" may name nothing visible. On bare stderr the first is
+      // above.
       const first = this.options.onError === undefined ? this.refusedBy.get(text) : undefined
       if (!this.refusedBy.has(text)) this.refusedBy.set(text, id)
       line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`
@@ -975,10 +878,9 @@ class GraphRun {
     }
   }
 
-  // A held server's answer: the dependants it found go on the restore
-  // lane, and the server is idle when they were all of them. One whose
-  // deps all settled is already on the exec queue, running, or done:
-  // pushed again it ran twice (its server skipped, the exec lane full).
+  // A held server's answer: its dependants go on the restore lane, and the
+  // server is idle if that was all of them. One whose deps all settled is
+  // already queued, running or done: pushed again, it ran twice.
   private answer(id: string, found: readonly string[]): void {
     if (this.resolved || !this.unanswered.delete(id)) return
     for (const d of found) {
@@ -1001,10 +903,9 @@ class GraphRun {
     this.tick()
   }
 
-  // Idle as `idleServers` finds it: through the groups and servers
-  // nobody asked for above it. The servers beneath it are held on the
-  // same keys, so the walk idles them with it; a server already
-  // answered, or never held, keeps its course.
+  // Idle as `idleServers` finds it, through the unrequested groups and servers
+  // above it; the servers beneath are held on the same keys, so the walk idles
+  // them too.
   private idleWith(id: string): void {
     const tier =
       this.demoted.size === 0
@@ -1028,9 +929,9 @@ const untracked = (): void => {}
 // The line for a rejection that is not the user's or the machine's: a vx bug.
 function internalErrorLine(id: string, err: unknown, message: string): string {
   const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
-  // A wrapped error's cause is the fact the reader needs (a
-  // CorruptArtifactError over an ENOENT is a race, not a bad
-  // archive); print it, since the stack is not printed here.
+  // A wrapped error's cause is what the reader needs (an ENOENT under a
+  // CorruptArtifactError is a race, not a bad archive), and the stack is not
+  // printed here.
   const cause = err instanceof Error && err.cause instanceof Error ? err.cause : undefined
   const because =
     cause === undefined
@@ -1041,11 +942,9 @@ function internalErrorLine(id: string, err: unknown, message: string): string {
 
 /**
  * Persistent tasks nobody asked for whose every dependant is a restore-tier
- * hit, or a group or server nobody asked for that only such dependants
- * stand behind: a group runs nothing, so `env: { dependsOn: ['dev'] }`
- * between the server and its hits booted the server on every warm run, and
- * `api` under an idle `web` serves nobody either. Those groups and servers
- * go in `groups`: the scheduler settles them as it settles a group.
+ * hit, directly or behind unrequested groups and servers: such a group (`env: {
+ * dependsOn: ['dev'] }`) booted the server on every warm run. Those groups and
+ * servers go in `groups`, settled as groups are.
  */
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,

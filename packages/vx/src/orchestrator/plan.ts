@@ -191,12 +191,12 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         ? undefined
         : await keyOf(computeTaskHash(hashArgs))
 
-      // Prediction keys off READS: a no-read policy re-executes every task,
-      // so nothing is probed. Whether that run is a miss or no cache at all
-      // is the WRITE axes': `--force` and `--cache-policy=local:w` save what they
-      // run, and the plan called them `no-cache`, the label a task with no
-      // `cache: true` gets (item 991). The probe below routes through the
-      // policy-aware cache layer, which itself respects read gating.
+      // Prediction keys off READS: a no-read policy re-executes every task, so
+      // nothing is probed. Whether that run is a miss or no cache at all is the
+      // WRITE axes': `--force` and `--cache-policy=local:w` save what they run,
+      // and the plan called them `no-cache`, the label a task with no `cache:
+      // true` gets. The probe below routes through the policy-aware cache
+      // layer, which itself respects read gating.
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
       const reads = policy.localRead || policy.remoteRead
       let status: CacheStatus

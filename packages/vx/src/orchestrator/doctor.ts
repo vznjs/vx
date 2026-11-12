@@ -228,8 +228,8 @@ async function collectWorkspaceInfo(
   // The lock's projects: none without a lock, or with one a run would
   // refuse, which is `vx lock`'s to report.
   const lock = lockReader(root)
-  // A lock a run refuses is said, not swallowed: "projects lock yes" with
-  // no task hid why every run failed (2026-10-28).
+  // A lock a run refuses is said, not swallowed: "projects lock yes" with no
+  // task hid why every run failed.
   let refused: string | null = null
   const held = await lock().then(
     () => true,
@@ -332,10 +332,10 @@ async function collectWorkspaceInfo(
     bun: Bun.version,
     bunSupported: !isUnsupportedBun(Bun.version),
     git,
-    // The one `git status` walk per run is the warm path's critical path on
-    // a large tree (~55 ms at 1000 projects, measured 2026-09-02). git's
-    // own caches make it near-free after the first run, and they are OFF by
-    // default — say so, since nothing else in a run would.
+    // The one `git status` walk per run is the warm path's critical path on a
+    // large tree (~55 ms at 1000 projects, measured). git's own caches make it
+    // near-free after the first run, and they are OFF by default — say so,
+    // since nothing else in a run would.
     gitStatusCache: statusCache,
     workspaceRoot: root,
     projects: metas.length,
@@ -441,7 +441,7 @@ function memoryFact(): InfoFacts['memory'] {
 /**
  * Whether git's fsmonitor / untracked cache are on. Reported as a fact,
  * not a remedy: interleaved A/B at 1000 projects measured neither moving
- * the warm run (STATUS, waves 5 and the 2026-09-03 refutations) — the
+ * the warm run — the
  * status walk's cost is git's own, and vx already overlaps it.
  */
 export function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {

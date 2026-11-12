@@ -1,10 +1,7 @@
 // History-based scheduling as a plugin: order ready tasks by their expected
 // REMAINING critical-path duration (own p50 + the longest chain of
-// dependents), learned from the local run history. This was core's opt-in
-// `predictive` mode until 2026-09-02 and core's one bundled plugin until
-// 2026-09-10; it is its own package now — declared like any other, paying
-// its history read only in workspaces that ask for it, and core ships no
-// plugin at all.
+// dependents), learned from the local run history. Its own package, so only
+// a workspace that declares it pays for the history read.
 //
 // Cache hits are NOT modelled as zero-cost: predicting cache state needs
 // the key and a probe, which the scheduler handles at run time (a confirmed
@@ -89,17 +86,17 @@ export interface VxHistoryOptions {
    */
   readonly url?: string
   /**
-   * Headers every request to `url` carries, for a proxy in front of it
-   * (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
-   * Access service token, 2026-10-25). An unset value is left out;
-   * `authorization` stays the CI token's.
+   * Headers every request to `url` carries, for a proxy in front of it (`{
+   * 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an Access
+   * service token). An unset value is left out; `authorization` stays the CI
+   * token's.
    */
   readonly headers?: Record<string, string | undefined>
   /**
    * The CI issuer whose tokens `url` takes, as they name it
-   * (`https://token.actions.githubusercontent.com`), and the repository at
-   * it, `org/name`: required with a server. The run's query names them
-   * (2026-10-25: the user names them, nothing guesses).
+   * (`https://token.actions.githubusercontent.com`), and the repository at it,
+   * `org/name`: required with a server. The run's query names them (the user
+   * names them, nothing guesses).
    */
   readonly issuer?: string
   readonly repository?: string
@@ -112,19 +109,18 @@ const DEFAULT_WINDOW = 20
 /** The longest ref a history server takes in a query (its PROTOCOL.md). */
 const REF_MAX = 512
 
-// Each option is read in ONE place that a run's hooks and `vx history`
-// share: two copies of each let either drift unseen (item 805).
+// Each option is read in ONE place that a run's hooks and `vx history` share:
+// two copies of each let either drift unseen.
 const windowOf = (options: VxHistoryOptions): number =>
   usable(options.window, true) ? options.window : DEFAULT_WINDOW
 
 /**
- * A number option's value when it is one: finite and above zero (a whole
- * number where `integer`). `memory: Number(process.env.X)` with X unset
- * is NaN, and against a NaN budget no reservation ever fits, so every
- * task that reserved memory waited for an idle machine: the run went
- * serial and said nothing. A NaN `headroom` dropped every learned
- * reservation. Each bad value is the default instead, named by
- * `numberWarnings`, as `assume` does (item 930).
+ * A number option's value when it is one: finite and above zero (a whole number
+ * where `integer`). `memory: Number(process.env.X)` with X unset is NaN, and
+ * against a NaN budget no reservation ever fits, so every task that reserved
+ * memory waited for an idle machine: the run went serial and said nothing. A
+ * NaN `headroom` dropped every learned reservation. Each bad value is the
+ * default instead, named by `numberWarnings`, as `assume` does.
  */
 function usable(v: unknown, integer = false): v is number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 && (!integer || Number.isInteger(v))
@@ -167,7 +163,7 @@ function numberWarnings(options: VxHistoryOptions, warn: (m: string) => void): v
  * or 0: a declared nothing, over what history learned. A NaN
  * (`Number(process.env.X)`, X unset) held a task alone and every
  * reserving task beside it waited — the NaN summed into what runs — so the
- * run went serial and said nothing (G-4's class). A bad axis is not
+ * run went serial and said nothing. A bad axis is not
  * declared, named by `numberWarnings`.
  */
 function declaredOf(
@@ -215,12 +211,12 @@ const memoryBudgetMb = (options: VxHistoryOptions): number =>
   usable(options.memory) ? options.memory : Math.floor(machineMemoryBytes() / MB)
 
 /**
- * The `assume` durations that are numbers from 0 to 2^53: a larger one
- * summed along a chain to Infinity, which core refuses too. A NaN
- * (`Number(process.env.X)` with X unset) became a NaN weight and a string
- * (an untyped `.mjs` config) string weights, and core refused both as a
- * UserError: an ordering hint failed the run (item 930). The rest are
- * dropped by name, as a broken history read costs only the ordering.
+ * The `assume` durations that are numbers from 0 to 2^53: a larger one summed
+ * along a chain to Infinity, which core refuses too. A NaN
+ * (`Number(process.env.X)` with X unset) became a NaN weight and a string (an
+ * untyped `.mjs` config) string weights, and core refused both as a UserError:
+ * an ordering hint failed the run. The rest are dropped by name, as a broken
+ * history read costs only the ordering.
  */
 function assumptions(
   options: VxHistoryOptions,
@@ -780,14 +776,14 @@ export interface ResourceEstimate {
 }
 
 /**
- * What each task should reserve, from its history: memory is the largest
- * peak RSS in the window times `headroom`, rounded UP to 64 MB and omitted
- * under one step (nothing worth packing). Cores are never learned: the
- * parallelism a build shows is what the machine let it have (1.0× beside
- * three others, 2.0× alone), reserving the solo reading packs a four-core
- * box two wide, and that idles cores through every single-threaded phase —
- * 160 s against 132 s on 92 real builds (2026-09-15). `reservations` may
- * still declare `cpus`. Tasks with no execution in the window are absent.
+ * What each task should reserve, from its history: memory is the largest peak
+ * RSS in the window times `headroom`, rounded UP to 64 MB and omitted under one
+ * step (nothing worth packing). Cores are never learned: the parallelism a
+ * build shows is what the machine let it have (1.0× beside three others, 2.0×
+ * alone), reserving the solo reading packs a four-core box two wide, and that
+ * idles cores through every single-threaded phase — 160 s against 132 s on 92
+ * real builds. `reservations` may still declare `cpus`. Tasks with no execution
+ * in the window are absent.
  */
 export function resourceEstimates(
   nodes: ReadonlyMap<string, TaskNode>,

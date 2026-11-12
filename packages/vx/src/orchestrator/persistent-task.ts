@@ -42,10 +42,10 @@ import {
 const READY_NOTICE_MS = 10_000
 
 /**
- * A server is keyed on its inputs like any task, so a cached dependant
- * behind a dev server re-runs when the server's sources change; with none
- * it has no key and the dependant always runs (A-17). A server the watch
- * loop keeps up is keyed too: its dependant folds the key either way.
+ * A server is keyed on its inputs like any task, so a cached dependant behind a
+ * dev server re-runs when the server's sources change; with none it has no key
+ * and the dependant always runs. A server the watch loop keeps up is keyed too:
+ * its dependant folds the key either way.
  */
 export function serverKey(args: ExecuteArgs): Promise<string | undefined> | string | undefined {
   if (args.noDependants === true) return undefined
@@ -92,8 +92,8 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   const hash = await serverKey(args)
 
   // Every dependant starts it where it runs (`ServerSpec`): nothing to spawn
-  // here, and nothing that ran (2026-10-22: nothing runs on a
-  // distributed run's orchestrator).
+  // here, and nothing that ran (nothing runs on a distributed run's
+  // orchestrator).
   if (args.carried === true)
     return {
       node,
@@ -106,16 +106,14 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     }
 
   // The args after `--` reach a server as they reach any task. A readyWhen
-  // server once got none — "so the matcher sees the unmodified output",
-  // though the args change the command, not what the matcher reads — and
-  // `vx run dev -- --port 4000` on the documented Vite task dropped the
-  // port in silence (item 1060).
+  // server once got none — "so the matcher sees the unmodified output", though
+  // the args change the command, not what the matcher reads — and `vx run dev
+  // -- --port 4000` on the documented Vite task dropped the port in silence.
   const plainCommand = withForwardArgs(step.command, effectiveForwardArgs)
   // A persistent task declaring `exec.sandbox` runs inside it like any
   // other: the same grants, the same walls. What it cannot have is the
   // violation REPORT — that reads the trace after the child exits, and a
   // server exits when the run tears it down. Enforced, not reported.
-  // (Until 2026-09-09 the block was accepted and silently ignored.)
   let command = plainCommand
   let bridgeTag: string | undefined
   let signalChannel = false
@@ -158,9 +156,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     bridgeTag = wrapped.tag
     signalChannel = wrapped.forwardsSignals
   }
-  // A server's output masked as a one-shot task's is (L-11); `readyWhen`
-  // is matched on the raw chunks, before this. Its held tail is flushed by
-  // the idle timer: a server never ends on the way to a flush.
+  // A server's output masked as a one-shot task's is; `readyWhen` is matched on
+  // the raw chunks, before this. Its held tail is flushed by the idle timer: a
+  // server never ends on the way to a flush.
   const serverSecrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   // A server writes until the run stops it: its window stays open.
   args.run.commandWindows?.open(
@@ -227,14 +225,13 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       },
     }
   }
-  // A server's 127, 126 or signal death needs the line a one-shot task's
-  // gets (execute-task.ts): a dev server whose tool sits in a sibling's
-  // bin said only "exit 127". Before ready or after it: `persistent: {}` is
-  // ready at its spawn, so its "not found" came after.
-  // A server is never traced, so the sandbox's refusals reach no report:
-  // a dev server that died on a file outside its grants read only as the
-  // tool's own "not found" (2026-10-03). Said for a sandboxed server that
-  // exited failing, which is the shape a refusal takes.
+  // A server's 127, 126 or signal death needs the line a one-shot task's gets
+  // (execute-task.ts): a dev server whose tool sits in a sibling's bin said
+  // only "exit 127". Before ready or after it: `persistent: {}` is ready at its
+  // spawn, so its "not found" came after. A server is never traced, so the
+  // sandbox's refusals reach no report: a dev server that died on a file
+  // outside its grants read only as the tool's own "not found". Said for a
+  // sandboxed server that exited failing, which is the shape a refusal takes.
   const exitNotes = (code: number | undefined, signal: string | number | undefined): string[] => {
     const lines: string[] = []
     const verdict =
@@ -260,18 +257,18 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   }
   const spawn = runPersistent(persistentOpts)
   // The host side of a port bridge lives exactly as long as the server:
-  // released on the child's exit, whether the run tore it down or it died.
-  // A placeholder the server never wrote goes back the same way.
-  // ONE sweep, shared by the exit handler and the readiness failure below
-  // — whichever asks second must get the SAME list. A second sweep cannot
-  // produce it: the first one's `rm` already happened, so the file is gone
-  // and `sweepPlaceholders` skips it. Collecting both lists and unioning
-  // them does not close that, because the union only covers an exit
-  // handler that FINISHED; one still between its `rm` and its return has
-  // published nothing yet, and the readiness path then reports no
-  // placeholder at all. The failure then says only "File exists", which is
-  // the message the hint exists to explain (seen under the gate's parallel
-  // load, and reproduced deterministically by delaying each side, item 450).
+  // released on the child's exit, whether the run tore it down or it died. A
+  // placeholder the server never wrote goes back the same way. ONE sweep,
+  // shared by the exit handler and the readiness failure below — whichever asks
+  // second must get the SAME list. A second sweep cannot produce it: the first
+  // one's `rm` already happened, so the file is gone and `sweepPlaceholders`
+  // skips it. Collecting both lists and unioning them does not close that,
+  // because the union only covers an exit handler that FINISHED; one still
+  // between its `rm` and its return has published nothing yet, and the
+  // readiness path then reports no placeholder at all. The failure then says
+  // only "File exists", which is the message the hint exists to explain (seen
+  // under the gate's parallel load, and reproduced deterministically by
+  // delaying each side).
   const sweptUntouched = placeholderSweeper(placeholders)
   if (bridgeTag !== undefined || placeholders.length > 0) {
     const tag = bridgeTag
@@ -318,12 +315,12 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // What the masked streams hold back (a tail that could begin a secret)
     // belongs above vx's own line: left to the idle flush, it came after it.
     serverMasked?.end()
-    // A server the run's stop killed while it started is aborted, as any
-    // task the stop kills (item 962): it read `failed (never ready:
-    // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
-    // aborts before it kills, so it is set by the time the child is gone.
-    // Read through a call: the early return above narrows `aborted` to
-    // false, but the stop can land during `spawn.ready`.
+    // A server the run's stop killed while it started is aborted, as any task
+    // the stop kills: it read `failed (never ready: exited, exit 130)` with a
+    // recap after every Ctrl-C. The stop aborts before it kills, so it is set
+    // by the time the child is gone. Read through a call: the early return
+    // above narrows `aborted` to false, but the stop can land during
+    // `spawn.ready`.
     if (isAborted(args.run.stopSignal)) {
       return {
         node,
@@ -352,18 +349,18 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       log.taskStderr(node, `${untouchedPlaceholderLine(node.projectDir, p)}\n`)
     }
     // The reason rides the outcome (every label reads it), and a child that
-    // exited before ready keeps its own exit code rather than a made-up 1.
-    // One the readiness timeout is killing reports the signal's, as an
-    // ordinary timeout does (X-24).
-    // A readiness timeout rejects once the group is gone (runner.ts), so a
-    // server that ignored the TERM holds no port into the next `vx watch`
-    // cycle, and a second signal here would cut a one-shot handler short.
+    // exited before ready keeps its own exit code rather than a made-up 1. One
+    // the readiness timeout is killing reports the signal's, as an ordinary
+    // timeout does. A readiness timeout rejects once the group is gone
+    // (runner.ts), so a server that ignored the TERM holds no port into the
+    // next `vx watch` cycle, and a second signal here would cut a one-shot
+    // handler short.
     const ready = err instanceof PersistentReadyError ? err : undefined
     return {
       node,
       status: 'failed',
-      // A server that traps the TERM and exits 0 still timed out, as a
-      // one-shot task that does so reports 143 (X-116).
+      // A server that traps the TERM and exits 0 still timed out, as a one-shot
+      // task that does so reports 143.
       exitCode:
         ready?.reason === 'timeout' && spawn.child !== undefined
           ? (await spawn.child.exited) || signalExitCode('SIGTERM')
@@ -377,10 +374,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     }
   }
 
-  // Ready only once the stop had landed: a trap that prints the marker on
-  // the way down, or a race with the signal. The stop is killing it (it
-  // is in `liveChildren`), and it served nobody, as a one-shot that exits
-  // 0 on the stop is aborted (item 962).
+  // Ready only once the stop had landed: a trap that prints the marker on the
+  // way down, or a race with the signal. The stop is killing it (it is in
+  // `liveChildren`), and it served nobody, as a one-shot that exits 0 on the
+  // stop is aborted.
   if (isAborted(args.run.stopSignal)) {
     return {
       node,

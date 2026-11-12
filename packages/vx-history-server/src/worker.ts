@@ -62,7 +62,7 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 
 /**
  * The issuer's keys through the data center's cache: a fresh isolate read
- * GitHub on its first token, and one slow answer failed it 502 (2026-10-29).
+ * GitHub on its first token, and one slow answer failed it 502.
  * `caches.default` is read at each call, as the bucket is per request.
  */
 const edgeKeys = cachedFetchJson({

@@ -1,7 +1,6 @@
-// The run in progress, for `vx last --live` (2026-10-28): an agent that
-// started `vx run` in the background asks what runs, what already failed
-// and what it was warned of while the run goes on; the history holds a
-// run only once it ended.
+// The run in progress, for `vx last --live`: an agent that started `vx run` in
+// the background asks what runs, what already failed and what it was warned of
+// while the run goes on; the history holds a run only once it ended.
 //
 // The run answers on a unix socket beside its run lock (run-lock.ts),
 // `<lock>.sock`: in this user's own lock directory, so no other user

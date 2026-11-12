@@ -44,10 +44,10 @@ export function messageParts(message: string): RefusalParts {
 }
 
 /**
- * `✗ <verb>  <headline>` with what is wrong, why, and the fix under it.
- * `headline` set: that is the status line and the refusal's own headline
- * joins what is wrong (`vx lock  lock not written`). `usedBy`: the configs
- * a refusal framed in a file they import reaches, said once for all.
+ * `✗ <verb> <headline>` with what is wrong, why, and the fix under it.
+ * `headline` set: that is the status line and the refusal's own headline joins
+ * what is wrong (`vx lock lock not written`). `usedBy`: the configs a refusal
+ * framed in a file they import reaches, said once for all.
  */
 export function refusalNotice(
   verb: string,

@@ -1,8 +1,8 @@
-// `--affected` per task (2026-10-04). The diff seeds the tasks it
-// reaches; a requested task runs when its `dependsOn` closure holds one.
-// So a change reaches another project only along a task edge: `web#test`
-// behind `^build` runs when `ui#build` (or what it depends on) is reached,
-// and a spec edit `ui#build`'s inputs leave out stops at `ui`'s own tasks.
+// `--affected` per task. The diff seeds the tasks it reaches; a requested task
+// runs when its `dependsOn` closure holds one. So a change reaches another
+// project only along a task edge: `web#test` behind `^build` runs when
+// `ui#build` (or what it depends on) is reached, and a spec edit `ui#build`'s
+// inputs leave out stops at `ui`'s own tasks.
 
 import path from 'node:path'
 import type { WorkspaceRules } from '../config.js'
@@ -197,7 +197,7 @@ export function affectedRoots(
   const reached = new Map<string, boolean>()
   // Post-order on an explicit stack: a closure is as deep as the graph, and
   // a recursion per edge threw `RangeError` on a chain the builder takes
-  // (item 737's 50,000; ~15,000 sufficed here). A frame holds the next dep
+  // (~15,000 sufficed). A frame holds the next dep
   // to ask, -1 before the task itself is.
   const reaches = (root: string): boolean => {
     const stack: Array<[id: string, next: number]> = [[root, -1]]
@@ -248,9 +248,9 @@ export function affectedRoots(
 }
 
 /**
- * The requested tasks `--affected` keeps, in their order: one the user
- * named (`pkg#task`), one in a project another include selected outright
- * (X-10), and one whose closure the change reaches.
+ * The requested tasks `--affected` keeps, in their order: one the user named
+ * (`pkg#task`), one in a project another include selected outright, and one
+ * whose closure the change reaches.
  */
 export function keptByAffected<R extends { project: string; task: string }>(
   nodes: ReadonlyMap<string, TaskNode>,

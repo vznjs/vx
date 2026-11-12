@@ -3,11 +3,10 @@
 // classes are honoured the way `vx` honours them: a UserError is one line
 // on stderr, anything else is a crash worth a stack.
 //
-// Only what every core release exports is imported before the release
-// check: `bun x` keeps the @vzn/vx already in its install directory beside
-// a newer vx-migrate (a peer range it does not enforce), and a static
-// import of the mapper crashed on a missing export there (Growth,
-// 2026-10-16).
+// Only what every core release exports is imported before the release check:
+// `bun x` keeps the @vzn/vx already in its install directory beside a newer
+// vx-migrate (a peer range it does not enforce), and a static import of the
+// mapper crashed on a missing export there (Growth).
 
 import path from 'node:path'
 import * as core from '@vzn/vx'

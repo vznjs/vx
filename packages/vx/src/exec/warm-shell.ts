@@ -1,12 +1,12 @@
-// A task's shell, started before the task is asked for. A slot that frees
-// on a cold run starts its next task at once, and sh's own exec was part of
-// that turn: 200 `sleep 0.02` took 4.4 ms each past their sleep spawned
-// fresh, 2.7 ms in a shell already waiting (2026-11-01). The spare holds
-// no task's directory or env: it waits on a pipe, and the task's script,
-// written when it is taken, moves it to the task's directory and exports
-// the task's env before the command runs, so each task still has a shell
-// of its own (its CPU and memory are the shell's) and vx keeps no process
-// beyond a run. Linux only, where a task's pipes are vx's own descriptors.
+// A task's shell, started before the task is asked for. A slot that frees on a
+// cold run starts its next task at once, and sh's own exec was part of that
+// turn: 200 `sleep 0.02` took 4.4 ms each past their sleep spawned fresh, 2.7
+// ms in a shell already waiting. The spare holds no task's directory or env: it
+// waits on a pipe, and the task's script, written when it is taken, moves it to
+// the task's directory and exports the task's env before the command runs, so
+// each task still has a shell of its own (its CPU and memory are the shell's)
+// and vx keeps no process beyond a run. Linux only, where a task's pipes are
+// vx's own descriptors.
 
 import { closeSync, writeSync } from 'node:fs'
 import { taskShell } from '../util/index.js'

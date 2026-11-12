@@ -1,8 +1,7 @@
-// What a run learns of its workers and servers, kept as tasks are
-// (2026-11-11: "treat them as a task", definition "based on their
-// definition and worker name"): each size and server is a measure core
-// keeps in history and a history plugin shares, read back next run by its
-// definition. A size changed (cores, memory, platform, runner) starts over.
+// What a run learns of its workers and servers, kept as tasks are: each size
+// and server is a measure core keeps in history and a history plugin shares,
+// read back next run by its definition. A size changed (cores, memory,
+// platform, runner) starts over.
 
 import { taskDefinitions, type Measure, type TaskNode } from '@vzn/vx'
 

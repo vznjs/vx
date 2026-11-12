@@ -91,10 +91,10 @@ export interface EventBus {
 
 export function createEventBus(): EventBus {
   // Replaced, never mutated: an emit walks the list it started with, so a
-  // subscriber that unsubscribes itself (an embedder's `off()` on
-  // `run:end`) no longer shifts the next one past the event — the terminal
-  // renderer after it missed `run:end` (C-77). A subscriber added during
-  // an emit hears the next event, not this one.
+  // subscriber that unsubscribes itself (an embedder's `off()` on `run:end`) no
+  // longer shifts the next one past the event — the terminal renderer after it
+  // missed `run:end`. A subscriber added during an emit hears the next event,
+  // not this one.
   let subscribers: readonly RunEventSubscriber[] = []
   return {
     emit(event) {
@@ -143,9 +143,9 @@ export function busLogger(bus: EventBus): Logger {
   let ended = false
   let stopped = false
   let done = false
-  // A status line carries plugin warnings, and a remote layer's warning
-  // quotes the server's reply, which may echo what it was sent (L-40).
-  // Built again once a plugin's keychain answered: its token is in no env.
+  // A status line carries plugin warnings, and a remote layer's warning quotes
+  // the server's reply, which may echo what it was sent. Built again once a
+  // plugin's keychain answered: its token is in no env.
   let secrets: SecretMask | null = null
   let built = -1
   const masked = (line: string): string => {

@@ -1,10 +1,10 @@
 // .vx/projects.lock.json — frozen resolved-config lockfile.
 //
-// `vx lock` finds every project's vx.config.*, evaluates each in the
-// CURRENT environment and freezes the resolved objects, by directory, into
+// `vx lock` finds every project's vx.config.*, evaluates each in the CURRENT
+// environment and freezes the resolved objects, by directory, into
 // `.vx/projects.lock.json` at the workspace root. Every run loads configs from
-// it and never evaluates one (2026-10-14); only `vx lock` writes
-// it. See docs/design/config-lock-2026-06.md.
+// it and never evaluates one; only `vx lock` writes it. See
+// docs/design/config-lock-2026-06.md.
 //
 // Verification asymmetry (deliberate):
 //   - runs TRUST the lock: no staleness check, no schema validation,
@@ -52,17 +52,17 @@ export interface Lockfile {
    */
   nestedWorkspaces?: string[]
   /**
-   * The plugin `project` stage as `vx lock` ran it. A run reads each
-   * recorded project's config from here and runs no hook, whatever plugins
-   * the workspace declares now: a mapping (`turbo()`, `nx()`) is made by
-   * `vx lock` only (2026-11-11). Absent when no plugin fills the stage.
+   * The plugin `project` stage as `vx lock` ran it. A run reads each recorded
+   * project's config from here and runs no hook, whatever plugins the workspace
+   * declares now: a mapping (`turbo()`, `nx()`) is made by `vx lock` only.
+   * Absent when no plugin fills the stage.
    */
   projectStage?: ProjectStageLock
   /**
-   * The plugin `discover` stage as `vx lock` ran it: the projects it added,
-   * the names it gave and the edges it declared. A run applies this to the
-   * locked projects and runs no hook, whatever plugins the workspace
-   * declares now (2026-11-11). Absent when no plugin fills the stage.
+   * The plugin `discover` stage as `vx lock` ran it: the projects it added, the
+   * names it gave and the edges it declared. A run applies this to the locked
+   * projects and runs no hook, whatever plugins the workspace declares now.
+   * Absent when no plugin fills the stage.
    */
   discoverStage?: DiscoverStageLock
   /** Written by `writeLockfile` from the bytes; never read off the object. */
@@ -106,7 +106,7 @@ export function lockfilePath(root: string): string {
   return path.join(root, LOCKFILE_NAME)
 }
 
-/** What a run says when a crash came from a hand-broken lock entry (2026-10-14). */
+/** What a run says when a crash came from a hand-broken lock entry. */
 export const LOCK_INVALID = `${LOCKFILE_NAME} is invalid, run \`vx lock\``
 
 /**
@@ -487,7 +487,7 @@ function pooledOut(projects: Record<string, LockedProject>, stage?: ProjectStage
           ),
         } as ProjectConfig)
   }
-  // Entries, not assignment: a directory named `__proto__` set the prototype (D-152).
+  // Entries, not assignment: a directory named `__proto__` set the prototype.
   const written: Pooled = {
     projects: Object.fromEntries(
       Object.entries(projects).map(([dir, p]) => [dir, { ...p, config: pooled(p.config) }]),
@@ -527,10 +527,9 @@ function taskKeysSorted(key: string, value: unknown): unknown {
 }
 
 /**
- * Written beside its name and renamed over it: `Bun.write` truncates in
- * place, so a run, or `vx watch` woken by the write itself (item 971),
- * could read an empty or half-written lock and fail on "not valid JSON"
- * (item 972).
+ * Written beside its name and renamed over it: `Bun.write` truncates in place,
+ * so a run, or `vx watch` woken by the write itself, could read an empty or
+ * half-written lock and fail on "not valid JSON".
  */
 export function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   return writeAllOrNone([lockfileWrite(root, lock)], root)
@@ -575,7 +574,7 @@ export function frozenProjectConfigs(
 ): ProjectConfig[] {
   return metas.map((meta) => {
     const dir = lockKey(root, meta.dir)
-    // Own entries only: `constructor` read Object's, "locked" at undefined (D-152).
+    // Own entries only: `constructor` read Object's, "locked" at undefined.
     const entry = Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : undefined
     if (entry === undefined) {
       throw new UserError(

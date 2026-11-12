@@ -22,9 +22,9 @@ export async function snapshot(
   const head = (await git(['rev-parse', '--verify', '-q', 'HEAD^{commit}'], root))?.trim()
   if (head === undefined || head === '') return none
   // The working tree's tracked files staged into a copy of the index, which
-  // leaves the index and the working tree as they are. `git stash create`
-  // did the same, but refused an intent-to-add entry (`git add -N`), and
-  // HEAD stood in for the changes (2026-10-28).
+  // leaves the index and the working tree as they are. `git stash create` did
+  // the same, but refused an intent-to-add entry (`git add -N`), and HEAD stood
+  // in for the changes.
   const [top, index] =
     (
       await git(
@@ -38,10 +38,10 @@ export async function snapshot(
     const env = { GIT_INDEX_FILE: path.join(dir, 'index') }
     try {
       await copyFile(index, env.GIT_INDEX_FILE)
-      // The copy keeps the index's mtime (as core's refreshedIndex): git
-      // trusts an entry's stat only while its file is older than the index,
-      // and a fresh mtime took a same-size edit made in the tick the index
-      // was written for clean, its old blob in the tree (2026-10-29).
+      // The copy keeps the index's mtime (as core's refreshedIndex): git trusts
+      // an entry's stat only while its file is older than the index, and a
+      // fresh mtime took a same-size edit made in the tick the index was
+      // written for clean, its old blob in the tree.
       const st = await stat(index)
       await utimes(env.GIT_INDEX_FILE, st.atime, st.mtime)
     } catch {
@@ -50,9 +50,9 @@ export async function snapshot(
     }
     await unflag(top, env)
     // The executable bit as on disk, which core keys from an lstat under
-    // `core.fileMode=false` too: there `add -u` staged no `chmod +x`,
-    // workers checked the file out 644, and saved what it built under the
-    // key of its 755 (2026-11-08).
+    // `core.fileMode=false` too: there `add -u` staged no `chmod +x`, workers
+    // checked the file out 644, and saved what it built under the key of its
+    // 755.
     if (
       (await git([...UNSPARSE, '-c', 'core.fileMode=true', 'add', '-u', '--', ':/'], root, env)) ===
       undefined
@@ -62,8 +62,8 @@ export async function snapshot(
     if (tree === undefined || tree === '') return none
     const was = (await git(['rev-parse', `${head}^{tree}`], root))?.trim()
     if (tree === was) return { commit: head, tree }
-    // The commit is nobody's, so it needs no one's identity: a CI runner
-    // with none made `git stash create` fail (2026-10-28).
+    // The commit is nobody's, so it needs no one's identity: a CI runner with
+    // none made `git stash create` fail.
     const commit = (
       await git(['commit-tree', tree, '-p', head, '-m', 'vx dte'], root, IDENTITY)
     )?.trim()
@@ -74,10 +74,10 @@ export async function snapshot(
 }
 
 /**
- * The tracked files `snap` changed from the `HEAD` it was made on, sorted,
- * at most `CHANGED_NAMED + 1`: what a worker refused for another tree names
- * (a prepare's install rewrote bun.lock, and the refusal gave two hashes,
- * 2026-11-11). No spawn when none changed.
+ * The tracked files `snap` changed from the `HEAD` it was made on, sorted, at
+ * most `CHANGED_NAMED + 1`: what a worker refused for another tree names (a
+ * prepare's install rewrote bun.lock, and the refusal gave two hashes). No
+ * spawn when none changed.
  */
 export async function changedFiles(
   root: string,
@@ -95,13 +95,12 @@ export async function changedFiles(
 }
 
 /**
- * Each tracked file a git filter of this machine checked out other than
- * the commit holds it (`text`, `eol`, `ident`, `filter`,
- * `working-tree-encoding`, `core.autocrlf`), written back as the commit's
- * bytes; the paths written. The run keys its disk's bytes and refuses a
- * task that keys a file the commit holds otherwise, so these are the bytes
- * its key read: a worktree that smudged LF to CRLF built CRLF output under
- * the key of the LF file, a stale hit (2026-11-08).
+ * Each tracked file a git filter of this machine checked out other than the
+ * commit holds it (`text`, `eol`, `ident`, `filter`, `working-tree-encoding`,
+ * `core.autocrlf`), written back as the commit's bytes; the paths written. The
+ * run keys its disk's bytes and refuses a task that keys a file the commit
+ * holds otherwise, so these are the bytes its key read: a worktree that smudged
+ * LF to CRLF built CRLF output under the key of the LF file, a stale hit.
  */
 export async function unfilter(root: string): Promise<string[]> {
   const top = (await git(['rev-parse', '--show-toplevel'], root))?.trim()
@@ -222,10 +221,9 @@ async function filtered(top: string, paths: string[]): Promise<string[]> {
 }
 
 /**
- * The workspace config core loads (the first `.vx/workspace.*` under
- * `root`), when `tree` lacks it: every worker started without one failed
- * `unknown command: dte`, and started again three times, before a task
- * said why (2026-11-07).
+ * The workspace config core loads (the first `.vx/workspace.*` under `root`),
+ * when `tree` lacks it: every worker started without one failed `unknown
+ * command: dte`, and started again three times, before a task said why.
  */
 export async function untrackedWorkspace(root: string, tree: string): Promise<string | undefined> {
   for (const name of WORKSPACE_FILES) {
@@ -242,10 +240,10 @@ const WORKSPACE_FILES = PROJECT_CONFIG_FILENAMES.map((n) => `.vx/workspace${path
 
 /**
  * The copy's assume-unchanged and skip-worktree flags cleared, so `add -u`
- * takes those files from disk: it passed over them, and the tree kept
- * HEAD's blob of a file core's key hashed as edited, a stale hit
- * (2026-11-07). A skip-worktree file off disk (a sparse checkout's) stays
- * flagged: its bytes are the index's, not a deletion.
+ * takes those files from disk: it passed over them, and the tree kept HEAD's
+ * blob of a file core's key hashed as edited, a stale hit. A skip-worktree file
+ * off disk (a sparse checkout's) stays flagged: its bytes are the index's, not
+ * a deletion.
  */
 async function unflag(top: string, env: Record<string, string>): Promise<void> {
   const listed = await git([...UNSPARSE, 'ls-files', '-v', '-z'], top, env)

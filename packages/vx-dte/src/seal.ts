@@ -44,11 +44,10 @@ const GITHUB = 'https://token.actions.githubusercontent.com'
 const TOKEN_TRY_MS = 3_000
 
 /**
- * An OIDC token for `audience` from GitHub's token endpoint. A 5xx, a
- * dropped connection or a try that hangs past 3 s is tried again, three
- * tries in 10 s at most: one 503 ended a worker before it joined (PR #4146,
- * 2026-10-23), and one held request spent the whole budget (PR #4887,
- * 2026-10-31).
+ * An OIDC token for `audience` from GitHub's token endpoint. A 5xx, a dropped
+ * connection or a try that hangs past 3 s is tried again, three tries in 10 s
+ * at most: one 503 ended a worker before it joined, and one held request spent
+ * the whole budget.
  */
 export async function oidcToken(url: string, bearer: string, audience: string): Promise<string> {
   const until = performance.now() + 10_000
@@ -153,11 +152,10 @@ async function handshake(proof: Proof, initiator: boolean, run: string): Promise
 const REPLAY = Symbol('replay')
 
 /**
- * The size a body is padded to, so the relay learns its size class, not
- * its size: a power of two from 64 bytes, then whole transport messages.
- * From 256, each `ran`, `end` and `report`, mostly some 100 bytes, sealed
- * in two to eight times its size, and their order and timing already
- * say which is which (2026-11-06).
+ * The size a body is padded to, so the relay learns its size class, not its
+ * size: a power of two from 64 bytes, then whole transport messages. From 256,
+ * each `ran`, `end` and `report`, mostly some 100 bytes, sealed in two to eight
+ * times its size, and their order and timing already say which is which.
  */
 function padded(n: number): number {
   if (n >= MAX_PLAINTEXT) return Math.ceil(n / MAX_PLAINTEXT) * MAX_PLAINTEXT
@@ -199,11 +197,11 @@ class Session {
   /**
    * `body` sealed and handed to `wire`, in the order sends were asked for:
    * sealing is async, and a big body sealed first reached the wire after a
-   * small one sealed next (a worker's `end` before its `ran`, 2026-10-26).
-   * The wire numbers a send as it is handed over, so only the handing waits.
-   * Bodies that wait together go as one: each was a send, a relay frame
-   * and its answer of its own. A body of more parts than a frame holds
-   * goes over several sends, each but the last led by `+`.
+   * small one sealed next (a worker's `end` before its `ran`). The wire numbers
+   * a send as it is handed over, so only the handing waits. Bodies that wait
+   * together go as one: each was a send, a relay frame and its answer of its
+   * own. A body of more parts than a frame holds goes over several sends, each
+   * but the last led by `+`.
    */
   send(body: unknown, wire: (sealed: string[]) => Promise<void>): Promise<void> {
     const json = JSON.stringify(body)
@@ -295,9 +293,9 @@ class Session {
 }
 
 /**
- * Transport messages per send: six of 64 KiB, in base64, pass the wire's
- * 512 KiB frame, and a task's env of 1.3 MB sealed as one send passed the
- * relay's 1 MiB (2026-11-08).
+ * Transport messages per send: six of 64 KiB, in base64, pass the wire's 512
+ * KiB frame, and a task's env of 1.3 MB sealed as one send passed the relay's 1
+ * MiB.
  */
 const SEND_PARTS = 5
 /** Leads each send of a body but its last. */
@@ -313,12 +311,12 @@ const GROUP_BYTES = 64 * 1024
 /** The lead byte and its sender's history length; a compressed one's frame length next. */
 const HEADER = 5
 /**
- * The last this many bytes the orchestrator sealed to a worker are its
- * next body's zstd dictionary: each batch sent its tasks' env and paths
- * again. 32 KiB sealed no less for 1.7 times the CPU (1000 tasks,
- * 2026-11-06). A worker's bodies go without one: a dictionary costs some
- * 100 µs a body (node:zlib's per-call context), and the orchestrator
- * opening each in turn ran a 1000-task run 0.3 s longer.
+ * The last this many bytes the orchestrator sealed to a worker are its next
+ * body's zstd dictionary: each batch sent its tasks' env and paths again. 32
+ * KiB sealed no less for 1.7 times the CPU (1000 tasks). A worker's bodies go
+ * without one: a dictionary costs some 100 µs a body (node:zlib's per-call
+ * context), and the orchestrator opening each in turn ran a 1000-task run 0.3 s
+ * longer.
  */
 const HISTORY_BYTES = 16 * 1024
 

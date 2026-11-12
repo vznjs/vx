@@ -48,8 +48,8 @@ export async function claimOutput(
   for (const plugin of plugins) {
     if (plugin.output === undefined) continue
     try {
-      // Bounded as telemetry's hook is: one that never settled held the
-      // run before its first task until the loop drained, exit 1 (item 921).
+      // Bounded as telemetry's hook is: one that never settled held the run
+      // before its first task until the loop drained, exit 1.
       let logger: Logger | undefined
       const ms = teardownTimeoutMs()
       const arrived = await settleWithin(

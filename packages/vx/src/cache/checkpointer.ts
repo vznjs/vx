@@ -1,11 +1,11 @@
 // The index's WAL checkpoints, on a thread of their own while a run saves.
 // SQLite checkpoints on the committing connection once the WAL passes 1,000
-// pages: on a cold run that was the main thread, the scheduler's, copying
-// pages and waiting on two fsyncs a checkpoint, stalls of up to 750 ms in
-// a cold 8,002-task run (2026-11-06). Here a second connection checkpoints
-// PASSIVE on a timer: it never waits on a lock and never blocks the writer,
-// which appends as before; the run's connection checkpoints nothing until
-// its close, which finds the WAL nearly copied.
+// pages: on a cold run that was the main thread, the scheduler's, copying pages
+// and waiting on two fsyncs a checkpoint, stalls of up to 750 ms in a cold
+// 8,002-task run. Here a second connection checkpoints PASSIVE on a timer: it
+// never waits on a lock and never blocks the writer, which appends as before;
+// the run's connection checkpoints nothing until its close, which finds the WAL
+// nearly copied.
 
 import { SQLITE_FCNTL_PERSIST_WAL } from '../index-db/index.js'
 

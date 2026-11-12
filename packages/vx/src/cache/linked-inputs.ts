@@ -1,13 +1,12 @@
-// A symlinked input keys the content behind it, as Nx reads a linked file
-// where it points (2026-10-16: "Do like nx"). Its own fold stays the
-// blob of its target STRING (file-hashes.ts), so a retarget to equal bytes
-// moves the key; this is what follows it. The target string alone let an
-// edit behind the link replay the old output (Growth, 2026-10-16), wherever
-// the target lies: in the project, elsewhere in the workspace, outside it.
-// A directory link keys every file beneath it, tracked or not, where Nx
-// does not enter one: an edit there is an edit to what the task reads.
-// `--affected` (workspace/affected.ts) and `vx watch` (cli/watch.ts) read
-// the same targets.
+// A symlinked input keys the content behind it, as Nx reads a linked file where
+// it points. Its own fold stays the blob of its target STRING (file-hashes.ts),
+// so a retarget to equal bytes moves the key; this is what follows it. The
+// target string alone let an edit behind the link replay the old output
+// (Growth), wherever the target lies: in the project, elsewhere in the
+// workspace, outside it. A directory link keys every file beneath it, tracked
+// or not, where Nx does not enter one: an edit there is an edit to what the
+// task reads. `--affected` (workspace/affected.ts) and `vx watch`
+// (cli/watch.ts) read the same targets.
 
 import { readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'

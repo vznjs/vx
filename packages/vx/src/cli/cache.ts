@@ -38,10 +38,10 @@ export { parseDuration, parseSize } from '../util/index.js'
 
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
- * different VERB rather than a missing one — saying so where the user typed
- * it beats sending them to a help screen that lists only `clean` (walked the
- * first-run path, 2026-09-20). A typo of `clean` itself gets the same
- * nearest-neighbour hint a task, flag or project name gets.
+ * different VERB rather than a missing one — saying so where the user typed it
+ * beats sending them to a help screen that lists only `clean` (walked the
+ * first-run path). A typo of `clean` itself gets the same nearest-neighbour
+ * hint a task, flag or project name gets.
  */
 const CACHE_ELSEWHERE: Record<string, string> = {
   stats: '`vx info` reports the cache directory, its entry count and its size',
@@ -70,7 +70,7 @@ function cacheSubHint(sub: string): string {
   // Own keys only: `vx cache constructor` printed `Object`'s source.
   if (Object.hasOwn(CACHE_ELSEWHERE, sub)) return ` — ${CACHE_ELSEWHERE[sub]}`
   const best = nearest(sub, ['clean'])
-  // `clean` is the one subcommand: name it when nothing is near (M-58).
+  // `clean` is the one subcommand: name it when nothing is near.
   return best === undefined ? '. Its one subcommand is `vx cache clean`' : `. Did you mean ${best}?`
 }
 
@@ -211,14 +211,12 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   } catch (err) {
     return refuse('cache clean', args, (err as Error).message, errorCode(err))
   }
-  // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a
-  // `config` plugin's edit of it — `vx run` and `vx cache clean` must
-  // operate on the same directory or prune silently no-ops against the
-  // wrong path.
-  // A dry run only reads: it never resets the index (item 896).
-  // The store `vx run` keeps entries in (`~/.vx/<id>/cache`): with the
-  // index deleted, a prune followed nothing and said 0 while every entry
-  // stayed restorable (X-17).
+  // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a `config`
+  // plugin's edit of it — `vx run` and `vx cache clean` must operate on the
+  // same directory or prune silently no-ops against the wrong path. A dry run
+  // only reads: it never resets the index. The store `vx run` keeps entries in
+  // (`~/.vx/<id>/cache`): with the index deleted, a prune followed nothing and
+  // said 0 while every entry stayed restorable.
   let dir: string
   let storeRoot: string | null = null
   if (parsed.cacheDir !== undefined) dir = namedCacheDir(parsed.cacheDir)
@@ -230,12 +228,11 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   if (parsed.olderThanMs === undefined && parsed.maxBytes === undefined) {
     return clear(args, root, dir, storeRoot, parsed)
   }
-  // A workspace that never ran has nothing to prune, and opening the cache
-  // to find that out made it: `.vx/cache` with a database and a
-  // `.gitignore`, where item 900 had held the dry run to making nothing
-  // (and a read-only checkout was refused as unwritable instead). So has a
-  // directory holding nothing vx wrote (`--cache-dir build`): opened, it got
-  // an index and a `*` .gitignore that hid the user's files from git.
+  // A workspace that never ran has nothing to prune, and opening the cache to
+  // find that out made it: `.vx/cache` with a database and a `.gitignore`
+  // (and a read-only checkout was refused as unwritable). So has a directory holding
+  // nothing vx wrote (`--cache-dir build`): opened, it got an index and a
+  // `*`.gitignore that hid the user's files from git.
   const dry = parsed.dry === true
   const json = parsed.format === 'json'
   if (vxCacheEntries(dir).length === 0 && (storeRoot === null || !existsSync(storeRoot))) {
@@ -268,8 +265,8 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
       // A prune deletes rows and artifacts; a cache this user cannot write is
       // refused up front with the directory named, as a run refuses it, rather
       // than dying in the first DELETE with SQLite's "readonly database" and a
-      // stack (an unprivileged user on a root-owned `.vx`, 2026-09-16). A dry
-      // run only reads, and reads a read-only cache fine.
+      // stack (an unprivileged user on a root-owned `.vx`). A dry run only
+      // reads, and reads a read-only cache fine.
       if (!parsed.dry) cache.assertWritable()
       const opts: { olderThanMs?: number; maxBytes?: number; dry?: boolean } = {}
       if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
@@ -318,7 +315,7 @@ function printPruned(
   )
 }
 
-/** `✓ vx cache clean  freed 1.3 GB`, `› … would free 1.3 GB (dry run)`, or nothing to free. */
+/** `✓ vx cache clean freed 1.3 GB`, `› … would free 1.3 GB (dry run)`, or nothing to free. */
 function freedStatus(dry: boolean, bytes: number, any: boolean): ui.Block {
   if (!any) return ui.status('info', 'vx cache clean', `nothing to free${dry ? ' (dry run)' : ''}`)
   return dry
@@ -335,13 +332,13 @@ export interface ClearResult {
 }
 
 /**
- * `vx cache clean` with no bound: delete the cache directory (its index,
- * run history and any artifacts kept beside it) and the store its index
- * names (`~/.vx/<id>/cache`, shared by the repository's checkouts), as
- * `nx reset` does. `--global` takes every store under `~/.vx` too. The
- * workspace config, the lock and `.vx/.gitignore` sit outside them all.
- * A directory the user named (`cache.dir`) may be shared (`build/`,
- * `~/.cache`): there only what vx wrote goes (item 968).
+ * `vx cache clean` with no bound: delete the cache directory (its index, run
+ * history and any artifacts kept beside it) and the store its index names
+ * (`~/.vx/<id>/cache`, shared by the repository's checkouts), as `nx reset`
+ * does. `--global` takes every store under `~/.vx` too. The workspace config,
+ * the lock and `.vx/.gitignore` sit outside them all. A directory the user
+ * named (`cache.dir`) may be shared (`build/`, `~/.cache`): there only what vx
+ * wrote goes.
  */
 async function clear(
   args: readonly string[],

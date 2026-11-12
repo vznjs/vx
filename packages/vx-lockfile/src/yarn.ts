@@ -30,13 +30,12 @@ export interface Lockfile {
   readonly names: ReadonlyMap<string, readonly string[]>
   /**
    * `name@npm:range` → the entries of every `patch:` over it (berry only):
-   * Yarn's builtin compat patches (`resolve`, `typescript`, `fsevents`,
-   * item 1074) and a root `resolutions` patch (`yarn patch-commit -s`).
-   * The workspace keeps asking for the plain descriptor, which keys the
-   * unpatched entry, while a patched one is what Yarn installs. A
-   * workspace asking for the plain descriptor beside one that names the
-   * patch itself reaches it too: a patch edit re-keys it once too often,
-   * never too seldom.
+   * Yarn's builtin compat patches (`resolve`, `typescript`, `fsevents`) and a
+   * root `resolutions` patch (`yarn patch-commit -s`). The workspace keeps
+   * asking for the plain descriptor, which keys the unpatched entry, while a
+   * patched one is what Yarn installs. A workspace asking for the plain
+   * descriptor beside one that names the patch itself reaches it too: a patch
+   * edit re-keys it once too often, never too seldom.
    */
   readonly patches: ReadonlyMap<string, readonly string[]>
   readonly global: string
@@ -80,12 +79,12 @@ function parseBerry(text: string): Lockfile {
     if (keys === '__metadata') continue
     const e = record(raw) ?? {}
     const resolution = typeof e['resolution'] === 'string' ? e['resolution'] : keys
-    // Every field of the entry, so a field this parser has not heard of
-    // moves what reaches the entry: reading the resolution and checksum
-    // alone dropped the root workspace's `dependenciesMeta` (`built`,
-    // `unplugged`), which governs the whole install (item 933). Its
-    // dependency lists too: the edges say where each lands, not under
-    // which name, and two aliases swapping targets kept the key.
+    // Every field of the entry, so a field this parser has not heard of moves
+    // what reaches the entry: reading the resolution and checksum alone dropped
+    // the root workspace's `dependenciesMeta` (`built`, `unplugged`), which
+    // governs the whole install. Its dependency lists too: the edges say where
+    // each lands, not under which name, and two aliases swapping targets kept
+    // the key.
     const material = e
     entries.set(resolution, {
       name: resolution.slice(0, resolution.indexOf('@', 1)),
@@ -155,10 +154,10 @@ function parseClassic(text: string): Lockfile {
     const id = keys[0]!
     // The descriptors an entry satisfies are part of what the file records:
     // `foo@^1.0.0` moving from the 1.0.0 entry to the 1.1.0 one (a
-    // deduplication, `yarn upgrade`) changes what a workspace installs
-    // while every entry's version, url and integrity stay as they were, and
-    // the digest did not move (item 902). Classic has no workspace entries
-    // to carry that edge, so each entry carries its own descriptors.
+    // deduplication, `yarn upgrade`) changes what a workspace installs while
+    // every entry's version, url and integrity stay as they were, and the
+    // digest did not move. Classic has no workspace entries to carry that edge,
+    // so each entry carries its own descriptors.
     entries.set(id, {
       name: '',
       version: fields['version'] ?? '',
@@ -313,8 +312,8 @@ function resolveDescriptor(
   name: string,
   range: string,
 ): readonly string[] {
-  // A patched descriptor reaches the patched entries Yarn installs as well
-  // as the plain one it keys (item 1074).
+  // A patched descriptor reaches the patched entries Yarn installs as well as
+  // the plain one it keys.
   const withPatch = (descriptor: string, id: string): readonly string[] => {
     const patched = lock.patches.get(npmDefault(descriptor))
     return patched === undefined ? [id] : [id, ...patched.filter((p) => p !== id)]
@@ -336,12 +335,12 @@ function resolveDescriptor(
     const bare = lock.descriptors.get(`${name}@npm:${range}`)
     if (bare !== undefined) return withPatch(`${name}@npm:${range}`, bare)
   }
-  // A descriptor the file does not key: a root `resolutions` override
-  // rewrote it (to a `patch:`, another range), so what is installed is an
-  // entry nothing in the file points at. Edges to nowhere left that entry
-  // outside every workspace's reach, and a patch edit re-keyed nothing
-  // (item 903). Every entry of the name, as for a catalog: a bump of any
-  // of them moves the workspace, never a bump of none.
+  // A descriptor the file does not key: a root `resolutions` override rewrote
+  // it (to a `patch:`, another range), so what is installed is an entry nothing
+  // in the file points at. Edges to nowhere left that entry outside every
+  // workspace's reach, and a patch edit re-keyed nothing. Every entry of the
+  // name, as for a catalog: a bump of any of them moves the workspace, never a
+  // bump of none.
   return lock.names.get(name) ?? []
 }
 
@@ -730,8 +729,8 @@ export function importerDigests(
     extend(lock, index, edges, extensions)
   }
   const digests = reachDigests({ material, edges })
-  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
-  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32 bits
+  // of a seed, so two lockfiles' globals could share one.
   const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
   const out = new Map<string, string>()
   const fold = (h: string) => Bun.hash.xxHash3(`${global}\0${h}`).toString(16).padStart(16, '0')

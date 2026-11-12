@@ -1,15 +1,12 @@
-// Stable-key derivation, shared by remote-prefetch and the local
-// short-circuit. Both need to identify the tasks whose cache key is
-// provably independent of any upstream task's OUTPUTS — those are the
-// only tasks safe to probe / restore ahead of the schedule. Factored
-// out so the two callers can never drift on the stability gate.
+// Stable-key derivation, shared by remote prefetch and the local short-circuit
+// so they cannot drift: both need the tasks whose key cannot depend on any
+// upstream's outputs, the only ones safe to probe or restore ahead of the
+// schedule.
 //
-// A task's key is "stable" only if its inputs can't be altered by an
-// upstream's outputs (a `inputs.files` glob that could match a
-// sibling's declared output has a PRELIMINARY key until that upstream
-// runs — probing it would target the wrong artifact). Unstable tasks
-// fall back to lazy read-through in execute-task, which is always
-// correct. The check is conservative: when unsure, treat as unstable.
+// A key is stable only if no upstream's outputs can alter its inputs (an
+// `inputs.files` glob that may match a sibling's output has a preliminary key
+// until it runs). Unstable tasks fall back to lazy read-through in
+// execute-task. When unsure, unstable.
 
 import path from 'node:path'
 import {
@@ -74,58 +71,38 @@ export interface StableKey {
 }
 
 /**
- * Walk the graph in topological order, deriving every task's key the
- * SAME way execute-task does (folding upstream keys via the synthetic
- * {node, hash} outcomes filterUpstreamHashes / computeGroupHash read)
- * and classifying each as stable / unstable. Returns the stable,
- * cache-enabled, non-group tasks paired with their keys.
+ * Walk the graph in topo order, deriving each task's key as execute-task does
+ * and classifying it stable or unstable. Returns the stable, cached, non-group
+ * tasks with their keys.
  *
- * Reuses the run's `hashCache`, so execute-task's later computeTaskHash
- * for the same node hits the memo (the task config hash, file lists) —
- * the key bytes are derived here, the heavy per-project hashing is
- * shared. No cache layer is touched: keys only.
+ * Reuses the run's `hashCache`, so execute-task's later hash hits the memo.
+ * Touches no cache layer.
  */
 export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<StableKey[]> {
   const order = topoOrder(args.nodes)
   const late = probesAfterWrites(args.nodes, args.workspaceRoot)
   const keyById = args.keys ?? new Map<string, string>()
   const unstableById = new Set<string>()
-  // Transitive-upstream output producers, accumulated in topo order — the
-  // inputs to the stability gate. A task's key is preliminary if an upstream
-  // writes where its inputs read, and that reach is TRANSITIVE: a producer
-  // reached through a no-output intermediate still poisons the key, so each
-  // dep's accumulated producers fold forward.
-  //   - outputProjects: the project names of every upstream task declaring
-  //     outputs.files (project-relative outputs land in the producer's
-  //     own dir), and of every upstream with no `cache: true` that may write
-  //     in its own project (`undeclaredWriteReach`, item 743). A bitset over
-  //     project indexes: a union per dep was a string Set copied tasks ×
-  //     deps × projects times, 101 ms of a 513 ms warm run at 476 packages
-  //     (item 744).
-  //   - wsOutputUpstream: any upstream declares outputs.workspaceFiles
-  //     (root-anchored, boundary-ignoring outputs), or has no `cache: true`
-  //     and a sandbox write grant elsewhere in the workspace, or may rewrite
-  //     a root file a plugin claims (a root `pnpm install`): every key folds
-  //     what the claimant took from it, once per run.
-  //   - rewritersById / unfoldedById: the projects of every upstream CACHED
-  //     task that may rewrite its own inputs in place (a formatter declaring
-  //     no outputs; `commandWriteReach`), and the subset this task's key does
-  //     not fold. A key that folds the rewriter's covers what it writes — its
-  //     writes are its inputs', which its key names — so only a reader
-  //     folding no path to it (`tasks: []`) is preliminary. A rewriter an
-  //     unfolded dependency covered is still uncovered here: its key is not
-  //     in this one.
-  //   - wsRewriters: the same for a cached rewriter whose reach is every
-  //     project (a write grant elsewhere in the workspace, or a claimed root
-  //     file, `mayWriteFingerprint`); one this key does not fold makes it
-  //     preliminary. A dependency this key folds needs no pass-through here:
-  //     a keyed task with such a rewriter unfolded is unstable itself, and
-  //     instability is inherited below.
-  //   - wideById: the subset of outputProjects whose writes are undeclared
-  //     (`undeclaredWriteReach`), so they may land anywhere in the project;
-  //     a sandboxed one's land only in its write grants (`boundedWriters`).
-  //     A declared-output producer reaches a same-project reader only where
-  //     its output globs can meet the reader's inputs (`outputsOf`, A-20).
+  // Transitive-upstream output producers in topo order, the stability gate's
+  // inputs. The reach is transitive: a producer behind a no-output intermediate
+  // still poisons the key.
+  // - outputProjects: projects of every upstream declaring `outputs.files`, or
+  //   uncached and able to write its own project (`undeclaredWriteReach`). A
+  //   bitset: a string Set per dep was 101 ms of a 513 ms warm run.
+  // - wsOutputUpstream: any upstream with `outputs.workspaceFiles`, an uncached
+  //   one with a write grant elsewhere, or one that may rewrite a
+  //   plugin-claimed root file (a root `pnpm install`).
+  // - rewritersById / unfoldedById: projects of upstream cached tasks that may
+  //   rewrite their own inputs (a formatter; `commandWriteReach`), and the
+  //   subset this key does not fold. A key folding the rewriter's covers its
+  //   writes, so only a reader folding no path to it (`tasks: []`) is
+  //   preliminary.
+  // - wsRewriters: the same for a cached rewriter reaching every project
+  //   (`mayWriteFingerprint`).
+  // - wideById: producers whose writes are undeclared and may land anywhere in
+  //   the project (a sandboxed one's only in its grants, `boundedWriters`). A
+  //   declared producer reaches a same-project reader only where its globs meet
+  //   the reader's (`outputsOf`).
   const projects = new ProjectIndex(args.nodes)
   const outputProjectsById = new Map<string, ProjectSet>()
   const wideById = new Map<string, ProjectSet>()
@@ -157,10 +134,9 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   const rewritersById = new Map<string, ProjectSet>()
   const unfoldedById = new Map<string, ProjectSet>()
   const wsRewriters = new Set<string>()
-  // A cached rewriter matters only to a key that leaves a dependency's key
-  // out: a `inputs.tasks` filter. With none in the graph every edge
-  // folds and the sets above stay empty, so they are not built (about 2 ms,
-  // median, of a 27 ms memoised walk over the 3,000-task bench; item 750).
+  // A cached rewriter matters only to a key that leaves a dependency out (an
+  // `inputs.tasks` filter). With none in the graph the sets stay empty and are
+  // not built.
   let anyUnfolded = false
   for (const n of args.nodes.values()) {
     if (n.config.inputs?.tasks !== undefined) {
@@ -188,11 +164,10 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     const node = args.nodes.get(id)!
     const upstream = synthUpstream(node, args.nodes, keyById)
 
-    // Fold every dep's accumulated producers + the dep's own declared
-    // outputs into this node's transitive-upstream producer sets. They
-    // depend on the deps alone, and at 5,000 projects a `^build` reader
-    // shares its list with its project's group: 61,600 unions of 157-word
-    // sets were 52 ms of a warm run, half of them repeats.
+    // Fold each dep's accumulated producers and declared outputs into this
+    // node's sets. They depend on the deps alone, so a `^build` reader shares
+    // its project group's list: at 5,000 projects the repeats were half of 52
+    // ms.
     const depsKey = node.deps.length === 1 ? node.deps[0]! : node.deps.join('\0')
     let up = upstreamByDeps.get(depsKey)
     if (up === undefined) {
@@ -210,10 +185,9 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         const depOut = depNode.config.outputs
         if ((depOut?.files?.length ?? 0) > 0) outputs.add(depNode.projectName)
         if ((depOut?.workspaceFiles?.length ?? 0) > 0) wsOutputUpstream = true
-        // An uncached producer is held to no outputs, yet a same-project reader
-        // after it (`tasks: []` decouples the key, not the order) read the
-        // bytes it wrote: its key taken up front was the pre-producer one, and
-        // the fourth run of seeds A,B,B,A replayed B over A (turborepo#13788).
+        // An uncached producer declares no outputs, yet a same-project reader
+        // after it (`tasks: []` decouples the key, not the order) read what it
+        // wrote: the up-front key was the pre-producer one (turborepo#13788).
         const reach = undeclaredWriteReach(depNode, args.workspaceRoot)
         if (reach === 'project') {
           outputs.add(depNode.projectName)
@@ -242,9 +216,9 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       const depNode = args.nodes.get(dep)
       if (!depNode) continue
       const cached = depNode.config.cache === true
-      // The cached twin: a formatter rewriting its own input ahead of a
-      // reader that folds no key of it replayed seed B's build under seed A
-      // on the fourth run, the same way (item 750).
+      // The cached twin: a formatter rewriting its own input ahead of a reader
+      // that folds no key of it replayed seed B's build under seed A on the
+      // fourth run, the same way.
       const rewrites = cached ? commandWriteReach(depNode, args.workspaceRoot) : 'none'
       const rewritesWs =
         cached &&
@@ -290,11 +264,10 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     }
 
     if (isGroupTask(node)) {
-      // Groups have no exec/cache; they only fold upstream keys so
-      // dependents that filter inputs.tasks through the group still
-      // cascade (and forward their producers, above). They inherit
-      // instability from any unstable member.
-      // `computeGroupKey`, with the unkeyed branch kept synchronous.
+      // Groups only fold upstream keys, so dependents filtering through a group
+      // still cascade; they forward producers and inherit any member's
+      // instability. `computeGroupKey`, with the unkeyed branch kept
+      // synchronous.
       if (node.config.inputs === undefined) {
         const key = computeGroupHash(upstream)
         keyById.set(id, key)
@@ -364,12 +337,10 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 
 /**
  * The keys `deriveStableKeys` would make, from a derivation under the same
- * graph, configs and ignored outputs (`readRunDelta`): every task's key
- * is the one remembered unless it is `dirty`, and a dirty task's is derived
- * as the walk derives it, over its deps' keys, in the walk's order. Which
- * tasks are stable and which uncached keys are kept are the remembered
- * verdicts: they read only what the global token names. `keys` is updated
- * in place.
+ * graph, configs and ignored outputs (`readRunDelta`): remembered unless
+ * `dirty`; a dirty task's is derived over its deps' keys in walk order.
+ * Stability and kept uncached keys are the remembered verdicts. `keys` is
+ * updated in place.
  */
 export async function rederiveKeys(
   args: Omit<DeriveStableKeysArgs, 'keys' | 'groupKeys'>,
@@ -399,10 +370,9 @@ export async function rederiveKeys(
 }
 
 /**
- * A project's positive outputs indexed by literal head, so a reader finds
- * the ones its inputs reach (`workspaceInputsReach`: a head equal to, above
- * or below an input's) without testing each: one project of 9000 tasks
- * tested 81 million pairs, 6 s of a plan (2026-10-25).
+ * Positive outputs indexed by literal head, so a reader finds those its inputs
+ * reach without testing each: one 9,000-task project tested 81 million pairs, 6
+ * s of a plan.
  */
 class ProjectOutputs {
   private readonly globs: string[] = []
@@ -447,10 +417,9 @@ class ProjectOutputs {
 }
 
 /**
- * The outputs a reader's inputs reach, root-relative, each with its project
- * dir and project-relative glob (a reader's own project's, and any
- * project's for a `workspaceFiles` reader): the outputs the gate would key
- * a reader late over, unless git ignores them (`askIgnoredOutputs`).
+ * The outputs a reader's inputs reach, root-relative, with project dir and
+ * project-relative glob: those the gate would key the reader late over, unless
+ * git ignores them (`askIgnoredOutputs`).
  */
 export function gatedOutputs(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -511,17 +480,13 @@ export function gatedOutputs(
 }
 
 /**
- * Asks git which of `gated` it ignores, started beside the run's
- * enumeration; the call it returns settles `files.ignoredOutputs` once that
- * enumeration is in, whose listing says whether a tracked or re-included
- * file lies under a glob. Nothing gated: no spawn.
+ * Asks git which of `gated` it ignores, beside the run's enumeration; settles
+ * `files.ignoredOutputs` once that is in. Nothing gated: no spawn.
  *
- * The same spawn asks whether git ignores a new file directly in each
- * directory a task of `nodes` names outright (`namedOutright`), which the
- * key asks `GitFilesCache.newFilesIgnored` of: answered later, it was a
- * synchronous `check-ignore` on the key path. A probe git refuses (one
- * past a symlink, or inside a submodule) fails the whole spawn, so the
- * outputs are then asked again alone and those directories later, as before.
+ * The same spawn asks whether git ignores a new file in each directory a task
+ * names outright (`namedOutright`), which was a synchronous `check-ignore` on
+ * the key path. A probe git refuses (past a symlink, in a submodule) fails the
+ * whole spawn, so the outputs are then asked alone and the directories later.
  */
 export function askIgnoredOutputs(
   gated: ReadonlyMap<string, { projectDir: string; glob: string }>,
@@ -598,24 +563,19 @@ function readableOutputs(
 const probesAfterWritesOf = new WeakMap<ReadonlyMap<string, TaskNode>, ReadonlySet<string>>()
 
 /**
- * The cached tasks whose `inputs.runtime` / `workspaceRuntime` probes
- * may read what an upstream writes this run while the key folds nothing of
- * that upstream (X-34). A probe is a shell command and may read anywhere,
- * so no glob bounds it, and its answer taken before the writer ran is the
- * previous run's bytes. Such a task is never stable (`deriveStableKeys`
- * takes no key for it), and its probes are answered for it alone, after
- * its upstream ran (`ComputeHashArgs.probesAfterWrites`).
+ * Cached tasks whose `inputs.runtime` / `workspaceRuntime` probes may read what
+ * an upstream writes this run while the key folds nothing of it. A probe may
+ * read anywhere, so an answer taken before the writer ran is the previous
+ * run's. Such a task is never stable, and its probes are answered after its
+ * upstream ran (`probesAfterWrites`).
  *
- * A writer is any upstream whose command may write (`commandWriteReach`)
- * or that declares outputs. A key that folds a cached writer's covers what
- * it writes, as for a rewriter in `deriveStableKeys`: an early answer then
- * costs a spurious miss on the run after the bytes change, never a stale
- * hit, and such a probe keeps the run's shared answer — one spawn per run,
- * not per task. So only a writer the key does not fold, transitively
- * (`tasks: []`, a filter that leaves it out, an order-only edge), or an
- * uncached one, makes the probe wait.
+ * A writer is any upstream that may write (`commandWriteReach`) or declares
+ * outputs. A key folding a cached writer's costs at worst a spurious miss,
+ * never a stale hit, so its probe keeps the shared answer (one spawn per run).
+ * Only a writer the key does not fold, transitively, or an uncached one makes
+ * the probe wait.
  *
- * Once per graph: run, admission and both up-front passes ask the same map.
+ * Once per graph: every pass asks the same map.
  */
 export function probesAfterWrites(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -678,12 +638,10 @@ export function probesAfterWrites(
 }
 
 /**
- * Does this task's key fold the dependency's? What `computeTaskHash` folds
- * (`filterUpstreamHashes` over the same synthetic outcomes); an unkeyed
- * group, which has no filter, folds every keyed member. A keyed group is
- * keyed by `computeTaskHash`, filter and all: read as folding everything, its
- * `tasks: []` hid a cached rewriter below it, and its reader was restored
- * under the key taken before the rewrite.
+ * Does this task's key fold the dependency's? What `computeTaskHash` folds; an
+ * unkeyed group folds every keyed member. A keyed group has its filter: read as
+ * folding everything, its `tasks: []` hid a cached rewriter and its reader
+ * restored the pre-rewrite key.
  */
 function foldedBy(
   node: TaskNode,
@@ -721,29 +679,15 @@ function synthUpstream(
 }
 
 /**
- * Conservative stability check: does any TRANSITIVE-upstream task whose
- * outputs could land where this task reads its inputs make this task's
- * key preliminary? The producers are pre-folded by `deriveStableKeys`
- * (`upstreamOutputProjects` = projects declaring `outputs.files`
- * upstream; `hasWsOutputUpstream` = any `outputs.workspaceFiles`
- * upstream), so a producer reached through a no-output intermediate is
- * caught too.
- *
- *   - Project-relative inputs (default `**` / anything project-relative)
- *     read THIS project's dir, so a same-project upstream's
- *     `outputs.files` — direct or transitive — makes the key
- *     preliminary. Project boundaries are hard, so only SAME-project
- *     outputs can reach a project-relative input.
- *   - `inputs.workspaceFiles` is boundary-free: it can read ANY
- *     project's dir (so any upstream `outputs.files`, in any project,
- *     matters) or a root-anchored location (so any upstream
- *     `outputs.workspaceFiles` matters). Either → preliminary key. This
- *     is the reach the earlier per-dep check missed — it only compared a
- *     dep's `outputs.workspaceFiles`, never a dep's `outputs.files`.
- *
- * Either case → unstable → skip prefetch AND probe reuse (execute-task
- * recomputes the key lazily once the upstream ran). When in doubt,
- * unstable.
+ * Does any transitive-upstream producer whose outputs could land where this
+ * task reads make its key preliminary? Producers are pre-folded by
+ * `deriveStableKeys`, so one behind a no-output intermediate is caught.
+ * - Project-relative inputs read this project's dir, so only a same-project
+ *   `outputs.files` producer reaches them (boundaries are hard).
+ * - `inputs.workspaceFiles` is boundary-free: any project's `outputs.files` or
+ *   any `outputs.workspaceFiles` may reach it. Unstable means no prefetch and
+ *   no probe reuse; execute-task keys lazily after the upstream ran. When in
+ *   doubt, unstable.
  */
 export function dependsOnSiblingOutputs(
   node: TaskNode,
@@ -763,23 +707,18 @@ export function dependsOnSiblingOutputs(
   // A task with no inputs has no key to take up front.
   if (declared === undefined) return false
   if (upstreamOutputProjects.has(node.projectName)) {
-    // A same-project producer whose writes are all declared reaches this
-    // task's inputs only where the globs can meet: a `test` reading `src/**`
-    // after a `build` writing `dist/**` keys the same before and after it,
-    // and classing it unstable hashed every such key twice more at 5,000
-    // projects (A-20). Undeclared writes, and a rewriter this key does not
-    // fold, may land anywhere: those stay project-wide.
+    // A same-project producer with all writes declared reaches these inputs
+    // only where the globs meet: `test` over `src/**` after `build` writing
+    // `dist/**` keys the same either way (classing it unstable hashed every
+    // such key twice more at 5,000 projects). Undeclared writes, and an
+    // unfolded rewriter, stay project-wide.
     if (sameProject === undefined || sameProject.wide?.has(node.projectName) === true) return true
     const inputs = declared.files
     const outputs = sameProject.outputsOf.get(node.projectName) ?? []
     if (outputs.length === 0) return true
-    // An output the reader's own `!` inputs take back whole is not in its
-    // key: `['**/*', '!dist/**']` beside a `dist/**` producer keys the same
-    // before and after it, which is what `vx lock` asks a config to write
-    // (X-54).
-    // Nor is an output git ignores whole: a key reads only what git lists.
-    // Unless an entry starts inside it (`dist/**`): naming an ignored path
-    // makes it an input (`ignoredReach` in cache/inputs.ts).
+    // An output the reader's own `!` inputs take back whole is not in its key,
+    // nor one git ignores whole (a key reads only what git lists), unless an
+    // entry starts inside it (`ignoredReach` in cache/inputs.ts).
     const readable = withNamedIgnored(
       inputs,
       outputs,
@@ -788,10 +727,10 @@ export function dependsOnSiblingOutputs(
     const back = inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
     const reach = back.length === 0 ? readable : readable.filter((o) => !outputTakenBack(o, back))
     if (reach.length > 0 && workspaceInputsReach(inputs, reach.map(literalPrefix))) return true
-    // Nor where it WRITES inside another task's tree: restored ahead of
-    // that producer, its restore raced the producer's clean and extract
-    // (M-5; invariant 2 of docs/design/overlapping-outputs-2026-09.md).
-    // `outputsOf` holds this task's own globs too; set them aside once.
+    // Nor where it writes inside another task's tree: restored ahead of that
+    // producer, it raced the producer's clean and extract (invariant 2,
+    // docs/design/overlapping-outputs-2026-09.md). `outputsOf` holds this
+    // task's own globs; set them aside once.
     const own = node.config.outputs?.files ?? []
     if (own.length > 0) {
       const others = [...outputs]
@@ -802,30 +741,23 @@ export function dependsOnSiblingOutputs(
       if (others.length > 0 && workspaceInputsReach(own, others.map(literalPrefix))) return true
     }
   }
-  // A root-anchored output is boundary-IGNORING by design, so it can land
-  // inside THIS task's own project dir — where an ordinary project-relative
-  // input reads it. Neither other clause sees that: `upstreamOutputProjects`
-  // holds the PRODUCER's project, not this one, and the reader clause below
-  // requires this task to read workspace-anchored inputs, which it need not.
-  // That gap was a real stale hit (a producer writing `pkgs/app/gen/**` while
-  // `app` read `gen/**` project-relative), so the mere presence of a
-  // workspace-output producer upstream makes the key preliminary.
+  // A root-anchored output ignores boundaries, so it can land in this task's
+  // own dir, where a project-relative input reads it; neither other clause sees
+  // that. That gap was a real stale hit (`pkgs/app/gen/**` written, `gen/**`
+  // read by app), so any workspace-output producer upstream makes the key
+  // preliminary.
   if (hasWsOutputUpstream) return true
   const wsInputs = declared.workspaceFiles ?? []
   if (wsInputs.length > 0 && upstreamOutputProjects.size > 0) {
-    // Without the dirs the old answer stands: a workspace reader over any
-    // producer is preliminary. With them, only a reader whose globs can
-    // reach a producer's directory is. A Turbo-mapped workspace gives every
-    // task its `globalDependencies` as root literals (`turbo.json`), which
-    // reach no package — classing those as unstable hashed medusa's 83
-    // tasks twice and probed 76 of them lazily (2026-09-11).
+    // Without dirs, a workspace reader over any producer is preliminary; with
+    // them, only one whose globs reach a producer's directory. Turbo-mapped
+    // `globalDependencies` root literals reach no package (medusa: 83 tasks
+    // hashed twice).
     if (dirByProject === undefined) return true
-    // A producer whose writes are all declared reaches the reader only where
-    // its outputs can meet the globs, and not through an output git ignores
-    // whole that no entry names, as for a same-project reader: vueuse's
-    // `packages/core/**` readers keyed late over the ignored `index.json`
-    // metadata writes, and derived again after its restore (2026-11-11).
-    // Undeclared writes may land anywhere in the project: its directory.
+    // A producer with all writes declared reaches the reader only where its
+    // outputs meet the globs, and not through an output git ignores whole that
+    // no entry names: vueuse's readers keyed late over an ignored `index.json`.
+    // Undeclared writes: the whole project dir.
     const heads: string[] = []
     for (const p of upstreamOutputProjects) {
       const d = dirByProject.get(p)
@@ -876,12 +808,10 @@ function withNamedIgnored(
 }
 
 /**
- * Can any positive `workspaceFiles` entry match a path inside one of
- * `dirs` (workspace-relative project dirs)? An entry's reach is its
- * literal prefix — the segments before the first one holding a glob
- * metacharacter — and it reaches a dir when either is the other's
- * ancestor or equal. An entry with no literal prefix (`**\/*`) reaches
- * everything. Conservative on every unknown spelling.
+ * Can a positive `workspaceFiles` entry match a path in one of `dirs`? Its
+ * reach is its literal prefix (segments before the first glob); it reaches a
+ * dir when either is the other's ancestor or equal. No prefix (`**\/*`) reaches
+ * everything. Conservative on unknown spellings.
  */
 export function workspaceInputsReach(
   workspaceFiles: readonly string[],
@@ -1031,11 +961,8 @@ function topoOrder(nodes: ReadonlyMap<string, TaskNode>): string[] {
       else dependents.set(dep, [node.id])
     }
   }
-  // Kahn's algorithm with a head pointer instead of `queue.shift()` — a shift
-  // reindexes the whole array (O(N) each), making the walk O(N²) on a big
-  // graph. `out` doubles as the queue (every dequeued id is already in topo
-  // order); we only ever append and advance `head`. Same pattern as
-  // computeReverseDepCount / package-graph.
+  // Kahn's with a head pointer: `queue.shift()` reindexes the array, O(N²) on a
+  // big graph. `out` doubles as the queue.
   const out: string[] = []
   for (const [id, deg] of indegree) if (deg === 0) out.push(id)
   for (let head = 0; head < out.length; head++) {

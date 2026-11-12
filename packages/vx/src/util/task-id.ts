@@ -12,8 +12,7 @@
  *
  * A config's task name may not hold `#` (`taskNameProblem`), but an id also
  * arrives from run history and plugins, so the first-`#` rule is the one
- * the graph uses. The cache's run history read the same rule from a
- * private copy until item 646; one rule, one place.
+ * the graph uses; one rule, one place.
  */
 export function splitTaskId(id: string): [project: string, task: string] {
   const i = id.indexOf('#')

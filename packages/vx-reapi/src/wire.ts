@@ -31,13 +31,13 @@ import { ui } from '@vzn/vx'
  * ~216 KB on 1.4.0 rather than the hang disappearing.
  *
  * The default is therefore `SAFE_CHUNK_BYTES` (65535, the RFC 7540 default
- * initial window every peer must honour with no WINDOW_UPDATE at all), the
- * one size with no peer-dependence. 128 KB was the default and stalled a
- * 1 MiB write against bazel-remote in 2 of 12 fresh runs on Bun 1.4.2, each
- * costing the call's 30 s deadline before the downgrade below retried it;
- * 65535 stalled in none (F-20). It costs ~51% on a 32 MiB upload
- * (390 → 590 ms on loopback), far below one expected stall. A larger
- * `chunkBytes` stays available, with the downgrade as its net.
+ * initial window every peer must honour with no WINDOW_UPDATE at all), the one
+ * size with no peer-dependence. 128 KB was the default and stalled a 1 MiB
+ * write against bazel-remote in 2 of 12 fresh runs on Bun 1.4.2, each costing
+ * the call's 30 s deadline before the downgrade below retried it; 65535 stalled
+ * in none. It costs ~51% on a 32 MiB upload (390 → 590 ms on loopback), far
+ * below one expected stall. A larger `chunkBytes` stays available, with the
+ * downgrade as its net.
  *
  * Full probe matrix: `docs/design/plugin-executor-reapi-2026-08.md` §14.
  */
@@ -143,11 +143,11 @@ function assertBlobIntegrity(
 }
 
 /**
- * A zstd reply decoded no further than the size its digest declares, plus
- * one byte to tell "more" from "exactly": `Bun.zstdDecompressSync` expands
- * a frame to its end, and a 1 MiB batch entry or a ByteStream body of a
- * few KB expanded to GiBs before the size check ran (L-3). A body that
- * decodes past the digest is refused as it passes the bound.
+ * A zstd reply decoded no further than the size its digest declares, plus one
+ * byte to tell "more" from "exactly": `Bun.zstdDecompressSync` expands a frame
+ * to its end, and a 1 MiB batch entry or a ByteStream body of a few KB expanded
+ * to GiBs before the size check ran. A body that decodes past the digest is
+ * refused as it passes the bound.
  */
 async function unzstdBounded(data: Uint8Array, digest: Digest): Promise<Uint8Array> {
   const max = Number(digest.size_bytes)
@@ -260,9 +260,9 @@ const FIND_MISSING_ENTRY_OVERHEAD = 16
 const MAX_MESSAGE_BYTES = 256 * 1024 * 1024
 
 /**
- * The receive window the client offers, per stream and per connection.
- * HTTP/2's default 64 KiB moves one window per round trip: a read at 30 ms
- * round trip ran at 2 MB/s (8 MB in 3988 ms, 142 ms at 16 MiB; F-32).
+ * The receive window the client offers, per stream and per connection. HTTP/2's
+ * default 64 KiB moves one window per round trip: a read at 30 ms round trip
+ * ran at 2 MB/s (8 MB in 3988 ms, 142 ms at 16 MiB).
  */
 const FLOW_CONTROL_WINDOW = 16 * 1024 * 1024
 
@@ -522,7 +522,7 @@ export class ReapiClient {
     this.headers = opts.headers ?? {}
     // grpc-js refuses a metadata value outside printable ASCII on EVERY call
     // and quotes it in the error, so an auth header's secret reached each
-    // degrade warning (item 928). Refused once, here, by key alone.
+    // degrade warning. Refused once, here, by key alone.
     for (const [k, v] of Object.entries(this.headers)) {
       // A name too: refused on every call, it degraded the cache to misses
       // and read as an unreachable server to the executor. A `-bin` name
@@ -570,9 +570,9 @@ export class ReapiClient {
    * The wait before retry `attempt` of a cache-path call that failed with
    * `code`, or undefined to give up. A call that spends its retries on
    * UNAVAILABLE marks the server unreachable, and until a call succeeds the
-   * next ones give up at their first UNAVAILABLE, until a call succeeds or
-   * the server answers with a status of its own: a refused port cost every
-   * request 2.1 s of backoff, and a five-task run 24 s (J-74).
+   * next ones give up at their first UNAVAILABLE, until a call succeeds or the
+   * server answers with a status of its own: a refused port cost every request
+   * 2.1 s of backoff, and a five-task run 24 s.
    */
   private retryDelay(attempt: number, code: number | undefined): number | undefined {
     const unavailable = code === grpc.status.UNAVAILABLE
@@ -965,10 +965,10 @@ export class ReapiClient {
       batched += cost
     }
     if (batch.length > 0) jobs.push(() => this.batchUpdateBlobs(batch))
-    // UPLOAD_CONCURRENCY at once, not one after another: a grpc-go server
-    // grows its receive window from what it measures arriving, and one
-    // stream at a time held four 8 MB writes to 10.2 s through 15 ms each
-    // way, 0.49 s at once (F-34). The first failure stops the queue.
+    // UPLOAD_CONCURRENCY at once, not one after another: a grpc-go server grows
+    // its receive window from what it measures arriving, and one stream at a
+    // time held four 8 MB writes to 10.2 s through 15 ms each way, 0.49 s at
+    // once. The first failure stops the queue.
     let next = 0
     let failed = false
     const worker = async (): Promise<void> => {
@@ -1108,27 +1108,27 @@ export class ReapiClient {
         return
       } catch (err) {
         const code = (err as grpc.ServiceError).code
-        // ADAPTIVE DOWNGRADE. The Bun node:http2 flow-control defect is a
-        // RACE, not a boundary: chunk sizes above the RFC default initial
-        // window (65535) usually work and occasionally wedge — observed as a
-        // one-off DEADLINE_EXCEEDED at 128 KB on the same Bun that passed it
-        // hundreds of times. A deadline on a multi-message write therefore
-        // retries ONCE at SAFE_CHUNK_BYTES, the size never observed hanging,
-        // instead of failing the task over a lost coin-flip.
-        // Only a MULTI-message write can be the chunk race — a body that fit
-        // one message never exercised flow control between messages, so its
-        // deadline is the server's problem and re-chunking cannot help.
-        // The deadline has TWO spellings: this client's own timer
-        // (DEADLINE_EXCEEDED), or the server's. A grpc-go server (bazel-remote)
-        // arms a timer at the call's `grpc-timeout` and ends the stream with
-        // RST_STREAM(CANCEL), which grpc-js reports as `CANCELLED: Call
-        // cancelled`; whichever lands first names the error, and on a stalled
-        // write the server's usually does (item 1017: 5 of 6 against a grpc-go
-        // server that stopped reading). This client never cancels a write it
-        // reports — its own `cancel()` rethrows the error that caused it — so
-        // a CANCELLED at or past this attempt's deadline IS the deadline. The
-        // header carries `ceil(deadline - now)`, so the server's timer cannot
-        // fire before ours: no slack. An earlier CANCELLED is the server's own.
+        // ADAPTIVE DOWNGRADE. The Bun node:http2 flow-control defect is a RACE,
+        // not a boundary: chunk sizes above the RFC default initial window
+        // (65535) usually work and occasionally wedge — observed as a one-off
+        // DEADLINE_EXCEEDED at 128 KB on the same Bun that passed it hundreds
+        // of times. A deadline on a multi-message write therefore retries ONCE
+        // at SAFE_CHUNK_BYTES, the size never observed hanging, instead of
+        // failing the task over a lost coin-flip. Only a MULTI-message write
+        // can be the chunk race — a body that fit one message never exercised
+        // flow control between messages, so its deadline is the server's
+        // problem and re-chunking cannot help. The deadline has TWO spellings:
+        // this client's own timer (DEADLINE_EXCEEDED), or the server's. A
+        // grpc-go server (bazel-remote) arms a timer at the call's
+        // `grpc-timeout` and ends the stream with RST_STREAM(CANCEL), which
+        // grpc-js reports as `CANCELLED: Call cancelled`; whichever lands first
+        // names the error, and on a stalled write the server's usually does (5
+        // of 6 against a grpc-go server that stopped reading). This client
+        // never cancels a write it reports — its own `cancel()` rethrows the
+        // error that caused it — so a CANCELLED at or past this attempt's
+        // deadline IS the deadline. The header carries `ceil(deadline - now)`,
+        // so the server's timer cannot fire before ours: no slack. An earlier
+        // CANCELLED is the server's own.
         if (
           (code === grpc.status.DEADLINE_EXCEEDED ||
             (code === grpc.status.CANCELLED && Date.now() >= deadlineOf(bounds))) &&
@@ -1200,11 +1200,11 @@ export class ReapiClient {
           if (err) return reject(err)
           const committed = Number(res.committed_size ?? 0)
           // For a compressed upload the server reports the COMPRESSED byte
-          // count it accepted, so the equality only holds on the identity
-          // path; on the compressed path a non-zero commit is the signal.
-          // A server that already holds the blob ends a compressed write
-          // with `-1` (the spec's word for it); read as a short write, it
-          // failed the upload of an input two actions share (F-44).
+          // count it accepted, so the equality only holds on the identity path;
+          // on the compressed path a non-zero commit is the signal. A server
+          // that already holds the blob ends a compressed write with `-1` (the
+          // spec's word for it); read as a short write, it failed the upload of
+          // an input two actions share.
           const expected = compressed ? total : digest.size_bytes
           if (committed !== expected && !(compressed && (committed > 0 || committed === -1))) {
             return reject(new Error(`short write for ${digest.hash}: ${committed}/${expected}`))
@@ -1255,8 +1255,8 @@ export class ReapiClient {
   /**
    * Read a blob via ByteStream; `null` on NOT_FOUND. A transient status is
    * retried as a unary call's is (the read is whole and idempotent): one
-   * UNAVAILABLE reading a finished action's stdout or outputs failed the
-   * task after the action succeeded (item 919).
+   * UNAVAILABLE reading a finished action's stdout or outputs failed the task
+   * after the action succeeded.
    */
   async readBlob(digest: Digest): Promise<Uint8Array | null> {
     for (let attempt = 0; ; attempt++) {
@@ -1278,8 +1278,8 @@ export class ReapiClient {
       : `blobs/${digest.hash}/${digest.size_bytes}`
     const resource = `${this.instance ? `${this.instance}/` : ''}${segment}`
     const compressed = this.compression
-    // Refused as the bytes pass the bound, not once the server stops: a
-    // body that never ends held every chunk it sent (L-3).
+    // Refused as the bytes pass the bound, not once the server stops: a body
+    // that never ends held every chunk it sent.
     const bound = compressed ? wireBound(Number(digest.size_bytes)) : Number(digest.size_bytes)
     return new Promise((resolve, reject) => {
       const chunks: Uint8Array[] = []
@@ -1630,10 +1630,10 @@ export class ReapiClient {
 
   /**
    * `GetTree` — every Directory under `rootDigest`. The RPC is
-   * SERVER-STREAMING: one call carries every page, and `next_page_token`
-   * only names where a later call would resume. It went through the unary
-   * helper before (item 824), whose callback a streaming stub never calls,
-   * so every call hung until its deadline passed unheard.
+   * SERVER-STREAMING: one call carries every page, and `next_page_token` only
+   * names where a later call would resume. It went through the unary helper
+   * before, whose callback a streaming stub never calls, so every call hung
+   * until its deadline passed unheard.
    */
   async getTree(rootDigest: Digest): Promise<Directory[]> {
     const call = (this.svc.cas as unknown as Record<string, Function>)['getTree']!(
@@ -1714,7 +1714,7 @@ interface ExecuteOptions {
 
 const EXEC_STAGE = ['UNKNOWN', 'CACHE_CHECK', 'QUEUED', 'EXECUTING', 'COMPLETED'] as const
 
-/** `ExecuteOperationMetadata { stage = 1 (enum), action_digest = 2, ... }` */
+/** `ExecuteOperationMetadata { stage = 1 (enum), action_digest = 2,... }` */
 function decodeStage(buf: Uint8Array): string | undefined {
   let i = 0
   while (i < buf.length) {

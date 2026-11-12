@@ -1,15 +1,14 @@
 // The two package.json / path readings every mapper in this package shares.
 //
 // Both existed as per-file copies. `relPosix` had FOUR (migrate-turbo,
-// migrate-nx, turbo/turbo-map, nx-command), three identical and one that
-// mapped the same-directory case to `.` — a difference its own caller made
-// unreachable by returning early, which is the kind of divergence a copy
-// acquires quietly. `packageScripts` had two, and core guards the same read
-// while these did not (item 446).
+// migrate-nx, turbo/turbo-map, nx-command), three identical and one that mapped
+// the same-directory case to `.` — a difference its own caller made unreachable
+// by returning early, which is the kind of divergence a copy acquires quietly.
+// `packageScripts` had two, and core guards the same read while these did not.
 //
 // Neither divergence was reachable in a realistic workspace, which is why
-// this is consolidation rather than a fix. The reason to do it anyway is
-// item 445: one copy in this package HAD drifted into a defect, and the
+// this is consolidation rather than a fix. The reason to do it anyway:
+// one copy in this package HAD drifted into a defect, and the
 // cheapest moment to collapse a duplicate is before it does.
 
 import path from 'node:path'

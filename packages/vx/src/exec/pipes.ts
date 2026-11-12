@@ -79,13 +79,13 @@ export function heldPipe(): Int32Array | undefined {
 }
 
 /**
- * A task's stdout and stderr. Bun's `'pipe'` is a socketpair, and Linux
- * opens `/dev/stdout` through `/proc/self/fd/1`, which a socket refuses
- * (ENXIO): `echo x > /dev/stdout` and `cmd | tee /dev/stderr` failed in
- * every task, where a terminal or Turbo hands real pipes (X-113). So on
- * Linux vx makes the pipes (`pipe2` through `bun:ffi`) and hands the child
- * the write ends. macOS opens `/dev/fd/N` as a dup of the descriptor,
- * which a socket allows, so Bun's pipe stays there.
+ * A task's stdout and stderr. Bun's `'pipe'` is a socketpair, and Linux opens
+ * `/dev/stdout` through `/proc/self/fd/1`, which a socket refuses (ENXIO):
+ * `echo x > /dev/stdout` and `cmd | tee /dev/stderr` failed in every task,
+ * where a terminal or Turbo hands real pipes. So on Linux vx makes the pipes
+ * (`pipe2` through `bun:ffi`) and hands the child the write ends. macOS opens
+ * `/dev/fd/N` as a dup of the descriptor, which a socket allows, so Bun's pipe
+ * stays there.
  *
  * `held`: stdin is a pipe vx keeps open and never writes (a persistent
  * task's, schema.md), for the same reason: `cat /dev/stdin` on Bun's

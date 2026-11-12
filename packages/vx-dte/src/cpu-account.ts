@@ -1,8 +1,8 @@
-// Where a worker's machine spent its CPU while the worker served a run,
-// said once as it leaves, in its own log: its tasks, the worker itself, its
-// other children, and the processes that used the most besides. The run's
-// summary showed machines busier than their tasks (2.8 cores against 2.0,
-// 2026-10-24) and nothing said what the rest was.
+// Where a worker's machine spent its CPU while the worker served a run, said
+// once as it leaves, in its own log: its tasks, the worker itself, its other
+// children, and the processes that used the most besides. The run's summary
+// showed machines busier than their tasks (2.8 cores against 2.0) and nothing
+// said what the rest was.
 
 import { readFileSync } from 'node:fs'
 

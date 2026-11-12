@@ -1,5 +1,5 @@
 // An Nx target's `outputs` as vx's cache outputs: project globs and
-// workspace-root globs. Extracted from `buildTask` in item 606.
+// workspace-root globs.
 
 import path from 'node:path'
 import { isLiteralPattern } from '@vzn/vx'
@@ -13,13 +13,13 @@ interface NxOutputs {
 
 /**
  * Nx's `interpolate` for a path, as a workspace-relative one: `{workspaceRoot}`
- * is the root and `{projectRoot}` / `{projectName}` the project's, ANYWHERE
- * in the string — `{workspaceRoot}/coverage/{projectRoot}` is `@nx/jest`'s
- * output. Only a leading token was read before item 912, so that output
- * became the literal glob `coverage/{projectRoot}/**`, saved nothing, and a
- * hit restored nothing. Null when a token is left or the path leaves the
- * workspace; a brace set is no token (item 914 — 912 read one as a gap).
- * The project dir comes back masked: {@link withProjectDir} writes it in.
+ * is the root and `{projectRoot}` / `{projectName}` the project's, ANYWHERE in
+ * the string — `{workspaceRoot}/coverage/{projectRoot}` is `@nx/jest`'s output.
+ * Read as a leading token only, that output would be the literal glob
+ * `coverage/{projectRoot}/**`: it saves nothing and a hit restores nothing.
+ * Null when a token is left or the path leaves the workspace; a brace
+ * set is no token (912 read one as a gap). The project dir comes back masked:
+ * {@link withProjectDir} writes it in.
  */
 export function nxWorkspacePath(s: string, projectRel: string, projectName: string): string | null {
   const rel = projectRel === '.' ? '' : projectRel
@@ -77,14 +77,14 @@ export function underProject(p: string, projectRel: string): string | null {
 
 /**
  * What Nx caches for a target that declares no `outputs`
- * (`getOutputsForTargetAndConfiguration`): its `options.outputPath`, else,
- * for `build` and `prepare`, `dist/{root}`, `{root}/dist`, `{root}/build`
- * and `{root}/public`. Read as no outputs, a cached target's hit restored
- * nothing (item 1052). vx cleans an output before the task runs, and a
- * project's `build/` or `public/` is as often its committed sources, which
- * Nx, never cleaning, leaves alone: with `tops` (the project's tracked
- * top-level names) one git tracks nothing under is an output, and one it
- * does is left out with a todo; without `tops`, both are.
+ * (`getOutputsForTargetAndConfiguration`): its `options.outputPath`, else, for
+ * `build` and `prepare`, `dist/{root}`, `{root}/dist`, `{root}/build` and
+ * `{root}/public`. Read as no outputs, a cached target's hit restored nothing.
+ * vx cleans an output before the task runs, and a project's `build/` or
+ * `public/` is as often its committed sources, which Nx, never cleaning, leaves
+ * alone: with `tops` (the project's tracked top-level names) one git tracks
+ * nothing under is an output, and one it does is left out with a todo; without
+ * `tops`, both are.
  */
 export function nxDefaultOutputs(
   targetName: string,
@@ -127,14 +127,14 @@ export function mapNxOutputs(
   const outFiles: string[] = []
   const wsOutFiles: string[] = []
   for (const o of outputs) {
-    // A `!` output takes a path back, as Nx's does (A-44); it maps as its
-    // path does and keeps the `!`.
+    // A `!` output takes a path back, as Nx's does; it maps as its path does
+    // and keeps the `!`.
     const neg = o.startsWith('!') ? '!' : ''
     const r = withOptions(o.slice(neg.length), options)
     // Nx leaves an unset option's token in place and drops the output
     // (`getOutputsForTargetAndConfiguration`): @nx/eslint's
-    // `{options.outputFile}` with no outputFile is no output, not a todo
-    // on every lint target (2026-09-28).
+    // `{options.outputFile}` with no outputFile is no output, not a todo on
+    // every lint target.
     if (r === null) continue
     if (typeof r !== 'string') {
       todos.push(
@@ -156,19 +156,18 @@ export function mapNxOutputs(
       }
       s = p
     }
-    // Plain paths resolve against the workspace root in nx. One outside
-    // the project dir is Nx's DEFAULT layout (`@nx/js:tsc` writes
-    // `dist/<project>` at the root), so it is the workspace-root output it
-    // is, not a gap: as a todo, every such target hit green and restored
-    // NOTHING (item 593, the bench workspace's 1,000 `build` targets).
-    // As written: core reads a literal as the path or the tree under it
-    // (`asTrees`), and keeps a hit's directory short-circuit for either. The
-    // `<rel>/**` this wrote for an extensionless name matched nothing under
-    // a FILE, so a binary like `dist/bin/tool` was never saved (Next 27).
-    // A path that leaves the workspace (an old generator's
-    // `reportsDirectory: "../../coverage/<lib>"`, read from the workspace
-    // root as Nx 23 reads it) has no place in a config: core refuses `..`,
-    // so the written file failed to load and every task with it.
+    // Plain paths resolve against the workspace root in nx. One outside the
+    // project dir is Nx's DEFAULT layout (`@nx/js:tsc` writes `dist/<project>`
+    // at the root), so it is the workspace-root output it is, not a gap: as a
+    // todo, every such target hit green and restored NOTHING (the bench
+    // workspace's 1,000 `build` targets). As written: core reads a literal as
+    // the path or the tree under it (`asTrees`), and keeps a hit's directory
+    // short-circuit for either. The `<rel>/**` this wrote for an extensionless
+    // name matched nothing under a FILE, so a binary like `dist/bin/tool` was
+    // never saved (Next 27). A path that leaves the workspace (an old
+    // generator's `reportsDirectory: "../../coverage/<lib>"`, read from the
+    // workspace root as Nx 23 reads it) has no place in a config: core refuses
+    // `..`, so the written file failed to load and every task with it.
     const norm = path.posix.normalize(s.replace(/^\/+/, ''))
     if (norm === '..' || norm.startsWith('../')) {
       todos.push(

@@ -1,11 +1,11 @@
-// What a run said that its `runs` rows do not hold, for `vx last`: the steps
-// it did not wait on (`vx:prefetch`, 2026-10-16), which never show in a
-// run's output; its warnings, which scroll past on a terminal (an agent
-// reading the run afterwards saw only the footer's count, 2026-10-28); and
-// each failed task's output and the files it names. Rows of cache.db's
-// `steps`, `warnings` and `failures` (v50; files under the cache dir
-// before), so `vx last --sql` reads them too. The newest `KEPT` runs that
-// had any are kept, per table. A run with none writes nothing.
+// What a run said that its `runs` rows do not hold, for `vx last`: the steps it
+// did not wait on (`vx:prefetch`), which never show in a run's output; its
+// warnings, which scroll past on a terminal (an agent reading the run
+// afterwards saw only the footer's count); and each failed task's output and
+// the files it names. Rows of cache.db's `steps`, `warnings` and `failures`
+// (v50; files under the cache dir before), so `vx last --sql` reads them too.
+// The newest `KEPT` runs that had any are kept, per table. A run with none
+// writes nothing.
 
 import type { Database } from 'bun:sqlite'
 

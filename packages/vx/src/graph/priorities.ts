@@ -1,23 +1,17 @@
-// The ready-queue ranking, apart from the scheduler that uses it. Nothing
-// here touches the platform: the Learn page's scheduler simulator
-// (private/vx-docs, through private/vx-bench/schedule-policy.ts) bundles
-// these two functions for the browser, and an import of the scheduler would
-// bring `util/` and its load-time `Bun` reads with them.
+// The ready-queue ranking, apart from the scheduler. Nothing here touches the
+// platform: the site's scheduler simulator bundles these functions for the
+// browser.
 
 import type { TaskNode } from './task-graph.js'
 
 /**
- * `computeReverseDepCount` for a run with a restore tier (item 754). A
- * restore-tier task is a confirmed hit that never waits on its deps, so it
- * blocks only the exec-tier tasks that depend on it: an exec-tier task's
- * count is taken over the exec tier, an edge through a restore it holds
- * back counted too, and a restore's
- * is the sum over its direct exec-tier dependents of one plus theirs, plus
- * the weight of each restore that depends on it, so a restore that feeds
- * pending work, directly or through other restores, still goes first. A warm run's exec tier
- * is its group tasks with no edges among them, and the closure over the
- * whole graph (476 packages: 1,428 nodes, 12.8k edges of 45-word bitsets)
- * was 6 ms of the run-graph stage for a ranking the restores never needed.
+ * `computeReverseDepCount` for a run with a restore tier. A restore-tier task
+ * never waits on its deps, so it blocks only the exec-tier tasks that depend on
+ * it: an exec task's count is taken over the exec tier (through any restore it
+ * holds back), and a restore's is the sum over its exec dependents of one plus
+ * theirs, plus each dependent restore's weight. The closure over the whole
+ * graph cost 6 ms of a warm 476-package run for a ranking restores never
+ * needed.
  */
 export function tieredReverseDepCount(
   nodes: Map<string, TaskNode>,
@@ -30,19 +24,18 @@ export function tieredReverseDepCount(
     exec.set(id, node)
     if (node.config.exec !== undefined) runsAny = true
   }
-  // Nothing outside the restore tier runs a command (a warm run: restores
-  // and groups), so no order finishes any work sooner: everything ranks 0.
-  // The weights below were 10 ms of a 1,000-project warm run.
+  // Nothing outside the restore tier runs a command (a warm run), so no order
+  // finishes work sooner: all rank 0 (the weights were 10 ms of a 1,000-project
+  // warm run).
   if (!runsAny) {
     const zeros = new Map<string, number>()
     for (const id of nodes.keys()) zeros.set(id, 0)
     return zeros
   }
-  // A restore releases its dependents only once its own deps have settled
-  // (scheduler.ts, item 963), so an exec task under a restore blocks what
-  // that restore feeds: e1 → r → e2 held e2 until e1 ran, and e1 ranked 0
-  // behind every idle task. The exec tier is counted with each restore dep
-  // replaced by the exec tasks it waits on, through restores.
+  // A restore releases its dependents only once its own deps have settled, so
+  // an exec task under a restore blocks what that restore feeds (e1 → r → e2).
+  // The exec tier is counted with each restore dep replaced by the exec tasks
+  // it waits on.
   const view = execThroughRestores(nodes, exec, restoreTier)
   // An exec tier with no edge inside it (a warm run's groups) counts 0
   // everywhere: no closure to build.
@@ -66,14 +59,10 @@ export function tieredReverseDepCount(
   }
   for (const id of restoreTier) if (nodes.has(id) && !counts.has(id)) counts.set(id, 0)
   if (!feeds) return counts
-  // A restore's dependents are released only once its own deps have
-  // settled (scheduler.ts, item 963), so a restore under another restore
-  // blocks whatever that one blocks: r1 → r2 → e held e until r1 restored,
-  // and r1 ranked 0 behind every idle restore (C-51). Each restore hands
-  // its weight to its restore deps, dependents first (Kahn over the
-  // restore tier's reversed edges). A diamond counts twice; the order
-  // among restores is a heuristic, and this pass stays linear. A run with
-  // no restore feeding an exec task (every task a hit) skips it.
+  // A restore under another restore blocks whatever that one blocks (r1 → r2 →
+  // e). Each restore hands its weight to its restore deps, dependents first
+  // (Kahn over the reversed restore edges). A diamond counts twice; it is a
+  // heuristic, and stays linear. Skipped when no restore feeds an exec task.
   const above = new Map<string, number>()
   for (const id of restoreTier) {
     for (const dep of nodes.get(id)?.deps ?? []) {
@@ -143,13 +132,9 @@ function execThroughRestores(
 }
 
 /**
- * Compute, for each task in the graph, how many OTHER tasks are
- * transitively blocked on it. Tasks with the highest count are the
- * most valuable to schedule first — finishing them unlocks the most
- * downstream work and minimizes worker idle time at the end of the
- * run. Nx's schedule sort ranks by the same idea but counts DIRECT
- * dependents only (`calculateReverseDeps` in
- * `packages/nx/src/tasks-runner/utils.ts`, read 2026-09-24).
+ * For each task, how many other tasks are transitively blocked on it. The
+ * highest go first: they unlock the most work and minimize idle workers at the
+ * end. Nx ranks by direct dependents only.
  */
 export function computeReverseDepCount(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -160,19 +145,16 @@ export function computeReverseDepCount(
 }
 
 /**
- * `computeReverseDepCount` once per entry of `counted`, from ONE closure:
- * the closure is the cost (~100 ms at 11k nodes, 2026-10-29), each count
- * one popcount pass over it.
+ * `computeReverseDepCount` per entry of `counted`, from one closure: the
+ * closure is the cost (~100 ms at 11k nodes), each count one popcount pass.
  */
 function reverseDepCountsOver(
   nodes: ReadonlyMap<string, TaskNode>,
   counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
 ): Map<string, number>[] {
-  // Exact transitive-dependent COUNTS need closure SETS (diamonds
-  // double-count under naive summing). Set-of-strings closures are
-  // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
-  // bitsets make the same closure O(E·N/32) time over N²/8 bits
-  // (3270 tasks ≈ 1.3 MB) — single-digit ms at that scale.
+  // Exact transitive counts need closure sets (diamonds double-count when
+  // summed). String sets are O(N²) and took 8.5s on 1,090 packages; bitsets
+  // are O(E·N/32) over N²/8 bits (3,270 tasks ≈ 1.3 MB), single-digit ms.
   const ids = [...nodes.keys()]
   const n = ids.length
   const index = new Map<string, number>()
@@ -198,9 +180,8 @@ function reverseDepCountsOver(
   const dependents = new Int32Array(from.length)
   for (let e = 0; e < from.length; e++) dependents[next[from[e]!]!++] = to[e]!
 
-  // Kahn topo order over dependency edges (deps before dependents).
-  // Insertion order is topo today, but the closure's correctness
-  // must not hinge on an unstated property of buildTaskGraph.
+  // Kahn topo order: buildTaskGraph's insertion order is topo today, but
+  // correctness must not hinge on that.
   const topo = new Int32Array(n)
   let head = 0
   let tail = 0
@@ -237,12 +218,9 @@ function reverseDepCountsOver(
     return mask
   })
 
-  // Reverse-topo sweeps, one per block of `span` words: every node's
-  // closure restricted to the block's positions, its count summed over
-  // the blocks. All N rows of all words (9,603 tasks: 11.5 MB) missed
-  // the cache on nearly every OR, and the first call, the only one a run
-  // makes, took 77 ms; a block of ~256 KB took 37 (2026-10-29). A
-  // dependent past the block holds no bit in it, so its edge is skipped.
+  // Reverse-topo sweeps, one per block of `span` words, counts summed over
+  // blocks. All rows of all words (11.5 MB at 9,603 tasks) missed cache on
+  // nearly every OR: 77 ms against 37 ms in ~256 KB blocks.
   const span = Math.max(1, Math.min(words, Math.floor(65536 / Math.max(1, tail))))
   const totals = masks.map(() => new Int32Array(tail))
   const closure = new Uint32Array(tail * span)
@@ -278,9 +256,8 @@ function reverseDepCountsOver(
   const all = totals.map((total) => {
     const counts = new Map<string, number>()
     for (let t = 0; t < tail; t++) counts.set(ids[topo[t]!]!, total[t]!)
-    // Cycle-stranded nodes (never topo-visited) can't occur — the graph
-    // builder rejects cycles — but a missing Map entry would silently
-    // sort as undefined, so default them defensively to 0.
+    // The builder rejects cycles, but a missing entry would sort as undefined,
+    // so default to 0.
     for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
     return counts
   })
@@ -289,7 +266,7 @@ function reverseDepCountsOver(
 
 /**
  * The ready-queue baseline a workspace may pick in place of the default
- * (`schedule` in .vx/workspace.ts). Each ranks with no timings; a `schedule`
+ * (`schedule` in.vx/workspace.ts). Each ranks with no timings; a `schedule`
  * plugin's weights still sort above it, and it breaks their ties.
  *   - `most-work`: transitive dependents (`computeReverseDepCount`), the default.
  *   - `critical-path`: steps on the longest chain of dependents below a task.
@@ -355,13 +332,10 @@ export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
 ): (id: string) => number {
-  // The override caller scored "expected critical-path duration" in ms.
-  // Baseline reverse-deps counts are bounded by N; scale the override so
-  // it sorts above the baseline for any node it covers, and add the
-  // baseline as a tie-break for parity within the override set.
-  // The lowest weight maps to one SCALE, not to 0: a weight of 0 (a p50
-  // that rounds to 0 ms) or below otherwise tied or sank under the
-  // unscored nodes it is meant to outrank.
+  // The override is a duration in ms, while baseline counts are bounded by N:
+  // scale it so it sorts above the baseline, with the baseline as tie-break.
+  // The lowest weight maps to one SCALE, not 0, or a 0 ms p50 sank under the
+  // unscored nodes it should outrank.
   const SCALE = 1 << 20
   let lo = 0
   for (const w of overrides.values()) if (w < lo) lo = w

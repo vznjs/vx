@@ -15,8 +15,8 @@ function paints(stream: { isTTY?: boolean }): boolean {
 }
 
 /**
- * `✓ vx-cache-server  listening on http://…` or `✗ vx-cache-server  <why>`.
- * Lines after the first (a usage text) print dim under it.
+ * `✓ vx-cache-server listening on http://…` or `✗ vx-cache-server <why>`. Lines
+ * after the first (a usage text) print dim under it.
  */
 export function statusLine(
   tone: 'ok' | 'err',

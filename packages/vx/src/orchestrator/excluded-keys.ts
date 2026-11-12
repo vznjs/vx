@@ -50,9 +50,9 @@ export async function keyExcludedDependencies(args: KeyExcludedArgs): Promise<vo
     ...(args.dropped.get(node.id) ?? []),
   ]
   // Each key's promise is made after its dependencies' promises, in a
-  // post-order walk on an explicit stack, so nothing recurses once per edge:
-  // a dropped chain is as deep as the graph, and the builder takes 50,000
-  // (item 737). The keys still resolve concurrently.
+  // post-order walk on an explicit stack, so nothing recurses once per edge: a
+  // dropped chain is as deep as the graph, and the builder takes 50,000. The
+  // keys still resolve concurrently.
   const keys = new Map<string, Promise<string | undefined>>()
   const outcomes = (ids: readonly string[]): Promise<TaskOutcome[]> =>
     Promise.all(ids.map(async (id) => keyedOutcome(nodeOf(id), await keys.get(id)!)))

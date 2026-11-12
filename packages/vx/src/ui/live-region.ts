@@ -75,11 +75,10 @@ export interface OutputWriterOptions {
   /** Injectable clock for tests. */
   now?: () => number
   /**
-   * Off a TTY, hold writes and hand them to the stream once per turn of
-   * the event loop, or once 64 KiB are held, until `settle()`. A warm
-   * 476-package run wrote each of its 952 task lines as its own syscall
-   * (item 753). Off by default: a caller reading its stream right after a
-   * write sees it.
+   * Off a TTY, hold writes and hand them to the stream once per turn of the
+   * event loop, or once 64 KiB are held, until `settle()`. A warm 476-package
+   * run wrote each of its 952 task lines as its own syscall. Off by default: a
+   * caller reading its stream right after a write sees it.
    */
   coalesce?: boolean
   /** Floor between two coalesced writes; 0 writes once per turn. */
@@ -214,11 +213,11 @@ export function createOutputWriter(
   }
 
   /**
-   * The leading lines that fit the terminal's height, one row spared.
-   * Cursor-up stops at the top of the screen, and a row that scrolled into
-   * the scrollback is out of the erase's reach: a region taller than the
-   * terminal left its top behind on every redraw, one stacked block per tick
-   * (VS Code's short panel, 2026-10-14). The first line always shows.
+   * The leading lines that fit the terminal's height, one row spared. Cursor-up
+   * stops at the top of the screen, and a row that scrolled into the scrollback
+   * is out of the erase's reach: a region taller than the terminal left its top
+   * behind on every redraw, one stacked block per tick (VS Code's short panel).
+   * The first line always shows.
    */
   const fitted = (lines: readonly string[]): readonly string[] => {
     const height = stream.rows
@@ -338,8 +337,8 @@ export function createOutputWriter(
         if (!flushQueued) {
           flushQueued = true
           // At most one write per floor: a restore settles its hits over
-          // hundreds of turns, and a write per turn cost the 9,603-task
-          // restore ~100 ms of its main thread (2026-11-07).
+          // hundreds of turns, and a write per turn cost the 9,603-task restore
+          // ~100 ms of its main thread.
           const wait = lastFlush + coalesceMs - now()
           if (wait > 0) flushTimer = setTimeout(flushHeld, wait)
           else setImmediate(flushHeld)

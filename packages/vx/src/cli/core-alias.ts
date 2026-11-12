@@ -1,13 +1,13 @@
 /**
  * One core per process. A plugin package, a `.vx/workspace.ts`, a
- * `vx.config.ts` all `import … from '@vzn/vx'`, and that specifier
- * resolves through node_modules — to a SECOND copy of core when the host
- * is the compiled binary (whose own copy lives under the bunfs root) or
- * an install with its own nested `@vzn/vx`. The second copy is core's
- * whole source transpiled again, per process: ~20 ms per plugin package
- * in the binary (measured 2026-09-10, `@vzn/vx-otel`: 20–25 ms → 2–3 ms),
- * and two module states — two `definePlugin` memos, two of everything
- * keyed by identity rather than by registry symbol.
+ * `vx.config.ts` all `import … from '@vzn/vx'`, and that specifier resolves
+ * through node_modules — to a SECOND copy of core when the host is the compiled
+ * binary (whose own copy lives under the bunfs root) or an install with its own
+ * nested `@vzn/vx`. The second copy is core's whole source transpiled again,
+ * per process: ~20 ms per plugin package in the binary (measured,
+ * `@vzn/vx-otel`: 20–25 ms → 2–3 ms), and two module states — two
+ * `definePlugin` memos, two of everything keyed by identity rather than by
+ * registry symbol.
  *
  * The alias is a Bun virtual module for the exact specifiers `@vzn/vx`
  * and `@vzn/vx/config` (the second for `import { defineProject }` in a

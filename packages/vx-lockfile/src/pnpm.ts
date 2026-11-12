@@ -52,11 +52,11 @@ const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies'] a
 /**
  * The top-level fields the digest reads per importer: the importers, the
  * packages and snapshots they reach, their patches, and the catalogs their
- * specifiers resolved. `overrides` too: what an override did is the
- * snapshot an importer now reaches, and folded into every digest one
- * override that only `b` reached re-keyed `a` and the root as well (probed
- * on pnpm 9, D-142). (v5's lone importer, written at the top, may fold as
- * global too: it is the only importer there is.)
+ * specifiers resolved. `overrides` too: what an override did is the snapshot an
+ * importer now reaches, and folded into every digest one override that only `b`
+ * reached re-keyed `a` and the root as well (probed on pnpm 9). (v5's lone
+ * importer, written at the top, may fold as global too: it is the only importer
+ * there is.)
  */
 const PER_IMPORTER = new Set([
   'importers',
@@ -131,10 +131,10 @@ export function parseLockfile(text: string): Lockfile {
     patches.set(name, e === undefined ? scalar(entry) : scalar(e['hash']) || stable(e))
   }
 
-  // Every top-level field but those read per importer above, so a field
-  // this parser has not heard of moves every importer rather than none: an
+  // Every top-level field but those read per importer above, so a field this
+  // parser has not heard of moves every importer rather than none: an
   // allow-list dropped v6's `onlyBuiltDependencies`, which decides whether
-  // install scripts run anywhere (item 933).
+  // install scripts run anywhere.
   const rest: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(doc)) if (!PER_IMPORTER.has(k)) rest[k] = v
   // The env lockfile moves every importer: a config dependency can carry
@@ -210,13 +210,12 @@ function scalar(v: unknown): string {
 /**
  * The snapshot key a dependency `name@version` resolves to, per lockfile
  * generation: `name@1.0.0(peer@2)` (v9), `/name@1.0.0(peer@2)` (v6),
- * `/name/1.0.0_peer@2` (v5). A version that is already a key (`/…`) is
- * used as it is. Otherwise the generation's own key comes first, then
- * the version itself when the lockfile has a snapshot under it: an alias
- * (`name: other@1.0.0`), and a v5/v6 `file:…`, whose key is the bare
- * version. A v9 `file:…` is keyed `name@file:…` like any other, and
- * taking the version first made it a leaf: a bump behind a directory
- * dependency moved no digest (item 802).
+ * `/name/1.0.0_peer@2` (v5). A version that is already a key (`/…`) is used as
+ * it is. Otherwise the generation's own key comes first, then the version
+ * itself when the lockfile has a snapshot under it: an alias (`name:
+ * other@1.0.0`), and a v5/v6 `file:…`, whose key is the bare version. A v9
+ * `file:…` is keyed `name@file:…` like any other, and taking the version first
+ * made it a leaf: a bump behind a directory dependency moved no digest.
  */
 export function snapshotKey(lock: Lockfile, name: string, version: string): string {
   if (version.startsWith('/')) return version
@@ -283,8 +282,8 @@ export function importerDigests(
   built.set(lock, g)
   const hashes = reachDigests(hoisted ? withVariants(lock, g) : g)
   const out = new Map<string, string>()
-  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
-  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32 bits
+  // of a seed, so two lockfiles' globals could share one.
   const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
   const reachOf = (dir: string): string => hashes[g.index.get(importerNode(dir))!]!
   // With its links left out, the file does not say which importer links
@@ -487,10 +486,10 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
     const content = dir === undefined ? '' : `\0file\0${files.get(dir) ?? ''}`
     node(key, `${key}\0${resolution}\0${patch}${content}`)
   }
-  // Each importer folds its own dir: with one material for all, two
-  // importers that link each other were told apart by their edges alone,
-  // and swapping which reaches which version gave the same lines, so a
-  // lockfile that moved both installs keyed neither (item 1073).
+  // Each importer folds its own dir: with one material for all, two importers
+  // that link each other were told apart by their edges alone, and swapping
+  // which reaches which version gave the same lines, so a lockfile that moved
+  // both installs keyed neither.
   for (const dir of lock.importers.keys()) {
     node(importerNode(dir), `${importerNode(dir)}\nsections\0${lock.sections.get(dir)}`)
   }

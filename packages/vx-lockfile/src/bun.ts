@@ -55,10 +55,9 @@ export interface Entry {
 
 /** The top-level fields the digest reads per workspace. */
 // Read per workspace: the workspaces and packages themselves, and the fields
-// whose whole effect is the `packages` entry a workspace reaches — how a
-// range was written (catalogs, D-141), what an override forced (D-142) and
-// what a patch changed (D-143). Folded into every workspace, one such edit
-// re-keyed them all.
+// whose whole effect is the `packages` entry a workspace reaches — how a range
+// was written (catalogs), what an override forced and what a patch changed.
+// Folded into every workspace, one such edit re-keyed them all.
 const PER_WORKSPACE = new Set([
   'workspaces',
   'packages',
@@ -116,7 +115,7 @@ export function parseLockfile(text: string): Lockfile {
   // Every top-level field but the two read per workspace, so a field this
   // parser has not heard of moves every workspace rather than none: an
   // allow-list dropped `trustedDependencies`, which decides whose install
-  // scripts run (item 933).
+  // scripts run.
   const rest: Json = {}
   for (const [k, v] of Object.entries(d)) if (!PER_WORKSPACE.has(k)) rest[k] = v
 
@@ -146,10 +145,10 @@ export function parseLockfile(text: string): Lockfile {
  * package sits at its own name (`@vzn/vx`) and resolves from there.
  */
 function resolve(lock: Lockfile, from: string, name: string): string | undefined {
-  // A scoped name (`@s/x`) is one level at ANY depth: `foo/@s/y` → `foo` →
-  // ''. Only a root-level scope was joined, so `foo/@s/y` stepped to
-  // `foo/@s` and its `bar` resolved to `foo/@s/bar`, another package
-  // (`@s/bar`); the root `bar` it installs was never folded (item 901).
+  // A scoped name (`@s/x`) is one level at ANY depth: `foo/@s/y` → `foo` → ''.
+  // Only a root-level scope was joined, so `foo/@s/y` stepped to `foo/@s` and
+  // its `bar` resolved to `foo/@s/bar`, another package (`@s/bar`); the root
+  // `bar` it installs was never folded.
   const levels = packageLevels(from)
   for (let n = levels.length; ; n--) {
     const base = levels.slice(0, n).join('/')
@@ -367,8 +366,8 @@ export function storeLinks(lock: Lockfile): Map<string, Map<string, Set<string>>
 /**
  * The patch files `patchedDependencies` names. bun.lock records a patch by
  * PATH, never by a hash of its content, so an edited patch left the lockfile
- * byte-identical and every key unmoved while the install applied the new
- * one (item 1014): the claim hashes these files and hands them back.
+ * byte-identical and every key unmoved while the install applied the new one:
+ * the claim hashes these files and hands them back.
  */
 export function patchFiles(text: string): string[] {
   const d = record(Bun.JSONC.parse(text))
@@ -440,8 +439,8 @@ export function importerDigests(
   const { material, edges, importers, loose } = g
   const digests = reachDigests({ material, edges })
   const out = new Map<string, string>()
-  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
-  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32 bits
+  // of a seed, so two lockfiles' globals could share one.
   const globalMaterial =
     loose.length === 0 ? lock.global : `${lock.global}\0${JSON.stringify(loose)}`
   const global = Bun.hash.xxHash3(globalMaterial).toString(16).padStart(16, '0')
@@ -475,18 +474,18 @@ function buildGraph(
     }
     return i
   }
-  // The name a package is installed under and what it is, not where: a
-  // re-hoist (`is-odd/is-number` → `is-number`, one version) re-keyed
-  // every project reaching it with the same bytes installed (D-140). Where
-  // it sits still decides what it resolves; that is the edges.
+  // The name a package is installed under and what it is, not where: a re-hoist
+  // (`is-odd/is-number` → `is-number`, one version) re-keyed every project
+  // reaching it with the same bytes installed. Where it sits still decides what
+  // it resolves; that is the edges.
   for (const [p, e] of lock.packages) node(p, `${installName(p)}\0${e.id}\0${e.resolution}`)
   for (const [p, e] of lock.packages) {
     for (const dir of fileDirs(lock, p, e.id))
       material[index.get(p)!] += `\nfile\0${files.get(dir) ?? ''}`
   }
-  // A patch is part of the package it patches: an edit to one only `b`
-  // reaches re-keyed every workspace while it was install-wide (D-143).
-  // One that names no entry stays install-wide, so it still moves a key.
+  // A patch is part of the package it patches: an edit to one only `b` reaches
+  // re-keyed every workspace while it was install-wide. One that names no entry
+  // stays install-wide, so it still moves a key.
   const loose: [string, string, string][] = []
   for (const [key, file] of [...lock.patches].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const own = `\npatch\0${key}\0${file}\0${files.get(file) ?? ''}`
@@ -526,9 +525,9 @@ function buildGraph(
   // root importer ('') resolves from the root.
   const importers = new Map<string, number>()
   for (const [dir, deps] of lock.workspaces) {
-    // Its dir, as pnpm's importers fold theirs (item 1073).
-    // And its version: `bun pm pack` writes it in place of a dependent's
-    // `workspace:*`, so a bump left the dependent's tarball replayed.
+    // Its dir, as pnpm's importers fold theirs. And its version: `bun pm pack`
+    // writes it in place of a dependent's `workspace:*`, so a bump left the
+    // dependent's tarball replayed.
     const own = node(
       `workspace\0${dir}`,
       `workspace\0${dir}\nsections\0${lock.workspaceSections.get(dir)}\nversion\0${lock.workspaceVersions.get(dir) ?? ''}`,

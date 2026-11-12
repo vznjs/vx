@@ -3,11 +3,11 @@
 //
 // Why the file digests are recomputed rather than reused: vx's `InputFile`
 // carries a GIT BLOB OID (sha1 over `blob <len>\0` + content), which is a
-// different function over different bytes than REAPI's sha256-of-content.
-// The key's digest cannot transfer, so the plugin hashes the worktree bytes
-// itself, from the bytes it reads for the upload anyway. A memo keyed by
-// (path, size, mtime) saved only that hash and served a stale digest for a
-// same-size rewrite within the mtime's resolution (F-7).
+// different function over different bytes than REAPI's sha256-of-content. The
+// key's digest cannot transfer, so the plugin hashes the worktree bytes itself,
+// from the bytes it reads for the upload anyway. A memo keyed by (path, size,
+// mtime) saved only that hash and served a stale digest for a same-size rewrite
+// within the mtime's resolution.
 
 import { createHash, type Hash } from 'node:crypto'
 import { lstat, readlink } from 'node:fs/promises'
@@ -106,11 +106,11 @@ function canonicaliseTree(
   graft: TreeGraft,
   known: Map<string, Directory>,
 ): { root: Digest; blobs: Blob[] } {
-  // Keyed by the worker's own bytes first: a child re-encoded by US matches
-  // its parent's reference only when both encoders agree byte for byte, and
-  // one that does not (a field order, a `node_properties` our decoder drops)
-  // stayed unresolved, leaving the parent pointing at a Directory no blob
-  // here matches (item 820).
+  // Keyed by the worker's own bytes first: a child re-encoded by US matches its
+  // parent's reference only when both encoders agree byte for byte, and one
+  // that does not (a field order, a `node_properties` our decoder drops) stayed
+  // unresolved, leaving the parent pointing at a Directory no blob here
+  // matches.
   const byOldDigest = new Map<string, Directory>()
   graft.children.forEach((child, i) => {
     byOldDigest.set(sha256(encodeDirectory(child)).hash, child)
@@ -262,14 +262,14 @@ export async function buildInputTree(args: {
     }
   }
 
-  // Insertion order is NOT what makes the tree deterministic — `encodeDirectory`
-  // sorts every node's names at encode time, and it has to, because grafts are
-  // inserted after this loop and no ordering here could reach them. Sorted
-  // anyway so a warning naming several paths reads the same run to run.
-  // Read READ_CONCURRENCY at once, inserted in sorted order below: one at a
-  // time, 2 000 small inputs cost 304 ms of file-system round trips (F-36).
-  // Deduped: an upstream's output on disk that is also a declared input
-  // is named twice, and was read and counted twice.
+  // Insertion order is NOT what makes the tree deterministic —
+  // `encodeDirectory` sorts every node's names at encode time, and it has to,
+  // because grafts are inserted after this loop and no ordering here could
+  // reach them. Sorted anyway so a warning naming several paths reads the same
+  // run to run. Read READ_CONCURRENCY at once, inserted in sorted order below:
+  // one at a time, 2 000 small inputs cost 304 ms of file-system round trips.
+  // Deduped: an upstream's output on disk that is also a declared input is
+  // named twice, and was read and counted twice.
   const sorted = [...new Set(args.paths)].sort()
   const reads = await mapBounded(sorted, READ_CONCURRENCY, async (rel) => {
     const abs = path.join(args.workspaceRoot, rel)
@@ -322,10 +322,10 @@ export async function buildInputTree(args: {
     const data = got.data
     const want = args.expected?.get(rel)
     if (want !== undefined && !carriesOid(data, want)) moved.push(rel)
-    // Hashed from the bytes just read, never memoised by (path, size,
-    // mtime): a same-size rewrite within the mtime's resolution kept the
-    // old digest while `expected` checked the new bytes, and the worker ran
-    // the old blob under a key naming the new one (F-7).
+    // Hashed from the bytes just read, never memoised by (path, size, mtime): a
+    // same-size rewrite within the mtime's resolution kept the old digest while
+    // `expected` checked the new bytes, and the worker ran the old blob under a
+    // key naming the new one.
     const digest = sha256(data)
     if (!seen.has(digest.hash)) {
       seen.add(digest.hash)
@@ -459,9 +459,9 @@ function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
 // without a client call, so the four messages whose bytes are load-bearing
 // are encoded here, field by field, per the REAPI schema.
 
-// Arithmetic, not bit operators: those are 32-bit, and a size of 4 GiB or
-// more encoded modulo 2^32 — a Digest naming other bytes (F-43). Exact to
-// 2^53, past any file.
+// Arithmetic, not bit operators: those are 32-bit, and a size of 4 GiB or more
+// encoded modulo 2^32 — a Digest naming other bytes. Exact to 2^53, past any
+// file.
 function varint(n: number): Uint8Array {
   const out: number[] = []
   let v = n
@@ -842,9 +842,9 @@ function decodeFileNode(buf: Uint8Array): FileNode {
 
 /**
  * The two `NodeProperties` fields vx reads back, the inverse of
- * `encodeNodeProperties`: `mtime = 2` (a `Timestamp`) and `unix_mode = 3`
- * (a `UInt32Value`). The executor honours `unix_mode` on materialise; before
- * this the decoder dropped the field, and that branch never ran (item 820).
+ * `encodeNodeProperties`: `mtime = 2` (a `Timestamp`) and `unix_mode = 3` (a
+ * `UInt32Value`). The executor honours `unix_mode` on materialise; before this
+ * the decoder dropped the field, and that branch never ran.
  */
 function decodeNodeProperties(buf: Uint8Array): NodeProperties {
   const np: NodeProperties = {}
@@ -943,9 +943,9 @@ export function readVarintAt(buf: Uint8Array, at: number): [number, number] {
   for (;;) {
     const byte = buf[i++]
     if (byte === undefined) break
-    // Added, not OR-ed: a size of 4 GiB or more wrapped to 32 bits (F-43).
-    // Past 2^53 the value is a negative int32 sent as ten bytes (an exit
-    // code): its low 32 bits, which `| 0` reads back as the negative.
+    // Added, not OR-ed: a size of 4 GiB or more wrapped to 32 bits. Past 2^53
+    // the value is a negative int32 sent as ten bytes (an exit code): its low
+    // 32 bits, which `| 0` reads back as the negative.
     result += (byte & 0x7f) * 2 ** shift
     if (shift < 32) low |= (byte & 0x7f) << shift
     if ((byte & 0x80) === 0) break

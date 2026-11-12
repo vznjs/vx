@@ -1,4 +1,4 @@
-// A project config is JSON data (item 701).
+// A project config is JSON data.
 //
 // The cache key folds `JSON.stringify` of a task's config, `vx lock`
 // stores the same JSON, and a repeat load (`vx watch`) crosses back from
@@ -98,9 +98,9 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
       for (const key of Reflect.ownKeys(v)) {
         keys.push(key)
         // Read by descriptor: a getter is code, and each read may answer
-        // differently. `vx show` read one three times, so the key, the
-        // check and the command could each see another value, and a
-        // throwing one surfaced as vx's own stack (D-67). Never called here.
+        // differently. `vx show` read one three times, so the key, the check
+        // and the command could each see another value, and a throwing one
+        // surfaced as vx's own stack. Never called here.
         const d = Object.getOwnPropertyDescriptor(v, key) as PropertyDescriptor
         if (typeof key === 'symbol') found('a symbol key, which JSON drops')
         else if (d.enumerable !== true) found('a non-enumerable property, which JSON drops')

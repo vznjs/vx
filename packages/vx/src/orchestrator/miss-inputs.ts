@@ -215,9 +215,9 @@ function deadSourceGlobs(
     if (wsMatch(p)) return []
     if (p.startsWith(prefix) && ownMatch(p.slice(prefix.length))) return []
   }
-  // A link to a directory a glob reaches below is listed by its own name,
-  // which the glob does not match: `src/**` over `src -> ../shared` was
-  // called dead though an edit through it moved the key.
+  // A link to a directory a glob reaches below is listed by its own name, which
+  // the glob does not match: `src/**` over `src ->../shared` was called dead
+  // though an edit through it moved the key.
   for (const { path: p } of files) if (linksToDir(path.join(root, p))) return []
   return [...own, ...ws]
 }

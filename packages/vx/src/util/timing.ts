@@ -107,12 +107,12 @@ export function timingLines(): string[] | undefined {
         `             ${label.padEnd(24)}  ${(ns / 1e6).toFixed(1).padStart(8)}ms  ${String(count).padStart(6)}`,
       )
     }
-    // The trap this table sets, said where it is sprung: a span's total is
-    // WALL summed per call, and the run's spans are taken under the
-    // scheduler's concurrency, so a span that overlaps other work reads
-    // far larger than the work it names. `output dirs` at 124 µs a task is
-    // a handful of `lstat`s (items 254 and 407). Compare spans to each
-    // other, and measure a suspect one in isolation before chasing it.
+    // The trap this table sets, said where it is sprung: a span's total is WALL
+    // summed per call, and the run's spans are taken under the scheduler's
+    // concurrency, so a span that overlaps other work reads far larger than the
+    // work it names. `output dirs` at 124 µs a task is a handful of `lstat`s.
+    // Compare spans to each other, and measure a suspect one in isolation
+    // before chasing it.
     lines.push(
       '             (wall per call, summed; concurrent calls overlap — compare spans, not totals)',
     )

@@ -103,10 +103,10 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   // A secrets file's trailing newline sent a name no blob is under, and
   // every lookup missed in silence.
   const instanceName = options.instanceName?.trim() || undefined
-  // A server behind a private CA, or one that asks for a client
-  // certificate, was unreachable: TLS used the system roots and no client
-  // pair (F-41). Each is a PEM file, read here; one that cannot be read is
-  // a setting to fix, refused naming it.
+  // A server behind a private CA, or one that asks for a client certificate,
+  // was unreachable: TLS used the system roots and no client pair. Each is a
+  // PEM file, read here; one that cannot be read is a setting to fix, refused
+  // naming it.
   const pem = (file: string | undefined, name: string): string | undefined => {
     if (file === undefined || file.trim() === '') return undefined
     try {
@@ -148,8 +148,8 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
 /**
  * A malformed endpoint failed each request on its own, far from the setting:
  * `http://` failed the run with grpc's `Could not parse target name ""`, and
- * `host:notaport` or a lone space degraded every request to a miss (F-14).
- * Refused once, naming where it came from.
+ * `host:notaport` or a lone space degraded every request to a miss. Refused
+ * once, naming where it came from.
  */
 function assertEndpoint(endpoint: string, from: string): void {
   // A grpc-js resolver target (`unix:/run/cas.sock`, `dns:///host:443`) is

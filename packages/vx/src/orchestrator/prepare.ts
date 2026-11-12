@@ -1,11 +1,5 @@
-// Shared setup for `run()` and `planRun()`. Both entry points perform
-// the same workspace-discovery → config-load → graph-build → cache-
-// open sequence; this module centralises it so the two callers stay
-// thin.
-//
-// The caller owns the returned `cache.close()` lifetime: `run()`
-// closes at the bottom of execution, `planRun()` does so via
-// try/finally around its plan() call.
+// Shared setup for `run()` and `planRun()`: discovery, config load, graph
+// build, cache open. The caller owns `cache.close()`.
 
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
@@ -120,17 +114,13 @@ export interface PreparedRun {
   cacheDir: string
   cache: CacheLayer
   /**
-   * The local Cache handle (unwrapped). `cache` may be a LayeredCache
-   * wrapping this; subsystems that need the raw SQLite (e.g.
-   * LocalHistoryProvider) read directly from here.
+   * The bare local Cache; `cache` may wrap it. Subsystems needing the raw
+   * SQLite (history) read it here.
    */
   localCache: Cache
   /**
-   * True when `cache` is something other than the bare local handle — an
-   * injected remote layer, or one a plugin's `cache` capability built. The
-   * remote axes of the policy only mean anything then: without a remote
-   * layer a `remote:w` policy writes NOWHERE, so a task that believed it
-   * would be saved still cleans its outputs before executing.
+   * True when `cache` has a remote layer. Only then do the policy's remote axes
+   * mean anything: a `remote:w` policy over a bare local cache writes nowhere.
    */
   hasRemoteLayer: boolean
   /** `--cache-policy` with the workspace's `cacheScope` applied: what the layers were built under. */
@@ -142,12 +132,10 @@ export interface PreparedRun {
   /** The refs the run reads, in order (`CacheContext.refs`). */
   cacheRefs: readonly string[]
   /**
-   * Scheduling priorities from plugins' `schedule` stage (task id → weight,
-   * merged over the structural baseline by the scheduler). Empty when no
-   * plugin declares the stage. Asked only by a run with a task to start:
-   * the stage reads history (148 ms at 8,002 tasks) to order work a
-   * nothing-changed run never dispatches. Runs the stage once: `run`
-   * times each plugin's call and hears its later `ctx.refine` sets.
+   * Plugins' `schedule` weights (task id → weight), merged over the baseline by
+   * the scheduler. Asked only by a run with a task to start: the stage reads
+   * history (148 ms at 8,002 tasks) a nothing-changed run never needs. Runs
+   * once; `run` times each plugin's call and hears its later `ctx.refine` sets.
    */
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   /**
@@ -170,10 +158,8 @@ export interface PreparedRun {
    */
   keyOnly: ReadonlyMap<string, TaskNode>
   /**
-   * Requested task specs that matched NO project — a typo, or a stray
-   * positional (the value of an `=`-only flag written with a space).
-   * Nothing they asked for is in `nodes`, so callers must fail rather
-   * than run the remainder silently.
+   * Requested specs that matched no project (a typo, or a stray positional):
+   * callers must fail rather than run the rest silently.
    */
   unresolvedTasks: readonly string[]
   /**
@@ -186,85 +172,65 @@ export interface PreparedRun {
   /** What a typo is measured against: `projects`, or every project when a `pkg#task` named none loaded. */
   hintProjects: ReadonlyMap<string, ProjectEntry>
   /**
-   * True iff at least one package in the workspace has a `vx.config.*` at
-   * all — regardless of scope, so a `--filter` that matched nothing is not
-   * mistaken for a workspace vx was never set up in.
+   * True if any package has a `vx.config.*`, whatever the scope, so a
+   * `--filter` matching nothing is not taken for an unconfigured workspace.
    */
   anyProjectConfig: boolean
   /** A workspace project that declares no task: no config, and nothing configured reaches it. */
   taskless: (name: string) => boolean
   /**
    * With no config in the lock, one a directory holds anyway (root-relative):
-   * written after `vx lock`, so the fix is `vx lock`, not `vx init`. Asked
-   * only by a refusal, so a run that goes on pays no stat.
+   * written after `vx lock`, so the fix is `vx lock`. Asked only by a refusal.
    */
   unlockedConfig: () => string | undefined
   /** The claimed root files, and whether a task has since rewritten one (fingerprint-watch.ts). */
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   /**
-   * Per-run memo for `git ls-files` output, keyed by project dir.
-   * Without this, every task in a project re-spawns git just to
-   * enumerate its input file set (3× per project for build / test /
-   * lint, etc.) — observable in cache-hit run times.
+   * Per-run memo of `git ls-files` per project dir, or every task re-spawned
+   * git to enumerate its inputs.
    */
   gitFilesCache: GitFilesCache
   /** Every project discovery found, in or out of scope — header scope bar. */
   workspaceProjectCount: number
   /**
-   * Per-run memo for derived hashes — task-config hash keyed by config
-   * object identity, resolved file lists. Shared across every task's
-   * `computeTaskHash` call so the same config object isn't re-hashed.
+   * Per-run memo of derived hashes (config hash by object identity, resolved
+   * file lists), shared by every `computeTaskHash`.
    */
   hashCache: HashCache
   /**
-   * Each task's count of the tasks downstream of it (`graphCounts`), when
-   * nothing after the graph build can edit `nodes`: counted while git's
-   * blob-size check runs, so `run` reads it instead of counting.
+   * Each task's downstream count, when nothing after the build edits `nodes`:
+   * counted while git's blob-size check runs.
    */
   dependents?: ReadonlyMap<string, number>
   /**
-   * Reason `nodes` is empty. `null` when the prepared run is ready to
-   * execute. Either:
-   *   - `'no-tasks-declared'` — `requested.length === 0` after the
-   *     user's task names were resolved against `projects`. Typically
-   *     a typo'd task name; `run()` treats this as a CI footgun and
-   *     returns NOT-ok.
-   *   - `'none-affected'`     — as `'no-tasks-declared'`, but the scope
-   *     came from a diff and every name is declared somewhere else in the
-   *     workspace: nothing changed that runs them, a clean outcome. Also
-   *     when `--affected`'s diff reaches no requested task's `dependsOn`
-   *     closure (`affected-tasks.ts`).
-   *   - `'empty-graph'`       — `requested` was non-empty but the
-   *     graph builder still produced no nodes. Defensive; unreachable
-   *     under current `buildTaskGraph` semantics.
+   * Why `nodes` is empty; `null` when ready:
+   * - `'no-tasks-declared'`: no requested name resolved, typically a typo;
+   *   `run()` fails.
+   * - `'none-affected'`: the scope came from a diff and every name is declared
+   *   elsewhere, or the diff reaches no requested task's `dependsOn` closure: a
+   *   clean outcome.
+   * - `'empty-graph'`: defensive, unreachable today.
    */
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 
 /**
- * Build the prepared-run context: workspace discovery, project-config
- * load, package + task graph, cache handle (local, optionally wrapped
- * in a remote layer). Caller owns `cache.close()`.
+ * Build the prepared run: discovery, config load, package and task graph, and
+ * the cache handle (local, maybe layered). Caller owns `cache.close()`.
  *
- * Returns even when nothing can run — the `empty` field tells the
- * caller why. We never throw on "no tasks"; behavior on that case is
- * caller-specific (run logs + returns NOT-ok; planRun returns an
- * empty plan).
+ * Never throws on "no tasks": `empty` says why, and each caller decides.
  */
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
   return prepareRunLocked(options, log)
 }
 
 /**
- * `prepareRun`, with `beforeOpen` run once the workspace root is known and
- * before the cache opens: a run takes its lock there (run.ts), so it never
- * holds the store while it waits for a `vx cache clean` that holds the lock,
- * and holds a cache directory with no store (`sharedCacheDir`) shared.
- * `countDependents`: a run's, which schedules by them (`PreparedRun.dependents`);
- * a plan never reads them. `planning`: a plan's (`--dry`). With no remote
- * to probe it opens the cache to read only: no directory, index,
- * `.gitignore` or row is made.
+ * `prepareRun`, with `beforeOpen` run once the root is known and before the
+ * cache opens: a run takes its lock there, so it never holds the store while
+ * waiting for a `vx cache clean` holding the lock. `countDependents`: a run's,
+ * which schedules by them. `planning`: a `--dry` plan, which with no remote
+ * opens the cache read-only and makes no directory, index, `.gitignore` or row.
  */
 export async function prepareRunLocked(
   options: CoreRunOptions,
@@ -284,12 +250,9 @@ export async function prepareRunLocked(
   const { workspaceRoot, workspaceConfig, plugins, cacheDir, projectMetas } = ws
   const { localCache, policy } = store
   const { cache } = layer
-  // From here the plugins' factories have run and the cache is open: a
-  // throw (a stage hook, a `^name` nobody declares, a cycle, an unknown
-  // exclude name) closed neither and tore nothing down, once per failed
-  // cycle under `vx watch`. run() owns both only once this
-  // returns. A hook here that never settles strands the process, which
-  // tears the plugins down before it ends (bin.ts).
+  // The plugins' factories have run and the cache is open: a throw here must
+  // close and tear down both, or each failed `vx watch` cycle leaked them.
+  // run() owns both only once this returns.
   const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
   try {
     const hashCache = createHashCache(
@@ -398,33 +361,25 @@ async function startWorkspace(options: CoreRunOptions, log: Logger, planning: bo
   // them afresh.
   const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
-  // The lock is where a run's projects come from, so the read (1.1 MB at
-  // 1,000 projects, ~10 ms to read and parse) starts here and overlaps the
-  // workspace config's evaluation (X-181). A missing or malformed lock
-  // refuses at discovery, after any earlier refusal.
+  // The lock is where a run's projects come from: its read (1.1 MB, ~10 ms at
+  // 1,000 projects) starts here, overlapping the workspace config's evaluation.
+  // A missing or malformed lock refuses at discovery.
   const reused =
     options.handoff?.discovered?.root === workspaceRoot ? options.handoff?.discovered : undefined
   const readLock =
     (reused !== undefined ? lockOfDiscovery(reused.projects) : undefined) ??
     lockReader(workspaceRoot)
   if (reused === undefined) void readLock().catch(() => {})
-  // An UNSCOPED run (no explicit scope, at least one bare task name)
-  // enumerates the whole tree whatever the configs say, so git starts
-  // HERE — the walk needs only the root — and overlaps the workspace
-  // config, discovery, the cache open and the config evaluation. Its
-  // ~60 ms is the warm run's wall floor on a 1000-project tree; it used to
-  // start after discovery and the cache open, ~25 ms later. A scoped run
-  // waits: its pathspecs depend on which projects the configs pull in —
-  // unless it already names more projects than pathspecs scope, where the
-  // walk is the whole tree either way (an `--affected` run on 1,000
-  // projects waited ~60 ms for it after the configs loaded).
+  // An unscoped run (bare task names, no scope) enumerates the whole tree
+  // whatever the configs say, so git starts here, needing only the root, and
+  // overlaps discovery, the cache open and config evaluation: its ~60 ms is a
+  // warm 1,000-project run's floor. A scoped run waits for its pathspecs,
+  // unless it already names more projects than pathspecs scope.
   const wholeTree =
     (options.projects === undefined || options.projects.length > MAX_SCOPED_PATHSPECS) &&
     options.tasks.some((spec) => spec.indexOf('#') <= 0)
   // A `discover` hook that reads the worktree (nx()'s graph key) starts the
-  // whole-tree enumeration a scoped run would otherwise scope later, here or
-  // in the CLI's selection pass; the run reuses it instead of walking the
-  // tree twice.
+  // whole-tree enumeration here; the run reuses it instead of walking twice.
   const git =
     (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
     lazyGitEnumeration(workspaceRoot)
@@ -450,17 +405,15 @@ async function startWorkspace(options: CoreRunOptions, log: Logger, planning: bo
     learnedBranch === undefined
       ? (learnedBranch = currentBranch(workspaceRoot, workspaceConfig, options.branch))
       : learnedBranch
-  // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
-  // `cache.dir` + the `.vx/cache` default; resolved relative to cwd.
-  // A cache dir named anywhere holds everything; the default shares its
+  // `--cache-dir` overrides the workspace `cache.dir` and the `.vx/cache`
+  // default, relative to cwd. A named dir holds everything; the default shares
   // entries through the user's store.
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
-  // Before any racy window is judged: a file system behind this process's
-  // clock dated a mid-command edit before the command (fs-clock.ts). A plan
-  // keys as the run does but may make no cache dir: it measures in `.vx`,
-  // on the workspace's file system, which the workspace file makes exist.
+  // Before any racy window is judged: a file system behind this process's clock
+  // dated a mid-command edit before the command (fs-clock.ts). A plan may make
+  // no cache dir, so it measures in `.vx`.
   measureFsClockLag(planning ? path.join(workspaceRoot, '.vx') : cacheDir)
   // Asked now, read when the cache opens: a repository with no remote is
   // named by its root commit, a git spawn the discovery below overlaps.
@@ -493,24 +446,17 @@ type Workspace = Awaited<ReturnType<typeof startWorkspace>>
 /** The package graph and which projects' configs the run's task specs need. */
 function scopeOf(options: CoreRunOptions, ws: Workspace) {
   const { reused, projectMetas } = ws
-  // SCOPED config loading: configs are programs, and evaluating 1090
-  // of them costs ~200 ms — the dominant fixed cost of small runs.
-  // Only the in-scope projects, their transitive dependency closure
-  // (which bounds '^task' frontier expansion) and any project named by
-  // a `pkg#task` dependsOn entry can contribute graph nodes, so only
-  // those configs are evaluated. Side effect, deliberate and
-  // Turbo-like: a broken config in an unrelated package no longer
-  // fails a scoped run — it surfaces when that package enters scope.
+  // Scoped config loading: evaluating 1,090 configs costs ~200 ms, the dominant
+  // fixed cost of small runs. Only in-scope projects, their dependency closure
+  // (which bounds `^task`) and projects a `pkg#task` names can add nodes, so
+  // only those are evaluated. Like Turbo, a broken config elsewhere fails a
+  // scoped run only once it enters scope.
   const packageGraph =
     (reused !== undefined ? graphOfDiscovery(reused.projects) : undefined) ??
     buildPackageGraph(projectMetas)
-  // Seeds: explicit scope, plus anchored pkg#task targets (which bypass
-  // scope by design). With no explicit scope, bare task names fan out
-  // across the whole workspace — but when EVERY spec is anchored, the
-  // anchors alone are the scope and nothing else needs its config
-  // evaluated.
-  // `vx run //#lint` is Turbo's `turbo run //#lint`: the root project's
-  // task, under the name it has when something names it.
+  // Seeds: the explicit scope plus anchored `pkg#task` targets. With no scope,
+  // bare names fan out across the workspace; when every spec is anchored, the
+  // anchors are the scope. `vx run //#lint` is Turbo's root-project task.
   const root = path.resolve(ws.workspaceRoot)
   const rootName = projectMetas.find((m) => path.resolve(m.dir) === root)?.name
   const tasks =
@@ -526,10 +472,8 @@ function scopeOf(options: CoreRunOptions, ws: Workspace) {
   }
   const seeds: 'all' | string[] =
     options.projects !== undefined ? [...options.projects, ...anchored] : hasBare ? 'all' : anchored
-  // Its own mark: the package graph is the bulk of what used to be charged
-  // to `open cache` (measured on a 1,000-project tree — the
-  // graph 3-8 ms against the cache open's ~1 ms and the root files' ~0.3),
-  // so a reader profiling that stage was sent to the wrong code.
+  // Its own mark: the package graph (3-8 ms at 1,000 projects) was charged to
+  // `open cache` (~1 ms), sending profilers to the wrong code.
   mark('package graph')
   return { packageGraph, tasks, seeds }
 }
@@ -552,10 +496,9 @@ async function openStore(
   const workspacePolicy = workspaceCachePolicy(workspaceConfig)
   const asked =
     options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags)
-  // A laptop reads the shared cache and does not write it unless a policy
-  // names the remote: a key
-  // holds only declared inputs, so a laptop's write could be replayed on CI.
-  // A workspace policy naming the remote asks to write it, as `--cache-policy` does.
+  // A laptop reads the shared cache but writes it only when a policy names the
+  // remote: a key holds only declared inputs, so a laptop's write could be
+  // replayed on CI.
   const readOnly =
     options.handoff?.remoteReadOnlyByDefault === true &&
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
@@ -564,12 +507,10 @@ async function openStore(
   // A cache directory with no store may be another workspace's too: the
   // run holds it shared (`holdCacheDir`).
   await beforeOpen?.(workspaceRoot, resolvedStore === null ? cacheDir : undefined)
-  // A plan with no remote to probe writes nothing: it reads the index as the
-  // run would, one of another schema as the empty one the run's reset
-  // leaves (`'preview'`), and upserts no file-hash memo. One with a remote
-  // keeps the hits its probe finds, for the `vx run` that follows (an
-  // index made for them if need be): that run GETs them before its own
-  // probe answers.
+  // A plan with no remote writes nothing: it reads the index as the run would
+  // (another schema's as empty, `'preview'`) and upserts no memo. One with a
+  // remote keeps the hits it finds, so the next `vx run` GETs them before its
+  // own probe answers.
   const planReadOnly =
     planning &&
     (!wanted.remoteRead ||
@@ -589,9 +530,8 @@ async function openStore(
           DEFAULT_STORE.decompress) as boolean,
       },
     )
-  // A `vx cache clean` in another checkout holds the shared store alone
-  // until it has deleted it (`attachStore`), as this run's hold keeps a
-  // clean waiting: the run waits its turn, then opens the store there now.
+  // A `vx cache clean` in another checkout holds the shared store until it has
+  // deleted it: the run waits its turn, then opens the store.
   let localCache: Cache
   for (let said = false; ; await Bun.sleep(50)) {
     try {
@@ -616,9 +556,9 @@ async function openStore(
   // What `vx lock` recorded of them: a run keys from it (locked-digests.ts).
   const dependenciesLock = claimed.length > 0 ? readDependenciesLock(workspaceRoot, ws.reads) : null
   dependenciesLock?.catch(() => {})
-  // A whole-tree run's blob-size check starts with the cache it reads its
-  // verdict from, beside the config load and graph build: after them, a cold
-  // 100-package run waited 40-50 ms on it before its first task.
+  // A whole-tree run's blob-size check starts with the cache, beside config
+  // load and graph build: after them, a cold 100-package run waited 40-50 ms
+  // before its first task.
   if (git.started !== undefined) {
     localCache.memo.holdBlobSizes()
     git.started.then((e) => checkBlobSizes(e, localCache.memo)).catch(() => {})
@@ -637,15 +577,10 @@ async function loadScope(
   localCache: Cache,
 ) {
   const { projectMetas, readLock } = ws
-  // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
-  // the configs (`vx lock --check` re-evaluates them; a run does not):
-  // only `vx lock` evaluates.
-  // See docs/design/config-lock-2026-06.md.
-  // Read once, and only when a config is to be read from it: the CLI's
-  // selection pass may have staged every config (`handoff.staged`), and
-  // its load refused a run without a lock. A 1,000-project lock is
-  // 1.1 MB of JSON (I-27); a run with nothing staged started its read
-  // beside discovery, above.
+  // Configs load from .vx/projects.lock.json with no evaluation; only `vx lock`
+  // evaluates (docs/design/config-lock-2026-06.md). Read once, and only if
+  // needed: the CLI's selection may have staged every config already
+  // (`handoff.staged`).
   const staged = options.handoff?.staged
   const allStaged =
     staged !== undefined &&
@@ -694,8 +629,7 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
   const { tasks } = scope
   const { projects, projectsWithConfigs, everyProject } = load
   // A config the load left out may declare what nothing loaded does. Asked by
-  // name, never by count: a config-less project counts as loaded, so a
-  // scope holding one hid an unloaded declarer (X-129, X-182).
+  // name, never count: a config-less project counts as loaded.
   const partialLoad = projectsWithConfigs.some((m) => !projects.has(m.name))
   // Asked on a refusal only: a scope never loads a config-less project
   // nothing configured reaches.
@@ -704,11 +638,9 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
     projectMetas.some((m) => m.name === name) &&
     !projectsWithConfigs.some((m) => m.name === name)
 
-  // Boundary geometry considers every workspace project, loaded or not,
-  // config or not: `--affected` gives a changed path to the deepest project
-  // dir, and a config-less one keys its files under its default `build`, so
-  // a parent's glob that folded (or cleaned) them crossed a boundary the
-  // selection drew (X-57).
+  // Boundaries consider every project, loaded or not: a config-less one keys
+  // its files under its default `build`, so a parent's glob that folded or
+  // cleaned them crossed a boundary.
   const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
   const nestedWorkspaces = nestedWorkspacesOf(projectMetas)
   if (nestedWorkspaces.length > 0)
@@ -718,14 +650,13 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
     ? options.projects.filter((p) => projects.has(p))
     : [...projects.keys()]
 
-  // A bare name skips the default `build`: it runs nothing, and matched,
-  // `vx run build` in a project declaring none ran 0 tasks, exit 0 (X-102).
-  // A dependant's `^build` still reaches it, and `lib#build` names it.
+  // A bare name skips the default `build`: it runs nothing, and `vx run build`
+  // in a project declaring none ran 0 tasks, exit 0. `^build` and `lib#build`
+  // still reach it.
   const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
   let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
-  // A diff that changed only config-less projects loads none of them: no
-  // candidate to ask, so every bare name is still to judge, or a typo ran
-  // nothing, exit 0.
+  // A diff touching only config-less projects loads none: every bare name is
+  // still to judge, or a typo ran nothing, exit 0.
   if (options.handoff?.selectedByDiff === true && candidateProjects.length === 0)
     unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
   await refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
@@ -738,17 +669,14 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
       workspaceRoot,
     )
   if (options.handoff?.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
-    // A name a loaded project declares is no typo, whether or not the load
-    // was whole: an unaffected dependency loaded for the closure declared
-    // it, and the run said no project did (C-3). Only what is still
-    // unjudged pays for the rest of the workspace.
+    // A name a loaded project declares is no typo, even if the load was
+    // partial. Only what is still unjudged pays for the rest of the workspace.
     unresolvedTasks = undeclaredIn(unresolvedTasks, projects)
     if (partialLoad && unresolvedTasks.some((t) => !t.includes('#'))) {
       unresolvedTasks = await declaredNowhere(unresolvedTasks, everyProject)
     }
   }
-  // Run inside a project that lacks the task (`vx run typecheck` at a
-  // root whose members declare it), the run said no project declares it.
+  // Run inside a project lacking the task, the run said no project declares it.
   // Only a failing run pays for the rest of the workspace.
   let declaredElsewhere: string[] = []
   // A scope with no project to ask (a member with no vx config) leaves
@@ -767,13 +695,11 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
     }
     declaredElsewhere = bare.filter((t) => !nowhere.includes(t))
   }
-  // A `pkg#task` run loads pkg's closure alone, so a typo'd pkg (or Nx's
-  // short name for `@scope/pkg`) was measured against nothing and got no
-  // "did you mean". Only a failing run pays for the rest of the workspace.
+  // A `pkg#task` run loads pkg's closure alone, so a typo'd pkg (or Nx's short
+  // name) got no "did you mean". Only a failing run pays for the rest.
   let hintProjects: ReadonlyMap<string, ProjectEntry> = projects
-  // So does a bare name where no project in scope declares a task: "no
-  // project declares a task yet" must be true of the workspace, not of the
-  // root project a run from the root selects.
+  // Likewise a bare name no project in scope declares: "no project declares it"
+  // must be true of the workspace.
   if (
     unresolvedTasks.some((t) => {
       const at = t.indexOf('#')
@@ -803,13 +729,10 @@ type Asked = Awaited<ReturnType<typeof judgeRequests>>
 async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, store: Store) {
   const { workspaceRoot, plugins } = ws
   const { localCache, policy } = store
-  // Cache seam precedence: an EXPLICITLY injected remote layer
-  // (RunOptions.remoteCache — a distribution agent or daemon that already
-  // holds a wire client) wins outright; else a plugin's `cache` capability;
-  // else the local cache alone. Core ships no wire client — the remote
-  // cache is a plugin concern (docs/patterns.md § Remote cache wire). Injection
-  // winning prevents double-wrapping when the workspace also declares a
-  // cache plugin.
+  // Cache precedence: an injected remote layer (`RunOptions.remoteCache`, from
+  // an agent already holding a client) wins, then a plugin's `cache`, then
+  // local alone. Core ships no wire client (docs/patterns.md § Remote cache
+  // wire). Injection winning avoids double-wrapping.
   let cache: CacheLayer
   const remotes: ResolvedRemote[] = []
   if (options.remoteCache) {
@@ -841,21 +764,15 @@ async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, st
             : {}),
         })
   } catch (err) {
-    // A cache plugin that throws or returns something off-contract is
-    // refused by name; the local handle opened above must not leak with it,
-    // nor what another plugin's factory opened: the factories have run
-    // (C-4).
+    // A cache plugin that throws or breaks the contract is refused by name,
+    // closing the local handle and what other factories opened.
     await teardownPlugins(plugins, warnOf(log))
     localCache.close()
     throw err
   }
-  // Ask the LAYER, don't infer. Identity against `localCache` answers a
-  // DIFFERENT question — "did the plugin hand back something other than the
-  // handle I passed in?" — which an ordinary pass-through decorator (a
-  // metrics wrapper, a cache-dir redirect) with no remote at all answers
-  // yes to, skipping the remote-axis clamp below. `hasRemote` is the
-  // layer's own truthful answer; `LayeredCache` sets it, a bare `Cache`
-  // doesn't, and a third-party layer opts in when it really has a remote.
+  // Ask the layer, don't infer: identity against `localCache` is true for any
+  // pass-through decorator with no remote, skipping the clamp below.
+  // `hasRemote` is the layer's own answer.
   const hasRemoteLayer = cache.hasRemote === true
   return { cache, remotes, refs, hasRemoteLayer }
 }
@@ -878,15 +795,11 @@ async function buildGraph(
   const { workspaceRoot, workspaceConfig, plugins, projectMetas } = ws
   const { projects, everyProject } = load
   const { requested, partialLoad } = asked
-  // The whole graph, whatever `--exclude-dependencies` says: the stages
-  // below shape and key the tasks it drops as a full run would, because
-  // a dropped task is still keyed (excluded-keys.ts). A scoped load is not
-  // the whole workspace: a `^name` nothing loaded declares may be declared
-  // by a config the scope left out, so the builder hands it back instead of
-  // refusing it, and the rest decide.
-  // A run never checks the graph rules: `vx lock` and `vx lock --check`
-  // do. `exclusiveOutputs: false` still asks the walk
-  // for its addition marks.
+  // The whole graph, whatever `--exclude-dependencies` says: dropped tasks are
+  // still keyed (excluded-keys.ts). A scoped load is not the whole workspace,
+  // so a `^name` nothing loaded declares is handed back, not refused. Graph
+  // rules are `vx lock`'s; `exclusiveOutputs: false` still asks for addition
+  // marks.
   const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
   const unproven: Array<[taskId: string, name: string]> = []
   // Every config is the lock's when it was read: a `project` plugin's
@@ -924,9 +837,8 @@ async function buildGraph(
       warn: warnOf(log),
       rules: graphRules,
     })
-  // `--affected` selects over the FINAL graph: an edge or an input a
-  // `graph` hook adds moves a key, so the hooks run first, over every
-  // candidate, and the selection prunes what they left.
+  // `--affected` selects over the final graph: a `graph` hook's edge or input
+  // moves a key, so hooks run first over every candidate.
   const hooksFirst = hasGraphHook && options.affected !== undefined
   // `--affected` keeps a bare request only when the diff reaches its
   // closure; a `pkg#task` the user named runs as it always does.
@@ -966,10 +878,9 @@ async function buildGraph(
     }
   }
   if (unproven.length > 0) await refuseUndeclaredDeps(unproven, everyProject)
-  // An `--exclude-dependencies` name no project declares drops nothing:
-  // `=biuld` planned the whole chain and ran it, exit 0. Every
-  // other name the user types must resolve; so must this one. After the
-  // graph, so a config error (`^biuld` nobody declares) is named first.
+  // An `--exclude-dependencies` name no project declares is refused like any
+  // other typed name (`=biuld` ran the whole chain). After the graph, so a
+  // config error is named first.
   const excludeNames = options.excludeDependencies
   if (Array.isArray(excludeNames) && excludeNames.length > 0) {
     const declared = new Set<string>()
@@ -988,11 +899,8 @@ async function buildGraph(
       )
     }
   }
-  // The graph is built; what follows is git's enumeration over its
-  // projects, then the plugins' stages (graph, key, schedule). Separate
-  // rows, so a plugin's key stage reads as its own cost and not as graph
-  // building — a lockfile plugin's 1000 stats per run hid inside one
-  // `prepare (graph)` row.
+  // Git's enumeration, then the plugins' stages, each its own timing row, so a
+  // plugin's key stage is not hidden in graph building.
   mark('build graph')
   return { nodes, graphRules, hasGraphHook, hooksFirst, graphStage }
 }
@@ -1022,17 +930,12 @@ async function enumerateGit(
   const { nodes } = graph
   const gitFilesCache = new GitFilesCache()
   gitFilesCache.vxDirs = withinRoot(workspaceRoot, cacheDir)
-  // Bulk-populate via a single `git ls-files` at the workspace root —
-  // partitions the output by project. Avoids one fork+exec per project
-  // (~5-10ms each on Linux; the dominant cold-start cost on big
-  // monorepos). When any task in the graph declares inputs.workspaceFiles,
-  // the enumeration must see every file from the root (no pathspec
-  // scoping) and additionally stores a workspace-wide partition.
-  // Over the projects that own a task, not every project loaded: a scoped
-  // run loads its dependency closure for the `^` walk, and a `lint` of one
-  // package walked the whole tree for it (~60 ms of git where one
-  // project's pathspec takes ~7, 1,000 projects). A node a `graph` hook
-  // adds in another project keys through `resolveFiles`' own spawn.
+  // One `git ls-files` at the root, partitioned by project: a spawn per project
+  // is the dominant cold-start cost. `inputs.workspaceFiles` makes it unscoped,
+  // with a workspace-wide partition. Only over projects that own a task: a
+  // scoped run loads its closure for `^`, and walking all of it cost ~60 ms
+  // where one pathspec takes ~7. A node a `graph` hook adds elsewhere keys
+  // through `resolveFiles`' own spawn.
   const graphDirs = new Set<string>()
   let usesWorkspaceInputs = false
   for (const n of nodes.values()) {
@@ -1059,11 +962,8 @@ async function enumerateGit(
     usesWorkspaceInputs,
     localCache.memo,
   )
-  // The dependents count while the blob-size check's `cat-file` runs: the
-  // thread waited ~80 ms on it in a cold 8,002-task run, and counting
-  // after it, before the first task, took 40 ms. Only when
-  // nothing below edits the nodes: a graph or key hook, or
-  // `--exclude-dependencies`.
+  // Count dependents while `cat-file` runs (~80 ms of idle wait on a cold
+  // 8,002-task run). Only when nothing below edits the nodes.
   const dependents =
     !countDependents ||
     (graph.hasGraphHook && !graph.hooksFirst) ||
@@ -1079,9 +979,8 @@ async function enumerateGit(
 type Enumerated = Awaited<ReturnType<typeof enumerateGit>>
 
 /**
- * The plugins' `graph` and `key` stages over the built graph, the refusals
- * that read the final nodes, and the `--exclude-dependencies` split: the
- * tasks only keyed, never run.
+ * The `graph` and `key` stages, the refusals that read the final nodes, and the
+ * `--exclude-dependencies` split.
  */
 async function applyKeyStages(
   options: CoreRunOptions,
@@ -1101,8 +1000,8 @@ async function applyKeyStages(
   const { nestedDirsByProject } = asked
   if (hasGraphHook && !hooksFirst) await graph.graphStage(nodes)
   // An upstream run without the dependants that add to its outputs still
-  // ignores what they added (`markOutsideAdditions`): over every project,
-  // so a scoped load loads the rest, only in a workspace that allows it.
+  // ignores their additions (`markOutsideAdditions`): over every project, in a
+  // workspace that allows it.
   if (graph.graphRules.exclusiveOutputs === false) {
     const every = asked.partialLoad ? (await load.everyProject()).projects : load.projects
     markOutsideAdditions(nodes, every, workspaceRoot)
@@ -1207,10 +1106,9 @@ function pluginAccess(
 }
 
 /**
- * The names in `unresolved` no project in the whole workspace declares: an
- * anchored `pkg#task` stays as it is, a bare name leaves when a config the
- * diff's scope left out declares it. `load` evaluates those configs; one
- * failing to load leaves every name as it was, so the guard still speaks.
+ * The names in `unresolved` no project anywhere declares: anchored `pkg#task`
+ * stays; a bare name leaves when an out-of-scope config declares it. A load
+ * failure leaves every name, so the guard still speaks.
  */
 async function declaredNowhere(
   unresolved: readonly string[],
@@ -1233,9 +1131,8 @@ function declaresAny(projects: LoadedProjects['projects']): boolean {
 }
 
 /**
- * The bare names in `unresolved` no project in `projects` declares; `a#b`
- * forms pass through. Every project has a `build`, its default one if
- * nothing declares it, and a bare name does not select that (X-102).
+ * The bare names no project in `projects` declares; `a#b` passes through. A
+ * bare name never selects a default `build`.
  */
 function undeclaredIn(
   unresolved: readonly string[],
@@ -1251,12 +1148,9 @@ function undeclaredIn(
 }
 
 /**
- * Refuses the first `^name` in `unproven` that no project in the whole
- * workspace declares. `load` reads the locked configs a scoped run left out;
- * it is reached only when a `^name` found no holder and nothing loaded
- * declares it, so a run that names only declared tasks never pays for it.
- * The rest failing to load leaves the names unjudged: an out-of-scope
- * broken config does not fail a scoped run.
+ * Refuses the first `^name` in `unproven` no project anywhere declares. Reached
+ * only when a `^name` found no holder in scope; out-of-scope configs that fail
+ * to load leave names unjudged.
  */
 async function refuseUndeclaredDeps(
   unproven: ReadonlyArray<readonly [taskId: string, name: string]>,
@@ -1278,9 +1172,8 @@ async function refuseUndeclaredDeps(
 }
 
 /**
- * Drops every node outside the `dependsOn` closure of `roots`, and demotes a
- * requested one only a kept task pulls in: what a rebuild from the kept
- * requests would hold, with the `graph` hooks' edits kept.
+ * Drop every node outside the `dependsOn` closure of `roots`, demoting a
+ * requested one only a kept task pulls in; `graph` hook edits are kept.
  */
 function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>): void {
   const keep = new Set<string>()
@@ -1306,12 +1199,10 @@ export const namesRemote = (spec: string | undefined): boolean =>
 const outputWalls = new WeakMap<ReadonlyMap<string, string[]>, ReadonlyMap<string, string[]>>()
 
 /**
- * Where each project's outputs stop: its nested projects and every nested
- * workspace under it. Its inputs stop at the projects alone: a task may
- * read a nested workspace's files (a git worktree checked out under
- * `src/` holds one), so folding them costs a miss, and leaving them out
- * a stale hit; cleaning them deleted another workspace's work. The map
- * itself when there is no nested workspace.
+ * Where each project's outputs stop: its nested projects and nested workspaces.
+ * Its inputs stop at nested projects alone (a worktree under `src/` holds a
+ * workspace: folding it costs a miss, leaving it out a stale hit), but cleaning
+ * a nested workspace deleted its work.
  */
 export function outputWallsOf(
   nestedDirsByProject: ReadonlyMap<string, string[]>,
@@ -1320,9 +1211,8 @@ export function outputWallsOf(
 }
 
 /**
- * The workspace's `cache.policy`, parsed: the schema checks only its shape,
- * since the grammar lives in the cache module the workspace module may not
- * import. Undefined when it names none.
+ * The workspace's `cache.policy`, parsed here: the grammar lives in cache,
+ * which workspace may not import.
  */
 export function workspaceCachePolicy(
   config: WorkspaceConfig | null | undefined,
@@ -1358,10 +1248,9 @@ function unlockedConfigOf(
 }
 
 /**
- * A `project#build` naming the default `build` of a project the lock holds
- * no config for (or no project at all), while its directory holds one, asks for that config's task, not
- * one that runs nothing: ran, `c#build` was 0 tasks, exit 0, where a
- * renamed task gets "run `vx lock`" (Growth, lock drift).
+ * A `project#build` naming the default `build` of a project the lock has no
+ * config for, while its directory holds one: it asks for that config's task, so
+ * suggest `vx lock` instead of running nothing.
  */
 async function refuseUnlockedConfig(
   tasks: readonly string[],
@@ -1387,10 +1276,8 @@ async function refuseUnlockedConfig(
 }
 
 /**
- * The same for a bare name the selection (the cwd's project, `--filter`)
- * left unresolved: run from a member whose config came after the lock, it
- * said only projects outside the selection declare the task — pass
- * `--all`, which skips that member too.
+ * The same for a bare name the selection left unresolved: a member whose config
+ * came after the lock.
  */
 function refuseUnlockedScope(
   unresolved: readonly string[],
@@ -1410,9 +1297,8 @@ function refuseUnlockedScope(
 }
 
 /**
- * Why the lock holds no `config`: git ignores it, in a directory a
- * `discover` plugin made a project, which `vx lock` cannot fix; else it
- * came after the lock.
+ * Why the lock holds no `config`: git ignores it in a `discover`-made project
+ * (which `vx lock` cannot fix), else it came after the lock.
  */
 function notLockedYet(
   workspaceRoot: string,
@@ -1440,12 +1326,8 @@ function unlockedConfig(
 }
 
 /**
- * The config `vx lock` would find in the directory a name no project has
- * reads as (`packages/d`, `c`), or in an unlocked directory whose
- * `package.json` has that name (`@s/new`): a config written after the lock
- * makes no project, so `unlockedConfig` never sees it. Asked only for a
- * name that matches nothing, a run or `vx show` about to be refused, so a
- * run that matches pays nothing for it.
+ * The config `vx lock` would find for a name no project has: a config written
+ * after the lock makes no project. Asked only on a refusal.
  */
 export async function unlockedDir(
   name: string,
@@ -1471,11 +1353,9 @@ export async function unlockedDir(
 }
 
 /**
- * Each remote's `open`, in declared order, for the ones the policy lets read
- * or write. One at a time: two that ask on the terminal must not interleave.
- * A throw warns through the remote's `onError` (naming its plugin) and
- * turns that remote off; the run goes on, as after any remote failure.
- * True when that left the run no remote at all.
+ * Each remote's `open`, in order, for those the policy lets read or write. One
+ * at a time: two terminal prompts must not interleave. A throw warns through
+ * its `onError` and turns that remote off. True when no remote is left.
  */
 export async function openRemotes(
   remotes: readonly ResolvedRemote[],
@@ -1503,13 +1383,10 @@ export async function openRemotes(
 }
 
 /**
- * Refuses a run whose cache directory lies under a task's declared outputs:
- * the task's output clean deleted the index mid-run, and with
- * `clean: false` each save packed the index and earlier entries into its
- * own, which a hit then restored over the live index. Probed at the files
- * every cache holds, with the walk's own matcher (a glob naming the
- * directory takes its tree), so a `!` take-back keeps the run. Free unless
- * the cache is inside the workspace; then one prefix test per task.
+ * Refuses a cache directory under a task's declared outputs: the output clean
+ * deleted the index mid-run, and with `clean: false` saves packed the index
+ * into entries that later restored over it. Probed with the walk's matcher, so
+ * a `!` take-back keeps the run. Free unless the cache is inside the workspace.
  */
 function refuseCacheInOutputs(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -1544,9 +1421,8 @@ function refuseCacheInOutputs(
 }
 
 /**
- * `dir` spelled under `root` as the run spells the root, when it lies
- * there; compared through links, so a root reached by a symlink (macOS's
- * `/var/folders`) still finds a cache directory written canonical.
+ * `dir` spelled under `root` as the run spells it, compared through links
+ * (macOS `/var/folders`).
  */
 function withinRoot(root: string, dir: string): string[] {
   const real = (p: string): string => {

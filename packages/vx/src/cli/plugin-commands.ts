@@ -286,9 +286,9 @@ async function openVerbRemotes(
 }
 
 /**
- * `Required`, so a member `TaskArtifacts` gains cannot be left out here:
- * this wrapper dropped `uploaded`, and `vx dte worker` took every upload a
- * remote reset as landed (CI, 2026-10-29).
+ * `Required`, so a member `TaskArtifacts` gains cannot be left out here: this
+ * wrapper dropped `uploaded`, and `vx dte worker` took every upload a remote
+ * reset as landed (CI).
  */
 function lazyArtifacts(open: () => Promise<TaskArtifacts>): Required<TaskArtifacts> {
   let opened: Promise<TaskArtifacts> | undefined

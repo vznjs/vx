@@ -1,7 +1,7 @@
-// Where a server keeps what it is sent: one bucket (S3 or R2), no
-// database (2026-10-25). An artifact is one object whose name is its
-// issuer, repository name, ref and hash and whose size is the bucket's
-// own, so any number of nodes share a bucket and nothing else.
+// Where a server keeps what it is sent: one bucket (S3 or R2), no database. An
+// artifact is one object whose name is its issuer, repository name, ref and
+// hash and whose size is the bucket's own, so any number of nodes share a
+// bucket and nothing else.
 
 /** A blob's bytes and its size, as the bucket holds them. */
 export interface Blob {
@@ -24,11 +24,11 @@ export interface Blobs {
 }
 
 /**
- * An artifact's object name, `<issuer>/<repository>/<ref>/<hash>`, each
- * a readable folder (2026-11-03: pruning one branch is deleting its
- * prefix). Issuer and repository are percent-encoded here and `scope` is
- * the ref as the wire sends it, already encoded, so a slash or any other
- * byte never starts another folder.
+ * An artifact's object name, `<issuer>/<repository>/<ref>/<hash>`, each a
+ * readable folder (pruning one branch is deleting its prefix). Issuer and
+ * repository are percent-encoded here and `scope` is the ref as the wire sends
+ * it, already encoded, so a slash or any other byte never starts another
+ * folder.
  */
 export const blobName = (issuer: string, repository: string, scope: string, hash: string): string =>
   `${encodeURIComponent(issuer)}/${encodeURIComponent(repository)}/${scope}/${hash}`

@@ -23,30 +23,29 @@
 // resolves the URL from disk at runtime, so a sibling file would make
 // the shipped standalone binary fail with ModuleNotFound.
 //
-// The config crosses back as JSON. That is already this project's
-// contract for a config object: `hashTaskConfig` derives the cache key
-// from `JSON.stringify(config)` and `vx lock` stores the same
-// round-trip, so a JSON round-trip cannot change how a config hashes,
-// locks or runs. `JSON.stringify(JSON.parse(s)) === s`, so a config
-// re-read through a worker derives the SAME cache key as the
-// in-process first load — which is why this needs no CACHE_VERSION bump.
-// What JSON would drop or rewrite never makes the trip: the worker runs
-// `nonJsonPaths` (json-data.ts) on the live object first, embedded by its
-// source so the rule has one copy, and the parent refuses what it names
-// with the message the first load gives (item 701).
+// The config crosses back as JSON. That is already this project's contract for
+// a config object: `hashTaskConfig` derives the cache key from
+// `JSON.stringify(config)` and `vx lock` stores the same round-trip, so a JSON
+// round-trip cannot change how a config hashes, locks or runs.
+// `JSON.stringify(JSON.parse(s)) === s`, so a config re-read through a worker
+// derives the SAME cache key as the in-process first load — which is why this
+// needs no CACHE_VERSION bump. What JSON would drop or rewrite never makes the
+// trip: the worker runs `nonJsonPaths` (json-data.ts) on the live object first,
+// embedded by its source so the rule has one copy, and the parent refuses what
+// it names with the message the first load gives.
 
 import path from 'node:path'
 import { MAX_TIMEOUT_MS, notify, parseDuration, testTimerMs, UserError } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 import { changedExports, exportState } from './module-state.js'
 
-/** Why a config's `process.exit` throws, on both load paths (D-65). */
+/** Why a config's `process.exit` throws, on both load paths. */
 export const CONFIG_EXIT = 'a config exports its object; it cannot end the run'
 
 /**
- * The built-ins a config must not change: vx reads every other config and
- * makes every cache key through them (D-74, D-75). The loader watches them
- * in this process; the worker, asked to blame, in its own.
+ * The built-ins a config must not change: vx reads every other config and makes
+ * every cache key through them. The loader watches them in this process; the
+ * worker, asked to blame, in its own.
  */
 export const WATCHED_BUILTIN_NAMES = [
   'Object.prototype',
@@ -60,11 +59,11 @@ export const WATCHED_BUILTIN_NAMES = [
   'Set.prototype',
   'Promise.prototype',
   // A global one config set reached every config loaded after it in the
-  // process: `--all` read it, `--filter` of the reader alone did not (D-122).
+  // process: `--all` read it, `--filter` of the reader alone did not.
   'globalThis',
   // What the check itself and vx's matching read through: a replaced
   // `Reflect.ownKeys` blinded the check, and `RegExp.prototype.test` or
-  // `Date.now` ran vx on a config's choice (D-124).
+  // `Date.now` ran vx on a config's choice.
   'Reflect',
   'Object',
   'Array',
@@ -287,17 +286,18 @@ export function thrownValueMessage(kind: string, configPath: string, shown: stri
 }
 
 /**
- * How long a single config evaluation may take, in the worker or in process
- * (D-66); in process a synchronous loop holds the thread the deadline needs. Real evaluations are ~10 ms; this exists only so a hung config or a
- * killed worker cannot stall a run or a long-lived process indefinitely.
- * `config.workerTimeout` (`VX_CONFIG_WORKER_TIMEOUT`, read before any
- * workspace loads), per call so a test can drive the deadline.
+ * How long a single config evaluation may take, in the worker or in process; in
+ * process a synchronous loop holds the thread the deadline needs. Real
+ * evaluations are ~10 ms; this exists only so a hung config or a killed worker
+ * cannot stall a run or a long-lived process indefinitely.
+ * `config.workerTimeout` (`VX_CONFIG_WORKER_TIMEOUT`, read before any workspace
+ * loads), per call so a test can drive the deadline.
  */
 export function evalBudgetMs(): number {
-  // A bound on a worker that may be wedged, with no "no limit" reading: 0
-  // fired on the next tick (D-157) and a timer past the platform's range at
-  // 1 ms, so both fall back. The CLI refuses either before a run
-  // (checkSettingsEnv); an embedder's falls back.
+  // A bound on a worker that may be wedged, with no "no limit" reading: 0 fired
+  // on the next tick and a timer past the platform's range at 1 ms, so both
+  // fall back. The CLI refuses either before a run (checkSettingsEnv); an
+  // embedder's falls back.
   const n = parseDuration(process.env['VX_CONFIG_WORKER_TIMEOUT'] ?? '')
   return n !== null && n > 0 && n <= MAX_TIMEOUT_MS ? n : 30_000
 }
@@ -422,10 +422,9 @@ function acquireWorker(): Worker {
  * Hold the round open across evaluations the caller runs one after another.
  * `loadProjectConfigs` awaits each repeat load in turn, so without this the
  * in-flight count reached zero after every config and each one paid for a
- * worker of its own: a round of 5 configs made 5 workers (item 694). The
- * worker is still created lazily, so a round that evaluates nothing costs
- * nothing, and it is retired when the round ends, so the next round starts
- * from an empty registry.
+ * worker of its own: a round of 5 configs made 5 workers. The worker is still
+ * created lazily, so a round that evaluates nothing costs nothing, and it is
+ * retired when the round ends, so the next round starts from an empty registry.
  */
 export function beginEvalRound(): () => void {
   inFlight++
@@ -506,11 +505,11 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
 }
 
 /**
- * What evaluating `configPath` alone changes among the watched built-ins
- * and env vars, in a worker of its own that is then discarded: a round
- * whose overlapping loads saw a change asks each config in turn, so the
- * refusal names the one that made it (D-119). Empty when the evaluation
- * changes nothing, fails before reporting, or outlives the budget.
+ * What evaluating `configPath` alone changes among the watched built-ins and
+ * env vars, in a worker of its own that is then discarded: a round whose
+ * overlapping loads saw a change asks each config in turn, so the refusal names
+ * the one that made it. Empty when the evaluation changes nothing, fails before
+ * reporting, or outlives the budget.
  */
 export async function builtinsChangedBy(configPath: string): Promise<string[]> {
   return (await blame(configPath, { blame: true })).changed ?? []

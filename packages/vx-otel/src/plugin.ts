@@ -5,7 +5,7 @@
 //
 // This replaces core's old hardcoded `attachOtelEmit` (logs-only, fired
 // unconditionally when OTEL_EXPORTER_OTLP_ENDPOINT was set). OTel is now a
-// plugin — declare it in .vx/workspace.ts. The trade: the env var ALONE no
+// plugin — declare it in.vx/workspace.ts. The trade: the env var ALONE no
 // longer auto-exports; you must `defineWorkspace({ plugins: [otel()] })`.
 
 import {
@@ -66,8 +66,7 @@ export interface OtelPluginOptions {
  * Parse an `OTEL_EXPORTER_OTLP_HEADERS`-style `k=v,k=v` string. The spec's
  * format is W3C Baggage's, so keys and values are percent-decoded:
  * `Authorization=Basic%20…`, as vendors document it, was sent literally and
- * every export was refused 401 (item 923). A malformed escape is kept as
- * written.
+ * every export was refused 401. A malformed escape is kept as written.
  */
 export function parseOtlpHeaders(raw: string | undefined): Record<string, string> {
   if (!raw) return {}
@@ -142,8 +141,8 @@ function envTimeout(
 }
 
 /**
- * `v1/<signal>` appended to the base URL's PATH, as the exporter spec says:
- * a base with a query had it glued onto the query's last value (F-49).
+ * `v1/<signal>` appended to the base URL's PATH, as the exporter spec says: a
+ * base with a query had it glued onto the query's last value.
  */
 function joinSignal(base: string, signal: string): string {
   if (URL.canParse(base)) {
@@ -155,9 +154,9 @@ function joinSignal(base: string, signal: string): string {
 }
 
 /**
- * `OTEL_RESOURCE_ATTRIBUTES`: `k=v,k=v`, percent-encoded. On a decoding
- * error the Resource SDK spec discards the whole variable; a malformed
- * escape was sent as written (F-49).
+ * `OTEL_RESOURCE_ATTRIBUTES`: `k=v,k=v`, percent-encoded. On a decoding error
+ * the Resource SDK spec discards the whole variable; a malformed escape was
+ * sent as written.
  */
 function parseResourceAttributes(
   raw: string | undefined,
@@ -253,18 +252,18 @@ export function resolveOtelConfig(
   const tracesUrl = picked.traces?.[0]
   const metricsUrl = picked.metrics?.[0]
   const logsUrl = picked.logs?.[0]
-  // Each signal has its own endpoint, as the spec has them: a pipeline that
-  // set only a metrics (or logs) endpoint declined whole and exported
-  // nothing (F-45). The plugin declines only when no signal has one.
+  // Each signal has its own endpoint, as the spec has them: a pipeline that set
+  // only a metrics (or logs) endpoint declined whole and exported nothing. The
+  // plugin declines only when no signal has one.
   if (tracesUrl === undefined && metricsUrl === undefined && logsUrl === undefined) {
     return undefined
   }
-  // The standard SDK exporter lists, honoured so a pipeline already
-  // configured that way does not start receiving vx's telemetry because it
-  // upgraded vx. Only the logs one was read; the traces and metrics `=none`
-  // were ignored and still exported (item 1056). As the spec has it, a
-  // signal goes over OTLP only when its list names `otlp` (unset or empty is
-  // `otlp`): `console` or `prometheus` exported OTLP all the same.
+  // The standard SDK exporter lists, honoured so a pipeline already configured
+  // that way does not start receiving vx's telemetry because it upgraded vx.
+  // Only the logs one was read; the traces and metrics `=none` were ignored and
+  // still exported. As the spec has it, a signal goes over OTLP only when its
+  // list names `otlp` (unset or empty is `otlp`): `console` or `prometheus`
+  // exported OTLP all the same.
   const off = (name: string): boolean => {
     const v = env[name]?.trim().toLowerCase()
     return v ? !v.split(',').some((e) => e.trim() === 'otlp') : false
@@ -274,8 +273,8 @@ export function resolveOtelConfig(
   const metricsWanted = opts.metrics ?? !off('OTEL_METRICS_EXPORTER')
   // A signal ships only to its OWN url. With only a traces endpoint set, the
   // metrics payload used to go to the traces url — a request the collector
-  // refuses on every run (item 807). A signal asked for by name and given no
-  // url says so once instead.
+  // refuses on every run. A signal asked for by name and given no url says so
+  // once instead.
   for (const [signal, asked, url] of [
     ['metrics', opts.metrics, metricsUrl],
     ['logs', opts.logs, logsUrl],
@@ -293,14 +292,14 @@ export function resolveOtelConfig(
   // nothing still loaded the exporter and had core build its records.
   if (!tracesOn && !metricsOn && !logsOn) return undefined
 
-  // A header value fetch refuses is refused here, by name: fetch's error
-  // quotes the whole value, and the export warning printed it — an auth
-  // header's secret in the log (item 928). A NAME fetch refuses is refused
-  // too, and never printed: a curl-style `Authorization: Basic …=` split at
-  // its first `=` is a name holding the credential, and every export failed
-  // quoting it (item 1056). Names are lower-cased so the later of two
-  // spellings replaces the earlier, as the spec orders them: `Authorization`
-  // and `authorization` were both sent, joined into one bad credential.
+  // A header value fetch refuses is refused here, by name: fetch's error quotes
+  // the whole value, and the export warning printed it — an auth header's
+  // secret in the log. A NAME fetch refuses is refused too, and never printed:
+  // a curl-style `Authorization: Basic …=` split at its first `=` is a name
+  // holding the credential, and every export failed quoting it. Names are
+  // lower-cased so the later of two spellings replaces the earlier, as the spec
+  // orders them: `Authorization` and `authorization` were both sent, joined
+  // into one bad credential.
   const dropped = new Set<string>()
   let badName = false
   const clean = (h: Record<string, string>): Record<string, string> => {
@@ -358,9 +357,9 @@ export function resolveOtelConfig(
         .toLowerCase() === 'grpc',
   )
   // `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` was not read, and a pipeline
-  // configured for it sent every export uncompressed (F-33).
-  // Each bad variable said once, by name: the warning named none of the
-  // three a value may come from, and a second bad one went unsaid.
+  // configured for it sent every export uncompressed. Each bad variable said
+  // once, by name: the warning named none of the three a value may come from,
+  // and a second bad one went unsaid.
   const badCompression = new Set<string>()
   const gzip = (['traces', 'metrics', 'logs'] as const).filter((signal) => {
     // Read as otel() checked it, and as the variable is: `'GZIP'` was taken
@@ -380,10 +379,10 @@ export function resolveOtelConfig(
     }
     return false
   })
-  // The spec's TLS files were not read: a collector behind a private CA
-  // failed every export on its certificate, and one that asks for a client
-  // certificate refused the connection (F-39). Each is a PEM file path; a
-  // signal's own wins. Read once here; one that cannot be read warns once.
+  // The spec's TLS files were not read: a collector behind a private CA failed
+  // every export on its certificate, and one that asks for a client certificate
+  // refused the connection. Each is a PEM file path; a signal's own wins. Read
+  // once here; one that cannot be read warns once.
   const pem = new Map<string, string | undefined>()
   const read = (name: string, file: string): string | undefined => {
     if (!pem.has(file)) {
@@ -430,9 +429,9 @@ export function resolveOtelConfig(
     gzip,
     ...(Object.keys(tls).length > 0 ? { tls } : {}),
     headers: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...optionHeaders }),
-    // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the
-    // shared ones, as the spec orders them; they were not read (item 923).
-    // The plugin's `headers` option stays on top of both.
+    // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the shared
+    // ones, as the spec orders them; they were not read. The plugin's `headers`
+    // option stays on top of both.
     signalHeaders: {
       traces: clean({
         ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_TRACES_HEADERS']),
@@ -452,8 +451,8 @@ export function resolveOtelConfig(
     logsEnabled: logsOn,
     live: opts.live !== false,
     timeoutMs,
-    // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the
-    // shared one; it was not read (F-49). The option tops both.
+    // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the shared
+    // one; it was not read. The option tops both.
     signalTimeoutMs: {
       traces:
         opts.timeoutMs ?? envTimeout(env, 'OTEL_EXPORTER_OTLP_TRACES_TIMEOUT', warn) ?? timeoutMs,
@@ -484,11 +483,11 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
 const MAX_TIMER_MS = 2 ** 31 - 1
 
 /**
- * The OpenTelemetry exporter plugin. Declared in .vx/workspace.ts via
+ * The OpenTelemetry exporter plugin. Declared in.vx/workspace.ts via
  * `defineWorkspace({ plugins: [otel()] })`. Contributes a telemetry sink that
  * maps each run to OTLP traces (a `vx.run` root span + `vx.task` children),
- * metrics, and one log record per executed task, over OTLP/HTTP JSON.
- * Declines when no OTLP endpoint is set.
+ * metrics, and one log record per executed task, over OTLP/HTTP JSON. Declines
+ * when no OTLP endpoint is set.
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)

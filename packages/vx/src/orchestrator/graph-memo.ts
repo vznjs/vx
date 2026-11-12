@@ -182,9 +182,9 @@ const COUNT_PARTS = memoParts<{ nodes: ReadonlyMap<string, TaskNode> }>({
  * The run's dependents count, the scheduler's baseline and every row's
  * `blocks`, read back with the graph it was counted on: the closure over a
  * 9,603-task graph (11k nodes) was ~100 ms of every warm run, the same each
- * time (2026-10-29). `token` names the graph's edges (`memoGraph`, undefined
- * once anything edited them), the node ids which of them this run kept
- * (`--affected` prunes under the same token).
+ * time. `token` names the graph's edges (`memoGraph`, undefined once anything
+ * edited them), the node ids which of them this run kept (`--affected` prunes
+ * under the same token).
  */
 export function graphCounts(
   nodes: ReadonlyMap<string, TaskNode>,

@@ -6,9 +6,8 @@ const PR_SET_DUMPABLE = 4
 
 /**
  * Hide vx's environment from a same-user task. A task gets only declared
- * variables, but vx itself holds the rest. Not a boundary (`exec.sandbox`
- * is): it hides the environment, not files. On every verb
- * (2026-10-13).
+ * variables, but vx itself holds the rest. Not a boundary (`exec.sandbox` is):
+ * it hides the environment, not files. On every verb.
  *
  * Linux: make vx non-dumpable, so its `/proc/<pid>/environ` (and ptrace)
  * close to the task. A child is dumpable again after `exec`, so tasks are
@@ -16,11 +15,10 @@ const PR_SET_DUMPABLE = 4
  * observable: strace cannot read a non-dumpable tracee's memory, nor a
  * debugger `/proc/<pid>/fd`.
  *
- * macOS: `ps eww` reads the env strings the kernel copied above the
- * stack, and no flag closes that to the same user, so vx zeroes the
- * values there (2026-10-13: "Do the override then on macOS").
- * Bun copied the env at startup, so `process.env`, and every task built
- * from it, keeps them.
+ * macOS: `ps eww` reads the env strings the kernel copied above the stack, and
+ * no flag closes that to the same user, so vx zeroes the values there. Bun
+ * copied the env at startup, so `process.env`, and every task built from it,
+ * keeps them.
  */
 export async function hideEnvFromTasks(): Promise<boolean> {
   if (process.platform === 'darwin') return wipeStartupEnv()

@@ -115,20 +115,18 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
   if (args.hashCache.folds === undefined) return undefined
   const parts: string[] = [RUN_MEMO_VERSION, codeIdentity()]
   RUN_PARTS.push(args, undefined, parts)
-  // A remembered graph's token names every node's edges and config, so
-  // each node adds only what may differ under it (4 of 8 ms at 1,206
-  // tasks, 2026-10-23).
+  // A remembered graph's token names every node's edges and config, so each
+  // node adds only what may differ under it (4 of 8 ms at 1,206 tasks).
   const graph = args.hashCache.graph
   const nodeParts = graph === undefined ? NODE_PARTS : NODE_PARTS_UNDER_GRAPH
   const ids: string[] = []
   const envNames = new Set<string>()
   // Tasks of one project mostly declare the same files and outputs, and the
-  // token is a function of that declaration (`filesToken`): one walk each,
-  // not one per task (5 of 12 ms at 1,206 tasks, 2026-10-23).
-  // Keyed by the project, then by the declaration's text, and that text is
-  // taken once per config object: the lock shares a config among the tasks
-  // that declare it alike, and a stringify and a joined key per node were
-  // ~6 ms of 9,603 (2026-11-07).
+  // token is a function of that declaration (`filesToken`): one walk each, not
+  // one per task (5 of 12 ms at 1,206 tasks). Keyed by the project, then by the
+  // declaration's text, and that text is taken once per config object: the lock
+  // shares a config among the tasks that declare it alike, and a stringify and
+  // a joined key per node were ~6 ms of 9,603.
   const tokens = new Map<string, Map<string, string>>()
   const declarations = new Map<TaskNode['config'], string>()
   const declarationOf = (cfg: TaskNode['config']): string => {
@@ -154,8 +152,8 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     }
     // A files token in full is a root, a declaration and a digest, ~200
     // characters per node, joined and hashed again: 2 MB of token at 8,002
-    // tasks (2026-11-07). Each distinct one is hashed once instead, and the
-    // node names that hash, which is also what the delta compares.
+    // tasks. Each distinct one is hashed once instead, and the node names that
+    // hash, which is also what the delta compares.
     let files = ''
     if (inputs !== undefined) {
       // No positive entry resolves no files (`filesPlan`). The files token
@@ -211,10 +209,10 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
 }
 
 /**
- * A memo row: each stable and uncached key with its node's place in the
- * run's node order. The token names every node id in that order, so a row
- * read under it means the same nodes; by id, the row's JSON and a lookup
- * per node were ~5 ms of 8,002 (2026-11-07).
+ * A memo row: each stable and uncached key with its node's place in the run's
+ * node order. The token names every node id in that order, so a row read under
+ * it means the same nodes; by id, the row's JSON and a lookup per node were ~5
+ * ms of 8,002.
  */
 interface KeysRow {
   /** Stable keys: node places, and their keys alike. */
@@ -367,13 +365,13 @@ let identity: string | undefined
  */
 export function codeIdentity(): string {
   if (identity !== undefined) return identity
-  // `Bun.main`, not `import.meta.dir`: `--minify` inlines the build
-  // machine's source path, so an installed binary walked a `src/` that is
-  // not there, threw, and lost every warm run's short circuit (2026-10-22).
-  // ctime and inode with the mtime, as the file hash memo keys: an npm
-  // tarball stamps every file 1985-10-26 and extraction keeps that mtime,
-  // so an upgrade that kept a file's size left its stamp alone, and `cp
-  // -p` does the same to a binary. No write can set ctime back.
+  // `Bun.main`, not `import.meta.dir`: `--minify` inlines the build machine's
+  // source path, so an installed binary walked a `src/` that is not there,
+  // threw, and lost every warm run's short circuit. ctime and inode with the
+  // mtime, as the file hash memo keys: an npm tarball stamps every file
+  // 1985-10-26 and extraction keeps that mtime, so an upgrade that kept a
+  // file's size left its stamp alone, and `cp -p` does the same to a binary. No
+  // write can set ctime back.
   if (Bun.main.startsWith('/$bunfs/')) {
     const st = statSync(process.execPath)
     return (identity = `${process.execPath}:${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`)

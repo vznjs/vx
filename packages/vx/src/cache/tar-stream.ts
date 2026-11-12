@@ -1,15 +1,11 @@
-// A streaming tar reader for the restore path. `Bun.Archive` needs the whole
-// tar in memory and `.files()` copies every entry, so restoring a 150 MiB
-// artifact peaked at 3.2× its size (measured 2026-09-03). This reads the
-// tar as it streams out of the zstd decoder and hands each entry's body to
-// the caller as chunks, so memory is bounded by one chunk, not the archive.
+// A streaming tar reader: each entry's body reaches the caller as chunks out of
+// the zstd decoder, so memory is bounded by a chunk, not the archive
+// (`Bun.Archive` holds it whole).
 //
-// Dialect: what libarchive (Bun.Archive) writes — ustar with the name/prefix
-// split, pax extended headers (`x`: path, size) past ustar's limits — plus
-// GNU long names (`L`) for foreign artifacts. Every header's checksum is
-// verified; an archive that ends before its data does is an error, never a
-// short entry. Non-regular entries are reported with their type and their
-// bodies skipped; the caller decides what to materialise (nothing but `0`).
+// Dialect: ustar with the name/prefix split, pax extended headers past ustar's
+// limits, and GNU long names (`L`) for foreign artifacts. Every header checksum
+// is verified; an archive ending before its data is an error, never a short
+// entry. Non-regular entries are reported and skipped.
 
 interface TarEntry {
   name: string
@@ -31,10 +27,8 @@ export class TarFormatError extends Error {
 
 const BLOCK = 512
 /**
- * An extended header's body is read whole, so its size is a claim on
- * memory the stream has not paid for: a 1 GiB pax header zstd-compresses
- * to ~32 KB and cost 2 GiB of RSS where a regular entry of that size
- * streams in 32 MiB (L-1). A real one holds a path (≤ PATH_MAX) and a few
+ * An extended header's body is read whole, so its size is a claim on memory: a
+ * 1 GiB pax header compresses to ~32 KB. A real one holds a path and a few
  * numbers; a MiB is far past any writer's.
  */
 const MAX_EXTENDED_HEADER = 1024 * 1024
@@ -68,10 +62,9 @@ function octal(h: Uint8Array, off: number, len: number): number {
 }
 
 /**
- * The field every writer emits — octal digits between ASCII spaces, ended
- * by a NUL or the field's end — read off the bytes; null for anything
- * else, which `octal` reads the slow way. Three fields a header through a
- * decoder and a regex were most of a small artifact's read (2026-10-02).
+ * The field every writer emits (octal between spaces, ended by NUL or the
+ * field's end) read off the bytes; null for anything else, which `octal` reads
+ * the slow way.
  */
 function plainOctal(h: Uint8Array, off: number, len: number): number | null {
   const end = off + len
@@ -209,10 +202,8 @@ const ZERO: HeaderStep = { kind: 'zero' }
 const END: HeaderStep = { kind: 'end' }
 
 /**
- * The dialect, decoded off whole blocks with no I/O: the one copy of the
- * header rules both readers run — `tarEntries` over a stream (restore,
- * ingest) and `tarEntriesSync` over a tar in memory (a save's own) — so
- * a name a save indexes is the name a restore reads.
+ * The dialect, decoded off whole blocks: the one copy of the header rules both
+ * readers run, so a name a save indexes is the name a restore reads.
  */
 class TarDecoder {
   private pendingPath: string | undefined
@@ -238,9 +229,8 @@ class TarDecoder {
     // such a Date after the renames before it had landed.
     if (mtimeMs > DATE_MAX_MS) throw new TarFormatError(`header mtime past what a Date holds`)
     const padded = Math.ceil(size / BLOCK) * BLOCK
-    // POSIX `ustar\0` only: old GNU's `ustar  ` keeps atime and ctime at
-    // 345, and `-G` fills them, so a prefix read there named every entry
-    // `<atime>…/<name>`.
+    // POSIX `ustar\0` only: old GNU's `ustar ` keeps atime and ctime where the
+    // prefix is.
     const prefix = field(h, 257, 6) === 'ustar' ? field(h, 345, 155) : ''
     const rawName = field(h, 0, 100)
     const name = this.pendingPath ?? (prefix ? `${prefix}/${rawName}` : rawName)
@@ -333,10 +323,8 @@ interface TarBytesEntry {
 }
 
 /**
- * `tarEntries` over a tar already in memory, synchronously, through the
- * same decoder. A body is checked against the tar's end when it is read,
- * as the stream reader checks it when it is drained, so the two refuse
- * a damaged archive with the same class at the same point.
+ * `tarEntries` over a tar in memory, synchronously, through the same decoder,
+ * refusing a damaged archive with the same class at the same point.
  */
 export function* tarEntriesSync(tar: Uint8Array): Generator<TarBytesEntry> {
   const dec = new TarDecoder()
@@ -503,9 +491,8 @@ function entryHead(input: TarInput): Uint8Array[] {
   const mode = input.mode ?? 0o644
   const mtime = input.mtime ?? 0
   if (!needsPax(input.name)) return [header(input.name, input.size, '0', mode, mtime)]
-  // Under a pax record the ustar name is a courtesy for readers that
-  // ignore pax: its first 100 BYTES, never characters — a multibyte
-  // name sliced by characters can be over 100 bytes again.
+  // Under a pax record the ustar name is a courtesy: its first 100 BYTES, never
+  // characters.
   const pax = paxRecord('path', input.name)
   return [
     header('PaxHeaders/entry', pax.byteLength, 'x', 0o644, mtime),
@@ -516,9 +503,8 @@ function entryHead(input: TarInput): Uint8Array[] {
 }
 
 /**
- * `tarPack` of in-memory bodies, written into one buffer on this thread:
- * the same bytes, without a generator hop per block (the small-artifact
- * save, `packArtifactBytes`). Returns the bytes written.
+ * `tarPack` of in-memory bodies into one buffer on this thread: the same bytes
+ * without a hop per block. Returns the bytes written.
  */
 export function tarPackInto(
   inputs: readonly (TarInput & { body: Uint8Array | string })[],
@@ -541,10 +527,9 @@ export function tarPackInto(
 }
 
 /**
- * Pack regular files as a tar stream: ustar with the name/prefix split,
- * a pax `path` record when a name fits neither field — exactly the
- * dialect `tarEntries` reads — and the two-block end marker. Bodies are
- * streamed, so memory is bounded by a chunk, never by an entry.
+ * Pack regular files as a tar stream: ustar with the name/prefix split, a pax
+ * `path` record when a name fits neither field, and the end marker. Memory is
+ * bounded by a chunk.
  */
 export async function* tarPack(
   inputs: AsyncIterable<TarInput> | Iterable<TarInput>,

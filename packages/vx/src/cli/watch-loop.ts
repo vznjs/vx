@@ -44,9 +44,9 @@ function sayCannot(what: string, err: unknown): void {
 }
 
 /**
- * One line for a cycle every task of which was a cache hit, where hits
- * print no row: watch prints no footer, so such a cycle said nothing, and
- * a failure the cycle before stayed the last outcome on screen.
+ * One line for an all-hit cycle, where hits print no row and watch prints no
+ * footer: it said nothing, and the previous cycle's failure stayed the last
+ * outcome on screen.
  */
 export function sayAllCached(opts: CoreRunOptions, outcomes: readonly { status: string }[]): void {
   if (outcomes.length === 0 || !outcomes.every((o) => isCacheHit(o.status))) return
@@ -67,9 +67,8 @@ function isDirectory(abs: string): boolean {
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150
 /**
- * ...but no longer than this after the first: a writer that never pauses
- * for a window (a dev server logging into its project every 50 ms) reset
- * the timer forever, and an edit made meanwhile never ran.
+ * ...but no longer than this after the first: a writer that never pauses (a dev
+ * server logging every 50 ms) reset the timer forever.
  */
 const DEBOUNCE_MAX_MS = 1_000
 
@@ -127,9 +126,9 @@ interface WatchLoopArgs {
   /** Files the workspace config imports: loaded once per process, so an edit is named, not run. */
   workspaceConfigImports: readonly string[]
   /**
-   * Root files a plugin claims (`VxPlugin.fingerprint`): a lockfile, or a
-   * file its stages read (`turbo.json`). The workspace config is
-   * loaded once per process, so the set is fixed for the loop.
+   * Root files plugins claim (`VxPlugin.fingerprint`): a lockfile, or a file
+   * their stages read. The workspace config loads once per process, so the set
+   * is fixed.
    */
   claimedRootFiles: ReadonlySet<string>
   /** The files a claimed file's recorded digests read besides it (`lockedExtras`), absolute. */
@@ -198,16 +197,16 @@ class WatchLoop {
   private extraFiles: ReadonlySet<string>
   private configImportFiles: readonly string[]
   private wsConfigImportFiles: readonly string[]
-  // A dev server stays up while the loop idles and across cycles; a cycle
-  // that must restart it (its config changed, it died) stops it before its
-  // graph, so the new one never meets the old one's port.
+  // A dev server stays up while the loop idles and across cycles; a cycle that
+  // must restart it stops it before its graph, so the new one never meets the
+  // old one's port.
   private held: HeldPersistent | undefined
   /** The watched projects: `rearm` replaces them. */
   private watched: readonly ProjectMeta[]
 
-  // Reentrancy guard — never two orchestrator runs in flight. Events that
-  // land while one is running wait in `changes.pending` and are judged, on
-  // settled bytes, one debounce window after it ends.
+  // Never two runs in flight. Events landing meanwhile wait in
+  // `changes.pending`, judged on settled bytes one debounce window after it
+  // ends.
   private running: boolean
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
   private inFlight: Promise<void> = Promise.resolve()
@@ -223,10 +222,9 @@ class WatchLoop {
   /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
   private lockSeen: string
 
-  // Filter out events for paths we don't care about. We watch each
-  // project's dir recursively, so a `node_modules` write under a
-  // project would otherwise trigger every save during `bun install` —
-  // and vx's own cache writes would trigger a cycle that writes again.
+  // Drop events for paths that do not matter: a `node_modules` write under a
+  // project fired on every save of `bun install`, and vx's own cache writes
+  // would loop.
   /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
   private readonly atArm: ReturnType<typeof gitFiles>
   private isIgnoredPath: ReturnType<typeof makeWatchIgnore>
@@ -235,8 +233,7 @@ class WatchLoop {
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   private reread = false
   private readonly pool: WatcherPool
-  // Only the named entries a key reads ignored files under: `src` of
-  // `src/**` over a listed `src` reaches none, and a dev server's ignored
+  // Only entries a key reads ignored files under: a dev server's ignored
   // `src/dev.log` started ~3 cycles a second. Reckoned per sweep.
   private reachOf: readonly string[] | undefined
   private reach: readonly string[] = []
@@ -244,20 +241,18 @@ class WatchLoop {
   private readonly changes: ChangeJudge
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   private readonly perProject = new Map<string, WatchHandle>()
-  // Each FSEvents stream goes live slower than the one before it: per
-  // project, 751 of 3000 missed their 2 s proof on a macos-latest runner
-  // and fell back to polling, a full core at idle; one stream at the root
-  // went live in 8 ms (tests/watch-one-stream.test.ts). Polling keeps its
-  // per-project walks, which skip what lies between projects.
+  // Each FSEvents stream goes live slower than the last: per project, 751 of
+  // 3,000 missed their 2 s proof on macOS CI and fell back to polling (a full
+  // core at idle); one root stream went live in 8 ms. Polling keeps per-project
+  // walks.
   private readonly oneStream: boolean
   private readonly treeArms: boolean
   /** The projects the one stream hands events to, by their real directory. */
   private streamed: Streamed[] = []
   private readonly realRoot: string
   // An OS watch holds the directory's inode, not its path: one removed and
-  // made again (`rm -rf packages && git checkout packages`) keeps reporting
-  // for the deleted one. Each arm notes the directory it holds, and a
-  // re-arm replaces any whose path now names another.
+  // recreated keeps reporting for the deleted one. Each arm notes its
+  // directory, and a re-arm replaces any whose path now names another.
   private readonly armedAs = new Map<string, string>()
   /** The ancestor and import directories the one stream serves (`inStream`). */
   private streamedAncestors = new Set<string>()
@@ -274,22 +269,16 @@ class WatchLoop {
   private links: Set<string>
   private readonly extraArms = new Map<string, { at: string; handle: WatchHandle }>()
   private readonly excludeFile: string | undefined
-  // Said once, when the loop first arms: a re-arm repeated it after every
-  // cycle that re-read the watched set, between task rows. `debug.watch`
-  // says each arm on stderr, for whoever needs to see the set change.
+  // Said once, at the first arm: a re-arm repeated it between task rows.
+  // `debug.watch` reports each arm on stderr.
   private lastTasks: number | undefined
   private readonly debugArms: boolean
-  // A project directory, or one a config imports from, removed and made
-  // again (`rm -rf packages && git checkout packages`) is no event to its
-  // own watch (it holds the deleted directory) nor to the root arm, which
-  // drops every name but its own files: silence until a restart. So each
-  // is watched from its nearest directory that exists, for the next name
-  // on the way down: its parent while it is there, an ancestor when the
-  // parent went too (`apps/` removed under `apps/web/site`). Every
-  // directory above it up to the root is watched for the next name too:
-  // FSEvents reports nothing for a watched directory's children when the
-  // directory itself goes with them, so on macOS the parent's arm alone
-  // never heard `packages/` removed under `packages/a` (inotify did).
+  // A project directory (or one a config imports from) removed and recreated is
+  // no event to its own watch, which holds the deleted directory, nor to the
+  // root arm: silence until a restart. So each is watched from its nearest
+  // existing directory for the next name down, and every directory above it to
+  // the root too: on macOS FSEvents reports nothing for a watched directory's
+  // children when the directory goes with them.
   private readonly ancestorArms = new Map<string, WatchHandle>()
   private ancestorNames = new Map<string, Set<string>>()
   /** Each project directory below the root as these arms first saw it (`inodeOf`). */
@@ -332,10 +321,9 @@ class WatchLoop {
       this.claimedRootFiles,
       this.fenced,
     )
-    // The poller skips exactly what the event filter would drop: the
-    // unconditional segments AND this run's declared output containers. Read
-    // through `isIgnoredPath` rather than captured, because `rearm` replaces
-    // the filter when the selection changes.
+    // The poller skips what the event filter drops: the fixed segments and this
+    // run's output containers. Read through `isIgnoredPath`, since `rearm`
+    // replaces the filter.
     this.pool = new WatcherPool((dir, rel) => this.isIgnoredPath(dir, rel, true), args.poll)
     /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
     const armedAt = fsClockNow(this.cacheDir)
@@ -377,9 +365,8 @@ class WatchLoop {
     this.links = this.atArm?.links ?? new Set<string>()
     /**
      * `info/exclude` ignores as a `.gitignore` does, and keys are
-     * gitignore-aware (X-136), so its edit is a cycle; the ignore filter drops
-     * every path under `.git/`. Armed once, from the common dir the run's own
-     * enumeration asked git for (`repoFacts`, memoised).
+     * gitignore-aware, so its edit is a cycle; the filter drops everything else
+     * under `.git/`. Armed once, from the run's memoised git dir.
      */
     const commonDir = repoFacts(workspaceRoot)?.commonDir
     this.excludeFile =
@@ -399,9 +386,8 @@ class WatchLoop {
     this.armExtras()
     this.armExclude()
 
-    // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
-    // closes over the RESOLVED cache dir (relocated or not) and the tasks'
-    // declared outputs.
+    // The run's own writes never kick the loop: the ignore closes over the
+    // resolved cache dir and the declared outputs.
 
     // "watching" is a promise that an edit from now on is seen; every
     // watcher has proved (or been given 2 s to prove) delivery first.
@@ -416,11 +402,9 @@ class WatchLoop {
     this.lastTasks = args.tasks()
     this.sayWatching(projects.length)
     this.sayArmed(projects.length)
-    // An edit made while the initial run ran landed before any watcher, and
-    // its mtime predates the arm, so no event or judgement can find it.
-    // Unheard, watch idled over output built from the old bytes. One to a
-    // task the run was running, the run's own re-check found (it left the
-    // task unsaved); any other is heard here.
+    // An edit made during the initial run predates the arm, so no event finds
+    // it, and watch idled over stale output. One to a task the run was running
+    // its re-check found; any other is heard here.
     const heard = this.heardSinceRun()
     if (args.drifted !== undefined && !heard)
       void this.cycle(`${args.drifted} inputs, edited during the first run`)
@@ -456,11 +440,10 @@ class WatchLoop {
       if (c === undefined || c.interrupted || !c.waitsOnReadiness() || this.stop.aborted) return
       const label = changes.judge()
       if (label === undefined) return
-      // What a server writes in its project as it boots (a timestamped
-      // config bundle, a route tree) is an edit: it stopped the cycle, the
-      // next server wrote it again, and the loop restarted it for good,
-      // never ready. A path that stopped the last such cycle, untracked
-      // and in a waiting server's project, is that server's own write.
+      // What a server writes in its project as it boots (a timestamped bundle,
+      // a route tree) is an edit: it stopped the cycle and the loop restarted
+      // the server forever. A path that stopped the last such cycle, untracked
+      // and in a waiting server's project, is the server's own write.
       const dirs = c.serverDirs()
       const own = changes.changed.filter(
         (p) => dirs.some((d) => p.startsWith(d + path.sep)) && !changes.tracked(p),
@@ -479,8 +462,8 @@ class WatchLoop {
   }
 
   // Every cycle's configs are the lock's, so a config edit alone ran a cycle
-  // that printed `changed` and nothing else, read as the edit applied. A
-  // config gone is the run's own refusal to name.
+  // that printed `changed` and nothing else. A config gone is the run's own
+  // refusal.
   private sayUnlocked(paths: readonly string[]): void {
     for (const abs of paths)
       if ((isProjectConfigFile(abs) || this.configImportFiles.includes(abs)) && fs.existsSync(abs))
@@ -533,23 +516,18 @@ class WatchLoop {
           initial = undefined
         } else
           try {
-            // A member came or went: armed before the run keys it, an edit in a
-            // new package while its first cycle runs queues like any other; armed
-            // only after, it fell in the gap and ran nothing (X-138). The re-read
-            // after the run stays, for what the run itself changed.
+            // A member came or went: armed before the run keys it, so an edit
+            // in a new package during its first cycle queues; armed after, it
+            // fell in the gap. The re-read after the run stays.
             lockAtRun = lockStamp(this.workspaceRoot)
             const relocked = lockAtRun !== this.lockSeen
             this.lockSeen = lockAtRun
             if ((await this.runOnce(label!, relocked, judged)) === 'stopped') break
           } catch (err) {
-            // A re-run can fail catastrophically when the workspace
-            // itself moved out from under us — e.g. the user deleted
-            // the project dir, or git lost its repo (the watch loop
-            // outlives its own cwd in test teardown). Surface the
-            // message but DON'T let it crash the watch loop; the next
-            // FS event (if any) will retry. The dispose() on SIGINT
-            // is the canonical exit; we don't unilaterally abort here.
-            // A config's own throw or a plugin's failure may quote a secret (L-11).
+            // A re-run can fail when the workspace moved out from under us (the
+            // dir deleted, the repo gone). Show the message but keep the loop:
+            // the next event retries, and dispose() on SIGINT is the exit. A
+            // config's throw may quote a secret.
             failed = err instanceof Error ? err.message : String(err)
             sayNotice('error', 'vx watch', `cycle failed: ${maskedLine(failed)}`)
           }
@@ -585,9 +563,8 @@ class WatchLoop {
     judged: ChangeJudge['cycle'],
   ): Promise<'stopped' | undefined> {
     const { changes, workspaceRoot, opts } = this
-    // The file marks the root, and `vx run` refuses without it; a
-    // cycle ran on with no workspace config, its plugins gone and
-    // its tasks named by path.
+    // The file marks the root and `vx run` refuses without it; a cycle ran on
+    // with no workspace config and no plugins.
     if (!this.hasWorkspaceFile()) {
       ui.print('out', ui.gap())
       ui.say('info', `changed ${label}`, 'out')
@@ -600,9 +577,8 @@ class WatchLoop {
     ui.say('info', `changed ${label}`, 'out')
     if (!relocked) this.sayUnlocked(changes.changed)
     if (this.stop.aborted) return 'stopped'
-    // A file a `.gitignore` edit stops ignoring is an input from this
-    // cycle on, and was not on the arm's inventory: its deletion read
-    // as a file born and gone since, and ran nothing.
+    // A file a `.gitignore` edit stops ignoring is an input from now, not on
+    // the arm's inventory: its deletion read as born and gone, and ran nothing.
     if (
       this.atArm !== undefined &&
       changes.changed.some((p) => path.basename(p) === '.gitignore' || p === this.excludeFile)
@@ -611,13 +587,11 @@ class WatchLoop {
       this.reachOf = undefined
     }
     restartTimings()
-    // On the mtime clock, as the arm is: from `Date.now()` a write the
-    // run made within a tick of it carried an earlier mtime and read as
-    // an edit (WD-20). The end needs no stamp: an mtime never leads it.
+    // On the mtime clock, as the arm is: from `Date.now()` the run's own write
+    // within a tick read as an edit.
     const start = fsClockNow(this.cacheDir)
-    // A server still up whose task is unchanged stays up: the cycle
-    // rebuilds what it depends on, and the dev tool's own reload
-    // takes it from there. The run stops the others before its graph.
+    // A server whose task is unchanged stays up: the cycle rebuilds its deps
+    // and the dev tool reloads. The run stops the others before its graph.
     const before = this.held
     const current = watchCycle(
       {
@@ -654,9 +628,8 @@ class WatchLoop {
     failed: string | undefined,
     lockAtRun: string | undefined,
   ): Promise<void> {
-    // After a failed cycle too: a package added with a config that does
-    // not load yet fails its cycle, and unarmed, the fix to that config
-    // was never an event.
+    // After a failed cycle too: a new package whose config does not load yet
+    // fails its cycle, and unarmed, the fix was never an event.
     if (this.reread && !this.stop.aborted && this.hasWorkspaceFile()) {
       this.reread = false
       const err = await this.rearm()
@@ -665,13 +638,11 @@ class WatchLoop {
       if (err !== undefined && why !== NO_LOCK && why !== failed)
         sayCannot(`cannot re-read the workspace`, err)
     }
-    // A re-lock since this cycle began: the re-arm can close the watcher
-    // its event was still on its way to (FSEvents' latency, a poller's
-    // tick), and the new lock ran nothing until the next edit (macOS CI).
-    // A cycle that read the lock mid-write failed on it, and
-    // is the same case. Asked after the re-arm, not when the run ends: a
-    // lock written in between was the re-arm's to read, its new pollers
-    // took it as their baseline, and it was never an event (macOS CI).
+    // A re-lock since this cycle began: the re-arm can close the watcher its
+    // event was on its way to (FSEvents latency, a poller tick), and a cycle
+    // that read a half-written lock failed. Asked after the re-arm: a lock
+    // written in between became the new pollers' baseline and was never an
+    // event.
     if (lockAtRun !== undefined && lockStamp(this.workspaceRoot) !== lockAtRun)
       this.rootFileEvent(LOCKFILE_NAME)
   }
@@ -702,13 +673,11 @@ class WatchLoop {
     return this.armedAs.get(dir) !== inodeOf(dir)
   }
 
-  // Bun keeps ONE FSEvents stream for every `fs.watch` of a process and
-  // rebuilds it, from "now", on each watch opened or closed: what lands
-  // while it is down is lost to every watch, the proved root stream
-  // included, and a close proves nothing after it. A re-arm that swapped
-  // `apps/`'s arms lost `apps/` made again, and the edit after it, for good
-  // (macOS CI). So inside the root the one stream serves the
-  // ancestor and import arms too, and a re-arm there opens or closes none.
+  // Bun keeps one FSEvents stream per process and rebuilds it from "now" on
+  // every watch opened or closed: what lands meanwhile is lost to every watch.
+  // A re-arm that swapped `apps/`'s arms lost `apps/` recreated, and the edit
+  // after it. So inside the root the one stream serves the ancestor and import
+  // arms too, and a re-arm opens or closes none.
   /** Whether the one stream hears `dir`'s children: under the root by its real path. */
   private inStream(dir: string): boolean {
     if (!this.oneStream) return false
@@ -781,10 +750,9 @@ class WatchLoop {
   }
 
   /**
-   * The one stream's events, handed out as the per-project arms, the
-   * root's own files and `.vx/` would have heard them: an event lies in
-   * every watched project whose tree holds it (a nested one's fence drops
-   * it from the outer), so each listener decides exactly as its own arm did.
+   * The one stream's events, handed out as each per-project arm would have
+   * heard them: an event lies in every watched project holding it (a nested
+   * project's fence drops it from the outer).
    */
   private streamEvent(filename: string): void {
     this.heardInStream(filename)
@@ -821,11 +789,11 @@ class WatchLoop {
       this.rootArm = this.workspaceWide
         ? // workspaceFiles inputs in play: a root-relative glob can name a
           // file anywhere, so one recursive root watcher replaces the
-          // per-project ones (it also covers claimed root files).
-          // `matters` keeps the events a key can see —
-          // project trees, claimed root files, the declared globs — and drops
-          // the rest of the tree; the ignore filter then keeps node_modules
-          // / .git / .vx and declared outputs out of what remains.
+          // per-project ones (it also covers claimed root files). `matters`
+          // keeps the events a key can see — project trees, claimed root files,
+          // the declared globs — and drops the rest of the tree; the ignore
+          // filter then keeps node_modules /.git /.vx and declared outputs out
+          // of what remains.
           this.arm(workspaceRoot, true, (filename) => {
             if (this.oneStream) this.heardInStream(filename)
             this.wideEvent(filename)
@@ -851,10 +819,9 @@ class WatchLoop {
     }
   }
 
-  // One recursive watcher per project, unless workspace-wide: each project
-  // owns its own subtree; the root is never watched recursively for them
-  // (it would cover every project + node_modules + caches). On macOS one
-  // recursive stream at the root stands for all of them (`oneStream`).
+  // One recursive watcher per project, unless workspace-wide; never the root
+  // recursively for them (it would cover node_modules and caches). On macOS one
+  // root stream stands for all (`oneStream`).
   private armMode(watched: readonly ProjectMeta[]): void {
     this.wide = this.workspaceWide ? watched : []
     if (!this.workspaceWide) {
@@ -876,12 +843,10 @@ class WatchLoop {
   }
 
   /**
-   * A config's imports from outside the watched projects: a shared preset
-   * (`../../shared/preset.mjs`) changed what a run evaluates and no arm
-   * saw it. One non-recursive arm per directory holding one.
-   * A project config's import re-reads and runs; a workspace config's is
-   * loaded once per process (Bun keeps the module), so its edit is named
-   * with the restart it needs instead of a cycle that would run stale.
+   * A config's imports from outside watched projects
+   * (`../../shared/preset.mjs`): one non-recursive arm per directory holding
+   * one. A project config's import re-reads and runs; a workspace config's is
+   * loaded once per process, so its edit is named with the restart it needs.
    */
   private sayStaleImport(abs: string): void {
     // One line per save, not per event: a save is often two.
@@ -952,11 +917,10 @@ class WatchLoop {
   }
 
   /**
-   * What each symlink under a watched project points to: the key reads it,
-   * wherever it lies (cache/linked-inputs.ts), and the project's arm hears
-   * only the link. A file target's directory, non-recursive, or a directory
-   * target, recursive; each event names the link. Links are read again when
-   * one comes or goes (`projectEvent`).
+   * What each symlink under a watched project points to: the key reads it
+   * wherever it lies (cache/linked-inputs.ts), and the project's arm hears only
+   * the link. A file target's directory non-recursively, a directory target
+   * recursively; each event names the link. Re-read when a link comes or goes.
    */
   private armLinks(): void {
     const want = new Map<string, { proj: ProjectMeta; real: string; dir: boolean }>()
@@ -1000,9 +964,7 @@ class WatchLoop {
 
   /**
    * The files a claimed file's recorded digests read besides it (a `file:`
-   * dependency's directory, a patch; `lockedExtras`): a run keys them, and
-   * no project's arm hears one outside its tree. A directory recursively,
-   * a file (or a path gone for now) from its directory; armed again when a
+   * directory, a patch): keyed, and outside any project arm. Re-armed when a
    * re-lock changes the set.
    */
   private armExtras(): void {
@@ -1100,9 +1062,8 @@ class WatchLoop {
       this.fenced,
     )
     if (next.workspaceWide !== this.workspaceWide || modulesRenamed) {
-      // A task started or stopped declaring `workspaceFiles`: the other
-      // arm's shape. Made once, at start, the choice left a root file a
-      // config newly named no event.
+      // A task started or stopped declaring `workspaceFiles`: the other arm's
+      // shape. Chosen once, it left a newly named root file no event.
       this.dropMode()
       this.workspaceWide = next.workspaceWide
       this.armMode(next.projects)
@@ -1138,10 +1099,9 @@ class WatchLoop {
     // A project's parent's `.gitignore` shapes what its keys read, as the root's does.
     if (!this.ancestorNames.get(dir)?.has(filename) && filename !== '.gitignore') return
     const abs = path.join(dir, filename)
-    // A project directory still the one its arm holds is no change:
-    // its arm judges what is in it. macOS reports the directory's
-    // mtime here on every write at its top level, and a cycle's own
-    // write started the next (solid's `types`).
+    // A project directory still the one its arm holds is no change: macOS
+    // reports its mtime on every top-level write, and a cycle's own write
+    // started the next.
     if (this.heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
     this.reread = true
     this.trigger(path.relative(this.workspaceRoot, abs), abs)
@@ -1198,11 +1158,10 @@ class WatchLoop {
   }
 
   /**
-   * The files written since the initial run started, by none of its
-   * commands, an event each, judged as changes. Only a file git finds
-   * untracked or modified can be one, and `atArm` asked git once already,
-   * so a start with no edit adds `-m`'s stats and nothing else. An edit
-   * made before its task keyed it re-runs to a hit.
+   * Files written since the initial run started by none of its commands, each
+   * judged a change. Only files git finds untracked or modified qualify, and
+   * `atArm` asked git already, so a start with no edit costs only stats. An
+   * edit before its task keyed it re-runs to a hit.
    */
   private heardSinceRun(): boolean {
     const { initialRun } = this.args
@@ -1241,9 +1200,8 @@ class WatchLoop {
   }
 }
 
-// The birth time is part of a directory's name: a freed inode number is
-// handed straight to the next directory made (measured on this box's
-// /tmp), so the number alone said "the same one" of a new directory.
+// Birth time is part of a directory's name: a freed inode number goes straight
+// to the next directory made.
 function inodeOf(dir: string): string | undefined {
   try {
     const st = fs.statSync(dir)
@@ -1266,21 +1224,11 @@ export function lockStamp(workspaceRoot: string): string {
 }
 
 /**
- * The event a finished cycle hands back to the timer, if any.
- *
- * The inner loop re-runs while anything is pending, so this covers only the
- * narrow gap between its LAST judgement and the loop going idle: an event
- * landing there would otherwise sit in `changes.pending` with no timer armed
- * and no cycle to notice it — watch quietly idle over an edit the user
- * made. Insertion order, because the map is "first label wins" and the
- * label is what the cycle announces.
- *
- * A branch, not a race: extracted so it can be pinned at all. Deleting the
- * arming left every green test in the repo green — the e2e
- * watch fixture spawns a real `vx watch`, so it cannot deliver an event at
- * that instant, and the suites that could are the ones this repo's cloud
- * container already fails for timing reasons. What this pins is the
- * decision; the delivery window is the process's own.
+ * The event a finished cycle hands back to the timer, if any: one landing
+ * between the last judgement and idle would sit in `changes.pending` with no
+ * timer, and watch idled over an edit. Insertion order: the first label wins
+ * and is what the cycle announces. Extracted so the decision can be pinned; no
+ * e2e test can hit that instant.
  */
 export function pendingAfterCycle(
   pending: ReadonlyMap<string, string>,

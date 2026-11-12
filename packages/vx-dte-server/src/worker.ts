@@ -70,8 +70,8 @@ let allowChecked: { allow: string | undefined; why: string | undefined } | undef
 
 /**
  * Why no run can join under `allow`, or `undefined`. A 403, not the 503 an
- * object that will not start gives: a client retries a 5xx, and this
- * refusal does not pass (2026-10-23: fail quickly).
+ * object that will not start gives: a client retries a 5xx, and this refusal
+ * does not pass (fail quickly).
  */
 function allowRefusal(allow: string | undefined): string | undefined {
   if (allowChecked !== undefined && allowChecked.allow === allow) return allowChecked.why
@@ -170,8 +170,8 @@ export default {
     try {
       return await stub.fetch(req)
     } catch (err) {
-      // The host refused the object (a plan's daily limit, an outage): a
-      // bare 500 told a failed run nothing (2026-10-22).
+      // The host refused the object (a plan's daily limit, an outage): a bare
+      // 500 told a failed run nothing.
       const why = err instanceof Error ? err.message : String(err)
       return refuse(req, 503, `the relay's host refused the run: ${why}`)
     }
@@ -226,8 +226,8 @@ export class RelayRun {
   }
 
   webSocketClose(ws: Socket): void {
-    // One `attach` closed as gone kept nothing: its close threw (main
-    // 8d0619f's redial, 2026-10-24).
+    // One `attach` closed as gone kept nothing: its close threw (a main run's
+    // redial).
     const kept = ws.deserializeAttachment()
     if (kept !== null) this.relay.detach(kept.key, kept.id, ws)
   }

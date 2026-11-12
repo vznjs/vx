@@ -2,9 +2,9 @@
 // config, and importing wire.ts from them loaded the relay client too.
 
 /**
- * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
- * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
- * overwrote the line before (core's `printable`, L-31).
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words reach
+ * the terminal, and an `ESC ]` or `\r` in them retitled it or overwrote the
+ * line before (core's `printable`).
  */
 export const printable = (s: string): string =>
   // oxlint-disable-next-line no-control-regex

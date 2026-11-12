@@ -1,9 +1,7 @@
-// Plugin consultation for the run-level extension points (cache / executor).
-// Each function asks the plugins in order, and CORE IS THE TAIL: running
-// here and caching here are what those words mean in the absence of a
-// plugin placing work elsewhere or storing it somewhere else. A plugin
-// goes in front — it takes what it accepts, and what it declines lands on
-// the floor. No plugin is required for a plain local run.
+// Plugin consultation for the run-level extension points. Each asks the plugins
+// in order, and core is the tail: running and caching here are the floor; a
+// plugin in front takes what it accepts, and what it declines lands on the
+// floor.
 //
 // See docs/design/pipeline-2026-09.md.
 
@@ -92,11 +90,9 @@ function assertShape(
 }
 
 /**
- * Run a capability factory with crash isolation. A throw becomes a clean
- * `UserError` naming the plugin + hook: every stage and capability resolved
- * here is load-bearing, so a broken one must abort with a clear message,
- * never silently degrade. (Telemetry sinks are the observe-only exception,
- * and telemetry-host.ts logs-and-skips them instead.)
+ * Run a capability factory crash-isolated: a throw becomes a `UserError` naming
+ * plugin and hook, since every stage resolved here is load-bearing and must not
+ * silently degrade (telemetry sinks are logged and skipped instead).
  */
 async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>): Promise<T> {
   // Named while awaited: one that never settles is what a stranded run names.
@@ -111,11 +107,10 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
 }
 
 /**
- * Reads and checks what a hook answered, in the plugin's name as `safe`
- * runs the hook: a getter or Proxy trap in the answer that threw crashed
- * vx with a raw stack. Core's own refusals pass as they are. What `read`
- * returns is what the caller uses, so a getter cannot answer the check one
- * value and the run another.
+ * Reads and checks a hook's answer in the plugin's name: a throwing getter or
+ * Proxy trap crashed vx with a raw stack. What `read` returns is what the
+ * caller uses, so a getter cannot answer the check one value and the run
+ * another.
  */
 function reading<T>(plugin: VxPlugin, hook: string, read: () => T): T {
   try {
@@ -127,13 +122,10 @@ function reading<T>(plugin: VxPlugin, hook: string, read: () => T): T {
 }
 
 function pluginFailure(plugin: VxPlugin, hook: string, err: unknown): UserError {
-  // Masked here, not by whoever prints it: an embedder of `run()` and
-  // a plugin's verb print it as they get it, and the throw quotes what the
-  // plugin was told (a remote's reply, a header) (L-11).
-  // A plugin's own code survives (cli.md § Error codes): an agent
-  // branches on it.
-  // A plugin's bug (a TypeError, not a message it chose to throw) names
-  // where it threw: the message alone left its author no file or line.
+  // Masked here: an embedder and a plugin's verb print it as they get it, and
+  // the throw may quote a remote's reply or a header. A plugin's own error code
+  // survives (cli.md § Error codes). A plugin's bug (a TypeError) names where
+  // it threw, or its author got no file or line.
   const at = isBug(err) ? pluginThrowSite(err) : undefined
   return new UserError(
     maskedLine(
@@ -164,9 +156,8 @@ function pluginThrowSite(err: Error): string | undefined {
 // --- Pipeline stages ---------------------------------------------------------
 //
 // Each stage hands plugins the object core is about to use, in declaration
-// order, and the caller re-validates afterwards. `hasHook` is the zero-cost
-// gate: with no plugin declaring a stage the caller skips the loop AND the
-// re-validation, so a workspace without pipeline plugins pays nothing.
+// order, then re-validates. `hasHook` is the zero-cost gate: with no plugin
+// declaring a stage, loop and re-validation are skipped.
 
 export function hasHook(
   plugins: readonly VxPlugin[],
@@ -297,16 +288,12 @@ export async function applyProjectHooks(
 }
 
 /**
- * `graph` stage: every plugin edits the task graph in place, then the graph
- * is checked ONCE the way `vx lock` checks the builder's output, in a run
- * too (`checkGraph`: each node under its own id, every dep a node, no
- * cycle, no two tasks deleting each other's outputs, no input reading
- * another task's outputs). A violation is reported
- * against the LAST plugin that ran: usually the one whose edit made it so,
- * but an earlier plugin's edit that a later one left in place is blamed on
- * the later one, since the structure is not checked between plugins.
- * Each node's task config is re-validated after EACH plugin (`afterEach`),
- * like the `project` stage's.
+ * `graph` stage: every plugin edits the graph in place, then it is checked once
+ * as `vx lock` checks the builder's output (`checkGraph`: ids, deps exist, no
+ * cycle, no mutual output deletion, no input reading another task's outputs). A
+ * violation is blamed on the last plugin that ran, since structure is not
+ * checked between plugins. Each node's config is re-validated after each plugin
+ * (`afterEach`).
  */
 export async function applyGraphHooks(
   plugins: readonly VxPlugin[],
@@ -335,9 +322,9 @@ export async function applyGraphHooks(
 }
 
 /**
- * A hook writes the graph as plain JS: `deps = null` surfaced as "null is
- * not an object", naming no task (X-15). Checked per plugin, before its
- * edits are read, so the refusal names the plugin that wrote them.
+ * A hook writes the graph as plain JS: `deps = null` surfaced as "null is not
+ * an object", naming no task. Checked per plugin, before its edits are read, so
+ * the refusal names the plugin that wrote them.
  */
 function checkNodeShapes(nodes: Map<string, TaskNode>): void {
   const what = (v: unknown): string => (v === null ? 'null' : typeof v)
@@ -349,10 +336,8 @@ function checkNodeShapes(nodes: Map<string, TaskNode>): void {
     if (!Array.isArray(deps)) {
       throw new Error(`${key}'s deps is ${what(deps)}, not an array of task ids`)
     }
-    // A node a hook adds is read as it wrote it: one with no `projectDir`
-    // ran as `internal error in a#x: TypeError: The "path" property must
-    // be of type string`, and a relative one keyed and ran against
-    // whatever directory vx was started in.
+    // A node a hook adds is read as written: one with no `projectDir` crashed
+    // with a TypeError, and a relative one ran against vx's cwd.
     const fields = node as { projectName?: unknown; taskName?: unknown; projectDir?: unknown }
     const shown = (v: unknown): string => (typeof v === 'string' ? JSON.stringify(v) : what(v))
     for (const field of ['projectName', 'taskName'] as const) {
@@ -397,11 +382,10 @@ export async function applyKeyHooks(
       const material = await safe(plugin, 'key', () => plugin.key!(task, ctx))
       if (material === undefined) continue
       const entries = reading(plugin, 'key', () => {
-        // `Object.entries` over a string yields its characters as string
-        // values, so a plugin returning `'v22'` used to fold parts named
-        // '0', '1', '2' into every key — silently, and permanently. A Map or a
-        // class instance keeps its data off own enumerable keys, so
-        // `Object.entries` read it as no material at all: a silent miskey.
+        // `Object.entries` over a string yields its characters, so a plugin
+        // returning `'v22'` folded parts named '0', '1', '2' into every key; a
+        // Map or class instance read as no material at all. Both silent
+        // miskeys, so refused.
         if (!isRecord(material)) {
           throw new UserError(
             `plugin '${plugin.name}' failed in key: returned ${describeValue(material)}, not a record of string values`,
@@ -437,10 +421,9 @@ export async function applyKeyHooks(
         a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0
       parts.sort(byName)
       // A plugin's name is its package's, and one package may define two
-      // plugins (`@vzn/vx-migrate`'s `turbo()` and `turboCache()`): two
-      // parts named alike folded both values under one name, and `vx why`
-      // could not say which moved (item 1028). The repeats take `#2`, `#3`
-      // in value order, so declaration order still keys nothing.
+      // plugins (`turbo()` and `turboCache()`): same-named parts folded under
+      // one name and `vx why` could not tell which moved. Repeats take `#2`,
+      // `#3` in value order, so declaration order keys nothing.
       let previous = ''
       let n = 0
       for (const [i, [name, value]] of parts.entries()) {
@@ -469,9 +452,8 @@ export function fingerprintClaims(plugins: readonly VxPlugin[]): ReadonlyMap<str
 
 /**
  * Ask a claimed file's plugin which projects a change to it affects.
- * `undefined` is "every project" — the claimant could not tell — and a
- * non-iterable answer is refused by name, so a plugin returning `'all'`
- * cannot select the projects spelled a, l, l.
+ * `undefined` is every project; a non-iterable answer is refused, so `'all'`
+ * cannot select projects a, l, l.
  */
 export async function claimedAffected(
   plugin: VxPlugin,
@@ -483,10 +465,9 @@ export async function claimedAffected(
 }
 
 /**
- * `FingerprintClaim.digests`' answer for `file`, each extra file it names
- * with its hash now (`hashExtra`, as a run checks it); `undefined` when the
- * plugin has none. A digest of a name no project carries, or a value that
- * is not a string, is refused by name: `vx lock` would commit it.
+ * `FingerprintClaim.digests`' answer for `file`, each extra file with its hash
+ * now (`hashExtra`); `undefined` when none. A digest for an unknown name, or a
+ * non-string, is refused by name: `vx lock` would commit it.
  */
 export async function claimedDigests(
   plugin: VxPlugin,
@@ -626,11 +607,10 @@ export interface ScheduleRun {
 }
 
 /**
- * `schedule` stage: the merged priorities map (a later plugin's weight for
- * a task overrides an earlier one's). Empty when no plugin answered. Each
- * plugin's call is the step `<plugin>:schedule`. A plugin's `ctx.refine`
- * replaces its own weights and hands `refined` the merge again; with no
- * `refined` (a plan), it is ignored.
+ * `schedule` stage: merged priorities (a later plugin's weight wins). Each
+ * plugin's call is step `<plugin>:schedule`. `ctx.refine` replaces that
+ * plugin's weights and hands `refined` the merge again; a plan has no
+ * `refined`.
  */
 export async function applyScheduleHooks(
   plugins: readonly VxPlugin[],
@@ -792,15 +772,11 @@ function scheduleWeights(
 }
 
 /**
- * `admit` stage, built once per run into the predicate the scheduler asks
- * at every local dispatch: every plugin that answers must admit. A plugin
- * that throws is reported once and admits from then on — a policy never
- * breaks a run — and one that refuses while nothing local is running is
- * overridden with a word, since only a completion asks again: that
- * refusal stalled the run for good (item 1023). So the predicate is never
- * the reason a task hangs.
- * Undefined when no plugin answers, which keeps the scheduler on its
- * count-only path.
+ * `admit` stage, built once into the predicate the scheduler asks at each local
+ * dispatch: every answering plugin must admit. A throwing plugin is reported
+ * once and admits from then on, and a refusal while nothing local runs is
+ * overridden with a word (only a completion asks again, so it stalled the run):
+ * the predicate never hangs a task. Undefined when no plugin answers.
  */
 export function buildAdmission(
   plugins: readonly VxPlugin[],
@@ -813,10 +789,9 @@ export function buildAdmission(
   const broken = new Set<VxPlugin>()
   const overridden = new Set<VxPlugin>()
   return (id, running) => {
-    // The scheduler asks only about ids in this same map, so the lookup
-    // always lands: an unknown-id arm here was deleted with the whole core
-    // suite green (item 651).
-    // Read-only: the key is derived, and a hook's edit ran under it.
+    // The scheduler asks only about ids in this same map, so the lookup always
+    // lands: an unknown-id arm here was deleted with the whole core suite
+    // green. Read-only: the key is derived, and a hook's edit ran under it.
     const task = readOnly(nodes.get(id)!)
     const ctx = {
       running: [...running].flatMap((r) => {
@@ -829,9 +804,9 @@ export function buildAdmission(
       if (broken.has(plugin)) continue
       try {
         const verdict: unknown = plugin.admit!(task, ctx)
-        // An `async admit` answers a Promise: truthy, so it admitted every
-        // task and its policy never ran, and its rejection was unhandled and
-        // ended the run with a stack (H-16). Named once, admitting after.
+        // An `async admit` answers a Promise: truthy, so it admitted every task
+        // and its policy never ran, and its rejection was unhandled and ended
+        // the run with a stack. Named once, admitting after.
         if (verdict instanceof Promise) {
           verdict.catch(() => {})
           throw new Error('returned a Promise; admit is synchronous')
@@ -874,12 +849,10 @@ export interface CacheHost extends CacheContext {
 }
 
 /**
- * Collect every plugin's remote (`cache` hook) in declaration order and
- * layer each over the local store: a lookup asks the local store first,
- * then each remote in order (2026-10-13), and a save reaches every
- * remote. The run's policy alone gates each remote (2026-10-16: a
- * plugin moves bytes, it never decides reads or writes); a remote's throw is a miss and a warning naming its plugin. No
- * remote → the local store alone.
+ * Every plugin's remote (`cache` hook), in order, layered over the local store:
+ * a lookup asks local first, then each remote; a save reaches every remote. The
+ * run's policy alone gates each (a plugin moves bytes, never decides reads or
+ * writes); a remote's throw is a miss and a warning.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
@@ -929,14 +902,11 @@ const executorPlugin = new WeakMap<TaskExecutor, string>()
 const failedOn = new WeakMap<object, string>()
 
 /**
- * A plugin executor's throw from `execute`, named as every other hook's
- * is: `plugin 'p' (executor 'e') failed in execute: …`. It read `internal
- * error in <task>: pool down`, naming neither (C-63). A refusal, as
- * `safe()` makes every stage's throw: the plugin is named, so it is not
- * vx's bug, and an `internal error` line said it was (C-85). A fresh error
- * with the plugin's as its cause, never the plugin's own renamed: one
- * error an executor rejects every task with was named once per task
- * (C-74). The floor's own throw is vx's and stays as it is.
+ * A plugin executor's `execute` throw, named as every hook's is (`plugin 'p'
+ * (executor 'e') failed in execute`), not as an internal error, which said it
+ * was vx's bug. A fresh error with the plugin's as cause, never the plugin's
+ * own renamed: one error rejecting every task was renamed once per task. The
+ * floor's own throw is vx's.
  */
 export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unknown {
   if (!executorPlugin.has(executor)) return err
@@ -969,10 +939,9 @@ export interface ExecutorDemand {
   /** A task finished: dropped, and its executor told once demand settled. */
   finished(id: string): void
   /**
-   * The placed tasks the run's cache answers: dropped, and each executor
-   * told its demand for the first time. Before it a finish narrows
-   * silently, so an executor never sizes for what restores. The first
-   * call counts; the rest do nothing.
+   * The placed tasks the run's cache answers are dropped, and each executor
+   * told its demand for the first time; before that, a finish narrows silently,
+   * so no executor sizes for what restores. First call counts.
    */
   settle(hits: Iterable<string>, missed?: Iterable<string>): void
   /** A task about to execute: back in if `settle` dropped it (its artifact was gone). */
@@ -987,17 +956,12 @@ const NO_DEMAND: ExecutorDemand = {
 }
 
 /**
- * Demand: what each executor still has left to run. An executor that
- * provisions per task (a container, an allocation, a pod) otherwise has to
- * guess from `capacity` alone and hold everything until teardown. Built
- * ONLY for executors that asked: with none declared there is no map, no
- * set, and every call does nothing.
+ * Demand: what each executor still has to run, so one provisioning per task (a
+ * container, a pod) need not guess from `capacity` and hold everything to
+ * teardown. Built only for executors that asked.
  *
- * The SAME set is handed back every time, narrowed in place: a consumer
- * reading it later sees the truth rather than a stale snapshot. A hint,
- * as `admit` is: one that throws is named once and asked no more, where
- * it surfaced as a bare stack, or mid-run from the completion path
- * (item 1022).
+ * The same set is handed back, narrowed in place, so a later reader sees the
+ * truth. A hint, like `admit`: one that throws is named once and asked no more.
  */
 export function executorDemand(
   placed: ReadonlyMap<string, TaskExecutor>,
@@ -1107,10 +1071,9 @@ function groupOf(owner: string, value: unknown, field: string): object | undefin
 }
 
 /**
- * Collect every plugin's `executor`, in declaration order, with core's
- * own appended at the tail: per task, `selectExecutor` takes the first
- * that accepts, and what every plugin declines runs here. A broken
- * factory aborts — an executor is load-bearing, not observational.
+ * Every plugin's `executor`, in order, with core's last: per task
+ * `selectExecutor` takes the first that accepts. A broken factory aborts: an
+ * executor is load-bearing.
  */
 export async function resolveExecutors(
   plugins: readonly VxPlugin[],
@@ -1205,24 +1168,16 @@ export async function resolveExecutors(
 }
 
 /**
- * End-of-run plugin lifecycle: each plugin's optional `teardown()`, in
- * declaration order, a plugin that supplies a remote cache after every
- * other: a teardown may write through the cache (`RunReport`), and one
- * that revoked its token first refused the write (main 7bdbf01: the
- * schedule's timings, put after the Vercel token's revoke). Crash-isolated — a throwing teardown is logged and
- * skipped, never propagated — and each call is time-bounded by
- * {@link teardownTimeoutMs}. Runs on every exit of a run once its plugins'
- * factories ran, and of a plan (item 1021); the finally-path disposers
- * just unsubscribe. (Telemetry sinks flush before this, in
- * telemetry-host.ts, with the same reporting rule.)
+ * Each plugin's optional `teardown()`, in declaration order, with remote-cache
+ * plugins last: a teardown may write through the cache (`RunReport`), and one
+ * whose token was revoked first refused the write. Crash-isolated and bounded
+ * per call by {@link teardownTimeoutMs}. Runs on every exit once factories ran,
+ * and for a plan. (Sinks flush earlier, in telemetry-host.ts.)
  *
- * The bound is PER CALL and the calls are sequential, so the worst case
- * composes: measured at the 3s default, 1/2/3 simultaneously-hung plugins
- * cost 3.0/6.0/9.0s. That is deliberate rather than overlooked — the
- * telemetry sibling races its sinks concurrently, but a plugin's teardown
- * may release something a later one still holds, and declaration order is
- * the contract this file keeps elsewhere. Each hung call names itself, so
- * the delay is attributable instead of mysterious.
+ * The bound is per call and calls are sequential, so hung plugins add up (3 s
+ * each at the default). Deliberate: unlike sinks, a teardown may release what a
+ * later one holds, and declaration order is the contract. Each hung call names
+ * itself.
  */
 export async function teardownPlugins(
   plugins: readonly VxPlugin[],

@@ -1,8 +1,8 @@
-// What `vx-migrate` does around the mapping so the repo runs vx after it:
-// which kind of adoption (native configs, or the runner's config read live),
-// and installing vx with the repo's own package manager (solidjs/solid,
-// 2026-10-04: the configs were written with no vx installed to run them).
-// The repo's own scripts are never edited (2026-10-06).
+// What `vx-migrate` does around the mapping so the repo runs vx after it: which
+// kind of adoption (native configs, or the runner's config read live), and
+// installing vx with the repo's own package manager (solidjs/solid: the configs
+// were written with no vx installed to run them). The repo's own scripts are
+// never edited.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -129,11 +129,10 @@ export function ownVersion(): string | null {
 }
 
 /**
- * The `wanted` packages the root does not both list and have installed
- * (at `version`, given one). Either alone is not adopted: a reset
- * package.json leaves node_modules behind, and a listing is not an
- * install; on solidjs/solid vx-migrate 0.0.512 skipped @vzn/vx that
- * package.json did not list (2026-10-06).
+ * The `wanted` packages the root does not both list and have installed (at
+ * `version`, given one). Either alone is not adopted: a reset package.json
+ * leaves node_modules behind, and a listing is not an install; on solidjs/solid
+ * vx-migrate 0.0.512 skipped @vzn/vx that package.json did not list.
  */
 export function missingPackages(
   root: string,
@@ -180,10 +179,10 @@ export function listedPackages(root: string, packages: readonly string[]): strin
 }
 
 /**
- * The `@vzn/vx-*` plugins the root lists from the registry (a `workspace:`
- * or `file:` link is the repo's own; a platform binary comes with core).
- * Every @vzn package releases together: an install moves them with core,
- * as `vx upgrade` does (2026-10-16: "always install latest and upgrade all").
+ * The `@vzn/vx-*` plugins the root lists from the registry (a `workspace:` or
+ * `file:` link is the repo's own; a platform binary comes with core). Every
+ * @vzn package releases together: an install moves them with core, as `vx
+ * upgrade` does.
  */
 export function listedPlugins(root: string): string[] {
   const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
@@ -205,8 +204,8 @@ export function listedPlugins(root: string): string[] {
 /**
  * The `@vzn/vx*` packages a workspace file imports, parsed, not matched (a
  * formatter's quotes hid a match). Each is installed with core: a file an
- * earlier init wrote imports @vzn/vx-lockfile that package.json need not
- * list, and the lock could not find it (2026-10-16).
+ * earlier init wrote imports @vzn/vx-lockfile that package.json need not list,
+ * and the lock could not find it.
  */
 export function importedPackages(text: string): string[] {
   const out = new Set<string>()
@@ -274,9 +273,9 @@ async function runManager(
   // The report's `install` row says what ran; a terminal sees it while it
   // runs, on a line the report then takes the place of.
   const clear = vx.ui.transient(line)
-  // The manager's own output (progress, deprecations, audit, postinstalls)
-  // is shown only when it fails: mid-init it buried the report (Growth's
-  // first-run funnel F3, 2026-10-13).
+  // The manager's own output (progress, deprecations, audit, postinstalls) is
+  // shown only when it fails: mid-init it buried the report (Growth's first-run
+  // funnel F3).
   let said = ''
   const spawn = async (cmd: string[]) => {
     const p = Bun.spawn(cmd, { cwd: root, stdin: 'inherit', stdout: 'pipe', stderr: 'pipe' })

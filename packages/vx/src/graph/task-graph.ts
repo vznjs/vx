@@ -45,32 +45,26 @@ export interface TaskNode {
   /** Ids of tasks that must complete before this one runs. */
   deps: string[]
   /**
-   * The members of `deps` that order the run and fold into no key:
-   * `--exclude-dependencies` dropped a task between this one and them
-   * (`excludeDependencies`). The dropped task's derived key already folds
-   * theirs, so folding them again would give a key no full run derives.
+   * Members of `deps` that order the run but fold into no key:
+   * `--exclude-dependencies` dropped a task between, whose derived key already
+   * folds theirs.
    */
   orderOnly?: string[]
   /**
-   * True for the tasks the user actually asked for (via cwd, `--all`,
-   * `--filter`, or `pkg#task`). False for deps pulled in by `dependsOn`
-   * expansion. Used by the orchestrator to scope `forwardArgs` so trailing
-   * CLI args don't leak into upstream tasks the user didn't address.
+   * True for the tasks the user asked for; false for deps `dependsOn` pulled
+   * in. Scopes `forwardArgs` to the addressed tasks.
    */
   requested: boolean
   /**
-   * Display-only: a same-project, non-group, direct `dependsOn` task of
-   * a REQUESTED GROUP. A group produces no output of its own, so in
-   * focused flow we surface the work it stands for one level down (no
-   * recursion, no `^`/cross-project deps — see `markSurfacedDeps`). The
-   * focused logger shows these like requested tasks; it does NOT make
-   * them `requested`, so `forwardArgs` scoping is unaffected.
+   * Display-only: a same-project, non-group, direct `dependsOn` task of a
+   * REQUESTED GROUP, shown like a requested task since a group has no output of
+   * its own (`markSurfacedDeps`). Never `requested`, so `forwardArgs` is
+   * unaffected.
    */
   surfaced?: boolean
   /**
-   * Extra cache-key material from plugins' `key` stage, as sorted
-   * `[name, value]` pairs; set by `prepareRun`, folded by `Cache.key`.
-   * Absent when no plugin declares the stage.
+   * Plugins' `key` stage material as sorted `[name, value]` pairs; set by
+   * `prepareRun`, folded by `Cache.key`.
    */
   keyParts?: ReadonlyArray<readonly [name: string, value: string]>
   /**
@@ -84,25 +78,21 @@ export interface TaskNode {
    */
   worker?: string
   /**
-   * Ids of upstream tasks whose declared outputs this task's outputs
-   * overlap: this task ADDS to their trees (twenty's `build:individual`
-   * into `build`'s `dist`; item 588). Its own output set is what its run
-   * added or changed, it cleans and restores only its recorded rows, and
-   * it is never restore-tier. Set by `detectOutputCollisions`, which refuses
-   * the same overlap without an edge.
+   * Upstream tasks whose declared outputs this task's overlap: it ADDS to their
+   * trees. Its output set is what its run added or changed, it cleans and
+   * restores only its rows, and it is never restore-tier. Set by
+   * `detectOutputCollisions`, which refuses the same overlap without an edge.
    */
   addsToOutputsOf?: string[]
   /**
-   * Declared output globs of dependants that add into this task's tree.
-   * The hit path ignores paths they match when it decides whether this
-   * task's tree is already current, so an addition below is not a stray.
+   * Output globs of dependants that add into this task's tree: the hit's
+   * current-tree check ignores what they match.
    */
   outputsAddedToBy?: string[]
   /**
    * The dependencies `--exclude-dependencies` took out of the schedule, as
-   * outcomes carrying the key each would have (`excludeDependencies`, then
-   * `prepareRun`). The scheduler never sees them; the key folds them next
-   * to `deps`' own outcomes, so a key is the same whatever the selection.
+   * outcomes carrying the key each would have. The key folds them beside
+   * `deps`, so a key is the same whatever the selection.
    */
   excludedUpstream?: TaskOutcome[]
 }
@@ -111,17 +101,13 @@ export function taskId(project: string, task: string): string {
   return `${project}#${task}`
 }
 
-// `splitTaskId` lives in util so the cache (which may not import graph)
-// reads the same rule instead of a copy; re-exported here because the
-// graph is where every reader of a task id looks for it.
+// Re-exported from util, where the cache reads the same rule.
 export { splitTaskId } from '../util/index.js'
 
 /**
- * A keyed group that is only its dependencies' own `name` (`^name`): the
- * default `build` (orchestrator/projects.ts), or a config's of that shape.
- * Only this shape walks last on a package cycle and is passed through.
- * Any keyed group was: `ci` keyed on `lint` lost its edge and ran nothing,
- * and `deploy` on `^build` walked `^deploy`.
+ * A keyed group that is only its dependencies' own `name` (`^name`), like the
+ * default `build`: only this shape walks last on a package cycle and is passed
+ * through.
  */
 function isChainGroup(task: TaskConfig, name: string): boolean {
   return (
@@ -133,20 +119,11 @@ function isChainGroup(task: TaskConfig, name: string): boolean {
 }
 
 /**
- * Mark, for focused-flow display, the real tasks a requested GROUP
- * stands for. A group has no output of its own, so `vx run build`
- * (where `build` is a group) would otherwise print nothing.
- *
- * Walk `dependsOn` from the requested group, DESCENDING THROUGH nested
- * same-project groups (e.g. `build` → `build.bun` → `build.bun.*`), and
- * surface the first non-group task on each path. Two hard limits:
- *   - never leave the requested project — `^`/cross-project deps are
- *     not entered (the user asked to run THIS project's group),
- *   - never descend past a real task — its own `dependsOn` is its
- *     implementation detail, not work the group "is".
- *
- * Display-only: it never flips `requested`, so `forwardArgs` scoping
- * stays put. Returns the count of newly surfaced nodes.
+ * Mark for display the real tasks a requested GROUP stands for, or `vx run
+ * build` on a group prints nothing. Walk `dependsOn` from the group through
+ * nested same-project groups and surface the first real task on each path,
+ * never leaving the project and never past a real task. Never flips
+ * `requested`. Returns how many were newly surfaced.
  */
 export function markSurfacedDeps(nodes: Map<string, TaskNode>): number {
   let surfaced = 0
@@ -178,18 +155,10 @@ export function markSurfacedDeps(nodes: Map<string, TaskNode>): number {
 }
 
 /**
- * Expand the user-requested task list into concrete `{project, task}`
- * pairs the graph builder consumes.
- *
- *   - Bare task names (`'build'`) → one entry per project in
- *     `candidates` that declares the task. Missing in a given project
- *     is silent (sparse tasks are normal across a workspace). A task
- *     `unselected` holds (the default `build`) is no match.
- *   - Anchored entries (`'pkg#task'`) → one entry exactly, ignoring
- *     `candidates`. Silently dropped if pkg/task doesn't exist (the
- *     CLI's pre-validation catches malformed strings).
- *
- * Duplicates are deduped (a user might pass `vx run build pkg#build`).
+ * Expand the requested list into `{project, task}` pairs. A bare name gives one
+ * per project in `candidates` declaring it (missing is normal; an `unselected`
+ * task is no match). `pkg#task` gives exactly one, dropped silently if absent
+ * (the CLI validated it). Deduped.
  */
 export function expandRequested(
   tasks: readonly string[],
@@ -221,10 +190,8 @@ export function expandRequested(
 }
 
 /**
- * The task a config declares under `name`, by OWN property. `tasks` is a
- * plain object, so `tasks['constructor']` and `tasks['toString']` are
- * Object.prototype's: `vx show constructor` printed a group task for every
- * project and `vx run a#toString` ran nothing, exit 0 (item 897).
+ * The task a config declares under `name`, by OWN property:
+ * `tasks['constructor']` is Object.prototype's.
  */
 export function declaredTask(
   config: ProjectConfig | null | undefined,
@@ -251,16 +218,9 @@ function selectsTask(
 }
 
 /**
- * The requested specs `expandRequested` silently dropped — each one
- * matched NO project, so nothing it asked for will run.
- *
- * A bare name matching only SOME projects is normal (sparse tasks across
- * a workspace) and never reported. An empty `candidates` scope is also
- * never reported: that is the legitimate "nothing selected" outcome
- * (`--affected` with nothing changed), not a typo — the CLI's selection
- * layer owns that message.
- *
- * Deduped so `vx run x x` names `x` once.
+ * The requested specs `expandRequested` dropped because they matched NO
+ * project. A name matching only some projects is normal, and an empty scope is
+ * the selection's own message. Deduped.
  */
 export function unresolvedRequests(
   tasks: readonly string[],
@@ -291,29 +251,22 @@ export interface BuildGraphOptions {
   /** Initial set: `{ project, task }` pairs the user asked to run. */
   requested: Array<{ project: string; task: string }>
   /**
-   * Set when `projects` is a scoped load rather than the whole workspace. A
-   * literal `^name` no project in `projects` declares may still be declared
-   * by one that was not loaded, so the builder hands it here instead of
-   * refusing it, and the caller judges it against the rest
-   * (`undeclaredDepsError` is the refusal). Unset, `projects` is the whole
-   * workspace and the builder refuses it itself.
+   * Set when `projects` is a scoped load. A `^name` no loaded project declares
+   * may be declared by one not loaded, so the caller judges it
+   * (`undeclaredDepsError`). Unset, the builder refuses it.
    */
   undeclaredDeps?: (taskId: string, name: string) => void
   /**
-   * The workspace root, where `outputs.workspaceFiles` is anchored.
-   * Given, a root-anchored output is also compared with every project's
-   * `files` outputs (item 1088); absent (a graph built for a unit row), only
-   * with other root-anchored ones.
+   * The workspace root anchoring `outputs.workspaceFiles`. Given, a
+   * root-anchored output is compared with every project's outputs too.
    */
   workspaceRoot?: string
   /** The workspace's `run.rules`; each is on unless set to `false`. */
   rules?: GraphRules | undefined
   /**
-   * By project name, every project rooted inside its dir (absolute dirs),
-   * and every nested workspace (`workspace`, named by its root-relative dir).
-   * Given with `workspaceRoot` and unlocked (`vx lock`), an `inputs.files`
-   * or `outputs.files` entry rooted inside a project is refused, and an
-   * `outputs.files` one inside a workspace (`refuseNestedGlobs`).
+   * By project name, every project rooted inside its dir, and every nested
+   * workspace. Given with `workspaceRoot` at `vx lock`, a `files` entry rooted
+   * inside a nested project or workspace is refused (`refuseNestedGlobs`).
    */
   nestedProjects?: ReadonlyMap<
     string,
@@ -327,17 +280,15 @@ export interface BuildGraphOptions {
 }
 
 /**
- * `run.rules` as the graph applies them. `locked`: a run, which never
- * checks them; `vx lock` and `vx lock --check` do (2026-10-14).
+ * `run.rules` as the graph applies them. `locked`: a run, which never checks
+ * them; `vx lock` and `vx lock --check` do.
  */
 export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 
 /**
- * The refusal of a literal `^name` that no project in the workspace
- * declares: it has no holder anywhere, so it can only be a typo (nx#32779
- * ran such an edge as no edge, green). A name SOME project declares stays
- * legal without a holder — a preset spreads `^build` over projects whose
- * dependencies lack it.
+ * Refuse a literal `^name` no project declares: it can only be a typo (nx#32779
+ * ran one as no edge, green). A name SOME project declares stays legal without
+ * a holder.
  */
 export function undeclaredDepsError(
   taskId: string,
@@ -352,14 +303,10 @@ export function undeclaredDepsError(
 }
 
 /**
- * The `pkg#task` to offer for a cross-project miss: the task nearest
- * `task` in the project named, or in the one whose directory is
- * `project` (a project named by `name:` or its package.json is still
- * typed by its path), or in the one nearest `project` among those
- * declaring `task` — or the one whose path ends in it, since a project is
- * named by its path unless named, and `a#build` is how a `packages/a` is
- * first typed. A default build is never offered: depending on it orders
- * nothing; nor is a target in `listed`, the `dependsOn` it would join.
+ * The `pkg#task` to offer for a cross-project miss: the nearest task in the
+ * project named, or the one whose directory or path suffix it is, or the
+ * nearest project declaring `task`. Never a default build (it orders nothing),
+ * nor one already in `listed`.
  */
 function nearestTarget(
   projects: ReadonlyMap<string, ProjectEntry>,
@@ -427,15 +374,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   const { projects, packageGraph, requested, undeclaredDeps } = options
   const nodes = new Map<string, TaskNode>()
 
-  // The walk keeps its own stack instead of recursing once per edge: a
-  // `dependsOn` chain or ring ~20,000 deep overflowed V8's call stack
-  // (nx#28788's shape) before `detectCycle` could name the cycle. It adds
-  // nodes in the order the recursion did — depth-first, each target's
-  // subtree before the next target — and `detectCycle` walks that order,
-  // so it names the same cycle. Resolving an entry only reads configs and
-  // the package graph, so its targets can all be found first: the first
-  // new one is added at once (its subtree is expanded next, on top of the
-  // stack), the later ones wait in `pending` for their turn.
+  // An explicit stack, not recursion per edge: a chain ~20,000 deep overflowed
+  // V8's stack (nx#28788) before `detectCycle` could name the cycle. Nodes are
+  // added in the recursion's depth-first order, so the same cycle is named. A
+  // frame's targets are all found first; the first new one is added at once,
+  // the rest wait in `pending`.
   const stack: Frame[] = []
 
   function add(node: TaskNode): void {
@@ -446,9 +389,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
   }
 
-  // Adds `projectName#taskName` to the graph if it is new, and the edge to
-  // it from `frame`'s task (null for a requested task). False when the
-  // project or the task is not declared.
+  // Adds `projectName#taskName` if new, with the edge from `frame`'s task (null
+  // when requested). False when the project or task is not declared.
   function visit(
     frame: Frame | null,
     projectName: string,
@@ -506,9 +448,9 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return declared.has(name)
   }
 
-  // Package cycles, for the default `build` (`isChainGroup`): each project
-  // on one maps to its strongly connected component, found on the first ask
-  // (iterative Tarjan over `directDeps`, the order the `^name` walk reads).
+  // Package cycles for the default `build`: each project on one maps to its
+  // strongly connected component, found on first ask (iterative Tarjan in the
+  // `^name` walk's order).
   const component = new Map<string, number>()
   const cyclic = new Set<number>()
   let components = 0
@@ -557,12 +499,10 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   const sameCycle = (a: string, b: string): boolean =>
     onCycle(a) && componentOf(a) === componentOf(b)
 
-  // `^name` from `start`: edges to the nearest holders of `name` among the
-  // packages below it, passing through the ones `visited` holds and the
-  // ones that declare no `name`, and on past a default build on a cycle.
-  // True when it found a holder.
-  // `past` holds the edges already gone past: each edge the walk adds
-  // beyond them stands in for them (`standInsOf`).
+  // `^name` from `start`: edges to the nearest holders of `name` below it,
+  // passing through visited packages, ones declaring no `name`, and a default
+  // build on a cycle. True when it found a holder. `past` holds edges already
+  // passed, which each new edge stands in for.
   function walkHolders(
     frame: Frame,
     name: string,
@@ -592,11 +532,9 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return held
   }
 
-  // An edge by name (`build`, `pkg#build`) or pattern (`bui*`, `^bui*`) to
-  // a default build on a package cycle goes on past it as a `^build` walk
-  // does: that build folds nothing of the builds on its cycle, so `a#test`
-  // on `build` with `a` ↔ `b` both on the default build folded none of `b`
-  // and hit after `b` changed.
+  // An edge to a default build on a package cycle goes on past it, as `^build`
+  // does: that build folds nothing of its cycle's builds, so a dependant would
+  // hit after a cycle member changed.
   function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
     const task = declaredTask(projects.get(project)!.config, name)!
     if (isChainGroup(task, name) && onCycle(project))
@@ -617,11 +555,9 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       throw err
     }
 
-    // dependsOn is about which tasks to ADD to the graph, not which
-    // to filter. BARE wildcards ("*"/"^*" = "everything upstream") and
-    // negation aren't meaningful here — they're inputs.tasks
-    // operations. PARTIAL patterns (`build.*`, `^build.*`) are legal:
-    // they name a namespace of tasks to add (Nx 19.5 parity).
+    // dependsOn adds tasks, it does not filter: bare wildcards and negation
+    // belong to inputs.tasks. Partial patterns (`build.*`) name a namespace to
+    // add (Nx 19.5 parity).
     if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
       throw new UserError(
         `${id}: dependsOn does not accept bare wildcards (got "${raw}")`,
@@ -642,10 +578,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
     if (spec.kind === 'self') {
       if (isTaskPattern(spec.task)) {
-        // `build.*` — every OTHER same-project task matching the
-        // pattern (the declaring task never matches itself — that
-        // would be an instant self-cycle). Zero matches is legal: a
-        // preset-spread pattern needn't match in every project.
+        // `build.*`: every OTHER same-project task matching; the declaring task
+        // never matches itself. Zero matches is legal.
         const re = compileTaskPattern(spec.task)
         for (const name of Object.keys(projects.get(projectName)!.config.tasks ?? {})) {
           if (name === taskName || !re.test(name)) continue
@@ -670,37 +604,23 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         goPast(frame, projectName, spec.task, new Set([projectName]))
       }
     } else if (spec.kind === 'deps') {
-      // Nearest-holder frontier (Turbo/Nx direct-deps parity +
-      // sparse bridging): walk the package dep graph from this
-      // project's direct deps; each path stops at the FIRST package
-      // declaring the task — a holder's own dependsOn is responsible
-      // for anything deeper. Packages without the task are passed
-      // through so a sparse dep doesn't break ordering to deeper
-      // holders. The visited set both dedupes shared subtrees and
-      // terminates on package-graph cycles (legal in PMs).
+      // Nearest-holder frontier (Turbo and Nx parity): walk the package graph
+      // from this project's deps; each path stops at the FIRST package
+      // declaring the task, whose own dependsOn covers the rest. Packages
+      // without it are passed through. `visited` dedupes and ends package
+      // cycles, and is seeded with the declaring project: a task never depends
+      // on itself.
       //
-      // With a pattern (`^build.*`), a holder is a package declaring
-      // AT LEAST ONE matching task and it receives edges to ALL its
-      // matches — holder-ness is about declaration, so a holder still
-      // stops the walk even when `--exclude-dependencies` drops every
-      // edge to it (`excludeDependencies`).
+      // With a pattern, a holder declares at least one match and gets edges to
+      // all of them; holder-ness is declaration, so it stops the walk even when
+      // `--exclude-dependencies` drops every edge to it.
       //
-      // The declaring project seeds `visited`: package graphs may legally
-      // contain cycles (the common "b devDepends on a for its tests"
-      // shape), and a cycle walks the frontier straight back to the
-      // origin. Mirrors the self-pattern rule above — a task can never
-      // depend on itself.
+      // The default `build` on a package cycle would make a task cycle no
+      // config declares: it walks last (`resolveDeferred`), and a walk meeting
+      // it takes the edge and goes past.
       //
-      // The default `build` sits on every project, so on a package cycle it
-      // would make a task cycle no config declares. One on a cycle walks
-      // last (`resolveDeferred`), and a walk that meets it on a cycle takes
-      // the edge and goes on past it, so the builds it could not depend on
-      // still come first.
-      //
-      // With no edge source every `^` resolves to nothing and its upstream
-      // folds into no key: a stale hit, green. With one, a project with no
-      // deps is a leaf. The default `build`'s `^build` is no exception: a
-      // task behind it would fold no upstream either.
+      // With no edge source every `^` resolves to nothing, so its upstream
+      // folds into no key.
       if (!packageGraph.edgeSource) {
         throw new UserError(
           `${id}: ${isDefaultBuild(node.config) ? `${projectName} declares no build, so it is the default build, whose ` : ''}^${spec.task} needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns \`deps\``,
@@ -786,10 +706,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         resolveEntry(frame, entries[frame.entry++]!)
         continue
       }
-      // Stable ordering for deterministic scheduling and cache keys — deduped:
-      // a target named twice (an exact entry + a pattern matching it, or a
-      // literal duplicate) must contribute ONE edge, not a double-folded
-      // upstream hash and a doubled DOT edge.
+      // Sorted for deterministic scheduling and keys, and deduped: a target
+      // named twice is one edge.
       node.deps = [...new Set(node.deps)].sort()
       stack.pop()
     }
@@ -800,15 +718,12 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     drain()
   }
 
-  // A default build on a package cycle: its `^build` walk, run once the
-  // graph holds everything else. A build on its cycle that reaches it is
-  // passed through (an edge to it would close a task cycle no config
-  // declares); one that does not is a holder like any other, so the default
-  // build waits for it and folds its key. Passed through unasked, `p#test`
-  // on `p#build` ran beside a `t#build` on no `^build` and hit after `t`
-  // changed. A build no other edge brought is expanded to ask, and pruned
-  // again when it reaches back. Each walk sees the edges the ones before it
-  // took, so no edge closes a cycle.
+  // A default build on a package cycle: its `^build` walk, run once the graph
+  // holds everything else. A build on its cycle that reaches it is passed
+  // through (an edge would close a cycle); any other is a holder, waited for
+  // and folded. A build no other edge brought is expanded to ask and pruned if
+  // it reaches back. Each walk sees the edges before it took, so none closes a
+  // cycle.
   let expanded = false
   const resolveDeferred = (x: TaskNode): void => {
     // The default build's one entry is `^` and its own name.
@@ -876,12 +791,9 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 }
 
 /**
- * Refuse an `outputs.workspaceFiles` glob that covers a project's config,
- * the task's own or another's: vx cleans a task's outputs before it runs,
- * so `packages/b/**` deleted b's untracked files, and its config with them
- * once untracked. `outputs.files` refuses its own config at load; a
- * root-anchored glob can reach any project, so it is judged here, where
- * every config is known.
+ * Refuse an `outputs.workspaceFiles` glob covering a project's config: outputs
+ * are cleaned before a run. A root-anchored glob can reach any project, so it
+ * is judged here, where every config is known.
  */
 function refuseConfigOutputs(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -917,16 +829,11 @@ function refuseConfigOutputs(
 }
 
 /**
- * Refuse an `inputs.files` or `outputs.files` entry rooted inside a project
- * nested in the task's own, or an `outputs.files` one inside a nested
- * workspace: every file it can match belongs to that project, which a
- * project's globs never reach. An input keys nothing, so an edit there hits
- * (a `dist/**` over a build output holding its own config was dropped from
- * the key in silence); an output saves nothing, and the nested project's
- * own artifact there could hold the outer task's bytes. An input still
- * reaches into a nested workspace, so one rooted there keys its files.
- * Judged by each brace alternative's fixed prefix: `**` or a sibling
- * reaches past the nested dir and is fine.
+ * Refuse an `inputs.files` or `outputs.files` entry rooted inside a nested
+ * project (or an output inside a nested workspace): its files belong to that
+ * project. An input would key nothing, so an edit there hits; an output saves
+ * nothing. An input still reaches into a nested workspace. Judged per brace
+ * alternative's fixed prefix.
  */
 function refuseNestedGlobs(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -1001,15 +908,11 @@ function reachingTo(nodes: Map<string, TaskNode>, target: string): Set<string> {
 }
 
 /**
- * What a task graph must hold before it is scheduled: each node under its
- * own id, every dep a node named once, no cycle, and no two tasks deleting each
- * other's outputs. The builder's output holds the first two by
- * construction; the `graph` stage runs this again after its plugins, which
- * could move a node to another key (the scheduler then died on a raw
- * TypeError) or drop the edge that made two overlapping outputs an
- * addition, and a green run lost one task's files (item 981). The addition
- * marks are derived here, so they are cleared first and follow the edges
- * the graph has now.
+ * What a graph must hold before scheduling: each node under its own id, every
+ * dep named once, no cycle, no two tasks deleting each other's outputs. The
+ * builder holds the first two by construction; the `graph` stage runs this
+ * again after plugins, which could move a node or drop the edge that made an
+ * overlap an addition. Addition marks are re-derived from the current edges.
  */
 export function checkGraph(
   nodes: Map<string, TaskNode>,
@@ -1045,14 +948,10 @@ export function checkGraph(
 }
 
 /**
- * Mark on `nodes` the dependants outside the run that add to their outputs
- * (item 588, only with `run.rules.exclusiveOutputs: false`): a run of
- * `build` alone has no `types` in its graph, so `build` would count what
- * `types` added to its tree as strays, restore on every warm run and wipe
- * them. A task in `projects` outside the run whose outputs overlap one in
- * it is its dependant: had it been an upstream it would be in the run, and
- * an unordered pair is `vx lock`'s refusal. Only `outputsAddedToBy` is
- * set on the run's nodes.
+ * Mark the dependants outside the run that add to its tasks' outputs (with
+ * `exclusiveOutputs: false`): run alone, `build` would count `types`' additions
+ * as strays and wipe them on every warm run. A task outside the run overlapping
+ * one inside is its dependant: an unordered pair is `vx lock`'s refusal.
  */
 export function markOutsideAdditions(
   nodes: Map<string, TaskNode>,
@@ -1081,26 +980,17 @@ export function markOutsideAdditions(
 }
 
 /**
- * `--exclude-dependencies`: take `dependsOn` edges out of the SCHEDULE, not
- * out of the graph. `'all'` drops every edge; a name list drops each edge
- * whose target task has one of those names, whichever `dependsOn` form
- * reached it. What stays scheduled is what the requested tasks still reach;
- * the rest leaves `nodes` and is returned with its `deps` intact, and each
- * scheduled task that lost an edge is listed in `dropped` with the ids it
- * lost. An edge to a task that stays scheduled (requested itself, or
- * reached another way) is kept: the two still run in order.
+ * `--exclude-dependencies`: take `dependsOn` edges out of the SCHEDULE, not the
+ * graph. `'all'` drops every edge; a name list drops edges to tasks with those
+ * names. What the requested tasks still reach stays; the rest leaves `nodes`
+ * with its deps intact, and each task that lost an edge is listed in `dropped`.
+ * An edge to a task still scheduled is kept.
  *
- * Under `'all'` a group's own edges stay: a group is its members (running
- * one is running them), so `vx run ci --exclude-dependencies` runs what
- * `ci` names without what THEY depend on. Dropping them left the group
- * alone, and the run ran nothing and exited 0 (item 894). A name list
- * still drops a group's edge it names: `--exclude-dependencies=lint.oxfmt`
- * takes one member out of `lint`.
+ * Under `'all'` a group's own edges stay: a group is its members. A name list
+ * still drops a group edge it names.
  *
- * Run on the whole graph, after the `graph` and `key` stages, because a
- * dropped dependency is still KEYED: a key is a function of inputs, never of
- * the selection (nx#35234), so the caller derives each dropped task's key
- * as a full run would and hands it to the dependant (`excludedUpstream`).
+ * Run after the `graph` and `key` stages: a dropped dependency is still KEYED,
+ * since a key never depends on the selection (nx#35234).
  */
 export function excludeDependencies(
   nodes: Map<string, TaskNode>,
@@ -1128,21 +1018,16 @@ export function excludeDependencies(
       keyOnly.set(id, node)
       continue
     }
-    // An edge to a task this run schedules anyway stays: dropped, the two
-    // ran unordered, and `a#build` read `b`'s output mid-rewrite or from
-    // the run before (item 980). Only an edge to a task that leaves the
-    // schedule is taken out.
+    // An edge to a task this run schedules anyway stays, or the two run
+    // unordered.
     const kept = keptBy(node)
     const stays = (d: string): boolean => kept(d) || scheduled.has(d)
     const lost = node.deps.filter((d) => !stays(d))
     if (lost.length === 0) continue
     dropped.set(id, lost)
     node.deps = node.deps.filter(stays)
-    // A scheduled task reached through a dropped one still runs first: in
-    // `test → gen → build` with `gen` excluded and `build` requested, the
-    // edge to `gen` went and nothing ordered `test` after `build`, so the
-    // two ran at once (item 1019). The walk reads unscheduled nodes only,
-    // whose deps this loop leaves as they are.
+    // A scheduled task reached through a dropped one still runs first: in `test
+    // → gen → build` with `gen` excluded, `test` must still follow `build`.
     const order = new Set<string>()
     const seen = new Set<string>()
     const stack = [...lost]
@@ -1165,57 +1050,25 @@ export function excludeDependencies(
 }
 
 /**
- * True only when two output globs PROVABLY select an overlapping set.
+ * True only when two output globs PROVABLY overlap. Conservative, because the
+ * caller REFUSES the run and a false positive breaks a working build:
  *
- * Deliberately conservative, because the caller REFUSES the run: a false
- * positive breaks a build that works today, which is worse than the defect
- * being caught. So the three cases are exactly the ones that can be decided
- * without a general glob-intersection algorithm:
+ * - both literal: equal paths;
+ * - literal vs glob: does the glob match the literal;
+ * - both globs: identical, or one is `P/**` and the other's literal prefix is P
+ *   or under it. Anything else passes.
  *
- *   both literal    — equal paths
- *   literal vs glob — ask the glob whether it matches the literal (exact)
- *   both globs      — identical strings, or one a whole subtree `P/**`
- *                     and the other's literal prefix P or under it: every
- *                     path the second matches is under P, so the first
- *                     covers it (item 941). Anything else is undecided
- *                     here and deliberately allowed through
+ * A static-prefix comparison is unsound for a refusal: `dist/vx-*` and
+ * `dist/other.txt` share `dist` and match disjoint sets.
  *
- * The rejected alternative was comparing each glob's static prefix. It is
- * cheaper and catches more, but it is UNSOUND for a refusal — measured:
- * `dist/vx-*` and `dist/other.txt` share the prefix `dist` while matching
- * disjoint sets, so a prefix check refuses a legitimate config. (vx's own
- * `build.bun.*` tasks escape only because they declare distinct literals.)
+ * Each side goes through `asTrees` first, the rule `cleanOutputs` deletes by:
+ * `./dist/**` is `dist/**`, and `outputs: ['dist']` is everything under `dist`.
  *
- * All three cases compare SPELLINGS, so each side is run through
- * `asTrees` first — the same rule the resolver and `cleanOutputs` read,
- * and `cleanOutputs` is what actually does the deleting. That folds two
- * things this check used to miss, both of them the data loss it exists to
- * prevent:
- *
- *   - the SPELLING: `./dist/**` and `dist/**` are one tree to every
- *     matcher in vx, and `Bun.Glob('dist/**')` does not match the literal
- *     `./dist/app.js` either (item 441, probed one spelling at a time);
- *   - the literal DIRECTORY: `outputs: ['dist']` means everything under
- *     `dist` — `asTrees` compiles it to `dist` + `dist/**` — while this
- *     compared it to `dist/app.js` as two unequal literals. Measured end
- *     to end: the task declaring `dist` wiped the other's `dist/app.js`
- *     and the run reported success (item 442).
- *
- * Neither is a widening. Both read the declaration the way the code that
- * deletes reads it, which is the only reading that decides the hazard.
- *
- * Exported through the façade because `@vzn/vx-migrate` asks the same
- * question at MIGRATION time — it uncaches the losers so the generated
- * config loads — and it used to ask it with a copy of this function. The
- * copy did not get items 441 and 442, so it reported clean on configs
- * core then refused, including `outputs: ['dist']` against
- * `dist/app.js`, which is the commonest turbo.json shape there is (item
- * 445). One rule, one place: the copy is gone.
+ * On the façade so `@vzn/vx-migrate` asks the same question at migration time.
  */
 export function outputsOverlap(rawA: string, rawB: string): boolean {
-  // Each brace alternative on its own: the checks below read a brace as
-  // one opaque segment, so `build/{a,b}.js` met `build/*.js`, and
-  // `dist/{esm,cjs}/**` met `**/*.js`, nowhere (fuzz, 2026-10-25).
+  // Each brace alternative on its own: the checks read a brace as one opaque
+  // segment.
   const as = braceAlternatives(rawA)
   const bs = braceAlternatives(rawB)
   if (as.length === 1 && bs.length === 1) return overlapOne(rawA, rawB)
@@ -1224,8 +1077,7 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
 
 function overlapOne(rawA: string, rawB: string): boolean {
   // A built path proves overlap only between globs as written: a literal's
-  // `/**` twin reads it as a directory, and `dist/types.d.ts` met
-  // `dist/**/*.js` at `dist/types.d.ts/x.js`, a file no one can write.
+  // `/**` twin reads it as a directory.
   const bothGlobs = literalPath(rawA) === null && literalPath(rawB) === null
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
@@ -1248,13 +1100,9 @@ function overlapOne(rawA: string, rawB: string): boolean {
 const rootless = (prefix: string): string => (prefix === '.' ? '' : prefix)
 
 /**
- * Do two globs both match a path built from them? Each candidate is a
- * real path, so a hit proves the overlap and a miss decides nothing. The
- * path sits under the deeper of the two literal prefixes and ends in
- * either glob's last segment with its wildcards filled: a glob for every
- * `.js` file under `dist` beside `dist/sth/**` meets at `dist/sth/x.js`,
- * a pair `covers` cannot decide since neither is a subtree holding the
- * other's prefix.
+ * Do two globs both match a path built from them? A hit proves the overlap, a
+ * miss decides nothing. The path sits under the deeper literal prefix and ends
+ * in either glob's filled last segment.
  */
 function witnessed(a: string, b: string): boolean {
   const pa = rootless(staticPrefix(a))
@@ -1274,9 +1122,8 @@ function witnessed(a: string, b: string): boolean {
       if (ga.match(candidate) && gb.match(candidate)) return true
     }
   }
-  // Each glob filled in whole, every wildcard a name and `**` one level or
-  // none: `**/dist/**` beside `**/*` meets at `x/dist/x`, a path neither
-  // last segment builds (solid, 2026-10-15).
+  // Each glob filled whole, every wildcard a name and `**` one level or none:
+  // `**/dist/**` beside `**/*` meets at `x/dist/x`.
   for (const glob of [a, b]) {
     const segs = glob.split('/')
     if (segs.some((s) => /[[\]{}()!+@]/.test(s))) continue
@@ -1292,12 +1139,8 @@ function witnessed(a: string, b: string): boolean {
 }
 
 /**
- * A path both globs take, built segment by segment, each a name both
- * segments take, `**` matching a segment of the other or none: `out/**`
- * beside every `.d.ts` in a `types` directory one level down meets at
- * `out/types/x.d.ts`, and `*` beside `[ab]` at `a`, paths neither glob
- * filled alone builds (fuzz, 2026-10-25). Null when none is found; a find
- * is checked whole after.
+ * A path both globs take, built segment by segment, `**` matching a segment of
+ * the other or none. Null when none; a find is checked whole after.
  */
 function unified(sa: readonly string[], sb: readonly string[]): string | null {
   // A `!` opening a class is the class's; anywhere else, an extglob.
@@ -1381,19 +1224,15 @@ function segmentMeet(x: string, y: string): string | null {
 }
 
 /**
- * Does the whole-subtree glob `tree` (`P/**`) match every path `glob` can?
- * It does when `glob`'s literal prefix is P or a directory under it. Left
- * undecided, `dist/**` beside `dist/extra/**` was no overlap: each task
- * cleaned and restored the other's files, and a hit of the wide one put
- * back its own stale copy of the narrow one's output under a green run
- * (item 941).
+ * Does `P/**` match every path `glob` can? Yes when `glob`'s literal prefix is
+ * P or under it. Undecided, `dist/**` beside `dist/extra/**` let a hit restore
+ * a stale copy of the narrow task's files.
  */
 const WHOLE_ROOT = new Set(['**', '**/*'])
 
 function covers(tree: string, glob: string): boolean {
-  // The root's own tree has no directory to name: `**` beside a `!` that
-  // spared the config cleaned every source under it, and the refusal of
-  // a task's own sources as outputs never fired.
+  // The root's tree has no directory to name: `**` covers everything under the
+  // root.
   if (WHOLE_ROOT.has(normalizeGlob(tree))) {
     const g = normalizeGlob(glob)
     return !g.startsWith('!') && !g.startsWith('/') && !g.split('/').includes('..')
@@ -1405,23 +1244,13 @@ function covers(tree: string, glob: string): boolean {
 }
 
 /**
- * Refuse a graph in which two tasks declare overlapping outputs.
+ * Refuse a graph where two tasks declare overlapping outputs. vx cleans a
+ * task's outputs before it runs and before a restore, so ownership is STRICT:
+ * two claims on one path destroy each other's work under a green run. Turbo
+ * restores additively and never hits this.
  *
- * vx cleans a task's declared outputs before it runs AND before a cache-hit
- * restore, so that the tree ends byte-identical to the cached artifact. That
- * makes output ownership STRICT — and two tasks claiming the same path
- * silently destroy each other's work, in whichever order they happen to run,
- * while the run reports success. It is data loss with a green summary.
- *
- * This is a hazard vx CREATED: Turbo restores additively and cannot hit it,
- * which is why no Turbo test surfaces it and why the parity research had to
- * reproduce it end to end.
- *
- * Scope follows the two namespaces' reach. `outputs.files` is
- * project-relative, so only tasks in the SAME project can collide;
- * `outputs.workspaceFiles` is anchored at the workspace root and ignores
- * project boundaries by design, so ANY two tasks can. No cache key changes —
- * this only refuses a graph that was already destroying files.
+ * `outputs.files` is project-relative, so only one project's tasks collide;
+ * `outputs.workspaceFiles` may collide across any two. No key changes.
  */
 function detectOutputCollisions(
   nodes: Map<string, TaskNode>,
@@ -1430,9 +1259,8 @@ function detectOutputCollisions(
   outside?: ReadonlySet<string>,
 ): void {
   // Does `from` reach `to` through deps? Asked only for a colliding pair,
-  // so the walk is rare; memoised per source across the detector's calls.
-  // With `outside` (`markOutsideAdditions`), a task outside the run reaches
-  // every task in it: the only order the lock lets such a pair have.
+  // memoised per source. With `outside`, a task outside the run reaches every
+  // task in it, the only order the lock allows.
   const reachMemo = new Map<string, Set<string>>()
   const reaches = (from: string, to: string): boolean => {
     if (outside !== undefined) return outside.has(from) && !outside.has(to)
@@ -1450,25 +1278,13 @@ function detectOutputCollisions(
     }
     return seen.has(to)
   }
-  // INDEX FIRST, then compare — never all-pairs over the graph. A naive
-  // pairwise loop that filters by project INSIDE the loop is quadratic in the
-  // whole graph: measured 1.6 SECONDS at this project's stated target of 1000
-  // projects x 10 tasks, on every run, against a ~120ms warm run. (Same shape
-  // as the scheduler's priority closure, which took 8.5s on a 1090-package
-  // repo before it was rewritten.)
-  //
-  // Both namespaces have a much smaller natural domain:
-  //   files          — project-relative, so only same-project tasks can
-  //                    collide.
-  //   workspaceFiles — root-anchored and boundary-free, so any two tasks can
-  //                    collide — but only tasks that DECLARE it participate.
-  // Within a domain all pairs was still quadratic in ONE project's tasks
-  // (4,000 with outputs spent 10.7 s here, item 741), so each domain is
-  // indexed again by path (`overlapCandidates`) and only the pairs that can
-  // overlap are compared, in the order the all-pairs loop met them.
-  // With `outside`, only a pair of one task in the run and one outside it
-  // is compared, and only to mark it: the run's own pairs were checked as
-  // its graph was built, and `vx lock` refuses the rest.
+  // INDEX first, never all-pairs over the graph (quadratic: 1.6 s at 1,000
+  // projects × 10 tasks). `files` collide only within a project;
+  // `workspaceFiles` across any tasks that declare it. Within a domain each
+  // pair set is indexed by path again (`overlapCandidates`), so only pairs that
+  // can overlap are compared, in all-pairs order. With `outside`, only pairs of
+  // one task in the run and one outside are compared, to mark them: `vx lock`
+  // refuses the rest.
   const pair = (a: TaskNode, b: TaskNode, compare: () => void): void => {
     if (outside === undefined) return compare()
     if (outside.has(a.id) === outside.has(b.id)) return
@@ -1490,10 +1306,9 @@ function detectOutputCollisions(
     if ((outs?.workspaceFiles?.length ?? 0) > 0) wsDeclarers.push(n)
   }
 
-  // Where each task's outputs MIGHT land: its positive globs. A `!` entry
-  // only narrows, so leaving it out can refuse a pair it separates, never
-  // pass one it does not (A-44); read as a glob it is `Bun.Glob`'s own
-  // negation, which overlaps nearly everything.
+  // Where outputs MIGHT land: the positive globs. A `!` only narrows, so
+  // leaving it out can refuse a pair it separates, never pass one; read as a
+  // glob it is `Bun.Glob`'s negation, which overlaps nearly everything.
   const positiveOf = (globs: readonly string[] | undefined): readonly string[] | undefined =>
     globs === undefined ? undefined : splitNegations(globs).positive
   const filesOf = (n: TaskNode): readonly string[] | undefined =>
@@ -1519,12 +1334,9 @@ function detectOutputCollisions(
       )
     }
   }
-  // A root-anchored output that reaches into ANOTHER project's `files`
-  // outputs was compared with neither: `a` writing `packages/b/dist/a.txt`
-  // beside `b`'s `dist/**` had its file deleted by `b`'s clean and still
-  // replayed `up-to-date` (item 1088). Each `files` declarer joins the
-  // root-anchored domain with its globs rebased to the root, and only the
-  // mixed pairs are compared.
+  // A root-anchored output reaching into another project's `files` outputs must
+  // be compared with them: each `files` declarer joins the root-anchored domain
+  // rebased to the root, and only the mixed pairs are compared.
   if (wsDeclarers.length === 0 || workspaceRoot === undefined) return
   interface Entry {
     node: TaskNode
@@ -1556,21 +1368,18 @@ function detectOutputCollisions(
 }
 
 /**
- * What a task's `!` output entries take back (A-44). A glob of the other
- * task's that one takes back whole is a path this task never cleans or
- * captures, so the pair cannot collide there.
+ * What a task's `!` outputs take back: a glob of the other task's taken back
+ * whole is never cleaned or captured by this one.
  */
 function takenBackOf(n: TaskNode, field: 'files' | 'workspaceFiles'): string[] {
   return splitNegations(n.config.outputs?.[field] ?? []).negative
 }
 
 /**
- * `collide` for a root-anchored output against another project's `files`
- * output rebased to the root. With an edge the dependant adds to its
- * upstream's tree, and the upstream is told the dependant's globs in its
- * OWN namespace: root-relative for the root-anchored side, project-relative
- * for the `files` side, where a glob that does not start in that project
- * cannot be told apart and the pair is refused.
+ * `collide` for a root-anchored output against another project's rebased
+ * `files` output. With an edge the dependant adds to its upstream's tree, told
+ * in the upstream's OWN namespace; a glob that does not start in that project
+ * cannot be told apart, so the pair is refused.
  */
 function collideAcross(
   ws: TaskNode,
@@ -1631,12 +1440,8 @@ function collideAcross(
 
 /**
  * Where a glob's literal head ends: every character `Bun.Glob` may read as
- * something other than itself. `*?{}` are the task-glob wildcards; `\`
- * escapes (`x\y/*` matches `xy/a`), and a leading `!` negates (`!a/**`
- * matches `b`). Ending early only widens the candidate set. A fuzz of
- * nearly four million glob/literal pairs (over 400,000 of them matching)
- * found no match outside the head this cuts, and thousands once `\` and
- * `!` were left out (item 746).
+ * other than itself (`*?{}`, `\` escapes, a leading `!`). Ending early only
+ * widens the candidate set, which a fuzz of millions of pairs confirmed.
  */
 const GLOB_HEAD_END = /[*?{}[\]\\!]/
 
@@ -1649,12 +1454,9 @@ const FIRST_SEGMENT_END = /[*?{}[\]\\!/]/
 const firstSegments = new Map<string, string>()
 
 /**
- * The first path segment every path a glob (or its `asTrees` twin) can
- * match starts with, or `ANYWHERE`. A task glob matches whole paths, so
- * two globs with different first segments select disjoint sets, and none
- * of `outputsOverlap`'s three cases can hold for them. Memoised by the
- * raw string: a pure function, and one glob (`src/**`) recurs in every
- * project.
+ * The first path segment every path a glob (or its `asTrees` twin) can match
+ * starts with, or `ANYWHERE`: globs with different first segments are disjoint.
+ * Memoised by the raw string.
  */
 function firstSegment(raw: string): string {
   let seg = firstSegments.get(raw)
@@ -1668,12 +1470,10 @@ function firstSegment(raw: string): string {
 }
 
 /**
- * False only when no pair `overlapCandidates` could return can overlap:
- * every glob starts in a named segment and no two members (on different
- * sides, given `sideOf`) share one. The per-project buckets are nearly
- * all of this shape (`src/**` read, `dist/**` written), and building the
- * indexes for each cost the warm run's graph stage tens of milliseconds
- * at 1,090 projects (X-148).
+ * False only when no candidate pair can overlap: every glob starts in a named
+ * segment and no two members (on different sides, given `sideOf`) share one.
+ * Most per-project buckets look like that, and building their indexes cost tens
+ * of ms at 1,090 projects.
  */
 function mayOverlap<T>(
   tasks: readonly T[],
@@ -1699,27 +1499,18 @@ function mayOverlap<T>(
 }
 
 /**
- * The pairs `[i, j]`, `i < j`, of `tasks` whose declared outputs CAN
- * overlap, yielded ascending by `i` then `j`: a superset of the pairs
- * `outputsOverlap` accepts, so `collide` over them decides exactly what it
- * decided over all pairs, and in the same order (the first refusal named,
- * and the addition marks pushed, are all-pairs' own).
+ * The pairs `[i, j]` whose declared outputs CAN overlap, ascending: a superset
+ * of what `outputsOverlap` accepts, so `collide` decides exactly as over all
+ * pairs, in the same order.
  *
- * `outputsOverlap` compares the `asTrees` forms three ways. Two globs,
- * equal or not, meet only when one's literal prefix lies at or under the
- * other's. Two equal literals do too, since each literal carries its `/**`
- * twin. And a glob matches a literal only when the
- * literal lies under the directory the glob's literal head names
- * (`dist/sub/**` → `dist/sub`; `*.js` → the root, so a wildcard in the
- * first segment meets every literal): a literal meets the globs filed at
- * each of its ancestors. The fuzz above found no glob matching the
- * directory its own head names.
+ * Two globs meet only when one's literal prefix lies at or under the other's;
+ * equal literals meet; a glob matches a literal only under its head's directory
+ * (a wildcard in the first segment meets every literal). So a literal meets the
+ * globs filed at each of its ancestors.
  *
- * Given `sideOf`, only the pairs whose members sit on different sides are
- * wanted (a reader and a writer, `detectInputOverlaps`), and each index is
- * kept per side, so a member looks up only the other side's: thousands of
- * readers sharing one input (`src/**`, a root `tsconfig.base.json`) were
- * paired with each other, millions of pairs no rule judges (X-101).
+ * Given `sideOf`, only pairs across sides are wanted (a reader and a writer),
+ * and each index is kept per side: readers sharing `src/**` are never paired
+ * with each other.
  */
 function overlapCandidates<T>(
   tasks: readonly T[],
@@ -1751,17 +1542,10 @@ function* indexedCandidates<T>(
       file(index, key.slice(0, sep), i)
     }
   }
-  // Each relation below is filed from both of its ends, so a member finds
-  // every partner by its own lookups and the pairs are yielded one `i` at a
-  // time. 20,000 tasks sharing `dist/**` are 200 million pairs, and holding
-  // them all before the first was compared ran out of memory (hunt); the
-  // caller refuses at the first, so only that `i`'s partners are built.
-  //
-  // Two globs meet only when one's literal prefix is the other's or under
-  // it: the rule of `witnessed`, and of `covers` (item 941: a whole subtree
-  // `P/**` has the prefix P), and two equal globs share one. Each glob is
-  // filed at its prefix (found from it and from under it), and at the
-  // prefix, the root and each ancestor (found from above).
+  // Each relation is filed from both ends, so a member finds every partner by
+  // its own lookups and pairs are built one `i` at a time: 20,000 tasks sharing
+  // `dist/**` are 200 million pairs, and the caller refuses at the first. Each
+  // glob is filed at its prefix and at each ancestor.
   const byPrefix = perSide()
   const overPrefix = perSide()
   // A literal meets the globs filed at each of its ancestors.
@@ -1842,29 +1626,17 @@ function* indexedCandidates<T>(
 }
 
 /**
- * A `remote: 'only'` task never materialises its outputs on THIS machine —
- * execute-task turns off both the read and the write axis for it, so there is
- * no probe, no restore, no output clean and no local save. The collision
- * hazard is entirely about local cleaning ("whichever runs second DELETES the
- * other's output"), so a pair including one of these cannot exhibit it: there
- * is nothing of its on disk to delete, and it deletes nothing of anyone's.
- *
- * Found while trying to give two projects their own install-as-an-action:
- * both legitimately capture the workspace-root `node_modules` under a
- * hoisting package manager, and the refusal fired on a pair that cannot
- * exhibit the hazard. That particular layout was abandoned for an unrelated
- * reason (identical definitions still get different cache keys), so this is
- * not load-bearing today — it is a refusal narrowed to what it can prove,
- * which this file's header asks for explicitly.
+ * A `remote: 'only'` task never materialises its outputs here: no probe,
+ * restore, clean or local save. The hazard is local cleaning, so a pair
+ * including one cannot exhibit it.
  */
 function neverWritesLocally(n: TaskNode): boolean {
   return n.config.exec?.remote === 'only'
 }
 
 /**
- * The way out of an edge-ordered overlap under `run.rules.exclusiveOutputs`: an
- * ordered pair is correct (the addition shape, item 588), only slower to
- * clean and restore, so the rule may be turned off.
+ * The way out of an edge-ordered overlap: an ordered pair is correct (the
+ * addition shape), only slower, so the rule may be turned off.
  */
 const EXCLUSIVE_OUTPUTS_FIX =
   'Give each task its own output path, or set run.rules.exclusiveOutputs: false in ' +
@@ -1892,12 +1664,10 @@ function collide(
         ` in outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
         `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
         `output`
-      // An overlap WITH an edge is the addition shape (item 588): the
-      // dependant runs after its upstream and adds to that tree, so the
-      // order is fixed and the dependant's own set can be told apart from
-      // what it found. Marked on both, and the pair is allowed when
-      // `run.rules.exclusiveOutputs` is off (X-53). Without an edge the two run
-      // in either order, and the refusal below stands.
+      // An overlap WITH an edge is the addition shape: the dependant runs after
+      // and adds to the tree, so its own set can be told from what it found.
+      // Marked on both; allowed when `exclusiveOutputs` is off. Without an edge
+      // the order is free, and the refusal stands.
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
       const parts = {
         headline: `${a.id} and ${b.id} both write ${ga === gb ? ga : `${ga} / ${gb}`}`,
@@ -1933,11 +1703,9 @@ function collide(
 }
 
 /**
- * Does the `!` set `negatives` take back every path the output glob
- * `output` can select? Each of the output's `asTrees` forms must be one of
- * the negatives' forms, sit inside a negative whole subtree (`covers`), or,
- * as a literal, be matched by one. Sound and no more: an output only partly
- * taken back answers false.
+ * Does `negatives` take back every path `output` can select? Each `asTrees`
+ * form must be a negative's form, sit inside a negative subtree, or as a
+ * literal be matched by one. A partial take-back answers false.
  */
 export function outputTakenBack(output: string, negatives: readonly string[]): boolean {
   if (negatives.length === 0) return false
@@ -1948,13 +1716,10 @@ export function outputTakenBack(output: string, negatives: readonly string[]): b
 }
 
 /**
- * A task whose input entry its own outputs take back whole cleans its own
- * sources: vx removes a task's outputs before it runs, so a formatter
- * declaring `src/**` as both deleted every committed file under `src`,
- * and its key read nothing (hunt 8). Always refused, whatever the rules.
- * The two fields are compared across too, `files` rebased to the root:
- * `src/**` read as `files` and written as the root's `app/src/**` deleted
- * an untracked source.
+ * A task whose input entry its own outputs take back whole would clean its own
+ * sources (a formatter declaring `src/**` as both deleted every committed file
+ * under it). Always refused. Compared across fields too, `files` rebased to the
+ * root.
  */
 function refuseSelfClean(node: TaskNode, workspaceRoot: string | undefined): void {
   const outputs = node.config.outputs
@@ -2000,7 +1765,7 @@ function selfClean(
       return r === '' || pi === r || pi.startsWith(`${r}/`)
     })
     // Taken back by the task's own `!` inputs, or by an output `!` (no
-    // output, so never cleaned: A-44), the entry reads what it says.
+    // output, so never cleaned), the entry reads what it says.
     if (near.length === 0 || outputTakenBack(gi, inputs.negative)) continue
     if (outputTakenBack(gi, taken.negative)) continue
     if (!outputTakenBack(gi, near)) continue
@@ -2015,9 +1780,8 @@ function selfClean(
 }
 
 /**
- * False only when no positive output can cover a positive input: each
- * starts in a named first segment and no input shares one with an output
- * (`firstSegment`). The common task reads `src/**` and writes `dist/**`.
+ * False only when no positive output can cover a positive input: each starts in
+ * a named first segment and none is shared.
  */
 function coversAny(
   inputs: readonly string[] | undefined,
@@ -2059,27 +1823,18 @@ interface Side {
 }
 
 /**
- * Refuse a task whose input globs can match another task's declared
- * outputs (X-54; no opt-out, 2026-10-16). Such a key reads bytes a
- * producer writes this run, so it is not known until the producer ran;
- * refused, every key reads only what no task writes and can be derived
- * before anything runs (2026-10-07: "hash ahead of time, not
- * waterfall"). A dependency's own key already cascades through
- * `dependsOn`, so the bytes it wrote add nothing a key needs; the one
- * exception is `refuseOverlaps`'s unfolded dependency.
+ * Refuse a task whose input globs can match another task's declared outputs (no
+ * opt-out): such a key reads bytes a producer writes this run, unknown until it
+ * ran. Refused, every key can be derived before anything runs. A dependency's
+ * key already cascades through `dependsOn`; the exception is `refuseOverlaps`'s
+ * unfolded dependency.
  *
- * Proven overlaps only (`outputsOverlap`), as for outputs: a pair the rule
- * cannot decide passes, and the stability gate still keeps it waiting. The
- * scope mirrors `detectOutputCollisions`: `inputs.files` against another
- * same-project task's `outputs.files`; root-anchored `inputs.workspaceFiles`
- * against every other task's `outputs.workspaceFiles` and, with the root
- * known, its `outputs.files` rebased to the root; and, with the root known,
- * `inputs.files` rebased to the root against another task's
- * `outputs.workspaceFiles`, which may land in any project (X-135). A task's own outputs are
- * already subtracted from its inputs, and an output the reader's `!` entries
- * take back whole is no overlap. A keyed group is exempt: it runs nothing
- * (the default `build` reads `**` of a config-less dependency), and its
- * key waits as before.
+ * Proven overlaps only (`outputsOverlap`). Same scope as
+ * `detectOutputCollisions`: `files` against same-project outputs, root-anchored
+ * inputs against every `workspaceFiles` output and, with the root known,
+ * rebased `files` outputs, and rebased `files` inputs against `workspaceFiles`
+ * outputs. A task's own outputs and outputs taken back whole by the reader's
+ * `!` are no overlap. A keyed group runs nothing and is exempt.
  */
 function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
   const byProject = new Map<string, Side[]>()
@@ -2196,16 +1951,12 @@ interface Overlap {
 type Found = Map<string, Overlap[]>
 
 /**
- * Which overlaps stand. A reader may read the outputs of a task in its
- * `dependsOn` closure whose key its own does not fold (it sets
- * `inputs.tasks` and leaves the producer out, also through the tasks it
- * folds): its key waits for the producer and hashes the bytes
- * (2026-10-16). Otherwise an output git ignores whole is no overlap
- * (2026-10-15), a key reading only what git lists, unless the reader's
- * glob starts in an ignored path (`dist/**`): naming it is asking for it.
- * Git is asked once, for every output and prefix together; one it cannot
- * speak for is refused. The answer holds for the lock; a run's stability
- * gate asks git again for itself.
+ * Which overlaps stand. A reader may read outputs of a task in its `dependsOn`
+ * closure its key does not fold: its key waits and hashes the bytes. Otherwise
+ * an output git ignores whole is no overlap, unless the reader's glob starts in
+ * an ignored path (`dist/**`): naming it is asking for it. Git is asked once
+ * for everything; what it cannot speak for is refused. A run's stability gate
+ * asks again.
  */
 function refuseOverlaps(
   found: Found,
@@ -2245,9 +1996,8 @@ function refuseOverlaps(
 }
 
 /**
- * Whether a reader may read a writer's outputs: the writer is in the
- * reader's `dependsOn` closure and not in its folded closure. Each closure
- * walked once per reader.
+ * Whether the writer is in the reader's `dependsOn` closure and not its folded
+ * closure. Each closure walked once per reader.
  */
 function dependencyReads(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -2279,10 +2029,8 @@ function dependencyReads(
 }
 
 /**
- * Whether a reader's take-back list covers an output glob, asked once per
- * list and glob: a Turbo-mapped repo gives two thousand readers one
- * 400-entry list, and asking it per reader and writer pair was 2.7 s of an
- * astro plan (2026-10-09). One per `detectInputOverlaps` call.
+ * Whether a reader's take-back list covers an output glob, asked once per list
+ * and glob (per pair was 2.7 s of an astro plan).
  */
 interface TakeBack {
   list: string[]
@@ -2300,7 +2048,7 @@ function takenBack(
   if (tb === undefined) {
     const inputs = reader.node.config.inputs!
     const declaredOutputs = reader.node.config.outputs
-    // A reader rebased to the root (X-135) speaks in its project's terms.
+    // A reader rebased to the root speaks in its project's terms.
     const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
     // What the reader's key never reads: its `!` entries and its own outputs.
     const list = [
@@ -2372,12 +2120,9 @@ function readsOutputs(
 }
 
 function detectCycle(nodes: Map<string, TaskNode>): void {
-  // Iterative DFS over dense-indexed colors. Recursion + `Map<string,
-  // number>` worked, but deep workspaces (long chains of `dependsOn`)
-  // can blow V8's frame budget, and per-node Map lookups dominate the
-  // pass. A Uint8Array indexed by node-position is allocation-free
-  // and ~2× faster on cycle detection itself.
-  // 0 = WHITE (unvisited) — the typed array's zero-init default.
+  // Iterative DFS over a Uint8Array of colors by node index: recursion
+  // overflows on deep chains, and Map lookups dominated. 0 = WHITE, the
+  // zero-init default.
   const GRAY = 1
   const BLACK = 2
   const idsArr = [...nodes.keys()]
@@ -2385,9 +2130,8 @@ function detectCycle(nodes: Map<string, TaskNode>): void {
   for (let i = 0; i < idsArr.length; i++) idIdx.set(idsArr[i]!, i)
   const color = new Uint8Array(idsArr.length)
 
-  // Each stack frame is `[idIndex, nextChildIdx]`. We mutate the
-  // child index in place as children are visited so we know which one
-  // to resume on when the leaf returns control here.
+  // Each frame is `[idIndex, nextChildIdx]`, the child index advanced in place
+  // so the frame resumes where it left off.
   const stack: number[] = []
   for (let start = 0; start < idsArr.length; start++) {
     if (color[start] === BLACK) continue

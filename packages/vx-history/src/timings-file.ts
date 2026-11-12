@@ -44,8 +44,8 @@ export function readTimings(
     return undefined
   }
   // Filtered in place: the parse is this read's own, and a copy of an
-  // 8,002-task file, filtered again by the caller, was ~6 ms of each
-  // all-cached run's teardown (2026-11-07).
+  // 8,002-task file, filtered again by the caller, was ~6 ms of each all-cached
+  // run's teardown.
   const out = tasks as Record<string, unknown>
   for (const id in out) {
     const ms = out[id]
@@ -132,7 +132,7 @@ export async function warnUnignored(
   )
 }
 
-/** Asked only on the warning's path: check-ignore says no for any tracked file, listed in .gitignore or not. */
+/** Asked only on the warning's path: check-ignore says no for any tracked file, listed in.gitignore or not. */
 async function isTracked(rel: string, root: string): Promise<boolean> {
   try {
     const p = Bun.spawn({

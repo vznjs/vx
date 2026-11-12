@@ -49,7 +49,7 @@ const BAR_LABEL = GUTTER
 
 /**
  * Identity hues for the two halves of a `project#task` id, never a status
- * colour: one name, one hue, in every run, list and row (2026-10-15).
+ * colour: one name, one hue, in every run, list and row.
  */
 const IDENTITY = [
   '#a78bfa', // violet-400
@@ -76,10 +76,10 @@ const hues = new Map<string, string>()
 
 /**
  * Standard env precedence:
- *   NO_COLOR non-empty          → off (overrides FORCE_COLOR)
- *   FORCE_COLOR=0 or =false     → off, even on a TTY
+ *   NO_COLOR non-empty → off (overrides FORCE_COLOR)
+ *   FORCE_COLOR=0 or =false → off, even on a TTY
  *   FORCE_COLOR any other value → on (the empty string too)
- *   any CI (`onCi`)             → on: a CI log looks like the terminal
+ *   any CI (`onCi`) → on: a CI log looks like the terminal
  *   else: on iff the stream is a TTY that is not `TERM=dumb`.
  * `0` and `false` are the convention's "off" (supports-color, chalk,
  * Node); reading every non-empty value as on painted a piped CI log that

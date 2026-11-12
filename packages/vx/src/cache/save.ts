@@ -55,9 +55,8 @@ import {
 const WAL_AUTOCHECKPOINT = 1000
 
 /**
- * An entry's key components as its one `entry_inputs` row: JSON
- * `[kind, name, hash]` triples in (kind, name) code-unit order, the first
- * of a repeated (kind, name) kept, as the per-component primary key did.
+ * An entry's key components as its one `entry_inputs` row: JSON `[kind, name,
+ * hash]` triples in (kind, name) order, the first of a repeat kept.
  */
 function encodeEntryInputs(components: readonly TaskInputComponent[]): string {
   const byId = new Map<string, TaskInputComponent>()
@@ -82,9 +81,8 @@ export async function treeBytes(dir: string): Promise<number> {
   const none = { size: 0, blocks: 0 }
   let n = diskBytes(await lstat(dir).catch(() => none))
   const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])
-  // A batch at once: one awaited at a time was 736 ms of a 1,020 ms save
-  // of 20k files; batched, ~35 ms. Batched, not all at once,
-  // so a huge tree never holds every Stats.
+  // Stats in batches: one at a time was 736 ms of a 20k-file save; all at once
+  // would hold every Stats.
   for (let i = 0; i < entries.length; i += TREE_STAT_BATCH) {
     const batch = entries.slice(i, i + TREE_STAT_BATCH)
     const stats = await Promise.all(
@@ -103,13 +101,11 @@ interface SavedTree {
 }
 
 /**
- * Refuse an artifact whose file names no restore can materialise as one
- * tree, or (given the task's declared outputs) that names a file outside
- * them. Both reached the tree before: `outputs/out.txt` beside
- * `outputs/out.txt/x` failed every later run from the local copy, blaming
- * what was on disk, and an undeclared name overwrote an input or planted a
- * git hook under a green remote hit. Thrown at ingest, so the
- * bytes never reach the local store and the remote read is a miss.
+ * Refuse an artifact whose names no restore can lay out as one tree
+ * (`outputs/out.txt` beside `outputs/out.txt/x`), or, given the task's declared
+ * outputs, that names a file outside them (it could overwrite an input or plant
+ * a git hook). Thrown at ingest, so the bytes never reach the local store and
+ * the read is a miss.
  */
 function assertArtifactNames(
   hash: string,
@@ -223,28 +219,16 @@ export async function save(
     /** See `CacheLayer.save`. */
   },
 ): Promise<void> {
-  // Layout: one
-  // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
-  // want to re-materialize on a cache hit:
+  // One `<hash>.tar.zst` per entry, holding only what a hit re-materializes:
+  // `stdout` (always, maybe empty), `outputs/<rel>`, `workspace-outputs/<rel>`.
+  // Metadata lives in SQLite; a remote ingest takes it as arguments.
   //
-  //   stdout                      — captured stdout (ALWAYS present, may be empty)
-  //   outputs/<rel>               — declared output files (omitted when none)
-  //   workspace-outputs/<rel>     — declared outputs.workspaceFiles,
-  //                                 rel to the WORKSPACE ROOT (omitted when none)
-  //
-  // Metadata (command, exitCode, durationMs, storedAt) lives in
-  // SQLite, not the artifact. Remote-hit ingestion takes metadata
-  // through `ingest()` arguments — the artifact stays clean bytes.
-  //
-  // Local writes disabled (e.g. `--cache-policy=local:,remote:rw`): produce
-  // no `<hash>.tar.zst` and no index row. The LayeredCache wrapping us
-  // still uploads to remote — it calls `packArtifact` itself to get
-  // the bytes, since there's no local artifact to read off disk.
+  // Local writes off (`local:,remote:rw`): no artifact and no row here; the
+  // LayeredCache packs the bytes itself for the upload.
   if (!ix.write) return
-  // A cache that reads saves only on a miss. One that does not (`--force`)
-  // re-executes a key it may hold: that entry is kept as it is.
-  // The kept entry's bytes are this run's too (same key): the row's
-  // `outputs` counts them as a hit would.
+  // A reading cache saves only on a miss. With `--force` a held key is re-run
+  // and its entry kept; its bytes are this run's too, so the row's `outputs`
+  // counts them.
   if (!ix.read && guard(ix, () => storedHere(ix, args.hash))) {
     const rows = ix.localMemo.loadOutputFilesBatch([args.hash]).get(args.hash) ?? []
     ix.savedBytes.set(
@@ -254,10 +238,8 @@ export async function save(
     ix.keptHashes.add(args.hash)
     return
   }
-  // The cache directory is the constructor's (`mkdirSync`, with a
-  // refusal recorded for `assertWritable`); re-creating it here and
-  // again in `writeArtifactAndIndex` cost every save two thread-pool
-  // round trips for an EEXIST and a stat.
+  // The constructor makes the cache directory; doing it again per save cost two
+  // round trips.
   const endPack = span('save: pack')
   const packed = await packForSave(ix, args).catch((err: unknown) => {
     // A save that could not open an output names the limit, not only
@@ -304,9 +286,8 @@ export async function pinArtifact(
   const pinned = tempPath(ix, hash)
   try {
     linkSync(tarPath(ix, hash), pinned)
-    // The link shares the artifact's mtime, as adopt's does: an artifact
-    // saved over an hour ago made the pin a crashed save's temp to another
-    // process's orphan sweep, which took it mid-upload.
+    // The link shares the artifact's mtime, as adopt's does: an old mtime made
+    // the pin look like an orphan temp to another process's sweep mid-upload.
     const now = new Date()
     utimesSync(pinned, now, now)
   } catch (err) {
@@ -337,10 +318,8 @@ export async function ingest(
   meta: IngestMeta,
 ): Promise<void> {
   const tmpPath = tempPath(ix, hash)
-  // The compressed bytes are bounded too, before the decode's ceiling ever
-  // sees them: a remote body that never ends (a hostile or broken server)
-  // was written to the temp until the disk was full. No artifact
-  // under the ceiling compresses past zstd's own bound on it.
+  // Bound the compressed bytes too: a remote body that never ends would fill
+  // the disk. No artifact under the ceiling compresses past zstd's own bound.
   const cap = ix.artifactCeiling + (ix.artifactCeiling >> 8) + 64 * 1024
   const past = (): CorruptArtifactError =>
     new CorruptArtifactError(
@@ -352,9 +331,8 @@ export async function ingest(
   let counted: ReadableStream<Uint8Array> | undefined
   let reader: ChunkReader | undefined
   let small: Uint8Array | undefined
-  // A store of plain files holds a body up to the bulk decode's bound:
-  // fetched whole, it is decoded in one call straight into the tree, with
-  // no temp archive between (`writeArtifactAndIndex`).
+  // A store of plain files decodes a body up to the bulk bound in one call
+  // straight into the tree, with no temp archive.
   const held = ix.store.decompress
     ? Math.max(ix.store.embeddings, STREAM_DECODE_FROM)
     : ix.store.embeddings
@@ -428,16 +406,10 @@ function outputsOf(
 }
 
 /**
- * The compressed artifact, in memory: the remote upload when local
- * writes are off. A large artifact is packed and compressed as a
- * stream and collected — with no local artifact the bytes must be
- * captured while the outputs are still on disk.
- *
- * Both packers name entries directly into the archive — no staging
- * copy of the outputs, no `tar` subprocess (`archive.ts`) — and
- * neither writes the final cache path, which is the index step's job:
- * `ingest()` packs nothing and hands its remote-supplied temp straight
- * to `writeArtifactAndIndex`.
+ * The compressed artifact in memory, for an upload when local writes are off:
+ * the bytes must be captured while the outputs are on disk. Both packers name
+ * entries straight into the archive; neither writes the final cache path, the
+ * index step's job.
  */
 async function packArtifact(
   ix: StoreIndex,
@@ -452,20 +424,16 @@ async function packArtifact(
     workspaceRoot?: string
   },
 ): Promise<Uint8Array> {
-  // stdout is ALWAYS present in the artifact, even if empty, so the
-  // layout is predictable: a successful read finds `stdout` and
-  // zero-or-more `outputs/<rel>` / `workspace-outputs/<rel>` entries.
+  // `stdout` is always present, even empty, so the layout is predictable.
   const plan = await planWithin(ix, args)
   if (plan.size <= STREAM_DECODE_FROM) return await zstdCompress(await packArtifactBytes(plan))
   return bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
 }
 
 /**
- * The artifact's plan, refused when its tar — exactly the bytes a restore
- * decodes — is past the ceiling every restore enforces. Refused here, it
- * costs a stat per output; left to the scan, it cost the whole compress
- * and a decode of a 2.2 GB output (6 to 14 s) to learn the same thing
- * and call the task's own outputs a "corrupt artifact".
+ * Refuse a plan whose tar is past the ceiling every restore enforces: here it
+ * costs a stat per output; left to the scan it cost a whole compress and decode
+ * and called the task's own outputs corrupt.
  */
 export async function planWithin(
   ix: StoreIndex,
@@ -495,13 +463,10 @@ export async function planWithin(
 }
 
 /**
- * Pack for the local save. A large artifact is read from disk as it is
- * written and compressed as a stream straight into the temp, so it
- * never sits in memory (measured on a 150 MiB output: +705
- * MiB before). The streamed compressor is ~2.4× the one-call cost per
- * byte and a stream costs ~35 µs to set up, so a small artifact is
- * packed in memory and compressed in one call — returned as bytes,
- * nothing written yet.
+ * Pack for the local save. A large artifact streams from disk into the
+ * compressor and the temp, never sitting in memory. The streamed compressor
+ * costs more per byte and ~35 µs to set up, so a small one is packed and
+ * compressed in memory in one call.
  */
 export async function packArtifactToTemp(
   ix: StoreIndex,
@@ -530,9 +495,8 @@ export async function packArtifactToTemp(
 }
 
 /**
- * The save's local form: a small entry packed for the index when the
- * store embeds, else a `.tar.zst` (`decompress: false`) or a tree of the outputs
- * copied as they are.
+ * The save's local form: inline for a small entry when the store embeds, else a
+ * `.tar.zst` or a tree of the outputs.
  */
 async function packForSave(
   ix: StoreIndex,
@@ -559,12 +523,9 @@ async function packForSave(
 }
 
 /**
- * Atomically write `compressed` to `<hash>.tar.zst`, or inline into
- * `artifacts` when it is at most `cache.store.embeddings` bytes, and (re)build the
- * entries + output_files SQL rows from the archive itself. Shared by
- * `save()` (we just packed the bytes) and `ingest()` (it streamed them
- * from the remote layer into a temp) — both index the identical values, because both
- * read them out of the artifact.
+ * Atomically write `compressed` to `<hash>.tar.zst`, or inline when at most
+ * `cache.store.embeddings` bytes, and build the rows from the archive itself.
+ * Shared by `save()` and `ingest()`, so both index the same values.
  */
 export async function writeArtifactAndIndex(
   ix: StoreIndex,
@@ -577,14 +538,9 @@ export async function writeArtifactAndIndex(
    */
   tar?: Uint8Array,
 ): Promise<number> {
-  // Validate BEFORE anything touches the final path. `ingest()` feeds
-  // us a temp of network bytes; a truncated/garbage body that went live first
-  // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
-  // since the decompress throw aborted indexing) for every later
-  // reader to trip over. Decompress + parse also produce the
-  // `output_files` rows: same headers the restore will see on
-  // restore, so the size/mode/mtime fingerprint we store matches
-  // what isOutputsCurrent will compare against post-restore.
+  // Validate BEFORE anything touches the final path: network bytes that went
+  // live first would leave a corrupt artifact for every later reader. The parse
+  // also yields the `output_files` rows, the headers a restore will see.
   const finalPath = tarPath(ix, hash)
   const saved = 'tree' in given ? given : undefined
   const compressed = 'tree' in given ? new Uint8Array(0) : given
@@ -606,17 +562,12 @@ export async function writeArtifactAndIndex(
   } else if (inline === null && compressed instanceof Uint8Array && !oneTree) {
     const temp = tempPath(ix, hash)
     tmpPath = temp
-    // The temp is written BEFORE validation so a large artifact can be
-    // scanned from the file as it decodes — a file stream reads in
-    // bounded pieces; the bytes in memory would not (see `decodedTar`).
-    // The final path is still untouched until the archive has passed.
-    // node's writeFile, not Bun.write: the latter copies the buffer first
-    // (measured on 150 MiB: +151 MiB and 33 ms against +0 and 21 ms).
+    // The temp is written before validation so a large artifact is scanned as a
+    // file stream, in bounded pieces. node's writeFile, not Bun.write, which
+    // copies the buffer first.
     const endWrite = span('save: write temp')
-    // A write that fails part-way (a full disk) leaves the temp behind,
-    // and a fresh one is an orphan only an hour on.
-    // Off this thread even when small: a file's creation on the main
-    // thread cost more CPU and wall than the round trip (A/B).
+    // A failed write leaves the temp, an orphan only an hour on. Off this
+    // thread even when small: creating the file on the main thread cost more.
     await writeFile(temp, compressed).catch(async (err: unknown) => {
       await unlink(temp).catch(() => undefined)
       throw err
@@ -658,9 +609,8 @@ export async function writeArtifactAndIndex(
       // Our own tar, in memory: read in place, on this thread.
       scanned = scanTarBytes(tar)
     } else {
-      // ingest() is the UNTRUSTED boundary — its temp holds bytes just
-      // pulled from a remote. Refuse a bomb (declared or sizeless) before it
-      // can expand into memory.
+      // ingest() is the UNTRUSTED boundary: refuse a bomb, declared or
+      // sizeless, before it expands into memory.
       const source =
         compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
           ? compressed
@@ -730,18 +680,11 @@ export async function writeArtifactAndIndex(
   // counts them, not as the archive it was unpacked from (`--max-size`, stats).
   if (tree !== undefined && saved === undefined) totalBytes = await treeBytes(tree)
   const outputFileRows: Array<[string, number, number, number]> = []
-  // Per-output-file fingerprint rows feed the skip-restore check.
-  // Row paths: project entries store the bare rel (`outputs/`
-  // stripped); workspace entries keep the full
-  // `workspace-outputs/<rel>` name as the namespace discriminator.
-  //
-  // Mode and MILLISECOND mtime come from the artifact's own sidecar
-  // (`.vx-meta.json` in its tar), written from a stat taken while packing. Both
-  // paths — save and remote ingest — therefore index the same values,
-  // and `restoreOutputs` materialises exactly them, so
-  // `isOutputsCurrent` compares equal at ms precision straight after a
-  // restore. (Tar headers carry seconds, which is why the save path
-  // used to need a second stat pass the ingest path could not have.)
+  // Output-file rows for the skip-restore check: a project entry's bare rel, a
+  // workspace entry's full `workspace-outputs/<rel>`. Mode and millisecond
+  // mtime come from the artifact's sidecar, so save and ingest index the same
+  // values a restore lays down, and `isOutputsCurrent` compares equal right
+  // after.
   for (const e of entries) {
     let rowPath: string | null = null
     if (e.name.startsWith('outputs/')) {
@@ -753,9 +696,8 @@ export async function writeArtifactAndIndex(
     if (rowPath === null) continue
     outputFileRows.push([rowPath, e.size, e.mode & 0o777, Math.floor(e.mtimeMs)])
   }
-  // An empty directory's row is its rel with a trailing slash: the hit's
-  // check asks only that a directory stands there. So is a directory with
-  // a mode to restore, which carries it beside `DIR_MODE`.
+  // An empty directory's row is its rel with a trailing slash; one with a mode
+  // to restore carries it beside `DIR_MODE`.
   const dirModes = new Map(scanned.dirModes)
   const dirRow = (d: string): void => {
     const mode = dirModes.get(d)
@@ -769,9 +711,8 @@ export async function writeArtifactAndIndex(
   }
   for (const d of scanned.dirs) dirRow(d)
   for (const d of [...dirModes.keys()]) dirRow(d)
-  // A link's row: its rel, the target's length and CRC-32 where a file
-  // has its size and mtime, and the link type in the mode, so the hit's
-  // check compares the target and never follows it.
+  // A link's row: its rel, the target's length and CRC-32 in place of size and
+  // mtime, and the link type in the mode, so the check never follows it.
   for (const [name, to] of scanned.links) {
     const bytes = new TextEncoder().encode(to)
     outputFileRows.push([
@@ -788,11 +729,8 @@ export async function writeArtifactAndIndex(
   const [project, task] = splitTaskId(meta.taskId)
   const now = Date.now()
 
-  // One transaction for the entries row + every output_files row +
-  // the Tier-3 entry_inputs fingerprint rows. One fsync regardless of
-  // row count. The fingerprint rows ride this save-time transaction
-  // (not the per-run path) so a warm all-cache-hit run — which never
-  // saves — writes none of them.
+  // One transaction, one fsync, for the entry, its output rows and its
+  // `entry_inputs`, so a warm run that saves nothing writes none.
   const insertEntry = ix.insertEntry
   const upsertStdout = ix.upsertStdout
   const deleteStdout = ix.deleteStdout
@@ -800,33 +738,19 @@ export async function writeArtifactAndIndex(
   let outputBytes = 0
   const insertEntryInput = ix.insertEntryInput
   const inputComponents = meta.inputComponents
-  // The artifact goes live INSIDE the write transaction, taken
-  // IMMEDIATE: the rename happens only once this writer holds the
-  // database's write lock, and its rows commit before any other writer
-  // can rename. Renamed first and indexed after, a commit that failed
-  // (`SQLITE_BUSY` past the busy timeout, `SQLITE_FULL`) left these bytes
-  // beside the previous save's rows, and two writers of one key (two
-  // workspaces on one `--cache-dir`) could pair one's bytes with the
-  // other's rows: every later hit failed the task on an artifact
-  // "missing" a recorded output. POSIX rename replaces the
-  // destination atomically, so a reader holding the old file reads it
-  // whole. A commit that fails after the rename takes the artifact back
-  // out: the old rows then name no artifact, which a probe reads as a
-  // miss.
+  // The artifact goes live INSIDE the IMMEDIATE write transaction: renamed
+  // first and indexed after, a failed commit left bytes beside the previous
+  // save's rows, and two writers of one key could pair one's bytes with the
+  // other's rows. A commit failing after the rename takes the artifact back
+  // out; rows naming no artifact read as a miss.
   //
-  // A previous artifact is moved aside first, never renamed over: ext4
-  // flushes the incoming file's delayed blocks when a rename replaces a
-  // file, 0.55 ms against 0.04 on the main thread with the write lock
-  // held (a `--force` run). A reader probing between the two
-  // renames finds no artifact, a miss (`ArtifactVanishedError`); one
-  // holding the old file still reads it whole. The aside name is a temp
-  // name, so a crash before its unlink leaves an orphan the sweep takes.
+  // A previous artifact is moved aside, never renamed over: replacing a file
+  // flushes delayed blocks on ext4 while the lock is held. A reader between the
+  // renames finds a miss; one holding the old file reads it whole. The aside is
+  // a temp name, so a crash leaves an orphan the sweep takes.
   //
-  // An inline artifact is upserted in the same transaction, and a file
-  // save deletes the key's inline one: as of every commit a key's live
-  // bytes are in one place. An inline save moves aside whatever file the
-  // key has, as a file save does: one rename that finds nothing on a
-  // first save, where asking the index first was a statement per save.
+  // An inline save and a file save each remove the key's other form in the same
+  // transaction: a key's live bytes are in one place.
   let aside: string[] = []
   let renamed: string | undefined
   const upsertBlob = ix.upsertBlob
@@ -866,11 +790,9 @@ export async function writeArtifactAndIndex(
       project,
       task,
       meta.command,
-      // exitCode. Pinned, not supplied: vx caches only successes, and neither
-      // `save` nor `ingest` accepts one (see their arg types). The column
-      // stays because the READ side still defends against a non-zero value —
-      // a row from a foreign or hand-edited cache.db classifies the hit
-      // `failed` rather than laundering a broken build into a green run.
+      // exitCode is pinned: vx caches only successes. The column stays because
+      // the read side classifies a non-zero row (a foreign cache.db) `failed`
+      // rather than green.
       0,
       meta.durationMs,
       totalBytes,
@@ -893,9 +815,8 @@ export async function writeArtifactAndIndex(
   }
   const endTx = span('save: index tx')
   try {
-    // Built inside the try: on a database a stopping run closed while a
-    // download streamed in, building it throws, and the temp or tree
-    // the body went to stayed behind.
+    // Built inside the try: on a database a stopping run closed mid-download it
+    // throws, and the temp must still go.
     await indexInBatch(ix, index)
   } catch (err) {
     endTx()
@@ -910,12 +831,10 @@ export async function writeArtifactAndIndex(
 }
 
 /**
- * Run `write` in a write transaction shared with every other save's that
- * arrives in this turn: settles once it has committed, or rejects with
- * its own error (its savepoint rolled back) or the commit's. A cold run's
- * saves land a few per turn, and a transaction each spent half its index
- * time on BEGIN and COMMIT on the main thread, the run's busiest
- * (81 of 164 ms over 500 saves).
+ * Run `write` in one write transaction with every save arriving this turn: it
+ * settles once committed, or rejects with its own error (its savepoint rolled
+ * back) or the commit's. A transaction per save spent half its index time on
+ * BEGIN and COMMIT on the main thread.
  */
 export function indexInBatch(ix: StoreIndex, write: () => void): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -936,9 +855,8 @@ export function flushIndex(ix: StoreIndex): void {
     ix.db
       .transaction(() => {
         for (let i = 0; i < batch.length; i++) {
-          // An error SQLite answers by rolling the whole transaction
-          // back (a full disk, a busy lock) leaves none to go on in: the
-          // rest are not run, and fail with it.
+          // An error that rolls the whole transaction back (a full disk, a busy
+          // lock) leaves nothing to go on in: the rest fail with it.
           if (failed.size > 0 && !ix.db.inTransaction) {
             failed.set(i, failed.values().next().value)
             continue

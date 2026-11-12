@@ -1,6 +1,5 @@
 // Where each task runs: the placement of a graph over the resolved
-// executors, and the plan-mode view of it. Split from run.ts on 2026-09-10
-// (pure motion). A task is pinned to this machine when it is persistent,
+// executors, and the plan-mode view of it. A task is pinned to this machine when it is persistent,
 // depends on a persistent task no `servers` executor carries, is sandboxed, says `exec.remote: false`, or
 // folds a runtime probe into its key; a sandboxed task goes to no executor
 // that does not declare `sandbox`, here or remote; an `exec.interactive`
@@ -57,9 +56,9 @@ export function pinnedLocalSet(
     }
   }
   if (pinned.size === 0) return runtime ? withProbedRuntime(nodes, pinned) : pinned
-  // Pinning flows up the dependant edges from what pins itself, one walk on
-  // an explicit stack: a chain is as deep as the graph, and a recursion
-  // per edge threw `RangeError` on the 50,000 the builder takes (item 737).
+  // Pinning flows up the dependant edges from what pins itself, one walk on an
+  // explicit stack: a chain is as deep as the graph, and a recursion per edge
+  // threw `RangeError` on the 50,000 the builder takes.
   const dependants = new Map<string, string[]>()
   for (const node of nodes.values()) {
     for (const dep of node.deps) {
@@ -115,13 +114,13 @@ function serversBehind(nodes: ReadonlyMap<string, TaskNode>, node: TaskNode): Ta
 }
 
 /**
- * A key that folds `inputs.runtime` / `workspaceRuntime` holds what
- * THIS machine answered (`node -v`); a worker runs its own runtime, which no
- * executor can prove equal, and its output saved under this key is a stale
- * hit here (C-2). Such a task runs here, or on a `runtime` executor, which
- * fails it where its probes answer otherwise. Its dependants are not pinned with
- * it: they fold the probe through its input key, and their own output does
- * not depend on this machine's runtime.
+ * A key that folds `inputs.runtime` / `workspaceRuntime` holds what THIS
+ * machine answered (`node -v`); a worker runs its own runtime, which no
+ * executor can prove equal, and its output saved under this key is a stale hit
+ * here. Such a task runs here, or on a `runtime` executor, which fails it where
+ * its probes answer otherwise. Its dependants are not pinned with it: they fold
+ * the probe through its input key, and their own output does not depend on this
+ * machine's runtime.
  */
 function withProbedRuntime(nodes: Map<string, TaskNode>, pinned: Set<string>): Set<string> {
   for (const node of nodes.values()) {
@@ -339,8 +338,8 @@ export function placeTasks(
       `${id} would run on this machine, and ${executorLabel(sole!)} runs every task elsewhere: ${why}`,
     )
   }
-  // A server it cannot carry first: one asked for pins its dependants, and
-  // the run named a dependant, as folding a runtime probe (2026-10-24).
+  // A server it cannot carry first: one asked for pins its dependants, and the
+  // run named a dependant, as folding a runtime probe.
   if (sole !== undefined)
     for (const node of nodes.values())
       if (
@@ -585,10 +584,10 @@ export function poolOfPlacement(
 }
 
 /**
- * What a run says of its `otherPlatform` tasks: a refusal when an executor
- * that routes by platform could not take one, or the run is on CI (each
- * task runs there or the run fails, 2026-10-23), else the warning a
- * local run prints as it skips them and what depends on them.
+ * What a run says of its `otherPlatform` tasks: a refusal when an executor that
+ * routes by platform could not take one, or the run is on CI (each task runs
+ * there or the run fails), else the warning a local run prints as it skips them
+ * and what depends on them.
  */
 export function platformVerdict(
   placements: Placements,

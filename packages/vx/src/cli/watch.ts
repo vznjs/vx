@@ -185,19 +185,18 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
 
   // Initial run — same code path as `vx run`.
   //
-  // Watchers do not exist yet, so the OS drops the event of an edit made
-  // WHILE this run is executing. Known and deliberate: the obvious fix
-  // (install watchers first) forces `anyTaskUsesWorkspaceFiles` ahead of the
-  // run to decide which watchers to install, and that marks every config
-  // loaded — so the initial run's own loads become REPEATs and pay a worker
-  // round-trip each (see config-eval.ts). The edit is found instead: one to
-  // the inputs of a task the run was running leaves that task unsaved, and
-  // the loop starts on it (`drifted`); any other is a file the arm finds
-  // written since the run started by none of its commands (`InitialRun`).
-  // The exception: once the run waits on a server's readiness alone, every
-  // config is loaded, and the loop arms with the run as its cycle in
-  // flight. Unarmed, a server that never got ready held the initial run
-  // for good, and the fix to it was never heard (X-139).
+  // Watchers do not exist yet, so the OS drops the event of an edit made WHILE
+  // this run is executing. Known and deliberate: the obvious fix (install
+  // watchers first) forces `anyTaskUsesWorkspaceFiles` ahead of the run to
+  // decide which watchers to install, and that marks every config loaded — so
+  // the initial run's own loads become REPEATs and pay a worker round-trip each
+  // (see config-eval.ts). The edit is found instead: one to the inputs of a
+  // task the run was running leaves that task unsaved, and the loop starts on
+  // it (`drifted`); any other is a file the arm finds written since the run
+  // started by none of its commands (`InitialRun`). The exception: once the run
+  // waits on a server's readiness alone, every config is loaded, and the loop
+  // arms with the run as its cycle in flight. Unarmed, a server that never got
+  // ready held the initial run for good, and the fix to it was never heard.
   let loop: Promise<void> | undefined
   const initialRun: InitialRun = {
     from: fsClockNow(opts.cacheDir ?? path.join(workspaceRoot, '.vx')),

@@ -1,8 +1,8 @@
 // A plugin's secrets, kept in the OS keychain (`Bun.secrets`) under the
 // plugin's own name, and asked for on the terminal when a plugin offers a
-// prompt and someone can answer (2026-10-17). Core reads no
-// environment here: a variable, an option or a config file is the
-// plugin's to check first, so the keychain is always the last source.
+// prompt and someone can answer. Core reads no environment here: a variable, an
+// option or a config file is the plugin's to check first, so the keychain is
+// always the last source.
 
 import { type SecretTerminal, terminalOf } from './hidden-prompt.js'
 import { holdSecret } from './secret-mask.js'

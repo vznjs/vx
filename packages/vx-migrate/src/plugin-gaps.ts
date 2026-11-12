@@ -1,11 +1,10 @@
 // What a mapping could not say, reported once by `vx lock`, the pass that
-// checks configs (a run checks nothing, 2026-10-15) and, since 2026-11-11,
-// the only pass that maps. What this machine lacks to run the mapping (a
-// bin, a graph export) is said there too. One line per DISTINCT gap, not one per task: n8n has a
-// `dev` and a `watch` in most of its 84 packages, and astro's `build`
-// carries the same `!vendor/**` output in every package — the per-task
-// form was a hundred identical lines before the first frame (2026-09-11).
-// Shared by `turbo()` and `nx()` since the second one existed.
+// checks configs (a run checks nothing) and the only pass that maps. What this machine lacks to run the mapping (a bin, a graph export)
+// is said there too. One line per DISTINCT gap, not one per task: n8n has a
+// `dev` and a `watch` in most of its 84 packages, and astro's `build` carries
+// the same `!vendor/**` output in every package — the per-task form was a
+// hundred identical lines before the first frame. Shared by `turbo()` and
+// `nx()` since the second one existed.
 
 import { taskNameProblem } from '@vzn/vx'
 
@@ -70,9 +69,9 @@ export function warnGaps(
 }
 
 /**
- * A task whose name the schema refuses (`lint#fix`, `^up`) becomes a TODO,
- * as the scripts migrator does (item 1033): written as a task, core
- * refused the whole config on the next command.
+ * A task whose name the schema refuses (`lint#fix`, `^up`) becomes a TODO, as
+ * the scripts migrator does: written as a task, core refused the whole config
+ * on the next command.
  */
 export function refuseTaskNames(
   projects: readonly { tasks: { name: string; todos: string[]; task: object | null }[] }[],

@@ -5,16 +5,15 @@ import { execWord, exitSignal } from '../exec/index.js'
 
 /**
  * The frame line for a shell verdict the task's own output leaves a mystery.
- * `sh -c 'exec <word> …'` exits 127 ("not found") and 126 ("cannot
- * execute"), and its one line names the word and nothing about why: a bare
- * word is a PATH lookup, and the PATH is vx's (item 257); a word with a
- * slash is a file, and the file itself says why — missing, a directory, no
- * execute bit, a `#!` interpreter that is not there (dash and bash 5 say
- * "not found" and blame the file; bash 3.2 names it itself and exits 1),
- * or no `#!` line at all (item 258). An exit above 128 is the shell's
- * report of a death by signal, and the number alone says nothing about
- * what sent it — the OOM killer, a crash in native code, an abort, a
- * closed pipe (item 259).
+ * `sh -c 'exec <word> …'` exits 127 ("not found") and 126 ("cannot execute"),
+ * and its one line names the word and nothing about why: a bare word is a PATH
+ * lookup, and the PATH is vx's; a word with a slash is a file, and the file
+ * itself says why — missing, a directory, no execute bit, a `#!` interpreter
+ * that is not there (dash and bash 5 say "not found" and blame the file; bash
+ * 3.2 names it itself and exits 1), or no `#!` line at all. An exit above 128
+ * is the shell's report of a death by signal, and the number alone says nothing
+ * about what sent it — the OOM killer, a crash in native code, an abort, a
+ * closed pipe.
  */
 export function shellVerdict(args: {
   code: number

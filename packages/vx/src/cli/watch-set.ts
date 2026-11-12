@@ -69,9 +69,9 @@ export interface ConfigSweep {
   uncached: Set<string>
   /** Paths a task's inputs name outright (`namedOutright`), absolute: a git-ignored one is an input. */
   namedIgnored: string[]
-  /** Files the project configs import by relative path (item 949). */
+  /** Files the project configs import by relative path. */
   configImports: string[]
-  /** Files the workspace config imports by relative path: loaded once per process (item 949). */
+  /** Files the workspace config imports by relative path: loaded once per process. */
   workspaceConfigImports: string[]
   /** The staged load the sweep read, when the run path's load succeeded; `watchedProjects` reads the same one. */
   staged: Map<string, ProjectEntry> | null

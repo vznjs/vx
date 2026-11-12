@@ -249,7 +249,7 @@ export function section(title: string, ...rest: (Block | Inline)[]): Block {
 const isBlock = (x: unknown): x is Block =>
   typeof x === 'object' && x !== null && 'lines' in x && typeof x.lines === 'function'
 
-/** `✗ vx lock  lock not written`: the tone's symbol, the bold verb, the headline. */
+/** `✗ vx lock lock not written`: the tone's symbol, the bold verb, the headline. */
 export function status(t: Tone, verb: string, headline: Inline): Block {
   return block((c) => [
     `${paint(t, SYMBOL[t], c)} ${paint('strong', verb, c)}  ${inline(headline, c)}`,
@@ -340,12 +340,12 @@ export function fields(rows: readonly FieldRow[]): Block {
   })
 }
 
-/** `fix  <action>`: what to do about it. */
+/** `fix <action>`: what to do about it. */
 export function fix(action: Inline): Block {
   return labelled('fix', action)
 }
 
-/** `next  <command>`: the command to type next. */
+/** `next <command>`: the command to type next. */
 export function next(command: Inline): Block {
   return labelled('next', command)
 }

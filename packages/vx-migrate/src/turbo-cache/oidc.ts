@@ -1,8 +1,8 @@
-// A GitHub Actions job's OIDC token, exchanged for a short-lived remote
-// cache token (RFC 8693), and revoked when the run ends (RFC 7009): no
-// long-lived TURBO_TOKEN secret in the repo. Vercel's flow as its own
-// action runs it (vercel/setup-turborepo-remote-cache-action, read
-// 2026-10-17); any other server names its token URL.
+// A GitHub Actions job's OIDC token, exchanged for a short-lived remote cache
+// token (RFC 8693), and revoked when the run ends (RFC 7009): no long-lived
+// TURBO_TOKEN secret in the repo. Vercel's flow as its own action runs it
+// (vercel/setup-turborepo-remote-cache-action, read); any other server names
+// its token URL.
 
 import { deadline } from '../remote-deadline.js'
 import { hideTokens } from '../remote-refusal.js'

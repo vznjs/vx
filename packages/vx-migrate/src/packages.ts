@@ -1,7 +1,7 @@
 // Package-manager workspaces: the members `package.json#workspaces` or
 // `pnpm-workspace.yaml` list, and the root a migration writes
-// `.vx/workspace.ts` at. Core reads neither (2026-10-14): a project is a
-// directory holding a vx.config.
+// `.vx/workspace.ts` at. Core reads neither: a project is a directory holding a
+// vx.config.
 import { constants, existsSync, type Dirent } from 'node:fs'
 import { access, lstat, readdir, realpath, stat } from 'node:fs/promises'
 import { isUtf8 } from 'node:buffer'
@@ -75,10 +75,9 @@ const decoder = new TextDecoder()
  * A load that goes on to `loadPackageWorkspace` passes its `reads`, so the
  * root's manifest is read once for both.
  *
- * Inside git the walk never goes above the git top-level ({@link gitTop}),
- * so a manifest above the checkout is never even read: a `package.json`
- * planted in a shared directory above it claimed it, and its workspace
- * config ran as you (2026-10-13: "find the root based on git").
+ * Inside git the walk never goes above the git top-level ({@link gitTop}), so a
+ * manifest above the checkout is never even read: a `package.json` planted in a
+ * shared directory above it claimed it, and its workspace config ran as you.
  *
  * Outside git the walk stops above `start` at a manifest another user
  * owns (root aside), the same case without a top-level to stop at
@@ -139,23 +138,23 @@ export async function findManifestRoot(
       }
       // pnpm takes the nearest `pnpm-workspace.yaml` as the root, listed or
       // not. Walking past it, `apps/inner` resolved to the outer workspace
-      // while `apps/inner/pkgs/x` resolved to the inner one: two roots and
-      // two caches for one tree (item 990). Already read: `reads` holds it.
+      // while `apps/inner/pkgs/x` resolved to the inner one: two roots and two
+      // caches for one tree. Already read: `reads` holds it.
       if ((await readOnce(reads, path.join(dir, 'pnpm-workspace.yaml'))) !== null) {
         return claimed ?? dir
       }
     }
     const parent = path.dirname(dir)
     if (parent === dir || dir === top) break
-    // Only a directory holding a manifest can be a member: a glob that
-    // matched `packages/tools`, which has none, claimed the standalone
-    // package below it, and `packages/tools/standalone` ran as a stranger
-    // in a workspace that does not list it (item 989).
+    // Only a directory holding a manifest can be a member: a glob that matched
+    // `packages/tools`, which has none, claimed the standalone package below
+    // it, and `packages/tools/standalone` ran as a stranger in a workspace that
+    // does not list it.
     if (globs !== null) below.push(dir)
     // `apps/tool/workspace` with its own `workspaces`, under a root listing
-    // `apps/*`, resolved to the outer root through `apps/tool`, and its
-    // members ran in a workspace that does not list them (D-137). npm makes
-    // an outer root own a nested one only when it lists that directory.
+    // `apps/*`, resolved to the outer root through `apps/tool`, and its members
+    // ran in a workspace that does not list them. npm makes an outer root own a
+    // nested one only when it lists that directory.
     if (inner === null && globs !== null && globs.length > 0) inner = dir
     dir = parent
   }
@@ -234,13 +233,13 @@ const SKIPPED_SEGMENT = /(^|\/)(\.|node_modules(\/|$))/
 function splitPackageGlobs(globs: readonly string[]): { positive: string[]; negative: string[] } {
   const positive: string[] = []
   const negative: string[] = []
-  // `!./packages/legacy` and `!packages//legacy` excluded nothing, silently
-  // (2026-09-10): the same spellings the input globs normalize.
+  // `!./packages/legacy` and `!packages//legacy` excluded nothing, silently:
+  // the same spellings the input globs normalize.
   for (const raw of globs) {
-    // A member glob names directories, so a trailing slash says nothing:
-    // npm and pnpm read `packages/*/` as `packages/*`. `normalizeBunGlob`
-    // gives it a task glob's meaning, `/**`, and `packages/*/` found every
-    // example and fixture package at any depth below the members (item 985).
+    // A member glob names directories, so a trailing slash says nothing: npm
+    // and pnpm read `packages/*/` as `packages/*`. `normalizeBunGlob` gives it
+    // a task glob's meaning, `/**`, and `packages/*/` found every example and
+    // fixture package at any depth below the members.
     const g = normalizeBunGlob(raw.replace(/(.)\/+$/, '$1'))
     if (g.startsWith('!')) negative.push(g.slice(1).replace(/\/+$/, ''))
     else positive.push(g)
@@ -257,7 +256,7 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
     // pnpm matches the MANIFEST (`<pattern>/package.json`), so its documented
     // `!**/test/**` excludes `packages/test` itself; matched against the
     // directory, `**/test/**` needs something below `test` and the package
-    // stayed a member (item 986).
+    // stayed a member.
     if (new Bun.Glob(`${neg}/package.json`).match(`${rel}/package.json`)) return true
   }
   return false
@@ -280,15 +279,15 @@ async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[
       }
       const packages = (parsed as { packages?: unknown }).packages
       // A list commented out leaves `packages:` null, which pnpm reads as
-      // absent; vx refused it as "must be an array" (D-149).
+      // absent; vx refused it as "must be an array".
       if (packages !== undefined && packages !== null) {
         return assertGlobList(packages, yamlPath, 'packages')
       }
     }
-    // No `packages:` (or an empty one): pnpm 10 keeps its settings and catalogs in this file
-    // for a single-package repo too. The root's package.json decides, as it
-    // would without the file; read as an empty list, the root found zero
-    // projects and every verb ran nothing and exited 0 (item 984).
+    // No `packages:` (or an empty one): pnpm 10 keeps its settings and catalogs
+    // in this file for a single-package repo too. The root's package.json
+    // decides, as it would without the file; read as an empty list, the root
+    // found zero projects and every verb ran nothing and exited 0.
     yamlWithoutPackages = true
   }
   const pkgPath = path.join(dir, 'package.json')
@@ -298,12 +297,12 @@ async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[
   const ws = pkg.workspaces as unknown
   if (ws === undefined || ws === null) return ['.']
   // bun's `{ catalog }` and yarn's `{ nohoist }` name no members, and both
-  // managers run the root alone; vx refused them as no array (D-151).
+  // managers run the root alone; vx refused them as no array.
   if (typeof ws === 'object' && !Array.isArray(ws) && !('packages' in ws)) return ['.']
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
     const packages = (ws as { packages?: unknown }).packages
-    // Yarn 1 and 4 run the root alone under `packages: null`; read as an
-    // empty list, the root was no project and every verb ran nothing (D-150).
+    // Yarn 1 and 4 run the root alone under `packages: null`; read as an empty
+    // list, the root was no project and every verb ran nothing.
     if (packages === null) return ['.']
     return assertGlobList(packages, pkgPath, 'workspaces.packages')
   }
@@ -311,18 +310,18 @@ async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[
 }
 
 /**
- * Package manifests the globs never reach, in single-project mode only: a
- * root `package.json` with no `workspaces` field makes the root the one
- * project, and a `packages/app/package.json` full of scripts beside it is
- * then invisible — `vx init` said "no package.json scripts" and `vx run`
- * said "run vx init" (2026-09-16). One shallow scan, two levels, on the
- * failure path only; `node_modules` and dot directories are skipped.
+ * Package manifests the globs never reach, in single-project mode only: a root
+ * `package.json` with no `workspaces` field makes the root the one project, and
+ * a `packages/app/package.json` full of scripts beside it is then invisible —
+ * `vx init` said "no package.json scripts" and `vx run` said "run vx init". One
+ * shallow scan, two levels, on the failure path only; `node_modules` and dot
+ * directories are skipped.
  */
 export async function unreachedPackages(workspace: PackageWorkspace): Promise<string[]> {
   if (workspace.packageGlobs.length !== 1 || workspace.packageGlobs[0] !== '.') return []
   const found: string[] = []
-  // Two scans: Bun.Glob does not expand a brace whose alternatives hold a
-  // slash (`{*,*/*}/package.json` matched nothing, measured 2026-09-16).
+  // Two scans: Bun.Glob does not expand a brace whose alternatives hold a slash
+  // (`{*,*/*}/package.json` matched nothing, measured).
   for (const pattern of ['*/package.json', '*/*/package.json']) {
     for await (const rel of new Bun.Glob(pattern).scan({
       cwd: workspace.root,
@@ -338,10 +337,10 @@ export async function unreachedPackages(workspace: PackageWorkspace): Promise<st
 }
 
 /**
- * The line for `unreachedPackages`' finding: the cause, the packages, the
- * glob to add, and where. A `pnpm-workspace.yaml` with no `packages:` (pnpm
- * keeps its settings there) is where pnpm reads the globs: the hint said
- * there was no such file and named package.json, beside ngrx's (2026-10-07).
+ * The line for `unreachedPackages`' finding: the cause, the packages, the glob
+ * to add, and where. A `pnpm-workspace.yaml` with no `packages:` (pnpm keeps
+ * its settings there) is where pnpm reads the globs: the hint said there was no
+ * such file and named package.json, beside ngrx's.
  */
 export function unreachedHint(unreached: readonly string[], root: string): string {
   const n = unreached.length
@@ -374,10 +373,10 @@ function parseManifest(text: string, file: string, parse: (t: string) => unknown
 
 /**
  * A `package.json` as discovery reads it: a JSON object whose `name`, when
- * present, is a string with no surrounding whitespace (npm refuses one).
- * Parsed and cast unchecked, `null` crashed with a TypeError and a stack,
+ * present, is a string with no surrounding whitespace (npm refuses one). Parsed
+ * and cast unchecked, `null` crashed with a TypeError and a stack,
  * `{"name":123}` planned `123#build`, and `" a"` beside `"a"` made two
- * projects (item 988).
+ * projects.
  */
 function parsePackageJson(text: string, file: string): PackageJson {
   const pkg = parseManifest(text, file, JSON.parse)
@@ -388,8 +387,8 @@ function parsePackageJson(text: string, file: string): PackageJson {
   if (name !== undefined && (typeof name !== 'string' || name.trim() !== name)) {
     throw new UserError(`${file}: "name" must be a string with no surrounding whitespace`)
   }
-  // A task is `<project>#<task>` split at the first `#`: `"a#b"` planned
-  // under `--all` but no run spec or dependsOn could reach it (D-130).
+  // A task is `<project>#<task>` split at the first `#`: `"a#b"` planned under
+  // `--all` but no run spec or dependsOn could reach it.
   if (typeof name === 'string' && name.includes('#')) {
     throw new UserError(`${file}: "name" cannot hold "#" — vx addresses a task as <name>#<task>`)
   }
@@ -451,9 +450,8 @@ export async function loadPackageWorkspace(
 ): Promise<PackageWorkspace> {
   const packageGlobs = await readPackageGlobs(root, reads)
   if (packageGlobs === null) {
-    // A migration asks only of a root findManifestRoot found, which holds
-    // one; a direct call of this public function on a bare dir lands
-    // here (D-58).
+    // A migration asks only of a root findManifestRoot found, which holds one;
+    // a direct call of this public function on a bare dir lands here.
     throw new UserError(`workspace root ${root} has neither pnpm-workspace.yaml nor package.json`)
   }
   return { root, packageGlobs }
@@ -466,8 +464,8 @@ const SIMPLE_STAR_RE = /^[^*?{}[\]!]+\/\*$/
 
 /**
  * True when a member glob reaches a `package.json` other than the root's,
- * addressable or not: a nameless manifest, or two sharing a name, is
- * matched and left out, not unmatched (M-46).
+ * addressable or not: a nameless manifest, or two sharing a name, is matched
+ * and left out, not unmatched.
  */
 export async function reachesManifest(workspace: PackageWorkspace): Promise<boolean> {
   const { positive, negative } = splitPackageGlobs(workspace.packageGlobs)
@@ -536,12 +534,12 @@ function escapeNotUtf8(name: Uint8Array): string {
 }
 
 /**
- * The directories a workspace glob names. For the `<dir>/*` shape this is
- * one readdir of `<dir>` — the same answer `Bun.Glob` gives, at a third of
- * the cost (measured 2026-09-02: 25 ms → ~2 ms for 1000 members). A
- * symlinked member is followed when it points at a directory, and so is
- * it by the scan any other shape takes, unless the glob holds `**` (item
- * 987). Dot-directories are skipped (`dot: false`), so are `node_modules`.
+ * The directories a workspace glob names. For the `<dir>/*` shape this is one
+ * readdir of `<dir>` — the same answer `Bun.Glob` gives, at a third of the cost
+ * (measured: 25 ms → ~2 ms for 1000 members). A symlinked member is followed
+ * when it points at a directory, and so is it by the scan any other shape
+ * takes, unless the glob holds `**`. Dot-directories are skipped (`dot:
+ * false`), so are `node_modules`.
  */
 async function memberDirs(root: string, pattern: string): Promise<string[]> {
   // Normalize: `"."` -> the root itself; `"foo/"` -> `"foo"`.
@@ -571,16 +569,16 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
   }
   const dirs: string[] = []
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
-  // slash, though its `match` reads one: `packages/{a,nested/b}` listed
-  // neither package, and both ran under no verb while the root still
-  // claimed them (D-2). Such a pattern is scanned as its expansions.
+  // slash, though its `match` reads one: `packages/{a,nested/b}` listed neither
+  // package, and both ran under no verb while the root still claimed them. Such
+  // a pattern is scanned as its expansions.
   for (const expanded of slashBraceExpansions(normalized)) {
     const globPattern = expanded === '' ? 'package.json' : `${expanded}/package.json`
     const glob = new Bun.Glob(globPattern)
     // A linked member is a member, as the readdir path above has it:
-    // `packages/*` found `packages/b -> ../ext/b` while `packages/{a,b}` and
-    // `pack*/*` did not (item 987). Followed only where the depth is bounded:
-    // under `**` the scan would walk every pnpm `node_modules` link.
+    // `packages/*` found `packages/b ->../ext/b` while `packages/{a,b}` and
+    // `pack*/*` did not. Followed only where the depth is bounded: under `**`
+    // the scan would walk every pnpm `node_modules` link.
     const followSymlinks = !expanded.includes('**')
     try {
       for await (const rel of glob.scan({
@@ -597,8 +595,8 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
         dirs.push(path.dirname(path.resolve(root, rel)))
       }
     } catch (err) {
-      // The scan stops at a directory it may not open and cannot skip it,
-      // so the readdir path's skip is not on offer here (D-132).
+      // The scan stops at a directory it may not open and cannot skip it, so
+      // the readdir path's skip is not on offer here.
       if (!isPermissionError(err)) throw err
       const where = relPosix(root, path.resolve(root, err.path ?? ''))
       throw new UserError(
@@ -616,10 +614,10 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
  * 1,000 projects with the manifest read in flight alongside:
  *   - macOS stats the candidates in order: a readdir each cost 9.6 ms
  *     against 6.3 ms of stats even with the config at the LAST name
- *     (2026-09-03), and a `.ts` config — the first name — pays one stat.
+ *     , and a `.ts` config — the first name — pays one stat.
  *   - Linux lists the directory once: a readdir each is 12 ms against
  *     43 ms of stats at the last name and ties the one-stat case
- *     (2026-09-09, a `vx.config.mjs` workspace; stats there cost a
+ *     (a `vx.config.mjs` workspace; stats there cost a
  *     thread-pool round trip apiece).
  * Both answer identically: a directory or dangling link under a config
  * name is skipped for the next name, a symlink to a file counts.
@@ -666,10 +664,10 @@ async function isFile(p: string): Promise<boolean> {
 }
 
 /**
- * A read that found nothing is absent; one the process could not make is
- * not. Out of descriptors (`EMFILE`), every member read failed, and the
- * catches here read the workspace as empty: "No package matched the
- * workspace's package globs" (D-60).
+ * A read that found nothing is absent; one the process could not make is not.
+ * Out of descriptors (`EMFILE`), every member read failed, and the catches here
+ * read the workspace as empty: "No package matched the workspace's package
+ * globs".
  */
 function absent<T>(err: unknown, value: T): T {
   if (isOutOfFds(err)) throw err
@@ -677,11 +675,11 @@ function absent<T>(err: unknown, value: T): T {
 }
 
 /**
- * A member's manifest text, or null when there is none. A manifest this
- * user may not read is refused, not skipped: its project dropped out of
- * `--all` and the run went green without it (D-132). A directory it may
- * not search hides whether a manifest is there at all, so that one is
- * named and skipped (a service's data directory under `packages/*`).
+ * A member's manifest text, or null when there is none. A manifest this user
+ * may not read is refused, not skipped: its project dropped out of `--all` and
+ * the run went green without it. A directory it may not search hides whether a
+ * manifest is there at all, so that one is named and skipped (a service's data
+ * directory under `packages/*`).
  */
 async function readManifest(root: string, dir: string, file: string): Promise<string | null> {
   try {
@@ -701,7 +699,7 @@ async function readManifest(root: string, dir: string, file: string): Promise<st
   }
 }
 
-/** `dir` as a discovery line names it: the root's own path is '' (D-127, D-154). */
+/** `dir` as a discovery line names it: the root's own path is ''. */
 function shownDir(root: string, dir: string): string {
   return relPosix(root, dir) || 'the workspace root'
 }
@@ -723,9 +721,9 @@ export async function discoverPackages(
   // Run all package globs concurrently. Disk-bound walks parallelize
   // well; serializing them just stretches the discovery phase by N×.
   const { positive, negative } = splitPackageGlobs(workspace.packageGlobs)
-  // A root the globs do not list is a project when it holds a vx config
-  // (D-39): the package manager's member list stays the manager's, and
-  // the root's globs stop at every member as any parent project's do.
+  // A root the globs do not list is a project when it holds a vx config: the
+  // package manager's member list stays the manager's, and the root's globs
+  // stop at every member as any parent project's do.
   const [perPattern, rootConfig] = await Promise.all([
     Promise.all(positive.map((pattern) => memberDirs(workspace.root, pattern))),
     findConfigFile(workspace.root),
@@ -785,9 +783,9 @@ export async function discoverPackages(
   let rootReal: string | undefined
   for (const [name, found] of byName) {
     // One package reached by two paths (a member and a link to it) is one
-    // project, not a name two packages share: `apps/docs -> ../packages/docs`
-    // was refused as a duplicate and told to rename one (D-135). Resolved
-    // only here, so a workspace without a shared name pays nothing.
+    // project, not a name two packages share: `apps/docs ->../packages/docs`
+    // was refused as a duplicate and told to rename one. Resolved only here, so
+    // a workspace without a shared name pays nothing.
     let group = found
     if (group.length > 1) {
       rootReal ??= await realpath(workspace.root)
@@ -799,16 +797,16 @@ export async function discoverPackages(
       continue
     }
     // The root's own manifest is '' relative to itself, and the refusal read
-    // "in workspace:  and packages/a" (D-127).
+    // "in workspace: and packages/a".
     const dirs = group
       .map((e) => relPosix(workspace.root, e.dir))
       .sort()
       .map((d) => (d === '' ? 'the workspace root' : d))
     // pnpm accepts two manifests of one name (vite's playground, sveltejs/kit's
     // test apps); vx cannot, since a project is addressed by it. Like a
-    // nameless one, a pair that declares no vx tasks is left out, so the
-    // rest of the workspace runs (vite was refused whole, 2026-10-01); one
-    // with a vx config was meant to run, and is refused with the way on.
+    // nameless one, a pair that declares no vx tasks is left out, so the rest
+    // of the workspace runs (vite was refused whole); one with a vx config was
+    // meant to run, and is refused with the way on.
     if (group.some((e) => e.configPath !== null)) {
       throw new UserError(
         `Duplicate package name "${name}" in workspace: ${dirs.join(' and ')}; ` +

@@ -29,8 +29,8 @@ export function criticalPath(
       ? (p50s[Math.floor(p50s.length / 2)] ?? DEFAULT_DURATION_MS)
       : DEFAULT_DURATION_MS
 
-  // Integer ids and flat arrays: Maps keyed by id strings and an array per
-  // node were 53 ms of a 9,603-task run's schedule stage (2026-11-01).
+  // Integer ids and flat arrays: Maps keyed by id strings and an array per node
+  // were 53 ms of a 9,603-task run's schedule stage.
   const count = nodes.length
   const index = new Map<string, number>()
   for (let i = 0; i < count; i++) index.set(nodes[i]!.id, i)
@@ -49,8 +49,8 @@ export function criticalPath(
   const next = first.slice(0, count)
   const dependents = new Int32Array(ups.length / 2)
   for (let e = 0; e < ups.length; e += 2) dependents[next[ups[e]!]!++] = ups[e + 1]!
-  // A group runs nothing, so it has no history; the median would charge it
-  // a whole task and let a gate outrank the longest chain (PR #3286).
+  // A group runs nothing, so it has no history; the median would charge it a
+  // whole task and let a gate outrank the longest chain.
   const ownDuration = (n: TaskNode): number =>
     n.config.exec?.command === undefined
       ? 0

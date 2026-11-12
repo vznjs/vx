@@ -1,41 +1,37 @@
-// Two targets of one project on one output path. vx cleans a task's
-// declared outputs before it runs and before a cache-hit restore, so the
-// loader refuses two cached tasks whose outputs provably overlap, an edge
-// between them or not under core's default `rules.exclusiveOutputs` (X-53).
-// A workspace may turn the rule off (item 588's additive shape), but the
-// mapping never sees the workspace's rules, so it maps for the default and
-// loads under either.
-// strapi (2026-09-11) declares `build`, `build:code` and `build:types` all
-// on `dist/**`, and twenty's `build:individual` writes into `build`'s
-// `dist`; the refusal came at load time, after the migration had reported
-// clean. The mapping resolves it: the task with a `^` edge keeps its cache
-// (it is the one a dependant waits for), or the first declared when none
-// has one; every other task whose outputs overlap a kept task's runs
-// uncached, with a todo that names the keeper and the fix (its own output
-// path).
+// Two targets of one project on one output path. vx cleans a task's declared
+// outputs before it runs and before a cache-hit restore, so the loader refuses
+// two cached tasks whose outputs provably overlap, an edge between them or not
+// under core's default `rules.exclusiveOutputs`. A workspace may turn the rule
+// off, but the mapping never sees the workspace's rules, so it maps for the default and loads under either. strapi
+// declares `build`, `build:code` and `build:types` all on `dist/**`, and
+// twenty's `build:individual` writes into `build`'s `dist`; the refusal came at
+// load time, after the migration had reported clean. The mapping resolves it:
+// the task with a `^` edge keeps its cache (it is the one a dependant waits
+// for), or the first declared when none has one; every other task whose outputs
+// overlap a kept task's runs uncached, with a todo that names the keeper and
+// the fix (its own output path).
 //
 // The overlap question is core's own `outputsOverlap`, asked through the
 // façade. It used to be a COPY of it here, and the copy stopped being the
 // same test the moment core's grew: `./dist/**` against `dist/**` (item
-// 441) and the literal `dist` against `dist/app.js` (item 442) are
+// 441) and the literal `dist` against `dist/app.js` are
 // refused by the loader and were missed here — so the migration reported
 // clean on a config core would not load, which is the exact failure this
-// file exists to prevent (item 445).
+// file exists to prevent.
 
 import { isLiteralPattern, outputsOverlap, type GeneratedTask } from '@vzn/vx'
 import { withoutTakenBack } from './glob-grammar.js'
 import { relPosix } from './paths.js'
 import type { TrackedKinds } from './tracked-outputs.js'
 
-// vx cleans outputs before a run and restores them on a hit, so an output
-// glob that covers the project's own package.json or vx.config would delete
-// it. Core refuses the config file (config-schema's `ownFilesCovered`); the
-// manifest it no longer guards (core keys no package file, 2026-10-14), but
-// a mapped task still must not delete it. Turbo caches it: trpc's client
-// build lists `package.json` (it rewrites `exports`), and the one task made
-// core refuse the whole run (2026-09-28). The façade does not export the
-// check; tests/own-file-outputs.test.ts holds the config half of this copy
-// to the loader in both directions.
+// vx cleans outputs before a run and restores them on a hit, so an output glob
+// that covers the project's own package.json or vx.config would delete it. Core
+// refuses the config file (config-schema's `ownFilesCovered`); the manifest it
+// no longer guards (core keys no package file), but a mapped task still must
+// not delete it. Turbo caches it: trpc's client build lists `package.json` (it
+// rewrites `exports`), and the one task made core refuse the whole run. The
+// façade does not export the check; tests/own-file-outputs.test.ts holds the
+// config half of this copy to the loader in both directions.
 const OWN_FILES = ['package.json', 'vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
 
 /**
@@ -62,7 +58,7 @@ export function ownFileOutput(
 /**
  * The `!` entries that take the project's own files back from `files`: each
  * own file a positive glob covers and no `!` already takes back. Taken back,
- * it is never cleaned, saved or restored (core's A-44), and core loads it.
+ * it is never cleaned, saved or restored, and core loads it.
  */
 export function ownFileTakeBacks(files: readonly string[], config?: string | null): string[] {
   const own =
@@ -82,13 +78,12 @@ export function ownFileTodo(own: { glob: string; file: string }): string {
   )
 }
 
-// Turbo and Nx never clean an output; vx cleans it before a run and a
-// restore, so `**/*.d.ts` deleted a hand-written `src/env.d.ts` and an
-// uncommitted edit to it was lost for good (item 1031). A wildcard first
-// segment can reach the sources, and a `!` beside it (medusa: `*/**` minus
-// `!src/**`) takes back only what it names. typescript-eslint's Nx tests
-// output `{projectRoot}/**/*.shot`, 3,656 committed snapshots in one
-// package, and nx() lacked the rule (2026-09-29).
+// Turbo and Nx never clean an output; vx cleans it before a run and a restore,
+// so `**/*.d.ts` deleted a hand-written `src/env.d.ts` and an uncommitted edit
+// to it was lost for good. A wildcard first segment can reach the sources, and
+// a `!` beside it (medusa: `*/**` minus `!src/**`) takes back only what it
+// names. typescript-eslint's Nx tests output `{projectRoot}/**/*.shot`, 3,656
+// committed snapshots in one package, and nx() lacked the rule.
 
 /**
  * The first positive output glob whose first segment is a wildcard. Two
@@ -244,9 +239,8 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
     if (group.length === 0) continue
     const all = [a, ...group]
     // `build` is the product Turbo and Nx repos run: typescript-eslint's
-    // typecheck (with `^typecheck`) writes declarations into build's dist,
-    // and keeping typecheck left every build uncached (Growth parity,
-    // 2026-10-14).
+    // typecheck (with `^typecheck`) writes declarations into build's dist, and
+    // keeping typecheck left every build uncached (Growth parity).
     const keeper =
       all.find((c) => c.name === 'build') ?? all.find((c) => c.hasUpstreamEdge) ?? all[0]!
     const kept: Cached[] = [keeper]
@@ -397,7 +391,7 @@ function inputsOf(t: GeneratedTask): { files: string[]; workspaceFiles?: unknown
 
 /**
  * Core refuses a task whose inputs can match another task's declared
- * outputs (`vx lock`, always, core X-54): such a key
+ * outputs (`vx lock`, always): such a key
  * reads what a producer writes this run and cannot be known before it ran.
  * Turbo and Nx default a task's inputs to every file of its package
  * (`**\/*`), which matches a sibling build's `dist`. Each overlapping
@@ -558,14 +552,14 @@ export function resolveSharedWorkspaceOutputs(
 }
 
 /**
- * `excludeSiblingOutputs` for root-anchored `inputs.workspaceFiles`:
- * every other task's `outputs.workspaceFiles`, and its `outputs.files` at
- * their workspace path, is taken back from a reader's workspace inputs
- * (Turbo's `globalDependencies` and `$TURBO_ROOT$` entries, Nx's
- * `{workspaceRoot}` filesets). Run after `resolveSharedWorkspaceOutputs`,
- * over what stays cached. A project's own `inputs.files` meets every other
- * task's `outputs.workspaceFiles` the same way, at its workspace path: such
- * an output lands in any project, and core refuses the reader (X-135).
+ * `excludeSiblingOutputs` for root-anchored `inputs.workspaceFiles`: every
+ * other task's `outputs.workspaceFiles`, and its `outputs.files` at their
+ * workspace path, is taken back from a reader's workspace inputs (Turbo's
+ * `globalDependencies` and `$TURBO_ROOT$` entries, Nx's `{workspaceRoot}`
+ * filesets). Run after `resolveSharedWorkspaceOutputs`, over what stays cached.
+ * A project's own `inputs.files` meets every other task's
+ * `outputs.workspaceFiles` the same way, at its workspace path: such an output
+ * lands in any project, and core refuses the reader.
  */
 export function excludeWorkspaceOutputs(
   root: string,

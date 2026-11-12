@@ -1,6 +1,6 @@
 // A scope keys only what plugins store themselves (ctx.cache, run records):
-// task keys reach every remote plain, and a remote decides which branch a
-// read may see (VZN, 2026-10-20).
+// task keys reach every remote plain, and a remote decides which branch a read
+// may see (VZN).
 
 import { xxh3hex } from '../util/index.js'
 

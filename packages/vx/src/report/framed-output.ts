@@ -1,29 +1,16 @@
-// Turbo-style header + per-task framed output.
+// Header and per-task framed output.
 //
-// Header:
-//   • vx 0.0.0
+// Per-task block: ┌─ @vzn/vx#lint > success ├─ command oxlint --type-aware
+// --type-check ├─ stdout Found 0 warnings and 0 errors. └─ @vzn/vx#lint ──
+// (327ms) success
 //
-//      • Packages in scope: @vzn/vx, @repo/ui
-//      • Running ci in 2 packages
-//      • Remote caching disabled
+// Content lines are raw, no border or indent: a border collides with terminal
+// wrapping and pollutes copy/paste; the dim section headers carry the
+// structure.
 //
-// Per-task block:
-//   ┌─ @vzn/vx#lint > success
-//   ├─ command
-//   oxlint --type-aware --type-check
-//   ├─ stdout
-//   Found 0 warnings and 0 errors.
-//   └─ @vzn/vx#lint ── (327ms) success
-//
-// Content lines are RAW — no left border, no indent. A border would
-// collide with terminal wrapping on long lines and pollute
-// copy/paste; the dim ├─ section headers carry the structure instead
-// (owner feedback, 2026-06).
-//
-// Output is buffered per-task and the whole block is emitted at task
-// completion — concurrent tasks don't interleave their lines, but the
-// price is no live progress within a task. This matches Turbo's
-// `--ui=stream` mode.
+// Each block is emitted whole at completion, so concurrent tasks never
+// interleave, at the price of no live progress within a task (Turbo's
+// `--ui=stream`).
 
 import { withForwardArgs } from '../exec/index.js'
 import {
@@ -64,10 +51,8 @@ export interface TaskBlockBody {
   /** What the task wrote, in order. Renders under `├─ OUTPUT`, stderr lines marked. */
   output?: readonly OutputChunk[]
   /**
-   * Characters the capture dropped from the head of each stream. Non-zero
-   * only for a task whose output is bounded (a persistent one — nothing
-   * else can outrun its own exit), and rendered so a capped log can never
-   * read as a complete one.
+   * Characters dropped from the head of each stream, for a bounded (persistent)
+   * task's output, rendered so a capped log never reads as complete.
    */
   droppedStdout?: number
   droppedStderr?: number
@@ -78,19 +63,15 @@ export function formatTaskBlock(
   outcome: TaskOutcome,
   body: TaskBlockBody,
   colors: ColorSupport = NO_COLOR,
-  // Force the `$ cmd` line even for cache hits. Focused requested
-  // tasks set this so a requested task's frame is identical whether it
-  // ran or was cached — you asked for it, you see what it would run.
+  // Force the `$ cmd` line even for hits: a focused requested task's frame is
+  // the same whether it ran or was cached.
   forceCommand = false,
   forwardArgs: readonly string[] = [],
   // The terminal opens OSC 8 links: a failed task's paths become links.
   links = false,
 ): string {
-  // Group tasks (no `exec`) do no work and have no body — they're
-  // organizational nodes the user wrote so a `vx run ci` invocation
-  // has a single name to address. Showing an empty box for them is
-  // pure noise. Same exclusion the summary totals + analytics
-  // pass already make.
+  // Groups do no work and have no body: an empty box is noise. The summary and
+  // analytics exclude them too.
   if (isGroupTask(node)) return ''
 
   const output = body.output ?? []
@@ -103,10 +84,7 @@ export function formatTaskBlock(
   const header = running ? paint('info', 'running', colors) : formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
 
-  // The command section shows what actually ran — executed tasks
-  // (success and failed). Cache hits normally skip it (the stored
-  // output is the interesting part), but `forceCommand` keeps it for
-  // focused requested tasks so their frame is hit/miss-identical.
+  // The command section shows what ran. Hits skip it, unless `forceCommand`.
   if (forceCommand || ranCommand(outcome)) {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
@@ -140,9 +118,8 @@ function droppedNote(lost: number, colors: ColorSupport): string {
 }
 
 /**
- * One `├─ <LABEL>` section of captured output, with the head-dropped notice
- * when the capture was bounded. Shared by the task frame and the persistent
- * tail block so the two renderings of the same bytes cannot drift.
+ * One `├─ <LABEL>` section, with the head-dropped notice; shared by the task
+ * frame and the persistent tail so they cannot drift.
  */
 function pushStreamSection(
   lines: string[],
@@ -163,12 +140,10 @@ function pushStreamSection(
 }
 
 /**
- * The one `├─ OUTPUT` section: the task's lines in the order it wrote
- * them, so an error stays beside what it is about (a test runner prints
- * progress to stdout and the failure to stderr). A stderr line is red;
- * without colour it is the task's bytes untouched. A line the task
- * coloured itself keeps its own colours, since a reset inside it would
- * end ours mid-line. A line takes the stream that began it.
+ * The `├─ OUTPUT` section: lines in the order written, so an error stays beside
+ * its context. A stderr line is red; uncoloured, the bytes are untouched. A
+ * line the task coloured keeps its colours (a reset would end ours mid-line). A
+ * line takes the stream that began it.
  */
 function pushOutputSection(
   lines: string[],
@@ -187,9 +162,8 @@ function pushOutputSection(
     if (!err || !colors.enabled) lines.push(text)
     else lines.push(hasEscape(line) ? text : paint('error', text, colors))
   }
-  // A run of whole lines nothing restyles is pushed as one slice, its
-  // newlines inside: an object and a string per line peaked a 50 MB log's
-  // frame at ~11x its size.
+  // A run of untouched lines is pushed as one slice: an object and string per
+  // line peaked a 50 MB log's frame at ~11x its size.
   let open: { parts: string[]; err: boolean } | null = null
   for (const c of output) {
     const text = c.text
@@ -223,11 +197,9 @@ function pushOutputSection(
 }
 
 /**
- * Section labels are bold + state-colored (owner design): stdout green,
- * stderr red, sandbox yellow, command plain white — only the command
- * CONTENT is greyed (context, not signal). A dim rule trails each label to
- * the frame width, and sections get vertical margins so content stands
- * clear of the furniture.
+ * Section labels are bold and state-coloured (stdout green, stderr red, sandbox
+ * yellow, command plain); only the command content is grey. A dim rule trails
+ * each label to the frame width, and sections get vertical margins.
  */
 function sectionLine(title: string, color: Style, colors: ColorSupport): string {
   const corner = (s: string) => paint('muted', s, colors)
@@ -238,19 +210,17 @@ function sectionLine(title: string, color: Style, colors: ColorSupport): string 
 }
 
 /**
- * Append each line of `text` raw. Content carries no border/indent so
- * terminal wrapping never collides with frame glyphs and copy/paste
- * stays clean; trailing newline is trimmed so the frame stays tight.
+ * Append each line raw, so wrapping never meets frame glyphs; the trailing
+ * newline is trimmed.
  */
 function pushBodyLines(lines: string[], text: string): void {
   for (const line of text.replace(/\n$/, '').split('\n')) lines.push(line)
 }
 
 /**
- * `project#task` halves, each in its name's identity hue (never a status
- * color); the dim separator keeps them reading apart. `hueSource`
- * exists for truncated display strings: the hue must hash from the
- * FULL project name so it survives truncation.
+ * `project#task` halves, each in its name's identity hue, a dim separator
+ * between. `hueSource` hashes the full project name, so the hue survives
+ * truncation.
  */
 export function paintIdParts(
   hueSource: string,
@@ -275,12 +245,10 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
   return paintId(node.projectName, node.taskName, colors, opts)
 }
 
-// ── Reported-line grid: status · cache · usual · time · … · name ────────
-// No glyph (2026-11-06): the status word, first at the Summary's value
-// column, is the task axis and the cache word the cache axis, each in
-// its own color. Time is right-aligned in a
-// fixed cell so durations line up and a ticking elapsed never shifts
-// the row. All detail (exit code, output) lives in the framed block.
+// ── Reported-line grid: status · cache · usual · time · … · name ──────── No
+// glyph: the status word (at the Summary's value column) and cache word are the
+// two axes, each coloured. Time is right-aligned in a fixed cell so a ticking
+// elapsed never shifts the row. Detail lives in the frame.
 const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
 const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
@@ -311,9 +279,8 @@ function timeCell(ms: number | null, colors: ColorSupport): string {
 }
 
 /**
- * Paint `text` then pad to `width` by VISIBLE length (trailing spaces).
- * An empty color string renders the text dim (used for the `miss` cache
- * word); empty text is a blank cell.
+ * Paint `text`, padded to `width` by visible length. An empty colour renders
+ * dim (`miss`); empty text is a blank cell.
  */
 function cell(text: string, color: Style | '', width: number, colors: ColorSupport): string {
   const painted = text === '' ? '' : paint(color === '' ? 'muted' : color, text, colors)
@@ -370,11 +337,9 @@ const LOCAL: { word: string; color: Style } = { word: 'local', color: 'local' }
 const REMOTE: { word: string; color: Style } = { word: 'remote', color: 'remote' }
 
 /**
- * One reported task row on the list grid: `<status> <cache> <usual>
- * <time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <name>`, the status at
- * the Summary's value column, no glyph (2026-11-06). Status/cache are raw text + color, padded to their
- * columns; `paintedId` carries identity coloring. `ms = null` blanks the
- * time (a skip never ran); `cache = ''` and an absent cell blank theirs.
+ * One task row on the list grid: `<status> <cache> <usual> <time> <cpu> <mem>
+ * <outputs> <blocks> <worker> <mark> <name>`. `ms = null` blanks the time (a
+ * skip); `cache = ''` and absent cells are blank.
  */
 export function formatTaskRow(
   ms: number | null,
@@ -386,7 +351,7 @@ export function formatTaskRow(
   colors: ColorSupport = NO_COLOR,
   cells: RowCells = {},
 ): string {
-  // Every cell says something: one with nothing in it reads `—` (2026-11-06).
+  // Every cell says something: one with nothing in it reads `—`.
   const st = cell(status || UNKNOWN, statusColor, STATUS_COL, colors)
   // `aborting` runs one into the cache cell.
   const ca = cell(
@@ -417,7 +382,7 @@ const UNKNOWN = '\u2014'
 
 /**
  * The critical path's mark, before the task's name: the row's task held the
- * run's end while others ran beside it. One glyph, yellow (2026-11-06).
+ * run's end while others ran beside it. One glyph, yellow.
  */
 const CRITICAL_MARK = '\u25c6'
 
@@ -483,11 +448,9 @@ function coresOf(o: TaskOutcome): number | undefined {
 }
 
 /**
- * The results list's `±usual` cell: how far an executed task ran from its
- * usual time, `+6.0s` red or `−1.4s` green past a fifth of the usual either
- * way, dim within it; `—` (null) with no history for the task, blank
- * (undefined) with no history to ask. A blank within a fifth read as no
- * usual at all (2026-10-29).
+ * The `±usual` cell: how far a run was from its usual time, red or green beyond
+ * a fifth either way, dim within; `—` with no history for the task, blank with
+ * no history to ask.
  */
 export function usualCell(
   ms: number,
@@ -508,9 +471,8 @@ export function unknownUsual(colors: ColorSupport = NO_COLOR): { text: string; p
 }
 
 /**
- * The header over a task list, on the row grid: dim and underlined across
- * the whole line, gaps included, straight over its rows (bold in a hue, it
- * blended into rows of the same hues).
+ * The header over a task list: dim and underlined across the line, straight
+ * over its rows (bold in a hue, it blended in).
  */
 export function formatListHeader(colors: ColorSupport = NO_COLOR): string {
   return header('\u00b1usual', colors)
@@ -604,12 +566,11 @@ export function formatRecordedRow(
 }
 
 /**
- * A running task's usual duration, fixed while the elapsed time counts up
- * toward it (2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
- * column below 100 minutes.
+ * A running task's usual duration, fixed while its elapsed counts up: `~5.2s`,
+ * `~42s`, `~2m 05s`.
  */
 export function formatExpected(ms: number): string {
-  // The tier by the rounded value: 999.6 ms printed `~1000ms` (item 1034's class).
+  // The tier by the rounded value: 999.6 ms printed `~1000ms`.
   if (Math.round(ms) < 1000) return `~${Math.round(ms)}ms`
   if (ms < 9950) return `~${(ms / 1000).toFixed(1)}s`
   const s = Math.round(ms / 1000)
@@ -689,9 +650,8 @@ export function formatTaskHitLine(
 }
 
 /**
- * The `--output-logs hash-only` line: outcome word, task id, cache key —
- * absent for a task that never computed one (skipped, uncacheable). The
- * word in its outcome's colour, the key dim.
+ * The `--output-logs hash-only` line: outcome word, id, and key (absent when
+ * never computed).
  */
 export function formatTaskHashLine(
   node: TaskNode,
@@ -734,9 +694,8 @@ export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCe
 }
 
 /**
- * The cells every row of a task that reached a machine carries. Assigned,
- * not spread: a warm run builds one per hit, and the spreads, copied again
- * by the caller, were ~4 ms of 8,002 hits' rows (2026-11-07).
+ * The cells every row of a task that reached a machine carries. Assigned, not
+ * spread: spreads were ~4 ms of 8,002 hits' rows.
  */
 function ranCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cells: RowCells = {}
@@ -773,24 +732,22 @@ function formatOutcomeRow(
   )
 }
 
-/** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
+/** Where an executor ran the task, when not here, right after its id: `@small#2`. */
 function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
   return o.placement?.where === undefined ? '' : placeNote(o.placement?.where, colors)
 }
 
 /**
- * ` · <where>` after the id: the dot dim, the place in its own hue. Last
- * on the row, as a worker's name has no width to pad to (2026-10-21).
+ * ` · <where>` after the id: the dot dim, the place in its own hue. Last on the
+ * row, as a worker's name has no width to pad to.
  */
 function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
   return `${paint('muted', ' \u00b7', colors)} ${ui.inline(ui.place(where), colors)}`
 }
 
 /**
- * The dim note a flaky task's row and frame carry (`flaky - failed 1×
- * before`): nothing prints below the footer, so the task's own line is
- * where the reader learns it. Not proved flaky: its attempts, when more
- * than one; else ''.
+ * The dim flaky note on a task's row and frame: nothing prints below the
+ * footer. Not proved flaky: its attempts if more than one, else ''.
  */
 export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
   // A retry with no key to prove a flake (no `cache: true`) still ran:
@@ -809,9 +766,8 @@ export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): stri
 }
 
 /**
- * Compact one-liner for a skipped task — it never ran (blank time). The
- * blocker rides the row (`• blocked by lib#build`): nothing prints below
- * the footer, so the row is where the reader learns what blocked it.
+ * One line for a skipped task (it never ran); the blocker rides the row, since
+ * nothing prints below the footer.
  */
 export function formatTaskSkippedLine(
   node: TaskNode,
@@ -836,9 +792,8 @@ export function formatTaskSkippedLine(
 }
 
 /**
- * One row for a task a shutdown signal killed (`aborted`, its time so far)
- * or one the stop reached before it ran (`not run`, no time). Neither
- * reached the cache, so the cache cell is blank, as a skip's is.
+ * One row for a task a shutdown killed (`aborted`, time so far) or the stop
+ * reached first (`not run`). Neither reached the cache.
  */
 export function formatTaskAbortedLine(
   node: TaskNode,
@@ -855,11 +810,8 @@ export function formatTaskAbortedLine(
 }
 
 /**
- * Live-frame brackets for focused mode: the requested task's output
- * streams raw between an opening line (id + command) and a closing
- * line (id + duration + outcome). Same visual language as
- * formatTaskBlock, but emitted in real time around the live stream
- * instead of buffered.
+ * Focused mode's live frame: output streams raw between an opening line (id,
+ * command) and a closing one (id, duration, outcome).
  */
 export function formatFrameOpen(
   node: TaskNode,
@@ -873,29 +825,21 @@ export function formatFrameOpen(
 }
 
 /**
- * Sandbox violations get a dedicated section inside the frame so the user
- * sees them in context with the failing task, not as loose status output
- * above the box. Shared by BOTH renderers: the focused/live frame used to
- * omit it, so a single-task run — exactly how someone debugging one task
- * invokes vx — showed a failure with no violations at all
- * (2026-09-05).
+ * Sandbox violations get their own section in the frame, in context with the
+ * failing task. Shared by both renderers: the live frame once omitted it, so
+ * debugging one task showed a failure with no violations.
  */
 function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] {
   const vlines = outcome.sandbox?.lines
   if (!vlines || vlines.length === 0) return []
-  // Unique lines only — a task's children trip the same denial many times
-  // and the repeats bury everything else. The lines themselves are printed
-  // VERBATIM: a violation is evidence, and evidence that has been rewritten
-  // for display is not the thing the sandbox reported. The outcome keeps
-  // every record for telemetry.
-  // Verbatim but for control bytes: a denied path is anyone's bytes, and
-  // one named `ESC ]0;…` retitled the terminal (the `\xNN` is still exact).
+  // Unique lines only (children trip the same denial repeatedly), printed
+  // verbatim: a violation is evidence. Control bytes excepted, as `\xNN`: a
+  // path named `ESC ]0;…` retitled the terminal. The outcome keeps every
+  // record.
   const body = [...new Set(vlines)].map(printable)
-  // Red, not amber: a violation fails the task, so it reads as a failure.
-  // vx's note, after the evidence: the grants that would have allowed it.
-  // A read the output depends on is a key input too; the sandbox never
-  // adds one (2026-10-09), so the note names the reads no input
-  // glob matches and the user decides.
+  // Red: a violation fails the task. vx's note follows the evidence: the grants
+  // that would allow it, and the reads no input glob matches, which the user
+  // decides on.
   const fix = outcome.sandbox?.fix
   const line = fix === undefined ? undefined : sandboxFixLine(fix)
   const dim = (text: string): string => paint('muted', text, colors)
@@ -945,9 +889,8 @@ export function formatFrameClose(
 ): string {
   const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
-  // A persistent task's child keeps running past this "ready" outcome,
-  // so the close reads `running` (accent), not `success` — the ▸ marks
-  // both ends of the frame as a long-lived task.
+  // A persistent task keeps running past this outcome, so the close reads
+  // `running`; ▸ marks both ends.
   const tail =
     mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
       ? runningFooter(outcome, colors)
@@ -975,14 +918,9 @@ function runningFooter(o: TaskOutcome, colors: ColorSupport): string {
 }
 
 /**
- * Everything a persistent task wrote AFTER it signalled ready, as one
- * trailing block. Its outcome landed at ready while the child kept
- * running, so this uses the live frame's `▸ … running` vocabulary rather
- * than the success frame `formatTaskBlock` renders — the block is a tail,
- * not a completed task's log. Section titles say `(since ready)` because
- * the pre-ready output already went out with the outcome, and a
- * head-dropped tail names how much it lost so a truncated log can never
- * read as complete. Empty body → '' (the caller writes nothing).
+ * What a persistent task wrote after ready, as one trailing block in the live
+ * frame's `▸ … running` vocabulary: a tail, not a completed log. Titles say
+ * `(since ready)`; a head-dropped tail says what it lost. Empty body: ''.
  */
 export function formatPersistentTailBlock(
   node: TaskNode,
@@ -1005,9 +943,8 @@ export function formatPersistentTailBlock(
 }
 
 /**
- * What a kept server writes after the summary, one line at a time under its
- * id (`app#dev │ Local: http://localhost:5173`), so several servers'
- * logs read apart. `text` holds whole lines, its last newline cut off.
+ * A kept server's output after the summary, a line at a time under its id, so
+ * several servers read apart. `text` holds whole lines.
  */
 export function formatKeptLines(node: TaskNode, text: string, colors: ColorSupport): string {
   const prefix = `${paintTaskId(node, colors)} ${paint('muted', '│', colors)} `
@@ -1021,11 +958,8 @@ export function formatKeptLines(node: TaskNode, text: string, colors: ColorSuppo
 }
 
 /**
- * Between the requested task's frame and the summary footer, list the
- * persistent tasks (dev servers / watchers) the run is keeping alive in
- * the foreground — one `▸ <id> running` row each, so it's clear which
- * children are still up and how many. Same ▸ vocabulary as the frame
- * marks and the live region's persistent pins.
+ * Between the frame and the footer, one `▸ <id> running` row per persistent
+ * task kept in the foreground.
  */
 export function formatPersistentList(
   nodes: readonly TaskNode[],
@@ -1061,13 +995,9 @@ function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
 }
 
 function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
-  // Footer pattern: ` (<dur>) <status>`. Duration is always shown, and it is
-  // always what THIS run spent — for a cache hit, the probe + restore, not
-  // the exec time the entry was stored with. (The comment here used to claim
-  // the opposite; the code never did, and `--report` summed these as "time
-  // saved" on the strength of it. The stored time lives on
-  // `TaskOutcome.cache.stored.durationMs`.) Status differs by outcome — see
-  // formatStatusTag.
+  // Footer: ` (<dur>) <status>`. The duration is what this run spent; for a
+  // hit, probe and restore, not the stored exec time
+  // (`TaskOutcome.cache.stored.durationMs`).
   const dur = paint('muted', `(${formatElapsed(o.durationMs)})`, colors)
   const tag = formatStatusTag(o, colors)
   return ` ${dur} ${tag}${flakyNote(o, colors)}`

@@ -13,9 +13,9 @@ export interface LiveForecast {
   /** Tasks not started because a dependency has not finished: the tasks line's `blocked`. */
   waiting: number
   /**
-   * Tasks not started because a dependency has not finished, in the order
-   * the scheduler would start them, at most one per worker: what an idle
-   * worker row holds (2026-10-15).
+   * Tasks not started because a dependency has not finished, in the order the
+   * scheduler would start them, at most one per worker: what an idle worker row
+   * holds.
    */
   blocked?: readonly BlockedTask[]
   /**
@@ -45,12 +45,12 @@ export type Forecast = (
 ) => LiveForecast
 
 /**
- * The later of the longest unfinished chain and the unfinished work spread
- * over the workers. A task still to run costs its p50 (a pending task may
- * yet hit, so this leans long, and the hits finish first); a running one
- * costs what its p50 has left, never below zero; a group or a task with no
- * history costs nothing. Zero while tasks still run means the run is past
- * its estimate: the live region counts the time since (2026-10-27).
+ * The later of the longest unfinished chain and the unfinished work spread over
+ * the workers. A task still to run costs its p50 (a pending task may yet hit,
+ * so this leans long, and the hits finish first); a running one costs what its
+ * p50 has left, never below zero; a group or a task with no history costs
+ * nothing. Zero while tasks still run means the run is past its estimate: the
+ * live region counts the time since.
  */
 export function createForecast(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -83,10 +83,10 @@ export function createForecast(
     }
   }
   for (const n of nodes.values()) place(n)
-  // Each node by its place in `order`, its facts in arrays. A pass built
-  // Maps of the whole graph and read every finished task again, and each
-  // task event forces a frame, each frame a pass: a 20,000-task run spent
-  // ~1.6 s of its main thread on them on a terminal (2026-11-07).
+  // Each node by its place in `order`, its facts in arrays. A pass built Maps
+  // of the whole graph and read every finished task again, and each task event
+  // forces a frame, each frame a pass: a 20,000-task run spent ~1.6 s of its
+  // main thread on them on a terminal.
   const size = order.length
   const position = new Map(order.map((n, i) => [n.id, i]))
   const deps = order.map((n) => {

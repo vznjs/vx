@@ -28,8 +28,8 @@ export async function outputFiles(
         async (err: NodeJS.ErrnoException) => {
           // A literal output names a file: its prefix is that file. ENOTDIR
           // also means a FILE above it (`dist/x.js` with `dist` a file): no
-          // path there, and clearing one threw (2026-10-25).
-          // quiet: a path that is not there is no output
+          // path there, and clearing one threw. quiet: a path that is not there
+          // is no output
           if (err.code === 'ENOTDIR' && wanted(rel) && (await lstat(at).catch(() => null))) add(rel)
           return []
         },
@@ -46,11 +46,11 @@ export async function outputFiles(
     }
     /**
      * Whether the tree at `rel` is where it says, under `base`: the walk
-     * follows a link only at its start (a nested one is an entry), and a
-     * worker deletes what it names. `dist -> ../victim` for `dist/**`
-     * deleted a file out of the project, and `dist -> .git` the repository,
-     * as core measured (`containedIn`, `refuseDirLinkedOut`), which refuses
-     * the task's save there too.
+     * follows a link only at its start (a nested one is an entry), and a worker
+     * deletes what it names. `dist ->../victim` for `dist/**` deleted a file
+     * out of the project, and `dist ->.git` the repository, as core measured
+     * (`containedIn`, `refuseDirLinkedOut`), which refuses the task's save
+     * there too.
      */
     const lies = async (realBase: string | undefined, rel: string): Promise<boolean> => {
       const at = path.join(root, base, rel)
@@ -66,9 +66,9 @@ export async function outputFiles(
       const parts = real.slice(realBase.length + 1).split(path.sep)
       return !parts.some((p) => p.toLowerCase() === '.git') && parts[0]?.toLowerCase() !== '.vx'
     }
-    // Only the trees the globs can reach: walking the whole project for
-    // each task cost a worker 450 ms a task in a project of 9000 output
-    // dirs (2026-10-25). Root-anchored or escaping globs keep the walk.
+    // Only the trees the globs can reach: walking the whole project for each
+    // task cost a worker 450 ms a task in a project of 9000 output dirs.
+    // Root-anchored or escaping globs keep the walk.
     const dirs = outputDirPrefixes(globs.filter((g) => !g.startsWith('!'))) ?? ['']
     // quiet: a base that will not resolve holds no outputs; `lies` refuses it
     const realBase = await realpath(path.join(root, base)).catch(() => undefined)
@@ -80,12 +80,11 @@ export async function outputFiles(
 }
 
 /**
- * Of the files under a task's outputs, those an earlier task left
- * (`cleared`: neither tracked, a nested project's, nor an upstream's),
- * those an upstream's outputs name (`held`) and the task's own tracked
- * ones (`committed`). The held ones were read
- * against every cleared one: 20,000 stale files cost a worker a second a
- * task (2026-10-25).
+ * Of the files under a task's outputs, those an earlier task left (`cleared`:
+ * neither tracked, a nested project's, nor an upstream's), those an upstream's
+ * outputs name (`held`) and the task's own tracked ones (`committed`). The held
+ * ones were read against every cleared one: 20,000 stale files cost a worker a
+ * second a task.
  */
 export function leftUnder(
   under: readonly string[],

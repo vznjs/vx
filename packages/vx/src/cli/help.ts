@@ -45,7 +45,7 @@ export function paintHelp(text: string, colors: ColorSupport, paint: Paint): str
         const qualifier = heading[2] === undefined ? '' : paint('muted', heading[2], colors)
         return `${paint('strong', heading[1]!, colors)}${qualifier}${paint('strong', ':', colors)}`
       }
-      // `  term   description`: a term is a flag, a `vx` form, a selector.
+      // ` term description`: a term is a flag, a `vx` form, a selector.
       const row = /^(\s+)(\S(?:.*?\S)?)(\s{2,}\S.*)?$/.exec(line)
       if (row === null) return line
       const [, indent, term, description = ''] = row
@@ -325,9 +325,9 @@ export function helpText(pluginCommands: readonly string[] = []): string {
 }
 
 /**
- * Every argument error ends with this. `vx <verb> --help` prints the
- * reference (2026-09-04); before that there was nowhere to send a user who
- * got a flag wrong, so the errors just said no.
+ * Every argument error ends with this. `vx <verb> --help` prints the reference;
+ * before that there was nowhere to send a user who got a flag wrong, so the
+ * errors just said no.
  */
 export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`

@@ -1,9 +1,9 @@
-// What a config may SAY — the schema validators for `vx.config.*` and
-// `.vx/workspace.*`, split from the loader (which decides HOW a file is
-// evaluated). Every object level refuses a key it does not
-// know (tests/schema-unknown-keys), every message names the level and what
-// it accepts, and `validateProjectConfig` is the one boundary the loader,
-// the lockfile's frozen path and the plugin `project` stage all cross.
+// What a config may say: the validators for `vx.config.*` and
+// `.vx/workspace.*`, apart from the loader (how a file is evaluated). Every
+// object level refuses an unknown key, every message names the level and
+// what it accepts, and `validateProjectConfig` is the one boundary the
+// loader, the lockfile's frozen path and the plugin `project` stage all
+// cross.
 
 import path from 'node:path'
 import {
@@ -370,8 +370,8 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         )
       }
       seenAt.set(p, i)
-      // A misspelled hook (`excutor`, `setUp`) was never called and never
-      // said: tasks ran here with the plugin's executor unheard (X-19).
+      // A misspelled hook (`excutor`, `setUp`) was never called and never said:
+      // tasks ran here with the plugin's executor unheard.
       for (const key of Object.keys(plug)) {
         if (key === 'name' || (PLUGIN_HOOKS as readonly string[]).includes(key)) continue
         const near = nearest(key, PLUGIN_HOOKS)
@@ -413,16 +413,14 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             )
           }
           // A verb the dispatcher would never reach is refused, not left
-          // dead: core verbs are matched first, and two plugins on one verb
-          // would run the first declared and hide the second. Here, in the
-          // schema, so every loader of the file — a run, a reading verb, the
-          // plugin-verb lookup — refuses it the same way. The owner is the
-          // package: two plugins one package exports (`bun()` and `pnpm()`
-          // both carry `prune`) are one owner, and the first declared runs.
-          // `vx --version` and `vx ''` never reach a plugin: a flag is
-          // core's, and an empty word is no verb (X-21). `vx completions`
-          // writes verbs unquoted into a shell script, so a space or a `$(`
-          // in one would break or inject into the user's rc.
+          // dead: core verbs match first, and two plugins on one verb would
+          // hide the second. Checked in the schema so every loader refuses
+          // alike. The owner is the package: two plugins one package exports
+          // (`bun()` and `pnpm()` both carry `prune`) are one owner, the
+          // first declared runs. A flag and an empty word never reach a
+          // plugin. `vx completions` writes verbs unquoted into a shell
+          // script, so a space or `$(` would break or inject into the user's
+          // rc.
           if (!/^[A-Za-z0-9][A-Za-z0-9:._-]*$/.test(verb)) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' declares command '${verb}', which is not a word — a verb is a letter or digit, then letters, digits, ':', '.', '_' or '-'`,
@@ -506,12 +504,10 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
 }
 
 /**
- * Runtime validation for the user-authored config. TypeScript checks
- * shape at edit-time, but `vx run` may load configs that were never
- * typechecked (plain .js, or TS with errors ignored). Catch the worst
- * shape problems early with a clear message rather than letting them
- * crash deeper in the orchestrator. Also applied to configs loaded
- * back from `.vx/projects.lock.json` (a hand-editable file — same boundary).
+ * Runtime validation of the user's config: `vx run` may load configs never
+ * typechecked (plain JS, TS with errors ignored), so the worst shape
+ * problems get a clear message instead of a crash deeper in. Also applied to
+ * configs read back from `.vx/projects.lock.json` (hand-editable).
  * `ownConfig` is the config file outputs may not cover (null: none), apart
  * from `configPath` when that is a label (`<path> (after plugin 'x')`).
  */
@@ -613,15 +609,12 @@ function validateTask(
   }
   if (exec !== undefined) validateExec(exec, where, cache)
   else {
-    // Group task: no exec, just dependencies. Only an ABSENT `dependsOn`
-    // is refused — a task with neither is a typo, not a declaration. An
-    // EMPTY one is deliberate and documented: `build: { dependsOn: [] }`
-    // is how a package consumed as source says it has nothing to build,
-    // so a dependant's `^build` finds it and waits on nothing
-    // (the quickstart). The comment here used to call that case
-    // "almost certainly a config mistake" while the docs taught it.
-    // A keyed group (`inputs` with no `exec`) is a declaration on its own:
-    // its inputs are a key that dependants fold, with no process.
+    // Group task: no exec, just dependencies. Only an ABSENT `dependsOn` is
+    // refused (neither is a typo). An EMPTY one is deliberate: `build: {
+    // dependsOn: [] }` is how a package consumed as source says it has
+    // nothing to build, so a dependant's `^build` waits on nothing. A keyed
+    // group (`inputs`, no `exec`) is a declaration on its own: a key
+    // dependants fold, with no process.
     if (dependsOn === undefined && (task as { inputs?: unknown }).inputs === undefined) {
       throw new UserError(
         `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` ` +
@@ -860,12 +853,10 @@ function validateLongRunning(exec: object, where: string, cache: unknown, retrie
         `${where}.exec.persistent must be an object (or omitted) — \`persistent: {}\`, or \`{ readyWhen: '<regex>' }\` to wait for a line`,
       )
     }
-    // The one nested object that had no unknown-key check while every
-    // sibling did — and the failure it let through is the quiet kind:
-    // `readWhen` (typo) leaves `readyWhen` undefined, so the task is
-    // ready the moment it spawns instead of when its server actually
-    // listens, and the dependents that start too early fail in a way
-    // that points at the user's code rather than at their config.
+    // Unknown keys refused here too: `readWhen` (typo) leaves `readyWhen`
+    // undefined, so the task is ready on spawn instead of when its server
+    // listens, and dependents that start early fail pointing at the user's
+    // code, not the config.
 
     assertKnownFields(persistent, PERSISTENT_FIELDS, `${where}.exec.persistent`)
     const readyWhen = (persistent as { readyWhen?: unknown }).readyWhen
@@ -920,14 +911,10 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
     }
     assertNoEnvNegation(envList as string[], `${where}.inputs.env`)
     for (const name of envList as string[]) {
-      // Reject wildcards explicitly so users don't silently miss
-      // env vars they thought they were tracking. Turbo supports
-      // `VERCEL_*` expansion; vx requires the literal names. If
-      // we add expansion later it'll be additive — until then,
-      // surface the footgun instead of returning '' for the
-      // literal env name `'VERCEL_*'`.
-      // An env name is no path, so a bracket is no route directory: the
-      // whole `Bun.Glob` alphabet stays refused here.
+      // Wildcards refused so a user never silently misses env vars they
+      // thought tracked: `VERCEL_*` is not expanded, and would otherwise
+      // fold '' for the literal name. An env name is no path, so the whole
+      // `Bun.Glob` alphabet stays refused.
       if (BUN_GLOB_WILDCARDS.test(name)) {
         throw new UserError(
           `${where}.inputs.env: wildcards in env names are not supported ` +
@@ -974,16 +961,11 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
     }
     assertNotDoubleNegated(g, `${where}.inputs.files`)
   }
-  // A list of ONLY negations selects nothing at all. `resolveFiles`
-  // builds the file set from the POSITIVE globs and uses the `!` entries
-  // purely to subtract, so with no positive pattern it returns `[]` — the
-  // task folds ZERO file inputs and its key stops moving with its source,
-  // which is a stale hit waiting to happen.
-  //
-  // Every gitignore-trained reader parses `['!**/*.spec.ts']` as
-  // "everything except specs", and Turbo makes exactly this a hard config
-  // error for the same reason. Refusing costs nothing: such a config was
-  // already silently broken, so no working key changes.
+  // A list of ONLY negations selects nothing: the file set comes from the
+  // positive globs and `!` only subtracts, so the task folds zero files and
+  // its key stops moving with its source, a stale hit waiting. A
+  // gitignore-trained reader parses `['!**/*.spec.ts']` as everything except
+  // specs. Refusing changes no working key.
   assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.inputs.files`)
   assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.inputs.files`)
   // The only InputsConfig field that reached the run unvalidated: a
@@ -1022,8 +1004,8 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
     if (list !== undefined) {
       if (
         !Array.isArray(list) ||
-        // Whitespace alone ran as a no-op probe that folds nothing, as
-        // a blank `exec.command` did (X-22).
+        // Whitespace alone ran as a no-op probe that folds nothing, as a blank
+        // `exec.command` did.
         list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
       ) {
         throw new UserError(
@@ -1102,8 +1084,8 @@ function validateOutputs(
           `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
       )
     }
-    // A `!` entry takes a path back from the outputs (A-44): it is not
-    // cleaned, saved or restored, and it stays an input.
+    // A `!` entry takes a path back from the outputs: it is not cleaned, saved
+    // or restored, and it stays an input.
     assertNotDoubleNegated(g, `${where}.outputs.files`)
     // Taken back by a `!`, the file is never cleaned or restored.
     const own = g.startsWith('!')
@@ -1126,14 +1108,11 @@ function validateOutputs(
   }
 }
 
-// Known fields per config level, mirroring the interfaces in src/config.ts.
-// Unknown keys are REJECTED rather than silently dropped: a typo in a
-// cache-key field (`workspaceFile`, `task`, `timeoutMs`) is otherwise
-// discarded, so the task hashes as if the field were never written and vx
-// serves a stale artifact — the same reasoning `sandbox` already
-// encodes. A new field must be added here deliberately.
-// `tasks` first: `nearest` breaks a tie by order, and `taks` is one edit
-// from both.
+// Known fields per config level, mirroring src/config.ts. Unknown keys are
+// REJECTED, not dropped: a typo in a key field (`workspaceFile`, `task`,
+// `timeoutMs`) would hash as if never written and serve a stale artifact. A
+// new field is added here deliberately. `tasks` first: `nearest` breaks a
+// tie by order, and `taks` is one edit from both.
 const PROJECT_FIELDS = new Set(['name', 'tasks', 'tags'])
 const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'inputs', 'outputs', 'cache'])
 const EXEC_FIELDS = new Set([
@@ -1255,7 +1234,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       env: '`tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
-  // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace.
+  // Turbo's turbo.json and Nx's nx.json keys, written into.vx/workspace.
   [
     WORKSPACE_FIELDS,
     {
@@ -1275,9 +1254,8 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       defaultBase: '`baseBranch`',
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
-      // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
-      // pasted into .vx/workspace: refused with no word on where vx reads
-      // them.
+      // pnpm-workspace.yaml's, Lerna's and the package.json's own keys pasted
+      // into.vx/workspace: refused with no word on where vx reads them.
       packages: 'a `vx.config` in each project directory: a project is a directory holding one',
       workspaces: 'a `vx.config` in each project directory: a project is a directory holding one',
       projects: 'a `vx.config` in each project directory: a project is a directory holding one',
@@ -1609,25 +1587,23 @@ function namesDirItself(glob: string): boolean {
 }
 
 /**
- * True when a glob contains a `..` PATH SEGMENT (`../x`, `a/../b`, `x/..`), which
- * escapes its base dir — `foo..bar` / `a..b` inside a filename are fine. A
- * leading negation marker is stripped first so `!../x` is caught too. Used to
- * keep output globs inside the project and workspace globs inside the workspace
- * root: `cleanOutputs` rm()s resolved output paths before every run, and
- * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
- * vector (delete files outside the project / above the repo root).
+ * True when a glob has a `..` PATH SEGMENT (`../x`, `a/../b`, `x/..`);
+ * `foo..bar` is fine. A leading `!` is stripped first. Keeps output globs in
+ * the project and workspace globs in the root: `cleanOutputs` removes
+ * resolved outputs before every run and `Bun.Glob.scan` follows `..` out of
+ * its cwd, so a `..` glob could delete files outside.
  */
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
   // A brace alternative is a segment too: `{../shared,src}/**` splits on `/`
-  // into `{..`, so it passed, and its `..` arm matched nothing — an input
-  // that silently left the key (M-64).
+  // into `{..`, so it passed, and its `..` arm matched nothing — an input that
+  // silently left the key.
   return g.split(/[/{},]/).some((seg) => seg === '..')
 }
 
 /**
  * True when a glob is absolute, or a brace alternative in it is:
- * `{/etc,dist}/*` matched nothing outside and said so nowhere (M-64).
+ * `{/etc,dist}/*` matched nothing outside and said so nowhere.
  */
 function isAbsoluteGlob(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
@@ -1652,7 +1628,7 @@ function hasBackslashSeparator(body: string): boolean {
 
 /**
  * A Windows spelling (`src\**`, `C:/src/**`) loaded with only a "matched no
- * files" warning, and a task keyed on it never saw its source (X-67).
+ * files" warning, and a task keyed on it never saw its source.
  */
 function assertPosixGlob(glob: string, where: string, base: string): void {
   const neg = glob.startsWith('!') ? '!' : ''
@@ -1708,23 +1684,14 @@ function assertInputGlob(glob: string, where: string): void {
 }
 
 /**
- * `!!x` is refused: no reading of it is coherent.
- *
- * The resolver once stripped ONE `!` and handed the remainder to
- * `new Bun.Glob()`, which applied its OWN leading-`!` negation, so
- * `!!vendor/**` excluded every path EXCEPT vendor's: a permanent stale hit.
- * It now escapes the remainder (`!!x` excludes the literal path `!x`), and
- * this guard keeps the spelling from reaching it at all.
- *
- * Neither neighbouring guard catches it — `assertNotNegationOnly` sees the
- * positive glob and is satisfied, and `hasParentSegment` strips one `!` before
- * splitting so `!!../x` shows no `..` segment.
- *
- * Refused rather than reinterpreted: `!!` has no coherent meaning here.
- * Negation in vx is subtraction from what a positive glob matched, not
- * gitignore's ordered re-inclusion, so there is nothing for a second `!` to
- * undo. Costs nothing to refuse — such a config already folds the wrong set,
- * so no working cache key changes.
+ * `!!x` is refused: no reading of it is coherent. Negation in vx subtracts
+ * from what a positive glob matched, not gitignore's ordered re-inclusion,
+ * so a second `!` has nothing to undo. `new Bun.Glob()` applies its own
+ * leading `!`, so a resolver stripping one turned `!!vendor/**` into
+ * everything but vendor's, a permanent stale hit; it escapes the remainder
+ * now, and this guard keeps the spelling away. Neither neighbour catches it:
+ * `assertNotNegationOnly` sees the positive glob, and `hasParentSegment`
+ * strips one `!` so `!!../x` shows no `..`.
  */
 function assertNotDoubleNegated(glob: string, where: string): void {
   if (!glob.startsWith('!!')) return
@@ -1739,17 +1706,12 @@ function assertNotDoubleNegated(glob: string, where: string): void {
 }
 
 /**
- * An exact `inputs.tasks` entry that no `dependsOn` entry names would
- * match nothing at hash time and fold no upstream hash — the task silently
- * decoupled from its dependencies, which is a stale hit waiting for the
- * next upstream change. `['buidl']` for `['build']` is the shape. Patterns,
- * wildcards and negations stay silent (a preset-spread pattern legitimately
- * matches nothing in some projects; excluding what is absent is harmless);
- * an exact name must be named by some `dependsOn` entry of a form that can
- * reach the same node, exactly or by that entry's own `*` pattern. The form
- * matters: `build` selects this project's `build` and `^build` only other
- * projects', so `['build']` against `dependsOn: ['^build']` folded nothing
- * and served a stale hit. A `pkg#task` entry may name this
+ * An exact `inputs.tasks` entry no `dependsOn` entry names folds no upstream
+ * hash: the task silently decoupled, a stale hit at the next upstream change
+ * (`['buidl']`). Patterns, wildcards and negations stay silent (a preset's
+ * pattern may match nothing). The form matters: `build` selects this
+ * project's `build`, `^build` only other projects', so `['build']` against
+ * `dependsOn: ['^build']` folded nothing. A `pkg#task` entry may name this
  * project or a dependency, which the schema cannot tell apart, so it pairs
  * with any form whose task half matches. `[]` is the explicit way to
  * decouple.
@@ -1801,13 +1763,11 @@ function specForm(spec: string): SpecForm {
 }
 
 /**
- * A name an environment can hold. An `=` splits at the first one, so
- * `define: { 'A=B': 'x' }` gave the child `A` with the value `B=x`; `''`
- * was dropped; a NUL failed the spawn with a hint about exit 127 (item
- * 999). And the task runs under `sh -c`, whose dash (Linux) drops a
- * variable whose name is no shell identifier: `my.var` reached a task
- * under macOS's bash and nothing on Linux. Refused at load, where the
- * config is named.
+ * A name an environment can hold. An `=` splits at the first one (`'A=B':
+ * 'x'` gave `A` the value `B=x`), `''` was dropped, a NUL failed the spawn.
+ * The task runs under `sh -c`, and dash (Linux) drops a name that is no
+ * shell identifier: `my.var` reached a task under macOS's bash and not on
+ * Linux. Refused at load, where the config is named.
  */
 function assertShellName(name: string, field: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
@@ -1884,15 +1844,10 @@ function tagProblem(tag: string): string | null {
 }
 
 /**
- * Refuse a non-empty glob list made up ENTIRELY of negations.
- *
- * The resolvers build their file set from the POSITIVE globs and use `!`
- * entries only to subtract, so with no positive pattern they return `[]` —
- * the task folds zero file inputs and its cache key stops moving with its
- * source. That is a stale hit, and it is silent.
- *
- * Refusing is free: such a config was ALREADY selecting nothing, so no
- * working task's key changes and no CACHE_VERSION bump is owed.
+ * Refuse a non-empty glob list made only of negations: it selects nothing,
+ * so the key stops moving with the source, silently. Such a config already
+ * selected nothing, so no working key changes and no CACHE_VERSION bump is
+ * owed.
  */
 function assertNotNegationOnly(globs: readonly string[], where: string): void {
   if (globs.length === 0) return
@@ -1945,8 +1900,8 @@ function assertNoLiteralTakenBack(
 }
 
 /**
- * `negation: false` for OUTPUT globs: a `!` entry takes a path back (A-44),
- * and a list of only negations selects nothing and is refused.
+ * `negation: false` for OUTPUT globs: a `!` entry takes a path back, and a list
+ * of only negations selects nothing and is refused.
  */
 function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): void {
   if (!Array.isArray(v)) {
@@ -1990,7 +1945,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
 
 /**
  * An output list of only `!` entries selects nothing: the task saves and
- * restores nothing while it reads as if it declared outputs (A-44).
+ * restores nothing while it reads as if it declared outputs.
  */
 const OUTPUT_LOST = 'the file is never saved or restored'
 

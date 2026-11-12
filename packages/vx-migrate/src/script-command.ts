@@ -4,21 +4,21 @@
 //
 // - `pre<name>` / `post<name>` hooks, which npm and pnpm run around
 //   `<name>` without being asked, are folded into the command in that
-//   order (novu's `prebuild` copies the CSS its `build` inlines,
-//   2026-09-11; Nx and Turbo run `pnpm run build`, so they get the hooks
+//   order (novu's `prebuild` copies the CSS its `build` inlines;
+//   Nx and Turbo run `pnpm run build`, so they get the hooks
 //   for free). A script named for a verb (`version`, `pack`) is no
 //   exception: `npm run version` runs `preversion` too, as pnpm, Yarn 1
-//   and Bun do (2026-11-11).
+//   and Bun do.
 // - yarn ≥ 2 runs scripts in its own shell, where `run` is a builtin
 //   (`run -T rollup -c` is "the root's rollup", `run build:code` the
 //   sibling script); inlined into sh that body is `run: command not
-//   found` in every strapi package (2026-09-11), so such a script runs
+//   found` in every strapi package, so such a script runs
 //   through `yarn run <name>`, exactly as Nx and Turbo run it — and yarn
 //   ≥ 2 runs no pre/post hooks, so none are folded there either.
 // - A Yarn Plug'n'Play workspace has no node_modules: a dependency's
 //   `require` resolves only through `.pnp.cjs` and its bins only through
 //   the shims `yarn run` writes, so inlined, `node -e "require('left-pad')"`
-//   was MODULE_NOT_FOUND (2026-09-28). Every script runs as `yarn run <name>`.
+//   was MODULE_NOT_FOUND. Every script runs as `yarn run <name>`.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -111,14 +111,14 @@ export async function yarnrcText(root: string): Promise<string> {
 }
 
 /**
- * The package manager that owns `dir`, when it runs `pre` / `post` hooks
- * around a script; null when it runs none. The manager is the nearest `packageManager` field or
- * lockfile, and its settings are read beside it, as each reads them for a
- * member too. Probed with a `prebuild` / `build` / `postbuild` trio: Yarn
- * 2+ runs none (D-31); npm runs none under `ignore-scripts=true` in
- * `.npmrc`; pnpm runs none under `enable-pre-post-scripts=false` there or
- * `enablePrePostScripts: false` in `pnpm-workspace.yaml` (D-33); Bun and
- * Yarn 1 run them whatever those say. No manager found is npm's default.
+ * The package manager that owns `dir`, when it runs `pre` / `post` hooks around
+ * a script; null when it runs none. The manager is the nearest `packageManager`
+ * field or lockfile, and its settings are read beside it, as each reads them
+ * for a member too. Probed with a `prebuild` / `build` / `postbuild` trio: Yarn
+ * 2+ runs none; npm runs none under `ignore-scripts=true` in `.npmrc`; pnpm
+ * runs none under `enable-pre-post-scripts=false` there or
+ * `enablePrePostScripts: false` in `pnpm-workspace.yaml`; Bun and Yarn 1 run
+ * them whatever those say. No manager found is npm's default.
  */
 export function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
   const { manager, at } = ownerOf(dir, memo)
@@ -185,8 +185,8 @@ export function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
     const manifest = (read('package.json') ?? '').replace(/^\uFEFF/, '')
     const pm = (JSON.parse(manifest) as { packageManager?: unknown }).packageManager
     // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
-    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
-    // claim nothing had checked (D-96).
+    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a claim
+    // nothing had checked.
     if (typeof pm === 'string' && /^(npm|pnpm|yarn|bun)@/.test(pm))
       manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
   } catch {}

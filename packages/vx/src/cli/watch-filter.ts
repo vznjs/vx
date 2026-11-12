@@ -82,22 +82,20 @@ export function makeWatchIgnore(
   // Watchers report under the real root; a cache dir named through a link
   // (`VX_CACHE_DIR`, macOS `/var` -> `/private/var`) is matched as its target.
   const cacheAbs = realThrough(path.resolve(cacheDir))
-  // A task's own outputs are not edits: without this every cycle that
-  // writes `dist/` (or `out.txt`) re-runs once more, reporting
-  // "up-to-date" for the trouble. Matched under the directory the globs
-  // are relative to, whichever watcher delivered the event.
-  // The directory that HOLDS an output tree is the task's too: `dist/**`
-  // does not match `dist`, and since the clean before a miss prunes an
-  // emptied `dist` (2026-09-10) the task re-creates it, which the watcher
-  // reports as a change to `dist` itself — a second cycle per edit,
-  // reporting "up-to-date". The literal prefix of each glob (`dist` for
-  // `dist/**`, `build/out` for `build/out/*.js`; nothing for `*.js`) and
-  // every ancestor of it under the dir are output containers.
-  // A literal entry means the file or its whole tree — the resolver's own
-  // rule (`asTrees`), so the tree's files never count as edits.
-  // A `!` entry takes its paths back, so an edit there is an edit (A-44);
-  // compiled as a glob it would be `Bun.Glob`'s own negation and hide every
-  // other path.
+  // A task's own outputs are not edits: without this every cycle that writes
+  // `dist/` (or `out.txt`) re-runs once more, reporting "up-to-date" for the
+  // trouble. Matched under the directory the globs are relative to, whichever
+  // watcher delivered the event. The directory that HOLDS an output tree is the
+  // task's too: `dist/**` does not match `dist`, and since the clean before a
+  // miss prunes an emptied `dist` the task re-creates it, which the watcher
+  // reports as a change to `dist` itself — a second cycle per edit, reporting
+  // "up-to-date". The literal prefix of each glob (`dist` for `dist/**`,
+  // `build/out` for `build/out/*.js`; nothing for `*.js`) and every ancestor of
+  // it under the dir are output containers. A literal entry means the file or
+  // its whole tree — the resolver's own rule (`asTrees`), so the tree's files
+  // never count as edits. A `!` entry takes its paths back, so an edit there is
+  // an edit; compiled as a glob it would be `Bun.Glob`'s own negation and hide
+  // every other path.
   const declared = [...outputs].map(
     ([dir, globs]) =>
       [
@@ -106,13 +104,12 @@ export function makeWatchIgnore(
         globs.map(outputContainer).filter((c) => c !== ''),
       ] as const,
   )
-  // A path some task takes as an INPUT is never an output to ignore, even
-  // when another task declares it one: an in-place formatter declaring
-  // `src/**` hid every `src` edit from a `build` watched beside it, and no
-  // cycle ran (item 946). Each task's inputs are judged on their own, less
-  // their `!` entries (its own outputs among them): a turbo() task reading
-  // `**/*` took its own `dist/` write for an edit, and every save ran one
-  // more "up-to-date" cycle (2026-09-28).
+  // A path some task takes as an INPUT is never an output to ignore, even when
+  // another task declares it one: an in-place formatter declaring `src/**` hid
+  // every `src` edit from a `build` watched beside it, and no cycle ran. Each
+  // task's inputs are judged on their own, less their `!` entries (its own
+  // outputs among them): a turbo() task reading `**/*` took its own `dist/`
+  // write for an edit, and every save ran one more "up-to-date" cycle.
   const read = [...inputs].flatMap(([dir, tasks]) =>
     tasks.map(
       (globs) =>
@@ -197,9 +194,9 @@ export function makeWatchIgnore(
         )
       })
     })
-  // Core never cleans or saves a file git tracks and keys it under the
-  // task's own output glob (2026-10-14); a submodule is listed as its
-  // gitlink alone, so a path under a tracked one counts.
+  // Core never cleans or saves a file git tracks and keys it under the task's
+  // own output glob; a submodule is listed as its gitlink alone, so a path
+  // under a tracked one counts.
   const isTracked = (abs: string): boolean => {
     if (tracked === undefined) return false
     for (let p = abs; p.length > 1; p = path.dirname(p)) {
@@ -285,15 +282,14 @@ function outputContainer(raw: string): string {
 }
 
 /**
- * The subset of `paths` git ignores, asked once per judgement (one
- * `git check-ignore` per debounce window that has candidates, never per
- * event). A git-ignored path is invisible to every cache key — inputs
- * are tracked + untracked-not-ignored — so a cycle it starts can change
- * nothing, and a task that writes one on every run (a pid file, a
- * timestamped log, `.next/trace`) made the loop re-run itself forever
- * (2026-09-16: 29 cycles in 8 s from one edit). A TRACKED file that
- * matches a pattern is not reported, by git's own rule, so it stays an
- * edit. Outside a repository (exit 128) nothing is ignored, as before.
+ * The subset of `paths` git ignores, asked once per judgement (one `git
+ * check-ignore` per debounce window that has candidates, never per event). A
+ * git-ignored path is invisible to every cache key — inputs are tracked +
+ * untracked-not-ignored — so a cycle it starts can change nothing, and a task
+ * that writes one on every run (a pid file, a timestamped log, `.next/trace`)
+ * made the loop re-run itself forever (29 cycles in 8 s from one edit). A
+ * TRACKED file that matches a pattern is not reported, by git's own rule, so it
+ * stays an edit. Outside a repository (exit 128) nothing is ignored, as before.
  */
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> {
   const ignored = new Set<string>()
@@ -376,8 +372,8 @@ export function makeRootEventFilter(
   fenced: (ownDir: string, abs: string) => boolean = () => false,
 ): (filename: string) => boolean {
   const dirs = projectDirs.map((d) => path.resolve(d))
-  // A literal is its tree, as the key resolves it: `shared` matched only
-  // the directory's own event and no edit under it ran a cycle (WD-2).
+  // A literal is its tree, as the key resolves it: `shared` matched only the
+  // directory's own event and no edit under it ran a cycle.
   const globs = asTrees(workspaceInputs.filter((g) => !normalizeGlob(g).startsWith('!'))).map((g) =>
     taskGlob(g),
   )
@@ -398,13 +394,13 @@ export function makeRootEventFilter(
 }
 
 /**
- * Whether `abs`, under the project at `ownDir`, lies inside another
- * project nested there: the key's boundary (`computeNestedProjectDirs`)
- * leaves such a file out, so it is no edit of `ownDir`'s. A root project
- * watched its whole tree and ran a cycle for every edit in a nested one
- * (X-42). The fences are every project, config or not, as the key's are
- * (X-57). The fence's own config is let through: it may give the project
- * tasks, and the cycle it starts re-reads the set.
+ * Whether `abs`, under the project at `ownDir`, lies inside another project
+ * nested there: the key's boundary (`computeNestedProjectDirs`) leaves such a
+ * file out, so it is no edit of `ownDir`'s. A root project watched its whole
+ * tree and ran a cycle for every edit in a nested one. The fences are every
+ * project, config or not, as the key's are. The fence's own config is let
+ * through: it may give the project tasks, and the cycle it starts re-reads the
+ * set.
  */
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean {
   const fences = fenceDirs.map((d) => path.resolve(d))
@@ -420,8 +416,7 @@ export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: s
  * A file whose edit can change what the loop watches: a project config (a
  * task that starts declaring `workspaceFiles` needs the root watcher, a
  * new output must stop being an event) or the workspace config (a
- * plugin's `project` stage). Until item 891 each of these waited for a
- * restart while the loop looked alive. The lock and a file a plugin
+ * plugin's `project` stage). The lock and a file a plugin
  * claims re-read the set as well (the caller asks: the projects come from
  * the lock, a lockfile plugin's `discover` names and edges from its file).
  */
@@ -441,8 +436,6 @@ export function shapesWatchedSet(filename: string): boolean {
  * The workspace config is the one root file that shapes a run without
  * being any task's input — its plugins, `config` stage, concurrency, cache
  * dir — and a cycle re-evaluates it (its import is keyed on its bytes).
- * Until 2026-09-10 neither root arm listened for it: a plugin added under
- * `vx watch` waited for a restart while the loop looked alive.
  */
 const WORKSPACE_CONFIGS: ReadonlySet<string> = new Set(WORKSPACE_CONFIG_FILENAMES)
 
@@ -471,12 +464,12 @@ export function lockedExtras(workspaceRoot: string): Set<string> {
 }
 
 /**
- * Paths as git spells them under `root`: a project reached through a
- * symlink below the root (`packages/x -> ../shared/x`) is watched at the
- * link, and git names and answers for its files only at the real place.
- * The root keeps its own spelling (macOS's `/var` is `/private/var`), the
- * name its own (the file may be gone); a directory outside the root is
- * kept as given. Directories are resolved once per speller.
+ * Paths as git spells them under `root`: a project reached through a symlink
+ * below the root (`packages/x ->../shared/x`) is watched at the link, and git
+ * names and answers for its files only at the real place. The root keeps its
+ * own spelling (macOS's `/var` is `/private/var`), the name its own (the file
+ * may be gone); a directory outside the root is kept as given. Directories are
+ * resolved once per speller.
  */
 export function gitSpeller(root: string): (p: string) => string {
   const dirs = new Map<string, string>()

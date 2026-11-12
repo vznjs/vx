@@ -3,12 +3,10 @@ import type { TaskNode } from './task-graph.js'
 import type { TaskStatus } from './task-status.js'
 
 /**
- * Thrown by `execute` for a restore-tier task that turned out to have
- * nothing to restore (its artifact vanished after the up-front probe). It
- * may be running ahead of its deps, so it cannot run its command in that
- * slot: the scheduler releases the slot and dispatches it again as an
- * exec-tier task once its deps are done. It records no outcome, and its
- * dependents wait for the second dispatch.
+ * Thrown by `execute` for a restore-tier task whose artifact vanished after the
+ * probe. It may be running ahead of its deps, so it cannot run its command in
+ * that slot: the scheduler dispatches it again as an exec-tier task once its
+ * deps are done. It records no outcome; its dependents wait.
  */
 export class RestoreDemoted extends Error {
   constructor(readonly taskId: string) {
@@ -58,11 +56,10 @@ export function isKeyFailed(o: object): boolean {
 }
 
 /**
- * Thrown by `execute` when vx's own work on a miss's outputs threw: the
- * clean before an attempt, or the save after an exit 0 (a name that is
- * not UTF-8). The outcome keeps `exitCode` and `durationMs` (what the
- * command returned and took so far) and is marked (`outputsFailedOf`),
- * so no label names an exit the command never returned.
+ * Thrown by `execute` when vx's own work on a miss's outputs threw (the clean
+ * before an attempt, or the save after exit 0). The outcome keeps `exitCode`
+ * and `durationMs` and is marked (`outputsFailedOf`), so no label names an exit
+ * the command never returned.
  */
 export class OutputsFailed extends Error {
   constructor(
@@ -171,9 +168,9 @@ export interface OutcomeCache {
    */
   off?: true
   /**
-   * It RAN over inputs its key no longer describes: one moved while it ran,
-   * a claimed root file moved, or an upstream carried this mark. Its save
-   * was withheld, and a dependant that folds `hash` saves nothing either.
+   * It ran over inputs its key no longer describes (an input moved while it
+   * ran, or an upstream carried this mark): its save was withheld, and a
+   * dependant that folds `hash` saves nothing either.
    */
   unkeyed?: true
   /**
@@ -310,9 +307,8 @@ interface FailureFacts {
 /** Why a task never ran, or ran no further. */
 interface BlockFacts {
   /**
-   * The task at the ROOT of what blocked it: the failed (or aborted)
-   * upstream, followed through any skips between. Absent when fail-fast
-   * or the run's stop did.
+   * The task at the root of what blocked it, followed through any skips. Absent
+   * when fail-fast or the run's stop did.
    */
   blockedBy?: string
 }
