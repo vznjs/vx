@@ -123,12 +123,12 @@ graph TD
 | **settings**     | ✓    | ✓   |        |         | —        |         |           |       |          |      |       |      |         |         |        |              |     |       |
 | **handoff**      | ✓    | ✓   |        |         |          | —       |           |       |          |      |       |      |         |         |        |              |     |       |
 | **workspace**    | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | —         |       |          |      |       |      |         |         |        |              |     |       |
-| **graph**        | ✓    | ✓   | ✓      |         |          |         | ✓         | —     |          |      |       |      |         |         |        |              |     |       |
+| **graph**        | ✓    |     | ✓      |         |          |         | ✓         | —     |          |      |       |      |         |         |        |              |     |       |
 | **index-db**     | ✓    |     |        |         |          |         |           |       | —        |      |       |      |         |         |        |              |     |       |
 | **memo**         | ✓    |     |        |         |          |         |           |       | ✓        | —    |       |      |         |         |        |              |     |       |
-| **cache**        | ✓    | ✓   | ✓      |         |          |         |           |       | ✓        | ✓    | —     |      |         |         |        |              |     |       |
-| **exec**         | ✓    | ✓   | ✓      |         |          |         |           |       |          |      |       | —    |         |         |        |              |     |       |
-| **sandbox**      | ✓    | ✓   | ✓      |         |          |         |           | ✓     |          |      | ✓     | ✓    | —       |         |        |              |     |       |
+| **cache**        | ✓    |     | ✓      |         |          |         |           |       | ✓        | ✓    | —     |      |         |         |        |              |     |       |
+| **exec**         | ✓    |     | ✓      |         |          |         |           |       |          |      |       | —    |         |         |        |              |     |       |
+| **sandbox**      | ✓    |     | ✓      |         |          |         |           | ✓     |          |      | ✓     | ✓    | —       |         |        |              |     |       |
 | **history**      | ✓    | ✓   |        |         |          |         |           | ✓     | ✓        |      | ✓     |      |         | —       |        |              |     |       |
 | **report**       | ✓    | ✓   |        |         | ✓        |         |           | ✓     |          |      |       | ✓    |         |         | —      |              |     |       |
 | **orchestrator** | ✓    | ✓   | ✓      | ✓       | ✓        | ✓       | ✓         | ✓     | ✓        | ✓    | ✓     | ✓    | ✓       | ✓       | ✓      | —            |     |       |
@@ -137,6 +137,8 @@ graph TD
 | **bin**          | ✓    | ✓   |        | ✓       |          | ✓       |           |       |          |      |       |      |         |         |        |              | ✓   | ✓     |
 
 `util`, `config` and `version` import no module.
+`graph`, `cache`, `exec` and `sandbox` draw nothing: what they have to
+say mid-run is a `Notice` (`util/notice.ts`), and `ui` draws it.
 Composition happens only at `orchestrator` (wires workspace → graph →
 cache → exec → sandbox into a run) and `cli` (wires argv → orchestrator).
 `cli → cache` is deliberate — `vx cache clean` / `vx last` / `vx why`

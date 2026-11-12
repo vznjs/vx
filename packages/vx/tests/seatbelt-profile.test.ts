@@ -22,6 +22,8 @@ import {
   wallsGlobsReach,
 } from '../src/sandbox/runtime.js'
 import { UserError } from '../src/util/index.js'
+// ui draws the notices the modules under test say (util/notice.ts), as in vx.
+import '../src/ui/index.js'
 
 const base = { allowRead: [], allowWrite: [] }
 

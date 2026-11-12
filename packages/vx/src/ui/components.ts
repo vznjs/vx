@@ -20,16 +20,9 @@ import {
   type Style,
   type Tone,
 } from './theme.js'
+import type { Inline, Token } from '../util/index.js'
 
-/** A piece of text in a style. */
-interface Token {
-  readonly style: Style | 'id'
-  readonly text: string
-  readonly bold?: boolean
-}
-
-/** Styled text inside a component: a plain string, a token, or a run of them. */
-export type Inline = string | Token | readonly Inline[]
+export type { Inline } from '../util/index.js'
 
 /** A laid-out piece of output; `render` and `print` space blocks apart. */
 export interface Block {

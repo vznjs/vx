@@ -4,8 +4,7 @@
 // class with the endpoint named. The order across remotes, the local store
 // and provenance are `LayeredCache`'s; nothing here knows another remote.
 
-import { machineParallelism, thrownMessage } from '../util/index.js'
-import * as ui from '../ui/index.js'
+import { machineParallelism, notify, thrownMessage } from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
@@ -29,7 +28,7 @@ export interface ResolvedRemote {
 export function sayRemoteFault(r: ResolvedRemote, e: Error): void {
   try {
     if (r.onError) r.onError(e)
-    else ui.say('warn', `[vx] remote cache: ${e.message}\n`)
+    else notify({ kind: 'line', tone: 'warn', text: `[vx] remote cache: ${e.message}\n` })
     // quiet: a throwing reporter must never fail the run
   } catch {}
 }
@@ -518,7 +517,7 @@ export class RemoteLane {
     // hiccup into a run failure.
     try {
       if (this.onError) this.onError(e)
-      else ui.say('warn', `[vx] remote cache: ${e.message}\n`)
+      else notify({ kind: 'line', tone: 'warn', text: `[vx] remote cache: ${e.message}\n` })
     } catch {
       // swallow — reporting must never escalate
     }

@@ -2169,3 +2169,41 @@ export function readUmask(): void
 export function restoredMode(mode: number): number
 export function modeMatches(disk: number, stored: number): boolean
 ```
+
+## `src/util/notice.ts` — what a module below the terminal says
+
+### Purpose
+
+`cache`, `exec`, `graph`, `sandbox` and `workspace` draw nothing. A
+warning they give mid-run (a grant the sandbox cannot mount, an observer
+that threw, a config still evaluating) is a `Notice`: kind, tone, text.
+`ui` draws it when it loads; one said before is held, never dropped.
+
+### Public surface
+
+```ts
+export interface Notice {
+  readonly kind: 'line' | 'notice' // `line`: tagged, as ui.say; `notice`: as ui.sayLine
+  readonly tone: Tone
+  readonly text: string
+}
+export function notify(n: Notice): void
+export function onNotice(draw: (n: Notice) => void): void // set by ui
+```
+
+### Tests
+
+`tests/notice.test.ts`: a notice said before `ui` loads is drawn when it
+does; with no `ui`, nothing is written; each kind's bytes. The callers'
+own pins (`scheduler.test.ts`, `seatbelt-profile.test.ts`,
+`config-eval.test.ts`, `layered-cache.test.ts`, the sandbox suites) hold
+every line byte for byte.
+
+## `src/util/styled.ts` — styled text as data
+
+### Purpose
+
+`Style`, `Tone`, `Token` and `Inline`: text in a named style, as a
+module below the terminal hands it up (an executor's `footer()` cells, a
+notice's tone). Naming a style is not drawing it; the hues stay in `ui`,
+which re-exports these types under the same names.

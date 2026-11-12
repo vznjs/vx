@@ -234,6 +234,7 @@ src/util/hash.ts
 src/util/hidden-prompt.ts
 src/util/hide-env.ts
 src/util/index.ts
+src/util/notice.ts
 src/util/num.ts
 src/util/paths.ts
 src/util/plain-text.ts
@@ -245,6 +246,7 @@ src/util/secrets.ts
 src/util/settle.ts
 src/util/signal-relay.ts
 src/util/size.ts
+src/util/styled.ts
 src/util/tail.ts
 src/util/task-id.ts
 src/util/timing.ts

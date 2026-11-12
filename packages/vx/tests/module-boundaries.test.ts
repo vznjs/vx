@@ -27,7 +27,8 @@ function moduleOf(rel: string): string {
 const ALLOWED: Record<string, readonly string[]> = {
   util: [],
   // `ui`: the only module that draws (tokens, components, the live region,
-  // the streams). `util` for the refusal parts a notice lays out.
+  // the streams). `util` for the refusal parts a notice lays out and the
+  // notices of cache, exec, graph, sandbox and workspace, which never draw.
   ui: ['util'],
   config: [],
   version: [],
@@ -41,18 +42,18 @@ const ALLOWED: Record<string, readonly string[]> = {
   // `version`: the lock records which vx validated it.
   // `handoff`: the git top-level, learned once for the hand-off and the root walk.
   workspace: ['util', 'config', 'version', 'settings', 'handoff', 'ui'],
-  graph: ['util', 'config', 'workspace', 'ui'],
+  graph: ['util', 'config', 'workspace'],
   // `index-db`: cache.db's one schema, below every module that reads or
   // writes a table of it.
   'index-db': ['util'],
   // `memo`: what a warm run remembers (file hashes, folds, lockfile parses,
   // output stamps, remote hits), each over the index the store opens.
   memo: ['util', 'index-db'],
-  cache: ['util', 'config', 'ui', 'index-db', 'memo'],
-  exec: ['util', 'config', 'ui'],
+  cache: ['util', 'config', 'index-db', 'memo'],
+  exec: ['util', 'config'],
   // `sandbox`: a task's request in, its result plus violations out. Above
   // `exec`, whose process primitives it runs the task with.
-  sandbox: ['util', 'config', 'ui', 'exec', 'cache', 'graph'],
+  sandbox: ['util', 'config', 'exec', 'cache', 'graph'],
   // `history`: what runs leave behind, written (the run's rows, on a thread
   // or at its end) and read back (`vx last`, `vx why`, the duration table).
   // It never runs or renders a run.

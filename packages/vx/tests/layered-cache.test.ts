@@ -14,6 +14,8 @@ import { runHistory, type InvocationRecord } from '../src/history/index.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
 import { TAR_STORE } from './helpers/tar-store.js'
+// ui draws the notices the modules under test say (util/notice.ts), as in vx.
+import '../src/ui/index.js'
 
 /** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
 function invocation(runId: string): InvocationRecord {

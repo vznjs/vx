@@ -16,7 +16,7 @@
 import type { SandboxConfig } from '../config.js'
 import type { CaptureConfig, RunResult } from './runner.js'
 import { thrownMessage, UserError } from '../util/index.js'
-import * as ui from '../ui/index.js'
+import type { Inline } from '../util/index.js'
 
 /**
  * Sandbox config with all path fields resolved to absolute paths.
@@ -496,7 +496,7 @@ export interface TaskExecutor {
    * frame of the live footer and once for the final one, so it is cheap;
    * a throw shows nothing.
    */
-  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  footer?(): readonly (readonly [label: string, text: Inline])[]
   /**
    * The machines it ran the run's tasks on (`small#1`, `local`), for the
    * run summary telemetry sinks read; asked once at the end, only when a

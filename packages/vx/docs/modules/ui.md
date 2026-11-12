@@ -21,7 +21,7 @@ colour, the bytes a test or `grep` reads.
 
 ### Files
 
-- `theme.ts`: the tokens. `Style`, `Tone`, `SYMBOL`, `INDENT`, the hues,
+- `theme.ts`: the tokens. `Style`, `Tone` (types kept in `util/styled.ts`), `SYMBOL`, `INDENT`, the hues,
   `paint`, `detectColors`, `dumbTerminal`, `barWidth`, `ruleWidth`.
 - `components.ts`: inline tokens and blocks, the panel rule, `wrap`,
   `render`.
@@ -37,7 +37,9 @@ colour, the bytes a test or `grep` reads.
   `progressEscape`, `PROGRESS_CLEAR`, `fileLocations`, `fileMemo`,
   `linkPaths`).
 - `refusal.ts`: a refusal or warning as a notice (`refusalNotice`,
-  `lineNotice`, `messageParts`, `sayNotice`, `sayLine`).
+  `lineNotice`, `messageParts`, `sayNotice`, `sayLine`). Loaded, it draws
+  every `Notice` the modules below say (`util/notice.ts`): a `line` as
+  `say`, a `notice` as `sayLine`. One said before is held and drawn then.
 - `version-line.ts`: `vx --version`, imported alone (`printVersion`).
 
 ### Public surface

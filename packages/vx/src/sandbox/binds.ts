@@ -13,10 +13,10 @@ import {
   toRealPath,
   unique,
 } from './paths.js'
+import { notify } from '../util/index.js'
 import { shellQuote } from '../exec/index.js'
 import type { ResolvedSandboxConfig } from '../exec/index.js'
 import type { SandboxedRunArgs } from './runtime.js'
-import * as ui from '../ui/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 type SrtTaskConfig = NonNullable<Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2]>
@@ -388,12 +388,14 @@ function holdsGlobChar(grant: string): boolean {
   if (at === -1) return false
   if (!warnedGlob.has(grant)) {
     warnedGlob.add(grant)
-    ui.say(
-      'warn',
-      `[vx] sandbox: the write grant ${grant} holds ${globChar(grant[at]!)}, and the Linux ` +
+    notify({
+      kind: 'line',
+      tone: 'warn',
+      text:
+        `[vx] sandbox: the write grant ${grant} holds ${globChar(grant[at]!)}, and the Linux ` +
         `sandbox mounts no write path that does, so a write under it is refused. Grant the ` +
         `directory above it instead: ${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
-    )
+    })
   }
   return true
 }
@@ -469,13 +471,15 @@ export function bindableReads(paths: readonly string[]): string[] {
     if (at === -1) return true
     if (!warnedGlob.has(grant)) {
       warnedGlob.add(grant)
-      ui.say(
-        'warn',
-        `[vx] sandbox: the read grant ${grant} holds ${globChar(grant[at]!)}, which the Linux ` +
+      notify({
+        kind: 'line',
+        tone: 'warn',
+        text:
+          `[vx] sandbox: the read grant ${grant} holds ${globChar(grant[at]!)}, which the Linux ` +
           `sandbox ${grant[at] === '\\' ? 'cannot resolve' : 'reads as a pattern that also matches its siblings'}, so it is not granted. ` +
           `Rename it, or grant the directory above it: ` +
           `${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
-      )
+      })
     }
     return false
   })
