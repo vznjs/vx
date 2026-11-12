@@ -17,9 +17,11 @@ const read = (rel: string) => readFileSync(path.join(pkg, rel), 'utf8')
 
 /** Top-level field names of `interface <name> {…}` in a doc block or a source file. */
 function interfaceFields(text: string, name: string): string[] {
-  const open = `interface ${name} {`
-  const start = text.indexOf(open)
-  expect(start).toBeGreaterThan(-1)
+  // A generic one declares its parameters between the name and the brace.
+  const found = new RegExp(`interface ${name}(?:<[^>{]*>)? \\{`).exec(text)
+  expect(found).not.toBeNull()
+  const open = found![0]
+  const start = found!.index
   const out: string[] = []
   let depth = 0
   let inComment = false
