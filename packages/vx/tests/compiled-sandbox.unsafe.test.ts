@@ -6,7 +6,7 @@
 // word of the sandbox, no fix), and every sandboxed run spawned npm to
 // ask. Source runs found the vendored file, so no test saw it.
 
-import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -30,8 +30,9 @@ describe.skipIf(!available || process.platform !== 'linux')('a compiled vx', () 
     // A compiled vx hands off to the workspace's own install.
     VX_HANDED_OFF: '1',
   })
-  const vx = (...args: string[]): { code: number; out: string } => {
-    const p = Bun.spawnSync({ cmd: [bin, ...args], cwd: root, env: env() })
+  const vx = (...args: string[]): { code: number; out: string } => run({}, ...args)
+  const run = (extra: Record<string, string>, ...args: string[]): { code: number; out: string } => {
+    const p = Bun.spawnSync({ cmd: [bin, ...args], cwd: root, env: { ...env(), ...extra } })
     return { code: p.exitCode, out: p.stdout.toString() + p.stderr.toString() }
   }
 
@@ -83,6 +84,14 @@ describe.skipIf(!available || process.platform !== 'linux')('a compiled vx', () 
     expect([st.mode & 0o777, statSync(dir).mode & 0o777]).toEqual([0o755, 0o700])
     vx('run', 'leak', '--all')
     expect(statSync(file).mtimeMs).toBe(st.mtimeMs)
+  }, 60_000)
+
+  it('falls back to the temp dir where the cache home cannot be written', () => {
+    const t = path.join(tmp, 't')
+    mkdirSync(t)
+    const r = run({ XDG_CACHE_HOME: '/proc/none', TMPDIR: t }, 'run', 'leak', '--all')
+    expect(r.out).toContain('a write no grant covers')
+    expect(readdirSync(path.join(t, `vx-helpers-${process.getuid!()}`))).toHaveLength(1)
   }, 60_000)
 })
 

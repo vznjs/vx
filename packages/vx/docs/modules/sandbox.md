@@ -50,7 +50,9 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
   per sandboxed run (~90 ms). The helper is a `type: 'file'` import,
   which Bun embeds in the binary; the binary copies it once to
   `$XDG_CACHE_HOME/vx/helpers/` (`~/.cache`), named by its content hash,
-  and uses it only as this user's own file no one else may write. From
+  and uses it only as this user's own file no one else may write. Where
+  that home cannot be written (a CI container's user with none) it goes
+  to `vx-helpers-<uid>/` under the OS temp dir. From
   source the import is the vendored file. `vendor-files.d.ts` types the
   import (`compiled-sandbox.unsafe.test.ts`, which compiles vx and runs it).
 

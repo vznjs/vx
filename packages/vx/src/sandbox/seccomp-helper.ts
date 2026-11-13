@@ -40,30 +40,58 @@ async function resolve(): Promise<string | undefined> {
 }
 
 /**
- * The embedded helper as this user's own file. Named by the bunfs name,
- * which carries the content's hash, so a new vx never runs an old helper;
- * kept only as a regular file of this user's that no one else may write,
- * and of the embedded size, else written again.
+ * The embedded helper as this user's own file, under the cache home or,
+ * where that cannot be written (a CI container whose user has no home),
+ * under the OS temp dir, which the sandbox needs anyway. Named by the
+ * bunfs name, which carries the content's hash, so a new vx never runs an
+ * old helper; kept only as a regular file of this user's, in this user's
+ * own directory, that no one else may write, and of the embedded size,
+ * else written again.
  */
 async function extracted(embedded: string): Promise<string> {
-  const dir = path.join(
-    process.env['XDG_CACHE_HOME'] || path.join(process.env['HOME'] || os.homedir(), '.cache'),
-    'vx',
-    'helpers',
-  )
+  const uid = process.getuid?.()
+  const dirs = [
+    path.join(
+      process.env['XDG_CACHE_HOME'] || path.join(process.env['HOME'] || os.homedir(), '.cache'),
+      'vx',
+      'helpers',
+    ),
+    path.join(os.tmpdir(), `vx-helpers-${uid}`),
+  ]
+  let failure: unknown
+  for (const dir of dirs) {
+    try {
+      return await extractedTo(dir, embedded, uid)
+    } catch (err) {
+      failure = err
+    }
+  }
+  throw failure
+}
+
+async function extractedTo(
+  dir: string,
+  embedded: string,
+  uid: number | undefined,
+): Promise<string> {
   const target = path.join(dir, path.basename(embedded).replace(/\.+$/, ''))
   const bytes = Bun.file(embedded)
-  const uid = process.getuid?.()
   const st = lstatSync(target, { throwIfNoEntry: false })
+  const own = (): boolean => {
+    const d = lstatSync(dir)
+    return d.isDirectory() && d.uid === uid && (d.mode & 0o022) === 0
+  }
   if (
     st?.isFile() === true &&
     st.uid === uid &&
     (st.mode & 0o022) === 0 &&
     (st.mode & 0o100) !== 0 &&
-    st.size === bytes.size
+    st.size === bytes.size &&
+    own()
   )
     return target
   mkdirSync(dir, { recursive: true, mode: 0o700 })
+  if (!own()) throw new Error(`${dir} is not this user's own directory`)
   const tmp = `${target}.${process.pid}.tmp`
   writeFileSync(tmp, new Uint8Array(await bytes.arrayBuffer()), { mode: 0o755 })
   chmodSync(tmp, 0o755)
