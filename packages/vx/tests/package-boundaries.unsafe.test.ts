@@ -247,6 +247,18 @@ describe('package boundaries', () => {
     expect(viaMap.defineProject).toBe(schema.defineProject)
   })
 
+  // A `tsc` on `moduleResolution: node` (node10: a NestJS app, any CommonJS
+  // project) reads no exports map, so the generated `import type … from
+  // '@vzn/vx/config'` failed its build with TS2307. `typesVersions` is the
+  // map that resolution reads.
+  it('@vzn/vx/config resolves for a tsc that reads no exports map', async () => {
+    const pkg = (await Bun.file(path.join(PACKAGES_DIR, 'vx', 'package.json')).json()) as {
+      exports: Record<string, { types: string }>
+      typesVersions?: Record<string, Record<string, string[]>>
+    }
+    expect(pkg.typesVersions?.['*']?.['config']).toEqual([pkg.exports['./config']!.types])
+  })
+
   it('every package oxfmt config ignores the names the sandbox masks', async () => {
     const masked = ['.mcp.json', '.vscode', '.idea', '.claude']
     const configs = [path.join(PACKAGES_DIR, '..', '.oxfmtrc.json')]

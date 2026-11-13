@@ -38,7 +38,7 @@ $ bunx @vzn/vx-migrate --dry
   dry run   nothing written
   tasks     1 todo
   todo      app#build: npm ran `prebuild` and `postbuild` around this script without being asked; folded into the command in that order
-            app#build: cache: add `inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true` with this package's real inputs and outputs …
+            app#build: cache: add `inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true` with this package's real outputs, and narrow the inputs to what it reads …
 ```
 
 The chain stops at the first part that fails. Arguments after `--` reach

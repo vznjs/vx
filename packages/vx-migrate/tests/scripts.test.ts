@@ -599,6 +599,17 @@ describe('migrateScripts', () => {
     expect(at('kit').task!['dependsOn']).toEqual(['^build'])
   })
 
+  // Pasted as `src/**`, a Vite app's index.html and config were in no key:
+  // an edit to either replayed the old build.
+  it('the cache TODO keys every file of the package, to be narrowed', () => {
+    const todo = project({ build: 'vite build' })
+      ?.tasks.find((t) => t.name === 'build')
+      ?.todos.find((d) => d.startsWith('cache: add'))
+    expect(todo).toStartWith(
+      "cache: add `inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true` with this package's real outputs, and narrow the inputs to what it reads",
+    )
+  })
+
   it('a `build` that only delegates puts the cache TODO on the task that works (item 1045)', () => {
     const cacheTodos = (scripts: unknown) =>
       Object.fromEntries(

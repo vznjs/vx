@@ -91,6 +91,7 @@ export {
   quoteTsLiteral,
   renderWorkspace,
   starterProject,
+  tscCompilesConfigNotes,
   writeMigration,
   type ApplyMigrationArgs,
   type MigrationFormat,

@@ -640,6 +640,8 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
         ...ignoredByGlobs(t.inputs?.workspaceFiles, root, root, literals),
       ]) {
         const ws = relPosix(root, abs)
+        // A `**` reader with no cache has no key to go stale.
+        if (glob.startsWith('**') && t.cache !== true) continue
         if (!own(relPosix(m.dir, abs)) && !ownWs(ws)) found.push({ task, ws, rel, glob })
       }
       if (t.cache !== true) continue

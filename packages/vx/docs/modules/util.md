@@ -2038,7 +2038,8 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
   `rules` when they have some, and, when deep, no listed file matches.
   Undecided is not ignored.
 - `ignoredByGlobs`: the files on disk under `base` that an input glob's
-  last segment matches directly (`.env*`, `config/*.json`; no `**`) and
+  last segment matches directly (`.env*`, `config/*.json`; a `**` glob is
+  asked only for the `.env*` files in `base`) and
   `files` (root-relative) does not hold, one `readdir` per such glob, no
   git. A run's miss passes its keyed files, so what is left is ignored;
   `vx lock` passes the entries' literals and asks `checkIgnoreSync` of
