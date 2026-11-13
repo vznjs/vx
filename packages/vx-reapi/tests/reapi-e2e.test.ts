@@ -151,14 +151,16 @@ describe.if(run)('chunkBytes is a real escape hatch, not just an option', () => 
   // The ceiling that forces this option to exist is peer-dependent (Bun
   // #30342 / #31584 — Go gRPC grows its window and Bun mishandles the tail).
   // So the escape hatch has to be exercised against a real server, or it is
-  // just a field nobody has proven routes anywhere.
+  // just a field nobody has proven routes anywhere. The 5 s deadline is what
+  // a stalled 128 KB write costs before the downgrade retries it: at the
+  // default 30 s, half of CI's runs (13 of 26) held a worker 30 s longer.
   it.each([
     ['the default (65535)', undefined],
     ['128 KB', 128 * 1024],
   ])('round-trips a multi-chunk artifact at %s', async (_label, chunkBytes) => {
     const cache = new ReapiRemoteCache({
       endpoint,
-      ...(chunkBytes === undefined ? {} : { chunkBytes }),
+      ...(chunkBytes === undefined ? {} : { chunkBytes, callTimeoutMs: 5_000 }),
     })
     try {
       const key = `vx-chunk-${nonce()}`
