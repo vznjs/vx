@@ -571,7 +571,7 @@ async function starter(
   // Run in the cwd, a git init below the root it chose hides the workspace from every verb.
   const gitInit =
     root === process.cwd() ? 'git init' : `git init ${path.relative(process.cwd(), root)}`
-  const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `bunx @vzn/vx-migrate${args.mjs ? ' --mjs' : ''} to make package.json scripts tasks, or ${declare}` : declare}`
+  const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `${migrateHint(args.mjs === true)} to make package.json scripts tasks, or ${declare}` : declare}`
   const notes = tscCompilesConfigNotes(
     root,
     files.map((f) => path.join(root, f.path)),
@@ -655,6 +655,11 @@ async function migrate(dirs: readonly string[], args: InitArgs): Promise<number>
     // A compiled vx is a Bun runtime only when told so.
     env: isCompiledBinary() ? { ...process.env, BUN_BE_BUN: '1' } : process.env,
   }).exited
+}
+
+/** The line that sends a scripts workspace to vx-migrate, at this vx's version: `bun x` may answer a bare name from its cache. */
+export function migrateHint(mjs: boolean, running = VERSION): string {
+  return `bunx @vzn/vx-migrate${running === '0.0.0' ? '' : `@${running}`}${mjs ? ' --mjs' : ''}`
 }
 
 export function migrateCommand(

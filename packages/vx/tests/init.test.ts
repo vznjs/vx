@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { migrateCommand, parseInitArgs } from '../src/cli/init.js'
+import { migrateCommand, migrateHint, parseInitArgs } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { definePlugin } from '../src/index.js'
 import { noticed } from './helpers/notice.js'
@@ -392,4 +392,18 @@ describe('vx init --plugin <hook>', () => {
     },
     TIMEOUT,
   )
+})
+
+// A bare `bunx @vzn/vx-migrate` may be a day-old cached release, or newer
+// than the vx this workspace installed.
+it('the next line names vx-migrate at the running version', () => {
+  expect([
+    migrateHint(false, '0.0.656'),
+    migrateHint(true, '0.0.656'),
+    migrateHint(false, '0.0.0'),
+  ]).toEqual([
+    'bunx @vzn/vx-migrate@0.0.656',
+    'bunx @vzn/vx-migrate@0.0.656 --mjs',
+    'bunx @vzn/vx-migrate',
+  ])
 })

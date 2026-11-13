@@ -12,6 +12,7 @@ import {
   installArgv,
   managerArgv,
   missingPackages,
+  workspaceVersion,
   packageManagerOf,
   parseModeAnswer,
   removeArgv,
@@ -192,6 +193,30 @@ describe('the package manager', () => {
         ['@vzn/vx-migrate'],
         ['@vzn/vx-migrate'],
       ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  // 0.0.655 from `bun x`'s cache, in a workspace on 0.0.656: it put the
+  // lockfile plugin back to 0.0.655.
+  it("pins to the workspace's installed vx, so a plugin beside it is not missing", async () => {
+    const root = await tmp('vx-adopt-pin-')
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ devDependencies: { '@vzn/vx': '*', '@vzn/vx-lockfile': '*' } }),
+      )
+      const none = workspaceVersion(root)
+      for (const p of ['vx', 'vx-lockfile']) {
+        await mkdir(path.join(root, 'node_modules', '@vzn', p), { recursive: true })
+        await writeFile(
+          path.join(root, 'node_modules', '@vzn', p, 'package.json'),
+          JSON.stringify({ version: '0.0.656' }),
+        )
+      }
+      expect([none, workspaceVersion(root)]).toEqual([null, '0.0.656'])
+      expect(missingPackages(root, ['@vzn/vx-lockfile'], workspaceVersion(root))).toEqual([])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -129,6 +129,23 @@ export function ownVersion(): string | null {
 }
 
 /**
+ * The version this workspace's @vzn packages are held to: its installed
+ * `@vzn/vx`'s, else this release's. `bun x` answers from a day-old cache
+ * and a workspace is rarely on the newest vx, so pinning to this package's
+ * own version put a 0.0.655 lockfile plugin beside vx 0.0.656.
+ */
+export function workspaceVersion(root: string): string | null {
+  const installed = readText(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))
+  let v: unknown
+  try {
+    v = installed === '' ? undefined : (JSON.parse(installed) as { version?: unknown }).version
+  } catch {
+    v = undefined
+  }
+  return typeof v === 'string' && v !== '0.0.0' ? v : ownVersion()
+}
+
+/**
  * The `wanted` packages the root does not both list and have installed (at
  * `version`, given one). Either alone is not adopted: a reset package.json
  * leaves node_modules behind, and a listing is not an install; on solidjs/solid
