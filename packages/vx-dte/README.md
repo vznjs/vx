@@ -843,8 +843,9 @@ spends besides the run's tasks, and each worker's warm-up. The `drift`
 line says how far past it the run ended and what caused it, along the
 chain of tasks that ended the run: tasks waiting for a worker to join
 past its platform's fastest warm-up, waiting for room on a joined one,
-their inputs reaching their worker, and the run's time after its last
-task. The first ask
+their inputs reaching their worker, a dependency's files coming to this
+machine before the run hands over the task that waited on it, and the
+run's time after its last task. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that

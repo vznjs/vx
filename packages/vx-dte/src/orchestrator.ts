@@ -74,6 +74,8 @@ interface Drift {
   readonly room: number
   /** From its send to its worker beginning it: its inputs reaching it. */
   readonly sending: number
+  /** From a dependency's end on its worker to the run handing over the task that waited on it: its files coming to this machine. */
+  readonly home: number
   /** The run's time after its last task. */
   readonly after: number
 }
@@ -2629,8 +2631,9 @@ export class Orchestrator {
    * the time each waited past when its ideal could start it (as
    * `idealMs`, its platform's fastest warm-up from when the run knew its
    * work) for its worker to join, then for room on it; the time its
-   * inputs took to reach it once sent; and the run's time after its last
-   * task. `undefined` with no task run on a worker.
+   * inputs took to reach it once sent; the time from its dependency's end
+   * to the run handing it over, that dependency's files coming to this
+   * machine; and the run's time after its last task. `undefined` with no task run on a worker.
    */
   driftOf(depsOf: (id: string) => readonly string[]): Drift | undefined {
     const r = this.replay(depsOf)
@@ -2646,6 +2649,7 @@ export class Orchestrator {
       joining: 0,
       room: 0,
       sending: 0,
+      home: 0,
       after: Math.max(0, until - this.timeline.get(id)!.end),
     }
     for (const seen = new Set<string>(); id !== undefined && !seen.has(id);) {
@@ -2662,6 +2666,10 @@ export class Orchestrator {
         const e = this.timeline.get(d)?.end
         if (e !== undefined && (next === undefined || e > this.timeline.get(next)!.end)) next = d
       }
+      // The run hands a task over once its dependencies' files are on this
+      // machine (main f04866b: 4.4 s of 6.0 s past the ideal, and no part
+      // named it).
+      if (next !== undefined) out.home += Math.max(0, l.queued - this.timeline.get(next)!.end)
       id = next
     }
     return out
@@ -3036,6 +3044,7 @@ function driftRow(past: number, d: Drift | undefined, width: number): [string, u
       ['workers joining', d.joining],
       ['waiting for room', d.room],
       ['sending inputs', d.sending],
+      ['files coming home', d.home],
       ['after the last task', d.after],
     ] as const
   )
