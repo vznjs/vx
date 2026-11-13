@@ -357,6 +357,8 @@ const startCommands = [
   </div>
 
   <script>
+    import { lapAt, lapsLabel, racing, step } from '../components/landing/race.ts'
+
     // Bands play once as they come near: the count runs up, the columns
     // rise, the race starts. Everything already shows at rest; the play
     // class only replays it, and never with reduced motion.
@@ -383,37 +385,47 @@ const startCommands = [
         { rootMargin: '0px 0px -15% 0px' },
       )
       document.querySelectorAll('.band').forEach((el) => seen.observe(el))
-      // The race runs only while it is in view, and costs nothing out of it
-      // (tests/motion-budget.test.ts): sixteen transform-only runners, each
-      // lapping in real time, one lap as long as the time it measured.
+      // The race runs only while it is on screen, and costs nothing off it
+      // (tests/motion-budget.test.ts): sixteen runners moved by transform,
+      // each lapping in real time, one lap as long as the time it measured.
+      // One clock moves the runners and counts the laps (race.ts), and
+      // whether it runs is read from where the band is now, never from a
+      // queued observer entry, so a fast scroll, a tab switch or a page
+      // restored from the back button cannot leave it stopped.
       const speed = document.getElementById('speed')!
-      const fields = [...speed.querySelectorAll<HTMLElement>('.race')].map((race) =>
-        [...race.querySelectorAll<HTMLElement>('.lane')].map((lane) => {
-          const ms = parseFloat(getComputedStyle(lane).getPropertyValue('--lap')) * 1000
-          const run = lane
-            .querySelector('.runner')!
-            .animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' }], { duration: ms, iterations: Infinity })
-          run.pause()
-          return { ms, run, laps: lane.querySelector<HTMLElement>('.lane-laps')! }
-        }),
-      )
-      const tally = (): void => {
-        for (const lanes of fields) {
-          for (const l of lanes) {
-            const n = Math.floor(Number(l.run.currentTime ?? 0) / l.ms)
-            l.laps.textContent = n === 1 ? '1 lap' : `${n} laps`
-          }
+      const lanes = [...speed.querySelectorAll<HTMLElement>('.lane')].map((lane) => ({
+        ms: parseFloat(lane.style.getPropertyValue('--lap')) * 1000,
+        runner: lane.querySelector<HTMLElement>('.runner')!,
+        laps: lane.querySelector<HTMLElement>('.lane-laps')!,
+        shown: -1,
+      }))
+      let elapsed = 0
+      let last = 0
+      let live = false
+      const frame = (now: number): void => {
+        if (!live) return
+        elapsed += step(now, last)
+        last = now
+        for (const l of lanes) {
+          const at = lapAt(elapsed, l.ms)
+          l.runner.style.transform = `translateX(${at.x.toFixed(2)}%)`
+          if (at.laps !== l.shown) l.laps.textContent = lapsLabel((l.shown = at.laps))
         }
+        requestAnimationFrame(frame)
       }
-      let tick = 0
-      new IntersectionObserver(([e]) => {
-        clearInterval(tick)
-        for (const l of fields.flat()) {
-          if (e!.isIntersecting) l.run.play()
-          else l.run.pause()
-        }
-        if (e!.isIntersecting) tick = window.setInterval(tally, 120)
-      }).observe(speed)
+      const sync = (): void => {
+        const on = racing(speed.getBoundingClientRect(), innerHeight, document.hidden)
+        if (on === live) return
+        live = on
+        if (!on) return
+        speed.classList.add('racing')
+        last = performance.now()
+        requestAnimationFrame(frame)
+      }
+      new IntersectionObserver(sync).observe(speed)
+      document.addEventListener('visibilitychange', sync)
+      addEventListener('pageshow', sync)
+      addEventListener('scroll', sync, { passive: true })
       // The scope steps through its example tasks while it is in view.
       const scope = document.querySelector<HTMLElement>('.scope')!
       const tasks = JSON.parse(scope.dataset['scope']!) as Array<Record<string, string | number>>

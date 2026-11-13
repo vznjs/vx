@@ -856,15 +856,18 @@
   background: #f4ffd6;
   box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
 }
-.band.play .lane-track {
+/* Set by the race's own script the first time it runs, so the runners
+   never show without the clock that moves them. */
+.band.racing .lane-track {
   overflow: hidden;
   border-right: 1px solid var(--hair);
 }
-.band.play .streak {
+.band.racing .streak {
   display: none;
 }
-.band.play .runner {
+.band.racing .runner {
   display: block;
+  will-change: transform;
 }
 
 /* ---- data: the scope, one task's instruments ---- */
