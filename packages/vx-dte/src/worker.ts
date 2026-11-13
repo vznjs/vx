@@ -134,7 +134,9 @@ export async function runWorker(opts: {
       if (pid === undefined) {
         serverTrees.drop(id)
         usersOf.delete(id)
+        spawnedAt.delete(id)
       } else {
+        spawnedAt.set(id, performance.now())
         serverTrees.watch(id, pid)
         usersOf.set(id, usersOf.get(id) ?? new Set())
       }
@@ -151,8 +153,14 @@ export async function runWorker(opts: {
       ...load.now(),
       tasks: trees.now(),
       ...(Object.keys(servers).length === 0 ? {} : { servers }),
+      ...(Object.keys(starts).length === 0 ? {} : { starts }),
     }
   }
+  // When each server it runs spawned, and how long after the first task
+  // needing it did: the plan adds that to the task (main: test.live held
+  // its worker 11 s before its command, and ended that far past the plan).
+  const spawnedAt = new Map<string, number>()
+  const starts: Record<string, number> = {}
   const usersOf = new Map<string, Set<string>>()
   let sampledAt = performance.now()
   const sampler = setInterval(() => {
@@ -221,6 +229,7 @@ export async function runWorker(opts: {
     // elsewhere once this worker leaves. One such end reached the orchestrator
     // and failed the run.
     if (quit.signal.aborted || leaving.signal.aborted) return
+    const began = Date.now()
     const { output, ...result } = res
     // Forced: the key keeps an entry it holds, so the run's machines restore
     // the fresh bytes under the run key.
@@ -264,6 +273,7 @@ export async function runWorker(opts: {
     // No remote took it after its tries: the run's other machines read the
     // remotes alone, so the task is this worker's fault, run elsewhere.
     const saved = keys.at(-1)!
+    const kept = Date.now()
     if ((await artifacts.uploaded?.(saved)) === false)
       throw new Error(`no remote cache took its entry ${saved} (this worker's log says why)`)
     if (result.exitCode === 0)
@@ -281,6 +291,7 @@ export async function runWorker(opts: {
       startedAt: t?.startedAt ?? endedAt,
       ranAt: t?.ranAt ?? endedAt,
       endedAt,
+      spent: { check: began - (t?.ranAt ?? began), save: kept - began, upload: endedAt - kept },
       load: frame(),
     }
     for (const part of parts(end)) await say(part)
@@ -477,6 +488,11 @@ export async function runWorker(opts: {
         envDefine: {},
         signal: stop.signal,
         onSpawn: (pid) => {
+          for (const sv of serves) {
+            const at = spawnedAt.get(sv)
+            if (at !== undefined && starts[sv] === undefined)
+              starts[sv] = Math.round(performance.now() - at)
+          }
           using()
           trees.watch(m.task, pid)
         },
@@ -651,7 +667,14 @@ export async function runWorker(opts: {
               ['worker', ui.id(m.name)],
               ['run', opts.run],
               ['relay', opts.relay],
-              ['machine', `${cores} cores · ${gb(memory)}`],
+              // Its CPU by name: two machines of one size ran the same shards
+              // at 0.75 and 1.38 times their CPU time (main 18ed04f).
+              [
+                'machine',
+                [`${cores} cores`, gb(memory), os.cpus()[0]?.model.trim()]
+                  .filter((s) => s !== undefined && s !== '')
+                  .join(' · '),
+              ],
             ]),
           )
         } else if (m.type === 'deps') {

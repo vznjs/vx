@@ -103,6 +103,8 @@ interface Job {
   startedAt?: number
   /** When its worker said its command ended: it saves since. */
   ranAt?: number
+  /** Where its worker says that time went, ms (`end.spent`): the profile shows it. */
+  spent?: { check: number; save: number; upload: number }
   /** When it first waited on the worker holding an upstream's files (`kept`). */
   pinnedAt?: number
   /** Its upstreams already ran again for it: it waits on their worker however long. */
@@ -202,6 +204,8 @@ export interface OrchestratorOptions {
   readonly need: (taskId: string) => Need
   /** Each server's base, cores, as workers fit them: updated in place. */
   readonly bases?: Map<string, number>
+  /** Each server's start, ms, as workers measure it: updated in place. */
+  readonly starts?: Map<string, number>
   /** A size's cores its machines spent besides an earlier run's tasks (`othersOf`). */
   readonly learnedOther?: (size: string) => number | undefined
   /** The run's cache, by key: what workers save to and this machine restores from. */
@@ -1073,6 +1077,9 @@ export class Orchestrator {
       for (const [id, cores] of Object.entries(load.servers))
         if (typeof cores === 'number' && Number.isFinite(cores) && cores >= 0 && cores <= a.cores)
           this.o.bases?.set(id, cores)
+    if (typeof load.starts === 'object' && load.starts !== null)
+      for (const [id, ms] of Object.entries(load.starts))
+        if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) this.o.starts?.set(id, ms)
     const tasks = Number(load.tasks)
     if (Number.isFinite(tasks) && tasks >= 0) a.load.tasks = tasks
     // What the machine spends besides the run's tasks: GitHub's runner
@@ -1713,6 +1720,9 @@ export class Orchestrator {
         ...(head.peakRssBytes === undefined ? {} : { peakRssBytes: head.peakRssBytes }),
         bookedCores: job.booked ?? 0,
         ...(head.cpuShare === undefined ? {} : { cpuShare: head.cpuShare }),
+        ...(job.spent === undefined
+          ? {}
+          : { checkMs: job.spent.check, saveMs: job.spent.save, uploadMs: job.spent.upload }),
       },
       parts: [
         { name: 'sent', from: sent, to: began },
@@ -2009,6 +2019,13 @@ export class Orchestrator {
             const j = a.busy.get(m.task)
             if (j !== undefined) {
               j.ended = true
+              const sp = m.spent
+              if (
+                typeof sp === 'object' &&
+                sp !== null &&
+                [sp.check, sp.save, sp.upload].every((n) => Number.isFinite(n) && n >= 0)
+              )
+                j.spent = { check: sp.check, save: sp.save, upload: sp.upload }
               const began = here(m.startedAt)
               const ran = here(m.ranAt)
               if (began !== undefined) j.startedAt = began

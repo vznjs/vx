@@ -21,7 +21,7 @@ export interface MeasuredSize {
 export const workerId = (size: string): string => `${PLUGIN}#worker:${size}`
 /** How much later each next worker of a size joins than the one before (ms). */
 export const spreadId = (size: string): string => `${PLUGIN}#join-spread:${size}`
-/** A server's base: the cores it uses with no dependant's work (`server-fit.ts`). */
+/** A server as a task: its start (ms, spawn to ready) and its base, the cores it uses with no dependant's work (`server-fit.ts`). */
 export const baseId = (server: string): string => `${PLUGIN}#server-base:${server}`
 
 const hash = (s: string): string => Bun.hash.xxHash3(s).toString(16).padStart(16, '0')
@@ -54,6 +54,8 @@ export interface Learned {
   readonly spreads: Map<string, number>
   /** Each server's base (cores). */
   readonly bases: Map<string, number>
+  /** Each server's start (ms): what the first task needing it on a worker waits. */
+  readonly starts: Map<string, number>
 }
 
 /** The measures history forecast (`measuresFor`), by what each is of. */
@@ -65,6 +67,7 @@ export function learnedOf(
     others: new Map(),
     spreads: new Map(),
     bases: new Map(),
+    starts: new Map(),
   }
   for (const [id, m] of got) {
     const name = id.slice(id.indexOf(':') + 1)
@@ -72,8 +75,10 @@ export function learnedOf(
       out.warmUps.set(name, m.durationMs)
       if (m.cores !== undefined) out.others.set(name, m.cores)
     } else if (id.startsWith(`${PLUGIN}#join-spread:`)) out.spreads.set(name, m.durationMs)
-    else if (id.startsWith(`${PLUGIN}#server-base:`) && m.cores !== undefined)
-      out.bases.set(name, m.cores)
+    else if (id.startsWith(`${PLUGIN}#server-base:`)) {
+      if (m.cores !== undefined) out.bases.set(name, m.cores)
+      if (m.durationMs > 0) out.starts.set(name, m.durationMs)
+    }
   }
   return out
 }
@@ -90,8 +95,8 @@ const QUEUED_PAST = 2
 /**
  * This run's measures: each size a worker of joined (its least warm-up,
  * capped at `QUEUED_PAST` times history's `known`, and its machines'
- * other cores), each size two joined (its spread), each server base this
- * run fitted. Only those `defs` defines.
+ * other cores), each size two joined (its spread), each server this run
+ * fitted a base of or started (`starts`). Only those `defs` defines.
  */
 export function runMeasures(
   defs: ReadonlyMap<string, string>,
@@ -100,6 +105,7 @@ export function runMeasures(
     others: ReadonlyMap<string, number>
     spreads: ReadonlyMap<string, number>
     bases: ReadonlyMap<string, number>
+    starts?: ReadonlyMap<string, number>
   },
   known: ReadonlyMap<string, number> = new Map(),
 ): Measure[] {
@@ -116,6 +122,6 @@ export function runMeasures(
       run.others.get(size),
     )
   for (const [size, ms] of run.spreads) add(spreadId(size), ms)
-  for (const [server, cores] of run.bases) add(baseId(server), 0, cores)
+  for (const [server, cores] of run.bases) add(baseId(server), run.starts?.get(server) ?? 0, cores)
   return out
 }

@@ -71,6 +71,7 @@ it("reads back a run's measures as what it learned", () => {
     others: new Map([['linux.small', 0.4]]),
     spreads: new Map([['linux.small', 1_500]]),
     bases: new Map([['a#dev', 0.75]]),
+    starts: new Map([['a#dev', 9_000]]),
   })
   // A size the run declares no definition for is no measure.
   expect(run.map((m) => m.id)).toEqual([
@@ -85,5 +86,6 @@ it("reads back a run's measures as what it learned", () => {
     others: new Map([['linux.small', 0.4]]),
     spreads: new Map([['linux.small', 1_500]]),
     bases: new Map([['a#dev', 0.75]]),
+    starts: new Map([['a#dev', 9_000]]),
   })
 })

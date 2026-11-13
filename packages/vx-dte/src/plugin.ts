@@ -367,7 +367,10 @@ export function dte(options: DteOptions = {}) {
     others: new Map(),
     spreads: new Map(),
     bases: new Map(),
+    starts: new Map(),
   }
+  /** Each server's start this run's workers measured, ms. */
+  let starts = new Map<string, number>()
   /** Each server's base an earlier run learned, then this run's workers' over it (`server-fit.ts`). */
   let bases = new Map<string, number>()
   /** Each measure as last reported (`ctx.measure`): one unchanged is not reported again. */
@@ -397,8 +400,15 @@ export function dte(options: DteOptions = {}) {
     ran = nodes
     nodes = undefined
     measured = new Map()
-    learned = { warmUps: new Map(), others: new Map(), spreads: new Map(), bases: new Map() }
+    learned = {
+      warmUps: new Map(),
+      others: new Map(),
+      spreads: new Map(),
+      bases: new Map(),
+      starts: new Map(),
+    }
     bases = new Map()
+    starts = new Map()
     reported.clear()
     peaks = new Map()
     tails = undefined
@@ -542,7 +552,13 @@ export function dte(options: DteOptions = {}) {
       const report = (): void => {
         const o = orchestrator
         if (o === undefined) return
-        const fitted = new Map([...bases].filter(([id, c]) => learned.bases.get(id) !== c))
+        // A server whose base it fitted or that it started: both in one row.
+        const fitted = new Map<string, number>()
+        for (const [id, c] of bases) if (learned.bases.get(id) !== c) fitted.set(id, c)
+        for (const id of starts.keys()) fitted.set(id, bases.get(id) ?? 0)
+        const started = new Map<string, number>()
+        for (const id of fitted.keys())
+          started.set(id, starts.get(id) ?? learned.starts.get(id) ?? 0)
         if (measures === undefined) return
         const now = measures.runMeasures(
           measured,
@@ -551,6 +567,7 @@ export function dte(options: DteOptions = {}) {
             others: o.othersOf(),
             spreads: o.spreadsMs(),
             bases: fitted,
+            starts: started,
           },
           learned.warmUps,
         )
@@ -716,7 +733,13 @@ export function dte(options: DteOptions = {}) {
           if (nodes !== undefined) serves.set(id, ids)
         }
         if (ids.length === 0) return n
-        return { ...n, servers: ids.map((sv) => ({ id: sv, cores: bases.get(sv) ?? 0 })) }
+        return {
+          ...n,
+          servers: ids.map((sv) => {
+            const ms = starts.get(sv) ?? learned.starts.get(sv)
+            return { id: sv, cores: bases.get(sv) ?? 0, ...(ms === undefined ? {} : { ms }) }
+          }),
+        }
       }
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
@@ -737,6 +760,7 @@ export function dte(options: DteOptions = {}) {
         nodes: () => nodes,
         need,
         bases,
+        starts,
         learnedOther: (size) => learned.others.get(size),
         artifacts: ctx.artifacts,
         cacheFacts: () => ctx.cacheFacts(),

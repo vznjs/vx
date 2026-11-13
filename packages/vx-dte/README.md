@@ -204,7 +204,7 @@ as each task starts and ends:
   worker     worker#1
   run       5f0c7a52-…
   relay     http://127.0.0.1:8080
-  machine   10 cores · 17.2 GB
+  machine   10 cores · 17.2 GB · Apple M1 Pro
 › b#build  running
 ✓ b#build  308ms
 ```
@@ -778,7 +778,7 @@ warm-up, not before it. Each size's worker is timed as a task is:
 memory and runner, so a size changed starts over. Its warm-up is the
 task's time, at most twice what history said (more is the CI's queue),
 and its machine's cores besides the run's tasks its cores; its join spread is `@vzn/vx-dte#join-spread:<size>`, and each server's
-base `@vzn/vx-dte#server-base:<task>`. Core keeps them in the run's
+base `@vzn/vx-dte#server-base:<task>`, its start that measure's time. Core keeps them in the run's
 history, and a history plugin (`@vzn/vx-history`) shares them as it does
 task timings, so the next run plans by them before any worker of that
 size joins.
@@ -887,7 +887,9 @@ reported busy, its tasks' or not (placement never fills a worker past
 it), beside the cores its running tasks' process trees used, read each
 second as core's `task.sample` reads them; each task takes the first lane free over its time
 there, from its send through restoring its dependencies, its command
-and its save, with its exit code, duration, CPU time and booked cores.
+and its save, with its exit code, duration, CPU time, booked cores and
+where its worker says the save's time went (`checkMs` reading what it
+left, `saveMs` saving here, `uploadMs` until a remote took it).
 The `orchestrator` process holds the cache probe, each ask for workers, each
 plan that started or let go of workers with what it saw of each worker
 (one that started workers also with each task's planned time, cores and
@@ -1023,7 +1025,10 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     the run makes it again first; the worker holding them stays while it
     has such a task to come. A server's base is packed as the run books
     it: once on each worker that starts it, from its first dependant
-    there until its last dependant anywhere ends. It then packs again in other orders, up to 64 times (fewer
+    there until its last dependant anywhere ends. A server's start, from
+    its spawn to its first dependant's as its worker measured it and
+    history keeps it, is added to each dependant's time: the task holds
+    its worker that long before its command. It then packs again in other orders, up to 64 times (fewer
     past 100 tasks, none past 6400), each new worker's task a random way
     into its slack, and keeps the one holding least by the same end. How far that is from the least
     a run can hold: `scripts/optimum.ts` plays small graphs and
