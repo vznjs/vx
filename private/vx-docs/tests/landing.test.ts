@@ -11,6 +11,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
 import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
+import { lapAt, lapsLabel, racing, step } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
@@ -344,6 +345,41 @@ describe('the landing page', () => {
       `${BASE}features/`,
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
+  })
+
+  // The race's clock: a lap takes the tool's measured time, the lap count
+  // and the runner's place come from the same elapsed time, and whether it
+  // runs is a fact about where the band is now. The race once stopped for
+  // good when an observer's queued entry was stale (2026-11-13).
+  it('runs the race on one clock, whenever the band is on screen', () => {
+    expect(lapAt(0, 390)).toEqual({ laps: 0, x: -100 })
+    expect(lapAt(195, 390)).toEqual({ laps: 0, x: -50 })
+    expect(lapAt(390 * 38 + 39, 390).laps).toBe(38)
+    expect(lapAt(390 * 38 + 39, 390).x).toBeCloseTo(-90)
+    // 14 s in, vx has lapped 35 times and Nx once: real time, not a share.
+    expect([lapAt(14_000, 390).laps, lapAt(14_000, 7460).laps]).toEqual([35, 1])
+    expect(lapsLabel(0)).toBe('0 laps')
+    expect(lapsLabel(1)).toBe('1 lap')
+    const view = 900
+    expect(racing({ top: 899, bottom: 2000 }, view, false)).toBe(true)
+    expect(racing({ top: -1500, bottom: 1 }, view, false)).toBe(true)
+    expect(racing({ top: 900, bottom: 2000 }, view, false)).toBe(false)
+    expect(racing({ top: -1500, bottom: 0 }, view, false)).toBe(false)
+    expect(racing({ top: 100, bottom: 800 }, view, true)).toBe(false)
+    // A tab that slept an hour moves the race one frame's worth, not an hour.
+    expect(step(3_600_000, 0)).toBe(100)
+    expect(step(1016, 1000)).toBe(16)
+    // Every lane carries its measured lap for the script to read.
+    const laps = [...section(html, 'speed').matchAll(/--lap:([\d.]+)s/g)].map((m) => Number(m[1]))
+    expect(laps).toHaveLength(16)
+    expect(laps.every((s) => s > 0)).toBe(true)
+    // The script reads the band's place, not an observer entry.
+    const page = readFileSync(
+      path.join(import.meta.dir, '..', 'src', 'pages', 'index.astro'),
+      'utf8',
+    )
+    expect(page).toContain('new IntersectionObserver(sync).observe(speed)')
+    expect(page).toContain("addEventListener('pageshow', sync)")
   })
 
   // The scope shows the fields vx records for a task, on an example run it
