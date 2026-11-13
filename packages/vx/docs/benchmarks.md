@@ -695,9 +695,9 @@ before each workspace, prints every rep and records the load in the row.
 | solid `b25c557`, 4 tasks, 2.10.10         | Cold build  | 30.45 s | 36.01 s |
 | solid                                     | Restore     | 0.075 s | 0.075 s |
 | solid                                     | Nothing new | 0.064 s | 0.066 s |
-| vueuse `efdd69a`, 12 tasks, 2.10.12       | Cold build  | 16.70 s | 18.57 s |
-| vueuse                                    | Restore     | 0.140 s | 0.106 s |
-| vueuse                                    | Nothing new | 0.097 s | 0.098 s |
+| vueuse `efdd69a`, 12 tasks, 2.10.12       | Cold build  | 14.77 s | 17.05 s |
+| vueuse                                    | Restore     | 0.074 s | 0.081 s |
+| vueuse                                    | Nothing new | 0.066 s | 0.075 s |
 | create-t3-turbo `8f945b7`, 3 tasks, 2.5.8 | Cold build  | 5.37 s  | 6.47 s  |
 | create-t3-turbo                           | Restore     | 0.078 s | 0.408 s |
 | create-t3-turbo                           | Nothing new | 0.071 s | 0.407 s |
@@ -790,7 +790,7 @@ The write is now marked where it landed too. Turbo without its daemon extracts
 every hit on every run, the no-op too, on parallel goroutines: its
 restore and no-op make the same syscalls.
 
-Vueuse's restore still loses, 140 against 106 ms. About 7 ms is
+Vueuse's restore lost on 2026-11-11, 140 against 106 ms. About 7 ms is
 `stable keys` statting 1,124 files: under `text=auto` the index's stat
 cannot stand in for them, since git calls a same-size line-ending swap
 clean and keeps the old stat (stale-hit-git.test.ts). Turbo keys on the
@@ -800,7 +800,19 @@ the restore's own work, 25 ms on 4 cores: trees alone 10 ms, the five
 inline artifacts alone 9 ms, all twelve 26 ms. Copying is 1.9 ms of it;
 `fs.promises.cp` (14.5 ms) and a Worker (1.5–2.4 ms to start) lost.
 
-Load average before each workspace: vueuse 0.3, solid 1.0 and t3 0.2,
+Vueuse's rows are from 2026-11-13, at main with #5275 and #5286, load
+1.2 before the run; on 2026-11-11 its restore lost, 140 against 106 ms
+(cold 16.70 against 18.57 s, nothing new 97 against 98 ms). Three
+things moved it. A `workspaceFiles` task and a task whose globs take a
+sibling's fresh output (`**/*` over the ignored `index.json`) now keep
+their key rows across the build. Under `text` and `eol` the index OID
+stands for a file whose blob is its size (caching.md, Clean filters),
+so no file is stat'ed for a key. And a build's save marks what it wrote
+instead of dropping the workspace listing, so the cold run's rows are
+under the tokens the restore names. All five reps: vx restore 74, 100,
+79, 115, 94 ms, Turbo 81, 86, 100, 99, 110.
+
+Load average before each workspace on 2026-11-11: vueuse 0.3, solid 1.0 and t3 0.2,
 the last two rerun once the box settled (solid began at 14 after
 vueuse's cold builds and lost its restore tie by one rival rep).
 
