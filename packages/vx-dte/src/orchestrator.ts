@@ -421,7 +421,7 @@ export class Orchestrator {
   private movedAt = performance.now()
   /** When core's cache probe answered, how many placed tasks it left to run, and how many it found in no cache. */
   private probe?: { at: number; left: number; misses: number }
-  /** Each task a worker ran: how long it held the worker, the cores it used meanwhile, its memory, the platform. */
+  /** Each task a worker ran: how long it held the worker, the cores it held (or used, if more) meanwhile, its memory, the platform. */
   private readonly took = new Map<
     string,
     { ms: number; cores: number; memory: number; platform: string | undefined }
@@ -1500,6 +1500,7 @@ export class Orchestrator {
     const endAt = endedAt ?? performance.now()
     this.traceTask(a, job, head, endAt)
     a.busy.delete(task)
+    const room = job.held?.cores ?? 1
     this.unhold(a, job)
     a.started.delete(task)
     a.ran++
@@ -1525,13 +1526,14 @@ export class Orchestrator {
     })
     this.took.set(task, {
       ms: held,
-      cores:
-        head.cpuMs === undefined
-          ? (job.held?.cores ?? 1)
-          : // The cores it used over the time it held: its free cores over
-            // its crowded length counted the crowd twice (6a7224f: ideal
-            // 127.8 s, real 111.0 s).
-            Math.min(a.cores, head.cpuMs / held),
+      // The cores it held, or used if more, over the time it held: its
+      // free cores over its crowded length counted the crowd twice
+      // (6a7224f: ideal 127.8 s, real 111.0 s). Never the average it used
+      // alone: at their 0.5-core average the ideal placed 7 test shards a
+      // 4-core worker, as long as each took at 4 a worker, where 8 a
+      // worker ran 146-199 s each for 50-100 s (main c2adbdd); so full
+      // runs read 50-60 s past an ideal no placing reaches (2026-11-13).
+      cores: Math.min(a.cores, head.cpuMs === undefined ? room : Math.max(room, head.cpuMs / held)),
       memory: head.peakRssBytes ?? job.held?.memory ?? 0,
       platform: a.platform,
     })
@@ -2455,7 +2457,7 @@ export class Orchestrator {
   /**
    * The run's end had it placed its tasks perfectly (2026-10-23: "how
    * close the run was"): each task a worker ran, as long as it held its
-   * worker and with the cores it used meanwhile, played on as
+   * worker and in the cores it held there (or used, if more), played on as
    * many workers as the sizes allow, each joining after its platform's
    * fastest real warm-up, from when the run first knew its work. A task
    * waits on its deps through those no worker ran (groups, hits).
@@ -2662,7 +2664,7 @@ export class Orchestrator {
 
   /**
    * Each task a worker ran, as long as it held its worker and with the
-   * cores it used meanwhile, waiting on its deps through those no worker
+   * cores it held there (or used, if more), waiting on its deps through those no worker
    * ran (groups, hits); each platform's fastest real warm-up; and when
    * the run first knew its work.
    */
