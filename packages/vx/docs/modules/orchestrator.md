@@ -1217,14 +1217,16 @@ the file in the outputs of the task that writes it.
    output directory linked out of the project, or a `workspaceFiles` one
    out of the workspace, never gets here: the resolver refuses the task,
    naming the link (X-88, M-65).
-3. `markOutputsChanged` / `markWorkspaceOutputsChanged` /
-   `invalidateWorkspacePartition` — the git snapshot learns the exact
-   paths, not "everything changed"; on a 1,000-package cold run that
-   is one `git ls-files` spawn per project not made. The last two mask
-   each other on the workspace partition: a consumer that read it
-   before the producer wrote keys from an empty set with both gone, and
-   a later run whose real set is empty hits that artifact
-   (`stale-hit-memo.test.ts`, "written mid-run", item 637).
+3. `markOutputsChanged` / `markWorkspaceOutputsChanged` — the git
+   snapshot learns the exact paths, not "everything changed"; on a
+   1,000-package cold run that is one `git ls-files` spawn per project
+   not made. The workspace partition takes the same marks and stands
+   (until 2026-11-12 every save dropped it, and each `workspaceFiles`
+   key after one was remembered under a token the next run never
+   named). Without the marks a consumer that read the partition before
+   the producer wrote keys from an empty set, and a later run whose
+   real set is empty hits that artifact (`stale-hit-memo.test.ts`,
+   "written mid-run", item 637).
 4. `cache.save` — entry, output rows and `entry_inputs` rows in one
    transaction; no exit code, because the contract accepts none and the
    caller's `exitCode === 0` gate is the invariant.
