@@ -1014,6 +1014,13 @@ function follow(
       // never ended (a two-task chain on a max-1 size, its rest within the
       // slack). Played again, the plan sees what waits for it.
       if (given.get(w.id)?.some((id) => !f.seen.has(id)) === true) return undefined
+      // It holds files no cache does: a task to come that reads them makes
+      // them again without it (main 6bc3c90: the docs build ran twice, 30 s
+      // past the ideal). The plan made anew reads them and keeps it.
+      if (w.holds !== undefined && w.holds.size > 0) {
+        if (tasks === undefined) return 'full'
+        if (tasks.some((t) => t.reads?.some((r) => w.holds!.has(r)) === true)) return undefined
+      }
       release.push(w.id)
       workers.delete(w.id)
     }

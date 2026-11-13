@@ -813,6 +813,65 @@ it('lets no worker go before the work planned on it has started', () => {
   expect(at(170, [], []).release).toEqual(['w'])
 })
 
+// Main 6bc3c90: the forecast let the docs build's worker go as its work
+// ended; the deploy that read its files built them again elsewhere.
+it('follows no forecast into letting go a worker whose files a task to come reads', () => {
+  const nodes = new Map(
+    [
+      ['a', []],
+      ['slow', []],
+      ['c', ['a', 'slow']],
+    ].map(([id, deps]) => [
+      id as string,
+      {
+        id,
+        deps,
+        config: {
+          exec: { command: 'x' },
+          ...(id === 'a' ? { outputs: ['out'] } : { cache: true }),
+        },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const two: Size = { name: 'two', max: 2, cpu: 1, memory: 1e9 }
+  const last: { forecast?: Forecast } = {}
+  const at = (now: number, remaining: string[], w: Partial<PlanWorker>, slowEndsIn: number) =>
+    decide({
+      remaining,
+      nodes,
+      executed: new Set(['a', 'slow', 'c']),
+      need: () => ({ cores: 1, memory: 1e8 }),
+      durationMs: (id) => (id === 'slow' ? 20_000 : 5_000),
+      workers: [
+        worker('w', { cores: 1, memory: 1e9, size: 'two', ...w }),
+        worker('v', {
+          cores: 1,
+          memory: 1e9,
+          size: 'two',
+          idle: false,
+          running: [{ id: 'slow', cores: 1, memory: 1e8, endsIn: slowEndsIn }],
+        }),
+      ],
+      running: new Set(['slow', ...(w.running ?? []).map((r) => r.id!)]),
+      sizes: [two],
+      started: new Map([['two', 2]]),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+  at(
+    0,
+    ['a', 'slow', 'c'],
+    { idle: false, running: [{ id: 'a', cores: 1, memory: 1e8, endsIn: 5_000 }] },
+    20_000,
+  )
+  // a ended: c waits on slow, and reads a's files, which only w holds.
+  const p = at(5_000, ['slow', 'c'], { holds: new Map([['a', 5_000]]) }, 15_000)
+  expect(p.release).toEqual([])
+})
+
 it('starts a worker the plan foresaw without reading the work, and none past its size', () => {
   // One task, then 16 long and wide: workers for those start later.
   const ids = ['a', ...Array.from({ length: 16 }, (_, i) => `w${i}`)]
