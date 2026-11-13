@@ -1221,6 +1221,9 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // readers at once; otherwise `drainOrAbort` cuts a stuck reader after a
   // grace.
   await proc.exited
+  // Stopped at the exit, before any return below: a watch left on kept
+  // its timer reading /proc for the rest of the run.
+  const looked = watch?.stop()
   restoreModes?.()
   await timeout.settle()
   let cut = false
@@ -1268,7 +1271,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
     ...(left ? { leftRunning: true } : {}),
-    ...usageOf(proc, watch?.stop()),
+    ...usageOf(proc, looked),
   }
 }
 

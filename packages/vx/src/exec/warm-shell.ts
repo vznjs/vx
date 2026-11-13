@@ -89,6 +89,11 @@ export function takeSpare(): Spare | undefined {
   return taken
 }
 
+/** Once every spare started so far has spawned or failed to: the descriptors the pool holds are then its settled set. */
+export async function sparesSettled(): Promise<void> {
+  await Promise.allSettled(spares.map((s) => s.child))
+}
+
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const quote = (v: string): string => `'${v.replaceAll("'", "'\\''")}'`
 
