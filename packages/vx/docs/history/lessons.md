@@ -356,3 +356,10 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   npm-pack.unsafe.test.ts's fixture commit landed in the worktree being
   rebased and wrote `core.bare=true` and `user.*` into the shared
   `.git/config` (2026-11-12).
+- A suite run from source proves nothing about a file the compiled
+  binary must find on disk. SRT's `apply-seccomp` sat beside its JS for
+  every test and nowhere for the published binary, which reported no
+  refused write for as long as it shipped; the first drive of an npm
+  install found it. What reads a file by path beside a bundled module
+  gets a test that compiles vx (`compiled-sandbox.unsafe.test.ts`,
+  2026-11-13).

@@ -41,6 +41,18 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
 - `sandbox/deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
   found within each task's write grants instead of the whole root.
+- `sandbox/seccomp-helper.ts` — `applySeccompPath`: SRT's Linux
+  `apply-seccomp` helper where a task can exec it. SRT looks beside its
+  own files, then under `npm root -g`; a compiled vx bundles SRT's JS
+  without its `vendor/`, so the published binary found none (0.0.655):
+  no write observer, so a refused write was reported by nothing and one
+  a task swallowed passed, no AF_UNIX block, and an `npm root -g` spawn
+  per sandboxed run (~90 ms). The helper is a `type: 'file'` import,
+  which Bun embeds in the binary; the binary copies it once to
+  `$XDG_CACHE_HOME/vx/helpers/` (`~/.cache`), named by its content hash,
+  and uses it only as this user's own file no one else may write. From
+  source the import is the vendored file. `vendor-files.d.ts` types the
+  import (`compiled-sandbox.unsafe.test.ts`, which compiles vx and runs it).
 
 #### The mandatory-deny scan, scoped (B-40)
 

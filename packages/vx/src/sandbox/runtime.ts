@@ -68,6 +68,7 @@ import {
 } from '../exec/index.js'
 import { TaskPipes } from '../exec/index.js'
 import { startTaskProxy, type TaskProxy } from './task-proxy.js'
+import { applySeccompPath } from './seccomp-helper.js'
 import { watchTree } from '../exec/index.js'
 import {
   BUN_GLOB_WILDCARDS,
@@ -737,7 +738,7 @@ async function hermeticAllows(): Promise<string[]> {
   }
   const { getApplySeccompBinaryPath } =
     await import('@anthropic-ai/sandbox-runtime/dist/sandbox/generate-seccomp-filter.js')
-  const seccomp = getApplySeccompBinaryPath(undefined)
+  const seccomp = getApplySeccompBinaryPath(await applySeccompPath())
   if (seccomp) programs.push(seccomp)
   const files = [...programs]
   // The loader and the libraries each program links, by `ldd`'s answer.
@@ -991,6 +992,7 @@ export async function initSandbox(opts?: {
   const { SandboxManager, NetworkConfigSchema } = await loadSrt()
   assertDomains(NetworkConfigSchema, opts?.allowedDomains ?? [], opts?.deniedDomains ?? [])
   scopedDenyScan = process.platform === 'linux' && canScopeDenyScan(process.cwd())
+  const applyPath = await applySeccompPath()
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
       allowedDomains: [...(opts?.allowedDomains ?? [])],
@@ -1002,6 +1004,7 @@ export async function initSandbox(opts?: {
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     ...linuxToolPaths(),
+    ...(applyPath === undefined ? {} : { seccomp: { applyPath } }),
     ...(scopedDenyScan ? scopedScanConfig() : {}),
   }
   runAllowed = config.network.allowedDomains

@@ -255,6 +255,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'cache-subcommand-pointers',
     'cgroup',
     'cli-picker',
+    'compiled-sandbox.unsafe',
     'completions',
     'completions-shells',
     'config',

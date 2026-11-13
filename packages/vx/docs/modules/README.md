@@ -227,16 +227,17 @@ here, itself or in a brace group.
 
 ## Sandbox
 
-| File                                                                                     | Topic                                                                                                          |
-| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [`sandbox.md`](./sandbox.md#srcsandboxruntimets--sandbox-wrapper-for-per-task-isolation) | `src/sandbox/runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.            |
-|                                                                                          | `src/sandbox/violations.ts` — strace pass, seatbelt record description, report filters.                        |
-|                                                                                          | `src/sandbox/binds.ts` — bwrap-honourable write grants, read-grant punching, the SRT custom config.            |
-|                                                                                          | `src/sandbox/paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`, `isUnderAny`, `sandboxReads`, `unique`.      |
-|                                                                                          | `src/sandbox/deny-scan.ts` — SRT's mandatory write denies, scanned within each task's write grants.            |
-|                                                                                          | `src/sandbox/task-proxy.ts` — `startTaskProxy`: one task's own network proxy, its list before the run's.       |
-| [`sandbox.md`](./sandbox.md#srcsandboxrequestts--the-sandbox-half-of-a-request)          | `src/sandbox/request.ts` — arming the runtime for a run; the sandbox half of an ExecuteRequest: grants, binds. |
-| [`sandbox.md`](./sandbox.md#srcsandboxfixts--the-grants-a-failed-run-needed)             | `src/sandbox/fix.ts` — the grants a failed run needed, credential stores left out.                             |
+| File                                                                                     | Topic                                                                                                                    |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| [`sandbox.md`](./sandbox.md#srcsandboxruntimets--sandbox-wrapper-for-per-task-isolation) | `src/sandbox/runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.                      |
+|                                                                                          | `src/sandbox/violations.ts` — strace pass, seatbelt record description, report filters.                                  |
+|                                                                                          | `src/sandbox/binds.ts` — bwrap-honourable write grants, read-grant punching, the SRT custom config.                      |
+|                                                                                          | `src/sandbox/paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`, `isUnderAny`, `sandboxReads`, `unique`.                |
+|                                                                                          | `src/sandbox/deny-scan.ts` — SRT's mandatory write denies, scanned within each task's write grants.                      |
+|                                                                                          | `src/sandbox/{seccomp-helper,vendor-files.d}.ts` — SRT's Linux seccomp helper, embedded in a compiled vx and copied out. |
+|                                                                                          | `src/sandbox/task-proxy.ts` — `startTaskProxy`: one task's own network proxy, its list before the run's.                 |
+| [`sandbox.md`](./sandbox.md#srcsandboxrequestts--the-sandbox-half-of-a-request)          | `src/sandbox/request.ts` — arming the runtime for a run; the sandbox half of an ExecuteRequest: grants, binds.           |
+| [`sandbox.md`](./sandbox.md#srcsandboxfixts--the-grants-a-failed-run-needed)             | `src/sandbox/fix.ts` — the grants a failed run needed, credential stores left out.                                       |
 
 ## Plugins
 
