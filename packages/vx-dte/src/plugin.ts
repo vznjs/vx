@@ -1133,6 +1133,8 @@ export function dte(options: DteOptions = {}) {
           // Each worker times a task from its start: a wait for a booting worker is not its run.
           timeouts: true,
           sandbox: true,
+          // A worker lists the dependencies' outputs its task may read, once restored there.
+          dependencyOutputs: true,
           // A task's persistent dependencies start on its worker, never here.
           servers: true,
           // A worker answers a task's runtime probes before it runs it.

@@ -74,7 +74,14 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
   // arming above is vx's work, not the task's. Armed first, a 60 ms timeout
   // expired before the spawn and failed `echo` as timed out, unrun.
   if (!policy.sandboxed) return { ...base, signal: m.signal.request(local) }
-  const deps = await dependencyReads(args.run.readableDeps?.(node) ?? [], args.run.workspaceRoot)
+  // An executor that lists them where the task runs is handed the
+  // dependencies, not their files: walked here, a dependant waited for each
+  // upstream's files to come to this machine before it could be sent.
+  const there = !local && args.executor.capabilities?.dependencyOutputs === true
+  const readable = args.run.readableDeps?.(node) ?? []
+  const deps = there
+    ? { reads: [], reported: [] }
+    : await dependencyReads(readable, args.run.workspaceRoot)
   const sb = await sandboxRequestFor(
     node,
     exec.sandbox!,
@@ -89,6 +96,7 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
   m.sandbox.placeholders = sb.placeholders
   m.sandbox.withheld = sb.withheld
   m.sandbox.upstreamOutputs = [...deps.reads, ...deps.reported]
+  m.sandbox.listedThere = there
   const c = sb.sandbox.config
   m.sandbox.writes = local
     ? [
@@ -97,5 +105,43 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
         ...(c.linkedWrites ?? []).flatMap((l) => [l.link, l.target]),
       ]
     : undefined
-  return { ...base, sandbox: sb.sandbox, signal: m.signal.request(local) }
+  const sandbox = there
+    ? {
+        ...sb.sandbox,
+        readableDeps: readable.flatMap((d) =>
+          d.config.outputs === undefined
+            ? []
+            : [
+                {
+                  taskId: d.id,
+                  projectDir: d.projectDir,
+                  outputs: {
+                    files: [...d.config.outputs.files],
+                    workspaceFiles: [...(d.config.outputs.workspaceFiles ?? [])],
+                  },
+                },
+              ],
+        ),
+      }
+    : sb.sandbox
+  return { ...base, sandbox, signal: m.signal.request(local) }
+}
+
+/**
+ * The dependencies' outputs as this machine lists them, for a task whose
+ * executor listed them where it ran (`dependencyOutputs`): read only once
+ * that run refused something, to say which refusals were upstream's.
+ */
+export async function upstreamOutputsHere(m: MissRun): Promise<string[]> {
+  const { args } = m
+  try {
+    const deps = await dependencyReads(
+      args.run.readableDeps?.(args.node) ?? [],
+      args.run.workspaceRoot,
+    )
+    return [...deps.reads, ...deps.reported]
+  } catch {
+    // quiet: more binds than a command line holds, which the run already said where it ran
+    return []
+  }
 }

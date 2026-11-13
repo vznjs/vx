@@ -854,6 +854,7 @@ export interface ExecuteSandbox {
   readonly keyNested?: readonly string[]
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
+  readonly readableDeps?: readonly ReadableOutputs[]
 }
 == type ExecutorCapabilities (src/exec/executor.ts)
 export interface ExecutorCapabilities {
@@ -861,6 +862,7 @@ export interface ExecutorCapabilities {
   readonly sandbox?: boolean
   readonly servers?: boolean
   readonly runtime?: boolean
+  readonly dependencyOutputs?: boolean
   readonly exclusive?: boolean
   readonly timeouts?: boolean
   readonly platforms?: readonly string[]
@@ -1572,6 +1574,15 @@ export interface RawExpr {
 export interface ReachGraph {
   readonly material: readonly string[]
   readonly edges: ReadonlyArray<readonly number[]>
+}
+== type ReadableOutputs (src/exec/executor.ts)
+export interface ReadableOutputs {
+  readonly taskId: string
+  readonly projectDir: string
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
 }
 == type RefusalParts (src/util/errors.ts)
 export interface RefusalParts {
@@ -2405,6 +2416,7 @@ export interface WorkerSandbox {
   readonly keyed?: readonly string[]
   readonly reads?: readonly string[]
   readonly reported?: readonly string[]
+  readonly readable?: readonly ReadableOutputs[]
 }
 == type WorkerTask (src/orchestrator/worker-runtime.ts)
 export interface WorkerTask extends Omit<

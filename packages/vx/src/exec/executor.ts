@@ -132,6 +132,22 @@ export interface ExecuteSandbox {
    * file beside them, reported. Handed `sandboxRequestFor` with them.
    */
   readonly dependencyReported?: readonly string[]
+  /**
+   * In place of the two above, for an executor with `dependencyOutputs`:
+   * the dependencies whose outputs it may read (`projectDir` absolute),
+   * listed where the task runs, once they are restored there.
+   */
+  readonly readableDeps?: readonly ReadableOutputs[]
+}
+
+/** A dependency whose declared outputs a sandboxed task may read (`ExecuteSandbox.readableDeps`). */
+export interface ReadableOutputs {
+  readonly taskId: string
+  readonly projectDir: string
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
 }
 
 /** One declared input file, as the cache key saw it. */
@@ -398,6 +414,13 @@ export interface ExecutorCapabilities {
    * otherwise run here.
    */
   readonly runtime?: boolean
+  /**
+   * A `remote` executor that lists the dependencies' outputs a sandboxed
+   * task may read where it runs it, from `ExecuteSandbox.readableDeps`.
+   * Core then walks none of them here, so the request needs no
+   * dependency's files on this machine.
+   */
+  readonly dependencyOutputs?: boolean
   /**
    * A `remote` executor that runs every task of the run; only hits restore
    * here. Nothing is pinned for it: it gets `exec.remote: false` and

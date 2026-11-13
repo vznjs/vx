@@ -1366,8 +1366,19 @@ export interface DependencyReads {
   readonly reads: readonly string[] // the paths to bind: output files, or directories wholly outputs
   readonly reported: readonly string[] // the heads walked: a refused read under one is reported
 }
+// a dependency as `dependencyReads` reads it: a TaskNode, or what a worker's order carries of one
+export interface ReadableDep {
+  readonly id: string
+  readonly projectDir: string
+  readonly config: {
+    readonly outputs?: {
+      readonly files: readonly string[]
+      readonly workspaceFiles?: readonly string[]
+    }
+  }
+}
 export async function dependencyReads(
-  deps: readonly TaskNode[],
+  deps: readonly ReadableDep[],
   workspaceRoot: string,
 ): Promise<DependencyReads>
 

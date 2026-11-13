@@ -74,10 +74,12 @@ export interface RunOrder {
    * Its `exec.sandbox`, and for a cached task the projects its key answers
    * for (workspace-relative): the worker builds the request on its own
    * paths and OS (`sandboxRequestFor`), as its orchestrator may run another;
-   * `reads`, the dependencies' outputs it may read, and `reported`, the
-   * heads a refused read under is reported (workspace-relative).
+   * `readable`, the dependencies whose outputs it may read: the worker
+   * lists their files itself, once it has restored them. Listed by the
+   * orchestrator, a task waited for each dependency's files to reach that
+   * machine before it could be sent (2026-11-13).
    */
-  sandbox?: { config: SandboxConfig; keyed?: string[]; reads?: string[]; reported?: string[] }
+  sandbox?: { config: SandboxConfig; keyed?: string[]; readable?: ReadableOrder[] }
   /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the worker starts each once. */
   servers?: ServerOrder[]
   /** The runtime probes its key includes, as the orchestrator answered them: the worker's must answer the same. */
@@ -92,6 +94,14 @@ export type WiredDep = DepOrder | string
 
 /** A `RunOrder` as it travels: its deps `WiredDep`s, made whole again by the worker. */
 export type SentOrder = Omit<RunOrder, 'deps'> & { deps: WiredDep[] }
+
+/** A dependency whose declared outputs a sandboxed task may read, `project` workspace-relative. */
+export interface ReadableOrder {
+  task: string
+  project: string
+  files: string[]
+  workspaceFiles?: string[]
+}
 
 export interface RuntimeOrder {
   command: string

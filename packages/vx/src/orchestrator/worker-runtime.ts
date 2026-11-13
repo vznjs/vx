@@ -11,9 +11,10 @@ import {
   type CapturedChunk,
   type ExecuteRequest,
   type ExecuteResult,
+  type ReadableOutputs,
   type TreeUsage,
 } from '../exec/index.js'
-import { sandboxRequestFor, sweepPlaceholders } from '../sandbox/index.js'
+import { dependencyReads, sandboxRequestFor, sweepPlaceholders } from '../sandbox/index.js'
 import { localFloor, type LocalFloor } from './local-floor.js'
 
 /** A task's `exec.sandbox` as a worker receives it: built into walls on this machine. */
@@ -25,6 +26,12 @@ export interface WorkerSandbox {
   readonly reads?: readonly string[]
   /** The heads walked for them: a refused read under one is reported. */
   readonly reported?: readonly string[]
+  /**
+   * In place of `reads` and `reported`: the dependencies whose outputs it
+   * may read (`ExecuteSandbox.readableDeps`, on this machine's paths),
+   * listed here as the task is prepared, after they are restored.
+   */
+  readonly readable?: readonly ReadableOutputs[]
 }
 
 /** A task to run here: the request core would build, with its sandbox not yet built. */
@@ -81,6 +88,17 @@ export function workerRuntime(opts: {
   return {
     async prepare(task) {
       const { projectDir, nested, sandbox, ...req } = task
+      const listed =
+        sandbox?.readable === undefined
+          ? undefined
+          : await dependencyReads(
+              sandbox.readable.map((d) => ({
+                id: d.taskId,
+                projectDir: d.projectDir,
+                config: { outputs: d.outputs },
+              })),
+              opts.root,
+            )
       const sb =
         sandbox === undefined
           ? undefined
@@ -91,8 +109,8 @@ export function workerRuntime(opts: {
               sandbox.keyed === undefined ? undefined : new Set(sandbox.keyed),
               nested,
               undefined,
-              sandbox.reads ?? [],
-              sandbox.reported ?? [],
+              listed?.reads ?? sandbox.reads ?? [],
+              listed?.reported ?? sandbox.reported ?? [],
             )
       return {
         async run() {

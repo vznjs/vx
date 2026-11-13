@@ -1030,7 +1030,15 @@ export function executorDemand(
 }
 
 const EXECUTOR_KEYS = ['name', 'capabilities', 'accepts', 'execute', 'distribution']
-const EXECUTOR_FLAGS = ['remote', 'sandbox', 'servers', 'runtime', 'exclusive', 'timeouts'] as const
+const EXECUTOR_FLAGS = [
+  'remote',
+  'sandbox',
+  'servers',
+  'runtime',
+  'dependencyOutputs',
+  'exclusive',
+  'timeouts',
+] as const
 const CAPABILITY_KEYS: readonly string[] = [...EXECUTOR_FLAGS, 'platforms', 'capacity']
 const DISTRIBUTION_HOOKS = [
   'demand',

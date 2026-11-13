@@ -3519,6 +3519,45 @@ it('an uncached sandboxed task with no write grant leaves nothing: its dependant
   }
 })
 
+// A dependant's sandbox list was walked on the orchestrator, so it waited
+// for each upstream's files to come home (2.6 s after a docs build, main
+// f04866b). Its order names the dependencies; the worker lists their files.
+it('an order names the dependencies a sandbox may read, not their files', async () => {
+  const boxed = [
+    'u',
+    { id: 'u', deps: [], projectDir: '/ws', config: { exec: { command: 'x', sandbox: {} } } },
+  ] as unknown as readonly [string, TaskNode]
+  const h = await harness(new Map([boxed]))
+  try {
+    const a = await h.worker(1, 'a')
+    void h.o.execute({
+      ...h.req('u'),
+      sandbox: {
+        config: {},
+        baseAllowRead: [],
+        baseDenyRead: [],
+        reportWithin: [],
+        reportLinked: [],
+        dependencyReads: ['/ws/tools/out'],
+        readableDeps: [
+          {
+            taskId: 'tools#node',
+            projectDir: '/ws/tools',
+            outputs: { files: ['out/**'], workspaceFiles: [] },
+          },
+        ],
+      },
+    } as unknown as Parameters<typeof h.o.execute>[0])
+    await a.batches()
+    expect(a.orders[0]!.sandbox).toEqual({
+      config: {},
+      readable: [{ task: 'tools#node', project: 'tools', files: ['out/**'] }],
+    })
+  } finally {
+    await h.stop()
+  }
+})
+
 it('an uncached task’s dependant on another platform has it made again on a worker of that one', async () => {
   const h = await harness(new Map([node('g'), node('u', ['g'])]))
   try {

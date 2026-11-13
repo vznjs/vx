@@ -19,6 +19,7 @@ import type { ExecuteArgs } from './execute-task.js'
 import { AttemptSignal } from './attempt-signal.js'
 import { AttemptStream } from './attempt-stream.js'
 import { OutputGuard } from './attempt-outputs.js'
+import { upstreamOutputsHere } from './attempt-request.js'
 import { runAttempts } from './attempts.js'
 import { restoreHit } from './hit-restore.js'
 import { fingerprintMoved, type KeyCheck, type StateStamp } from './input-recheck.js'
@@ -165,6 +166,8 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   const check: KeyCheck = { unkeyed: false }
   const verdict = await saveVerdict(m, ran, check, stamp)
   const save = await applySave(m, ran, verdict, check, stamp)
+  if (m.sandbox.listedThere === true && m.sandbox.violations.length > 0)
+    m.sandbox.upstreamOutputs = await upstreamOutputsHere(m)
   return missOutcome(m, ran, check, save, { startNs: wallclockStartNs, endNs: wallclockEndNs })
 }
 
