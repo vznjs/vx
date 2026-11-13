@@ -103,6 +103,8 @@ interface Job {
   startedAt?: number
   /** When its worker said its command ended: it saves since. */
   ranAt?: number
+  /** Where its worker says that time went, ms (`end.spent`): the profile shows it. */
+  spent?: { check: number; save: number; upload: number }
   /** When it first waited on the worker holding an upstream's files (`kept`). */
   pinnedAt?: number
   /** Its upstreams already ran again for it: it waits on their worker however long. */
@@ -1718,6 +1720,9 @@ export class Orchestrator {
         ...(head.peakRssBytes === undefined ? {} : { peakRssBytes: head.peakRssBytes }),
         bookedCores: job.booked ?? 0,
         ...(head.cpuShare === undefined ? {} : { cpuShare: head.cpuShare }),
+        ...(job.spent === undefined
+          ? {}
+          : { checkMs: job.spent.check, saveMs: job.spent.save, uploadMs: job.spent.upload }),
       },
       parts: [
         { name: 'sent', from: sent, to: began },
@@ -2014,6 +2019,13 @@ export class Orchestrator {
             const j = a.busy.get(m.task)
             if (j !== undefined) {
               j.ended = true
+              const sp = m.spent
+              if (
+                typeof sp === 'object' &&
+                sp !== null &&
+                [sp.check, sp.save, sp.upload].every((n) => Number.isFinite(n) && n >= 0)
+              )
+                j.spent = { check: sp.check, save: sp.save, upload: sp.upload }
               const began = here(m.startedAt)
               const ran = here(m.ranAt)
               if (began !== undefined) j.startedAt = began

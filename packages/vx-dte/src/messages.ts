@@ -204,6 +204,8 @@ export type ToOrchestrator =
       key: string
       result: WiredResult
       endedAt: number
+      /** Where its time since its command went, ms: checking what it left, saving here, the remotes taking it. */
+      spent?: { check: number; save: number; upload: number }
       load?: Load
     } & Ran)
   /**

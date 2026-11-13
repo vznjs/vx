@@ -229,6 +229,7 @@ export async function runWorker(opts: {
     // elsewhere once this worker leaves. One such end reached the orchestrator
     // and failed the run.
     if (quit.signal.aborted || leaving.signal.aborted) return
+    const began = Date.now()
     const { output, ...result } = res
     // Forced: the key keeps an entry it holds, so the run's machines restore
     // the fresh bytes under the run key.
@@ -272,6 +273,7 @@ export async function runWorker(opts: {
     // No remote took it after its tries: the run's other machines read the
     // remotes alone, so the task is this worker's fault, run elsewhere.
     const saved = keys.at(-1)!
+    const kept = Date.now()
     if ((await artifacts.uploaded?.(saved)) === false)
       throw new Error(`no remote cache took its entry ${saved} (this worker's log says why)`)
     if (result.exitCode === 0)
@@ -289,6 +291,7 @@ export async function runWorker(opts: {
       startedAt: t?.startedAt ?? endedAt,
       ranAt: t?.ranAt ?? endedAt,
       endedAt,
+      spent: { check: began - (t?.ranAt ?? began), save: kept - began, upload: endedAt - kept },
       load: frame(),
     }
     for (const part of parts(end)) await say(part)

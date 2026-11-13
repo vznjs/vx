@@ -887,7 +887,9 @@ reported busy, its tasks' or not (placement never fills a worker past
 it), beside the cores its running tasks' process trees used, read each
 second as core's `task.sample` reads them; each task takes the first lane free over its time
 there, from its send through restoring its dependencies, its command
-and its save, with its exit code, duration, CPU time and booked cores.
+and its save, with its exit code, duration, CPU time, booked cores and
+where its worker says the save's time went (`checkMs` reading what it
+left, `saveMs` saving here, `uploadMs` until a remote took it).
 The `orchestrator` process holds the cache probe, each ask for workers, each
 plan that started or let go of workers with what it saw of each worker
 (one that started workers also with each task's planned time, cores and

@@ -1052,9 +1052,10 @@ async function harness(
       task: string,
       key = `k-${task}`,
       result: object = { exitCode: 0, durationMs: 1 },
+      more: object = {},
     ): Promise<void> => {
       store.saved.set(key, [{ text: `${task} out\n`, err: false }])
-      await me.send('orchestrator', { type: 'end', task, key, result })
+      await me.send('orchestrator', { type: 'end', task, key, result, ...more })
     }
     const say = (body: object) => me.send('orchestrator', body)
     const types = async (): Promise<string[]> => {
@@ -1834,7 +1835,10 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   await Bun.sleep(20)
   await a.say({ type: 'ran', task: 't1' })
   await Bun.sleep(20)
-  for (const t of ['t1', 't2']) await a.finish(t)
+  await a.finish('t1')
+  // Where its worker says its time after the command went: a save of 5 s
+  // read as one stretch named neither the check, the save nor the upload.
+  await a.finish('t2', undefined, undefined, { spent: { check: 120, save: 340, upload: 4500 } })
   await Promise.all(done)
   await h.stop()
   const ev = h.o.profile() as unknown as {
@@ -1843,8 +1847,10 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
     cat?: string
     pid: number
     tid: number
-    args?: { name?: string }
+    args?: { name?: string; checkMs?: number; saveMs?: number; uploadMs?: number }
   }[]
+  const t2 = ev.find((e) => e.ph === 'X' && e.cat === 'task' && e.name === 't2')!.args!
+  expect([t2.checkMs, t2.saveMs, t2.uploadMs]).toEqual([120, 340, 4500])
   const pidOf = (name: string) =>
     ev.find((e) => e.ph === 'M' && e.name === 'process_name' && e.args?.name === name)?.pid
   const w = pidOf('worker#1')
