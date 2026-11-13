@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.654
 
+### vx-dte: an uncached task ends before its files are home
+
+ExecuteRequest.download and ExecuteResult.outputs gain 'trailing', and TaskArtifacts.save resolves the stored output.
+
 ### simplify the architecture, one stream at a time
 
 No migration note.
