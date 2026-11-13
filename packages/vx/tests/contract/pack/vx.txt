@@ -206,7 +206,9 @@ src/sandbox/index.ts
 src/sandbox/paths.ts
 src/sandbox/request.ts
 src/sandbox/runtime.ts
+src/sandbox/seccomp-helper.ts
 src/sandbox/task-proxy.ts
+src/sandbox/vendor-files.d.ts
 src/sandbox/violations.ts
 src/settings.ts
 src/ui/ansi.ts
