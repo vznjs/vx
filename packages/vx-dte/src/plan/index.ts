@@ -8,7 +8,7 @@ export {
   leaves,
   leftMs,
   spreadMs,
-  slowdown,
+  slowdowns,
   tailsMs,
   UNKNOWN_MS,
   WARM_UP_MS,

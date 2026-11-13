@@ -687,3 +687,38 @@ it('keeps the worker an uncached task left files on until its dependant runs the
   )
   expect(r.endMs).toBe(20_000 + 60_000 + 40_000 + 10_000)
 })
+
+// Main 5ba7a05 (2026-11-13): Mac tasks took 1.4x their history, Linux
+// ones 1.15x, and the plan stretched both by the run's 1.2x: the Mac
+// work looked to have room, so two shards waited 8.5 s for a core beside
+// an idle Mac and the Macs ended the run. Each platform stretched by its
+// own slowdown, the Mac work is seen to be the tail and starts at once.
+it('stretches a platform slower than the run by its own slowdown', () => {
+  const t = (id: string, platform: string, known: number, k: number, cores = 1): SimTask => ({
+    id,
+    deps: [],
+    exec: true,
+    cache: true,
+    platform,
+    ran: { ms: known * k, cores, memory: 1e8 },
+    known: { ms: known, cores, memory: 1e8 },
+  })
+  const tasks = [
+    ...Array.from({ length: 8 }, (_, i) => t(`l${i}`, 'linux', 90_000 + i * 1000, 1.1)),
+    ...Array.from({ length: 8 }, (_, i) => t(`k${i}`, 'linux', 90_000 - i * 1000, 1.1)),
+    t('build', 'mac', 30_000, 1.5, 2),
+    ...Array.from({ length: 4 }, (_, i) => t(`m${i}`, 'mac', 50_000 + i * 2000, 1.5)),
+  ]
+  const r = simulate(tasks, {
+    sizes: [
+      { name: 'small', max: 2, cpu: 4, memory: 16e9, platform: 'linux' },
+      { name: 'mac', max: 2, cpu: 2, memory: 7e9, platform: 'mac' },
+    ],
+    warmUpMs: () => 20_000,
+    likely: new Set(tasks.map((x) => x.id)),
+  })
+  const linux = Math.max(
+    ...tasks.filter((x) => x.platform === 'linux').map((x) => r.endedAt.get(x.id)!),
+  )
+  expect(r.endMs).toBe(linux)
+})

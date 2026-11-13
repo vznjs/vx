@@ -2255,11 +2255,15 @@ export class Orchestrator {
     return least
   }
 
-  /** Each task a worker ran, how long it held the worker, by `forecast`'s ms (`slowdown`). */
+  /** Each task a worker ran, how long it held the worker, by `forecast`'s ms (`slowdowns`). */
   finished(
     forecast: (id: string) => number | undefined,
-  ): { took: number; forecast: number | undefined }[] {
-    return [...this.took].map(([id, t]) => ({ took: t.ms, forecast: forecast(id) }))
+  ): { took: number; forecast: number | undefined; platform: string | undefined }[] {
+    return [...this.took].map(([id, t]) => ({
+      took: t.ms,
+      forecast: forecast(id),
+      platform: t.platform,
+    }))
   }
 
   /** `warmUpMs` of each size a worker this run started joined as. */

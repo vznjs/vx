@@ -227,7 +227,7 @@ const SLOWDOWN_MS = 20_000
  * end now, so a run whose tasks took twice theirs planned 27 s left for
  * 100 s, asked a worker, cancelled it as not needed, and asked again.
  */
-export function slowdown(done: Iterable<{ took: number; forecast: number | undefined }>): number {
+function slowdown(done: Iterable<{ took: number; forecast: number | undefined }>): number {
   let took = 0
   let forecast = 0
   for (const d of done)
@@ -236,6 +236,35 @@ export function slowdown(done: Iterable<{ took: number; forecast: number | undef
       forecast += d.forecast
     }
   return forecast < SLOWDOWN_MS ? 1 : Math.max(1, took / forecast)
+}
+
+/**
+ * `slowdown` by platform: its own tasks' once they had 20 s of history,
+ * until then the run's. Machines of one platform share what slows them
+ * and history does not hold it: on main 5ba7a05 Mac tasks took 1.4 times
+ * theirs and Linux ones 1.15. Stretched by the run's 1.2, two Mac shards
+ * read as having slack and waited 8.5 s beside an idle Mac for cheaper
+ * room; the run ended on them, 12 s after Linux (2026-11-13).
+ */
+export function slowdowns(
+  done: Iterable<{ took: number; forecast: number | undefined; platform?: string | undefined }>,
+): (platform: string | undefined) => number {
+  const all = { took: 0, forecast: 0 }
+  const by = new Map<string | undefined, { took: number; forecast: number }>()
+  for (const d of done) {
+    if (d.forecast === undefined || !(d.forecast > 0)) continue
+    all.took += d.took
+    all.forecast += d.forecast
+    let sum = by.get(d.platform)
+    if (sum === undefined) by.set(d.platform, (sum = { took: 0, forecast: 0 }))
+    sum.took += d.took
+    sum.forecast += d.forecast
+  }
+  const run = slowdown([all])
+  return (platform) => {
+    const own = by.get(platform)
+    return own === undefined || own.forecast < SLOWDOWN_MS ? run : slowdown([own])
+  }
 }
 
 /**
