@@ -287,11 +287,11 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
   })
   afterEach(() => rm(root, { recursive: true, force: true }))
 
-  const outcome = async (command: string) => {
+  const outcome = async (command: string, sandbox = "{ allow: { read: ['src/'] } }") => {
     await addProject(root, 'app', {
       config: `export default { tasks: { t: { exec: {
         command: ${JSON.stringify(command)},
-        sandbox: { allow: { read: ['src/'] } },
+        sandbox: ${sandbox},
       } } } }\n`,
       files: { 'tsconfig.json': '{}\n', 'src/a.ts': '' },
     })
@@ -312,6 +312,20 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
         `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
           `${root}/packages/app/tsconfig.json. A stat is not traced on Linux, so no violation ` +
           "names them. If the task reads one, grant it, e.g. `allow: { read: ['tsconfig.json'] }`.",
+      ],
+    ])
+  })
+
+  // `sandbox: {}` hides the whole project: the one file tsc named, then
+  // its sources, cost a failed run each before anything said so.
+  it('offers the whole project when the sandbox declares no read in it', async () => {
+    expect(await outcome(tsc('tsconfig.json'), '{}')).toEqual([
+      'failed',
+      [
+        `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
+          `${root}/packages/app/tsconfig.json. A stat is not traced on Linux, so no violation ` +
+          "names them. If the task reads one, grant it, e.g. `allow: { read: ['tsconfig.json'] }` " +
+          "(or its whole project, `read: ['.']`).",
       ],
     ])
   })

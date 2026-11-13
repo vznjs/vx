@@ -68,6 +68,7 @@ import {
 } from '../exec/index.js'
 import { TaskPipes } from '../exec/index.js'
 import { startTaskProxy, type TaskProxy } from './task-proxy.js'
+import { applySeccompPath } from './seccomp-helper.js'
 import { watchTree } from '../exec/index.js'
 import {
   BUN_GLOB_WILDCARDS,
@@ -737,7 +738,7 @@ async function hermeticAllows(): Promise<string[]> {
   }
   const { getApplySeccompBinaryPath } =
     await import('@anthropic-ai/sandbox-runtime/dist/sandbox/generate-seccomp-filter.js')
-  const seccomp = getApplySeccompBinaryPath(undefined)
+  const seccomp = getApplySeccompBinaryPath(await applySeccompPath())
   if (seccomp) programs.push(seccomp)
   const files = [...programs]
   // The loader and the libraries each program links, by `ldd`'s answer.
@@ -991,6 +992,7 @@ export async function initSandbox(opts?: {
   const { SandboxManager, NetworkConfigSchema } = await loadSrt()
   assertDomains(NetworkConfigSchema, opts?.allowedDomains ?? [], opts?.deniedDomains ?? [])
   scopedDenyScan = process.platform === 'linux' && canScopeDenyScan(process.cwd())
+  const applyPath = await applySeccompPath()
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
       allowedDomains: [...(opts?.allowedDomains ?? [])],
@@ -1002,6 +1004,7 @@ export async function initSandbox(opts?: {
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     ...linuxToolPaths(),
+    ...(applyPath === undefined ? {} : { seccomp: { applyPath } }),
     ...(scopedDenyScan ? scopedScanConfig() : {}),
   }
   runAllowed = config.network.allowedDomains
@@ -3085,6 +3088,7 @@ function addHints(
           .slice(-64),
         args.cwd,
         [...grantedRead, ...args.config.allowWrite],
+        args.config.allowRead,
         baselines.denyRead,
         args.reportWithin,
         // `recorded`, not only what is reported: a traced denial an `ignore`
@@ -3531,6 +3535,7 @@ function statedHiddenHint(
   lines: readonly string[],
   cwd: string,
   granted: readonly string[],
+  declared: readonly string[],
   walled: readonly string[],
   within: string,
   named: readonly (string | undefined)[],
@@ -3562,6 +3567,15 @@ function statedHiddenHint(
   if (found.length === 0) return undefined
   const project = toRealPath(within)
   const grantable = found.find((p) => !deny.some((w) => atOrUnder(p, w) && !atOrUnder(project, w)))
+  // A sandbox that declares no read in its project (`sandbox: {}`) hides
+  // every file there: one grant per failure is a round per file.
+  const whole =
+    grantable !== undefined &&
+    grantable !== project &&
+    atOrUnder(grantable, project) &&
+    !declared.some((g) => atOrUnder(toRealPath(g), project))
+      ? " (or its whole project, `read: ['.']`)"
+      : ''
   const said =
     `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
     `${found.slice(0, 5).join(', ')}${found.length > 5 ? ` and ${found.length - 5} more` : ''}. ` +
@@ -3573,7 +3587,7 @@ function statedHiddenHint(
       grantable === undefined
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
-          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`` +
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`${whole}` +
           `${keyEntryHint(grantable, within, key)}.`,
   }
 }

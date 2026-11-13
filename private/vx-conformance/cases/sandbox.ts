@@ -153,6 +153,22 @@ export default [
   }),
 
   defineCase({
+    id: 'sandbox/swallowed-source-write-fails',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task that hides its refused write still fails',
+    why: 'A script that ignores a failed write exits 0 with the write undone. If the run passes, the task is cached as if it did everything it tried, and nothing tells the user the sandbox stopped part of it. The refusal itself must fail the task, whatever the script does with the error.',
+    from: ['sandbox-grants.unsafe', 'compiled-sandbox.unsafe'],
+    needs: ['sandbox'],
+    workspace: one(
+      iso(
+        'mkdir -p dist && echo x > dist/out.txt && { echo changed > src/a.txt; } 2>/dev/null; true',
+      ),
+    ),
+    steps: [{ run: 'build', expect: { exit: 'fail', files: { 'packages/a/src/a.txt': 'a\n' } } }],
+  }),
+
+  defineCase({
     id: 'sandbox/credential-store-hidden',
     category: 'sandbox',
     kind: 'correctness',

@@ -145,6 +145,8 @@ const KNOWN = new Set([
   '1d6cc432ed9b6eae38b0e31563eb392e89545ea1',
   // #5268's, 73 chars; streams build on the branch, which takes no force push.
   '1d00aa32c5141e5f967eb2e382f2e32973eabe71',
+  // #5302's, 72 chars; the branch takes no force push.
+  'be261c174923428476c00fea31189afde114865a',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
