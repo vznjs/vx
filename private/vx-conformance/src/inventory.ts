@@ -991,6 +991,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'continue-cache-properties',
     'core-source-key.unsafe',
     'dependencies-lock',
+    'dependency-outputs-there',
     'dev',
     'disk-full.unsafe',
     'dispatched-verbs',

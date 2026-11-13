@@ -22,6 +22,8 @@ export interface AttemptSandbox {
   withheld: WithheldLink[]
   /** The dependencies' outputs: a write refused there is granted no fix. */
   upstreamOutputs: string[]
+  /** Its executor listed them where it ran: `upstreamOutputs` is read here only after a refusal. */
+  listedThere?: boolean
   /**
    * Where this machine's sandbox let the task write (absolute, globs kept):
    * an input changed outside them was not the task's doing. Undefined when

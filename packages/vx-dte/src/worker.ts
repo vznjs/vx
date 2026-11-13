@@ -506,8 +506,12 @@ export async function runWorker(opts: {
                 ...(m.sandbox.keyed === undefined
                   ? {}
                   : { keyed: m.sandbox.keyed.map((k) => path.join(opts.root, k)) }),
-                reads: (m.sandbox.reads ?? []).map((r) => path.join(opts.root, r)),
-                reported: (m.sandbox.reported ?? []).map((r) => path.join(opts.root, r)),
+                // Listed here, now that its dependencies are restored.
+                readable: (m.sandbox.readable ?? []).map((d) => ({
+                  taskId: d.task,
+                  projectDir: path.join(opts.root, d.project),
+                  outputs: { files: d.files, workspaceFiles: d.workspaceFiles ?? [] },
+                })),
               },
             }),
         ...(m.servers === undefined

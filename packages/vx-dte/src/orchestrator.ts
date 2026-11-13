@@ -1267,17 +1267,17 @@ export class Orchestrator {
                 ...(req.sandbox.keyed === undefined
                   ? {}
                   : { keyed: req.sandbox.keyed.map((d) => path.relative(this.o.root, d)) }),
-                ...(req.sandbox.dependencyReads === undefined
+                ...(req.sandbox.readableDeps === undefined || req.sandbox.readableDeps.length === 0
                   ? {}
                   : {
-                      reads: req.sandbox.dependencyReads.map((d) => path.relative(this.o.root, d)),
-                    }),
-                ...(req.sandbox.dependencyReported === undefined
-                  ? {}
-                  : {
-                      reported: req.sandbox.dependencyReported.map((d) =>
-                        path.relative(this.o.root, d),
-                      ),
+                      readable: req.sandbox.readableDeps.map((d) => ({
+                        task: d.taskId,
+                        project: path.relative(this.o.root, d.projectDir),
+                        files: [...d.outputs.files],
+                        ...(d.outputs.workspaceFiles.length === 0
+                          ? {}
+                          : { workspaceFiles: [...d.outputs.workspaceFiles] }),
+                      })),
                     }),
               },
             }),

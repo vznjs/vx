@@ -39,6 +39,18 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
   use: { exec: { command: 'sleep 1' }, dependsOn: ['srv'] },
 } }
 `,
+      // Reads a dependency's output in another project: the worker lists
+      // it for the sandbox itself, once it is restored there.
+      'b/vx.config.mjs': `export default { name: 'b', tasks: {
+  use: {
+    exec: { command: 'read w < ../a/out/where.txt && echo "got:$w"', sandbox: { allow: { read: ['.'] } } },
+    dependsOn: ['a#gen'],
+  },
+  blind: {
+    exec: { command: 'read w < ../a/out/where.txt && echo "got:$w"', sandbox: { allow: { read: ['.'] } } },
+  },
+} }
+`,
       'a/vx.config.mjs': `export default { name: 'a', tasks: {
   gen: {
     exec: { command: 'mkdir -p out && pwd > out/where.txt', sandbox: { allow: { read: ['.'], write: ['out/'] } } },
@@ -107,6 +119,15 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.any(String)])
     expect(await Bun.file(path.join(root, 'escaped.txt')).exists()).toBe(false)
   }, 60_000)
+
+  it('reads a dependency’s outputs, listed on the worker', () => {
+    const r = vx(['run', 'b#use'], crypto.randomUUID())
+    const out = r.stdout.toString() + r.stderr.toString()
+    expect([r.exitCode, out]).toEqual([0, expect.stringContaining('got:')])
+    // CONTROL: the same read with no dependency is behind the project wall.
+    const blind = vx(['run', 'b#blind'], crypto.randomUUID())
+    expect(blind.exitCode).not.toBe(0)
+  }, 120_000)
 
   it('fails a read outside its grants, naming this checkout', () => {
     const r = vx(['run', 'a#peek'], crypto.randomUUID())

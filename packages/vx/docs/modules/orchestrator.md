@@ -2373,6 +2373,7 @@ export interface WorkerSandbox {
   keyed?: string[]
   reads?: string[]
   reported?: string[]
+  readable?: ReadableOutputs[] // in their place: listed here as the task is prepared
 }
 export interface WorkerTask extends Omit<
   ExecuteRequest,

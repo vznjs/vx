@@ -250,6 +250,7 @@ export type {
   ExecuteSandbox,
   ExecutorCapabilities,
   MachineReport,
+  ReadableOutputs,
   ResolvedSandboxConfig,
   ServerSpec,
   TaskExecutor,

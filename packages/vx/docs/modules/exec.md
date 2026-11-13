@@ -466,7 +466,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
   other key, at the top or inside either group, refuses the run, naming
   where a moved key lives now; either group that is not an object does
   too.
-- `ExecutorCapabilities { remote?; sandbox?; servers?; runtime?; exclusive?; timeouts?; platforms?; capacity? }`
+- `ExecutorCapabilities { remote?; sandbox?; servers?; runtime?; dependencyOutputs?; exclusive?; timeouts?; platforms?; capacity? }`
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `sandbox: true`
   says it enforces `req.sandbox` where it runs and returns the
@@ -489,14 +489,18 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
   says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
   probes where it runs the task (`WorkerRuntime.probe`) and fails it when one
   answers otherwise than `req.inputs` says this machine did, so a task
-  whose key folds a probe is not pinned for it; `platforms` (a non-empty
+  whose key folds a probe is not pinned for it; `dependencyOutputs: true`
+  says a remote one lists the dependencies' outputs a sandboxed task may
+  read where it runs it, from `req.sandbox.readableDeps` (each a
+  `ReadableOutputs { taskId; projectDir; outputs }`), so core walks none
+  here and the request needs no dependency's files on this machine; `platforms` (a non-empty
   list of `PLATFORMS`, else the run is refused) are the machines it runs
   tasks on: a task naming `exec.platforms` is offered only to it when one
   is shared, and to no other remote executor; `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
   worker slots. Each flag (`remote`, `sandbox`, `servers`, `runtime`,
-  `exclusive`, `timeouts`) is `true`, `false` or absent, else the run is
+  `dependencyOutputs`, `exclusive`, `timeouts`) is `true`, `false` or absent, else the run is
   refused: core reads it as `=== true`.
 - `Distribution { workers?; demand?(remaining, missed); running?(id); unneeded?(id); footer?(); machines?(); idealMs?(); advice?(); profile?() }`
   — the distribution contract: what core asks of an executor that
@@ -596,7 +600,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `keyed`, `keyRoot` (the workspace root: a hidden read under it is named
   for `inputs.workspaceFiles` beside its grant) and `keyNested` (the
   projects nested in its own: a hidden read in one is named for
-  `inputs.workspaceFiles` too, since `inputs.files` stops there). An executor that ships the
+  `inputs.workspaceFiles` too, since `inputs.files` stops there),
+  `dependencyReads` and `dependencyReported` (the dependencies' outputs
+  it may read, listed here), or in their place `readableDeps` for an
+  executor with `dependencyOutputs`. An executor that ships the
   sandbox elsewhere receives the narrowed `baseAllowRead`; enforcing it
   is its own.
 - `TaskInputs` — everything the cache key folds, WITH values: `files`

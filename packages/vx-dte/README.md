@@ -538,6 +538,9 @@ use your own instead.
   Linux can run macOS workers. A violation there fails it here, named in
   this checkout's paths. An empty file it wrote over a write grant's
   placeholder is its output; only a placeholder it never touched goes.
+  The outputs of its dependencies it may read are listed there too, once
+  they are restored on the worker: its order names the dependencies, so
+  it is sent before their files are back on the orchestrator.
   A sandbox the worker cannot host (no `bwrap` in its image) fails the
   task there, as it fails here; the worker stays in the run.
 - A persistent task a task depends on starts on the worker that runs the

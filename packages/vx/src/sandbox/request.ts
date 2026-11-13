@@ -389,7 +389,7 @@ export async function sandboxRequestFor(
  * whole project, whose sources its key folds.
  */
 export async function dependencyReads(
-  deps: readonly TaskNode[],
+  deps: readonly ReadableDep[],
   workspaceRoot: string,
 ): Promise<DependencyReads> {
   const reads = new Set<string>()
@@ -451,6 +451,18 @@ const DEPENDENCY_BIND_BYTES = 64 * 1024
 /** The bytes one read bind adds to the wrap: its path twice, quoted, and the flag. */
 function bindBytes(p: string): number {
   return 2 * Buffer.byteLength(p) + 16
+}
+
+/** A dependency as `dependencyReads` reads it: a `TaskNode`, or what an order carries of one. */
+export interface ReadableDep {
+  readonly id: string
+  readonly projectDir: string
+  readonly config: {
+    readonly outputs?: {
+      readonly files: readonly string[]
+      readonly workspaceFiles?: readonly string[]
+    }
+  }
 }
 
 /** `dependencyReads`: the paths to bind, and the heads whose refused reads are reported. */

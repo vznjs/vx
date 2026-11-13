@@ -748,6 +748,7 @@ export interface ExecuteSandbox {
   readonly keyNested?: readonly string[]
   readonly dependencyReads?: readonly string[]
   readonly dependencyReported?: readonly string[]
+  readonly readableDeps?: readonly ReadableOutputs[]
 }
 ```
 
@@ -763,6 +764,7 @@ export interface ExecutorCapabilities {
   readonly sandbox?: boolean
   readonly servers?: boolean
   readonly runtime?: boolean
+  readonly dependencyOutputs?: boolean
   readonly exclusive?: boolean
   readonly timeouts?: boolean
   readonly platforms?: readonly string[]
@@ -2158,6 +2160,23 @@ export interface ReachGraph {
 }
 ```
 
+## `ReadableOutputs`
+
+type · `src/exec/executor.ts`
+
+A dependency whose declared outputs a sandboxed task may read (`ExecuteSandbox.readableDeps`).
+
+```ts
+export interface ReadableOutputs {
+  readonly taskId: string
+  readonly projectDir: string
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
+}
+```
+
 ## `refuseUnknownOptions`
 
 function · `src/orchestrator/plugin.ts`
@@ -3383,6 +3402,7 @@ export interface WorkerSandbox {
   readonly keyed?: readonly string[]
   readonly reads?: readonly string[]
   readonly reported?: readonly string[]
+  readonly readable?: readonly ReadableOutputs[]
 }
 ```
 

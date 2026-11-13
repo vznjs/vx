@@ -37,6 +37,7 @@ export {
   type ExecuteRequest,
   type ExecuteResult,
   type ExecuteSandbox,
+  type ReadableOutputs,
   type InputFile,
   type MachineReport,
   type WorkerAdvice,
