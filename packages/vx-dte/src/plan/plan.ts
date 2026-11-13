@@ -198,7 +198,13 @@ export function plan(
     candidates.forEach((s, i) => {
       if (!woken.has(added[i]!.id)) spare.set(s.name, (spare.get(s.name) ?? 0) + 1)
     })
+    // The play reads no kept files: one holding an uncached upstream's
+    // that a task to come reads stays, or that task makes them again (main
+    // 88a2500: docs#build.live twice, 25 s past the ideal).
+    const read = new Set<string>()
+    for (const t of tasks) for (const r of t.reads ?? []) read.add(r)
     for (const w of idle) {
+      if (w.holds !== undefined && [...w.holds.keys()].some((id) => read.has(id))) continue
       const without = kept.filter((k) => k !== w)
       const played = run([...kept, ...standIns])
       // Given nothing in a window with work past it: needed past it, maybe.
