@@ -388,7 +388,7 @@ async function publish(os: Os, version: string): Promise<void> {
           tarballUrl(n, version),
         ]),
         headStatus,
-        { tries: 60, sleep: () => Bun.sleep(10_000) },
+        { tries: 90, sleep: () => Bun.sleep(10_000) },
         (line) => console.log(line),
       ),
     (line) => console.log(line),
@@ -416,7 +416,7 @@ async function served(version: string): Promise<void> {
   await awaitServed(
     names.map((n) => tarballUrl(n, version)),
     headStatus,
-    { tries: 60, sleep: () => Bun.sleep(10_000) },
+    { tries: 90, sleep: () => Bun.sleep(10_000) },
     (line) => console.log(line),
   )
   console.log(`npm serves all ${names.length} tarballs at ${version}`)

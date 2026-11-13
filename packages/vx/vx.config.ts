@@ -382,7 +382,7 @@ const releaseTasks = {
     },
   },
   'release.served': {
-    description: 'wait until npm serves every published tarball (HTTP 200), up to 10 min',
+    description: 'wait until npm serves every published tarball (HTTP 200), up to 15 min',
     exec: {
       command: 'bun scripts/release.ts served',
       env: RELEASE_VERSION,
