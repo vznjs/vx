@@ -563,7 +563,9 @@ the shell (`cat < x`) or any tool that opens first is reported. A failed
 task whose last output (the last two chunks of each stream, kept by
 reference) calls missing a path the sandbox hides and the host has (tsc's
 `TS5058: The specified path does not exist: 'tsconfig.json'`, on stdout)
-gets a hint naming it and its grant (`statedHiddenHint`,
+gets a hint naming it and its grant, and `read: ['.']` beside it when the
+sandbox declares no read in its project (`sandbox: {}` hides every file
+there, a failed run per file) (`statedHiddenHint`,
 `sandbox-hidden-reads.unsafe.test.ts`). A task that passes on its
 fallback (`existsSync('build.json')` false) is not caught: hidden, the
 file answers the same `ENOENT` every run, so the cache replays what the

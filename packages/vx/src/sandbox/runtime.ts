@@ -3085,6 +3085,7 @@ function addHints(
           .slice(-64),
         args.cwd,
         [...grantedRead, ...args.config.allowWrite],
+        args.config.allowRead,
         baselines.denyRead,
         args.reportWithin,
         // `recorded`, not only what is reported: a traced denial an `ignore`
@@ -3531,6 +3532,7 @@ function statedHiddenHint(
   lines: readonly string[],
   cwd: string,
   granted: readonly string[],
+  declared: readonly string[],
   walled: readonly string[],
   within: string,
   named: readonly (string | undefined)[],
@@ -3562,6 +3564,15 @@ function statedHiddenHint(
   if (found.length === 0) return undefined
   const project = toRealPath(within)
   const grantable = found.find((p) => !deny.some((w) => atOrUnder(p, w) && !atOrUnder(project, w)))
+  // A sandbox that declares no read in its project (`sandbox: {}`) hides
+  // every file there: one grant per failure is a round per file.
+  const whole =
+    grantable !== undefined &&
+    grantable !== project &&
+    atOrUnder(grantable, project) &&
+    !declared.some((g) => atOrUnder(toRealPath(g), project))
+      ? " (or its whole project, `read: ['.']`)"
+      : ''
   const said =
     `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
     `${found.slice(0, 5).join(', ')}${found.length > 5 ? ` and ${found.length - 5} more` : ''}. ` +
@@ -3573,7 +3584,7 @@ function statedHiddenHint(
       grantable === undefined
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
-          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`` +
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`${whole}` +
           `${keyEntryHint(grantable, within, key)}.`,
   }
 }
