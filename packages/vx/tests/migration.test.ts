@@ -21,7 +21,7 @@ import { UserError } from '../src/util/index.js'
 
 /** The cache TODO a mapper writes (vx-migrate's wording), suggesting `outputs`. */
 const cacheTodo = (outputs: string): string =>
-  `cache: add \`inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real inputs and outputs`
+  `cache: add \`inputs: { files: ['**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real outputs, and narrow the inputs to what it reads`
 
 let root: string
 let stdout: string
@@ -350,7 +350,7 @@ describe('applyMigration', () => {
     const lines = readFileSync(path.join(root, 'app', 'vx.config.ts'), 'utf8').split('\n')
     const suggested = lines.filter((l) => l.startsWith('      // inputs: '))
     expect(suggested).toEqual([
-      "      // inputs: { files: ['src/**'] }, outputs: { files: ['.next/**', '!.next/cache/**'] }, cache: true,",
+      "      // inputs: { files: ['**'] }, outputs: { files: ['.next/**', '!.next/cache/**'] }, cache: true,",
     ])
     expect(lines[lines.indexOf(suggested[0]!) - 1]).toBe('    build: {')
   })

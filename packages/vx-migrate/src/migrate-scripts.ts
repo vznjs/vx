@@ -116,7 +116,9 @@ function namedOutputs(command: string): string[] | undefined {
  * The cache block the task that builds `command` should declare, as a TODO
  * on it. `buildInfo` is what its `tsc` writes (`tscBuildInfo`): outside the
  * outputs it survives the clean before a miss, and tsc then emits only what
- * changed into an empty `dist/`.
+ * changed into an empty `dist/`. The inputs are every file of the package git
+ * lists: pasted as `src/**`, a Vite app's `index.html` and config were in no
+ * key and an edit to either replayed the old build.
  */
 export function cacheTodo(command: string, buildInfo: readonly string[] = []): string {
   // Padded, separators as spaces: `next build && …` and `(next build)` match.
@@ -127,7 +129,7 @@ export function cacheTodo(command: string, buildInfo: readonly string[] = []): s
     (rel) => !dirs.some((d) => d.endsWith('/**') && rel.startsWith(d.slice(0, -2))),
   )
   const outputs = [...dirs, ...outside].map((o) => `'${o}'`).join(', ')
-  return `cache: add \`inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real inputs and outputs — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
+  return `cache: add \`inputs: { files: ['**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
 }
 
 // `lint` is not here: a linter reads sources, and an edge to `build` serialises
