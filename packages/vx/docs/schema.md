@@ -1737,7 +1737,7 @@ interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
   deny?: { network?: string[] } // domains this task may not reach (below)
   ignore?: SandboxIgnore // violations to leave out of the report
-  weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
+  weakerWhenNested?: boolean // Linux: sandbox where vx itself runs inside a container or sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
   hermetic?: boolean // refuse reads outside the workspace too (default false, below)
 }
@@ -2216,8 +2216,14 @@ view, and `vx info` calls the sandbox unavailable there.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
-cannot be sandboxed on macOS. `weakerWhenNested` covers the Linux case;
-there is no macOS equivalent to offer.
+cannot be sandboxed on macOS.
+
+**Linux inside a container or another sandbox.** Where a fresh `/proc`
+cannot be mounted (an unprivileged container, an agent's sandbox around
+vx), set `weakerWhenNested: true` on every sandboxed task: the task then
+sees the host's `/proc`, which is the weaker part. A task under vx's own
+sandbox cannot start a sandbox: the outer one refuses nested user
+namespaces.
 
 ## Group tasks (no `exec`)
 

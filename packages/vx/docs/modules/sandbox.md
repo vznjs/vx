@@ -1094,8 +1094,10 @@ dies with `sandbox_apply: Operation not permitted` (exit 71, measured
 2026-09-05, pinned by `tests/sandbox-grants.unsafe.test.ts`). A task that
 itself sandboxes something therefore cannot be sandboxed on macOS, which
 is why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
-`sandbox` block. `weakerWhenNested` covers the Linux case; SRT offers no
-macOS equivalent because there is none to offer.
+`sandbox` block. Linux refuses it too: the secure wrapper forbids nested
+user namespaces (`bwrap: Creating new namespace failed`).
+`weakerWhenNested` is for the other direction, vx inside a container or
+an agent's sandbox that refuses a fresh `/proc` mount.
 
 ### Network entries
 
