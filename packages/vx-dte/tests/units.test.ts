@@ -2532,6 +2532,42 @@ it('names what kept the run from its ideal: a worker joining late, then no room 
   }
 })
 
+// Main f04866b: 6.0 s past its ideal, 4.4 s of it between a task's end on
+// its worker and the run handing over its dependant, and no part said so.
+it("names the time a dependency's files took to come home", async () => {
+  const h = await harness(new Map([node('t1'), node('t2', ['t1'])]))
+  try {
+    h.o.asked(1, 2, 2, 1_000, [])
+    const w = await h.worker(2)
+    const first = h.o.execute(h.req('t1'))
+    await w.batches()
+    await w.finish('t1', 'k-t1', { exitCode: 0, durationMs: 10, cpuMs: 10 })
+    await first
+    // As long as t1's files took to come to this machine.
+    await Bun.sleep(300)
+    const second = h.o.execute(h.req('t2'))
+    await w.batches()
+    await w.finish('t2', 'k-t2', { exitCode: 0, durationMs: 10, cpuMs: 10 })
+    await second
+    const depsOf = (id: string) => (id === 't2' ? ['t1'] : [])
+    const d = h.o.driftOf(depsOf)!
+    expect(d.home >= 250 && d.home < 450).toBe(true)
+    await h.stop()
+    const rows = h.o
+      .footer(
+        () => 10,
+        undefined,
+        () => h.o.driftOf(depsOf),
+      )
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.filter((r) => r.startsWith('drift'))).toEqual([
+      expect.stringMatching(/past ideal: files coming home 0\.[2-4]s/),
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-21: a worker the run's end stopped still read `online`, and
 // a size's machines were a `!` line apart from its workers.
 it('the final summary says how each worker ended, its size and machine under it', async () => {
