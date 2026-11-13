@@ -421,7 +421,11 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    wrapper probe refuses up front, naming the fix (a non-root user, or
    `sandbox.weakerWhenNested: true` on every sandboxed task —
    `run()` probes the weaker mode only when every sandboxed task opts
-   in). Memoized per mode. A throw from the runtime itself is the same
+   in; a refused fresh `/proc` mount, an unprivileged container's or an
+   outer sandbox's, names the same field). SRT reads the weaker profile
+   from its run-wide config, so the probe and each task's wrap set it
+   there for their own span (`sandbox-weaker-nested.unsafe.test.ts`;
+   passed per call until 2026-11-13, it did nothing). Memoized per mode. A throw from the runtime itself is the same
    one-line verdict, and one about its own temp files (the observer
    directory and the bridge sockets live under `os.tmpdir()`; the strace
    log beside the task directories, which every sandbox replaces with its
@@ -1090,8 +1094,10 @@ dies with `sandbox_apply: Operation not permitted` (exit 71, measured
 2026-09-05, pinned by `tests/sandbox-grants.unsafe.test.ts`). A task that
 itself sandboxes something therefore cannot be sandboxed on macOS, which
 is why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
-`sandbox` block. `weakerWhenNested` covers the Linux case; SRT offers no
-macOS equivalent because there is none to offer.
+`sandbox` block. Linux refuses it too: the secure wrapper forbids nested
+user namespaces (`bwrap: Creating new namespace failed`).
+`weakerWhenNested` is for the other direction, vx inside a container or
+an agent's sandbox that refuses a fresh `/proc` mount.
 
 ### Network entries
 
@@ -1349,6 +1355,7 @@ export interface SandboxRunUnion {
   unixSockets: boolean // some task lifts SRT's AF_UNIX filter; each wrap sets it for its own task
   gitConfig: boolean // some task grants `gitConfig`; each wrap sets it for its own task (B-41)
   weakerNested: boolean // true only when EVERY sandboxed task accepts it
+  weakerAny: boolean // some task accepts it; each wrap sets it for its own task
 }
 export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | null
 

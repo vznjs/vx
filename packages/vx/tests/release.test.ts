@@ -9,6 +9,7 @@ import { decideRelease, greenCommit, type Git } from '../scripts/auto-release.js
 import {
   awaitServed,
   publishAll,
+  publishSettled,
   publishTag,
   publishOrder,
   releaseVersion,
@@ -153,6 +154,64 @@ describe('publishAll', () => {
       )
     expect(message(f)).toBe('npm publish d failed (exit 1)')
     expect(published).toEqual(['a', 'b', 'c', 'e'])
+  })
+})
+
+// npm showed @vzn/vx@0.0.656 five minutes before @vzn/vx-linux-x64@0.0.656:
+// an install in between took no binary.
+describe('publishSettled', () => {
+  const packages = [
+    { name: '@vzn/vx-linux-x64', dir: 'a' },
+    { name: '@vzn/vx-linux-arm64', dir: 'b' },
+    { name: '@vzn/vx', dir: 'c' },
+    { name: '@vzn/vx-otel', dir: 'd', plugin: true },
+  ]
+  const drive = async (settle: (names: string[], did: string[]) => Promise<void>) => {
+    const did: string[] = []
+    const err = await publishSettled(
+      packages,
+      '1.2.3',
+      { has: () => false, publish: (dir) => void did.push(`publish ${dir}`) },
+      (names) => settle(names, did),
+      () => {},
+    ).then(
+      () => undefined,
+      (e: unknown) => (e as Error).message,
+    )
+    return { did, err }
+  }
+
+  it('publishes @vzn/vx only once the registry shows every platform package', async () => {
+    const r = await drive(async (names, did) => void did.push(`settle ${names.join(' ')}`))
+    expect(r).toEqual({
+      did: [
+        'publish a',
+        'publish b',
+        'settle @vzn/vx-linux-x64 @vzn/vx-linux-arm64',
+        'publish c',
+        'publish d',
+      ],
+      err: undefined,
+    })
+  })
+
+  it('publishes no @vzn/vx when a platform package never shows', async () => {
+    const r = await drive(async () => {
+      throw new Error('npm does not serve: x')
+    })
+    expect(r).toEqual({ did: ['publish a', 'publish b'], err: 'npm does not serve: x' })
+  })
+
+  it('the darwin job, which publishes no @vzn/vx, waits for nothing', async () => {
+    const did: string[] = []
+    await publishSettled(
+      packages.slice(0, 2),
+      '1.2.3',
+      { has: () => false, publish: (dir) => void did.push(dir) },
+      async () => void did.push('settle'),
+      () => {},
+    )
+    expect(did).toEqual(['a', 'b'])
   })
 })
 

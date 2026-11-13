@@ -260,7 +260,9 @@ export function unavailableReason(exitCode: number | null, stderr: string): stri
       " — AppArmor's bwrap-userns-restrict profile strips the capabilities of the seccomp helper's nested user namespace: replace it with a profile for /usr/bin/bwrap that grants `userns,` (https://discourse.ubuntu.com/t/58007)"
     : stderr.includes('uid_map')
       ? " — the runtime's seccomp helper cannot create its nested user namespace here (root inside a container, or a kernel that forbids nested user namespaces): run as a non-root user, or set `sandbox.weakerWhenNested: true` on every sandboxed task"
-      : ''
+      : stderr.includes("Can't mount proc")
+        ? ' — a fresh /proc cannot be mounted here (an unprivileged container, or a sandbox around vx): set `sandbox.weakerWhenNested: true` on every sandboxed task'
+        : ''
   return `a sandboxed \`true\` failed (exit ${exitCode}): ${stderr.slice(0, 200)}${hint}`
 }
 
@@ -279,11 +281,17 @@ async function trySandboxedTrue(
   weakerNested: boolean,
 ): Promise<SandboxAvailability> {
   try {
-    const wrapped = await SandboxManager.wrapWithSandbox(
-      'true',
-      undefined,
-      weakerNested ? { enableWeakerNestedSandbox: true } : undefined,
-    )
+    // SRT reads the flag off its run-wide config, never the per-call one.
+    const live = SandboxManager.getConfig()
+    if (weakerNested && live !== undefined) {
+      SandboxManager.updateConfig({ ...live, enableWeakerNestedSandbox: true })
+    }
+    let wrapped: string
+    try {
+      wrapped = await SandboxManager.wrapWithSandbox('true')
+    } finally {
+      if (weakerNested && live !== undefined) SandboxManager.updateConfig(live)
+    }
     const proc = Bun.spawn([taskShell(), '-c', wrapped], {
       argv0: 'sh',
       // What a task gets of vx's env: the probe is a sandboxed `true`.
@@ -554,8 +562,9 @@ function ownerWritable(dir: string): void {
 let srtUp = false
 /**
  * The run's config while one of its tasks lifts SRT's `socket(AF_UNIX)`
- * block or grants `gitConfig`, else undefined. SRT reads both from its
- * run-wide config, so one task's `unixSockets` or port list lifted the
+ * block, grants `gitConfig` or sets `weakerWhenNested`, else undefined. SRT
+ * reads each from its run-wide config (`weakerWhenNested` did nothing
+ * until 2026-11-13: it was passed per call), so one task's `unixSockets` or port list lifted the
  * block for every sandboxed task of the run, and a task that asked for
  * neither reached the host's docker or ssh-agent socket (L-6); the
  * per-task `allowGitConfig` vx passed was never read at all (B-41). Such a
@@ -979,6 +988,8 @@ export async function initSandbox(opts?: {
   allowAllUnixSockets?: boolean
   /** Whether any task of the run grants `gitConfig`: SRT reads it run-wide, so it is set per wrap (B-41). */
   gitConfig?: boolean
+  /** Whether any task of the run sets `weakerWhenNested`: read run-wide too, so set per wrap. */
+  weakerNested?: boolean
 }): Promise<void> {
   // This run owns the session now; a reset an earlier run deferred to its
   // last server would tear it down under this run's tasks (M-25).
@@ -1044,7 +1055,10 @@ export async function initSandbox(opts?: {
     const { pids, paths } = sessionLeftovers(SandboxManager)
     sessionRelease = guardSession(pids, paths)
   }
-  perTaskRun = opts?.allowAllUnixSockets === true || opts?.gitConfig === true ? config : undefined
+  perTaskRun =
+    opts?.allowAllUnixSockets === true || opts?.gitConfig === true || opts?.weakerNested === true
+      ? config
+      : undefined
   // `initialize()` returns early once SRT is up, and on Linux the
   // availability probe brought it up with an EMPTY config before the run's
   // own call — so the run's allowlist and unix-socket allowance never
@@ -2048,7 +2062,7 @@ function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): b
   return false
 }
 
-/** SRT's wrap, with the socket lift and the git-config grant this task asked for, or none (L-6, B-41). */
+/** SRT's wrap, with the socket lift, the git-config grant and the weaker nested profile this task asked for, or none (L-6, B-41). */
 function wrapForTask(
   SandboxManager: SrtModule['SandboxManager'],
   command: string,
@@ -2067,6 +2081,7 @@ function wrapForTask(
       ...run,
       network: { ...run.network, allowAllUnixSockets: sockets },
       filesystem: { ...run.filesystem, allowGitConfig: gitConfig },
+      enableWeakerNestedSandbox: customConfig?.enableWeakerNestedSandbox === true,
     })
     return SandboxManager.wrapWithSandbox(command, shell, customConfig)
   })

@@ -67,7 +67,7 @@ import {
   listedPlugins,
   missingPackages,
   MODE_QUESTION,
-  ownVersion,
+  workspaceVersion,
   packageManagerOf,
   type PackageManager,
   parseModeAnswer,
@@ -574,7 +574,7 @@ async function prepareRepo(
 ): Promise<Step[]> {
   if (args.noInstall === true) return []
   const steps: Step[] = []
-  const version = ownVersion()
+  const version = workspaceVersion(root)
   const all = [...new Set([...wanted, ...listedPlugins(root).filter((p) => !unwanted.includes(p))])]
   const missing = missingPackages(root, all, version)
   if (missing.length > 0) {
@@ -760,7 +760,7 @@ export function adoptionNext(
   runner: 'turbo' | 'nx',
   source: string,
   needs: readonly string[] = ['@vzn/vx', '@vzn/vx-migrate'],
-  version: string | null = ownVersion(),
+  version: string | null = workspaceVersion(root),
 ): string {
   const pm = packageManagerOf(root)
   const missing = needs.filter(

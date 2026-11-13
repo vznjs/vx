@@ -510,6 +510,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-unchecked-rewriter.unsafe',
     'sandbox-usage.unsafe',
     'sandbox-violation-secret-mask.unsafe',
+    'sandbox-weaker-nested.unsafe',
     'sandbox-widened-reads.unsafe',
     'sandbox-write-glob-new-file.unsafe',
     'sandbox-write-through-link.unsafe',

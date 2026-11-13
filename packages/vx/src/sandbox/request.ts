@@ -84,6 +84,8 @@ export interface SandboxRunUnion {
   gitConfig: boolean
   /** Whether EVERY sandboxed task accepts the weaker nested profile. */
   weakerNested: boolean
+  /** Whether any does: SRT reads the profile run-wide, so such a run sets it per wrap. */
+  weakerAny: boolean
 }
 
 export function sandboxRunUnion(nodes: Iterable<SandboxedNode>): SandboxRunUnion | null {
@@ -111,7 +113,15 @@ export function sandboxRunUnion(nodes: Iterable<SandboxedNode>): SandboxRunUnion
     if (process.platform === 'linux' && loopbackPorts(net).length > 0) unixSockets = true
     if (allow?.gitConfig === true) gitConfig = true
   }
-  return { domains: [...domains], deniedDomains: [...denied], unixSockets, gitConfig, weakerNested }
+  const weakerAny = sandboxed.some((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
+  return {
+    domains: [...domains],
+    deniedDomains: [...denied],
+    unixSockets,
+    gitConfig,
+    weakerNested,
+    weakerAny,
+  }
 }
 
 /**
@@ -140,7 +150,7 @@ export function sandboxRunUnion(nodes: Iterable<SandboxedNode>): SandboxRunUnion
 export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | null {
   const union = sandboxRunUnion(nodes)
   if (union === null) return null
-  const { domains, deniedDomains, unixSockets, gitConfig, weakerNested } = union
+  const { domains, deniedDomains, unixSockets, gitConfig, weakerNested, weakerAny } = union
   let pending: Promise<void> | undefined
   let armed = false
   return {
@@ -157,6 +167,7 @@ export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | n
             deniedDomains,
             ...(unixSockets ? { allowAllUnixSockets: true } : {}),
             ...(gitConfig ? { gitConfig: true } : {}),
+            ...(weakerAny ? { weakerNested: true } : {}),
           })
         } catch (err) {
           // The Linux probe brings the runtime up, and only an armed run

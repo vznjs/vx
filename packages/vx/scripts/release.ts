@@ -102,6 +102,32 @@ export function publishAll(
 }
 
 /**
+ * `publishAll`, with `settle` between the platform packages and `@vzn/vx`.
+ * npm shows a published version when it has processed it, not when the
+ * publish returns, and not in order: `@vzn/vx@0.0.656` was installable 5
+ * minutes before `@vzn/vx-linux-x64@0.0.656` (0.0.654: 2 minutes), and an
+ * install in that window took no binary. So `@vzn/vx` is published only
+ * once the registry shows every platform package it names.
+ */
+export async function publishSettled(
+  packages: Readonly<Array<{ name: string; dir: string; plugin?: boolean }>>,
+  version: string,
+  registry: Registry,
+  settle: (platforms: string[]) => Promise<void>,
+  log: (line: string) => void,
+): Promise<void> {
+  const at = packages.findIndex((p) => p.name === '@vzn/vx')
+  if (at === -1) return publishAll(packages, version, registry, log)
+  publishAll(packages.slice(0, at), version, registry, log)
+  await settle(packages.slice(0, at).map((p) => p.name))
+  publishAll(packages.slice(at), version, registry, log)
+}
+
+/** Where the registry shows a version once it has processed its publish. */
+const versionUrl = (name: string, version: string): string =>
+  `https://registry.npmjs.org/${name}/${version}`
+
+/**
  * The dist-tag a publish of `version` takes when `latest` is above it: npm
  * refuses to move `latest` down, so a rebuilt older tag (v0.0.647 after
  * v0.0.648) publishes as `backfill` and `latest` stays where it is.
@@ -338,7 +364,7 @@ async function publish(os: Os, version: string): Promise<void> {
   // short-lived publish credential (trusted publishing) and attaches
   // provenance. A set token would take precedence, and npm restricts
   // classic tokens for direct publishing (the E401 that stopped v0.0.17).
-  publishAll(
+  await publishSettled(
     packages,
     version,
     {
@@ -354,8 +380,24 @@ async function publish(os: Os, version: string): Promise<void> {
         if (r.exitCode !== 0) throw new Error(`npm publish ${dir} failed (exit ${r.exitCode})`)
       },
     },
+    // The darwin ones too: their job published them before this one ran.
+    (platforms) =>
+      awaitServed(
+        [...publishOrder('darwin', []), ...platforms].flatMap((n) => [
+          versionUrl(n, version),
+          tarballUrl(n, version),
+        ]),
+        headStatus,
+        { tries: 90, sleep: () => Bun.sleep(10_000) },
+        (line) => console.log(line),
+      ),
     (line) => console.log(line),
   )
+}
+
+const headStatus = async (url: string): Promise<number> => {
+  const res = await fetch(url, { method: 'HEAD' }).catch(() => undefined)
+  return res?.status ?? 0
 }
 
 // Every package both publish jobs sent: the linux job runs last, so
@@ -373,11 +415,8 @@ async function served(version: string): Promise<void> {
   ]
   await awaitServed(
     names.map((n) => tarballUrl(n, version)),
-    async (url) => {
-      const res = await fetch(url, { method: 'HEAD' }).catch(() => undefined)
-      return res?.status ?? 0
-    },
-    { tries: 60, sleep: () => Bun.sleep(10_000) },
+    headStatus,
+    { tries: 90, sleep: () => Bun.sleep(10_000) },
     (line) => console.log(line),
   )
   console.log(`npm serves all ${names.length} tarballs at ${version}`)

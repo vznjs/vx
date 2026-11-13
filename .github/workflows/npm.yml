@@ -112,7 +112,7 @@ jobs:
     name: build & publish @vzn/vx
     needs: darwin
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     environment: npm
     permissions:
       contents: read
