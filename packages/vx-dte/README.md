@@ -595,7 +595,8 @@ use your own instead.
   leaves no file. One waits there up to 10 s; past that, with that worker
   gone or of another platform, or with its uncached upstreams on two
   workers, the upstream runs again where the dependant can go, and the
-  dependant follows it. One whose `exec.worker` or `exec.platforms` rules
+  dependant follows it. An idle worker holding such files stays while a
+  task to come reads them. One whose `exec.worker` or `exec.platforms` rules
   out where its dependant runs refuses the run before a worker starts,
   naming both: cache it, or run both alike. A task whose upload no remote took after three
   tries (too big, a 429, a reset connection) is its worker's fault: that
