@@ -57,6 +57,7 @@ export async function buildRequest(m: MissRun, local: boolean): Promise<ExecuteR
     ...(node.platform !== undefined ? { platform: node.platform } : {}),
     ...(node.worker !== undefined ? { worker: node.worker } : {}),
     ...(policy.deferred ? { download: 'deferred' as const } : {}),
+    ...(args.download === 'trailing' && !local ? { download: 'trailing' as const } : {}),
     // `--force`/`--no-cache` reach a remote executor's private record
     // through this flag: the policy gates only cover vx's OWN cache.
     ...(policy.refresh ? { refresh: true } : {}),

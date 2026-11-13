@@ -25,6 +25,7 @@ import {
 import { childrenCpuMs, describeCpu, readPs, topBetween } from './cpu-account.js'
 import {
   bytesOf,
+  TRAIL_LOG_BYTES,
   HOST_ENV,
   PART_LISTS,
   type DepOrder,
@@ -234,9 +235,10 @@ export async function runWorker(opts: {
     // Forced: the key keeps an entry it holds, so the run's machines restore
     // the fresh bytes under the run key.
     const keys = !bare && m.fresh === true && key === m.key ? [key, m.runKey] : [key]
+    let stored: readonly CapturedChunk[] | void = undefined
     try {
       for (const k of keys)
-        await artifacts.save(
+        stored = await artifacts.save(
           k,
           {
             id: m.task,
@@ -292,6 +294,12 @@ export async function runWorker(opts: {
       ranAt: t?.ranAt ?? endedAt,
       endedAt,
       spent: { check: began - (t?.ranAt ?? began), save: kept - began, upload: endedAt - kept },
+      ...(m.trail === true &&
+      result.exitCode === 0 &&
+      stored !== undefined &&
+      bytesOf(stored) <= TRAIL_LOG_BYTES
+        ? { log: [...stored] }
+        : {}),
       load: frame(),
     }
     for (const part of parts(end)) await say(part)

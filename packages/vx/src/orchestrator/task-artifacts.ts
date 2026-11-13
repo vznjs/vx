@@ -56,9 +56,9 @@ export interface TaskArtifacts {
    * Keeps the files `task`'s outputs match, and its output, as entry
    * `key`: here, and on each remote the workspace writes. Resolves once
    * its own uploads have settled, not another entry's; a remote that fails degrades as a run's
-   * upload does.
+   * upload does. Resolves the output as the entry holds it, secrets masked.
    */
-  save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
+  save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<readonly CapturedChunk[] | void>
   /**
    * Lays entry `key`'s files into the workspace, from the local store or
    * else the first remote holding it, and resolves its output, both streams
@@ -132,6 +132,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       // for a docs build's beside it on its worker (main b5e0826).
       if (cache.uploaded !== undefined) await cache.uploaded(key)
       else await cache.drainUploads?.()
+      return mask === null ? run.output : decodeOutputLog(log)
     },
 
     async restore(key, task) {

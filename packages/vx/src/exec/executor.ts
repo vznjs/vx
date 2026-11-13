@@ -261,10 +261,12 @@ export interface ExecuteRequest {
   /**
    * Whether outputs must land here now. 'eager' (or absent): materialise.
    * 'deferred': leave them remote and return `outputs: {kind:'deferred'}` with
-   * a closure core calls if a local consumer needs them. A local executor
-   * ignores it.
+   * a closure core calls if a local consumer needs them. 'trailing': the task
+   * is done once it ran, so return `outputs: {kind:'trailing'}` and bring
+   * them here meanwhile; asked only where nothing on this machine reads them
+   * before they land. A local executor ignores it.
    */
-  readonly download?: 'eager' | 'deferred'
+  readonly download?: 'eager' | 'deferred' | 'trailing'
   /** The declared output globs — project-relative `files`, root-relative `workspaceFiles`. */
   readonly outputs: {
     readonly files: readonly string[]
@@ -323,9 +325,14 @@ export interface ExecuteResult extends RunResult {
    * `deferred`: not on disk; core calls `materialize()` lazily, at most once,
    * then saves an ordinary entry, so nothing stays deferred. An executor may
    * answer `deferred` to an `eager` request when it cannot bring them: core
-   * then saves nothing from this disk.
+   * then saves nothing from this disk. `trailing`, only to a `trailing`
+   * request: on their way here; `landed` settles once they are on this disk,
+   * the run waits for it before it ends, and a rejection fails the run.
    */
-  readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
+  readonly outputs?:
+    | { kind: 'disk' }
+    | { kind: 'deferred'; materialize: () => Promise<void> }
+    | { kind: 'trailing'; landed: Promise<void> }
   /**
    * Tracked files the command changed where it ran, and untracked ones it
    * found there (workspace-relative POSIX), since this disk shows none of it.
@@ -601,6 +608,7 @@ export function assertExecuteResult(
   executor: string,
   taskId: string,
   res: unknown,
+  download?: ExecuteRequest['download'],
 ): asserts res is ExecuteResult {
   const fail = (what: string): never => {
     throw new UserError(
@@ -670,14 +678,21 @@ export function assertExecuteResult(
         fail(`machine.${key} is ${shown(n)} (expected a ${least} number)`)
     }
   }
-  const outputs = r['outputs'] as { kind?: unknown; materialize?: unknown } | undefined
+  const outputs = r['outputs'] as
+    | { kind?: unknown; materialize?: unknown; landed?: unknown }
+    | undefined
   if (outputs !== undefined) {
     if (typeof outputs !== 'object' || outputs === null) fail('outputs is not an object')
     else if (outputs.kind === 'deferred') {
       if (typeof outputs.materialize !== 'function')
         fail('outputs.kind is deferred without a materialize()')
+    } else if (outputs.kind === 'trailing') {
+      // Unasked, something on this machine may read the files before they land.
+      if (download !== 'trailing') fail('outputs.kind is trailing, which the request did not ask')
+      if (!(outputs.landed instanceof Promise))
+        fail('outputs.kind is trailing without a landed promise')
     } else if (outputs.kind !== 'disk')
-      fail(`outputs.kind is ${String(outputs.kind)} (expected disk or deferred)`)
+      fail(`outputs.kind is ${String(outputs.kind)} (expected disk, deferred or trailing)`)
   }
   const changed = r['changed']
   if (

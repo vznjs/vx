@@ -124,7 +124,7 @@ export async function runAttempt(
   let res = await signal
     .bound(running, req.signal, (line) => log.taskStderr(node, `${stream.nl()}${line}`))
     .then((r: unknown) => {
-      assertExecuteResult(args.executor.name, node.id, r)
+      assertExecuteResult(args.executor.name, node.id, r, req.download)
       return r
     })
     .catch(async (thrown: unknown) => {

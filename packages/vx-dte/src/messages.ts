@@ -2,7 +2,7 @@
 // (the relay never reads it): orders and status only. Every task's files
 // and output go through the workspace's cache, by the keys these name.
 
-import type { CacheFacts, ExecuteResult, SandboxConfig } from '@vzn/vx'
+import type { CacheFacts, CapturedChunk, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
 /** How many tracked files a worker's `changed` names: one past it says there are more. */
 export const CHANGED_NAMED = 3
@@ -66,6 +66,8 @@ export interface RunOrder {
   /** Its `exec.env.secret`: the names in `env` whose values its saved output masks. */
   secret?: string[]
   timeoutMs?: number
+  /** Its files may come to the orchestrator after its `end`, which then carries its output (`log`). */
+  trail?: true
   outputs: { files: string[]; workspaceFiles: string[] }
   /** Its recorded peak: the worker starts it when that much is free. */
   cores: number
@@ -216,6 +218,12 @@ export type ToOrchestrator =
       endedAt: number
       /** Where its time since its command went, ms: checking what it left, saving here, the remotes taking it. */
       spent?: { check: number; save: number; upload: number }
+      /**
+       * Its output as its entry holds it, for a `trail` order that passed: the
+       * orchestrator ends the task with it before the entry is there. Absent
+       * when too long for a frame; the entry is then read first, as ever.
+       */
+      log?: CapturedChunk[]
       load?: Load
     } & Ran)
   /**
@@ -231,6 +239,9 @@ export type ToOrchestrator =
  * never arrived.
  */
 export const bytesOf = (body: unknown): number => Buffer.byteLength(JSON.stringify(body))
+
+/** The longest output an `end` carries (`log`): past it, the orchestrator reads the entry. */
+export const TRAIL_LOG_BYTES = 256 * 1024
 
 /** The lists a long result sends ahead of its `end`, in parts. */
 export const PART_LISTS = ['violations', 'changed', 'removed'] as const

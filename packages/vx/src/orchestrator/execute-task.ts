@@ -15,6 +15,7 @@ import type { MissExplainer } from '../history/index.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
+import type { TrailingOutputs } from './trailing-outputs.js'
 import { type TreeLoad } from './telemetry.js'
 import { type Logger } from '../report/index.js'
 import {
@@ -39,6 +40,8 @@ export interface RunContext {
   /** Run-scoped deferral registry — where deferred closures land, and
    *  where a locally-placed consumer fetches its producers from. */
   deferred?: DeferredOutputs
+  /** The outputs still coming to this machine after their task ended. */
+  trailing?: TrailingOutputs
   /** The run's cache directory: walled off from a sandboxed task's grants. */
   cacheDir?: string
   /** Anchor for hrtime spans across all tasks in this run. */
@@ -217,7 +220,7 @@ export interface ExecuteArgs {
    * that ignores it and materialises anyway simply gets no local entry;
    * the outputs are on disk but unindexed, which is its contract to keep.
    */
-  download?: 'eager' | 'deferred'
+  download?: 'eager' | 'deferred' | 'trailing'
   nestedProjectDirs: string[]
   /**
    * Where its outputs stop when that is more than `nestedProjectDirs`: the

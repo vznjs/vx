@@ -21,7 +21,7 @@ describe.skipIf(!available)('a sandboxed task on a worker', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-sb-'))
     const files: Record<string, string> = {
       'package.json': JSON.stringify({ name: 'ws', private: true }),
-      '.gitignore': 'out\nstamp\n.vx/cache\n',
+      '.gitignore': 'out\nstamp\nraw.txt\n.vx/cache\n',
       '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
 export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1, cpu: 2, memory: '1GB' } } } }, adapter: local() })] }
 `,
@@ -46,6 +46,12 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     exec: { command: 'read w < ../a/out/where.txt && echo "got:$w"', sandbox: { allow: { read: ['.'] } } },
     dependsOn: ['a#gen'],
   },
+  // Uncached, after an uncached task: \`a#raw\` is done once it ran, and
+  // its file comes to this checkout while this one runs.
+  after: {
+    exec: { command: 'read w < ../a/raw.txt && echo "after:$w"', sandbox: { allow: { read: ['.', '../a/raw.txt'] } } },
+    dependsOn: ['a#raw'],
+  },
   blind: {
     exec: { command: 'read w < ../a/out/where.txt && echo "got:$w"', sandbox: { allow: { read: ['.'] } } },
   },
@@ -57,6 +63,9 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     inputs: { files: ['vx.config.mjs'] },
     outputs: { files: ['out/**'] },
     cache: true,
+  },
+  raw: {
+    exec: { command: 'sleep 0.2; echo RAW > raw.txt', sandbox: { allow: { read: ['.'], write: ['raw.txt'] } } },
   },
   stamp: {
     exec: { command: 'sleep 0.1; : > stamp', sandbox: { allow: { read: ['.'], write: ['stamp'] } } },
@@ -128,6 +137,13 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     const blind = vx(['run', 'b#blind'], crypto.randomUUID())
     expect(blind.exitCode).not.toBe(0)
   }, 120_000)
+
+  it('an uncached task’s file is here when the run ends, its dependant run meanwhile', async () => {
+    const r = vx(['run', 'b#after'], crypto.randomUUID())
+    const out = r.stdout.toString() + r.stderr.toString()
+    expect([r.exitCode, out]).toEqual([0, expect.stringContaining('after:RAW')])
+    expect(await readFile(path.join(root, 'a/raw.txt'), 'utf8')).toBe('RAW\n')
+  }, 60_000)
 
   it('fails a read outside its grants, naming this checkout', () => {
     const r = vx(['run', 'a#peek'], crypto.randomUUID())

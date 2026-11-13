@@ -1198,6 +1198,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'timeout-exit-race.unsafe',
     'tmpdir-refusal',
     'tool-not-on-path',
+    'trailing-outputs',
     'tree-states-key',
     'tree-store-layout',
     'tree-store-torn',

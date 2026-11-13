@@ -281,7 +281,12 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
       says('outputs.kind is deferred without a materialize()'),
     )
     expect(refusal({ ...ok, outputs: { kind: 'remote' } })).toBe(
-      says('outputs.kind is remote (expected disk or deferred)'),
+      says('outputs.kind is remote (expected disk, deferred or trailing)'),
+    )
+    // Files still on their way: only where the request said nothing here
+    // reads them first, and with the promise the run waits on.
+    expect(refusal({ ...ok, outputs: { kind: 'trailing', landed: Promise.resolve() } })).toBe(
+      says('outputs.kind is trailing, which the request did not ask'),
     )
     expect(refusal({ ...ok, outputs: 'disk' })).toBe(says('outputs is not an object'))
     expect(refusal({ ...ok, outputs: null })).toBe(says('outputs is not an object'))
