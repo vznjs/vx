@@ -195,6 +195,11 @@ async function look(): Promise<void> {
   }
 }
 
+/** How many trees are watched: none once every task has ended, or the timer never stops. */
+export function watchedTrees(): number {
+  return watched.size
+}
+
 /**
  * Watch a running tree until `stop`, which answers the most CPU and the
  * peak resident memory any look saw; none when no look landed (a task

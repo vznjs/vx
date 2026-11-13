@@ -27,6 +27,8 @@ import {
   OPEN_LINE_WAIT_MS,
 } from '../src/exec/runner.js'
 import { killTree, markStopped } from '../src/exec/kill-tree.js'
+import { watchedTrees } from '../src/exec/proc-sample.js'
+import { sparesSettled } from '../src/exec/warm-shell.js'
 
 /**
  * A deadline a fresh shell's first command (an `echo`, a `trap`) meets on
@@ -2047,9 +2049,23 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     return open
   }
 
+  // The spare's `cd` into a missing directory returned before the watch
+  // was stopped: its timer then read all of /proc every 250 ms for the
+  // rest of the run, each read a descriptor open for a moment, and the
+  // count below read one off when a look landed on it (CI, 2026-11-13).
+  it('a task whose directory is gone leaves no tree watched', async () => {
+    // The first call starts the spares the second runs on.
+    await runCommand({ command: 'true', cwd, env })
+    const failed = await runCommand({ command: 'true', cwd: path.join(cwd, 'missing'), env })
+    expect(failed.spawnFailed).toBe(true)
+    expect(watchedTrees()).toBe(0)
+  })
+
   it('every descriptor a task took is closed after it: plain, cut, spawn-failed, persistent', async () => {
     await runCommand({ command: 'true', cwd, env })
-    // The spare shells that call started hold their pipes once spawned.
+    // The spare shells that call started hold their pipes once spawned:
+    // awaited, not slept for, since the spawn is on a thread of its own.
+    await sparesSettled()
     await Bun.sleep(50)
     const before = openFds()
     for (let i = 0; i < 20; i++) await runCommand({ command: 'echo a; echo b >&2', cwd, env })
@@ -2062,6 +2078,7 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     await spawn.ready
     spawn.child!.kill('SIGKILL')
     await spawn.child!.exited
+    await sparesSettled()
     await Bun.sleep(50)
     // By count: a spare taken is replaced by one on other descriptors.
     expect(openFds().size).toBe(before.size)
