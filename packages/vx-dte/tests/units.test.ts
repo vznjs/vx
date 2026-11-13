@@ -2306,6 +2306,28 @@ it('replays what each task took on every worker the sizes allow: the ideal end',
   }
 })
 
+// Main c12ffd4: test shards held a core each and used half of one, so the
+// ideal placed 7 a 4-core worker, as long as each took at 4 a worker, and
+// read 126 s where 36 full slots took 145 s. A task replays in the room
+// it held.
+it('replays each task in the cores it held, not the fewer it used', async () => {
+  const ids = ['t1', 't2', 't3', 't4']
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const runs = ids.map((id) => h.o.execute(h.req(id)))
+    await w.batches()
+    for (const id of ids)
+      await w.finish(id, `k-${id}`, { exitCode: 0, durationMs: 400, cpuMs: 100 })
+    await Promise.all(runs)
+    // Two at a time on its 2 cores, not all four at a quarter core each.
+    expect(h.o.idealMs(() => [], [{ name: 'small', max: 1, cpu: 2, memory: 1e10 }])).toBe(800)
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-11-05: "what would be the optimal number and spec of workers for
 // the simulated run, and what would be optimal numbers based on provided
 // specification".

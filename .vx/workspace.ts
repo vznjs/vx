@@ -38,12 +38,15 @@ export default defineWorkspace({
       // Three Macs: at 4 a run, two runs at once passed the account's 5
       // and every Mac queued 320-340 s, three runs in a row (2026-11-12).
       // At 2 the Mac work was the run's end: 210 s, its ideal 122 s.
+      // A Mac counts 2 of its 3 cores: macOS spends about one beside two
+      // test shards, in work no process tree shows, and three shards at
+      // once each ran 84-91 s for 61-71 s (main c12ffd4, 2026-11-13).
       workers: {
         hosted: {
           machines: {
             small: { max: 9, cpu: 4, memory: '16GB', platform: 'linux-x64' },
             arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' },
-            mac: { max: 3, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+            mac: { max: 3, cpu: 2, memory: '7GB', platform: 'darwin-arm64' },
           },
         },
       },
