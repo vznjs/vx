@@ -677,7 +677,16 @@ export function dte(options: DteOptions = {}) {
       const [
         { Orchestrator },
         { joinOffLoop },
-        { decide, keepLast, knownMisses, sized: within, slowdown, tailsMs, UNKNOWN_MS, WARM_UP_MS },
+        {
+          decide,
+          keepLast,
+          knownMisses,
+          sized: within,
+          slowdowns,
+          tailsMs,
+          UNKNOWN_MS,
+          WARM_UP_MS,
+        },
         { snapshot, untrackedWorkspace },
         seal,
         m,
@@ -874,16 +883,21 @@ export function dte(options: DteOptions = {}) {
           (size === undefined ? undefined : (ups.get(size) ?? learned.warmUps.get(size))) ??
           any ??
           WARM_UP_MS
-        // What is left takes as much longer than history as what ended did.
+        // What is left takes as much longer than history as what ended
+        // did, on its platform (`slowdowns`).
         const p50 = (id: string): number | undefined => peaks.get(id)?.p50DurationMs
-        const slow = slowdown(o.finished(p50))
+        const slowOn = slowdowns(o.finished(p50))
+        const slow = (id: string): number => {
+          const n = nodes?.get(id)
+          return slowOn(n === undefined ? home : placeOf(n.worker, n.platform))
+        }
         const ms = (id: string): number | undefined => {
           const m = p50(id)
-          return m === undefined ? undefined : m * slow
+          return m === undefined ? undefined : m * slow(id)
         }
         const slowMs = (id: string): number | undefined => {
           const m = peaks.get(id)?.slowDurationMs
-          return m === undefined ? undefined : m * slow
+          return m === undefined ? undefined : m * slow(id)
         }
         const state = o.planState(ms, warmUp)
         const running = state.running

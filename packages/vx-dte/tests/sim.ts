@@ -12,7 +12,7 @@ import { needOf } from '../src/plugin.js'
 import { booked, DEFAULT_STRATEGY, MIN_CORES, type Strategy } from '../src/plan/strategy.js'
 import {
   keepLast,
-  slowdown,
+  slowdowns,
   spreadMs,
   tailsMs,
   type PlanTask,
@@ -251,9 +251,12 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const waitedMs = new Map<string, number>()
   const startedAt = new Map<string, number>()
   const endedAt = new Map<string, number>()
-  // What ended, summed as `slowdown` sums it: read whole at each event, it
-  // made a 10 000-task sim quadratic.
-  const finished = { took: 0, forecast: 0 }
+  // What ended, summed by platform as `slowdowns` sums it: read whole at
+  // each event, it made a 10 000-task sim quadratic.
+  const finished = new Map<
+    string | undefined,
+    { took: number; forecast: number; platform: string | undefined }
+  >()
   const ready = (id: string): void => {
     const t = byId.get(id)!
     if (t.exec && t.ran !== undefined) {
@@ -427,10 +430,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const likely = options.likely ?? new Set<string>()
     if (executed.size === 0 && likely.size === 0) return
     // As the plugin: what is left takes as much longer than history as what ended did.
-    const slow = slowdown([finished])
+    const slowOn = slowdowns(finished.values())
+    const slow = (id: string): number => slowOn(byId.get(id)!.platform ?? options.home)
     const ms = (id: string): number | undefined => {
       const m = durationMs(id)
-      return m === undefined ? undefined : m * slow
+      return m === undefined ? undefined : m * slow(id)
     }
     // As the plugin: the fastest join of the size this run, else the first worker's.
     const warmUp = (size: string | undefined): number => {
@@ -479,7 +483,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
             Math.max(Math.min(r.booked.cores, w.cores) * over, r.booked.ask?.cores ?? 0),
           ),
           memory: Math.min(Math.max(r.booked.memory, r.booked.ask?.memory ?? 0), w.memory),
-          endsIn: (r.knownMs ?? 0) * slow - (now - r.startedAt),
+          endsIn: (r.knownMs ?? 0) * slow(r.id) - (now - r.startedAt),
         })),
       })
     }
@@ -661,8 +665,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           if (byId.get(r.id)!.leaves === true) keep(r.id, w.id)
           endedAt.set(r.id, now)
           if (r.knownMs !== undefined && r.knownMs > 0) {
-            finished.took += now - r.startedAt
-            finished.forecast += r.knownMs
+            let sum = finished.get(w.platform)
+            if (sum === undefined)
+              finished.set(w.platform, (sum = { took: 0, forecast: 0, platform: w.platform }))
+            sum.took += now - r.startedAt
+            sum.forecast += r.knownMs
           }
           end(r.id)
         }
