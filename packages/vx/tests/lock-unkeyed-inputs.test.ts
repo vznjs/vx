@@ -105,4 +105,15 @@ describe('vx lock and what a key never sees', () => {
     )
     expect(r).toEqual({ code: 0, err: '' })
   })
+
+  // `['**']` keys every file git lists, and `.env.production.local` is not one.
+  it('names an ignored .env file a cached task reads through `**`', async () => {
+    const r = await lock(task('all', { files: ['**'] }))
+    expect(r.code).toBe(0)
+    expect(r.err).toContain(
+      "packages/app#all: inputs leave out git-ignored .env.production.local (matched by **) — a glob reads only what git lists; name it as a literal input ('.env.production.local') to key on it",
+    )
+    expect(r.err).not.toContain('gen.local')
+    expect(r.err.match(/inputs leave out/g)?.length).toBe(1)
+  })
 })

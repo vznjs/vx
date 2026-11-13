@@ -28,12 +28,12 @@ function logger(lines: string[]) {
   }
 }
 
-async function runTask(task: string): Promise<string[]> {
+async function runTask(task: string, project = 'app'): Promise<string[]> {
   const lines: string[] = []
   const summary = await run({
     cwd: root,
     tasks: [task],
-    projects: ['app'],
+    projects: [project],
     log: logger(lines),
     handleSignals: false,
   })
@@ -68,6 +68,21 @@ describe('a glob input that matches a git-ignored file', () => {
         own: ${task('own-out', ['src/**', '*.json', 'vx.lock.json*'])},
       } }\n`,
     )
+    // A `**` reader, one per project: it may not read another task's outputs.
+    for (const [name, inputs] of [
+      ['web', ['**']],
+      ['web2', ['**/*', '!.env.local']],
+    ] as const) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+      await writeFile(path.join(dir, '.env.local'), 'B=1\n')
+      await writeFile(path.join(dir, '.gitignore'), 'out\n')
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        `export default { tasks: { all: ${task('out', [...inputs])} } }\n`,
+      )
+    }
     await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
   })
   afterEach(async () => {
@@ -85,6 +100,15 @@ describe('a glob input that matches a git-ignored file', () => {
     expect(await runTask('named')).toEqual([])
     expect(await runTask('excluded')).toEqual([])
     expect(await runTask('deep')).toEqual([])
+  })
+
+  // `['**']` over a Vite app keyed everything but the ignored `.env.local`
+  // the build reads, and said nothing: the old build came back after an edit.
+  it('is named under a `**` glob when it is a .env file beside the config', async () => {
+    expect(await runTask('all', 'web')).toEqual([
+      "[vx] web#all: inputs leave out git-ignored .env.local (matched by **) — a glob reads only what git lists; name it as a literal input ('.env.local') to key on it",
+    ])
+    expect(await runTask('all', 'web2')).toEqual([])
   })
 
   // vx leaves its own review copy out of every key, ignored by git or not:

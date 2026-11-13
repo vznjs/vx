@@ -261,8 +261,10 @@ export function wholeIgnored(
  * `.env*` replayed a stale hit after an edit to `.env.local`. A run reads
  * it on the miss path only, one directory listing per such glob, no git;
  * `vx lock` passes no `files` and asks git which candidates it ignores. A
- * `**` glob is skipped, so an ignored `node_modules` or `dist` says nothing,
- * and so is `vx lock`'s review copy, which no key folds.
+ * `**` glob is asked only for the `.env*` files beside the config (`['**']`
+ * over a Vite app replayed the old build after an edit to `.env.local`), so
+ * an ignored `node_modules` or `dist` says nothing; nor does `vx lock`'s
+ * review copy, which no key folds.
  */
 export function ignoredByGlobs(
   declared: readonly string[] | undefined,
@@ -276,12 +278,15 @@ export function ignoredByGlobs(
     const segments = g.split('/')
     return segments.slice(0, -1).every((s) => isLiteralPattern(s) && s !== '..' && s !== '.')
   })
-  if (shallow.length === 0) return []
+  // A `**` glob is asked one thing: the `.env*` files beside the config.
+  const deep = declared.filter((g) => !g.startsWith('!') && g.startsWith('**'))
+  if (shallow.length + deep.length === 0) return []
   const excluded = anyTaskGlob(declared.filter((g) => g.startsWith('!')).map((g) => g.slice(1)))
   let keyed: Set<string> | undefined
   const found: [string, string, string][] = []
-  for (const glob of shallow) {
-    const dir = glob.split('/').slice(0, -1).join('/')
+  for (const glob of [...shallow, ...deep]) {
+    const dotenvOnly = glob.startsWith('**')
+    const dir = dotenvOnly ? '' : glob.split('/').slice(0, -1).join('/')
     let entries
     try {
       entries = readdirSync(path.join(base, dir), { withFileTypes: true })
@@ -290,7 +295,7 @@ export function ignoredByGlobs(
     }
     const match = anyTaskGlob([glob])
     for (const e of entries) {
-      if (!e.isFile()) continue
+      if (!e.isFile() || (dotenvOnly && !e.name.startsWith('.env'))) continue
       const rel = dir === '' ? e.name : `${dir}/${e.name}`
       if (!match(rel) || excluded(rel)) continue
       // vx's own review copy is in no key, whatever git says of it.
