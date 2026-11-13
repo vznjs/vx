@@ -4678,13 +4678,17 @@ it('a worker begins its next task while the last one saves', async () => {
   }
 })
 
-// A task books the cores it keeps busy on average, unrounded, and a whole
-// core at least: eight 0.3-core shards on one 4-core worker each ran 2-3x
-// their time alone (main c2adbdd, 2026-11-12).
-it('books the cores a task keeps busy on average, unrounded, a whole core at least', () => {
+// A task books the cores it keeps busy on average, a whole core at least:
+// eight 0.3-core shards on one 4-core worker each ran 2-3x their time
+// alone (main c2adbdd, 2026-11-12). To the nearest quarter: a shard read
+// at 1.09 took a 2-core Mac alone while one at 1 waited 77 s for room
+// (main d155ad8, 2026-11-13).
+it('books the cores a task keeps busy on average, to the quarter, a whole core at least', () => {
   expect(
-    [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
-  ).toEqual([1, 2.4, 1])
+    [0.7, 2.4, 0.01, 1.09, 1.03, 1.13, 3.31].map(
+      (c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores,
+    ),
+  ).toEqual([1, 2.5, 1, 1, 1, 1.25, 3.25])
   expect(needOf(undefined)).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
 })
 

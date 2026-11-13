@@ -20,7 +20,7 @@ import type { Need, Soon } from './plan/index.js'
 import {
   booked,
   DEFAULT_STRATEGY,
-  MIN_CORES,
+  bookedCores,
   STRATEGIES,
   type Strategy,
   wholeCores,
@@ -1323,12 +1323,12 @@ export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
       memory: Infinity,
       above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
     }
-  // The cores it keeps busy on average, unrounded, and a whole core at
+  // The cores it keeps busy on average (`bookedCores`), a whole core at
   // least: at their 0.3-core average, eight test shards shared one 4-core
   // worker and each ran 146-199 s, where alone they ran 50-100 s; the slow
   // runs became their history and the next plan piled them again (main
   // c2adbdd, 2026-11-12). Averages hide bursts.
-  return { cores: Math.max(MIN_CORES, r.maxCpuParallelism), memory: r.maxPeakRssBytes ?? 0 }
+  return { cores: bookedCores(r.maxCpuParallelism), memory: r.maxPeakRssBytes ?? 0 }
 }
 
 const UNITS: Record<string, number> = {
