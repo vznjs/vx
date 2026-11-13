@@ -45,6 +45,15 @@ export const STRATEGIES: { readonly [K in keyof Strategy]: readonly Strategy[K][
 export const MIN_CORES = 1
 
 /**
+ * The cores a measured task books: its average to the nearest quarter, a
+ * whole core at least. An average reads a tenth off run to run and a
+ * worker fills in full only: a shard at 1.09 took a 2-core Mac alone for
+ * 63 s while one at 1 waited 77 s for room, and the run ended 8 s late
+ * (main d155ad8, 2026-11-13); one at 1.03 fit beside no three others on 4.
+ */
+export const bookedCores = (cores: number): number => Math.max(MIN_CORES, Math.round(cores * 4) / 4)
+
+/**
  * What a machine spends besides the run's tasks, as the run books it: whole
  * cores only. A task books a whole core at least (`MIN_CORES`) and uses
  * less, which covers the rest: 0.93 core taken off a 4-core worker left
