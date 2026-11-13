@@ -66,6 +66,7 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
   },
   raw: {
     exec: { command: 'sleep 0.2; echo RAW > raw.txt', sandbox: { allow: { read: ['.'], write: ['raw.txt'] } } },
+    outputs: { files: ['raw.txt'] },
   },
   stamp: {
     exec: { command: 'sleep 0.1; : > stamp', sandbox: { allow: { read: ['.'], write: ['stamp'] } } },

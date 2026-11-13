@@ -186,6 +186,7 @@ src/orchestrator/task-save.ts
 src/orchestrator/task-secrets.ts
 src/orchestrator/telemetry-host.ts
 src/orchestrator/telemetry.ts
+src/orchestrator/trailing-outputs.ts
 src/orchestrator/undeclared-state.ts
 src/orchestrator/upstream.ts
 src/orchestrator/worker-runtime.ts
