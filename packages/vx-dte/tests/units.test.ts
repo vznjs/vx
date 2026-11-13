@@ -1000,6 +1000,7 @@ async function harness(
     pinWaitMs?: number
     warn?: (m: string) => void
     learnedOther?: (size: string) => number | undefined
+    starts?: Map<string, number>
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -1327,6 +1328,62 @@ it("books a worker's cores its machine spends besides the run's tasks", async ()
   } finally {
     await h.stop()
   }
+})
+
+// Main b5e0826: test.live held its worker 45 s, 11 of them its two
+// servers starting before its command; the plan knew only the command's
+// time and started it that much too late. The worker says how long each
+// server it started took, and the plan adds the longest to the task.
+it("hears each server's start from its worker, and plans its task that much longer", async () => {
+  const starts = new Map<string, number>()
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    starts,
+  })
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({
+      type: 'ran',
+      task: 't1',
+      load: { cpu: 1, memory: 0, starts: { 's#db': 9000, 's#bad': -1 } },
+    })
+    await Bun.sleep(50)
+    expect([...starts]).toEqual([['s#db', 9000]])
+    await a.finish('t1')
+  } finally {
+    await h.stop()
+  }
+  const exec = { exec: { command: 'x' } }
+  const nodes = new Map(
+    ['e2e', 'unit', 'new'].map((id) => [id, { id, deps: [], config: exec } as unknown as TaskNode]),
+  )
+  const work = planTasks(
+    ['e2e', 'unit', 'new'],
+    nodes,
+    (id) => ({
+      cores: 1,
+      memory: 1,
+      ...(id === 'unit'
+        ? {}
+        : {
+            servers: [
+              { id: 's#db', cores: 0.1, ms: starts.get('s#db')! },
+              { id: 's#api', cores: 0.1, ms: 2000 },
+              { id: 's#unmeasured', cores: 0 },
+            ],
+          }),
+    }),
+    (id) => (id === 'new' ? undefined : 4000),
+    undefined,
+    () => 6000,
+  )
+  expect(work.map((t) => [t.id, t.ms, t.slowMs])).toEqual([
+    ['e2e', 13_000, 15_000],
+    ['unit', 4000, 6000],
+    ['new', undefined, 15_000],
+  ])
 })
 
 // Main f2ddcb6: a small just joined, booked on all 4 cores until its

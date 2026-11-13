@@ -202,6 +202,8 @@ export interface OrchestratorOptions {
   readonly need: (taskId: string) => Need
   /** Each server's base, cores, as workers fit them: updated in place. */
   readonly bases?: Map<string, number>
+  /** Each server's start, ms, as workers measure it: updated in place. */
+  readonly starts?: Map<string, number>
   /** A size's cores its machines spent besides an earlier run's tasks (`othersOf`). */
   readonly learnedOther?: (size: string) => number | undefined
   /** The run's cache, by key: what workers save to and this machine restores from. */
@@ -1073,6 +1075,9 @@ export class Orchestrator {
       for (const [id, cores] of Object.entries(load.servers))
         if (typeof cores === 'number' && Number.isFinite(cores) && cores >= 0 && cores <= a.cores)
           this.o.bases?.set(id, cores)
+    if (typeof load.starts === 'object' && load.starts !== null)
+      for (const [id, ms] of Object.entries(load.starts))
+        if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) this.o.starts?.set(id, ms)
     const tasks = Number(load.tasks)
     if (Number.isFinite(tasks) && tasks >= 0) a.load.tasks = tasks
     // What the machine spends besides the run's tasks: GitHub's runner

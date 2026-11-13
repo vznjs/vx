@@ -334,13 +334,18 @@ export function planTasks(
       numberedOf.set(e.depsN, num)
     }
     const slow = slowMs?.(id)
+    // Its servers start on its worker before its command: it holds the
+    // worker that much longer than its own time.
+    let starts = 0
+    for (const sv of n.servers ?? []) starts = Math.max(starts, sv.ms ?? 0)
+    const ms = durationMs(id)
     out.push({
       id,
       cores: n.ask?.cores ?? n.cores,
       memory: n.ask?.memory ?? n.memory,
       above: n.above,
-      ms: durationMs(id),
-      ...(slow === undefined ? {} : { slowMs: slow }),
+      ms: ms === undefined ? undefined : ms + starts,
+      ...(slow === undefined ? {} : { slowMs: slow + starts }),
       deps,
       platform: typeof home === 'function' ? home(e.node) : (e.node.platform ?? home),
       n: e.n,
@@ -463,9 +468,12 @@ export interface Need {
   /**
    * Its persistent dependencies' bases, cores (`server-fit.ts`): a worker
    * not running one yet books its base once beside the task, and keeps it
-   * booked while it serves.
+   * booked while it serves. `ms`: its start, which the task waits before
+   * its command.
    */
-  readonly servers?: readonly { readonly id: string; readonly cores: number }[] | undefined
+  readonly servers?:
+    | readonly { readonly id: string; readonly cores: number; readonly ms?: number }[]
+    | undefined
 }
 
 /**

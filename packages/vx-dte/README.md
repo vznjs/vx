@@ -1023,7 +1023,10 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     the run makes it again first; the worker holding them stays while it
     has such a task to come. A server's base is packed as the run books
     it: once on each worker that starts it, from its first dependant
-    there until its last dependant anywhere ends. It then packs again in other orders, up to 64 times (fewer
+    there until its last dependant anywhere ends. A server's start, from
+    its spawn to its first dependant's as its worker measured it and
+    history keeps it, is added to each dependant's time: the task holds
+    its worker that long before its command. It then packs again in other orders, up to 64 times (fewer
     past 100 tasks, none past 6400), each new worker's task a random way
     into its slack, and keeps the one holding least by the same end. How far that is from the least
     a run can hold: `scripts/optimum.ts` plays small graphs and

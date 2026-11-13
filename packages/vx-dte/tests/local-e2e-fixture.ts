@@ -108,7 +108,7 @@ const shard = (n) => ({ dependsOn: ['srv'], exec: { command: 'test -e up && slee
 const pid = ${JSON.stringify(path.join(root, 'used.pid'))}
 const gone = 'p=$(cat ' + pid + '); for i in $(seq 50); do kill -0 $p 2>/dev/null || { echo server-gone; exit 0; }; sleep 0.1; done; echo server-alive'
 export default { name: 's', tasks: {
-  srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
+  srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && sleep 0.3 && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
   t1: t(1), t2: t(2), t3: t(3), shard1: shard(1), shard2: shard(2),
   used: { exec: { command: 'echo $$ > ' + pid + ' && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
   user: { dependsOn: ['used'], exec: { command: 'true' } },

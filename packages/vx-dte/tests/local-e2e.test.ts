@@ -41,10 +41,8 @@ it('a task reads the files of uncached tasks that ran on other workers', async (
   expect([run.exitCode, out]).toEqual([0, expect.stringContaining('one\ntwo\n')])
 }, 60_000)
 
-// Timings are the orchestrator's to report: each task's, as its worker
-// measured it, reaches the plugins there once, and a worker hands none to
-// its own (2026-10-25). A history plugin uploads them once, at the end.
-it('only the orchestrator reports timings: every task a worker ran, once, as the worker measured it', async () => {
+/** Adds a plugin that logs each task's outcome, each measure and its teardown to `timings.log`: its path. */
+async function logTimings(): Promise<string> {
   const log = path.join(root, 'timings.log')
   const dir = path.join(root, 'timings')
   await mkdir(dir, { recursive: true })
@@ -66,6 +64,14 @@ const timings = definePlugin({ dir: ${JSON.stringify(dir)} }, {
 })
 ` + text.replace('plugins: [', 'plugins: [timings, '),
   )
+  return log
+}
+
+// Timings are the orchestrator's to report: each task's, as its worker
+// measured it, reaches the plugins there once, and a worker hands none to
+// its own (2026-10-25). A history plugin uploads them once, at the end.
+it('only the orchestrator reports timings: every task a worker ran, once, as the worker measured it', async () => {
+  const log = await logTimings()
   const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
   git('add', '-A')
   git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'timings')
@@ -210,12 +216,27 @@ it('gives a task on a worker only the env it passes through', () => {
 // Nothing runs on the orchestrator (2026-10-22): each worker that
 // runs a server's dependant starts the server itself, once, beside it.
 it('starts a task’s server on the worker that runs it, once per worker, never here', async () => {
+  const log = await logTimings()
+  Bun.spawnSync(['git', 'add', '-A'], { cwd: root })
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'timings'],
+    { cwd: root },
+  )
   const r = vx(['run', 's#t1', 's#t2', 's#t3'], 'e2e-srv')
   const out = r.stdout.toString() + r.stderr.toString()
   expect([r.exitCode, out]).toEqual([0, expect.stringContaining('saw3')])
   const starts = (await readFile(path.join(root, 'servers.log'), 'utf8')).trim().split('\n')
   expect(starts).not.toContain(path.join(root, 's'))
   expect(new Set(starts).size).toBe(starts.length)
+  // How long the server took to be ready is kept as its measure's time
+  // (`logTimings`): the next run plans its dependants that much longer.
+  const kept = (await readFile(log, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l) as Record<string, unknown>)
+    .filter((r) => r['measure'] === '@vzn/vx-dte#server-base:s#srv')
+  expect(kept.length).toBeGreaterThan(0)
+  expect(Number(kept.at(-1)!['ms'])).toBeGreaterThanOrEqual(250)
 }, 60_000)
 
 // Two shards of one suite on two machines each need the server where they

@@ -134,7 +134,9 @@ export async function runWorker(opts: {
       if (pid === undefined) {
         serverTrees.drop(id)
         usersOf.delete(id)
+        spawnedAt.delete(id)
       } else {
+        spawnedAt.set(id, performance.now())
         serverTrees.watch(id, pid)
         usersOf.set(id, usersOf.get(id) ?? new Set())
       }
@@ -151,8 +153,14 @@ export async function runWorker(opts: {
       ...load.now(),
       tasks: trees.now(),
       ...(Object.keys(servers).length === 0 ? {} : { servers }),
+      ...(Object.keys(starts).length === 0 ? {} : { starts }),
     }
   }
+  // When each server it runs spawned, and how long after the first task
+  // needing it did: the plan adds that to the task (main: test.live held
+  // its worker 11 s before its command, and ended that far past the plan).
+  const spawnedAt = new Map<string, number>()
+  const starts: Record<string, number> = {}
   const usersOf = new Map<string, Set<string>>()
   let sampledAt = performance.now()
   const sampler = setInterval(() => {
@@ -477,6 +485,11 @@ export async function runWorker(opts: {
         envDefine: {},
         signal: stop.signal,
         onSpawn: (pid) => {
+          for (const sv of serves) {
+            const at = spawnedAt.get(sv)
+            if (at !== undefined && starts[sv] === undefined)
+              starts[sv] = Math.round(performance.now() - at)
+          }
           using()
           trees.watch(m.task, pid)
         },

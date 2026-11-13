@@ -171,6 +171,8 @@ export interface Load {
   readonly at?: number
   /** Each server it runs, its base as fitted (`server-fit.ts`): cores it uses with no dependant's work. */
   readonly servers?: Record<string, number>
+  /** Each server it started, ms from its spawn to its first dependant's: what that task waited. */
+  readonly starts?: Record<string, number>
 }
 
 /** A task's times on its worker, epoch ms by the worker's clock: begun, command ended. */
