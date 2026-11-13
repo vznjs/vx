@@ -103,10 +103,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const weaker = await probeSandbox({ weakerNested: true })
         expect(again).toBe(secure)
         expect(weaker).not.toBe(secure)
-        expect(spy.mock.calls.map((c) => c[2])).toEqual([
-          undefined,
-          { enableWeakerNestedSandbox: true },
-        ])
+        // By what the wrapper answered: SRT reads the mode off its run-wide
+        // config, and the per-call option this once pinned did nothing.
+        const wrapped = (await Promise.all(spy.mock.results.map((r) => r.value))) as string[]
+        expect(wrapped.map((w) => w.includes('--bind /proc /proc'))).toEqual([false, true])
       } finally {
         spy.mockRestore()
       }

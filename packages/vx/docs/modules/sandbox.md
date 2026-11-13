@@ -421,7 +421,11 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    wrapper probe refuses up front, naming the fix (a non-root user, or
    `sandbox.weakerWhenNested: true` on every sandboxed task —
    `run()` probes the weaker mode only when every sandboxed task opts
-   in). Memoized per mode. A throw from the runtime itself is the same
+   in; a refused fresh `/proc` mount, an unprivileged container's or an
+   outer sandbox's, names the same field). SRT reads the weaker profile
+   from its run-wide config, so the probe and each task's wrap set it
+   there for their own span (`sandbox-weaker-nested.unsafe.test.ts`;
+   passed per call until 2026-11-13, it did nothing). Memoized per mode. A throw from the runtime itself is the same
    one-line verdict, and one about its own temp files (the observer
    directory and the bridge sockets live under `os.tmpdir()`; the strace
    log beside the task directories, which every sandbox replaces with its

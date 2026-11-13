@@ -50,6 +50,15 @@ describe('the sandbox-unavailable hint names a field the loader accepts', () => 
     expect(restricted).not.toContain('weakerWhenNested')
   })
 
+  // An unprivileged container, or an agent's sandbox around vx.
+  it('names the same field when the container refuses a fresh /proc', () => {
+    const proc = unavailableReason(
+      1,
+      "bwrap: Can't mount proc on /newroot/proc: Operation not permitted",
+    )
+    expect(proc).toContain('set `sandbox.weakerWhenNested: true` on every sandboxed task')
+  })
+
   it('a failure that is not the nested namespace carries no remedy', () => {
     const other = unavailableReason(127, 'bwrap: No such file or directory')
     expect(other).toBe('a sandboxed `true` failed (exit 127): bwrap: No such file or directory')
