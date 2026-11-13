@@ -2268,6 +2268,25 @@ it('a worker the plan lets go leaves, and the plan no longer places on it', asyn
   }
 })
 
+// PR #5291's run: the plan held 9 ready lints for a later start on the
+// workers it packed them on and let the idle ones go; tasks ran past their
+// history, and the lints ran one at a time on the last worker.
+it('an idle worker the plan lets go takes a waiting task it has room for instead', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    h.o.place({ placed: new Map([['t1', 'another']]), after: new Map([['t1', 60_000]]) })
+    void h.o.execute(h.req('t1'))
+    await Bun.sleep(50)
+    expect(h.o.where('t1')).toBeNull()
+    h.o.release([a.id])
+    expect(await a.batches()).toEqual([['t1']])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Its job ending after it left (a success: adapters report every end now)
 // counted it as a start that failed, and could start another.
 it('a worker that left is not failed or replaced when its job then ends', async () => {

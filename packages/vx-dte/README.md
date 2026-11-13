@@ -1083,7 +1083,9 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan gives it no task (its warm-up is spent), or,
     when its next task is two warm-ups away, with one started in its place
-    a warm-up after it left: none is let go and started again. An idle
+    a warm-up after it left: none is let go and started again. One the
+    plan lets go first takes the waiting tasks it has room for now, and
+    stays for them: the plan starts a task with slack late. An idle
     worker takes the work of one its CI has not started past its warm-up,
     which is cancelled. A worker still
     starting that the plan gives no task (asked, a worker stays while the

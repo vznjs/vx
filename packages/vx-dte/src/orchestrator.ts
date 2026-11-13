@@ -417,6 +417,8 @@ export class Orchestrator {
   private readonly startedAt = performance.now()
   /** The run in time, for `--profile` (`profile`). */
   readonly trace = new Trace()
+  /** The waiting tasks an idle worker the plan let go takes instead (`fill`), each with that worker. */
+  private readonly takes = new Map<string, string>()
   /** When a task last began, ended or faulted, or the run last said it waits. */
   private movedAt = performance.now()
   /** When core's cache probe answered, how many placed tasks it left to run, and how many it found in no cache. */
@@ -782,6 +784,11 @@ export class Orchestrator {
           if (pin === 'done') byId.delete(id)
           if (typeof pin !== 'object' || pin.only !== undefined || pin.avoid !== undefined)
             return pin
+          const taker = this.takes.get(id)
+          if (taker !== undefined) {
+            if (this.workers.has(taker)) return { only: taker }
+            this.takes.delete(id)
+          }
           return this.placing.gate(id, now)
         },
         waits: (above, platform) => this.bigger(above, platform),
@@ -789,7 +796,10 @@ export class Orchestrator {
         to.set(id, b)
     }
     const placed = [...to.keys()].map((id) => byId.get(id)!)
-    for (const id of to.keys()) byId.delete(id)
+    for (const id of to.keys()) {
+      byId.delete(id)
+      this.takes.delete(id)
+    }
     for (const job of placed) {
       const a = to.get(job.req.taskId)!.a
       job.worker = a.id
@@ -2345,7 +2355,7 @@ export class Orchestrator {
     for (const id of ids) {
       const a = this.workers.get(id)
       if (a !== undefined) {
-        if (a.busy.size === 0) this.letGo(a)
+        if (a.busy.size === 0 && !this.fill(a)) this.letGo(a)
       } else if (
         this.spawnedAt.has(id) &&
         !joined.has(id) &&
@@ -2359,6 +2369,45 @@ export class Orchestrator {
       }
     }
     return cancelled
+  }
+
+  /**
+   * Whether idle `a`, which the plan lets go, takes waiting tasks instead:
+   * those it has room for now, each then sent only there. The plan starts
+   * a task with slack late, where it packed it; as tasks ran past their
+   * history the workers it let go left 9 ready lints to run one at a
+   * time on the last, 101 s for an ideal of 80 s (PR #5291's run,
+   * 2026-11-13). One it took for and did not get leaves the next time.
+   */
+  private fill(a: Worker): boolean {
+    let held = false
+    for (const [id, to] of this.takes)
+      if (to === a.id) {
+        this.takes.delete(id)
+        held = true
+      }
+    if (held || a.faulty) return false
+    let cores = a.cores - this.otherOf(a)
+    let memory = a.memory
+    let any = false
+    for (const [id, job] of this.waiting) {
+      const need = this.booking(job.need)
+      if (
+        this.takes.has(id) ||
+        job.again !== undefined ||
+        need.cores === Infinity ||
+        (need.platform !== undefined && need.platform !== a.platform) ||
+        need.cores > cores + 1e-9 ||
+        need.memory > memory
+      )
+        continue
+      this.takes.set(id, a.id)
+      cores -= need.cores
+      memory -= need.memory
+      any = true
+    }
+    if (any) this.pumpSoon()
+    return any
   }
 
   /**
