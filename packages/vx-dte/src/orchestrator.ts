@@ -2692,7 +2692,8 @@ export class Orchestrator {
    * from its last task back through the dependency each waited on last,
    * the time each waited past when its ideal could start it (as
    * `idealMs`, its platform's fastest warm-up from when the run knew its
-   * work) for its worker to join, then for room on it; the time its
+   * work) for its worker or another asked for its platform to join, then
+   * for room with every one joined; the time its
    * inputs took to reach it once sent; the time from its dependency's end
    * to the run handing it over, that dependency's files coming to this
    * machine; and the run's time after its last task. `undefined` with no task run on a worker.
@@ -2707,6 +2708,9 @@ export class Orchestrator {
       if (id === undefined || l.end > this.timeline.get(id)!.end) id = t
     if (id === undefined) return undefined
     const until = this.ended ? this.endedAt : performance.now()
+    const joinedAt = new Map(
+      [...this.workers.values(), ...this.gone].map((a) => [a.label, a.joinedAt]),
+    )
     const out = {
       joining: 0,
       room: 0,
@@ -2719,7 +2723,18 @@ export class Orchestrator {
       const l = this.timeline.get(id)!
       const earliest = Math.max(l.queued, this.startedAt + r.from + r.warm(platform.get(id)))
       const lost = Math.max(0, l.sent - earliest)
-      const joining = Math.min(lost, Math.max(0, l.joined - earliest))
+      // Its own worker joining, and any other asked for its platform: the
+      // room it waited for was theirs to bring (main 7fc6691: six workers
+      // queued 58-216 s at GitHub read as 231.6 s waiting for room).
+      const late: [number, number][] = [[earliest, l.joined]]
+      for (const [w, { at, declared }] of this.spawnedAt)
+        if (declared.platform === undefined || declared.platform === platform.get(id))
+          late.push([
+            at + r.warm(platform.get(id)),
+            // Given up for joining late, it is late still; let go by the plan, no longer.
+            joinedAt.get(w) ?? (this.late.has(w) ? until : (this.cancelledAt.get(w) ?? until)),
+          ])
+      const joining = covered(late, earliest, l.sent)
       out.joining += joining
       out.room += lost - joining
       out.sending += l.began - l.sent
@@ -3403,4 +3418,19 @@ function defined(
 /** The `HOST_ENV` names the task's `inputs.env` keys: their value is this machine's, as keyed. */
 function hostKeyed(req: ExecuteRequest): string[] {
   return (req.inputs?.env ?? []).map((e) => e.name).filter((k) => HOST_ENV.includes(k))
+}
+
+/** How much of `from`..`to` the spans cover, counted once where they overlap. */
+function covered(spans: readonly [number, number][], from: number, to: number): number {
+  let ms = 0
+  let at = from
+  for (const [a, b] of spans.toSorted((x, y) => x[0] - y[0])) {
+    const start = Math.max(at, a)
+    const end = Math.min(to, b)
+    if (end > start) {
+      ms += end - start
+      at = end
+    }
+  }
+  return ms
 }

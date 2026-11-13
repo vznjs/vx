@@ -2532,6 +2532,33 @@ it('names what kept the run from its ideal: a worker joining late, then no room 
   }
 })
 
+// Main 7fc6691 (2026-11-13): three CI runs at once, six of its workers
+// queued 58-216 s at GitHub, and the run ended 109 s past its ideal as
+// `workers joining 0.2s · waiting for room 231.6s`: its last task's own
+// worker had joined on time. The room it waited for was the late ones'.
+it('names a wait for room as joining while a worker asked for is still to join', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const small = { size: 'small', cpu: 1, memory: 1e10 }
+    h.o.asked(2, 2, 2, 1_000, [])
+    h.o.spawned('small#1', small)
+    h.o.spawned('small#2', small)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    // One core: t2 waits for t1's, small#2 never joining.
+    const w = await h.worker(1, 'small#1')
+    await w.batches()
+    await Bun.sleep(300)
+    await w.finish('t1', 'k-t1', { exitCode: 0, durationMs: 300, cpuMs: 300 })
+    await w.batches()
+    await w.finish('t2', 'k-t2', { exitCode: 0, durationMs: 10, cpuMs: 10 })
+    await Promise.all(runs)
+    const d = h.o.driftOf(() => [])!
+    expect([d.joining >= 250 && d.joining < 450, d.room < 50]).toEqual([true, true])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main f04866b: 6.0 s past its ideal, 4.4 s of it between a task's end on
 // its worker and the run handing over its dependant, and no part said so.
 it("names the time a dependency's files took to come home", async () => {

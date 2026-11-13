@@ -849,9 +849,9 @@ long as each held its worker, on as few workers of the least costly size
 as end that work by then, each worker's cores less what its machine
 spends besides the run's tasks, and each worker's warm-up. The `drift`
 line says how far past it the run ended and what caused it, along the
-chain of tasks that ended the run: tasks waiting for a worker to join
-past its platform's fastest warm-up, waiting for room on a joined one,
-their inputs reaching their worker, a dependency's files coming to this
+chain of tasks that ended the run: tasks waiting while a worker asked
+for their platform is still to join past its fastest warm-up, waiting for
+room with every one joined, their inputs reaching their worker, a dependency's files coming to this
 machine before the run hands over the task that waited on it, and the
 run's time after its last task. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
