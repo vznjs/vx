@@ -667,7 +667,14 @@ export async function runWorker(opts: {
               ['worker', ui.id(m.name)],
               ['run', opts.run],
               ['relay', opts.relay],
-              ['machine', `${cores} cores · ${gb(memory)}`],
+              // Its CPU by name: two machines of one size ran the same shards
+              // at 0.75 and 1.38 times their CPU time (main 18ed04f).
+              [
+                'machine',
+                [`${cores} cores`, gb(memory), os.cpus()[0]?.model.trim()]
+                  .filter((s) => s !== undefined && s !== '')
+                  .join(' · '),
+              ],
             ]),
           )
         } else if (m.type === 'deps') {

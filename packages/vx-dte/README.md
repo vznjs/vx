@@ -204,7 +204,7 @@ as each task starts and ends:
   worker     worker#1
   run       5f0c7a52-…
   relay     http://127.0.0.1:8080
-  machine   10 cores · 17.2 GB
+  machine   10 cores · 17.2 GB · Apple M1 Pro
 › b#build  running
 ✓ b#build  308ms
 ```
