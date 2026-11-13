@@ -354,6 +354,37 @@ it('restores the empty directories under both output namespaces, as a miss save 
   expect((await stat(path.join(here.root, 'out', 'empty'))).isDirectory()).toBe(true)
 })
 
+// Main b5e0826: a lint's 0.5 s command ended 3.2 s later on its worker,
+// its save waiting for a docs build's upload beside it. A save waits for
+// its own entry's upload, no other's.
+it("a save waits for its own entry's upload, not one still going beside it", async () => {
+  const remote = memoryRemote()
+  let release = (): void => {}
+  const held = new Promise<void>((r) => (release = r))
+  const slow = 'aaaaaaaaaaaaaaaa'
+  const put = remote.layer.put.bind(remote.layer)
+  remote.layer.put = async (hash, body, meta) => {
+    if (hash === slow) await held
+    return put(hash, body, meta)
+  }
+  const agent = await machine('agent', remote.layer)
+  const task = (id: string) => ({
+    id,
+    projectDir: path.join(agent.root, 'app'),
+    command: id,
+    outputs: { files: [], workspaceFiles: [] },
+  })
+  let big = false
+  const first = agent.artifacts
+    .save(slow, task('app#build'), { output: [], durationMs: 1 })
+    .then(() => (big = true))
+  await agent.artifacts.save(KEY, task('app#lint'), { output: [], durationMs: 1 })
+  expect([big, remote.store.has(KEY), remote.store.has(slow)]).toEqual([false, true, false])
+  release()
+  await first
+  expect(remote.store.has(slow)).toBe(true)
+})
+
 it('leaves the files a task names as others out of its entry', async () => {
   const remote = memoryRemote()
   const agent = await machine('agent', remote.layer)

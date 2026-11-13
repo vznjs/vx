@@ -55,7 +55,7 @@ export interface TaskArtifacts {
   /**
    * Keeps the files `task`'s outputs match, and its output, as entry
    * `key`: here, and on each remote the workspace writes. Resolves once
-   * every upload has settled; a remote that fails degrades as a run's
+   * its own uploads have settled, not another entry's; a remote that fails degrades as a run's
    * upload does.
    */
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
@@ -128,7 +128,10 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
           ...(run.peakRssBytes !== undefined ? { peakRssBytes: run.peakRssBytes } : {}),
         },
       })
-      await cache.drainUploads?.()
+      // Its own upload alone: draining them all, a lint's save waited 3 s
+      // for a docs build's beside it on its worker (main b5e0826).
+      if (cache.uploaded !== undefined) await cache.uploaded(key)
+      else await cache.drainUploads?.()
     },
 
     async restore(key, task) {
