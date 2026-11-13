@@ -222,6 +222,26 @@ it('keeps an idle joined worker over one the CI has not started past its warm-up
   expect(new Set(p.placed!.values())).toEqual(new Set(['busy', 'idle']))
 })
 
+// Main 88a2500 and 327a98e: docs#build.live, uncached, ended on a worker
+// that went idle while docs#test still ran elsewhere. The play, which
+// reads no kept files, held less than the packing and let that worker go;
+// deploy.pages then made build.live again, 20-25 s past the ideal.
+it('keeps an idle worker holding files a task to come reads', () => {
+  const holder = worker('holder', { holds: new Map([['live', 19_000]]) })
+  const busy = worker('busy', {
+    idle: false,
+    running: [
+      { id: 'test', cores: 1, memory: 1e8, endsIn: 2_000 },
+      { id: 'other', cores: 1, memory: 1e8, endsIn: 6_000 },
+    ],
+  })
+  const deploy = { ...task('deploy', 8_000, ['test'], 1), reads: ['live'] }
+  const p = plan([deploy], [busy, holder], [], WARM)
+  expect(p.release).toEqual([])
+  // CONTROL: holding nothing it reads, the idle one goes.
+  expect(plan([deploy], [busy, worker('holder')], [], WARM).release).toEqual(['holder'])
+})
+
 it('waits a task on the running task it depends on', () => {
   const busy = worker('busy', {
     idle: false,

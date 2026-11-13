@@ -1023,7 +1023,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     is packed onto any worker whole, as the run books it. A task reading files an uncached upstream left on its worker
     is packed there, or anywhere else with that upstream's time added, as
     the run makes it again first; the worker holding them stays while it
-    has such a task to come. A server's base is packed as the run books
+    has such a task to come, whichever of the packing and the play the
+    plan follows. A server's base is packed as the run books
     it: once on each worker that starts it, from its first dependant
     there until its last dependant anywhere ends. A server's start, from
     its spawn to its first dependant's as its worker measured it and
