@@ -4538,6 +4538,40 @@ never-clean, fail-loud, the `--continue` interactions, and a producer
 50,000 tasks below its consumer. `tests/deferred-output-empty.test.ts` — the
 empty-fetch warning.
 
+## `src/orchestrator/trailing-outputs.ts` — outputs that come after their task
+
+### Purpose
+
+A task another machine ran is done once it ran there. Its files come to
+this machine meanwhile, so a dependant on another machine starts at once:
+waited for, a 91 MB docs build held its dependant 2.6 s (main f04866b).
+
+### Public surface
+
+```ts
+export function trailable(
+  nodes: ReadonlyMap<string, TaskNode>,
+  upfront: (id: string) => boolean, // its key is already taken
+  remote: (id: string) => boolean, // it is placed on another machine
+): Set<string>
+export class TrailingOutputs {
+  readonly lost: { id: string; message: string }[]
+  add(id: string, landed: Promise<void>): void
+  settle(): Promise<void>
+}
+```
+
+### Rules
+
+- `trailable` is the tasks asked with `download: 'trailing'`: uncached
+  commands on another machine with no dependant, however far, that runs
+  here or still takes a key from files. Only under `--cache-download=all`.
+- An executor answers `outputs: { kind: 'trailing', landed }`; the run
+  keeps `landed` in `TrailingOutputs`.
+- A command, a server or a hit's restore on this machine waits for
+  `settle()` first, and the run does before it ends.
+- A `landed` that rejects fails the run, naming the task.
+
 ## `src/orchestrator/local-shortcircuit.ts` — restore-ahead classify
 
 ### Purpose

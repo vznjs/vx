@@ -364,6 +364,8 @@ export class Orchestrator {
   private readonly shared = new Map<string, Promise<boolean>>()
   /** Keys a worker could not read, sent again over the remotes' copy: once each, whether one reached a remote. */
   private readonly resent = new Map<string, Promise<boolean>>()
+  /** Tasks whose files are still coming to this machine after they ended (`trail`); settled, never rejected. */
+  private readonly homing = new Map<string, Promise<void>>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
@@ -1169,6 +1171,8 @@ export class Orchestrator {
   private async resend(job: Job, keys: readonly string[]): Promise<boolean> {
     const fresh = keys.filter((k) => typeof k === 'string' && job.reread?.has(k) !== true)
     if (fresh.length === 0) return false
+    // Sent from this machine's copy: one still on its way is not here yet.
+    await Promise.all(this.homing.values())
     job.reread = new Set([...(job.reread ?? []), ...fresh])
     const got = await Promise.all(
       fresh.map((k) => {
@@ -1253,6 +1257,7 @@ export class Orchestrator {
           ? {}
           : { secret: [...node.config.exec.env.secret] }),
         ...(req.timeoutMs === undefined ? {} : { timeoutMs: req.timeoutMs }),
+        ...(req.download === 'trailing' ? { trail: true as const } : {}),
         outputs: {
           files: [...req.outputs.files],
           workspaceFiles: [...req.outputs.workspaceFiles],
@@ -1492,6 +1497,7 @@ export class Orchestrator {
     key: string,
     head: WiredResult,
     endedAt: number | undefined,
+    sentLog?: CapturedChunk[],
   ): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
@@ -1587,13 +1593,55 @@ export class Orchestrator {
     // deferred one's land only if a task here needs them: under
     // `--cache-download=none` every file of the run came home (2026-10-24).
     const deferred = job.req.remoteOnly !== true && job.req.download === 'deferred'
-    const read = () =>
-      job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
+    const eager = job.req.remoteOnly !== true && !deferred
+    // An upstream's files still on their way land first: laid after this
+    // task's, they would lie over what it wrote on them.
+    const upstream = (): Promise<unknown> =>
+      Promise.all((node?.deps ?? []).map((d) => this.homing.get(d)))
+    const where = {
+      where: a.label,
+      machine: {
+        cores: a.reported.cores,
+        memoryBytes: a.reported.memory,
+        ...(share < 1 ? { cpuShare: share } : {}),
+      },
+    }
+    // Done once it ran there, its output in hand: its files come meanwhile,
+    // and the run waits for them at its end. Waited for here, the task that
+    // needed them on a worker started 2.6 s late behind a 91 MB docs build
+    // (main f04866b).
+    if (eager && job.req.download === 'trailing' && head.exitCode === 0 && sentLog !== undefined) {
+      const landed = (async () => {
+        await upstream()
+        await this.clear(job, node)
+        const got = (await restore()) ?? (await restore())
+        this.trace.slice({
+          track: ORCHESTRATOR,
+          name: task,
+          cat: 'restore',
+          from: endAt,
+          to: performance.now(),
+        })
+        if (got === null)
+          throw new Error(`no cache this machine reads gave its entry ${key}, asked twice`)
+        await this.unlay(task, head, job, node)
+      })()
+      const settled: Promise<void> = landed
+        .catch(() => {
+          // quiet: `landed` is the run's to hear
+        })
+        .then(() => {
+          if (this.homing.get(task) === settled) this.homing.delete(task)
+        })
+      this.homing.set(task, settled)
+      for (const c of sentLog) (c.err ? job.req.onStderr : job.req.onStdout)(c.text)
+      job.resolve({ ...result(head, sentLog), outputs: { kind: 'trailing', landed }, ...where })
+      return
+    }
+    const read = () => (eager ? restore() : this.o.artifacts.output(key))
     // A failed download reads as a miss: asked once more, since one stalled
     // download failed a CI run whose upload had landed (main, 2026-10-28).
-    const log = await (
-      job.req.remoteOnly === true || deferred ? Promise.resolve() : this.clear(job, node)
-    )
+    const log = await (eager ? upstream().then(() => this.clear(job, node)) : Promise.resolve())
       .then(read)
       .then((got) => got ?? read())
       .catch((err: unknown) => {
@@ -1616,39 +1664,7 @@ export class Orchestrator {
       )
       return
     }
-    // An upstream's file the task removed there is gone here too: a restore
-    // lays files, never removes one, and this disk is what core saves from.
-    if (head.removed !== undefined && job.req.remoteOnly !== true && !deferred) {
-      const ours = names(
-        path.relative(this.o.root, node?.projectDir ?? job.req.cwd),
-        job.req.outputs,
-      )
-      // A link on the path (`dist/in -> ../../other`) would lead the rm
-      // into another project or off the workspace: the path is removed only
-      // where it is, as a restore lays a file only there (archive.ts).
-      const real = new Map<string, Promise<string | undefined>>()
-      for (const f of head.removed) {
-        if (typeof f !== 'string' || f.split('/').includes('..') || !ours(f)) continue
-        const dir = path.dirname(f)
-        let at = real.get(dir)
-        if (at === undefined)
-          real.set(
-            dir,
-            (at = realpath(path.join(this.o.root, dir)).catch(
-              // quiet: a dir that is gone holds nothing to remove
-              () => undefined,
-            )),
-          )
-        const where = await at
-        if (where === undefined) continue
-        if (where === path.join(this.realRoot, dir))
-          await rm(path.join(this.o.root, f), { force: true })
-        else
-          this.warn(
-            `dte: ${task}: kept ${f}, which the worker removed: a link on its path leads elsewhere`,
-          )
-      }
-    }
+    if (eager) await this.unlay(task, head, job, node)
     // In the order the task wrote it: replayed a stream at a time, an error
     // line came after the stdout that followed it (2026-10-25).
     for (const c of log) (c.err ? job.req.onStderr : job.req.onStdout)(c.text)
@@ -1665,13 +1681,48 @@ export class Orchestrator {
             },
           }
         : {}),
-      where: a.label,
-      machine: {
-        cores: a.reported.cores,
-        memoryBytes: a.reported.memory,
-        ...(share < 1 ? { cpuShare: share } : {}),
-      },
+      ...where,
     })
+  }
+
+  /**
+   * Removes here what `task` removed where it ran, once its files are laid.
+   */
+  private async unlay(
+    task: string,
+    head: WiredResult,
+    job: Job,
+    node: TaskNode | undefined,
+  ): Promise<void> {
+    // An upstream's file the task removed there is gone here too: a restore
+    // lays files, never removes one, and this disk is what core saves from.
+    if (head.removed === undefined) return
+    const ours = names(path.relative(this.o.root, node?.projectDir ?? job.req.cwd), job.req.outputs)
+    // A link on the path (`dist/in -> ../../other`) would lead the rm
+    // into another project or off the workspace: the path is removed only
+    // where it is, as a restore lays a file only there (archive.ts).
+    const real = new Map<string, Promise<string | undefined>>()
+    for (const f of head.removed) {
+      if (typeof f !== 'string' || f.split('/').includes('..') || !ours(f)) continue
+      const dir = path.dirname(f)
+      let at = real.get(dir)
+      if (at === undefined)
+        real.set(
+          dir,
+          (at = realpath(path.join(this.o.root, dir)).catch(
+            // quiet: a dir that is gone holds nothing to remove
+            () => undefined,
+          )),
+        )
+      const where = await at
+      if (where === undefined) continue
+      if (where === path.join(this.realRoot, dir))
+        await rm(path.join(this.o.root, f), { force: true })
+      else
+        this.warn(
+          `dte: ${task}: kept ${f}, which the worker removed: a link on its path leads elsewhere`,
+        )
+    }
   }
 
   /**
@@ -2033,7 +2084,14 @@ export class Orchestrator {
               if (began !== undefined) j.startedAt = began
               if (ran !== undefined) j.ranAt = ran
             }
-            void this.finish(a, m.task, m.key, result as WiredResult, here(m.endedAt))
+            void this.finish(
+              a,
+              m.task,
+              m.key,
+              result as WiredResult,
+              here(m.endedAt),
+              wiredLog(m.log),
+            )
           }
         }
       }
@@ -3058,6 +3116,19 @@ function driftRow(past: number, d: Drift | undefined, width: number): [string, u
       ),
     ],
   ]
+}
+
+/** An `end`'s `log` as chunks, or undefined when it is not one: a worker's word, checked. */
+function wiredLog(log: unknown): CapturedChunk[] | undefined {
+  if (!Array.isArray(log)) return undefined
+  const out: CapturedChunk[] = []
+  for (const c of log as unknown[]) {
+    if (typeof c !== 'object' || c === null) return undefined
+    const { text, err } = c as { text?: unknown; err?: unknown }
+    if (typeof text !== 'string' || typeof err !== 'boolean') return undefined
+    out.push({ text, err })
+  }
+  return out
 }
 
 function result(r: WiredResult, log: readonly CapturedChunk[]): ExecuteResult {

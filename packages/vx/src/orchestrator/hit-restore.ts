@@ -56,6 +56,9 @@ export interface RestoreHitArgs {
 export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   const { args, hash } = given
   const { node } = args
+  // Laid after what is still coming here: an upstream's files landing later
+  // would lie over this task's.
+  await args.run.trailing?.settle()
   const outputNested = args.outputNestedDirs ?? args.nestedProjectDirs
   const cfgOut = node.config.outputs
   const outputs = cfgOut?.files ?? []

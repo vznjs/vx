@@ -3558,6 +3558,62 @@ it('an order names the dependencies a sandbox may read, not their files', async 
   }
 })
 
+// A task ended here only once its files were here: the task that needed them
+// on a worker started 2.6 s late behind a 91 MB docs build (main f04866b).
+// Asked to let them trail, it ends with the output its worker sent, and a
+// dependant's files land after its own.
+for (const sent of [true, false]) {
+  it(
+    sent
+      ? 'a trailing task ends before its files are here, and a dependant’s land after them'
+      : 'CONTROL: with no output sent, it ends once its entry is read',
+    async () => {
+      const h = await harness(new Map([node('g'), node('u', ['g'])]))
+      try {
+        const laid: string[] = []
+        let release = (): void => {}
+        const gate = new Promise<void>((r) => (release = r))
+        const restore = h.store.artifacts.restore.bind(h.store.artifacts)
+        h.store.artifacts.restore = async (key, task) => {
+          if (task.id === 'g') await gate
+          laid.push(task.id)
+          return restore(key, task)
+        }
+        const a = await h.worker(2, 'a')
+        const g = h.o.execute({ ...h.req('g'), download: 'trailing' })
+        expect(await a.batches()).toEqual([['g']])
+        expect(a.orders[0]!.trail).toBe(true)
+        await a.finish(
+          'g',
+          runKey(R, 'g'),
+          { exitCode: 0, durationMs: 1 },
+          sent ? { log: [{ text: 'made\n', err: false }] } : {},
+        )
+        if (!sent) {
+          const first = await Promise.race([g, Bun.sleep(100).then(() => 'waiting' as const)])
+          expect([first, laid]).toEqual(['waiting', []])
+          release()
+          expect((await g).outputs?.kind).toBe('disk')
+          return
+        }
+        const res = await g
+        expect([res.stdout, res.outputs?.kind, laid]).toEqual(['made\n', 'trailing', []])
+        const u = h.o.execute(h.req('u'))
+        expect(await a.batches()).toEqual([['u']])
+        await a.finish('u', runKey(R, 'u'))
+        await Bun.sleep(100)
+        expect(laid).toEqual([])
+        release()
+        if (res.outputs?.kind === 'trailing') await res.outputs.landed
+        await u
+        expect(laid).toEqual(['g', 'u'])
+      } finally {
+        await h.stop()
+      }
+    },
+  )
+}
+
 it('an uncached task’s dependant on another platform has it made again on a worker of that one', async () => {
   const h = await harness(new Map([node('g'), node('u', ['g'])]))
   try {

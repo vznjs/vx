@@ -162,6 +162,8 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   const stamp = stampState(m)
   const ran = await runAttempts(m, wallclockStartNs)
   if ('outcome' in ran) return ran.outcome
+  if (ran.result.outputs?.kind === 'trailing')
+    args.run.trailing?.add(node.id, ran.result.outputs.landed)
   const wallclockEndNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const check: KeyCheck = { unkeyed: false }
   const verdict = await saveVerdict(m, ran, check, stamp)
@@ -237,8 +239,10 @@ async function fetchDeferredUpstream(
   hash: string,
   taskStartNs: bigint,
 ): Promise<TaskOutcome | undefined> {
-  if (args.executor.capabilities?.remote === true || args.run.deferred === undefined)
-    return undefined
+  if (args.executor.capabilities?.remote === true) return undefined
+  // A command here may read what another machine's task left: once it is here.
+  await args.run.trailing?.settle()
+  if (args.run.deferred === undefined) return undefined
   try {
     await args.run.deferred.materializeFor(args.node)
     return undefined

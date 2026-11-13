@@ -588,7 +588,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `exec.platforms` the executor's `platforms` lists: run it there; its key
   folds it), `worker?` (the type of the executor's `workers` to run it
   on: `exec.worker`, else the first with one of its platforms; unkeyed),
-  `download?: 'eager' | 'deferred'`.
+  `download?: 'eager' | 'deferred' | 'trailing'` (`trailing`: the task is
+  done once it ran, and its files come to this machine meanwhile; asked
+  only of an uncached task no dependant reads on this machine).
   `outputs` is the DECLARED output globs (`files` project-relative,
   `workspaceFiles` root-relative) — what an executor running elsewhere has
   to bring back.
@@ -625,7 +627,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   digests only).
 - `ExecuteResult extends RunResult { violations; outputs?; changed?; where? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
-  (outputs left remote, fetched only if a local consumer needs them).
+  (outputs left remote, fetched only if a local consumer needs them), or,
+  to a `trailing` request alone, `{ kind: 'trailing'; landed }`: on their
+  way here; the run waits for `landed` before it ends, and a rejection
+  fails the run.
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
   `leftRunning: true` says a process the command left still ran when

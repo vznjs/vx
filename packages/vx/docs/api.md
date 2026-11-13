@@ -689,7 +689,7 @@ export interface ExecuteRequest {
   readonly platform?: string
   readonly worker?: string
   readonly attempt?: number
-  readonly download?: 'eager' | 'deferred'
+  readonly download?: 'eager' | 'deferred' | 'trailing'
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
@@ -719,7 +719,10 @@ type · `src/exec/executor.ts`
 ```ts
 export interface ExecuteResult extends RunResult {
   readonly violations: readonly SandboxViolation[]
-  readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
+  readonly outputs?:
+    | { kind: 'disk' }
+    | { kind: 'deferred'; materialize: () => Promise<void> }
+    | { kind: 'trailing'; landed: Promise<void> }
   readonly changed?: readonly string[]
   readonly where?: string
   readonly machine?: {
@@ -2771,7 +2774,7 @@ type · `src/orchestrator/task-artifacts.ts`
 
 ```ts
 export interface TaskArtifacts {
-  save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
+  save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<readonly CapturedChunk[] | void>
   restore(key: string, task: ArtifactTask): Promise<CapturedChunk[] | null>
   output(key: string): Promise<CapturedChunk[] | null>
   share(key: string): Promise<boolean>

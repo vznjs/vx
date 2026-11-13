@@ -105,6 +105,8 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       timing: { startNs: wallclockStartNs, endNs: wallclockStartNs },
     }
 
+  // A server here may read what another machine's task left: once it is here.
+  await args.run.trailing?.settle()
   // The args after `--` reach a server as they reach any task. A readyWhen
   // server once got none — "so the matcher sees the unmodified output", though
   // the args change the command, not what the matcher reads — and `vx run dev

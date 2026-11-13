@@ -19,6 +19,8 @@ export interface TaskFacts {
   /** None under `cache.download: all`: every task eager. */
   downloadModeOf: ReadonlyMap<string, DownloadMode> | undefined
   shortCircuit: Pick<ShortCircuit, 'preProbed' | 'uncachedKeys' | 'groupKeys'>
+  /** Tasks whose outputs may come here after they end (`trailable`). */
+  trailable?: ReadonlySet<string>
   /** Tasks some other task depends on. */
   dependedOn: ReadonlySet<string>
   /** Tasks that hold the terminal (`terminalHolders`). */
@@ -51,6 +53,7 @@ export function executeArgsOf(
     const upfrontGroupKey = shortCircuit.groupKeys.get(id)
     if (walls !== facts.nestedDirsByProject) a.outputNestedDirs = walls.get(node.projectName) ?? []
     if (facts.downloadModeOf?.get(id) === 'deferred') a.download = 'deferred'
+    else if (facts.trailable?.has(id) === true) a.download = 'trailing'
     if (placements.remoteOnlyNoop.has(id)) a.remoteOnlyNoop = true
     if (placements.belowNoop.has(id)) a.belowNoop = true
     if (placements.remoteOnly.has(id)) a.remoteOnly = true

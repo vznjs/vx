@@ -50,6 +50,7 @@ import { resetSandbox } from '../sandbox/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
+import { trailable, TrailingOutputs } from './trailing-outputs.js'
 import {
   deadServerBehind,
   declaredTask,
@@ -877,6 +878,7 @@ async function runOnBus(
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
     warnNoRemote(prepared, options, log)
     const windows = options.handoff?.commandWindows ?? commandWindows()
+    const trailing = new TrailingOutputs()
     const deferredOutputs = new DeferredOutputs({
       nodes,
       cache,
@@ -1242,6 +1244,7 @@ async function runOnBus(
       cachePolicy: policy,
       forwardArgs: options.forwardArgs,
       deferred: deferredOutputs,
+      trailing,
       cacheDir,
       runStartHrTimeNs,
       persistentRegistry,
@@ -1328,6 +1331,16 @@ async function runOnBus(
       nestedDirsByProject,
       downloadModeOf: download?.modeOf,
       shortCircuit,
+      // Under a download policy the run's outputs stay where the policy says.
+      ...(download === undefined
+        ? {
+            trailable: trailable(
+              nodes,
+              (id) => shortCircuit.preProbed.has(id) || shortCircuit.uncachedKeys.has(id),
+              (id) => placements.executors.get(id)?.capabilities?.remote === true,
+            ),
+          }
+        : {}),
       dependedOn: depended,
       holders,
     })
@@ -1630,6 +1643,11 @@ async function runOnBus(
           }
         : {}),
     })
+    // What is still coming to this machine is the run's too: it ends with
+    // every file here, as a run that waited for each did.
+    await trailing.settle()
+    for (const l of trailing.lost)
+      warnOf(log)(`[vx] ${l.id} ran, and its files did not come back to this machine: ${l.message}`)
     stop.graphDone()
     reprioritize = undefined
     graphOver = true
@@ -1677,13 +1695,14 @@ async function runOnBus(
     log.runEnd?.()
     const list = fold.outcomes
     // A platform skip, and a skip it blocked, is no failure: the task is not this machine's.
-    const ok = list.every(
-      (o) =>
-        isPassStatus(o.status) ||
-        (o.status === 'skipped' &&
-          (o.otherPlatform !== undefined ||
-            (o.blockedBy !== undefined && placements.otherPlatform.has(o.blockedBy)))),
-    )
+    const ok =
+      list.every(
+        (o) =>
+          isPassStatus(o.status) ||
+          (o.status === 'skipped' &&
+            (o.otherPlatform !== undefined ||
+              (o.blockedBy !== undefined && placements.otherPlatform.has(o.blockedBy)))),
+      ) && trailing.lost.length === 0
 
     // The summary, artifacts and history all exclude groups through
     // `tallyOutcomes`, so each gets the full list.
