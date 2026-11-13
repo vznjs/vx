@@ -1355,6 +1355,7 @@ export interface SandboxRunUnion {
   unixSockets: boolean // some task lifts SRT's AF_UNIX filter; each wrap sets it for its own task
   gitConfig: boolean // some task grants `gitConfig`; each wrap sets it for its own task (B-41)
   weakerNested: boolean // true only when EVERY sandboxed task accepts it
+  weakerAny: boolean // some task accepts it; each wrap sets it for its own task
 }
 export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | null
 
