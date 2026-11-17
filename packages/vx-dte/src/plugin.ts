@@ -1183,13 +1183,13 @@ export function dte(options: DteOptions = {}) {
               }),
           footer: () =>
             o.footer(
-              () => o.idealMs(depsOf, sizes),
+              () => o.idealMs(depsOf),
               () => o.advice(depsOf, sizes),
               () => o.driftOf(depsOf),
               () => o.leastHeldMs(depsOf, sizes),
             ),
           machines: () => o.machines(),
-          idealMs: () => o.idealMs(depsOf, sizes),
+          idealMs: () => o.idealMs(depsOf),
           advice: () => o.advice(depsOf, sizes),
           profile: () => o.profile(),
           running: (id) => o.where(id),

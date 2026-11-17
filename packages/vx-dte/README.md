@@ -846,7 +846,7 @@ core's cache probe answered, how many tasks it left to run (held in no
 cache, or not answered for) and how many of them it found in none. The `asked` line says each
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
-as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
+as `unmeasured`), and the planner's estimate of the run's time then. The `ideal` line is the run's ideal end
 (below), so every log reads it beside core's `time` row, and the least
 CPU a run ending then holds: on each platform, its tasks' cores for as
 long as each held its worker, on as few workers of the least costly size
@@ -882,8 +882,8 @@ against the `ideal` line's least:
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses
-            asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
-            ideal    10.8s: each task as long as it took, placed perfectly, holding 34.5 core-s at least
+            asked    1 at 0.5s for 5 tasks (5 measured), estimate 12.0s
+            ideal    10.8s: its longest chain as long as it took, no task waiting for a worker, holding 34.5 core-s at least
             drift    +1.3s past ideal: workers joining 0.8s · waiting for room 0.3s · sending inputs 0.1s
             best     2 × linux.small (4c/14G): 11.4s, the fewest of its sizes
             more     3 × linux.small (4c/14G): 10.8s, past its sizes' max
@@ -915,14 +915,14 @@ the orchestrator's: when it heard. Without `--profile` nothing is
 written. On CI, upload the file as an artifact; this repo's `ci.yml`
 does and links it from the job summary.
 
-After the run, `dte()` replays it perfectly: each task as long as it held
-its worker and in the cores it held there (or used, if more), on as many
-workers as the sizes allow, each joining after its platform's fastest
-real warm-up. That ideal end (`distribution.idealMs`) sits beside the
+Before the run, the planner's figure is an estimate. After it, `dte()`
+works out the end no run of these tasks could beat: its longest chain,
+each task as long as it held its worker, no task waiting for room, each
+worker there after its platform's fastest real warm-up. That ideal end (`distribution.idealMs`) sits beside the
 real time in the run summary and the footer's `ideal` line, and
 `@vzn/vx-ci` prints it.
 
-The same replay says which workers to declare next time
+A replay of the run says which workers to declare next time
 (`TaskExecutor.advice`), each from an empty run with the plan's own
 rule (the fewest that end it within 5% of the soonest): `best`
 is how many of each size; `more`, shown only when more than a size's
