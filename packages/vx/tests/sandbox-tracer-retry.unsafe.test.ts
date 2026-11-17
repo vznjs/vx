@@ -12,7 +12,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import {
   initSandbox,
   resetSandbox,
@@ -24,6 +24,18 @@ import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox tracer retry test')
 const realStrace = Bun.which('strace')
+
+// strace is what reports where vx's own observer cannot run (a kernel
+// before 5.5); `debug.strace` asks for it here.
+let prevStrace: string | undefined
+beforeAll(() => {
+  prevStrace = process.env['VX_DEBUG_STRACE']
+  process.env['VX_DEBUG_STRACE'] = '1'
+})
+afterAll(() => {
+  if (prevStrace === undefined) delete process.env['VX_DEBUG_STRACE']
+  else process.env['VX_DEBUG_STRACE'] = prevStrace
+})
 
 describe.skipIf(!available || process.platform !== 'linux' || realStrace === null)(
   'a sandboxed task strace itself ends',

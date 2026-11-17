@@ -260,7 +260,7 @@ flowchart TD
     B --> C[exec inside sandbox]
     C --> D{platform}
     D -->|macOS| E[seatbelt denies; the unified log<br/>records each violation]
-    D -->|Linux| F[bwrap structural deny;<br/>an strace pass records each denied call]
+    D -->|Linux| F[bwrap structural deny;<br/>vx's observer records each denied call]
     E --> G{violations inside the project<br/>or a withheld package?}
     F --> G
     G -->|yes| H[force exit code 1 +<br/>violation lines in the frame]

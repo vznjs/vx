@@ -75,15 +75,22 @@ describe.skipIf(!available || process.platform !== 'linux')('a compiled vx', () 
     expect(r.code).toBe(1)
   }, 60_000)
 
-  it('copies the helper out once, as this user’s own file', () => {
+  it('copies each helper out once, as this user’s own file', () => {
     const dir = path.join(tmp, 'xdg', 'vx', 'helpers')
-    const [name, ...rest] = readdirSync(dir)
-    expect(rest).toEqual([])
-    const file = path.join(dir, name!)
-    const st = statSync(file)
-    expect([st.mode & 0o777, statSync(dir).mode & 0o777]).toEqual([0o755, 0o700])
+    const names = readdirSync(dir).sort()
+    // The runtime's seccomp helper, and vx's own observer.
+    expect(names.map((n) => n.replace(/-[^-]+$/, ''))).toEqual([
+      'apply-seccomp',
+      `vx-observe-${process.arch}`,
+    ])
+    const stats = (): number[] => names.map((n) => statSync(path.join(dir, n)).mtimeMs)
+    const before = stats()
+    expect([
+      ...names.map((n) => statSync(path.join(dir, n)).mode & 0o777),
+      statSync(dir).mode & 0o777,
+    ]).toEqual([0o755, 0o755, 0o700])
     vx('run', 'leak', '--all')
-    expect(statSync(file).mtimeMs).toBe(st.mtimeMs)
+    expect(stats()).toEqual(before)
   }, 60_000)
 
   it('falls back to the temp dir where the cache home cannot be written', () => {
@@ -91,7 +98,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a compiled vx', () 
     mkdirSync(t)
     const r = run({ XDG_CACHE_HOME: '/proc/none', TMPDIR: t }, 'run', 'leak', '--all')
     expect(r.out).toContain('a write no grant covers')
-    expect(readdirSync(path.join(t, `vx-helpers-${process.getuid!()}`))).toHaveLength(1)
+    expect(readdirSync(path.join(t, `vx-helpers-${process.getuid!()}`))).toHaveLength(2)
   }, 60_000)
 })
 
