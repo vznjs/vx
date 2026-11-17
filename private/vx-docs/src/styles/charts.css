@@ -11,6 +11,9 @@
   margin: 0;
 }
 .vx-bars {
+  /* A grid item is as wide as its longest line unless told otherwise: a long
+     value pushed the card past a phone's edge. */
+  min-width: 0;
   display: grid;
   align-content: start;
   gap: 12px;
@@ -26,8 +29,9 @@
   color: var(--vx-muted);
 }
 .vx-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
   gap: 5px 10px;
   align-items: baseline;
 }
@@ -38,9 +42,9 @@
 .vx-bar-value {
   font: 500 14px / 1.35 var(--vx-mono);
   font-variant-numeric: tabular-nums;
+  margin-left: auto;
   text-align: right;
   color: var(--vx-fg);
-  white-space: nowrap;
 }
 .vx-bar-note {
   padding-left: 0.6em;
@@ -48,7 +52,7 @@
   color: var(--vx-muted);
 }
 .vx-bar-track {
-  grid-column: 1 / -1;
+  flex: 0 0 100%;
   display: block;
   height: 8px;
   border-radius: 999px;

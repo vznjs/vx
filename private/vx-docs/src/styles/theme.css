@@ -46,6 +46,24 @@
 
   --sl-font: var(--vx-font-body);
   --sl-font-mono: var(--vx-mono);
+
+  /* Asides and badges in the palette: a note in the link's cyan, a tip in
+     the accent, never Starlight's blue and purple. */
+  --sl-color-blue-low: #0c2831;
+  --sl-color-blue: var(--vx-link);
+  --sl-color-blue-high: #b9f1ff;
+  --sl-color-purple-low: var(--vx-accent-soft);
+  --sl-color-purple: var(--vx-accent);
+  --sl-color-purple-high: #d8ff6b;
+  --sl-color-green-low: #0d2a18;
+  --sl-color-green: var(--vx-ok);
+  --sl-color-green-high: #a5efc0;
+  --sl-color-orange-low: #33200a;
+  --sl-color-orange: var(--vx-warn);
+  --sl-color-orange-high: #ffd3a8;
+  --sl-color-red-low: #361414;
+  --sl-color-red: var(--vx-danger);
+  --sl-color-red-high: #ffc4c4;
 }
 
 :root[data-theme='light'] {
@@ -69,6 +87,17 @@
   --sl-color-gray-7: #f6f8f3;
   --sl-color-accent-high: #3a5c00;
   --sl-color-hairline: #e1e6db;
+
+  --sl-color-blue-low: #dff3f9;
+  --sl-color-blue-high: #075a75;
+  --sl-color-purple-low: var(--vx-accent-soft);
+  --sl-color-purple-high: #3a5c00;
+  --sl-color-green-low: #dcf3e5;
+  --sl-color-green-high: #14603a;
+  --sl-color-orange-low: #fbead6;
+  --sl-color-orange-high: #7d4000;
+  --sl-color-red-low: #fbe1e1;
+  --sl-color-red-high: #8e1c1c;
 }
 
 /* ───────────────────────────  Type  ─────────────────────────── */
@@ -127,6 +156,49 @@ header.header {
 .sidebar-content ul.top-level > li > a {
   font-size: var(--sl-text-sm);
   font-weight: 500;
+}
+
+/* ───────────────────────────  Layout  ─────────────────────────── */
+
+/* A page with no "On this page" keeps the column where every other docs page
+   has it; Starlight centres it in the wider pane, so its title jumped. */
+@media (min-width: 72rem) {
+  :root[data-has-sidebar]:not([data-has-toc]) .main-pane {
+    --sl-content-margin-inline: auto 0;
+    width: min(
+      calc(100% - var(--sl-sidebar-width)),
+      calc(var(--sl-content-width) + (100% - var(--sl-content-width) - var(--sl-sidebar-width)) / 2)
+    );
+  }
+}
+
+/* An aside is a card in the page's own shapes: hairline frame, tinted rail. */
+.sl-markdown-content .starlight-aside {
+  border: 1px solid color-mix(in srgb, var(--sl-color-asides-border) 35%, transparent);
+  border-inline-start: 3px solid var(--sl-color-asides-border);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+}
+.sl-markdown-content .starlight-aside__title {
+  font-family: var(--vx-font-display);
+  font-size: var(--sl-text-base);
+}
+
+/* The 404: Starlight's hero, centred, the number in the accent. */
+:root:not(:has(.vx-landing)) main .hero {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  padding-block: clamp(3rem, 16vh, 9rem) 2rem;
+  text-align: center;
+}
+:root:not(:has(.vx-landing)) main .hero h1 {
+  font-size: clamp(5rem, 18vw, 10rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: var(--vx-accent);
+}
+:root:not(:has(.vx-landing)) main .hero .tagline {
+  color: var(--vx-muted);
 }
 
 /* ───────────────────────────  Diagrams  ────────────────────────────── */

@@ -38,7 +38,7 @@ const img = cover && srcset(`blog/${cover.image.replace(/^.*\//, '').replace(/\.
           <img src={`${base}logo-mark.svg`} alt="" width="32" height="32" />
           <span class="vx-cover-label">{label(post)}</span>
         </div>
-        {title ? <p class="vx-cover-title">{post.title}</p> : <p class="vx-cover-word" aria-hidden="true">{label(post)}</p>}
+        {title ? <p class="vx-cover-title">{post.title}</p> : <p class="vx-cover-word" style={`--n:${label(post).length}`} aria-hidden="true">{label(post)}</p>}
       </div>
     </div>
   )

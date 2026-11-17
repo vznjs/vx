@@ -11,7 +11,17 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
 import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
-import { lapAt, lapsLabel, racing, step } from '../src/components/landing/race.ts'
+import {
+  BURN_HOLD_MS,
+  BURN_MS,
+  burnAt,
+  burnClip,
+  lapAt,
+  lapsLabel,
+  racing,
+  step,
+  timesLabel,
+} from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
@@ -250,7 +260,7 @@ describe('the landing page', () => {
   // (2026-10-09), each lane as long as its time against the slowest.
   it('races vx, Turbo, Nx and Vite Task on the measured figures', () => {
     const speed = section(html, 'speed')
-    const races = [...speed.matchAll(/<figure class="race">([\s\S]*?)<\/figure>/g)].map(
+    const races = [...speed.matchAll(/<figure class="race[^"]*"[^>]*>([\s\S]*?)<\/figure>/g)].map(
       (m) => m[1]!,
     )
     expect(races.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
@@ -360,6 +370,19 @@ describe('the landing page', () => {
     expect([lapAt(14_000, 390).laps, lapAt(14_000, 7460).laps]).toEqual([35, 1])
     expect(lapsLabel(0)).toBe('0 laps')
     expect(lapsLabel(1)).toBe('1 lap')
+    // CPU is an amount: every tool burns at one rate, so the least stops
+    // first, holds, and the loop starts over.
+    expect(burnAt(0, 29, 244)).toBe(0)
+    expect(burnAt(BURN_MS / 2, 29, 244)).toBe(29)
+    expect(burnAt(BURN_MS / 2, 244, 244)).toBe(122)
+    expect(burnAt(BURN_MS + BURN_HOLD_MS - 1, 244, 244)).toBe(244)
+    expect(burnAt(BURN_MS + BURN_HOLD_MS, 244, 244)).toBe(0)
+    expect(burnClip(8, 61)).toBe(
+      'polygon(0 0, 3.279% 0, 3.279% 100%, 4.918% 100%, 4.918% 100%, 0 100%)',
+    )
+    expect(burnClip(9, 61)).toContain('3.279% 75%, 4.918% 75%')
+    expect(timesLabel(244_000, 28_710)).toBe('8.5×')
+    expect(timesLabel(28_710, 28_710)).toBe('1×')
     const view = 900
     expect(racing({ top: 899, bottom: 2000 }, view, false)).toBe(true)
     expect(racing({ top: -1500, bottom: 1 }, view, false)).toBe(true)
@@ -510,6 +533,29 @@ describe('a shared link shows the card', () => {
     const png = readFileSync(path.join(DIST, 'og.png'))
     expect(png.subarray(1, 4).toString()).toBe('PNG')
     expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
+  })
+})
+
+// The landing and the feature pages end on their own footer (docs,
+// reference and community links) inside Starlight's panel. A rule hiding
+// every footer in a panel hid that one too, on every such page, and left
+// only the legal line, flush with the screen's edge (2026-11-17).
+describe("the pages in the landing's look", () => {
+  const css = readFileSync(path.resolve(import.meta.dir, '../src/styles/landing.css'), 'utf8')
+
+  it("end on their own footer, not Starlight's", () => {
+    for (const page of ['index.html', 'features/index.html', 'conformance/index.html']) {
+      const html = readFileSync(path.join(DIST, page), 'utf8')
+      expect(html).toContain('<footer class="footer"')
+    }
+    expect(css).not.toMatch(/\.content-panel footer\s*\{/)
+    expect(css).toContain('.content-panel :is(footer:not(.footer), .vx-legal)')
+  })
+
+  it('run edge to edge, with no panel padding around them', () => {
+    expect(css).toMatch(
+      /:root:has\(\.vx-landing\) main \.content-panel \{\s*padding: 0;\s*border: 0;/,
+    )
   })
 })
 

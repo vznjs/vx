@@ -24,7 +24,8 @@
 }
 
 :root:has(.vx-masthead) .sl-container {
-  max-width: 76rem;
+  /* The landing's column (landing.css --container-max). */
+  max-width: 77.5rem;
 }
 
 :root:has(.vx-post-hero) .sl-container {
@@ -185,10 +186,12 @@
 .vx-cover-word {
   position: absolute;
   right: -1cqw;
-  bottom: -5.5cqw;
+  /* In ems, so a shrunk word sinks by the same share of its height. */
+  bottom: -0.29em;
   margin: 0;
   color: transparent;
-  font: 700 19cqw / 1 var(--vx-font-display);
+  /* A long label (--n letters, Cover.astro) shrinks until it fits whole. */
+  font: 700 min(19cqw, 150cqw / var(--n, 8)) / 1 var(--vx-font-display);
   letter-spacing: -0.05em;
   white-space: nowrap;
   -webkit-text-stroke: 1px color-mix(in srgb, var(--tone) 55%, transparent);
