@@ -548,6 +548,9 @@ use your own instead.
   meanwhile (core's `download: 'trailing'`). A dependant starts at once,
   its own files land after its upstream's, and the run ends with every
   file here. An output over 256 KB is read from the entry first, as before.
+- A task that declares no output (a test, a lint) is done here once its
+  worker says so: its `end` carries its output, and its entry is not read
+  back first. Core saves it here as after any task.
 - A persistent task a task depends on starts on the worker that runs the
   task, once per worker, ready before it, and stops there once no task left
   in the run uses it (the run's `unneeded`), or when the worker leaves;
