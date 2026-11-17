@@ -7,13 +7,13 @@
       "version": "2.10.10",
       "commit": "b25c557754f2ced0d86490e6dbfded9b1745b663",
       "machine": "linux x64, 4 cores",
-      "load": "0.98 3.39 4.59",
+      "load": "0.98 1.04 0.48",
       "setup": "native config, `private/vx-bench/real/solid/`",
-      "date": "2026-11-11",
+      "date": "2026-11-17",
       "heading": "Real repos on native config",
-      "cold": ["30.5 s", "36.0 s"],
-      "restore": ["75 ms", "75 ms"],
-      "noop": ["64 ms", "66 ms"]
+      "cold": ["34.4 s", "40.5 s"],
+      "restore": ["68 ms", "78 ms"],
+      "noop": ["61 ms", "70 ms"]
     },
     {
       "repo": "withastro/astro",
