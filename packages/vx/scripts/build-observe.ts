@@ -7,7 +7,7 @@
 // architectures from any Linux or macOS machine. The binaries are
 // committed: a run from source and `bun build --compile` both take them
 // as files, and no machine that runs vx needs a compiler. `source.sha256`
-// names the source they were built from; tests/observe-helper.test.ts
+// names the source they were built from; tests/observe-helper.unsafe.test.ts
 // refuses a source that moved on without them.
 
 import { createHash } from 'node:crypto'

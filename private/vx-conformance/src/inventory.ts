@@ -1074,7 +1074,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'notice',
     'npm-launcher',
     'npm-launcher-sh',
-    'observe-helper',
+    'observe-helper.unsafe',
     'options-resolve',
     'orchestrator',
     'orchestrator-remote',

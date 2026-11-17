@@ -4373,28 +4373,39 @@ function observerState(): Promise<string | null> {
  */
 const observerRefusedIn = new Map<boolean, string>()
 
+/** A path no host has: the probe's refused read. */
+const OBSERVER_PROBE_PATH = '/.vx-observe-probe'
+
 /**
- * One observed `true`: a kernel before 5.5, a seccomp profile that refuses
- * the listener or a foreign /proc each make the observer say why and exit
- * before it runs anything. `VX_DEBUG_STRACE` asks for strace.
+ * One observed shell that opens a path no host has: a kernel before 5.5,
+ * a seccomp profile that refuses the listener or a foreign /proc each make
+ * the observer say why and exit before it runs anything, and a build that
+ * runs but reports nothing (an architecture no test of ours ran on) is
+ * not trusted either: the refused open must be in its report.
+ * `debug.strace` asks for strace.
  */
 async function probeObserver(): Promise<string | null> {
-  // `debug.strace`, a bool read here as `debug.dumpable` is in util.
+  // A bool read here as `debug.dumpable` is in util.
   const strace = process.env['VX_DEBUG_STRACE']
   if (strace === 'true' || strace === '1') return 'VX_DEBUG_STRACE is set'
   const observer = await observePath()
   if (observer === undefined) return 'no build of it for this machine'
   try {
-    const p = Bun.spawn([observer, '1', '0', executablePath('true')], {
-      stdin: 'ignore',
-      stdout: 'ignore',
-      stderr: 'pipe',
-      env: helperEnv(),
-    })
-    const err = await new Response(p.stderr).text()
-    if ((await p.exited) === 0) return null
-    const line = err.trim().split('\n')[0] ?? ''
-    return OBSERVER_OWN_ERROR.exec(line)?.[1] ?? (line || `exit ${p.exitCode}`)
+    const p = Bun.spawn(
+      [observer, '1', '0', taskShell(), '-c', `true <${OBSERVER_PROBE_PATH}; exit 0`],
+      { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', env: helperEnv() },
+    )
+    const [report, err, exit] = await Promise.all([
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+      p.exited,
+    ])
+    const said = err.split('\n').find((l) => OBSERVER_OWN_ERROR.test(l))
+    if (said !== undefined) return OBSERVER_OWN_ERROR.exec(said)![1]!
+    if (exit !== 0) return `its probe exited ${exit}`
+    return report.includes(`"${OBSERVER_PROBE_PATH}", O_RDONLY) = -1 ENOENT`)
+      ? null
+      : 'its probe reported no refused read'
   } catch (err) {
     return err instanceof Error ? err.message : String(err)
   }

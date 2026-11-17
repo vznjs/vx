@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { deniedCalls, observedWrites } from '../src/sandbox/violations.js'
+import { envFlag } from './helpers/env.js'
 
 const dir = path.join(import.meta.dir, '..', 'src', 'sandbox', 'observe')
 const arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : undefined
@@ -22,11 +23,16 @@ it('the committed binaries were built from the committed source', async () => {
   )
 })
 
-// Whether this kernel and this process's own sandbox let it listen at all.
-const runs =
-  process.platform === 'linux' &&
-  arch !== undefined &&
-  Bun.spawnSync([helper, '1', '0', '/bin/sh', '-c', ':'], { stderr: 'ignore' }).exitCode === 0
+// Unsafe: under a sandboxed shard this test's own observer is the second
+// listener of its filter chain, which the kernel refuses. Whether this
+// kernel lets it listen at all; where CI requires the sandbox, it must.
+const probe =
+  process.platform === 'linux' && arch !== undefined
+    ? Bun.spawnSync([helper, '1', '0', '/bin/sh', '-c', ':'], { stderr: 'pipe' })
+    : undefined
+const runs = probe?.exitCode === 0
+if (probe !== undefined && !runs && envFlag('VX_REQUIRE_SANDBOX'))
+  throw new Error(`vx-observe cannot run here: ${probe.stderr.toString().trim()}`)
 
 describe.skipIf(!runs)('vx-observe', () => {
   const observe = async (reads: boolean, script: string) => {

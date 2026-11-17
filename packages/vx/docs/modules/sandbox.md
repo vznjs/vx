@@ -759,7 +759,8 @@ Why: strace stops a tracee twice at each traced call, and under
 traced one, since it cannot know the child has the filter. Bun, Node and
 Python make about 60 calls between fork and exec, so each spawn cost
 3.5 ms more. A core test shard ran 41.7 s plain, 57.9 s under strace and
-45 s under the observer (4 cores, 2026-11-17).
+44.2 s under the observer; a task of 200 Bun spawns 1,061 ms under strace
+and 283 ms under the observer (min of 3, 4 cores, 2026-11-17).
 
 What it writes to descriptor 5, the log vx reads at the task's end:
 
@@ -769,7 +770,12 @@ What it writes to descriptor 5, the log vx reads at the task's end:
   spelled it; a relative one's directory is named as `strace -y` names it
   (`openat(AT_FDCWD</its/cwd>, "f", …)`), or by a `chdir` line before a
   call that takes no directory. The result is the supervisor's own probe
-  of the path (`faccessat2`), made while the caller waits.
+  of the path, made while the caller waits: `faccessat2` with the
+  effective ids, and for an open that passes it, whether the path is a
+  device node on a mount that allows none. That is the sandbox's mask of
+  a file (`/dev/null` bound over it, bwrap's binds being nodev), whose
+  open answers EACCES where access() answers yes: a credential store's
+  read went unreported (`sandbox-hidden-reads.unsafe.test.ts`).
 - with a widened write grant, each open or readlink that will succeed.
 - each write-intent call as `W <call> "<path>"`, which `observedWrites`
   turns into the `deny <call> <path>` records `refusedWrites` judges.
@@ -796,11 +802,13 @@ Linux 6.9.
 It says why and exits 125 before it runs anything where it cannot work:
 a kernel before 5.5 (no `SECCOMP_USER_NOTIF_FLAG_CONTINUE`), a listener
 refused (a seccomp profile, or another listener above vx), a foreign
-`/proc` on a kernel before 6.9. vx probes it once per run on a `true`;
-refused there, or inside a task's sandbox (remembered for the run, by
+`/proc` on a kernel before 6.9. vx probes it once per run on a shell that
+opens a path no host has, and trusts it only with that refused open in
+its report (the arm64 build runs on no machine of CI's). Refused there,
+or inside a task's sandbox (remembered for the process, by
 `weakerWhenNested`, and that task run again), tasks are traced by strace
 as before. `VX_DEBUG_STRACE=1` asks for strace
-(`sandbox-observe.unsafe.test.ts`, `observe-helper.test.ts`).
+(`sandbox-observe.unsafe.test.ts`, `observe-helper.unsafe.test.ts`).
 
 ### A task's temp directory
 
