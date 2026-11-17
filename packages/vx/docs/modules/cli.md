@@ -448,6 +448,9 @@ recursive arm is one non-recursive watch per directory that never enters
 this repo's root arm went from 4,657 inotify watches to 435 and its arm
 from 75 to 43 ms (min of 6, interleaved); a directory that appears is
 watched and what it already holds reported (`watch-tree-linux.test.ts`).
+A name that went is looked at once more 50 ms later: Bun drops an event
+repeating the last one for its name, so a directory made again just after
+its removal was handled sent none, and stayed unwatched.
 It enters a `node_modules` only where the pool's `skip` keeps it: an
 input names a path there through that segment, or git tracks a file
 there; a re-read that changes which inputs name one re-arms the trees

@@ -289,6 +289,9 @@ export function armWatcher(
   return { watcher, ready }
 }
 
+/** How long after a name went a tree watcher looks at it again (`lookAgain`). */
+const LOOK_AGAIN_MS = 50
+
 /**
  * A recursive watch on Linux, built from one non-recursive watch per
  * directory, that never enters `IGNORED_SEGMENTS`. Bun's recursive form is
@@ -337,6 +340,30 @@ function treeWatcher(
       held.delete(key)
     }
   }
+  // Bun drops an event that repeats the last one for its name inside the
+  // same moment, so a name removed and made again just after its removal
+  // was handled sends no second event (20 of 20, Bun 1.4.4): `git stash
+  // -u` then `pop`, or a rebase over the commit that adds a directory,
+  // left it unwatched until watch was restarted. A gone name is looked at
+  // once more, past that moment.
+  const again = new Set<string>()
+  const lookAgain = (rel: string, name: string): void => {
+    const child = rel === '' ? name : `${rel}/${name}`
+    if (again.has(child)) return
+    again.add(child)
+    setTimeout(() => {
+      again.delete(child)
+      if (closed || watchers.has(child) || !watchers.has(rel)) return
+      let st: fs.Stats
+      try {
+        st = fs.statSync(path.join(root, child))
+      } catch {
+        return
+      }
+      listener(child)
+      if (st.isDirectory()) watchDir(child, true)
+    }, LOOK_AGAIN_MS).unref()
+  }
   const watchDir = (rel: string, report: boolean): void => {
     if (closed || watchers.has(rel)) return
     const abs = rel === '' ? root : path.join(root, rel)
@@ -352,6 +379,7 @@ function treeWatcher(
           st = fs.statSync(path.join(abs, name))
         } catch {
           drop(child)
+          lookAgain(rel, name)
           return
         }
         if (!st.isDirectory()) return
