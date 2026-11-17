@@ -39,11 +39,6 @@
 :root:has(.vx-stage-page) header.header {
   background: #040b08;
 }
-/* The stage and the bands run edge to edge, under the nav. */
-:root:has(.vx-stage-page) main .content-panel {
-  padding: 0;
-  border: 0;
-}
 
 /* Display type shared by the hero and every band. */
 .vx-stage-page h1,

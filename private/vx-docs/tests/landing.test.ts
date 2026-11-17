@@ -513,6 +513,29 @@ describe('a shared link shows the card', () => {
   })
 })
 
+// The landing and the feature pages end on their own footer (docs,
+// reference and community links) inside Starlight's panel. A rule hiding
+// every footer in a panel hid that one too, on every such page, and left
+// only the legal line, flush with the screen's edge (2026-11-17).
+describe("the pages in the landing's look", () => {
+  const css = readFileSync(path.resolve(import.meta.dir, '../src/styles/landing.css'), 'utf8')
+
+  it("end on their own footer, not Starlight's", () => {
+    for (const page of ['index.html', 'features/index.html', 'conformance/index.html']) {
+      const html = readFileSync(path.join(DIST, page), 'utf8')
+      expect(html).toContain('<footer class="footer"')
+    }
+    expect(css).not.toMatch(/\.content-panel footer\s*\{/)
+    expect(css).toContain('.content-panel :is(footer:not(.footer), .vx-legal)')
+  })
+
+  it('run edge to edge, with no panel padding around them', () => {
+    expect(css).toMatch(
+      /:root:has\(\.vx-landing\) main \.content-panel \{\s*padding: 0;\s*border: 0;/,
+    )
+  })
+})
+
 // Search engines index what the sitemap lists; each such page names its own
 // URL as canonical (a trailing-slash twin splits its rank), carries a
 // description (the snippet under the link) and points at the sitemap. The

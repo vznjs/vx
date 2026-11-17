@@ -57,8 +57,9 @@
   --type-label: var(--fw-medium) var(--text-xs) / 1.25 var(--font-mono);
 
   /* ---- Spacing / layout ---- */
-  --container-max: 1200px;
-  --gutter: clamp(20px, 5vw, 64px);
+  --container-max: 1240px;
+  /* 16px on a phone, where Starlight's own pages pad the same. */
+  --gutter: clamp(16px, 5vw - 4px, 64px);
 
   /* ---- Radii ---- */
   --radius-xs: 3px;
@@ -209,8 +210,14 @@ body:has(.vx-landing) {
 :root:has(.vx-landing) main {
   padding-bottom: 0;
 }
-/* The page's own footer stands in for Starlight's. */
-:root:has(.vx-landing) .content-panel footer {
+/* The page runs edge to edge under the nav: Starlight's panels would frame
+   it in their own padding, and its empty title panel left a blank band. */
+:root:has(.vx-landing) main .content-panel {
+  padding: 0;
+  border: 0;
+}
+/* The page's own footer stands in for Starlight's, legal line included. */
+:root:has(.vx-landing) .content-panel :is(footer:not(.footer), .vx-legal) {
   display: none;
 }
 
