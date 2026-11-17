@@ -18,11 +18,19 @@ A release that changes `CACHE_VERSION` leaves the old entries on disk,
 never read again, until `vx cache clean --older-than <duration>` ages
 them out or `vx cache clean` clears the cache.
 
-## After v0.0.654
+## After v0.0.657
+
+### vx-cache-server: hash issuer, repository and ref in object names
+
+a vx-cache-server object's name is <hash(issuer)>/<hash(repository)>/<hash(ref)>/<hash>, each of the first three SHA-256's first 32 hex digits, not the percent-encoded names; artifacts stored under the old names are not read. blobName() is async.
+
+## v0.0.656
 
 ### vx-dte: an uncached task ends before its files are home
 
 ExecuteRequest.download and ExecuteResult.outputs gain 'trailing', and TaskArtifacts.save resolves the stored output.
+
+## v0.0.655
 
 ### simplify the architecture, one stream at a time
 
