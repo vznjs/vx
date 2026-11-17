@@ -1,7 +1,7 @@
 // vx: a vx.config.mjs per project, the lockfile plugin for edges (as a
 // user's `bun()` reads them), then `vx lock`, which every run reads: after
 // an install too, since a run keys from the lockfile digests it records.
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pnpmFilter, type Adapter } from '../adapter.ts'
 import { ISOLATED_RAN } from '../harness.ts'
@@ -33,6 +33,9 @@ export const vx: Adapter = {
   ],
   env: { NO_COLOR: '1' },
   installed: [[VX, 'lock']],
+  // A run follows the lock and never re-reads a manifest: `vx lock` is the
+  // step after editing one, and where a broken one is refused.
+  edited: [[VX, 'lock']],
   async configure(dir, ws, command) {
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     await writeFile(
@@ -105,8 +108,15 @@ export const vx: Adapter = {
           ]
         }),
       )
+      // A package with no task needs no config: the lockfile plugin finds it
+      // by its manifest, wherever it lies (a folder git ignores too).
+      const file = path.join(dir, projectDir(name, p), 'vx.config.mjs')
+      if (Object.keys(tasks).length === 0 && !p.tags) {
+        await rm(file, { force: true })
+        continue
+      }
       await writeFile(
-        path.join(dir, projectDir(name, p), 'vx.config.mjs'),
+        file,
         `export default ${JSON.stringify({ name, ...(p.tags ? { tags: p.tags } : {}), tasks }, null, 2)}\n`,
       )
     }

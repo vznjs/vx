@@ -137,7 +137,9 @@ mean the same thing, the adapter uses the one its docs teach:
   `--affected --base --downstream deep --include-relations`. The report is
   `.moon/cache/runReport.json`. It lacks project-graph walks in a selection, task patterns, a ready line, a
   sandbox, watch and dry runs.
-- **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`,
+- **vx**: a vx.config.mjs per project that has a task, `bun()` for the
+  edges, `vx lock` (again after each install and each package.json a case
+  edits: a run follows the lock, so a broken manifest is refused there),
   and its default cache store (in the case's home, so a linked worktree
   shares it). An isolated task is `exec.sandbox`. The report is
   `vx last --format json`. Watch is `vx watch`.

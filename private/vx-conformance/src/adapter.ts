@@ -35,6 +35,8 @@ export interface Adapter {
   configure(dir: string, ws: WorkspaceSpec, command: Command): Promise<string[][]>
   /** What a user runs after each install the case makes (each an argv); a failure refuses every run, as `configure`'s does. */
   installed?: string[][]
+  /** What a user runs after editing a package.json by hand (each an argv); a failure refuses every run until one passes. */
+  edited?: string[][]
   /** Run `task` in every project declaring it, or in `projects` and what they depend on. */
   run(task: string, projects?: string[], opts?: RunOptions): string[]
   /** Run `task` where the changes since `base` reach. */
