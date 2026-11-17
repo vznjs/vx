@@ -25,10 +25,17 @@ export function notify(n: Notice): void {
   else drawer(n)
 }
 
-/** Set by `ui` when it loads: from then on every notice is drawn by `draw`. */
-export function onNotice(draw: Drawer): void {
+/**
+ * Set by `ui` when it loads: from then on every notice is drawn by `draw`.
+ * The answer puts the drawer before it back, for a test that listens once.
+ */
+export function onNotice(draw: Drawer): () => void {
+  const before = drawer
   drawer = draw
   const said = held
   held = []
   for (const n of said) draw(n)
+  return () => {
+    drawer = before
+  }
 }

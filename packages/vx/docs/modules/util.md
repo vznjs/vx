@@ -2239,7 +2239,7 @@ export interface Notice {
   readonly text: string
 }
 export function notify(n: Notice): void
-export function onNotice(draw: (n: Notice) => void): void // set by ui
+export function onNotice(draw: (n: Notice) => void): () => void // set by ui; the answer puts the drawer before it back
 ```
 
 ### Tests
