@@ -135,6 +135,11 @@ export function loadCompiled(
       : (createRequire(path.join(dir, 'index.js'))(path.join(dir, `${name}.js`)) as {
           default?: unknown
         })
+  // The source's default export was an object when this bundle was built
+  // (no other load builds one), so a bundle without it lost its bytes: a
+  // power cut after the rename. Left in place it blamed the config on every
+  // run; the source load builds over it.
+  if (ns !== null && (typeof ns.default !== 'object' || ns.default === null)) return undefined
   answered.set(configPath, { bytes, ns })
   return ns
 }
