@@ -4,7 +4,7 @@
 // while it runs. What does not land (no thread, a refused batch) is
 // handed back and goes in the run's own bundle, as before.
 
-import type { RunRecord } from './run-history.js'
+import { HitBatch } from './hit-rows.js'
 import type { HistoryWriterIn, HistoryWriterOut } from './history-writer.js'
 
 /** Rows per batch: one transaction on the thread. */
@@ -18,17 +18,19 @@ const BATCH = 512
  */
 const THREAD_FROM = 2048
 
-/** A record of `T` whose row the stream holds. */
-export interface Streamed<T> {
-  item: T
-  record: RunRecord
+/** A batch and the items its rows are of, in order. */
+interface Packed<T> {
+  items: T[]
+  rows: HitBatch
 }
 
 export class HistoryStream<T> {
   private worker: Worker | undefined
-  private buffer: Streamed<T>[] = []
-  private readonly sent = new Map<number, Streamed<T>[]>()
-  private readonly landed: Streamed<T>[] = []
+  private open: Packed<T> = { items: [], rows: new HitBatch(BATCH) }
+  /** Full batches no thread has been started for yet. */
+  private held: Packed<T>[] = []
+  private readonly sent = new Map<number, T[]>()
+  private readonly landed: T[] = []
   private seq = 0
   /** A batch was refused or the thread died: nothing more is sent. */
   private dead = false
@@ -42,17 +44,24 @@ export class HistoryStream<T> {
   /**
    * `expected` is the hits the run knows of before its graph runs (its
    * confirmed local hits): from {@link THREAD_FROM} the first batch starts
-   * the thread; under it, only the hit that reaches it does.
+   * the thread; under it, only the hit that reaches it does. `pack` writes
+   * an item's row into the batch (hit-rows.ts).
    */
   constructor(
     private readonly files: { index: string; store?: string },
     private readonly expected: number,
+    private readonly run: { runId: string; startedAtMs: number },
+    private readonly pack: (item: T, rows: HitBatch) => void,
   ) {}
 
-  add(item: T, record: RunRecord): void {
-    this.buffer.push({ item, record })
+  add(item: T): void {
+    this.open.items.push(item)
     this.added++
-    if (this.buffer.length < BATCH || this.dead) return
+    if (this.dead) return
+    this.pack(item, this.open.rows)
+    if (this.open.items.length < BATCH) return
+    this.held.push(this.open)
+    this.open = { items: [], rows: new HitBatch(BATCH) }
     if (this.worker === undefined && this.expected < THREAD_FROM && this.added < THREAD_FROM) return
     this.send()
   }
@@ -61,7 +70,7 @@ export class HistoryStream<T> {
    * Waits for every batch sent, closes the thread, and returns what landed
    * and what did not (the run's bundle writes those).
    */
-  async finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }> {
+  async finish(): Promise<{ landed: T[]; unlanded: T[] }> {
     const w = this.worker
     if (w !== undefined && !this.gone) {
       // Unreferenced, its answers alone left the loop with nothing to
@@ -79,29 +88,29 @@ export class HistoryStream<T> {
       }
     }
     w?.terminate()
-    const unlanded = [...this.sent.values()].flat().concat(this.buffer)
+    const unlanded = [
+      ...[...this.sent.values()].flat(),
+      ...this.held.flatMap((p) => p.items),
+      ...this.open.items,
+    ]
     this.sent.clear()
-    this.buffer = []
+    this.held = []
+    this.open = { items: [], rows: new HitBatch(0) }
     return { landed: this.landed, unlanded }
   }
 
+  /** Every full batch held goes to the thread; its numbers are moved, not copied. */
   private send(): void {
     const w = (this.worker ??= this.start())
-    const batch = this.buffer
-    this.buffer = []
-    const seq = this.seq++
-    this.sent.set(seq, batch)
-    // A record's spans are bigint, which JSON cannot carry: as numbers, exact
-    // below 2^53 ns (104 days into a run). A replacer function cost 20 ms
-    // of 8,002 rows, the copies 4.
-    const hits = JSON.stringify(
-      batch.map(({ record: r }) => ({
-        ...r,
-        wallclockStartNs: r.wallclockStartNs === undefined ? undefined : Number(r.wallclockStartNs),
-        wallclockEndNs: r.wallclockEndNs === undefined ? undefined : Number(r.wallclockEndNs),
-      })),
-    )
-    w.postMessage({ seq, hits } satisfies HistoryWriterIn)
+    for (const { items, rows } of this.held) {
+      const seq = this.seq++
+      this.sent.set(seq, items)
+      const { n, nums, strs, rare } = rows
+      w.postMessage({ seq, rows: { n, nums, strs, rare } } satisfies HistoryWriterIn, [
+        nums.buffer as ArrayBuffer,
+      ])
+    }
+    this.held = []
   }
 
   private start(): Worker {
@@ -136,7 +145,7 @@ export class HistoryStream<T> {
       this.settled()
       this.ended?.()
     }
-    w.postMessage({ open: this.files } satisfies HistoryWriterIn)
+    w.postMessage({ open: this.files, run: this.run } satisfies HistoryWriterIn)
     return w
   }
 

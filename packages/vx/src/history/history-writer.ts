@@ -5,12 +5,13 @@
 // A separate entry point: `bun build --compile` embeds it beside bin.ts.
 
 import { Database } from 'bun:sqlite'
-import { type RunRecord, RunHistory } from './run-history.js'
+import { type HitRows, hitRecords } from './hit-rows.js'
+import { RunHistory } from './run-history.js'
 import { SQLITE_FCNTL_PERSIST_WAL } from '../index-db/index.js'
 
 export type HistoryWriterIn =
-  | { open: { index: string; store?: string } }
-  | { seq: number; hits: string }
+  | { open: { index: string; store?: string }; run: { runId: string; startedAtMs: number } }
+  | { seq: number; rows: HitRows }
   | { end: true }
 
 export type HistoryWriterOut = { seq: number; error?: string } | { ended: true }
@@ -20,6 +21,7 @@ declare const self: Worker
 let db: Database | undefined
 let history: RunHistory | undefined
 let refused: string | undefined
+let run: { runId: string; startedAtMs: number } | undefined
 
 function open(files: { index: string; store?: string }): void {
   // The timeout first, as `Cache` sets it: every later pragma waits under it.
@@ -43,6 +45,7 @@ function open(files: { index: string; store?: string }): void {
 self.onmessage = (e: MessageEvent<HistoryWriterIn>) => {
   const m = e.data
   if ('open' in m) {
+    run = m.run
     try {
       open(m.open)
     } catch (err) {
@@ -59,12 +62,12 @@ self.onmessage = (e: MessageEvent<HistoryWriterIn>) => {
     postMessage({ ended: true } satisfies HistoryWriterOut)
     return
   }
-  if (history === undefined) {
+  if (history === undefined || run === undefined) {
     postMessage({ seq: m.seq, error: refused ?? 'not open' } satisfies HistoryWriterOut)
     return
   }
   try {
-    history.recordHits(JSON.parse(m.hits) as RunRecord[])
+    history.recordHits(hitRecords(m.rows, run))
     postMessage({ seq: m.seq } satisfies HistoryWriterOut)
   } catch (err) {
     postMessage({

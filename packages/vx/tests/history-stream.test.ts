@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { historyFiles, indexDb, Cache } from '../src/cache/index.js'
-import { HistoryStream, type RunRecord } from '../src/history/index.js'
+import { HIT, type HitBatch, HistoryStream, type RunRecord } from '../src/history/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -39,6 +39,24 @@ const hit = (i: number): RunRecord => ({
   blocks: i % 3,
 })
 
+/** `hit(i)` as a run packs it: its spans and the fields `hit` sets. */
+const pack = (i: number, rows: HitBatch): void => {
+  const r = hit(i)
+  const at = rows.row(r.project, r.task, r.hash, r.def)
+  rows.nums[at + HIT.remote] = 0
+  rows.nums[at + HIT.exitCode] = r.exitCode
+  rows.nums[at + HIT.durationMs] = r.durationMs
+  rows.nums[at + HIT.startNs] = Number(r.wallclockStartNs)
+  rows.nums[at + HIT.endNs] = Number(r.wallclockEndNs)
+  rows.nums[at + HIT.cached] = 1
+  rows.nums[at + HIT.cacheHit] = 1
+  rows.nums[at + HIT.restored] = 0
+  rows.nums[at + HIT.blocks] = r.blocks!
+}
+const RUN = { runId: 'run-1', startedAtMs: T }
+const streamOf = (files: { index: string; store?: string }, expected: number) =>
+  new HistoryStream<number>(files, expected, RUN, pack)
+
 let dir: string
 beforeEach(async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-history-stream-'))
@@ -49,19 +67,27 @@ afterEach(async () => {
 
 it('writes full batches on its thread and hands back the rest', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const stream = new HistoryStream<number>(historyFiles(cache)!, 2_048)
-  for (let i = 0; i < 1_100; i++) stream.add(i, hit(i))
+  const stream = streamOf(historyFiles(cache)!, 2_048)
+  for (let i = 0; i < 1_100; i++) stream.add(i)
   const { landed, unlanded } = await stream.finish()
   const db = indexDb(cache)
   const rows = db
     .query(
-      'SELECT project, wallclock_start_ns AS s, wallclock_end_ns AS e, blocks, restored FROM runs ORDER BY started_at',
+      'SELECT project, wallclock_start_ns AS s, wallclock_end_ns AS e, blocks, restored, started_at - ? AS at, run_id AS run FROM runs ORDER BY id',
     )
-    .all() as { project: string; s: number; e: number; blocks: number; restored: number }[]
+    .all(T) as {
+    project: string
+    s: number
+    e: number
+    blocks: number
+    restored: number
+    at: number
+    run: string
+  }[]
   const outcomes = (db.query('SELECT COUNT(*) AS n FROM task_outcomes').get() as { n: number }).n
   cache.close()
   expect([landed.length, unlanded.length]).toEqual([1_024, 76])
-  expect(unlanded.map((u) => u.item)).toEqual(Array.from({ length: 76 }, (_, k) => 1_024 + k))
+  expect(unlanded).toEqual(Array.from({ length: 76 }, (_, k) => 1_024 + k))
   expect(rows.length).toBe(1_024)
   expect(rows[1_000]).toEqual({
     project: 'p1000',
@@ -69,6 +95,8 @@ it('writes full batches on its thread and hands back the rest', async () => {
     e: 1_000_000_007,
     blocks: 1,
     restored: 0,
+    at: 1_000,
+    run: 'run-1',
   })
   // The flaky record's first hit of each key, as the bundle keeps it.
   expect(outcomes).toBe(1_024)
@@ -123,8 +151,8 @@ it('a restoring CLI run waits for its thread', async () => {
 // warm projects, median 170 ms with it, 150 without (2026-11-07).
 it('leaves a run expecting fewer hits than a thread is worth to its bundle', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const stream = new HistoryStream<number>(historyFiles(cache)!, 2_047)
-  for (let i = 0; i < 1_100; i++) stream.add(i, hit(i))
+  const stream = streamOf(historyFiles(cache)!, 2_047)
+  for (let i = 0; i < 1_100; i++) stream.add(i)
   const { landed, unlanded } = await stream.finish()
   const rows = (indexDb(cache).query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n
   cache.close()
@@ -134,19 +162,16 @@ it('leaves a run expecting fewer hits than a thread is worth to its bundle', asy
 // Hits the run did not expect (a remote's) count too, once they reach it.
 it('starts its thread at the hit that reaches the threshold', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const stream = new HistoryStream<number>(historyFiles(cache)!, 0)
-  for (let i = 0; i < 2_100; i++) stream.add(i, hit(i))
+  const stream = streamOf(historyFiles(cache)!, 0)
+  for (let i = 0; i < 2_100; i++) stream.add(i)
   const { landed, unlanded } = await stream.finish()
   cache.close()
   expect([landed.length, unlanded.length]).toEqual([2_048, 52])
 })
 
 it('hands back every row when its thread cannot write', async () => {
-  const stream = new HistoryStream<number>(
-    { index: path.join(dir, 'no', 'such', 'cache.db') },
-    2_048,
-  )
-  for (let i = 0; i < 1_100; i++) stream.add(i, hit(i))
+  const stream = streamOf({ index: path.join(dir, 'no', 'such', 'cache.db') }, 2_048)
+  for (let i = 0; i < 1_100; i++) stream.add(i)
   const { landed, unlanded } = await stream.finish()
   expect([landed.length, unlanded.length]).toEqual([0, 1_100])
 })

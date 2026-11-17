@@ -1041,6 +1041,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'held-server-output',
     'hide-env.unsafe',
     'history-stream',
+    'hit-rows',
     'home-guard',
     'index-schema-race',
     'index-write-wait',
