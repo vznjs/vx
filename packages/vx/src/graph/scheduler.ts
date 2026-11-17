@@ -79,6 +79,12 @@ export interface ScheduleOptions {
    */
   settledOf?: (outcome: TaskOutcome) => Promise<TaskOutcome | void> | undefined
   /**
+   * True for an outcome whose dependants need nothing of what it still owes
+   * (its files are on their way to this machine, and none of them reads this
+   * machine): they are released at once, and it finishes when it settles.
+   */
+  trails?: (outcome: TaskOutcome) => boolean
+  /**
    * A task the caller settles in place: a thunk returning its outcome, or
    * undefined to dispatch it through `execute`. Its outcome lands in the same
    * tick and holds no slot: the dispatch and promise cost ~10 µs per group or
@@ -222,6 +228,8 @@ class GraphRun {
   private readonly unanswered: Set<string>
   private readonly heldReady = new Set<string>()
   private settledIdle = 0
+  /** Outcomes in, dependants released, still to finish (`trails`). */
+  private settling = 0
   // Two ready queues, exec tier (misses, unstable tasks) and restore tier, each
   // a max-heap on (priority desc, enqueue seq asc), so ties keep
   // graph-insertion order. The exec queue drains first.
@@ -426,7 +434,7 @@ class GraphRun {
     }
   }
 
-  private finishOne(id: string, outcome: TaskOutcome): void {
+  private finishOne(id: string, outcome: TaskOutcome, released = false): void {
     if (this.continueMode === 'never' && outcome.status === 'failed') this.tripFailFast()
     this.outcomes.set(id, outcome)
     // A dormant server is asked again: the dispatch settles it once its
@@ -449,6 +457,7 @@ class GraphRun {
     // only once its own deps have settled too: otherwise an `e2e` ran beside a
     // `db:migrate` two edges up whenever the middle task was a hit, and ran
     // green after that dep failed.
+    if (released) return
     if (this.inRestoreTier(id) && (this.pending.get(id) ?? 0) > 0) {
       this.heldRelease.add(id)
       return
@@ -587,7 +596,7 @@ class GraphRun {
 
     // The outcome count alone: a slot is released before its outcome lands, so
     // the lane counters add nothing here.
-    if (this.outcomes.size + this.settledIdle === this.nodes.size) {
+    if (this.settling === 0 && this.outcomes.size + this.settledIdle === this.nodes.size) {
       this.resolved = true
       this.stopListening()
       this.resolve(this.outcomes)
@@ -783,10 +792,20 @@ class GraphRun {
       this.tick()
       return
     }
+    const early =
+      outcome.status === 'success' &&
+      !this.inRestoreTier(id) &&
+      this.options.trails?.(outcome) === true
+    if (early) {
+      this.settling++
+      this.outcomes.set(id, outcome)
+      this.release(id)
+    }
     this.tick()
     // What the save cost rides the outcome it settles.
     const done = (settledOutcome?: TaskOutcome | void): void => {
-      this.finishOne(id, settledOutcome ?? outcome)
+      if (early) this.settling--
+      this.finishOne(id, settledOutcome ?? outcome, early)
       this.tick()
     }
     void settled.then(done, () => done())

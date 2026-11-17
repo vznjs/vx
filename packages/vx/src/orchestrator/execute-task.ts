@@ -147,6 +147,8 @@ export interface RunContext {
    * must not probe the cache before the entry is there.
    */
   deferredSaves?: Map<string, Promise<SaveFacts>>
+  /** Tasks in `deferredSaves` whose save waits for files still coming here: their dependants do not. */
+  trailingSaves?: Set<string>
   /**
    * The run keeps its bytes in a remote (run-store.ts): an attempt captures
    * its output at the entry's bounds, and an outcome that saves no entry

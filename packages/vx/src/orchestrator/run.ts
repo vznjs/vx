@@ -978,6 +978,7 @@ async function runOnBus(
       )
     })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
+    const trailingSaves = new Set<string>()
     // A server held from an earlier run (`vx watch`) runs through this one
     // too, so it may write a mutable input while it is described.
     for (const id of heldBefore.kept.keys()) {
@@ -1260,6 +1261,7 @@ async function runOnBus(
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,
+      trailingSaves,
       commandWindows: windows,
       projectTasks: projectTasksOf(prepared.projects),
       stopSignal: stop.signal,
@@ -1528,6 +1530,7 @@ async function runOnBus(
       restoreConcurrency: options.restoreConcurrency ?? 2 * concurrency,
       reverseDeps: blocksNow,
       settledOf: (o) => deferredSaves.get(o.node.id)?.then((facts) => withSaveFacts(o, facts)),
+      trails: (o) => trailingSaves.has(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(holders.size > 0 ? { exclusive: holders } : {}),

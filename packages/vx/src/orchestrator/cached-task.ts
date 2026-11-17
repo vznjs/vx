@@ -25,6 +25,7 @@ import { restoreHit } from './hit-restore.js'
 import { fingerprintMoved, type KeyCheck, type StateStamp } from './input-recheck.js'
 import { describeMiss } from './miss-inputs.js'
 import { missOutcome } from './miss-outcome.js'
+import type { SaveFacts } from './miss-save.js'
 import type { MissRun } from './miss-run.js'
 import { getContext } from './remote-prefetch.js'
 import { forwardedSignal } from './signals.js'
@@ -162,12 +163,43 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   const stamp = stampState(m)
   const ran = await runAttempts(m, wallclockStartNs)
   if ('outcome' in ran) return ran.outcome
-  if (ran.result.outputs?.kind === 'trailing')
-    args.run.trailing?.add(node.id, ran.result.outputs.landed)
+  const landed = ran.result.outputs?.kind === 'trailing' ? ran.result.outputs.landed : undefined
+  if (landed !== undefined) args.run.trailing?.add(node.id, landed)
   const wallclockEndNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const check: KeyCheck = { unkeyed: false }
-  const verdict = await saveVerdict(m, ran, check, stamp)
-  const save = await applySave(m, ran, verdict, check, stamp)
+  const saveBy = async (c: KeyCheck): Promise<{ saved: boolean; unsavedBytes?: number }> =>
+    applySave(m, ran, await saveVerdict(m, ran, c, stamp), c, stamp)
+  let save: { saved: boolean; unsavedBytes?: number }
+  const saves = args.run.deferredSaves
+  if (landed === undefined || !policy.save || ran.exitCode !== 0) save = await saveBy(check)
+  else if (
+    saves === undefined ||
+    // A moved input fails the task: decided before it is done.
+    policy.stability.severity === 'error' ||
+    (await saveVerdict(m, ran, check, stamp)).kind !== 'save'
+  ) {
+    // Nothing to save, or no one to settle it later: once its files are here.
+    await landed.catch(() => {})
+    save = await saveBy(check)
+  } else {
+    // Its files are still on their way: it is done, its dependants on other
+    // machines start (`trailingSaves`), and it is saved from this disk once
+    // the files are here, every check a save makes made again then. Files
+    // that never come fail the run (`TrailingOutputs.lost`); nothing is saved.
+    const settled: Promise<SaveFacts> = landed.then(
+      async () => {
+        const now = await saveBy({ unkeyed: false })
+        // A save on the run's lane parked its own settling here.
+        const lane = saves.get(node.id)
+        if (lane !== undefined && lane !== settled) return lane
+        return now.saved ? { saved: true as const } : {}
+      },
+      () => ({}),
+    )
+    saves.set(node.id, settled)
+    args.run.trailingSaves?.add(node.id)
+    save = { saved: false }
+  }
   if (m.sandbox.listedThere === true && m.sandbox.violations.length > 0)
     m.sandbox.upstreamOutputs = await upstreamOutputsHere(m)
   return missOutcome(m, ran, check, save, { startNs: wallclockStartNs, endNs: wallclockEndNs })

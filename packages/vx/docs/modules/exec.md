@@ -590,7 +590,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   on: `exec.worker`, else the first with one of its platforms; unkeyed),
   `download?: 'eager' | 'deferred' | 'trailing'` (`trailing`: the task is
   done once it ran, and its files come to this machine meanwhile; asked
-  only of an uncached task no dependant reads on this machine).
+  only of a task no dependant reads on this machine).
   `outputs` is the DECLARED output globs (`files` project-relative,
   `workspaceFiles` root-relative) — what an executor running elsewhere has
   to bring back.
