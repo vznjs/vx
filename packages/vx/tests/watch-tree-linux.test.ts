@@ -109,6 +109,41 @@ describe.skipIf(process.platform !== 'linux')('the recursive arm on Linux', () =
     }
   })
 
+  // Bun delivers one event for a name and drops the next for it inside
+  // the same moment: a directory removed, that event handled, then made
+  // again (`git stash -u` then `pop`, a rebase over a commit that adds
+  // it) sent no word of the making, and nothing in it was heard again
+  // until watch was restarted. 20 of 20 before the second look.
+  it('a directory made again just after its removal was handled is watched again', async () => {
+    const t = await armed(async (dir) => {
+      for (let i = 0; i < 10; i++) await mkdir(path.join(dir, `gen${i}/sub`), { recursive: true })
+    })
+    try {
+      for (let i = 0; i < 10; i++) {
+        const gen = path.join(t.dir, `gen${i}`)
+        const before = t.seen.length
+        fs.rmSync(gen, { recursive: true })
+        // No pause past the event: the drop is a moment wide.
+        for (const start = Date.now(); t.seen.length === before; await Bun.sleep(0))
+          if (Date.now() - start > 3_000) throw new Error('timed out waiting for the removal')
+        fs.mkdirSync(path.join(gen, 'sub'), { recursive: true })
+        fs.writeFileSync(path.join(gen, 'early.txt'), 'x')
+      }
+      await until(
+        () => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].every((i) => t.seen.includes(`gen${i}/early.txt`)),
+        'the file each directory was made with',
+      )
+      await Bun.sleep(50)
+      for (let i = 0; i < 10; i++) await writeFile(path.join(t.dir, `gen${i}/sub/late.txt`), 'x')
+      await until(
+        () => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].every((i) => t.seen.includes(`gen${i}/sub/late.txt`)),
+        'a later write under each directory made again',
+      )
+    } finally {
+      await t.end()
+    }
+  })
+
   // At the OS watch limit the recursive form threw, and the pool polled
   // instead (E-49). A walk that swallowed the refusal for a subdirectory
   // would arm half a tree without a word.

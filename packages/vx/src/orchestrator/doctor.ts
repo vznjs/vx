@@ -7,7 +7,13 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { cachePolicyEnvRefusal, indexDb, Cache, CACHE_VERSION } from '../cache/index.js'
+import {
+  cachePolicyEnvRefusal,
+  indexDb,
+  indexError as readError,
+  Cache,
+  CACHE_VERSION,
+} from '../cache/index.js'
 import { SCHEMA_VERSION } from '../index-db/index.js'
 import { PLUGIN_HOOKS, type WorkspaceConfig } from '../config.js'
 import {
@@ -262,7 +268,11 @@ async function collectWorkspaceInfo(
       indexStore = cache.storeDir
       stats = cache.stats()
       orphans = await cache.orphanStats()
-      flaky = flakyTasks(indexDb(cache))
+      try {
+        flaky = flakyTasks(indexDb(cache))
+      } catch (err) {
+        throw readError(cache, err)
+      }
     } finally {
       cache.close()
     }

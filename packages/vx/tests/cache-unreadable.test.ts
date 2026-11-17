@@ -234,6 +234,43 @@ describe('a shared store corrupt past the pages the open reads', () => {
   })
 })
 
+describe('a shared store corrupt in a page its open reads', () => {
+  it('is refused by the store file and the remedy, for a run and for a reading verb', async () => {
+    // The open's own read of the store's stamp was outside every guard: a raw
+    // `SQLiteError` and a stack from each verb, in every workspace sharing
+    // the store, naming no file to remove.
+    const store = path.join(dir, 'home', '.vx', 'id', 'cache')
+    mkdirSync(path.join(dir, 'home'), { mode: 0o700 })
+    new Cache(dir, undefined, undefined, undefined, 'open', store).close()
+    const storeFile = path.join(store, 'store.db')
+    const d = new Database(storeFile)
+    d.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    const { page_size } = d.query('PRAGMA page_size').get() as { page_size: number }
+    const { rootpage } = d
+      .query("SELECT rootpage FROM sqlite_master WHERE name = 'store_meta'")
+      .get() as { rootpage: number }
+    d.close()
+    const fd = openSync(storeFile, 'r+')
+    writeSync(fd, Buffer.alloc(page_size, 0xab), 0, page_size, (rootpage - 1) * page_size)
+    closeSync(fd)
+    for (const mode of ['open', 'inspect'] as const) {
+      let err: Error | null = null
+      try {
+        new Cache(dir, undefined, undefined, undefined, mode, store).close()
+      } catch (e) {
+        err = e as Error
+      }
+      expect([mode, err?.name, err?.message]).toEqual([
+        mode,
+        'UserError',
+        `the cache index ${storeFile} is not a database SQLite can read (database disk image is malformed) — ` +
+          `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
+          `re-run, and \`vx cache clean\` reclaims the artifacts it indexed`,
+      ])
+    }
+  })
+})
+
 describe('a history page SQLite cannot read, read by a verb', () => {
   // `vx last` and `vx why` read the history through `indexDb` and printed a
   // raw `SQLiteError` and a stack for a garbled page past the open's.

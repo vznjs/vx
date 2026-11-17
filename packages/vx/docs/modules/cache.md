@@ -793,7 +793,10 @@ the file, past the pages the open reads, surfaces where it is read, and
 there too as the same `UserError`: every lookup, save, prune, retention
 pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
-"internal error" and `vx cache clean` printed a stack. The open that drops them records it:
+"internal error" and `vx cache clean` printed a stack. A shared
+`store.db` damaged in the pages its own open reads is refused by its
+name the same way, and `vx info` reports a page its orphan scan or
+flaky read meets as `cacheIndexError` (2026-11-17). The open that drops them records it:
 `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
 every later one). A `CACHE_VERSION` bump alone keeps the index and
 records the new version in `schema_meta.cache_version`; every key moves,

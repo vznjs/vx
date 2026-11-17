@@ -521,7 +521,18 @@ export class StoreIndex {
       attachStore(this, storeDir, mode !== 'open', (dir) =>
         dir === cacheDir ? openCacheDir(dir) : storeBlocked(dir, root, true),
       )
-      this.storeReset = matchStoreSchema(this, mode === 'open' && this.writeBlocked === null)
+      try {
+        this.storeReset = matchStoreSchema(this, mode === 'open' && this.writeBlocked === null)
+      } catch (err) {
+        // The attach reads the store's header; this reads its first pages.
+        if (!unreadableIndex(err)) throw err
+        try {
+          closeDb(this.db)
+        } catch {
+          // The refusal below is the error worth reporting.
+        }
+        throw unreadableIndexError(path.join(storeDir, 'store.db'), err)
+      }
     } else {
       createTables(this.db, 'main')
       if (absent && existsSync(dbFile)) keepArtifacts(this, dbFile)

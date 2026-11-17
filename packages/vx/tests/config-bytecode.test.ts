@@ -87,6 +87,22 @@ describe('workspace config bytecode', () => {
     TIMEOUT,
   )
 
+  // A power cut between the rename and the data reaching the disk leaves a
+  // bundle of no bytes: it loads, exports nothing, and every later run
+  // blamed the user's config for it until the cache was removed.
+  it(
+    'a bundle that lost its bytes is built again, not blamed on the config',
+    async () => {
+      probe()
+      expect(probe()).toMatchObject({ value: 'one', bundled: true })
+      const file = (await compiled()).find((f) => f.endsWith('.js'))!
+      await writeFile(path.join(root, '.vx', 'cache', 'compiled', file), '')
+      expect(probe()).toMatchObject({ value: 'one', bundled: false })
+      expect(probe()).toMatchObject({ value: 'one', bundled: true })
+    },
+    TIMEOUT,
+  )
+
   it(
     'an edit to an imported plugin file is run, not the bundle of its old bytes',
     async () => {
