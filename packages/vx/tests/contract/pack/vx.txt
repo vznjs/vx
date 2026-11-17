@@ -96,6 +96,7 @@ src/history/history-stream.ts
 src/history/history-writer.ts
 src/history/history-writes.ts
 src/history/history.ts
+src/history/hit-rows.ts
 src/history/index.ts
 src/history/metrics.ts
 src/history/miss-reason.ts

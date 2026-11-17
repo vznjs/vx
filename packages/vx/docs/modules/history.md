@@ -643,6 +643,8 @@ export class RunHistory {}
 `HistoryStream`: a run's hits written on a thread of their own while the graph runs, 512 to a transaction, through a second connection on the same files (`historyFiles(cache)`). The thread starts only for a run of 2,048 hits or more (its confirmed local hits after the classify, or the hit that reaches it): below that its start cost more than it saved. A batch the thread does not land comes back and goes in the bundle. The writer is a second `bun build --compile` entry point. `src/history/history-writer.ts` is
 the thread's own entry point.
 
+A hit goes to the thread packed, not as a record: `src/history/hit-rows.ts` holds the shape, a row of numbers (`HIT` names the columns, NaN is a field left out) and four strings per hit, and the few text fields a hit rarely has. The run packs each hit as it settles (`packHit`, orchestrator), the numbers are moved to the thread, and `hitRecords` reads them back into the `runs` rows `runRecordOf` would build. `tests/hit-rows.test.ts` holds the two to each other.
+
 ### Public surface
 
 ```ts
@@ -650,8 +652,20 @@ the thread's own entry point.
 // transaction, once `expected` (its confirmed local hits) or the hits
 // added reach 2,048; `finish` hands back what did not land, for the bundle.
 export class HistoryStream<T> {
-  constructor(files: { index: string; store?: string }, expected: number)
-  add(item: T, record: RunRecord): void
-  finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
+  constructor(
+    files: { index: string; store?: string },
+    expected: number,
+    run: { runId: string; startedAtMs: number },
+    pack: (item: T, rows: HitBatch) => void,
+  )
+  add(item: T): void
+  finish(): Promise<{ landed: T[]; unlanded: T[] }>
 }
+
+// A batch of hits being packed: `row` opens a hit and returns where its
+// numbers start in `nums`; `set` adds a text field few hits carry.
+export class HitBatch implements HitRows {}
+export const HIT: Record<string, number>
+// The `runs` rows of a batch, on the thread.
+export function hitRecords(rows: HitRows, run: { runId: string; startedAtMs: number }): RunRecord[]
 ```

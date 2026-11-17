@@ -195,7 +195,9 @@ import {
   assembleRunRecords,
   foldOutcomes,
   recordLateRemoteErrors,
+  packHit,
   type RecordedOutcome,
+  type RunRecordContext,
   runRecordOf,
 } from './run-records.js'
 import {
@@ -1446,24 +1448,29 @@ async function runOnBus(
     const historyAt = historyFiles(prepared.localCache)
     let expectedHits = 0
     for (const probe of shortCircuit.preProbed.values()) if (probe.hit !== null) expectedHits++
+    const hitContext = (): RunRecordContext => ({
+      runId,
+      startedAtMs: endedAtMsAtStart,
+      endedAtMs: endedAtMsAtStart,
+      blocks: blocksNow(),
+      remoteTraffic: prepared.localCache.traffic.keys,
+    })
     const stream =
-      historyAt === undefined ? undefined : new HistoryStream<TaskOutcome>(historyAt, expectedHits)
+      historyAt === undefined
+        ? undefined
+        : new HistoryStream<TaskOutcome>(
+            historyAt,
+            expectedHits,
+            { runId, startedAtMs: endedAtMsAtStart },
+            (o, rows) => packHit(o as RecordedOutcome, hitContext(), rows),
+          )
     const forwards = (options.forwardArgs?.length ?? 0) > 0
     const streamHit = (o: TaskOutcome): void => {
       if (stream === undefined || isGroupTask(o.node)) return
       if (!isCacheHit(o.status)) return
       if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
       if (forwards && o.node.requested) return
-      stream.add(
-        o,
-        runRecordOf(o as RecordedOutcome, {
-          runId,
-          startedAtMs: endedAtMsAtStart,
-          endedAtMs: endedAtMsAtStart,
-          blocks: blocksNow(),
-          remoteTraffic: prepared.localCache.traffic.keys,
-        }),
-      )
+      stream.add(o)
     }
     // History, the kept bytes and the report read the graph's outcomes
     // from the stream, as every other surface does.
@@ -1691,7 +1698,7 @@ async function runOnBus(
     // Every batch the stream sent has answered: what landed is not written again.
     unfold()
     const streamed = await stream?.finish()
-    const landed = new Set(streamed?.landed.map((s) => s.item))
+    const landed = new Set(streamed?.landed)
     mark('run graph')
 
     // Clear the status line for good before the summary prints.
@@ -1870,7 +1877,10 @@ async function runOnBus(
       recordHistory(() =>
         recordLateRemoteErrors(
           prepared.localCache,
-          [...records.runs, ...(streamed?.landed.map((s) => s.record) ?? [])],
+          [
+            ...records.runs,
+            ...(streamed?.landed.map((o) => runRecordOf(o as RecordedOutcome, hitContext())) ?? []),
+          ],
           runId,
         ),
       )

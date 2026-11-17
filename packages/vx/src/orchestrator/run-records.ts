@@ -8,7 +8,13 @@
 // to this one.
 
 import { type Cache } from '../cache/index.js'
-import { type InvocationRecord, type RunRecord, runHistory } from '../history/index.js'
+import {
+  HIT,
+  type HitBatch,
+  type InvocationRecord,
+  type RunRecord,
+  runHistory,
+} from '../history/index.js'
 import {
   exitCodeOf,
   isGroupTask,
@@ -247,6 +253,61 @@ export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRec
   const def = taskDefinition(o.node)
   if (def !== undefined) r.def = def
   return r
+}
+
+/**
+ * A hit's `runs` row, packed for the history thread (`HitBatch`): field for
+ * field what {@link runRecordOf} builds for it, with no object per hit.
+ * The caller sends only hits that carry both spans and no forwarded args.
+ */
+export function packHit(
+  o: RecordedOutcome,
+  input: Pick<RunRecordContext, 'blocks' | 'remoteTraffic'>,
+  rows: HitBatch,
+): void {
+  const n = rows.nums
+  const at = rows.row(o.node.projectName, o.node.taskName, o.hash, taskDefinition(o.node))
+  n[at + HIT.remote] = o.status === 'cache-hit-remote' ? 1 : 0
+  n[at + HIT.exitCode] = exitCodeOf(o)
+  n[at + HIT.durationMs] = o.durationMs
+  n[at + HIT.startNs] = Number(o.timing!.startNs)
+  n[at + HIT.endNs] = Number(o.timing!.endNs)
+  n[at + HIT.cached] = o.node.config.cache === true ? 1 : 0
+  if (o.restoreFailed !== true) n[at + HIT.cacheHit] = 1
+  n[at + HIT.restored] = o.cache?.restored === true ? 1 : 0
+  const usage = o.usage
+  if (usage !== undefined) {
+    if (usage.cpuMs !== undefined) n[at + HIT.cpuMs] = usage.cpuMs
+    if (usage.peakRssBytes !== undefined) n[at + HIT.peakRssBytes] = usage.peakRssBytes
+    if (usage.peakCores !== undefined) n[at + HIT.peakCores] = usage.peakCores
+    if (usage.avgRssBytes !== undefined) n[at + HIT.avgRssBytes] = usage.avgRssBytes
+  }
+  const placement = o.placement
+  if (placement !== undefined) {
+    if (placement.where !== undefined) rows.set('placement', placement.where)
+    if (placement.cores !== undefined) n[at + HIT.placementCores] = placement.cores
+    if (placement.memoryBytes !== undefined)
+      n[at + HIT.placementMemoryBytes] = placement.memoryBytes
+    if (placement.cpuShare !== undefined) n[at + HIT.cpuShare] = placement.cpuShare
+  }
+  if (o.timing?.queuedMs !== undefined) n[at + HIT.queuedMs] = o.timing.queuedMs
+  if (o.cache?.outputBytes !== undefined) n[at + HIT.outputBytes] = o.cache.outputBytes
+  const blocks = input.blocks?.get(o.node.id)
+  if (blocks !== undefined) n[at + HIT.blocks] = blocks
+  const flaky = o.attempts?.flaky
+  if (flaky !== undefined) {
+    n[at + HIT.flakyPasses] = flaky.passes
+    n[at + HIT.flakyFailures] = flaky.failures
+  }
+  if (o.attempts?.count !== undefined) n[at + HIT.attempts] = o.attempts.count
+  const blockedBy = o.blockedBy ?? o.taintedBy
+  if (blockedBy !== undefined) rows.set('blockedBy', blockedBy)
+  if (o.timedOut === true) n[at + HIT.timedOut] = 1
+  if (o.sandbox?.violations !== undefined) n[at + HIT.sandboxViolations] = o.sandbox.violations
+  if (o.notReady !== undefined) rows.set('notReady', o.notReady)
+  const remoteError = remoteErrorOf(input.remoteTraffic, o.hash)
+  if (remoteError !== undefined) rows.set('remoteError', remoteError)
+  if (o.cache?.keylessBy !== undefined) rows.set('keylessBy', o.cache.keylessBy)
 }
 
 /**

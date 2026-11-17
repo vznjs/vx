@@ -60,6 +60,7 @@ export { createMissExplainer, type MissExplainer } from './miss-reason.js'
 export { type InvocationRecord, type MeasureRecord, type RunRecord } from './run-history.js'
 export { type HistoryWrites, runHistory } from './history-writes.js'
 export { HistoryStream } from './history-stream.js'
+export { HIT, HitBatch, hitRecords, type HitRows } from './hit-rows.js'
 export {
   type KeptFailure,
   keepRunNotes,
