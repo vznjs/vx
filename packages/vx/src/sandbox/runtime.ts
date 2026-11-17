@@ -1919,9 +1919,15 @@ function ownGroupCommand(
  * vx's own no-op run 69% (pr-bench, 495 → 835 ms, 2026-10-23). So a tool
  * that stats before it opens, as Ubuntu 26's cat (uutils) does, refused
  * nothing the trace sees.
+ *
+ * `rseq` and `set_robust_list` say nothing the report reads: glibc makes
+ * each once as a thread starts. strace stops a new thread at EVERY call
+ * until the first one its filter traces, so a thread that opens nothing
+ * (a pool thread that stats, a GC helper on futex) stopped at each call
+ * for life: 3 s of 13 s of the tracer's kernel time on a test file.
  */
 const TRACED_CALLS =
-  'trace=openat,?open,execve,?access,faccessat,?faccessat2,?readlink,?readlinkat,chdir,fchdir,clone,?clone3,?fork,?vfork'
+  'trace=openat,?open,execve,?access,faccessat,?faccessat2,?readlink,?readlinkat,chdir,fchdir,clone,?clone3,?fork,?vfork,?rseq,?set_robust_list'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5

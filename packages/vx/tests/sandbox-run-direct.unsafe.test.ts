@@ -699,7 +699,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,?open,execve,?access,faccessat,?faccessat2,?readlink,?readlinkat,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,?open,execve,?access,faccessat,?faccessat2,?readlink,?readlinkat,chdir,fchdir,clone,?clone3,?fork,?vfork,?rseq,?set_robust_list',
         '-o',
         '/dev/fd/5',
         '--',
