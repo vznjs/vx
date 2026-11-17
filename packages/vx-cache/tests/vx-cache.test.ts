@@ -693,13 +693,17 @@ it('a read with no answer is asked once more, and the remote stays on when that 
   }
 })
 
-it('a read the server hangs on while it answers another is lost alone: the remote stays on', async () => {
+it('a read the server hangs on while it answers another is asked once more, then lost alone: the remote stays on', async () => {
+  let asks = 0
   const hung = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
     async fetch(req) {
       const asked = (await req.text()).includes('"aa"')
-      if (asked) await Bun.sleep(2000)
+      if (asked) {
+        asks++
+        await Bun.sleep(2000)
+      }
       return Response.json(asked ? { aa: null } : { bb: null })
     },
   })
@@ -723,7 +727,7 @@ it('a read the server hangs on while it answers another is lost alone: the remot
     )
     await Bun.sleep(50)
     await c.hasMany(['bb'])
-    expect([await lost, c.off]).toEqual(['no answer within 300 ms', false])
+    expect([await lost, c.off, asks]).toEqual(['no answer within 300 ms', false, 2])
   } finally {
     await hung.stop(true)
   }
