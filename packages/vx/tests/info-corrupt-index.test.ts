@@ -1,6 +1,6 @@
 // `vx info` is where a broken setup is diagnosed, so an index SQLite cannot
 // read is one of its facts, with the fix, never a refusal of the report.
-import { closeSync, existsSync, openSync, writeSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, writeSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -64,6 +64,7 @@ for (const table of ['task_outcomes', 'artifacts']) {
   it(`a damaged ${table} page, read after the open, is the same fact`, async () => {
     const ws = await makeWorkspace({ prefix: 'vx-info-corrupt-page-' })
     const home = path.join(ws, 'home')
+    mkdirSync(home, { mode: 0o700 })
     const run = (...args: string[]) =>
       Bun.spawnSync({
         cmd: [process.execPath, BIN, ...args],
