@@ -409,7 +409,10 @@ const startCommands = [
         for (const l of lanes) {
           const at = lapAt(elapsed, l.ms)
           l.runner.style.transform = `translateX(${at.x.toFixed(2)}%)`
-          if (at.laps !== l.shown) l.laps.textContent = lapsLabel((l.shown = at.laps))
+          if (at.laps !== l.shown) {
+            l.laps.textContent = lapsLabel((l.shown = at.laps))
+            l.runner.classList.toggle('lapped', at.laps > 0)
+          }
         }
         requestAnimationFrame(frame)
       }

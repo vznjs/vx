@@ -886,6 +886,21 @@
   transform: translateY(-50%);
   background: #c9d2dc;
 }
+.runner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: 100%;
+  background: inherit;
+  display: none;
+}
+/* The lap before: its tail slides out past the finish while the next lap
+   starts, so the track reads as a loop and no runner vanishes. */
+.runner.lapped::before {
+  display: block;
+}
 .lane.vx .runner {
   background: linear-gradient(90deg, transparent 30%, var(--tone-core)) center / 100% 4px no-repeat;
 }
