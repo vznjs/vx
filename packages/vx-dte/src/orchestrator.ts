@@ -48,7 +48,6 @@ import {
   advise,
   leaves,
   leftMs,
-  simulate,
   UNKNOWN_MS,
   type Fleets,
   type PlanTask,
@@ -2601,39 +2600,40 @@ export class Orchestrator {
   }
 
   /**
-   * The run's end had it placed its tasks perfectly (2026-10-23: "how
-   * close the run was"): each task a worker ran, as long as it held its
-   * worker and in the cores it held there (or used, if more), played on as
-   * many workers as the sizes allow, each joining after its platform's
-   * fastest real warm-up, from when the run first knew its work. A task
-   * waits on its deps through those no worker ran (groups, hits).
+   * The end no run of these tasks could beat (2026-11-17: the footer's
+   * ideal was a replay under our placing rule and the sizes' caps, and a
+   * run ended before it): its longest chain, each task as long as it held
+   * its worker, on workers never short of room, each there after its
+   * platform's fastest real warm-up from when the run first knew its
+   * work. A task waits on its deps through those no worker ran (groups,
+   * hits). What the planner said before the run is its estimate (`asks`).
    */
-  idealMs(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): number | undefined {
+  idealMs(depsOf: (id: string) => readonly string[]): number | undefined {
     const r = this.replay(depsOf)
     if (r === undefined) return undefined
-    const pool: PlanWorker[] = (
-      sizes.length > 0
-        ? sizes.flatMap((s) =>
-            Array.from({ length: Math.min(s.max, this.took.size) }, () => ({
-              cores: s.cpu,
-              memory: s.memory,
-              platform: s.platform,
-            })),
-          )
-        : [...this.workers.values(), ...this.gone].map((a) => ({
-            cores: a.cores,
-            memory: a.memory,
-            platform: a.platform,
-          }))
-    ).map((w, i) => ({
-      ...w,
-      id: `ideal#${i}`,
-      at: r.warm(w.platform),
-      running: [],
-      idle: false,
-    }))
-    const end = simulate(r.tasks, pool)
-    if (!Number.isFinite(end)) return undefined
+    const byId = new Map(r.tasks.map((t) => [t.id, t]))
+    const ends = new Map<string, number>()
+    let end = 0
+    // On an explicit stack: a graph is as deep as its longest chain.
+    for (const root of r.tasks) {
+      const stack = [root]
+      while (stack.length > 0) {
+        const t = stack[stack.length - 1]!
+        if (ends.has(t.id)) {
+          stack.pop()
+          continue
+        }
+        const waits = t.deps.flatMap((d) => (ends.has(d) ? [] : [byId.get(d)!]))
+        if (waits.length > 0) {
+          stack.push(...waits)
+          continue
+        }
+        const at = Math.max(r.warm(t.platform), ...t.deps.map((d) => ends.get(d)!))
+        ends.set(t.id, at + (t.ms ?? 0))
+        end = Math.max(end, at + (t.ms ?? 0))
+        stack.pop()
+      }
+    }
     return r.from + end
   }
 
@@ -2652,7 +2652,7 @@ export class Orchestrator {
   leastHeldMs(
     depsOf: (id: string) => readonly string[],
     sizes: readonly Size[],
-    end = this.idealMs(depsOf, sizes),
+    end = this.idealMs(depsOf),
   ): number | undefined {
     const r = this.replay(depsOf)
     if (r === undefined) return undefined
@@ -3063,7 +3063,7 @@ export class Orchestrator {
                 `${'asked'.padEnd(width)}  ${this.asks
                   .map(
                     (x) =>
-                      `${x.workers} at ${seconds(x.at)} for ${plural(x.tasks, 'task')} (${x.measured} measured), plan ${seconds(x.endsInMs)}`,
+                      `${x.workers} at ${seconds(x.at)} for ${plural(x.tasks, 'task')} (${x.measured} measured), estimate ${seconds(x.endsInMs)}`,
                   )
                   .join(' · ')}`,
               ),
@@ -3076,7 +3076,7 @@ export class Orchestrator {
                     [
                       '',
                       ui.dim(
-                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly${((h) => (h === undefined ? '' : `, holding ${coreTime(h)} at least`))(least?.())}`,
+                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: its longest chain as long as it took, no task waiting for a worker${((h) => (h === undefined ? '' : `, holding ${coreTime(h)} at least`))(least?.())}`,
                       ),
                     ] as [string, ui.Inline],
                     ...driftRow(this.endedAt - this.startedAt - ms, drift?.(), width),

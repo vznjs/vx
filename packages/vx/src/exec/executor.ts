@@ -510,8 +510,8 @@ export interface Distribution {
    */
   machines?(): readonly MachineReport[]
   /**
-   * The run's end had it placed tasks perfectly from the start: each task's
-   * time replayed on the machines it could have had, for the summary. Once at
+   * The end no run of these tasks could beat: its longest chain, each task
+   * as long as it took, none waiting for a machine, for the summary. Once at
    * the end, only with a sink. A throw or a non-finite number reports none.
    */
   idealMs?(): number | undefined
