@@ -351,6 +351,13 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
   for (const [i, step] of c.steps.entries()) {
     if ('write' in step) {
       await writeFiles(root, step.write)
+      if (Object.keys(step.write).some((f) => path.basename(f) === 'package.json')) {
+        for (const argv of adapter.edited ?? []) {
+          const r = await sh(argv)
+          refused = r.exit === 0 ? null : `$ ${argv.join(' ')}\n${r.out}`
+          if (refused !== null) break
+        }
+      }
       continue
     }
     if ('chmod' in step) {

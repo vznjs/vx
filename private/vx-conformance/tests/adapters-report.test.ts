@@ -1,6 +1,36 @@
 import { expect, test } from 'bun:test'
 import { globRegexes, jsRegExp, reportOf } from '../src/adapters/nix.ts'
 import { viteTask } from '../src/adapters/vite-task.ts'
+import { vx } from '../src/adapters/vx.ts'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
+// A run follows the lock: `vx lock` is the step after a manifest edit, and a
+// config in a package with no task is one no vx user writes (in a folder git
+// ignores, `vx lock` refuses it).
+test('vx relocks after a manifest edit and writes no config for a task-less package', async () => {
+  expect(vx.edited).toEqual([['node_modules/.bin/vx', 'lock']])
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'conf-vx-adapter-'))
+  try {
+    await mkdir(path.join(dir, 'packages/a/gen/sub'), { recursive: true })
+    await vx.configure(
+      dir,
+      {
+        projects: {
+          a: { tasks: { build: { command: 'true', inputs: ['src/**'] } } },
+          sub: { dir: 'packages/a/gen/sub' },
+        },
+      },
+      () => 'true',
+    )
+    expect(existsSync(path.join(dir, 'packages/a/vx.config.mjs'))).toBe(true)
+    expect(existsSync(path.join(dir, 'packages/a/gen/sub/vx.config.mjs'))).toBe(false)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
 
 test('Vite Task’s last-run summary reads as a hit, with no time of its own', async () => {
   const out = `Task Details:

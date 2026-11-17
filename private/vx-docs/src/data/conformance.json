@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 240,
+    "ported": 241,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -22,6 +22,7 @@
         "server-chain-stop-order",
         "server-died-under-task",
         "server-stops-unneeded",
+        "stale-hit-git-enumeration",
         "uncached-outputs",
         "unlistable-input-dir",
         "vx-lockfile/installed-layout",
@@ -29,6 +30,7 @@
         "watch-cache-dir-change",
         "watch-dependency-gone",
         "watch-edit-before-keys",
+        "watch-late-batch",
         "watch-lossy-name",
         "watch-node-modules-input",
         "workspace-file-broken"
@@ -92,6 +94,7 @@
         "contract-exit-codes-init",
         "contract-exit-codes-states",
         "contract-lockfile",
+        "contract-outcome-projection",
         "contract-package-api",
         "contract-plugin-api.unsafe",
         "contract-plugin-env.unsafe",
@@ -247,6 +250,8 @@
         "sandbox-hint-spelling.unsafe",
         "sandbox-host-helpers.unsafe",
         "sandbox-lifecycle.unsafe",
+        "sandbox-loopback-hint.unsafe",
+        "sandbox-loopback-reach.unsafe",
         "sandbox-misrooted-writes.unsafe",
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
@@ -283,6 +288,7 @@
         "sandbox-unchecked-rewriter.unsafe",
         "sandbox-usage.unsafe",
         "sandbox-violation-secret-mask.unsafe",
+        "sandbox-weaker-nested.unsafe",
         "sandbox-widened-reads.unsafe",
         "sandbox-write-glob-new-file.unsafe",
         "schedule-refine",
@@ -345,6 +351,7 @@
         "vx-ci/setup",
         "vx-ci/unknown-options",
         "vx-devtools/hostile-tokens",
+        "vx-devtools/key-cache",
         "vx-devtools/oidc",
         "vx-devtools/parse-allow",
         "vx-devtools/terminal",
@@ -366,10 +373,13 @@
         "vx-dte/local-close",
         "vx-dte/local-e2e",
         "vx-dte/local-e2e-saves",
+        "vx-dte/local-e2e-workers",
+        "vx-dte/local-e2e-worktrees",
         "vx-dte/measures",
         "vx-dte/noise",
         "vx-dte/outputs",
         "vx-dte/pack",
+        "vx-dte/plan-boundary",
         "vx-dte/planner",
         "vx-dte/planner-properties",
         "vx-dte/plugin-order",
@@ -705,6 +715,7 @@
         "archive-security",
         "artifact-checksum",
         "artifact-pack-properties",
+        "attempt-steps",
         "bin-reader-gone",
         "bin-stdout",
         "binary-launch",
@@ -750,6 +761,7 @@
         "colors",
         "core-source-key.unsafe",
         "dependencies-lock",
+        "dependency-outputs-there",
         "dev",
         "disk-full.unsafe",
         "dispatched-verbs",
@@ -808,6 +820,7 @@
         "local-shortcircuit",
         "log-spacing",
         "logger-concurrency-slots",
+        "memo-parts",
         "miss-save-marks",
         "narrow-terminal",
         "no-auto-install.unsafe",
@@ -815,6 +828,7 @@
         "no-git-on-path",
         "no-nested-run.unsafe",
         "no-shell-on-path",
+        "notice",
         "npm-launcher",
         "npm-launcher-sh",
         "options-resolve",
@@ -927,12 +941,15 @@
         "task-log-buffer",
         "task-outputs-shape",
         "task-platforms",
+        "task-policy",
+        "task-save",
         "task-verb",
         "term-dumb",
         "terminal.unsafe",
         "timeout-exit-race.unsafe",
         "tmpdir-refusal",
         "tool-not-on-path",
+        "trailing-outputs",
         "tree-states-key",
         "tree-store-layout",
         "tree-store-torn",
@@ -940,6 +957,7 @@
         "ui-only-output.unsafe",
         "ulid",
         "uncached-key-once",
+        "unpassed-env",
         "user-error-classify",
         "util-hash",
         "util-num",
@@ -1077,19 +1095,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1004,
-        "can": 1006,
-        "of": 1008
+        "pass": 1011,
+        "can": 1011,
+        "of": 1013
       },
       "correctness": {
-        "pass": 829,
-        "can": 830,
-        "of": 832
+        "pass": 833,
+        "can": 833,
+        "of": 835
       },
       "efficiency": {
-        "pass": 166,
-        "can": 167,
-        "of": 167
+        "pass": 169,
+        "can": 169,
+        "of": 169
       },
       "data": {
         "pass": 9,
@@ -1102,7 +1120,7 @@
         "of": 150
       },
       "config": {
-        "pass": 7,
+        "pass": 8,
         "can": 8,
         "of": 8
       },
@@ -1122,7 +1140,7 @@
         "of": 42
       },
       "inputs": {
-        "pass": 308,
+        "pass": 309,
         "can": 309,
         "of": 309
       },
@@ -1132,9 +1150,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 229,
-        "can": 229,
-        "of": 229
+        "pass": 232,
+        "can": 232,
+        "of": 232
       },
       "report": {
         "pass": 9,
@@ -1142,9 +1160,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 21,
-        "can": 21,
-        "of": 21
+        "pass": 23,
+        "can": 23,
+        "of": 23
       },
       "watch": {
         "pass": 33,
@@ -1154,19 +1172,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 634,
-        "can": 922,
-        "of": 1008
+        "pass": 637,
+        "can": 925,
+        "of": 1013
       },
       "correctness": {
-        "pass": 513,
-        "can": 752,
-        "of": 832
+        "pass": 514,
+        "can": 753,
+        "of": 835
       },
       "efficiency": {
-        "pass": 117,
-        "can": 162,
-        "of": 167
+        "pass": 119,
+        "can": 164,
+        "of": 169
       },
       "data": {
         "pass": 4,
@@ -1209,9 +1227,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 164,
-        "can": 226,
-        "of": 229
+        "pass": 167,
+        "can": 229,
+        "of": 232
       },
       "report": {
         "pass": 4,
@@ -1221,7 +1239,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 21
+        "of": 23
       },
       "watch": {
         "pass": 29,
@@ -1231,19 +1249,19 @@
     },
     "nx": {
       "all": {
-        "pass": 650,
-        "can": 947,
-        "of": 1008
+        "pass": 653,
+        "can": 950,
+        "of": 1013
       },
       "correctness": {
-        "pass": 492,
-        "can": 773,
-        "of": 832
+        "pass": 493,
+        "can": 774,
+        "of": 835
       },
       "efficiency": {
-        "pass": 154,
-        "can": 166,
-        "of": 167
+        "pass": 156,
+        "can": 168,
+        "of": 169
       },
       "data": {
         "pass": 4,
@@ -1286,9 +1304,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 160,
-        "can": 226,
-        "of": 229
+        "pass": 163,
+        "can": 229,
+        "of": 232
       },
       "report": {
         "pass": 4,
@@ -1298,7 +1316,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 21
+        "of": 23
       },
       "watch": {
         "pass": 28,
@@ -1308,19 +1326,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 505,
-        "can": 756,
-        "of": 1008
+        "pass": 506,
+        "can": 759,
+        "of": 1013
       },
       "correctness": {
-        "pass": 416,
-        "can": 628,
-        "of": 832
+        "pass": 417,
+        "can": 629,
+        "of": 835
       },
       "efficiency": {
         "pass": 87,
-        "can": 120,
-        "of": 167
+        "can": 122,
+        "of": 169
       },
       "data": {
         "pass": 2,
@@ -1363,9 +1381,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 143,
-        "can": 226,
-        "of": 229
+        "pass": 144,
+        "can": 229,
+        "of": 232
       },
       "report": {
         "pass": 2,
@@ -1375,7 +1393,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 21
+        "of": 23
       },
       "watch": {
         "pass": 0,
@@ -1385,19 +1403,19 @@
     },
     "nix": {
       "all": {
-        "pass": 482,
-        "can": 719,
-        "of": 1008
+        "pass": 486,
+        "can": 724,
+        "of": 1013
       },
       "correctness": {
-        "pass": 416,
-        "can": 598,
-        "of": 832
+        "pass": 418,
+        "can": 601,
+        "of": 835
       },
       "efficiency": {
-        "pass": 64,
-        "can": 113,
-        "of": 167
+        "pass": 66,
+        "can": 115,
+        "of": 169
       },
       "data": {
         "pass": 2,
@@ -1440,9 +1458,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 161,
-        "can": 224,
-        "of": 229
+        "pass": 164,
+        "can": 227,
+        "of": 232
       },
       "report": {
         "pass": 2,
@@ -1450,9 +1468,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 17,
-        "can": 20,
-        "of": 21
+        "pass": 18,
+        "can": 22,
+        "of": 23
       },
       "watch": {
         "pass": 0,
@@ -1462,19 +1480,19 @@
     },
     "moon": {
       "all": {
-        "pass": 587,
-        "can": 906,
-        "of": 1008
+        "pass": 590,
+        "can": 909,
+        "of": 1013
       },
       "correctness": {
-        "pass": 457,
-        "can": 745,
-        "of": 832
+        "pass": 458,
+        "can": 746,
+        "of": 835
       },
       "efficiency": {
-        "pass": 125,
-        "can": 152,
-        "of": 167
+        "pass": 127,
+        "can": 154,
+        "of": 169
       },
       "data": {
         "pass": 5,
@@ -1517,9 +1535,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 126,
-        "can": 229,
-        "of": 229
+        "pass": 129,
+        "can": 232,
+        "of": 232
       },
       "report": {
         "pass": 5,
@@ -1529,7 +1547,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 21
+        "of": 23
       },
       "watch": {
         "pass": 0,
@@ -8917,9 +8935,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -32674,6 +32690,43 @@
       }
     },
     {
+      "id": "sandbox/swallowed-source-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that hides its refused write still fails",
+      "why": "A script that ignores a failed write exits 0 with the write undone. If the run passes, the task is cached as if it did everything it tried, and nothing tells the user the sandbox stopped part of it. The refusal itself must fail the task, whatever the script does with the error.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "compiled-sandbox.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
       "id": "sandbox/credential-store-hidden",
       "category": "sandbox",
       "kind": "correctness",
@@ -34100,9 +34153,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "fail",
-          "step": 2,
-          "detail": "succeeded, expected a failure"
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
@@ -34907,6 +34958,100 @@
       }
     },
     {
+      "id": "outputs/untracked-incremental-state-caches-no-partial-build",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An incremental tool’s state file git does not ignore never leaves a partial build in the cache",
+      "why": "A `.gitignore` that names `dist` but not `*.tsbuildinfo` leaves `tsc -b`’s state untracked, not ignored. It is still state: emptied `dist`, kept state, and the next build emits one changed file. A tool that guards only ignored state stores that partial `dist`, and a fresh checkout restores it.",
+      "from": [
+        "undeclared-state"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/kept-cache-beside-outputs-still-saves",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "A tool cache the outputs take back with `!` does not stop the build from caching",
+      "why": "Next keeps its type-check state in `.next/cache`, and the usual outputs are `.next/**` without `.next/cache/**`, so the cache stays across builds. That state changes on every build. A tool that treats it as undeclared state stops saving every build after the first, and switching back to an earlier source rebuilds instead of replaying.",
+      "from": [
+        "undeclared-state"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/whole-build-info-beside-outputs-still-saves",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "A build-info file that records no per-file state does not stop the build from caching",
+      "why": "Vite’s template runs `tsc -b` with `noEmit` before `vite build`, and tsc writes `node_modules/.tmp/tsconfig.app.tsbuildinfo` holding only its root files and version. That file changes on every build but cannot leave outputs half-built: the build emits its whole project. A tool that treats it as incremental state stops saving every build after the first.",
+      "from": [
+        "undeclared-state"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "outputs/retry-saves-only-the-passing-attempt",
       "category": "outputs",
       "kind": "correctness",
@@ -35669,6 +35814,40 @@
           "status": "fail",
           "step": 4,
           "detail": "did not run app#pack"
+        }
+      }
+    },
+    {
+      "id": "sandbox/root-package-missing-optional-file-passes",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task of the root package may look for a file that is not there",
+      "why": "Most tools try optional files first: a local override, a config in one of five spellings. In a workspace that is one package, or whose root has tasks of its own, those lookups happen in the root. A sandbox that reports a file that does not exist as a refused read fails every such tool, and isolation cannot be turned on there.",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
         }
       }
     }
