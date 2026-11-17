@@ -55,6 +55,10 @@ export default defineProject({
       cache: true,
     },
     types: {
+      // turbo.json names no such edge, and with ten workers `link` ends
+      // long before tsc reaches `web`, which resolves `solid-js` through
+      // the link. One task at a time ran `types` first and it failed.
+      dependsOn: ['link'],
       exec: { command: TYPES.join(' && ') },
       inputs: SOURCES,
       outputs: { files: ENTRIES.map((e) => `${e}types/**`) },
