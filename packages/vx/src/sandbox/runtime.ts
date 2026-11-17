@@ -68,7 +68,7 @@ import {
 } from '../exec/index.js'
 import { TaskPipes } from '../exec/index.js'
 import { startTaskProxy, type TaskProxy } from './task-proxy.js'
-import { applySeccompPath } from './seccomp-helper.js'
+import { applySeccompPath, observePath } from './seccomp-helper.js'
 import { watchTree } from '../exec/index.js'
 import {
   BUN_GLOB_WILDCARDS,
@@ -117,6 +117,7 @@ import {
 import { canScopeDenyScan, scopedMandatoryDenies, srtDefaultWritePaths } from './deny-scan.js'
 import {
   hiddenReadsOutside,
+  observedWrites,
   parseStraceViolations,
   refusedConnections,
   refusedWrites,
@@ -749,6 +750,8 @@ async function hermeticAllows(): Promise<string[]> {
     await import('@anthropic-ai/sandbox-runtime/dist/sandbox/generate-seccomp-filter.js')
   const seccomp = getApplySeccompBinaryPath(await applySeccompPath())
   if (seccomp) programs.push(seccomp)
+  const observer = await observePath()
+  if (observer !== undefined) programs.push(observer)
   const files = [...programs]
   // The loader and the libraries each program links, by `ldd`'s answer.
   let ldd: string
@@ -1110,6 +1113,7 @@ function srtDown(): void {
   perTaskRun = undefined
   availabilityCache.clear()
   straceAvailableCache = undefined
+  observerCache = undefined
 }
 
 /** Strikes the live session from the group guard's lists; set by `initSandbox`. */
@@ -1547,9 +1551,9 @@ export async function wrapSandboxedCommand(
     Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & {
       /** A persistent server: the sandbox outlives a run's reset until `releaseBridges(tag)`. */
       server?: boolean
-      /** Trace the command's `openat` calls to descriptor TRACE_FD (Linux; `wantsStraceDetection`). */
-      trace?: 'plain' | 'seccomp'
-      /** Trace with `-y`, each descriptor's path printed: a read under a widened grant is judged. */
+      /** Report the command's refused reads to descriptor TRACE_FD (Linux; `traceFor`). */
+      trace?: TraceForm
+      /** Report each read that succeeded too (strace: `-y`): a read under a widened grant is judged. */
       tracePaths?: boolean
     },
 ): Promise<{
@@ -1567,6 +1571,8 @@ export async function wrapSandboxedCommand(
   forwardsSignals: boolean
   /** The command writes its trace to fd TRACE_FD: spawn it with the log there. */
   traced: boolean
+  /** The trace is vx's observer's, the writes in it too, not strace's. */
+  observed: boolean
 }> {
   const { SandboxManager } = await loadSrt()
   const userCommand = withForwardArgs(args.command, args.forwardArgs)
@@ -1633,6 +1639,9 @@ async function wrapIn(
   const helpers = hostHelpers()
   customConfig!.filesystem!.denyRead!.push(...helpers.dirs)
   customConfig!.filesystem!.allowRead!.push(...helpers.files)
+  // The observer runs inside the sandbox, from the cache home or vx's own files.
+  const observer = args.trace === 'observe' ? await observePath() : undefined
+  if (observer !== undefined) customConfig!.filesystem!.allowRead!.push(...bothSpellings(observer))
   const cwdDenied =
     process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)
   if (cwdDenied) customConfig!.filesystem!.denyRead!.push(baselines.cwd)
@@ -1681,8 +1690,17 @@ async function wrapIn(
   }
   const grouped =
     process.platform === 'linux'
-      ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
-      : { command: taggedCommand, forwards: false, traced: false }
+      ? ownGroupCommand(
+          tag,
+          inTmp,
+          args.trace === 'observe'
+            ? observer === undefined
+              ? undefined
+              : { observer }
+            : args.trace,
+          args.tracePaths === true,
+        )
+      : { command: taggedCommand, forwards: false, traced: false, trace: undefined }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
   // and the proxy wait below is the same ~360 for every task.
   const inner = [
@@ -1743,6 +1761,10 @@ async function wrapIn(
       throw err
     }
   }
+  // One listener a filter chain (the kernel answers a second EBUSY), and
+  // the runtime's write observer would be the first: vx's observer reports
+  // the writes too, so the runtime's is left out of this wrap.
+  if (typeof grouped.trace === 'object') wrapped = withoutRuntimeObserver(wrapped)
   // Linux: the shell execs bwrap, so bwrap is the spawn itself and its
   // `--die-with-parent` is keyed to vx. Behind a shell that waited on it,
   // a `kill -9` of vx left the shell alive, bwrap never heard, and a
@@ -1781,6 +1803,7 @@ async function wrapIn(
     held: globsHeld,
     forwardsSignals: grouped.forwards,
     traced: grouped.traced,
+    observed: grouped.traced && typeof grouped.trace === 'object',
   }
 }
 
@@ -1826,9 +1849,15 @@ function channelWatch(group: string): string {
 function ownGroupCommand(
   tag: string,
   userCommand: string,
-  trace?: 'plain' | 'seccomp',
+  trace?: 'plain' | 'seccomp' | { observer: string },
   tracePaths = false,
-): { command: string; forwards: boolean; traced: boolean } {
+): {
+  command: string
+  forwards: boolean
+  traced: boolean
+  /** The tracer the command runs under; none where there was no shell to run it. */
+  trace: typeof trace
+} {
   // `sh`, as an unsandboxed task runs (`runner.ts`): the command ran under
   // bash here, so `[[ … ]]`, brace expansion and `echo 'a\tb'` read one
   // way sandboxed and another unsandboxed or on a remote executor, where
@@ -1837,7 +1866,12 @@ function ownGroupCommand(
   try {
     sh = taskShell()
   } catch {
-    return { command: `: 'vx-${tag}'; ${userCommand}`, forwards: false, traced: false }
+    return {
+      command: `: 'vx-${tag}'; ${userCommand}`,
+      forwards: false,
+      traced: false,
+      trace: undefined,
+    }
   }
   const tag0 = `: 'vx-${tag}';`
   let setsid: string | undefined
@@ -1848,9 +1882,10 @@ function ownGroupCommand(
   }
   if (trace === undefined) {
     const run = `exec ${setsid ?? ''}${shellQuote(sh)} -c ${shellQuote(userCommand)}`
-    if (setsid === undefined) return { command: `${tag0} ${run}`, forwards: false, traced: false }
+    if (setsid === undefined)
+      return { command: `${tag0} ${run}`, forwards: false, traced: false, trace }
     const watch = `{ ${channelWatch('$$')}; } 2>/dev/null <&3 3<&- &`
-    return { command: `${tag0} ${watch} ${run} 3<&-`, forwards: true, traced: false }
+    return { command: `${tag0} ${watch} ${run} 3<&-`, forwards: true, traced: false, trace }
   }
   // Traced, strace runs INSIDE the sandbox, around the command alone:
   // outside, it followed bwrap building the namespace, a ptrace stop per
@@ -1872,36 +1907,47 @@ function ownGroupCommand(
   // for a backgrounded simple command (the first cut here, whose task's
   // `trap … INT` never fired) but not for a brace group, so the `trap -`
   // is for a bash that does; SRT's bash may put them back (dash may not).
-  const tracer = [
-    executablePath('strace'),
-    '-DD',
-    '-f',
-    ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
-    // A read through a directory's descriptor (`find`, `grep -r`) names
-    // only the entry; `-y` prints the path it opened. 40% slower on 2,000
-    // opens, so only where a widened grant's reads are judged.
-    ...(tracePaths ? ['-y'] : []),
-    '-qq',
-    '-e',
-    // A process's cwd moves on `chdir` and starts as its parent's at the
-    // fork (`deniedCalls`); `?` lets an arch without `fork` skip it.
-    TRACED_CALLS,
-    '-o',
-    `/dev/fd/${TRACE_FD}`,
-    '--',
-  ]
+  // vx's own observer (`observe/vx-observe.c`) in strace's place: the
+  // kernel hands it each call the report reads and no other, where strace
+  // stops a new process at every call until its first traced one (3.5 ms
+  // of a Bun or Node spawn) and twice at each traced one. It keeps the
+  // pid, ends with the command's status, and never passes TRACE_FD on.
+  const tracer = (
+    typeof trace === 'object'
+      ? [trace.observer, String(TRACE_FD), tracePaths ? '1' : '0']
+      : [
+          executablePath('strace'),
+          '-DD',
+          '-f',
+          ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
+          // A read through a directory's descriptor (`find`, `grep -r`) names
+          // only the entry; `-y` prints the path it opened. 40% slower on 2,000
+          // opens, so only where a widened grant's reads are judged.
+          ...(tracePaths ? ['-y'] : []),
+          '-qq',
+          '-e',
+          // A process's cwd moves on `chdir` and starts as its parent's at the
+          // fork (`deniedCalls`); `?` lets an arch without `fork` skip it.
+          TRACED_CALLS,
+          '-o',
+          `/dev/fd/${TRACE_FD}`,
+          '--',
+        ]
+  )
     .map(shellQuote)
     .join(' ')
-  const body = shellQuote(`exec ${TRACE_FD}>&-; ${userCommand}`)
+  const body = shellQuote(
+    typeof trace === 'object' ? userCommand : `exec ${TRACE_FD}>&-; ${userCommand}`,
+  )
   const run = `{ trap - INT QUIT; exec ${setsid ?? ''}${tracer} ${shellQuote(sh)} -c ${body} 3<&-; } & c=$!;`
   // Bash reports a job a signal killed on its stderr, the task's: a task
   // whose shell died of SIGKILL printed this whole wrapper (X-111).
   const wait = `wait "$c" 2>/dev/null`
   if (setsid === undefined) {
-    return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true }
+    return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true, trace }
   }
   const watch = `{ ${channelWatch('$c')}; } 2>/dev/null <&3 3<&- &`
-  return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
+  return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true, trace }
 }
 
 /**
@@ -2462,6 +2508,14 @@ export function releaseBridges(tag: string): void {
 const TRACER_RETRY_LINE =
   "[vx] the sandbox's tracer (strace) failed on its own; running the task again\n"
 
+/** The same, of vx's own observer. */
+const OBSERVER_RETRY_LINE =
+  "[vx] the sandbox's observer failed on its own; running the task again\n"
+
+/** What it says when the observer could not start inside the sandbox: the command has not run. */
+const OBSERVER_REFUSED_LINE =
+  "[vx] the sandbox's observer cannot run in this sandbox; running the task without it\n"
+
 /** What a task's output says when a mount went away as bwrap set the sandbox up. */
 const MOUNT_RACE_RETRY_LINE =
   '[vx] a mount went away as the sandbox was set up; running the task again\n'
@@ -2484,8 +2538,10 @@ const BWRAP_MOUNT_GONE =
  * Run a single task wrapped in the sandbox. Caller must have called
  * `initSandbox()` first.
  *
- * On Linux the task runs under strace, which only REPORTS what the sandbox
- * denied. strace failing on its own (`ptrace(PTRACE_LISTEN,…): Input/output
+ * On Linux the task runs under vx's observer, or under strace, which only
+ * REPORT what the sandbox denied. An observer that cannot start inside the
+ * sandbox says so before the command runs, and the task is run without
+ * it; one whose supervisor died is strace's case below. strace failing on its own (`ptrace(PTRACE_LISTEN,…): Input/output
  * error`, after a build that had finished) turned green work red on CI five
  * times (STATUS Next 24): its exit was the task's. Since B-11 strace runs
  * detached (`-DD`), yet under `--seccomp-bpf` (strace 6.8 implies
@@ -2505,20 +2561,40 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       if (chunk.length > 0) midLine = !chunk.endsWith('\n')
       on?.(chunk)
     }
-  const { tracerFailed, mountGone, ranMs, ...first } = await runSandboxedOnce({
-    ...args,
-    onStdout: seen(args.onStdout),
-    onStderr: seen(args.onStderr),
-  })
+  const { tracerFailed, observerCut, observerRefused, mountGone, ranMs, ...first } =
+    await runSandboxedOnce({
+      ...args,
+      onStdout: seen(args.onStdout),
+      onStderr: seen(args.onStderr),
+    })
+  // Refused inside the sandbox where it ran outside (a /proc that is not
+  // the task's own, a listener the sandbox around vx holds): every later
+  // task of this kind is traced the old way.
+  if (observerRefused !== undefined)
+    observerRefusedIn.set(args.config.weakerWhenNested === true, observerRefused)
   // A stopping run has killed the children it holds; a retry would be one
   // spawned after that kill.
-  if (!(tracerFailed || mountGone) || args.signal?.aborted === true) return first
-  const notice = (midLine ? '\n' : '') + (mountGone ? MOUNT_RACE_RETRY_LINE : TRACER_RETRY_LINE)
+  if (
+    !(tracerFailed || mountGone || observerRefused !== undefined) ||
+    args.signal?.aborted === true
+  )
+    return first
+  const notice =
+    (midLine ? '\n' : '') +
+    (mountGone
+      ? MOUNT_RACE_RETRY_LINE
+      : observerRefused !== undefined
+        ? OBSERVER_REFUSED_LINE
+        : observerCut === true
+          ? OBSERVER_RETRY_LINE
+          : TRACER_RETRY_LINE)
   args.onStderr?.(notice)
   // `timeout` bounds the task's whole run (schema.md), so the retry gets
   // what the first attempt left of it, not a fresh window.
   const {
     tracerFailed: _again,
+    observerCut: _cut,
+    observerRefused: _refused,
     mountGone: _gone,
     ranMs: _ran,
     ...second
@@ -2587,6 +2663,12 @@ function observerSocket(wrapped: string): string | undefined {
   return /--setenv SRT_OBSERVE_SOCK (?:'([^']*)'|(\S+))/.exec(wrapped)?.slice(1).find(Boolean)
 }
 
+/** `wrapped` without the runtime's write observer: its socket's bind and the variable naming it. */
+function withoutRuntimeObserver(wrapped: string): string {
+  const arg = `(?:'[^']*'|\\S+)`
+  return wrapped.replace(new RegExp(`--bind (${arg}) \\1 --setenv SRT_OBSERVE_SOCK \\1 `), '')
+}
+
 /**
  * Resolves once SRT has read every record sent to `socket` before the call.
  * A task's observer sends its records before the task exits, but they are
@@ -2617,9 +2699,20 @@ function observerCaughtUp(socket: string): Promise<void> {
  */
 const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
 
+/** The observer's own message (`fail` in `observe/vx-observe.c`), a line of the task's stderr. */
+const OBSERVER_OWN_ERROR = /^vx-observe: (.*)$/
+/** Its exit status with one. */
+const OBSERVER_FAILED = 125
+/** The one it says after the command ran: its supervisor died, and the report stopped short. */
+const OBSERVER_CUT_SHORT = 'the supervisor ended before the command'
+
 /** One attempt's result, with what `runSandboxed` decides a second on. */
 type AttemptResult = SandboxedRunResult & {
   tracerFailed: boolean
+  /** The tracer that failed was vx's observer. */
+  observerCut?: true
+  /** Why the observer did not start in this sandbox: the command never ran. */
+  observerRefused?: string
   mountGone: boolean
   ranMs: number
 }
@@ -2658,8 +2751,10 @@ interface Prepared {
  * Linux: SRT's store sees only writes, so read denials need the command
  * traced and the trace parsed for denied syscalls. The trace is per-task
  * (a log keyed by the command tag) so parallel tasks don't share a
- * stream. Skipped when strace isn't on PATH — bwrap still enforces
- * structurally; we just lose the structured violation list.
+ * stream. vx's own observer writes it (`traceFor`); where that cannot
+ * run, strace does, and what follows is strace's form. Skipped when
+ * neither can — bwrap still enforces structurally; we just lose the
+ * structured violation list.
  *
  * We trace the opens, the read itself, plus `execve` and the access
  * probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
@@ -2681,14 +2776,14 @@ async function prepareAttempt(
   SandboxManager: SrtModule['SandboxManager'],
   start: number,
 ): Promise<{ prepared: Prepared } | { result: AttemptResult }> {
-  const useStrace = await wantsStraceDetection()
+  const trace = await traceFor(args.config.weakerWhenNested === true)
   const widened = widenedEntries(args.config.allowWrite)
   let wrap: Wrap
   try {
     wrap = await wrapSandboxedCommand({
       ...args,
-      ...(useStrace ? { trace: useStrace } : {}),
-      ...(useStrace && widened.size > 0 ? { tracePaths: true } : {}),
+      ...(trace ? { trace } : {}),
+      ...(trace && widened.size > 0 ? { tracePaths: true } : {}),
     })
   } catch (err) {
     if ((err as { code?: unknown } | undefined)?.code !== 'command_too_long') throw err
@@ -2795,6 +2890,8 @@ interface StderrSigns {
   partial: string
   /** A line was strace's own: the trace stopped short. */
   straceSpoke: boolean
+  /** What the observer said of itself, its first line. */
+  observerSaid: string | undefined
   /** bwrap's refusal of a mount gone as it set up (`BWRAP_MOUNT_GONE`). */
   mountGone: boolean
   /** `hiddenGitHint`. */
@@ -2837,6 +2934,7 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   const signs: StderrSigns = {
     partial: '',
     straceSpoke: false,
+    observerSaid: undefined,
     mountGone: false,
     gitNoRepo: false,
     readOnlyLines: [],
@@ -2861,6 +2959,7 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
         const lines = (signs.partial + chunk).split('\n')
         signs.partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) signs.straceSpoke = true
+        for (const l of lines) signs.observerSaid ??= OBSERVER_OWN_ERROR.exec(l)?.[1]
         if (lines.some((l) => BWRAP_MOUNT_GONE.test(l))) signs.mountGone = true
         if (lines.some((l) => GIT_NO_REPO.test(l))) signs.gitNoRepo = true
         for (const l of lines)
@@ -2955,18 +3054,25 @@ async function attemptDenials(
           return touched === undefined || !readableUnder(touched, grantedRead)
         })
       : []
+  const trace =
+    process.platform === 'linux' && straceLog
+      ? await Bun.file(straceLog)
+          .text()
+          .catch(() => '')
+      : ''
   const linuxViolations: SandboxViolation[] =
     process.platform === 'linux'
       ? [
-          ...(straceLog
-            ? await parseStraceViolations(straceLog, args, baselines, prepared.widened).catch(
+          ...(trace.length > 0
+            ? await parseStraceViolations({ text: trace }, args, baselines, prepared.widened).catch(
                 () => [],
               )
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
-            // included, not by the tagged command macOS is keyed by.
-            records.map((v) => v.line),
+            // included, not by the tagged command macOS is keyed by. Under
+            // vx's observer the writes are in the trace, not the store.
+            prepared.wrap.observed ? observedWrites(trace) : records.map((v) => v.line),
             [...bindableWrites(args.config.allowWrite), ...held.dirs],
             [...scratch, ...held.globs],
             [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
@@ -3196,6 +3302,11 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
   addHints(args, ended, denials, baselines)
   afterCommand(SandboxManager)
   const { exitCode, timeout, looked, signs } = ended
+  const { observed } = prepared.wrap
+  const observerSaid =
+    observed && exitCode === OBSERVER_FAILED
+      ? (signs.observerSaid ?? OBSERVER_OWN_ERROR.exec(signs.partial)?.[1])
+      : undefined
   return {
     exitCode,
     durationMs: Math.round(runTime() - start),
@@ -3224,7 +3335,14 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
     tracerFailed:
       straceLog !== undefined &&
       !timeout.timedOut() &&
-      (signs.straceSpoke || STRACE_OWN_ERROR.test(signs.partial)),
+      (observed
+        ? observerSaid === OBSERVER_CUT_SHORT
+        : signs.straceSpoke || STRACE_OWN_ERROR.test(signs.partial)),
+    ...(observerSaid === undefined
+      ? {}
+      : observerSaid === OBSERVER_CUT_SHORT
+        ? { observerCut: true as const }
+        : { observerRefused: observerSaid }),
   }
 }
 
@@ -4238,7 +4356,54 @@ async function probeStrace(): Promise<{ form: false | 'plain' | 'seccomp'; why: 
   }
 }
 
-async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
+/** How a task's reads are reported: by vx's observer, or by strace with or without its filter. */
+type TraceForm = 'observe' | 'plain' | 'seccomp'
+
+/** Why vx's observer cannot run on this host, null when it can; the promise is the memo. */
+let observerCache: Promise<string | null> | undefined
+function observerState(): Promise<string | null> {
+  observerCache ??= probeObserver()
+  return observerCache
+}
+
+/**
+ * Where the observer ran on the host and not inside a sandbox, by whether
+ * the task set `weakerWhenNested` (another /proc, another outer sandbox).
+ * A fact of the host: a reset keeps it.
+ */
+const observerRefusedIn = new Map<boolean, string>()
+
+/**
+ * One observed `true`: a kernel before 5.5, a seccomp profile that refuses
+ * the listener or a foreign /proc each make the observer say why and exit
+ * before it runs anything. `VX_DEBUG_STRACE` asks for strace.
+ */
+async function probeObserver(): Promise<string | null> {
+  // `debug.strace`, a bool read here as `debug.dumpable` is in util.
+  const strace = process.env['VX_DEBUG_STRACE']
+  if (strace === 'true' || strace === '1') return 'VX_DEBUG_STRACE is set'
+  const observer = await observePath()
+  if (observer === undefined) return 'no build of it for this machine'
+  try {
+    const p = Bun.spawn([observer, '1', '0', executablePath('true')], {
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'pipe',
+      env: helperEnv(),
+    })
+    const err = await new Response(p.stderr).text()
+    if ((await p.exited) === 0) return null
+    const line = err.trim().split('\n')[0] ?? ''
+    return OBSERVER_OWN_ERROR.exec(line)?.[1] ?? (line || `exit ${p.exitCode}`)
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+}
+
+/** The tracer a task of this kind runs under, or false where none can; the loss is said once. */
+async function traceFor(weakerNested: boolean): Promise<false | TraceForm> {
+  if (process.platform !== 'linux') return false
+  if ((await observerState()) === null && !observerRefusedIn.has(weakerNested)) return 'observe'
   const { form, why } = await straceState()
   if (form === false && why !== '') warnUntraced(why)
   return form
@@ -4251,6 +4416,8 @@ async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
  * stderr: `vx info` reports it as a fact (B-51's lead).
  */
 export async function untracedReason(): Promise<string | null> {
+  if (process.platform !== 'linux') return null
+  if ((await observerState()) === null && observerRefusedIn.size === 0) return null
   const { why } = await straceState()
   return why === '' ? null : why
 }

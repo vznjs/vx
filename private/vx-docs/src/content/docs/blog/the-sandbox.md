@@ -100,7 +100,7 @@ Turn it on where inputs matter: in CI, and before a task goes to
 
 ## Linux and macOS
 
-Linux needs `bwrap`, `socat` and `rg`, plus `strace` for the report.
+Linux needs `bwrap`, `socat` and `rg`; the report is vx's own.
 macOS uses seatbelt. Windows runs it through WSL.
 
 ```mermaid

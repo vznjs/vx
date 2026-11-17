@@ -204,6 +204,10 @@ src/sandbox/binds.ts
 src/sandbox/deny-scan.ts
 src/sandbox/fix.ts
 src/sandbox/index.ts
+src/sandbox/observe/source.sha256
+src/sandbox/observe/vx-observe-arm64
+src/sandbox/observe/vx-observe-x64
+src/sandbox/observe/vx-observe.c
 src/sandbox/paths.ts
 src/sandbox/request.ts
 src/sandbox/runtime.ts

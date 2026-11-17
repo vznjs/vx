@@ -8,15 +8,20 @@
  * unchanged (SECCOMP_USER_NOTIF_FLAG_CONTINUE): this reports, the mount
  * table enforces. One line per reported call goes to <fd>:
  *
- *   a read call that will fail, as strace writes one (violations.ts reads both):
- *     <pid> openat(AT_FDCWD, "<path>", O_RDONLY) = -1 ENOENT (x)
- *   with <reads> 1, an open or readlink that will succeed:
- *     <pid> openat(AT_FDCWD, "<path>", O_RDONLY) = 3
- *   a call that writes, creates, removes, renames or changes a path:
- *     W <call> "<path>"
+ *   a read call that will fail, as strace writes one (violations.ts reads
+ *   both), the path as the caller spelled it and a relative one's
+ *   directory as `strace -y` names it, or by a `chdir` line before a call
+ *   that takes no directory:
+ *     <pid> openat(AT_FDCWD</its/cwd>, "<path>", O_RDONLY) = -1 ENOENT (x)
+ *     <pid> chdir("/its/cwd") = 0
+ *     <pid> access("<path>", F_OK) = -1 ENOENT (x)
+ *   with <reads> 1, an open or readlink that will succeed, the path whole:
+ *     <pid> openat(AT_FDCWD, "</abs/path>", O_RDONLY) = 3
+ *   a call that writes, creates, removes, renames or changes a path, whole:
+ *     W <call> "</abs/path>"
  *
- * Paths are absolute (a relative one is joined to the caller's cwd or
- * directory descriptor, read from /proc) and escaped as a C string. A
+ * A relative path's directory is the caller's cwd or directory
+ * descriptor, read from /proc; every path is escaped as a C string. A
  * path is read from the caller's memory, which the caller can change
  * under us: a line is a report, never a decision.
  *
@@ -43,7 +48,7 @@ typedef long i64;
 #define ARCH 0xC000003Eu
 enum {
   NR_read = 0, NR_write = 1, NR_close = 3, NR_ioctl = 16, NR_pipe2 = 293, NR_clone = 56,
-  NR_execve = 59, NR_exit_group = 231, NR_wait4 = 61, NR_kill = 62, NR_getpid = 39,
+  NR_execve = 59, NR_chdir = 80, NR_statx = 332, NR_statfs = 137, NR_exit_group = 231, NR_wait4 = 61, NR_kill = 62, NR_getpid = 39,
   NR_prctl = 157, NR_seccomp = 317, NR_process_vm_readv = 310, NR_readlinkat = 267,
   NR_faccessat = 269, NR_faccessat2 = 439, NR_ppoll = 271, NR_rt_sigprocmask = 14,
   NR_signalfd4 = 289, NR_fcntl = 72, NR_openat = 257, NR_openat2 = 437,
@@ -59,7 +64,7 @@ enum {
 #define ARCH 0xC00000B7u
 enum {
   NR_read = 63, NR_write = 64, NR_close = 57, NR_ioctl = 29, NR_pipe2 = 59, NR_clone = 220,
-  NR_execve = 221, NR_exit_group = 94, NR_wait4 = 260, NR_kill = 129, NR_getpid = 172,
+  NR_execve = 221, NR_chdir = 49, NR_statx = 291, NR_statfs = 43, NR_exit_group = 94, NR_wait4 = 260, NR_kill = 129, NR_getpid = 172,
   NR_prctl = 167, NR_seccomp = 277, NR_process_vm_readv = 270, NR_readlinkat = 78,
   NR_faccessat = 48, NR_faccessat2 = 439, NR_ppoll = 73, NR_rt_sigprocmask = 135,
   NR_signalfd4 = 74, NR_fcntl = 25, NR_openat = 56, NR_openat2 = 437,
@@ -85,6 +90,7 @@ enum {
   FLAG_NEW_LISTENER = 1 << 3, FLAG_TSYNC_ESRCH = 1 << 4, FLAG_WAIT_KILLABLE_RECV = 1 << 5,
   POLLIN = 1, POLLERR = 8, POLLHUP = 16,
   PATH_CAP = 4096,
+  NR_pidfd_open = 434, PIDFD_THREAD = 0200,
 };
 #define WRITE_MASK (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_APPEND)
 #define RET_ALLOW 0x7fff0000u
@@ -166,7 +172,7 @@ static long number(const char *s) {
 
 /* ---- What is observed ------------------------------------------------- */
 
-enum kind { OPEN, OPEN2, EXEC, ACCESS, READLINK, WRITE };
+enum kind { OPEN, OPEN2, EXEC, CHDIR, ACCESS, READLINK, WRITE };
 
 struct call {
   int nr;
@@ -181,6 +187,8 @@ static const struct call CALLS[] = {
   {NR_openat, "openat", OPEN, 1, -1, 2, 0, -1},
   {NR_openat2, "openat2", OPEN2, 1, -1, -1, 0, -1},
   {NR_execve, "execve", EXEC, 0, -1, -1, -1, -1},
+  /* A refused `cd` is a refused read of the directory. */
+  {NR_chdir, "chdir", CHDIR, 0, -1, -1, -1, -1},
   {NR_faccessat, "faccessat", ACCESS, 1, -1, 2, 0, -1},
   {NR_faccessat2, "faccessat2", ACCESS, 1, -1, 2, 0, -1},
   {NR_readlinkat, "readlinkat", READLINK, 1, -1, -1, 0, -1},
@@ -344,23 +352,26 @@ static void putn(long v) {
   put(b + i, sizeof b - (u64)i);
 }
 
-/* A quoted C string as strace writes one: octal for what is not printable ASCII. */
-static void putq(const char *s, u64 n) {
-  put("\"", 1);
+/* A C string as strace writes one: octal for what is not printable ASCII.
+ * `quoted`, between quotes; else as `-y` names a descriptor's path, where
+ * a quote stands as it is and the `>` that would end the name does not. */
+static void putc_(const char *s, u64 n, int quoted) {
+  if (quoted) put("\"", 1);
   for (u64 i = 0; i < n; i++) {
     u8 c = (u8)s[i];
-    if (c == '"' || c == '\\') {
+    if (quoted ? c == '"' || c == '\\' : c == '\\') {
       char e[2] = {'\\', (char)c};
       put(e, 2);
-    } else if (c < 0x20 || c >= 0x7f) {
+    } else if (c < 0x20 || c >= 0x7f || (!quoted && c == '>')) {
       char e[4] = {'\\', (char)('0' + (c >> 6)), (char)('0' + ((c >> 3) & 7)), (char)('0' + (c & 7))};
       put(e, 4);
     } else {
       put((const char *)&c, 1);
     }
   }
-  put("\"", 1);
+  if (quoted) put("\"", 1);
 }
+static void putq(const char *s, u64 n) { putc_(s, n, 1); }
 
 /* The NUL-ended string at `addr` in `pid`, a page at a time: a read that
  * runs into an unmapped page fails whole. Its length, or -1. */
@@ -380,34 +391,62 @@ static long remote(int pid, u64 addr, char *dst) {
   return -1;
 }
 
+/* /proc is an outer pid namespace's (the sandbox could not mount its own:
+ * an unprivileged container): the kernel's pids for us are not its names. */
+static int foreign;
+
+static u64 digits(char *dst, u32 u) {
+  char b[12];
+  int i = sizeof b;
+  do b[--i] = (char)('0' + u % 10);
+  while (u /= 10);
+  memcpy(dst, b + i, sizeof b - (u64)i);
+  return sizeof b - (u64)i;
+}
+
+/* `pid` as /proc names it, or -1. Where /proc is foreign, a descriptor of
+ * the thread says so: its fdinfo holds the pid in /proc's own namespace. */
+static long inproc(int pid) {
+  if (!foreign) return pid;
+  long fd = S2(NR_pidfd_open, pid, PIDFD_THREAD);
+  if (fd < 0) return -1;
+  char name[40] = "/proc/self/fdinfo/";
+  name[18 + digits(name + 18, (u32)fd)] = 0;
+  long f = S4(NR_openat, AT_FDCWD, name, O_CLOEXEC, 0);
+  char buf[256];
+  /* Read while the descriptor is open: its fdinfo goes with it. */
+  long n = f < 0 ? -1 : S3(NR_read, f, buf, sizeof buf - 1);
+  S1(NR_close, fd);
+  if (f >= 0) S1(NR_close, f);
+  if (n <= 0) return -1;
+  buf[n] = 0;
+  for (long i = 0; i + 5 < n; i++) {
+    if (buf[i] != '\n' || buf[i + 1] != 'P' || buf[i + 2] != 'i' || buf[i + 3] != 'd' || buf[i + 4] != ':') continue;
+    long v = 0, k = i + 5;
+    while (buf[k] == '\t' || buf[k] == ' ') k++;
+    if (buf[k] < '0' || buf[k] > '9') return -1;
+    for (; buf[k] >= '0' && buf[k] <= '9'; k++) v = v * 10 + (buf[k] - '0');
+    return v > 0 ? v : -1;
+  }
+  return -1;
+}
+
 /* `rel` under the caller's cwd or directory descriptor, as /proc names
  * it. The caller is held in its call, so both are still. 0 when it cannot
  * be placed (the process is gone, the descriptor is a pipe). */
 static u64 place(int pid, int dirfd, const char *rel, u64 rellen, char *dst) {
   char link[48];
-  u64 o = 0;
-  const char pre[] = "/proc/";
-  memcpy(link, pre, 6);
-  o = 6;
-  char b[12];
-  int i = sizeof b;
-  u32 u = (u32)pid;
-  do b[--i] = (char)('0' + u % 10);
-  while (u /= 10);
-  memcpy(link + o, b + i, sizeof b - (u64)i);
-  o += sizeof b - (u64)i;
+  long named = inproc(pid);
+  if (named < 0) return 0;
+  memcpy(link, "/proc/", 6);
+  u64 o = 6 + digits(link + 6, (u32)named);
   if (dirfd == AT_FDCWD) {
     memcpy(link + o, "/cwd", 5);
   } else {
     if (dirfd < 0) return 0;
     memcpy(link + o, "/fd/", 4);
     o += 4;
-    i = sizeof b;
-    u = (u32)dirfd;
-    do b[--i] = (char)('0' + u % 10);
-    while (u /= 10);
-    memcpy(link + o, b + i, sizeof b - (u64)i);
-    o += sizeof b - (u64)i;
+    o += digits(link + o, (u32)dirfd);
     link[o] = 0;
   }
   long n = S4(NR_readlinkat, AT_FDCWD, link, dst, PATH_CAP);
@@ -433,15 +472,10 @@ static const char *theirs(int pid, const char *path, u64 n) {
   static char own[2 * PATH_CAP + 32];
   u64 skip = starts(path, "/proc/self/") ? 10 : starts(path, "/proc/thread-self/") ? 17 : 0;
   if (skip == 0) return path;
-  char b[12];
-  int i = sizeof b;
-  u32 u = (u32)pid;
-  do b[--i] = (char)('0' + u % 10);
-  while (u /= 10);
-  u64 o = 6;
+  long named = inproc(pid);
+  if (named < 0) return path;
   memcpy(own, "/proc/", 6);
-  memcpy(own + o, b + i, sizeof b - (u64)i);
-  o += sizeof b - (u64)i;
+  u64 o = 6 + digits(own + 6, (u32)named);
   memcpy(own + o, path + skip, n - skip + 1);
   return own;
 }
@@ -453,17 +487,54 @@ static long probe(int pid, const char *path, u64 n, int mode, int flags) {
   return r;
 }
 
+/* Whether an open of `path`, which access() allows, is refused all the
+ * same: a device node on a mount that allows none. That is how the
+ * sandbox hides a file, /dev/null bound over it (bwrap's binds are
+ * nodev), and its open answers EACCES. */
+static int masked(int pid, const char *path, u64 n, int nofollow) {
+  static u8 st[256];
+  u64 fs[16];
+  path = theirs(pid, path, n);
+  if (S5(NR_statx, AT_FDCWD, path, nofollow ? AT_SYMLINK_NOFOLLOW : 0, 1 /* STATX_TYPE */, st) != 0) return 0;
+  u32 type = (u32)(st[28] | st[29] << 8) & 0170000;
+  if (type != 0020000 && type != 0060000) return 0;
+  return S2(NR_statfs, path, fs) == 0 && (fs[10] & 4 /* ST_NODEV */);
+}
+
 static const char *refusal(long r) {
   return r == -ENOENT ? "ENOENT" : r == -EACCES ? "EACCES" : r == -EPERM ? "EPERM" : 0;
 }
 
-/* `<pid> name(AT_FDCWD, "path"` or `<pid> name("path"`, as the call is spelled. */
-static void head(int pid, const struct call *c, const char *path, u64 n) {
+/* `<pid> name(AT_FDCWD, "path"` or `<pid> name("path"`, the path as the
+ * caller spelled it: the report shows that. A relative one's directory
+ * (the first `dir` bytes of `abs`) is named as `strace -y` names it,
+ * `name(7</its/dir>, "path"`, and for a call with no descriptor argument
+ * by a `chdir` line of this pid before it, which the parser follows. */
+static void head(const struct notif *q, const struct call *c, const char *abs, u64 n, u64 dir) {
+  int pid = (int)q->pid;
+  if (dir && c->dirfd < 0) {
+    putn(pid);
+    puts_(" chdir(");
+    putq(abs, dir);
+    puts_(") = 0\n");
+  }
   putn(pid);
   puts_(" ");
   puts_(c->name);
-  puts_(c->dirfd >= 0 ? "(AT_FDCWD, " : "(");
-  putq(path, n);
+  puts_("(");
+  if (c->dirfd >= 0) {
+    int fd = (int)(u32)q->args[c->dirfd];
+    if (dir == 0 || fd == AT_FDCWD) puts_("AT_FDCWD");
+    else putn(fd);
+    if (dir) {
+      puts_("<");
+      putc_(abs, dir, 0);
+      puts_(">");
+    }
+    puts_(", ");
+  }
+  u64 from = dir == 0 ? 0 : dir == 1 ? 1 : dir + 1;
+  putq(abs + from, n - from);
 }
 
 static void failed(const char *errno_name) {
@@ -474,8 +545,10 @@ static void failed(const char *errno_name) {
 
 static char raw[PATH_CAP], abs1[2 * PATH_CAP], abs2[2 * PATH_CAP];
 
-/* The absolute path of argument `arg`, in `dst`; its length, 0 if unknown. */
-static u64 path_of(const struct notif *q, int arg, int dirarg, char *dst) {
+/* The absolute path of argument `arg`, in `dst`; its length, 0 if unknown.
+ * `dir`: how much of it is the directory a relative path was joined to. */
+static u64 path_of(const struct notif *q, int arg, int dirarg, char *dst, u64 *dir) {
+  *dir = 0;
   if (arg < 0) return 0;
   long n = remote((int)q->pid, q->args[arg], raw);
   if (n <= 0) return 0;
@@ -485,14 +558,17 @@ static u64 path_of(const struct notif *q, int arg, int dirarg, char *dst) {
   }
   /* A descriptor argument is an int in a 64-bit register. */
   int dirfd = dirarg >= 0 ? (int)(u32)q->args[dirarg] : AT_FDCWD;
-  return place((int)q->pid, dirfd, raw, (u64)n, dst);
+  u64 all = place((int)q->pid, dirfd, raw, (u64)n, dst);
+  if (all) *dir = all - (u64)n - (all - (u64)n > 1);
+  return all;
 }
 
 static void observe(int listener, const struct notif *q, int reads) {
   const struct call *c = find(q->nr);
   if (c == 0) return;
-  u64 n1 = path_of(q, c->path, c->dirfd, abs1);
-  u64 n2 = path_of(q, c->path2, c->dirfd2, abs2);
+  u64 dir1, dir2;
+  u64 n1 = path_of(q, c->path, c->dirfd, abs1, &dir1);
+  u64 n2 = path_of(q, c->path2, c->dirfd2, abs2, &dir2);
   /* The caller may be gone and its pid another's: what was read is its only if it still waits. */
   if (S3(NR_ioctl, listener, NOTIF_ID_VALID, &q->id) != 0) return;
   int flags = c->flags >= 0 ? (int)(u32)q->args[c->flags] : 0;
@@ -514,7 +590,7 @@ static void observe(int listener, const struct notif *q, int reads) {
     long r = S4(NR_readlinkat, AT_FDCWD, theirs((int)q->pid, abs1, n1), &one, 1);
     const char *e = refusal(r);
     if (e == 0 && !(reads && r >= 0)) return;
-    head((int)q->pid, c, abs1, n1);
+    head(q, c, abs1, n1, dir1);
     puts_(", \"\", 0)");
     if (e != 0) failed(e);
     else puts_(" = 1\n");
@@ -522,16 +598,24 @@ static void observe(int listener, const struct notif *q, int reads) {
   }
   long r;
   int pid = (int)q->pid;
-  if (c->kind == OPEN)
-    r = probe(pid, abs1, n1, flags & O_PATH ? F_OK : R_OK, flags & O_NOFOLLOW ? AT_SYMLINK_NOFOLLOW : 0);
-  else if (c->kind == EXEC) r = probe(pid, abs1, n1, X_OK, 0);
+  /* AT_EACCESS: an open is judged by the effective ids and capabilities,
+   * where access() asks for the real ones. uid 0 in a user namespace
+   * holds a permitted CAP_DAC_OVERRIDE it has not raised, so a masked
+   * credential store read as readable and its EACCES went unreported. */
+  if (c->kind == OPEN) {
+    r = probe(pid, abs1, n1, flags & O_PATH ? F_OK : R_OK,
+              AT_EACCESS | (flags & O_NOFOLLOW ? AT_SYMLINK_NOFOLLOW : 0));
+    if (r == 0 && !(flags & O_PATH) && masked(pid, abs1, n1, flags & O_NOFOLLOW)) r = -EACCES;
+  }
+  else if (c->kind == EXEC || c->kind == CHDIR) r = probe(pid, abs1, n1, X_OK, AT_EACCESS);
   else
     r = probe(pid, abs1, n1, flags & 7,
               c->nr == NR_faccessat2 ? (int)(u32)q->args[3] & (AT_EACCESS | AT_SYMLINK_NOFOLLOW) : 0);
   const char *e = refusal(r);
   if (e == 0 && !(reads && c->kind == OPEN && r == 0)) return;
-  head((int)q->pid, c, abs1, n1);
-  puts_(c->kind == OPEN ? ", O_RDONLY)" : c->kind == EXEC ? ", [], 0)" : ", F_OK)");
+  /* A read that worked is named whole: there is no spelling to show. */
+  head(q, c, abs1, n1, e != 0 ? dir1 : 0);
+  puts_(c->kind == OPEN ? ", O_RDONLY)" : c->kind == EXEC ? ", [], 0)" : c->kind == CHDIR ? ")" : ", F_OK)");
   if (e != 0) failed(e);
   else puts_(" = 3\n");
 }
@@ -569,7 +653,11 @@ static void main_(int argc, char **argv, char **envp) {
   long sn = S4(NR_readlinkat, AT_FDCWD, "/proc/self", self, sizeof self - 1);
   if (sn <= 0) fail("/proc is not readable");
   self[sn] = 0;
-  if (number(self) != S0(NR_getpid)) fail("/proc is another pid namespace's");
+  if (number(self) != S0(NR_getpid)) {
+    foreign = 1;
+    if (inproc((int)S0(NR_getpid)) != number(self))
+      fail("/proc is another pid namespace's, and this kernel cannot name a thread there (Linux 6.9)");
+  }
 
   u64 all = ~0ul, old = 0;
   S4(NR_rt_sigprocmask, 2, &all, &old, 8);

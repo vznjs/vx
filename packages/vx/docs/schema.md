@@ -2018,7 +2018,7 @@ dir is denied.
 Outside the workspace, the task reads only what `allow.read` names.
 
 vx still grants the programs it runs around the command (the task shell,
-`bash`, `setsid`, `strace`, `env`, `socat`, `grep`, `sleep`) and the
+`bash`, `setsid`, vx's observer, `strace`, `env`, `socat`, `grep`, `sleep`) and the
 libraries they link.
 
 Any other tool is yours to grant, with its libraries: `ldd $(command -v
@@ -2188,8 +2188,8 @@ cached, and its server could not start.
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
-On Linux a denied read is reported only where `strace` is on PATH and
-may attach; elsewhere the sandbox still denies it, the task fails
+On Linux a denied read is reported by vx's own observer (Linux 5.5), or
+by `strace` where it is on PATH and may attach; elsewhere the sandbox still denies it, the task fails
 only if the command does, and the run says once that reads go unreported. Activation is lazy (only when
 some task declares `exec.sandbox`); on an unsupported platform a
 sandboxed task fails fast rather than running unsandboxed. Linux needs
@@ -2338,7 +2338,7 @@ task's value over all of them; the input-stability variables are the one
 exception, overriding every task for the run. A duration carries its
 unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`), and a bare number is
 refused naming the forms with units; a size carries one too (`'10GB'`).
-`debug.timing`, `debug.watch`, `debug.dumpable`, `config.workerTimeout` and `run.outputLogs` are read
+`debug.timing`, `debug.watch`, `debug.dumpable`, `debug.strace`, `config.workerTimeout` and `run.outputLogs` are read
 before the workspace loads, so they have a variable (and a flag) only.
 None is folded into a cache key but `outputs.clean` and
 `inputs.stability.strategy`, which key a task as if it declared the value
@@ -2380,6 +2380,7 @@ default and where it came from.
 | `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                | —                              | true or false                                                           | false                                                                         | Print the run's stage timings to stderr.                                                                                                                                                         |
 | `debug.watch` (variable or flag only)          | `VX_DEBUG_WATCH`                 | —                              | true or false                                                           | false                                                                         | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
 | `debug.dumpable` (variable or flag only)       | `VX_DEBUG_DUMPABLE`              | —                              | true or false                                                           | false                                                                         | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
+| `debug.strace` (variable or flag only)         | `VX_DEBUG_STRACE`                | —                              | true or false                                                           | false                                                                         | Linux: report a sandboxed task's refused reads with strace, not vx's own observer.                                                                                                               |
 
 <!-- /settings table -->
 

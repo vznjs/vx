@@ -246,6 +246,13 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.',
     config: false,
   },
+  {
+    path: 'debug.strace',
+    kind: { type: 'bool' },
+    default: 'false',
+    doc: "Linux: report a sandboxed task's refused reads with strace, not vx's own observer.",
+    config: false,
+  },
 ]
 
 /** The `.vx/workspace` groups that hold settings; `baseBranch` and `plugins` are the other keys. */

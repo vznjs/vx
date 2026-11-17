@@ -233,8 +233,8 @@ the tool too, with `inputs.runtime`.
 
 <Tabs>
   <TabItem label="Linux">
-    `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`); `strace` to fail
-    and name an undeclared read. `vx info` says if your host can.
+    `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`). vx itself names
+    an undeclared read (Linux 5.5), or `strace` does. `vx info` says if your host can.
   </TabItem>
   <TabItem label="macOS">
     The system sandbox. Its report can miss a record under load; the
