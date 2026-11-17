@@ -3585,6 +3585,37 @@ it('an order names the dependencies a sandbox may read, not their files', async 
   }
 })
 
+// Main 0c7607b: the run's last task, a test shard that declares no output,
+// ended here 0.5 s after its worker said so, its entry read back for
+// nothing: its log is all it leaves. Sent with its end, it ends here at once.
+for (const sent of [true, false]) {
+  it(
+    sent
+      ? 'a task with no declared output ends on its worker’s word, nothing read back'
+      : 'CONTROL: with no output sent, its entry is read back',
+    async () => {
+      const h = await harness(new Map([node('t')]))
+      try {
+        const a = await h.worker(1, 'a')
+        const t = h.o.execute(h.req('t'))
+        await a.batches()
+        await a.finish(
+          't',
+          'k-t',
+          { exitCode: 0, durationMs: 1 },
+          sent ? { log: [{ text: 'ran\n', err: false }] } : {},
+        )
+        const res = await t
+        expect([res.stdout, res.outputs?.kind ?? 'disk', h.store.restored]).toEqual(
+          sent ? ['ran\n', 'disk', []] : ['t out\n', 'disk', ['k-t']],
+        )
+      } finally {
+        await h.stop()
+      }
+    },
+  )
+}
+
 // A task ended here only once its files were here: the task that needed them
 // on a worker started 2.6 s late behind a 91 MB docs build (main f04866b).
 // Asked to let them trail, it ends with the output its worker sent, and a

@@ -543,11 +543,15 @@ use your own instead.
   it is sent before their files are back on the orchestrator.
   A sandbox the worker cannot host (no `bwrap` in its image) fails the
   task there, as it fails here; the worker stays in the run.
-- An uncached task whose dependants all run on workers is done once it ran:
+- A task whose dependants all run on workers is done once it ran:
   its `end` carries its output, and its files come to the orchestrator
   meanwhile (core's `download: 'trailing'`). A dependant starts at once,
   its own files land after its upstream's, and the run ends with every
-  file here. An output over 256 KB is read from the entry first, as before.
+  file here. A cached one is saved here once its files land. An output
+  over 256 KB is read from the entry first, as before.
+- A task that declares no output (a test, a lint) is done here once its
+  worker says so: its `end` carries its output, and its entry is not read
+  back first. Core saves it here as after any task.
 - A persistent task a task depends on starts on the worker that runs the
   task, once per worker, ready before it, and stops there once no task left
   in the run uses it (the run's `unneeded`), or when the worker leaves;

@@ -219,9 +219,10 @@ export type ToOrchestrator =
       /** Where its time since its command went, ms: checking what it left, saving here, the remotes taking it. */
       spent?: { check: number; save: number; upload: number }
       /**
-       * Its output as its entry holds it, for a `trail` order that passed: the
-       * orchestrator ends the task with it before the entry is there. Absent
-       * when too long for a frame; the entry is then read first, as ever.
+       * Its output as its entry holds it, for a `trail` order that passed
+       * or one that declares no output: the orchestrator ends the task with
+       * it, the entry not read first. Absent when too long for a frame; the
+       * entry is then read first, as ever.
        */
       log?: CapturedChunk[]
       load?: Load

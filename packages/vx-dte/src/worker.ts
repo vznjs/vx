@@ -294,7 +294,9 @@ export async function runWorker(opts: {
       ranAt: t?.ranAt ?? endedAt,
       endedAt,
       spent: { check: began - (t?.ranAt ?? began), save: kept - began, upload: endedAt - kept },
-      ...(m.trail === true &&
+      // Its output rides its end where the orchestrator ends it on that
+      // alone: asked to trail, or with no file to bring home.
+      ...((m.trail === true || m.outputs.files.length + m.outputs.workspaceFiles.length === 0) &&
       result.exitCode === 0 &&
       stored !== undefined &&
       bytesOf(stored) <= TRAIL_LOG_BYTES

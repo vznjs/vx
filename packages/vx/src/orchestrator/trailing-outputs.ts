@@ -9,7 +9,7 @@ import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { thrownMessage } from '../util/index.js'
 
 /**
- * The tasks whose outputs may trail: uncached commands placed on another
+ * The tasks whose outputs may trail: commands placed on another
  * machine, none of whose dependants, however far, runs here or takes a key
  * from this disk after it. `upfront` says a task's key is already taken;
  * `remote` that it is placed on another machine.
@@ -66,7 +66,7 @@ export function trailable(
   const out = new Set<string>()
   for (const n of nodes.values()) {
     if (isGroupTask(n) || n.config.exec?.persistent !== undefined) continue
-    if (n.config.cache === true || !remote(n.id)) continue
+    if (!remote(n.id)) continue
     if (!readerBelow(n.id)) out.add(n.id)
   }
   return out

@@ -1638,6 +1638,22 @@ export class Orchestrator {
       job.resolve({ ...result(head, sentLog), outputs: { kind: 'trailing', landed }, ...where })
       return
     }
+    // It declares no output and its log came with its end: nothing is left
+    // to bring, and core saves its entry here from what it has, as after a
+    // restore. Read back first, every test shard and lint ended a download
+    // later than its worker said (main 0c7607b: 0.5 s after shard-16, the
+    // run's last task).
+    if (
+      eager &&
+      head.exitCode === 0 &&
+      sentLog !== undefined &&
+      job.req.outputs.files.length === 0 &&
+      (job.req.outputs.workspaceFiles ?? []).length === 0
+    ) {
+      for (const c of sentLog) (c.err ? job.req.onStderr : job.req.onStdout)(c.text)
+      job.resolve({ ...result(head, sentLog), ...where })
+      return
+    }
     const read = () => (eager ? restore() : this.o.artifacts.output(key))
     // A failed download reads as a miss: asked once more, since one stalled
     // download failed a CI run whose upload had landed (main, 2026-10-28).

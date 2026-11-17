@@ -1236,6 +1236,40 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(settleAt).toBeGreaterThan(0)
   })
 
+  it('a dependent of an outcome that trails starts before it settles, and the run ends after', async () => {
+    let settled = false
+    let downBefore: boolean | undefined
+    const finished: string[] = []
+    const settles = new Map<string, Promise<void>>()
+    const out = await runGraph({
+      nodes: nodes(node('up#run'), node('down#run', ['up#run'])),
+      concurrency: 1,
+      settledOf: (o) => settles.get(o.node.id),
+      trails: (o) => o.node.id === 'up#run',
+      onFinish: (o) => finished.push(o.node.id),
+      execute: async (n) => {
+        if (n.id === 'up#run')
+          settles.set(
+            n.id,
+            new Promise((r) =>
+              setTimeout(() => {
+                settled = true
+                r()
+              }, 30),
+            ),
+          )
+        else downBefore = !settled
+        return success(n)
+      },
+    })
+    expect([downBefore, settled, out.size, finished]).toEqual([
+      true,
+      true,
+      2,
+      ['down#run', 'up#run'],
+    ])
+  })
+
   it('restore-tier task reports cache-hit even when a dep FAILED', async () => {
     // up#prep fails; down#build depends on it but is restore-tier.
     // It must NOT be skipped — its key is dep-success-independent.

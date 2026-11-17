@@ -398,6 +398,8 @@ function limitsNamed(res: Response): Limits | undefined {
 export class VxCacheLayer implements RemoteCacheLayer {
   readonly endpoint: string
   private disabled = false
+  /** When the server last answered a request, by `performance.now()`. */
+  private answeredAt = -1
   /** Core's `off`: the failure that turned the layer off is the run's, on no task. */
   get off(): boolean {
     return this.disabled
@@ -565,19 +567,25 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return { token: jwt, ...(exp === 0 ? {} : { expiresAt: exp }) }
   }
 
-  private async request(
+  /**
+   * A read the server did not answer is asked once more before the remote
+   * goes off: one download of a busy server unanswered turned it off for a
+   * DTE run, whose workers then had no token to write with and whose every
+   * task failed (PR run 44158330153).
+   */
+  private async request(path: string, init: RequestInit = {}): Promise<Response | undefined> {
+    try {
+      return await this.ask(path, init, false)
+    } catch (err) {
+      if (!(err instanceof Unanswered)) throw err
+      return this.ask(path, init, true)
+    }
+  }
+
+  private async ask(
     path: string,
-    init: {
-      method?: string
-      body?: Blob | string
-      headers?: Record<string, string>
-      timeoutMs?: number
-      write?: boolean
-      /** A body read at its own pace: the deadline then bounds its pace (`streamed`). */
-      streamed?: boolean
-      /** A body sent at its own pace: the deadline bounds its pace, then the answer (`paced`). */
-      paced?: boolean
-    } = {},
+    init: RequestInit,
+    again: boolean,
   ): Promise<Response | undefined> {
     let bearer: string
     try {
@@ -603,6 +611,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         : undefined
     if (sending === undefined) arm()
     const url = `${this.config.url}${path}`
+    const askedAt = performance.now()
     const noAnswer = (err: unknown) => {
       // A read the server never answered: the next would wait the same
       // deadline, so the remote is off for the run (a server that takes the
@@ -610,6 +619,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
       // upload's deadline bounds its pace, no sign of a dead server.
       if (init.write === true || !controller.signal.aborted || controller.signal.reason !== err)
         throw err
+      // It answered another request meanwhile: the server is there, and
+      // this one read is lost, not the remote (a download the server hung on
+      // while it answered the rest, PR run 44158330153, twice).
+      if (this.answeredAt > askedAt) throw err
+      if (!again && !this.disabled) throw new Unanswered()
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
@@ -630,6 +644,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       redirect: 'manual',
     }).catch(noAnswer)
     if (res === undefined) return undefined
+    this.answeredAt = performance.now()
     // An answer before the last byte (one the scope holds): its body is bounded as any answer's.
     sending?.stop()
     arm()
@@ -954,6 +969,21 @@ async function settledAll<T>(ps: readonly Promise<T>[]): Promise<T[]> {
   const failed = done.find((r) => r.status === 'rejected')
   if (failed !== undefined) throw failed.reason
   return done.map((r) => (r as PromiseFulfilledResult<T>).value)
+}
+
+/** A read's first ask the server did not answer within the deadline. */
+class Unanswered extends Error {}
+
+interface RequestInit {
+  method?: string
+  body?: Blob | string
+  headers?: Record<string, string>
+  timeoutMs?: number
+  write?: boolean
+  /** A body read at its own pace: the deadline then bounds its pace (`streamed`). */
+  streamed?: boolean
+  /** A body sent at its own pace: the deadline bounds its pace, then the answer (`paced`). */
+  paced?: boolean
 }
 
 /** A check refused for its size: sent again in checks of `max` lookups. */

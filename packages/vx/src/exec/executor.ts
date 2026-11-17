@@ -264,7 +264,7 @@ export interface ExecuteRequest {
    * a closure core calls if a local consumer needs them. 'trailing': the task
    * is done once it ran, so return `outputs: {kind:'trailing'}` and bring
    * them here meanwhile; asked only where nothing on this machine reads them
-   * before they land. A local executor ignores it.
+   * before they land. Core saves a cached one from this disk once they have. A local executor ignores it.
    */
   readonly download?: 'eager' | 'deferred' | 'trailing'
   /** The declared output globs — project-relative `files`, root-relative `workspaceFiles`. */

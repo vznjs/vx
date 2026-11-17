@@ -443,7 +443,9 @@ something before its dependents start — `settledOf(outcome)`, the
 orchestrator's off-slot cache save landing — and the scheduler frees
 the slot at the outcome and unblocks the dependents at the settle. What
 the settle resolves with (the save's time and size) is merged into the
-outcome the dependents and observers see.
+outcome the dependents and observers see. An outcome `trails(outcome)`
+names releases its dependents at once and finishes at the settle: its
+files are still coming to this machine, and no dependent reads them here.
 
 ### Public surface
 
@@ -600,6 +602,8 @@ export interface ScheduleOptions {
   onError?: (node: TaskNode, line: string, err: unknown) => void
   /** What an outcome still owes before its dependents may start (the off-slot cache save). */
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
+  /** True for an outcome whose dependents need nothing of what it still owes. */
+  trails?: (outcome: TaskOutcome) => boolean
   /** The outcome of an exec-tier task settled in place, or undefined to dispatch it. */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */

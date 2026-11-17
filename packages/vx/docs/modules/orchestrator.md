@@ -4563,9 +4563,14 @@ export class TrailingOutputs {
 
 ### Rules
 
-- `trailable` is the tasks asked with `download: 'trailing'`: uncached
-  commands on another machine with no dependant, however far, that runs
-  here or still takes a key from files. Only under `--cache-download=all`.
+- `trailable` is the tasks asked with `download: 'trailing'`: commands
+  on another machine with no dependant, however far, that runs here or
+  still takes a key from files. Only under `--cache-download=all`.
+- A cached one is saved from this disk once its files are here
+  (`cached-task.ts`): the verdict is taken before it ends and again
+  after they land. Its dependants do not wait (the scheduler's `trails`);
+  it finishes when the save settles. With an `inputs.stability`
+  severity of `'error'`, or nothing to save, it waits for its files.
 - An executor answers `outputs: { kind: 'trailing', landed }`; the run
   keeps `landed` in `TrailingOutputs`.
 - A command, a server or a hit's restore on this machine waits for

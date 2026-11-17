@@ -29,13 +29,13 @@ describe('trailable', () => {
     ])
     expect([...trailable(nodes, none, all)].sort()).toEqual(['make', 'use'])
   })
-  it('is no cached task, server or task placed here', () => {
+  it('is no server or task placed here, and a cached task as an uncached one', () => {
     const nodes = new Map([
       node('cached', [], { ...cmd, cache: true }),
       node('server', [], { exec: { command: 'x', persistent: {} } }),
       node('here', [], cmd),
     ])
-    expect([...trailable(nodes, none, (id) => id !== 'here')]).toEqual([])
+    expect([...trailable(nodes, none, (id) => id !== 'here')]).toEqual(['cached'])
   })
   it('is no task with a dependant, however far, that runs here', () => {
     const nodes = new Map([
@@ -141,6 +141,91 @@ for (const mode of ['trails', 'local dependant', 'lost'] as const) {
           expect(out).toContain(
             'tools#make ran, and its files did not come back to this machine: the download failed',
           )
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    30_000,
+  )
+}
+
+for (const mode of ['saved', 'lost'] as const) {
+  it(
+    {
+      saved:
+        'a cached task is done before its files are here, and saved from this disk once they are',
+      lost: 'a cached task whose files never come saves nothing',
+    }[mode],
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-trailing-cached-' })
+      const said = path.join(root, 'said.log')
+      try {
+        const far = `{ executor() { return {
+  name: 'far',
+  capabilities: { remote: true },
+  execute: async (req) => {
+    const { appendFileSync, writeFileSync } = await import('node:fs')
+    appendFileSync(${JSON.stringify(said)}, req.taskId + ' ' + (req.download ?? 'eager') + '\\n')
+    const done = { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+    if (!req.taskId.endsWith('#make') || req.download !== 'trailing') return done
+    const landed = new Promise((ok, no) =>
+      setTimeout(() => {
+        if (${mode === 'lost'}) return no(new Error('the download failed'))
+        writeFileSync(req.cwd + '/made.txt', 'M')
+        appendFileSync(${JSON.stringify(said)}, 'landed\\n')
+        ok()
+      }, 300),
+    )
+    return { ...done, outputs: { kind: 'trailing', landed } }
+  },
+} } }`
+        await Bun.write(
+          path.join(root, '.vx/workspace.mjs'),
+          localWorkspaceSource([pluginSource('org/far', far)]),
+        )
+        await addProject(root, 'tools', {
+          config: `export default { tasks: { make: { exec: { command: 'true' }, cache: true, inputs: { files: ['src/**'] }, outputs: { files: ['made.txt'] } } } }`,
+          files: { 'src/a.txt': 'a' },
+        })
+        await addProject(root, 'app', {
+          config: `export default { tasks: { use: { exec: { command: 'true' }, dependsOn: ['tools#make'] } } }`,
+        })
+        const run = () =>
+          Bun.spawnSync({
+            cmd: [
+              process.execPath,
+              path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts'),
+              'run',
+              'use',
+              '--all',
+            ],
+            cwd: root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, NO_COLOR: '1', CI: '' },
+          })
+        const first = run()
+        const out = first.stdout.toString() + first.stderr.toString()
+        const lines = () => readFileSync(said, 'utf8').trim().split('\n')
+        const made = path.join(root, 'packages/tools/made.txt')
+        if (mode === 'saved') {
+          expect([first.exitCode, out]).toEqual([0, expect.any(String)])
+          expect(lines()).toEqual(['tools#make trailing', 'app#use trailing', 'landed'])
+          // Saved from what landed: the next run restores it, asking no one.
+          await rm(made)
+          await rm(said)
+          const second = run()
+          expect([second.exitCode, second.stderr.toString()]).toEqual([0, expect.any(String)])
+          expect([lines(), readFileSync(made, 'utf8')]).toEqual([['app#use trailing'], 'M'])
+        } else {
+          expect([first.exitCode, lines()]).toEqual([
+            1,
+            ['tools#make trailing', 'app#use trailing'],
+          ])
+          await rm(said)
+          run()
+          expect(lines()[0]).toBe('tools#make trailing')
         }
       } finally {
         await rm(root, { recursive: true, force: true })
