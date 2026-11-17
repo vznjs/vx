@@ -107,10 +107,10 @@ function proxyHeaders(
 const hashOf = (text: string): string =>
   new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
 
-/** A ref's scope on the wire: the ref, percent-encoded, its folder's name on the server. */
+/** A ref's scope on the wire: the ref, percent-encoded. */
 const scopeOf = (ref: string): string => encodeURIComponent(ref)
 
-/** The longest scope a server takes (PROTOCOL.md § Keys), so a folder's name fits a bucket's key. */
+/** The longest scope a server takes (PROTOCOL.md § Keys). */
 const SCOPE_MAX = 512
 
 /**
@@ -1125,7 +1125,7 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
         const length = scopeOf(ref).length
         if (length <= SCOPE_MAX) return true
         ctx.warn(
-          `[vx] vx-cache: ${ref} is ${length} characters percent-encoded, over the ${SCOPE_MAX} a cache folder's name takes: the run does not read it`,
+          `[vx] vx-cache: ${ref} is ${length} characters percent-encoded, over the ${SCOPE_MAX} a scope takes: the run does not read it`,
         )
         return false
       })

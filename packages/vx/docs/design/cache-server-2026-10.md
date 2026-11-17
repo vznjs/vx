@@ -15,9 +15,11 @@ page changes in the same PR as the item it describes.
   the Worker runs in workerd (miniflare), the image in Docker, and the
   bucket is an in-memory S3 that Bun's own client talks to.
 - Shipped: no database (2026-10-25). An artifact is one object named
-  `<issuer>/<repository>/<ref>/<hash>`, each a readable,
-  percent-encoded folder (2026-11-03, replacing 10-25's hashed parts:
-  pruning one branch is deleting its prefix; no tier); its size is
+  `<issuer>/<repository>/<ref>/<hash>`, the first three each
+  SHA-256's first 128 bits in hex (2026-11-17, replacing 11-03's
+  readable folders: a bucket's listing names no host, repository or
+  branch; pruning one branch is still deleting its prefix; no tier);
+  its size is
   the bucket's metadata, and a put replaces a name whole, so racing
   uploads keep one whole artifact and nodes share nothing but the bucket.
   Expiry is one bucket lifecycle rule by age; the server sweeps nothing,

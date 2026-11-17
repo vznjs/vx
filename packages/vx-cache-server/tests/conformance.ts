@@ -30,7 +30,7 @@ export interface Target {
 export const hashOf = (text: string): string =>
   new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
 
-/** A ref's scope on the wire: the ref, percent-encoded, its folder's name. */
+/** A ref's scope on the wire: the ref, percent-encoded. */
 export const scopeOf = (ref: string): string => encodeURIComponent(ref)
 
 /** A fresh key per call: every target is shared by the whole suite. */
@@ -361,7 +361,7 @@ export function conformance(name: string, target: Target): void {
       expect((await get(k, scopeOf('refs/heads/gh-readonly-queue/main/pr-1'))).status).toBe(404)
       expect((await call(`/v1/artifacts/${k}`)).status).toBe(400)
       // One spelling per ref: a plain one, a hash, another encoding and an
-      // over-long one are refused, never read as some other folder.
+      // over-long one are refused, never read as some other scope.
       for (const bad of [
         'refs/heads/main',
         hashOf('refs/heads/main'),

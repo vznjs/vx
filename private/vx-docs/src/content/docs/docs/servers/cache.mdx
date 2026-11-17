@@ -231,10 +231,12 @@ that misses an expired result runs the task and stores it again.
 ## How it stores results
 
 A result's name in the bucket is `<issuer>/<repository>/<branch>/<key>`,
-each part one folder, percent-encoded so a slash stays inside it:
-`acme%2Fapp/refs%2Fheads%2Fmain/<key>` under the issuer's folder.
+each part one folder. The first three are **hashed** (SHA-256, the first
+32 hex digits), so the bucket's listing shows no host, repository or
+branch name.
 
-To **prune one branch**, delete its folder. One repository never reads
+To **prune one branch**, delete its folder. Its name is
+`printf %s refs/heads/main | sha256sum | cut -c1-32`. One repository never reads
 another's results.
 
 A result is never rewritten: a second upload of the same key keeps the
