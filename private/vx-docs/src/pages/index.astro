@@ -11,6 +11,7 @@
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import Footer from '../components/landing/Footer.astro'
 import { SCOPE } from '../components/landing/scope.ts'
+import { BURN_ROWS, burnClip, timesLabel } from '../components/landing/race.ts'
 import HeroStage from '../components/landing/HeroStage.astro'
 import DteRun from '../components/landing/DteRun.astro'
 import '../styles/landing.css'
@@ -57,10 +58,19 @@ const races = (
   const max = Math.max(...lanes.map((l) => l.ms))
   // Live, every tool runs the same track in real time: one lap takes the
   // time it measured.
+  // CPU is an amount: its lanes are meters, one cell per CPU second.
+  const cols = Math.ceil(max / 1000 / BURN_ROWS)
   return {
     k,
     title,
-    lanes: lanes.map((l) => ({ ...l, w: (l.ms / max) * 100, lap: l.ms / 1000 })),
+    cols,
+    lanes: lanes.map((l) => ({
+      ...l,
+      w: (l.ms / max) * 100,
+      lap: l.ms / 1000,
+      cells: Math.round(l.ms / 1000),
+      times: timesLabel(l.ms, lanes[0]!.ms),
+    })),
   }
 })
 const scope0 = SCOPE[0]!
@@ -155,16 +165,23 @@ const startCommands = [
         <div class="races">
           {
             races.map((race) => (
-              <figure class="race">
+              <figure class:list={['race', { burn: race.k === 'cpu' }]} style={`--cols:${race.cols}`}>
                 <figcaption>{race.title}</figcaption>
                 {race.lanes.map((l) => (
                   <div class:list={['lane', { vx: l.r === 'vx' }]} style={`--w:${l.w.toFixed(1)}; --lap:${l.lap.toFixed(3)}s`}>
                     <span class="lane-name">{l.name}</span>
-                    <span class="lane-track">
-                      <span class="streak" />
-                      <span class="runner" />
-                    </span>
-                    <span class="lane-laps" aria-hidden="true" />
+                    {race.k === 'cpu' ? (
+                      <span class="lane-track">
+                        <span class="cells" />
+                        <span class="cells fire" data-cells={l.cells} style={`clip-path:${burnClip(l.cells, race.cols)}`} />
+                      </span>
+                    ) : (
+                      <span class="lane-track">
+                        <span class="streak" />
+                        <span class="runner" />
+                      </span>
+                    )}
+                    <span class="lane-laps" aria-hidden="true">{race.k === 'cpu' ? l.times : ''}</span>
                     <span class="lane-value">{l.value}</span>
                   </div>
                 ))}
@@ -173,6 +190,7 @@ const startCommands = [
           }
         </div>
         <p class="fine race-note">Every tool runs the same track in real time: one lap takes the time it measured.</p>
+        <p class="fine race-note">CPU is an amount, so it fills a meter: one cell per CPU second.</p>
         <p class="fine">{benchFormula}</p>
         <p class="fine">{benchWorkload}</p>
         <p class="fine">{benchRun}</p>
@@ -357,7 +375,7 @@ const startCommands = [
   </div>
 
   <script>
-    import { lapAt, lapsLabel, racing, step } from '../components/landing/race.ts'
+    import { burnAt, burnClip, lapAt, lapsLabel, racing, step } from '../components/landing/race.ts'
 
     // Bands play once as they come near: the count runs up, the columns
     // rise, the race starts. Everything already shows at rest; the play
@@ -393,12 +411,24 @@ const startCommands = [
       // queued observer entry, so a fast scroll, a tab switch or a page
       // restored from the back button cannot leave it stopped.
       const speed = document.getElementById('speed')!
-      const lanes = [...speed.querySelectorAll<HTMLElement>('.lane')].map((lane) => ({
+      const lanes = [...speed.querySelectorAll<HTMLElement>('.race:not(.burn) .lane')].map((lane) => ({
         ms: parseFloat(lane.style.getPropertyValue('--lap')) * 1000,
         runner: lane.querySelector<HTMLElement>('.runner')!,
         laps: lane.querySelector<HTMLElement>('.lane-laps')!,
         shown: -1,
       }))
+      // The CPU meter fills at one rate for every tool, so the one that
+      // burns least stops first and the rest keep burning.
+      const meter = speed.querySelector<HTMLElement>('.race.burn')!
+      const cols = Number(meter.style.getPropertyValue('--cols'))
+      const fires = [...meter.querySelectorAll<HTMLElement>('.lane')].map((lane) => ({
+        fire: lane.querySelector<HTMLElement>('.fire')!,
+        count: lane.querySelector<HTMLElement>('.lane-laps')!,
+        total: Number(lane.querySelector<HTMLElement>('.fire')!.dataset['cells']),
+        times: lane.querySelector<HTMLElement>('.lane-laps')!.textContent,
+        shown: -1,
+      }))
+      const most = Math.max(...fires.map((f) => f.total))
       let elapsed = 0
       let last = 0
       let live = false
@@ -413,6 +443,13 @@ const startCommands = [
             l.laps.textContent = lapsLabel((l.shown = at.laps))
             l.runner.classList.toggle('lapped', at.laps > 0)
           }
+        }
+        for (const f of fires) {
+          const lit = burnAt(elapsed, f.total, most)
+          if (lit === f.shown) continue
+          f.shown = lit
+          f.fire.style.clipPath = burnClip(lit, cols)
+          f.count.textContent = lit < f.total ? `${lit} s` : f.times
         }
         requestAnimationFrame(frame)
       }

@@ -821,6 +821,7 @@
 }
 .lane-value {
   font: 600 13px var(--font-mono);
+  white-space: nowrap;
   color: #9aa59a;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -907,6 +908,29 @@
 .lane.vx .runner::after {
   background: #f4ffd6;
   box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
+}
+/* CPU is an amount, not a pace: a meter of cells, one per CPU second. The
+   lit layer is the whole meter in its heat colours, cut to the cells burned. */
+.race.burn .lane-track {
+  border-bottom: 0;
+}
+.cells {
+  --cell-gap: 2px;
+  position: absolute;
+  inset: 4px 0;
+  background: rgba(148, 170, 200, 0.1);
+  mask:
+    linear-gradient(90deg, #000 calc(100% - var(--cell-gap)), transparent 0) 0 0 /
+      calc(100% / var(--cols)) 100%,
+    linear-gradient(#000 calc(100% - var(--cell-gap)), transparent 0) 0 0 / 100% 25%;
+  mask-composite: intersect;
+}
+.cells.fire {
+  background: linear-gradient(90deg, #c9d2dc 0 14%, #ffc24d 34%, #ff8a3d 60%, #ff4b4b 100%);
+}
+.lane.vx .cells.fire {
+  background: var(--tone-core);
+  filter: drop-shadow(0 0 6px rgba(198, 248, 78, 0.6));
 }
 /* Set by the race's own script the first time it runs, so the runners
    never show without the clock that moves them. */
@@ -1689,12 +1713,15 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .lane {
-    grid-template-columns: 70px minmax(0, 1fr) 52px 64px;
+    grid-template-columns: 62px minmax(0, 1fr) 44px 76px;
     gap: 8px;
   }
   .lane-name,
   .lane-value {
     font-size: 12px;
+  }
+  .cells {
+    --cell-gap: 1px;
   }
   .dte-run {
     --who: 60px;
