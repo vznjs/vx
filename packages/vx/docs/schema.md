@@ -995,7 +995,8 @@ group (Group tasks, below). The default `build` is
 
 A task that runs a command and declares no `inputs` has no key: nothing
 says what it read. A key that folds it is this run's alone, so every
-task behind it misses and saves nothing, never a stale hit. Declare
+task behind it misses and saves nothing, never a stale hit, a server
+with `inputs` between the two included. Declare
 `inputs` on an uncached task a cached one depends on;
 `inputs: { files: [] }` is a declaration too: it keys the task on its
 config and its dependencies' keys, and a task behind it can hit. An

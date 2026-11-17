@@ -30,6 +30,7 @@ import { explainServerExit } from './persistent.js'
 import { shellVerdict } from './shell-verdict.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 import { computeTaskHash, keyOf } from './task-hash.js'
+import { keylessOf } from './task-policy.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
@@ -90,6 +91,11 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   const env = taskEnv(node, step, args.run.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
   const hash = await serverKey(args)
+  // Carried to what folds this server's key, as a task's outcome carries it:
+  // without it a dependant behind a keyed server saved under a key that
+  // folds a keyless one, an entry no later run reads.
+  const { keylessBy } = keylessOf(node, args.upstream)
+  const keyless = keylessBy === undefined ? {} : { cache: { keylessBy } }
 
   // Every dependant starts it where it runs (`ServerSpec`): nothing to spawn
   // here, and nothing that ran (nothing runs on a distributed run's
@@ -101,6 +107,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       exitCode: 0,
       durationMs: 0,
       placement: { carried: true },
+      ...keyless,
       ...(hash === undefined ? {} : { hash }),
       timing: { startNs: wallclockStartNs, endNs: wallclockStartNs },
     }
@@ -412,6 +419,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     exitCode: 0,
     durationMs: spawn.readyMs(),
     ...(exited === null ? {} : { serverExit: exited }),
+    ...keyless,
     ...(hash !== undefined ? { hash } : {}),
     timing: {
       startNs: wallclockStartNs,

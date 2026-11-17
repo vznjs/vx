@@ -49,19 +49,15 @@ export interface TaskPolicy {
   readonly refresh: boolean
 }
 
-export function taskPolicy(args: ExecuteArgs): TaskPolicy {
-  const { node, upstream } = args
-  const { cache } = args.run
+/**
+ * The task with no `inputs` that `node`'s key folds, itself included: such
+ * a key is this run's alone. Also the upstream outcomes that key folds.
+ */
+export function keylessOf(
+  node: ExecuteArgs['node'],
+  upstream: ExecuteArgs['upstream'],
+): { foldedTasks: TaskOutcome[]; keylessBy: string | undefined } {
   const cfg = node.config
-  const exec = cfg.exec as ExecConfig // the dispatcher guarantees exec is present
-  const cfgOut = cfg.outputs
-  const policy = args.run.cachePolicy ?? FULL_CACHE_POLICY
-  const cacheable = cfg.cache === true
-  // `--no-cache` (all axes off) leaves the user's tree alone, while `--force`
-  // (reads off, writes on) still wipes and repopulates a clean snapshot. A
-  // remote-only task never touches this machine's disk: restoring
-  // node_modules onto a dev machine is what the field exists to prevent.
-  const remoteOnly = args.remoteOnly === true
   const present = upstream.filter((u): u is TaskOutcome => u !== undefined)
   const folded = new Set(
     filterUpstreamHashes(
@@ -78,6 +74,23 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
     : foldedTasks
         .map((u) => u.cache?.keylessBy ?? (isKeyless(u.node.config) ? u.node.id : undefined))
         .find((id) => id !== undefined)
+  return { foldedTasks, keylessBy }
+}
+
+export function taskPolicy(args: ExecuteArgs): TaskPolicy {
+  const { node, upstream } = args
+  const { cache } = args.run
+  const cfg = node.config
+  const exec = cfg.exec as ExecConfig // the dispatcher guarantees exec is present
+  const cfgOut = cfg.outputs
+  const policy = args.run.cachePolicy ?? FULL_CACHE_POLICY
+  const cacheable = cfg.cache === true
+  // `--no-cache` (all axes off) leaves the user's tree alone, while `--force`
+  // (reads off, writes on) still wipes and repopulates a clean snapshot. A
+  // remote-only task never touches this machine's disk: restoring
+  // node_modules onto a dev machine is what the field exists to prevent.
+  const remoteOnly = args.remoteOnly === true
+  const { foldedTasks, keylessBy } = keylessOf(node, upstream)
   const keyless = keylessBy !== undefined
   const reads = policy.localRead || policy.remoteRead
   const willRead = !remoteOnly && cacheable && !keyless && reads
