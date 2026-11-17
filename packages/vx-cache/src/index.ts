@@ -574,17 +574,19 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * task failed (PR run 44158330153).
    */
   private async request(path: string, init: RequestInit = {}): Promise<Response | undefined> {
+    const since = performance.now()
     try {
-      return await this.ask(path, init, false)
+      return await this.ask(path, init, since, false)
     } catch (err) {
       if (!(err instanceof Unanswered)) throw err
-      return this.ask(path, init, true)
+      return this.ask(path, init, since, true)
     }
   }
 
   private async ask(
     path: string,
     init: RequestInit,
+    since: number,
     again: boolean,
   ): Promise<Response | undefined> {
     let bearer: string
@@ -611,7 +613,6 @@ export class VxCacheLayer implements RemoteCacheLayer {
         : undefined
     if (sending === undefined) arm()
     const url = `${this.config.url}${path}`
-    const askedAt = performance.now()
     const noAnswer = (err: unknown) => {
       // A read the server never answered: the next would wait the same
       // deadline, so the remote is off for the run (a server that takes the
@@ -619,11 +620,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
       // upload's deadline bounds its pace, no sign of a dead server.
       if (init.write === true || !controller.signal.aborted || controller.signal.reason !== err)
         throw err
-      // It answered another request meanwhile: the server is there, and
-      // this one read is lost, not the remote (a download the server hung on
-      // while it answered the rest, PR run 44158330153, twice).
-      if (this.answeredAt > askedAt) throw err
+      // Asked once more either way: the server's own log held no request
+      // that long, so the ask was lost on its way (PR run 44158330153).
       if (!again && !this.disabled) throw new Unanswered()
+      // It answered another request since the first ask: the server is
+      // there, and this one read is lost, not the remote.
+      if (this.answeredAt > since) throw err
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
