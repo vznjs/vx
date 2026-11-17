@@ -292,3 +292,100 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
     })
   },
 )
+
+// strace's filter stops a tracee only at the calls it traces, but a new
+// thread is stopped at every call until its first traced one. A pool
+// thread that only stats never made one: the tracer's kernel time on a
+// test file was 13 s, 3 of them these stops. The trace set names a call
+// glibc makes as each thread starts.
+describe.skipIf(!available || process.platform !== 'linux' || realStrace === null)(
+  'a thread that makes no traced call',
+  () => {
+    let dir = ''
+    let prevPath: string | undefined
+    beforeEach(async () => {
+      dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-tracer-threads-')))
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      await writeFile(
+        path.join(bin, 'strace'),
+        [
+          '#!/bin/sh',
+          `[ "$1" = "--version" ] || echo "$*" >> ${dir}/calls`,
+          `exec ${realStrace} "$@"`,
+          '',
+        ].join('\n'),
+      )
+      await chmod(path.join(bin, 'strace'), 0o755)
+      await writeFile(path.join(dir, 'calls'), '')
+      prevPath = process.env['PATH']
+      process.env['PATH'] = `${bin}:${prevPath ?? ''}`
+      await initSandbox()
+    })
+    afterEach(async () => {
+      process.env['PATH'] = prevPath
+      await resetSandbox()
+      await rm(dir, { recursive: true, force: true })
+    })
+
+    /** The tracer's own wait4 calls, one or two a stop, over a run of pool-thread stats. */
+    const stops = async (traced: string): Promise<number> => {
+      const count = path.join(dir, 'count')
+      await writeFile(
+        path.join(dir, 'pool.ts'),
+        `import { stat } from 'node:fs/promises'\nfor (let i = 0; i < 200; i++) await Promise.all(Array.from({ length: 100 }, () => stat('/')))\n`,
+      )
+      const p = Bun.spawn(
+        [
+          realStrace!,
+          '-c',
+          '-e',
+          'trace=wait4',
+          '-o',
+          count,
+          realStrace!,
+          '-f',
+          '--seccomp-bpf',
+          '-qq',
+          '-e',
+          traced,
+          '-o',
+          '/dev/null',
+          '--',
+          process.execPath,
+          path.join(dir, 'pool.ts'),
+        ],
+        { stdout: 'ignore', stderr: 'ignore' },
+      )
+      await p.exited
+      const row = /^\s*[\d.]+\s+[\d.]+\s+\d+\s+(\d+).*\bwait4$/m.exec(await readFile(count, 'utf8'))
+      return Number(row?.[1])
+    }
+
+    it('stops at its first call, then no more', async () => {
+      await runSandboxed({
+        command: 'true',
+        cwd: dir,
+        env: process.env,
+        baseAllowRead: [dir],
+        baseDenyRead: [],
+        reportWithin: dir,
+        reportLinked: [],
+        config: resolveSandboxConfig({ allow: { write: ['calls'] } }, dir),
+      })
+      const calls = (await readFile(path.join(dir, 'calls'), 'utf8')).split('\n').filter(Boolean)
+      const traced = calls
+        .at(-1)!
+        .split(' ')
+        .find((a) => a.startsWith('trace='))!
+      const without = traced
+        .split(',')
+        .filter((c) => c !== '?rseq' && c !== '?set_robust_list')
+        .join(',')
+      // CONTROL: the same run without the two calls stops several times more.
+      const [now, before] = [await stops(traced), await stops(without)]
+      expect(without).not.toBe(traced)
+      expect(now * 2).toBeLessThan(before)
+    }, 60_000)
+  },
+)

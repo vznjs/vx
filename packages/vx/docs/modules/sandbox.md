@@ -565,7 +565,11 @@ into a directory no grant holds failed with no violation, and
 `readlink` / `readlinkat`, judged as a read of the link itself, never its
 target: git hashes a link by its target string, and `readlink cfg` read
 an input no open showed (a stop costs ~9 µs: 2,000 links 14 → 51 ms,
-oxlint and vx itself within A/A noise, 2026-11-08). A hidden
+oxlint and vx itself within A/A noise, 2026-11-08). `rseq` and
+`set_robust_list` are traced for the stop alone: strace stops a new
+thread at every call until its first traced one, and glibc makes these
+as a thread starts (tracer CPU on three test files 16.5 → 11.9 s,
+2026-11-17). A hidden
 path answers `ENOENT`, as a missing one does, so a probe's `ENOENT` counts
 only where the host has the path; `EACCES` and `EPERM` always count. A
 `chdir` is judged as a probe: `mkdir -p gen/deep`, refused at `gen`, then
