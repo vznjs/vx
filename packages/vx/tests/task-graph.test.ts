@@ -407,6 +407,29 @@ describe('buildTaskGraph', () => {
     )
   })
 
+  // `packages/a` moved away: packages/b#build, the one task left that is
+  // near the name, was told to depend on itself.
+  it('a pkg#task miss never offers the task itself', () => {
+    const graph =
+      (...more: ReturnType<typeof project>[]) =>
+      () =>
+        buildTaskGraph({
+          projects: projects(
+            ...more,
+            project('packages/b', { build: { ...cmd('b'), dependsOn: ['packages/a#build'] } }),
+          ),
+          packageGraph: packageGraph({}),
+          requested: [{ project: 'packages/b', task: 'build' }],
+        })
+    expect(graph()).toThrow(
+      /^packages\/b#build: dependsOn packages\/a#build, but no project is named packages\/a$/,
+    )
+    // CONTROL: another near target is still offered.
+    expect(graph(project('packages/c', { build: cmd('c') }))).toThrow(
+      /but no project is named packages\/a\. Did you mean packages\/c#build\?$/,
+    )
+  })
+
   // `a#build` against a project named by its path (`packages/a`) named
   // neither the project nor what to type instead.
   // A project that exists was told "no such project or task", though only
