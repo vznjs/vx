@@ -4569,8 +4569,8 @@ export class TrailingOutputs {
 - A cached one is saved from this disk once its files are here
   (`cached-task.ts`): the verdict is taken before it ends and again
   after they land. Its dependants do not wait (the scheduler's `trails`);
-  it finishes when the save settles. With `inputs.stability.severity:
-  'error'`, or nothing to save, it waits for its files as before.
+  it finishes when the save settles. With an `inputs.stability`
+  severity of `'error'`, or nothing to save, it waits for its files.
 - An executor answers `outputs: { kind: 'trailing', landed }`; the run
   keeps `landed` in `TrailingOutputs`.
 - A command, a server or a hit's restore on this machine waits for
