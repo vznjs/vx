@@ -1,6 +1,7 @@
 // vx-cache v1 (PROTOCOL.md) over any `Blobs` bucket: one fetch handler the Bun
 // server, the Worker and the Docker image all serve. No database: an artifact
-// is one object, named by its issuer, repository name, scope and hash, and a
+// is one object, named by the hashes of its issuer, repository name and ref, then
+// its own hash, and a
 // read names the exact scope it wants.
 
 import { type Access, type Authorize, errorJson, notAllowed, Refusal } from '@vzn/vx-devtools'
@@ -66,9 +67,8 @@ const cacheOf = (at: number): string => (at === 0 ? IMMUTABLE : 'private, no-cac
 
 /**
  * A scope on the wire: a ref (`refs/…`), percent-encoded as
- * `encodeURIComponent` does, its folder's name. One spelling per ref, so no two
- * scopes name one folder; at most 512 characters, so a name stays under a
- * bucket's 1024-byte key.
+ * `encodeURIComponent` does. One spelling per ref, so a scope a check answers
+ * is the one a download names; at most 512 characters.
  */
 const SCOPE_MAX = 512
 const isScope = (scope: string): boolean => {
@@ -109,7 +109,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     }
     return named.map(scopeOf)
   }
-  const nameOf = (access: Access, scope: string, hash: string): string =>
+  const nameOf = (access: Access, scope: string, hash: string): Promise<string> =>
     blobName(access.issuer, access.repository, scope, hash)
   /** A read of the bucket: one it fails is its fault, `502`, never the server's `500`. */
   const read = async <T>(ask: Promise<T>): Promise<T> => {
@@ -166,7 +166,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const access = await authorize(req)
     const scopes = scopesOf(req)
     for (const [at, scope] of scopes.entries()) {
-      const blob = await read(blobs.get(nameOf(access, scope, hash)))
+      const blob = await read(blobs.get(await nameOf(access, scope, hash)))
       if (blob === null) continue
       return new Response(blob.body, {
         headers: {
@@ -188,7 +188,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const access = await authorize(req)
     const scopes = scopesOf(req)
     for (const [at, scope] of scopes.entries()) {
-      const size = await read(blobs.size(nameOf(access, scope, hash)))
+      const size = await read(blobs.size(await nameOf(access, scope, hash)))
       if (size === null) continue
       return new Response(null, {
         headers: {
@@ -208,7 +208,9 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const { hashes, scopes } = await queryOf(req, limits.maxCheckHashes)
     const sizes = await Promise.all(
       hashes.map((hash) =>
-        Promise.all(scopes.map((s) => read(blobs.size(nameOf(access, s, hash))))),
+        Promise.all(
+          scopes.map((s) => nameOf(access, s, hash).then((name) => read(blobs.size(name)))),
+        ),
       ),
     )
     const held = Object.fromEntries(
@@ -230,7 +232,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   async function put(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const name = nameOf(access, writeScope(access), hash)
+    const name = await nameOf(access, writeScope(access), hash)
     const length = contentLength(req)
     if (length > limits.maxUploadBytes) {
       throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)

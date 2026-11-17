@@ -1282,7 +1282,7 @@ describe('config', () => {
         else Bun.env.VX_CACHE_TOKEN = saved
       }
       expect(warned).toEqual([
-        `[vx] vx-cache: ${long} is 555 characters percent-encoded, over the 512 a cache folder's name takes: the run does not read it`,
+        `[vx] vx-cache: ${long} is 555 characters percent-encoded, over the 512 a scope takes: the run does not read it`,
       ])
     } finally {
       await srv.stop()

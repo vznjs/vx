@@ -1,6 +1,11 @@
 == const blobName (src/store.ts)
-export const blobName = (issuer: string, repository: string, scope: string, hash: string): string =>
-  `${encodeURIComponent(issuer)}/${encodeURIComponent(repository)}/${scope}/${hash}`
+export const blobName = async (
+  issuer: string,
+  repository: string,
+  scope: string,
+  hash: string,
+): Promise<string> =>
+  `${await hashPart(issuer)}/${await hashPart(repository)}/${await hashPart(decodeURIComponent(scope))}/${hash}`
 == const DEFAULT_LIMITS (src/server.ts)
 export const DEFAULT_LIMITS: Limits = {
   maxCheckHashes: 500,

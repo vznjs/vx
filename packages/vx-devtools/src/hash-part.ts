@@ -1,6 +1,6 @@
 // What a request names its issuer and repository by (`vx-issuer`,
-// `vx-repository`), never their plain values. What a server stores is plain: a
-// cache object's name and a history row hold the issuer, repository and ref as
+// `vx-repository`), never their plain values, and what a cache object's name
+// holds for its issuer, repository and ref. A history row holds the three as
 // they are.
 
 const parts = new Map<string, Promise<string>>()

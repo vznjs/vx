@@ -137,9 +137,11 @@ mark, and the task's upload is stored again.
 
 The bucket's own lifecycle rule expires artifacts, by age since they
 were written; the server runs no sweep. An artifact's object name is
-`<issuer>/<repository>/<ref>/<hash>`, each a readable folder
-(`https%3A%2F%2Ftoken.actions.githubusercontent.com/acme%2Fapp/refs%2Fheads%2Fmain/<hash>`),
-so deleting one branch's prefix prunes that branch alone. One age rule
+`<issuer>/<repository>/<ref>/<hash>`, the first three each hashed
+(SHA-256, its first 128 bits, 32 hex digits), so a bucket's listing
+names no host, repository or branch. Deleting one branch's prefix still
+prunes that branch alone; a folder's name is
+`printf %s refs/heads/main | sha256sum | cut -c1-32`. One age rule
 covers the bucket, for example 1 day:
 
 ```sh
@@ -166,9 +168,9 @@ over a bucket of your own (`src/index.ts`):
   (`{ maxCheckHashes, maxUploadBytes }`) over
   `DEFAULT_LIMITS`.
 - `blobName(issuer, repository, scope, hash)` is an artifact's object name,
-  `<issuer>/<repository>/<scope>/<hash>`, issuer and repository each
-  percent-encoded and `scope` the encoded ref as a client sends it
-  (PROTOCOL.md § Keys), so a slash in any part never starts a folder.
+  `<issuer>/<repository>/<ref>/<hash>`, the first three each their
+  `hashPart` (SHA-256's first 128 bits in hex); `scope` is the encoded
+  ref as a client sends it (PROTOCOL.md § Keys), hashed plain. Async.
 - `ALLOW` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
   the check every vx server shares.
 - `SCOPE_HEADER` (`vx-scope`) and `LIMIT_HEADERS` are the header names

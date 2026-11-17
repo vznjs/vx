@@ -55,7 +55,7 @@ conformance('Bun with S3', {
   ...LIMITS,
 })
 
-it('names an object <issuer>/<repository>/<ref>/<hash>, each a readable folder, and checks one HEAD per hash and scope', async () => {
+it('names an object by the hashes of its issuer, repository and ref, and checks one HEAD per hash and scope', async () => {
   const k = 'abc123'
   await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
     method: 'PUT',
@@ -63,11 +63,14 @@ it('names an object <issuer>/<repository>/<ref>/<hash>, each a readable folder, 
     headers: { ...NAMED, authorization: `Bearer ${token}` },
   })
   const main = scopeOf('refs/heads/main')
-  const name = blobName(GITHUB, REPO, main, k)
-  // One folder per issuer, repository and branch, so pruning a branch is deleting its prefix.
+  const name = await blobName(GITHUB, REPO, main, k)
+  // SHA-256's first 128 bits of each, by an implementation apart from the server's.
+  expect(name).toBe(`${hashOf(GITHUB)}/${hashOf(REPO)}/${hashOf('refs/heads/main')}/abc123`)
   expect(name).toBe(
-    'https%3A%2F%2Ftoken.actions.githubusercontent.com/acme%2Fapp/refs%2Fheads%2Fmain/abc123',
+    'dd9c65dd99f49e3d0ff1d11acfec9a12/5f89da0438fa1b1767532b58bd38cda2/f921bd05e68b03740c450e565e0e6173/abc123',
   )
+  // No name is readable in the bucket: not the issuer's host, the repository or the branch.
+  expect(name).not.toMatch(/github|acme|app|main|refs/)
   expect(s3.objects.get(`/b/${name}`)).toEqual(new TextEncoder().encode('x'))
   const before = s3.log.length
   const check = async (hashes: string[]) =>
@@ -79,18 +82,18 @@ it('names an object <issuer>/<repository>/<ref>/<hash>, each a readable folder, 
       })
     ).json()
   expect(await check([k])).toEqual({ [k]: { size: 1, scope: main } })
-  expect(s3.log.slice(before).map((l) => l.split('?')[0])).toEqual([`HEAD /b/${encodeURI(name)}`])
+  expect(s3.log.slice(before).map((l) => l.split('?')[0])).toEqual([`HEAD /b/${name}`])
 })
 
-it('names each repository and branch apart, a slash never starting a folder', () => {
+it('names each issuer, repository and branch apart, every folder 32 hex digits', async () => {
   const a = scopeOf('refs/heads/a/b')
-  const name = blobName('i', 'o/r', a, 'f')
-  expect(name).toBe('i/o%2Fr/refs%2Fheads%2Fa%2Fb/f')
-  expect(blobName('j', 'o/r', a, 'f')).not.toBe(name)
-  expect(blobName('i', 'o/r2', a, 'f')).not.toBe(name)
-  expect(blobName('i', 'o', scopeOf('r/refs/heads/a/b'), 'f')).not.toBe(name)
-  // A repository is one folder however many groups its path has.
-  expect(blobName('i', 'g/s/r', a, 'f').split('/')).toHaveLength(4)
+  const name = await blobName('i', 'o/r', a, 'f')
+  expect(name).toMatch(/^[0-9a-f]{32}\/[0-9a-f]{32}\/[0-9a-f]{32}\/f$/)
+  expect(await blobName('j', 'o/r', a, 'f')).not.toBe(name)
+  expect(await blobName('i', 'o/r2', a, 'f')).not.toBe(name)
+  expect(await blobName('i', 'o/r', scopeOf('refs/heads/a/c'), 'f')).not.toBe(name)
+  // A slash moved between repository and ref names another object.
+  expect(await blobName('i', 'o', scopeOf('refs/heads/a/b'), 'f')).not.toBe(name)
 })
 
 it('reads the limits from the environment, and refuses one that is not a count', () => {
