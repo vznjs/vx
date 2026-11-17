@@ -1103,6 +1103,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'recursive-run',
     'refusal-notice',
     'refused-run-region.unsafe',
+    'rel-posix',
     'replay-fidelity',
     'repo-facts-disk',
     'resave-aside',

@@ -19,7 +19,24 @@ export const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 /** `.vx/.gitattributes`' text: GitHub collapses the machine lock in a diff. */
 export const DOT_VX_GITATTRIBUTES = 'projects.lock.json linguist-generated=true\n'
 
+/**
+ * A path `path.relative` may rewrite: an empty, `.` or `..` component, a
+ * trailing slash, or a surrogate (a lone one becomes U+FFFD).
+ */
+const UNNORMALIZED = /\/\.{0,2}(?:\/|$)|[\uD800-\uDFFF]/
+
 export function relPosix(from: string, to: string): string {
+  // A file under `from`, spelled plainly, is its own tail: `path.relative`
+  // resolves both sides first, 280 ms of a 9,603-task cold run's thread.
+  if (
+    IS_POSIX &&
+    to.length > from.length + 1 &&
+    to.charCodeAt(from.length) === 47 &&
+    to.startsWith(from) &&
+    !UNNORMALIZED.test(to)
+  ) {
+    return to.slice(from.length + 1)
+  }
   return toPosix(path.relative(from, to))
 }
 
