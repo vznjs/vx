@@ -5,6 +5,8 @@
 // traced call. The observer is handed those calls by the kernel and no
 // other, and reports the writes too, which the runtime's observer did.
 // A `strace` first on PATH that counts its runs says which one ran.
+// The shell opens the refused file itself: a `cat` that stats first
+// (uutils, on CI) gives up before the open that is reported.
 
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { existsSync, realpathSync } from 'node:fs'
@@ -84,7 +86,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
     }
 
     it('reports a refused read the task swallowed, and strace never runs', async () => {
-      const r = await run('cat secret.txt 2>/dev/null; echo done')
+      const r = await run('{ read x < secret.txt; } 2>/dev/null; echo done')
       expect(r).toEqual({
         exitCode: 0,
         stdout: 'done\n',
@@ -114,7 +116,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
     })
 
     it('reads a relative path against the directory the process moved to', async () => {
-      const r = await run('cd sub && cat ../secret.txt 2>/dev/null; echo done')
+      const r = await run('cd sub && { read x < ../secret.txt; } 2>/dev/null; echo done')
       expect(r.denied).toEqual([path.join(proj, 'secret.txt')])
     })
 
@@ -157,7 +159,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
 
     it('VX_DEBUG_STRACE traces with strace', async () => {
       process.env['VX_DEBUG_STRACE'] = '1'
-      const r = await run('cat secret.txt 2>/dev/null; echo done')
+      const r = await run('{ read x < secret.txt; } 2>/dev/null; echo done')
       expect([r.stdout, r.denied, r.strace]).toEqual([
         'done\n',
         [path.join(proj, 'secret.txt')],

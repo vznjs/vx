@@ -54,7 +54,7 @@ describe.skipIf(!runs)('vx-observe', () => {
   }
 
   it('prints a failed read as strace -y does, the path as spelled, and no read that worked', async () => {
-    const r = await observe(false, 'cat here.txt; cat ./gone.txt 2>/dev/null; exit 3')
+    const r = await observe(false, 'cat here.txt; { read x < ./gone.txt; } 2>/dev/null; exit 3')
     expect({ stdout: r.stdout, exitCode: r.exitCode, lines: r.lines }).toEqual({
       stdout: 'here\n',
       exitCode: 3,
