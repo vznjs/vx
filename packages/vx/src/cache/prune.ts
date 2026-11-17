@@ -399,7 +399,7 @@ async function phantomRows(ix: StoreIndex): Promise<{
 export async function orphanStats(
   ix: StoreIndex,
 ): Promise<{ orphans: number; orphanBytes: number }> {
-  const found = await scanOrphans(ix)
+  const found = await guard(ix, () => scanOrphans(ix))
   let orphanBytes = 0
   for (const o of found) orphanBytes += o.size
   return { orphans: found.length, orphanBytes }
