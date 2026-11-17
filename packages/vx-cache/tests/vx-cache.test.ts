@@ -660,6 +660,75 @@ describe('download deadline', () => {
   })
 })
 
+// One download unanswered turned the remote off on a DTE run's orchestrator:
+// it lent its workers no token, and every task failed at its upload.
+it('a read with no answer is asked once more, and the remote stays on when that one is answered', async () => {
+  let asks = 0
+  const slow = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch() {
+      if (++asks === 1) await Bun.sleep(1000)
+      return Response.json({ aa: null })
+    },
+  })
+  try {
+    const c = new VxCacheLayer(
+      {
+        url: `http://127.0.0.1:${slow.port}`,
+        timeoutMs: 200,
+        uploadTimeoutMs: 200,
+        headers: {},
+        issuer: GITHUB,
+        repository: REPO,
+      },
+      fetch,
+      { VX_CACHE_TOKEN: 't' },
+    )
+    c.refs = [MAIN]
+    await c.hasMany(['aa'])
+    expect([asks, c.off]).toEqual([2, false])
+  } finally {
+    await slow.stop(true)
+  }
+})
+
+it('a read the server hangs on while it answers another is lost alone: the remote stays on', async () => {
+  const hung = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch(req) {
+      const asked = (await req.text()).includes('"aa"')
+      if (asked) await Bun.sleep(2000)
+      return Response.json(asked ? { aa: null } : { bb: null })
+    },
+  })
+  try {
+    const c = new VxCacheLayer(
+      {
+        url: `http://127.0.0.1:${hung.port}`,
+        timeoutMs: 300,
+        uploadTimeoutMs: 300,
+        headers: {},
+        issuer: GITHUB,
+        repository: REPO,
+      },
+      fetch,
+      { VX_CACHE_TOKEN: 't' },
+    )
+    c.refs = [MAIN]
+    const lost = c.hasMany(['aa']).then(
+      () => 'answered',
+      (err: Error) => err.message,
+    )
+    await Bun.sleep(50)
+    await c.hasMany(['bb'])
+    expect([await lost, c.off]).toEqual(['no answer within 300 ms', false])
+  } finally {
+    await hung.stop(true)
+  }
+})
+
 // A server that takes the connection and never answers cost every task
 // the whole read deadline: 300 cached tasks took 2m32s, 15 s with the
 // server down (2026-11-11).
@@ -698,7 +767,8 @@ it('a read with no answer within the deadline turns the remote off for the run, 
     expect(await c.get('aa')).toBeUndefined()
     expect(await c.put('aa', new Blob(['x']), { durationMs: 1 })).toBe(false)
     expect(performance.now() - started).toBeLessThan(100)
-    expect(connections).toBe(1)
+    // The first ask, and the one more it is given.
+    expect(connections).toBe(2)
   } finally {
     mute.stop(true)
   }

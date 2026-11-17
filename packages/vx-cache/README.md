@@ -97,7 +97,7 @@ expires it (`@vzn/vx-cache-server`'s Expiry). A download that ends
 short of the size the server names (`vx-size`) is a transfer that
 failed, not a corrupt artifact: a miss, asked again next run.
 
-A refused token, or a read with no answer in time, is said once (the run's, counted on no task) and turns the remote off for the run; a
+A refused token, or a read with no answer in time twice running while the server answered nothing else, is said once (the run's, counted on no task) and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
 as a miss. A token the request sent (the job's OIDC token, a lent one,
