@@ -211,7 +211,8 @@ describe('assembleRunRecords', () => {
 describe('foldOutcomes', () => {
   it('keeps the outcome and says the fault when what it hands a task to throws', () => {
     const said: Notice[] = []
-    onNotice((n) => said.push(n))
+    // Put back after: the drawer is the process's, and a later file reads it.
+    const restore = onNotice((n) => said.push(n))
     const a = outcome('a#build', 'success')
     const b = outcome('b#build', 'success')
     const nodes = new Map([
@@ -221,8 +222,12 @@ describe('foldOutcomes', () => {
     const fold = foldOutcomes(nodes, (o) => {
       if (o === a) throw new Error('disk full')
     })
-    fold.subscriber({ kind: 'task:complete', node: a.node, outcome: a })
-    fold.subscriber({ kind: 'task:complete', node: b.node, outcome: b })
+    try {
+      fold.subscriber({ kind: 'task:complete', node: a.node, outcome: a })
+      fold.subscriber({ kind: 'task:complete', node: b.node, outcome: b })
+    } finally {
+      restore()
+    }
     expect(fold.outcomes).toEqual([a, b])
     expect(said).toEqual([
       { kind: 'line', tone: 'warn', text: '[vx] onFinish observer threw for a#build: disk full\n' },

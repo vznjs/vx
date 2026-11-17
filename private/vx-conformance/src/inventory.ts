@@ -68,6 +68,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'env-path-delimiter',
     'env-reads-complete',
     'everyday-ops-differential',
+    'keyless-through-server',
     'exclude-dependencies-key',
     'failed-output-whole',
     'failure-mode',
