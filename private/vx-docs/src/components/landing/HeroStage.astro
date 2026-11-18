@@ -2,10 +2,10 @@
 // The hero is the copy alone, a screen tall, over a retro sunset sky. Below
 // it, as its own section, the system graph: every piece one CI run talks to,
 // before a striped sun sinking into an endless grid. When the graph comes
-// into view it rises in, then plays one real run on a loop: 30 tasks as
-// vx-dte's simulator ran them (src/data/hero-run.json), start to teardown in
-// 5 s. At rest (no script, reduced motion) it is a plain section: the copy,
-// the graph, and the seven hook groups listed.
+// into view it rises in, then plays one real run on a loop: 10 tasks as
+// vx-dte's simulator ran them (src/data/hero-run.json), every message named
+// as it travels. At rest (no script, reduced motion) it is a plain section:
+// the copy, the graph, and the six groups listed.
 import run from '../../data/hero-run.json'
 import SystemMap from './SystemMap.astro'
 import { GROUPS, TRAVEL_MS, WIRES, play, type Run } from './system-map.ts'
@@ -57,7 +57,7 @@ const specs = [
       </ul>
     </div>
     <header class="stage-head">
-      <p class="kicker">One CI run, 30 tasks, 5 seconds</p>
+      <p class="kicker">One CI run, 10 tasks, every message</p>
       <h2>One run.<br /><em>Every piece.</em></h2>
     </header>
     <div class="stage-world" aria-hidden="true">
@@ -66,14 +66,14 @@ const specs = [
       </div>
     </div>
     <div class="stage-story" id="one-run">
-      <p class="story-kicker">Seven hook groups, fifteen hooks</p>
+      <p class="story-kicker">One run, six groups</p>
       <ol class="story-steps">
         {
           GROUPS.map((g, i) => (
-            <li class:list={[`tone-${g.tone}`]} id={g.anchor} data-step={i} data-group={g.id}>
+            <li class:list={[`tone-${g.tone}`]} id={g.anchors?.[0]} data-step={i} data-group={g.id}>
+              {g.anchors?.slice(1).map((a) => <span id={a} />)}
               <span class="story-n">{String(i + 1).padStart(2, '0')}<span class="of"> / {String(GROUPS.length).padStart(2, '0')}</span></span>
               <strong class="story-title">{g.title}</strong>
-              <span class="story-hooks">{g.hooks.map((h) => <code>{h}</code>)}</span>
               <p set:html={codeHtml(g.line)} />
             </li>
           ))
@@ -125,7 +125,7 @@ const specs = [
     interface View {
       root: SVGSVGElement
       paths: Map<string, { el: SVGPathElement; len: number }>
-      dots: SVGCircleElement[]
+      dots: { g: SVGGElement; c: SVGCircleElement; l: SVGTextElement }[]
       slots: Map<number, { g: SVGGElement; warm: SVGRectElement; state: SVGTextElement; x: number; y: number; w: number; h: number; cores: number }>
       bars: Map<string, { g: SVGGElement; done: SVGRectElement }>
       clock: SVGTextElement
@@ -166,7 +166,7 @@ const specs = [
       label.setAttribute('class', 'bar-label')
       const room = Math.floor((w - 8) / 6.2)
       // A narrow bar names the task alone; one too narrow for that, a cut of it.
-      const full = w > 90 ? b.id : b.id.split('#')[1]!
+      const full = w > 110 ? b.id : b.id.split('#')[1]!
       label.textContent = full.length > room ? `${full.slice(0, Math.max(0, room - 1))}…` : full
       g.append(face, done, label)
       s.g.querySelector('.bars')!.append(g)
@@ -191,24 +191,31 @@ const specs = [
         if (!p) continue
         live.add(d.wire)
         const [from, to] = P.ends[d.wire]!
-        boxes.add(from.startsWith('slot') ? 'workers' : from)
-        boxes.add(to.startsWith('slot') ? 'workers' : to)
+        boxes.add(from)
+        boxes.add(to)
         let dot = v.dots[n]
         if (!dot) {
-          dot = document.createElementNS(NS, 'circle')
-          dot.setAttribute('r', '4.5')
-          root.querySelector('.packets')!.appendChild(dot)
-          v.dots[n] = dot
+          const g = document.createElementNS(NS, 'g')
+          const c = document.createElementNS(NS, 'circle')
+          c.setAttribute('r', '4.5')
+          const l = document.createElementNS(NS, 'text')
+          l.setAttribute('class', 'dot-label')
+          l.setAttribute('x', '8')
+          l.setAttribute('y', '-7')
+          g.append(c, l)
+          root.querySelector('.packets')!.appendChild(g)
+          v.dots[n] = dot = { g, c, l }
         }
         const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2
         const pt = p.el.getPointAtLength((d.back ? 1 - e : e) * p.len)
-        dot.setAttribute('cx', `${pt.x}`)
-        dot.setAttribute('cy', `${pt.y}`)
-        dot.setAttribute('fill', TONES[d.tone]!)
-        dot.style.display = ''
+        dot.g.setAttribute('transform', `translate(${pt.x} ${pt.y})`)
+        dot.c.setAttribute('fill', TONES[d.tone]!)
+        dot.l.setAttribute('fill', TONES[d.tone]!)
+        if (dot.l.textContent !== d.label) dot.l.textContent = d.label
+        dot.g.style.display = ''
         n++
       }
-      for (let i = n; i < v.dots.length; i++) v.dots[i]!.style.display = 'none'
+      for (let i = n; i < v.dots.length; i++) v.dots[i]!.g.style.display = 'none'
       root.querySelectorAll<SVGElement>('[data-wire]').forEach((w) => {
         const on = live.has(w.dataset['wire']!)
         w.classList.toggle('live', on)
@@ -228,7 +235,6 @@ const specs = [
         let warm = 0
         if (lane) {
           online++
-          boxes.add('workers')
           if (t < lane.join) {
             state = 'booting'
             warm = (t - lane.spawn) / (lane.join - lane.spawn)
@@ -237,7 +243,7 @@ const specs = [
         }
         s.g.dataset['state'] = state.replace(' ', '-')
         s.state.textContent = state
-        s.warm.setAttribute('width', `${clamp(warm) * (s.w + 24)}`)
+        s.warm.setAttribute('width', `${clamp(warm) * (s.w + 20)}`)
       }
       P.bars.forEach((b, i) => {
         const on = b.start <= t && t < b.end
@@ -257,13 +263,13 @@ const specs = [
       // The core's clock: the run's own time, not the play's.
       const ran = P.bars.filter((b) => b.end <= t).length
       const hit = P.hits.filter((h) => h <= t).length
-      const now = (t - P.zero) / P.scale
+      const now = P.first + (t - P.zero) / P.scale
       v.clock.textContent =
         t < P.zero
           ? [...lit].join(' · ') || 'setup'
           : t < P.end
             ? `${fmt(now)} · ${online} worker${online === 1 ? '' : 's'} · ${ran} ran · ${hit} cached`
-            : `teardown · ${fmt((P.end - P.zero) / P.scale)} · ${ran} ran · ${hit} cached`
+            : `teardown · ${fmt(P.first + (P.end - P.zero) / P.scale)} · ${ran} ran · ${hit} cached`
     }
 
     // The play starts when the graph comes into view, not at page load.
@@ -286,7 +292,7 @@ const specs = [
       render((now - born - ENTER_MS) % P.loop)
     }
     // An old link to a group's anchor lands on the graph.
-    if (stage.querySelector(`.story-steps li[id="${CSS.escape(location.hash.slice(1))}"]`)) {
+    if (stage.querySelector(`.story-steps [id="${CSS.escape(location.hash.slice(1))}"]`)) {
       born = performance.now()
       stage.classList.add('seen')
     }

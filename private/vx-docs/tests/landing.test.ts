@@ -458,6 +458,8 @@ describe('the landing page', () => {
 describe('the system graph, as data', () => {
   it('places every box, slot and wire in both layouts, inside the drawing', () => {
     const slots = Array.from({ length: map.SLOTS }, (_, i) => `slot${i + 1}`)
+    // Every worker the run had has its own box.
+    expect(map.play(run as map.Run).lanes.length).toBeLessThanOrEqual(map.SLOTS)
     for (const L of Object.values(map.LAYOUTS)) {
       for (const id of [...map.BOXES.map((b) => b.id), ...slots]) {
         const r = L.boxes[id]!
@@ -469,16 +471,15 @@ describe('the system graph, as data', () => {
     }
   })
 
-  // The core names every hook a plugin fills a stage with, once, in M's
-  // seven groups (2026-11-18); `commands` adds verbs, not a stage.
+  // The six groups (M, 2026-11-18) hold every hook a plugin fills a stage
+  // with, once; `commands` adds verbs, not a stage.
   it('groups every stage hook once', () => {
     const hooks = map.GROUPS.flatMap((g) => g.hooks)
     expect(new Set(hooks).size).toBe(hooks.length)
     expect([...hooks].sort()).toEqual(PLUGIN_HOOKS.filter((h) => h !== 'commands').sort())
     expect(map.GROUPS.map((g) => g.title)).toEqual([
       'Setup',
-      'Projects',
-      'Dependencies',
+      'Graph',
       'Schedule',
       'Cache',
       'Run',
@@ -492,15 +493,15 @@ describe('the system graph, as data', () => {
 })
 
 // The graph plays one run as vx-dte's simulator ran it (scripts/hero-run.ts
-// wrote src/data/hero-run.json): 30 tasks, workers started when the plan
+// wrote src/data/hero-run.json): 10 tasks, workers started when the plan
 // needed them and let go when it did not.
 describe('the hero run', () => {
   const r = run as map.Run
   const P = map.play(r)
   const byId = new Map(r.tasks.map((t) => [t.id, t]))
 
-  it('is 30 tasks, some held in the cache, the rest run on workers', () => {
-    expect(r.tasks).toHaveLength(30)
+  it('is 10 tasks, some held in the cache, the rest run on workers', () => {
+    expect(r.tasks).toHaveLength(10)
     expect(r.tasks.filter((t) => t.hit).length).toBeGreaterThan(0)
     expect(P.bars).toHaveLength(r.tasks.filter((t) => !t.hit).length)
   })
@@ -521,7 +522,8 @@ describe('the hero run', () => {
   })
 
   it('starts workers as the plan needs them, not all at once, and lets each go', () => {
-    expect(new Set(r.workers.map((w) => w.spawnMs)).size).toBeGreaterThan(1)
+    expect(new Set(r.workers.map((w) => w.spawnMs)).size).toBe(r.workers.length)
+    expect(new Set(r.workers.map((w) => w.leaveMs)).size).toBe(r.workers.length)
     for (const w of r.workers) expect(w.leaveMs).toBeGreaterThan(w.joinMs!)
   })
 
@@ -540,11 +542,38 @@ describe('the hero run', () => {
     expect(clash.map((b) => b.id)).toEqual([])
   })
 
-  // M (2026-11-18): the graph takes 5 s.
-  it('plays start to teardown in 5 s', () => {
-    const last = Math.max(...P.dots.map((d) => d.at)) + map.TRAVEL_MS
-    expect(last).toBeCloseTo(map.PLAY_MS, 0)
-    expect(P.dots.every((d) => d.at >= 0)).toBe(true)
+  // M (2026-11-18): every task's run together takes 5 s; a worker boots in 2 s.
+  it('plays the tasks in 5 s and boots each worker in 2 s', () => {
+    expect(
+      Math.max(...P.bars.map((b) => b.end)) - Math.min(...P.bars.map((b) => b.start)),
+    ).toBeCloseTo(map.RUN_MS, 6)
+    for (const l of P.lanes) expect(l.join - l.spawn).toBe(map.BOOT_MS)
+    expect(P.dots.every((d) => d.at >= 0 && d.label !== '')).toBe(true)
+  })
+
+  // Each message in the order the run sent it: an order reaches the worker
+  // before its task starts, and nothing goes to a worker that is off.
+  it('sends each order before its task and only to a worker that is on', () => {
+    for (const b of P.bars) {
+      const order = P.dots.find(
+        (d) =>
+          d.wire === `s${b.slot}` &&
+          d.label === 'task' &&
+          d.at + map.TRAVEL_MS <= b.start + 1e-6 &&
+          d.at >= b.start - 3 * map.TRAVEL_MS - 1e-6,
+      )
+      expect(order).toBeDefined()
+    }
+    const off = P.dots
+      .filter((d) => /^[sc]\d$/.test(d.wire))
+      .filter(
+        (d) =>
+          !P.lanes.some(
+            (l) =>
+              `${d.wire[1]}` === `${l.slot}` && d.at >= l.join - 1e-6 && d.at <= l.leave + 1e-6,
+          ),
+      )
+    expect(off).toEqual([])
   })
 })
 

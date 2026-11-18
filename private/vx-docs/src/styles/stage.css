@@ -414,10 +414,6 @@
   font: 700 11px var(--font-body);
   fill: #d7e2cf;
 }
-.map-svg .chip-hook {
-  font: 400 10px var(--font-mono);
-  fill: #8e998a;
-}
 .map-svg .chip.on rect {
   fill: var(--tone-core);
   stroke: var(--tone-core);
@@ -430,8 +426,11 @@
   fill: var(--tone-core);
 }
 /* The workers' slots: always drawn, grey while no worker holds one. */
+.map-svg .slot-edge {
+  fill: color-mix(in srgb, var(--tone-dte) 30%, #05060a);
+}
 .map-svg .slot-face {
-  fill: #0b0d12;
+  fill: #0d1016;
   stroke: color-mix(in srgb, var(--tone-dte) 55%, transparent);
   stroke-width: 1.2;
 }
@@ -477,10 +476,13 @@
   font: 600 10.5px var(--font-mono);
   fill: #f6f2ff;
 }
-.map-svg .packets circle {
-  filter: drop-shadow(0 0 4px currentColor);
+.map-svg .dot-label {
+  font: 600 10.5px var(--font-mono);
+  paint-order: stroke;
+  stroke: #05060a;
+  stroke-width: 3px;
 }
-/* the story: at rest a list of the seven hook groups */
+/* the story: at rest a list of the six hook groups */
 .stage-story {
   position: relative;
   z-index: 3;
@@ -573,9 +575,9 @@
 .stage.js .story-kicker {
   display: none;
 }
-/* All seven groups always shown; the ones running now are lit, several at once. */
+/* All six groups always shown; the ones running now are lit, several at once. */
 .stage.js .story-steps {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 .stage.js .story-steps li {
