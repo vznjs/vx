@@ -47,6 +47,8 @@ interface Repo {
   install?: string[]
   /** Environment for the install alone. */
   installEnv?: Record<string, string>
+  /** `NODE_OPTIONS` added to the box's for both tools' arms. */
+  nodeOptions?: string
 }
 
 // The repos and scopes /compare/real-repos/ publishes (benchmarks.md § Real repos).
@@ -88,6 +90,19 @@ const REPOS: Repo[] = [
     filters: 'astro create-astro @astrojs/* astro-vscode @benchmark/*',
     workers: 10,
     overlay: true,
+  },
+  {
+    name: 'payload',
+    url: 'https://github.com/payloadcms/payload',
+    commit: '06f05f7db3db5a2a7a97e76402cc5e3f949127c7',
+    tool: 'turbo',
+    tasks: 'build',
+    filters: '!blank !blank-tanstack !website !ecommerce',
+    workers: 10,
+    overlay: true,
+    // `payload#build` bundles its types with rollup, which outgrows Node's
+    // default 2 GB heap on this box under either tool.
+    nodeOptions: '--max-old-space-size=8192',
   },
   {
     name: 'react-email',
@@ -293,6 +308,9 @@ for (const repo of REPOS) {
     const load = await settle(os.loadavg, (ms) => Bun.sleep(ms))
     const out = must(['bash', script, dir, vxBin, repo.tasks, values.reps!], dir, {
       ...benchEnv(),
+      ...(repo.nodeOptions === undefined
+        ? {}
+        : { NODE_OPTIONS: `${process.env['NODE_OPTIONS'] ?? ''} ${repo.nodeOptions}`.trim() }),
       FILTERS: repo.filters ?? '',
       VX_ARGS: `--concurrency ${repo.workers}`,
       [toolArgs]:

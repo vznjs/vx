@@ -9,7 +9,7 @@ const SHARED_GLOBALS = [
   'tsconfig.json',
 ]
 
-const inputs = (more: string[] = []): TaskConfig['inputs'] => ({
+const inputs = (more: string[] = []): { files: string[]; workspaceFiles: string[] } => ({
   files: ['**/*'],
   workspaceFiles: [...SHARED_GLOBALS, ...more],
 })

@@ -119,6 +119,29 @@ repo's own `build` script (`astro create-astro @astrojs/* astro-vscode
   `workspaceFiles`. Every config is `vx.config.mjs`: the builds end in
   `tsc -b`.
 
+### payloadcms/payload — 06f05f7db3db5a2a7a97e76402cc5e3f949127c7
+
+pnpm 10, Turbo 2.10.4. Benched: `build` over the repo's own `build:all`
+filters (`!blank !blank-tanstack !website !ecommerce`), 45 tasks.
+
+- Mapped: `build` of the 45 packages, each its own script after its
+  dependencies' builds, `dist/**` out. Not mapped: `lint`, `test`, the
+  templates.
+- Both tools run with `NODE_OPTIONS=--max-old-space-size=8192`:
+  `payload#build` bundles its types with rollup, which outgrows Node's
+  default heap on this box under either. The task passes the variable
+  through.
+- Every tsconfig extends the root's `tsconfig.base.json`: a
+  `workspaceFiles` input. Every config is `vx.config.mjs`: the builds
+  type-check each `.ts` beside them.
+- 14,484 output files, the most of any repo here: its no-op is the
+  measure of how a hit's files are proved (#5338).
+- **Cold loses to Turbo** (116 s against 98 s, 2026-11-18). The root
+  `package.json` installs six workspace packages, and `pnpm()` orders
+  every build after each of them, where Turbo keys them and orders
+  nothing. With those edges keyed and not ordered, 100.4 s against
+  98.4 s.
+
 ### resend/react-email — 1531a395bf8e8e6dd3b61a7ce9afd03551c5b18b
 
 pnpm 11.0, Turbo 2.9.14. Benched: `build` over `./packages/*`, the
