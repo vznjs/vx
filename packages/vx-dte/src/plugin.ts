@@ -116,6 +116,12 @@ export interface DteAdapter {
    * returns its spawn, for the adapter to watch and stop as its own.
    */
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void
+  /**
+   * When the CI started worker `id` it hands to `adopt` (epoch ms), asked
+   * as each is handed over: its warm-up is read from then, where from the
+   * run's start it read short by the head start.
+   */
+  startedAt?(id: string): number | undefined
 }
 
 export interface DteOptions {
@@ -523,6 +529,7 @@ export function dte(options: DteOptions = {}) {
             relay,
             run,
             ...(id === undefined || id === '' ? {} : { id }),
+            ...waitOf(),
             root: ctx.workspaceRoot,
             token: () => token(relay),
             headers,
@@ -829,15 +836,19 @@ export function dte(options: DteOptions = {}) {
         return `${size}#${n}`
       }
       // A worker the run counts as started, against its size's max.
-      const spawnOf = (s: Size, id: string, n: number): WorkerSpawn => {
+      const spawnOf = (s: Size, id: string, n: number, at?: number): WorkerSpawn => {
         started.set(s.name, (started.get(s.name) ?? 0) + 1)
-        o.spawned(id, {
-          size: s.name,
-          cpu: s.cpu,
-          memory: s.memory,
-          ...named(s.name),
-          ...(multi && s.platform !== undefined ? { place: s.platform } : {}),
-        })
+        o.spawned(
+          id,
+          {
+            size: s.name,
+            cpu: s.cpu,
+            memory: s.memory,
+            ...named(s.name),
+            ...(multi && s.platform !== undefined ? { place: s.platform } : {}),
+          },
+          at,
+        )
         sizeOf.set(id, s)
         return {
           run,
@@ -867,12 +878,16 @@ export function dte(options: DteOptions = {}) {
       adapter?.report?.(ctx.warn)
       // Workers the CI started before the run did (`DteAdapter.adopt`).
       adapter?.adopt?.((id, size) => {
+        const startedAt = adapter.startedAt?.(id)
         const s = sizes.find((x) => x.name === size)
         const n = Number(id.slice(id.lastIndexOf('#') + 1))
         if (s === undefined || !Number.isInteger(n) || n < 1)
           throw new UserError(`dte(): a started worker ${id} is no worker of a declared size`)
         numbered.set(size, Math.max(numbered.get(size) ?? 0, n))
-        return spawnOf(s, id, ++index)
+        // On this process's clock, before its own start for one started ahead of it.
+        const at =
+          startedAt === undefined ? undefined : performance.now() - (Date.now() - startedAt)
+        return spawnOf(s, id, ++index, at)
       })
       // Tasks core handed over: each missed the cache (`missedWork`).
       const executed = new Set<string>()
@@ -1440,4 +1455,16 @@ function unroutable(url: string): string | undefined {
 /** A relay URL as a refusal may print it: a `user:pass@` would reach the CI log. */
 function shown(url: string): string {
   return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, '$1***@')
+}
+
+/** `VX_DTE_WAIT`: the seconds a worker started ahead of its run waits for it. */
+function waitOf(): { waitMs?: number } {
+  const wait = process.env['VX_DTE_WAIT']
+  if (wait === undefined || wait === '') return {}
+  const s = Number(wait)
+  if (!Number.isFinite(s) || s < 0 || s > 600)
+    throw new UserError(
+      `VX_DTE_WAIT is the seconds a worker waits for its run to start, 0 to 600: not ${JSON.stringify(wait)}`,
+    )
+  return { waitMs: s * 1000 }
 }
