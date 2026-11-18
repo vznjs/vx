@@ -1,10 +1,12 @@
 ---
 // The conformance table: every case of @vzn/vx-conformance and what each
 // tool did with it, from src/data/conformance.json (src/conformance/data.ts).
-// No JavaScript: the score board's rows are the categories, each a <details>
-// whose summary is its scores; open, it says what it checks and lists its
-// cases in the same columns. A failing cell opens its detail as one, and the
-// "only where tools differ" switch is a checkbox the stylesheet reads.
+// The score board's rows are the categories, each a <details> whose summary
+// is its scores; open, it says what it checks and lists its cases in the
+// same columns. A failing cell opens its detail as one, and the "only where
+// tools differ" switch is a checkbox the stylesheet reads. Every case is a
+// link: `#<case id>`, and `?tool=<tool>#<case id>` for one tool's failure.
+// The script at the end only opens what such a link points into.
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import {
   about,
@@ -183,3 +185,30 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
     </section>
   </div>
 </FeaturesPage>
+
+<script>
+  // A case's row sits in a closed category, and not every browser opens a
+  // <details> to reach a link's target.
+  const show = (): void => {
+    let id = location.hash.slice(1)
+    try {
+      id = decodeURIComponent(id)
+    } catch {}
+    const at = id ? document.getElementById(id) : null
+    const cat = at?.closest<HTMLDetailsElement>('details.cfm-cat')
+    if (!at || !cat) return
+    cat.open = true
+    if (at.hasAttribute('data-agree')) {
+      const differ = document.querySelector<HTMLInputElement>('#cfm-differ')
+      if (differ) differ.checked = false
+    }
+    const tool = new URLSearchParams(location.search).get('tool')
+    for (const td of at.querySelectorAll<HTMLElement>('td[data-tool]')) {
+      const detail = td.querySelector('details')
+      if (detail) detail.open = td.dataset['tool'] === tool
+    }
+    at.scrollIntoView()
+  }
+  show()
+  addEventListener('hashchange', show)
+</script>

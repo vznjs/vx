@@ -7,6 +7,10 @@ data the tool reports about the run. The results (every case, what each
 tool did, each tool's score) are the site's conformance page, written to
 `private/vx-docs/src/data/conformance.json`.
 
+A case's `id` is its link on that page (`/conformance/#<id>`, and
+`/conformance/?tool=nx#<id>` opens what one tool did), and issues filed with
+other tools cite it: an id is never renamed or reused.
+
 ```sh
 bun src/cli.ts                    # every case, every tool → the site's data
 bun src/cli.ts --tool nx --case outputs/ --verbose

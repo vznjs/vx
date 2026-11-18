@@ -282,11 +282,21 @@
 .vx-landing .cfm-cat[open] {
   margin-bottom: 24px;
 }
+/* A linked case lands under the tools' names and its category's scores. */
 .vx-landing .cfm-cases tbody tr {
-  scroll-margin-top: 80px;
+  scroll-margin-top: 108px;
+}
+/* The case a link points at. */
+.vx-landing .cfm .cfm-cases tbody tr:target > th[scope='row'] {
+  padding-left: 12px;
+  background: color-mix(in srgb, var(--phosphor) 10%, var(--bg-page));
+  box-shadow: inset 3px 0 0 var(--phosphor);
 }
 .vx-landing .cfm-cases tbody tr:target {
-  background: color-mix(in srgb, var(--phosphor) 8%, transparent);
+  background: color-mix(in srgb, var(--phosphor) 10%, var(--bg-page));
+}
+.vx-landing .cfm .cfm-cases tbody tr:target .cfm-meta a {
+  color: var(--phosphor);
 }
 .vx-landing .cfm-cases th[scope='row'] {
   padding: 12px 12px 12px 0;
@@ -329,6 +339,10 @@
 .vx-landing .cfm .cfm-meta a {
   color: inherit;
   text-decoration: none;
+}
+.vx-landing .cfm .cfm-meta a::before {
+  content: '# ';
+  color: var(--phosphor);
 }
 .vx-landing .cfm .cfm-meta a:hover {
   color: var(--text-hi);
@@ -414,6 +428,9 @@
   .vx-landing .cfm-head,
   .vx-landing .cfm-cat[open] > summary {
     position: static;
+  }
+  .vx-landing .cfm-cases tbody tr {
+    scroll-margin-top: 80px;
   }
   .vx-landing .cfm-name,
   .vx-landing .cfm .cfm-cases tbody tr > th[scope='row'] {

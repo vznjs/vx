@@ -77,6 +77,20 @@ describe('the conformance page', () => {
     expect(wrong).toEqual([])
   })
 
+  it('makes every case a link: an id a URL takes as written, opened by the page’s script', () => {
+    const wrong: string[] = []
+    for (const c of RESULTS.cases) {
+      if (!/^[a-z0-9]+(?:[/.-][a-z0-9]+)*$/.test(c.id)) wrong.push(`${c.id}: not a plain slug`)
+      const r = row(c.id)
+      if (!html.includes(`<tr id="${c.id}" data-case="${c.id}"`)) wrong.push(`${c.id}: no anchor`)
+      if (!r.includes(`<a href="#${c.id}">${c.id}</a>`)) wrong.push(`${c.id}: no link`)
+    }
+    expect(wrong).toEqual([])
+    // A category is closed, so the script opens the one a link points into.
+    expect(html).toContain('hashchange')
+    expect(html).toContain('details.cfm-cat')
+  })
+
   it('shows each category closed, its summary its row of the score board', () => {
     const wrong: string[] = []
     for (const id of CATEGORIES) {
