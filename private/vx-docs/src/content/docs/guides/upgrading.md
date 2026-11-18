@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.657
 
+### vx-dte: start CI's workers when the run asks, not before
+
+No migration note.
+
 ### history: keep a run's cache hits as one packed row
 
 the index schema is v57: the local index resets once, so the run history starts empty and a cached task with no stored artifact to adopt runs once more. A run writes no `runs` row for a cache hit until something reads the history; `vx last`, `vx why` and `vx info` write them out first, and a tool reading cache.db directly sees hits only up to the last of those.
