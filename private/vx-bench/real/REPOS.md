@@ -119,6 +119,40 @@ repo's own `build` script (`astro create-astro @astrojs/* astro-vscode
   `workspaceFiles`. Every config is `vx.config.mjs`: the builds end in
   `tsc -b`.
 
+### medusajs/medusa — 56c136f02adec65d6a33f84ca6133ac9288c1ae3
+
+yarn 3 (the repo's own release), Turbo 1.13. Benched: the repo's own
+`build` script (`build` and `build:plugin`, `--concurrency=100%`), 83
+tasks, both tools at the box's four cores.
+
+- Mapped: each package's `build` script after its dependencies' builds,
+  `dist/**` and `.medusa/**` out (turbo.json's `*/**` and `.medusa/**`
+  less `src` and `node_modules`), and `build:plugin` after
+  `@medusajs/medusa#build`, whose CLI it runs. Every tsconfig extends the
+  root's `_tsconfig.base.json`: a `workspaceFiles` input.
+
+### unocss/unocss — 74939def285312ac1376cdc648ff2881e7899d24
+
+pnpm 12, Turbo. Benched: `build` over the repo's own filter
+(`./packages-*/*`), 42 tasks.
+
+- Mapped: `build` of the 42 packages that have the script, each its own
+  command (`tsdown`, and `tsx scripts/copy.ts` for `@unocss/reset`) after
+  its dependencies' builds, `dist/**` out. Not mapped: `build-post`
+  (`@unocss/inspector`'s `vite build`, which `turbo run build` does not
+  run either), `dev`, the docs and playground.
+- The tsdown configs import the root `alias.ts`, which points into
+  `virtual-shared/`: with the root `tsconfig.json`, `workspaceFiles`
+  inputs (turbo.json's `globalDependencies`).
+- `@unocss/reset`'s script copies its stylesheets beside the package:
+  the task's outputs are `normalize.css` and `sanitize/**`, where
+  turbo.json's `dist/**` holds none of them.
+- `@unocss/vscode`'s `update` step writes `README.md` again each build,
+  the same bytes: `inputs.stability.strategy: 'mutable'`.
+- The root `package.json` installs the `unocss` package. It is the
+  root's dependency only (#5346); when all 41 other builds waited for it,
+  cold lost to Turbo.
+
 ### payloadcms/payload — 06f05f7db3db5a2a7a97e76402cc5e3f949127c7
 
 pnpm 10, Turbo 2.10.4. Benched: `build` over the repo's own `build:all`
@@ -136,11 +170,12 @@ filters (`!blank !blank-tanstack !website !ecommerce`), 45 tasks.
   type-check each `.ts` beside them.
 - 14,484 output files, the most of any repo here: its no-op is the
   measure of how a hit's files are proved (#5338).
-- **Cold loses to Turbo** (116 s against 98 s, 2026-11-18). The root
-  `package.json` installs six workspace packages, and `pnpm()` orders
-  every build after each of them, where Turbo keys them and orders
-  nothing. With those edges keyed and not ordered, 100.4 s against
-  98.4 s.
+- The root `package.json` installs six workspace packages. They are the
+  root's dependencies only (#5346); when every build waited for each,
+  cold was 116 s.
+- The longest chain (`payload`, `ui`, `richtext-lexical`) is 91 s of the
+  run. Ten workers on four cores slow it: vx 96 s at 10, 91 s at its
+  default of 4.
 
 ### calcom/cal.com — 569a389e84320a8036a2545f3f656f3123bd08f9
 
@@ -275,9 +310,10 @@ the defence). Bun 1.4.2; vx compiled from
 this branch with `bun build --compile --minify --bytecode`; Turbo is
 each repo's own devDependency, run through `node_modules/.bin/turbo`
 with the repo's root `node_modules/.bin` on PATH (what its own
-`yarn build` / `pnpm build` would give it), `--no-daemon`. Both tools
-at 10 workers (Turbo's default; vx's default is the core count) unless
-the repo's own script says otherwise; the wide sets at 3 (below). Full artifact cleanup before a
+`yarn build` / `pnpm build` would give it), `--no-daemon`. Each tool
+at its own default worker count (Turbo 10, Nx 3, vx the core count), as
+a user types it, unless the repo's own script or config sets one: then
+both run at that; the wide sets at 3 (below). Full artifact cleanup before a
 cold and a restore arm: every git-ignored path except `node_modules`,
 `.yarn`, `.husky`, `.env*`, `.vx` and `.turbo` (the two caches, wiped
 separately for a cold arm). Each arm's output is kept as
