@@ -17,6 +17,8 @@ interface TraceEvent {
   ph: string
   name: string
   pid: number
+  tid?: number
+  ts?: number
   dur?: number
   args?: { name?: string; cpuMs?: number; peakRssBytes?: number }
 }
@@ -38,21 +40,41 @@ export function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: st
   for (const e of trace)
     if (e.ph === 'M' && e.name === 'process_name' && e.args?.name !== undefined)
       machine.set(e.pid, e.args.name)
-  const ran: Record<string, [number, number, number]> = {}
+  // A task's command inside it on its worker's lane: the task's span past
+  // it is the check and save, its cores free. Played whole, the sim held
+  // each task's cores 0.73 s past its command, where main d36eed9's
+  // workers ran 4 commands at once on 4 cores (2026-11-18).
+  const commands = new Map<string, TraceEvent[]>()
+  for (const e of trace)
+    if (e.ph === 'X' && e.name === 'command')
+      (
+        commands.get(`${e.pid}:${e.tid}`) ??
+        commands.set(`${e.pid}:${e.tid}`, []).get(`${e.pid}:${e.tid}`)!
+      ).push(e)
+  const commandOf = (e: TraceEvent): TraceEvent | undefined =>
+    commands
+      .get(`${e.pid}:${e.tid}`)
+      ?.find((c) => c.ts! >= e.ts! && c.ts! + c.dur! <= e.ts! + e.dur! + 1)
+  const ran: Record<string, [number, number, number] | [number, number, number, number]> = {}
   const platform = new Map<string, string>()
   for (const e of trace) {
     if (e.ph !== 'X' || e.args?.cpuMs === undefined || !(e.dur! > 0)) continue
-    const ms = Math.round(e.dur! / 1000)
+    const command = commandOf(e)
+    // The run's own lane spans a task from its queueing: a worker's says how it ran.
+    if (command === undefined && e.name in ran) continue
+    const ms = Math.max(1, Math.round((command ?? e).dur! / 1000))
+    const after = Math.round(e.dur! / 1000) - ms
     ran[e.name] = [
       ms,
       Math.round((e.args.cpuMs / ms) * 100) / 100,
       Math.round((e.args.peakRssBytes ?? 0) / 1e6),
-    ]
+      ...(command !== undefined && after > 0 ? [after] : []),
+    ] as [number, number, number] | [number, number, number, number]
     const p = PLATFORMS[(machine.get(e.pid) ?? '').split('#')[0]!.split('.').at(-1)!]
     if (p !== undefined && p !== 'linux-x64') platform.set(e.name, p)
   }
   return {
-    _: `${note}: the CI graph (cache: false for an uncached task), and the tasks that ran with how long each ran, its cores (cpu over wall) and peak RSS in MB; every other task hit`,
+    _: `${note}: the CI graph (cache: false for an uncached task), and the tasks that ran with how long each's command ran, its cores (cpu over wall), peak RSS in MB and the ms its worker took after the command; every other task hit`,
     nodes: dry.tasks.map((t) => ({
       id: t.id,
       deps: t.deps,

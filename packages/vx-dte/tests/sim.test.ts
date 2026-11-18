@@ -25,7 +25,12 @@ function load(f: Fixture, known?: (r: Ran) => NonNullable<SimTask['known']> | nu
   return f.nodes.map((n) => {
     const r = f.ran[n.id]
     if (r === undefined) return n
-    const ran = { ms: r[0]!, cores: r[1]!, memory: r[2]! * 1e6 }
+    const ran = {
+      ms: r[0]!,
+      cores: r[1]!,
+      memory: r[2]! * 1e6,
+      ...(r[3] === undefined ? {} : { afterMs: r[3] }),
+    }
     return { ...n, ran, ...(known === undefined ? {} : { known: known(ran) }) }
   })
 }
@@ -721,4 +726,26 @@ it('stretches a platform slower than the run by its own slowdown', () => {
     ...tasks.filter((x) => x.platform === 'linux').map((x) => r.endedAt.get(x.id)!),
   )
   expect(r.endMs).toBe(linux)
+})
+
+// A worker frees a task's cores when its command ends, and checks and saves
+// it after (`Orchestrator.unhold`): main d36eed9's workers ran 4 commands at
+// once on 4 cores, 0.73 s of each task past its command.
+it("frees a miss's cores at its command's end, and readies its dependants after its save", () => {
+  const one: Size = { name: 'one', max: 1, cpu: 1, memory: 16e9 }
+  const t = (id: string, deps: string[], afterMs?: number): SimTask => ({
+    id,
+    deps,
+    exec: true,
+    cache: true,
+    ran: { ms: 10_000, cores: 1, memory: 1e8, ...(afterMs === undefined ? {} : { afterMs }) },
+  })
+  const r = simulate([t('a', [], 5_000), t('b', []), t('c', ['a'])], {
+    sizes: [one],
+    likely: new Set(['a', 'b', 'c']),
+  })
+  const at = (id: string) => r.startedAt.get(id)! - r.startedAt.get('a')!
+  expect(at('b')).toBe(10_000)
+  expect(r.endedAt.get('a')! - r.startedAt.get('a')!).toBe(15_000)
+  expect(at('c')).toBeGreaterThanOrEqual(20_000)
 })

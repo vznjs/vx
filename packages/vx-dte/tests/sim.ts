@@ -36,8 +36,17 @@ export interface SimTask {
   readonly deps: readonly string[]
   readonly exec: boolean
   readonly cache: boolean
-  /** It missed: how long it ran, the cores it kept busy, its peak memory (bytes). */
-  readonly ran?: { readonly ms: number; readonly cores: number; readonly memory: number }
+  /**
+   * It missed: how long its command ran, the cores it kept busy, its peak
+   * memory (bytes), and how long its worker took after the command to
+   * check and save it (`afterMs`), its cores free (`Orchestrator.unhold`).
+   */
+  readonly ran?: {
+    readonly ms: number
+    readonly cores: number
+    readonly memory: number
+    readonly afterMs?: number
+  }
   /** What history said of it before the run, when that differs from how it ran; null: never measured; no cores: its time alone. */
   readonly known?: { readonly ms: number; readonly cores?: number; readonly memory: number } | null
   /** The platform core placed it on (`TaskNode.platform`). */
@@ -270,10 +279,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       executed.add(id)
       queue.add([id])
     } else if (t.ran === undefined && t.cache && (options.restoreMs ?? 0) > 0)
-      restoring.set(id, now + options.restoreMs!)
+      ending.set(id, now + options.restoreMs!)
     else end(id)
   }
-  const restoring = new Map<string, number>()
+  // A hit restoring, or a miss saving after its command: each ends at its time.
+  const ending = new Map<string, number>()
 
   const joined = (): Live[] =>
     workers.filter((w) => w.joinedAt !== undefined && w.leftAt === undefined)
@@ -618,7 +628,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     for (const w of starting()) next = Math.min(next, joinAt.get(w.id)!)
     if (again !== undefined) next = Math.min(next, again)
     next = Math.min(next, placing.next(now) ?? Infinity)
-    for (const at of restoring.values()) next = Math.min(next, at)
+    for (const at of ending.values()) next = Math.min(next, at)
     if (!learned) next = Math.min(next, options.historyAt!)
     if (next === Infinity) throw new Error(`sim: stuck at ${now} ms with ${queue.size} queued`)
     const dt = next - now
@@ -658,9 +668,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         w.joinedAt = now
         placing.joined(w.id, w.id, sizeOf.get(w.id)?.name)
       }
-    for (const [id, at] of restoring)
+    for (const [id, at] of ending)
       if (at <= now) {
-        restoring.delete(id)
+        ending.delete(id)
         end(id)
       }
     for (const w of joined())
@@ -669,15 +679,17 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           w.running.delete(r.id)
           w.has.add(r.id)
           if (byId.get(r.id)!.leaves === true) keep(r.id, w.id)
-          endedAt.set(r.id, now)
+          const after = byId.get(r.id)!.ran!.afterMs ?? 0
+          endedAt.set(r.id, now + after)
           if (r.knownMs !== undefined && r.knownMs > 0) {
             let sum = finished.get(w.platform)
             if (sum === undefined)
               finished.set(w.platform, (sum = { took: 0, forecast: 0, platform: w.platform }))
-            sum.took += now - r.startedAt
+            sum.took += now + after - r.startedAt
             sum.forecast += r.knownMs
           }
-          end(r.id)
+          if (after > 0) ending.set(r.id, now + after)
+          else end(r.id)
         }
     step()
   }
