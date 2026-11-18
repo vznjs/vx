@@ -260,6 +260,8 @@ platform claim or a timed test, and add new lessons there.
   `TELEMETRY_SCHEMA_VERSION` 4. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.
+  The vx version is in every key too (a release misses once); source runs
+  are all `0.0.0`, so there the bump still decides.
 - Key derivation: xxh3 seed-chained parts (seed fed forward: Bun reads 32
   bits of a seed, item 682), `\0` delimiters, git blob OIDs
   for tracked-clean files, pure-input transitive hashing, and the

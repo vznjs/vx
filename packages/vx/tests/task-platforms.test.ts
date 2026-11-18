@@ -415,6 +415,7 @@ describe('the platform in the key', () => {
     try {
       const base = {
         taskId: 'a#b',
+        vxVersion: '0.0.0',
         taskConfigHash: 'c',
         envValues: [],
         inputFiles: [],

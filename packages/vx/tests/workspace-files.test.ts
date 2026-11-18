@@ -354,6 +354,7 @@ describe('inputs.workspaceFiles resolution', () => {
       const keyFor = (inputFiles: string[]): Promise<string> =>
         cache.key({
           taskId: 'a#build',
+          vxVersion: '0.0.0',
           taskConfigHash: 'cfg',
           envValues: [],
           inputFiles,

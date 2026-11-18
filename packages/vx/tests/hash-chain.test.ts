@@ -75,6 +75,7 @@ describe('Cache.key over env values a 32-bit chain would merge (item 682)', () =
     // (N^2/2 x 2^-32 each); with 64 bits of state the expected count is ~0.
     const input = (v: string): CacheKeyInput => ({
       taskId: 'pkg#build',
+      vxVersion: '0.0.0',
       taskConfigHash: 'config',
       envValues: [['API_URL', v]],
       inputFiles: [],

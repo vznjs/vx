@@ -213,6 +213,7 @@ describe('Cache.key', () => {
   function baseInput(): CacheKeyInput {
     return {
       taskId: 'pkg#build',
+      vxVersion: '0.0.0',
       taskConfigHash: 'config-hash-base',
       envValues: [],
       inputFiles: [],
@@ -239,8 +240,8 @@ describe('Cache.key', () => {
   })
 
   it('changes when the resolved task config hash changes', async () => {
-    const a = await cache.key({ ...baseInput(), taskConfigHash: 'aaa' })
-    const b = await cache.key({ ...baseInput(), taskConfigHash: 'bbb' })
+    const a = await cache.key({ ...baseInput(), vxVersion: '0.0.0', taskConfigHash: 'aaa' })
+    const b = await cache.key({ ...baseInput(), vxVersion: '0.0.0', taskConfigHash: 'bbb' })
     expect(a).not.toBe(b)
   })
 
@@ -484,6 +485,7 @@ describe('Cache.key', () => {
     const full: CacheKeyInput = {
       ...baseInput(),
       taskId: 'pkg#build',
+      vxVersion: '0.0.0',
       taskConfigHash: 'cfg-1',
       forwardArgs: ['--watch', '--bail'],
       envValues: [['MODE', 'prod']],
@@ -511,6 +513,7 @@ describe('Cache.key', () => {
     const sink: Array<{ kind: string; name: string; hash: string }> = []
     await cache.key({
       ...baseInput(),
+      vxVersion: '0.0.0',
       taskConfigHash: 'cfg-x',
       forwardArgs: ['--flag'],
       envValues: [
@@ -556,8 +559,11 @@ describe('Cache.key', () => {
     const files = byKind('file')
     expect(files.map((r) => r.name).sort()).toEqual(['one.txt', 'two.txt'])
     // Total rows = sum of every component above.
-    expect(byKind('format')).toEqual([{ name: 'cache-version', hash: 'vx-cache-v56' }])
-    expect(sink.length).toBe(1 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
+    expect(byKind('format')).toEqual([
+      { name: 'cache-version', hash: 'vx-cache-v56' },
+      { name: 'vx-version', hash: '0.0.0' },
+    ])
+    expect(sink.length).toBe(2 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
   })
 
   it('captureInto never stores a plaintext secret value (only digests)', async () => {
@@ -3067,6 +3073,7 @@ describe('Cache schema/version recovery', () => {
     try {
       const input: CacheKeyInput = {
         taskId: 'pkg#build',
+        vxVersion: '0.0.0',
         taskConfigHash: 'cfg',
         envValues: [],
         inputFiles: [],
