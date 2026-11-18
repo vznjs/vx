@@ -11,6 +11,8 @@
         "cache-dir-in-outputs",
         "clean-readonly-dir",
         "deferred-output-empty",
+        "everyday-ops-differential",
+        "keyless-through-server",
         "ignored-glob-warning",
         "key-not-derived",
         "lock-edges",
@@ -22,6 +24,7 @@
         "server-chain-stop-order",
         "server-died-under-task",
         "server-stops-unneeded",
+        "signal-tstp",
         "stale-hit-git-enumeration",
         "uncached-outputs",
         "unlistable-input-dir",
@@ -259,6 +262,7 @@
         "sandbox-node-modules-link.unsafe",
         "sandbox-noscan-dir.unsafe",
         "sandbox-noscan-gone.unsafe",
+        "sandbox-observe.unsafe",
         "sandbox-observer-drain.unsafe",
         "sandbox-open-flags",
         "sandbox-openat2.unsafe",
@@ -800,7 +804,7 @@
         "held-server-exit",
         "held-server-output",
         "hide-env.unsafe",
-        "history-stream",
+        "hit-rows",
         "home-guard",
         "index-schema-race",
         "index-write-wait",
@@ -810,6 +814,7 @@
         "invocation-secret-mask",
         "keep-alive",
         "keep-alive-sigkill",
+        "kept-hits",
         "key-fold",
         "kill-tree-guard-backlog",
         "kill-tree-guard-lines.unsafe",
@@ -831,6 +836,7 @@
         "notice",
         "npm-launcher",
         "npm-launcher-sh",
+        "observe-helper.unsafe",
         "options-resolve",
         "orchestrator",
         "orchestrator-remote",
@@ -857,6 +863,7 @@
         "recursive-run",
         "refusal-notice",
         "refused-run-region.unsafe",
+        "rel-posix",
         "replay-fidelity",
         "repo-facts-disk",
         "resave-aside",
@@ -1095,14 +1102,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1011,
-        "can": 1011,
-        "of": 1013
+        "pass": 1012,
+        "can": 1012,
+        "of": 1014
       },
       "correctness": {
-        "pass": 833,
-        "can": 833,
-        "of": 835
+        "pass": 834,
+        "can": 834,
+        "of": 836
       },
       "efficiency": {
         "pass": 169,
@@ -1165,21 +1172,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 33,
-        "can": 33,
-        "of": 33
+        "pass": 34,
+        "can": 34,
+        "of": 34
       }
     },
     "turbo": {
       "all": {
-        "pass": 637,
-        "can": 925,
-        "of": 1013
+        "pass": 638,
+        "can": 926,
+        "of": 1014
       },
       "correctness": {
-        "pass": 514,
-        "can": 753,
-        "of": 835
+        "pass": 515,
+        "can": 754,
+        "of": 836
       },
       "efficiency": {
         "pass": 119,
@@ -1242,21 +1249,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 29,
-        "can": 33,
-        "of": 33
+        "pass": 30,
+        "can": 34,
+        "of": 34
       }
     },
     "nx": {
       "all": {
         "pass": 653,
-        "can": 950,
-        "of": 1013
+        "can": 951,
+        "of": 1014
       },
       "correctness": {
         "pass": 493,
-        "can": 774,
-        "of": 835
+        "can": 775,
+        "of": 836
       },
       "efficiency": {
         "pass": 156,
@@ -1320,20 +1327,20 @@
       },
       "watch": {
         "pass": 28,
-        "can": 33,
-        "of": 33
+        "can": 34,
+        "of": 34
       }
     },
     "vite-task": {
       "all": {
         "pass": 506,
         "can": 759,
-        "of": 1013
+        "of": 1014
       },
       "correctness": {
         "pass": 417,
         "can": 629,
-        "of": 835
+        "of": 836
       },
       "efficiency": {
         "pass": 87,
@@ -1398,19 +1405,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 33
+        "of": 34
       }
     },
     "nix": {
       "all": {
         "pass": 486,
         "can": 724,
-        "of": 1013
+        "of": 1014
       },
       "correctness": {
         "pass": 418,
         "can": 601,
-        "of": 835
+        "of": 836
       },
       "efficiency": {
         "pass": 66,
@@ -1475,19 +1482,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 33
+        "of": 34
       }
     },
     "moon": {
       "all": {
         "pass": 590,
         "can": 909,
-        "of": 1013
+        "of": 1014
       },
       "correctness": {
         "pass": 458,
         "can": 746,
-        "of": 835
+        "of": 836
       },
       "efficiency": {
         "pass": 127,
@@ -1552,7 +1559,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 33
+        "of": 34
       }
     }
   },
@@ -33513,6 +33520,41 @@
           "status": "fail",
           "step": 1,
           "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/edit-beside-running-task-in-first-run-rebuilds",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit made during the watch’s first build, to a finished task whose project still runs another, is built right after",
+      "why": "A project often has two tasks, one feeding the other, and the first build of a watch finishes the first while the second still runs. A save to the first task’s source then lands while a command of the same project is writing there. Taking the save for that command’s own write drops it, and the watch idles on output from the old bytes until the next save.",
+      "from": [
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run app#gen"
         },
         "vite-task": {
           "status": "n/a",

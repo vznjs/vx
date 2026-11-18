@@ -430,6 +430,49 @@ export default [
   }),
 
   watchCase({
+    id: 'watch/edit-beside-running-task-in-first-run-rebuilds',
+    kind: 'correctness',
+    title:
+      'An edit made during the watch’s first build, to a finished task whose project still runs another, is built right after',
+    why: 'A project often has two tasks, one feeding the other, and the first build of a watch finishes the first while the second still runs. A save to the first task’s source then lands while a command of the same project is writing there. Taking the save for that command’s own write drops it, and the watch idles on output from the old bytes until the next save.',
+    from: ['watch-initial-edit-done'],
+    workspace: {
+      projects: {
+        app: {
+          tasks: {
+            gen: {
+              command: 'mkdir -p gen && cat schema/*.txt > gen/out.txt',
+              inputs: ['schema/**'],
+              outputs: ['gen/**'],
+            },
+            // `started` once gen is done, so the edit lands after it, beside this command.
+            build: {
+              command:
+                'mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt',
+              dependsOn: ['gen'],
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'a1\n', 'schema/s.txt': 's1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          files: { 'packages/app/gen/out.txt': 's1\n', 'packages/app/dist/started': 'a1\n' },
+          inFlight: true,
+        },
+      },
+      {
+        write: { 'packages/app/schema/s.txt': 's2\n' },
+        expect: { ran: ['app#gen'], files: { 'packages/app/gen/out.txt': 's2\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
     id: 'watch/keeps-watching-after-failure',
     kind: 'correctness',
     title: 'A build that fails while watching is built again once the source is fixed',
