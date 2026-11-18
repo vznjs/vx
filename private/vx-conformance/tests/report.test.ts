@@ -4,6 +4,7 @@ import { scores, scoreTable, type Results } from '../src/report.ts'
 const rows: Results['cases'] = [
   {
     id: 'inputs/x',
+    ref: 'aaaaaa',
     category: 'inputs',
     kind: 'correctness',
     title: 'X',
@@ -13,6 +14,7 @@ const rows: Results['cases'] = [
   },
   {
     id: 'report/y',
+    ref: 'bbbbbb',
     category: 'report',
     kind: 'data',
     title: 'Y',
