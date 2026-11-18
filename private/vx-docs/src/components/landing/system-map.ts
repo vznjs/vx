@@ -172,6 +172,8 @@ export interface Dot {
   back: boolean
   tone: Tone
   label: string
+  /** Its trip, when not `TRAVEL_MS`: a step's one message spans the step (M, 2026-11-18). */
+  dur?: number
 }
 
 /** A worker on its slot. */
@@ -214,8 +216,9 @@ export interface Play {
 
 /** A message's trip along one wire, at a pace an eye follows: as slow as Schedule's 5 s allows, its chain (timings, plan, start, boot, join, first task) filling it. */
 export const TRAVEL_MS = 600
-/** Each step's window (M, 2026-11-18): the tasks' part of the run fills Run's, 5 s. */
+/** Each step's window (M, 2026-11-18): 5 s, and Run's 10 s, which the tasks' part of the run fills. */
 export const STEP_MS = 5000
+const RUN_MS = 10_000
 /** A worker's boot, shown as 2 s whatever the run's took (M, 2026-11-18). */
 export const BOOT_MS = 2000
 /** The steps in the order a run reaches them: the cache's probe answers before the first plan. */
@@ -241,7 +244,10 @@ function hookOf(d: Dot): (typeof ORDER)[number] | undefined {
 export function play(run: Run): Play {
   const dots: Dot[] = []
   const T = TRAVEL_MS
-  const at = (g: (typeof ORDER)[number]): number => ORDER.indexOf(g) * STEP_MS
+  const len = (g: (typeof ORDER)[number]): number => (g === 'run' ? RUN_MS : STEP_MS)
+  const at = (g: (typeof ORDER)[number]): number =>
+    ORDER.slice(0, ORDER.indexOf(g)).reduce((n, x) => n + len(x), 0)
+  const loop = at('report') + len('report')
   // The boxes a step works with, and the wires of its one-off reads and
   // writes, lit for its whole window (M, 2026-11-18).
   const WITH: Record<(typeof ORDER)[number], [string[], string[]]> = {
@@ -264,15 +270,22 @@ export function play(run: Run): Play {
       ['ci', 'history'],
     ],
   }
-  const steps = ORDER.map((group, i) => ({
+  const steps = ORDER.map((group) => ({
     group,
-    from: i * STEP_MS,
-    to: (i + 1) * STEP_MS,
+    from: at(group),
+    to: at(group) + len(group),
     boxes: WITH[group][0],
     wires: WITH[group][1],
   }))
-  const dot = (when: number, wire: string, tone: Tone, label: string, back = false): void => {
-    dots.push({ at: when, wire, back, tone, label })
+  const dot = (
+    when: number,
+    wire: string,
+    tone: Tone,
+    label: string,
+    back = false,
+    dur?: number,
+  ): void => {
+    dots.push({ at: when, wire, back, tone, label, ...(dur === undefined ? {} : { dur }) })
   }
   const ran = run.tasks
     .filter((x) => !x.hit)
@@ -280,22 +293,22 @@ export function play(run: Run): Play {
   const first = ran[0]!.startMs!
   const last = Math.max(...ran.map((x) => x.endMs!))
   const zero = at('run')
-  const scale = STEP_MS / (last - first)
+  const scale = len('run') / (last - first)
   const t = (ms: number): number => zero + (ms - first) * scale
   const end = t(last)
-  const lead = 600
-
+  // A step whose work is one message lets that message take the whole step.
+  const S = STEP_MS
   // Setup: the workspace's config, and the cache scope vx-ci reads from the CI it runs on.
-  dot(at('setup') + lead, 'ws', 'read', 'config')
-  dot(at('setup') + lead, 'ci', 'read', 'CI scope')
+  dot(at('setup'), 'ws', 'read', 'config', false, S)
+  dot(at('setup'), 'ci', 'read', 'CI scope', false, S)
   // Graph: the configs, the lockfile and a Turbo or Nx graph resolve into keyed tasks.
-  dot(at('graph') + lead, 'ws', 'read', 'projects')
-  dot(at('graph') + lead, 'lockfile', 'read', 'lockfile')
-  dot(at('graph') + lead, 'migrate', 'read', 'graph')
-  // Cache: the probe asks for every key at once; the hits restore without running.
-  const probe = at('cache') + lead
-  dot(probe, 'cache', 'remote', 'probe')
-  dot(probe + T, 'cache', 'remote', 'hits', true)
+  dot(at('graph'), 'ws', 'read', 'projects', false, S)
+  dot(at('graph'), 'lockfile', 'read', 'lockfile', false, S)
+  dot(at('graph'), 'migrate', 'read', 'graph', false, S)
+  // Cache: the probe asks for every key at once, and the hits come back
+  // restored without running, half the step each way.
+  const probe = at('cache')
+  dot(probe, 'cache', 'remote', 'probe', false, S / 2)
   // Schedule: history's timings, then vx hands the plan to DTE, which
   // starts the workers and orchestrates them from here on.
   dot(at('schedule'), 'history', 'read', 'timings')
@@ -305,13 +318,18 @@ export function play(run: Run): Play {
   // When a task's inputs are all there: a hit restores then.
   const readyMs = (id: string): number =>
     Math.max(0, ...byId.get(id)!.deps.map((d) => byId.get(d)!.endMs ?? readyMs(d)))
-  const hits = run.tasks
-    .filter((x) => x.hit)
-    .map((x, i) => (readyMs(x.id) <= first ? probe + 2 * T + i * 300 : t(readyMs(x.id))))
-  for (const h of hits) {
-    dot(h, 'cache', 'remote', 'restore', true)
-    dot(h + T, 'reports', 'report', 'span')
+  const held = run.tasks.filter((x) => x.hit)
+  const hits = held.map((x) => (readyMs(x.id) <= first ? probe + S / 2 : t(readyMs(x.id))))
+  // The hits ready at the start come back as one answer; one ready later restores as it is.
+  if (hits.some((h) => h === probe + S / 2)) {
+    dot(probe + S / 2, 'cache', 'remote', 'restore', true, S / 2)
+    dot(probe + S / 2, 'reports', 'report', 'span', false, S / 2)
   }
+  for (const h of hits)
+    if (h !== probe + S / 2) {
+      dot(h, 'cache', 'remote', 'restore', true)
+      dot(h + T, 'reports', 'report', 'span')
+    }
 
   // Each worker takes the first slot free when it starts.
   const workers = [...run.workers].sort((a, b) => a.spawnMs - b.spawnMs)
@@ -373,9 +391,9 @@ export function play(run: Run): Play {
     dot(stop + 2 * T, 'reports', 'report', 'span')
   }
   // Report: the job summary is written and the run's timings go back to history.
-  const down = Math.max(at('report') + lead, end + 3 * T)
-  dot(down, 'ci', 'report', 'summary', true)
-  dot(down, 'history', 'report', 'timings', true)
+  const down = Math.max(at('report'), end + 3 * T)
+  dot(down, 'ci', 'report', 'summary', true, loop - down)
+  dot(down, 'history', 'report', 'timings', true, loop - down)
 
   // A group lights for its step's window and, outside it, only while vx
   // calls its hooks: a message vx sent or answered through them travels.
@@ -385,7 +403,7 @@ export function play(run: Run): Play {
   )
   for (const d of dots) {
     const g = hookOf(d)
-    if (g !== undefined) lit[g]!.push([d.at, d.at + T + 250])
+    if (g !== undefined) lit[g]!.push([d.at, d.at + (d.dur ?? T) + 250])
   }
   dots.sort((a, b) => a.at - b.at)
   return {
@@ -399,7 +417,7 @@ export function play(run: Run): Play {
     first,
     scale,
     end,
-    loop: ORDER.length * STEP_MS,
+    loop,
   }
 }
 

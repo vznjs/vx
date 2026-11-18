@@ -542,16 +542,38 @@ describe('the hero run', () => {
     expect(clash.map((b) => b.id)).toEqual([])
   })
 
-  // M (2026-11-18): one card a step, every step 5 s; the tasks together
-  // fill Run's 5 s; a worker boots in 2 s.
-  it('gives each step 5 s, the tasks Run’s 5 s, each boot 2 s', () => {
-    expect(P.steps.map((x) => x.to - x.from)).toEqual(map.GROUPS.map(() => map.STEP_MS))
+  // M (2026-11-18): one card a step, every step 5 s but Run's 10 s, which
+  // the tasks together fill; a worker boots in 2 s.
+  // M (2026-11-18): never a moment of waiting for time.
+  it('keeps something moving through every moment of the loop', () => {
+    const busy: [number, number][] = [
+      ...P.dots.map((d): [number, number] => [d.at, d.at + (d.dur ?? map.TRAVEL_MS)]),
+      ...P.lanes.map((l): [number, number] => [l.spawn, l.join]),
+      ...P.bars.map((b): [number, number] => [b.start, b.end]),
+    ]
+    const idle: number[] = []
+    for (let t = 0; t < P.loop; t += 50) if (!busy.some(([a, b]) => a <= t && t < b)) idle.push(t)
+    expect(idle).toEqual([])
+  })
+
+  it('gives each step 5 s, the tasks Run’s 10 s, each boot 2 s', () => {
+    expect(P.steps.map((x) => x.to - x.from)).toEqual(
+      map.GROUPS.map((g) => (g.id === 'run' ? 2 * map.STEP_MS : map.STEP_MS)),
+    )
     expect(P.steps.map((x) => x.group)).toEqual(map.GROUPS.map((g) => g.id))
     const run = P.steps.find((x) => x.group === 'run')!
     expect(Math.min(...P.bars.map((b) => b.start))).toBeCloseTo(run.from, 6)
     expect(Math.max(...P.bars.map((b) => b.end))).toBeCloseTo(run.to, 6)
     for (const l of P.lanes) expect(l.join - l.spawn).toBe(map.BOOT_MS)
-    expect(P.dots.every((d) => d.at >= 0 && d.at < P.loop && d.label !== '')).toBe(true)
+    expect(
+      P.dots.every((d) => d.at >= 0 && d.at + (d.dur ?? map.TRAVEL_MS) <= P.loop && d.label !== ''),
+    ).toBe(true)
+    // A step whose work is one message lets it take the whole step.
+    for (const g of ['setup', 'graph']) {
+      const step = P.steps.find((x) => x.group === g)!
+      for (const d of P.dots.filter((x) => x.at >= step.from && x.at < step.to))
+        expect([d.at, d.at + d.dur!]).toEqual([step.from, step.to])
+    }
   })
 
   // M (2026-11-18): a step's group lights for its 5 s; outside it, only

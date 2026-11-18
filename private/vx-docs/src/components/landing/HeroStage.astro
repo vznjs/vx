@@ -190,7 +190,7 @@ const specs = [
       let n = 0
       for (const d of P.dots) {
         if (d.at > t) break
-        const k = (t - d.at) / T
+        const k = (t - d.at) / (d.dur ?? T)
         if (k >= 1) continue
         const p = v.paths.get(d.wire)
         if (!p) continue
@@ -226,7 +226,7 @@ const specs = [
         w.classList.toggle('live', on)
         if (on) {
           const d = live.has(id)
-            ? P.dots.find((x) => x.wire === id && x.at <= t && t < x.at + T)
+            ? P.dots.find((x) => x.wire === id && x.at <= t && t < x.at + (x.dur ?? T))
             : P.dots.find((x) => x.wire === id && x.at >= cur!.from && x.at < cur!.to)
           w.dataset['tone'] = d?.tone ?? ''
         }
