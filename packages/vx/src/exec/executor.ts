@@ -510,8 +510,9 @@ export interface Distribution {
    */
   machines?(): readonly MachineReport[]
   /**
-   * The end no run of these tasks could beat: its longest chain, each task
-   * as long as it took, none waiting for a machine, for the summary. Once at
+   * The end no run of these tasks could beat with the machines it may
+   * start: its longest chain, each task as long as it took, or later where
+   * a platform's work fills them all, for the summary. Once at
    * the end, only with a sink. A throw or a non-finite number reports none.
    */
   idealMs?(): number | undefined
