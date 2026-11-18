@@ -33,7 +33,7 @@ import {
 import { CLOSED, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { maskedLine, printable, restartTimings } from '../util/index.js'
+import { maskedLine, printable, restartTimings, untimed } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import { isCacheHit } from '../graph/index.js'
@@ -1241,7 +1241,7 @@ class WatchLoop {
     keys: ReadonlyMap<string, string>,
   ): Promise<void> {
     try {
-      const plan = await planCore({ ...this.opts, log: SILENT, cache: KEYS_ONLY })
+      const plan = await untimed(() => planCore({ ...this.opts, log: SILENT, cache: KEYS_ONLY }))
       const moved = plan.tasks.some((t) => {
         const was = keys.get(t.node.id)
         return was !== undefined && was !== t.hash
