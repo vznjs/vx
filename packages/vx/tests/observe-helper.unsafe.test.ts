@@ -83,4 +83,22 @@ describe.skipIf(!runs)('vx-observe', () => {
       '<tmp>/c.txt',
     ])
   })
+
+  it('leaves out a write under a path the runtime lets every task write, but not one in the project', () => {
+    const trace = [
+      'W openat "/tmp/claude/t/a.txt"',
+      'W unlinkat "/tmp/claude/t/../t/a.txt"',
+      'W openat "/tmp/claude/ws/proj/.git/hooks/x"',
+      'W openat "/tmp/claudette/b.txt"',
+      'W mkdirat "/home/u/out"',
+    ].join('\n')
+    expect(
+      observedWrites(trace, { writable: ['/tmp/claude'], within: '/tmp/claude/ws/proj' }),
+    ).toEqual([
+      'deny openat /tmp/claude/ws/proj/.git/hooks/x',
+      'deny openat /tmp/claudette/b.txt',
+      'deny mkdirat /home/u/out',
+    ])
+    expect(observedWrites(trace)).toHaveLength(5)
+  })
 })
