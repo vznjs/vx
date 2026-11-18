@@ -302,8 +302,8 @@ export interface RunSummaryRecord {
    */
   machines?: readonly MachineReport[]
   /**
-   * The run's end had an executor placed its tasks perfectly
-   * (`TaskExecutor.idealMs`), beside `totalDurationMs`. Additive.
+   * The run's end had an executor placed its tasks best on the machines it
+   * may start (`TaskExecutor.idealMs`), beside `totalDurationMs`. Additive.
    */
   idealMs?: number
   /** The workers that would have run it best (`TaskExecutor.advice`). Additive. */

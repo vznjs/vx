@@ -527,9 +527,10 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   `ExecuteResult.machine` (`{ cores; memoryBytes; cpuShare? }`) is the size of the
   machine `where` names, which the run history keeps, and the share of a
   core the task's threads got there (history divides its CPU by it)
-  — `idealMs()` is the end no run of these tasks could beat: its longest
-  chain, each task as long as it took, none waiting (the run summary's
-  `idealMs`, shown beside the real time)
+  — `idealMs()` is the end no run of these tasks could beat with the
+  workers it may start: its longest chain, each task as long as it took,
+  or later where a platform's work fills all the cores it may start (the
+  run summary's `idealMs`, shown beside the real time)
   — `advice()` returns the workers that would have run it best, from the
   same replay, as `WorkerAdvice` (`{ of: 'declared' | 'more' | 'any';
 endMs; workers: { count; cores; memoryBytes; platform?; size? }[] }`):

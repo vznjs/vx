@@ -1689,14 +1689,15 @@ it('counts the CPU each worker held, idle and cancelled ones too', async () => {
   expect(held).toBeLessThanOrEqual(2 * (t5 - t0) + 8 * (t3 - t0))
   const rows = h.o
     .footer(
+      undefined,
       () => 98_240,
       undefined,
       undefined,
       () => 125_000,
     )
     .map(([, line]) => ui.inline(line, { enabled: false }))
-  expect(rows.find((r) => r.startsWith('ideal'))).toMatch(
-    /^ideal +98\.2s: its longest chain as long as it took, no task waiting for a worker, holding 2\.1 core-min at least$/,
+  expect(rows.find((r) => r.startsWith('perfect'))).toMatch(
+    /^perfect +98\.2s: its longest chain as long as it took, no task waiting for a worker, holding 2\.1 core-min at least$/,
   )
   expect(rows.find((r) => r.startsWith('total'))).toMatch(/ · held \d+\.\d core-s$/)
 })
@@ -2367,10 +2368,10 @@ it('a worker that left is not failed or replaced when its job then ends', async 
 })
 
 // 2026-10-23: "we need the ideal time possible taking into account actual run numbers".
-it('the ideal end is the longest chain of what each task took', async () => {
+it('the perfect end is the longest chain of what each task took', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
-    expect(h.o.idealMs(() => [])).toBeUndefined()
+    expect(h.o.perfectMs(() => [])).toBeUndefined()
     const w = await h.worker(4)
     await Bun.sleep(50)
     const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
@@ -2380,8 +2381,8 @@ it('the ideal end is the longest chain of what each task took', async () => {
     await w.finish('t2', 'k-t2', { ...done, durationMs: 400, cpuMs: 400 })
     await Promise.all(runs)
     // Side by side the longer ends it; one after the other, both.
-    expect(h.o.idealMs(() => [])).toBe(400)
-    expect(h.o.idealMs((id) => (id === 't2' ? ['t1'] : []))).toBe(600)
+    expect(h.o.perfectMs(() => [])).toBe(400)
+    expect(h.o.perfectMs((id) => (id === 't2' ? ['t1'] : []))).toBe(600)
   } finally {
     await h.stop()
   }
@@ -2390,7 +2391,7 @@ it('the ideal end is the longest chain of what each task took', async () => {
 // The ideal was a replay on the sizes' workers under the run's own
 // placing rule, and main's run ended before it (170.5 s against 181.8 s).
 // It is the floor: no task waits for room.
-it('the ideal is a floor no run beats: no task in it waits for room', async () => {
+it('the perfect end is a floor no run beats: no task in it waits for room', async () => {
   const ids = ['t1', 't2', 't3', 't4']
   const h = await harness(new Map(ids.map((id) => node(id))))
   try {
@@ -2402,7 +2403,16 @@ it('the ideal is a floor no run beats: no task in it waits for room', async () =
       await w.finish(id, `k-${id}`, { exitCode: 0, durationMs: 400, cpuMs: 100 })
     await Promise.all(runs)
     // Four on a worker with room for two: a replay there read 800.
-    expect(h.o.idealMs(() => [])).toBe(400)
+    const perfect = h.o.perfectMs(() => [])!
+    expect(perfect).toBe(400)
+    // 2026-11-18: "we shoud have a ideal time with current configuration
+    // not perfect". Ideal: the four's 1,600 core-ms on the one 2-core
+    // worker its size allows, from that worker's warm-up.
+    const size = (max: number, cpu: number) => [{ name: 'small', max, cpu, memory: 16e9 }]
+    expect(h.o.idealMs(() => [], size(1, 2))! - perfect).toBeGreaterThanOrEqual(400)
+    // CONTROL: sizes with room for all four end it at its perfect end.
+    expect(h.o.idealMs(() => [], size(4, 4))).toBe(perfect)
+    expect(h.o.idealMs(() => [], [])).toBe(perfect)
   } finally {
     await h.stop()
   }
@@ -2483,7 +2493,7 @@ it('replays a crowded task with the cores it used, never above the real run', as
     await w.finish('t2', 'k-t2', crowded)
     await Promise.all(runs)
     expect(h.o.finished(() => undefined).map((t) => t.took)).toEqual([400, 400])
-    expect(h.o.idealMs(() => [])).toBe(400)
+    expect(h.o.perfectMs(() => [])).toBe(400)
   } finally {
     await h.stop()
   }
@@ -2515,13 +2525,14 @@ it('names what kept the run from its ideal: a worker joining late, then no room 
     const rows = h.o
       .footer(
         () => 10,
+        () => 10,
         undefined,
         () => h.o.driftOf(() => []),
       )
       .map(([, line]) => ui.inline(line, { enabled: false }))
     expect(rows.filter((r) => r.startsWith('drift'))).toEqual([
       expect.stringMatching(
-        /^drift +\+\d+\.\ds past ideal: workers joining 0\.\ds · waiting for room 0\.\ds( · sending inputs \d+\.\ds)?( · after the last task \d+\.\ds)?$/,
+        /^drift +\+\d+\.\ds past ideal, \+\d+\.\ds past perfect: workers joining 0\.\ds · waiting for room 0\.\ds( · sending inputs \d+\.\ds)?( · after the last task \d+\.\ds)?$/,
       ),
     ])
   } finally {
@@ -2580,12 +2591,13 @@ it("names the time a dependency's files took to come home", async () => {
     const rows = h.o
       .footer(
         () => 10,
+        () => 10,
         undefined,
         () => h.o.driftOf(depsOf),
       )
       .map(([, line]) => ui.inline(line, { enabled: false }))
     expect(rows.filter((r) => r.startsWith('drift'))).toEqual([
-      expect.stringMatching(/past ideal: files coming home 0\.[2-4]s/),
+      expect.stringMatching(/past perfect: files coming home 0\.[2-4]s/),
     ])
   } finally {
     await h.stop()
@@ -2661,7 +2673,12 @@ it('the final summary says how each worker ended, its size and machine under it'
   h.o.release([b.id])
   expect(await b.types()).toContain('exit')
   await h.stop()
-  const rows = h.o.footer(() => 98_240).map(([, line]) => ui.inline(line, { enabled: false }))
+  const rows = h.o
+    .footer(
+      () => 120_500,
+      () => 98_240,
+    )
+    .map(([, line]) => ui.inline(line, { enabled: false }))
   const at = (label: string) => rows.findIndex((r) => r.startsWith(label + ' '))
   expect(rows[at('worker#1')]).toMatch(/^worker#1 +lost/)
   expect(rows[at('small#1')]).toMatch(/^small#1 +stopped/)
@@ -2677,10 +2694,14 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), estimate 70\.0s$/),
   ])
-  // Every log carries how close the run came, beside core's time row (2026-10-23).
-  expect(rows.filter((r) => r.startsWith('ideal'))).toEqual([
+  // Every log carries how close the run came, beside core's time row
+  // (2026-10-23): to the best its sizes allow, and with no cap (2026-11-18).
+  expect(rows.filter((r) => /^(ideal|perfect) /.test(r))).toEqual([
     expect.stringMatching(
-      /^ideal +98\.2s: its longest chain as long as it took, no task waiting for a worker$/,
+      /^ideal +120\.5s: the best the workers it may start allow, its longest chain or each platform's work on all their cores$/,
+    ),
+    expect.stringMatching(
+      /^perfect +98\.2s: its longest chain as long as it took, no task waiting for a worker$/,
     ),
   ])
   // Main 68b851d: 41 of 119 unmeasured, each a whole worker, and the
