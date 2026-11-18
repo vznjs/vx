@@ -961,9 +961,10 @@ const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
 /** The calls the observer records twice, source and destination, in that order. */
 const MOVES = /^(?:rename|link)/
 /**
- * The observer's opens that may be reads: an `openat2`'s flags lie in a
- * struct its seccomp filter cannot read, so it takes every one, and its
- * record names no flags. strace never sees one (USER_NOTIF wins over
+ * SRT's observer's opens that may be reads (the strace fallback): an
+ * `openat2`'s flags lie in a struct its seccomp filter cannot read, so it
+ * takes every one, and its record names no flags. vx's own observer reads
+ * them and reports a read as an `openat`. strace never sees one (USER_NOTIF wins over
  * TRACE), so this record is the only trace of an `openat2` read.
  */
 const OPEN_EITHER = /^openat2$/
