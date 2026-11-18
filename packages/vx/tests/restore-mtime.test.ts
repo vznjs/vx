@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { fsClockNow } from '../src/memo/index.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -99,7 +100,7 @@ it(
     // Back to v1 with b's input edited: a restores, b runs over it.
     await write(path.join(a, 'src', 'lib.txt'), 'v1')
     await write(path.join(b, 'src', 'readme'), 'edited')
-    const before = Date.now()
+    const before = Math.floor(fsClockNow(root))
     vx(root, 'run', 'build', '--all')
     expect(await readFile(out, 'utf8')).toBe('v1')
     expect(statSync(lib).mtimeMs).toBeGreaterThanOrEqual(before)

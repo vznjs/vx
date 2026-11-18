@@ -620,7 +620,7 @@ describePerf('cache baseline: save + restore', () => {
     await mkdir(dest, { recursive: true })
 
     // The kernel stamps a write from its own clock, which may lag Date.now().
-    const since = fsClockNow(dest)
+    const since = Math.floor(fsClockNow(dest))
     await cache.restoreOutputs('e2e-mf', dest)
     const oneFile = path.join(dest, 'dist', 'out0.js')
     const source = await stat(path.join(projectDir, 'dist', 'out0.js'))
@@ -640,7 +640,7 @@ describePerf('cache baseline: save + restore', () => {
     expect((await stat(oneFile)).size).toBe(source.size)
     await Bun.write(oneFile, 'corrupted-different-size')
     expect((await stat(oneFile)).size).not.toBe(source.size)
-    const repaired = fsClockNow(dest)
+    const repaired = Math.floor(fsClockNow(dest))
     await cache.restoreOutputs('e2e-mf', dest)
     expect((await stat(oneFile)).size).toBe(source.size)
     expect((await stat(oneFile)).mtimeMs).toBeGreaterThanOrEqual(repaired)

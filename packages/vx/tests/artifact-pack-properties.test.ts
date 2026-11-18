@@ -33,6 +33,7 @@ import { ArchiveSecurityError, extractArtifactStream } from '../src/cache/archiv
 import { ArtifactVanishedError, Cache, CorruptArtifactError } from '../src/cache/cache.js'
 import { TarFormatError } from '../src/cache/tar-stream.js'
 import { UserError } from '../src/util/index.js'
+import { fsClockNow } from '../src/memo/index.js'
 import { streamOf } from './helpers/stream.js'
 import { replaceStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
@@ -281,7 +282,7 @@ describe('Cache.save → restoreOutputs, seeded', () => {
         const stored = storedArtifact(cache, hash)!
         expect(same(stored, compressed), `${ctx}: stored`).toBe(true)
         const dest = fresh('d')
-        const since = Date.now()
+        const since = Math.floor(fsClockNow(path.dirname(dest)))
         await cache.restoreOutputs(hash, dest)
         expectTree(snapshot(dest), want, ctx, since)
       }
@@ -429,7 +430,7 @@ describe('a damaged artifact, seeded', () => {
             outcomes.refused++
           } else {
             const dest = fresh('r')
-            const since = Date.now()
+            const since = Math.floor(fsClockNow(path.dirname(dest)))
             await cache.restoreOutputs(hash, dest)
             expectTree(snapshot(dest), want, ctx, since)
             outcomes.exact++
@@ -450,7 +451,7 @@ describe('a damaged artifact, seeded', () => {
           await local.save(args)
           replaceStoredArtifact(local, hash, bad)
           const dest = fresh('l')
-          const since = Date.now()
+          const since = Math.floor(fsClockNow(path.dirname(dest)))
           const lerr = await local.restoreOutputs(hash, dest).then(
             () => null,
             (e: Error) => e,
