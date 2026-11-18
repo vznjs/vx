@@ -1405,6 +1405,9 @@ async function runOnBus(
             for (const id of ids) if (nodes.has(id)) sharedFlaky.add(id)
           },
         })
+    // The stats a thread took while git walked (`warmOutputs`): in by now,
+    // it has had the stages since.
+    await prepared.localCache.memo.warmSettled()
     mark('schedule')
     // Judged as each task finishes, against history before this run's rows
     // land, so the row carries the verdict and nothing prints below the footer.
@@ -1592,6 +1595,11 @@ async function runOnBus(
       execute: (node, upstream) => {
         const skip = platformSkip(node)
         if (skip !== undefined) return Promise.resolve(skip)
+        // A command that is no probed hit may write anywhere: what was
+        // statted before the graph started proves no hit from here on. A
+        // hit drops them itself when it restores (`restoreHit`).
+        if (node.config.exec !== undefined && !shortCircuit.restoreTier.has(node.id))
+          cache.memo.dropWarm?.()
         const held = heldBefore.kept.get(node.id)
         const up = keyUpstream(node, upstream)
         if (held === undefined) return executeWithDedup(node, up)
@@ -1697,10 +1705,13 @@ async function runOnBus(
       continueAlways: options.continueMode === 'always',
       endedBeforeStop: stop.endedBeforeStop,
     })
+    // A `setup` hook may have written: what was stat'ed before it proves no hit.
+    if (prepared.plugins.some((p) => p.setup !== undefined)) prepared.localCache.memo.dropWarm()
 
     // A packed hit is kept with the bundle, not written as a row of it.
     unfold()
     const landed = packed
+    prepared.localCache.memo.dropWarm()
     mark('run graph')
 
     // Clear the status line for good before the summary prints.

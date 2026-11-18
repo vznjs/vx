@@ -204,6 +204,7 @@ here, itself or in a brace group.
 | [`memo.md`](./memo.md#srcmemofold-memots--each-tasks-last-key-by-its-probe)           | `src/memo/fold-memo.ts` — each task's last key by its probe.                              |
 | [`memo.md`](./memo.md#srcmemofs-clockts--the-file-system-clock)                       | `src/memo/fs-clock.ts` — the file system clock lag every racy window adds.                |
 | [`memo.md`](./memo.md#srcmemooutput-indexts--output-rows-and-the-two-proofs-of-a-hit) | `src/memo/output-index.ts` — output rows and stamps, the two proofs a hit runs.           |
+| [`memo.md`](./memo.md#srcmemostat-threadts--many-stats-on-a-thread)                   | `src/memo/stat-thread.ts` — `StatThread`: many stats on a thread, off the main one.       |
 | [`memo.md`](./memo.md#srcmemoremote-hitsts--the-keys-a-remote-last-said-it-holds)     | `src/memo/remote-hits.ts` — the keys a remote last said it holds.                         |
 | [`memo.md`](./memo.md#srcmemolockfile-memots--a-lockfile-claimants-parse)             | `src/memo/lockfile-memo.ts` — a lockfile claimant's parse, one row per file and claimant. |
 

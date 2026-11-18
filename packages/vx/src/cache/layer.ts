@@ -305,6 +305,12 @@ export interface TaskMemo {
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
+  /**
+   * Ends the use of what the store read and stat'ed ahead of the probe
+   * (optional; `StoreMemo.warmOutputs`): a run calls it before anything may
+   * write.
+   */
+  dropWarm?(): void
 }
 
 /**

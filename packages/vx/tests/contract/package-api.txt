@@ -942,6 +942,7 @@ export interface FingerprintDigests {
 export interface FoldMemo {
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
+  lastKeys(taskIds: readonly string[]): Map<string, string>
 }
 == type GeneratedProject (src/workspace/migration.ts)
 export interface GeneratedProject {
@@ -2050,6 +2051,12 @@ export interface StoreMemo {
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
+  warmOutputs(
+    tasks: Iterable<readonly [taskId: string, projectDir: string]>,
+    done: () => boolean,
+  ): Promise<void>
+  warmSettled(): Promise<void>
+  dropWarm(): void
 }
 == type StoreOptions (src/cache/store-index.ts)
 export interface StoreOptions {
@@ -2172,6 +2179,7 @@ export interface TaskMemo {
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
+  dropWarm?(): void
 }
 == type TaskNode (src/graph/task-graph.ts)
 export interface TaskNode {

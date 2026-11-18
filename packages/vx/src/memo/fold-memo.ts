@@ -19,6 +19,8 @@ export interface FoldMemo {
   /** The key remembered for `taskId` under `probe`, if that is the probe it was folded under. */
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
+  /** The key each task was last folded to, whatever its probe: a guess at its next. A task never folded is absent. */
+  lastKeys(taskIds: readonly string[]): Map<string, string>
 }
 
 export class IndexFoldMemo implements FoldMemo {
@@ -79,6 +81,27 @@ export class IndexFoldMemo implements FoldMemo {
       ).map((r) => [r.task_id, { probe: r.probe, key: r.key }]),
     )
     return this.rows.get(taskId)
+  }
+
+  /** One read for all of them, and no row kept: a run whose keys are remembered whole asks for none again. */
+  lastKeys(taskIds: readonly string[]): Map<string, string> {
+    const out = new Map<string, string>()
+    if (taskIds.length === 0) return out
+    try {
+      const rows = this.db
+        .query(
+          'SELECT m.task_id, m.key FROM json_each(?) q JOIN fold_memo m ON m.task_id = q.value',
+        )
+        .all(JSON.stringify(taskIds)) as Array<{ task_id: string; key: string }>
+      for (const r of rows) out.set(r.task_id, r.key)
+    } catch (err) {
+      if (!unreadableIndex(err)) throw err
+    }
+    for (const id of taskIds) {
+      const row = this.dirty.get(id)
+      if (row !== undefined) out.set(id, row.key)
+    }
+    return out
   }
 
   set(taskId: string, probe: string, key: string): void {

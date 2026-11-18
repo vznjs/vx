@@ -264,6 +264,9 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     }
   }
   if (!skipRestore) {
+    // This restore writes: the stats taken before the graph started
+    // (`warmOutputs`) prove no later hit.
+    args.run.cache.memo.dropWarm?.()
     const cleanArgs = {
       projectDir: node.projectDir,
       outputs,

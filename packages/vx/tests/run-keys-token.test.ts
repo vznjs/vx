@@ -26,6 +26,7 @@ function args(
   gitFilesCache.noteFilesDigest(dir, snapshot, () => opts.digest ?? 'digest')
   const rows = new Map<string, string>()
   const folds: FoldMemo = {
+    lastKeys: () => new Map(),
     get: (id, probe) => rows.get(`${id}\0${probe}`),
     set: (id, probe, key) => void rows.set(`${id}\0${probe}`, key),
   }

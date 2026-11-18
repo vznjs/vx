@@ -93,6 +93,8 @@ async function restoreOrMiss(
 
 export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node } = args
+  // A task that runs may write anywhere (`warmOutputs`).
+  args.run.cache.memo.dropWarm?.()
   const policy = taskPolicy(args)
   // When the task started, as an offset from run start, for EVERY outcome
   // (hits included), so the timeline shows when each task actually ran.

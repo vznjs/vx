@@ -912,6 +912,15 @@ function excludes(options: CoreRunOptions): boolean {
   return exclude !== undefined && (exclude === 'all' || exclude.length > 0)
 }
 
+/** The tasks whose hit is proved file by file (`currentHit`), with where their files are. */
+function* warmable(nodes: Iterable<TaskNode>): Generator<readonly [string, string]> {
+  for (const n of nodes) {
+    if (n.config.cache !== true || (n.config.outputs?.files?.length ?? 0) === 0) continue
+    if ((n.config.outputs?.workspaceFiles?.length ?? 0) > 0) continue
+    yield [n.id, n.projectDir]
+  }
+}
+
 /**
  * Git's file lists for the graph's projects, in one walk, and the
  * dependents count taken while git's blob-size check runs.
@@ -952,6 +961,14 @@ async function enumerateGit(
   // While git walks: the gate's pass over every task cost 2-8 ms at
   // 1,000 projects when it ran before the spawn.
   const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot, nodes)
+  // While git walks, too: the rows and stats a warm hit is proved by.
+  let answered = false
+  const answer = (): void => {
+    answered = true
+  }
+  enumerating.then(answer, answer)
+  const warming = localCache.memo.warmOutputs(warmable(nodes.values()), () => answered)
+  warming.catch(() => {})
   const enumeration = await enumerating
   localCache.memo.holdBlobSizes()
   const applied = applyGitEnumeration(
@@ -973,6 +990,7 @@ async function enumerateGit(
       : graphCounts(nodes, hashCache.folds, hashCache.graph)
   await applied
   await settleIgnored(gitFilesCache)
+  await warming
   mark('git enumeration')
   return { gitFilesCache, dependents, nestedDirsByProject: asked.nestedDirsByProject }
 }

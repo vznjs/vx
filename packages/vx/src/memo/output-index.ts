@@ -16,6 +16,7 @@ import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement, isIndexFull } from '../index-db/index.js'
 import { modeMatches } from '../util/index.js'
 import { stampGrainMs, racyWindowMs } from './fs-clock.js'
+import { STAT_FIELDS } from './stat-thread.js'
 import { lstatSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
@@ -89,10 +90,25 @@ interface StampedRow extends OutputFileRow {
   stampMtimeMs?: number
 }
 
+/** `dir` and a slash: a row's path is normalized, so appending it is the join. */
+export const baseOf = (dir: string): string => (dir.endsWith('/') ? dir : `${dir}/`)
+
+/** Stats taken ahead of a check (`noteWarmStats`): `STAT_FIELDS` numbers per row, in the rows' order. */
+interface WarmStats {
+  base: string
+  epoch: number
+  stats: Float64Array
+}
+
 const DIRS_JOINED =
   'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value AND d.root = ?'
 
 export class OutputIndex {
+  /** Rows read ahead of the probe (`warmRows`), by entry hash; the probe's read takes them. */
+  private readonly warmed = new Map<string, OutputFileRow[]>()
+  /** The stats a rows array was given ahead of its check, while `warmEpoch` stands. */
+  private warmStats = new WeakMap<readonly OutputFileRow[], WarmStats>()
+  private warmEpoch = 0
   private readonly insertOutputFile: ReturnType<Database['prepare']>
   private readonly deleteOutputFiles: ReturnType<Database['prepare']>
   private readonly insertOutputDir: ReturnType<Database['prepare']>
@@ -216,6 +232,7 @@ export class OutputIndex {
   replaceFileRows(hash: string, rows: ReadonlyArray<[string, number, number, number]>): number {
     // A stamp taken for the rows this replaces describes their files, not these.
     this.held.delete(hash)
+    this.warmed.delete(hash)
     this.pendingStamps.delete(hash)
     this.deleteOutputFiles.run(hash)
     this.deleteStamps.run(hash)
@@ -249,8 +266,28 @@ export class OutputIndex {
    * (~1.5 ms of 8,002 hits).
    */
   loadOutputFilesBatch(hashes: readonly string[], distinct?: string): Map<string, OutputFileRow[]> {
+    if (hashes.length === 0) return new Map()
+    const warmed = this.warmed
+    if (warmed.size === 0) return this.readOutputFiles(hashes, distinct)
     const out = new Map<string, OutputFileRow[]>()
-    if (hashes.length === 0) return out
+    const rest: string[] = []
+    for (const h of hashes) {
+      const rows = warmed.get(h)
+      if (rows === undefined) rest.push(h)
+      else {
+        warmed.delete(h)
+        if (rows.length > 0) out.set(h, rows)
+      }
+    }
+    if (rest.length > 0) for (const [h, rows] of this.readOutputFiles(rest)) out.set(h, rows)
+    return out
+  }
+
+  private readOutputFiles(
+    hashes: readonly string[],
+    distinct?: string,
+  ): Map<string, OutputFileRow[]> {
+    const out = new Map<string, OutputFileRow[]>()
     // `db.query` caches the compiled statement by SQL text, which `inHashes`
     // keeps to two. A reader in this process sees stamps taken, not only
     // flushed: overlaid from memory, since a flush per read committed a
@@ -300,23 +337,85 @@ export class OutputIndex {
     return out
   }
 
+  /**
+   * Each hash's rows, read ahead of the probe that will ask for them
+   * (`loadOutputFilesBatch` hands these same arrays over, once). A hash with
+   * no row is not answered.
+   */
+  warmRows(hashes: readonly string[]): Map<string, readonly OutputFileRow[]> {
+    const out = new Map<string, readonly OutputFileRow[]>()
+    const ask: string[] = []
+    for (const h of hashes) {
+      const rows = this.warmed.get(h)
+      if (rows === undefined) ask.push(h)
+      else out.set(h, rows)
+    }
+    if (ask.length === 0) return out
+    const read = this.readOutputFiles(ask, JSON.stringify(ask))
+    // A hash with no row is not remembered: a row written before the probe
+    // (a store that lost its inventory takes its entries back) must be read.
+    for (const [h, rows] of read) {
+      this.warmed.set(h, rows)
+      out.set(h, rows)
+    }
+    return out
+  }
+
+  /** Names the stats taken from now: `noteWarmStats` takes none of an older name. */
+  get warmName(): number {
+    return this.warmEpoch
+  }
+
+  /** `rows`' files as stat'ed under `base` since `name` was read: `isOutputsCurrent` asks none of them again. */
+  noteWarmStats(
+    rows: readonly OutputFileRow[],
+    base: string,
+    stats: Float64Array,
+    name: number,
+  ): void {
+    if (name === this.warmEpoch) this.warmStats.set(rows, { base, epoch: name, stats })
+  }
+
+  /** What was read and stat'ed ahead answers nothing from here on: something may have written since. */
+  dropWarm(): void {
+    this.warmEpoch++
+    this.warmed.clear()
+  }
+
   isOutputsCurrent(projectDir: string, expected: readonly StampedRow[]): boolean {
     // No outputs: trivially current.
     const known = this.dirModes
     this.dirModes = undefined
     if (expected.length === 0) return true
+    const base = baseOf(projectDir)
+    const warm = this.warmStats.get(expected)
+    const ahead =
+      warm !== undefined && warm.epoch === this.warmEpoch && warm.base === base
+        ? warm.stats
+        : undefined
     // statSync, deliberately: since the directory short-circuit a warm hit
     // stats a handful of paths, and an async stat's thread-pool round trip
-    // cannot be overlapped (1,000 warm hits: 422 to 368 ms).
-    const results = expected.map((e) => {
+    // cannot be overlapped (1,000 warm hits: 422 to 368 ms). Many are
+    // stat'ed ahead, on a thread (`LocalMemo.warmOutputs`).
+    const results = expected.map((e, i) => {
       try {
         if (e.mode === LINK_MODE) return linkCurrent(path.join(projectDir, e.path), e)
-        const s = statSync(path.join(projectDir, e.path))
+        const at = i * STAT_FIELDS
+        let s: { size: number; mode: number; mtimeMs: number; ino: number; ctimeMs: number }
+        if (ahead !== undefined && !Number.isNaN(ahead[at + 1]!)) {
+          s = {
+            size: ahead[at]!,
+            mode: ahead[at + 1]!,
+            mtimeMs: ahead[at + 2]!,
+            ino: ahead[at + 3]!,
+            ctimeMs: ahead[at + 4]!,
+          }
+        } else s = statSync(base + e.path)
         // An empty output directory: current while a directory stands there,
         // with the mode its row records, or one at least 0755 without.
         if (e.path.endsWith('/'))
           return (
-            s.isDirectory() &&
+            (s.mode & 0o170000) === DIR_MODE &&
             ((e.mode & 0o170000) === DIR_MODE ? modeMatches(s.mode, e.mode) : wideDirMode(s.mode))
           )
         return (
