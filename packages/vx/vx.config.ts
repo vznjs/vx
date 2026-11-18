@@ -4,13 +4,23 @@ import { defineProject } from '@vzn/vx'
 // dealt by recorded weight (scripts/test-shard.ts). Many processes is not
 // only speed: `bun test` pins ~2 descriptors per imported module and macOS
 // caps a process at 10 240, so the whole suite in one process does not
-// clear the cap. Forty-six, not the four cores of the smallest box it
+// clear the cap. Eighty-four, not the four cores of the smallest box it
 // runs on: a distributed run spreads the shards over workers, and the
 // slowest shard is its critical path. On 4 cores, 24 shards finished in
 // the same wall time as 12 (393 s), each 58 to 72 s against 131 s; on
 // CI's workers 36 took 60 to 80 s, still the critical path (2026-10-23).
-// The heaviest file (34 s) caps it: a shard cannot hold less than one file.
-export const SHARD_COUNT = 46
+// Unequal, as counts and relative sizes (`shardSizes`): 46 equal shards
+// were two 45 s waves on CI's 36 cores, the second as long as the first,
+// and whichever runner was slow ended the run with its second shard.
+// Big ones go first by rank and small ones fill the end: simulated on
+// two main runs' own times, 20 runs each, the Linux work ended at 114
+// and 122 s for 133 and 145 s (2026-11-18).
+// The heaviest file (37 s) caps the biggest: a shard cannot hold less than one file.
+export const SHARD_SHAPE = '24x4,24x2,36x1'
+export const SHARD_COUNT = SHARD_SHAPE.split(',').reduce(
+  (n, part) => n + Number(part.split('x')[0]),
+  0,
+)
 // The suite's git fixtures assume git's defaults. A machine's global config
 // can change what `git status` vouches for (`core.trustctime=false`,
 // `core.checkStat=minimal`, which vx then declines to trust, A-6) or sign
@@ -102,7 +112,7 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
     // each spawn compiled all of src again. One shard took 47 s of CPU
     // without the cache and 34 s with it, cold (2026-11-10).
     command: `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
-    ...(flags === '' ? {} : { platforms: MAC }),
+    ...(flags.includes('--platform') ? { platforms: MAC } : {}),
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
       define: SUITE_ENV,
@@ -166,7 +176,7 @@ const shards = <T>(name: string, n: number, task: (i: number, n: number) => T): 
     Array.from({ length: n }, (_, k) => [`${name}.shard-${k + 1}`, task(k + 1, n)]),
   )
 const shardTasks = {
-  ...shards('test.bun', SHARD_COUNT, (i, n) => shardTask(i, n)),
+  ...shards('test.bun', SHARD_COUNT, (i, n) => shardTask(i, n, ` --shape ${SHARD_SHAPE}`)),
   ...shards('test.platform', PLATFORM_SHARD_COUNT, (i, n) => shardTask(i, n, ' --platform')),
 }
 

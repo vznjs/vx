@@ -6,36 +6,66 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { partition, readWeights, testFiles } from '../scripts/test-shard.js'
+import { partition, readWeights, shardSizes, testFiles } from '../scripts/test-shard.js'
 import {
   PLATFORM_SHARD_COUNT,
   PLATFORM_UNSAFE_SHARD_COUNT,
   SHARD_COUNT,
+  SHARD_SHAPE,
   UNSAFE_SHARD_COUNT,
 } from '../vx.config.js'
 
 describe('weighted test shards', () => {
   const files = testFiles()
   const weights = readWeights()
+  const sizes = shardSizes(SHARD_SHAPE)
 
   it('deals every non-unsafe test file exactly once across the configured shards', () => {
-    const bins = partition(files, weights, SHARD_COUNT)
+    const bins = partition(files, weights, sizes)
     expect(bins).toHaveLength(SHARD_COUNT)
     expect(bins.flat().sort()).toEqual([...files].sort())
     for (const bin of bins) expect(bin.length).toBeGreaterThan(0)
   })
 
   it('is deterministic', () => {
-    expect(partition(files, weights, SHARD_COUNT)).toEqual(partition(files, weights, SHARD_COUNT))
+    expect(partition(files, weights, sizes)).toEqual(partition(files, weights, sizes))
   })
 
-  it('balances the recorded load: heaviest shard within 1.25× of the lightest', () => {
+  it('balances the recorded load for each size: heaviest within 1.25× of the lightest', () => {
     const known = Object.values(weights).sort((a, b) => a - b)
     const median = known[known.length >> 1]!
-    const loads = partition(files, weights, SHARD_COUNT).map((bin) =>
-      bin.reduce((s, f) => s + (weights[f] ?? median), 0),
+    const loads = partition(files, weights, sizes).map(
+      (bin, i) => bin.reduce((s, f) => s + (weights[f] ?? median), 0) / sizes[i]!,
     )
     expect(Math.max(...loads)).toBeLessThanOrEqual(Math.min(...loads) * 1.25)
+  })
+
+  // Equal shards on CI's 36 cores were two waves of one length: the second
+  // began with half the run gone, and a slow runner's ended the run. The
+  // big ones go first by their rank; the small ones fill the end.
+  it('deals unequal shards by a shape, biggest first, each loaded for its size', () => {
+    expect(shardSizes('2x4,1x2,3x1')).toEqual([4, 4, 2, 1, 1, 1])
+    const w = Object.fromEntries(Array.from({ length: 130 }, (_, i) => [`f${i}.test.ts`, 100]))
+    const bins = partition(Object.keys(w), w, shardSizes('2x4,1x2,3x1'))
+    expect(bins.map((b) => b.length)).toEqual([40, 40, 20, 10, 10, 10])
+    // CONTROL: the same files by a count are dealt evenly.
+    expect(partition(Object.keys(w), w, 5).map((b) => b.length)).toEqual([26, 26, 26, 26, 26])
+    // The configured shape is as many shards as the config generates tasks.
+    expect(sizes).toHaveLength(SHARD_COUNT)
+    expect(sizes).toEqual([...sizes].sort((a, b) => b - a))
+  })
+
+  it('refuses a shape that is not counts and sizes, and one of another count', () => {
+    for (const bad of ['24', '24x', 'x4', '0x4', '2x0', '2x4;1x1', ''])
+      expect(() => shardSizes(bad)).toThrow(
+        `--shape is counts and sizes such as 24x4,12x2,24x1: not ${bad}`,
+      )
+    const run = Bun.spawnSync(
+      [process.execPath, 'scripts/test-shard.ts', '1', '5', '--shape', '2x2,2x1'],
+      { cwd: path.join(import.meta.dir, '..'), stderr: 'pipe' },
+    )
+    expect(run.exitCode).not.toBe(0)
+    expect(run.stderr.toString()).toContain('--shape 2x2,2x1 is 4 shards, not 5')
   })
 
   // The balance test above can PASS while the suite's wall time is stuck: a
@@ -56,9 +86,12 @@ describe('weighted test shards', () => {
   // Weighed again 2026-11-18, the suite a third cheaper without strace:
   // `signal-handling.test.ts` was 44.7 s of an ideal 44.5 s, and its Ctrl-Z
   // tests moved to `signal-tstp.test.ts`. `cache-clean.test.ts` is next, at 83%.
-  it('no single file outweighs a whole shard — the dealer cannot split one', () => {
+  //
+  // Unequal since 2026-11-18: the bound is the biggest shard's share, 45.6 s,
+  // and the heaviest file, `cache-clean.test.ts`, is 81% of it.
+  it('no single file outweighs the biggest shard — the dealer cannot split one', () => {
     const total = files.reduce((s, f) => s + (weights[f] ?? 0), 0)
-    const ideal = total / SHARD_COUNT
+    const ideal = (total * sizes[0]!) / sizes.reduce((a, b) => a + b, 0)
     const heaviest = files
       .map((f) => ({ file: f, weight: weights[f] ?? 0 }))
       .sort((a, b) => b.weight - a.weight)[0]!
