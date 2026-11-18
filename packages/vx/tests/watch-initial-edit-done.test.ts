@@ -138,6 +138,52 @@ it('a file the initial run wrote in its own project starts no cycle', async () =
   expect(w.cycles()).toBe(0)
 }, 40_000)
 
+/** `fixture(true)` with a second tracked source, and a `lib#build` that reads every source. */
+async function twoSources(): Promise<{ lib: string; go: string; root: string }> {
+  const f = await fixture(false)
+  await writeFile(
+    path.join(f.lib, 'vx.config.mjs'),
+    libConfig('mkdir -p dist && cat src/*.txt > dist/out.txt'),
+  )
+  await writeFile(path.join(f.lib, 'src', 'b.txt'), 'more\n')
+  const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+    cwd: f.root,
+    stdout: 'ignore',
+    stderr: 'pipe',
+    env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+  })
+  expect(lock.exitCode).toBe(0)
+  const git = gitIn(f.root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  return f
+}
+
+// A deletion has no date to tell it from one made before the start, so it
+// was never heard. The keys tell: the run's own saw the file.
+it('a tracked input deleted during the initial run, after its task finished, starts a cycle', async () => {
+  const { lib, go, root } = await twoSources()
+  watch = startWatch(root, ['--all'])
+  const out = output(lib)
+  await until(async () => (await out()) === 'old\nmore\n', 'lib#build to finish')
+  await rm(path.join(lib, 'src', 'b.txt'))
+  await writeFile(go, '')
+  await until(async () => (await out()) === 'old\n', 'the output built without the file')
+}, 40_000)
+
+// CONTROL: the run keyed the tree without the file; no key moved.
+it('a tracked input deleted before the start starts no cycle', async () => {
+  const { lib, go, root } = await twoSources()
+  await rm(path.join(lib, 'src', 'b.txt'))
+  await writeFile(go, '')
+  watch = startWatch(root, ['--all'])
+  const w = watch
+  await until(() => w.out().includes('watching'), 'the watching marker')
+  await until(async () => (await output(lib)()) === 'old\n', 'lib#build to finish')
+  await Bun.sleep(1_000)
+  expect(w.cycles()).toBe(0)
+}, 40_000)
+
 it('a `vx lock` during the initial run starts a cycle on the new lock', async () => {
   const { lib, go, root } = await fixture(false)
   watch = startWatch(root, ['--all'])
