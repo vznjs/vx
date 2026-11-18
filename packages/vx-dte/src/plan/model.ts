@@ -268,6 +268,64 @@ export function slowdowns(
 }
 
 /**
+ * The tasks of `rest` that `runs` picks, ready once every one of `from`
+ * ends, and when: each `from` by `at`, the rest of their dependencies as
+ * `ends` says. Seen through the tasks that run nothing: a group ends as
+ * its last dependency does. Read by direct dependants alone, main's 56
+ * test shards behind `install`, a group behind a 0.3 s check, were ready
+ * to no one: the first workers filled with 30 s suites a second before
+ * the shards came, and the run's last tasks were 60 s shards (194bda2:
+ * 167 s for a plan of 153 s).
+ */
+export function readySoon(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dependants: ReadonlyMap<string, readonly string[]>,
+  rest: ReadonlySet<string>,
+  runs: (id: string) => boolean,
+  from: Iterable<string>,
+  ends: ReadonlyMap<string, number>,
+  at: (id: string) => number,
+): { id: string; at: number }[] {
+  const first = new Map<string, number>()
+  for (const id of from) first.set(id, at(id))
+  const group = (id: string): boolean => nodes.get(id)?.config.exec?.command === undefined
+  const groupEnd = new Map<string, number | undefined>()
+  const endOf = (x: string): number | undefined => {
+    if (!group(x)) return rest.has(x) ? (first.get(x) ?? ends.get(x)) : 0
+    if (groupEnd.has(x)) return groupEnd.get(x)
+    groupEnd.set(x, 0)
+    const e = lastOf(x)
+    groupEnd.set(x, e)
+    return e
+  }
+  const lastOf = (id: string): number | undefined => {
+    let when = 0
+    for (const x of nodes.get(id)?.deps ?? []) {
+      const e = endOf(x)
+      if (e === undefined) return undefined
+      when = Math.max(when, e)
+    }
+    return when
+  }
+  const out: { id: string; at: number }[] = []
+  const seen = new Set<string>()
+  const walk = [...first.keys()]
+  for (let id = walk.pop(); id !== undefined; id = walk.pop())
+    for (const d of dependants.get(id) ?? []) {
+      if (seen.has(d)) continue
+      seen.add(d)
+      if (group(d)) {
+        walk.push(d)
+        continue
+      }
+      if (!rest.has(d) || !runs(d)) continue
+      const when = lastOf(d)
+      if (when !== undefined) out.push({ id: d, at: when })
+    }
+  return out
+}
+
+/**
  * Each task's tail: its usual duration and its longest chain of
  * dependants after it, the most of the run that waits on it starting.
  */

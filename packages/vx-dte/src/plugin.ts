@@ -681,6 +681,7 @@ export function dte(options: DteOptions = {}) {
           decide,
           keepLast,
           knownMisses,
+          readySoon,
           sized: within,
           slowdowns,
           tailsMs,
@@ -1105,34 +1106,22 @@ export function dte(options: DteOptions = {}) {
               else list.push(id)
             }
         }
-        const rest = pending
-        const out: (Soon & { id: string })[] = []
-        const seen = new Set<string>()
-        for (const id of from)
-          for (const d of after!.get(id) ?? []) {
-            if (seen.has(d) || !rest.has(d) || !(likely.has(d) || sure.has(d))) continue
-            seen.add(d)
-            let when = 0
-            let all = true
-            for (const x of graph.get(d)!.deps) {
-              if (!rest.has(x)) continue
-              const e = x === id ? at(x) : ends.get(x)
-              if (e === undefined) {
-                all = false
-                break
-              }
-              when = Math.max(when, e)
-            }
-            if (!all) continue
-            out.push({
-              id: d,
-              need: o.booking(need(d)),
-              at: when,
-              rank: (tails ??= tailsMs(graph, (x) => peaks.get(x)?.p50DurationMs))(d),
-              ms: peaks.get(d)?.p50DurationMs ?? UNKNOWN_MS,
-            })
-          }
-        return out.sort((a, b) => b.rank - a.rank)
+        return readySoon(
+          graph,
+          after!,
+          pending,
+          (d) => likely.has(d) || sure.has(d),
+          from,
+          ends,
+          at,
+        )
+          .map((s) => ({
+            ...s,
+            need: o.booking(need(s.id)),
+            rank: (tails ??= tailsMs(graph, (x) => peaks.get(x)?.p50DurationMs))(s.id),
+            ms: peaks.get(s.id)?.p50DurationMs ?? UNKNOWN_MS,
+          }))
+          .sort((a, b) => b.rank - a.rank)
       }
       soonOf = (ends) => soonAfter(ends.keys(), ends, (x) => ends.get(x)!)
       nextOf = (id, ends) => soonAfter([id], ends, (x) => peaks.get(x)?.p50DurationMs ?? UNKNOWN_MS)
