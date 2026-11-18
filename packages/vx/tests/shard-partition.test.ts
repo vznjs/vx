@@ -50,6 +50,10 @@ describe('weighted test shards', () => {
   // the Bun floor and burn their full windows). What the measurement did
   // surface is how close the bound is: `watch-loop-uncached.test.ts` sits at
   // 79% of ideal, so a quarter more and no dealer can help.
+  //
+  // Weighed again 2026-11-18, the suite a third cheaper without strace:
+  // `signal-handling.test.ts` was 44.7 s of an ideal 44.5 s, and its Ctrl-Z
+  // tests moved to `signal-tstp.test.ts`. `cache-clean.test.ts` is next, at 83%.
   it('no single file outweighs a whole shard — the dealer cannot split one', () => {
     const total = files.reduce((s, f) => s + (weights[f] ?? 0), 0)
     const ideal = total / SHARD_COUNT
