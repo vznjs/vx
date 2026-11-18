@@ -558,7 +558,9 @@ export class OutputIndex {
         ? path.join(workspaceRoot, e.path.slice(WORKSPACE_OUTPUT_PREFIX.length))
         : path.join(projectDir, e.path)
       try {
-        const s = statSync(abs)
+        // lstat: a link swapped into a file's place stats as its target, and
+        // a stamp vouched for it on every later hit.
+        const s = lstatSync(abs)
         const at = dated?.get(e.path) ?? e.mtimeMs
         if (
           s.size === e.size &&
