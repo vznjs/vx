@@ -75,7 +75,7 @@ let baseOn = BASE !== undefined
 
 type Tool = 'vx' | 'base' | Rival
 /** A pair as quiet.ts judges it, with each tool's CPU. */
-type CpuPair = Pair & { cpu: Partial<Record<Tool, number>> }
+type CpuPair = Omit<Pair, 'turbo'> & { turbo?: number; cpu: Partial<Record<Tool, number>> }
 
 /** CPU ms every child this process spawned used: with its own and its tracer's, a pair's neighbours are what is left. */
 let childCpuMs = 0
@@ -115,6 +115,15 @@ interface Bench {
 }
 
 const scratch: string[] = []
+
+/** Where the bench's own time went, printed last: most of it is not the timed pairs. */
+const phases: string[] = []
+let phaseAt = Bun.nanoseconds()
+function phase(name: string): void {
+  const now = Bun.nanoseconds()
+  phases.push(`${name} ${((now - phaseAt) / 1e9).toFixed(0)} s`)
+  phaseAt = now
+}
 
 /**
  * The site's workspace over `projects`, locked by vx before its commit (as
@@ -199,6 +208,7 @@ try {
     )
   }
   if (baseOn && baseVx !== undefined && BASE !== undefined) buildBase(repo, BASE, baseVx)
+  phase('compile')
   const all = workspace()
   // Nothing before the first pair is timed, so it runs side by side: both
   // workspaces, each tool's copy and each tool's first run. In turn they
@@ -213,6 +223,7 @@ try {
     ),
     bench('site', all, vx, baseVx, ['turbo']),
   ])
+  phase('workspaces')
   const benchOf = (arm: Arm): Bench => (SITE_ARMS.includes(arm) ? site : small)
   const paired: readonly Tool[] = baseOn ? ['vx', 'base', 'turbo'] : ['vx', 'turbo']
 
@@ -236,7 +247,7 @@ try {
   // process's and its children's. In turn: with vx always first, right
   // behind the last pair's Turbo, a CI-only change read noop 1.24× its own
   // base (#4885).
-  const pair = async (arm: Arm, rep: number): Promise<CpuPair> => {
+  const pair = async (arm: Arm, rep: number, withTurbo: boolean): Promise<CpuPair> => {
     const busy0 = machineBusyMs()
     const own0 = ownCpuMs()
     const t0 = Bun.nanoseconds()
@@ -244,7 +255,7 @@ try {
     const early = baseFirst ? await time('base', arm) : undefined
     const v = await time('vx', arm)
     const base = baseOn ? (early ?? (await time('base', arm))) : undefined
-    const turbo = await time('turbo', arm)
+    const turbo = withTurbo ? await time('turbo', arm) : undefined
     const busy1 = machineBusyMs()
     const wall = (Bun.nanoseconds() - t0) / 1e6
     const others =
@@ -253,9 +264,13 @@ try {
         : Math.max(0, busy1 - busy0 - (ownCpuMs() - own0)) / wall
     return {
       vx: v.ms,
-      turbo: turbo.ms,
       others,
-      cpu: { vx: v.cpuMs, turbo: turbo.cpuMs, ...(base === undefined ? {} : { base: base.cpuMs }) },
+      cpu: {
+        vx: v.cpuMs,
+        ...(turbo === undefined ? {} : { turbo: turbo.cpuMs }),
+        ...(base === undefined ? {} : { base: base.cpuMs }),
+      },
+      ...(turbo === undefined ? {} : { turbo: turbo.ms }),
       ...(base === undefined ? {} : { base: base.ms }),
     }
   }
@@ -267,26 +282,28 @@ try {
   ])
   // Each arm reps until REPS of its pairs ran quiet, and on while its quiet
   // pairs lean slower than the base without proving it (MAX_REPS at most).
+  // Those later pairs leave Turbo out: its figures come from the quiet
+  // pairs already run, and it was a third of a pair's time.
+  phase('first runs')
   const pairs = new Map<Arm, CpuPair[]>(HELD.map((a) => [a, []]))
   const quietBase = (arm: Arm): BasePair[] =>
     pairs
       .get(arm)!
       .filter((p) => p.base !== undefined && p.others <= QUIET_CORES)
       .map((p) => ({ vx: p.vx, base: p.base! }))
+  const whole = (arm: Arm): CpuPair[] => pairs.get(arm)!.filter((p) => p.turbo !== undefined)
+  const settled = (arm: Arm): boolean =>
+    whole(arm).length >= REPS && enoughQuiet(whole(arm), REPS, QUIET_CORES)
   for (let rep = 0; rep < MAX_REPS; rep++) {
-    const left = HELD.filter(
-      (a) =>
-        pairs.get(a)!.length < REPS ||
-        !enoughQuiet(pairs.get(a)!, REPS, QUIET_CORES) ||
-        (baseOn && undecided(quietBase(a))),
-    )
+    const left = HELD.filter((a) => !settled(a) || (baseOn && undecided(quietBase(a))))
     if (left.length === 0) break
-    for (const arm of left) pairs.get(arm)!.push(await pair(arm, rep))
+    for (const arm of left) pairs.get(arm)!.push(await pair(arm, rep, !settled(arm)))
   }
+  phase('pairs')
   const best = new Map<Arm, { vx: Best; base?: Best } & Partial<Record<Rival, Match>>>()
   for (const arm of HELD) {
     const ran = pairs.get(arm)!
-    const kept = quietest(ran, REPS) as CpuPair[]
+    const kept = quietest(whole(arm), REPS)
     const min = (xs: number[]) => Math.min(...xs)
     const of = (tool: 'vx' | 'base' | 'turbo'): Best => ({
       ms: min(kept.map((p) => p[tool]!)),
@@ -332,6 +349,8 @@ try {
       )
   }
 
+  phase('rivals')
+  console.log(`bench time: ${phases.join(', ')}`)
   const tools: readonly Tool[] = baseOn ? ['vx', 'base', ...RIVALS] : ['vx', ...RIVALS]
   console.log(`case      ${tools.map((t) => t.padStart(18)).join('')}   (wall ms / CPU ms)`)
   for (const arm of HELD) {
@@ -355,7 +374,7 @@ try {
   for (const f of slower) console.log(`SLOWER ${f}`)
 } finally {
   if (!process.env.KEEP) {
-    for (const dir of scratch) await rm(dir, { recursive: true, force: true })
+    await Promise.all(scratch.map((dir) => rm(dir, { recursive: true, force: true })))
     await rm(vx, { force: true })
     if (baseVx !== undefined) await rm(baseVx, { force: true })
   } else console.log(scratch.join('\n'))
