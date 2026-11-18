@@ -175,7 +175,9 @@ export async function generate(
     analytics: false,
   })
 
-  for (const p of projects) {
+  // Projects side by side, a few dozen at a time: one at a time, the site's
+  // 40k files took 21 s, most of the bench's workspace phase (2026-11-18).
+  const writeProject = async (p: Project): Promise<void> => {
     const rel = path.join('packages', p.dir)
     const abs = path.join(dir, rel)
     await mkdir(path.join(abs, 'src'), { recursive: true })
@@ -270,9 +272,18 @@ export async function generate(
       path.join(abs, 'vx.config.ts'),
       `export default {\n  tasks: {\n${tasks.map(vxTask).join('\n')}\n  },\n}\n`,
     )
-    for (let n = 0; n < SOURCE_FILES; n++)
-      await writeFile(path.join(abs, 'src', `f${String(n).padStart(2, '0')}.js`), source(p.name, n))
+    await Promise.all(
+      Array.from({ length: SOURCE_FILES }, (_, n) =>
+        writeFile(path.join(abs, 'src', `f${String(n).padStart(2, '0')}.js`), source(p.name, n)),
+      ),
+    )
   }
+  let next = 0
+  await Promise.all(
+    Array.from({ length: 32 }, async () => {
+      while (next < projects.length) await writeProject(projects[next++]!)
+    }),
+  )
 }
 
 // git is required by vx (input hashing). Commit AFTER install so the
