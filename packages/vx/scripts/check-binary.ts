@@ -91,6 +91,8 @@ run(
     '--compile-autoload-package-json',
     '--minify',
     '--bytecode',
+    '--format=esm',
+    '--splitting',
     `--target=bun-${host}`,
     'src/bin.ts',
     '--outfile',

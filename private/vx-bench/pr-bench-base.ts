@@ -185,6 +185,8 @@ export function buildBase(repo: string, sha: string, outfile: string): void {
         '--compile',
         '--minify',
         '--bytecode',
+        '--format=esm',
+        '--splitting',
         ...vxCompileEntries(path.join(src, 'packages/vx/src/bin.ts')),
         '--outfile',
         outfile,

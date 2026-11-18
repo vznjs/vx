@@ -323,7 +323,7 @@ process over it is OOM-killed, see n8n), Linux 6.18 (Firecracker), ext4
 on a virtio disk that was 92% full (its file creates alternate between
 ~30 µs and ~400 µs per file; the medians of three interleaved reps are
 the defence). Bun 1.4.2; vx compiled from
-this branch with `bun build --compile --minify --bytecode`; Turbo is
+this branch with `bun build --compile --minify --bytecode --format=esm --splitting`; Turbo is
 each repo's own devDependency, run through `node_modules/.bin/turbo`
 with the repo's root `node_modules/.bin` on PATH (what its own
 `yarn build` / `pnpm build` would give it), `--no-daemon`. Each tool

@@ -126,8 +126,11 @@ compiled binary no second copy of core transpiled from `node_modules`
    TypeScript directly.
 2. **As a standalone binary** — `bun build --compile
 --no-compile-autoload-dotenv --compile-autoload-package-json --minify
---bytecode --target=bun-<target> src/bin.ts --outfile dist/vx-<target>`.
-   The cross-target binaries are published on each GitHub release.
+--bytecode --format=esm --splitting --target=bun-<target> src/bin.ts
+--outfile dist/vx-<target>`. The cross-target binaries are published on
+   each GitHub release. Split into ES chunks, the binary loads only the
+   code a verb imports: one bundle loaded all of it first, ~4 ms of every
+   run before `main` (2026-11-18).
 
 Both switches keep Bun from loading `.env`, `.env.local` and
 `.env.<NODE_ENV>` from the working directory into vx's own environment,
