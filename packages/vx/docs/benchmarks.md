@@ -670,10 +670,11 @@ Nx 23.3.0, warm (21 to 24 s, 9,603 of 9,603 hit), self time:
 Public repos, each moved to native vx config and timed against the
 tool it ships with, through `private/vx-bench/real/nightly.ts`, which
 drives `nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo): both tools run the
-same tasks with the same worker count, three interleaved reps per
-case, best of three. `cold` wipes the outputs and both caches;
-`restore` wipes the outputs and keeps both caches; `noop` wipes
-nothing. Nx runs with `NX_DAEMON=false` and no Nx Cloud.
+same tasks with the same worker count, three interleaved reps,
+best of each case. `cold` wipes the outputs and the tool's cache, once
+a rep; `restore` wipes the outputs and keeps the cache; `noop` wipes
+nothing. Each rep runs restore and noop in up to ten rounds, tools
+alternating, within 20 s: one sample of a 60 ms run swings 15 ms. Nx runs with `NX_DAEMON=false` and no Nx Cloud.
 
 The native config is either written by `vx init --native` on the
 night, or kept in this repo as an overlay: `private/vx-bench/real/<name>/`

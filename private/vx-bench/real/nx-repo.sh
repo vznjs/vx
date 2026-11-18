@@ -1,7 +1,7 @@
 #!/bin/bash
 # vx (compiled binary, on the vx.config.ts files `bunx @vzn/vx-migrate
 # --from nx` wrote from the repo's own Nx graph) against the repo's own Nx,
-# on a real Nx monorepo. The four arms of turbo-repo.sh, per tool, vx first:
+# on a real Nx monorepo. The arms of turbo-repo.sh, in its order:
 #   cold     caches AND outputs wiped — every task executes
 #   restore  outputs wiped, caches intact — every task a hit, outputs come back
 #   noop     nothing wiped — every task a hit over intact outputs
@@ -103,12 +103,27 @@ arm() { # tool name pre-steps...
   for pre in "$@"; do $pre; done
   time_arm "$tool" "$name"
 }
+# A warm arm is one sample of a run under 100 ms on small repos, and the box
+# swings it by 15 ms: three samples crowned whichever tool drew the lucky
+# one (solid, 2026-11-18: vx lost restore 94 / 75 ms over 3 reps and won
+# it 62 / 69 ms over 30). So each rep times the warm arms in rounds, the
+# tools' order flipped every round, until WARM_ROUNDS rounds or
+# WARM_BUDGET_MS of them: a fast repo gets ten samples, a slow one one.
+WARM_ROUNDS=${WARM_ROUNDS:-10}; WARM_BUDGET_MS=${WARM_BUDGET_MS:-20000}
+warm() { # tool
+  arm "$1" restore wipe_outputs
+  arm "$1" noop
+  arm "$1" noop2
+}
 for _ in $(seq 1 "$REPS"); do
-  for tool in vx nx; do
-    arm $tool cold wipe_outputs wipe_nx_cache wipe_vx_cache
-    arm $tool restore wipe_outputs
-    arm $tool noop
-    arm $tool noop2
+  # Each cold arm wipes its own tool's cache: the other's stays for its warm rounds.
+  arm vx cold wipe_outputs wipe_vx_cache
+  arm nx cold wipe_outputs wipe_nx_cache
+  round=0; t0=$(ms)
+  while [ "$round" -eq 0 ] || { [ "$round" -lt "$WARM_ROUNDS" ] &&
+    [ $(( ($(ms) - t0) / 1000000 )) -lt "$WARM_BUDGET_MS" ]; }; do
+    if [ $(( round % 2 )) -eq 0 ]; then warm vx; warm nx; else warm nx; warm vx; fi
+    round=$(( round + 1 ))
   done
   SKIP_ARMS=0; arm_index=0
 done

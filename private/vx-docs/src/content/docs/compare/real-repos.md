@@ -8,8 +8,10 @@ fair to every tool.
 
 This page is the other half: real public workspaces, each given native vx
 config that follows its `turbo.json`, timed against the Turborepo it
-already pins. Both tools run the same tasks with the same number of
-workers, five interleaved runs per case, best of five.
+already pins. Both tools run the same tasks, each at its own default
+worker count, interleaved. A cold build is the best of three; restore and
+nothing changed are the best of up to thirty runs, as one run of them
+swings by 15 ms.
 
 <!-- bench: filled from private/vx-bench/real-repos.json at build (src/bench/real.ts) -->
 
