@@ -87,4 +87,34 @@ describe('vx init in a JS workspace', () => {
     const dry = await vx(root, ['run', 'build', '--filter', 'app', '--dry=json'])
     expect(dry.out).toContain('lib#build')
   })
+
+  // A pnpm workspace not installed yet has no lockfile: init installed with
+  // npm (a package-lock.json in a pnpm workspace) and declared no plugin.
+  it.each([
+    ['a pnpm workspace', 'pnpm', true],
+    ['a `workspaces` workspace', 'npm', false],
+  ])('declares the plugin of %s with no lockfile yet: %s', async (_, plugin, pnpmFile) => {
+    const root = await tmp('vx-init-unlocked-')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        name: 'r',
+        private: true,
+        ...(pnpmFile ? {} : { workspaces: ['packages/*'] }),
+      }),
+    )
+    if (pnpmFile)
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+    await symlink(
+      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
+      path.join(root, 'node_modules', '@vzn', 'vx-lockfile'),
+    )
+    const r = await vx(root, ['init', '--dry', '--format', 'json'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    const files = (JSON.parse(r.out) as { files: { path: string; contents: string }[] }).files
+    expect(files.find((f) => f.path === '.vx/workspace.ts')?.contents).toContain(
+      `plugins: [${plugin}()]`,
+    )
+  })
 })

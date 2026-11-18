@@ -2641,7 +2641,9 @@ undo. The path names the install:
 A project's package.json is the tree's root, or for a hoisted workspace
 the nearest one above the current directory that lists `@vzn/vx`. Its
 manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
-`package-lock.json`), else `packageManager`, else npm; the field it is
+`package-lock.json`), else `packageManager`, else pnpm beside a
+`pnpm-workspace.yaml` (a workspace not installed yet), else npm; the
+field it is
 listed in is kept (`--save-dev`, `--dev`, …), pnpm at a workspace
 root adds `--workspace-root`, and Yarn 1 there adds `-W`. The lockfile
 is updated by that manager.
@@ -2756,6 +2758,8 @@ version) and, under the topmost `package.json`, as a root
 devDependency with that repo's own manager (2026-10-20). The latest
 version is read from the registry that manager is configured for
 ([Which registry](#which-registry)). A failed install stops init.
+Before the first install there is no lockfile, so init declares the
+`@vzn/vx-lockfile` plugin of the manager it installs with.
 
 ### In a Turborepo or Nx repo
 
