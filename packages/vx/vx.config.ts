@@ -101,7 +101,11 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
     // per task and removes it): the suite spawns vx hundreds of times, and
     // each spawn compiled all of src again. One shard took 47 s of CPU
     // without the cache and 34 s with it, cold (2026-11-10).
-    command: `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
+    command:
+      flags === ''
+        ? `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n}${flags})`
+        : // PROBE, not for merge: each file's time on the Mac, shown by failing.
+          `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures ${TEST_TIMEOUT} --reporter=junit --reporter-outfile="\${TMPDIR:-/tmp}/j.xml" $(bun scripts/test-shard.ts ${i} ${n}${flags}); grep -o '<testsuite name="tests/[^"]*" file="[^"]*"[^>]*time="[0-9.]*"' "\${TMPDIR:-/tmp}/j.xml" | sed 's/ file=.* time=/ time=/; s/^<testsuite name=/MACTIME /'; exit 1`,
     ...(flags === '' ? {} : { platforms: MAC }),
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
