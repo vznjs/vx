@@ -53,8 +53,7 @@ import {
   spreadMs,
 } from './plan/index.js'
 import { Usage, type UsageStats } from './usage.js'
-import type { Need, Planner } from './plan/index.js'
-import { MIN_CORES, wholeCores } from './plan/index.js'
+import { MIN_CORES, Planner, wholeCores, type Need } from './plan/index.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
@@ -233,7 +232,11 @@ export interface OrchestratorOptions {
   readonly kept?: (id: string) => void
   /** A worker failed a task or dropped it: the run plans again, now, so a replacement starts. */
   readonly faulted?: () => void
-  /** The run's planner, once it can plan (history read, a task missed): absent, tasks wait. */
+  /**
+   * The run's planner, once it can plan (history read, a task missed):
+   * undefined, tasks wait. Absent, one that asks for no worker places
+   * every task on those that join, by `need`'s cores.
+   */
   readonly planner?: () => Planner | undefined
   /** Start a worker of size `size` the planner asked for: its id. */
   readonly spawn?: (size: string) => string
@@ -702,7 +705,7 @@ export class Orchestrator {
   private enqueue(jobs: readonly Job[]): void {
     for (const j of jobs) {
       this.waiting.set(j.req.taskId, j)
-      this.bound?.again(j.req.taskId)
+      this.bound?.again(j.req.taskId, j.need.platform)
     }
     if (jobs.length > 0) this.waited = true
   }
@@ -717,7 +720,7 @@ export class Orchestrator {
    * joined, and the tasks already handed over.
    */
   private planner(): Planner | undefined {
-    const p = this.o.planner?.()
+    const p = this.o.planner === undefined ? this.joinedOnly() : this.o.planner()
     if (p === undefined || p === this.bound) return p
     this.bound = p
     const t = this.clock()
@@ -727,6 +730,25 @@ export class Orchestrator {
     for (const a of this.workers.values()) this.adopted(p, a, t)
     for (const id of this.waiting.keys()) p.ready(id)
     return p
+  }
+
+  private own: Planner | undefined
+
+  /** The planner of a run with no `planner`: the workers that join, every task expected. */
+  private joinedOnly(): Planner | undefined {
+    if (this.own !== undefined) return this.own
+    const nodes = this.o.nodes()
+    if (nodes === undefined) return undefined
+    return (this.own = new Planner({
+      nodes,
+      platform: (n) => n.platform ?? this.o.home ?? '',
+      sizes: [],
+      known: (id) => {
+        const c = this.o.need(id).cores
+        return { ms: undefined, cores: Number.isFinite(c) ? c : undefined }
+      },
+      expected: new Set(nodes.keys()),
+    }))
   }
 
   /** Worker `a` joined: the planner counts it, of its size, else of its platform. */
@@ -766,6 +788,31 @@ export class Orchestrator {
     const byLabel = new Map<string, Worker>()
     for (const a of this.workers.values()) byLabel.set(a.label, a)
     const queued = this.queued()
+    // A task that filled its worker goes only to a bigger one, while its platform has or may ask one.
+    const roomier = (need: Need, cores: number, memory: number): boolean =>
+      need.above === undefined || cores > need.above.cores || memory > need.above.memory
+    const biggers = new Map<string, boolean>()
+    const bigger = (need: Need): boolean => {
+      const key = `${need.platform}\0${need.above!.cores}\0${need.above!.memory}`
+      let b = biggers.get(key)
+      if (b !== undefined) return b
+      const mine = (platform: string | undefined): boolean =>
+        need.platform === undefined || platform === need.platform
+      b =
+        p.sizes.some((z) => z.max > 0 && mine(z.platform) && roomier(need, z.cores, z.memory)) ||
+        [...this.workers.values()].some(
+          (a) => !a.faulty && mine(a.platform) && roomier(need, a.cores, a.memory),
+        ) ||
+        [...this.spawnedAt].some(
+          ([id, { declared }]) =>
+            !this.cancelled.has(id) &&
+            !this.unstarted.has(id) &&
+            mine(declared.place ?? declared.platform) &&
+            roomier(need, declared.cpu, declared.memory),
+        )
+      biggers.set(key, b)
+      return b
+    }
     const d = p.decide(this.clock(), (size) => this.o.spawn!(size.name), {
       on: (task, worker, at) => {
         const a = byLabel.get(worker)
@@ -773,8 +820,17 @@ export class Orchestrator {
         // One made again during this pass (`remake`) has its own pin.
         const pin = pins.get(task) ?? job?.again
         // Not joined yet: it may wait for it, unless pinned to a worker online.
-        if (a === undefined) return !at && job !== undefined && pin?.only === undefined
+        if (a === undefined) {
+          if (at || job === undefined || pin?.only !== undefined) return false
+          const declared = this.spawnedAt.get(worker)?.declared
+          return (
+            declared === undefined ||
+            roomier(job.need, declared.cpu, declared.memory) ||
+            !bigger(job.need)
+          )
+        }
         if (a.faulty || job === undefined) return false
+        if (!roomier(job.need, a.cores, a.memory) && bigger(job.need)) return false
         if (pin?.only !== undefined && pin.only !== a.id) return false
         if (pin?.avoid !== undefined && pin.avoid === a.id) return false
         if (job.need.platform !== undefined && a.platform !== job.need.platform) return false
@@ -782,7 +838,11 @@ export class Orchestrator {
         return !at || a.memory - this.used(a).memory >= memory
       },
       // One asked now queues behind a worker of its size the CI has not started past its join limit.
-      size: (_task, size) => !queued.has(size.name),
+      size: (task, size) => {
+        if (queued.has(size.name)) return false
+        const need = byId.get(task)?.need
+        return need === undefined || roomier(need, size.cores, size.memory) || !bigger(need)
+      },
       // It holds files no cache has that a task to come reads.
       stay: (worker) => {
         const a = byLabel.get(worker)
@@ -1425,8 +1485,11 @@ export class Orchestrator {
         // sent before runs there, and ends as any; one its worker's loss
         // put back is the queue's.
         for (const job of pending)
-          if (a.busy.get(job.req.taskId) === job && this.retry(a, job, 'not sent') !== undefined)
+          if (a.busy.get(job.req.taskId) === job && this.retry(a, job, 'not sent') !== undefined) {
             job.reject(err)
+            // Failed here: it runs nowhere, so its worker's cores are free in the plan too.
+            this.bound?.drop(job.req.taskId, this.clock())
+          }
         this.pumpSoon()
       })
   }
@@ -1460,6 +1523,7 @@ export class Orchestrator {
     // Stopped, it runs nowhere again; the cancel sent its worker has no one to answer it.
     if (job.req.signal?.aborted === true) {
       job.resolve(stopped())
+      this.bound?.drop(job.req.taskId, this.clock())
       return undefined
     }
     if (begun) {
@@ -1467,6 +1531,7 @@ export class Orchestrator {
       job.faults = [...(job.faults ?? []), `${a.label} ${why}`]
       if (job.faults.length >= 2) {
         job.reject(new Error(`${job.req.taskId}: failed on 2 workers: ${job.faults.join(', ')}`))
+        this.bound?.drop(job.req.taskId, this.clock())
         return undefined
       }
     }

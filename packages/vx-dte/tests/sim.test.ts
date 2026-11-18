@@ -1,11 +1,10 @@
-// What a distributed run must look like, played by `sim.ts` on the plugin's
-// own decide + dispatch over runs main really had. A scheduling change lands
+// What a distributed run must look like, played by `sim.ts` on the run's
+// own planner over runs main really had. A scheduling change lands
 // only when these hold. `it.failing` marks what does not hold yet (2026-10-23):
 // it fails the suite once fixed, so the mark comes off with the fix.
 
 import { describe, expect, it } from 'bun:test'
 import type { Size } from '../src/plan/model.js'
-import { DEFAULT_STRATEGY, STRATEGIES } from '../src/plan/strategy.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
 import q2f0 from './fixtures/pr-run-2f0e2a4.json'
@@ -363,7 +362,7 @@ describe('a Mac worker beside Linux ones', () => {
 
 // `backlog` counted every core alike: Linux workers with cores to spare
 // started no Mac worker, and the Mac task waited for one forever.
-it('backlog starts a worker of the platform a ready task needs, though others are spare', () => {
+it('starts a worker of the platform a ready task needs, though others are spare', () => {
   const linux: Size = { ...small, platform: 'linux-x64' }
   const mac: Size = { name: 'mac', max: 2, cpu: 4, memory: 16e9, platform: 'darwin-arm64' }
   const t = (id: string, deps: string[], platform?: string): SimTask => ({
@@ -378,24 +377,8 @@ it('backlog starts a worker of the platform a ready task needs, though others ar
   const r = simulate(graph, {
     sizes: [linux, mac],
     home: 'linux-x64',
-    how: { ...DEFAULT_STRATEGY, scale: 'backlog' },
   })
   expect(r.workers.find((w) => w.platform === 'darwin-arm64')?.ran).toEqual(['mac'])
-})
-
-// Each choice of each layer (`dte({ scheduler })`), the rest the default's:
-// whatever a workspace picks, no worker is booked past its cores and every
-// miss runs once.
-describe('each scheduler choice, on main a09b987', () => {
-  const graph = load(a09)
-  for (const [layer, choices] of Object.entries(STRATEGIES))
-    for (const choice of choices)
-      it(`${layer}: ${choice}`, () => {
-        const how = { ...DEFAULT_STRATEGY, [layer]: choice }
-        const r = simulate(graph, { sizes: [small], how, likely: misses(graph) })
-        for (const w of r.workers) expect(w.peakBooked).toBeLessThanOrEqual(w.cores + 1e-9)
-        expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
-      })
 })
 
 // 2026-10-23: history is an estimate; a suite given more workers (a

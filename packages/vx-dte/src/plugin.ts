@@ -16,14 +16,8 @@ import {
 } from '@vzn/vx'
 import type { DteInit, DteSetup } from './init.js'
 import type { Need } from './plan/index.js'
-// Not the index: a config load reads the strategies alone, never the planner.
-import {
-  booked,
-  DEFAULT_STRATEGY,
-  bookedCores,
-  STRATEGIES,
-  type Strategy,
-} from './plan/strategy.js'
+// Not the index: a config load never reads the planner.
+import { bookedCores } from './plan/model.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Size } from './plan/index.js'
@@ -131,8 +125,6 @@ export interface DteOptions {
   readonly relay?: string
   /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
-  /** How the run orders, places, books and scales (`Strategy`); each layer absent is the default's. */
-  readonly scheduler?: Partial<Strategy>
   /**
    * What a task with no measure counts for when the run decides how many
    * workers to start (default 2 cores, 4GB). It books next to nothing, so
@@ -154,7 +146,6 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   adapter: 'object',
   relay: 'string',
   token: 'function',
-  scheduler: 'object',
   unmeasured: 'object',
   headers: 'object',
 }
@@ -216,17 +207,6 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
 export function dte(options: DteOptions = {}) {
   refuseUnknownOptions('dte()', options, KEYS)
   const headers = proxyHeaders(options.headers)
-  const how: Strategy = { ...DEFAULT_STRATEGY }
-  for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
-    const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
-    if (choices === undefined)
-      throw new UserError(
-        `dte() option "scheduler" has no layer ${JSON.stringify(layer)} (layers: ${Object.keys(STRATEGIES).join(', ')})`,
-      )
-    if (!choices.includes(choice as string))
-      refuse(`scheduler.${layer}`, `one of ${choices.join(', ')}`, choice)
-    ;(how as unknown as Record<string, unknown>)[layer] = choice
-  }
   const declared = Object.entries(options.workers ?? {}).flatMap(([type, t]) => {
     if (!NAME.test(type)) refuse('workers', NAMED, type)
     refuseUnknownOptions(`dte() option "workers.${type}"`, t, TYPE_KEYS)
@@ -719,7 +699,7 @@ export function dte(options: DteOptions = {}) {
             : multi
               ? placeOf(node.worker, node.platform)
               : (node.platform ?? home)
-        const n = within(booked(needOf(peaks.get(id), unmeasured), how.book), sizes, platform)
+        const n = within(needOf(peaks.get(id), unmeasured), sizes, platform)
         let ids = serves.get(id)
         if (ids === undefined) {
           ids = serversOf(nodes, id)

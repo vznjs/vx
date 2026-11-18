@@ -152,6 +152,7 @@ export class Engine {
   private readonly plat: Int32Array
   private readonly sizePlat: Int32Array
   private readonly platforms: number
+  private readonly platIx: ReadonlyMap<string, number>
   /** What history knew of each task, as `learn` last said. */
   private readonly kms: (number | null)[]
   private readonly ksd: (number | null)[]
@@ -217,6 +218,7 @@ export class Engine {
     this.sizePlat = Int32Array.from(sizes, (s) => ix(s.platform))
     this.plat = Int32Array.from(g.platform, ix)
     this.platforms = names.length
+    this.platIx = new Map(names.map((p, k) => [p, k]))
     // adjacency as flat arrays: a million tasks stay in cache
     const dOff = (this.dOff = new Int32Array(n + 1))
     const kOff = (this.kOff = new Int32Array(n + 1))
@@ -372,8 +374,14 @@ export class Engine {
     return this.ask(z, cores)
   }
 
-  /** Task `i` runs again (its worker failed it, or a dependant needs its files made again). */
-  again(i: number): void {
+  /**
+   * Task `i` runs again (its worker failed it, or a dependant needs its
+   * files made again), on `platform` when given: a dependant on another
+   * platform has it made on a worker of its own.
+   */
+  again(i: number, platform?: string): void {
+    const q = platform === undefined ? undefined : this.platIx.get(platform)
+    if (q !== undefined) this.plat[i] = q
     this.unplace(i)
     this.progress[i] = 0
     this.state[i] = READY

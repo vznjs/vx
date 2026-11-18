@@ -81,6 +81,8 @@ export interface SimWorker {
   busyMs: number
   /** Joined, nothing running, while the run had work left. */
   idleMs: number
+  /** Joined, nothing running, while a task of its platform was ready and not started. */
+  idleQueuedMs: number
   cpuMs: number
   onlineMs: number
   readonly cores: number
@@ -258,6 +260,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       tasks: 0,
       busyMs: 0,
       idleMs: 0,
+      idleQueuedMs: 0,
       cpuMs: 0,
       onlineMs: 0,
       cores: size.cpu,
@@ -340,6 +343,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     }
     if (next === Infinity) throw new Error(`sim: stuck at ${now} ms with ${graph.length - done.size} left`)
     const dt = next - now
+    const queuedOn = new Set<string>()
+    for (const id of readyAt.keys())
+      if (!startedAt.has(id)) queuedOn.add(platformOf(byId.get(id)!))
     for (const w of workers) {
       if (!live(w) || w.joinedAt === undefined) continue
       const l = load(w)
@@ -347,7 +353,10 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       if (w.running.size > 0) {
         w.busyMs += dt
         w.cpuMs += dt * Math.min(l, w.cores)
-      } else w.idleMs += dt
+      } else {
+        w.idleMs += dt
+        if (queuedOn.has(w.platform ?? home)) w.idleQueuedMs += dt
+      }
       for (const r of w.running.values()) r.left -= dt / s
     }
     now = next
@@ -364,7 +373,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       for (const r of [...w.running.values()])
         if (r.left <= 1e-6) {
           w.running.delete(r.id)
-          planner.finished(r.id, now, process.env.TRUEMS ? byId.get(r.id)!.ran!.ms : undefined)
+          planner.finished(r.id, now)
           const t = byId.get(r.id)!
           if (t.leaves === true) keptOn.set(r.id, new Set([w.id]))
           ending.set(r.id, now + (t.ran?.afterMs ?? 0))
@@ -381,7 +390,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   let heldMs = 0
   for (const w of workers) {
     const until = w.leftAt ?? w.cancelledAt ?? now
-    w.leftAt ??= w.cancelledAt === undefined ? now : undefined
+    if (w.leftAt === undefined && w.cancelledAt === undefined) w.leftAt = now
     if (w.joinedAt !== undefined) w.onlineMs = (w.leftAt ?? until) - w.joinedAt
     heldMs += w.cores * (until - w.spawnedAt)
   }

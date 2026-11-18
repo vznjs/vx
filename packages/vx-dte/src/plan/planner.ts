@@ -96,7 +96,8 @@ export class Planner {
   private readonly sizeIx: Map<string, number>
   /** Each platform's size for a worker the run did not start. */
   private readonly loose = new Map<string, number>()
-  private readonly sizes: readonly PlannerSize[]
+  /** The sizes it may ask for, then each platform's for a worker of none (`max` 0). */
+  readonly sizes: readonly PlannerSize[]
 
   constructor(private readonly input: PlannerInput) {
     const graph = commands(input.nodes)
@@ -186,22 +187,24 @@ export class Planner {
     if (i !== undefined) this.engine.finished(i, t, ms)
   }
 
-  /** `task` runs again: back from a worker that failed it, or made again for a dependant. */
-  again(task: string): void {
+  /** `task` runs again: back from a worker that failed it, or made again for a dependant, on its `platform`. */
+  again(task: string, platform?: string): void {
     const i = this.ix.get(task)
-    if (i !== undefined) this.engine.again(i)
+    if (i !== undefined) this.engine.again(i, platform)
   }
 
   /**
    * A worker started before the planner knew it, or joining on its own:
-   * of `size`, else counted as its platform's, with `cores`.
+   * of `size`, else (no size, or one the planner does not ask for) counted
+   * as its platform's, with `cores`.
    */
   adopt(worker: string, size: string | undefined, platform: string, cores: number, t: number): void {
     const w = this.workerIx.get(worker)
     if (w !== undefined && !this.engine.gone(w)) return
-    const z = (size === undefined ? undefined : this.sizeIx.get(size)) ?? this.loose.get(platform)
+    const sized = size === undefined ? undefined : this.sizeIx.get(size)
+    const z = sized ?? this.loose.get(platform)
     if (z === undefined) return
-    this.name(this.engine.adopt(z, t, size === undefined ? cores : this.sizes[z]!.cores), worker)
+    this.name(this.engine.adopt(z, t, sized === undefined ? cores : this.sizes[z]!.cores), worker)
   }
 
   knows(worker: string): boolean {

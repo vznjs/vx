@@ -11,9 +11,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { assign, ordered } from '../src/plan/dispatch.js'
 import type { PlanTask } from '../src/plan/model.js'
-import { DEFAULT_STRATEGY, type Strategy } from '../src/plan/strategy.js'
 import { simulate, type SimTask } from '../tests/sim.js'
 
 const W = 20_000
@@ -134,13 +132,14 @@ function stack(bars: Bar[]): Bar[] {
 }
 
 /**
- * The planner's ideal packer (`plan/play.ts` simulate), each task kept: the
- * tasks on machines that are up at `ups`, from `t0`, as each fits.
+ * An ideal packer, each task kept: the tasks on machines that are up at
+ * `ups`, longest chain first (or as they got ready, `fifo`), each on the fullest machine it fits (an
+ * empty one takes anything).
  */
 function lay(
   tasks: readonly PlanTask[],
   ups: readonly number[],
-  how: Strategy = DEFAULT_STRATEGY,
+  order: 'tail' | 'fifo' = 'tail',
 ): { end: number; bars: Bar[][] } {
   const ids = new Set(tasks.map((t) => t.id))
   const byId = new Map(tasks.map((t) => [t.id, { ...t, deps: t.deps.filter((d) => ids.has(d)) }]))
@@ -180,19 +179,25 @@ function lay(
   let end = 0
   let left = byId.size
   while (left > 0) {
-    ready = ordered(ready, how.order, tailOf, (id) => byId.get(id)!, CORES)
-    const to = assign(
-      ready.map((id) => ({ id, need: byId.get(id)! })),
-      bins.filter((b) => b.at <= now),
-      undefined,
-      how.place,
-    )
-    for (const [id, bin] of to) {
+    if (order === 'tail') ready.sort((a, b) => tailOf(b) - tailOf(a))
+    for (const id of [...ready]) {
       const t = byId.get(id)!
-      ready = ready.filter((r) => r !== id)
       const cores = Math.min(t.cores, CORES)
       const memory = Math.min(t.memory, MEMORY)
-      // assign already counted it on the bin.
+      let bin: (typeof bins)[number] | undefined
+      for (const b of bins)
+        if (
+          b.at <= now &&
+          (b.running === 0 ||
+            (b.used.cores + cores <= CORES + 1e-9 && b.used.memory + memory <= MEMORY)) &&
+          (bin === undefined || b.used.cores > bin.used.cores)
+        )
+          bin = b
+      if (bin === undefined) continue
+      bin.used.cores += cores
+      bin.used.memory += memory
+      bin.running++
+      ready = ready.filter((r) => r !== id)
       ends.push({ at: now + t.ms!, bin, id, cores, memory })
       bars[Number(bin.id)]!.push({ id, start: now, end: now + t.ms!, cores, at: 0 })
     }
@@ -285,7 +290,7 @@ function naive(tasks: readonly PlanTask[], k: number): Outcome {
   const { end, bars } = lay(
     whole,
     Array.from({ length: k }, () => W),
-    { order: 'fifo', place: 'first-fit', book: 'whole', scale: 'backlog' },
+    'fifo',
   )
   // Each holds a whole worker, though it uses only its own cores.
   const used = new Map(tasks.map((t) => [t.id, Math.min(t.cores, CORES)]))
@@ -307,7 +312,6 @@ function vxDte(graph: readonly SimTask[]): Outcome {
   const r = simulate(graph, {
     sizes: [{ name: 'small', max: 12, cpu: CORES, memory: MEMORY }],
     warmUpMs: () => W,
-    how: DEFAULT_STRATEGY,
     likely: new Set(graph.filter((t) => t.ran !== undefined && t.cache).map((t) => t.id)),
   })
   const byId = new Map(graph.map((t) => [t.id, t]))
