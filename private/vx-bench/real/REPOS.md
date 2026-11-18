@@ -92,6 +92,39 @@ pnpm 10.19, Turbo 2.5.8. Benched: `build` over `./packages/*`, 3 tasks
   `vx.config.ts` among them, which imports `@vzn/vx/config` the repo
   does not install (under either tool).
 
+### resend/react-email — 1531a395bf8e8e6dd3b61a7ce9afd03551c5b18b
+
+pnpm 11.0, Turbo 2.9.14. Benched: `build` over `./packages/*`, the
+repo's own `release:build`, 4 tasks (`@react-email/render`,
+`react-email`, `@react-email/editor`, `@react-email/ui`).
+
+- Mapped: `build` of the four packages, with `globalEnv` as each
+  task's keyed and passed env. Not mapped: the apps, the benchmarks,
+  the playground, and `postbuild`, a script no package has.
+- Each tsconfig extends the `tsconfig` package, which has no build to
+  depend on, so its files are every build's `workspaceFiles`.
+- `@react-email/ui`'s config is `vx.config.mjs`: its `next build`
+  type-checks every `.ts` under the package and the repo does not
+  install `@vzn/vx`, so a `.ts` config failed the build under both
+  tools (2026-11-18).
+
+### TanStack/query — 817bd0265931aec96a2140d12010f05795160310
+
+pnpm 12.4, Nx 23.2.1 (`NX_DAEMON=false`, `NX_NO_CLOUD=true`). Benched:
+`build` minus `examples/**` and `integrations/**`, the repo's own
+`build:all`, 25 tasks, both tools at the repo's `parallel: 5`.
+
+- Mapped: `build` of the 25 packages that have one. Inputs are
+  `nx.json`'s `production` (no `*.md`, `tests/`, `eslint.config.js`)
+  plus `sharedGlobals`; outputs are `build` and `dist`.
+- Nx's `^production` reaches every dependency's sources. A
+  dependency's build folds them into the key; the two packages with
+  no build, `query-test-utils` and `query-codemods`, are named as
+  `workspaceFiles` where a package depends on them.
+- `react-query` and `preact-query` run `pnpm build:tsdown && pnpm
+build:codemods` as the two commands themselves. Nx runs the scripts
+  through pnpm as shipped.
+
 ## The `turbo()` / `nx()` runs
 
 Every run below predates 2026-09-29 and ran vx without a lock, each
