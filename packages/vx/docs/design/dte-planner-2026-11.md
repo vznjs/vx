@@ -31,7 +31,7 @@ then same script in the workspace, then the workspace.
 | Symbol   | Meaning                                             | Learned from                                                                  |
 | -------- | --------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `T_i`    | task `i`'s duration, alone, on a worker of speed 1  | per-run `aloneMs` rows (vx-history)                                           |
-| `c_i`    | cores `i` keeps busy                                | `cpuMs / aloneMs` of the same rows                                            |
+| `c_i(t)` | cores `i` keeps busy over its run (its shape)       | sampled busy cores per task, checked against runs at other `cpuShare`         |
 | `m_i`    | `i`'s peak memory                                   | the same rows                                                                 |
 | `W_s`    | warm-up of a worker of size `s`                     | the run's and past runs' joins (`learned.warmUps`, `joins`)                   |
 | `v_w`    | speed of worker `w`                                 | prior: the size's past speeds; posterior: each task it ends (took ÷ expected) |
@@ -41,6 +41,12 @@ then same script in the workspace, then the workspace.
 time is stretched. The rows say how far real machines are from it (four
 shards a 4-core worker ran 1.45x alone on main, 2026-11-13), and the fit
 replaces the starting form.
+
+A task's shape gives its time on any share of cores with no guess: each
+slice of `k` busy cores, run on `a` cores, stretches by `max(1, k / a)`.
+A task of 10 minutes at 5 cores on average takes 10 to 20 minutes on 2.5,
+by how much of it was serial. The average alone cannot say which, so the
+shape is recorded, and runs of the same task at other shares check it.
 
 ### One machine
 
@@ -110,7 +116,7 @@ Assumptions about the world, to be removed:
 | `SLOWDOWN_MS`                              | history before slowdown speaks     | the posterior of `v` (weak data counts little) |
 | `HEDGE` 0.15, `RISK` 2, `CHAIN_TIMES` 3    | guesses at overruns                | samples of `T`                                 |
 | `LANES` 4                                  | room in quarter cores              | continuous load                                |
-| `MIN_CORES` 1, `bookedCores`, `wholeCores` | bookings rounded                   | `c_i` and `g`                                  |
+| `MIN_CORES` 1, `bookedCores`, `wholeCores` | bookings rounded                   | `c_i(t)` and `g`                               |
 | `OVERBOOK` 1.5, `LEARN_MS`                 | how far bookings may stretch       | `g`                                            |
 | `OTHER_WEIGHT` 0.25                        | smoothing of a worker's other load | the posterior of `v`                           |
 | `PIN_WAIT_MS` 10 s                         | wait vs make again                 | the rollout                                    |
