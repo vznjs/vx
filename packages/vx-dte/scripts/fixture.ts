@@ -20,8 +20,17 @@ interface TraceEvent {
   tid?: number
   ts?: number
   dur?: number
-  args?: { name?: string; cpuMs?: number; peakRssBytes?: number }
+  args?: { name?: string; cpuMs?: number; peakRssBytes?: number; input?: string }
 }
+
+interface PlanInput {
+  tasks: { id: string; ms?: number; cores: number; memory: number }[]
+  warmUps?: Record<string, number>
+  spreads?: Record<string, number>
+}
+
+/** `hosted.small#3` -> `small`: the size as `.vx/workspace.ts` names it. */
+const sizeOf = (worker: string): string => worker.split('#')[0]!.split('.').at(-1)!
 
 /**
  * A worker's platform by its size's name, as .vx/workspace.ts declares
@@ -70,11 +79,32 @@ export function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: st
       Math.round((e.args.peakRssBytes ?? 0) / 1e6),
       ...(command !== undefined && after > 0 ? [after] : []),
     ] as [number, number, number] | [number, number, number, number]
-    const p = PLATFORMS[(machine.get(e.pid) ?? '').split('#')[0]!.split('.').at(-1)!]
+    const p = PLATFORMS[sizeOf(machine.get(e.pid) ?? '')]
     if (p !== undefined && p !== 'linux-x64') platform.set(e.name, p)
   }
+  // What the run's first plan knew: history's time, cores and memory of
+  // each task, and each size's warm-up and join spread an earlier run
+  // learned. Played without the spreads, the sim asked 11 workers where
+  // main d36eed9 asked 13, and ended its Linux lane 159-178 s for the
+  // run's 147-153 (2026-11-18).
+  const first = trace.find((e) => e.ph === 'i' && e.name === 'plan' && e.args?.input !== undefined)
+  const input: PlanInput | undefined =
+    first === undefined ? undefined : JSON.parse(first.args!.input!)
+  const known: Record<string, [number, number, number] | null> = {}
+  for (const t of input?.tasks ?? [])
+    if (t.id in ran)
+      known[t.id] = t.ms === undefined ? null : [t.ms, t.cores, Math.round(t.memory / 1e6)]
+  const bySize = (r: Record<string, number> = {}) =>
+    Object.fromEntries(Object.entries(r).map(([k, v]) => [sizeOf(k), v]))
+  // Each worker's warm-up, by size in the order they were numbered.
+  const joins: Record<string, number[]> = {}
+  for (const e of trace)
+    if (e.ph === 'X' && e.name === 'warm-up') {
+      const w = machine.get(e.pid) ?? ''
+      ;(joins[sizeOf(w)] ??= [])[Number(w.split('#')[1]) - 1] = Math.round(e.dur! / 1000)
+    }
   return {
-    _: `${note}: the CI graph (cache: false for an uncached task), and the tasks that ran with how long each's command ran, its cores (cpu over wall), peak RSS in MB and the ms its worker took after the command; every other task hit`,
+    _: `${note}: the CI graph (cache: false for an uncached task), and the tasks that ran with how long each's command ran, its cores (cpu over wall), peak RSS in MB and the ms its worker took after the command; every other task hit. known: what the first plan's history said of each (ms, cores, MB; null: unmeasured); warmUps, spreads: what it had learned of each size; joins: each worker's warm-up (ms) by size`,
     nodes: dry.tasks.map((t) => ({
       id: t.id,
       deps: t.deps,
@@ -83,6 +113,9 @@ export function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: st
       ...(platform.has(t.id) ? { platform: platform.get(t.id) } : {}),
     })),
     ran,
+    ...(input === undefined
+      ? {}
+      : { known, warmUps: bySize(input.warmUps), spreads: bySize(input.spreads), joins }),
   }
 }
 

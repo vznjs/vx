@@ -62,10 +62,12 @@ export interface SimTask {
 
 export interface SimOptions {
   readonly sizes: readonly Size[]
-  /** How long the n-th worker started (1 first) takes to join. */
-  readonly warmUpMs?: (n: number) => number
+  /** How long the n-th worker started (1 first), the k-th of its size (`k`), takes to join. */
+  readonly warmUpMs?: (n: number, size: string, k: number) => number
   /** Each size's join spread an earlier run learned (`readJoinSpreads`). */
   readonly spreadsMs?: ReadonlyMap<string, number>
+  /** Each size's warm-up an earlier run learned (`learned.warmUps`); else the first worker's. */
+  readonly warmUpsMs?: ReadonlyMap<string, number>
   /** The tasks the forecast says miss (`likelyMisses`), before any does. */
   readonly likely?: ReadonlySet<string>
   /** How it orders, places, books and scales; default `DEFAULT_STRATEGY`. */
@@ -452,13 +454,17 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       const m = durationMs(id)
       return m === undefined ? undefined : m * slow(id)
     }
-    // As the plugin: the fastest join of the size this run, else the first worker's.
+    // As the plugin: the fastest join of the size this run, else an earlier run's, else the first worker's.
     const warmUp = (size: string | undefined): number => {
       let least: number | undefined
       for (const w of workers)
         if (w.joinedAt !== undefined && sizeOf.get(w.id)?.name === size)
           least = Math.min(least ?? Infinity, w.joinedAt - w.spawnedAt)
-      return least ?? warmUpOf(1)
+      return (
+        least ??
+        (size === undefined ? undefined : options.warmUpsMs?.get(size)) ??
+        warmUpOf(1, options.sizes[0]!.name, 1)
+      )
     }
     // As the plugin: this run's once two of the size joined (`Orchestrator.spreadsMs`), else an earlier run's.
     const spread = (size: string): number => {
@@ -596,7 +602,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         has: new Set(),
       })
       // Joining is a later event.
-      joinAt.set(id, now + warmUpOf(index))
+      joinAt.set(id, now + warmUpOf(index, s.name, started.get(s.name)!))
     }
   }
   const joinAt = new Map<string, number>()

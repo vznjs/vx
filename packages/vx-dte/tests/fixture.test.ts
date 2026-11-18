@@ -57,3 +57,32 @@ it('plays a task as its command, and the rest of its span as the check and save 
   )
   expect(f.ran.a).toEqual([2000, 0.5, 0, 700])
 })
+
+it("keeps what the run's first plan knew: history of each task that ran, and each size's warm-up", () => {
+  const input = {
+    tasks: [
+      { id: 'a', ms: 3000, cores: 1.25, memory: 2e8 },
+      { id: 'b', cores: 1, memory: 0 },
+      { id: 'hit', ms: 100, cores: 1, memory: 0 },
+    ],
+    warmUps: { 'hosted.small': 16_525 },
+    spreads: { 'hosted.small': 4554 },
+  }
+  const f = fixture(
+    { tasks: ['a', 'b', 'hit'].map((id) => ({ id, cacheStatus: 'miss', deps: [] })) },
+    [
+      { ph: 'M', name: 'process_name', pid: 1, args: { name: 'hosted.small#2' } },
+      { ph: 'M', name: 'process_name', pid: 2, args: { name: 'hosted.small#1' } },
+      { ph: 'i', name: 'plan', pid: 0, args: { input: JSON.stringify(input) } },
+      { ph: 'X', name: 'warm-up', pid: 1, ts: 0, dur: 19_000_000 },
+      { ph: 'X', name: 'warm-up', pid: 2, ts: 0, dur: 24_000_000 },
+      { ph: 'X', name: 'a', pid: 1, dur: 2_000_000, args: { cpuMs: 1000 } },
+      { ph: 'X', name: 'b', pid: 1, dur: 2_000_000, args: { cpuMs: 1000 } },
+    ],
+    'a run',
+  )
+  expect(f.known).toEqual({ a: [3000, 1.25, 200], b: null })
+  expect(f.warmUps).toEqual({ small: 16_525 })
+  expect(f.spreads).toEqual({ small: 4554 })
+  expect(f.joins).toEqual({ small: [24_000, 19_000] })
+})
