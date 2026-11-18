@@ -217,6 +217,8 @@ it('a release binary built from a source tree that is gone remembers keys', asyn
         '--compile',
         '--minify',
         '--bytecode',
+        '--format=esm',
+        '--splitting',
         'src/bin.ts',
         '--outfile',
         bin,

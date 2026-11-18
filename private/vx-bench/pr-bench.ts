@@ -203,6 +203,8 @@ try {
       '--compile',
       '--minify',
       '--bytecode',
+      '--format=esm',
+      '--splitting',
       ...vxCompileEntries(bin),
       '--outfile',
       vx,

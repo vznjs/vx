@@ -331,6 +331,8 @@ must(
     '--compile',
     '--minify',
     '--bytecode',
+    '--format=esm',
+    '--splitting',
     ...vxCompileEntries(path.join(REPO_ROOT, 'packages/vx/src/bin.ts')),
     '--outfile',
     vxBin,

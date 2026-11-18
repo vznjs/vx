@@ -118,6 +118,8 @@ async function buildRunners(dir: string, wanted: (name: string) => boolean): Pro
         '--compile',
         '--minify',
         '--bytecode',
+        '--format=esm',
+        '--splitting',
         `--target=${target}`,
         ...vxCompileEntries(path.join(modules, '@vzn', 'vx', 'src', 'bin.ts')),
         '--outfile',
