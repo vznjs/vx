@@ -2,7 +2,15 @@
 // already listening on a `localBinding` port counted as the bridge: its
 // own bind failed unseen, the task passed, and a client of the port
 // reached the other process (2026-10-03).
-import { existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -158,11 +166,18 @@ describe.skipIf(!available || process.platform !== 'linux')(
         [
           '#!/bin/sh',
           `case "$1" in TCP-LISTEN:*) ;; *) exec ${real} "$@" ;; esac`,
+          // Set before the bridge starts: a TERM that beat the trap ended
+          // this script alone and left the bridge on the port for good, so
+          // the second task was refused (job 134592897073).
+          `trap 'term=1' TERM`,
           // Its own session: the group's TERM reaches only this script.
           `setsid ${real} "$@" &`,
           'c=$!',
-          `trap 'sleep 0.5; kill $c; exit 0' TERM`,
-          'wait $c',
+          'while [ -z "$term" ] && kill -0 $c 2>/dev/null; do wait $c; done',
+          'sleep 0.5',
+          // Gone only once the bridge is: its exit is what vx waits for.
+          'kill $c; wait $c',
+          'exit 0',
           '',
         ].join('\n'),
         { mode: 0o755 },
@@ -191,6 +206,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
           ['success', 'success'],
           '',
         ])
+        // The last bridge outlives the run by its half second, in a session
+        // no kill of this process's groups reaches: it is seen off here.
+        const row = `0100007F:${port.toString(16).toUpperCase().padStart(4, '0')} `
+        while (readFileSync('/proc/net/tcp', 'utf8').includes(row)) await Bun.sleep(20)
       } finally {
         process.env['PATH'] = prevPath
       }
