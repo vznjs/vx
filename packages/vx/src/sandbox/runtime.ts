@@ -1674,6 +1674,7 @@ async function wrapIn(
     process.platform === 'linux'
       ? loopbackPorts(args.config.network).filter((p) => !ports.includes(p))
       : []
+  await bridgesGone(ports)
   // Before the wrap, which holds the runtime's stub cleanup until `afterCommand`.
   const held = portsHeld(ports)
   if (held.length > 0) {
@@ -2348,6 +2349,29 @@ const hostBridges = new Map<
 >()
 
 /**
+ * The released bridges still on their way out, by the port each holds
+ * until it has gone. A release ends a bridge by signal, and the next wrap
+ * of its port (the task after it, a watch re-run, the retry of an attempt
+ * the observer ended) read the dying socat in the table as another
+ * process's listener and refused the task (2026-11-18).
+ */
+const leavingBridges = new Map<number, Set<Promise<unknown>>>()
+
+/** Wait, 5 s at most, for this process's released bridges to let the ports go. */
+async function bridgesGone(ports: readonly number[]): Promise<void> {
+  const leaving = ports.flatMap((p) => [...(leavingBridges.get(p) ?? [])])
+  if (leaving.length === 0) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    Promise.all(leaving),
+    new Promise((resolve) => {
+      timer = setTimeout(resolve, 5_000)
+    }),
+  ])
+  clearTimeout(timer)
+}
+
+/**
  * The ports a host listener already holds where the bridge would bind
  * (`127.0.0.1`, or every address). The listen wait below reads the same
  * table and took that listener for the bridge, whose bind had failed: the
@@ -2496,11 +2520,24 @@ export function releaseBridges(tag: string): void {
     }
     liveTempFiles.delete(sock)
   }
-  for (const p of bridges.procs) {
+  for (const [i, p] of bridges.procs.entries()) {
     // The group: a socat forks one child per connection. Listed on the
     // guard until it has gone (item 867's order).
     killTree(p, 'SIGTERM')
-    void p.exited.then(() => releaseGroup(p))
+    const gone = p.exited.then(() => releaseGroup(p))
+    // `spawnHostBridges` spawns the ports' bridges first, in order.
+    const port =
+      bridges.procs.length === bridges.ports.length + bridges.reach.length
+        ? bridges.ports[i]
+        : undefined
+    if (port === undefined || p.exitCode !== null) continue
+    const leaving = leavingBridges.get(port) ?? new Set()
+    leavingBridges.set(port, leaving)
+    leaving.add(gone)
+    void gone.then(() => {
+      leaving.delete(gone)
+      if (leaving.size === 0) leavingBridges.delete(port)
+    })
   }
 }
 
