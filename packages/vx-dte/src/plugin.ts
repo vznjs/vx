@@ -523,6 +523,7 @@ export function dte(options: DteOptions = {}) {
             relay,
             run,
             ...(id === undefined || id === '' ? {} : { id }),
+            ...waitOf(),
             root: ctx.workspaceRoot,
             token: () => token(relay),
             headers,
@@ -1428,4 +1429,16 @@ function unroutable(url: string): string | undefined {
 /** A relay URL as a refusal may print it: a `user:pass@` would reach the CI log. */
 function shown(url: string): string {
   return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, '$1***@')
+}
+
+/** `VX_DTE_WAIT`: the seconds a worker started ahead of its run waits for it. */
+function waitOf(): { waitMs?: number } {
+  const wait = process.env['VX_DTE_WAIT']
+  if (wait === undefined || wait === '') return {}
+  const s = Number(wait)
+  if (!Number.isFinite(s) || s < 0 || s > 600)
+    throw new UserError(
+      `VX_DTE_WAIT is the seconds a worker waits for its run to start, 0 to 600: not ${JSON.stringify(wait)}`,
+    )
+  return { waitMs: s * 1000 }
 }
