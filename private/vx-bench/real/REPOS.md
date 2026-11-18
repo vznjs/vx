@@ -125,6 +125,26 @@ pnpm 12.4, Nx 23.2.1 (`NX_DAEMON=false`, `NX_NO_CLOUD=true`). Benched:
 build:codemods` as the two commands themselves. Nx runs the scripts
   through pnpm as shipped.
 
+### refinedev/refine — 2352eb5b6539e2f39ad9aef652279ad1dcf2c467
+
+pnpm 9.4, Nx 18.2.2 under lerna. The install is `packages/**` and the
+root (`CYPRESS_INSTALL_BINARY=0`); the 169 examples are never run.
+Benched: `build` of the 35 library packages, both tools at Nx's
+default of 3. Out of both tools: the two Next apps, `refine-ui` (its
+`next build` fetches Google Fonts) and `live-previews` (one 280 s
+`next build` that would be the whole cold arm).
+
+- Mapped: `build` of the 35 packages, outputs `.next`, `build` and
+  `dist` as `nx.json` has them. Every tsup config imports plugins from
+  `packages/shared/`, which is no project, and every tsconfig extends
+  the root's: both are every build's `workspaceFiles`.
+- `devtools-server`'s `pnpm build:client && tsup && …` is one command.
+  Nx also has `build:client` as a target of its own on the same
+  `dist`; vx refuses two cached tasks on one output path.
+- `codemod`'s config is `vx.config.mjs`: its build is `tsc -p
+tsconfig.json`, which compiled a `.ts` config and failed under both
+  tools (2026-11-18).
+
 ## The `turbo()` / `nx()` runs
 
 Every run below predates 2026-09-29 and ran vx without a lock, each

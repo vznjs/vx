@@ -43,6 +43,10 @@ interface Repo {
   workers: number
   /** Native config kept in real/<name>/, copied over the clone; pinned by full SHA. */
   overlay?: boolean
+  /** More `pnpm install` arguments: the filters of a repo whose examples the bench never runs. */
+  install?: string[]
+  /** Environment for the install alone. */
+  installEnv?: Record<string, string>
 }
 
 // The repos and scopes /compare/real-repos/ publishes (benchmarks.md § Real repos).
@@ -94,6 +98,19 @@ const REPOS: Repo[] = [
     filters: '!./examples/** !./integrations/**',
     workers: 5,
     overlay: true,
+  },
+  {
+    name: 'refine',
+    url: 'https://github.com/refinedev/refine',
+    commit: '2352eb5b6539e2f39ad9aef652279ad1dcf2c467',
+    tool: 'nx',
+    tasks: 'build',
+    filters: '!./examples/** !@refinedev/refine-ui !@refinedev/live-previews',
+    workers: 3,
+    overlay: true,
+    install: ['--filter', './packages/**', '--filter', '.'],
+    // cypress's postinstall downloads its binary, which nothing benched runs.
+    installEnv: { CYPRESS_INSTALL_BINARY: '0' },
   },
 ]
 
@@ -229,7 +246,10 @@ for (const repo of REPOS) {
     }
     must(['git', 'checkout', '-qf', repo.commit], dir)
     must(['git', 'clean', '-fdxq', '-e', 'node_modules', '-e', '**/node_modules'], dir)
-    must(['pnpm', 'install', '--frozen-lockfile'], dir)
+    must(['pnpm', 'install', '--frozen-lockfile', ...(repo.install ?? [])], dir, {
+      ...benchEnv(),
+      ...repo.installEnv,
+    })
     repairManagedPnpm(dir)
     if (repo.overlay === true) applyOverlay(repo.name, dir)
     else {
