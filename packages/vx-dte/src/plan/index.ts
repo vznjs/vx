@@ -7,7 +7,6 @@ export {
   knownMisses,
   leaves,
   leftMs,
-  readySoon,
   spreadMs,
   slowdowns,
   tailsMs,
