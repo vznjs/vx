@@ -42,3 +42,18 @@ it("reads a task's platform from its worker's size, behind the adapter's group",
   ])
   expect(f.ran.mac).toEqual([2000, 0.5, 5])
 })
+
+it('plays a task as its command, and the rest of its span as the check and save after it', () => {
+  const f = fixture(
+    { tasks: [{ id: 'a', cacheStatus: 'miss', deps: [] }] },
+    [
+      { ph: 'M', name: 'process_name', pid: 1, args: { name: 'hosted.small#1' } },
+      // The run's lane spans it from its queueing: not how it ran.
+      { ph: 'X', name: 'a', pid: 9, tid: 1, ts: 0, dur: 9_000_000, args: { cpuMs: 1000 } },
+      { ph: 'X', name: 'a', pid: 1, tid: 1, ts: 5_000_000, dur: 2_700_000, args: { cpuMs: 1000 } },
+      { ph: 'X', name: 'command', pid: 1, tid: 1, ts: 5_100_000, dur: 2_000_000 },
+    ],
+    'a run',
+  )
+  expect(f.ran.a).toEqual([2000, 0.5, 0, 700])
+})
