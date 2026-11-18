@@ -93,6 +93,8 @@ export interface InitialRun {
   readonly windows: CommandWindows
   /** The lock as it read it (`lockStamp`). */
   readonly lock: string
+  /** Git's index as it started (`indexStamp`): a commit, checkout or stash rewrites it. */
+  readonly index: string
 }
 
 /** The initial run, when the loop arms while it is still in flight. */
@@ -238,6 +240,8 @@ class WatchLoop {
   private stoppedLast = new Set<string>()
   /** Files `heardSinceRun` found inside a command's window, at an arm the initial run was still behind. */
   private inWindowAtArm: string[] = []
+  /** Git's index moved between the initial run's start and the arm. */
+  private gitMovedAtArm = false
   private windowOpened = 0
   /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
   private lockSeen: string
@@ -428,15 +432,26 @@ class WatchLoop {
     // it, and watch idled over stale output. One to a task the run was running
     // its re-check found; any other is heard here.
     const { heard, inWindow } = this.heardSinceRun()
+    // An edit committed during the run is no longer dirty, and a checkout or
+    // a stash leaves clean files the run never read: git names none of them,
+    // so the keys judge whenever its index moved.
+    const gitMoved = indexStamp(this.workspaceRoot) !== args.initialRun.index
     // Armed while the run waits on a server: its keys come when it returns.
     if (args.initial !== undefined) {
-      if (!heard) this.inWindowAtArm = inWindow
-    } else if (args.drifted !== undefined && !heard)
-      void this.cycle(`${args.drifted} inputs, edited during the first run`)
+      if (!heard) {
+        this.inWindowAtArm = inWindow
+        this.gitMovedAtArm = gitMoved
+      }
+    } else if (args.drifted !== undefined && !heard) void this.cycle(driftLabel(args.drifted))
     // Heard, the cycle keys every task itself.
-    else if (!heard && inWindow.length > 0 && args.keys !== undefined && !this.running) {
+    else if (
+      !heard &&
+      (inWindow.length > 0 || gitMoved) &&
+      args.keys !== undefined &&
+      !this.running
+    ) {
       this.running = true
-      this.inFlight = this.hearIfKeysMoved(inWindow, args.keys)
+      this.inFlight = this.hearIfKeysMoved(inWindow, args.keys, gitMoved)
     }
 
     return await new Promise<void>((resolve) => {
@@ -541,17 +556,19 @@ class WatchLoop {
         let failed: string | undefined
         /** The judged cycle this run is (`ChangeJudge.cycle`): its window closes when the run ends. */
         const judged = changes.cycle
-        /** A task the initial run left unsaved: its cycle, when no edit starts one. */
+        /** What the initial run built from bytes since moved: its cycle's label, when no edit starts one. */
         let drifted: string | undefined
         if (initial !== undefined) {
           this.held = await initial.held
           const { keys } = initial
-          drifted = initial.drifted
+          if (initial.drifted !== undefined) drifted = driftLabel(initial.drifted)
           initial = undefined
           const inWindow = this.inWindowAtArm
+          const gitMoved = this.gitMovedAtArm
           this.inWindowAtArm = []
-          if (inWindow.length > 0 && keys !== undefined && !this.stop.aborted)
-            await this.hearMoved(inWindow, keys)
+          this.gitMovedAtArm = false
+          if ((inWindow.length > 0 || gitMoved) && keys !== undefined && !this.stop.aborted)
+            if ((await this.hearMoved(inWindow, keys)) && gitMoved) drifted ??= GIT_MOVED
         } else
           try {
             // A member came or went: armed before the run keys it, so an edit
@@ -583,7 +600,7 @@ class WatchLoop {
         }
         if (changes.pending.size === 0) {
           if (drifted === undefined) break
-          label = `${drifted} inputs, edited during the first run`
+          label = drifted
           continue
         }
         await Bun.sleep(DEBOUNCE_MS)
@@ -1262,20 +1279,24 @@ class WatchLoop {
   private async hearIfKeysMoved(
     inWindow: readonly string[],
     keys: ReadonlyMap<string, string>,
+    gitMoved: boolean,
   ): Promise<void> {
+    let moved = false
     try {
-      await this.hearMoved(inWindow, keys)
+      moved = await this.hearMoved(inWindow, keys)
     } finally {
       this.running = false
       const next = pendingAfterCycle(this.changes.pending, this.stop.aborted)
       if (next !== undefined) this.trigger(next[1], next[0])
+      // Git moved the files and names none: the cycle keys every task.
+      else if (moved && gitMoved) void this.cycle(GIT_MOVED)
     }
   }
 
   private async hearMoved(
     inWindow: readonly string[],
     keys: ReadonlyMap<string, string>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const plan = await untimed(() => planCore({ ...this.opts, log: SILENT, cache: KEYS_ONLY }))
       const moved = plan.tasks.some((t) => {
@@ -1283,8 +1304,10 @@ class WatchLoop {
         return was !== undefined && was !== t.hash
       })
       if (moved) for (const abs of inWindow) this.hear(abs)
+      return moved
     } catch {
       // The cycle an edit starts says what a plan could not.
+      return false
     }
   }
 }
@@ -1311,6 +1334,21 @@ export function lockStamp(workspaceRoot: string): string {
     return ''
   }
 }
+
+/** Git's index file's identity, `''` when there is none: a commit, checkout, stash or reset rewrites it. */
+export function indexStamp(workspaceRoot: string): string {
+  const index = repoFacts(workspaceRoot)?.indexFile
+  if (index === undefined) return ''
+  try {
+    const st = fs.statSync(path.resolve(workspaceRoot, index))
+    return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`
+  } catch {
+    return ''
+  }
+}
+
+const driftLabel = (task: string): string => `${task} inputs, edited during the first run`
+const GIT_MOVED = 'files, committed or checked out during the first run'
 
 /**
  * The event a finished cycle hands back to the timer, if any: one landing

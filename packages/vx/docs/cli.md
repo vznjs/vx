@@ -1547,8 +1547,12 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    waited on a server does both once the run returns, so an edit beside
    a dev server already up is a cycle too. A tracked file deleted while
    it runs has no date to tell it from one deleted before: the keys are
-   taken again for it too. An untracked file deleted while it runs is
-   still unheard: nothing lists it.
+   taken again for it too. An edit committed while it runs is no
+   longer modified, and a checkout or a stash leaves clean files it
+   never read: whenever git's index moved since the run started, the
+   keys are taken again, and one that moved starts a cycle labelled
+   `files, committed or checked out during the first run`. An untracked
+   file deleted while it runs is still unheard: nothing lists it.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope

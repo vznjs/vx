@@ -184,6 +184,52 @@ it('a tracked input deleted before the start starts no cycle', async () => {
   expect(w.cycles()).toBe(0)
 }, 40_000)
 
+// Committed, the edit is no longer dirty: git names no file, and the output
+// stayed built from the old bytes. Git's index moved, so the keys judge.
+it('an edit committed during the initial run, after its task finished, starts a cycle', async () => {
+  const { lib, go, root } = await fixture(true)
+  watch = startWatch(root, ['--all'])
+  const w = watch
+  const out = output(lib)
+  await finished(w, lib)
+  await writeFile(path.join(lib, 'src', 'a.txt'), 'new\n')
+  gitIn(root)('commit', '-q', '-a', '-m', 'edit')
+  await writeFile(go, '')
+  await until(async () => (await out()) === 'new\n', 'the output of the committed bytes')
+  expect(w.out()).toContain('changed files, committed or checked out during the first run')
+}, 40_000)
+
+it('a branch checked out during the initial run, after its task finished, starts a cycle', async () => {
+  const { lib, go, root } = await fixture(true)
+  const git = gitIn(root)
+  git('checkout', '-q', '-b', 'other')
+  await writeFile(path.join(lib, 'src', 'a.txt'), 'other\n')
+  git('commit', '-q', '-a', '-m', 'other')
+  git('checkout', '-q', '-')
+  watch = startWatch(root, ['--all'])
+  const out = output(lib)
+  await finished(watch, lib)
+  git('checkout', '-q', 'other')
+  await writeFile(go, '')
+  await until(async () => (await out()) === 'other\n', 'the output of the other branch')
+}, 40_000)
+
+// CONTROL: the index moved and no key did.
+it('a commit during the initial run that moves no key starts no cycle', async () => {
+  const { lib, go, root } = await fixture(true)
+  watch = startWatch(root, ['--all'])
+  const w = watch
+  await finished(w, lib)
+  gitIn(root)('commit', '-q', '--allow-empty', '-m', 'empty')
+  await writeFile(path.join(root, 'notes.txt'), 'x\n')
+  gitIn(root)('add', 'notes.txt')
+  await writeFile(go, '')
+  await until(() => w.out().includes('watching'), 'the watching marker')
+  await Bun.sleep(1_500)
+  expect(w.cycles()).toBe(0)
+  expect(await output(lib)()).toBe('old\n')
+}, 40_000)
+
 it('a `vx lock` during the initial run starts a cycle on the new lock', async () => {
   const { lib, go, root } = await fixture(false)
   watch = startWatch(root, ['--all'])
