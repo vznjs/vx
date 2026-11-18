@@ -238,8 +238,8 @@ export class OutputIndex {}
 ### Purpose
 
 `StatThread`: `statSync` of a list of paths on a worker thread, answered as
-five numbers a path (size, mode, mtimeMs, ino, ctimeMs; a NaN mode where
-the stat threw). `statSync` is ~2 µs of the main thread a file, and a warm
+five numbers a path, the ones `isOutputsCurrent` compares (`STAT_FIELDS`; a
+NaN mode where the stat threw). `statSync` is ~2 µs of the main thread a file, and a warm
 run asks one per output file of every hit: 14,484 files were 38 ms asked
 there and 4 ms asked here (the spawn and the post). A thread that fails
 answers undefined and every file is asked where it always was. The worker

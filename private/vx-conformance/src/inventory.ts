@@ -1231,6 +1231,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/link-outside-root',
     'wal-checkpointer',
     'wall-clock-step',
+    'warm-outputs',
     'warm-shell',
     'watch-affected',
     'watch-claimed-extras',
