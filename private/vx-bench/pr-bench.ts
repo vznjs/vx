@@ -32,6 +32,7 @@ import {
   HELD,
   rivalLosses,
   RIVALS,
+  sameCore,
   SITE_ARMS,
   undecided,
   type Arm,
@@ -42,7 +43,7 @@ import { deleteDist } from './outputs.js'
 import { enoughQuiet, machineBusyMs, type Pair, quietest, tracerCpuMs } from './quiet.js'
 import { RUN_TASKS, workspace } from './shape.js'
 import { generate, gitInit, linkRivals, RUNNER_ENV, rivalRuns } from './site-workspace.js'
-import { copyWorkspace, outputMtimes } from './workspace-copy.js'
+import { copyWorkspaces, outputMtimes } from './workspace-copy.js'
 
 /** The pairs of each held arm its figures come from: the quietest. */
 const REPS = 7
@@ -94,6 +95,18 @@ function must(cmd: string[], cwd: string): { out: string; cpuMs: number } {
   return r
 }
 
+/** A run nothing times, beside others: a tool's first, which fills its caches. */
+async function fill(cmd: string[], cwd: string): Promise<void> {
+  const p = Bun.spawn(cmd, { cwd, env: RUNNER_ENV, stdout: 'pipe', stderr: 'pipe' })
+  const [out, err, code] = await Promise.all([
+    new Response(p.stdout).text(),
+    new Response(p.stderr).text(),
+    p.exited,
+  ])
+  childCpuMs += Number(p.resourceUsage()?.cpuTime.total ?? 0) / 1000
+  if (code !== 0) throw new Error(`${cmd.join(' ')} failed:\n${(out + err).slice(-2000)}`)
+}
+
 /** One workspace the bench times, each tool in its own copy. */
 interface Bench {
   dirs: Record<Tool, string>
@@ -127,8 +140,11 @@ async function bench(
   for (const tool of tools) {
     dirs[tool] = `${ws}-${tool}`
     scratch.push(dirs[tool])
-    copyWorkspace(ws, dirs[tool])
   }
+  await copyWorkspaces(
+    ws,
+    tools.map((t) => dirs[t]),
+  )
   if (baseOn) {
     const locked = sh([baseVx!, 'lock'], dirs.base)
     if (!locked.ok) {
@@ -175,17 +191,28 @@ try {
     // The compiler writes its scratch file into its cwd.
     os.tmpdir(),
   )
-  if (baseVx !== undefined && BASE !== undefined)
-    buildBase(path.resolve(import.meta.dir, '../..'), BASE, baseVx)
+  const repo = path.resolve(import.meta.dir, '../..')
+  if (BASE !== undefined && sameCore(repo, BASE)) {
+    baseOn = false
+    console.log(
+      "BASE SAME: core is the base's, byte for byte, so nothing is timed against it; the rivals still are",
+    )
+  }
+  if (baseOn && baseVx !== undefined && BASE !== undefined) buildBase(repo, BASE, baseVx)
   const all = workspace()
-  const small = await bench(
-    'cold',
-    all.filter((p) => p.level <= COLD_LEVELS && p.kind !== 'e2e'),
-    vx,
-    baseVx,
-    RIVALS,
-  )
-  const site = await bench('site', all, vx, baseVx, ['turbo'])
+  // Nothing before the first pair is timed, so it runs side by side: both
+  // workspaces, each tool's copy and each tool's first run. In turn they
+  // took 107 s of the bench's 250 s, the pairs 70 s (2026-11-18).
+  const [small, site] = await Promise.all([
+    bench(
+      'cold',
+      all.filter((p) => p.level <= COLD_LEVELS && p.kind !== 'e2e'),
+      vx,
+      baseVx,
+      RIVALS,
+    ),
+    bench('site', all, vx, baseVx, ['turbo']),
+  ])
   const benchOf = (arm: Arm): Bench => (SITE_ARMS.includes(arm) ? site : small)
   const paired: readonly Tool[] = baseOn ? ['vx', 'base', 'turbo'] : ['vx', 'turbo']
 
@@ -234,8 +261,10 @@ try {
   }
   // Fill each tool's caches once: the cold workspace's first cold rep does it
   // there. Nx and Vite Task run only the cold workspace (SMALL_RIVALS).
-  for (const tool of [...paired, ...SMALL_RIVALS] as const) await time(tool, 'cold')
-  for (const tool of paired) must(site.runs[tool], site.dirs[tool])
+  await Promise.all([
+    ...[...paired, ...SMALL_RIVALS].map((tool) => fill(small.runs[tool], small.dirs[tool])),
+    ...paired.map((tool) => fill(site.runs[tool], site.dirs[tool])),
+  ])
   // Each arm reps until REPS of its pairs ran quiet, and on while its quiet
   // pairs lean slower than the base without proving it (MAX_REPS at most).
   const pairs = new Map<Arm, CpuPair[]>(HELD.map((a) => [a, []]))
