@@ -78,20 +78,22 @@ const REPOS: Repo[] = [
   {
     name: 'react-email',
     url: 'https://github.com/resend/react-email',
-    commit: '1531a39',
+    commit: '1531a395bf8e8e6dd3b61a7ce9afd03551c5b18b',
     tool: 'turbo',
     tasks: 'build',
     filters: './packages/*',
     workers: 10,
+    overlay: true,
   },
   {
     name: 'tanstack-query',
     url: 'https://github.com/TanStack/query',
-    commit: '817bd02',
+    commit: '817bd0265931aec96a2140d12010f05795160310',
     tool: 'nx',
     tasks: 'build',
     filters: '!./examples/** !./integrations/**',
     workers: 5,
+    overlay: true,
   },
 ]
 
