@@ -495,7 +495,10 @@ On a hit:
    hands the new one the freed inode (measured, item 941), so ctime is
    the guard. A row with no stamp (an ingest from a remote, or a file
    that had changed when the stamp was taken) is never current: the hit
-   restores and stamps. A file whose ctime has no sub-second part (a
+   restores and stamps. The stamp's stat does not follow a link: a link
+   another process swapped into a file's place just before the stamp
+   looked like its target (same size, mode and restore date) and was
+   called current on every later hit (11-18). A file whose ctime has no sub-second part (a
    file system that keeps whole seconds: ext3, HFS+, FAT, some NFS) is
    not stamped while that second, widened as the racy windows are, is
    current: a same-size hand edit later in the second of vx's own write
