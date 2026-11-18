@@ -374,3 +374,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   the outer namespace's: `/proc/self` is right, `/proc/<getpid()>` is
   another process or none. A pid from the kernel is named in that
   `/proc` through `pidfd_open` and its fdinfo's `Pid:` (2026-11-18).
+- A replacement inherits the filters of what it replaced, not only its
+  output. The runtime's write observer reported every write and kept
+  only those outside its own write paths; vx's observer handed all of
+  them on, and a test shard's 85,000 temp-directory writes, each judged
+  with a `realpath`, held a DTE worker's loop past its heartbeat: main
+  went red with workers "lost" that had finished their tasks. Local
+  runs and two CI runs were green first. Measure the work after the
+  task, on the largest task, before a merge (2026-11-18).
