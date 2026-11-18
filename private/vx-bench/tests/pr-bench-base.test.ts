@@ -1,6 +1,5 @@
 import { expect, it } from 'bun:test'
 import {
-  armsOf,
   baseSlower,
   HELD,
   SIGNIFICANCE,
@@ -122,17 +121,4 @@ it("knows a base whose core is this checkout's, and one whose is not", async () 
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
-})
-
-// One runner timing every arm ended a minute after the run it stands
-// beside (2026-11-18): CI gives the cold arm and the site's arms a runner each.
-it('times the arms of its part, every held arm between the two', () => {
-  expect(armsOf(undefined)).toEqual(HELD)
-  expect(armsOf('')).toEqual(HELD)
-  expect([...armsOf('cold'), ...armsOf('site')].toSorted()).toEqual([...HELD].toSorted())
-  expect(armsOf('site')).toEqual(SITE_ARMS)
-  expect(() => armsOf('warm')).toThrow('neither cold nor site')
-  const perf = config.tasks!['check.perf']!
-  expect(perf.inputs?.env).toContain('VX_BENCH_PART')
-  expect(perf.exec?.env?.passThrough).toContain('VX_BENCH_PART')
 })

@@ -22,7 +22,6 @@ interface Step {
   'continue-on-error'?: boolean
 }
 interface Job {
-  strategy?: { matrix?: Record<string, unknown> }
   name?: string
   environment?: string
   if?: string
@@ -60,8 +59,7 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
-      // `Perf` is the check the branch rule requires: the part that can fail.
-      ['perf', "${{ matrix.part == 'cold' && 'Perf' || 'Perf (site)' }}", bench, top, undefined],
+      ['perf', 'Perf', bench, top, undefined],
     ])
   })
 
@@ -71,9 +69,6 @@ describe('ci.yml', () => {
   it('runs the benchmarks off the DTE run', () => {
     const perf = doc.jobs['perf']!
     expect(JSON.stringify(perf)).not.toContain('VX_DTE')
-    // One part of the bench a runner: on one runner the job outlasted the run.
-    expect(perf.strategy?.matrix).toEqual({ part: ['cold', 'site'] })
-    expect(perf.env?.['VX_BENCH_PART']).toBe('${{ matrix.part }}')
     expect(perf.steps?.at(-1)?.run).toBe(
       "bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
     )

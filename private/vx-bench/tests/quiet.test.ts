@@ -32,8 +32,6 @@ it('waits for enough pairs with at most the quiet share busy beside them', () =>
 
 // The two benchmarks ran side by side on one worker as two tasks.
 it('runs perf-guard and the Turbo bench as one task, one after the other', () => {
-  expect(config.tasks?.['check.perf']?.exec?.command).toBe(
-    '{ [ "$VX_BENCH_PART" = site ] || bun perf-guard.ts; } && bun pr-bench.ts',
-  )
+  expect(config.tasks?.['check.perf']?.exec?.command).toBe('bun perf-guard.ts && bun pr-bench.ts')
   expect(Object.keys(config.tasks)).not.toContain('check.vs-turbo')
 })
