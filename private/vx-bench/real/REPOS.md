@@ -294,6 +294,22 @@ and the root. Benched: `build test:build` minus `examples/**` and
 && attw …`); none calls pnpm. Nx runs them through pnpm as shipped.
 - Every config is `vx.config.mjs`: two builds end in `tsc --noEmit`.
 
+### strapi/strapi — d2cae5fcc806877a1fd89dbb4e50a3d40d207e52
+
+yarn 4.18 (the repo's `yarnPath`), Nx 20.8. Benched: the repo's own
+`build` script, `build:code` and `build:types` of the 37 packages that
+have them, 73 tasks, both tools at nx.json's `parallel: 8`.
+
+- Mapped: nx.json's `build:code` (no `dependsOn`, `rollup -c`) and
+  `build:types` (after the dependencies' `build:types`, `tsc
+--emitDeclarationOnly`), each the package script's own command with
+  `run -T` dropped. Both write `dist/`: `build:types` declares
+  `dist/**/*.d.ts` and `.d.ts.map`, `build:code` the rest. The root
+  `rollup.utils.mjs` (nx.json's `production`) is a `workspaceFiles` input.
+- A `run-p` of several `tsc` runs is one command that starts them at
+  once and fails when any fails: their projects share `dist/shared/`, so
+  they cannot be separate tasks.
+
 ## The `turbo()` / `nx()` runs
 
 Every run below predates 2026-09-29 and ran vx without a lock, each
