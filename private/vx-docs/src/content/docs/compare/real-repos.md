@@ -43,7 +43,7 @@ Run %bench.real.vueuse.date% on %bench.real.vueuse.machine%, against
 
 This workspace sets `* text=auto eol=lf`. There Turborepo trusts git's
 index, and
-[a conformance case](../../conformance/#inputs/same-size-line-ending-swap-under-text-attribute)
+[a conformance case](../../conformance/#olfjum)
 shows it replaying stale output after a same-size line-ending change.
 
 vx trusts the index there only for a file whose stored blob is the same

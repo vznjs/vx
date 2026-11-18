@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util'
 import { CASES } from '../cases/index.ts'
 import { ADAPTERS } from './adapters/index.ts'
 import { runCase, type Outcome } from './harness.ts'
-import { coverage, scores, scoreTable, toolVersion, type Results } from './report.ts'
+import { coverage, ref, scores, scoreTable, toolVersion, type Results } from './report.ts'
 import { sandboxAvailable } from './sandbox.ts'
 
 const { values } = parseArgs({
@@ -69,6 +69,7 @@ const outcomeOf = (tool: string, id: string) => outcomes.get(`${tool}\0${id}`)!
 
 const rows = cases.map((c) => ({
   id: c.id,
+  ref: ref(c.id),
   category: c.category,
   kind: c.kind,
   title: c.title,

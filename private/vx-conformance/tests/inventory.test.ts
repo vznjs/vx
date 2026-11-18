@@ -2,6 +2,7 @@ import path from 'node:path'
 import { expect, test } from 'bun:test'
 import { CASES } from '../cases/index.ts'
 import { INVENTORY } from '../src/inventory.ts'
+import { ref } from '../src/report.ts'
 
 const PACKAGES = path.join(import.meta.dir, '..', '..', '..', 'packages')
 
@@ -31,6 +32,15 @@ test('every case cites test files that exist', () => {
     c.from.filter((f) => !files.has(f)).map((f) => `${c.id}: ${f}`),
   )
   expect(unknown).toEqual([])
+})
+
+// A link or a filed issue names a case by its ref; two cases sharing one
+// would make it name both. A new case that collides takes another slug.
+test('every case has its own short ref, six characters of a URL', () => {
+  const refs = CASES.map((c) => ref(c.id))
+  expect(refs.filter((r, i) => refs.indexOf(r) !== i)).toEqual([])
+  expect(refs.filter((r) => !/^[a-z0-9]{6}$/.test(r))).toEqual([])
+  expect(ref('graph/deps-first')).toBe('e5a1q0')
 })
 
 test('every case has a unique id under its category and cites a source', () => {

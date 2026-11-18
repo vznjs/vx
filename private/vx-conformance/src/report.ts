@@ -1,6 +1,7 @@
 // The results: the data the site's conformance page renders (every case,
 // what each tool did, each tool's score per kind and category), and the
 // score table the CLI prints.
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import type { Adapter } from './adapter.ts'
 import type { Outcome } from './harness.ts'
@@ -44,6 +45,8 @@ export interface Results {
   scores: Record<string, Record<string, Score>>
   cases: {
     id: string
+    /** The case's short name in links: {@link ref} of its id. */
+    ref: string
     category: Category
     kind: Kind
     title: string
@@ -51,6 +54,17 @@ export interface Results {
     from: string[]
     outcomes: Record<string, Outcome>
   }[]
+}
+
+/**
+ * A case's short name, the one its link on the conformance page and an
+ * issue filed with another tool carry: six characters derived from its id,
+ * so it holds for as long as the id does and says nothing of the case's
+ * place in the suite.
+ */
+export function ref(id: string): string {
+  const n = createHash('sha256').update(id).digest().readUIntBE(0, 6) % 36 ** 6
+  return n.toString(36).padStart(6, '0')
 }
 
 const MODULES = path.join(import.meta.dir, '..', 'node_modules')

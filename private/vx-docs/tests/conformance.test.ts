@@ -77,15 +77,16 @@ describe('the conformance page', () => {
     expect(wrong).toEqual([])
   })
 
-  it('makes every case a link: an id a URL takes as written, opened by the page’s script', () => {
+  it('makes every case a link by its short ref, opened by the page’s script', () => {
     const wrong: string[] = []
     for (const c of RESULTS.cases) {
-      if (!/^[a-z0-9]+(?:[/.-][a-z0-9]+)*$/.test(c.id)) wrong.push(`${c.id}: not a plain slug`)
+      if (!/^[a-z0-9]{6}$/.test(c.ref)) wrong.push(`${c.id}: ref ${c.ref}`)
       const r = row(c.id)
-      if (!html.includes(`<tr id="${c.id}" data-case="${c.id}"`)) wrong.push(`${c.id}: no anchor`)
-      if (!r.includes(`<a href="#${c.id}">${c.id}</a>`)) wrong.push(`${c.id}: no link`)
+      if (!html.includes(`<tr id="${c.ref}" data-case="${c.id}"`)) wrong.push(`${c.id}: no anchor`)
+      if (!r.includes(`<a href="#${c.ref}">${c.ref}</a>`)) wrong.push(`${c.id}: no link`)
     }
     expect(wrong).toEqual([])
+    expect(new Set(RESULTS.cases.map((c) => c.ref)).size).toBe(RESULTS.cases.length)
     // A category is closed, so the script opens the one a link points into.
     expect(html).toContain('hashchange')
     expect(html).toContain('details.cfm-cat')

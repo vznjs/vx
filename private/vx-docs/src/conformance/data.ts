@@ -22,6 +22,8 @@ export interface Score {
 
 export interface Case {
   id: string
+  /** The case's short name: its anchor on the page. */
+  ref: string
   category: string
   kind: string
   title: string

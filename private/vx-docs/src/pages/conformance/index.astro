@@ -5,7 +5,7 @@
 // is its scores; open, it says what it checks and lists its cases in the
 // same columns. A failing cell opens its detail as one, and the "only where
 // tools differ" switch is a checkbox the stylesheet reads. Every case is a
-// link: `#<case id>`, and `?tool=<tool>#<case id>` for one tool's failure.
+// link: `#<case ref>`, and `?tool=<tool>#<case ref>` for one tool's failure.
 // The script at the end only opens what such a link points into.
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import {
@@ -137,7 +137,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
                   </thead>
                   <tbody>
                     {s.cases.map((c) => (
-                      <tr id={c.id} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
+                      <tr id={c.ref} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
                         <th scope="row">
                           <span class="cfm-title" set:html={inline(c.title)} />
                           <details class="cfm-why">
@@ -145,7 +145,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
                             <p set:html={inline(c.why)} />
                           </details>
                           <span class="cfm-meta">
-                            <a href={`#${c.id}`}>{c.id}</a> · {c.kind}
+                            <a href={`#${c.ref}`}>{c.ref}</a> · {c.id} · {c.kind}
                           </span>
                         </th>
                         {RANKED.map((t) => {
