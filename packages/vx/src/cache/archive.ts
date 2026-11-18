@@ -797,6 +797,47 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   return fold.result()
 }
 
+/**
+ * A small artifact in memory, read whole and checked as the extractor checks
+ * it: each project output's bytes and each link's text, for a restore that
+ * writes them in place. Undefined when it holds a workspace output, which only
+ * the extractor lays.
+ */
+export function inlineTree(
+  tar: Uint8Array,
+): { files: Map<string, Uint8Array>; links: Map<string, string> } | undefined {
+  const check = new SumCheck()
+  const files = new Map<string, Uint8Array>()
+  let links: Array<[string, string]> = []
+  let foreign = false
+  for (const e of tarEntriesSync(tar)) {
+    if (e.type !== '0') continue
+    if (check.enter(e.name)) {
+      check.verify(utf8.decode(e.body()))
+      continue
+    }
+    const body = e.body()
+    check.add(body)
+    if (e.name === META_ENTRY) {
+      const parsed = JSON.parse(utf8.decode(body)) as MetaFile
+      filesOf(parsed)
+      dirsOf(parsed)
+      dirModesOf(parsed)
+      links = linksOf(parsed)
+      continue
+    }
+    assertSafeName(e.name)
+    if (e.name.startsWith('outputs/')) files.set(e.name.slice('outputs/'.length), body)
+    else if (e.name !== STDOUT_ENTRY) foreign = true
+  }
+  check.done()
+  if (foreign || links.some(([name]) => !name.startsWith('outputs/'))) return undefined
+  return {
+    files,
+    links: new Map(links.map(([name, to]) => [name.slice('outputs/'.length), to])),
+  }
+}
+
 /** The largest millisecond count a Date holds (ECMA-262 §21.4.1.1). */
 const DATE_MAX_MS = 8.64e15
 
