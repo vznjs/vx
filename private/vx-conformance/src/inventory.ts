@@ -593,6 +593,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte-server/worker-sockets',
     'vx-dte/cpu-account',
     'vx-dte/docker',
+    'vx-dte/fixture',
     'vx-dte/forecast',
     'vx-dte/github',
     'vx-dte/gitlab',
