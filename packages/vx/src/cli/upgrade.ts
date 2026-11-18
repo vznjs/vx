@@ -645,6 +645,9 @@ export function projectManager(dir: string, execPath: string): ManagedInstall['m
       const name = declared.split('@')[0]
       if (name === 'pnpm' || name === 'bun' || name === 'yarn' || name === 'npm') return name
     }
+    // Only pnpm reads it: a workspace not installed yet got npm, its
+    // package-lock.json, and no pnpm-lock.yaml.
+    if (existsSync(path.join(d, 'pnpm-workspace.yaml'))) return 'pnpm'
     if (path.dirname(d) === d) break
   }
   return execPath.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}`) ? 'pnpm' : 'npm'

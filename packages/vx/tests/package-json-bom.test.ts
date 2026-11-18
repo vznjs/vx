@@ -39,6 +39,15 @@ describe('a package.json with a byte-order mark', () => {
     expect(projectManager(root, bin)).toBe('pnpm')
   })
 
+  // Only pnpm reads pnpm-workspace.yaml: before the first install there is no
+  // lockfile, and init installed with npm.
+  it('a pnpm-workspace.yaml with no lockfile is pnpm', () => {
+    const root = tmp()
+    writeFileSync(path.join(root, 'package.json'), '{"name":"r"}\n')
+    writeFileSync(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    expect(projectManager(root, '/usr/local/bin/vx')).toBe('pnpm')
+  })
+
   it("vx init's next names vx-migrate for its scripts", async () => {
     const root = tmp()
     expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)

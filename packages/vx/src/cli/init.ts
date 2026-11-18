@@ -462,6 +462,10 @@ function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm'
   if (has('bun.lock') || has('bun.lockb')) return 'bun'
   if (has('yarn.lock')) return 'yarn'
   if (has('package-lock.json') || has('npm-shrinkwrap.json')) return 'npm'
+  // Not installed yet: the install init runs writes the lockfile of the
+  // manager it picks, so the plugin is that manager's.
+  if (has('pnpm-workspace.yaml') || declaresWorkspaces(pkgRoot))
+    return projectManager(pkgRoot, process.execPath)
   return null
 }
 
