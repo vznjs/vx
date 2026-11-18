@@ -80,6 +80,16 @@ const REPOS: Repo[] = [
     overlay: true,
   },
   {
+    name: 'astro',
+    url: 'https://github.com/withastro/astro',
+    commit: '8be33a10179e4fb7f5fe9dbb3357322068a5f9d5',
+    tool: 'turbo',
+    tasks: 'build',
+    filters: 'astro create-astro @astrojs/* astro-vscode @benchmark/*',
+    workers: 10,
+    overlay: true,
+  },
+  {
     name: 'react-email',
     url: 'https://github.com/resend/react-email',
     commit: '1531a395bf8e8e6dd3b61a7ce9afd03551c5b18b',

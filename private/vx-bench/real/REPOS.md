@@ -92,6 +92,33 @@ pnpm 10.19, Turbo 2.5.8. Benched: `build` over `./packages/*`, 3 tasks
   `vx.config.ts` among them, which imports `@vzn/vx/config` the repo
   does not install (under either tool).
 
+### withastro/astro — 8be33a10179e4fb7f5fe9dbb3357322068a5f9d5
+
+pnpm 11.13, Turbo 2.10.2. Benched: `build` over the filters of the
+repo's own `build` script (`astro create-astro @astrojs/* astro-vscode
+@benchmark/*`), 32 tasks (31 builds and `astro#prebuild`).
+
+- Mapped: `build` of the 31 packages and `astro#prebuild`, with
+  `turbo.json`'s inputs, outputs and `passThroughEnv` (keyed too: a
+  bundler may write either into its output). Not mapped: `build:ci`,
+  `test`, the examples.
+- **turbo.json edited, for Turbo's benefit:** `!dist/**/*` and
+  `!src/**/*.prebuilt*` added to the inputs of `prebuild`, `build` and
+  `build:ci`. As shipped, `inputs: ["**/*", …]` matches ignored files,
+  so each package's own outputs are in its hash and Turbo's run after
+  a restore rebuilt all of them (2026-09-11). The overlay's
+  `turbo.json` replaces the repo's.
+- vx refuses a task whose inputs match another task's outputs:
+  `prebuild` leaves out `dist/`, and `build` leaves out the prebuilt
+  sources, which reach its key through `prebuild`'s.
+- `astro#build` is its script without the leading `pnpm run prebuild`:
+  the task already depends on `astro#prebuild`. Turbo runs it as
+  shipped, prebuild twice.
+- A build reads `configs/` (the tsconfig bases) and `scripts/`
+  (`astro-scripts`, which has no build to depend on): both are
+  `workspaceFiles`. Every config is `vx.config.mjs`: the builds end in
+  `tsc -b`.
+
 ### resend/react-email — 1531a395bf8e8e6dd3b61a7ce9afd03551c5b18b
 
 pnpm 11.0, Turbo 2.9.14. Benched: `build` over `./packages/*`, the
