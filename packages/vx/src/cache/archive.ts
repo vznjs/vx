@@ -1132,8 +1132,15 @@ export async function linksRestorable(
   for (const [rel, to] of links) {
     const target = path.join(projectDir, rel)
     const name = `outputs/${rel}`
-    if ((await linkRefusal(name, target, to, bound, linked, nameOf, realDirs)) !== undefined)
-      return false
+    try {
+      if ((await linkRefusal(name, target, to, bound, linked, nameOf, realDirs)) !== undefined)
+        return false
+    } catch (err) {
+      // A bound not made yet (a restore into a missing project directory):
+      // the extractor makes it first, then judges.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+      throw err
+    }
   }
   return true
 }

@@ -1,7 +1,9 @@
 // Restoring an entry's outputs into the tree, and replaying its log.
 
 import {
+  accessSync,
   chmodSync,
+  constants,
   lstatSync,
   readFileSync,
   readlinkSync,
@@ -298,7 +300,7 @@ async function restoreInline(
   return await copyTree(
     ix,
     hash,
-    inlineSource(art),
+    inlineSource(art, workspaceRoot !== undefined),
     rows,
     files,
     projectDir,
@@ -355,6 +357,13 @@ interface CopySource {
   write(to: string, rel: string): Promise<number>
   /** Whether another process's re-save replaced the source mid-copy. */
   swapped(): boolean
+  /**
+   * Whether a write may open a standing directory of this user's that
+   * withholds its own write, as the extractor's rename out of `.vx/tmp/`
+   * does. With no workspace the extractor stages beside the target and
+   * refuses, and an inline entry keeps that refusal.
+   */
+  reopens: boolean
 }
 
 function treeSource(hash: string, tree: string, ino: number): CopySource {
@@ -385,14 +394,15 @@ function treeSource(hash: string, tree: string, ino: number): CopySource {
     // build. A changed inode is that race: a miss, and the other process's
     // entry is kept.
     swapped: () => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino,
+    reopens: true,
   }
 }
 
 /** Bytes already checked against the artifact's sum, read in the snapshot that read its rows. */
-function inlineSource(art: {
-  files: ReadonlyMap<string, Uint8Array>
-  links: ReadonlyMap<string, string>
-}): CopySource {
+function inlineSource(
+  art: { files: ReadonlyMap<string, Uint8Array>; links: ReadonlyMap<string, string> },
+  reopens: boolean,
+): CopySource {
   return {
     link: (r) => {
       const to = art.links.get(r.path)
@@ -401,6 +411,16 @@ function inlineSource(art: {
     bytes: (rel) => art.files.get(rel)!,
     write: (to, rel) => Bun.write(to, art.files.get(rel)!, { createPath: false }),
     swapped: () => false,
+    reopens,
+  }
+}
+
+function writable(dir: string): boolean {
+  try {
+    accessSync(dir, constants.W_OK)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -537,7 +557,9 @@ async function copyTree(
     }
   }
   // A replaced file's temp is staged too where it renames in as a write in
-  // place lands: beside it, `vx watch` saw the temp and ran a cycle.
+  // place lands: beside it, `vx watch` saw the temp and ran a cycle. Not
+  // into a directory this user cannot write: the write beside it is what
+  // reopens one of its own, or names the tree as the refusal.
   const into = new Map<string, boolean>()
   for (const [rel, abs] of replaced) {
     const dir = path.dirname(abs)
@@ -545,7 +567,8 @@ async function copyTree(
     if (fit === undefined) {
       fit =
         staging?.stats !== undefined &&
-        stagesInto(staging.stats, statSync(dir, { throwIfNoEntry: false }))
+        stagesInto(staging.stats, statSync(dir, { throwIfNoEntry: false })) &&
+        writable(dir)
       into.set(dir, fit)
     }
     replaced.set(rel, fit ? staging!.temp(abs) : siblingTemp(abs))
@@ -563,7 +586,12 @@ async function copyTree(
     try {
       return await src.write(to, rel)
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EACCES' || !reopen(path.dirname(to))) throw err
+      if (
+        (err as NodeJS.ErrnoException).code !== 'EACCES' ||
+        !src.reopens ||
+        !reopen(path.dirname(to))
+      )
+        throw err
       return await src.write(to, rel)
     }
   }
