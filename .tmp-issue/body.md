@@ -4,7 +4,7 @@ I work on [vx](https://vznjs.github.io/vx/), an open source task runner for JS m
 
 Each case is a tiny workspace, run sandboxed against Nx, Turbo, vx, Vite Task, moon and Nix. Only outcomes count: which commands ran, the files left on disk, the exit code. The cases come from the test suites of all six tools, yours included.
 
-Nx 24.0.2 passes 653 of 1014. Below are the 298 it fails. Each link opens the case, with what Nx did and why we think the expected result is right.
+Nx 24.0.2 passes 653 of 1014. 63 more are behaviours Nx has no way to express, so they are left out here. Below are the 298 it fails. Each link opens the case, with what Nx did and why we think the expected result is right.
 
 I'm sharing this as a favor, not a demand. A few questions:
 
