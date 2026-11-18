@@ -38,6 +38,7 @@ import {
   fenceDirs,
   type InitialCycle,
   type InitialRun,
+  indexStamp,
   lockStamp,
   runWatchLoop,
   sayAllCached,
@@ -203,6 +204,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     from: fsClockNow(opts.cacheDir ?? path.join(workspaceRoot, '.vx')),
     windows: commandWindows(),
     lock: lockStamp(workspaceRoot),
+    index: indexStamp(workspaceRoot),
   }
   const initial: InitialCycle = {
     cycle: watchCycle(
