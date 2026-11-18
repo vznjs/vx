@@ -161,6 +161,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'server-stops-unneeded',
     'signal-death',
     'signal-handling',
+    'signal-tstp',
     'sparse-checkout-config',
     'stale-hit',
     'stale-hit-digest',

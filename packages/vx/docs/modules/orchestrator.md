@@ -2637,7 +2637,7 @@ back. The handler SIGSTOPs every task group (`pauseTree`, straight to
 the group: a Linux sandbox's watcher passes one signal and is gone, so
 there it stops bwrap and the command blocks once its pipe fills), then
 vx itself; SIGCONT (`fg`, `bg`) continues them. Proven in
-`tests/signal-handling.test.ts` ("Ctrl-Z (SIGTSTP) during vx run").
+`tests/signal-tstp.test.ts` ("Ctrl-Z (SIGTSTP) during vx run").
 
 The two registries stay with `run()`, which hands them to the runner
 around every spawn; this module only reads them when a signal lands.
