@@ -163,16 +163,28 @@ jobs:
   # The benchmarks, on a runner of their own: they time the machine, and a
   # DTE worker is packed for the run's wall time, not a task's
   # (2026-10-24). Beside the run, so off its critical path; no relay, so
-  # vx runs them here.
+  # vx runs them here. Two runners, one a part of the bench
+  # (`VX_BENCH_PART`): on one, the job ended a minute after the run
+  # (2026-11-18). `cold` keeps the name the branch rule requires: the
+  # counts, the one part that fails, run there.
   perf:
-    name: Perf
+    name: ${{ matrix.part == 'cold' && 'Perf' || 'Perf (site)' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [cold, site]
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
     env:
       GITHUB_TOKEN: ${{ github.token }}
       VX_REQUIRE_SANDBOX: '1'
+      VX_BENCH_PART: ${{ matrix.part }}
     steps:
+      # As a worker does (vx-worker.yml): `dpkg -i` reads every installed
+      # package's file list first, most of the sandbox's set-up.
+      - name: Read the package database ahead
+        run: cat /var/lib/dpkg/status /var/lib/dpkg/info/*.list >/dev/null 2>&1 &
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

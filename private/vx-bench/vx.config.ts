@@ -40,13 +40,15 @@ export default defineProject({
         'perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival',
       dependsOn: ['install'],
       exec: {
-        command: 'bun perf-guard.ts && bun pr-bench.ts',
+        // VX_BENCH_PART (ci.yml `perf`): `cold` and `site` each time their
+        // arms on a runner of their own; the counts go with `cold`.
+        command: '{ [ "$VX_BENCH_PART" = site ] || bun perf-guard.ts; } && bun pr-bench.ts',
         // The commit pr-bench.ts times this checkout against (ci.yml sets it).
         // The site's workspace with no sleeps: restore and nothing-changed run no task.
         env: {
           ...NO_TRANSPILER_CACHE,
           define: { ...NO_TRANSPILER_CACHE.define, BENCH_BUILD_MS: '0' },
-          passThrough: ['VX_BENCH_BASE'],
+          passThrough: ['VX_BENCH_BASE', 'VX_BENCH_PART'],
         },
         // No sandbox, as the site's bench.* tasks: its tracer would be timed.
         // It stops every runner at each traced call, and vx makes more of
@@ -70,7 +72,8 @@ export default defineProject({
           'package.json',
         ],
         // A new base is a new yardstick: the bench runs again against it.
-        env: ['VX_BENCH_BASE'],
+        // Each part is its own entry.
+        env: ['VX_BENCH_BASE', 'VX_BENCH_PART'],
       },
       outputs: { files: [] },
       cache: true,
