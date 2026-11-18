@@ -47,7 +47,11 @@ over (in order):
    (currently `'vx-cache-v56'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
-   [§ Bumping CACHE_VERSION](#bumping-cache_version).
+   [§ Bumping CACHE_VERSION](#bumping-cache_version). The **vx version**
+   is folded with it, in the same seed: a release may run one command
+   differently under an unchanged key (a shell's start, the env a task
+   is given), so what one vx saved another never reads, and every
+   upgrade misses once.
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
    identical everything else still produce distinct keys — protects
    against e.g. `pkg-a#build` accidentally cache-hitting on a
@@ -1696,8 +1700,8 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ```
 
 The store's directory carries no version: every key is seeded with
-`CACHE_VERSION`, which moves when hashing or the artifact layout does, so
-two vx versions never read each other's artifacts. `store.db` is the
+`CACHE_VERSION` and the vx version, so two vx versions never read each
+other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, prints nothing (the
 cache is vx's to keep), and keeps every artifact, each indexed again
@@ -2626,6 +2630,11 @@ The cache records the version it was written under
 misses once and re-saves, with nothing printed (2026-10-06: the
 cache is vx's to keep). The index survives, so the old entries stay
 until they age out under `vx cache clean --older-than`; no key derives to them again.
+
+A release needs no bump of its own: the vx version is in every key, so
+a vx never reads what another saved. A source checkout's version is
+always `0.0.0`, so the bump is what parts two commits run from source,
+as this repo's CI is.
 
 Required when:
 

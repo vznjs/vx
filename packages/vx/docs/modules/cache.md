@@ -235,6 +235,7 @@ export interface PruneResult {
 
 export interface CacheKeyInput {
   taskId: string
+  vxVersion: string // the vx that keys the task; folded with CACHE_VERSION
   taskConfigHash: string
   envValues: Array<[name: string, value: string | undefined]> // undefined = unset
   runtimeValues?: Array<[command: string, output: string]> // (v23) inputs.runtime; folded as a namespaced section
@@ -388,7 +389,7 @@ v15), computed by `foldKey` (`key-fold.ts`) seed-chaining one part per
 line, in this exact order:
 
 ```
-<CACHE_VERSION>
+<CACHE_VERSION>\0<vxVersion>
 task:<taskId>
 config:<taskConfigHash>
 forward-args:<n>

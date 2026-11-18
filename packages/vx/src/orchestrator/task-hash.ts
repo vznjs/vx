@@ -46,6 +46,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
+import { VERSION } from '../version.js'
 import { outputsLeft } from './run-report.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
@@ -586,6 +587,7 @@ async function resolveKeyInput(
 
   const input: CacheKeyInput = {
     taskId: args.node.id,
+    vxVersion: VERSION,
     taskConfigHash,
     envValues: resolved.envValues,
     runtimeValues: resolved.runtimeValues,

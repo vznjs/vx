@@ -34,6 +34,7 @@ import { createHashCache } from '../src/orchestrator/task-hash.js'
 import type { TaskConfig } from '../src/config.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { relPosix } from '../src/util/index.js'
+import { VERSION } from '../src/version.js'
 
 // The fixture creates a real SQLite cache; under full-suite load the default
 // 5s hook budget is tight. File-scoped, matching tests/inputs.test.ts.
@@ -588,7 +589,15 @@ describe('computeTaskHash — core keys no package file', () => {
   it('the key folds no package or workspace part: the capture is format and config alone', async () => {
     const captured: TaskInputComponent[] = []
     await key({ captureInto: captured })
-    expect(captured.map((c) => c.kind)).toEqual(['format', 'config'])
+    expect(captured.map((c) => c.kind)).toEqual(['format', 'format', 'config'])
+  })
+
+  // What one vx saved another never reads: a release may run the same
+  // command differently under an unchanged key (#5112).
+  it("a run keys every task with this build's own version", async () => {
+    const captured: TaskInputComponent[] = []
+    await key({ captureInto: captured })
+    expect(captured.find((c) => c.name === 'vx-version')?.hash).toBe(VERSION)
   })
 
   it('a project with NO package.json keys as one with one', async () => {

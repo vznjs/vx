@@ -296,6 +296,7 @@ describePerf('cache baseline: Cache.key', () => {
     cache = new Cache(path.join(tmpdir, '.vx-cache'))
     baseInput = {
       taskId: 'p#build',
+      vxVersion: '0.0.0',
       taskConfigHash: 'cfg',
       envValues: [['NODE_ENV', 'production']],
       inputFiles: [],

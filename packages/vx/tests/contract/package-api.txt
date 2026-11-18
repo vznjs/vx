@@ -563,6 +563,7 @@ export interface CacheGetContext {
 == type CacheKeyInput (src/cache/layer.ts)
 export interface CacheKeyInput {
   taskId: string
+  vxVersion: string
   taskConfigHash: string
   envValues: Array<[name: string, value: string | undefined]>
   runtimeValues?: Array<[command: string, output: string]>

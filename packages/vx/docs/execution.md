@@ -251,7 +251,7 @@ terminal and a task succeeding or failing. Read it alongside
  │              independent tasks continue)
  │       2. hashTaskConfig (memoized per run via HashCache)
  │       3. filterUpstreamHashes (apply inputs.tasks filter)
- │       4. cache.key({ taskId, taskConfigHash,
+ │       4. cache.key({ taskId, vxVersion, taskConfigHash,
  │                      forwardArgs, envValues, runtimeValues,
  │                      workspaceRuntimeValues, upstreamHashes,
  │                      pluginParts, platform, inputFiles }) → 16-hex xxh3
