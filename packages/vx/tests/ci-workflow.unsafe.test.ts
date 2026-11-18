@@ -343,11 +343,12 @@ describe('vx-worker.yml', () => {
   // runner runs twice?"): the runtime set up by the CI plugin before the
   // worker starts (owner: "vx setup github", "we should do before"), its
   // packages kept per runner image, and no mount of its own.
-  it('is leave if the run is over, Spotlight off, checkout, Bun, install, the sandbox runtime and the worker', () => {
+  it('is leave if the run is over, Spotlight off, the package database read ahead, checkout, Bun, install, the sandbox runtime and the worker', () => {
     expect(worker.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
       // A worker of a run that is over cancels its own run (@vzn/vx-dte's README).
-      expect.stringMatching(/^runs=.*\/cancel"\n$/s),
+      expect.stringMatching(/^\(\n +runs=.*\/cancel"\n\) >\/dev\/null 2>&1 &\n$/s),
       '(sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &',
+      'cat /var/lib/dpkg/status /var/lib/dpkg/info/*.list >/dev/null 2>&1 &',
       'actions/checkout',
       'oven-sh/setup-bun',
       // The variables the run hands its workers (github({ env })).
