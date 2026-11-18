@@ -1,10 +1,11 @@
 // A workspace package the root depends on is installed at the root
-// `node_modules`, so every project resolves it whatever its own manifest
-// says. app declares nothing and requires lib through the root: without an
-// edge, an edit to lib re-keyed only lib, `--affected` left app out and
-// app#build replayed the old lib (Turbo #8364, #8465; Growth,
-// chunk-03-root-workspace-dep.sh). The root → lib; lib → util, so util → lib
-// would close a cycle and is reach only. Shapes as each manager writes them.
+// `node_modules`, so Node resolves it for every project. That declares
+// nothing: it is the root's dependency and no other project's (2026-11-18:
+// "Update to S should only affect root"). app declares nothing, so lib
+// neither orders its build nor moves its key, and `--affected` leaves it
+// out; before, every build waited for each such package (payload's cold run:
+// 116 s against Turbo's 98 s). lib → util, which it declares, stands. Shapes
+// as each manager writes them.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -178,10 +179,10 @@ async function setup(c: (typeof CASES)[number]): Promise<void> {
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
 }
 
-describe("a workspace package the root depends on is every project's dependency", () => {
+describe('a workspace package the root depends on is no dependency of a project that declares none', () => {
   for (const c of CASES) {
     const label = 'label' in c ? c.label : `${c.name}()`
-    it(`${label}: orders and keys every project after it, a cycle aside`, async () => {
+    it(`${label}: neither orders nor keys a project that does not declare it`, async () => {
       await setup(c)
       const plan = async () =>
         new Map(
@@ -191,17 +192,16 @@ describe("a workspace package the root depends on is every project's dependency"
           ]),
         )
       const before = await plan()
-      expect(before.get('app#build')!.node.deps).toEqual(['lib#build'])
+      expect(before.get('app#build')!.node.deps).toEqual([])
       expect(before.get('lib#build')!.node.deps).toEqual(['util#build'])
-      // util → lib would close lib → util: no order, so no cycle.
       expect(before.get('util#build')!.node.deps).toEqual([])
       commitAll(root)
       await writeFile(path.join(root, 'packages/lib/src/index.js'), '// lib v2\n')
       const after = await plan()
       const moved = [...after.keys()].filter((id) => after.get(id)!.hash !== before.get(id)!.hash)
-      expect(moved.sort()).toEqual(['app#build', 'lib#build'])
-      // util reaches lib through the root all the same: selected.
-      expect(affectedIds(root, 'build')).toEqual(['app#build', 'lib#build', 'util#build'])
+      expect(moved).toEqual(['lib#build'])
+      // The plan is lib and the dependency it declares; app is out.
+      expect(affectedIds(root, 'build')).toEqual(['lib#build', 'util#build'])
     })
   }
 })

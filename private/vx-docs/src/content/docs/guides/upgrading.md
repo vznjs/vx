@@ -29,6 +29,10 @@ every cache key moves; each cached task misses once after the upgrade, and after
 
 No migration note.
 
+### vx-lockfile: keep a root-installed package the root's own
+
+a workspace package installed only by the root `package.json` no longer orders, keys or `--affected`-selects other projects; declare it in the `package.json` of each project that loads it.
+
 ### history: keep a run's cache hits as one packed row
 
 the index schema is v57: the local index resets once, so the run history starts empty and a cached task with no stored artifact to adopt runs once more. A run writes no `runs` row for a cache hit until something reads the history; `vx last`, `vx why` and `vx info` write them out first, and a tool reading cache.db directly sees hits only up to the last of those.

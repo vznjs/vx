@@ -1104,14 +1104,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1015,
-        "can": 1015,
-        "of": 1017
+        "pass": 1012,
+        "can": 1012,
+        "of": 1014
       },
       "correctness": {
-        "pass": 837,
-        "can": 837,
-        "of": 839
+        "pass": 834,
+        "can": 834,
+        "of": 836
       },
       "efficiency": {
         "pass": 169,
@@ -1124,9 +1124,9 @@
         "of": 9
       },
       "graph": {
-        "pass": 150,
-        "can": 150,
-        "of": 150
+        "pass": 149,
+        "can": 149,
+        "of": 149
       },
       "config": {
         "pass": 8,
@@ -1139,9 +1139,9 @@
         "of": 75
       },
       "affected": {
-        "pass": 99,
-        "can": 99,
-        "of": 99
+        "pass": 98,
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 42,
@@ -1149,9 +1149,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 309,
-        "can": 309,
-        "of": 309
+        "pass": 308,
+        "can": 308,
+        "of": 308
       },
       "env": {
         "pass": 31,
@@ -1181,14 +1181,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 639,
-        "can": 928,
-        "of": 1017
+        "pass": 638,
+        "can": 925,
+        "of": 1014
       },
       "correctness": {
-        "pass": 516,
-        "can": 756,
-        "of": 839
+        "pass": 515,
+        "can": 753,
+        "of": 836
       },
       "efficiency": {
         "pass": 119,
@@ -1202,8 +1202,8 @@
       },
       "graph": {
         "pass": 92,
-        "can": 131,
-        "of": 150
+        "can": 130,
+        "of": 149
       },
       "config": {
         "pass": 4,
@@ -1216,9 +1216,9 @@
         "of": 75
       },
       "affected": {
-        "pass": 68,
-        "can": 99,
-        "of": 99
+        "pass": 67,
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 34,
@@ -1227,8 +1227,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 299,
-        "of": 309
+        "can": 298,
+        "of": 308
       },
       "env": {
         "pass": 27,
@@ -1259,13 +1259,13 @@
     "nx": {
       "all": {
         "pass": 653,
-        "can": 954,
-        "of": 1017
+        "can": 951,
+        "of": 1014
       },
       "correctness": {
         "pass": 493,
-        "can": 778,
-        "of": 839
+        "can": 775,
+        "of": 836
       },
       "efficiency": {
         "pass": 156,
@@ -1279,8 +1279,8 @@
       },
       "graph": {
         "pass": 114,
-        "can": 137,
-        "of": 150
+        "can": 136,
+        "of": 149
       },
       "config": {
         "pass": 1,
@@ -1294,8 +1294,8 @@
       },
       "affected": {
         "pass": 57,
-        "can": 99,
-        "of": 99
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 37,
@@ -1304,8 +1304,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 309,
-        "of": 309
+        "can": 308,
+        "of": 308
       },
       "env": {
         "pass": 25,
@@ -1336,13 +1336,13 @@
     "vite-task": {
       "all": {
         "pass": 506,
-        "can": 759,
-        "of": 1017
+        "can": 757,
+        "of": 1014
       },
       "correctness": {
         "pass": 417,
-        "can": 629,
-        "of": 839
+        "can": 627,
+        "of": 836
       },
       "efficiency": {
         "pass": 87,
@@ -1356,8 +1356,8 @@
       },
       "graph": {
         "pass": 86,
-        "can": 116,
-        "of": 150
+        "can": 115,
+        "of": 149
       },
       "config": {
         "pass": 4,
@@ -1372,7 +1372,7 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 99
+        "of": 98
       },
       "cache": {
         "pass": 34,
@@ -1381,8 +1381,8 @@
       },
       "inputs": {
         "pass": 178,
-        "can": 300,
-        "of": 309
+        "can": 299,
+        "of": 308
       },
       "env": {
         "pass": 29,
@@ -1413,13 +1413,13 @@
     "nix": {
       "all": {
         "pass": 486,
-        "can": 724,
-        "of": 1017
+        "can": 722,
+        "of": 1014
       },
       "correctness": {
         "pass": 418,
-        "can": 601,
-        "of": 839
+        "can": 599,
+        "of": 836
       },
       "efficiency": {
         "pass": 66,
@@ -1433,8 +1433,8 @@
       },
       "graph": {
         "pass": 58,
-        "can": 65,
-        "of": 150
+        "can": 64,
+        "of": 149
       },
       "config": {
         "pass": 0,
@@ -1449,7 +1449,7 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 99
+        "of": 98
       },
       "cache": {
         "pass": 28,
@@ -1458,8 +1458,8 @@
       },
       "inputs": {
         "pass": 177,
-        "can": 299,
-        "of": 309
+        "can": 298,
+        "of": 308
       },
       "env": {
         "pass": 22,
@@ -1490,13 +1490,13 @@
     "moon": {
       "all": {
         "pass": 590,
-        "can": 909,
-        "of": 1017
+        "can": 906,
+        "of": 1014
       },
       "correctness": {
         "pass": 458,
-        "can": 746,
-        "of": 839
+        "can": 743,
+        "of": 836
       },
       "efficiency": {
         "pass": 127,
@@ -1510,8 +1510,8 @@
       },
       "graph": {
         "pass": 85,
-        "can": 122,
-        "of": 150
+        "can": 121,
+        "of": 149
       },
       "config": {
         "pass": 3,
@@ -1525,8 +1525,8 @@
       },
       "affected": {
         "pass": 69,
-        "can": 99,
-        "of": 99
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 38,
@@ -1535,8 +1535,8 @@
       },
       "inputs": {
         "pass": 193,
-        "can": 309,
-        "of": 309
+        "can": 308,
+        "of": 308
       },
       "env": {
         "pass": 26,
@@ -21643,86 +21643,6 @@
       }
     },
     {
-      "id": "graph/root-workspace-dependency-orders-every-project",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "A workspace package the root depends on builds before a project that reads it through the root",
-      "why": "The root installs a workspace package where every project resolves it, whatever that project’s own manifest says. Here `app` reads `lib`’s build through the root, so `lib` must build first. A runner that orders tasks only by each project’s own manifest may run `app` first, and it then reads a missing or old `dist`.",
-      "from": [
-        "vx-lockfile/root-workspace-dep"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 100, expected success"
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        }
-      }
-    },
-    {
-      "id": "inputs/root-workspace-dependency-change-reruns",
-      "category": "inputs",
-      "kind": "correctness",
-      "title": "A change to a workspace package the root depends on runs a project reading it through the root again",
-      "why": "A package the root depends on is reachable by every project, so a project that reads it depends on it even without naming it. When `lib`’s source changes, `app`’s output changes too. A runner that leaves the root’s workspace dependencies out of `app`’s key replays `app`’s old build.",
-      "from": [
-        "vx-lockfile/root-workspace-dep"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 100, expected success"
-        },
-        "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        }
-      }
-    },
-    {
       "id": "graph/root-workspace-dependency-no-cycle",
       "category": "graph",
       "kind": "correctness",
@@ -21751,42 +21671,6 @@
         },
         "moon": {
           "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "affected/root-workspace-dependency-change-selects-every-reader",
-      "category": "affected",
-      "kind": "correctness",
-      "title": "A committed change to a workspace package the root depends on selects a project reading it through the root",
-      "why": "A changed-projects check must see the same dependencies a build does. `app` reads `lib` through the root, so a change to `lib` reaches `app`. If the check only reads each project’s own manifest it selects `lib` alone, and CI never tests `app` against the change, which then breaks on main.",
-      "from": [
-        "vx-lockfile/root-workspace-dep"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "vite-task": {
-          "status": "n/a",
-          "detail": "needs affected"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "needs affected"
-        },
-        "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
         }
       }
     },
