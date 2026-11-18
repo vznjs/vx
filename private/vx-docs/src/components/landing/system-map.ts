@@ -57,13 +57,31 @@ export const SLOTS = 2
 
 export const BOXES: Box[] = [
   { id: 'core', label: 'vx', sub: 'one run, every stage', tone: 'core' },
-  { id: 'ws', label: 'Your workspace', short: 'Workspace', sub: 'vx.config.ts · .vx/workspace.ts', tone: 'read' },
+  {
+    id: 'ws',
+    label: 'Your workspace',
+    short: 'Workspace',
+    sub: 'vx.config.ts · .vx/workspace.ts',
+    tone: 'read',
+  },
   { id: 'lockfile', label: 'Lockfile', sub: 'vx-lockfile · pnpm, bun, npm, yarn', tone: 'read' },
-  { id: 'migrate', label: 'Turbo or Nx graph', short: 'Turbo / Nx', sub: 'vx-migrate · turbo.json, Nx', tone: 'read' },
+  {
+    id: 'migrate',
+    label: 'Turbo or Nx graph',
+    short: 'Turbo / Nx',
+    sub: 'vx-migrate · turbo.json, Nx',
+    tone: 'read',
+  },
   { id: 'history', label: 'History', sub: 'vx-history · task timings', tone: 'read' },
   { id: 'ci', label: 'CI', sub: 'vx-ci · GitHub Actions, GitLab', tone: 'read' },
   { id: 'reports', label: 'Reports', sub: 'vx-otel · traces, metrics, logs', tone: 'report' },
-  { id: 'relay', label: 'Distributed task execution', short: 'DTE', sub: 'vx-dte · stores nothing', tone: 'dte' },
+  {
+    id: 'relay',
+    label: 'Distributed task execution',
+    short: 'DTE',
+    sub: 'vx-dte · stores nothing',
+    tone: 'dte',
+  },
   { id: 'cache', label: 'Remote cache', sub: 'vx-cache · S3, R2 or Docker', tone: 'remote' },
 ]
 
@@ -340,7 +358,19 @@ export function play(run: Run): Play {
     if (g !== undefined) lit[g]!.push([d.at, d.at + T + 250])
   }
   dots.sort((a, b) => a.at - b.at)
-  return { steps, lit, dots, lanes, bars, hits, zero, first, scale, end, loop: ORDER.length * STEP_MS }
+  return {
+    steps,
+    lit,
+    dots,
+    lanes,
+    bars,
+    hits,
+    zero,
+    first,
+    scale,
+    end,
+    loop: ORDER.length * STEP_MS,
+  }
 }
 
 // ---- layouts ----
@@ -381,12 +411,30 @@ const WIDE: Layout = {
     history: [{ side: 'right' }, { side: 'left', at: 0.25 }],
     ci: [{ side: 'left' }, { side: 'right', at: 0.2 }],
     reports: [{ side: 'right', at: 0.7 }, { side: 'left' }],
-    relay: [{ side: 'bottom', at: 0.28 }, { side: 'top', at: 0.5 }],
-    cache: [{ side: 'bottom', at: 0.72 }, { side: 'top', at: 0.5 }],
-    s1: [{ side: 'bottom', at: 0.4 }, { side: 'top', at: 0.3 }],
-    s2: [{ side: 'bottom', at: 0.85 }, { side: 'top', at: 0.2 }],
-    c1: [{ side: 'top', at: 0.8 }, { side: 'bottom', at: 0.15 }],
-    c2: [{ side: 'top', at: 0.7 }, { side: 'bottom', at: 0.6 }],
+    relay: [
+      { side: 'bottom', at: 0.28 },
+      { side: 'top', at: 0.5 },
+    ],
+    cache: [
+      { side: 'bottom', at: 0.72 },
+      { side: 'top', at: 0.5 },
+    ],
+    s1: [
+      { side: 'bottom', at: 0.4 },
+      { side: 'top', at: 0.3 },
+    ],
+    s2: [
+      { side: 'bottom', at: 0.85 },
+      { side: 'top', at: 0.2 },
+    ],
+    c1: [
+      { side: 'top', at: 0.8 },
+      { side: 'bottom', at: 0.15 },
+    ],
+    c2: [
+      { side: 'top', at: 0.7 },
+      { side: 'bottom', at: 0.6 },
+    ],
   },
 }
 
@@ -417,12 +465,30 @@ const NARROW: Layout = {
     history: [{ side: 'top' }, { side: 'bottom', at: 0.16 }],
     ci: [{ side: 'top' }, { side: 'bottom', at: 0.5 }],
     reports: [{ side: 'bottom', at: 0.84 }, { side: 'top' }],
-    relay: [{ side: 'left', at: 0.6 }, { side: 'left', at: 0.5 }],
-    cache: [{ side: 'right', at: 0.6 }, { side: 'right', at: 0.5 }],
-    s1: [{ side: 'bottom', at: 0.3 }, { side: 'top', at: 0.3 }],
-    s2: [{ side: 'bottom', at: 0.8 }, { side: 'top', at: 0.2 }],
-    c1: [{ side: 'top', at: 0.8 }, { side: 'bottom', at: 0.2 }],
-    c2: [{ side: 'top', at: 0.7 }, { side: 'bottom', at: 0.7 }],
+    relay: [
+      { side: 'left', at: 0.6 },
+      { side: 'left', at: 0.5 },
+    ],
+    cache: [
+      { side: 'right', at: 0.6 },
+      { side: 'right', at: 0.5 },
+    ],
+    s1: [
+      { side: 'bottom', at: 0.3 },
+      { side: 'top', at: 0.3 },
+    ],
+    s2: [
+      { side: 'bottom', at: 0.8 },
+      { side: 'top', at: 0.2 },
+    ],
+    c1: [
+      { side: 'top', at: 0.8 },
+      { side: 'bottom', at: 0.2 },
+    ],
+    c2: [
+      { side: 'top', at: 0.7 },
+      { side: 'bottom', at: 0.7 },
+    ],
   },
 }
 
