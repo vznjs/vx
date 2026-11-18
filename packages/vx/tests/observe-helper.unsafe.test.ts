@@ -69,6 +69,23 @@ describe.skipIf(!runs)('vx-observe', () => {
     expect(calls.map((c) => [c.rawPath, c.dir, c.errno])).toEqual([['gone', r.tmp, 'ENOENT']])
   })
 
+  // Its lines were dropped without a word on a full disk: a read the task
+  // made under a widened grant went unjudged, and the run could cache it.
+  it('fails, naming the disk, when its report cannot be written', async () => {
+    const p = Bun.spawn(
+      ['/bin/sh', '-c', `exec "$0" 5 1 /bin/sh -c 'cat /etc/hostname; exit 0' 5>/dev/full`, helper],
+      {
+        stdout: 'ignore',
+        stderr: 'pipe',
+      },
+    )
+    const [stderr, exitCode] = await Promise.all([new Response(p.stderr).text(), p.exited])
+    expect({ stderr, exitCode }).toEqual({
+      stderr: 'vx-observe: the report could not be written: no space left on device\n',
+      exitCode: 125,
+    })
+  })
+
   it('asked for reads, prints the ones that worked too', async () => {
     const r = await observe(true, 'cat here.txt >/dev/null')
     expect(r.lines).toEqual(['openat(AT_FDCWD, "<tmp>/here.txt", O_RDONLY) = 3'])

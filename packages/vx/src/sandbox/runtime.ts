@@ -2742,6 +2742,8 @@ const OBSERVER_OWN_ERROR = /^vx-observe: (.*)$/
 const OBSERVER_FAILED = 125
 /** The one it says after the command ran: its supervisor died, and the report stopped short. */
 const OBSERVER_CUT_SHORT = 'the supervisor ended before the command'
+/** What it says when its report refused a write (a full disk): the reads are unknown, so the task fails, once. */
+const OBSERVER_LOST = /^the report could not be written/
 
 /** One attempt's result, with what `runSandboxed` decides a second on. */
 type AttemptResult = SandboxedRunResult & {
@@ -3380,7 +3382,7 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
       (observed
         ? observerSaid === OBSERVER_CUT_SHORT
         : signs.straceSpoke || STRACE_OWN_ERROR.test(signs.partial)),
-    ...(observerSaid === undefined
+    ...(observerSaid === undefined || OBSERVER_LOST.test(observerSaid)
       ? {}
       : observerSaid === OBSERVER_CUT_SHORT
         ? { observerCut: true as const }

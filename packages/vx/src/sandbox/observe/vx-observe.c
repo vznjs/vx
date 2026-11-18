@@ -82,7 +82,7 @@ enum {
   O_CLOEXEC = 02000000, O_PATH = 010000000,
   AT_FDCWD = -100, AT_SYMLINK_NOFOLLOW = 0x100, AT_EACCESS = 0x200,
   R_OK = 4, X_OK = 1, F_OK = 0,
-  ENOENT = 2, EPERM = 1, EINTR = 4, EACCES = 13, EFAULT = 14, EINVAL = 22, ENOSYS = 38,
+  ENOENT = 2, EPERM = 1, EINTR = 4, EIO = 5, ENOSPC = 28, EACCES = 13, EFAULT = 14, EINVAL = 22, ENOSYS = 38,
   SIGCHLD = 17,
   CLONE_FILES = 0x400,
   PR_SET_CHILD_SUBREAPER = 36, PR_SET_NO_NEW_PRIVS = 38,
@@ -321,13 +321,19 @@ struct pollfd {
 static char out[1 << 16];
 static u64 used;
 static int report;
+/* The errno of a write the report refused (a full disk): its lines are
+ * gone, so the reads it held are unknown and the run may not pass. */
+static int lost;
 
 static void flush(void) {
   u64 at = 0;
   while (report >= 0 && at < used) {
     long w = S3(NR_write, report, out + at, used - at);
     if (w == -EINTR) continue;
-    if (w <= 0) break;
+    if (w <= 0) {
+      if (!lost) lost = w < 0 ? (int)-w : EIO;
+      break;
+    }
     at += (u64)w;
   }
   used = 0;
@@ -678,11 +684,13 @@ static void main_(int argc, char **argv, char **envp) {
   long supervisor = S5(NR_clone, SIGCHLD, 0, 0, 0, 0);
   if (supervisor < 0) fail("cannot fork");
   if (supervisor != 0) {
-    int status = 0;
+    int said[2] = {0, 0};
     S1(NR_close, up[1]);
     /* No status: the supervisor died, and the command went unobserved. */
-    if (S3(NR_read, up[0], &status, sizeof status) != sizeof status) fail("the supervisor ended before the command");
-    leave(status);
+    if (S3(NR_read, up[0], said, sizeof said) < (long)sizeof said[0]) fail("the supervisor ended before the command");
+    if (said[1] == ENOSPC) fail("the report could not be written: no space left on device");
+    if (said[1] != 0) fail("the report could not be written");
+    leave(said[0]);
   }
   S1(NR_close, up[0]);
 
@@ -762,7 +770,8 @@ static void main_(int argc, char **argv, char **envp) {
          * keeps no terminal or pipe of the task's open through us. */
         flush();
         told = 1;
-        S3(NR_write, up[1], &st, sizeof st);
+        int said[2] = {st, lost};
+        S3(NR_write, up[1], said, sizeof said);
         S1(NR_close, up[1]);
         for (int fd = 0; fd < 3; fd++) S1(NR_close, fd);
         if (fds[0].fd < 0) S1(NR_exit_group, 0);
