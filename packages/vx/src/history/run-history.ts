@@ -207,19 +207,13 @@ export class RunHistory {
   private keepHits(hits: RunHits): void {
     if (hits.n === 0) return
     expanded.delete(this.db)
-    const seq = this.db.query("SELECT seq FROM main.sqlite_sequence WHERE name = 'runs'").get() as {
-      seq: number
-    } | null
-    const last =
-      seq?.seq ??
-      (this.db.query('SELECT COALESCE(MAX(id), 0) AS id FROM main.runs').get() as { id: number }).id
-    this.db
-      .query(
-        seq === null
-          ? "INSERT INTO main.sqlite_sequence(name, seq) VALUES ('runs', ?)"
-          : "UPDATE main.sqlite_sequence SET seq = ? WHERE name = 'runs'",
-      )
-      .run(last + hits.n)
+    // One statement where `runs` ever held a row; SQLite keeps no counter before that.
+    const bumped = this.db
+      .query("UPDATE main.sqlite_sequence SET seq = seq + ? WHERE name = 'runs' RETURNING seq")
+      .get(hits.n) as { seq: number } | null
+    if (bumped === null)
+      this.db.query("INSERT INTO main.sqlite_sequence(name, seq) VALUES ('runs', ?)").run(hits.n)
+    const last = bumped === null ? 0 : bumped.seq - hits.n
     // By their xxh3, as an entry is by its key: a run of the same hits finds the row there.
     const keys = BigInt.asIntN(64, BigInt(Bun.hash.xxHash3(hits.keys)))
     this.db
