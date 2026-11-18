@@ -120,6 +120,9 @@ const specs = [
 
     // ---- the run: one clock, every piece drawn from the simulated run ----
     const NS = 'http://www.w3.org/2000/svg'
+    // Every dot crosses at one speed (px a ms), one leaving every GAP ms (M, 2026-11-18: a constant stream, no chaos).
+    const SPEED = 0.12
+    const GAP = 320
     const svg = (): SVGSVGElement | undefined =>
       [...stage.querySelectorAll<SVGSVGElement>('.map-svg')].find((s) => s.getBoundingClientRect().width > 0)
     const fmt = (ms: number): string => {
@@ -184,35 +187,39 @@ const specs = [
       if (!root) return
       const v = view(root)
       const T = P.travel
-      // Dots in flight, and the wires and boxes they light.
-      const live = new Set<string>()
+      // Each wire talking now carries a steady stream of dots, one way or both;
+      // a dot leaves every GAP ms and crosses at one speed, the last one arriving as the talk ends.
+      const live = new Map<string, string>()
       const boxes = new Set<string>(['core'])
       let n = 0
-      for (const d of P.dots) {
-        if (d.at > t) break
-        const k = (t - d.at) / (d.dur ?? T)
-        if (k >= 1) continue
-        const p = v.paths.get(d.wire)
-        if (!p) continue
-        live.add(d.wire)
-        const [from, to] = P.ends[d.wire]!
+      for (const f of P.flows) {
+        if (f.from > t) break
+        const p = v.paths.get(f.wire)
+        if (!p || t >= f.to) continue
+        live.set(f.wire, f.tone)
+        const [from, to] = P.ends[f.wire]!
         boxes.add(from)
         boxes.add(to)
-        let dot = v.dots[n]
-        if (!dot) {
-          const g = document.createElementNS(NS, 'g')
-          const c = document.createElementNS(NS, 'circle')
-          c.setAttribute('r', '4.5')
-          g.append(c)
-          root.querySelector('.packets')!.appendChild(g)
-          v.dots[n] = dot = { g, c }
+        const cross = Math.max(p.len / SPEED, 300)
+        const last = Math.max(f.from, f.to - cross)
+        for (let e = f.from + Math.max(0, Math.ceil((t - cross - f.from) / GAP)) * GAP; e <= Math.min(t, last); e += GAP) {
+          const k = (t - e) / cross
+          if (k < 0 || k > 1) continue
+          let dot = v.dots[n]
+          if (!dot) {
+            const g = document.createElementNS(NS, 'g')
+            const c = document.createElementNS(NS, 'circle')
+            c.setAttribute('r', '3.5')
+            g.append(c)
+            root.querySelector('.packets')!.appendChild(g)
+            v.dots[n] = dot = { g, c }
+          }
+          const pt = p.el.getPointAtLength((f.back ? 1 - k : k) * p.len)
+          dot.g.setAttribute('transform', `translate(${pt.x} ${pt.y})`)
+          dot.c.setAttribute('fill', TONES[f.tone]!)
+          dot.g.style.display = ''
+          n++
         }
-        const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2
-        const pt = p.el.getPointAtLength((d.back ? 1 - e : e) * p.len)
-        dot.g.setAttribute('transform', `translate(${pt.x} ${pt.y})`)
-        dot.c.setAttribute('fill', TONES[d.tone]!)
-        dot.g.style.display = ''
-        n++
       }
       for (let i = n; i < v.dots.length; i++) v.dots[i]!.g.style.display = 'none'
       // The step on screen keeps its boxes and its one-off wires lit for its whole window.
@@ -224,12 +231,7 @@ const specs = [
         const held = cur?.wires.includes(id) ?? false
         const on = live.has(id) || held
         w.classList.toggle('live', on)
-        if (on) {
-          const d = live.has(id)
-            ? P.dots.find((x) => x.wire === id && x.at <= t && t < x.at + (x.dur ?? T))
-            : P.dots.find((x) => x.wire === id && x.at >= cur!.from && x.at < cur!.to)
-          w.dataset['tone'] = d?.tone ?? ''
-        }
+        if (on) w.dataset['tone'] = live.get(id) ?? P.flows.find((x) => x.wire === id && x.from < cur!.to && x.to > cur!.from)?.tone ?? ''
       })
 
       // Groups lit now: more than one at once while the run streams.

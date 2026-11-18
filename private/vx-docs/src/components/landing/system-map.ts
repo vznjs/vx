@@ -177,6 +177,15 @@ export interface Dot {
 }
 
 /** A worker on its slot. */
+/** A wire talking one way for a while: a steady stream of dots, `back` against the wire (M, 2026-11-18: no chaos). */
+export interface Flow {
+  wire: string
+  back: boolean
+  tone: Tone
+  from: number
+  to: number
+}
+
 export interface Lane {
   slot: number
   cores: number
@@ -205,6 +214,8 @@ export interface Play {
   bars: Bar[]
   /** When each hit restored. */
   hits: number[]
+  /** Each wire's streams: its messages one way, merged while they keep coming. */
+  flows: Flow[]
   /** The run's clock: the play ms its first task starts at, the run ms that is, and play ms per run ms. */
   zero: number
   first: number
@@ -221,6 +232,8 @@ export const STEP_MS = 5000
 const RUN_MS = 10_000
 /** A worker's boot, shown as 2 s whatever the run's took (M, 2026-11-18). */
 export const BOOT_MS = 2000
+/** How far apart one way's messages on a wire may be and still read as one stream. */
+const MERGE_MS = 1500
 /** The steps in the order a run reaches them: the cache's probe answers before the first plan. */
 export const ORDER = ['setup', 'graph', 'cache', 'schedule', 'run', 'report'] as const
 
@@ -401,11 +414,23 @@ export function play(run: Run): Play {
   const lit: Record<string, [number, number][]> = Object.fromEntries(
     steps.map((x) => [x.group, [[x.from, x.to]] as [number, number][]]),
   )
-  for (const d of dots) {
-    const g = hookOf(d)
-    if (g !== undefined) lit[g]!.push([d.at, d.at + (d.dur ?? T) + 250])
-  }
   dots.sort((a, b) => a.at - b.at)
+  // Messages one way on a wire closer than a beat apart are one stream.
+  const flows: Flow[] = []
+  const open = new Map<string, Flow>()
+  for (const d of dots) {
+    const k = `${d.wire}:${d.back}`
+    const to = d.at + (d.dur ?? T)
+    const f = open.get(k)
+    if (f && d.at <= f.to + MERGE_MS) f.to = Math.max(f.to, to)
+    else {
+      const g: Flow = { wire: d.wire, back: d.back, tone: d.tone, from: d.at, to }
+      flows.push(g)
+      open.set(k, g)
+    }
+    const h = hookOf(d)
+    if (h !== undefined) lit[h]!.push([d.at, to + 250])
+  }
   return {
     steps,
     lit,
@@ -413,6 +438,7 @@ export function play(run: Run): Play {
     lanes,
     bars,
     hits,
+    flows,
     zero,
     first,
     scale,
