@@ -242,6 +242,35 @@ it('keeps an idle worker holding files a task to come reads', () => {
   expect(plan([deploy], [busy, worker('holder')], [], WARM).release).toEqual(['holder'])
 })
 
+// Main 643d38d: the packing gave the deploy to a worker busy past it,
+// build.live made again there, and let the idle holder go. That worker's
+// work ended early, it left too, and the build ran again at the run's end.
+it('keeps the holder when the packing gives its reader to a busy worker', () => {
+  const sized = (id: string, over: Partial<PlanWorker> = {}) =>
+    worker(id, { size: 'small', ...over })
+  const busy = sized('busy', {
+    idle: false,
+    running: [{ id: 'other', cores: 1, memory: 1e8, endsIn: 70_000 }],
+  })
+  const testing = sized('testing', {
+    idle: false,
+    running: [{ id: 'test', cores: 1, memory: 1e8, endsIn: 7_000 }],
+  })
+  const deploy = { ...task('deploy', 9_000, ['test'], 1), reads: ['live'] }
+  const work = [deploy, task('x', 20_000, [], 3)]
+  const p = plan(
+    work,
+    [busy, testing, sized('holder', { holds: new Map([['live', 25_000]]) })],
+    [small],
+    WARM,
+  )
+  // The packing, not the play: the play's own guard is pinned above.
+  expect(p.unpacked).toBeUndefined()
+  expect(p.release).toEqual([])
+  // CONTROL: holding nothing, the idle one goes.
+  expect(plan(work, [busy, testing, sized('holder')], [small], WARM).release).toEqual(['holder'])
+})
+
 it('waits a task on the running task it depends on', () => {
   const busy = worker('busy', {
     idle: false,
