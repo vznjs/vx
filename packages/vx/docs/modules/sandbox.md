@@ -789,6 +789,13 @@ write paths (`getDefaultWritePaths`, a task's temp directory among
 them) unless they lie in the task's directory. A persistent task is not
 observed and keeps the runtime's.
 
+A write to descriptor 5 the disk refuses (`ENOSPC`, a task that filled
+the temp directory the log shares) loses the lines it held, so the reads
+they named are unknown: the first process then exits 125 with `vx-observe:
+the report could not be written`, and the task fails without a retry.
+Before 11-18 the lines were dropped without a word, and a read a widened
+grant let through went unjudged.
+
 Three processes: the first keeps the pid the wrapper waits on and ends
 with the command's status, a signal's included. The supervisor, its
 child, answers for as long as any process under the filter lives, so a
