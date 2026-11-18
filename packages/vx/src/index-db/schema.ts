@@ -192,6 +192,24 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       id     INTEGER PRIMARY KEY,
       run_id TEXT NOT NULL UNIQUE
     );
+    -- A run's cache hits, one packed row for them all (history/hit-rows.ts),
+    -- until a reader asks: a \`runs\` row per hit was 13% of an
+    -- 8,002-hit no-op, written for a reader that mostly never came.
+    -- \`expandHits\` turns each into its \`runs\` rows, ids \`first_id\`
+    -- on, which the run reserved.
+    CREATE TABLE IF NOT EXISTS main.run_hits (
+      run        INTEGER PRIMARY KEY,
+      first_id   INTEGER NOT NULL,
+      started_at INTEGER NOT NULL,
+      keys       INTEGER NOT NULL,
+      nums       BLOB NOT NULL
+    );
+    -- The hits' keys, a JSON \`[project, task, hash, def]\` each, under
+    -- their xxh3: no-op runs of one workspace share one row.
+    CREATE TABLE IF NOT EXISTS main.hit_keys (
+      id   INTEGER PRIMARY KEY,
+      keys TEXT NOT NULL
+    );
     ${RUNS_VIEW}
     -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
     -- skip the content-hash on inputs whose stat hasn't changed
@@ -507,10 +525,16 @@ export function inHashes(hashes: readonly string[]): { test: string; params: str
  */
 export function pruneHistoryRows(db: Database, cutoff: number): number {
   let dropped = db.prepare('DELETE FROM main.runs WHERE started_at < ?').run(cutoff).changes
+  // A run's kept hits (`run_hits`) are rows of it not written out yet.
+  dropped += db.prepare('DELETE FROM main.run_hits WHERE started_at < ?').run(cutoff).changes
+  db.exec('DELETE FROM main.hit_keys WHERE id NOT IN (SELECT keys FROM main.run_hits)')
   // A run's id goes with its last row; ids only grow, so the oldest kept row bounds them.
   dropped += db
     .prepare(
-      'DELETE FROM run_ids WHERE id < COALESCE((SELECT MIN(run) FROM main.runs), (SELECT MAX(id) + 1 FROM run_ids))',
+      `DELETE FROM run_ids WHERE id < COALESCE(
+         (SELECT MIN(run) FROM (SELECT MIN(run) AS run FROM main.runs
+                                UNION ALL SELECT MIN(run) FROM main.run_hits)),
+         (SELECT MAX(id) + 1 FROM run_ids))`,
     )
     .run().changes
   dropped += db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff).changes
@@ -523,7 +547,7 @@ export function pruneHistoryRows(db: Database, cutoff: number): number {
 
 // The index's schema. A mismatch drops and recreates the index: no
 // migrations, so any change to what it stores bumps this.
-export const SCHEMA_VERSION = 'v56'
+export const SCHEMA_VERSION = 'v57'
 
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.

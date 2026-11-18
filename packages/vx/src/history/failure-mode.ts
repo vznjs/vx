@@ -10,6 +10,7 @@
 
 import type { Database } from 'bun:sqlite'
 import { KEYED_RUNS_SQL } from '../index-db/index.js'
+import { expandHits } from './run-history.js'
 import { isCacheHit, TASK_STATUSES } from '../graph/index.js'
 
 // SQL hit set derived from the predicate — never a hand-typed list and never
@@ -73,6 +74,7 @@ export function mixedOutcomeKeysSql(source: string, where = ''): string {
 
 /** Mixed-outcome keys of one (project, task) over its WHOLE recorded history. */
 export function mixedOutcomeKeyCount(db: Database, project: string, task: string): number {
+  expandHits(db)
   const row = db
     .query(
       `SELECT COUNT(*) AS n FROM (${mixedOutcomeKeysSql('main.runs', ' AND project = ? AND task = ?')})`,
@@ -168,6 +170,8 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
     (c) => c.status === 'failed' || c.attempts > 1 || everFailed.has(keyOf(c)),
   )
   if (suspects.length === 0) return []
+  // A kept hit is a pass of its key: written out before the passes are counted.
+  expandHits(db)
   const counts = new Map<string, { passes: number; failures: number; relapses: number }>()
   chunked(suspects, (chunk) => {
     const rows = db
@@ -205,6 +209,7 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
  * a retry. Asked only after a failure, so a green run never reads it.
  */
 export function knownFlaky(db: Database, project: string, task: string, hash: string): boolean {
+  expandHits(db)
   const passed = db
     .query(
       `SELECT 1 FROM ${OUTCOMES} WHERE hash = ? AND project = ? AND task = ?
@@ -247,6 +252,7 @@ export interface FlakyTask {
  * resets every cache.
  */
 export function flakyTasks(db: Database): FlakyTask[] {
+  expandHits(db)
   const rows = db
     .query(
       `SELECT project, task, COUNT(*) AS keys, SUM(passes) AS passes, SUM(failures) AS failures

@@ -68,7 +68,6 @@ you will read it to understand cache invalidation history.
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
 was retired 2026-09-02). Current: `vx-cache-v56`, core `SCHEMA_VERSION`
-`v56` (bumped 2026-11-12: output_stamps and output_dirs gained `root` in
-their primary key, and stored logs and artifacts keep non-UTF-8 output
-bytes; a `SCHEMA_VERSION` bump drops the whole index, so it is taken only
-when a stored shape changes).
+`v57` (bumped 2026-11-18, alone: `run_hits` and `hit_keys`, a run's hits
+kept packed; a `SCHEMA_VERSION` bump drops the whole index, so it is
+taken only when a stored shape changes).

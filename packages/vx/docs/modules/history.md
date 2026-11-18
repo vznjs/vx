@@ -525,8 +525,8 @@ history.
 `recordRunBundle()` is the write at a run's end: one `runs` row for every
 task (hits and misses, successes and failures) and one `invocations`
 header row (command, git/CI/host context, run-level counts) **atomically
-in one transaction**, less the hits a `HistoryStream` already wrote while
-the graph ran, with one shared-store `task_durations` row per executed
+in one transaction**, its cache hits as one `run_hits` row
+(`hit-rows.ts`, below) in place of a `runs` row each, with one shared-store `task_durations` row per executed
 success, tagged `branchSource(branch)` (`'branch:<name>'`, `'branch:'`
 with none) and the commit: what a duration forecast reads. The
 input-fingerprint rows (`entry_inputs`) are NOT written here: they ride
@@ -538,9 +538,14 @@ writes none.
 ```ts
 export interface HistoryWrites {
   recordRun(run: RunRecord): void
-  recordRuns(runs: readonly RunRecord[], head?: RunHead): void
+  // `hits`: the run's packed hits, kept in the same transaction.
+  recordRuns(runs: readonly RunRecord[], head?: RunHead, hits?: RunHits): void
   recordMeasures(measures: readonly MeasureRecord[], head: RunHead): void
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRunBundle(bundle: {
+    runs: readonly RunRecord[]
+    invocation: InvocationRecord
+    hits?: RunHits
+  }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
 }
 export function runHistory(cache: Cache): HistoryWrites
@@ -633,39 +638,37 @@ export interface RunRecord {
 export interface MeasureRecord {
   // …
 }
+// A run's packed hits and what their rows need of the run.
+export interface RunHits extends PackedHits {
+  runId: string
+  startedAtMs: number
+}
+// Writes out the hits runs kept packed; returns the rows written.
+export function expandHits(db: Database): number
 export class RunHistory {}
 ```
 
-## `src/history/history-stream.ts` — a run's hits written on a thread
+## `src/history/hit-rows.ts` — a run's hits kept packed
 
 ### Purpose
 
-`HistoryStream`: a run's hits written on a thread of their own while the graph runs, 512 to a transaction, through a second connection on the same files (`historyFiles(cache)`). The thread starts only for a run of 2,048 hits or more (its confirmed local hits after the classify, or the hit that reaches it): below that its start cost more than it saved. A batch the thread does not land comes back and goes in the bundle. The writer is a second `bun build --compile` entry point. `src/history/history-writer.ts` is
-the thread's own entry point.
+A run writes no `runs` row for a cache hit. It packs each hit as it settles (`packHit`, orchestrator): a row of numbers (`HIT` names the columns, NaN is a field left out), four strings, and the few text fields a hit rarely has. At its end the run keeps them all as one `run_hits` row in the bundle's transaction (`encodeHits`): the numbers compressed, and the keys (a `[project, task, hash, def]` per hit) as one `hit_keys` row under their xxh3, which no-op runs of one workspace share. The run reserves the hits' `runs` ids, so rows written later sort where the run left them. A row per hit, built and written, was 13% of an 8,002-hit no-op, for a reader that mostly never came.
 
-A hit goes to the thread packed, not as a record: `src/history/hit-rows.ts` holds the shape, a row of numbers (`HIT` names the columns, NaN is a field left out) and four strings per hit, and the few text fields a hit rarely has. The run packs each hit as it settles (`packHit`, orchestrator), the numbers are moved to the thread, and `hitRecords` reads them back into the `runs` rows `runRecordOf` would build. `tests/hit-rows.test.ts` holds the two to each other.
+`expandHits(db)` writes every kept row out: the `runs` rows `runRecordOf` would have built (`hitRecords`; `tests/hit-rows.test.ts` holds the two to each other) and the flaky record's first hit of a key, a transaction per run. Every reader of `runs` or the flaky record calls it first: `vx last` and `vx why` on opening, `vx info` before its counts, the `metrics.ts` and `failure-mode.ts` readers, `runFailures` and `taskLog`, `LocalHistoryProvider.loadFor` / `loadAll` / `recentTaskIds`, and a write of a failed key or a late upload error. It asks a connection once, and again after that connection keeps hits. `tests/kept-hits.test.ts` fails a source file that reads those rows without it.
+
+What does not write them out: a run of only hits (it reads no history), and a plan. `resourcesFor` and `durationsFor`, which `@vzn/vx-history` asks before every run that executes, read the producers of kept hits from `hit_keys` where they lie (`json_each`). A reader pays for the runs kept since the last one: about 60 ms per 8,000 hits.
+
+`vx last --sql` sees the rows (the verb writes them out first). Another tool reading `cache.db` directly sees hits only up to the last reader.
 
 ### Public surface
 
 ```ts
-// A run's hits written on a thread while the graph runs, 512 to a
-// transaction, once `expected` (its confirmed local hits) or the hits
-// added reach 2,048; `finish` hands back what did not land, for the bundle.
-export class HistoryStream<T> {
-  constructor(
-    files: { index: string; store?: string },
-    expected: number,
-    run: { runId: string; startedAtMs: number },
-    pack: (item: T, rows: HitBatch) => void,
-  )
-  add(item: T): void
-  finish(): Promise<{ landed: T[]; unlanded: T[] }>
-}
-
 // A batch of hits being packed: `row` opens a hit and returns where its
 // numbers start in `nums`; `set` adds a text field few hits carry.
 export class HitBatch implements HitRows {}
 export const HIT: Record<string, number>
-// The `runs` rows of a batch, on the thread.
+// Every batch of a run as one stored value: `keys` the JSON text, `nums` the rest.
+export function encodeHits(batches: readonly HitRows[]): PackedHits
+// The `runs` rows of a batch.
 export function hitRecords(rows: HitRows, run: { runId: string; startedAtMs: number }): RunRecord[]
 ```

@@ -4,7 +4,7 @@
 
 import type { Database } from 'bun:sqlite'
 import { indexDb, type Cache, storedLog } from '../cache/index.js'
-import { keepRunNotes, keptFailures, PASS_STATUSES } from '../history/index.js'
+import { expandHits, keepRunNotes, keptFailures, PASS_STATUSES } from '../history/index.js'
 import { isGroupTask, type SandboxFix, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { maskedLine, splitTaskId, stripEscapes } from '../util/index.js'
@@ -114,6 +114,7 @@ function attemptsText(o: TaskOutcome): string {
  * `locations: []`.
  */
 export function runFailures(db: Database, runId?: string): RunFailures | null {
+  expandHits(db)
   const id =
     runId ??
     (
@@ -178,6 +179,7 @@ export interface TaskLog {
  * task when omitted; null when no such run recorded it.
  */
 export function taskLog(db: Database, taskId: string, runId?: string): TaskLog | null {
+  expandHits(db)
   const [project, task] = splitTaskId(taskId)
   if (project === '' || task === '') return null
   const row = db

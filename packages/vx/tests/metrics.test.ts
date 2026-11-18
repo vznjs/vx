@@ -1020,7 +1020,9 @@ describe('vx why at scale', () => {
               const v = Reflect.get(stmt, k, stmt)
               if (typeof v !== 'function') return v
               return (...args: unknown[]) => {
-                if (k === 'all' || k === 'get' || k === 'values') ran.push(sql)
+                // Not the one probe for hits kept packed (`expandHits`).
+                if ((k === 'all' || k === 'get' || k === 'values') && !sql.includes('run_hits'))
+                  ran.push(sql)
                 return v.apply(stmt, args)
               }
             },

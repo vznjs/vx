@@ -20,6 +20,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.657
 
+### history: keep a run's cache hits as one packed row
+
+the index schema is v57: the local index resets once, so the run history starts empty and a cached task with no stored artifact to adopt runs once more. A run writes no `runs` row for a cache hit until something reads the history; `vx last`, `vx why` and `vx info` write them out first, and a tool reading cache.db directly sees hits only up to the last of those.
+
 ### vx-cache-server: hash issuer, repository and ref in object names
 
 a vx-cache-server object's name is <hash(issuer)>/<hash(repository)>/<hash(ref)>/<hash>, each of the first three SHA-256's first 32 hex digits, not the percent-encoded names; artifacts stored under the old names are not read. blobName() is async.

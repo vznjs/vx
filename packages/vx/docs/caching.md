@@ -2068,7 +2068,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/index-db/schema.ts (SCHEMA_VERSION = 'v56')
+-- src/index-db/schema.ts (SCHEMA_VERSION = 'v57')
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2158,6 +2158,27 @@ CREATE INDEX runs_run        ON runs(run);
 CREATE TABLE run_ids (
   id     INTEGER PRIMARY KEY,
   run_id TEXT NOT NULL UNIQUE      -- UUIDv7 shared across all tasks in one invocation
+);
+
+-- v57: a run's cache hits, one packed row for them all, until a reader
+-- asks. A `runs` row per hit was 13% of an 8,002-hit no-op, written for a
+-- reader that mostly never came. `expandHits` (src/history) writes each
+-- out as its `runs` rows, ids `first_id` on, which the run reserved, and
+-- the flaky record's first hit of a key; every reader of `runs` calls it
+-- first, `vx last` and `vx why` on opening. A plan reads `hit_keys` where
+-- it lies.
+CREATE TABLE run_hits (
+  run        INTEGER PRIMARY KEY,  -- the run's run_ids row
+  first_id   INTEGER NOT NULL,     -- the runs id of its first hit
+  started_at INTEGER NOT NULL,     -- the run's start, ms: a hit's times count from it
+  keys       INTEGER NOT NULL,     -- its hit_keys row
+  nums       BLOB NOT NULL         -- zstd: a count, 23 float64 per hit, the rare text fields as JSON
+);
+-- The hits' keys, a JSON [project, task, hash, def] each, under their
+-- xxh3: no-op runs of one workspace share one row.
+CREATE TABLE hit_keys (
+  id   INTEGER PRIMARY KEY,
+  keys TEXT NOT NULL
 );
 
 -- What readers and `vx last --sql` mean by `runs`: the rows above with
@@ -2279,8 +2300,8 @@ CREATE TABLE output_dirs (
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
 -- table is per-task; this is the per-invocation record carrying the
 -- command, git/CI/host context, and run-level counts. Recorded
--- alongside `runs` via recordRunBundle (one transaction); a big run's
--- hits land before it, in batches (HistoryStream).
+-- alongside `runs` and the run's `run_hits` row via recordRunBundle (one
+-- transaction).
 CREATE TABLE invocations (
   run_id            TEXT PRIMARY KEY,         -- UUIDv7, == runs.run_id
   command           TEXT NOT NULL,            -- full argv, e.g. "vx run build --all"
@@ -2652,6 +2673,10 @@ breaking footer).
 
 ### History
 
+- **`SCHEMA_VERSION` v56 → v57** (2026-11-18), `CACHE_VERSION` unmoved:
+  the index gained `run_hits` and `hit_keys`, where a run keeps its cache
+  hits packed until a reader asks. A v56 vx reads no hit a v57 run kept
+  and prunes the run ids they name, so the index resets once.
 - **v55 → v56**: stored bytes wrong under a key the change does not move
   (2026-11-12). A task's output bytes that are not UTF-8 are kept as
   written, in the log and the artifact; a v55 entry holds U+FFFD for them,

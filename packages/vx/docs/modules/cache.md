@@ -347,8 +347,7 @@ export function holdCacheDir(
   signal?: AbortSignal,
   workspaceRoot?: string,
 ): Promise<() => void>
-// The files a second connection writes a run's hits through; undefined
-// when the store keeps no history on disk.
+// The files a store keeps its history in; undefined when it keeps none on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
@@ -711,13 +710,11 @@ Reads via `get()` are non-blocking thanks to WAL.
 ### Run history & stats
 
 `recordRunBundle()` is the run-history write at a run's end: one `runs`
-row for every task — cache hits and misses, successes and failures — and
-one `invocations` header row (command, git/CI/host context, run-level
-counts) **atomically in one transaction**, less the hits a
-`HistoryStream` already wrote while the graph ran (a warm run's 8,002
-rows were the main thread's last ~65 ms; from 2,048 hits their batches
-land beside the graph instead, and the header still comes last, so `vx last` lists a
-run only once all its rows are in), with one shared-store
+row for every task that ran, one `run_hits` row for all its cache hits
+(a row per hit was 13% of an 8,002-hit no-op; a reader writes them out,
+history.md `expandHits`) and one `invocations` header row (command,
+git/CI/host context, run-level counts) **atomically in one
+transaction**, with one shared-store
 `task_durations` row per executed success, tagged `branchSource(branch)`
 (`'branch:<name>'`, `'branch:'` with none) and the commit: what a
 duration forecast reads (`history.md`). The per-row `recordRun` /
@@ -763,7 +760,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ### `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v56'`; `SCHEMA_VERSION` is
-`'v56'`. Bump `CACHE_VERSION` when:
+`'v57'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

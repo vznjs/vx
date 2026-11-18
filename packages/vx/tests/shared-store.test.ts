@@ -11,7 +11,8 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } fro
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { Cache, indexDb } from '../src/cache/index.js'
+import { expandHits } from '../src/history/index.js'
 import { run } from './helpers/orchestrator.js'
 import { resolveStoreRoot } from '../src/workspace/index.js'
 import { parseGitConfigRemotes, parseRemoteUrl, repoIdOf } from '../src/workspace/repo-id.js'
@@ -96,11 +97,13 @@ function said(f: Fixture): { log: string[]; err: string[] } {
 
 /** Rows of `table` in a workspace's own index, read beside vx's handle. */
 function rows(f: Fixture, sql: string): unknown[] {
-  const db = new Database(path.join(f.root, '.vx', 'cache', 'cache.db'), { readonly: true })
+  // As a reading verb opens it: a hit's row is written out when a reader asks.
+  const cache = Cache.inspect(path.join(f.root, '.vx', 'cache'))
   try {
-    return db.query(sql).all()
+    expandHits(indexDb(cache))
+    return indexDb(cache).query(sql).all()
   } finally {
-    db.close()
+    cache.close()
   }
 }
 
