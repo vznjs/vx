@@ -65,7 +65,7 @@ import { leftUnder, names, outputFiles } from './outputs.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
 
-/** What kept a run from its ideal, in ms along the chain that ended it (`driftOf`). */
+/** What kept a run from its perfect end, in ms along the chain that ended it (`driftOf`). */
 interface Drift {
   /** Waiting for a worker to join, past the fastest warm-up. */
   readonly joining: number
@@ -2614,7 +2614,35 @@ export class Orchestrator {
   }
 
   /**
-   * The end no run of these tasks could beat (2026-11-17: the footer's
+   * The run's ideal end: the best it could do on the workers it may start
+   * (2026-11-18: "we shoud have a ideal time with current configuration
+   * not perfect. for perfect that should be othe rnumber"). Its perfect
+   * end (`perfectMs`), or later where a platform's work, each task's cores
+   * for as long as it held them, fills every core its sizes' `max` allows
+   * from that platform's fastest real warm-up. Still a floor: no run with
+   * these sizes beats it. With no sizes it is the perfect end.
+   */
+  idealMs(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): number | undefined {
+    const perfect = this.perfectMs(depsOf)
+    const r = this.replay(depsOf)
+    if (perfect === undefined || r === undefined) return perfect
+    const work = new Map<string | undefined, number>()
+    for (const t of r.tasks)
+      work.set(t.platform, (work.get(t.platform) ?? 0) + t.cores * (t.ms ?? 0))
+    let end = perfect
+    for (const [platform, w] of work) {
+      let cores = 0
+      for (const s of sizes)
+        if (platform === undefined || s.platform === undefined || s.platform === platform)
+          cores += s.max * s.cpu
+      if (cores > 0) end = Math.max(end, r.from + r.warm(platform) + w / cores)
+    }
+    return end
+  }
+
+  /**
+   * The run's perfect end, no worker cap: the end no run of these tasks
+   * could beat on as many workers as it liked (2026-11-17: the footer's
    * ideal was a replay under our placing rule and the sizes' caps, and a
    * run ended before it): its longest chain, each task as long as it held
    * its worker, on workers never short of room, each there after its
@@ -2622,7 +2650,7 @@ export class Orchestrator {
    * work. A task waits on its deps through those no worker ran (groups,
    * hits). What the planner said before the run is its estimate (`asks`).
    */
-  idealMs(depsOf: (id: string) => readonly string[]): number | undefined {
+  perfectMs(depsOf: (id: string) => readonly string[]): number | undefined {
     const r = this.replay(depsOf)
     if (r === undefined) return undefined
     const byId = new Map(r.tasks.map((t) => [t.id, t]))
@@ -2657,7 +2685,7 @@ export class Orchestrator {
    * long as each held its worker, on workers of the size that holds the
    * least, each holding its cores less what its machine spends besides
    * the run's tasks (`othersOf`), as few as end that work by the ideal end
-   * (`idealMs`), each held through its warm-up. One warm-up for the run
+   * (`perfectMs`), each held through its warm-up. One warm-up for the run
    * was a floor no run reached: a run that ends at its chain starts as
    * many workers as its width needs, and each warms up (main 5c2463f:
    * 14.9 core-min where the least of 4 smalls and a Mac held 26,
@@ -2666,7 +2694,7 @@ export class Orchestrator {
   leastHeldMs(
     depsOf: (id: string) => readonly string[],
     sizes: readonly Size[],
-    end = this.idealMs(depsOf),
+    end = this.perfectMs(depsOf),
   ): number | undefined {
     const r = this.replay(depsOf)
     if (r === undefined) return undefined
@@ -2721,7 +2749,7 @@ export class Orchestrator {
    * us what caused the drift from ideal"): along the chain that ended it,
    * from its last task back through the dependency each waited on last,
    * the time each waited past when its ideal could start it (as
-   * `idealMs`, its platform's fastest warm-up from when the run knew its
+   * `perfectMs`, its platform's fastest warm-up from when the run knew its
    * work) for its worker or another asked for its platform to join, then
    * for room with every one joined; the time its
    * inputs took to reach it once sent; the time from its dependency's end
@@ -2791,7 +2819,7 @@ export class Orchestrator {
 
   /**
    * The workers that would have run this run best (`advise`), from the
-   * same replay as `idealMs`: on `sizes`, past their `max`, and of any
+   * same replay as `perfectMs`: on `sizes`, past their `max`, and of any
    * cores. With no sizes (workers that join on their own), the shapes
    * that joined stand for them, as many as joined.
    */
@@ -2941,11 +2969,12 @@ export class Orchestrator {
    * with its status, the tasks it has done and the ones it runs now, then
    * this machine's; once over, each joined worker's warm-up and, under
    * each, the cores and memory its size declares and its machine reports;
-   * and `ideal`, the run's `idealMs`, asked once it ended, with what kept
-   * the run from it (`drift`).
+   * and `ideal`, the run's `idealMs`, and `perfect`, its `perfectMs`,
+   * asked once it ended, with what kept the run from them (`drift`).
    */
   footer(
     ideal?: () => number | undefined,
+    perfect?: () => number | undefined,
     advice?: () => readonly WorkerAdvice[],
     drift?: () => Drift | undefined,
     least?: () => number | undefined,
@@ -3089,19 +3118,36 @@ export class Orchestrator {
                   .join(' · ')}`,
               ),
             ] as [string, ui.Inline],
-            // Beside core's time row, how close the run came (2026-10-23).
-            ...((ms) =>
+            // Beside core's time row, how close the run came (2026-10-23),
+            // to the best its sizes allow and to the best with no cap
+            // (2026-11-18).
+            ...((best, ms) =>
               ms === undefined
                 ? []
                 : [
+                    ...(best === undefined
+                      ? []
+                      : [
+                          [
+                            '',
+                            ui.dim(
+                              `${'ideal'.padEnd(width)}  ${seconds(best)}: the best the workers it may start allow, its longest chain or each platform's work on all their cores`,
+                            ),
+                          ] as [string, ui.Inline],
+                        ]),
                     [
                       '',
                       ui.dim(
-                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: its longest chain as long as it took, no task waiting for a worker${((h) => (h === undefined ? '' : `, holding ${coreTime(h)} at least`))(least?.())}`,
+                        `${'perfect'.padEnd(width)}  ${seconds(ms)}: its longest chain as long as it took, no task waiting for a worker${((h) => (h === undefined ? '' : `, holding ${coreTime(h)} at least`))(least?.())}`,
                       ),
                     ] as [string, ui.Inline],
-                    ...driftRow(this.endedAt - this.startedAt - ms, drift?.(), width),
-                  ])(ideal?.()),
+                    ...driftRow(
+                      this.endedAt - this.startedAt - (best ?? ms),
+                      this.endedAt - this.startedAt - ms,
+                      drift?.(),
+                      width,
+                    ),
+                  ])(ideal?.(), perfect?.()),
             // What to declare next time (2026-11-05: "So I can add more
             // or change their specs").
             ...(advice?.() ?? []).map(
@@ -3148,11 +3194,17 @@ function coreTime(ms: number): string {
 }
 
 /**
- * The footer's `drift` row: how far past its ideal the run ended, and the
- * parts of it `driftOf` names, each of a tenth of a second or more.
+ * The footer's `drift` row: how far past its ideal and its perfect end the
+ * run ended, and the parts of the latter `driftOf` names, each of a tenth
+ * of a second or more.
  */
-function driftRow(past: number, d: Drift | undefined, width: number): [string, ui.Inline][] {
-  if (d === undefined || past < 100) return []
+function driftRow(
+  past: number,
+  pastPerfect: number,
+  d: Drift | undefined,
+  width: number,
+): [string, ui.Inline][] {
+  if (d === undefined || pastPerfect < 100) return []
   const parts = (
     [
       ['workers joining', d.joining],
@@ -3169,7 +3221,7 @@ function driftRow(past: number, d: Drift | undefined, width: number): [string, u
     [
       '',
       ui.dim(
-        `${'drift'.padEnd(width)}  +${seconds(past)} past ideal${parts.length > 0 ? `: ${parts.join(' · ')}` : ''}`,
+        `${'drift'.padEnd(width)}  ${past > 0 ? `+${seconds(past)}` : `-${seconds(-past)}`} past ideal, +${seconds(pastPerfect)} past perfect${parts.length > 0 ? `: ${parts.join(' · ')}` : ''}`,
       ),
     ],
   ]

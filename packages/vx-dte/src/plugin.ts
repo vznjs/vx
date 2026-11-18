@@ -1195,13 +1195,14 @@ export function dte(options: DteOptions = {}) {
               }),
           footer: () =>
             o.footer(
-              () => o.idealMs(depsOf),
+              () => o.idealMs(depsOf, sizes),
+              () => o.perfectMs(depsOf),
               () => o.advice(depsOf, sizes),
               () => o.driftOf(depsOf),
               () => o.leastHeldMs(depsOf, sizes),
             ),
           machines: () => o.machines(),
-          idealMs: () => o.idealMs(depsOf),
+          idealMs: () => o.idealMs(depsOf, sizes),
           advice: () => o.advice(depsOf, sizes),
           profile: () => o.profile(),
           running: (id) => o.where(id),

@@ -847,12 +847,13 @@ cache, or not answered for) and how many of them it found in none. The `asked` l
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
 as `unmeasured`), and the planner's estimate of the run's time then. The `ideal` line is the run's ideal end
-(below), so every log reads it beside core's `time` row, and the least
+and the `perfect` line its perfect end (below), so every log reads them beside core's `time` row; the
+`perfect` line also gives the least
 CPU a run ending then holds: on each platform, its tasks' cores for as
 long as each held its worker, on as few workers of the least costly size
 as end that work by then, each worker's cores less what its machine
 spends besides the run's tasks, and each worker's warm-up. The `drift`
-line says how far past it the run ended and what caused it, along the
+line says how far past each the run ended and what kept it from the perfect end, along the
 chain of tasks that ended the run: tasks waiting while a worker asked
 for their platform is still to join past its fastest warm-up, waiting for
 room with every one joined, their inputs reaching their worker, a dependency's files coming to this
@@ -872,7 +873,7 @@ from one `ps` as it starts and one as it leaves. The `total` line is the same cp
 machine together, the share of their history the run's tasks used, and
 the CPU the workers held: each one's cores from when the run asked for it
 until it left, was cancelled or the run ended, idle or not, so it reads
-against the `ideal` line's least:
+against the `perfect` line's least:
 
 ```
             linux.small#1  stopped  5 done · warm-up 0.2s
@@ -884,8 +885,9 @@ against the `ideal` line's least:
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), estimate 12.0s
-            ideal    10.8s: its longest chain as long as it took, no task waiting for a worker, holding 34.5 core-s at least
-            drift    +1.3s past ideal: workers joining 0.8s · waiting for room 0.3s · sending inputs 0.1s
+            ideal    11.4s: the best the workers it may start allow, its longest chain or each platform's work on all their cores
+            perfect  10.8s: its longest chain as long as it took, no task waiting for a worker, holding 34.5 core-s at least
+            drift    +0.7s past ideal, +1.3s past perfect: workers joining 0.8s · waiting for room 0.3s · sending inputs 0.1s
             best     2 × linux.small (4c/14G): 11.4s, the fewest of its sizes
             more     3 × linux.small (4c/14G): 10.8s, past its sizes' max
             any      1 × (8c/28G): 10.9s, of any cores, the least core time
@@ -917,11 +919,15 @@ written. On CI, upload the file as an artifact; this repo's `ci.yml`
 does and links it from the job summary.
 
 Before the run, the planner's figure is an estimate. After it, `dte()`
-works out the end no run of these tasks could beat: its longest chain,
-each task as long as it held its worker, no task waiting for room, each
-worker there after its platform's fastest real warm-up. That ideal end (`distribution.idealMs`) sits beside the
-real time in the run summary and the footer's `ideal` line, and
-`@vzn/vx-ci` prints it.
+works out two ends no run of these tasks could beat. The perfect end has
+no worker cap: its longest chain, each task as long as it held its
+worker, no task waiting for room, each worker there after its platform's
+fastest real warm-up. The ideal end is the best with the workers the run
+may start: the perfect end, or later where a platform's work (each
+task's cores for as long as it held them) fills every core its sizes'
+`max` allows from that platform's fastest warm-up. The ideal end
+(`distribution.idealMs`) sits beside the real time in the run summary
+and the footer's `ideal` line, and `@vzn/vx-ci` prints it.
 
 A replay of the run says which workers to declare next time
 (`TaskExecutor.advice`), each from an empty run with the plan's own
