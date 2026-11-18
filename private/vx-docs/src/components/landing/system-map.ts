@@ -61,7 +61,8 @@ export const BOXES: Box[] = [
   { id: 'lockfile', label: 'Lockfile', sub: 'vx-lockfile · pnpm, bun, npm, yarn', tone: 'read' },
   { id: 'migrate', label: 'Turbo or Nx graph', short: 'Turbo / Nx', sub: 'vx-migrate · turbo.json, Nx', tone: 'read' },
   { id: 'history', label: 'History', sub: 'vx-history · task timings', tone: 'read' },
-  { id: 'reports', label: 'Reports', sub: 'vx-otel · vx-ci', tone: 'report' },
+  { id: 'ci', label: 'CI', sub: 'vx-ci · GitHub Actions, GitLab', tone: 'read' },
+  { id: 'reports', label: 'Reports', sub: 'vx-otel · traces, metrics, logs', tone: 'report' },
   { id: 'relay', label: 'Distributed task execution', short: 'DTE', sub: 'vx-dte · stores nothing', tone: 'dte' },
   { id: 'cache', label: 'Remote cache', sub: 'vx-cache · S3, R2 or Docker', tone: 'remote' },
 ]
@@ -73,6 +74,7 @@ export const WIRES: Wire[] = [
   { id: 'lockfile', from: 'lockfile', to: 'core' },
   { id: 'migrate', from: 'migrate', to: 'core' },
   { id: 'history', from: 'history', to: 'core' },
+  { id: 'ci', from: 'ci', to: 'core' },
   { id: 'reports', from: 'core', to: 'reports' },
   { id: 'cache', from: 'core', to: 'cache' },
   { id: 'relay', from: 'core', to: 'relay' },
@@ -205,6 +207,7 @@ export const ORDER = ['setup', 'graph', 'cache', 'schedule', 'run', 'report'] as
 function hookOf(d: Dot): (typeof ORDER)[number] | undefined {
   if (/^[sc]\d$/.test(d.wire)) return undefined
   if (d.label === 'config' || d.label === 'CI scope') return 'setup'
+  if (d.wire === 'ci') return 'report'
   if (d.wire === 'ws' || d.wire === 'lockfile' || d.wire === 'migrate') return 'graph'
   if (d.wire === 'cache') return 'cache'
   if (d.wire === 'history') return d.back ? 'report' : 'schedule'
@@ -238,7 +241,7 @@ export function play(run: Run): Play {
 
   // Setup: the workspace's config, and the cache scope vx-ci reads from the CI it runs on.
   dot(at('setup') + lead, 'ws', 'read', 'config')
-  dot(at('setup') + lead, 'reports', 'report', 'CI scope', true)
+  dot(at('setup') + lead, 'ci', 'read', 'CI scope')
   // Graph: the configs, the lockfile and a Turbo or Nx graph resolve into keyed tasks.
   dot(at('graph') + lead, 'ws', 'read', 'projects')
   dot(at('graph') + lead, 'lockfile', 'read', 'lockfile')
@@ -325,7 +328,7 @@ export function play(run: Run): Play {
   }
   // Report: the job summary is written and the run's timings go back to history.
   const down = Math.max(at('report') + lead, end + 3 * T)
-  dot(down, 'reports', 'report', 'summary')
+  dot(down, 'ci', 'report', 'summary', true)
   dot(down, 'history', 'report', 'timings', true)
 
   // vx is at work only when it calls a hook: a group lights while a message
@@ -364,7 +367,8 @@ const WIDE: Layout = {
     migrate: { x: 770, y: 16, w: 280, h: 62 },
     history: { x: 20, y: 150, w: 240, h: 66 },
     core: { x: 280, y: 124, w: 640, h: 118 },
-    reports: { x: 940, y: 150, w: 240, h: 66 },
+    ci: { x: 940, y: 110, w: 240, h: 66 },
+    reports: { x: 940, y: 200, w: 240, h: 66 },
     relay: { x: 330, y: 300, w: 250, h: 58 },
     cache: { x: 620, y: 300, w: 250, h: 58 },
     slot1: { x: 380, y: 426, w: 200, h: 76 },
@@ -375,7 +379,8 @@ const WIDE: Layout = {
     lockfile: [{ side: 'bottom' }, { side: 'top', at: 0.5 }],
     migrate: [{ side: 'bottom' }, { side: 'top', at: 0.8 }],
     history: [{ side: 'right' }, { side: 'left', at: 0.25 }],
-    reports: [{ side: 'right', at: 0.45 }, { side: 'left' }],
+    ci: [{ side: 'left' }, { side: 'right', at: 0.2 }],
+    reports: [{ side: 'right', at: 0.7 }, { side: 'left' }],
     relay: [{ side: 'bottom', at: 0.28 }, { side: 'top', at: 0.5 }],
     cache: [{ side: 'bottom', at: 0.72 }, { side: 'top', at: 0.5 }],
     s1: [{ side: 'bottom', at: 0.4 }, { side: 'top', at: 0.3 }],
@@ -397,8 +402,9 @@ const NARROW: Layout = {
     lockfile: { x: 124, y: 0, w: 112, h: 66 },
     migrate: { x: 248, y: 0, w: 112, h: 66 },
     core: { x: 0, y: 104, w: 360, h: 160 },
-    history: { x: 0, y: 302, w: 172, h: 62 },
-    reports: { x: 188, y: 302, w: 172, h: 62 },
+    history: { x: 0, y: 302, w: 112, h: 62 },
+    ci: { x: 124, y: 302, w: 112, h: 62 },
+    reports: { x: 248, y: 302, w: 112, h: 62 },
     relay: { x: 0, y: 400, w: 172, h: 62 },
     cache: { x: 188, y: 400, w: 172, h: 62 },
     slot1: { x: 0, y: 502, w: 172, h: 72 },
@@ -408,8 +414,9 @@ const NARROW: Layout = {
     ws: [{ side: 'bottom' }, { side: 'top', at: 0.16 }],
     lockfile: [{ side: 'bottom' }, { side: 'top', at: 0.5 }],
     migrate: [{ side: 'bottom' }, { side: 'top', at: 0.84 }],
-    history: [{ side: 'top' }, { side: 'bottom', at: 0.24 }],
-    reports: [{ side: 'bottom', at: 0.76 }, { side: 'top' }],
+    history: [{ side: 'top' }, { side: 'bottom', at: 0.16 }],
+    ci: [{ side: 'top' }, { side: 'bottom', at: 0.5 }],
+    reports: [{ side: 'bottom', at: 0.84 }, { side: 'top' }],
     relay: [{ side: 'left', at: 0.6 }, { side: 'left', at: 0.5 }],
     cache: [{ side: 'right', at: 0.6 }, { side: 'right', at: 0.5 }],
     s1: [{ side: 'bottom', at: 0.3 }, { side: 'top', at: 0.3 }],
