@@ -125,6 +125,47 @@ pnpm 12.4, Nx 23.2.1 (`NX_DAEMON=false`, `NX_NO_CLOUD=true`). Benched:
 build:codemods` as the two commands themselves. Nx runs the scripts
   through pnpm as shipped.
 
+### refinedev/refine — 2352eb5b6539e2f39ad9aef652279ad1dcf2c467
+
+pnpm 9.4, Nx 18.2.2 under lerna. The install is `packages/**` and the
+root (`CYPRESS_INSTALL_BINARY=0`); the 169 examples are never run.
+Benched: `build` of the 35 library packages, both tools at Nx's
+default of 3. Out of both tools: the two Next apps, `refine-ui` (its
+`next build` fetches Google Fonts) and `live-previews` (one 280 s
+`next build` that would be the whole cold arm).
+
+- Mapped: `build` of the 35 packages, outputs `.next`, `build` and
+  `dist` as `nx.json` has them. Every tsup config imports plugins from
+  `packages/shared/`, which is no project, and every tsconfig extends
+  the root's: both are every build's `workspaceFiles`.
+- `devtools-server`'s `pnpm build:client && tsup && …` is one command.
+  Nx also has `build:client` as a target of its own on the same
+  `dist`; vx refuses two cached tasks on one output path.
+- `codemod`'s config is `vx.config.mjs`: its build is `tsc -p
+tsconfig.json`, which compiled a `.ts` config and failed under both
+  tools (2026-11-18).
+
+### novuhq/novu — fd04f7cd09658ceef541e41ef9db664f5f91afa0
+
+pnpm 11.0.9, Nx 21.3.11. Benched: `build` minus `nextjs` and `nestjs`,
+the repo's own `build`, 37 tasks (36 builds and
+`@novu/api-service#build-metadata`), both tools at the repo's
+`parallel: 4`.
+
+- Mapped from the task graph Nx plans (`nx run-many -t build
+--graph`): each project's `build` with the outputs its target
+  resolves to (`dist` and `build`; `lib` too for the enterprise
+  packages and the worker; the in-place emit of `libs/internal-sdk`),
+  keyed on the project, the root `tsconfig.json` and `node --version`
+  (`sharedGlobals`).
+- A build is `pnpm run build`, as Nx's `nx:run-script` runs it: the
+  scripts lean on pnpm's `pre`/`post` hooks and call each other. The
+  api's two `nx:run-commands` targets are their commands.
+- Every config is `vx.config.mjs`: several builds are a bare `tsc`
+  over the package.
+- Nx reruns the six enterprise `build`s (`node ./check-ee.mjs`) on
+  every run, 31 of 37 hits; vx hits all 37.
+
 ## The `turbo()` / `nx()` runs
 
 Every run below predates 2026-09-29 and ran vx without a lock, each
