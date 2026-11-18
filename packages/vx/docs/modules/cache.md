@@ -624,7 +624,10 @@ asks what stands at each path synchronously, on dentries the walk just
 looked up. An inline artifact whose entries are all the project's is
 decoded in memory, held to its checksum and sidecar as the extractor
 holds them, and written by the same copy-out (`inlineTree()`,
-`restoreInline()`); a replaced file's temp is staged in `.vx/tmp/`
+`restoreInline()`), each file dated by its own write rather than a
+`utimes` after it (half the inline copy-out's thread-pool round trips;
+a stored tree's clone can carry the stored mtime, so its files are
+still dated); a replaced file's temp is staged in `.vx/tmp/`
 where it renames in as a write in place lands, never beside it, where
 `vx watch` saw it. `pinArtifact()`
 (the upload's body) hands an inline artifact over as a `Blob` of its
