@@ -9,6 +9,7 @@ import { namedIgnoredReach, repoFacts } from '../cache/index.js'
 import {
   type CommandWindows,
   forwardedSignal,
+  planCore,
   runCore as runOrchestrator,
   type HeldPersistent,
   type CoreRunOptions,
@@ -36,7 +37,7 @@ import { maskedLine, printable, restartTimings } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import { isCacheHit } from '../graph/index.js'
-import { resolveOutputView } from '../report/index.js'
+import { type Logger, resolveOutputView } from '../report/index.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
 function sayCannot(what: string, err: unknown): void {
@@ -62,6 +63,18 @@ function isDirectory(abs: string): boolean {
   } catch {
     return false
   }
+}
+
+/** A plan asked only for its keys asks no store. */
+const KEYS_ONLY = { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
+
+/** A plan asked only for its keys says nothing. */
+const SILENT: Logger = {
+  status() {},
+  warn() {},
+  taskStdout() {},
+  taskStderr() {},
+  taskComplete() {},
 }
 
 /** Wait this long after the last filesystem event before re-running. */
@@ -102,6 +115,8 @@ interface WatchLoopArgs {
   tasks: () => number | undefined
   /** A task the initial run left unsaved because its inputs moved under it (`TaskOutcome.cache.unkeyed`). */
   drifted: string | undefined
+  /** Each task's key as the initial run took it; none when the loop armed while it ran. */
+  keys: ReadonlyMap<string, string> | undefined
   /** Aborted by the SIGINT/SIGTERM handlers `watchCmd` installed; the loop drains its cycle and resolves. */
   stop: AbortSignal
   workspaceRoot: string
@@ -407,9 +422,14 @@ class WatchLoop {
     // An edit made during the initial run predates the arm, so no event finds
     // it, and watch idled over stale output. One to a task the run was running
     // its re-check found; any other is heard here.
-    const heard = this.heardSinceRun()
+    const { heard, inWindow } = this.heardSinceRun()
     if (args.drifted !== undefined && !heard)
       void this.cycle(`${args.drifted} inputs, edited during the first run`)
+    // Heard, the cycle keys every task itself.
+    else if (!heard && inWindow.length > 0 && args.keys !== undefined && !this.running) {
+      this.running = true
+      this.inFlight = this.hearIfKeysMoved(inWindow, args.keys)
+    }
 
     return await new Promise<void>((resolve) => {
       const cleanup = async (): Promise<void> => {
@@ -1165,10 +1185,10 @@ class WatchLoop {
    * `atArm` asked git already, so a start with no edit costs only stats. An
    * edit before its task keyed it re-runs to a hit.
    */
-  private heardSinceRun(): boolean {
+  private heardSinceRun(): { heard: boolean; inWindow: string[] } {
     const { initialRun } = this.args
-    const workspaceRoot = this.workspaceRoot
     let heard = false
+    const inWindow: string[] = []
     for (const abs of this.atArm?.dirty ?? []) {
       let t: number
       try {
@@ -1182,23 +1202,58 @@ class WatchLoop {
       if (
         initialRun.windows.writerDuring('', abs, t, t + racyWindowMs(t, FILE_HASH_RACY_MS)) !==
         undefined
-      )
+      ) {
+        inWindow.push(abs)
         continue
-      const rel = path.relative(workspaceRoot, abs)
-      if (this.workspaceWide) this.wideEvent(rel)
-      else {
-        if (!rel.includes(path.sep)) this.rootFileEvent(rel)
-        else if (rel.startsWith(`.vx${path.sep}`) && !rel.slice(4).includes(path.sep))
-          this.dotVxEvent(rel.slice(4))
-        for (const proj of this.watched)
-          if (abs.startsWith(proj.dir + path.sep))
-            this.projectEvent(proj, path.relative(proj.dir, abs))
       }
-      if (!this.changes.pending.has(abs)) continue
-      this.changes.unseen([abs])
-      heard = true
+      if (this.hear(abs)) heard = true
     }
-    return heard
+    return { heard, inWindow }
+  }
+
+  /** `abs` as an event no watcher delivered: true when it is pending, a change at its judgement. */
+  private hear(abs: string): boolean {
+    const rel = path.relative(this.workspaceRoot, abs)
+    if (this.workspaceWide) this.wideEvent(rel)
+    else {
+      if (!rel.includes(path.sep)) this.rootFileEvent(rel)
+      else if (rel.startsWith(`.vx${path.sep}`) && !rel.slice(4).includes(path.sep))
+        this.dotVxEvent(rel.slice(4))
+      for (const proj of this.watched)
+        if (abs.startsWith(proj.dir + path.sep))
+          this.projectEvent(proj, path.relative(proj.dir, abs))
+    }
+    if (!this.changes.pending.has(abs)) return false
+    this.changes.unseen([abs])
+    return true
+  }
+
+  /**
+   * Files written inside a command's window of the initial run: the
+   * command's own, or an edit to another task of its project that had
+   * already keyed (a hit, or done). The write cannot say which, the keys can:
+   * taken again, one that moved is a task built from bytes the tree no
+   * longer holds, and the files are heard. Dropped unasked, the edit waited
+   * for the next save. Holds `running`, so an event meanwhile queues.
+   */
+  private async hearIfKeysMoved(
+    inWindow: readonly string[],
+    keys: ReadonlyMap<string, string>,
+  ): Promise<void> {
+    try {
+      const plan = await planCore({ ...this.opts, log: SILENT, cache: KEYS_ONLY })
+      const moved = plan.tasks.some((t) => {
+        const was = keys.get(t.node.id)
+        return was !== undefined && was !== t.hash
+      })
+      if (moved) for (const abs of inWindow) this.hear(abs)
+    } catch {
+      // The cycle an edit starts says what a plan could not.
+    } finally {
+      this.running = false
+      const next = pendingAfterCycle(this.changes.pending, this.stop.aborted)
+      if (next !== undefined) this.trigger(next[1], next[0])
+    }
   }
 }
 

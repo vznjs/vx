@@ -498,8 +498,11 @@ too: they format one run's result.
    (`InitialRun.from`, on the mtime clock) outside every window of its
    commands (`InitialRun.windows`) is an event, marked `unseen` so the
    judgement takes it for a change; a re-lock among them is the first
-   cycle's (`InitialRun.lock`). A start with no edit pays `-m`'s stats
-   alone (`tests/watch-initial-edit-done.test.ts`).
+   cycle's (`InitialRun.lock`). One inside a window may be the command's
+   own or an edit to another task of that project, already keyed: a
+   keys-only plan (`hearIfKeysMoved`, no store asked) is compared with
+   the run's keys, and the files are events when one moved. A start with
+   no edit pays `-m`'s stats alone (`tests/watch-initial-edit-done.test.ts`).
 5. **Watch loop** (`runWatchLoop`):
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with
