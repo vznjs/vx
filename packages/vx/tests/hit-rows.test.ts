@@ -1,4 +1,4 @@
-// A hit reaches the history thread packed (hit-rows.ts), not as the record
+// A run keeps a hit packed (hit-rows.ts), not as the record
 // `runRecordOf` builds: the two are held to each other here, field for
 // field, so a column added to one and not the other fails.
 
