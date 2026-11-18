@@ -12,6 +12,7 @@ import {
   failsAlike,
   fits,
   kindOf,
+  lean,
   ordered,
   holdFor,
   type Ask,
@@ -200,14 +201,18 @@ export function play(
   const needs = new Map<string, { cores: number; memory: number; n: number }>()
   // Their least, read again only once a kind on it leaves: each step read
   // every kind, and 9000 kinds made it quadratic.
-  let floor: { cores: number; memory: number } | undefined
+  let floor: { cores: number; memory: number; widest: number } | undefined
   const count = (t: PlanTask, by: number): void => {
     const k = ready.kindOf(t.id)
     const e = needs.get(k)
     if (e === undefined) {
       needs.set(k, { cores: t.cores, memory: t.memory, n: by })
       if (floor !== undefined)
-        floor = { cores: Math.min(floor.cores, t.cores), memory: Math.min(floor.memory, t.memory) }
+        floor = {
+          cores: Math.min(floor.cores, lean(t.cores, floor.widest)),
+          memory: Math.min(floor.memory, t.memory),
+          widest: floor.widest,
+        }
     } else if ((e.n += by) === 0) {
       needs.delete(k)
       if (floor !== undefined && (e.cores <= floor.cores || e.memory <= floor.memory))
@@ -468,7 +473,7 @@ export function play(
     if (
       unstarted !== undefined &&
       readyCount > 0 &&
-      joined.some((s) => fits(s, (floor ??= floorOf(needs.values()))))
+      joined.some((s) => fits(s, (floor ??= floorOf(needs.values(), joined))))
     ) {
       const soon: Soon[] = []
       for (const d of coming) {
@@ -489,49 +494,51 @@ export function play(
       // task a filler blocked: 15 asked where 3 do.
       holdFor(joined, soon.slice(0, wakesOnly ? 8 : 4 * joined.length + 8))
     }
+    const fewer = new Map<string, number>()
     const to =
       readyCount === 0
         ? NONE
         : assign(ranked(ready.asks(spent, bounds, needs.size, proved)), joined, later, how.place, {
-            floor: (floor ??= floorOf(needs.values())),
+            floor: (floor ??= floorOf(needs.values(), joined)),
             kinds: needs.size,
             spent,
             kept,
             bounds,
+            given: fewer,
           })
     // `graphene` ranks against the longest chain still ready.
     if (to.size > 0 && how.order === 'graphene') ready.stale = true
     for (const [id, best] of to) {
+      // One run on fewer cores than it books (`fewerOn`): that many, slower.
+      const cut = fewer.get(id)
       const t = byId.get(id)!
+      const took = msOn(t, cut === undefined ? best : { cores: cut })
+      const cores = cut ?? t.cores
       ready.take(id)
       readyCount--
       count(t, -1)
       best.first ??= now
       ;(best.given ??= []).push(id)
-      best.free = Math.max(best.free ?? 0, now + msOn(t, best))
-      if (best.lanes !== undefined) occupy(best, lanesFor(best, t), now, now + msOn(t, best))
+      best.free = Math.max(best.free ?? 0, now + took)
+      if (best.lanes !== undefined) occupy(best, lanesFor(best, t), now, now + took)
       if (unstarted !== undefined)
         for (const d of afterAt(indexOf.get(id)!)) {
-          readyAt![d] = Math.max(readyAt![d]!, now + msOn(t, best))
+          readyAt![d] = Math.max(readyAt![d]!, now + took)
           if (--unstarted[d]! === 0) coming.add(d)
         }
       if (deadline !== undefined)
-        best.endsAt.push([
-          now + msOn(t, best),
-          Math.min(t.cores, best.cores),
-          Math.min(t.memory, best.memory),
-        ])
-      const end = now + msOn(t, best)
+        best.endsAt.push([now + took, Math.min(cores, best.cores), Math.min(t.memory, best.memory)])
+      const end = now + took
       ends.push(
         end,
         best,
-        Math.min(t.cores, best.cores),
+        Math.min(cores, best.cores),
         Math.min(t.memory, best.memory),
         indexOf.get(id)!,
         undefined,
       )
       last = Math.max(last, end)
-      ;(best.runs ??= []).push([now, end, t.cores, t.memory])
+      ;(best.runs ??= []).push([now, end, cores, t.memory])
       best.last = Math.max(best.last ?? 0, end)
       if (horizon < Infinity) spend(t, -1)
     }
@@ -1420,7 +1427,7 @@ class Ready {
       cursor = next
       if (skip?.one(next) === true) continue
       const t = this.tasks[next]!
-      yield { id: t.id, need: t, kind: ks[nextAt]! }
+      yield { id: t.id, need: t, kind: ks[nextAt]!, takes: t.ms }
     }
   }
 
@@ -1531,7 +1538,7 @@ class Ready {
       }
       if (again) continue
       const t = this.tasks[next]!
-      yield { id: t.id, need: t, kind: this.kindAt(next) }
+      yield { id: t.id, need: t, kind: this.kindAt(next), takes: t.ms }
     }
   }
 
@@ -1609,15 +1616,20 @@ class Ready {
   }
 }
 
-function floorOf(needs: Iterable<{ cores: number; memory: number }>): {
+function floorOf(
+  needs: Iterable<{ cores: number; memory: number }>,
+  joined: readonly { readonly cores: number }[],
+): {
   cores: number
   memory: number
+  widest: number
 } {
+  const widest = joined.reduce((n, s) => Math.max(n, s.cores), 0)
   let cores = Infinity
   let memory = Infinity
   for (const n of needs) {
-    cores = Math.min(cores, n.cores)
+    cores = Math.min(cores, lean(n.cores, widest))
     memory = Math.min(memory, n.memory)
   }
-  return { cores, memory }
+  return { cores, memory, widest }
 }

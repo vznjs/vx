@@ -67,16 +67,22 @@ function reference(tasks: readonly PlanTask[], workers: readonly PlanWorker[], h
           (platform === undefined || s.platform === platform) &&
           (s.cores > above.cores || s.memory > above.memory),
       )
-    const asks = ready.map((id) => ({ id, need: byId.get(id)! }))
+    const asks = ready.map((id) => ({ id, need: byId.get(id)!, takes: byId.get(id)!.ms }))
     const joined = slots.filter((s) => s.at <= now)
-    const to = assign(asks, joined, later, how.place)
+    // One bigger than every worker may run on fewer cores (`fewerOn`).
+    const given = new Map<string, number>()
+    const to = assign(asks, joined, later, how.place, {
+      floor: { cores: 0, memory: 0 },
+      kinds: Infinity,
+      given,
+    })
     for (const [id, best] of to) {
       const t = byId.get(id)!
       // On fewer cores than it asks, at their share of its pace (`msOn`).
+      const cores = given.get(id) ?? Math.min(t.cores, best.cores)
       const end =
-        now +
-        (t.ms ?? UNKNOWN_MS) * (Number.isFinite(t.cores) ? Math.max(1, t.cores / best.cores) : 1)
-      ends.push([end, best, Math.min(t.cores, best.cores), Math.min(t.memory, best.memory), id])
+        now + (t.ms ?? UNKNOWN_MS) * (Number.isFinite(t.cores) ? Math.max(1, t.cores / cores) : 1)
+      ends.push([end, best, cores, Math.min(t.memory, best.memory), id])
       last = Math.max(last, end)
     }
     ready = ready.filter((id) => !to.has(id))

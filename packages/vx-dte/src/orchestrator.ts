@@ -87,6 +87,8 @@ interface Job {
   need: Need
   /** The cores and memory it holds on its worker: its need, or the whole worker for one that filled its worker. */
   held?: Need
+  /** Flexible, given fewer cores than it wants (`flexed`): how many times its history it takes. */
+  slower?: number
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
   worker?: string
@@ -743,7 +745,10 @@ export class Orchestrator {
         if (ms === undefined) continue
         const at = Math.max(
           1,
-          leftMs((ms(j.req.taskId) ?? UNKNOWN_MS) - (now - (j.startedAt ?? j.sentAt ?? now))),
+          leftMs(
+            (ms(j.req.taskId) ?? UNKNOWN_MS) * (j.slower ?? 1) -
+              (now - (j.startedAt ?? j.sentAt ?? now)),
+          ),
         )
         endsIn.set(j.req.taskId, at)
         ends.push([at, j.held.cores, j.held.memory])
@@ -773,12 +778,19 @@ export class Orchestrator {
             .slice(0, 4 * bins.length + 8)
     // The draining last, for what no other takes now: a run never waits on a drain.
     const to = new Map<string, (typeof bins)[number]>()
+    // Flexible tasks given fewer cores than they want (`flexed`).
+    const given = new Map<string, number>()
     const draining = (b: (typeof bins)[number]): boolean =>
       (this.drainAt.get(b.id) ?? Infinity) <= now
     for (const of of [bins.filter((b) => !draining(b)), bins.filter(draining)]) {
       if (of.length === 0) continue
       for (const [id, b] of this.queue.pass(of, {
-        ...(soon === undefined ? {} : { soon, ms: (id: string) => ms!(id) ?? UNKNOWN_MS }),
+        ...(soon === undefined
+          ? ms === undefined
+            ? {}
+            : { ms }
+          : { soon, ms: (id: string) => ms!(id) ?? UNKNOWN_MS }),
+        given,
         ...(soon === undefined || this.o.next === undefined
           ? {}
           : { next: (id: string) => this.o.next!(id, endsIn) }),
@@ -817,10 +829,13 @@ export class Orchestrator {
       job.sentAt = performance.now()
       a.usage.sent(job.sentAt)
       a.busy.set(job.req.taskId, job)
+      const fewer = given.get(job.req.taskId)
       job.held = {
-        cores: Math.min(this.booking(job.need).cores, a.cores),
+        cores: fewer ?? Math.min(this.booking(job.need).cores, a.cores),
         memory: Math.min(job.need.memory, a.memory),
       }
+      // As long again as it is short of the cores it wants.
+      if (fewer !== undefined) job.slower = this.booking(job.need).cores / fewer
       job.booked = job.held.cores
       this.trace.slice({
         track: ORCHESTRATOR,

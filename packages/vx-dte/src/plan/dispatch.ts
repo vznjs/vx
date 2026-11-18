@@ -88,6 +88,8 @@ export interface Dispatching {
    * minutes past its latest start.
    */
   readonly want?: (id: string) => string | undefined
+  /** Where it keeps the cores it gave each task run on fewer than it books (`fewerOn`). */
+  readonly given?: Map<string, number>
 }
 
 /**
@@ -115,11 +117,12 @@ export function dispatch<B extends Bin>(
   // The least any ask needs: once no worker takes it, the pass ends. Each
   // pump read every queued task, 8000 of them a pump.
   const floor = { cores: Infinity, memory: Infinity }
+  const widest = o.ms === undefined ? Infinity : bins.reduce((n, b) => Math.max(n, b.cores), 0)
   const needs: Need[] = []
   for (const id of queue) {
     const need = o.book === undefined ? o.need(id) : o.book(o.need(id))
     needs.push(need)
-    floor.cores = Math.min(floor.cores, need.cores)
+    floor.cores = Math.min(floor.cores, lean(need.cores, widest))
     floor.memory = Math.min(floor.memory, need.memory)
   }
   // Asks are made as the pass reads them: it ends at the first no worker
@@ -136,7 +139,10 @@ export function dispatch<B extends Bin>(
     for (; i < queue.length; i++) {
       const id = queue[i]!
       if (bounds.done) return
-      if (dead(needs[i]!, bounds)) {
+      if (
+        dead(needs[i]!, bounds) &&
+        fewerOn(bins, { need: needs[i]!, ...takes(o, id) }) === undefined
+      ) {
         if (o.soon !== undefined)
           holdReady(bins, kept, id, needs[i]!, o.tail?.(id) ?? 0, o.ms?.(id))
         read.push(id)
@@ -152,6 +158,7 @@ export function dispatch<B extends Bin>(
         up: o.deps(id) ?? [],
         ...gate,
         ...(o.soon === undefined ? {} : { rank: o.tail?.(id) ?? 0, ms: o.ms?.(id) ?? Infinity }),
+        ...takes(o, id),
       }
     }
   }
@@ -162,6 +169,7 @@ export function dispatch<B extends Bin>(
     bounds,
     ...(o.soon === undefined || o.next === undefined ? {} : { next: o.next }),
     ...(o.want === undefined ? {} : { want: o.want }),
+    ...(o.given === undefined ? {} : { given: o.given }),
   })
   const left = read.filter((id) => !to.has(id))
   // The pass ended at the ask it read last, and took or left it.
@@ -548,11 +556,80 @@ export interface Ask {
   /** Its rank (its chain) and time: a bin's holds of higher rank keep it off (`Hold`). */
   readonly rank?: number
   readonly ms?: number
+  /** Its time as history said (`Dispatching.ms`): one of many cores runs on fewer only when that ends sooner (`fewerOn`). */
+  readonly takes?: number | undefined
 }
 
 /** What `Ask.kind` names: every field of a need `assign` reads. */
 export function kindOf(need: Need): string {
   return `${need.cores}\0${need.memory}\0${need.above?.cores}\0${need.above?.memory}\0${need.platform}\0${need.servers?.map((s) => s.id).join('\0')}`
+}
+
+/**
+ * A task keeping more than one core busy can parallelize, so it may run on
+ * fewer (2026-11-18: "if it's using more than one core, that means it can
+ * parallelize"). With no room for all it books, it goes where most cores
+ * are free now, when on them, as long again as it is short of its cores,
+ * it ends sooner than waiting for its room on any bin. Undefined: it waits.
+ */
+function fewerOn<B extends Bin>(
+  pool: readonly B[],
+  ask: Pick<Ask, 'need' | 'takes' | 'rank' | 'ms'>,
+  off: (b: B) => boolean = () => false,
+): [B, number] | undefined {
+  const { need, takes } = ask
+  if (
+    takes === undefined ||
+    !(need.cores > 1) ||
+    !Number.isFinite(need.cores) ||
+    need.above !== undefined ||
+    need.ask !== undefined ||
+    (need.servers?.length ?? 0) > 0
+  )
+    return undefined
+  let most = 0
+  let room = Infinity
+  let on: B | undefined
+  for (const b of pool) {
+    if (need.platform !== undefined && b.platform !== need.platform) continue
+    // One a worker fits whole waits for it: the plan sized the run for that.
+    if (b.cores >= need.cores) return undefined
+    if (off(b)) continue
+    room = Math.min(room, roomAt(b, need.cores) + takes * Math.max(1, need.cores / b.cores))
+    const free = Math.floor(b.cores - b.used.cores + 1e-9)
+    if (free <= most || b.used.memory + need.memory > b.memory) continue
+    if (breaks(b, { ...ask, id: '', need: { ...need, cores: free } })) continue
+    most = free
+    on = b
+  }
+  return on !== undefined && (takes * need.cores) / most < room ? [on, most] : undefined
+}
+
+/**
+ * The cores a need of `cores` counts toward a pass's floor: one bigger than
+ * every bin may run on fewer (`fewerOn`), so one free core can take it.
+ */
+export const lean = (cores: number, widest: number): number =>
+  cores > widest && Number.isFinite(cores) ? 1 : cores
+
+/** When `cores` are free on `b`, from now (ms), as its tasks end (`Bin.ends`); unknown: never. */
+function roomAt(b: Bin, cores: number): number {
+  if (b.running === 0) return 0
+  let free = b.cores - b.used.cores
+  const want = Math.min(cores, b.cores) - 1e-9
+  if (free >= want) return 0
+  if (b.ends === undefined) return Infinity
+  for (const [at, c] of [...b.ends].sort((x, y) => x[0] - y[0])) {
+    free += c
+    if (free >= want) return at
+  }
+  return Infinity
+}
+
+/** `Ask.takes` of task `id`. */
+const takes = (o: { readonly ms?: (id: string) => number | undefined }, id: string) => {
+  const ms = o.ms?.(id)
+  return ms === undefined || !Number.isFinite(ms) ? {} : { takes: ms }
 }
 
 /** The cores `need` books on `bin`: its own, and the base of each server `bin` does not run yet. */
@@ -610,6 +687,8 @@ export function assign<B extends Bin>(
     readonly next?: (id: string) => readonly Soon[]
     /** The bin each ask goes to first, where it fits (`Dispatching.want`). */
     readonly want?: (id: string) => string | undefined
+    /** Where it keeps the cores it gave each ask run on fewer than it books (`fewerOn`). */
+    readonly given?: Map<string, number>
   },
 ): Map<string, B> {
   const out = new Map<string, B>()
@@ -699,6 +778,12 @@ export function assign<B extends Bin>(
         bestScore = score
       }
     }
+    // No room for all it books: on fewer, slower, when that ends sooner.
+    let fewer: number | undefined
+    if (best === undefined) {
+      const f = fewerOn(pool, ask, (b) => held.has(b))
+      if (f !== undefined) [best, fewer] = f
+    }
     if (best === undefined) {
       // Ready and no room: room is kept where it first frees, so no task
       // of lower rank takes it meanwhile, a few a pass.
@@ -751,15 +836,14 @@ export function assign<B extends Bin>(
     spent.clear()
     kept.length = 0
     out.set(ask.id, best)
-    best.used.cores += Math.min(coresOn(best, need), best.cores)
+    if (fewer !== undefined) all?.given?.set(ask.id, fewer)
+    const cores = fewer ?? Math.min(coresOn(best, need), best.cores)
+    best.used.cores += cores
     for (const sv of need.servers ?? []) best.serving?.add(sv.id)
     best.used.memory += Math.min(need.memory, best.memory)
     best.running++
     if (best.holds !== undefined && best.ends !== undefined && ask.ms !== undefined)
-      best.ends = [
-        ...best.ends,
-        [ask.ms, Math.min(coresOn(best, need), best.cores), Math.min(need.memory, best.memory)],
-      ]
+      best.ends = [...best.ends, [ask.ms, cores, Math.min(need.memory, best.memory)]]
     for (const s of all?.next?.(ask.id) ?? []) holdOne(bins, s)
     rebound()
   }
@@ -996,13 +1080,14 @@ export class Queue {
     const book = o.book ?? ((n: Need): Need => n)
     const gs = [...this.groups.values()]
     const floor = { cores: Infinity, memory: Infinity }
+    const widest = o.ms === undefined ? Infinity : bins.reduce((n, b) => Math.max(n, b.cores), 0)
     for (const g of gs) {
       g.at = g.head()
       const low = g.low()
       if (low === undefined) continue
       // Booked as its least: what each of its tasks books is at least this.
       g.lo = g.odd ? Infinity : book(low).cores
-      floor.cores = Math.min(floor.cores, g.odd ? g.oddFloor(book) : g.lo)
+      floor.cores = Math.min(floor.cores, lean(g.odd ? g.oddFloor(book) : g.lo, widest))
       floor.memory = Math.min(floor.memory, g.memory())
     }
     const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
@@ -1041,7 +1126,7 @@ export class Queue {
           cursor = e
           if (bounds.done) return
           const need = book(e.need)
-          if (dead(need, bounds)) {
+          if (dead(need, bounds) && fewerOn(bins, { need, ...takes(o, e.id) }) === undefined) {
             if (o.soon !== undefined) holdReady(bins, kept, e.id, need, -e.rank, o.ms?.(e.id))
             continue
           }
@@ -1057,6 +1142,7 @@ export class Queue {
             up: o.deps(e.id) ?? [],
             ...gate,
             ...(o.soon === undefined ? {} : { rank: -e.rank, ms: o.ms?.(e.id) ?? Infinity }),
+            ...takes(o, e.id),
           }
           break
         }
@@ -1069,6 +1155,7 @@ export class Queue {
       bounds,
       ...(o.soon === undefined || o.next === undefined ? {} : { next: o.next }),
       ...(o.want === undefined ? {} : { want: o.want }),
+      ...(o.given === undefined ? {} : { given: o.given }),
     })
     for (const e of done) if (!e.gone) this.drop(e)
     for (const id of to.keys()) this.drop(this.of.get(id)!)

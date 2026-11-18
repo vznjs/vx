@@ -780,3 +780,29 @@ it('plays main d36eed9 as it ran: 13 workers asked at once, the run ending with 
   expect(r.endMs).toBeGreaterThan(155_000)
   expect(r.endMs).toBeLessThan(172_000)
 })
+
+// M, 2026-11-18: a task using 20 cores and only a 10-core worker, busy with a
+// 150 s chain. Waiting for all ten: 290 s, 2,900 core-s held. On the 9 free
+// cores now, twice and more as long: 236 s, 2,360 core-s.
+it('runs a 20-core task on the 9 cores a busy 10-core worker has free: sooner, and less held', () => {
+  const t = (id: string, ms: number, cores: number): SimTask => ({
+    id,
+    deps: [],
+    exec: true,
+    cache: true,
+    ran: { ms, cores, memory: 1e9 },
+    known: { ms, cores, memory: 1e9 },
+  })
+  const graph = [
+    t('big', 60_000, 20),
+    t('chain', 150_000, 1),
+    ...Array.from({ length: 6 }, (_, i) => t(`f${i}`, 20_000, 1)),
+  ]
+  const r = simulate(graph, {
+    sizes: [{ name: 'ten', max: 1, cpu: 10, memory: 64e9 }],
+    warmUpMs: () => 20_000,
+    likely: new Set(graph.map((x) => x.id)),
+  })
+  const held = r.workers.reduce((a, w) => a + w.cores * ((w.leftAt ?? r.endMs) - w.spawnedAt), 0)
+  expect([r.startedAt.get('big'), r.endMs, held]).toEqual([20_000, 236_000, 2_360_000])
+})

@@ -4896,6 +4896,36 @@ it('places an unmeasured task where most cores are free, a measured one where fe
   ).toBe('full')
 })
 
+// M, 2026-11-18: a task using more than one core can parallelize, so with no
+// worker big enough free it runs on fewer cores, slower, when that ends sooner.
+it('runs a task wider than every worker on the cores free now when that ends sooner than waiting', () => {
+  const ten = (fillerEndsAt: number) => ({
+    id: 'ten',
+    cores: 10,
+    memory: 64e9,
+    used: { cores: 1, memory: 0 },
+    running: 1,
+    has: new Set<string>(),
+    platform: undefined,
+    ends: [[fillerEndsAt, 1, 0]] as const,
+  })
+  const big = { id: 'big', need: { cores: 20, memory: 1e9 }, up: [], takes: 60_000 }
+  const given = new Map<string, number>()
+  const all = (given: Map<string, number>) => ({ given, floor: { cores: 1, memory: 0 }, kinds: 1 })
+  // Waiting 150 s for the whole worker then 120 s on it, or 133 s on 9 cores now.
+  expect(assign([big], [ten(150_000)], undefined, 'best-fit', all(given)).get('big')?.id).toBe(
+    'ten',
+  )
+  expect(given.get('big')).toBe(9)
+  // CONTROL: its room frees in 1 s, so it waits for all ten.
+  expect(assign([big], [ten(1_000)], undefined, 'best-fit', all(new Map())).size).toBe(0)
+  // CONTROL: a time unknown never runs on fewer.
+  const { takes: _, ...unknown } = big
+  expect(assign([unknown], [ten(150_000)], undefined, 'best-fit', all(new Map())).size).toBe(0)
+  // CONTROL: a worker it fits whole is in the pool: it waits for that one.
+  const twenty = { ...ten(150_000), id: 'twenty', cores: 20, used: { cores: 20, memory: 0 } }
+  expect(assign([big], [ten(150_000), twenty], undefined, 'best-fit', all(new Map())).size).toBe(0)
+})
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),
