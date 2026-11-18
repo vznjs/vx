@@ -364,6 +364,13 @@ interface CopySource {
    * refuses, and an inline entry keeps that refusal.
    */
   reopens: boolean
+  /**
+   * Whether a write dates its file now. A clone or copy of a stored file can
+   * carry the stored mtime (APFS's clonefile does), so its date is set; bytes
+   * written from memory are already dated now, and a `utimes` per file was
+   * half an inline restore's thread-pool round trips.
+   */
+  writesNow: boolean
 }
 
 function treeSource(hash: string, tree: string, ino: number): CopySource {
@@ -395,6 +402,7 @@ function treeSource(hash: string, tree: string, ino: number): CopySource {
     // entry is kept.
     swapped: () => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino,
     reopens: true,
+    writesNow: false,
   }
 }
 
@@ -412,6 +420,7 @@ function inlineSource(
     write: (to, rel) => Bun.write(to, art.files.get(rel)!, { createPath: false }),
     swapped: () => false,
     reopens,
+    writesNow: true,
   }
 }
 
@@ -635,6 +644,10 @@ async function copyTree(
           throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
         const mode = restoredMode(r.mode)
         if (mode !== plain) await chmod(to, mode)
+        if (src.writesNow) {
+          dated.set(`outputs/${r.path}`, Math.floor(lstatSync(to).mtimeMs))
+          return
+        }
         await utimes(to, nowDate, nowDate)
         dated.set(`outputs/${r.path}`, now)
       }),

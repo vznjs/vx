@@ -29,6 +29,7 @@ import { Cache } from '../src/cache/cache.js'
 import { xxh3, xxh3hex } from '../src/util/hash.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { runHistory } from '../src/history/index.js'
+import { fsClockNow } from '../src/memo/index.js'
 
 // CI auto-scales budgets ~3× to cover shared-runner variance; dev
 // runs the calibration-tight values unless VX_PERF_SCALE is set
@@ -618,7 +619,8 @@ describePerf('cache baseline: save + restore', () => {
     const dest = path.join(tmpdir, 'e2e-mf-target')
     await mkdir(dest, { recursive: true })
 
-    const since = Date.now()
+    // The kernel stamps a write from its own clock, which may lag Date.now().
+    const since = Math.floor(fsClockNow(dest))
     await cache.restoreOutputs('e2e-mf', dest)
     const oneFile = path.join(dest, 'dist', 'out0.js')
     const source = await stat(path.join(projectDir, 'dist', 'out0.js'))
@@ -638,7 +640,7 @@ describePerf('cache baseline: save + restore', () => {
     expect((await stat(oneFile)).size).toBe(source.size)
     await Bun.write(oneFile, 'corrupted-different-size')
     expect((await stat(oneFile)).size).not.toBe(source.size)
-    const repaired = Date.now()
+    const repaired = Math.floor(fsClockNow(dest))
     await cache.restoreOutputs('e2e-mf', dest)
     expect((await stat(oneFile)).size).toBe(source.size)
     expect((await stat(oneFile)).mtimeMs).toBeGreaterThanOrEqual(repaired)
