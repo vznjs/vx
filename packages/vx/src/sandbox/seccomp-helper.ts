@@ -9,29 +9,42 @@
 
 import arm64 from '@anthropic-ai/sandbox-runtime/vendor/seccomp/arm64/apply-seccomp' with { type: 'file' }
 import x64 from '@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp' with { type: 'file' }
-import { chmodSync, lstatSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
+import { chmodSync, lstatSync, mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import observeArm64 from './observe/vx-observe-arm64' with { type: 'file' }
+import observeX64 from './observe/vx-observe-x64' with { type: 'file' }
 
-const EMBEDDED: Partial<Record<NodeJS.Architecture, string>> = { x64, arm64 }
+type Embedded = Partial<Record<NodeJS.Architecture, string>>
+const EMBEDDED: Embedded = { x64, arm64 }
+/** vx's own observer (`observe/vx-observe.c`), built by `scripts/build-observe.ts`. */
+const OBSERVE: Embedded = { x64: observeX64, arm64: observeArm64 }
 
 let resolved: { path: string | undefined } | undefined
+let observe: Promise<string | undefined> | undefined
 
 /**
  * The helper's path for this machine, or undefined where SRT's own lookup
  * must do (another platform or architecture, no home to copy into).
  */
 export async function applySeccompPath(): Promise<string | undefined> {
-  resolved ??= { path: await resolve() }
+  resolved ??= { path: await resolve(EMBEDDED) }
   return resolved.path
 }
 
-async function resolve(): Promise<string | undefined> {
+/** The observer's path for this machine, or undefined where there is none to run. */
+export function observePath(): Promise<string | undefined> {
+  observe ??= resolve(OBSERVE)
+  return observe
+}
+
+async function resolve(from: Embedded): Promise<string | undefined> {
   if (process.platform !== 'linux') return undefined
-  const embedded = EMBEDDED[process.arch]
+  const embedded = from[process.arch]
   if (embedded === undefined) return undefined
-  // From source the import is the vendored file itself.
-  if (!embedded.startsWith('/$bunfs')) return embedded
+  // From source the import is the file itself; an install that dropped
+  // its mode leaves a file nothing can exec, copied out as an embedded one.
+  if (!embedded.startsWith('/$bunfs') && runnable(embedded)) return embedded
   try {
     return await extracted(embedded)
   } catch {
@@ -69,13 +82,25 @@ async function extracted(embedded: string): Promise<string> {
   throw failure
 }
 
+function runnable(file: string): boolean {
+  try {
+    return (statSync(file).mode & 0o111) === 0o111
+  } catch {
+    return false
+  }
+}
+
 async function extractedTo(
   dir: string,
   embedded: string,
   uid: number | undefined,
 ): Promise<string> {
-  const target = path.join(dir, path.basename(embedded).replace(/\.+$/, ''))
   const bytes = Bun.file(embedded)
+  // A file from source carries no hash in its name.
+  const named = embedded.startsWith('/$bunfs')
+    ? path.basename(embedded).replace(/\.+$/, '')
+    : `${path.basename(embedded)}-${Bun.hash(await bytes.arrayBuffer()).toString(16)}`
+  const target = path.join(dir, named)
   const st = lstatSync(target, { throwIfNoEntry: false })
   const own = (): boolean => {
     const d = lstatSync(dir)

@@ -3322,8 +3322,8 @@ exec.sandbox and will fail` says it first: root inside a container
   run as a non-root user or set `sandbox.weakerWhenNested: true`), a
   missing bubblewrap, socat or ripgrep, a nested seatbelt on macOS.
   On Linux an available sandbox that cannot report the reads it denies
-  (no `strace` on PATH, one whose `--version` fails, or one that may not
-  attach) adds `, untraced — <why>, so the reads it denies go
+  (vx's observer cannot run, and no `strace` on PATH, one whose `--version`
+  fails, or one that may not attach) adds `, untraced — <why>, so the reads it denies go
 unreported`: the sandbox still enforces, but a task that tolerates a
   denied read passes and caches with no word of it. The `--format json` fact is
   `sandbox.untraced`, the reason or `null`.
@@ -4102,6 +4102,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_DEBUG_TIMING`                 | [`debug.timing`](schema.md#settings)               | Print the run's stage timings to stderr.                                                                                                                                                         |
 | `VX_DEBUG_WATCH`                  | [`debug.watch`](schema.md#settings)                | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
 | `VX_DEBUG_DUMPABLE`               | [`debug.dumpable`](schema.md#settings)             | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
+| `VX_DEBUG_STRACE`                 | [`debug.strace`](schema.md#settings)               | Linux: report a sandboxed task's refused reads with strace, not vx's own observer.                                                                                                               |
 | `VX_HANDED_OFF`                   | —                                                  | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again.                                      |
 | `VX_SIGNAL_RELAY`                 | —                                                  | Set to `1` by a parent that relays stop signals (the Node launcher, a handing-off vx): a group stop's copy is the same stop, not a second one. vx removes it at start.                           |
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | —                                                  | Set by vx on every task (below); a `vx run` a task starts reads them back.                                                                                                                       |

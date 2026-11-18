@@ -53,8 +53,8 @@ const available = await sandboxAvailable('sandbox-runtime tests')
  */
 /**
  * The tracer's argv and the task's tag, from the command a spy saw handed to
- * SRT: strace runs inside the sandbox, `exec`'d by the command's shell (B-11),
- * its words written by `shellQuote`.
+ * SRT: vx's observer, or strace, runs inside the sandbox, `exec`'d by the
+ * command's shell (B-11), its words written by `shellQuote`.
  */
 function traced(calls: ReadonlyArray<ReadonlyArray<unknown>>): {
   argv: string[] | undefined
@@ -65,7 +65,7 @@ function traced(calls: ReadonlyArray<ReadonlyArray<unknown>>): {
   const words = (inner.match(/'(?:[^']|'\\'')*'|\S+/g) ?? []).map((w) =>
     w.startsWith("'") ? w.slice(1, -1).replaceAll("'\\''", "'") : w,
   )
-  const at = words.findIndex((w) => w.endsWith('/strace'))
+  const at = words.findIndex((w) => w.endsWith('/strace') || /\/vx-observe-[^/]*$/.test(w))
   return {
     argv: at < 0 ? undefined : words.slice(at),
     tag: /^: 'vx-([^']+)'/.exec(inner)?.[1],
@@ -683,11 +683,39 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([exited.exitCode, killed.exitCode]).toEqual([3, 137])
   })
 
-  it('traces the reads, execs, access probes and readlinks, through the seccomp filter', async () => {
+  it('runs the command under vx’s own observer, its report on descriptor 5', async () => {
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox')
+    try {
+      await runSandboxed(args('true'))
+      const { argv } = traced(spy.mock.calls)
+      // Refused reads only: no widened grant asks for the ones that worked.
+      expect(argv?.slice(0, 5)).toEqual([
+        path.resolve(
+          import.meta.dir,
+          '..',
+          'src',
+          'sandbox',
+          'observe',
+          `vx-observe-${process.arch}`,
+        ),
+        '5',
+        '0',
+        Bun.which('sh')!,
+        '-c',
+      ])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('asked for strace, traces the reads, execs, access probes and readlinks, through the seccomp filter', async () => {
     // The flag is the difference between tracing a few syscalls and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.
     const spy = spyOn(SandboxManager, 'wrapWithSandbox')
+    await resetSandbox()
+    process.env['VX_DEBUG_STRACE'] = '1'
     try {
+      await initSandbox()
       await runSandboxed(args('true'))
       // The tracer runs by its absolute path (util/which.ts), detached
       // (`-DD`) so a backgrounded grandchild is not a tracee it waits for.
@@ -705,6 +733,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--',
       ])
     } finally {
+      delete process.env['VX_DEBUG_STRACE']
       spy.mockRestore()
     }
   })
@@ -916,7 +945,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       ].join('\n')
       const p = Bun.spawnSync({
         cmd: [process.execPath, '-e', script],
-        env: { ...process.env, PATH: pathDirs },
+        env: { ...process.env, PATH: pathDirs, VX_DEBUG_STRACE: '1' },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -960,7 +989,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         ].join('\n')
         const p = Bun.spawnSync({
           cmd: [process.execPath, '-e', script],
-          env: { ...process.env, PATH: `${bin}:${process.env['PATH']}` },
+          env: { ...process.env, PATH: `${bin}:${process.env['PATH']}`, VX_DEBUG_STRACE: '1' },
           stdout: 'pipe',
           stderr: 'pipe',
         })
@@ -1017,7 +1046,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       ].join('\n')
       const p = Bun.spawnSync({
         cmd: [process.execPath, '-e', script],
-        env: { ...process.env, PATH: `${bin}:${process.env['PATH']}` },
+        env: { ...process.env, PATH: `${bin}:${process.env['PATH']}`, VX_DEBUG_STRACE: '1' },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -1092,20 +1121,30 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       await mkdir(bin)
       await writeFile(path.join(bin, 'strace'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
       const src = path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts')
-      const ask = (pathDirs: string): [string, string] => {
+      const ask = (
+        pathDirs: string,
+        strace: { VX_DEBUG_STRACE?: string } = {},
+      ): [string, string] => {
         const p = Bun.spawnSync({
           cmd: [
             process.execPath,
             '-e',
             `import { untracedReason } from ${JSON.stringify(src)}\nconsole.log(JSON.stringify(await untracedReason()))`,
           ],
-          env: { ...process.env, PATH: pathDirs },
+          env: { ...process.env, PATH: pathDirs, ...strace },
           stdout: 'pipe',
           stderr: 'pipe',
         })
         return [p.stdout.toString().trim(), p.stderr.toString()]
       }
-      expect([ask(`${bin}:${process.env['PATH']}`), ask(process.env['PATH']!)]).toEqual([
+      // vx's own observer needs no strace; asked for strace, a broken one is the reason.
+      const asked = { VX_DEBUG_STRACE: '1' }
+      expect([
+        ask(`${bin}:${process.env['PATH']}`),
+        ask(`${bin}:${process.env['PATH']}`, asked),
+        ask(process.env['PATH']!, asked),
+      ]).toEqual([
+        ['null', ''],
         [JSON.stringify('strace --version exited 1'), ''],
         ['null', ''],
       ])

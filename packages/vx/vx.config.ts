@@ -139,6 +139,7 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
   exec: {
     command: 'bun scripts/check-binary.ts',
     ...(platforms === undefined ? {} : { platforms }),
+    env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_DEBUG_STRACE'] },
     sandbox: {
       allow: {
         // The bare-specifier workspace links the schedule plugin.

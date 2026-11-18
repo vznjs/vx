@@ -475,14 +475,30 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
 /** Distinct calls `parseStraceViolations` judges between yields to the event loop. */
 const JUDGED_PER_TURN = 500
 
+/**
+ * The write-intent calls vx's observer reported (`W <call> "<path>"`, the
+ * path a C string as strace spells one), as the records `refusedWrites`
+ * judges: `deny <call> <path>`, the path normalized, since the observer
+ * joins a relative one to its directory as written (`/ws/./a/../b`).
+ */
+export function observedWrites(trace: string): string[] {
+  const out: string[] = []
+  for (const line of trace.split('\n')) {
+    const m = /^W (\S+) "(.*)"$/.exec(line)
+    if (m !== null) out.push(`deny ${m[1]} ${path.posix.normalize(cStringPath(m[2]!))}`)
+  }
+  return out
+}
+
 export async function parseStraceViolations(
-  logPath: string,
+  /** The trace's file, or its text already read. */
+  log: string | { text: string },
   args: SandboxedRunArgs,
   baselines: { allowRead: readonly string[]; denyRead: readonly string[]; cwd: string },
   /** `widenedEntries` taken as the task started: no entry, no read parse. */
   widened: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): Promise<SandboxViolation[]> {
-  const text = await Bun.file(logPath).text()
+  const text = typeof log === 'string' ? await Bun.file(log).text() : log.text
   if (text.length === 0) return []
 
   // Treat every baseAllow + sandbox.allowRead + allowWrite path as "this

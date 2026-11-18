@@ -363,3 +363,14 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   install found it. What reads a file by path beside a bundled module
   gets a test that compiles vx (`compiled-sandbox.unsafe.test.ts`,
   2026-11-13).
+- `access()` does not predict `open()`. A device node on a mount that
+  allows none (the sandbox's mask of a file: `/dev/null` bound over it)
+  opens EACCES and tests readable, and `access()` judges by the real ids
+  where an open uses the effective ones. vx's observer probes with
+  `AT_EACCESS` and asks the mount (`statfs`, `ST_NODEV`) for a device
+  node; found by the hidden-store test, not by the probe's own
+  (2026-11-18).
+- A container that cannot mount `/proc` (EPERM) leaves a sandboxed task
+  the outer namespace's: `/proc/self` is right, `/proc/<getpid()>` is
+  another process or none. A pid from the kernel is named in that
+  `/proc` through `pidfd_open` and its fdinfo's `Pid:` (2026-11-18).
