@@ -23,6 +23,8 @@ import {
   timesLabel,
 } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
+import run from '../src/data/hero-run.json'
+import { PLUGIN_HOOKS } from '@vzn/vx'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
@@ -199,22 +201,24 @@ describe('the landing page', () => {
     ])
   })
 
-  // The graph is drawn once per layout, and every step of the run is in the
+  // The graph is drawn once per layout, and every hook group is in the
   // HTML, so the page reads whole with no script.
-  it('draws the graph, both layouts, and lists every step of the run', () => {
+  it('draws the graph, both layouts, and lists every hook group', () => {
     const svgs = [...stage.matchAll(/<svg\b[^>]*data-layout="(\w+)"/g)].map((m) => m[1])
     expect(svgs).toEqual(['wide', 'narrow'])
     for (const b of map.BOXES)
       expect([...stage.matchAll(new RegExp(`data-box="${b.id}"`, 'g'))]).toHaveLength(2)
     for (const w of map.WIRES)
       expect([...stage.matchAll(new RegExp(`data-wire="${w.id}"`, 'g'))]).toHaveLength(2)
-    const steps = [...stage.matchAll(/<li\b[^>]*data-step="\d"[^>]*>([\s\S]*?)<\/li>/g)].map(
+    // Every worker's slot is drawn, whether a worker holds it or not.
+    expect([...stage.matchAll(/data-slot="\d"/g)]).toHaveLength(2 * map.SLOTS)
+    const groups = [...stage.matchAll(/<li\b[^>]*data-step="\d"[^>]*>([\s\S]*?)<\/li>/g)].map(
       (m) => [
         text(/<strong class="story-title">([\s\S]*?)<\/strong>/.exec(m[1]!)![1]!),
         text(/<p>([\s\S]*?)<\/p>/.exec(m[1]!)![1]!),
       ],
     )
-    expect(steps).toEqual(map.STEPS.map((s) => [s.title, s.line.replaceAll('`', '')]))
+    expect(groups).toEqual(map.GROUPS.map((g) => [g.title, g.line.replaceAll('`', '')]))
   })
 
   it('keeps every anchor the redirects land on', () => {
@@ -452,10 +456,11 @@ describe('the landing page', () => {
 })
 
 describe('the system graph, as data', () => {
-  it('places every box and wire in both layouts, inside the drawing', () => {
+  it('places every box, slot and wire in both layouts, inside the drawing', () => {
+    const slots = Array.from({ length: map.SLOTS }, (_, i) => `slot${i + 1}`)
     for (const L of Object.values(map.LAYOUTS)) {
-      for (const b of map.BOXES) {
-        const r = L.boxes[b.id]!
+      for (const id of [...map.BOXES.map((b) => b.id), ...slots]) {
+        const r = L.boxes[id]!
         expect(r).toBeDefined()
         expect(r.x + r.w).toBeLessThanOrEqual(L.width)
         expect(r.y + r.h).toBeLessThanOrEqual(L.height)
@@ -464,19 +469,82 @@ describe('the system graph, as data', () => {
     }
   })
 
-  it('lights only boxes, stages and wires that exist, each step one sentence', () => {
-    const boxes = new Set(map.BOXES.map((b) => b.id))
-    const wires = new Set(map.WIRES.map((w) => w.id))
-    for (const s of map.STEPS) {
-      expect(s.boxes.filter((b) => !boxes.has(b))).toEqual([])
-      expect(s.stages.filter((x) => !(map.STAGES as readonly string[]).includes(x))).toEqual([])
-      expect(s.wires.map((w) => w.replace(/^-/, '')).filter((w) => !wires.has(w))).toEqual([])
-      expect(s.line.split(/[.!?]\s/)).toHaveLength(1)
-      expect(s.line.length).toBeLessThanOrEqual(200)
+  // The core names every hook a plugin fills a stage with, once, in M's
+  // seven groups (2026-11-18); `commands` adds verbs, not a stage.
+  it('groups every stage hook once', () => {
+    const hooks = map.GROUPS.flatMap((g) => g.hooks)
+    expect(new Set(hooks).size).toBe(hooks.length)
+    expect([...hooks].sort()).toEqual(PLUGIN_HOOKS.filter((h) => h !== 'commands').sort())
+    expect(map.GROUPS.map((g) => g.title)).toEqual([
+      'Setup',
+      'Projects',
+      'Dependencies',
+      'Schedule',
+      'Cache',
+      'Run',
+      'Report',
+    ])
+    for (const g of map.GROUPS) {
+      expect(g.line.split(/[.!?]\s/)).toHaveLength(1)
+      expect(g.line.length).toBeLessThanOrEqual(110)
     }
-    // Every piece takes part in the run.
-    const lit = new Set(map.STEPS.flatMap((s) => s.boxes))
-    expect(map.BOXES.filter((b) => b.id !== 'core' && !lit.has(b.id)).map((b) => b.id)).toEqual([])
+  })
+})
+
+// The graph plays one run as vx-dte's simulator ran it (scripts/hero-run.ts
+// wrote src/data/hero-run.json): 30 tasks, workers started when the plan
+// needed them and let go when it did not.
+describe('the hero run', () => {
+  const r = run as map.Run
+  const P = map.play(r)
+  const byId = new Map(r.tasks.map((t) => [t.id, t]))
+
+  it('is 30 tasks, some held in the cache, the rest run on workers', () => {
+    expect(r.tasks).toHaveLength(30)
+    expect(r.tasks.filter((t) => t.hit).length).toBeGreaterThan(0)
+    expect(P.bars).toHaveLength(r.tasks.filter((t) => !t.hit).length)
+  })
+
+  it('runs a task only after every task it depends on ended', () => {
+    const late = r.tasks.filter(
+      (t) => !t.hit && t.deps.some((d) => (byId.get(d)!.endMs ?? 0) > t.startMs!),
+    )
+    expect(late.map((t) => t.id)).toEqual([])
+  })
+
+  it('runs each task on its worker while that worker is joined', () => {
+    const outside = r.tasks.filter((t) => {
+      const w = r.workers.find((x) => x.id === t.worker)
+      return !t.hit && (!w || w.joinMs === null || t.startMs! < w.joinMs || t.endMs! > w.leaveMs)
+    })
+    expect(outside.map((t) => t.id)).toEqual([])
+  })
+
+  it('starts workers as the plan needs them, not all at once, and lets each go', () => {
+    expect(new Set(r.workers.map((w) => w.spawnMs)).size).toBeGreaterThan(1)
+    for (const w of r.workers) expect(w.leaveMs).toBeGreaterThan(w.joinMs!)
+  })
+
+  it('draws no two tasks on the same cores of a worker at once', () => {
+    const clash = P.bars.filter((a) =>
+      P.bars.some(
+        (b) =>
+          b !== a &&
+          b.slot === a.slot &&
+          b.start < a.end &&
+          a.start < b.end &&
+          b.at < a.at + a.cores &&
+          a.at < b.at + b.cores,
+      ),
+    )
+    expect(clash.map((b) => b.id)).toEqual([])
+  })
+
+  // M (2026-11-18): the graph takes 5 s.
+  it('plays start to teardown in 5 s', () => {
+    const last = Math.max(...P.dots.map((d) => d.at)) + map.TRAVEL_MS
+    expect(last).toBeCloseTo(map.PLAY_MS, 0)
+    expect(P.dots.every((d) => d.at >= 0)).toBe(true)
   })
 })
 

@@ -408,11 +408,15 @@
   fill: #151a12;
   stroke: rgba(198, 248, 78, 0.25);
   stroke-width: 1;
-  transition: fill 0.3s;
+  transition: fill 0.2s;
 }
-.map-svg .chip text {
-  font: 500 11px var(--font-mono);
-  fill: #a6b19f;
+.map-svg .chip-title {
+  font: 700 11px var(--font-body);
+  fill: #d7e2cf;
+}
+.map-svg .chip-hook {
+  font: 400 10px var(--font-mono);
+  fill: #8e998a;
 }
 .map-svg .chip.on rect {
   fill: var(--tone-core);
@@ -420,10 +424,63 @@
 }
 .map-svg .chip.on text {
   fill: #14210a;
-  font-weight: 700;
 }
-
-/* the story: at rest a list of the seven steps */
+.map-svg .core-clock {
+  font: 500 12px var(--font-mono);
+  fill: var(--tone-core);
+}
+/* The workers' slots: always drawn, grey while no worker holds one. */
+.map-svg .slot-face {
+  fill: #0b0d12;
+  stroke: color-mix(in srgb, var(--tone-dte) 55%, transparent);
+  stroke-width: 1.2;
+}
+.map-svg .slot-warm {
+  fill: color-mix(in srgb, var(--tone-dte) 22%, transparent);
+}
+.map-svg .slot-name {
+  font: 600 12.5px var(--font-body);
+  fill: #ece6ff;
+}
+.map-svg .slot-state {
+  font: 500 11px var(--font-mono);
+  fill: var(--tone-dte);
+}
+.map-svg .slot-core {
+  fill: rgba(183, 148, 255, 0.06);
+  stroke: rgba(183, 148, 255, 0.22);
+  stroke-dasharray: 3 3;
+}
+.map-svg .slot[data-state='off'] {
+  opacity: 0.32;
+  filter: grayscale(1);
+}
+.map-svg .slot[data-state='off'] .slot-face {
+  stroke-dasharray: 4 4;
+}
+.map-svg .slot[data-state='booting'] .slot-face,
+.map-svg .slot[data-state='tearing-down'] .slot-face {
+  stroke-dasharray: 4 4;
+}
+.map-svg .slot[data-state='tearing-down'] {
+  opacity: 0.6;
+}
+.map-svg .bar-face {
+  fill: color-mix(in srgb, var(--tone-dte) 30%, #0b0d12);
+  stroke: var(--tone-dte);
+  stroke-width: 1;
+}
+.map-svg .bar-done {
+  fill: color-mix(in srgb, var(--tone-dte) 60%, transparent);
+}
+.map-svg .bar-label {
+  font: 600 10.5px var(--font-mono);
+  fill: #f6f2ff;
+}
+.map-svg .packets circle {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+/* the story: at rest a list of the seven hook groups */
 .stage-story {
   position: relative;
   z-index: 3;
@@ -464,6 +521,18 @@
   letter-spacing: -0.03em;
   color: #f2f5ef;
 }
+.story-hooks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
+.story-hooks code {
+  font: 500 12px var(--font-mono);
+  color: var(--tone);
+  background: none;
+  padding: 0;
+}
 .story-steps p {
   margin: 6px 0 0;
   font: 400 15px/1.5 var(--font-body);
@@ -500,62 +569,43 @@
 .stage.js .stage-story {
   max-width: 1180px;
   margin: 28px auto 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
 }
 .stage.js .story-kicker {
   display: none;
 }
-/* Every step sits in one cell, so the panel is as tall as the tallest and
-   the page never jumps as the steps change. */
+/* All seven groups always shown; the ones running now are lit, several at once. */
 .stage.js .story-steps {
-  display: grid;
-  grid-template-columns: minmax(0, 640px);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
 }
 .stage.js .story-steps li {
-  grid-area: 1 / 1;
-  visibility: hidden;
-  padding: 18px 22px;
-  border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
-  border-left: 3px solid var(--tone);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--tone) 40%, transparent);
   border-radius: 10px;
   background: rgba(8, 10, 14, 0.92);
+  opacity: 0.55;
+  transition:
+    opacity 0.2s,
+    border-color 0.2s;
 }
 .stage.js .story-steps li.on {
-  visibility: visible;
-  animation: step-in 0.45s var(--ease-out);
+  opacity: 1;
+  border-color: var(--tone);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--tone) 25%, transparent);
 }
 .stage.js .story-title {
-  font-size: clamp(26px, 3vw, 40px);
+  font-size: 19px;
 }
 .stage.js .story-steps p {
-  font-size: clamp(15px, 1.3vw, 18px);
-  color: #d3dbcf;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #c3ccbf;
 }
-@keyframes step-in {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
+@media (max-width: 1000px) {
+  .stage.js .story-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-}
-.stage.js .story-rail {
-  display: flex;
-  gap: 6px;
-}
-.story-rail button {
-  all: unset;
-  cursor: pointer;
-  width: 26px;
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(148, 170, 200, 0.22);
-  transition: background 0.3s;
-}
-.story-rail button.on {
-  background: var(--tone);
-  box-shadow: 0 0 10px var(--tone);
 }
 @media (max-width: 720px) {
   .stage h1 {
@@ -564,12 +614,11 @@
   .stage h1 .l2 {
     padding-left: 0;
   }
-  .stage.js .stage-story {
-    flex-direction: column;
-    align-items: stretch;
+  .stage.js .story-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .stage.js .story-steps li {
-    padding: 14px 16px;
+    padding: 10px 12px;
   }
   .specs li {
     flex-direction: column;
@@ -675,7 +724,7 @@
 }
 .columns {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   height: 340px;
   margin: 0;
@@ -1747,4 +1796,7 @@
   .steps-cmd span {
     grid-column: 2;
   }
+}
+.map-svg[data-layout='narrow'] .core-clock {
+  font-size: 11px;
 }

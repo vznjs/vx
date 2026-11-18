@@ -2,11 +2,13 @@
 // The hero is the copy alone, a screen tall, over a retro sunset sky. Below
 // it, as its own section, the system graph: every piece one CI run talks to,
 // before a striped sun sinking into an endless grid. When the graph comes
-// into view it rises in, then plays one CI run on its own, a step every few
-// seconds; the rail jumps to a step. At rest (no script, reduced motion) it is a plain
-// section: the copy, the graph, and every step listed.
+// into view it rises in, then plays one real run on a loop: 30 tasks as
+// vx-dte's simulator ran them (src/data/hero-run.json), start to teardown in
+// 5 s. At rest (no script, reduced motion) it is a plain section: the copy,
+// the graph, and the seven hook groups listed.
+import run from '../../data/hero-run.json'
 import SystemMap from './SystemMap.astro'
-import { STEPS } from './system-map.ts'
+import { GROUPS, TRAVEL_MS, WIRES, play, type Run } from './system-map.ts'
 
 interface Props {
   base: string
@@ -15,7 +17,7 @@ interface Props {
 const { base, latest } = Astro.props
 const href = (p: string) => `${base}${p}`
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
-const play = STEPS.map((s) => ({ boxes: s.boxes, stages: s.stages, wires: s.wires, tone: s.tone, anchor: s.anchor ?? '' }))
+const data = { ...play(run as Run), travel: TRAVEL_MS, ends: Object.fromEntries(WIRES.map((w) => [w.id, [w.from, w.to]])) }
 const specs = [
   { n: '15', line: 'stages a plugin can take over' },
   { n: 'MIT', line: 'every piece, no paid tier' },
@@ -23,7 +25,7 @@ const specs = [
 ]
 ---
 
-<section class="stage" data-steps={JSON.stringify(play)} aria-label="vx">
+<section class="stage" data-play={JSON.stringify(data)} aria-label="vx">
   <div class="stage-pin">
     <canvas class="stage-sky" aria-hidden="true"></canvas>
     <div class="stage-copy">
@@ -55,7 +57,7 @@ const specs = [
       </ul>
     </div>
     <header class="stage-head">
-      <p class="kicker">One CI run, step by step</p>
+      <p class="kicker">One CI run, 30 tasks, 5 seconds</p>
       <h2>One run.<br /><em>Every piece.</em></h2>
     </header>
     <div class="stage-world" aria-hidden="true">
@@ -64,34 +66,28 @@ const specs = [
       </div>
     </div>
     <div class="stage-story" id="one-run">
-      <p class="story-kicker">One CI run, step by step</p>
+      <p class="story-kicker">Seven hook groups, fifteen hooks</p>
       <ol class="story-steps">
         {
-          STEPS.map((s, i) => (
-            <li class:list={[`tone-${s.tone}`]} id={s.anchor} data-step={i}>
-              <span class="story-n">{String(i + 1).padStart(2, '0')}<span class="of"> / {String(STEPS.length).padStart(2, '0')}</span></span>
-              <strong class="story-title">{s.title}</strong>
-              <p set:html={codeHtml(s.line)} />
+          GROUPS.map((g, i) => (
+            <li class:list={[`tone-${g.tone}`]} id={g.anchor} data-step={i} data-group={g.id}>
+              <span class="story-n">{String(i + 1).padStart(2, '0')}<span class="of"> / {String(GROUPS.length).padStart(2, '0')}</span></span>
+              <strong class="story-title">{g.title}</strong>
+              <span class="story-hooks">{g.hooks.map((h) => <code>{h}</code>)}</span>
+              <p set:html={codeHtml(g.line)} />
             </li>
           ))
         }
       </ol>
-      <nav class="story-rail" aria-label="Steps of the run">
-        {STEPS.map((s, i) => (
-          <button type="button" class={`tone-${s.tone}`} data-goto={i} aria-label={`Step ${i + 1}: ${s.title}`} />
-        ))}
-      </nav>
     </div>
   </div>
 </section>
 
 <script>
-  interface Play {
-    boxes: string[]
-    stages: string[]
-    wires: string[]
-    tone: string
-    anchor: string
+  import type { Play } from './system-map.ts'
+  interface Data extends Play {
+    travel: number
+    ends: Record<string, [string, string]>
   }
   const TONES: Record<string, string> = {
     core: '#c6f84e',
@@ -105,8 +101,7 @@ const specs = [
 
   function boot(stage: HTMLElement): void {
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches
-    const steps = JSON.parse(stage.dataset['steps'] ?? '[]') as Play[]
-    const story = stage.querySelector<HTMLElement>('.stage-story')!
+    const P = JSON.parse(stage.dataset['play'] ?? '{}') as Data
     const canvas = stage.querySelector<HTMLCanvasElement>('.stage-sky')!
     const ctx = canvas.getContext('2d')
     const clamp = (x: number, a = 0, b = 1): number => Math.min(b, Math.max(a, x))
@@ -118,88 +113,159 @@ const specs = [
     }
     stage.classList.add('js')
 
-    // ---- the graph: which step is lit, packets on its wires ----
-    let step = -2
-    type Packet = { path: SVGPathElement; len: number; back: boolean; t0: number; dot: SVGCircleElement }
-    let packets: Packet[] = []
-    let lastSpawn = 0
+    // ---- the run: one clock, every piece drawn from the simulated run ----
+    const NS = 'http://www.w3.org/2000/svg'
     const svg = (): SVGSVGElement | undefined =>
       [...stage.querySelectorAll<SVGSVGElement>('.map-svg')].find((s) => s.getBoundingClientRect().width > 0)
+    const fmt = (ms: number): string => {
+      const sec = Math.max(0, Math.round(ms / 1000))
+      return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+    }
+    // Per layout: its wires' paths and lengths, its slots' geometry, its dot and bar pools.
+    interface View {
+      root: SVGSVGElement
+      paths: Map<string, { el: SVGPathElement; len: number }>
+      dots: SVGCircleElement[]
+      slots: Map<number, { g: SVGGElement; warm: SVGRectElement; state: SVGTextElement; x: number; y: number; w: number; h: number; cores: number }>
+      bars: Map<string, { g: SVGGElement; done: SVGRectElement }>
+      clock: SVGTextElement
+    }
+    const views = new Map<SVGSVGElement, View>()
+    const view = (root: SVGSVGElement): View => {
+      let v = views.get(root)
+      if (v) return v
+      const paths = new Map<string, { el: SVGPathElement; len: number }>()
+      root.querySelectorAll<SVGPathElement>('[data-wire]').forEach((el) => paths.set(el.dataset['wire']!, { el, len: el.getTotalLength() }))
+      const slots: View['slots'] = new Map()
+      root.querySelectorAll<SVGGElement>('[data-slot]').forEach((g) => {
+        const n = (k: string): number => Number(g.dataset[k])
+        slots.set(n('slot'), { g, warm: g.querySelector('.slot-warm')!, state: g.querySelector('.slot-state')!, x: n('x'), y: n('y'), w: n('w'), h: n('h'), cores: n('cores') })
+      })
+      v = { root, paths, dots: [], slots, bars: new Map(), clock: root.querySelector('.core-clock')! }
+      views.set(root, v)
+      return v
+    }
+    const bar = (v: View, i: number): { g: SVGGElement; done: SVGRectElement } => {
+      const b = P.bars[i]!
+      let made = v.bars.get(b.id)
+      if (made) return made
+      const s = v.slots.get(b.slot)!
+      const x = s.x + (b.at / s.cores) * s.w + 2
+      const w = (b.cores / s.cores) * s.w - 4
+      const g = document.createElementNS(NS, 'g')
+      g.setAttribute('class', 'bar')
+      const face = document.createElementNS(NS, 'rect')
+      for (const [k, val] of [['x', x], ['y', s.y + 3], ['width', w], ['height', s.h - 6], ['rx', 3]] as const) face.setAttribute(k, `${val}`)
+      face.setAttribute('class', 'bar-face')
+      const done = document.createElementNS(NS, 'rect')
+      for (const [k, val] of [['x', x], ['y', s.y + 3], ['width', 0], ['height', s.h - 6], ['rx', 3]] as const) done.setAttribute(k, `${val}`)
+      done.setAttribute('class', 'bar-done')
+      const label = document.createElementNS(NS, 'text')
+      label.setAttribute('x', `${x + 5}`)
+      label.setAttribute('y', `${s.y + s.h / 2 + 4}`)
+      label.setAttribute('class', 'bar-label')
+      const room = Math.floor((w - 8) / 6.2)
+      // A narrow bar names the task alone; one too narrow for that, a cut of it.
+      const full = w > 90 ? b.id : b.id.split('#')[1]!
+      label.textContent = full.length > room ? `${full.slice(0, Math.max(0, room - 1))}…` : full
+      g.append(face, done, label)
+      s.g.querySelector('.bars')!.append(g)
+      v.bars.set(b.id, (made = { g, done }))
+      return made
+    }
 
-    const send = (wire: string, tone: string, delay: number, now: number): void => {
+    const render = (t: number): void => {
       const root = svg()
       if (!root) return
-      const back = wire.startsWith('-')
-      const path = root.querySelector<SVGPathElement>(`[data-wire="${back ? wire.slice(1) : wire}"]`)
-      if (!path) return
-      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
-      dot.setAttribute('r', '5')
-      dot.setAttribute('fill', TONES[tone] ?? TONES['core']!)
-      dot.setAttribute('opacity', '0')
-      root.querySelector('.packets')!.appendChild(dot)
-      packets.push({ path, len: path.getTotalLength(), back, t0: now + delay, dot })
-    }
-
-    const light = (i: number): void => {
-      if (i === step) return
-      step = i
-      const s = steps[i]
-      stage.querySelectorAll<HTMLElement>('.story-steps li').forEach((li, j) => li.classList.toggle('on', j === i))
-      stage.querySelectorAll<HTMLElement>('.story-rail button').forEach((b, j) => b.classList.toggle('on', j <= i))
-      stage.querySelectorAll<SVGElement>('[data-box]').forEach((n) =>
-        n.classList.toggle('on', !s || n.dataset['box'] === 'core' || s.boxes.includes(n.dataset['box']!)),
-      )
-      stage.querySelectorAll<SVGElement>('[data-stage]').forEach((n) =>
-        n.classList.toggle('on', !!s && s.stages.includes(n.dataset['stage']!)),
-      )
-      const live = new Set(s ? s.wires.map((w) => w.replace(/^-/, '')) : [])
-      stage.querySelectorAll<SVGElement>('[data-wire]').forEach((n) => {
-        n.classList.toggle('live', live.has(n.dataset['wire']!))
-        n.dataset['tone'] = s?.tone ?? ''
-      })
-      stage.classList.toggle('telling', !!s)
-      lastSpawn = 0
-    }
-
-    const ALL = ['ws', 'lockfile', 'history', 'cache', '-cache', 'otel', 'ci', 'relay', 'w1', 'w2', 'w3', 'w4', 'store', 'reapi', 'migrate']
-    const ALL_TONE: Record<string, string> = {
-      ws: 'read', lockfile: 'read', history: 'read', cache: 'remote', '-cache': 'remote', otel: 'report',
-      ci: 'report', relay: 'dte', w1: 'dte', w2: 'dte', w3: 'dte', w4: 'dte', store: 'remote', reapi: 'remote', migrate: 'remote',
-    }
-    const spawn = (now: number): void => {
-      const s = steps[step]
-      if (s) {
-        if (now - lastSpawn < 850) return
-        lastSpawn = now
-        s.wires.forEach((w, i) => send(w, s.tone, i * 120, now))
-      } else {
-        if (now - lastSpawn < 220) return
-        lastSpawn = now
-        const w = ALL[Math.floor(Math.random() * ALL.length)]!
-        send(w, ALL_TONE[w]!, 0, now)
-      }
-    }
-
-    const movePackets = (now: number): void => {
-      const DUR = 1050
-      packets = packets.filter((p) => {
-        const t = (now - p.t0) / DUR
-        if (t > 1) {
-          p.dot.remove()
-          return false
+      const v = view(root)
+      const T = P.travel
+      // Dots in flight, and the wires and boxes they light.
+      const live = new Set<string>()
+      const boxes = new Set<string>(['core'])
+      let n = 0
+      for (const d of P.dots) {
+        if (d.at > t) break
+        const k = (t - d.at) / T
+        if (k >= 1) continue
+        const p = v.paths.get(d.wire)
+        if (!p) continue
+        live.add(d.wire)
+        const [from, to] = P.ends[d.wire]!
+        boxes.add(from.startsWith('slot') ? 'workers' : from)
+        boxes.add(to.startsWith('slot') ? 'workers' : to)
+        let dot = v.dots[n]
+        if (!dot) {
+          dot = document.createElementNS(NS, 'circle')
+          dot.setAttribute('r', '4.5')
+          root.querySelector('.packets')!.appendChild(dot)
+          v.dots[n] = dot
         }
-        if (t < 0) return true
-        const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
-        const pt = p.path.getPointAtLength((p.back ? 1 - e : e) * p.len)
-        p.dot.setAttribute('cx', `${pt.x}`)
-        p.dot.setAttribute('cy', `${pt.y}`)
-        p.dot.setAttribute('opacity', `${Math.min(1, 6 * Math.min(t, 1 - t) + 0.25)}`)
-        return true
+        const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2
+        const pt = p.el.getPointAtLength((d.back ? 1 - e : e) * p.len)
+        dot.setAttribute('cx', `${pt.x}`)
+        dot.setAttribute('cy', `${pt.y}`)
+        dot.setAttribute('fill', TONES[d.tone]!)
+        dot.style.display = ''
+        n++
+      }
+      for (let i = n; i < v.dots.length; i++) v.dots[i]!.style.display = 'none'
+      root.querySelectorAll<SVGElement>('[data-wire]').forEach((w) => {
+        const on = live.has(w.dataset['wire']!)
+        w.classList.toggle('live', on)
+        if (on) w.dataset['tone'] = P.dots.find((d) => d.wire === w.dataset['wire'] && d.at <= t && t < d.at + T)?.tone ?? ''
       })
+
+      // Groups lit now: more than one at once while the run streams.
+      const lit = new Set(Object.entries(P.lit).filter(([, spans]) => spans.some(([a, b]) => a <= t && t < b)).map(([g]) => g))
+      root.querySelectorAll<SVGElement>('[data-stage]').forEach((c) => c.classList.toggle('on', lit.has(c.dataset['stage']!)))
+      stage.querySelectorAll<HTMLElement>('.story-steps li').forEach((li) => li.classList.toggle('on', lit.has(li.dataset['group']!)))
+
+      // Workers: off, booting, running, idle, tearing down, off again.
+      let online = 0
+      for (const [k, s] of v.slots) {
+        const lane = P.lanes.find((l) => l.slot === k && l.spawn <= t && t < l.leave)
+        let state = 'off'
+        let warm = 0
+        if (lane) {
+          online++
+          boxes.add('workers')
+          if (t < lane.join) {
+            state = 'booting'
+            warm = (t - lane.spawn) / (lane.join - lane.spawn)
+          } else if (t >= lane.leave - 2 * T) state = 'tearing down'
+          else state = P.bars.some((b) => b.slot === k && b.start <= t && t < b.end) ? 'running' : 'idle'
+        }
+        s.g.dataset['state'] = state.replace(' ', '-')
+        s.state.textContent = state
+        s.warm.setAttribute('width', `${clamp(warm) * (s.w + 24)}`)
+      }
+      P.bars.forEach((b, i) => {
+        const on = b.start <= t && t < b.end
+        const had = v.bars.get(b.id)
+        if (!on) {
+          if (had) had.g.style.display = 'none'
+          return
+        }
+        const made = bar(v, i)
+        made.g.style.display = ''
+        const s = v.slots.get(b.slot)!
+        made.done.setAttribute('width', `${clamp((t - b.start) / (b.end - b.start)) * ((b.cores / s.cores) * s.w - 4)}`)
+      })
+      root.querySelectorAll<SVGElement>('[data-box]').forEach((el) => el.classList.toggle('on', boxes.has(el.dataset['box']!)))
+      stage.classList.add('telling')
+
+      // The core's clock: the run's own time, not the play's.
+      const ran = P.bars.filter((b) => b.end <= t).length
+      const hit = P.hits.filter((h) => h <= t).length
+      const now = (t - P.zero) / P.scale
+      v.clock.textContent =
+        t < P.zero
+          ? [...lit].join(' · ') || 'setup'
+          : t < P.end
+            ? `${fmt(now)} · ${online} worker${online === 1 ? '' : 's'} · ${ran} ran · ${hit} cached`
+            : `teardown · ${fmt((P.end - P.zero) / P.scale)} · ${ran} ran · ${hit} cached`
     }
 
-    // ---- the run plays on its own, a step every few seconds ----
-    const STEP_MS = 3800
     // The play starts when the graph comes into view, not at page load.
     let born = Infinity
     new IntersectionObserver(
@@ -213,26 +279,16 @@ const specs = [
     ).observe(stage.querySelector('.stage-world')!)
     // How far the entrance has played: the sun rises with the graph.
     let rise = 0
-    let shownAt = 0
-    const show = (i: number, now: number): void => {
-      light((i + steps.length) % steps.length)
-      shownAt = now
-    }
+    const ENTER_MS = 1400
     const autoplay = (now: number): void => {
       rise = ease(clamp((now - born) / 1600))
-      if (step < 0) {
-        if (now - born > 2200) show(0, now)
-      } else if (now - shownAt > STEP_MS) show(step + 1, now)
+      if (now - born < ENTER_MS) return
+      render((now - born - ENTER_MS) % P.loop)
     }
-    stage.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((b) =>
-      b.addEventListener('click', () => show(Number(b.dataset['goto']), performance.now())),
-    )
-    // An old link to a step's anchor lands on that step.
-    const landed = steps.findIndex((s) => s.anchor !== '' && `#${s.anchor}` === location.hash)
-    if (landed >= 0) {
+    // An old link to a group's anchor lands on the graph.
+    if (stage.querySelector(`.story-steps li[id="${CSS.escape(location.hash.slice(1))}"]`)) {
       born = performance.now()
       stage.classList.add('seen')
-      show(landed, born)
     }
 
     // ---- the sky: a retro sunset, a striped sun sinking into the grid ----
@@ -367,8 +423,6 @@ const specs = [
       // The sky moves slowly: 30 frames a second is enough, and halves its cost.
       if ((tick = (tick + 1) % 2) === 0) draw(dt * 2)
       autoplay(now)
-      spawn(now)
-      movePackets(now)
       requestAnimationFrame(frame)
     }
     const start = (): void => {

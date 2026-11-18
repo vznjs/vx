@@ -1,0 +1,232 @@
+{
+  "endMs": 147000,
+  "tasks": [
+    {
+      "id": "utils#build",
+      "deps": [],
+      "cores": 2,
+      "worker": "linux-4#1",
+      "startMs": 21000,
+      "endMs": 30000
+    },
+    {
+      "id": "utils#typecheck",
+      "deps": [],
+      "hit": true
+    },
+    {
+      "id": "utils#lint",
+      "deps": [],
+      "hit": true
+    },
+    {
+      "id": "utils#test",
+      "deps": ["utils#build"],
+      "hit": true
+    },
+    {
+      "id": "schema#build",
+      "deps": ["utils#build"],
+      "cores": 2,
+      "worker": "linux-4#1",
+      "startMs": 30000,
+      "endMs": 42000
+    },
+    {
+      "id": "schema#typecheck",
+      "deps": ["utils#build"],
+      "hit": true
+    },
+    {
+      "id": "schema#lint",
+      "deps": [],
+      "hit": true
+    },
+    {
+      "id": "schema#test",
+      "deps": ["schema#build"],
+      "hit": true
+    },
+    {
+      "id": "core#build",
+      "deps": ["utils#build", "schema#build"],
+      "cores": 3,
+      "worker": "linux-4#1",
+      "startMs": 42000,
+      "endMs": 66000
+    },
+    {
+      "id": "core#typecheck",
+      "deps": ["utils#build", "schema#build"],
+      "cores": 1.5,
+      "worker": "linux-4#3",
+      "startMs": 93654,
+      "endMs": 107654
+    },
+    {
+      "id": "core#lint",
+      "deps": [],
+      "hit": true
+    },
+    {
+      "id": "core#test",
+      "deps": ["core#build"],
+      "cores": 2,
+      "worker": "linux-4#3",
+      "startMs": 93654,
+      "endMs": 131654
+    },
+    {
+      "id": "ui#build",
+      "deps": ["utils#build"],
+      "hit": true
+    },
+    {
+      "id": "ui#typecheck",
+      "deps": ["utils#build"],
+      "hit": true
+    },
+    {
+      "id": "ui#lint",
+      "deps": [],
+      "hit": true
+    },
+    {
+      "id": "ui#test",
+      "deps": ["ui#build"],
+      "hit": true
+    },
+    {
+      "id": "api#build",
+      "deps": ["core#build", "schema#build"],
+      "cores": 2,
+      "worker": "linux-4#1",
+      "startMs": 66000,
+      "endMs": 84000
+    },
+    {
+      "id": "api#typecheck",
+      "deps": ["core#build", "schema#build"],
+      "cores": 1.5,
+      "worker": "linux-4#2",
+      "startMs": 131000,
+      "endMs": 142000
+    },
+    {
+      "id": "api#lint",
+      "deps": [],
+      "cores": 1,
+      "worker": "linux-4#1",
+      "startMs": 21000,
+      "endMs": 29000
+    },
+    {
+      "id": "api#test",
+      "deps": ["api#build"],
+      "cores": 2,
+      "worker": "linux-4#2",
+      "startMs": 100000,
+      "endMs": 131000
+    },
+    {
+      "id": "web#build",
+      "deps": ["ui#build", "core#build"],
+      "cores": 4,
+      "worker": "linux-4#2",
+      "startMs": 66000,
+      "endMs": 100000
+    },
+    {
+      "id": "web#typecheck",
+      "deps": ["ui#build", "core#build"],
+      "cores": 1.5,
+      "worker": "linux-4#1",
+      "startMs": 66000,
+      "endMs": 82000
+    },
+    {
+      "id": "web#lint",
+      "deps": [],
+      "hit": true
+    },
+    {
+      "id": "web#test",
+      "deps": ["web#build"],
+      "cores": 2,
+      "worker": "linux-4#3",
+      "startMs": 107654,
+      "endMs": 129654
+    },
+    {
+      "id": "web#e2e",
+      "deps": ["web#build"],
+      "cores": 2,
+      "worker": "linux-4#2",
+      "startMs": 100000,
+      "endMs": 141000
+    },
+    {
+      "id": "admin#build",
+      "deps": ["ui#build", "api#build"],
+      "cores": 3,
+      "worker": "linux-4#1",
+      "startMs": 84000,
+      "endMs": 111000
+    },
+    {
+      "id": "admin#typecheck",
+      "deps": ["ui#build", "api#build"],
+      "cores": 1.5,
+      "worker": "linux-4#1",
+      "startMs": 130000,
+      "endMs": 143000
+    },
+    {
+      "id": "admin#lint",
+      "deps": [],
+      "cores": 1,
+      "worker": "linux-4#1",
+      "startMs": 21000,
+      "endMs": 30000
+    },
+    {
+      "id": "admin#test",
+      "deps": ["admin#build"],
+      "cores": 2,
+      "worker": "linux-4#1",
+      "startMs": 111000,
+      "endMs": 130000
+    },
+    {
+      "id": "admin#e2e",
+      "deps": ["admin#build"],
+      "cores": 2,
+      "worker": "linux-4#1",
+      "startMs": 111000,
+      "endMs": 147000
+    }
+  ],
+  "workers": [
+    {
+      "id": "linux-4#1",
+      "cores": 4,
+      "spawnMs": 0,
+      "joinMs": 21000,
+      "leaveMs": 147000
+    },
+    {
+      "id": "linux-4#2",
+      "cores": 4,
+      "spawnMs": 40000,
+      "joinMs": 66000,
+      "leaveMs": 142000
+    },
+    {
+      "id": "linux-4#3",
+      "cores": 4,
+      "spawnMs": 75654,
+      "joinMs": 93654,
+      "leaveMs": 131654
+    }
+  ]
+}
