@@ -527,10 +527,6 @@ use your own instead.
 - Tasks waiting for room go out longest tail first: a task's recorded
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
-  Room is kept for a task about to be ready, once the tasks it waits on
-  run, when its tail is longer than a waiting one's: through a task that
-  runs nothing too, so suites behind a short check and a group start
-  before shorter tasks that were ready a second sooner.
 - A task goes first to the worker the last plan gave it, where it fits
   now, while every task left has history; then to the worker that holds
   most of its dependencies' outputs, so a chain stays on one machine; then to the one with fewest cores
