@@ -37,6 +37,11 @@ it("serves a read from R2 alone, the data center's copy from a read of its own",
   }
   const later: Promise<unknown>[] = []
   const blobs = r2Blobs(bucket, Promise.resolve(cache), { waitUntil: (p) => void later.push(p) })
+  // A small artifact read at once is not a slow download: 14 bytes in 0 ms
+  // is under any rate, and every such read logged a line (2026-11-18).
+  const said: string[] = []
+  const warn = console.warn
+  console.warn = (m: string) => void said.push(m)
   const got = await blobs.get('a/b/c/d')
   expect(got?.size).toBe(bytes.byteLength)
   // One reader of the object at a time: read beside the client's, both reads
@@ -44,9 +49,10 @@ it("serves a read from R2 alone, the data center's copy from a read of its own",
   await Bun.sleep(20)
   expect(bodies).toHaveLength(1)
   expect(await new Response(got!.body).text()).toBe('artifact bytes')
-  await Promise.all(later)
+  await Promise.all(later).finally(() => void (console.warn = warn))
   expect(bodies).toHaveLength(2)
   expect(await copies[0]!.text()).toBe('artifact bytes')
+  expect(said).toEqual([])
 })
 
 it('makes no copy of a download the client left, and says how long it ran', async () => {

@@ -81,6 +81,8 @@ const heldOf = (name: string): Request => new Request(`https://vx-cache.held/${n
 const SIZE = 'vx-size'
 /** A download under 1 MiB a second is said: the client's own floor. */
 const SLOW_BYTES_PER_MS = (1024 * 1024) / 1000
+/** Under a second nothing is slow: a 300-byte artifact in 0 ms is under any rate. */
+const SLOW_FROM_MS = 1000
 
 /**
  * R2, read through the data center's cache: an artifact never changes
@@ -159,7 +161,7 @@ export function r2Blobs(
           .then(
             () => {
               const ms = Date.now() - began
-              if (o.size / Math.max(ms, 1) < SLOW_BYTES_PER_MS)
+              if (ms >= SLOW_FROM_MS && o.size / ms < SLOW_BYTES_PER_MS)
                 console.warn(`vx-cache-server: ${name} took ${ms} ms for ${o.size} bytes`)
               return true
             },
