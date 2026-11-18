@@ -109,6 +109,7 @@ jobs:
           grep -qE '^packages/vx/(src|tests|scripts)/' <<<"$files" || exit 0
           if grep -qE '^(packages/vx-dte-server|private/vx-dte-service|packages/vx-cache-server|packages/vx-devtools|private/vx-cache-service)/|^bun\.lock$' <<<"$files"; then exit 0; fi
           run=$(cat /proc/sys/kernel/random/uuid)
+          at=$(date +%s%3N)
           for group in hosted.small:9 hosted.mac:3; do
             size=${group%:*}
             workers=$(seq 1 "${group#*:}" | jq -Rnc --arg s "$size" '[inputs | "\($s)#\(.)"]')
@@ -117,7 +118,7 @@ jobs:
               '{ref: $ref, inputs: {run: $run, relay: $relay, sha: $sha, size: $size, workers: $workers, parent: $parent, env: $env}}')
             id=$(curl -fsS -X POST -H "$auth" -H 'x-github-api-version: 2026-03-10' -d "$body" "$api/actions/workflows/vx-worker.yml/dispatches" | jq -r '.workflow_run_id // empty') || continue
             [ -n "$id" ] || continue
-            echo "/repos/$GITHUB_REPOSITORY/actions/runs/$id $(jq -r 'join(",")' <<<"$workers")" >> "$RUNNER_TEMP/vx-dte-started"
+            echo "/repos/$GITHUB_REPOSITORY/actions/runs/$id $(jq -r 'join(",")' <<<"$workers") $at" >> "$RUNNER_TEMP/vx-dte-started"
             echo "/repos/$GITHUB_REPOSITORY/actions/runs/$id" >> "$RUNNER_TEMP/vx-dte-runs"
           done
           if [ -f "$RUNNER_TEMP/vx-dte-started" ]; then echo "VX_DTE_RUN=$run" >> "$GITHUB_ENV"; fi

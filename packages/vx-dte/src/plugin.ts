@@ -114,8 +114,10 @@ export interface DteAdapter {
    * Workers the CI started for this run before it began (`size#n`): each
    * is handed to `worker`, which counts it against its size's `max` and
    * returns its spawn, for the adapter to watch and stop as its own.
+   * `startedAt` (epoch ms) is when the CI started it: its warm-up is read
+   * from then, where from the run's start it read short by the head start.
    */
-  adopt?(worker: (id: string, size: string) => WorkerSpawn): void
+  adopt?(worker: (id: string, size: string, startedAt?: number) => WorkerSpawn): void
 }
 
 export interface DteOptions {
@@ -818,15 +820,19 @@ export function dte(options: DteOptions = {}) {
         return `${size}#${n}`
       }
       // A worker the run counts as started, against its size's max.
-      const spawnOf = (s: Size, id: string, n: number): WorkerSpawn => {
+      const spawnOf = (s: Size, id: string, n: number, at?: number): WorkerSpawn => {
         started.set(s.name, (started.get(s.name) ?? 0) + 1)
-        o.spawned(id, {
-          size: s.name,
-          cpu: s.cpu,
-          memory: s.memory,
-          ...named(s.name),
-          ...(multi && s.platform !== undefined ? { place: s.platform } : {}),
-        })
+        o.spawned(
+          id,
+          {
+            size: s.name,
+            cpu: s.cpu,
+            memory: s.memory,
+            ...named(s.name),
+            ...(multi && s.platform !== undefined ? { place: s.platform } : {}),
+          },
+          at,
+        )
         sizeOf.set(id, s)
         return {
           run,
@@ -855,13 +861,16 @@ export function dte(options: DteOptions = {}) {
       }
       adapter?.report?.(ctx.warn)
       // Workers the CI started before the run did (`DteAdapter.adopt`).
-      adapter?.adopt?.((id, size) => {
+      adapter?.adopt?.((id, size, startedAt) => {
         const s = sizes.find((x) => x.name === size)
         const n = Number(id.slice(id.lastIndexOf('#') + 1))
         if (s === undefined || !Number.isInteger(n) || n < 1)
           throw new UserError(`dte(): a started worker ${id} is no worker of a declared size`)
         numbered.set(size, Math.max(numbered.get(size) ?? 0, n))
-        return spawnOf(s, id, ++index)
+        // On this process's clock, before its own start for one started ahead of it.
+        const at =
+          startedAt === undefined ? undefined : performance.now() - (Date.now() - startedAt)
+        return spawnOf(s, id, ++index, at)
       })
       // Tasks core handed over: each missed the cache (`missedWork`).
       const executed = new Set<string>()

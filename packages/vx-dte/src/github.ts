@@ -419,11 +419,20 @@ export function github(options: GithubOptions = {}): DteAdapter {
         return
       }
       for (const line of text.split('\n')) {
-        const [run, ids] = line.trim().split(/\s+/)
+        const [run, ids, at] = line.trim().split(/\s+/)
         if (!run || !ids) continue
+        // When the step started them (epoch ms): their warm-up began then, not with the run.
+        const since = at === undefined ? Number.NaN : Number(at)
         const workers = new Map<string, WorkerSpawn>()
         for (const id of ids.split(','))
-          workers.set(id, worker(id, id.slice(0, id.lastIndexOf('#'))))
+          workers.set(
+            id,
+            worker(
+              id,
+              id.slice(0, id.lastIndexOf('#')),
+              Number.isFinite(since) ? since : undefined,
+            ),
+          )
         runs.push(run)
         watched.set(run, workers)
         workerRuns.add(run.slice(run.lastIndexOf('/') + 1))

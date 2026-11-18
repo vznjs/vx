@@ -312,7 +312,7 @@ describe('vx-worker.yml', () => {
     expect([first.name, first['continue-on-error']]).toEqual(['Start the workers early', true])
     for (const part of [
       '"VX_DTE_WAIT\\":\\"60\\"',
-      '>> "$RUNNER_TEMP/vx-dte-started"',
+      ' $at" >> "$RUNNER_TEMP/vx-dte-started"',
       '>> "$RUNNER_TEMP/vx-dte-runs"',
       'echo "VX_DTE_RUN=$run" >> "$GITHUB_ENV"',
       'for group in hosted.small:9 hosted.mac:3; do',
