@@ -700,6 +700,7 @@
   "version-fast-path.test.ts": 235,
   "wal-checkpointer.test.ts": 197,
   "wall-clock-step.test.ts": 390,
+  "warm-outputs.test.ts": 4500,
   "warm-shell.test.ts": 51,
   "warnings-stderr.test.ts": 159,
   "watch-affected.test.ts": 1935,

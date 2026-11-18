@@ -111,6 +111,7 @@ src/memo/local-memo.ts
 src/memo/lockfile-memo.ts
 src/memo/output-index.ts
 src/memo/remote-hits.ts
+src/memo/stat-thread.ts
 src/orchestrator/admission.ts
 src/orchestrator/affected-tasks.ts
 src/orchestrator/attempt-outputs.ts

@@ -49,17 +49,55 @@ export interface StoreMemo {
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
+  // Reads ahead what a hit on each task's last key will ask, while the run
+  // waits for git: its output rows, and from 2,048 files their stats on a
+  // thread. It reads until `done` says the wait is over; `warmSettled`
+  // waits for the thread; `dropWarm` ends their use.
+  warmOutputs(
+    tasks: Iterable<readonly [taskId: string, projectDir: string]>,
+    done: () => boolean,
+  ): Promise<void>
+  warmSettled(): Promise<void>
+  dropWarm(): void
 }
 export class LocalMemo implements StoreMemo {
-  constructor(files: FileHashStore, folds: FoldMemo, outputs: OutputIndex, guard: Guard)
+  // `read` false (the local READ axis off): nothing is read ahead.
+  constructor(
+    files: FileHashStore,
+    folds: FoldMemo,
+    outputs: OutputIndex,
+    guard: Guard,
+    read?: boolean,
+  )
 }
 ```
+
+### Reading ahead
+
+A warm run proves every output file of every hit by a stat, after git has
+answered, and did nothing while git walked. `warmOutputs` uses that wait:
+it asks `FoldMemo.lastKeys` for each task's last key, reads those entries'
+rows (`OutputIndex.warmRows`; the probe's batch read takes the same
+arrays, once), and from 2,048 files hands their paths to a `StatThread`.
+`isOutputsCurrent` reads the thread's numbers for a rows array it was
+given them for, under the same directory, and stats the rest itself.
+payload (45 builds, 14,484 output files): a no-op went from 164 to 118 ms.
+It reads only while git walks: once git has answered nothing here is free,
+and the site's 9,603-task no-op, whose git starts first, read 6 ms slower
+when it read on. The run waits for the thread (`warmSettled`) just before
+the graph starts.
+
+A stat taken before the graph started proves nothing once anything may
+have written. A run calls `dropWarm` when a command that is no probed hit
+is dispatched, when a hit restores, when a task takes the run path, after
+a plugin's `setup`, and when the graph ends. A task keyed anew wastes its
+read: ~1 µs a row, for files it is about to write again.
 
 ### Tests
 
 `tests/cache-hash-files.test.ts`, `tests/fold-memo.test.ts`,
 `tests/output-stamps-scale.test.ts`, `tests/shared-store-memos.test.ts`,
-`tests/whole-second-stamps.test.ts`.
+`tests/whole-second-stamps.test.ts`, `tests/warm-outputs.test.ts`.
 
 ### Replacing this module
 
@@ -98,6 +136,9 @@ export function fileIdentity(mode: string, oid: string): string
 export interface FoldMemo {
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
+  // Each task's last key whatever its probe, in one read: a guess at its
+  // next (`warmOutputs`). A task never folded is absent.
+  lastKeys(taskIds: readonly string[]): Map<string, string>
 }
 export class IndexFoldMemo implements FoldMemo {}
 ```
@@ -172,6 +213,8 @@ export const DIR_MODE = 0o040000
 export function wideDirMode(disk: number): boolean
 // Every directory above the rows' paths, which a restore makes first.
 export function rowAncestors(rows: readonly OutputFileRow[]): string[]
+// `dir` and a slash: a row's path appended to it is the file's.
+export const baseOf: (dir: string) => string
 export interface OutputFileRow {
   path: string
   mtimeMs: number
@@ -186,6 +229,33 @@ export interface OutputDirRow {
 }
 export class OutputIndex {}
 ```
+
+## `src/memo/stat-thread.ts` — many stats on a thread
+
+### Purpose
+
+`StatThread`: `statSync` of a list of paths on a worker thread, answered as
+five numbers a path (size, mode, mtimeMs, ino, ctimeMs; a NaN mode where
+the stat threw). `statSync` is ~2 µs of the main thread a file, and a warm
+run asks one per output file of every hit: 14,484 files were 38 ms asked
+there and 4 ms asked here (the spawn and the post). A thread that fails
+answers undefined and every file is asked where it always was. The worker
+is source, not a file, as `exec/spawn-off.ts`'s is.
+
+### Public surface
+
+```ts
+export const STAT_FIELDS = 5
+export class StatThread {
+  stat(paths: readonly string[]): Promise<Float64Array | undefined>
+  hold(): void // holds the process open for the answers
+  end(): void
+}
+```
+
+### Tests
+
+`tests/warm-outputs.test.ts`.
 
 ## `src/memo/remote-hits.ts` — the keys a remote last said it holds
 

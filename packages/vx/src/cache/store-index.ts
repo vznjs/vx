@@ -625,7 +625,13 @@ export class StoreIndex {
         : undefined,
     )
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
-    this.localMemo = new LocalMemo(this.files, this.folds, this.outputs, (op) => guard(this, op))
+    this.localMemo = new LocalMemo(
+      this.files,
+      this.folds,
+      this.outputs,
+      (op) => guard(this, op),
+      this.read,
+    )
     this.remoteHits = new IndexRemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the next run

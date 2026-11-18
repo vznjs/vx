@@ -6,7 +6,8 @@ import path from 'node:path'
 import { relPosix } from '../util/index.js'
 import type { FileHashStore } from './file-hashes.js'
 import type { FoldMemo } from './fold-memo.js'
-import type { OutputDirRow, OutputFileRow, OutputIndex } from './output-index.js'
+import { baseOf, type OutputDirRow, type OutputFileRow, type OutputIndex } from './output-index.js'
+import { STAT_FIELDS, StatThread } from './stat-thread.js'
 
 // About 1.3 ms of inserts per turn: a task's exit waits at most that.
 const HELD_SLICE = 250
@@ -38,7 +39,22 @@ export interface StoreMemo {
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
+  warmOutputs(
+    tasks: Iterable<readonly [taskId: string, projectDir: string]>,
+    done: () => boolean,
+  ): Promise<void>
+  warmSettled(): Promise<void>
+  dropWarm(): void
 }
+
+/**
+ * Output files a run must be about to prove before their stats go to a
+ * thread: its spawn is ~3 ms of the main thread, 1,300 stats' worth.
+ */
+const WARM_STATS_FROM = 2048
+
+/** Tasks read ahead between two turns of the event loop: git's answer is not kept waiting behind all of them. */
+const WARM_TASKS_A_TURN = 256
 
 export class LocalMemo implements StoreMemo {
   /**
@@ -74,7 +90,12 @@ export class LocalMemo implements StoreMemo {
     readonly folds: FoldMemo,
     private readonly outputs: OutputIndex,
     private readonly guard: Guard,
+    /** The local READ axis: off, and no entry is a hit to read ahead for. */
+    private readonly read: boolean = true,
   ) {}
+
+  /** The thread `warmOutputs` asked, until `warmSettled` has its answers. */
+  private warming: { thread: StatThread; answers: Promise<void> } | undefined
 
   /**
    * Content-hash a file with an mtime+size fast path: a git blob OID, from
@@ -249,6 +270,99 @@ export class LocalMemo implements StoreMemo {
     const dated = this.datedMtimes.get(hash)
     this.datedMtimes.delete(hash)
     this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated)
+  }
+
+  /**
+   * Read ahead what a hit on each task's last key will ask: its output rows
+   * here, and past `WARM_STATS_FROM` files their stats on a thread. A warm
+   * run proves every output file of every hit by a stat, after git has
+   * answered, and did nothing while git walked: payload's 14,484 files were
+   * 53 ms of a 172 ms no-op, read and stat'ed back to back. A task keyed
+   * anew wastes its read, ~1 µs a row it is about to write again. Reads
+   * until `done` says the wait is over: past it nothing here is free (the
+   * site's 9,603-task no-op, where git has answered by now, read 6 ms
+   * slower when it read on). `warmSettled` waits for the thread;
+   * `dropWarm` ends their use, and a run calls it before anything may write.
+   */
+  async warmOutputs(
+    tasks: Iterable<readonly [taskId: string, projectDir: string]>,
+    done: () => boolean,
+  ): Promise<void> {
+    this.outputs.dropWarm()
+    this.warming = undefined
+    if (!this.read) return
+    const name = this.outputs.warmName
+    type Tree = readonly [rows: readonly OutputFileRow[], base: string]
+    const asked: Array<Promise<void>> = []
+    let thread: StatThread | undefined
+    let waiting: Tree[] = []
+    let files = 0
+    const ask = (trees: readonly Tree[]): void => {
+      const paths: string[] = []
+      for (const [rows, base] of trees) for (const r of rows) paths.push(base + r.path)
+      asked.push(
+        thread!.stat(paths).then((stats) => {
+          if (stats === undefined) return
+          let at = 0
+          for (const [rows, base] of trees) {
+            const end = at + rows.length * STAT_FIELDS
+            this.outputs.noteWarmStats(rows, base, stats.subarray(at, end), name)
+            at = end
+          }
+        }),
+      )
+    }
+    const dirs = new Map<string, string>()
+    const turn = async (): Promise<void> => {
+      const keys = this.folds.lastKeys([...dirs.keys()])
+      const rowsOf = this.guard(() => this.outputs.warmRows([...new Set(keys.values())]))
+      for (const [id, key] of keys) {
+        const rows = rowsOf.get(key)!
+        if (rows.length === 0) continue
+        files += rows.length
+        waiting.push([rows, baseOf(dirs.get(id)!)])
+      }
+      dirs.clear()
+      if (files >= WARM_STATS_FROM && waiting.length > 0) {
+        thread ??= new StatThread()
+        ask(waiting)
+        waiting = []
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+    // The wait may be over before it began (an unscoped run starts git
+    // first): then nothing here is free, and nothing is read.
+    await Promise.resolve()
+    try {
+      for (const [id, dir] of tasks) {
+        if (done() || this.outputs.warmName !== name) break
+        dirs.set(id, dir)
+        if (dirs.size >= WARM_TASKS_A_TURN) await turn()
+      }
+      if (dirs.size > 0 && !done() && this.outputs.warmName === name) await turn()
+    } finally {
+      const asking = thread
+      if (asking !== undefined)
+        this.warming = { thread: asking, answers: Promise.all(asked).then(() => {}) }
+    }
+  }
+
+  /** The stats `warmOutputs` asked a thread for are in, and the thread is gone. */
+  async warmSettled(): Promise<void> {
+    const warming = this.warming
+    if (warming === undefined) return
+    this.warming = undefined
+    warming.thread.hold()
+    try {
+      await warming.answers
+    } finally {
+      warming.thread.end()
+    }
+  }
+
+  /** What `warmOutputs` read and stat'ed answers nothing from here on. */
+  dropWarm(): void {
+    this.outputs.dropWarm()
   }
 
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
