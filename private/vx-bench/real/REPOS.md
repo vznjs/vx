@@ -166,6 +166,21 @@ the repo's own `build`, 37 tasks (36 builds and
 - Nx reruns the six enterprise `build`s (`node ./check-ee.mjs`) on
   every run, 31 of 37 hits; vx hits all 37.
 
+### TanStack/router — f021f6d1c6dce6c9b54d70766f1d636d8fd9e184
+
+pnpm 11.21, Nx 23.2.0. The install is `packages/**`, `benchmarks/**`
+and the root. Benched: `build test:build` minus `examples/**` and
+`e2e/**`, 85 tasks (43 + 42), both tools at the repo's `parallel: 5`.
+
+- Mapped from the task graph Nx plans: `build` with `nx.json`'s five
+  output directories and `buildProduction` inputs (the project and
+  `sharedGlobals`), `test:build` after its own `build` with no
+  outputs, and `@benchmarks/bundle-size#build` with the two scripts
+  and three outputs its target names.
+- Commands are the scripts themselves (`vite build`, `publint --strict
+&& attw …`); none calls pnpm. Nx runs them through pnpm as shipped.
+- Every config is `vx.config.mjs`: two builds end in `tsc --noEmit`.
+
 ## The `turbo()` / `nx()` runs
 
 Every run below predates 2026-09-29 and ran vx without a lock, each

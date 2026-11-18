@@ -122,6 +122,17 @@ const REPOS: Repo[] = [
     workers: 4,
     overlay: true,
   },
+  {
+    name: 'tanstack-router',
+    url: 'https://github.com/TanStack/router',
+    commit: 'f021f6d1c6dce6c9b54d70766f1d636d8fd9e184',
+    tool: 'nx',
+    tasks: 'build test:build',
+    filters: '!./examples/** !./e2e/**',
+    workers: 5,
+    overlay: true,
+    install: ['--filter', './packages/**', '--filter', './benchmarks/**', '--filter', '.'],
+  },
 ]
 
 const { values } = parseArgs({
