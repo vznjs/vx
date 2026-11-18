@@ -139,6 +139,19 @@ const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
   })
 
 /**
+ * A small artifact in memory decoded in one call, as `decodedTar` decodes it;
+ * undefined where that would stream (no declared size, more than one frame).
+ */
+export async function decodedTarBytes(
+  source: Uint8Array,
+  hash: string,
+  cap: number,
+): Promise<Uint8Array | undefined> {
+  if (assertDeclaredSize(source, hash, cap) === null || !isOneFrame(source)) return undefined
+  return await zstdDecompressBounded(source, hash, cap)
+}
+
+/**
  * The decoded tar as a stream: one call for a small artifact that declares its
  * size, a streamed decode otherwise. Bytes in memory are only ever small (a
  * Blob would copy a large source). The 2 GiB ceiling applies either way.

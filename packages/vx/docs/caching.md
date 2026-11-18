@@ -513,7 +513,12 @@ On a hit:
    A folder missing on the way (a cleaned `dist/`) is built whole there
    and renamed in once, so a reader sees it complete or not at all; one
    rename per file, each across directories out of one staging
-   directory, doubled a 5,000-artifact restore's kernel time. A
+   directory, doubled a 5,000-artifact restore's kernel time. An entry
+   kept as plain files, and an inline one holding only the project's
+   own outputs, is copied out the same way except that a file missing
+   from a folder that stands is written straight to its place (the
+   archive's checksum checked first, in memory): staged and renamed one
+   by one, a small inline entry cost ~4× per file. A
    file that already holds the entry's bytes (compared byte for byte, up
    to 4 MiB) is left in place, only its mode set. Every file the restore
    writes is dated now, as the task's own write would be, never with its

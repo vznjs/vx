@@ -1,7 +1,9 @@
 // Restoring an entry's outputs into the tree, and replaying its log.
 
 import {
+  accessSync,
   chmodSync,
+  constants,
   lstatSync,
   readFileSync,
   readlinkSync,
@@ -32,6 +34,7 @@ import {
   type ExecUsage,
   copyStaging,
   extractArtifactStream,
+  inlineTree,
   linksRestorable,
   stagingRoot,
   packArtifactStream,
@@ -48,7 +51,7 @@ import {
   rowAncestors,
   wideDirMode,
 } from '../memo/index.js'
-import { decodedTar } from './zstd.js'
+import { decodedTar, decodedTarBytes } from './zstd.js'
 import {
   StoreIndex,
   guard,
@@ -245,8 +248,7 @@ async function restoreTree(
     await copyTree(
       ix,
       hash,
-      tree,
-      treeIno,
+      treeSource(hash, tree, treeIno),
       rows,
       files,
       projectDir,
@@ -265,6 +267,45 @@ async function restoreTree(
     accept,
     workspaceRoot,
     undefined,
+    dated,
+    absentDirs,
+  )
+}
+
+/**
+ * A small inline artifact written in place the copy-out's way: false, having
+ * written nothing, where it does not apply. Its stream through the extractor
+ * staged and renamed every file, ~4x the copy-out's cost per file (unocss).
+ */
+async function restoreInline(
+  ix: StoreIndex,
+  hash: string,
+  inline: Uint8Array,
+  rows: readonly OutputFileRow[],
+  projectDir: string,
+  workspaceRoot: string | undefined,
+  accept: ((name: string, dir?: boolean) => boolean) | undefined,
+  dated: Map<string, number>,
+  absentDirs: Set<string>,
+): Promise<boolean> {
+  const tar = await decodedTarBytes(inline, hash, ix.artifactCeiling)
+  if (tar === undefined) return false
+  const art = inlineTree(tar)
+  if (art === undefined) return false
+  // Exactly the rows' files at the rows' sizes; anything else is the
+  // extractor's to name.
+  const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
+  if (files.length !== art.files.size) return false
+  for (const r of files) if (art.files.get(r.path)?.byteLength !== r.size) return false
+  return await copyTree(
+    ix,
+    hash,
+    inlineSource(art, workspaceRoot !== undefined),
+    rows,
+    files,
+    projectDir,
+    workspaceRoot,
+    accept,
     dated,
     absentDirs,
   )
@@ -307,6 +348,85 @@ export function treePlan(
   return plan
 }
 
+/** Where a copy-out reads an entry's files: its stored tree, or its inline artifact in memory. */
+interface CopySource {
+  /** A link row's text as kept, undefined where it does not match its row. */
+  link(r: OutputFileRow): string | undefined
+  bytes(rel: string): Uint8Array
+  /** Writes `rel`'s bytes at `to`, answering how many. */
+  write(to: string, rel: string): Promise<number>
+  /** Whether another process's re-save replaced the source mid-copy. */
+  swapped(): boolean
+  /**
+   * Whether a write may open a standing directory of this user's that
+   * withholds its own write, as the extractor's rename out of `.vx/tmp/`
+   * does. With no workspace the extractor stages beside the target and
+   * refuses, and an inline entry keeps that refusal.
+   */
+  reopens: boolean
+}
+
+function treeSource(hash: string, tree: string, ino: number): CopySource {
+  return {
+    // The link as kept, held to its row as `planOfTree` holds it: one
+    // retargeted at rest is the extractor's to refuse, and name.
+    link: (r) => {
+      let to: Buffer
+      try {
+        to = readlinkSync(path.join(tree, r.path), 'buffer')
+      } catch {
+        return undefined
+      }
+      return keptLink(to, r)
+    },
+    bytes: (rel) => readFileSync(path.join(tree, rel)),
+    // Per file, not `fs.promises.cp` of the tree (7× slower) nor a Worker (its
+    // start costs more than the copies). A tree file's type is asked first: a
+    // FIFO at its place (damage at rest) would hang the copy's open. An lstat:
+    // Bun clones only from a path.
+    write: async (to, rel) => {
+      const from = path.join(tree, rel)
+      if (lstatSync(from, { throwIfNoEntry: false })?.isFile() === false)
+        throw new CorruptArtifactError(hash, `${rel} is not a file in its stored tree`)
+      return await Bun.write(to, Bun.file(from), { createPath: false })
+    },
+    // The tree renamed aside mid-copy would give later files from another
+    // build. A changed inode is that race: a miss, and the other process's
+    // entry is kept.
+    swapped: () => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino,
+    reopens: true,
+  }
+}
+
+/** Bytes already checked against the artifact's sum, read in the snapshot that read its rows. */
+function inlineSource(
+  art: { files: ReadonlyMap<string, Uint8Array>; links: ReadonlyMap<string, string> },
+  reopens: boolean,
+): CopySource {
+  return {
+    link: (r) => {
+      const to = art.links.get(r.path)
+      return to === undefined ? undefined : keptLink(Buffer.from(to), r)
+    },
+    bytes: (rel) => art.files.get(rel)!,
+    write: (to, rel) => Bun.write(to, art.files.get(rel)!, { createPath: false }),
+    swapped: () => false,
+    reopens,
+  }
+}
+
+function writable(dir: string): boolean {
+  try {
+    accessSync(dir, constants.W_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const keptLink = (to: Buffer, r: OutputFileRow): string | undefined =>
+  to.byteLength === r.size && Bun.hash.crc32(to) === r.mtimeMs ? LINK_TEXT.decode(to) : undefined
+
 /**
  * The copy-out: false, having written nothing, where it does not apply. It
  * writes only where nothing stands: each file's place is absent, and every
@@ -319,8 +439,7 @@ export function treePlan(
 async function copyTree(
   ix: StoreIndex,
   hash: string,
-  tree: string,
-  ino: number,
+  src: CopySource,
   rows: readonly OutputFileRow[],
   files: readonly OutputFileRow[],
   projectDir: string,
@@ -334,16 +453,9 @@ async function copyTree(
     if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)) return false
     if (accept !== undefined && !r.path.endsWith('/') && !accept(`outputs/${r.path}`)) return false
     if (r.mode !== LINK_MODE) continue
-    // The link as kept, held to its row as `planOfTree` holds it: one
-    // retargeted at rest is the extractor's to refuse, and name.
-    let to: Buffer
-    try {
-      to = readlinkSync(path.join(tree, r.path), 'buffer')
-    } catch {
-      return false
-    }
-    if (to.byteLength !== r.size || Bun.hash.crc32(to) !== r.mtimeMs) return false
-    links.push([r.path, LINK_TEXT.decode(to)])
+    const to = src.link(r)
+    if (to === undefined) return false
+    links.push([r.path, to])
   }
   // Laid here only where the extractor lays each one; any refusal is its to name.
   if (links.length > 0 && !(await linksRestorable(links, rows, projectDir, workspaceRoot)))
@@ -371,9 +483,9 @@ async function copyTree(
   const made = new Set<string>()
   const placed: string[] = []
   // A file the walk left in place (a hit over the last build's tree): its
-  // copy goes to a temp beside it, renamed over it once every copy landed.
-  // Sent to the extractor instead, its 20,000 files were packed into a tar
-  // and unpacked, 4x the copy (6.5 s against 1.6).
+  // copy goes to a temp, renamed over it once every copy landed. Sent to the
+  // extractor instead, its 20,000 files were packed into a tar and unpacked,
+  // 4x the copy (6.5 s against 1.6).
   const replaced = new Map<string, string>()
   const fits = rows.every((r) => {
     const segs = r.path.replace(/\/$/, '').split('/')
@@ -389,7 +501,7 @@ async function copyTree(
       if (isLeaf && state === 'other' && !r.path.endsWith('/') && r.mode !== LINK_MODE) {
         const abs = path.join(projectDir, rel)
         if (lstatSync(abs, { throwIfNoEntry: false })?.isFile() !== true) return false
-        replaced.set(r.path, siblingTemp(abs))
+        replaced.set(r.path, abs)
         return true
       }
       if (state === 'other' || (isLeaf && !r.path.endsWith('/'))) return false
@@ -401,10 +513,6 @@ async function copyTree(
   const roots = [...made].filter((d) => ![...made].some((o) => d.startsWith(`${o}/`)))
   readUmask()
   const plain = restoredMode(0o666)
-  // Another process's re-save renames the tree aside mid-copy, so later files
-  // would come from another build. A changed inode is that race: a miss, and
-  // the other process's entry is kept.
-  const swapped = (): boolean => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino
   // A standing directory of this user's withholding its own write (`chmod 555
   // dist/ro`) gets owner write and search for the copy and its mode back after,
   // as the extractor's rename does.
@@ -431,7 +539,7 @@ async function copyTree(
     projectStat = undefined
   }
   if (projectStat === undefined) await mkdir(projectDir, { recursive: true })
-  const staging = roots.length > 0 ? copyStaging(workspaceRoot) : undefined
+  const staging = roots.length > 0 || replaced.size > 0 ? copyStaging(workspaceRoot) : undefined
   if (staging?.stats !== undefined) {
     const fits = new Map<string, boolean>()
     for (const rel of roots) {
@@ -448,6 +556,23 @@ async function copyTree(
       if (!fit) return false
     }
   }
+  // A replaced file's temp is staged too where it renames in as a write in
+  // place lands: beside it, `vx watch` saw the temp and ran a cycle. Not
+  // into a directory this user cannot write: the write beside it is what
+  // reopens one of its own, or names the tree as the refusal.
+  const into = new Map<string, boolean>()
+  for (const [rel, abs] of replaced) {
+    const dir = path.dirname(abs)
+    let fit = into.get(dir)
+    if (fit === undefined) {
+      fit =
+        staging?.stats !== undefined &&
+        stagesInto(staging.stats, statSync(dir, { throwIfNoEntry: false })) &&
+        writable(dir)
+      into.set(dir, fit)
+    }
+    replaced.set(rel, fit ? staging!.temp(abs) : siblingTemp(abs))
+  }
   const temps = new Map(roots.map((rel) => [rel, staging!.temp(path.join(projectDir, rel))]))
   const target = (rel: string): string => {
     const temp = replaced.get(rel)
@@ -457,18 +582,17 @@ async function copyTree(
     }
     return path.join(projectDir, rel)
   }
-  // Per file, not `fs.promises.cp` of the tree (7× slower) nor a Worker (its
-  // start costs more than the copies). A tree file's type is asked first: a
-  // FIFO at its place (damage at rest) would hang the copy's open. An lstat:
-  // Bun clones only from a path.
-  const copy = async (to: string, from: string, rel: string): Promise<number> => {
-    if (lstatSync(from, { throwIfNoEntry: false })?.isFile() === false)
-      throw new CorruptArtifactError(hash, `${rel} is not a file in its stored tree`)
+  const copy = async (to: string, rel: string): Promise<number> => {
     try {
-      return await Bun.write(to, Bun.file(from), { createPath: false })
+      return await src.write(to, rel)
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EACCES' || !reopen(path.dirname(to))) throw err
-      return await Bun.write(to, Bun.file(from), { createPath: false })
+      if (
+        (err as NodeJS.ErrnoException).code !== 'EACCES' ||
+        !src.reopens ||
+        !reopen(path.dirname(to))
+      )
+        throw err
+      return await src.write(to, rel)
     }
   }
   // A file left in place that already holds the entry's bytes stays, its
@@ -478,7 +602,7 @@ async function copyTree(
     const abs = path.join(projectDir, r.path)
     const st = lstatSync(abs, { throwIfNoEntry: false })
     if (st?.isFile() !== true || st.nlink !== 1 || st.size !== r.size || r.size === 0) return false
-    if (!readFileSync(abs).equals(readFileSync(path.join(tree, r.path)))) return false
+    if (!readFileSync(abs).equals(src.bytes(r.path))) return false
     if ((st.mode & 0o7777) !== restoredMode(r.mode)) chmodSync(abs, restoredMode(r.mode))
     replaced.delete(r.path)
     dated.set(`outputs/${r.path}`, Math.floor(st.mtimeMs))
@@ -506,7 +630,7 @@ async function copyTree(
       ...files.map(async (r) => {
         if (replaced.has(r.path) && keptAsIs(r)) return
         const to = target(r.path)
-        const n = await copy(to, path.join(tree, r.path), r.path)
+        const n = await copy(to, r.path)
         if (n !== r.size)
           throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
         const mode = restoredMode(r.mode)
@@ -518,7 +642,7 @@ async function copyTree(
     ])
     const failed = copied.find((c) => c.status === 'rejected')
     if (failed !== undefined) throw failed.reason
-    if (swapped()) throw new ArtifactVanishedError(hash)
+    if (src.swapped()) throw new ArtifactVanishedError(hash)
     landing = true
     // At once, every one settled before a failure is handled, as the
     // copies; one alone is awaited, as a 1,601-restore run felt the promises.
@@ -553,7 +677,8 @@ async function copyTree(
       ...landed.map((rel) => rm(path.join(projectDir, rel), { recursive: true, force: true })),
       ...placed.map((rel) => rm(path.join(projectDir, rel), { force: true })),
     ])
-    if (!(err instanceof ArtifactVanishedError) && swapped()) throw new ArtifactVanishedError(hash)
+    if (!(err instanceof ArtifactVanishedError) && src.swapped())
+      throw new ArtifactVanishedError(hash)
     throw err
   } finally {
     for (const [dir, mode] of reopened) {
@@ -717,7 +842,20 @@ async function restoreOutputsOnce(
         written,
         absentDirs,
       )
-    } else {
+    } else if (
+      inline === undefined ||
+      !(await restoreInline(
+        ix,
+        hash,
+        inline,
+        rows,
+        projectDir,
+        workspaceRoot,
+        accept,
+        written,
+        absentDirs,
+      ))
+    ) {
       const tar = await decodedTar(inline ?? Bun.file(src), hash, ix.artifactCeiling)
       await extractArtifactStream(
         tar,

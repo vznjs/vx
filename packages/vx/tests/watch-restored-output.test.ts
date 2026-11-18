@@ -11,8 +11,9 @@ import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/memo/index.js'
 import type { Logger } from '../src/report/index.js'
-import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { localWorkspaceSource, workspaceWith } from './helpers/local-workspace.js'
 import { commandWindows, run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import {
@@ -37,34 +38,46 @@ afterEach(async () => {
   await rm(outside, { recursive: true, force: true })
 })
 
-it('an output a cache hit restores starts no cycle', async () => {
-  root = await makeWorkspace({ prefix: 'vx-watch-restore-' })
-  outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-restore-count-'))
-  const log = path.join(outside, 'runs.log')
-  const dir = await addProject(root, 'app', {
-    config: `export default { tasks: {
+// Inline and as plain files: a tree entry's copy over the last build's file
+// staged its temp beside it, and the watch saw the temp (2026-11-18).
+it.each([
+  ['inline', ''],
+  ['kept as files', 'cache: { store: { embeddings: false } }'],
+])(
+  'an output a cache hit restores starts no cycle (%s)',
+  async (_, fields) => {
+    root = await makeWorkspace({ prefix: 'vx-watch-restore-' })
+    outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-restore-count-'))
+    const log = path.join(outside, 'runs.log')
+    const dir = await addProject(root, 'app', {
+      config: `export default { tasks: {
       build: { exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
       check: { dependsOn: ['build'], exec: { command: 'true' }, inputs: { files: ['**/*'] }, outputs: { files: [] }, cache: true },
       types: { dependsOn: ['check'], exec: { command: 'echo run >> ${log}' } },
     } }\n`,
-    files: { 'src/a.txt': 'a1\n', '.gitignore': 'dist/\n' },
-  })
-  await writeFile(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
-  w = startWatch(root, ['--all'], {}, 'types')
-  const watch = w
-  await until(() => watch.out().includes('watching '), 'the watching marker')
-  await initialOnly(watch, log)
-  await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
-  await until(async () => (await executions(log)) === 2, 'the edit cycle')
-  await Bun.sleep(SETTLE_MS * 2)
-  await writeFile(path.join(dir, 'src', 'a.txt'), 'a1\n')
-  await until(async () => (await executions(log)) === 3, 'the undo cycle')
-  await Bun.sleep(SETTLE_MS * 3)
-  expect({ runs: await executions(log), out: watch.out() }).toEqual({
-    runs: 3,
-    out: expect.not.stringContaining('dist/a.txt'),
-  })
-}, 40_000)
+      files: { 'src/a.txt': 'a1\n', '.gitignore': 'dist/\n' },
+    })
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      fields === '' ? localWorkspaceSource() : workspaceWith(fields),
+    )
+    w = startWatch(root, ['--all'], {}, 'types')
+    const watch = w
+    await until(() => watch.out().includes('watching '), 'the watching marker')
+    await initialOnly(watch, log)
+    await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
+    await until(async () => (await executions(log)) === 2, 'the edit cycle')
+    await Bun.sleep(SETTLE_MS * 2)
+    await writeFile(path.join(dir, 'src', 'a.txt'), 'a1\n')
+    await until(async () => (await executions(log)) === 3, 'the undo cycle')
+    await Bun.sleep(SETTLE_MS * 3)
+    expect({ runs: await executions(log), out: watch.out() }).toEqual({
+      runs: 3,
+      out: expect.not.stringMatching(/dist\/(a\.txt|\.vx-tmp)/),
+    })
+  },
+  40_000,
+)
 
 // A restore is the run's write as a command's is, and a write in a cycle
 // that no command window covered was the user's (`sawEvent`). `app#types`
@@ -120,8 +133,11 @@ it("a hit's restore is a writer of the run's command windows", async () => {
   await writeFile(out, 'edited\n')
   const windows = commandWindows()
   const hit = await run({ ...once, handoff: { commandWindows: windows } })
+  // Asked as `vx watch` asks: the stamp runs up to a tick behind the clock
+  // that dates the window, and a restore written in place can land inside it.
   const t = (await stat(out)).ctimeMs
-  expect([hit.outcomes[0]?.status, windows.writerDuring('', out, t, t)]).toEqual([
+  const to = t + racyWindowMs(t, FILE_HASH_RACY_MS)
+  expect([hit.outcomes[0]?.status, windows.writerDuring('', out, t, to)]).toEqual([
     'cache-hit',
     'app#build',
   ])
