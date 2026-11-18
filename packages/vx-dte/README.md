@@ -493,7 +493,14 @@ use your own instead.
   next frame: that load counted the task. Every
   task sent begins at once; none waits in a worker's queue. A task asking
   a whole worker, or bigger than any, runs alone on an idle one (one that
-  filled its worker last time). A task with history goes only on a size
+  filled its worker last time). A task booking more than one core can
+  parallelize, so one wider than every worker in the run, with no room
+  for it now, runs on the most whole cores free on one worker when, as
+  many times as long as it is short of its cores, it ends sooner than
+  waiting for room: a 20-core task of 60 s starts now on the 9 free cores
+  of a 10-core worker busy with a 150 s chain, not after it.
+  The run books it those cores and expects it that much later; a size
+  that fits it whole is still waited for. A task with history goes only on a size
   with room for its cores and memory when some size has it, so a 4-core
   task never runs at half speed on a 2-core worker while 8-core sizes
   go unasked. Workers its work needs within a warm-up of each other

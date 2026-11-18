@@ -385,6 +385,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     // The live run's own rule (`Orchestrator.pump`).
     // The draining last, for what no other takes now: a run never waits on a drain.
     const to = new Map<string, (typeof all)[number]>()
+    // As the orchestrator: a flexible task given fewer cores than it wants.
+    const given = new Map<string, number>()
     for (const bins of [all.filter((b) => !draining(b.w)), all.filter((b) => draining(b.w))])
       if (bins.length > 0)
         for (const [id, b] of queue.pass(bins, {
@@ -395,6 +397,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
             ? {}
             : { soon: soon.slice(0, 4 * bins.length + 8), next: (id) => nextOf(id, endsAt) }),
           want: (id) => placing.want(id),
+          given,
           // As `Orchestrator.pin`: on the live worker holding its upstreams' files.
           gate: (id) => {
             const g = placing.gate(id, now)
@@ -418,13 +421,16 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           again += byId.get(u)!.ran?.ms ?? 0
           keep(u, w.id)
         }
+      const fewer = given.get(id)
+      const known = durationMs(id)
       w.running.set(id, {
         id,
-        booked: need(id),
+        booked: fewer === undefined ? need(id) : { ...need(id), cores: fewer },
         cores: ran.cores,
         left: ran.ms + again,
         startedAt: now,
-        knownMs: durationMs(id),
+        knownMs:
+          fewer === undefined || known === undefined ? known : (known * need(id).cores) / fewer,
       })
       w.tasks++
       w.ran.push(id)
