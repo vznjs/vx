@@ -1543,7 +1543,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    written since the run started by none of its commands, is a change,
    and the first cycle runs on it. One written while a command of its
    own project ran may be that command's: the keys are taken again, and
-   it is a change when one moved. A deletion made while it runs is
+   it is a change when one moved. A loop that armed while the run
+   waited on a server does both once the run returns, so an edit beside
+   a dev server already up is a cycle too. A deletion made while it runs is
    still unheard: it has no date to tell it from one made before.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of

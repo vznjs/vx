@@ -46,13 +46,14 @@ function watchCase(
     phases: WatchPhase[]
     projects?: string[]
     before?: Step[]
+    alsoNeeds?: Case['needs']
   },
 ): Case {
-  const { phases, projects, before = [], ...rest } = c
+  const { phases, projects, before = [], alsoNeeds = [], ...rest } = c
   return defineCase({
     ...rest,
     category: 'watch',
-    needs: ['watch'],
+    needs: ['watch', ...alsoNeeds],
     steps: [...before, { watch: 'build', ...(projects ? { projects } : {}), phases }],
   })
 }
@@ -455,6 +456,78 @@ export default [
             },
           },
           files: { 'src/a.txt': 'a1\n', 'schema/s.txt': 's1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          files: { 'packages/app/gen/out.txt': 's1\n', 'packages/app/dist/started': 'a1\n' },
+          inFlight: true,
+        },
+      },
+      {
+        write: { 'packages/app/schema/s.txt': 's2\n' },
+        expect: { ran: ['app#gen'], files: { 'packages/app/gen/out.txt': 's2\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
+    id: 'watch/edit-beside-ready-server-in-first-run-rebuilds',
+    kind: 'correctness',
+    title:
+      'An edit made during the watch’s first build, in a project whose dev server is already up, is built right after',
+    why: 'A watch over an app starts its servers one after another, and the first is up long before the last. A save made meanwhile, in the project of a server already up, is an edit like any other. A watch that takes it for the server’s own write keeps serving what was built from the old source, and says nothing, until the file is saved again.',
+    from: ['watch-initial-edit-server'],
+    alsoNeeds: ['persistent', 'ready'],
+    workspace: {
+      projects: {
+        app: {
+          tasks: {
+            gen: {
+              command: 'mkdir -p gen && cat schema/*.txt > gen/out.txt',
+              inputs: ['schema/**'],
+              outputs: ['gen/**'],
+            },
+            api: {
+              command: 'echo Listening on 1; sleep 600',
+              persistent: { ready: 'Listening on' },
+              inputs: ['server/**'],
+            },
+            // `started` once gen is done and the api is up, so the edit lands beside the server.
+            build: {
+              command:
+                'mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt',
+              dependsOn: ['gen', 'api'],
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'a1\n', 'schema/s.txt': 's1\n' },
+        },
+        // Its server is the last thing the first build waits for.
+        web: {
+          tasks: {
+            prep: {
+              command: 'sleep 3 && mkdir -p prep && cp src/a.txt prep/out.txt',
+              inputs: ['src/**'],
+              outputs: ['prep/**'],
+            },
+            dev: {
+              command: 'sleep 1; echo Listening on 2; sleep 600',
+              persistent: { ready: 'Listening on' },
+              dependsOn: ['prep'],
+              inputs: ['server/**'],
+            },
+            build: {
+              command: 'mkdir -p dist && cat src/*.txt > dist/out.txt',
+              dependsOn: ['dev'],
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'w1\n' },
         },
       },
     },

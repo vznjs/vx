@@ -137,11 +137,13 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   It refuses a Bun below `engines.bun` first (`check.bun`, item 575).
 - `bun test` alone cannot see a type error: it is transpile-only. Never
   pipe a check through `tail`/`grep` — it masks the exit.
-- The core suite runs as `SHARD_COUNT` (46, `vx.config.ts`) parallel
+- The core suite runs as `SHARD_COUNT` (84, `vx.config.ts`) parallel
   shard tasks, generated from one template; `scripts/test-shard.ts <i>
 <n>` deals the files by recorded weight (`tests/shard-weights.json`,
   refreshed with `--weigh <junit-dir>`), so the wall time is the
-  average shard, not the alphabet's heaviest. Many processes is not
+  average shard, not the alphabet's heaviest. The shards are unequal
+  (`SHARD_SHAPE`, 24 of 46 s, 24 of 23 s, 36 of 11 s): big ones first,
+  small ones fill a distributed run's end. Many processes is not
   only speed: `bun test` pins ~2 descriptors per imported module and
   macOS caps a process at 10 240, so the whole suite in one process
   does not clear the cap.

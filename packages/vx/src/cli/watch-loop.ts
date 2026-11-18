@@ -102,6 +102,9 @@ export interface InitialCycle {
   held: Promise<HeldPersistent | undefined>
   /** The loop's readiness hook, once the loop has armed. */
   onWaiting?: () => void
+  /** Set once the run returns, for a loop that armed while it ran: `WatchLoopArgs.drifted` and `.keys`. */
+  drifted?: string
+  keys?: ReadonlyMap<string, string>
 }
 
 interface WatchLoopArgs {
@@ -233,6 +236,8 @@ class WatchLoop {
   private interruptTimer: ReturnType<typeof setTimeout> | null = null
   /** The server's own writes among the paths that stopped the last cycle waiting on readiness. */
   private stoppedLast = new Set<string>()
+  /** Files `heardSinceRun` found inside a command's window, at an arm the initial run was still behind. */
+  private inWindowAtArm: string[] = []
   private windowOpened = 0
   /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
   private lockSeen: string
@@ -423,7 +428,10 @@ class WatchLoop {
     // it, and watch idled over stale output. One to a task the run was running
     // its re-check found; any other is heard here.
     const { heard, inWindow } = this.heardSinceRun()
-    if (args.drifted !== undefined && !heard)
+    // Armed while the run waits on a server: its keys come when it returns.
+    if (args.initial !== undefined) {
+      if (!heard) this.inWindowAtArm = inWindow
+    } else if (args.drifted !== undefined && !heard)
       void this.cycle(`${args.drifted} inputs, edited during the first run`)
     // Heard, the cycle keys every task itself.
     else if (!heard && inWindow.length > 0 && args.keys !== undefined && !this.running) {
@@ -533,9 +541,17 @@ class WatchLoop {
         let failed: string | undefined
         /** The judged cycle this run is (`ChangeJudge.cycle`): its window closes when the run ends. */
         const judged = changes.cycle
+        /** A task the initial run left unsaved: its cycle, when no edit starts one. */
+        let drifted: string | undefined
         if (initial !== undefined) {
           this.held = await initial.held
+          const { keys } = initial
+          drifted = initial.drifted
           initial = undefined
+          const inWindow = this.inWindowAtArm
+          this.inWindowAtArm = []
+          if (inWindow.length > 0 && keys !== undefined && !this.stop.aborted)
+            await this.hearMoved(inWindow, keys)
         } else
           try {
             // A member came or went: armed before the run keys it, so an edit
@@ -565,7 +581,11 @@ class WatchLoop {
           this.interruptedBy = undefined
           continue
         }
-        if (changes.pending.size === 0) break
+        if (changes.pending.size === 0) {
+          if (drifted === undefined) break
+          label = `${drifted} inputs, edited during the first run`
+          continue
+        }
         await Bun.sleep(DEBOUNCE_MS)
         label = changes.judge()
       }
@@ -1241,6 +1261,19 @@ class WatchLoop {
     keys: ReadonlyMap<string, string>,
   ): Promise<void> {
     try {
+      await this.hearMoved(inWindow, keys)
+    } finally {
+      this.running = false
+      const next = pendingAfterCycle(this.changes.pending, this.stop.aborted)
+      if (next !== undefined) this.trigger(next[1], next[0])
+    }
+  }
+
+  private async hearMoved(
+    inWindow: readonly string[],
+    keys: ReadonlyMap<string, string>,
+  ): Promise<void> {
+    try {
       const plan = await untimed(() => planCore({ ...this.opts, log: SILENT, cache: KEYS_ONLY }))
       const moved = plan.tasks.some((t) => {
         const was = keys.get(t.node.id)
@@ -1249,10 +1282,6 @@ class WatchLoop {
       if (moved) for (const abs of inWindow) this.hear(abs)
     } catch {
       // The cycle an edit starts says what a plan could not.
-    } finally {
-      this.running = false
-      const next = pendingAfterCycle(this.changes.pending, this.stop.aborted)
-      if (next !== undefined) this.trigger(next[1], next[0])
     }
   }
 }

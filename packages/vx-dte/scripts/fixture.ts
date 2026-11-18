@@ -21,14 +21,19 @@ interface TraceEvent {
   args?: { name?: string; cpuMs?: number; peakRssBytes?: number }
 }
 
-/** A worker's platform by its size's name, as .vx/workspace.ts declares them. */
+/**
+ * A worker's platform by its size's name, as .vx/workspace.ts declares
+ * them. A profile names a worker by its adapter group too (`hosted.mac#2`):
+ * read whole, no Mac task got its platform, and the sims of three planner
+ * changes ran the Mac's shards on Linux workers (2026-11-18).
+ */
 const PLATFORMS: Record<string, string> = {
   small: 'linux-x64',
   arm: 'linux-arm64',
   mac: 'darwin-arm64',
 }
 
-function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: string) {
+export function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: string) {
   const machine = new Map<number, string>()
   for (const e of trace)
     if (e.ph === 'M' && e.name === 'process_name' && e.args?.name !== undefined)
@@ -43,7 +48,7 @@ function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: string) {
       Math.round((e.args.cpuMs / ms) * 100) / 100,
       Math.round((e.args.peakRssBytes ?? 0) / 1e6),
     ]
-    const p = PLATFORMS[(machine.get(e.pid) ?? '').split('#')[0]!]
+    const p = PLATFORMS[(machine.get(e.pid) ?? '').split('#')[0]!.split('.').at(-1)!]
     if (p !== undefined && p !== 'linux-x64') platform.set(e.name, p)
   }
   return {
