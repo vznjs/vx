@@ -549,10 +549,6 @@ use your own instead.
   its own files land after its upstream's, and the run ends with every
   file here. A cached one is saved here once its files land. An output
   over 256 KB is read from the entry first, as before.
-- A download that fails never fails a task a worker ran. An entry no
-  cache here gave, asked twice, leaves the task done with a warning: its
-  output is not shown, nothing is saved here, and its files are asked
-  for again only when a task on this machine needs them.
 - A task that declares no output (a test, a lint) is done here once its
   worker says so: its `end` carries its output, and its entry is not read
   back first. Core saves it here as after any task.
