@@ -79,6 +79,8 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
 /** The key of the mark that R2 holds an object, and its size. */
 const heldOf = (name: string): Request => new Request(`https://vx-cache.held/${name}`)
 const SIZE = 'vx-size'
+/** A download under 1 MiB a second is said: the client's own floor. */
+const SLOW_BYTES_PER_MS = (1024 * 1024) / 1000
 
 /**
  * R2, read through the data center's cache: an artifact never changes
@@ -144,23 +146,48 @@ export function r2Blobs(
       mark(name, o.size, o.uploaded.getTime())
       // The copy is R2 read again, never a tee of the client's body: a tee on
       // Workers reads at its slower branch's pace, and the cache write held a
-      // download for 19 minutes (main).
+      // download for 19 minutes (main). And only once the client has its
+      // bytes: read beside the client's, both reads of one 42 MB object ran
+      // at 150 to 300 KB/s for minutes, five times of five, and neither
+      // ended (main, 2026-11-18). The pipe is the runtime's own: no byte
+      // passes through this code.
+      const began = Date.now()
+      const sent = new FixedLengthStream(o.size)
       ctx.waitUntil(
-        (async () => {
-          const copy = await again(() => bucket.get(name))
-          if (copy === null) return
-          const headers = {
-            'content-length': String(copy.size),
-            'cache-control': 'public, max-age=31536000, immutable',
-          }
-          await (await cache).put(key, new Response(copy.body, { headers }))
-        })().catch((err: unknown) =>
-          // The client has its bytes; only the copy failed. Thrown, it was an
-          // uncaught exception in the dashboard's Issues.
-          console.warn(`vx-cache-server: the data center's copy of ${name}: ${String(err)}`),
-        ),
+        o.body
+          .pipeTo(sent.writable)
+          .then(
+            () => {
+              const ms = Date.now() - began
+              if (o.size / Math.max(ms, 1) < SLOW_BYTES_PER_MS)
+                console.warn(`vx-cache-server: ${name} took ${ms} ms for ${o.size} bytes`)
+              return true
+            },
+            (err: unknown) => {
+              // The client left, or R2 failed mid-body: said, so a slow read has a line.
+              console.warn(
+                `vx-cache-server: ${name} (${o.size} bytes) ended after ${Date.now() - began} ms: ${String(err)}`,
+              )
+              return false
+            },
+          )
+          .then(async (whole) => {
+            if (!whole) return
+            const copy = await again(() => bucket.get(name))
+            if (copy === null) return
+            const headers = {
+              'content-length': String(copy.size),
+              'cache-control': 'public, max-age=31536000, immutable',
+            }
+            await (await cache).put(key, new Response(copy.body, { headers }))
+          })
+          .catch((err: unknown) =>
+            // The client has its bytes; only the copy failed. Thrown, it was an
+            // uncaught exception in the dashboard's Issues.
+            console.warn(`vx-cache-server: the data center's copy of ${name}: ${String(err)}`),
+          ),
       )
-      return { body: o.body, size: o.size }
+      return { body: sent.readable, size: o.size }
     },
     // R2 answers whether it holds an object (a check, a HEAD and a PUT's skip),
     // or a mark it made: never the data center's copy of the bytes, which

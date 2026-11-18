@@ -3,7 +3,7 @@
 // again before it fails the request 502, and the copy it makes in the
 // background never throws past waitUntil (2026-11-06: the Issues tab).
 
-import { expect, it } from 'bun:test'
+import { beforeEach, expect, it } from 'bun:test'
 import { type R2Bucket, r2Blobs } from '../src/worker.js'
 import workerConfig from '../wrangler.jsonc' with { type: 'text' }
 
@@ -43,12 +43,26 @@ function fixture(fails: (Error | null)[]) {
   return { calls, blobs, later }
 }
 
+// workerd's FixedLengthStream, its length unchecked: tests/r2-put.test.ts checks it.
+beforeEach(() => {
+  Object.assign(globalThis, {
+    FixedLengthStream: class extends TransformStream<Uint8Array, Uint8Array> {
+      constructor(_length: number) {
+        super()
+      }
+    },
+  })
+})
+
 it('asks R2 again on 10001 and 10058', async () => {
   const f = fixture([r2Error(10058), r2Error(10001)])
   expect(await f.blobs.size('a/b/c/d')).toBe(5)
   expect(f.calls).toEqual(['head', 'head', 'head'])
   const g = fixture([r2Error(10001)])
-  expect((await g.blobs.get('a/b/c/d'))?.size).toBe(5)
+  const got = await g.blobs.get('a/b/c/d')
+  expect(got?.size).toBe(5)
+  await new Response(got!.body).text()
+  await Promise.all(g.later)
   expect(g.calls[0]).toBe('get')
   expect(g.calls[1]).toBe('get')
 })
