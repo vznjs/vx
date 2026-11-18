@@ -1,10 +1,16 @@
 ---
 // The system graph as two SVG layouts (wide, phone) from system-map.ts:
-// every box with a lit edge under it for depth, every wire, the core's
-// stages, and an empty layer the hero's script fills with packets.
-import { BOXES, LAYOUTS, WIRES, chips, rect, wirePath, type LayoutName } from './system-map.ts'
+// every box with a lit edge under it for depth, every wire, the core's seven
+// hook groups, the workers (always drawn, grey while off), and the layers
+// the hero's script fills with task bars and named dots.
+import run from '../../data/hero-run.json'
+import { BOXES, GROUPS, LAYOUTS, PAD, SLOTS, WIRES, chips, rect, wirePath, type LayoutName } from './system-map.ts'
 
 const layouts: LayoutName[] = ['wide', 'narrow']
+const slots = Array.from({ length: SLOTS }, (_, i) => i + 1)
+const cores = Math.max(...run.workers.map((w) => w.cores))
+const hits = run.tasks.filter((t) => 'hit' in t && t.hit).length
+const summary = `${run.tasks.length} tasks · ${hits} cached · ${run.workers.length} workers`
 ---
 
 {
@@ -26,39 +32,74 @@ const layouts: LayoutName[] = ['wide', 'narrow']
         </g>
         {BOXES.filter((b) => b.id !== 'core').map((b) => {
           const r = rect(name, b.id)
-          const lines = split ? b.sub.split(' · ') : [b.sub]
-          const small = r.w < 100
+          const small = r.w < 130
+          // A phone's box too narrow for the full name takes the short one.
+          const tight = split && b.short !== undefined && b.label.length * 8.6 > r.w - 24
+          // A phone's narrow box keeps the package alone under its short label.
+          const lines = small ? [b.sub.split(' · ')[0]!] : split ? b.sub.split(' · ') : [b.sub]
           const tx = r.x + (small ? r.w / 2 : 16)
           const anchor = small ? 'middle' : 'start'
+          const label = small || tight ? (b.short ?? b.label) : b.label
           return (
             <g class:list={['node', `tone-${b.tone}`]} data-box={b.id}>
               <rect class="edge" x={r.x} y={r.y + 7} width={r.w} height={r.h} rx="10" />
               <rect class="face" x={r.x} y={r.y} width={r.w} height={r.h} rx="10" />
-              <text class="node-label" x={tx} y={r.y + (split && !small ? 21 : 25)} text-anchor={anchor}>
-                {b.label}
+              <text class="node-label" x={tx} y={r.y + (split ? 21 : 25)} text-anchor={anchor}>
+                {label}
               </text>
               {lines.map((l, i) => (
-                <text class="node-sub" x={tx} y={r.y + (split && !small ? 38 + i * 14 : 44)} text-anchor={anchor}>
+                <text class="node-sub" x={tx} y={r.y + (split ? 38 + i * 14 : 44)} text-anchor={anchor}>
                   {l}
                 </text>
               ))}
             </g>
           )
         })}
+        {slots.map((k) => {
+          const r = rect(name, `slot${k}`)
+          const barX = r.x + 10
+          const barW = r.w - 20
+          // A phone's slot is too narrow for name and state on one line.
+          const barY = r.y + (split ? 44 : 32)
+          const barH = r.h - (split ? 54 : 42)
+          return (
+            <g class="slot tone-dte" data-slot={k} data-state="off" data-x={barX} data-y={barY} data-w={barW} data-h={barH} data-cores={cores}>
+              <rect class="slot-edge" x={r.x} y={r.y + 6} width={r.w} height={r.h} rx="10" />
+              <rect class="slot-face" x={r.x} y={r.y} width={r.w} height={r.h} rx="10" />
+              <rect class="slot-warm" x={r.x} y={r.y} width="0" height={r.h} rx="10" />
+              <text class="slot-name" x={r.x + 10} y={r.y + 20}>worker {k}</text>
+              <text
+                class="slot-state"
+                x={split ? r.x + 10 : r.x + r.w - 10}
+                y={r.y + (split ? 36 : 20)}
+                text-anchor={split ? 'start' : 'end'}
+              >
+                off
+              </text>
+              {Array.from({ length: cores }, (_, i) => (
+                <rect class="slot-core" x={barX + (i * barW) / cores + 1} y={barY} width={barW / cores - 2} height={barH} rx="3" />
+              ))}
+              <g class="bars" />
+            </g>
+          )
+        })}
         <g class="node tone-core core" data-box="core">
           <rect class="edge" x={c.x} y={c.y + 10} width={c.w} height={c.h} rx="16" />
           <rect class="face" x={c.x} y={c.y} width={c.w} height={c.h} rx="16" />
-          <text class="core-label" x={c.x + 22} y={c.y + (split ? 50 : 62)}>
+          <text class="core-label" x={c.x + PAD} y={c.y + 52}>
             vx
           </text>
-          <text class="core-sub" x={c.x + (split ? 82 : 96)} y={c.y + (split ? 44 : 54)}>
+          <text class="core-sub" x={c.x + PAD + 76} y={c.y + 30}>
             one run, every stage
+          </text>
+          <text class="core-clock" x={c.x + PAD + 76} y={c.y + 50}>
+            {summary}
           </text>
           {chips(name).map((s) => (
             <g class="chip" data-stage={s.id}>
               <rect x={s.x} y={s.y} width={s.w} height={s.h} rx="6" />
-              <text x={s.x + s.w / 2} y={s.y + 18} text-anchor="middle">
-                {s.id}
+              <text class="chip-title" x={s.x + s.w / 2} y={s.y + s.h / 2 + 4} text-anchor="middle">
+                {GROUPS.find((x) => x.id === s.id)!.title}
               </text>
             </g>
           ))}

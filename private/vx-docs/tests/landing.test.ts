@@ -23,6 +23,8 @@ import {
   timesLabel,
 } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
+import run from '../src/data/hero-run.json'
+import { PLUGIN_HOOKS } from '@vzn/vx'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
@@ -199,22 +201,24 @@ describe('the landing page', () => {
     ])
   })
 
-  // The graph is drawn once per layout, and every step of the run is in the
+  // The graph is drawn once per layout, and every hook group is in the
   // HTML, so the page reads whole with no script.
-  it('draws the graph, both layouts, and lists every step of the run', () => {
+  it('draws the graph, both layouts, and lists every hook group', () => {
     const svgs = [...stage.matchAll(/<svg\b[^>]*data-layout="(\w+)"/g)].map((m) => m[1])
     expect(svgs).toEqual(['wide', 'narrow'])
     for (const b of map.BOXES)
       expect([...stage.matchAll(new RegExp(`data-box="${b.id}"`, 'g'))]).toHaveLength(2)
     for (const w of map.WIRES)
       expect([...stage.matchAll(new RegExp(`data-wire="${w.id}"`, 'g'))]).toHaveLength(2)
-    const steps = [...stage.matchAll(/<li\b[^>]*data-step="\d"[^>]*>([\s\S]*?)<\/li>/g)].map(
+    // Every worker's slot is drawn, whether a worker holds it or not.
+    expect([...stage.matchAll(/data-slot="\d"/g)]).toHaveLength(2 * map.SLOTS)
+    const groups = [...stage.matchAll(/<li\b[^>]*data-step="\d"[^>]*>([\s\S]*?)<\/li>/g)].map(
       (m) => [
         text(/<strong class="story-title">([\s\S]*?)<\/strong>/.exec(m[1]!)![1]!),
         text(/<p>([\s\S]*?)<\/p>/.exec(m[1]!)![1]!),
       ],
     )
-    expect(steps).toEqual(map.STEPS.map((s) => [s.title, s.line.replaceAll('`', '')]))
+    expect(groups).toEqual(map.GROUPS.map((g) => [g.title, g.line.replaceAll('`', '')]))
   })
 
   it('keeps every anchor the redirects land on', () => {
@@ -452,10 +456,13 @@ describe('the landing page', () => {
 })
 
 describe('the system graph, as data', () => {
-  it('places every box and wire in both layouts, inside the drawing', () => {
+  it('places every box, slot and wire in both layouts, inside the drawing', () => {
+    const slots = Array.from({ length: map.SLOTS }, (_, i) => `slot${i + 1}`)
+    // Every worker the run had has its own box.
+    expect(map.play(run as map.Run).lanes.length).toBeLessThanOrEqual(map.SLOTS)
     for (const L of Object.values(map.LAYOUTS)) {
-      for (const b of map.BOXES) {
-        const r = L.boxes[b.id]!
+      for (const id of [...map.BOXES.map((b) => b.id), ...slots]) {
+        const r = L.boxes[id]!
         expect(r).toBeDefined()
         expect(r.x + r.w).toBeLessThanOrEqual(L.width)
         expect(r.y + r.h).toBeLessThanOrEqual(L.height)
@@ -464,19 +471,164 @@ describe('the system graph, as data', () => {
     }
   })
 
-  it('lights only boxes, stages and wires that exist, each step one sentence', () => {
-    const boxes = new Set(map.BOXES.map((b) => b.id))
-    const wires = new Set(map.WIRES.map((w) => w.id))
-    for (const s of map.STEPS) {
-      expect(s.boxes.filter((b) => !boxes.has(b))).toEqual([])
-      expect(s.stages.filter((x) => !(map.STAGES as readonly string[]).includes(x))).toEqual([])
-      expect(s.wires.map((w) => w.replace(/^-/, '')).filter((w) => !wires.has(w))).toEqual([])
-      expect(s.line.split(/[.!?]\s/)).toHaveLength(1)
-      expect(s.line.length).toBeLessThanOrEqual(200)
+  // The six groups (M, 2026-11-18) hold every hook a plugin fills a stage
+  // with, once; `commands` adds verbs, not a stage.
+  it('groups every stage hook once', () => {
+    const hooks = map.GROUPS.flatMap((g) => g.hooks)
+    expect(new Set(hooks).size).toBe(hooks.length)
+    expect([...hooks].sort()).toEqual(PLUGIN_HOOKS.filter((h) => h !== 'commands').sort())
+    expect(map.GROUPS.map((g) => g.title)).toEqual([
+      'Setup',
+      'Graph',
+      'Cache',
+      'Schedule',
+      'Run',
+      'Report',
+    ])
+    for (const g of map.GROUPS) {
+      expect(g.line.split(/[.!?]\s/)).toHaveLength(1)
+      expect(g.line.length).toBeLessThanOrEqual(120)
     }
-    // Every piece takes part in the run.
-    const lit = new Set(map.STEPS.flatMap((s) => s.boxes))
-    expect(map.BOXES.filter((b) => b.id !== 'core' && !lit.has(b.id)).map((b) => b.id)).toEqual([])
+  })
+})
+
+// The graph plays one run as vx-dte's simulator ran it (scripts/hero-run.ts
+// wrote src/data/hero-run.json): 10 tasks, workers started when the plan
+// needed them and let go when it did not.
+describe('the hero run', () => {
+  const r = run as map.Run
+  const P = map.play(r)
+  const byId = new Map(r.tasks.map((t) => [t.id, t]))
+
+  it('is 10 tasks, some held in the cache, the rest run on workers', () => {
+    expect(r.tasks).toHaveLength(10)
+    expect(r.tasks.filter((t) => t.hit).length).toBeGreaterThan(0)
+    expect(P.bars).toHaveLength(r.tasks.filter((t) => !t.hit).length)
+  })
+
+  it('runs a task only after every task it depends on ended', () => {
+    const late = r.tasks.filter(
+      (t) => !t.hit && t.deps.some((d) => (byId.get(d)!.endMs ?? 0) > t.startMs!),
+    )
+    expect(late.map((t) => t.id)).toEqual([])
+  })
+
+  it('runs each task on its worker while that worker is joined', () => {
+    const outside = r.tasks.filter((t) => {
+      const w = r.workers.find((x) => x.id === t.worker)
+      return !t.hit && (!w || w.joinMs === null || t.startMs! < w.joinMs || t.endMs! > w.leaveMs)
+    })
+    expect(outside.map((t) => t.id)).toEqual([])
+  })
+
+  it('starts workers as the plan needs them, not all at once, and lets each go', () => {
+    expect(new Set(r.workers.map((w) => w.spawnMs)).size).toBe(r.workers.length)
+    expect(new Set(r.workers.map((w) => w.leaveMs)).size).toBe(r.workers.length)
+    for (const w of r.workers) expect(w.leaveMs).toBeGreaterThan(w.joinMs!)
+  })
+
+  it('draws no two tasks on the same cores of a worker at once', () => {
+    const clash = P.bars.filter((a) =>
+      P.bars.some(
+        (b) =>
+          b !== a &&
+          b.slot === a.slot &&
+          b.start < a.end &&
+          a.start < b.end &&
+          b.at < a.at + a.cores &&
+          a.at < b.at + b.cores,
+      ),
+    )
+    expect(clash.map((b) => b.id)).toEqual([])
+  })
+
+  // M (2026-11-18): one card a step, every step 5 s but Run's 10 s, which
+  // the tasks together fill; a worker boots in 2 s.
+  // M (2026-11-18): never a moment of waiting for time.
+  it('keeps something moving through every moment of the loop', () => {
+    const busy: [number, number][] = [
+      ...P.dots.map((d): [number, number] => [d.at, d.at + (d.dur ?? map.TRAVEL_MS)]),
+      ...P.lanes.map((l): [number, number] => [l.spawn, l.join]),
+      ...P.bars.map((b): [number, number] => [b.start, b.end]),
+    ]
+    const idle: number[] = []
+    for (let t = 0; t < P.loop; t += 50) if (!busy.some(([a, b]) => a <= t && t < b)) idle.push(t)
+    expect(idle).toEqual([])
+  })
+
+  it('gives each step 5 s, the tasks Run’s 10 s, each boot 2 s', () => {
+    expect(P.steps.map((x) => x.to - x.from)).toEqual(
+      map.GROUPS.map((g) => (g.id === 'run' ? 2 * map.STEP_MS : map.STEP_MS)),
+    )
+    expect(P.steps.map((x) => x.group)).toEqual(map.GROUPS.map((g) => g.id))
+    const run = P.steps.find((x) => x.group === 'run')!
+    expect(Math.min(...P.bars.map((b) => b.start))).toBeCloseTo(run.from, 6)
+    expect(Math.max(...P.bars.map((b) => b.end))).toBeCloseTo(run.to, 6)
+    for (const l of P.lanes) expect(l.join - l.spawn).toBe(map.BOOT_MS)
+    expect(
+      P.dots.every((d) => d.at >= 0 && d.at + (d.dur ?? map.TRAVEL_MS) <= P.loop && d.label !== ''),
+    ).toBe(true)
+    // A step whose work is one message lets it take the whole step.
+    for (const g of ['setup', 'graph']) {
+      const step = P.steps.find((x) => x.group === g)!
+      for (const d of P.dots.filter((x) => x.at >= step.from && x.at < step.to))
+        expect([d.at, d.at + d.dur!]).toEqual([step.from, step.to])
+    }
+  })
+
+  // M (2026-11-18): a step's group lights for its window; outside it, only
+  // what vx calls through its hooks is done by vx, and a group vx calls in
+  // a step stays lit that whole step, never blinking.
+  it('lights a group for every whole step vx calls its hooks in', () => {
+    const own = new Set(
+      map.WIRES.filter((w) => w.from === 'core' || w.to === 'core').map((w) => w.id),
+    )
+    for (const [group, spans] of Object.entries(P.lit))
+      for (const [from, to] of spans) {
+        const step = P.steps.find((x) => x.from === from && x.to === to)
+        expect(step).toBeDefined()
+        if (step!.group === group) continue
+        expect(P.dots.some((d) => d.at >= from && d.at < to && own.has(d.wire))).toBe(true)
+      }
+  })
+
+  // vx hands DTE the plan before DTE starts a worker.
+  it('starts no worker before DTE has the plan', () => {
+    const plan = P.dots.find((d) => d.label === 'plan')!
+    for (const l of P.lanes)
+      expect(l.spawn - map.TRAVEL_MS).toBeGreaterThanOrEqual(plan.at + map.TRAVEL_MS - 1e-6)
+  })
+
+  // Each message in the order the run sent it: DTE starts each worker, an
+  // order reaches it before its task starts, and nothing but the start
+  // reaches a worker that is off.
+  it('sends each order before its task and only to a worker that is on', () => {
+    for (const l of P.lanes)
+      expect(
+        P.dots.some(
+          (d) => d.wire === `s${l.slot}` && d.label === 'start' && d.at + map.TRAVEL_MS === l.spawn,
+        ),
+      ).toBe(true)
+    for (const b of P.bars) {
+      const order = P.dots.find(
+        (d) =>
+          d.wire === `s${b.slot}` &&
+          d.label === 'task' &&
+          d.at + map.TRAVEL_MS <= b.start + 1e-6 &&
+          d.at >= b.start - 3 * map.TRAVEL_MS - 1e-6,
+      )
+      expect(order).toBeDefined()
+    }
+    const off = P.dots
+      .filter((d) => /^[sc]\d$/.test(d.wire) && d.label !== 'start')
+      .filter(
+        (d) =>
+          !P.lanes.some(
+            (l) =>
+              `${d.wire[1]}` === `${l.slot}` && d.at >= l.join - 1e-6 && d.at <= l.leave + 1e-6,
+          ),
+      )
+    expect(off).toEqual([])
   })
 })
 

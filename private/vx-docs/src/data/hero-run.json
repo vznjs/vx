@@ -1,0 +1,102 @@
+{
+  "endMs": 141000,
+  "tasks": [
+    {
+      "id": "utils#build",
+      "deps": [],
+      "cores": 2,
+      "worker": "linux-4#1",
+      "startMs": 21000,
+      "endMs": 31000
+    },
+    {
+      "id": "utils#lint",
+      "deps": [],
+      "hit": true
+    },
+    {
+      "id": "core#build",
+      "deps": ["utils#build"],
+      "cores": 4,
+      "worker": "linux-4#1",
+      "startMs": 31000,
+      "endMs": 51000
+    },
+    {
+      "id": "core#test",
+      "deps": ["core#build"],
+      "cores": 4,
+      "worker": "linux-4#2",
+      "startMs": 72000,
+      "endMs": 107000
+    },
+    {
+      "id": "ui#build",
+      "deps": ["utils#build"],
+      "cores": 4,
+      "worker": "linux-4#2",
+      "startMs": 31000,
+      "endMs": 47000
+    },
+    {
+      "id": "ui#test",
+      "deps": ["ui#build"],
+      "cores": 4,
+      "worker": "linux-4#2",
+      "startMs": 47000,
+      "endMs": 72000
+    },
+    {
+      "id": "web#build",
+      "deps": ["core#build", "ui#build"],
+      "cores": 4,
+      "worker": "linux-4#1",
+      "startMs": 51000,
+      "endMs": 81000
+    },
+    {
+      "id": "web#test",
+      "deps": ["web#build"],
+      "cores": 4,
+      "worker": "linux-4#3",
+      "startMs": 81000,
+      "endMs": 121000
+    },
+    {
+      "id": "web#e2e",
+      "deps": ["web#build"],
+      "cores": 4,
+      "worker": "linux-4#1",
+      "startMs": 81000,
+      "endMs": 141000
+    },
+    {
+      "id": "web#lint",
+      "deps": [],
+      "hit": true
+    }
+  ],
+  "workers": [
+    {
+      "id": "linux-4#1",
+      "cores": 4,
+      "spawnMs": 0,
+      "joinMs": 21000,
+      "leaveMs": 141000
+    },
+    {
+      "id": "linux-4#2",
+      "cores": 4,
+      "spawnMs": 5000,
+      "joinMs": 31000,
+      "leaveMs": 107000
+    },
+    {
+      "id": "linux-4#3",
+      "cores": 4,
+      "spawnMs": 60682,
+      "joinMs": 78682,
+      "leaveMs": 121000
+    }
+  ]
+}

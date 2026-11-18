@@ -408,11 +408,11 @@
   fill: #151a12;
   stroke: rgba(198, 248, 78, 0.25);
   stroke-width: 1;
-  transition: fill 0.3s;
+  transition: fill 0.2s;
 }
-.map-svg .chip text {
-  font: 500 11px var(--font-mono);
-  fill: #a6b19f;
+.map-svg .chip-title {
+  font: 700 11px var(--font-body);
+  fill: #d7e2cf;
 }
 .map-svg .chip.on rect {
   fill: var(--tone-core);
@@ -420,10 +420,63 @@
 }
 .map-svg .chip.on text {
   fill: #14210a;
-  font-weight: 700;
 }
-
-/* the story: at rest a list of the seven steps */
+.map-svg .core-clock {
+  font: 500 12px var(--font-mono);
+  fill: var(--tone-core);
+}
+/* The workers' slots: always drawn, grey while no worker holds one. */
+.map-svg .slot-edge {
+  fill: color-mix(in srgb, var(--tone-dte) 30%, #05060a);
+}
+.map-svg .slot-face {
+  fill: #0d1016;
+  stroke: color-mix(in srgb, var(--tone-dte) 55%, transparent);
+  stroke-width: 1.2;
+}
+.map-svg .slot-warm {
+  fill: color-mix(in srgb, var(--tone-dte) 22%, transparent);
+}
+.map-svg .slot-name {
+  font: 600 12.5px var(--font-body);
+  fill: #ece6ff;
+}
+.map-svg .slot-state {
+  font: 500 11px var(--font-mono);
+  fill: var(--tone-dte);
+}
+.map-svg .slot-core {
+  fill: rgba(183, 148, 255, 0.06);
+  stroke: rgba(183, 148, 255, 0.22);
+  stroke-dasharray: 3 3;
+}
+.map-svg .slot[data-state='off'] {
+  opacity: 0.32;
+  filter: grayscale(1);
+}
+.map-svg .slot[data-state='off'] .slot-face {
+  stroke-dasharray: 4 4;
+}
+.map-svg .slot[data-state='booting'] .slot-face,
+.map-svg .slot[data-state='tearing-down'] .slot-face {
+  stroke-dasharray: 4 4;
+}
+.map-svg .slot[data-state='tearing-down'] {
+  opacity: 0.6;
+}
+.map-svg .bar-face {
+  fill: color-mix(in srgb, var(--tone-dte) 30%, #0b0d12);
+  stroke: var(--tone-dte);
+  stroke-width: 1;
+}
+.map-svg .bar-done {
+  fill: color-mix(in srgb, var(--tone-dte) 60%, transparent);
+}
+.map-svg .bar-label {
+  font: 600 10.5px var(--font-mono);
+  fill: #f6f2ff;
+}
+/* the story: at rest a list of the six hook groups */
 .stage-story {
   position: relative;
   z-index: 3;
@@ -463,6 +516,18 @@
   font: 700 22px/1.1 var(--font-display);
   letter-spacing: -0.03em;
   color: #f2f5ef;
+}
+.story-hooks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
+.story-hooks code {
+  font: 500 12px var(--font-mono);
+  color: var(--tone);
+  background: none;
+  padding: 0;
 }
 .story-steps p {
   margin: 6px 0 0;
@@ -508,8 +573,8 @@
 .stage.js .story-kicker {
   display: none;
 }
-/* Every step sits in one cell, so the panel is as tall as the tallest and
-   the page never jumps as the steps change. */
+/* One card, the step running now; every card sits in one cell, so the
+   panel is as tall as the tallest and the page never jumps. */
 .stage.js .story-steps {
   display: grid;
   grid-template-columns: minmax(0, 640px);
@@ -675,7 +740,7 @@
 }
 .columns {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   height: 340px;
   margin: 0;
@@ -1747,4 +1812,7 @@
   .steps-cmd span {
     grid-column: 2;
   }
+}
+.map-svg[data-layout='narrow'] .core-clock {
+  font-size: 11px;
 }
