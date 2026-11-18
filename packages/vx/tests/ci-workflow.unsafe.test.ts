@@ -60,7 +60,8 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
-      ['perf', 'Perf', bench, top, undefined],
+      // `Perf` is the check the branch rule requires: the part that can fail.
+      ['perf', "${{ matrix.part == 'cold' && 'Perf' || 'Perf (site)' }}", bench, top, undefined],
     ])
   })
 

@@ -165,9 +165,10 @@ jobs:
   # (2026-10-24). Beside the run, so off its critical path; no relay, so
   # vx runs them here. Two runners, one a part of the bench
   # (`VX_BENCH_PART`): on one, the job ended a minute after the run
-  # (2026-11-18).
+  # (2026-11-18). `cold` keeps the name the branch rule requires: the
+  # counts, the one part that fails, run there.
   perf:
-    name: Perf
+    name: ${{ matrix.part == 'cold' && 'Perf' || 'Perf (site)' }}
     strategy:
       fail-fast: false
       matrix:
