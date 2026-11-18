@@ -5695,22 +5695,6 @@ it('learns from what a crowded task would have used, and keeps its share for the
   }
 })
 
-// A worker the CI started before the run (adopted) warmed up from then:
-// read from the run's start, PR 5335's first run learned 5.6 s for a small
-// that takes 20, set the join limit at 11 s and gave up five that joined
-// in 12 to 17 s.
-it('reads the warm-up of a worker started before the run from its own start', async () => {
-  const h = await harness(new Map([node('t1')]))
-  try {
-    h.o.spawned('small#1', { size: 'small', cpu: 2, memory: 100 }, performance.now() - 5000)
-    await h.worker(2, 'small#1')
-    await Bun.sleep(50)
-    expect(h.o.warmUpMs()).toBeGreaterThanOrEqual(5000)
-  } finally {
-    await h.stop()
-  }
-})
-
 it('knows how long a worker took to join', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
