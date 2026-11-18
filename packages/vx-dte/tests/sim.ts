@@ -295,6 +295,13 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         const m = known(task)?.memory ?? 0
         return at ? w.memory - memoryUsed(w) >= Math.min(m, w.memory) : true
       },
+      // It holds files a task to come reads (`Orchestrator.kept`).
+      stay: (worker) => {
+        for (const [u, on] of keptOn)
+          if (on.has(worker) && graph.some((t) => !done.has(t.id) && reads(t.id).includes(u)))
+            return true
+        return false
+      },
     })
     for (const [id, worker] of d.start) {
       const w = byWorker.get(worker)!

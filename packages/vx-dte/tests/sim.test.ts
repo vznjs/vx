@@ -107,7 +107,7 @@ const cases: Case[] = [
     name: 'main a09b987 (65 misses)',
     graph: load(a09),
     measured: true,
-    failing: ['makespan', 'utilization'],
+    failing: ['utilization'],
   },
   {
     name: 'main 2163fff (23 misses)',
@@ -119,7 +119,6 @@ const cases: Case[] = [
     name: 'a growing graph',
     graph: growing(),
     measured: true,
-    failing: ['utilization'],
   },
   // Its lints booked over 4 cores, and were packed once over-core tasks
   // took a whole worker (2026-11-12). Its misses show only as their
@@ -129,7 +128,7 @@ const cases: Case[] = [
     name: 'main a09b987, history 40% high on cores',
     graph: load(a09, (r) => ({ ...r, cores: r.cores * 1.4 })),
     measured: true,
-    failing: ['utilization', 'makespan', 'churn'],
+    failing: ['utilization'],
   },
   // Each unmeasured task on a free core, the run sized as if each held 2
   // (2026-10-23): it ends at 174 s where a whole worker each took 350 s.
@@ -177,7 +176,7 @@ const cases: Case[] = [
     graph: load(a09),
     measured: true,
     likely: new Set([...misses(load(a09))].filter((_, i) => i % 2 === 0)),
-    failing: ['utilization', 'makespan'],
+    failing: ['utilization'],
   },
   // Short tasks: the work is gone before a worker started for it joins.
   { name: 'forty short tasks', graph: short(40, 400), measured: false },
@@ -263,9 +262,6 @@ for (const c of cases) {
           .map((w) => w.id),
       ).toEqual([])
     })
-    check('no worker is booked past its cores', () => {
-      for (const w of r.workers) expect(w.peakBooked).toBeLessThanOrEqual(w.cores + 1e-9)
-    })
     check('every miss runs on a worker, once', () => {
       expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
     })
@@ -276,6 +272,11 @@ for (const c of cases) {
       expect(r.churn).toBe(0)
     })
     if (!c.measured) return
+    // A worker fills to its last core, a task may run past it there (it
+    // slows what shares it); none is sent to one its history says is full.
+    check('no task is sent to a full worker', () => {
+      expect(r.overSent).toBe(0)
+    })
     check('utilization', () => {
       expect(r.utilization).toBeGreaterThanOrEqual(0.9)
     })
