@@ -554,6 +554,18 @@ describe('the hero run', () => {
     expect(P.dots.every((d) => d.at >= 0 && d.at < P.loop && d.label !== '')).toBe(true)
   })
 
+  // M (2026-11-18): only what vx calls through its hooks is done by vx, so a
+  // group lights only as a message on one of vx's own wires leaves.
+  it('lights a group only while vx calls its hooks', () => {
+    const own = new Set(
+      map.WIRES.filter((w) => w.from === 'core' || w.to === 'core').map((w) => w.id),
+    )
+    for (const spans of Object.values(P.lit))
+      for (const [from] of spans)
+        expect(P.dots.some((d) => d.at === from && own.has(d.wire))).toBe(true)
+    for (const g of map.GROUPS) expect(P.lit[g.id]!.length).toBeGreaterThan(0)
+  })
+
   // Each message in the order the run sent it: DTE starts each worker, an
   // order reaches it before its task starts, and nothing but the start
   // reaches a worker that is off.

@@ -176,7 +176,7 @@ export interface Bar {
 export interface Play {
   /** The step on screen: one group a `STEP_MS` window, in the order a run reaches them. */
   steps: { group: string; from: number; to: number }[]
-  /** When each group's hooks are at work, [from, to) in play ms: several at once while tasks run. */
+  /** When vx calls each group's hooks, [from, to) in play ms: several at once while tasks run. */
   lit: Record<string, [number, number][]>
   dots: Dot[]
   lanes: Lane[]
@@ -200,6 +200,17 @@ export const STEP_MS = 5000
 export const BOOT_MS = 2000
 /** The steps in the order a run reaches them: the cache's probe answers before the first plan. */
 export const ORDER = ['setup', 'graph', 'cache', 'schedule', 'run', 'report'] as const
+
+/** The hook group vx called to send or take a message on a wire of its own; none for one it took no part in. */
+function hookOf(d: Dot): (typeof ORDER)[number] | undefined {
+  if (/^[sc]\d$/.test(d.wire)) return undefined
+  if (d.label === 'config' || d.label === 'CI scope') return 'setup'
+  if (d.wire === 'ws' || d.wire === 'lockfile' || d.wire === 'migrate') return 'graph'
+  if (d.wire === 'cache') return 'cache'
+  if (d.wire === 'history') return d.back ? 'report' : 'schedule'
+  if (d.wire === 'relay') return 'run'
+  return 'report'
+}
 
 /**
  * The run on one clock, one `STEP_MS` window a group. The tasks keep the
@@ -317,13 +328,14 @@ export function play(run: Run): Play {
   dot(down, 'reports', 'report', 'summary')
   dot(down, 'history', 'report', 'timings', true)
 
-  // A group is at work over its own window and, from Cache on, while the tasks run.
-  const lit: Record<string, [number, number][]> = Object.fromEntries(
-    steps.map((s) => [s.group, [[s.from, s.to]] as [number, number][]]),
-  )
-  lit['cache']!.push([zero, end + 3 * T])
-  lit['schedule']!.push([zero, end])
-  lit['report']!.push([probe, end + 3 * T])
+  // vx is at work only when it calls a hook: a group lights while a message
+  // it sent or answered through that group's hooks travels. What DTE and the
+  // workers do between themselves and the cache lights nothing in vx.
+  const lit: Record<string, [number, number][]> = Object.fromEntries(ORDER.map((g) => [g, []]))
+  for (const d of dots) {
+    const g = hookOf(d)
+    if (g !== undefined) lit[g]!.push([d.at, d.at + T + 250])
+  }
   dots.sort((a, b) => a.at - b.at)
   return { steps, lit, dots, lanes, bars, hits, zero, first, scale, end, loop: ORDER.length * STEP_MS }
 }
