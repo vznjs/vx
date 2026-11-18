@@ -17,14 +17,15 @@
         "install"
       ],
       "exec": {
-        "command": "bun perf-guard.ts && bun pr-bench.ts",
+        "command": "{ [ \"$VX_BENCH_PART\" = site ] || bun perf-guard.ts; } && bun pr-bench.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
             "BENCH_BUILD_MS": "0"
           },
           "passThrough": [
-            "VX_BENCH_BASE"
+            "VX_BENCH_BASE",
+            "VX_BENCH_PART"
           ]
         }
       },
@@ -45,7 +46,8 @@
           "package.json"
         ],
         "env": [
-          "VX_BENCH_BASE"
+          "VX_BENCH_BASE",
+          "VX_BENCH_PART"
         ]
       },
       "outputs": {

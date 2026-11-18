@@ -33,6 +33,20 @@ export type Arm = (typeof HELD)[number]
  */
 export const SITE_ARMS: readonly Arm[] = ['restore', 'noop']
 
+/**
+ * The arms one process times, by `VX_BENCH_PART`. CI gives each part a
+ * runner (ci.yml `perf`): in one process the site's workspace, built and
+ * filled before a pair is timed, kept the cold arm waiting, and the job
+ * ended a minute after the run it stands beside (2026-11-18). Unset
+ * times every arm.
+ */
+export function armsOf(part: string | undefined): readonly Arm[] {
+  if (part === undefined || part === '') return HELD
+  if (part === 'cold') return ['cold']
+  if (part === 'site') return SITE_ARMS
+  throw new Error(`VX_BENCH_PART is neither cold nor site: ${part}`)
+}
+
 /** The rivals a check times vx against. */
 export const RIVALS = ['turbo', 'nx', 'vite-task'] as const
 export type Rival = (typeof RIVALS)[number]
