@@ -47,17 +47,20 @@ jobs:
       # setup for no one (2026-10-28): one that starts after its run
       # cancels its own workflow run, its queued fellows with it. An API
       # that answers nothing leaves it to the relay, which turns it away.
+      # In the background: the call took 0.36 s of every worker's warm-up
+      # (2026-11-18), and a cancel ends the job wherever it is.
       - name: Leave if the run is over
         if: inputs.parent != ''
         env:
           GH_TOKEN: ${{ github.token }}
           PARENT: ${{ inputs.parent }}
         run: |
-          runs="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs"
-          status=$(curl -fsS -H "authorization: Bearer $GH_TOKEN" "$runs/$PARENT" | jq -r .status) || exit 0
-          [ "$status" = completed ] || exit 0
-          echo "::notice::run $PARENT is over: cancelling this one"
-          curl -fsS -o /dev/null -X POST -H "authorization: Bearer $GH_TOKEN" "$runs/$GITHUB_RUN_ID/cancel"
+          (
+            runs="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs"
+            status=$(curl -fsS -H "authorization: Bearer $GH_TOKEN" "$runs/$PARENT" | jq -r .status) || exit 0
+            [ "$status" = completed ] || exit 0
+            curl -fsS -o /dev/null -X POST -H "authorization: Bearer $GH_TOKEN" "$runs/$GITHUB_RUN_ID/cancel"
+          ) >/dev/null 2>&1 &
       # Spotlight indexes what the tasks write: 0.13-0.29 cores of a
       # 3-core Mac, and a fixed test workload ran 27.6 s on average with it
       # against 23.3 s without (2 runners each, 2026-10-24). In the
@@ -65,6 +68,13 @@ jobs:
       - name: Turn off Spotlight
         if: runner.os == 'macOS'
         run: (sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &
+      # `dpkg -i` first reads every installed package's file list, 1.6 s
+      # of the 2.1 s the sandbox's set-up took on a fresh disk (2026-11-18).
+      # Read here, beside the checkout and the install, they are in memory
+      # when it asks.
+      - name: Read the package database ahead
+        if: runner.os == 'Linux'
+        run: cat /var/lib/dpkg/status /var/lib/dpkg/info/*.list >/dev/null 2>&1 &
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # One commit: the laws that read history fetch it themselves

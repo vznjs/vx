@@ -168,6 +168,8 @@ it('an edit to the code that keeps its size and mtime moves the code identity', 
     await cp(path.resolve(import.meta.dir, '..', 'src'), path.join(tmp, 'src'), {
       recursive: true,
     })
+    // src/version.ts imports it.
+    await cp(path.resolve(import.meta.dir, '..', 'package.json'), path.join(tmp, 'package.json'))
     const npmStamp = new Date('1985-10-26T08:15:00Z')
     const file = path.join(tmp, 'src', 'cache', 'key-fold.ts')
     utimesSync(file, npmStamp, npmStamp)

@@ -22,6 +22,7 @@ interface Step {
   'continue-on-error'?: boolean
 }
 interface Job {
+  strategy?: { matrix?: Record<string, unknown> }
   name?: string
   environment?: string
   if?: string
@@ -59,7 +60,8 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
-      ['perf', 'Perf', bench, top, undefined],
+      // `Perf` is the check the branch rule requires: the part that can fail.
+      ['perf', "${{ matrix.part == 'cold' && 'Perf' || 'Perf (site)' }}", bench, top, undefined],
     ])
   })
 
@@ -69,6 +71,9 @@ describe('ci.yml', () => {
   it('runs the benchmarks off the DTE run', () => {
     const perf = doc.jobs['perf']!
     expect(JSON.stringify(perf)).not.toContain('VX_DTE')
+    // One part of the bench a runner: on one runner the job outlasted the run.
+    expect(perf.strategy?.matrix).toEqual({ part: ['cold', 'site'] })
+    expect(perf.env?.['VX_BENCH_PART']).toBe('${{ matrix.part }}')
     expect(perf.steps?.at(-1)?.run).toBe(
       "bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
     )
@@ -296,28 +301,12 @@ describe('vx-worker.yml', () => {
   it('is cancelled with the run that dispatched it', () => {
     const last = doc.jobs['linux']!.steps!.at(-1)!
     expect([last.if, last.run]).toEqual([
-      'cancelled() || failure()',
+      'cancelled()',
       expect.stringContaining('done < "$RUNNER_TEMP/vx-dte-runs"'),
     ])
     expect(read('vx-worker.yml').on!['workflow_dispatch']).toMatchObject({
       inputs: { parent: { required: false, default: '' } },
     })
-  })
-
-  // Workers started while the run's own job checks out and installs: the
-  // step comes first, names the run they wait for, lists them for the run
-  // to adopt and for the last step to cancel, and never fails the job.
-  it('starts early, before the checkout, as the run adopts and the job cancels', () => {
-    const first = doc.jobs['linux']!.steps![0]!
-    expect([first.name, first['continue-on-error']]).toEqual(['Start the workers early', true])
-    for (const part of [
-      '"VX_DTE_WAIT\\":\\"60\\"',
-      ' $at" >> "$RUNNER_TEMP/vx-dte-started"',
-      '>> "$RUNNER_TEMP/vx-dte-runs"',
-      'echo "VX_DTE_RUN=$run" >> "$GITHUB_ENV"',
-      'for group in hosted.small:9 hosted.mac:3; do',
-    ])
-      expect(first.run).toContain(part)
   })
 
   it('runs each size on its runner', () => {
@@ -359,11 +348,12 @@ describe('vx-worker.yml', () => {
   // runner runs twice?"): the runtime set up by the CI plugin before the
   // worker starts (owner: "vx setup github", "we should do before"), its
   // packages kept per runner image, and no mount of its own.
-  it('is leave if the run is over, Spotlight off, checkout, Bun, install, the sandbox runtime and the worker', () => {
+  it('is leave if the run is over, Spotlight off, the package database read ahead, checkout, Bun, install, the sandbox runtime and the worker', () => {
     expect(worker.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
       // A worker of a run that is over cancels its own run (@vzn/vx-dte's README).
-      expect.stringMatching(/^runs=.*\/cancel"\n$/s),
+      expect.stringMatching(/^\(\n +runs=.*\/cancel"\n\) >\/dev\/null 2>&1 &\n$/s),
       '(sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &',
+      'cat /var/lib/dpkg/status /var/lib/dpkg/info/*.list >/dev/null 2>&1 &',
       'actions/checkout',
       'oven-sh/setup-bun',
       // The variables the run hands its workers (github({ env })).

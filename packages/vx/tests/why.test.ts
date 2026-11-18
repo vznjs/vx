@@ -678,7 +678,7 @@ describe('vx why (e2e) — the exact lines', () => {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
       const lines = r.out.split('\n')
-      const head = lines.findIndex((l) => l === '  What changed 3 of 6')
+      const head = lines.findIndex((l) => l === '  What changed 3 of 7')
       expect(head).toBeGreaterThan(0)
       // Under the rule, the table's header, then its rows.
       const rows = lines.slice(head + 2, lines.indexOf('', head))

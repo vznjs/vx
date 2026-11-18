@@ -1104,14 +1104,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1014,
-        "can": 1014,
-        "of": 1016
+        "pass": 1012,
+        "can": 1012,
+        "of": 1014
       },
       "correctness": {
-        "pass": 836,
-        "can": 836,
-        "of": 838
+        "pass": 834,
+        "can": 834,
+        "of": 836
       },
       "efficiency": {
         "pass": 169,
@@ -1124,9 +1124,9 @@
         "of": 9
       },
       "graph": {
-        "pass": 150,
-        "can": 150,
-        "of": 150
+        "pass": 149,
+        "can": 149,
+        "of": 149
       },
       "config": {
         "pass": 8,
@@ -1139,9 +1139,9 @@
         "of": 75
       },
       "affected": {
-        "pass": 99,
-        "can": 99,
-        "of": 99
+        "pass": 98,
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 42,
@@ -1149,9 +1149,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 309,
-        "can": 309,
-        "of": 309
+        "pass": 308,
+        "can": 308,
+        "of": 308
       },
       "env": {
         "pass": 31,
@@ -1174,21 +1174,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 36,
-        "can": 36,
-        "of": 36
+        "pass": 37,
+        "can": 37,
+        "of": 37
       }
     },
     "turbo": {
       "all": {
         "pass": 638,
-        "can": 927,
-        "of": 1016
+        "can": 925,
+        "of": 1014
       },
       "correctness": {
         "pass": 515,
-        "can": 755,
-        "of": 838
+        "can": 753,
+        "of": 836
       },
       "efficiency": {
         "pass": 119,
@@ -1202,8 +1202,8 @@
       },
       "graph": {
         "pass": 92,
-        "can": 131,
-        "of": 150
+        "can": 130,
+        "of": 149
       },
       "config": {
         "pass": 4,
@@ -1216,9 +1216,9 @@
         "of": 75
       },
       "affected": {
-        "pass": 68,
-        "can": 99,
-        "of": 99
+        "pass": 67,
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 34,
@@ -1227,8 +1227,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 299,
-        "of": 309
+        "can": 298,
+        "of": 308
       },
       "env": {
         "pass": 27,
@@ -1251,21 +1251,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 30,
-        "can": 35,
-        "of": 36
+        "pass": 31,
+        "can": 36,
+        "of": 37
       }
     },
     "nx": {
       "all": {
         "pass": 653,
-        "can": 953,
-        "of": 1016
+        "can": 951,
+        "of": 1014
       },
       "correctness": {
         "pass": 493,
-        "can": 777,
-        "of": 838
+        "can": 775,
+        "of": 836
       },
       "efficiency": {
         "pass": 156,
@@ -1279,8 +1279,8 @@
       },
       "graph": {
         "pass": 114,
-        "can": 137,
-        "of": 150
+        "can": 136,
+        "of": 149
       },
       "config": {
         "pass": 1,
@@ -1294,8 +1294,8 @@
       },
       "affected": {
         "pass": 57,
-        "can": 99,
-        "of": 99
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 37,
@@ -1304,8 +1304,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 309,
-        "of": 309
+        "can": 308,
+        "of": 308
       },
       "env": {
         "pass": 25,
@@ -1329,20 +1329,20 @@
       },
       "watch": {
         "pass": 28,
-        "can": 36,
-        "of": 36
+        "can": 37,
+        "of": 37
       }
     },
     "vite-task": {
       "all": {
         "pass": 506,
-        "can": 759,
-        "of": 1016
+        "can": 757,
+        "of": 1014
       },
       "correctness": {
         "pass": 417,
-        "can": 629,
-        "of": 838
+        "can": 627,
+        "of": 836
       },
       "efficiency": {
         "pass": 87,
@@ -1356,8 +1356,8 @@
       },
       "graph": {
         "pass": 86,
-        "can": 116,
-        "of": 150
+        "can": 115,
+        "of": 149
       },
       "config": {
         "pass": 4,
@@ -1372,7 +1372,7 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 99
+        "of": 98
       },
       "cache": {
         "pass": 34,
@@ -1381,8 +1381,8 @@
       },
       "inputs": {
         "pass": 178,
-        "can": 300,
-        "of": 309
+        "can": 299,
+        "of": 308
       },
       "env": {
         "pass": 29,
@@ -1407,19 +1407,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 36
+        "of": 37
       }
     },
     "nix": {
       "all": {
         "pass": 486,
-        "can": 724,
-        "of": 1016
+        "can": 722,
+        "of": 1014
       },
       "correctness": {
         "pass": 418,
-        "can": 601,
-        "of": 838
+        "can": 599,
+        "of": 836
       },
       "efficiency": {
         "pass": 66,
@@ -1433,8 +1433,8 @@
       },
       "graph": {
         "pass": 58,
-        "can": 65,
-        "of": 150
+        "can": 64,
+        "of": 149
       },
       "config": {
         "pass": 0,
@@ -1449,7 +1449,7 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 99
+        "of": 98
       },
       "cache": {
         "pass": 28,
@@ -1458,8 +1458,8 @@
       },
       "inputs": {
         "pass": 177,
-        "can": 299,
-        "of": 309
+        "can": 298,
+        "of": 308
       },
       "env": {
         "pass": 22,
@@ -1484,19 +1484,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 36
+        "of": 37
       }
     },
     "moon": {
       "all": {
         "pass": 590,
-        "can": 909,
-        "of": 1016
+        "can": 906,
+        "of": 1014
       },
       "correctness": {
         "pass": 458,
-        "can": 746,
-        "of": 838
+        "can": 743,
+        "of": 836
       },
       "efficiency": {
         "pass": 127,
@@ -1510,8 +1510,8 @@
       },
       "graph": {
         "pass": 85,
-        "can": 122,
-        "of": 150
+        "can": 121,
+        "of": 149
       },
       "config": {
         "pass": 3,
@@ -1525,8 +1525,8 @@
       },
       "affected": {
         "pass": 69,
-        "can": 99,
-        "of": 99
+        "can": 98,
+        "of": 98
       },
       "cache": {
         "pass": 38,
@@ -1535,8 +1535,8 @@
       },
       "inputs": {
         "pass": 193,
-        "can": 309,
-        "of": 309
+        "can": 308,
+        "of": 308
       },
       "env": {
         "pass": 26,
@@ -1561,7 +1561,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 36
+        "of": 37
       }
     }
   },
@@ -22239,88 +22239,6 @@
       }
     },
     {
-      "id": "graph/root-workspace-dependency-orders-every-project",
-      "ref": "wain08",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "A workspace package the root depends on builds before a project that reads it through the root",
-      "why": "The root installs a workspace package where every project resolves it, whatever that project’s own manifest says. Here `app` reads `lib`’s build through the root, so `lib` must build first. A runner that orders tasks only by each project’s own manifest may run `app` first, and it then reads a missing or old `dist`.",
-      "from": [
-        "vx-lockfile/root-workspace-dep"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 100, expected success"
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        }
-      }
-    },
-    {
-      "id": "inputs/root-workspace-dependency-change-reruns",
-      "ref": "u0ldzz",
-      "category": "inputs",
-      "kind": "correctness",
-      "title": "A change to a workspace package the root depends on runs a project reading it through the root again",
-      "why": "A package the root depends on is reachable by every project, so a project that reads it depends on it even without naming it. When `lib`’s source changes, `app`’s output changes too. A runner that leaves the root’s workspace dependencies out of `app`’s key replays `app`’s old build.",
-      "from": [
-        "vx-lockfile/root-workspace-dep"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 100, expected success"
-        },
-        "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        }
-      }
-    },
-    {
       "id": "graph/root-workspace-dependency-no-cycle",
       "ref": "kv9268",
       "category": "graph",
@@ -22350,43 +22268,6 @@
         },
         "moon": {
           "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "affected/root-workspace-dependency-change-selects-every-reader",
-      "ref": "gm4m90",
-      "category": "affected",
-      "kind": "correctness",
-      "title": "A committed change to a workspace package the root depends on selects a project reading it through the root",
-      "why": "A changed-projects check must see the same dependencies a build does. `app` reads `lib` through the root, so a change to `lib` reaches `app`. If the check only reads each project’s own manifest it selects `lib` alone, and CI never tests `app` against the change, which then breaks on main.",
-      "from": [
-        "vx-lockfile/root-workspace-dep"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
-        },
-        "vite-task": {
-          "status": "n/a",
-          "detail": "needs affected"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "needs affected"
-        },
-        "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "did not run app#build"
         }
       }
     },
@@ -34572,6 +34453,42 @@
           "status": "fail",
           "step": 1,
           "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/commit-in-first-run-rebuilds",
+      "ref": "4lfcwq",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A source file saved and committed during the watch’s first build, after its task finished, is built right after",
+      "why": "The first build of a watch takes a while, and work does not wait for it: a fix is saved and committed while another project still builds. The finished output holds the bytes from before the fix, and after the commit the file no longer shows as modified. A watch that looks only at modified files keeps the old output until something else is saved.",
+      "from": [
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
         },
         "nx": {
           "status": "fail",

@@ -33,6 +33,20 @@ export type Arm = (typeof HELD)[number]
  */
 export const SITE_ARMS: readonly Arm[] = ['restore', 'noop']
 
+/**
+ * The arms one process times, by `VX_BENCH_PART`. CI gives each part a
+ * runner (ci.yml `perf`): in one process the site's workspace, built and
+ * filled before a pair is timed, kept the cold arm waiting, and the job
+ * ended a minute after the run it stands beside (2026-11-18). Unset
+ * times every arm.
+ */
+export function armsOf(part: string | undefined): readonly Arm[] {
+  if (part === undefined || part === '') return HELD
+  if (part === 'cold') return ['cold']
+  if (part === 'site') return SITE_ARMS
+  throw new Error(`VX_BENCH_PART is neither cold nor site: ${part}`)
+}
+
 /** The rivals a check times vx against. */
 export const RIVALS = ['turbo', 'nx', 'vite-task'] as const
 export type Rival = (typeof RIVALS)[number]
@@ -132,6 +146,24 @@ export function baseSlower(
     )
   }
   return fails
+}
+
+/**
+ * Whether the base's core is this checkout's, byte for byte. The base's
+ * binary is built from its `packages/vx/src` alone (`buildBase`), so one
+ * timed against the other reads only the machine: a coin, which leans
+ * slower half the time and then asks for more pairs, up to all 40 (a PR
+ * that changed only the bench ran 519 s for 256 s, 2026-11-18). False
+ * when git cannot say.
+ */
+export function sameCore(repo: string, sha: string): boolean {
+  if (!/^[0-9a-f]{7,40}$/.test(sha)) return false
+  const r = Bun.spawnSync(['git', 'diff', '--quiet', sha, '--', 'packages/vx/src'], {
+    cwd: repo,
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  return r.exitCode === 0
 }
 
 /**

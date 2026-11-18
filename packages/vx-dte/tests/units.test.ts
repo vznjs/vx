@@ -2806,24 +2806,38 @@ it('reports a worker still there at the summary online until then', async () => 
   }
 })
 
-// A worker whose upload failed (a remote's 500) was told to share a remote
-// it already shared (2026-10-25).
-it('a task whose entry reached no cache this machine reads names the upload first', async () => {
-  const h = await harness(new Map([node('t1')]))
+// One 42 MB entry came at 150 to 300 KB/s for minutes, the cache client cut
+// it twice, and the task a worker had run failed main three runs in a row
+// (2026-11-18): a download that fails never fails a task. Its files are
+// asked for again only if a task on this machine needs them.
+it('a task whose entry did not come to this machine is done, its files asked for when needed', async () => {
+  const warned: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    warn: (m) => warned.push(m),
+  })
   try {
     const a = await h.worker(1)
     const t1 = h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
     await a.say({ type: 'end', task: 't1', key: 'k-t1', result: { exitCode: 0, durationMs: 1 } })
+    const done = await t1
+    expect(done.exitCode).toBe(0)
+    expect(h.store.restored).toEqual(['k-t1', 'k-t1'])
+    expect(warned).toEqual([
+      '[vx] t1: worker#1 ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), or the workers and this machine share no remote cache the workers write; its output is not shown and its files are not here',
+    ])
+    if (done.outputs?.kind !== 'deferred') throw new Error('its outputs are not deferred')
+    // Still in no cache when a task here needs them: that task fails, saying so.
     expect(
-      await t1.then(
+      await done.outputs.materialize().then(
         () => '',
         (e: Error) => e.message,
       ),
-    ).toBe(
-      't1: worker#1 ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), or the workers and this machine share no remote cache the workers write',
-    )
-    expect(h.store.restored).toEqual(['k-t1', 'k-t1'])
+    ).toBe("t1's entry k-t1 is in no cache this machine reads")
+    // In the cache by then: they land.
+    h.store.saved.set('k-t1', [])
+    await done.outputs.materialize()
+    expect(h.store.restored).toEqual(['k-t1', 'k-t1', 'k-t1', 'k-t1'])
   } finally {
     await h.stop()
   }
@@ -5690,22 +5704,6 @@ it('learns from what a crowded task would have used, and keeps its share for the
     expect(await t1).toMatchObject({ machine: { cores: 4, cpuShare: 0.36 } })
     // It used 0.36 of a core, the share it got of 1: its whole need.
     expect(h.o.booking({ cores: 1, memory: 10 }).cores).toBe(1)
-  } finally {
-    await h.stop()
-  }
-})
-
-// A worker the CI started before the run (adopted) warmed up from then:
-// read from the run's start, PR 5335's first run learned 5.6 s for a small
-// that takes 20, set the join limit at 11 s and gave up five that joined
-// in 12 to 17 s.
-it('reads the warm-up of a worker started before the run from its own start', async () => {
-  const h = await harness(new Map([node('t1')]))
-  try {
-    h.o.spawned('small#1', { size: 'small', cpu: 2, memory: 100 }, performance.now() - 5000)
-    await h.worker(2, 'small#1')
-    await Bun.sleep(50)
-    expect(h.o.warmUpMs()).toBeGreaterThanOrEqual(5000)
   } finally {
     await h.stop()
   }

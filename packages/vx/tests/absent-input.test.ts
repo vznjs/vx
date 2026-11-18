@@ -64,6 +64,7 @@ describe('the key of an absent input', () => {
   const base = (inputFiles: string[]): CacheKeyInput => ({
     taskId: 'p#build',
     workspaceRoot: '/ws',
+    vxVersion: '0.0.0',
     taskConfigHash: 'c',
     envValues: [],
     upstreamHashes: [],

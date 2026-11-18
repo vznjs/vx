@@ -67,11 +67,11 @@ Their bins run from the root `node_modules/.bin`, on every task's
 `PATH`.
 
 So bumping a root devDependency re-runs every package.
-A workspace package the root depends on is installed at the root
-`node_modules`, where every package can load it.
+A workspace package the root depends on is the root's dependency only.
+Another package that loads it names it in its own `package.json`.
 
-So every other package builds after it (`^build`) and includes its key.
-Editing it re-runs them all, and `--affected` selects them.
+Without that, it neither builds after it nor includes its key, and
+`--affected` leaves it out.
 
 Each plugin also puts its manager's install settings in every task's
 key, and adds a package's manifest (`package.json`, or under `pnpm()` a

@@ -1056,6 +1056,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'keep-alive-sigkill',
     'kept-hits',
     'key-fold',
+    'key-vx-version',
     'kill-tree',
     'kill-tree-guard-backlog',
     'kill-tree-guard-lines.unsafe',

@@ -1685,12 +1685,26 @@ export class Orchestrator {
       to: performance.now(),
     })
     if (log === undefined) return
+    const materialize = async (): Promise<void> => {
+      if ((await restore()) === null)
+        throw new Error(`${task}'s entry ${key} is in no cache this machine reads`)
+    }
     if (log === null) {
-      job.reject(
-        new Error(
-          `${task}: ${a.label} ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), or the workers and this machine share no remote cache the workers write`,
-        ),
+      // A download that fails never fails the task: a worker ran it. One 42 MB
+      // entry came at 150 to 300 KB/s for minutes and failed main three runs
+      // in a row (2026-11-18). Its files are asked for again only if a task
+      // on this machine needs them; core saves nothing from this disk.
+      this.warn(
+        `${task}: ${a.label} ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), or the workers and this machine share no remote cache the workers write; its output is not shown and its files are not here`,
       )
+      for (const c of sentLog ?? []) (c.err ? job.req.onStderr : job.req.onStdout)(c.text)
+      job.resolve({
+        ...result(head, sentLog ?? []),
+        ...(job.req.remoteOnly === true
+          ? {}
+          : { outputs: { kind: 'deferred' as const, materialize } }),
+        ...where,
+      })
       return
     }
     if (eager) await this.unlay(task, head, job, node)
@@ -1699,17 +1713,7 @@ export class Orchestrator {
     for (const c of log) (c.err ? job.req.onStderr : job.req.onStdout)(c.text)
     job.resolve({
       ...result(head, log),
-      ...(deferred
-        ? {
-            outputs: {
-              kind: 'deferred' as const,
-              materialize: async () => {
-                if ((await restore()) === null)
-                  throw new Error(`${task}'s entry ${key} is in no cache this machine reads`)
-              },
-            },
-          }
-        : {}),
+      ...(deferred ? { outputs: { kind: 'deferred' as const, materialize } } : {}),
       ...where,
     })
   }
@@ -2244,18 +2248,13 @@ export class Orchestrator {
     if (p.input !== undefined) this.inputMarked = true
   }
 
-  /**
-   * `demand` asked the adapter for worker `id` (`WorkerSpawn.id`); `since`,
-   * for one started before the run (adopted), is when: its warm-up read
-   * from the run's start came out as 5.6 s for 20, the size's join limit
-   * as 11 s, and five workers that joined in 12 to 17 s were given up.
-   */
-  spawned(id: string, declared: Declared, since?: number): void {
+  /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
+  spawned(id: string, declared: Declared): void {
     // A worker whose start broke where no adapter sees it counted as
     // starting for good: main's run sat 18 min (ee3fc6e, 2026-10-23). Its
     // job ending says so (`failed`); one that never ends is given up past
     // its size's join limit.
-    const at = since ?? performance.now()
+    const at = performance.now()
     this.spawnedAt.set(id, { at, declared })
     this.deadline(id, at, declared.size)
   }

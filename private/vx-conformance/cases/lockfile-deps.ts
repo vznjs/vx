@@ -114,17 +114,13 @@ function extraInProject(): WorkspaceSpec {
   }
 }
 
-/**
- * The root depends on the workspace lib; app declares nothing and reads lib
- * through the root: its build (`dist`), or, to ask about keys apart from
- * order, its source (`src`). lib → util.
- */
-function rootDep(reads: 'dist' | 'src' = 'dist'): WorkspaceSpec {
+/** The root depends on the workspace lib; app declares nothing; lib → util. */
+function rootDep(): WorkspaceSpec {
   const projects: WorkspaceSpec['projects'] = {
     app: {
       tasks: {
         build: {
-          command: `mkdir -p dist && cat ../../node_modules/lib/${reads === 'dist' ? 'dist/out' : 'src/a'}.txt src/a.txt > dist/out.txt`,
+          command: `mkdir -p dist && cat src/a.txt > dist/out.txt`,
           dependsOn: ['^build'],
           inputs: ['src/**'],
           outputs: ['dist/**'],
@@ -863,46 +859,6 @@ export default [
   }),
 
   defineCase({
-    id: 'graph/root-workspace-dependency-orders-every-project',
-    category: 'graph',
-    kind: 'correctness',
-    title:
-      'A workspace package the root depends on builds before a project that reads it through the root',
-    why: 'The root installs a workspace package where every project resolves it, whatever that project’s own manifest says. Here `app` reads `lib`’s build through the root, so `lib` must build first. A runner that orders tasks only by each project’s own manifest may run `app` first, and it then reads a missing or old `dist`.',
-    from: ['vx-lockfile/root-workspace-dep'],
-    workspace: rootDep(),
-    steps: [
-      {
-        run: 'build',
-        expect: {
-          exit: 0,
-          order: [['lib#build', 'app#build']],
-          files: { [out('app')]: 'lib\napp\n' },
-        },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'inputs/root-workspace-dependency-change-reruns',
-    category: 'inputs',
-    kind: 'correctness',
-    title:
-      'A change to a workspace package the root depends on runs a project reading it through the root again',
-    why: 'A package the root depends on is reachable by every project, so a project that reads it depends on it even without naming it. When `lib`’s source changes, `app`’s output changes too. A runner that leaves the root’s workspace dependencies out of `app`’s key replays `app`’s old build.',
-    from: ['vx-lockfile/root-workspace-dep'],
-    workspace: rootDep('src'),
-    steps: [
-      { run: 'build', expect: { exit: 0 } },
-      { write: { 'packages/lib/src/a.txt': 'lib2\n' } },
-      {
-        run: 'build',
-        expect: { exit: 0, ran: ['app#build'], files: { [out('app')]: 'lib2\napp\n' } },
-      },
-    ],
-  }),
-
-  defineCase({
     id: 'graph/root-workspace-dependency-no-cycle',
     category: 'graph',
     kind: 'correctness',
@@ -919,22 +875,6 @@ export default [
     ],
   }),
 
-  defineCase({
-    id: 'affected/root-workspace-dependency-change-selects-every-reader',
-    category: 'affected',
-    kind: 'correctness',
-    title:
-      'A committed change to a workspace package the root depends on selects a project reading it through the root',
-    why: 'A changed-projects check must see the same dependencies a build does. `app` reads `lib` through the root, so a change to `lib` reaches `app`. If the check only reads each project’s own manifest it selects `lib` alone, and CI never tests `app` against the change, which then breaks on main.',
-    from: ['vx-lockfile/root-workspace-dep'],
-    needs: ['affected'],
-    workspace: rootDep('src'),
-    steps: [
-      { write: { 'packages/lib/src/a.txt': 'lib2\n' } },
-      { commit: 'change lib' },
-      { affected: 'build', base: 'HEAD~1', expect: { exit: 0, ran: ['lib#build', 'app#build'] } },
-    ],
-  }),
   // Local directory dependencies beside the repository, and `link:` ones:
   // a link installs nothing, so an edit behind it reaches the task with no
   // install, and the lockfile still names only the path.
