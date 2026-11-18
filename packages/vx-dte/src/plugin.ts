@@ -795,6 +795,7 @@ export function dte(options: DteOptions = {}) {
           const s = sizeOf.get(id)
           if (s === undefined) return
           sizeOf.delete(id)
+          lostAs.set(id, s)
           started.set(s.name, started.get(s.name)! - 1)
           // Before the run counts what is left to start: none would fail it.
           onChange(true)
@@ -802,7 +803,16 @@ export function dte(options: DteOptions = {}) {
         joined: () => onChange(),
         // A worker given up on joining: its job, still queued or stuck, is stopped.
         overdue: (id) => void adapter?.cancel?.([id], true),
-        kept: (id) => adapter?.kept?.(id),
+        // Given up as late and taken after all: it holds one of its size
+        // again. Left uncounted, 9 smalls of 9 read as 4 and a tenth was asked.
+        kept: (id) => {
+          adapter?.kept?.(id)
+          const s = lostAs.get(id)
+          if (s === undefined || sizeOf.has(id)) return
+          lostAs.delete(id)
+          sizeOf.set(id, s)
+          started.set(s.name, (started.get(s.name) ?? 0) + 1)
+        },
         // Before the run counts what is left to start: a worker that let a
         // task's lease end failed main's macOS run with another to start
         // (2026-10-23).
@@ -814,6 +824,8 @@ export function dte(options: DteOptions = {}) {
       orchestrator = o
       const started = new Map<string, number>()
       const sizeOf = new Map<string, Size>()
+      /** The size of each worker the run gave up, should it join after all (`kept`). */
+      const lostAs = new Map<string, Size>()
       let index = 0
       // Numbered within its size: one count across sizes left M asking
       // where small#1 was (mac#1 had it, 2026-10-23).
