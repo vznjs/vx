@@ -204,6 +204,18 @@ const REPOS: Repo[] = [
     overlay: true,
     install: ['--filter', './packages/**', '--filter', './benchmarks/**', '--filter', '.'],
   },
+  {
+    name: 'strapi',
+    url: 'https://github.com/strapi/strapi',
+    commit: 'd2cae5fcc806877a1fd89dbb4e50a3d40d207e52',
+    tool: 'nx',
+    // The repo's own `build` script: both targets of every package.
+    tasks: 'build:code build:types',
+    // nx.json's `parallel: 8`, so both tools.
+    workers: 8,
+    overlay: true,
+    pm: 'yarn',
+  },
 ]
 
 const { values } = parseArgs({
