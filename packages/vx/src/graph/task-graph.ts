@@ -666,7 +666,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             'VX_E_DEPENDS_ON',
           )
         const listed = listedTargets(node)
-        const meant = nearestTarget(projects, spec.project, spec.task, listed)
+        // Nor the task itself: a moved project's one near name is its dependant.
+        const meant = nearestTarget(projects, spec.project, spec.task, new Set([...listed, id]))
         // The only near target is one the list already has (a deleted
         // project's entry beside its sibling's): the entry is the fix.
         const remove =
