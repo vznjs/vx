@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 241,
+    "ported": 242,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -368,6 +368,7 @@
         "vx-dte-server/worker-sockets",
         "vx-dte/cpu-account",
         "vx-dte/docker",
+        "vx-dte/fixture",
         "vx-dte/forecast",
         "vx-dte/github",
         "vx-dte/gitlab",
@@ -979,6 +980,7 @@
         "vx-lockfile/link-outside-root",
         "wal-checkpointer",
         "wall-clock-step",
+        "warm-outputs",
         "watch-affected",
         "watch-claimed-extras",
         "watch-claimed-files",
@@ -1102,14 +1104,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1012,
-        "can": 1012,
-        "of": 1014
+        "pass": 1013,
+        "can": 1013,
+        "of": 1015
       },
       "correctness": {
-        "pass": 834,
-        "can": 834,
-        "of": 836
+        "pass": 835,
+        "can": 835,
+        "of": 837
       },
       "efficiency": {
         "pass": 169,
@@ -1172,21 +1174,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 34,
-        "can": 34,
-        "of": 34
+        "pass": 35,
+        "can": 35,
+        "of": 35
       }
     },
     "turbo": {
       "all": {
         "pass": 638,
         "can": 926,
-        "of": 1014
+        "of": 1015
       },
       "correctness": {
         "pass": 515,
         "can": 754,
-        "of": 836
+        "of": 837
       },
       "efficiency": {
         "pass": 119,
@@ -1251,19 +1253,19 @@
       "watch": {
         "pass": 30,
         "can": 34,
-        "of": 34
+        "of": 35
       }
     },
     "nx": {
       "all": {
         "pass": 653,
-        "can": 951,
-        "of": 1014
+        "can": 952,
+        "of": 1015
       },
       "correctness": {
         "pass": 493,
-        "can": 775,
-        "of": 836
+        "can": 776,
+        "of": 837
       },
       "efficiency": {
         "pass": 156,
@@ -1327,20 +1329,20 @@
       },
       "watch": {
         "pass": 28,
-        "can": 34,
-        "of": 34
+        "can": 35,
+        "of": 35
       }
     },
     "vite-task": {
       "all": {
         "pass": 506,
         "can": 759,
-        "of": 1014
+        "of": 1015
       },
       "correctness": {
         "pass": 417,
         "can": 629,
-        "of": 836
+        "of": 837
       },
       "efficiency": {
         "pass": 87,
@@ -1405,19 +1407,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 34
+        "of": 35
       }
     },
     "nix": {
       "all": {
         "pass": 486,
         "can": 724,
-        "of": 1014
+        "of": 1015
       },
       "correctness": {
         "pass": 418,
         "can": 601,
-        "of": 836
+        "of": 837
       },
       "efficiency": {
         "pass": 66,
@@ -1482,19 +1484,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 34
+        "of": 35
       }
     },
     "moon": {
       "all": {
         "pass": 590,
         "can": 909,
-        "of": 1014
+        "of": 1015
       },
       "correctness": {
         "pass": 458,
         "can": 746,
-        "of": 836
+        "of": 837
       },
       "efficiency": {
         "pass": 127,
@@ -1559,7 +1561,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 34
+        "of": 35
       }
     }
   },
@@ -33567,6 +33569,42 @@
         "moon": {
           "status": "n/a",
           "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/edit-beside-ready-server-in-first-run-rebuilds",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit made during the watch’s first build, in a project whose dev server is already up, is built right after",
+      "why": "A watch over an app starts its servers one after another, and the first is up long before the last. A save made meanwhile, in the project of a server already up, is an edit like any other. A watch that takes it for the server’s own write keeps serving what was built from the old source, and says nothing, until the file is saved again.",
+      "from": [
+        "watch-initial-edit-server"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs ready"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run app#gen"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch, persistent, ready"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch, persistent, ready"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch, ready"
         }
       }
     },
