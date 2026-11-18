@@ -50,8 +50,20 @@ export function testFiles(suite: Suite = 'safe', platform = false): string[] {
     .sort()
 }
 
-export function readWeights(suite: Suite = 'safe'): Record<string, number> {
-  return JSON.parse(readFileSync(TABLES[suite], 'utf8')) as Record<string, number>
+// The Mac's own times for the platform's files: a Mac skips the Linux
+// sandbox's tests and runs its own, so the Linux table dealt its six
+// shards 57 to 84 s of work (2026-11-18). Only the safe suite has one.
+// Weighed on CI's Macs: a passing task's output is in no log, so a probe
+// PR's shards printed their JUnit file times and failed (#5330).
+const PLATFORM_TABLE = path.join(TESTS, 'platform-shard-weights.json')
+
+export function readWeights(suite: Suite = 'safe', platform = false): Record<string, number> {
+  const table = JSON.parse(readFileSync(TABLES[suite], 'utf8')) as Record<string, number>
+  if (!platform || suite !== 'safe') return table
+  return {
+    ...table,
+    ...(JSON.parse(readFileSync(PLATFORM_TABLE, 'utf8')) as Record<string, number>),
+  }
 }
 
 /** Deterministic LPT: heaviest first, ties by name, each into the lightest bin. */
@@ -124,8 +136,8 @@ if (import.meta.main) {
     }
     const flags = process.argv.slice(4)
     const suite: Suite = flags.includes('--unsafe') ? 'unsafe' : 'safe'
-    const files = testFiles(suite, flags.includes('--platform'))
-    const shard = partition(files, readWeights(suite), n)[i - 1]!
+    const platform = flags.includes('--platform')
+    const shard = partition(testFiles(suite, platform), readWeights(suite, platform), n)[i - 1]!
     console.log(shard.map((f) => `tests/${f}`).join(' '))
   }
 }

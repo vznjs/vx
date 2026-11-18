@@ -3,6 +3,8 @@
 // weights name files that exist — a renamed file must take its weight
 // with it, or it silently falls to the median.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { partition, readWeights, testFiles } from '../scripts/test-shard.js'
 import {
@@ -104,7 +106,7 @@ describe('platform shards', () => {
       ['unsafe', PLATFORM_UNSAFE_SHARD_COUNT],
     ] as const) {
       const files = testFiles(suite, true)
-      const bins = partition(files, readWeights(suite), n)
+      const bins = partition(files, readWeights(suite, true), n)
       expect(bins.flat().sort()).toEqual(files)
       for (const bin of bins) expect(bin.length).toBeGreaterThan(0)
       expect(files.every((f) => testFiles(suite).includes(f))).toBe(true)
@@ -113,5 +115,23 @@ describe('platform shards', () => {
     expect(testFiles('safe', true)).not.toContain('status-line.test.ts')
     expect(testFiles('unsafe', true)).toContain('sandbox-runtime.unsafe.test.ts')
     expect(testFiles('unsafe', true)).not.toContain('skills-install.unsafe.test.ts')
+  })
+
+  // A Mac skips the Linux sandbox's tests and runs its own: dealt by the
+  // Linux table, its six shards ran 57 to 84 s (2026-11-18), and the Mac
+  // work ends a distributed run as often as the Linux work does.
+  it("deals the Mac's shards by the Mac's own times", () => {
+    const files = testFiles('safe', true)
+    const own = JSON.parse(
+      readFileSync(path.join(import.meta.dir, 'platform-shard-weights.json'), 'utf8'),
+    ) as Record<string, number>
+    // It names only the platform's files; one it does not know keeps the Linux time.
+    expect(Object.keys(own).filter((f) => !files.includes(f))).toEqual([])
+    expect(Object.keys(own).length).toBeGreaterThan(files.length / 2)
+    const dealt = readWeights('safe', true)
+    const loads = partition(files, dealt, PLATFORM_SHARD_COUNT).map((bin) =>
+      bin.reduce((s, f) => s + (own[f] ?? dealt[f] ?? 0), 0),
+    )
+    expect(Math.max(...loads) / Math.min(...loads)).toBeLessThan(1.05)
   })
 })
