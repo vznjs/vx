@@ -569,9 +569,21 @@ static void observe(int listener, const struct notif *q, int reads) {
   u64 dir1, dir2;
   u64 n1 = path_of(q, c->path, c->dirfd, abs1, &dir1);
   u64 n2 = path_of(q, c->path2, c->dirfd2, abs2, &dir2);
+  int flags = c->flags >= 0 ? (int)(u32)q->args[c->flags] : 0;
+  /* An openat2's flags lie in its struct open_how, first, where the
+   * filter cannot look and we can. One with no write intent is an openat
+   * (same arguments): judged a write, a read that worked went unreported
+   * and a refused one was named a write. Unreadable, it stays a write. */
+  if (c->kind == OPEN2 && q->args[2] != 0) {
+    u64 how = 0;
+    struct iovec l = {&how, sizeof how}, r = {(void *)q->args[2], sizeof how};
+    if (S6(NR_process_vm_readv, (int)q->pid, &l, 1, &r, 1, 0) == (long)sizeof how && !(how & WRITE_MASK)) {
+      c = find(NR_openat);
+      flags = (int)how;
+    }
+  }
   /* The caller may be gone and its pid another's: what was read is its only if it still waits. */
   if (S3(NR_ioctl, listener, NOTIF_ID_VALID, &q->id) != 0) return;
-  int flags = c->flags >= 0 ? (int)(u32)q->args[c->flags] : 0;
   if (c->kind == WRITE || c->kind == OPEN2 || (c->kind == OPEN && (flags & WRITE_MASK))) {
     for (int k = 0; k < 2; k++) {
       u64 n = k == 0 ? n1 : n2;

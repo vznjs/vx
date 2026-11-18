@@ -74,6 +74,28 @@ describe.skipIf(!runs)('vx-observe', () => {
     expect(r.lines).toEqual(['openat(AT_FDCWD, "<tmp>/here.txt", O_RDONLY) = 3'])
   })
 
+  // No shell tool calls openat2, so Python makes the raw call. Judged by
+  // the call alone (its flags lie in a struct), a read that worked went
+  // unreported and a refused one was named a write.
+  it('judges an openat2 by its flags: a read is a read, a write a write', async () => {
+    const openat2 = (file: string, flags: string) =>
+      `python3 -I -c 'import ctypes,os;h=(ctypes.c_uint64*3)(${flags},0o644,0);` +
+      `ctypes.CDLL(None).syscall(437,-100,b"${file}",h,24)'`
+    const r = await observe(
+      true,
+      [
+        openat2('here.txt', 'os.O_RDONLY'),
+        openat2('gone.txt', 'os.O_RDONLY'),
+        openat2('new.txt', 'os.O_WRONLY|os.O_CREAT'),
+      ].join('; '),
+    )
+    expect(r.lines).toEqual([
+      'openat(AT_FDCWD, "<tmp>/here.txt", O_RDONLY) = 3',
+      'openat(AT_FDCWD<<tmp>>, "gone.txt", O_RDONLY) = -1 ENOENT (x)',
+      'W openat2 "<tmp>/new.txt"',
+    ])
+  })
+
   it('prints each write-intent call, a move as its source then its destination', async () => {
     const r = await observe(false, 'echo x > "a b.txt" && mv "a b.txt" c.txt && rm c.txt')
     expect(observedWrites(r.lines.join('\n')).map((l) => l.replace(/^deny \S+ /, ''))).toEqual([

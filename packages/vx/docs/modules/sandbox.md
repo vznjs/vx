@@ -989,9 +989,12 @@ trace names only by number, so such a task's strace runs with `-y`,
 which prints the path each descriptor opened (40% slower on 2,000
 opens). The parse takes a descriptor's printed path up to the `, "` that
 opens the file argument, since a directory's name may hold a quote
-(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse. strace
-never sees an `openat2`: SRT's write observer takes every one, read or
-write (its flags lie in a struct its filter cannot read), its
+(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse. vx's own
+observer (`observe/vx-observe.c`, the default trace) reads an
+`openat2`'s flags from the caller's `open_how` and reports it as the
+`openat` it is: a read as a read, a write as a write. strace, its
+fallback, never sees an `openat2`: SRT's write observer takes every one,
+read or write (its flags lie in a struct its filter cannot read), its
 USER_NOTIF wins over strace's TRACE, and its record names no flags. So
 `refusedWrites` takes an `openat2` record as either: where the sandbox
 can read the path (`inSandbox`), or a read grant covers it under a
