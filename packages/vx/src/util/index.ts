@@ -44,6 +44,7 @@ export {
   mark,
   timingLines,
   restartTimings,
+  untimed,
   span,
   stageTimes,
   type StageTime,

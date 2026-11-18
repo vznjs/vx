@@ -87,9 +87,25 @@ export function span(label: string): () => void {
   }
 }
 
+let muted = false
+
+/**
+ * Run `fn` with no table printed and none left behind: a plan `vx watch`
+ * asks only for its keys is no cycle, and its table read as one.
+ */
+export async function untimed<T>(fn: () => Promise<T>): Promise<T> {
+  muted = true
+  try {
+    return await fn()
+  } finally {
+    muted = false
+    restartTimings()
+  }
+}
+
 /** The stage table's lines (once, at the end of a run); none unless enabled. */
 export function timingLines(): string[] | undefined {
-  if (!enabled || marks.length === 0) return undefined
+  if (!enabled || muted || marks.length === 0) return undefined
   const width = Math.max(...marks.map(([l]) => l.length))
   let prev = 0
   const lines = ['[vx timing]  stage'.padEnd(width + 14) + '    own   cumulative']

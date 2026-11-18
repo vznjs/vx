@@ -1541,7 +1541,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    Any other (an input of a task that already finished, a new lock) is
    found as the loop arms: a file git lists as untracked or modified,
    written since the run started by none of its commands, is a change,
-   and the first cycle runs on it. A deletion made while it runs is
+   and the first cycle runs on it. One written while a command of its
+   own project ran may be that command's: the keys are taken again, and
+   it is a change when one moved. A deletion made while it runs is
    still unheard: it has no date to tell it from one made before.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of

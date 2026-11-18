@@ -59,10 +59,10 @@ const output = (lib: string) => async (): Promise<string> =>
  * lib#build's row: its command's window has closed. A write inside it may
  * be the command's own, and watch cannot tell, so the edit comes after.
  */
-async function finished(w: Watch, lib: string): Promise<void> {
+async function finished(w: Watch, lib: string, row = 'lib#build'): Promise<void> {
   await until(
-    async () => w.out().includes('lib#build') && (await output(lib)()) === 'old\n',
-    'lib#build to finish',
+    async () => w.out().includes(row) && (await output(lib)()) === 'old\n',
+    `${row} to finish`,
   )
 }
 
@@ -84,6 +84,59 @@ it.each([
   },
   40_000,
 )
+
+/** `lib#lint` is done at once; `lib#hold`, behind it, holds the run until `go` exists, then writes a file. */
+async function oneProject(): Promise<{ lib: string; go: string; root: string }> {
+  const root = await makeWorkspace({ prefix: 'vx-watch-initial-edit-done-' })
+  const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-initial-edit-done-out-'))
+  made.push(root, outside)
+  const go = path.join(outside, 'go')
+  const lib = await addProject(
+    root,
+    'lib',
+    `export default { tasks: {
+      lint: {
+        exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      },
+      hold: {
+        exec: { command: 'while [ ! -f ${go} ]; do sleep 0.02; done; echo held > held.txt' },
+        dependsOn: ['lint'],
+      },
+    } }`,
+  )
+  await mkdir(path.join(lib, 'src'), { recursive: true })
+  await writeFile(path.join(lib, 'src', 'a.txt'), 'old\n')
+  await writeFile(path.join(root, '.gitignore'), 'dist\n')
+  return { lib, go, root }
+}
+
+// A write while a command of the same project runs may be that command's,
+// so it was dropped: `lint` was done, `hold` was running, and the edit to
+// lint's input waited for the next save. The keys tell: one moved.
+it('an edit to a finished task, made while another task of its project runs, starts a cycle', async () => {
+  const { lib, go, root } = await oneProject()
+  watch = startWatch(root, ['--all'], {}, 'hold')
+  const w = watch
+  const out = output(lib)
+  await finished(w, lib, 'lib#lint')
+  await writeFile(path.join(lib, 'src', 'a.txt'), 'new\n')
+  await writeFile(go, '')
+  await until(async () => (await out()) === 'new\n', 'the output built from the edit')
+}, 40_000)
+
+// CONTROL: the command's own write, in its window, moves no key.
+it('a file the initial run wrote in its own project starts no cycle', async () => {
+  const { lib, go, root } = await oneProject()
+  watch = startWatch(root, ['--all'], {}, 'hold')
+  const w = watch
+  await finished(w, lib, 'lib#lint')
+  await writeFile(go, '')
+  await until(() => w.out().includes('watching'), 'the watching marker')
+  expect(await readFile(path.join(lib, 'held.txt'), 'utf8')).toBe('held\n')
+  await Bun.sleep(1_000)
+  expect(w.cycles()).toBe(0)
+}, 40_000)
 
 it('a `vx lock` during the initial run starts a cycle on the new lock', async () => {
   const { lib, go, root } = await fixture(false)

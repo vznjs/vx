@@ -193,7 +193,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // (see config-eval.ts). The edit is found instead: one to the inputs of a
   // task the run was running leaves that task unsaved, and the loop starts on
   // it (`drifted`); any other is a file the arm finds written since the run
-  // started by none of its commands (`InitialRun`). The exception: once the run
+  // started by none of its commands (`InitialRun`), or inside one's window
+  // with a key moved since (`hearIfKeysMoved`). The exception: once the run
   // waits on a server's readiness alone, every config is loaded, and the loop
   // arms with the run as its cycle in flight. Unarmed, a server that never got
   // ready held the initial run for good, and the fix to it was never heard.
@@ -223,9 +224,14 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   let refusedToStart = false
   /** A task whose inputs the user edited while the initial run ran it: no watcher heard the edit. */
   let drifted: string | undefined
+  /** Each task's key as the initial run took it. */
+  let keys: ReadonlyMap<string, string> | undefined
   initial.held = runOrchestrator(initial.cycle.opts).then(
     async (run) => {
       drifted = run.outcomes.find((o) => o.cache?.unkeyed === true)?.node.id
+      keys = new Map(
+        run.outcomes.flatMap((o) => (o.hash === undefined ? [] : [[o.node.id, o.hash]])),
+      )
       if (run.refused !== undefined) {
         const hint = run.refused.startsWith('no projects declare')
           ? await spacedHint(parsed, cwd)
@@ -268,13 +274,14 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     sayNotice('error', 'vx watch', 'no projects in scope')
     return 1
   }
-  await armLoop(undefined, held, drifted)
+  await armLoop(undefined, held, drifted, keys)
   return stopped()
 
   async function armLoop(
     initial?: InitialCycle,
     held?: HeldPersistent,
     drifted?: string,
+    keys?: ReadonlyMap<string, string>,
   ): Promise<void> {
     // `--affected`'s diff is the tree at start; judged again, it held every
     // later edit out of the scope it picked. A cycle is an edit, and the
@@ -295,6 +302,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       initialRun,
       tasks: openingTasks,
       drifted,
+      keys,
       stop: stop.signal,
       workspaceRoot,
       projects: watched,

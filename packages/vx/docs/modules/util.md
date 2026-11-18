@@ -1096,6 +1096,8 @@ run against.
 `vx watch` calls `restartTimings()` as each cycle starts, so a cycle's
 table holds its own stages alone, timed from its start rather than
 across the idle wait before it (`tests/watch-timing.test.ts`).
+`untimed(fn)` runs `fn` with no table printed and none left behind:
+the keys-only plan `vx watch` takes as it arms is no cycle.
 `prepareRun` calls `beginRun()` first: a process's first run keeps
 its stages from this module's load, and a later one (an embedder's
 second `run()`) restarts the table the same way.
