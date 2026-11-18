@@ -92,8 +92,6 @@ src/graph/task-graph.ts
 src/graph/task-status.ts
 src/handoff.ts
 src/history/failure-mode.ts
-src/history/history-stream.ts
-src/history/history-writer.ts
 src/history/history-writes.ts
 src/history/history.ts
 src/history/hit-rows.ts

@@ -440,7 +440,7 @@ export class StoreIndex {
             // resolve to an attached store's.
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.remote_hits; DROP TABLE IF EXISTS main.steps; DROP TABLE IF EXISTS main.warnings; DROP TABLE IF EXISTS main.failures; DROP TABLE IF EXISTS main.lockfile_memos; DROP TABLE IF EXISTS main.run_ids;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.run_hits; DROP TABLE IF EXISTS main.hit_keys; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.remote_hits; DROP TABLE IF EXISTS main.steps; DROP TABLE IF EXISTS main.warnings; DROP TABLE IF EXISTS main.failures; DROP TABLE IF EXISTS main.lockfile_memos; DROP TABLE IF EXISTS main.run_ids;',
               )
             }
             // The tables land under the stamp's write lock: made after it,
@@ -1051,8 +1051,8 @@ export function artifactStat(
 }
 
 /**
- * The files a second connection writes a run's hits through; undefined when the
- * store keeps no history on disk.
+ * The files a store keeps its history in, as a second connection opens
+ * them (checkpointer.ts); undefined when it keeps none on disk.
  */
 export function historyFilesOf(ix: StoreIndex): { index: string; store?: string } | undefined {
   if (ix.empty || ix.writeBlocked !== null || ix.inspecting) return undefined

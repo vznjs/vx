@@ -5,6 +5,7 @@
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
 import { lazyStatement } from '../index-db/index.js'
+import { decodeHits, hitRecords, type PackedHits } from './hit-rows.js'
 
 import { isMeasure, splitTaskId } from '../util/index.js'
 
@@ -53,9 +54,11 @@ const RUN_COLUMNS = [
  * `RUN_COLUMNS`); a column it leaves out is NULL, as no `runs` column has
  * a default.
  */
-function insertRunsSql(kept: readonly number[], n: number): string {
-  const tuple = `(${kept.map(() => '?').join(', ')})`
-  return `INSERT INTO main.runs(${kept.map((i) => RUN_COLUMNS[i]).join(', ')}) VALUES ${Array(n).fill(tuple).join(', ')}`
+function insertRunsSql(kept: readonly number[], n: number, ids: boolean): string {
+  const columns = kept.map((i) => RUN_COLUMNS[i])
+  if (ids) columns.unshift('id')
+  const tuple = `(${columns.map(() => '?').join(', ')})`
+  return `INSERT INTO main.runs(${columns.join(', ')}) VALUES ${Array(n).fill(tuple).join(', ')}`
 }
 
 /**
@@ -112,6 +115,31 @@ function aloneMs(r: Pick<RunRecord, 'durationMs' | 'cpuMs' | 'cpuShare'>): numbe
   return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
 
+/** A run's hits, packed (`encodeHits`), and what their rows need of the run. */
+export interface RunHits extends PackedHits {
+  runId: string
+  startedAtMs: number
+}
+
+/**
+ * Write out the hits runs kept packed (`RunHistory.expandHits`): every
+ * reader of `runs` or the flaky record calls it first.
+ */
+export function expandHits(db: Database): number {
+  if (expanded.has(db)) return 0
+  expanded.add(db)
+  if (db.query('SELECT 1 FROM main.run_hits LIMIT 1').get() === null) return 0
+  return new RunHistory(db, () => {
+    throw new Error('a hit has no value to digest')
+  }).expandHits()
+}
+/**
+ * The connections with no kept hits to write out, as far as this process
+ * knows: asked once, then again only after this connection keeps some
+ * (CLAUDE.md "once per run": another process's hits wait for its next reader).
+ */
+const expanded = new WeakSet<Database>()
+
 export class RunHistory {
   private readonly insertInvocation: ReturnType<Database['prepare']>
 
@@ -147,12 +175,14 @@ export class RunHistory {
    * the commit the run ran on: its timings file under that branch, as a
    * finished run's do, or the branch's forecast never reads them.
    */
-  recordRuns(runs: readonly RunRecord[], head: RunHead = NO_HEAD): void {
-    if (runs.length === 0) return
+  recordRuns(runs: readonly RunRecord[], head: RunHead = NO_HEAD, hits?: RunHits): void {
+    if (runs.length === 0 && (hits === undefined || hits.n === 0)) return
+    this.beforeFailures(runs)
     // One transaction, one fsync: for a 200-task run, one instead of 200.
     // IMMEDIATE, as `recordRunBundle` explains.
     this.db
       .transaction(() => {
+        if (hits !== undefined) this.keepHits(hits)
         this.insertRuns(runs)
         this.insertDurations(runs, branchSource(head.branch), head.commitSha)
         this.insertOutcomes(runs)
@@ -161,18 +191,80 @@ export class RunHistory {
   }
 
   /**
-   * Hits written while the run goes on (history-stream.ts): their rows and
-   * the flaky record's first hit of a key. A hit times nothing, so it
-   * leaves no `task_durations` row; IMMEDIATE, as `recordRunBundle` says.
+   * The flaky record reads a key's outcomes in the order written: a failure
+   * goes in after every hit kept before it, or a later reader would write
+   * that pass out past the failure and read a relapse as a recovery.
    */
-  recordHits(runs: readonly RunRecord[]): void {
-    if (runs.length === 0) return
+  private beforeFailures(runs: readonly RunRecord[]): void {
+    if (runs.some((r) => r.status === 'failed' && keyed(r))) expandHits(this.db)
+  }
+
+  /**
+   * A run's hits as one `run_hits` row (`encodeHits`), their `runs` ids
+   * reserved so the rows `expandHits` writes later sort where the run
+   * left them. Inside the caller's transaction.
+   */
+  private keepHits(hits: RunHits): void {
+    if (hits.n === 0) return
+    expanded.delete(this.db)
+    // One statement where `runs` ever held a row; SQLite keeps no counter before that.
+    const bumped = this.db
+      .query("UPDATE main.sqlite_sequence SET seq = seq + ? WHERE name = 'runs' RETURNING seq")
+      .get(hits.n) as { seq: number } | null
+    if (bumped === null)
+      this.db.query("INSERT INTO main.sqlite_sequence(name, seq) VALUES ('runs', ?)").run(hits.n)
+    const last = bumped === null ? 0 : bumped.seq - hits.n
+    // By their xxh3, as an entry is by its key: a run of the same hits finds the row there.
+    const keys = BigInt.asIntN(64, BigInt(Bun.hash.xxHash3(hits.keys)))
     this.db
-      .transaction(() => {
-        this.insertRuns(runs)
-        this.insertOutcomes(runs)
-      })
-      .immediate()
+      .query('INSERT OR IGNORE INTO main.hit_keys(id, keys) VALUES (?, ?)')
+      .run(keys, hits.keys)
+    this.db
+      .query(
+        'INSERT INTO main.run_hits(run, first_id, started_at, keys, nums) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(this.runKey(hits.runId), last + 1, hits.startedAtMs, keys, hits.nums)
+  }
+
+  /**
+   * Every kept `run_hits` row written out as its `runs` rows and the flaky
+   * record's first hit of a key, oldest run first, a transaction each
+   * (IMMEDIATE, as `recordRunBundle` says): two readers expanding at once
+   * each find a row or find it gone. A hit times nothing, so it leaves no
+   * `task_durations` row. Returns the rows written.
+   */
+  expandHits(): number {
+    const pending = this.db.query('SELECT run FROM main.run_hits ORDER BY run').all() as {
+      run: number
+    }[]
+    let written = 0
+    for (const { run } of pending) {
+      this.db
+        .transaction(() => {
+          const kept = this.db
+            .query(
+              `DELETE FROM main.run_hits WHERE run = ?
+               RETURNING first_id AS firstId, started_at AS startedAtMs, nums,
+                 (SELECT k.keys FROM main.hit_keys k WHERE k.id = run_hits.keys) AS keys,
+                 (SELECT run_id FROM main.run_ids WHERE id = run) AS runId`,
+            )
+            .get(run) as {
+            firstId: number
+            startedAtMs: number
+            nums: Uint8Array
+            keys: string
+            runId: string
+          } | null
+          if (kept === null) return
+          const records = hitRecords(decodeHits(kept), kept)
+          this.insertRuns(records, kept.firstId)
+          this.insertOutcomes(records)
+          written += records.length
+        })
+        .immediate()
+    }
+    this.db.exec('DELETE FROM main.hit_keys WHERE id NOT IN (SELECT keys FROM main.run_hits)')
+    return written
   }
 
   /**
@@ -279,7 +371,7 @@ export class RunHistory {
    * 31.7 to 24.0 ms alone, the whole record stage 86.8 to 83.3 ms (median
    * of 15 interleaved runs).
    */
-  private insertRuns(runs: readonly RunRecord[]): void {
+  private insertRuns(runs: readonly RunRecord[], firstId?: number): void {
     const digests = new Map<string, string>()
     const digest = (value: string): string => {
       let d = digests.get(value)
@@ -298,13 +390,17 @@ export class RunHistory {
       for (let c = 0; c < row.length; c++) if (row[c] !== null) filled[c] = true
     const kept: number[] = []
     for (let c = 0; c < filled.length; c++) if (filled[c]) kept.push(c)
-    const perInsert = Math.floor(VARIABLES_PER_INSERT / kept.length)
+    const ids = firstId !== undefined
+    const perInsert = Math.floor(VARIABLES_PER_INSERT / (kept.length + (ids ? 1 : 0)))
     for (let i = 0; i < bound.length; i += perInsert) {
       const block = bound.slice(i, i + perInsert)
       const params: SQLQueryBindings[] = []
-      for (const row of block) for (const c of kept) params.push(row[c] as SQLQueryBindings)
+      for (let k = 0; k < block.length; k++) {
+        if (ids) params.push(firstId + i + k)
+        for (const c of kept) params.push(block[k]![c] as SQLQueryBindings)
+      }
       // `query` caches by text: one statement for every full block.
-      this.db.query(insertRunsSql(kept, block.length)).run(...params)
+      this.db.query(insertRunsSql(kept, block.length, ids)).run(...params)
     }
   }
 
@@ -321,7 +417,12 @@ export class RunHistory {
     ).id
   }
 
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+  recordRunBundle(bundle: {
+    runs: readonly RunRecord[]
+    invocation: InvocationRecord
+    hits?: RunHits
+  }): void {
+    this.beforeFailures(bundle.runs)
     // Whole run records atomically — one transaction, one fsync: the
     // per-task `runs` rows and the one `invocations` header. The
     // input-fingerprint rows do NOT live here: they're written inside
@@ -337,6 +438,9 @@ export class RunHistory {
     // in 2–60 ms (BUSY_SNAPSHOT, a retry passing at once).
     this.db
       .transaction(() => {
+        // First: a run's hits keep the ids before its other rows, as when
+        // they were written while it ran.
+        if (bundle.hits !== undefined) this.keepHits(bundle.hits)
         this.insertRuns(bundle.runs)
         this.insertInvocation.run(...bindInvocation(bundle.invocation))
         this.insertDurations(
@@ -357,6 +461,8 @@ export class RunHistory {
     runId: string,
     errors: readonly (readonly [hash: string, text: string])[],
   ): void {
+    // A hit's upload may be what failed: its row is written out to say so.
+    expandHits(this.db)
     const update = this.db.prepare(
       'UPDATE main.runs SET remote_error = ? WHERE run = (SELECT id FROM run_ids WHERE run_id = ?) AND hash = ?',
     )

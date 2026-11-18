@@ -8,6 +8,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import { expandHits } from '../src/history/index.js'
 import { assembleRunRecords } from '../src/orchestrator/run-records.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
@@ -31,8 +32,10 @@ interface Row {
   blocks: number | null
 }
 function rows(): Row[][] {
-  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
   try {
+    // A hit's row is written out when a reader asks.
+    expandHits(db)
     const ids = db.query('SELECT run_id FROM invocations ORDER BY started_at').all() as {
       run_id: string
     }[]

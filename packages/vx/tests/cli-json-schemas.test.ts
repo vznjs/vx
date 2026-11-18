@@ -306,6 +306,8 @@ beforeAll(async () => {
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   // History older than run ids: `vx why` falls back to the cache entry.
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  // The run's hits, kept packed (`run_hits`), are rows such a history never had.
+  db.run('DELETE FROM run_hits')
   db.run("UPDATE runs SET run = NULL WHERE project = 'lib' AND task = 'build'")
   db.close()
   json('why', ['lib#build'])

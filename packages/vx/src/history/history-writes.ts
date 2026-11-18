@@ -7,16 +7,22 @@ import {
   type RunRecord,
   RunHistory,
   type RunHead,
+  type RunHits,
 } from './run-history.js'
 import { type Cache, indexDb, indexError, indexWritable, valueDigest } from '../cache/index.js'
 
 /** A run's history writes into a cache's index. */
 export interface HistoryWrites {
   recordRun(run: RunRecord): void
-  recordRuns(runs: readonly RunRecord[], head?: RunHead): void
+  /** `hits`: the run's packed hits, kept in the same transaction. */
+  recordRuns(runs: readonly RunRecord[], head?: RunHead, hits?: RunHits): void
   /** A run's plugin measures, each its last (`PluginSetupContext.measure`), as timings. */
   recordMeasures(measures: readonly MeasureRecord[], head: RunHead): void
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRunBundle(bundle: {
+    runs: readonly RunRecord[]
+    invocation: InvocationRecord
+    hits?: RunHits
+  }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
 }
 
@@ -47,7 +53,7 @@ function historyWrites(cache: Cache): HistoryWrites {
   }
   return {
     recordRun: (run) => write(() => history.recordRun(run)),
-    recordRuns: (runs, head) => write(() => history.recordRuns(runs, head)),
+    recordRuns: (runs, head, hits) => write(() => history.recordRuns(runs, head, hits)),
     recordMeasures: (measures, head) => {
       if (measures.length > 0) write(() => history.recordMeasures(measures, head))
     },

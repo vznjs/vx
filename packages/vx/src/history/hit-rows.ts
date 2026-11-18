@@ -1,7 +1,8 @@
-// A run's hits on their way to the history thread (history-stream.ts): a
-// row of numbers and four strings each, packed as the hit settles and
-// read back into `runs` rows on the thread. The main thread built and
-// serialized a record object per hit before: 35 ms of an 8,002-hit run.
+// A run's hits on their way into the history: a row of numbers and four
+// strings each, packed as the hit settles (`HitBatch`), kept by the run as
+// one `run_hits` row (`encodeHits`) and read back into `runs` rows only
+// when a reader asks (`hitRecords`, run-history.ts `expandHits`). A record
+// object and a `runs` row per hit were 13% of an 8,002-hit no-op.
 
 import type { RunRecord } from './run-history.js'
 
@@ -41,7 +42,7 @@ const STRINGS = 4
 /** The text fields few hits carry: sent only where set. */
 export type RareHitField = 'placement' | 'blockedBy' | 'notReady' | 'remoteError' | 'keylessBy'
 
-/** A batch as the thread receives it. */
+/** A batch of packed hits. */
 export interface HitRows {
   n: number
   nums: Float64Array
@@ -142,3 +143,50 @@ const OPTIONAL = [
   'attempts',
   'sandboxViolations',
 ] as const satisfies readonly (keyof typeof HIT & keyof RunRecord)[]
+
+/** A run's hits as `run_hits` stores them. */
+export interface PackedHits {
+  n: number
+  /**
+   * JSON: a `[project, task, hash, def]` per hit. Its own column, shared by
+   * every run that hit the same keys in the same order, as successive
+   * no-op runs do: SQL reads it (`json_each`) without the numbers.
+   */
+  keys: string
+  /** zstd of a u32 count, the hits' numbers, then the rare fields as JSON. */
+  nums: Uint8Array
+}
+
+/** Every batch of a run as one stored value. */
+export function encodeHits(batches: readonly HitRows[]): PackedHits {
+  let n = 0
+  for (const b of batches) n += b.n
+  const nums = new Float64Array(n * WIDTH)
+  const keys: (string | null)[][] = []
+  const rare: HitRows['rare'] = []
+  let at = 0
+  for (const b of batches) {
+    nums.set(b.nums.subarray(0, b.n * WIDTH), at * WIDTH)
+    for (let i = 0; i < b.strs.length; i += STRINGS) keys.push(b.strs.slice(i, i + STRINGS))
+    for (const [row, field, value] of b.rare) rare.push([at + row, field, value])
+    at += b.n
+  }
+  const text = new TextEncoder().encode(JSON.stringify(rare))
+  const head = new Uint8Array(new Uint32Array([n]).buffer)
+  const numBytes = new Uint8Array(nums.buffer)
+  const raw = new Uint8Array(head.length + numBytes.length + text.length)
+  raw.set(head, 0)
+  raw.set(numBytes, head.length)
+  raw.set(text, head.length + numBytes.length)
+  return { n, keys: JSON.stringify(keys), nums: Bun.zstdCompressSync(raw, { level: 1 }) }
+}
+
+/** The rows `encodeHits` packed. */
+export function decodeHits(packed: Pick<PackedHits, 'keys' | 'nums'>): HitRows {
+  const raw = Bun.zstdDecompressSync(packed.nums)
+  const n = new Uint32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + 4))[0]!
+  const numEnd = 4 + n * WIDTH * 8
+  const nums = new Float64Array(raw.buffer.slice(raw.byteOffset + 4, raw.byteOffset + numEnd))
+  const rare = JSON.parse(new TextDecoder().decode(raw.subarray(numEnd))) as HitRows['rare']
+  return { n, nums, strs: (JSON.parse(packed.keys) as (string | null)[][]).flat(), rare }
+}

@@ -11,6 +11,7 @@ import { buildTaskGraph, isDefaultBuild, isGroupTask, splitTaskId } from '../gra
 import {
   cacheKeyDiff,
   diffsOlderRun,
+  expandHits,
   explainCacheKey,
   inputWriters,
   latestRunId,
@@ -290,6 +291,8 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   const cache = Cache.inspect(await cliCacheDir(at, parsed.cacheDir))
   try {
     const db = indexDb(cache)
+    // Each run keeps its hits packed: this verb reads them as rows.
+    expandHits(db)
     const target = await rootSpelled(at, parsed.target)
     const taskId = await resolveTarget(
       cache,

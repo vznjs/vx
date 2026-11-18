@@ -11,6 +11,7 @@ import path from 'node:path'
 // The keyed-run predicate lives beside the schema in cache/cache.ts, so a
 // rule written once cannot drift.
 import { KEYED_RUNS_SQL } from '../index-db/index.js'
+import { expandHits } from './run-history.js'
 import { type TaskInputComponent } from '../cache/index.js'
 import { isPassStatus, splitTaskId } from '../graph/index.js'
 import { clampInt, MASKED, secretNamed } from '../util/index.js'
@@ -78,6 +79,7 @@ export interface ListRunsArgs {
 }
 
 export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[] {
+  expandHits(db)
   // Ceiling is high enough that a single run's full task set (getRun passes the
   // run_id) is never truncated; list views pass their own small limit.
   const limit = clampInt(args.limit ?? 100, 1, 100_000)
@@ -338,6 +340,7 @@ export interface CacheKeyExplanation {
 }
 
 export function explainCacheKey(db: Database, taskId: string): CacheKeyExplanation {
+  expandHits(db)
   const [project, task] = splitTaskId(taskId)
   const entry = db
     .query(
@@ -505,6 +508,7 @@ function unchangedKeyNote(
  * `vx why`'s default when no run id is given.
  */
 export function latestRunId(db: Database, taskId: string): string | null {
+  expandHits(db)
   const [project, task] = splitTaskId(taskId)
   const row = db
     .query(
@@ -523,6 +527,7 @@ function keylessNote(taskId: string, keylessBy: string): string {
 }
 
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
+  expandHits(db)
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
@@ -711,6 +716,7 @@ export function diffKeyComponents(
  * when the pair has no row, `entries:[]` on a task's first run.
  */
 export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff {
+  expandHits(db)
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
@@ -951,6 +957,7 @@ export function upstreamTask(name: string): string {
  * (project, task) index, and asking per task scanned the run's rows each time.
  */
 export function recordedTasks(db: Database, runId: string): Set<string> {
+  expandHits(db)
   const rows = db.query('SELECT project, task FROM runs WHERE run_id = ?').all(runId) as {
     project: string
     task: string
@@ -1082,6 +1089,7 @@ export function inputWriters(
   entries: CacheKeyDiff['entries'],
   roots: readonly RootCause[],
 ): InputWriter[] {
+  expandHits(db)
   // Bounded on both sides by the longest recorded window, so the query
   // walks `runs_started_at` over that span, not every older row.
   const during = db.query(

@@ -7,7 +7,7 @@
 // any other.
 
 import type { Database } from 'bun:sqlite'
-import { branchSource } from './run-history.js'
+import { branchSource, expandHits } from './run-history.js'
 import { type Cache, indexDb } from '../cache/index.js'
 import { EXECUTED_RUNS_SQL } from '../index-db/index.js'
 import { isMeasure, splitTaskId } from '../util/index.js'
@@ -215,6 +215,8 @@ export class LocalHistoryProvider implements LocalHistory {
 
   private load(wanted: ReadonlySet<string> | null): HistoryTable {
     const out = new Map<string, TaskHistory>()
+    // This read counts hits: the kept ones are written out first.
+    expandHits(this.db)
     const floor = this.floor()
 
     // `skipped` rows are excluded: never executed, they belong in no rate or
@@ -652,11 +654,17 @@ export class LocalHistoryProvider implements LocalHistory {
            MAX(CASE WHEN e.cpu_ms IS NOT NULL AND e.duration_ms > 0
                     THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu,
            MAX(CASE WHEN e.duration_ms > 0 THEN e.duration_ms END) AS ms
-         FROM (SELECT DISTINCT project, task, hash, def FROM main.runs WHERE id >= ? AND cache_hit = 1) r
+         FROM (SELECT DISTINCT project, task, hash, def FROM main.runs WHERE id >= ? AND cache_hit = 1
+               -- Hits their runs kept packed (\`run_hits\`), read where they
+               -- lie: a run that plans (vx-history asks each one) writes none out.
+               UNION
+               SELECT j.value ->> 0, j.value ->> 1, j.value ->> 2, j.value ->> 3
+               FROM main.hit_keys k, json_each(k.keys) j
+               WHERE k.id IN (SELECT keys FROM main.run_hits WHERE first_id >= ?)) r
          JOIN entries e ON e.hash = r.hash
          GROUP BY r.project, r.task${this.byDef}`,
       )
-      .all(floor) as ProducerRow[]
+      .all(floor, floor) as ProducerRow[]
   }
 
   /** Whether a producer row is of the task as it is now and measured anything. */
@@ -740,6 +748,8 @@ export class LocalHistoryProvider implements LocalHistory {
    * of the whole table was 270 ms at 2M rows.
    */
   recentTaskIds(): string[] {
+    // This read counts hits: the kept ones are written out first.
+    expandHits(this.db)
     const rows = this.db
       .query('SELECT DISTINCT project, task FROM main.runs WHERE id >= ? ORDER BY project, task')
       .all(this.floor()) as { project: string; task: string }[]
@@ -751,11 +761,15 @@ export class LocalHistoryProvider implements LocalHistory {
     // The first row of each invocation in the window, a probe each: a
     // group-only run records a header and no row, and at the oldest slot the
     // window read the whole table.
+    // A run's kept hits hold its lowest ids (`keepHits` reserves them first).
     const row = this.db
       .query(
         `SELECT COUNT(*) AS n, MIN(first) AS id,
            (SELECT COALESCE(MAX(id), 0) + 1 FROM main.runs) AS past
-         FROM (SELECT (SELECT MIN(id) FROM runs WHERE run_id = i.run_id) AS first
+         FROM (SELECT COALESCE(
+                   (SELECT h.first_id FROM main.run_hits h JOIN main.run_ids k ON k.id = h.run
+                    WHERE k.run_id = i.run_id),
+                   (SELECT MIN(id) FROM runs WHERE run_id = i.run_id)) AS first
                FROM (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT ?) i)`,
       )
       .get(this.recent) as { n: number; id: number | null; past: number }

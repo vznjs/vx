@@ -46,22 +46,22 @@ single root file when it has no internals to hide. The design and
 migration history live in
 [`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-| Module         | Form                        | Contract highlights                                                                                                                                     |
-| -------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                        |
-| `ui`           | dir + `index.ts`            | the only module that draws: tokens, components, panels, the live region, `print` / `say` / `data`; the façade's `ui` is its plugin kit                  |
-| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                            |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, claimed root files     |
-| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                                   |
-| `index-db`     | dir + `index.ts`            | cache.db's one schema (`SCHEMA_VERSION`, every table, the `runs` view) and its SQLite helpers, shared by `cache`, `memo` and `history`                  |
-| `memo`         | dir + `index.ts`            | what a warm run remembers: file hashes, task folds, lockfile parses, output stamps, remote hits                                                         |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal                          |
-| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, env composition, the executor contract                                                                                   |
-| `sandbox`      | dir + `index.ts`            | a task's sandbox request in, its result and violations out: `sandboxRequestFor`, `runSandboxed`, `sandboxFix`                                           |
-| `history`      | dir + `index.ts`            | what runs leave: written (`runHistory`, `HistoryStream`) and read back (`LocalHistoryProvider`, flakiness, `vx last` / `vx why`, `createMissExplainer`) |
-| `report`       | dir + `index.ts`            | the run event bus (`createEventBus`, `WireEvent`), `defaultLogger`, the summary and forecast, a migration's report; renders, never runs or writes       |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts                                                                                            |
-| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                      |
+| Module         | Form                        | Contract highlights                                                                                                                                                       |
+| -------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                                          |
+| `ui`           | dir + `index.ts`            | the only module that draws: tokens, components, panels, the live region, `print` / `say` / `data`; the façade's `ui` is its plugin kit                                    |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                                              |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, claimed root files                       |
+| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                                                     |
+| `index-db`     | dir + `index.ts`            | cache.db's one schema (`SCHEMA_VERSION`, every table, the `runs` view) and its SQLite helpers, shared by `cache`, `memo` and `history`                                    |
+| `memo`         | dir + `index.ts`            | what a warm run remembers: file hashes, task folds, lockfile parses, output stamps, remote hits                                                                           |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal                                            |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, env composition, the executor contract                                                                                                     |
+| `sandbox`      | dir + `index.ts`            | a task's sandbox request in, its result and violations out: `sandboxRequestFor`, `runSandboxed`, `sandboxFix`                                                             |
+| `history`      | dir + `index.ts`            | what runs leave: written (`runHistory`; a run's hits packed, `expandHits`) and read back (`LocalHistoryProvider`, flakiness, `vx last` / `vx why`, `createMissExplainer`) |
+| `report`       | dir + `index.ts`            | the run event bus (`createEventBus`, `WireEvent`), `defaultLogger`, the summary and forecast, a migration's report; renders, never runs or writes                         |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts                                                                                                              |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                                        |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:

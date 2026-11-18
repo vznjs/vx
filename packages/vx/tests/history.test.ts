@@ -1015,6 +1015,8 @@ describe('LocalHistoryProvider', () => {
       const query = db.query.bind(db)
       vi.spyOn(db, 'query').mockImplementation(((sql: string) => {
         const stmt = query(sql)
+        // Not the one probe for hits kept packed (`expandHits`).
+        if (sql.includes('FROM main.run_hits LIMIT 1')) return stmt
         return {
           get: (...args: unknown[]) => (bound.push(['get', ...args]), stmt.get(...(args as []))),
           all: (...args: unknown[]) => (

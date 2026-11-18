@@ -27,7 +27,9 @@ import {
   sweepStaging,
 } from '../cache/index.js'
 import {
-  HistoryStream,
+  encodeHits,
+  HitBatch,
+  type RunHits,
   runHistory,
   keepRunNotes,
   createMissExplainer,
@@ -1442,12 +1444,10 @@ async function runOnBus(
     let lockBroken: boolean | undefined
     prepared.localCache.memo.storeHeldBlobSizes()
     prepared.localCache.checkpointOffThread()
-    // A hit's row is whole when it finishes, so it is written while the graph
-    // runs (history-stream.ts); other rows, and any with forward args (only the
-    // bundle digests them), wait for the bundle.
-    const historyAt = historyFiles(prepared.localCache)
-    let expectedHits = 0
-    for (const probe of shortCircuit.preProbed.values()) if (probe.hit !== null) expectedHits++
+    // A hit's row is whole when it finishes: packed then (hit-rows.ts), and
+    // kept as one row with the run's bundle. Other rows, and any with forward
+    // args (only the bundle digests them), are the bundle's own.
+    const keepsHits = historyFiles(prepared.localCache) !== undefined
     const hitContext = (): RunRecordContext => ({
       runId,
       startedAtMs: endedAtMsAtStart,
@@ -1455,32 +1455,35 @@ async function runOnBus(
       blocks: blocksNow(),
       remoteTraffic: prepared.localCache.traffic.keys,
     })
-    const stream =
-      historyAt === undefined
-        ? undefined
-        : new HistoryStream<TaskOutcome>(
-            historyAt,
-            expectedHits,
-            { runId, startedAtMs: endedAtMsAtStart },
-            (o, rows) => packHit(o as RecordedOutcome, hitContext(), rows),
-          )
+    const hitRows: HitBatch[] = []
+    const packed = new Set<TaskOutcome>()
     const forwards = (options.forwardArgs?.length ?? 0) > 0
-    const streamHit = (o: TaskOutcome): void => {
-      if (stream === undefined || isGroupTask(o.node)) return
+    const keepHit = (o: TaskOutcome): void => {
+      if (!keepsHits || isGroupTask(o.node)) return
       if (!isCacheHit(o.status)) return
       if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
       if (forwards && o.node.requested) return
-      stream.add(o)
+      let rows = hitRows.at(-1)
+      if (rows === undefined || rows.n === HITS_PER_BATCH)
+        hitRows.push((rows = new HitBatch(HITS_PER_BATCH)))
+      packHit(o as RecordedOutcome, hitContext(), rows)
+      packed.add(o)
     }
+    /** The run's packed hits, for the write that keeps its rows. */
+    const keptHits = (): RunHits => ({
+      runId,
+      startedAtMs: endedAtMsAtStart,
+      ...encodeHits(hitRows),
+    })
     // History, the kept bytes and the report read the graph's outcomes
     // from the stream, as every other surface does.
     const fold = foldOutcomes(
       nodes,
-      keeper === undefined && stream === undefined
+      keeper === undefined && !keepsHits
         ? undefined
         : (o) => {
             keeper?.taskDone(o)
-            streamHit(o)
+            keepHit(o)
           },
     )
     unfold = bus.subscribe(fold.subscriber)
@@ -1695,10 +1698,9 @@ async function runOnBus(
       endedBeforeStop: stop.endedBeforeStop,
     })
 
-    // Every batch the stream sent has answered: what landed is not written again.
+    // A packed hit is kept with the bundle, not written as a row of it.
     unfold()
-    const streamed = await stream?.finish()
-    const landed = new Set(streamed?.landed)
+    const landed = packed
     mark('run graph')
 
     // Clear the status line for good before the summary prints.
@@ -1824,7 +1826,9 @@ async function runOnBus(
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
-        recordHistory(() => runHistory(prepared.localCache).recordRunBundle(records))
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordRunBundle({ ...records, hits: keptHits() }),
+        )
         recordHistory(() =>
           runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
         )
@@ -1836,7 +1840,11 @@ async function runOnBus(
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
         recordHistory(() =>
-          runHistory(prepared.localCache).recordRuns(recordsOf(ended, false).runs, head),
+          runHistory(prepared.localCache).recordRuns(
+            recordsOf(ended, false).runs,
+            head,
+            keptHits(),
+          ),
         )
         recordHistory(() =>
           runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
@@ -1879,7 +1887,7 @@ async function runOnBus(
           prepared.localCache,
           [
             ...records.runs,
-            ...(streamed?.landed.map((o) => runRecordOf(o as RecordedOutcome, hitContext())) ?? []),
+            ...[...packed].map((o) => runRecordOf(o as RecordedOutcome, hitContext())),
           ],
           runId,
         ),
@@ -2019,7 +2027,10 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            runHistory(local).recordRunBundle(recordsOf(list, ok && !crashed))
+            runHistory(local).recordRunBundle({
+              ...recordsOf(list, ok && !crashed),
+              hits: keptHits(),
+            })
             runHistory(local).recordMeasures([...measured.values()], head)
             recordFailures(list, local)
           } finally {
@@ -2247,6 +2258,8 @@ async function planRestorable(
   }
 }
 
+/** Hits one packed batch holds: a small run allocates one small batch. */
+const HITS_PER_BATCH = 512
 const LOCK_HINT = ' A run reads the lock: after editing a vx.config, run `vx lock`.'
 
 /**

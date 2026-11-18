@@ -136,8 +136,7 @@ export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] {
 }
 
 /**
- * The files a second connection writes a run's hits through; undefined when the
- * store keeps no history on disk.
+ * The files a store keeps its history in; undefined when it keeps none on disk.
  */
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined {
   return historyFilesOf(storeIndexOf(cache))

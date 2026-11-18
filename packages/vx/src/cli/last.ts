@@ -7,15 +7,16 @@
 import type { Database } from 'bun:sqlite'
 import { indexDb, indexError, Cache } from '../cache/index.js'
 import {
-  keptSteps,
-  keptWarnings,
-  type RunStep,
+  expandHits,
   type FailureMode,
   getInvocation,
   getRun,
   type InvocationDetail,
+  keptSteps,
+  keptWarnings,
   listInvocations,
   LocalHistoryProvider,
+  type RunStep,
   type RunSummaryRow,
 } from '../history/index.js'
 import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
@@ -931,6 +932,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
   const cache = Cache.inspect(cacheDir)
   try {
     const db = indexDb(cache)
+    // Each run keeps its hits packed: this verb reads them as rows.
+    expandHits(db)
     // Nothing recorded at all is its own answer: `--failed` said "no
     // recorded run failed" and a run id pointed at a `--list` that lists
     // nothing, while `--list --failed` past green runs said there were none.

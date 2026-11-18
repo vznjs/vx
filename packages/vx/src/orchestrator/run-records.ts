@@ -256,7 +256,7 @@ export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRec
 }
 
 /**
- * A hit's `runs` row, packed for the history thread (`HitBatch`): field for
+ * A hit's `runs` row, packed for the run's one kept row (`HitBatch`): field for
  * field what {@link runRecordOf} builds for it, with no object per hit.
  * The caller sends only hits that carry both spans and no forwarded args.
  */

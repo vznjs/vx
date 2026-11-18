@@ -44,7 +44,7 @@ import {
   resolveCacheDir,
   resolveStoreRoot,
 } from '../workspace/index.js'
-import { flakyTasks, type FlakyTask } from '../history/index.js'
+import { expandHits, flakyTasks, type FlakyTask } from '../history/index.js'
 import type { VxPlugin } from './plugin.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins, lockReader } from './projects.js'
 import {
@@ -266,6 +266,8 @@ async function collectWorkspaceInfo(
     const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
     try {
       indexStore = cache.storeDir
+      // The hit counts below read `runs`: kept hits are written out first.
+      expandHits(indexDb(cache))
       stats = cache.stats()
       orphans = await cache.orphanStats()
       try {
