@@ -5,11 +5,14 @@ import path from 'node:path'
 import { benchEnv } from '../bench-env.js'
 import { copyWorkspace, outputMtimes } from '../workspace-copy.js'
 
+// No background maintenance: a commit starts one, and `cp -a` found its
+// `.git/objects/maintenance.lock` listed and gone (CI, 2026-11-18).
+const QUIET = ['-c', 'maintenance.auto=false', '-c', 'gc.auto=0']
 const git = (args: string[], cwd: string): string => {
-  const r = Bun.spawnSync(['git', '-c', 'user.email=b@vx', '-c', 'user.name=b', ...args], {
-    cwd,
-    env: benchEnv(),
-  })
+  const r = Bun.spawnSync(
+    ['git', '-c', 'user.email=b@vx', '-c', 'user.name=b', ...QUIET, ...args],
+    { cwd, env: benchEnv() },
+  )
   if (r.exitCode !== 0) throw new Error(r.stderr.toString())
   return r.stdout.toString()
 }
