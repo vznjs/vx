@@ -2,7 +2,7 @@
 // already listening on a `localBinding` port counted as the bridge: its
 // own bind failed unseen, the task passed, and a client of the port
 // reached the other process (2026-10-03).
-import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -133,10 +133,67 @@ describe.skipIf(!available || process.platform !== 'linux')(
       // Two slots: the tasks must overlap, and a one-core runner's default
       // of one slot ran them one after the other, so both bound the port.
       const r = await run({ cwd: root, tasks: ['a', 'b'], log, concurrency: 2 })
-      expect([
-        r.outcomes.map((o) => o.status).sort(),
-        err.join('').includes(`port ${port} is already in use`),
-      ]).toEqual([['failed', 'success'], true])
+      // The lines themselves: a failure shows what each task said.
+      expect([r.outcomes.map((o) => o.status).sort(), err.join('').split('\n')]).toEqual([
+        ['failed', 'success'],
+        [expect.stringContaining(`port ${port} is already in use`), ''],
+      ])
+    })
+
+    // A released bridge is ended by a signal and holds the port until it
+    // has gone: the next wrap of the port (the next task, a watch re-run,
+    // the retry of an attempt the observer ended) read it in the table as
+    // another process's listener and refused the task. On CI the retry
+    // failed the first of two tasks the test above expects one of to pass
+    // (job 134553815528). The bridge here takes half a second to go.
+    it('a port its own bridge is still leaving is waited for, not refused', async () => {
+      const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') })
+      const port = probe.port!
+      await probe.stop(true)
+      const real = Bun.which('socat')!
+      const bin = path.join(base, 'bin')
+      mkdirSync(bin)
+      writeFileSync(
+        path.join(bin, 'socat'),
+        [
+          '#!/bin/sh',
+          `case "$1" in TCP-LISTEN:*) ;; *) exec ${real} "$@" ;; esac`,
+          // Its own session: the group's TERM reaches only this script.
+          `setsid ${real} "$@" &`,
+          'c=$!',
+          `trap 'sleep 0.5; kill $c; exit 0' TERM`,
+          'wait $c',
+          '',
+        ].join('\n'),
+        { mode: 0o755 },
+      )
+      const sandbox = `sandbox: { allow: { read: ['.'], localBinding: [${port}] } }`
+      await addProject(root, 'app', {
+        config: `export default { tasks: {
+        a: { exec: { command: 'true', ${sandbox} } },
+        b: { dependsOn: ['a'], exec: { command: 'true', ${sandbox} } },
+      } }\n`,
+      })
+      const err: string[] = []
+      const log = {
+        status() {},
+        taskStdout() {},
+        taskStderr(_n: unknown, chunk: string) {
+          err.push(chunk)
+        },
+        taskComplete() {},
+      }
+      const prevPath = process.env['PATH']
+      process.env['PATH'] = `${bin}:${prevPath ?? ''}`
+      try {
+        const r = await run({ cwd: root, tasks: ['b'], log })
+        expect([r.outcomes.map((o) => o.status), err.join('')]).toEqual([
+          ['success', 'success'],
+          '',
+        ])
+      } finally {
+        process.env['PATH'] = prevPath
+      }
     })
 
     it('CONTROL: once the host lets it go, the same port bridges', async () => {

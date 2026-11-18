@@ -1309,7 +1309,12 @@ table first and the wrap refuses such a port by name (2026-10-03,
 same port both read that table before either bridge bound, so the
 second passed the same way; the wrap now claims its ports in `hostBridges`
 before it awaits and refuses a port another live wrap of this process
-claims (2026-10-08). The unix socket lives in the sandbox tmpdir, bound read-write on
+claims (2026-10-08). A released bridge is ended by a signal and holds
+its port until it has gone: the next wrap of that port (the task after
+it, a watch re-run, the retry of an attempt the observer ended) read it
+as another process's listener and refused the task, so the wrap first
+waits, 5 s at most, for this process's own leaving bridges
+(`bridgesGone`, 2026-11-18). The unix socket lives in the sandbox tmpdir, bound read-write on
 both sides. The task's side has to CREATE a unix socket under SRT's seccomp
 filter, so `prepareSandbox` passes `allowAllUnixSockets` when any task
 declares a port list (or `unixSockets`), and `wrapSandboxedCommand` then
