@@ -8,6 +8,9 @@
 // gets the table's median, so a new file costs nothing to add.
 //
 //   bun scripts/test-shard.ts <i> <n>           the files for shard i of n
+//   bun scripts/test-shard.ts <i> <n> --shape 24x4,12x2,24x1
+//                                               the n shards unequal: 24 of
+//                                               size 4, 12 of 2, 24 of 1
 //   bun scripts/test-shard.ts <i> <n> --unsafe  the same over *.unsafe.test.ts
 //   bun scripts/test-shard.ts <i> <n> --platform  only PLATFORM_TESTS (with
 //                                               or without --unsafe)
@@ -66,24 +69,46 @@ export function readWeights(suite: Suite = 'safe', platform = false): Record<str
   }
 }
 
-/** Deterministic LPT: heaviest first, ties by name, each into the lightest bin. */
+/**
+ * `24x4,12x2,24x1` as each shard's relative size, biggest first: 24 of
+ * size 4, 12 of 2, 24 of 1. Equal shards end a distributed run raggedly:
+ * a worker's second shard is as long as its first, so the last ones start
+ * with half the run gone and one slow runner's ends it. Big shards go
+ * first by their rank and small ones fill the end: over 20 simulated runs
+ * of each of two main runs the Linux work ended 13 to 23 s sooner
+ * (2026-11-18).
+ */
+export function shardSizes(shape: string): number[] {
+  const sizes = shape.split(',').flatMap((part) => {
+    const m = /^(\d+)x(\d+)$/.exec(part)
+    if (m === null || Number(m[1]) < 1 || Number(m[2]) < 1)
+      throw new Error(`--shape is counts and sizes such as 24x4,12x2,24x1: not ${shape}`)
+    return Array.from({ length: Number(m[1]) }, () => Number(m[2]))
+  })
+  return sizes.sort((a, b) => b - a)
+}
+
+/**
+ * Deterministic LPT: heaviest first, ties by name, each into the bin it
+ * leaves lightest for its size. `n` shards of one size, or each one's
+ * relative size (`shardSizes`).
+ */
 export function partition(
   files: readonly string[],
   weights: Readonly<Record<string, number>>,
-  n: number,
+  n: number | readonly number[],
 ): string[][] {
   const known = Object.values(weights).sort((a, b) => a - b)
   const median = known.length === 0 ? 1 : (known[known.length >> 1] ?? 1)
   const weightOf = (f: string): number => weights[f] ?? median
   const order = [...files].sort((a, b) => weightOf(b) - weightOf(a) || a.localeCompare(b))
-  const bins: Array<{ load: number; files: string[] }> = Array.from({ length: n }, () => ({
-    load: 0,
-    files: [],
-  }))
+  const sizes = typeof n === 'number' ? Array.from({ length: n }, () => 1) : n
+  const bins = sizes.map((size) => ({ size, load: 0, files: [] as string[] }))
   for (const f of order) {
+    const w = weightOf(f)
     let target = bins[0]!
-    for (const b of bins) if (b.load < target.load) target = b
-    target.load += weightOf(f)
+    for (const b of bins) if ((b.load + w) / b.size < (target.load + w) / target.size) target = b
+    target.load += w
     target.files.push(f)
   }
   return bins.map((b) => b.files.sort())
@@ -132,12 +157,18 @@ if (import.meta.main) {
     const i = Number(a)
     const n = Number(b)
     if (!Number.isInteger(i) || !Number.isInteger(n) || i < 1 || i > n) {
-      throw new Error('usage: test-shard.ts <i> <n> [--unsafe] [--platform]  (1 ≤ i ≤ n)')
+      throw new Error(
+        'usage: test-shard.ts <i> <n> [--unsafe] [--platform] [--shape 24x4,12x2,24x1]  (1 ≤ i ≤ n)',
+      )
     }
     const flags = process.argv.slice(4)
     const suite: Suite = flags.includes('--unsafe') ? 'unsafe' : 'safe'
     const platform = flags.includes('--platform')
-    const shard = partition(testFiles(suite, platform), readWeights(suite, platform), n)[i - 1]!
+    const shape = flags.includes('--shape') ? flags[flags.indexOf('--shape') + 1] : undefined
+    const sizes = shape === undefined ? n : shardSizes(shape)
+    if (typeof sizes !== 'number' && sizes.length !== n)
+      throw new Error(`--shape ${shape} is ${sizes.length} shards, not ${n}`)
+    const shard = partition(testFiles(suite, platform), readWeights(suite, platform), sizes)[i - 1]!
     console.log(shard.map((f) => `tests/${f}`).join(' '))
   }
 }

@@ -1,12 +1,12 @@
 {
   "tasks": {
     "test.bun.shard-1": {
-      "description": "bun test, shard 1 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 1 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 1 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 1 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -57,12 +57,12 @@
       "cache": true
     },
     "test.bun.shard-2": {
-      "description": "bun test, shard 2 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 2 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 2 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 2 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -113,12 +113,12 @@
       "cache": true
     },
     "test.bun.shard-3": {
-      "description": "bun test, shard 3 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 3 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 3 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 3 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -169,12 +169,12 @@
       "cache": true
     },
     "test.bun.shard-4": {
-      "description": "bun test, shard 4 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 4 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 4 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 4 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -225,12 +225,12 @@
       "cache": true
     },
     "test.bun.shard-5": {
-      "description": "bun test, shard 5 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 5 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 5 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 5 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -281,12 +281,12 @@
       "cache": true
     },
     "test.bun.shard-6": {
-      "description": "bun test, shard 6 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 6 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 6 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 6 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -337,12 +337,12 @@
       "cache": true
     },
     "test.bun.shard-7": {
-      "description": "bun test, shard 7 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 7 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 7 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 7 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -393,12 +393,12 @@
       "cache": true
     },
     "test.bun.shard-8": {
-      "description": "bun test, shard 8 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 8 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 8 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 8 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -449,12 +449,12 @@
       "cache": true
     },
     "test.bun.shard-9": {
-      "description": "bun test, shard 9 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 9 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 9 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 9 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -505,12 +505,12 @@
       "cache": true
     },
     "test.bun.shard-10": {
-      "description": "bun test, shard 10 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 10 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 10 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 10 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -561,12 +561,12 @@
       "cache": true
     },
     "test.bun.shard-11": {
-      "description": "bun test, shard 11 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 11 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 11 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 11 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -617,12 +617,12 @@
       "cache": true
     },
     "test.bun.shard-12": {
-      "description": "bun test, shard 12 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 12 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 12 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 12 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -673,12 +673,12 @@
       "cache": true
     },
     "test.bun.shard-13": {
-      "description": "bun test, shard 13 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 13 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 13 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 13 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -729,12 +729,12 @@
       "cache": true
     },
     "test.bun.shard-14": {
-      "description": "bun test, shard 14 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 14 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 14 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 14 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -785,12 +785,12 @@
       "cache": true
     },
     "test.bun.shard-15": {
-      "description": "bun test, shard 15 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 15 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 15 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 15 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -841,12 +841,12 @@
       "cache": true
     },
     "test.bun.shard-16": {
-      "description": "bun test, shard 16 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 16 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 16 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 16 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -897,12 +897,12 @@
       "cache": true
     },
     "test.bun.shard-17": {
-      "description": "bun test, shard 17 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 17 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 17 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 17 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -953,12 +953,12 @@
       "cache": true
     },
     "test.bun.shard-18": {
-      "description": "bun test, shard 18 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 18 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 18 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 18 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1009,12 +1009,12 @@
       "cache": true
     },
     "test.bun.shard-19": {
-      "description": "bun test, shard 19 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 19 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 19 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 19 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1065,12 +1065,12 @@
       "cache": true
     },
     "test.bun.shard-20": {
-      "description": "bun test, shard 20 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 20 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 20 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 20 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1121,12 +1121,12 @@
       "cache": true
     },
     "test.bun.shard-21": {
-      "description": "bun test, shard 21 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 21 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 21 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 21 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1177,12 +1177,12 @@
       "cache": true
     },
     "test.bun.shard-22": {
-      "description": "bun test, shard 22 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 22 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 22 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 22 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1233,12 +1233,12 @@
       "cache": true
     },
     "test.bun.shard-23": {
-      "description": "bun test, shard 23 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 23 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 23 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 23 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1289,12 +1289,12 @@
       "cache": true
     },
     "test.bun.shard-24": {
-      "description": "bun test, shard 24 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 24 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 24 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 24 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1345,12 +1345,12 @@
       "cache": true
     },
     "test.bun.shard-25": {
-      "description": "bun test, shard 25 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 25 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 25 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 25 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1401,12 +1401,12 @@
       "cache": true
     },
     "test.bun.shard-26": {
-      "description": "bun test, shard 26 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 26 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 26 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 26 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1457,12 +1457,12 @@
       "cache": true
     },
     "test.bun.shard-27": {
-      "description": "bun test, shard 27 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 27 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 27 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 27 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1513,12 +1513,12 @@
       "cache": true
     },
     "test.bun.shard-28": {
-      "description": "bun test, shard 28 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 28 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 28 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 28 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1569,12 +1569,12 @@
       "cache": true
     },
     "test.bun.shard-29": {
-      "description": "bun test, shard 29 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 29 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 29 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 29 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1625,12 +1625,12 @@
       "cache": true
     },
     "test.bun.shard-30": {
-      "description": "bun test, shard 30 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 30 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 30 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 30 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1681,12 +1681,12 @@
       "cache": true
     },
     "test.bun.shard-31": {
-      "description": "bun test, shard 31 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 31 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 31 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 31 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1737,12 +1737,12 @@
       "cache": true
     },
     "test.bun.shard-32": {
-      "description": "bun test, shard 32 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 32 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 32 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 32 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1793,12 +1793,12 @@
       "cache": true
     },
     "test.bun.shard-33": {
-      "description": "bun test, shard 33 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 33 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 33 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 33 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1849,12 +1849,12 @@
       "cache": true
     },
     "test.bun.shard-34": {
-      "description": "bun test, shard 34 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 34 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 34 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 34 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1905,12 +1905,12 @@
       "cache": true
     },
     "test.bun.shard-35": {
-      "description": "bun test, shard 35 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 35 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 35 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 35 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1961,12 +1961,12 @@
       "cache": true
     },
     "test.bun.shard-36": {
-      "description": "bun test, shard 36 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 36 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 36 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 36 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2017,12 +2017,12 @@
       "cache": true
     },
     "test.bun.shard-37": {
-      "description": "bun test, shard 37 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 37 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 37 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 37 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2073,12 +2073,12 @@
       "cache": true
     },
     "test.bun.shard-38": {
-      "description": "bun test, shard 38 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 38 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 38 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 38 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2129,12 +2129,12 @@
       "cache": true
     },
     "test.bun.shard-39": {
-      "description": "bun test, shard 39 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 39 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 39 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 39 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2185,12 +2185,12 @@
       "cache": true
     },
     "test.bun.shard-40": {
-      "description": "bun test, shard 40 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 40 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 40 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 40 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2241,12 +2241,12 @@
       "cache": true
     },
     "test.bun.shard-41": {
-      "description": "bun test, shard 41 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 41 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 41 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 41 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2297,12 +2297,12 @@
       "cache": true
     },
     "test.bun.shard-42": {
-      "description": "bun test, shard 42 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 42 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 42 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 42 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2353,12 +2353,12 @@
       "cache": true
     },
     "test.bun.shard-43": {
-      "description": "bun test, shard 43 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 43 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 43 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 43 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2409,12 +2409,12 @@
       "cache": true
     },
     "test.bun.shard-44": {
-      "description": "bun test, shard 44 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 44 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 44 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 44 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2465,12 +2465,12 @@
       "cache": true
     },
     "test.bun.shard-45": {
-      "description": "bun test, shard 45 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 45 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 45 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 45 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2521,12 +2521,2140 @@
       "cache": true
     },
     "test.bun.shard-46": {
-      "description": "bun test, shard 46 of 46 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --shape 24x4,24x2,36x1, shard 46 of 84 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 46 46)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 46 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-47": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 47 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 47 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-48": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 48 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 48 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-49": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 49 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 49 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-50": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 50 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 50 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-51": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 51 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 51 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-52": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 52 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 52 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-53": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 53 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 53 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-54": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 54 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 54 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-55": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 55 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 55 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-56": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 56 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 56 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-57": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 57 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 57 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-58": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 58 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 58 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-59": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 59 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 59 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-60": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 60 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 60 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-61": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 61 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 61 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-62": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 62 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 62 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-63": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 63 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 63 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-64": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 64 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 64 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-65": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 65 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 65 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-66": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 66 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 66 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-67": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 67 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 67 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-68": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 68 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 68 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-69": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 69 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 69 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-70": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 70 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 70 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-71": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 71 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 71 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-72": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 72 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 72 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-73": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 73 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 73 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-74": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 74 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 74 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-75": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 75 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 75 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-76": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 76 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 76 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-77": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 77 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 77 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-78": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 78 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 78 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-79": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 79 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 79 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-80": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 80 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 80 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-81": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 81 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 81 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-82": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 82 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 82 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-83": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 83 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 83 84 --shape 24x4,24x2,36x1)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.shard-84": {
+      "description": "bun test --shape 24x4,24x2,36x1, shard 84 of 84 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 84 84 --shape 24x4,24x2,36x1)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
