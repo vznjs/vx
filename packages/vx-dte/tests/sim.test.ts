@@ -9,6 +9,7 @@ import { DEFAULT_STRATEGY, STRATEGIES } from '../src/plan/strategy.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
 import q2f0 from './fixtures/pr-run-2f0e2a4.json'
+import d36 from './fixtures/main-run-d36eed9.json'
 import { compare } from '../scripts/compare.js'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
 
@@ -748,4 +749,34 @@ it("frees a miss's cores at its command's end, and readies its dependants after 
   expect(at('b')).toBe(10_000)
   expect(r.endedAt.get('a')! - r.startedAt.get('a')!).toBe(15_000)
   expect(at('c')).toBeGreaterThanOrEqual(20_000)
+})
+
+// The plugin's first ask reads each size's warm-up and join spread an
+// earlier run learned (`learned.warmUps`, `learned.spreads`). Played
+// without them, the sim asked 11 workers where main d36eed9 asked 13 at
+// once, and ended its Linux lane 159-178 s for the run's 147-153.
+it('plays main d36eed9 as it ran: 13 workers asked at once, the run ending with its Mac lane', () => {
+  const graph = load(d36).map((t) => {
+    const k = (d36.known as Record<string, number[] | null>)[t.id]
+    return k === undefined
+      ? t
+      : { ...t, known: k === null ? null : { ms: k[0]!, cores: k[1]!, memory: k[2]! * 1e6 } }
+  })
+  const joins = d36.joins as Record<string, number[]>
+  const r = simulate(graph, {
+    sizes: [
+      { name: 'small', max: 9, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+      { name: 'mac', max: 3, cpu: 2, memory: 7e9, platform: 'darwin-arm64' },
+      { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+    ],
+    home: 'linux-x64',
+    warmUpMs: (_, size, k) => joins[size]![k - 1]!,
+    warmUpsMs: new Map(Object.entries(d36.warmUps)),
+    spreadsMs: new Map(Object.entries(d36.spreads)),
+    likely: misses(graph),
+  })
+  expect(r.workers.filter((w) => w.spawnedAt === 0).length).toBe(13)
+  // The run ended at 163.3 s, on the Mac lane.
+  expect(r.endMs).toBeGreaterThan(155_000)
+  expect(r.endMs).toBeLessThan(172_000)
 })
