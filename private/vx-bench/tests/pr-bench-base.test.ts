@@ -8,6 +8,7 @@ import {
   rivalLosses,
   CPU_HELD,
   RIVALS,
+  sameCore,
   undecided,
 } from '../pr-bench-base.js'
 import config from '../vx.config.js'
@@ -85,4 +86,39 @@ it('times restore and nothing-changed on the site workspace, with no task sleepi
   expect(SITE_ARMS).toEqual(['restore', 'noop'])
   expect(SIGNIFICANCE).toBeLessThan(0.01)
   expect(config.tasks?.['check.perf']?.exec?.env?.define?.BENCH_BUILD_MS).toBe('0')
+})
+
+// A PR that changed only the bench timed core against the same core: a
+// coin, leaning slower half the time, so two arms ran all 40 pairs and the
+// task 519 s for 256 s (2026-11-18).
+it("knows a base whose core is this checkout's, and one whose is not", async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-bench-same-'))
+  try {
+    const git = (...args: string[]): string => {
+      const r = Bun.spawnSync(
+        ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args],
+        { cwd: repo },
+      )
+      if (r.exitCode !== 0) throw new Error(r.stderr.toString())
+      return r.stdout.toString().trim()
+    }
+    await Bun.write(path.join(repo, 'packages/vx/src/a.ts'), 'export const a = 1\n')
+    git('init', '-q')
+    git('add', '-A')
+    git('commit', '-qm', 'one')
+    const base = git('rev-parse', 'HEAD')
+    await Bun.write(path.join(repo, 'private/bench/b.ts'), 'export const b = 1\n')
+    git('add', '-A')
+    git('commit', '-qm', 'bench only')
+    expect(sameCore(repo, base)).toBe(true)
+    await Bun.write(path.join(repo, 'packages/vx/src/a.ts'), 'export const a = 2\n')
+    expect(sameCore(repo, base)).toBe(false)
+    expect(sameCore(repo, '0000000000000000000000000000000000000001')).toBe(false)
+    expect(sameCore(repo, 'not-a-sha')).toBe(false)
+  } finally {
+    await rm(repo, { recursive: true, force: true })
+  }
 })

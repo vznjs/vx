@@ -32,6 +32,7 @@ import {
   HELD,
   rivalLosses,
   RIVALS,
+  sameCore,
   SITE_ARMS,
   undecided,
   type Arm,
@@ -190,8 +191,14 @@ try {
     // The compiler writes its scratch file into its cwd.
     os.tmpdir(),
   )
-  if (baseVx !== undefined && BASE !== undefined)
-    buildBase(path.resolve(import.meta.dir, '../..'), BASE, baseVx)
+  const repo = path.resolve(import.meta.dir, '../..')
+  if (BASE !== undefined && sameCore(repo, BASE)) {
+    baseOn = false
+    console.log(
+      "BASE SAME: core is the base's, byte for byte, so nothing is timed against it; the rivals still are",
+    )
+  }
+  if (baseOn && baseVx !== undefined && BASE !== undefined) buildBase(repo, BASE, baseVx)
   const all = workspace()
   // Nothing before the first pair is timed, so it runs side by side: both
   // workspaces, each tool's copy and each tool's first run. In turn they
