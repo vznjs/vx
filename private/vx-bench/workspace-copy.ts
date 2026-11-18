@@ -14,17 +14,18 @@ import { benchEnv } from './bench-env.js'
  * fall in, over older mtimes, is one git cannot see a same-second rewrite
  * in, so vx trusted none of its OIDs and hashed every input from disk (14
  * stats a file a cold 9,603-task run against 5, 2026-11-11). A checkout
- * leaves no such entry.
+ * leaves no such entry. The copies run side by side, with one wait for
+ * them all: in turn, the site's workspace took 9 s a copy (2026-11-18).
  */
-export function copyWorkspace(src: string, dst: string): void {
-  const sh = (cmd: string[], cwd: string): void => {
-    const r = Bun.spawnSync(cmd, { cwd, env: benchEnv() })
-    if (r.exitCode !== 0) throw new Error(`${cmd.join(' ')} failed:\n${r.stderr.toString()}`)
+export async function copyWorkspaces(src: string, dsts: readonly string[]): Promise<void> {
+  const sh = async (cmd: string[], cwd: string): Promise<void> => {
+    const p = Bun.spawn(cmd, { cwd, env: benchEnv(), stdout: 'ignore', stderr: 'pipe' })
+    const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited])
+    if (code !== 0) throw new Error(`${cmd.join(' ')} failed:\n${err}`)
   }
-  sh(['cp', '-a', src, dst], process.cwd())
-  // Past the kernel's coarse tick, which stamps up to ~10 ms behind Date.now().
-  Bun.sleepSync(1000 - (Date.now() % 1000) + 50)
-  sh(['git', 'update-index', '-q', '--refresh'], dst)
+  await Promise.all(dsts.map((dst) => sh(['cp', '-a', src, dst], process.cwd())))
+  await Bun.sleep(1000 - (Date.now() % 1000) + 50)
+  await Promise.all(dsts.map((dst) => sh(['git', 'update-index', '-q', '--refresh'], dst)))
 }
 
 /** Every `packages/<p>/dist` file's mtime in ms, by workspace-relative path. */
