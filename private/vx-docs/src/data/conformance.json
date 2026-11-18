@@ -1104,14 +1104,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1013,
-        "can": 1013,
-        "of": 1015
+        "pass": 1014,
+        "can": 1014,
+        "of": 1016
       },
       "correctness": {
-        "pass": 835,
-        "can": 835,
-        "of": 837
+        "pass": 836,
+        "can": 836,
+        "of": 838
       },
       "efficiency": {
         "pass": 169,
@@ -1174,21 +1174,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 35,
-        "can": 35,
-        "of": 35
+        "pass": 36,
+        "can": 36,
+        "of": 36
       }
     },
     "turbo": {
       "all": {
         "pass": 638,
-        "can": 926,
-        "of": 1015
+        "can": 927,
+        "of": 1016
       },
       "correctness": {
         "pass": 515,
-        "can": 754,
-        "of": 837
+        "can": 755,
+        "of": 838
       },
       "efficiency": {
         "pass": 119,
@@ -1252,20 +1252,20 @@
       },
       "watch": {
         "pass": 30,
-        "can": 34,
-        "of": 35
+        "can": 35,
+        "of": 36
       }
     },
     "nx": {
       "all": {
         "pass": 653,
-        "can": 952,
-        "of": 1015
+        "can": 953,
+        "of": 1016
       },
       "correctness": {
         "pass": 493,
-        "can": 776,
-        "of": 837
+        "can": 777,
+        "of": 838
       },
       "efficiency": {
         "pass": 156,
@@ -1329,20 +1329,20 @@
       },
       "watch": {
         "pass": 28,
-        "can": 35,
-        "of": 35
+        "can": 36,
+        "of": 36
       }
     },
     "vite-task": {
       "all": {
         "pass": 506,
         "can": 759,
-        "of": 1015
+        "of": 1016
       },
       "correctness": {
         "pass": 417,
         "can": 629,
-        "of": 837
+        "of": 838
       },
       "efficiency": {
         "pass": 87,
@@ -1407,19 +1407,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 35
+        "of": 36
       }
     },
     "nix": {
       "all": {
         "pass": 486,
         "can": 724,
-        "of": 1015
+        "of": 1016
       },
       "correctness": {
         "pass": 418,
         "can": 601,
-        "of": 837
+        "of": 838
       },
       "efficiency": {
         "pass": 66,
@@ -1484,19 +1484,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 35
+        "of": 36
       }
     },
     "moon": {
       "all": {
         "pass": 590,
         "can": 909,
-        "of": 1015
+        "of": 1016
       },
       "correctness": {
         "pass": 458,
         "can": 746,
-        "of": 837
+        "of": 838
       },
       "efficiency": {
         "pass": 127,
@@ -1561,7 +1561,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 35
+        "of": 36
       }
     }
   },
@@ -33605,6 +33605,43 @@
         "moon": {
           "status": "n/a",
           "detail": "needs watch, ready"
+        }
+      }
+    },
+    {
+      "id": "watch/delete-in-first-run-rebuilds",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A source file deleted during the watch’s first build, after its task finished, is built right after",
+      "why": "The first build of a watch takes a while, and work does not wait for it: a file no longer needed is deleted while another project still builds. The finished output was built with that file. A watch that misses the deletion keeps an output holding what the source no longer has, until something else is saved.",
+      "from": [
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch"
         }
       }
     },

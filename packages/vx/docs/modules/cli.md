@@ -501,7 +501,9 @@ too: they format one run's result.
    cycle's (`InitialRun.lock`). One inside a window may be the command's
    own or an edit to another task of that project, already keyed: a
    keys-only plan (`hearIfKeysMoved`, no store asked) is compared with
-   the run's keys, and the files are events when one moved. A start with
+   the run's keys, and the files are events when one moved. A listed file
+   that is gone (a tracked deletion, which has no date) is asked the same
+   way, so a start over an uncommitted deletion pays that plan once. A start with
    no edit pays `-m`'s stats alone (`tests/watch-initial-edit-done.test.ts`).
    A loop that armed while the run waited on a server has neither the
    keys nor `drifted` yet: `InitialCycle` carries both once the run
