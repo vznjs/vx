@@ -112,6 +112,16 @@ const REPOS: Repo[] = [
     // cypress's postinstall downloads its binary, which nothing benched runs.
     installEnv: { CYPRESS_INSTALL_BINARY: '0' },
   },
+  {
+    name: 'novu',
+    url: 'https://github.com/novuhq/novu',
+    commit: 'fd04f7cd09658ceef541e41ef9db664f5f91afa0',
+    tool: 'nx',
+    tasks: 'build',
+    filters: '!nextjs !nestjs',
+    workers: 4,
+    overlay: true,
+  },
 ]
 
 const { values } = parseArgs({

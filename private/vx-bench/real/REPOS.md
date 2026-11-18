@@ -145,6 +145,27 @@ default of 3. Out of both tools: the two Next apps, `refine-ui` (its
 tsconfig.json`, which compiled a `.ts` config and failed under both
   tools (2026-11-18).
 
+### novuhq/novu — fd04f7cd09658ceef541e41ef9db664f5f91afa0
+
+pnpm 11.0.9, Nx 21.3.11. Benched: `build` minus `nextjs` and `nestjs`,
+the repo's own `build`, 37 tasks (36 builds and
+`@novu/api-service#build-metadata`), both tools at the repo's
+`parallel: 4`.
+
+- Mapped from the task graph Nx plans (`nx run-many -t build
+--graph`): each project's `build` with the outputs its target
+  resolves to (`dist` and `build`; `lib` too for the enterprise
+  packages and the worker; the in-place emit of `libs/internal-sdk`),
+  keyed on the project, the root `tsconfig.json` and `node --version`
+  (`sharedGlobals`).
+- A build is `pnpm run build`, as Nx's `nx:run-script` runs it: the
+  scripts lean on pnpm's `pre`/`post` hooks and call each other. The
+  api's two `nx:run-commands` targets are their commands.
+- Every config is `vx.config.mjs`: several builds are a bare `tsc`
+  over the package.
+- Nx reruns the six enterprise `build`s (`node ./check-ee.mjs`) on
+  every run, 31 of 37 hits; vx hits all 37.
+
 ## The `turbo()` / `nx()` runs
 
 Every run below predates 2026-09-29 and ran vx without a lock, each
