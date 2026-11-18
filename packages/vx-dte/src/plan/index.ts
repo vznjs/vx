@@ -19,6 +19,7 @@ export {
   type WarmUp,
 } from './model.js'
 export { decide, type Forecast } from './plan.js'
+export { commands, Planner, type PlannerSize } from './planner.js'
 export { simulate, sized } from './play.js'
 export {
   booked,
