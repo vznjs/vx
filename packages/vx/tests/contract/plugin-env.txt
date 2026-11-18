@@ -67,7 +67,6 @@
 @vzn/vx-dte VX_DTE_SECRET
 @vzn/vx-dte VX_DTE_SLOT
 @vzn/vx-dte VX_DTE_TOKEN
-@vzn/vx-dte VX_DTE_WAIT
 @vzn/vx-dte VX_DTE_WORKER
 @vzn/vx-dte-server ALLOW
 @vzn/vx-dte-server AUDIENCE
