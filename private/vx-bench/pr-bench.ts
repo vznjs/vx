@@ -96,14 +96,19 @@ function must(cmd: string[], cwd: string): { out: string; cpuMs: number } {
 }
 
 /** A run nothing times, beside others: a tool's first, which fills its caches. */
-async function fill(cmd: string[], cwd: string): Promise<void> {
+async function fill(cmd: string[], cwd: string, label: string): Promise<void> {
+  const t0 = Bun.nanoseconds()
   const p = Bun.spawn(cmd, { cwd, env: RUNNER_ENV, stdout: 'pipe', stderr: 'pipe' })
   const [out, err, code] = await Promise.all([
     new Response(p.stdout).text(),
     new Response(p.stderr).text(),
     p.exited,
   ])
-  childCpuMs += Number(p.resourceUsage()?.cpuTime.total ?? 0) / 1000
+  const cpuMs = Number(p.resourceUsage()?.cpuTime.total ?? 0) / 1000
+  childCpuMs += cpuMs
+  fills.push(
+    `${label} ${((Bun.nanoseconds() - t0) / 1e9).toFixed(0)} s (${(cpuMs / 1000).toFixed(0)} s cpu)`,
+  )
   if (code !== 0) throw new Error(`${cmd.join(' ')} failed:\n${(out + err).slice(-2000)}`)
 }
 
@@ -118,6 +123,11 @@ const scratch: string[] = []
 
 /** Where the bench's own time went, printed last: most of it is not the timed pairs. */
 const phases: string[] = []
+/**
+ * Each first run, as it ended: with a base, CI took 88 s over them; 4
+ * cores here took 41 s without one (2026-11-18).
+ */
+const fills: string[] = []
 let phaseAt = Bun.nanoseconds()
 function phase(name: string): void {
   const now = Bun.nanoseconds()
@@ -277,8 +287,10 @@ try {
   // Fill each tool's caches once: the cold workspace's first cold rep does it
   // there. Nx and Vite Task run only the cold workspace (SMALL_RIVALS).
   await Promise.all([
-    ...[...paired, ...SMALL_RIVALS].map((tool) => fill(small.runs[tool], small.dirs[tool])),
-    ...paired.map((tool) => fill(site.runs[tool], site.dirs[tool])),
+    ...[...paired, ...SMALL_RIVALS].map((tool) =>
+      fill(small.runs[tool], small.dirs[tool], `cold ${tool}`),
+    ),
+    ...paired.map((tool) => fill(site.runs[tool], site.dirs[tool], `site ${tool}`)),
   ])
   // Each arm reps until REPS of its pairs ran quiet, and on while its quiet
   // pairs lean slower than the base without proving it (MAX_REPS at most).
@@ -351,6 +363,7 @@ try {
 
   phase('rivals')
   console.log(`bench time: ${phases.join(', ')}`)
+  console.log(`first runs: ${fills.join(', ')}`)
   const tools: readonly Tool[] = baseOn ? ['vx', 'base', ...RIVALS] : ['vx', ...RIVALS]
   console.log(`case      ${tools.map((t) => t.padStart(18)).join('')}   (wall ms / CPU ms)`)
   for (const arm of HELD) {
