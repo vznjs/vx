@@ -75,6 +75,8 @@ interface Drift {
   readonly sending: number
   /** From a dependency's end on its worker to the run handing over the task that waited on it: its files coming to this machine. */
   readonly home: number
+  /** Waiting on an uncached dependency made again for it: its files lay on a worker that left or stayed full. */
+  readonly again: number
   /** The run's time after its last task. */
   readonly after: number
 }
@@ -435,6 +437,8 @@ export class Orchestrator {
     string,
     { ms: number; cores: number; memory: number; platform: string | undefined }
   >()
+  /** Each uncached task made again for a dependant: from its ask to its end, each time. */
+  private readonly madeAgain = new Map<string, [number, number][]>()
   /** Each task a worker ran: when it joined the queue, was sent, began and ended, and when its worker joined. */
   private readonly timeline = new Map<
     string,
@@ -1541,13 +1545,23 @@ export class Orchestrator {
       job.startedAt === undefined ? 0 : endAt - job.startedAt,
     )
     const sent = job.sentAt ?? endAt
-    this.timeline.set(task, {
-      queued: Math.min(job.queuedAt ?? sent, sent),
-      sent,
-      began: Math.max(sent, Math.min(endAt, job.startedAt ?? sent)),
-      end: endAt,
-      joined: a.joinedAt,
-    })
+    // Made again for a dependant: its first run stays the task's own, or
+    // the wait from its dependencies' end to this second ask read as
+    // files coming home (main 643d38d: 118.8 s of them, for a build made
+    // again in 18 s).
+    if (job.again !== undefined) {
+      const runs = this.madeAgain.get(task)
+      const run: [number, number] = [Math.min(job.queuedAt ?? sent, sent), endAt]
+      if (runs === undefined) this.madeAgain.set(task, [run])
+      else runs.push(run)
+    } else
+      this.timeline.set(task, {
+        queued: Math.min(job.queuedAt ?? sent, sent),
+        sent,
+        began: Math.max(sent, Math.min(endAt, job.startedAt ?? sent)),
+        end: endAt,
+        joined: a.joinedAt,
+      })
     this.took.set(task, {
       ms: held,
       // The cores it held, or used if more, over the time it held: its
@@ -2732,6 +2746,7 @@ export class Orchestrator {
       room: 0,
       sending: 0,
       home: 0,
+      again: 0,
       after: Math.max(0, until - this.timeline.get(id)!.end),
     }
     for (const seen = new Set<string>(); id !== undefined && !seen.has(id);) {
@@ -2751,8 +2766,14 @@ export class Orchestrator {
             joinedAt.get(w) ?? (this.late.has(w) ? until : (this.cancelledAt.get(w) ?? until)),
           ])
       const joining = covered(late, earliest, l.sent)
+      const again = covered(
+        (deps.get(id) ?? []).flatMap((d) => this.madeAgain.get(d) ?? []),
+        earliest,
+        l.sent,
+      )
       out.joining += joining
-      out.room += lost - joining
+      out.again += Math.min(again, lost - joining)
+      out.room += Math.max(0, lost - joining - again)
       out.sending += l.began - l.sent
       let next: string | undefined
       for (const d of deps.get(id) ?? []) {
@@ -3138,6 +3159,7 @@ function driftRow(past: number, d: Drift | undefined, width: number): [string, u
       ['waiting for room', d.room],
       ['sending inputs', d.sending],
       ['files coming home', d.home],
+      ['a dependency made again', d.again],
       ['after the last task', d.after],
     ] as const
   )

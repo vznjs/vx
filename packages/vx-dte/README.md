@@ -856,8 +856,9 @@ line says how far past it the run ended and what caused it, along the
 chain of tasks that ended the run: tasks waiting while a worker asked
 for their platform is still to join past its fastest warm-up, waiting for
 room with every one joined, their inputs reaching their worker, a dependency's files coming to this
-machine before the run hands over the task that waited on it, and the
-run's time after its last task. The first ask
+machine before the run hands over the task that waited on it, an
+uncached dependency made again for it where its first worker left or
+stayed full, and the run's time after its last task. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that

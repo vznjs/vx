@@ -428,8 +428,18 @@ export function plan(
       }
       return {
         start,
+        // One holding files a task to come reads stays, as below: the
+        // packing gave the deploy to a busy worker, its upstream made
+        // again there within the deadline, and let the holder go; the
+        // busy one's work ended early and the build ran twice at the
+        // run's end (main 643d38d: 18 s, and 183 s for an ideal of 98 s).
         release: workers
-          .filter((w) => (w.idle || w.starting === true) && !packed.given.has(w.id))
+          .filter(
+            (w) =>
+              (w.idle || w.starting === true) &&
+              !packed.given.has(w.id) &&
+              !(w.holds !== undefined && tasks.some((t) => t.reads?.some((r) => w.holds!.has(r)))),
+          )
           .map((w) => w.id),
         endsInMs: packed.end,
         boundMs: Math.max(bound, packed.end),
