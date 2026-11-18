@@ -40,6 +40,7 @@ interface Repo {
   tasks: string
   /** FILTERS for the harness: both tools run the same projects. */
   filters?: string
+  /** The rival's worker count: its default, or what the repo's own script or config sets (then vx's too). */
   workers: number
   /** Native config kept in real/<name>/, copied over the clone; pinned by full SHA. */
   overlay?: boolean
@@ -82,6 +83,27 @@ const REPOS: Repo[] = [
     commit: 'efdd69a1481205051e85d9c815eaa5840237f2d1',
     tool: 'turbo',
     tasks: 'build',
+    workers: 10,
+    overlay: true,
+  },
+  {
+    name: 'medusa',
+    url: 'https://github.com/medusajs/medusa',
+    commit: '56c136f02adec65d6a33f84ca6133ac9288c1ae3',
+    tool: 'turbo',
+    tasks: 'build build:plugin',
+    // The repo's own script passes `--concurrency=100%`: the box's four cores.
+    workers: 4,
+    overlay: true,
+    pm: 'yarn',
+  },
+  {
+    name: 'unocss',
+    url: 'https://github.com/unocss/unocss',
+    commit: '74939def285312ac1376cdc648ff2881e7899d24',
+    tool: 'turbo',
+    tasks: 'build',
+    filters: './packages-*/*',
     workers: 10,
     overlay: true,
   },
@@ -262,6 +284,16 @@ function moveRunFields(dir: string): void {
 // The overlay's configs over the clone, and the plugin packages its
 // workspace file imports linked from this checkout: the binary serves
 // `@vzn/vx` itself, a plugin it does not carry.
+/**
+ * `workers` is the rival's own default (Turbo 10, Nx 3), not a number the
+ * repo sets: then vx runs at its default too, the core count, as a user
+ * types both. Forced to Turbo's 10 on four cores, payload's longest chain
+ * ran 5 s slower (96.3 s against 91.2 s, 2026-11-18).
+ */
+function rivalDefault(repo: Repo): boolean {
+  return repo.workers === (repo.tool === 'nx' ? 3 : 10)
+}
+
 function applyOverlay(name: string, dir: string): void {
   const overlay = path.join(REPO_ROOT, 'private/vx-bench/real', name)
   cpSync(overlay, dir, { recursive: true })
@@ -338,7 +370,7 @@ for (const repo of REPOS) {
         ? {}
         : { NODE_OPTIONS: `${process.env['NODE_OPTIONS'] ?? ''} ${repo.nodeOptions}`.trim() }),
       FILTERS: repo.filters ?? '',
-      VX_ARGS: `--concurrency ${repo.workers}`,
+      VX_ARGS: rivalDefault(repo) ? '' : `--concurrency ${repo.workers}`,
       [toolArgs]:
         repo.tool === 'nx' ? `--parallel=${repo.workers}` : `--concurrency=${repo.workers}`,
     })
