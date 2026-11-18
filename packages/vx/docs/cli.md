@@ -1545,8 +1545,10 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    own project ran may be that command's: the keys are taken again, and
    it is a change when one moved. A loop that armed while the run
    waited on a server does both once the run returns, so an edit beside
-   a dev server already up is a cycle too. A deletion made while it runs is
-   still unheard: it has no date to tell it from one made before.
+   a dev server already up is a cycle too. A tracked file deleted while
+   it runs has no date to tell it from one deleted before: the keys are
+   taken again for it too. An untracked file deleted while it runs is
+   still unheard: nothing lists it.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope

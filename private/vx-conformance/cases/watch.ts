@@ -546,6 +546,47 @@ export default [
   }),
 
   watchCase({
+    id: 'watch/delete-in-first-run-rebuilds',
+    kind: 'correctness',
+    title:
+      'A source file deleted during the watch’s first build, after its task finished, is built right after',
+    why: 'The first build of a watch takes a while, and work does not wait for it: a file no longer needed is deleted while another project still builds. The finished output was built with that file. A watch that misses the deletion keeps an output holding what the source no longer has, until something else is saved.',
+    from: ['watch-initial-edit-done'],
+    workspace: {
+      projects: {
+        lib: {
+          tasks: { build: build() },
+          files: { 'src/a.txt': 'a1\n', 'src/b.txt': 'b1\n' },
+        },
+        // `started` at once, so the deletion lands while this still builds.
+        app: {
+          tasks: {
+            build: build(
+              'mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt',
+            ),
+          },
+          files: { 'src/a.txt': 'app1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          files: {
+            'packages/lib/dist/out.txt': 'a1\nb1\n',
+            'packages/app/dist/started': 'app1\n',
+          },
+          inFlight: true,
+        },
+      },
+      {
+        write: { 'packages/lib/src/b.txt': null },
+        expect: { ran: ['lib#build'], files: { 'packages/lib/dist/out.txt': 'a1\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
     id: 'watch/keeps-watching-after-failure',
     kind: 'correctness',
     title: 'A build that fails while watching is built again once the source is fixed',

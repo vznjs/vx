@@ -1203,7 +1203,8 @@ class WatchLoop {
    * Files written since the initial run started by none of its commands, each
    * judged a change. Only files git finds untracked or modified qualify, and
    * `atArm` asked git already, so a start with no edit costs only stats. An
-   * edit before its task keyed it re-runs to a hit.
+   * edit before its task keyed it re-runs to a hit. `inWindow` is what the
+   * keys must judge: a write inside a command's window, and a file gone.
    */
   private heardSinceRun(): { heard: boolean; inWindow: string[] } {
     const { initialRun } = this.args
@@ -1216,7 +1217,8 @@ class WatchLoop {
         if (Math.max(st.mtimeMs, st.ctimeMs) < initialRun.from) continue
         t = st.ctimeMs
       } catch {
-        // Gone: a deletion has no date, and one made before the start would run every start.
+        // Gone: a deletion has no date. The keys say whether the run saw it.
+        inWindow.push(abs)
         continue
       }
       if (
@@ -1251,7 +1253,8 @@ class WatchLoop {
   /**
    * Files written inside a command's window of the initial run: the
    * command's own, or an edit to another task of its project that had
-   * already keyed (a hit, or done). The write cannot say which, the keys can:
+   * already keyed (a hit, or done). Or a tracked file gone, before the run
+   * or during it. The file cannot say which, the keys can:
    * taken again, one that moved is a task built from bytes the tree no
    * longer holds, and the files are heard. Dropped unasked, the edit waited
    * for the next save. Holds `running`, so an event meanwhile queues.
