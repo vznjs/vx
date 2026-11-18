@@ -3072,7 +3072,12 @@ async function attemptDenials(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
             // included, not by the tagged command macOS is keyed by. Under
             // vx's observer the writes are in the trace, not the store.
-            prepared.wrap.observed ? observedWrites(trace) : records.map((v) => v.line),
+            prepared.wrap.observed
+              ? observedWrites(trace, {
+                  writable: (await loadSrt()).getDefaultWritePaths(),
+                  within: args.cwd,
+                })
+              : records.map((v) => v.line),
             [...bindableWrites(args.config.allowWrite), ...held.dirs],
             [...scratch, ...held.globs],
             [...baselines.allowRead, ...bindableReads(args.config.allowRead)],

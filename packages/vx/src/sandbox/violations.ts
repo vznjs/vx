@@ -480,12 +480,33 @@ const JUDGED_PER_TURN = 500
  * path a C string as strace spells one), as the records `refusedWrites`
  * judges: `deny <call> <path>`, the path normalized, since the observer
  * joins a relative one to its directory as written (`/ws/./a/../b`).
+ *
+ * The observer reports every such call, allowed or not, as the runtime's
+ * does, and the runtime kept only those outside its own write paths (a
+ * task's temp directory among them). So does this, by the same prefix
+ * test: a test shard's 85,000 writes to its temp directory, each judged
+ * with a `realpath`, held a DTE worker's loop past its heartbeat
+ * (2026-11-18). `within` is kept whatever holds it: the task's project,
+ * where the runtime's built-in denies lie.
  */
-export function observedWrites(trace: string): string[] {
+export function observedWrites(
+  trace: string,
+  permitted?: { writable: readonly string[]; within: string },
+): string[] {
+  const under = (p: string, prefix: string): boolean =>
+    p === prefix || p.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`)
   const out: string[] = []
   for (const line of trace.split('\n')) {
     const m = /^W (\S+) "(.*)"$/.exec(line)
-    if (m !== null) out.push(`deny ${m[1]} ${path.posix.normalize(cStringPath(m[2]!))}`)
+    if (m === null) continue
+    const p = path.posix.normalize(cStringPath(m[2]!))
+    if (
+      permitted !== undefined &&
+      !under(p, permitted.within) &&
+      permitted.writable.some((w) => under(p, w))
+    )
+      continue
+    out.push(`deny ${m[1]} ${p}`)
   }
   return out
 }

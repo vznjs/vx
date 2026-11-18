@@ -387,7 +387,7 @@ export interface DeniedCall {
 }
 export function deniedCalls(text: string, cwd?: string, reads?: boolean): DeniedCall[] // strace lines, split calls paired; paths follow each chdir from cwd; reads: successful opens too
 // vx's observer's write lines (`W <call> "<path>"`) as the records `refusedWrites` judges
-export function observedWrites(trace: string): string[]
+export function observedWrites(trace: string, permitted?): string[]
 export function parseStraceViolations(
   log, // the trace's path, or `{ text }` already read
   args,
@@ -783,7 +783,11 @@ What it writes to descriptor 5, the log vx reads at the task's end:
 The kernel allows one listener a filter chain, so vx leaves the runtime's
 own write observer out of that task's wrap (its socket's bind and
 `SRT_OBSERVE_SOCK`), and the observer's write table follows the
-runtime's. A persistent task is not observed and keeps the runtime's.
+runtime's. So does what is kept of its report: every write-intent call
+is printed, and `observedWrites` drops those under the runtime's own
+write paths (`getDefaultWritePaths`, a task's temp directory among
+them) unless they lie in the task's directory. A persistent task is not
+observed and keeps the runtime's.
 
 Three processes: the first keeps the pid the wrapper waits on and ends
 with the command's status, a signal's included. The supervisor, its
