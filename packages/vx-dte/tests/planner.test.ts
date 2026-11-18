@@ -5,6 +5,7 @@ import {
   knownMisses,
   missedWork,
   planTasks,
+  readySoon,
   type PlanTask,
   type PlanWorker,
   type Size,
@@ -269,6 +270,63 @@ it('keeps the holder when the packing gives its reader to a busy worker', () => 
   expect(p.release).toEqual([])
   // CONTROL: holding nothing, the idle one goes.
   expect(plan(work, [busy, testing, sized('holder')], [small], WARM).release).toEqual(['holder'])
+})
+
+// Main 194bda2: `install`, a group, stands between `check.bun` (0.3 s,
+// sent as the first worker joined) and the 56 test shards. Read by direct
+// dependants alone, no shard was about to be ready, no room was kept, and
+// the workers filled with 30 s suites a second before the shards came.
+it('reads the tasks ready soon through a group', () => {
+  const nodes = new Map(
+    (
+      [
+        ['check', [], true],
+        ['build', [], true],
+        ['install', ['check', 'build'], false],
+        ['shard-1', ['install'], true],
+        ['shard-2', ['install'], true],
+        ['all', ['shard-1', 'shard-2'], false],
+        ['deploy', ['all', 'other'], true],
+        ['other', [], true],
+        ['hit', ['install'], true],
+      ] as const
+    ).map(([id, deps, runs]) => [
+      id,
+      { id, deps, config: runs ? { exec: { command: 'x' } } : {} } as unknown as TaskNode,
+    ]),
+  )
+  const dependants = new Map<string, string[]>()
+  for (const [id, n] of nodes)
+    for (const d of n.deps) dependants.set(d, [...(dependants.get(d) ?? []), id])
+  const soon = (rest: string[], from: string[], ends: Record<string, number>) =>
+    readySoon(
+      nodes,
+      dependants,
+      new Set(rest),
+      (id) => id !== 'hit',
+      from,
+      new Map(Object.entries(ends)),
+      (id) => ends[id] ?? 300,
+    ).sort((a, b) => a.id.localeCompare(b.id))
+  const left = ['check', 'install', 'shard-1', 'shard-2', 'all', 'deploy', 'other', 'hit']
+  // `build` ended: the shards come as the check ends, and no hit is work.
+  expect(soon(left, ['check'], {})).toEqual([
+    { id: 'shard-1', at: 300 },
+    { id: 'shard-2', at: 300 },
+  ])
+  // The group's other dependency still to end: as the later of the two.
+  expect(soon(['build', ...left], ['check'], { build: 900 })).toEqual([
+    { id: 'shard-1', at: 900 },
+    { id: 'shard-2', at: 900 },
+  ])
+  // With no end known for it, none is about to be ready.
+  expect(soon(['build', ...left], ['check'], {})).toEqual([])
+  // Through the group after them too, and only once its other dependency ends.
+  const late = ['shard-1', 'shard-2', 'all', 'deploy', 'other']
+  expect(soon(late, ['shard-1', 'shard-2'], { 'shard-1': 100, 'shard-2': 400 })).toEqual([])
+  expect(soon(late, ['shard-1', 'shard-2'], { 'shard-1': 100, 'shard-2': 400, other: 50 })).toEqual(
+    [{ id: 'deploy', at: 400 }],
+  )
 })
 
 it('waits a task on the running task it depends on', () => {
