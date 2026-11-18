@@ -43,7 +43,11 @@ interface Repo {
   workers: number
   /** Native config kept in real/<name>/, copied over the clone; pinned by full SHA. */
   overlay?: boolean
-  /** More `pnpm install` arguments: the filters of a repo whose examples the bench never runs. */
+  /** The repo's package manager when it is not pnpm; yarn is the box's, which runs the repo's own `yarnPath` release. */
+  pm?: 'yarn'
+  /** Shell lines run in the clone after the install and the overlay: what a build needs that the repo does not track. */
+  prepare?: string[]
+  /** More install arguments: the filters of a repo whose examples the bench never runs. */
   install?: string[]
   /** Environment for the install alone. */
   installEnv?: Record<string, string>
@@ -102,6 +106,26 @@ const REPOS: Repo[] = [
     overlay: true,
     // `payload#build` bundles its types with rollup, which outgrows Node's
     // default 2 GB heap on this box under either tool.
+    nodeOptions: '--max-old-space-size=8192',
+  },
+  {
+    name: 'calcom',
+    url: 'https://github.com/calcom/cal.com',
+    commit: '569a389e84320a8036a2545f3f656f3123bd08f9',
+    tool: 'turbo',
+    tasks: 'build',
+    filters: '@calcom/web...',
+    workers: 3,
+    overlay: true,
+    pm: 'yarn',
+    // No database here, and `next.config.ts` refuses two empty secrets;
+    // Next reads the app directory's `.env`, not the root's.
+    prepare: [
+      'cp .env.example .env && echo SKIP_DB_MIGRATIONS=1 >> .env',
+      "sed -i -e 's/^NEXTAUTH_SECRET=$/NEXTAUTH_SECRET=benchbenchbenchbenchbenchbench12/' -e 's/^CALENDSO_ENCRYPTION_KEY=$/CALENDSO_ENCRYPTION_KEY=benchbenchbenchbenchbenchbench12/' .env",
+      'ln -sf ../../.env apps/web/.env',
+    ],
+    // `next build`'s type check outgrows Node's default heap on this box.
     nodeOptions: '--max-old-space-size=8192',
   },
   {
@@ -292,17 +316,19 @@ for (const repo of REPOS) {
     }
     must(['git', 'checkout', '-qf', repo.commit], dir)
     must(['git', 'clean', '-fdxq', '-e', 'node_modules', '-e', '**/node_modules'], dir)
-    must(['pnpm', 'install', '--frozen-lockfile', ...(repo.install ?? [])], dir, {
-      ...benchEnv(),
-      ...repo.installEnv,
-    })
-    repairManagedPnpm(dir)
+    const install =
+      repo.pm === 'yarn'
+        ? ['yarn', 'install', '--immutable']
+        : ['pnpm', 'install', '--frozen-lockfile']
+    must([...install, ...(repo.install ?? [])], dir, { ...benchEnv(), ...repo.installEnv })
+    if (repo.pm === undefined) repairManagedPnpm(dir)
     if (repo.overlay === true) applyOverlay(repo.name, dir)
     else {
       allowSameDayVx(dir)
       must([vxBin, 'init', '--native'], dir)
       moveRunFields(dir)
     }
+    for (const line of repo.prepare ?? []) must(['bash', '-c', line], dir)
     const script = path.join(REPO_ROOT, 'private/vx-bench/real', `${repo.tool}-repo.sh`)
     const toolArgs = repo.tool === 'nx' ? 'NX_ARGS' : 'TURBO_ARGS'
     const load = await settle(os.loadavg, (ms) => Bun.sleep(ms))

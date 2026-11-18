@@ -142,6 +142,34 @@ filters (`!blank !blank-tanstack !website !ecommerce`), 45 tasks.
   nothing. With those edges keyed and not ordered, 100.4 s against
   98.4 s.
 
+### calcom/cal.com — 569a389e84320a8036a2545f3f656f3123bd08f9
+
+yarn 4.12 (the repo's own release, node-modules linker), Turbo 2.7.1.
+Benched: `build` over the repo's own `build` filter (`@calcom/web...`),
+13 tasks, 3 workers.
+
+- Mapped: the 13 tasks that have a command, each its package's script
+  with turbo.json's inputs, outputs and `env`, and the 311 `globalEnv`
+  names keyed and given to every task. Three are uncached, as in
+  turbo.json (`@calcom/prisma#build` and `#post-install`,
+  `@calcom/embed-core#build`), and run on every arm under both tools,
+  about 12 s. Not mapped: `lint`, `type-check`, the other apps.
+- Dependencies are named, not `^build`: of the 25 projects in the
+  filter 14 have no build, and the 13 tasks are the other 11's.
+- `@calcom/app-store-cli#build` reads the apps' folders and writes the
+  generated indexes beside them: `inputs.workspaceFiles` and
+  `outputs.workspaceFiles`. `@calcom/web#build` leaves out
+  `public/app-store/**`, which `copy-app-store-static` writes and keys.
+- **turbo.json edited, for Turbo's benefit:** `globalPassThroughEnv`
+  added with `NODE_OPTIONS` and a box's proxy variables; the preset
+  passes the same names. `next build`'s type check outgrows Node's
+  default heap (the harness raises it for both), and behind a proxy
+  the two `npx shx` of the embed builds waited 74 s each for a
+  registry they could not reach, under either tool.
+- `.env` is the repo's `.env.example` with `SKIP_DB_MIGRATIONS=1` and
+  the two secrets `next.config.ts` refuses empty, linked into
+  `apps/web` (`prepare` in nightly.ts).
+
 ### resend/react-email — 1531a395bf8e8e6dd3b61a7ce9afd03551c5b18b
 
 pnpm 11.0, Turbo 2.9.14. Benched: `build` over `./packages/*`, the
