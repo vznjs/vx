@@ -296,12 +296,28 @@ describe('vx-worker.yml', () => {
   it('is cancelled with the run that dispatched it', () => {
     const last = doc.jobs['linux']!.steps!.at(-1)!
     expect([last.if, last.run]).toEqual([
-      'cancelled()',
+      'cancelled() || failure()',
       expect.stringContaining('done < "$RUNNER_TEMP/vx-dte-runs"'),
     ])
     expect(read('vx-worker.yml').on!['workflow_dispatch']).toMatchObject({
       inputs: { parent: { required: false, default: '' } },
     })
+  })
+
+  // Workers started while the run's own job checks out and installs: the
+  // step comes first, names the run they wait for, lists them for the run
+  // to adopt and for the last step to cancel, and never fails the job.
+  it('starts early, before the checkout, as the run adopts and the job cancels', () => {
+    const first = doc.jobs['linux']!.steps![0]!
+    expect([first.name, first['continue-on-error']]).toEqual(['Start the workers early', true])
+    for (const part of [
+      '"VX_DTE_WAIT\\":\\"60\\"',
+      ' $at" >> "$RUNNER_TEMP/vx-dte-started"',
+      '>> "$RUNNER_TEMP/vx-dte-runs"',
+      'echo "VX_DTE_RUN=$run" >> "$GITHUB_ENV"',
+      'for group in hosted.small:9 hosted.mac:3; do',
+    ])
+      expect(first.run).toContain(part)
   })
 
   it('runs each size on its runner', () => {

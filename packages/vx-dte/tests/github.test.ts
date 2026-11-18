@@ -696,7 +696,11 @@ it('adopts the workers a step started, watching and stopping them as its own', a
     },
   })
   const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
-  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/9 small#1,small#2\n')
+  // The third word is when the step started them, which the run reads their warm-up from.
+  await Bun.write(
+    path.join(temp, 'vx-dte-started'),
+    '/repos/o/r/actions/runs/9 small#1,small#2 1700000000123\n',
+  )
   Object.assign(process.env, {
     GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
     GITHUB_REPOSITORY: 'o/r',
@@ -708,10 +712,10 @@ it('adopts the workers a step started, watching and stopping them as its own', a
     const why: string[] = []
     const adapter = github()
     adapter.adopt?.((id, size) => {
-      adopted.push(`${id} ${size}`)
+      adopted.push(`${id} ${size} ${adapter.startedAt?.(id)}`)
       return spawn(id, size, (w) => why.push(`${id}: ${w}`))
     })
-    expect(adopted).toEqual(['small#1 small', 'small#2 small'])
+    expect(adopted).toEqual(['small#1 small 1700000000123', 'small#2 small 1700000000123'])
     for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(100)
     expect(why).toEqual(['small#2: job failure'])
     await adapter.close?.()

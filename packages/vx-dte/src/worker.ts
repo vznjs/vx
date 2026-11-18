@@ -43,12 +43,17 @@ import { changedFiles, snapshot, unfilter } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, ORCHESTRATOR_SILENT, RelayError, unsent as unsentBy } from './wire.js'
 
+/** How often a worker ahead of its run asks the relay for it. */
+const WAIT_EVERY_MS = 500
+
 export async function runWorker(opts: {
   relay: string
   run: string
   /** `WorkerSpawn.id`, when the run started it. */
   id?: string
   root: string
+  /** How long it waits for a run that is not on the relay yet (`VX_DTE_WAIT`); none: it leaves at once. */
+  waitMs?: number
   token: () => Promise<string | undefined>
   /** `dte({ headers })`, on every dial. */
   headers?: Readonly<Record<string, string>>
@@ -81,13 +86,24 @@ export async function runWorker(opts: {
     booted: Math.round(performance.timeOrigin),
   }
   let me
+  // One the CI started ahead of its run (`VX_DTE_WAIT`) asks again until the run is there.
+  const waitUntil = performance.now() + (opts.waitMs ?? 0)
   try {
-    me = await sealWorker(
-      (signed) => join(opts.relay, opts.run, 'worker', signed, opts.token, opts.headers),
-      opts.run,
-      opts.proof,
-      { ...info },
-    )
+    for (;;) {
+      try {
+        me = await sealWorker(
+          (signed) => join(opts.relay, opts.run, 'worker', signed, opts.token, opts.headers),
+          opts.run,
+          opts.proof,
+          { ...info },
+        )
+        break
+      } catch (err) {
+        if (!(err instanceof RelayError && err.status === 410) || performance.now() >= waitUntil)
+          throw err
+        await Bun.sleep(WAIT_EVERY_MS)
+      }
+    }
   } catch (err) {
     if (err instanceof RelayError && err.status === 410) {
       // The run ended before this worker came up: nothing is left for it, and

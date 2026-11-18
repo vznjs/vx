@@ -2244,13 +2244,18 @@ export class Orchestrator {
     if (p.input !== undefined) this.inputMarked = true
   }
 
-  /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
-  spawned(id: string, declared: Declared): void {
+  /**
+   * `demand` asked the adapter for worker `id` (`WorkerSpawn.id`); `since`,
+   * for one started before the run (adopted), is when: its warm-up read
+   * from the run's start came out as 5.6 s for 20, the size's join limit
+   * as 11 s, and five workers that joined in 12 to 17 s were given up.
+   */
+  spawned(id: string, declared: Declared, since?: number): void {
     // A worker whose start broke where no adapter sees it counted as
     // starting for good: main's run sat 18 min (ee3fc6e, 2026-10-23). Its
     // job ending says so (`failed`); one that never ends is given up past
     // its size's join limit.
-    const at = performance.now()
+    const at = since ?? performance.now()
     this.spawnedAt.set(id, { at, declared })
     this.deadline(id, at, declared.size)
   }

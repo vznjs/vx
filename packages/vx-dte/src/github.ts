@@ -400,6 +400,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
     // Let go while this dispatch was in flight: cancel() knew no run.
     if (!closed) letGo(run, mine)
   }
+  /** When the job's step started each worker the run adopts (epoch ms). */
+  const startedAt = new Map<string, number>()
   return {
     // Loaded only by `vx dte init`: a run never needs it.
     init: async (setup) => (await import('./init.js')).githubInit(options, setup),
@@ -408,6 +410,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     report(w) {
       warn = w
     },
+    startedAt: (id) => startedAt.get(id),
     adopt(worker) {
       const temp = process.env['RUNNER_TEMP']
       if (!temp) return
@@ -419,11 +422,15 @@ export function github(options: GithubOptions = {}): DteAdapter {
         return
       }
       for (const line of text.split('\n')) {
-        const [run, ids] = line.trim().split(/\s+/)
+        const [run, ids, at] = line.trim().split(/\s+/)
         if (!run || !ids) continue
+        // When the step started them (epoch ms): their warm-up began then, not with the run.
+        const since = at === undefined ? Number.NaN : Number(at)
         const workers = new Map<string, WorkerSpawn>()
-        for (const id of ids.split(','))
+        for (const id of ids.split(',')) {
+          if (Number.isFinite(since)) startedAt.set(id, since)
           workers.set(id, worker(id, id.slice(0, id.lastIndexOf('#'))))
+        }
         runs.push(run)
         watched.set(run, workers)
         workerRuns.add(run.slice(run.lastIndexOf('/') + 1))
