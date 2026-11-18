@@ -2592,6 +2592,56 @@ it("names the time a dependency's files took to come home", async () => {
   }
 })
 
+// Main 643d38d: docs#build.live's worker left, the deploy had it made
+// again in 18 s, and the footer read "files coming home 118.8s": the
+// second run took the task's place in the timeline, so the time from its
+// dependencies' end to that second ask counted as their files coming.
+it('names the time a dependant waited on a dependency made again', async () => {
+  const h = await harness(
+    new Map([node('d'), node('g'), node('x'), node('y'), node('u', ['g'])]),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { pinWaitMs: 50 },
+  )
+  const done = { exitCode: 0, durationMs: 10, cpuMs: 10 }
+  try {
+    h.o.asked(1, 5, 5, 1_000, [])
+    const a = await h.worker(1, 'a')
+    for (const id of ['d', 'g']) {
+      const ran = h.o.execute(h.req(id))
+      await a.batches()
+      await a.finish(id, runKey(R, id), done)
+      await ran
+    }
+    void h.o.execute(h.req('x'))
+    expect(await a.batches()).toEqual([['x']])
+    const b = await h.worker(1, 'b')
+    const y = h.o.execute(h.req('y'))
+    expect(await b.batches()).toEqual([['y']])
+    // As long as the run's other work took before the dependant was ready.
+    await Bun.sleep(400)
+    await b.finish('y', runKey(R, 'y'), done)
+    await y
+    const u = h.o.execute(h.req('u'))
+    expect(await b.batches()).toEqual([['g']])
+    await Bun.sleep(300)
+    await b.finish('g', runKey(R, 'g', 1), done)
+    expect(await b.batches()).toEqual([['u']])
+    await b.finish('u', runKey(R, 'u'), done)
+    await u
+    // The run's graph past the files read: g came after d, and u waited on y too.
+    const deps: Record<string, string[]> = { g: ['d'], u: ['g', 'y'] }
+    const d = h.o.driftOf((id) => deps[id] ?? [])!
+    expect(d.again >= 250 && d.again < 500).toBe(true)
+    // Not the 400 ms from d's end to g's second ask.
+    expect(d.home).toBeLessThan(150)
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-21: a worker the run's end stopped still read `online`, and
 // a size's machines were a `!` line apart from its workers.
 it('the final summary says how each worker ended, its size and machine under it', async () => {
