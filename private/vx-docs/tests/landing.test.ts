@@ -554,16 +554,26 @@ describe('the hero run', () => {
     expect(P.dots.every((d) => d.at >= 0 && d.at < P.loop && d.label !== '')).toBe(true)
   })
 
-  // M (2026-11-18): only what vx calls through its hooks is done by vx, so a
-  // group lights only as a message on one of vx's own wires leaves.
-  it('lights a group only while vx calls its hooks', () => {
+  // M (2026-11-18): a step's group lights for its 5 s; outside it, only
+  // what vx calls through its hooks is done by vx, so a group lights only
+  // as a message on one of vx's own wires leaves.
+  it('lights a group for its step, and else only while vx calls its hooks', () => {
     const own = new Set(
       map.WIRES.filter((w) => w.from === 'core' || w.to === 'core').map((w) => w.id),
     )
-    for (const spans of Object.values(P.lit))
-      for (const [from] of spans)
+    for (const [group, spans] of Object.entries(P.lit))
+      for (const [from, to] of spans) {
+        const step = P.steps.find((x) => x.group === group)!
+        if (from === step.from && to === step.to) continue
         expect(P.dots.some((d) => d.at === from && own.has(d.wire))).toBe(true)
-    for (const g of map.GROUPS) expect(P.lit[g.id]!.length).toBeGreaterThan(0)
+      }
+  })
+
+  // vx hands DTE the plan before DTE starts a worker.
+  it('starts no worker before DTE has the plan', () => {
+    const plan = P.dots.find((d) => d.label === 'plan')!
+    for (const l of P.lanes)
+      expect(l.spawn - map.TRAVEL_MS).toBeGreaterThanOrEqual(plan.at + map.TRAVEL_MS - 1e-6)
   })
 
   // Each message in the order the run sent it: DTE starts each worker, an

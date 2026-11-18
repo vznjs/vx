@@ -215,17 +215,27 @@ const specs = [
         n++
       }
       for (let i = n; i < v.dots.length; i++) v.dots[i]!.g.style.display = 'none'
+      // The step on screen keeps its boxes and its one-off wires lit for its whole window.
+      const step = P.steps.findIndex((x) => x.from <= t && t < x.to)
+      const cur = P.steps[step]
+      for (const b of cur?.boxes ?? []) boxes.add(b)
       root.querySelectorAll<SVGElement>('[data-wire]').forEach((w) => {
-        const on = live.has(w.dataset['wire']!)
+        const id = w.dataset['wire']!
+        const held = cur?.wires.includes(id) ?? false
+        const on = live.has(id) || held
         w.classList.toggle('live', on)
-        if (on) w.dataset['tone'] = P.dots.find((d) => d.wire === w.dataset['wire'] && d.at <= t && t < d.at + T)?.tone ?? ''
+        if (on) {
+          const d = live.has(id)
+            ? P.dots.find((x) => x.wire === id && x.at <= t && t < x.at + T)
+            : P.dots.find((x) => x.wire === id && x.at >= cur!.from && x.at < cur!.to)
+          w.dataset['tone'] = d?.tone ?? ''
+        }
       })
 
       // Groups lit now: more than one at once while the run streams.
       const lit = new Set(Object.entries(P.lit).filter(([, spans]) => spans.some(([a, b]) => a <= t && t < b)).map(([g]) => g))
       root.querySelectorAll<SVGElement>('[data-stage]').forEach((c) => c.classList.toggle('on', lit.has(c.dataset['stage']!)))
       // One card: the step whose window this is.
-      const step = P.steps.findIndex((x) => x.from <= t && t < x.to)
       stage.querySelectorAll<HTMLElement>('.story-steps li').forEach((li, j) => li.classList.toggle('on', j === step))
       stage.querySelectorAll<HTMLElement>('.story-rail button').forEach((b, j) => b.classList.toggle('on', j <= step))
 

@@ -195,7 +195,7 @@ export interface Bar {
 
 export interface Play {
   /** The step on screen: one group a `STEP_MS` window, in the order a run reaches them. */
-  steps: { group: string; from: number; to: number }[]
+  steps: { group: string; from: number; to: number; boxes: string[]; wires: string[] }[]
   /** When vx calls each group's hooks, [from, to) in play ms: several at once while tasks run. */
   lit: Record<string, [number, number][]>
   dots: Dot[]
@@ -212,8 +212,8 @@ export interface Play {
   loop: number
 }
 
-/** A message's trip along one wire, at a pace an eye follows. */
-export const TRAVEL_MS = 450
+/** A message's trip along one wire, at a pace an eye follows: as slow as Schedule's 5 s allows, its chain (timings, plan, start, boot, join, first task) filling it. */
+export const TRAVEL_MS = 600
 /** Each step's window (M, 2026-11-18): the tasks' part of the run fills Run's, 5 s. */
 export const STEP_MS = 5000
 /** A worker's boot, shown as 2 s whatever the run's took (M, 2026-11-18). */
@@ -242,7 +242,35 @@ export function play(run: Run): Play {
   const dots: Dot[] = []
   const T = TRAVEL_MS
   const at = (g: (typeof ORDER)[number]): number => ORDER.indexOf(g) * STEP_MS
-  const steps = ORDER.map((group, i) => ({ group, from: i * STEP_MS, to: (i + 1) * STEP_MS }))
+  // The boxes a step works with, and the wires of its one-off reads and
+  // writes, lit for its whole window (M, 2026-11-18).
+  const WITH: Record<(typeof ORDER)[number], [string[], string[]]> = {
+    setup: [
+      ['ws', 'ci'],
+      ['ws', 'ci'],
+    ],
+    graph: [
+      ['ws', 'lockfile', 'migrate'],
+      ['ws', 'lockfile', 'migrate'],
+    ],
+    cache: [['cache', 'reports'], ['cache']],
+    schedule: [
+      ['history', 'relay'],
+      ['history', 'relay'],
+    ],
+    run: [['relay', 'cache', 'reports'], []],
+    report: [
+      ['ci', 'history', 'reports'],
+      ['ci', 'history'],
+    ],
+  }
+  const steps = ORDER.map((group, i) => ({
+    group,
+    from: i * STEP_MS,
+    to: (i + 1) * STEP_MS,
+    boxes: WITH[group][0],
+    wires: WITH[group][1],
+  }))
   const dot = (when: number, wire: string, tone: Tone, label: string, back = false): void => {
     dots.push({ at: when, wire, back, tone, label })
   }
@@ -270,8 +298,8 @@ export function play(run: Run): Play {
   dot(probe + T, 'cache', 'remote', 'hits', true)
   // Schedule: history's timings, then vx hands the plan to DTE, which
   // starts the workers and orchestrates them from here on.
-  dot(at('schedule') + lead, 'history', 'read', 'timings')
-  dot(at('schedule') + lead + 2 * T, 'relay', 'dte', 'plan')
+  dot(at('schedule'), 'history', 'read', 'timings')
+  dot(at('schedule') + T, 'relay', 'dte', 'plan')
 
   const byId = new Map(run.tasks.map((x) => [x.id, x]))
   // When a task's inputs are all there: a hit restores then.
@@ -287,14 +315,14 @@ export function play(run: Run): Play {
 
   // Each worker takes the first slot free when it starts.
   const workers = [...run.workers].sort((a, b) => a.spawnMs - b.spawnMs)
-  const firstJoin = zero - 3 * T
+  const firstJoin = zero - 2 * T
   const free: number[] = []
   const lanes: Lane[] = []
   const slotOf = new Map<string, number>()
   for (const w of workers) {
     // It joins when the run had it join, booted `BOOT_MS` before; the first joins as its first task waits.
     const joinMs = w.joinMs ?? w.leaveMs
-    const join = w === workers[0] ? firstJoin : Math.max(firstJoin, t(joinMs) - 3 * T)
+    const join = w === workers[0] ? firstJoin : Math.max(firstJoin, t(joinMs) - 2 * T)
     const spawn = join - BOOT_MS - T
     let slot = free.findIndex((until) => until <= spawn)
     if (slot < 0) slot = free.length
@@ -349,10 +377,12 @@ export function play(run: Run): Play {
   dot(down, 'ci', 'report', 'summary', true)
   dot(down, 'history', 'report', 'timings', true)
 
-  // vx is at work only when it calls a hook: a group lights while a message
-  // it sent or answered through that group's hooks travels. What DTE and the
-  // workers do between themselves and the cache lights nothing in vx.
-  const lit: Record<string, [number, number][]> = Object.fromEntries(ORDER.map((g) => [g, []]))
+  // A group lights for its step's window and, outside it, only while vx
+  // calls its hooks: a message vx sent or answered through them travels.
+  // What DTE and the workers do with the cache lights nothing in vx.
+  const lit: Record<string, [number, number][]> = Object.fromEntries(
+    steps.map((x) => [x.group, [[x.from, x.to]] as [number, number][]]),
+  )
   for (const d of dots) {
     const g = hookOf(d)
     if (g !== undefined) lit[g]!.push([d.at, d.at + T + 250])
