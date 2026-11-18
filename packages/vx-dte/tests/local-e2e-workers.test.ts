@@ -2,7 +2,7 @@
 // started by hand or adopted, runtime probes, retries and a stopped run
 // (local-e2e-fixture.ts).
 
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -327,6 +327,77 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { linux
     await relay.stop()
   }
 }, 60_000)
+
+// A worker given up for joining late left its size's count, and joining
+// after all it was taken but not counted back: PR 5335's first run held 9
+// smalls of 9, counted 4, and asked a tenth. Here the size's two are both
+// held once the late one joins, and the run asked a third as it did.
+it('counts a worker given up as late again once it joins after all', async () => {
+  const { serveRelay } = await import('@vzn/vx-dte-server')
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const spawns = path.join(root, 'spawns.log')
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { appendFileSync } from 'node:fs'
+import { dte } from ${JSON.stringify(DTE)}
+const adapter = {
+  adopt(worker) { worker('linux.small#1', 'linux.small'); worker('linux.small#2', 'linux.small') },
+  spawn(a) { appendFileSync(${JSON.stringify(spawns)}, a.id + '\\n') },
+}
+export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)}, workers: { linux: { machines: { small: { max: 2, cpu: 1, memory: '1GB' } } } }, adapter })] }
+`,
+    )
+    await mkdir(path.join(root, 'w'), { recursive: true })
+    await writeFile(
+      path.join(root, 'w/vx.config.mjs'),
+      `const t = { exec: { command: 'sleep 1.5' } }
+export default { name: 'w', tasks: { n1: t, n2: t, n3: t, n4: t, n5: t, n6: t, n7: t, n8: t, n9: t, n10: t } }
+`,
+    )
+    expect(vx(['lock']).exitCode).toBe(0)
+    Bun.spawnSync(['git', 'add', '-A'], { cwd: root })
+    Bun.spawnSync(
+      ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'w'],
+      { cwd: root },
+    )
+    const { VX_DTE_RUN: _, VX_DTE_WORKER: __, ...env } = process.env
+    const shared = {
+      ...env,
+      VX_DTE_RUN: crypto.randomUUID(),
+      VX_DTE_SECRET: 'late-secret',
+      NO_COLOR: '1',
+    }
+    const run = Bun.spawn(
+      [process.execPath, CORE_BIN, 'run', ...Array.from({ length: 10 }, (_x, i) => `w#n${i + 1}`)],
+      { cwd: root, env: shared, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const start = (id: string) => () =>
+      Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
+        cwd: root,
+        env: { ...shared, VX_DTE_WORKER: id },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+    const first = workerOf(start('linux.small#1'), run)
+    // Past the join limit its fellow's join set (twice that one's warm-up).
+    await Bun.sleep(5000)
+    const late = workerOf(start('linux.small#2'), run)
+    const out = await new Response(run.stdout).text()
+    expect([await run.exited, out]).toEqual([
+      0,
+      expect.stringMatching(/· linux\.small#2 ── .*success/),
+    ])
+    await Promise.all([first, late])
+    const asked = (await readFile(spawns, 'utf8').catch(() => ''))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+    expect(asked).toEqual([])
+  } finally {
+    await relay.stop()
+  }
+}, 90_000)
 
 // ci.yml's mac and arm sizes name no platform and join a run on Linux: a
 // size that names none takes whatever worker joins it.
