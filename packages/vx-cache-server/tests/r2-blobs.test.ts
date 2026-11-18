@@ -3,8 +3,19 @@
 // download moved at the cache write's pace: main's DTE run read one artifact
 // for 19 minutes, then failed with "no bytes for 30000 ms" (2026-10-28).
 
-import { expect, it } from 'bun:test'
+import { beforeEach, expect, it } from 'bun:test'
 import { r2Blobs, type R2Bucket } from '../src/worker.js'
+
+// workerd's FixedLengthStream, its length unchecked: tests/r2-put.test.ts checks it.
+beforeEach(() => {
+  Object.assign(globalThis, {
+    FixedLengthStream: class extends TransformStream<Uint8Array, Uint8Array> {
+      constructor(_length: number) {
+        super()
+      }
+    },
+  })
+})
 
 it("serves a read from R2 alone, the data center's copy from a read of its own", async () => {
   const bytes = new TextEncoder().encode('artifact bytes')
@@ -28,10 +39,42 @@ it("serves a read from R2 alone, the data center's copy from a read of its own",
   const blobs = r2Blobs(bucket, Promise.resolve(cache), { waitUntil: (p) => void later.push(p) })
   const got = await blobs.get('a/b/c/d')
   expect(got?.size).toBe(bytes.byteLength)
-  // The client's body is R2's own stream, shared with no other reader.
-  expect(got?.body).toBe(bodies[0]!)
+  // One reader of the object at a time: read beside the client's, both reads
+  // of one 42 MB object ran at 150 to 300 KB/s for minutes (main, 2026-11-18).
+  await Bun.sleep(20)
+  expect(bodies).toHaveLength(1)
   expect(await new Response(got!.body).text()).toBe('artifact bytes')
   await Promise.all(later)
   expect(bodies).toHaveLength(2)
   expect(await copies[0]!.text()).toBe('artifact bytes')
+})
+
+it('makes no copy of a download the client left, and says how long it ran', async () => {
+  const bucket: R2Bucket = {
+    put: async () => undefined,
+    head: async () => ({ size: 3, uploaded: new Date() }),
+    get: async () => ({
+      body: new ReadableStream<Uint8Array>({ pull: () => {} }),
+      size: 3,
+      uploaded: new Date(),
+    }),
+  }
+  let reads = 0
+  const counted: R2Bucket = { ...bucket, get: (n) => (reads++, bucket.get(n)) }
+  const cache = { match: async () => undefined, put: async () => {}, delete: async () => false }
+  const later: Promise<unknown>[] = []
+  const blobs = r2Blobs(counted, Promise.resolve(cache), { waitUntil: (p) => void later.push(p) })
+  const said: string[] = []
+  const warn = console.warn
+  console.warn = (m: string) => void said.push(m)
+  try {
+    const got = await blobs.get('a/b/c/d')
+    await got!.body.cancel(new Error('client left'))
+    await Promise.all(later)
+  } finally {
+    console.warn = warn
+  }
+  expect(reads).toBe(1)
+  expect(said).toHaveLength(1)
+  expect(said[0]).toMatch(/^vx-cache-server: a\/b\/c\/d \(3 bytes\) ended after \d+ ms: /)
 })

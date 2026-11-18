@@ -111,7 +111,10 @@ the fastest (from a GitHub runner, 134 hashes: 168 to 216 ms, against
 subrequests a request, and `MAX_UPLOAD_BYTES` your plan's request body.
 The server lowers neither. A download is read through the data center's cache: an
 artifact never changes, so after R2 serves it once, that data center
-answers it without R2 (free on every plan). Whether R2 holds an
+answers it without R2 (free on every plan). The copy is a second read
+of R2, begun once the client has its bytes: one reader of an object at
+a time. A download under 1 MiB a second, or one the client left, is
+logged with its time. Whether R2 holds an
 artifact (a check, a `HEAD`, an upload's skip) is asked of R2, never
 of that copy: it can outlive R2's, and a writer told "held" there would
 skip an upload another data center then cannot read. An upload drops
