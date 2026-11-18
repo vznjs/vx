@@ -3,7 +3,7 @@
 // it, as its own section, the system graph: every piece one CI run talks to,
 // before a striped sun sinking into an endless grid. When the graph comes
 // into view it rises in, then plays one real run on a loop: 10 tasks as
-// vx-dte's simulator ran them (src/data/hero-run.json), every message named
+// vx-dte's simulator ran them (src/data/hero-run.json), every message a dot
 // as it travels. At rest (no script, reduced motion) it is a plain section:
 // the copy, the graph, and the six groups listed.
 import run from '../../data/hero-run.json'
@@ -57,7 +57,7 @@ const specs = [
       </ul>
     </div>
     <header class="stage-head">
-      <p class="kicker">One CI run, 10 tasks, every message</p>
+      <p class="kicker">One CI run, step by step</p>
       <h2>One run.<br /><em>Every piece.</em></h2>
     </header>
     <div class="stage-world" aria-hidden="true">
@@ -66,7 +66,7 @@ const specs = [
       </div>
     </div>
     <div class="stage-story" id="one-run">
-      <p class="story-kicker">One run, six groups</p>
+      <p class="story-kicker">One CI run, step by step</p>
       <ol class="story-steps">
         {
           GROUPS.map((g, i) => (
@@ -79,6 +79,11 @@ const specs = [
           ))
         }
       </ol>
+      <nav class="story-rail" aria-label="Steps of the run">
+        {GROUPS.map((g, i) => (
+          <button type="button" class={`tone-${g.tone}`} data-goto={i} aria-label={`Step ${i + 1}: ${g.title}`} />
+        ))}
+      </nav>
     </div>
   </div>
 </section>
@@ -125,7 +130,7 @@ const specs = [
     interface View {
       root: SVGSVGElement
       paths: Map<string, { el: SVGPathElement; len: number }>
-      dots: { g: SVGGElement; c: SVGCircleElement; l: SVGTextElement }[]
+      dots: { g: SVGGElement; c: SVGCircleElement }[]
       slots: Map<number, { g: SVGGElement; warm: SVGRectElement; state: SVGTextElement; x: number; y: number; w: number; h: number; cores: number }>
       bars: Map<string, { g: SVGGElement; done: SVGRectElement }>
       clock: SVGTextElement
@@ -198,20 +203,14 @@ const specs = [
           const g = document.createElementNS(NS, 'g')
           const c = document.createElementNS(NS, 'circle')
           c.setAttribute('r', '4.5')
-          const l = document.createElementNS(NS, 'text')
-          l.setAttribute('class', 'dot-label')
-          l.setAttribute('x', '8')
-          l.setAttribute('y', '-7')
-          g.append(c, l)
+          g.append(c)
           root.querySelector('.packets')!.appendChild(g)
-          v.dots[n] = dot = { g, c, l }
+          v.dots[n] = dot = { g, c }
         }
         const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2
         const pt = p.el.getPointAtLength((d.back ? 1 - e : e) * p.len)
         dot.g.setAttribute('transform', `translate(${pt.x} ${pt.y})`)
         dot.c.setAttribute('fill', TONES[d.tone]!)
-        dot.l.setAttribute('fill', TONES[d.tone]!)
-        if (dot.l.textContent !== d.label) dot.l.textContent = d.label
         dot.g.style.display = ''
         n++
       }
@@ -225,7 +224,10 @@ const specs = [
       // Groups lit now: more than one at once while the run streams.
       const lit = new Set(Object.entries(P.lit).filter(([, spans]) => spans.some(([a, b]) => a <= t && t < b)).map(([g]) => g))
       root.querySelectorAll<SVGElement>('[data-stage]').forEach((c) => c.classList.toggle('on', lit.has(c.dataset['stage']!)))
-      stage.querySelectorAll<HTMLElement>('.story-steps li').forEach((li) => li.classList.toggle('on', lit.has(li.dataset['group']!)))
+      // One card: the step whose window this is.
+      const step = P.steps.findIndex((x) => x.from <= t && t < x.to)
+      stage.querySelectorAll<HTMLElement>('.story-steps li').forEach((li, j) => li.classList.toggle('on', j === step))
+      stage.querySelectorAll<HTMLElement>('.story-rail button').forEach((b, j) => b.classList.toggle('on', j <= step))
 
       // Workers: off, booting, running, idle, tearing down, off again.
       let online = 0
@@ -289,8 +291,18 @@ const specs = [
     const autoplay = (now: number): void => {
       rise = ease(clamp((now - born) / 1600))
       if (now - born < ENTER_MS) return
-      render((now - born - ENTER_MS) % P.loop)
+      render((now - born - ENTER_MS + shift) % P.loop)
     }
+    // The rail jumps to a step's window, the run's clock with it.
+    let shift = 0
+    stage.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const now = performance.now()
+        const played = Math.max(0, now - born - ENTER_MS)
+        shift = P.steps[Number(b.dataset['goto'])]!.from - (played % P.loop)
+        if (shift < 0) shift += P.loop
+      }),
+    )
     // An old link to a group's anchor lands on the graph.
     if (stage.querySelector(`.story-steps [id="${CSS.escape(location.hash.slice(1))}"]`)) {
       born = performance.now()

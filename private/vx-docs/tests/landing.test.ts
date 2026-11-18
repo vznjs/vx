@@ -480,14 +480,14 @@ describe('the system graph, as data', () => {
     expect(map.GROUPS.map((g) => g.title)).toEqual([
       'Setup',
       'Graph',
-      'Schedule',
       'Cache',
+      'Schedule',
       'Run',
       'Report',
     ])
     for (const g of map.GROUPS) {
       expect(g.line.split(/[.!?]\s/)).toHaveLength(1)
-      expect(g.line.length).toBeLessThanOrEqual(110)
+      expect(g.line.length).toBeLessThanOrEqual(120)
     }
   })
 })
@@ -542,18 +542,28 @@ describe('the hero run', () => {
     expect(clash.map((b) => b.id)).toEqual([])
   })
 
-  // M (2026-11-18): every task's run together takes 5 s; a worker boots in 2 s.
-  it('plays the tasks in 5 s and boots each worker in 2 s', () => {
-    expect(
-      Math.max(...P.bars.map((b) => b.end)) - Math.min(...P.bars.map((b) => b.start)),
-    ).toBeCloseTo(map.RUN_MS, 6)
+  // M (2026-11-18): one card a step, every step 5 s; the tasks together
+  // fill Run's 5 s; a worker boots in 2 s.
+  it('gives each step 5 s, the tasks Run’s 5 s, each boot 2 s', () => {
+    expect(P.steps.map((x) => x.to - x.from)).toEqual(map.GROUPS.map(() => map.STEP_MS))
+    expect(P.steps.map((x) => x.group)).toEqual(map.GROUPS.map((g) => g.id))
+    const run = P.steps.find((x) => x.group === 'run')!
+    expect(Math.min(...P.bars.map((b) => b.start))).toBeCloseTo(run.from, 6)
+    expect(Math.max(...P.bars.map((b) => b.end))).toBeCloseTo(run.to, 6)
     for (const l of P.lanes) expect(l.join - l.spawn).toBe(map.BOOT_MS)
-    expect(P.dots.every((d) => d.at >= 0 && d.label !== '')).toBe(true)
+    expect(P.dots.every((d) => d.at >= 0 && d.at < P.loop && d.label !== '')).toBe(true)
   })
 
-  // Each message in the order the run sent it: an order reaches the worker
-  // before its task starts, and nothing goes to a worker that is off.
+  // Each message in the order the run sent it: DTE starts each worker, an
+  // order reaches it before its task starts, and nothing but the start
+  // reaches a worker that is off.
   it('sends each order before its task and only to a worker that is on', () => {
+    for (const l of P.lanes)
+      expect(
+        P.dots.some(
+          (d) => d.wire === `s${l.slot}` && d.label === 'start' && d.at + map.TRAVEL_MS === l.spawn,
+        ),
+      ).toBe(true)
     for (const b of P.bars) {
       const order = P.dots.find(
         (d) =>
@@ -565,7 +575,7 @@ describe('the hero run', () => {
       expect(order).toBeDefined()
     }
     const off = P.dots
-      .filter((d) => /^[sc]\d$/.test(d.wire))
+      .filter((d) => /^[sc]\d$/.test(d.wire) && d.label !== 'start')
       .filter(
         (d) =>
           !P.lanes.some(

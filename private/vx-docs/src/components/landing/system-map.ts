@@ -76,8 +76,6 @@ export const WIRES: Wire[] = [
   { id: 'reports', from: 'core', to: 'reports' },
   { id: 'cache', from: 'core', to: 'cache' },
   { id: 'relay', from: 'core', to: 'relay' },
-  // vx asks CI for a worker (vx-dte's github(), gitlab(), docker(), local()).
-  ...slotIds.map((k) => ({ id: `p${k}`, from: 'core', to: `slot${k}`, dashed: true })),
   ...slotIds.map((k) => ({ id: `s${k}`, from: 'relay', to: `slot${k}` })),
   ...slotIds.map((k) => ({ id: `c${k}`, from: `slot${k}`, to: 'cache' })),
 ]
@@ -99,14 +97,6 @@ export const GROUPS: Group[] = [
     tone: 'read',
   },
   {
-    id: 'schedule',
-    anchors: ['parallel'],
-    title: 'Schedule',
-    hooks: ['measures', 'schedule', 'admit'],
-    line: 'History times each task: the longest chain goes first, and a worker starts only when the work needs it.',
-    tone: 'read',
-  },
-  {
     id: 'cache',
     anchors: ['cache'],
     title: 'Cache',
@@ -115,10 +105,18 @@ export const GROUPS: Group[] = [
     tone: 'remote',
   },
   {
+    id: 'schedule',
+    anchors: ['parallel'],
+    title: 'Schedule',
+    hooks: ['measures', 'schedule', 'admit'],
+    line: 'History times each task, so the longest chain goes first, and the plan goes to Distributed task execution.',
+    tone: 'read',
+  },
+  {
     id: 'run',
     title: 'Run',
     hooks: ['executor', 'output'],
-    line: 'Misses run on workers that start when needed, and each saves its outputs for the run to restore.',
+    line: 'Distributed task execution boots workers as the work needs them and sends them tasks; outputs land in the cache.',
     tone: 'dte',
   },
   {
@@ -176,7 +174,9 @@ export interface Bar {
 }
 
 export interface Play {
-  /** When each group is lit, [from, to) in play ms. */
+  /** The step on screen: one group a `STEP_MS` window, in the order a run reaches them. */
+  steps: { group: string; from: number; to: number }[]
+  /** When each group's hooks are at work, [from, to) in play ms: several at once while tasks run. */
   lit: Record<string, [number, number][]>
   dots: Dot[]
   lanes: Lane[]
@@ -194,68 +194,75 @@ export interface Play {
 
 /** A message's trip along one wire, at a pace an eye follows. */
 export const TRAVEL_MS = 450
-/** The tasks' part of the run, first start to last end, plays in 5 s (M, 2026-11-18). */
-export const RUN_MS = 5000
+/** Each step's window (M, 2026-11-18): the tasks' part of the run fills Run's, 5 s. */
+export const STEP_MS = 5000
 /** A worker's boot, shown as 2 s whatever the run's took (M, 2026-11-18). */
 export const BOOT_MS = 2000
-/** Each step before the first task, a beat each: in a real run each takes well under a second. */
-const BEAT = 700
-const HOLD_MS = 2500
+/** The steps in the order a run reaches them: the cache's probe answers before the first plan. */
+export const ORDER = ['setup', 'graph', 'cache', 'schedule', 'run', 'report'] as const
 
 /**
- * The run on one clock. The tasks' part keeps the simulated run's times,
- * scaled to `RUN_MS`; the steps before it and each message play at a pace
- * an eye follows, every message in the order the run sent it.
+ * The run on one clock, one `STEP_MS` window a group. The tasks keep the
+ * simulated run's times, scaled to Run's window; each message plays at a
+ * pace an eye follows, in the order the run sent it.
  */
 export function play(run: Run): Play {
   const dots: Dot[] = []
-  const lit: Record<string, [number, number][]> = Object.fromEntries(GROUPS.map((g) => [g.id, []]))
   const T = TRAVEL_MS
-  const dot = (at: number, wire: string, tone: Tone, label: string, back = false): void => {
-    dots.push({ at, wire, back, tone, label })
+  const at = (g: (typeof ORDER)[number]): number => ORDER.indexOf(g) * STEP_MS
+  const steps = ORDER.map((group, i) => ({ group, from: i * STEP_MS, to: (i + 1) * STEP_MS }))
+  const dot = (when: number, wire: string, tone: Tone, label: string, back = false): void => {
+    dots.push({ at: when, wire, back, tone, label })
   }
   const ran = run.tasks
     .filter((x) => !x.hit)
     .sort((a, b) => a.startMs! - b.startMs! || a.id.localeCompare(b.id))
   const first = ran[0]!.startMs!
   const last = Math.max(...ran.map((x) => x.endMs!))
-  const scale = RUN_MS / (last - first)
-
-  // Setup: the workspace's config, and the cache scope vx-ci reads from the CI it runs on.
-  lit['setup']!.push([0, BEAT])
-  dot(0, 'ws', 'read', 'config')
-  dot(0, 'reports', 'report', 'CI scope', true)
-  // Graph: the configs, the lockfile and a Turbo or Nx graph resolve into keyed tasks.
-  lit['graph']!.push([BEAT, 2 * BEAT])
-  dot(BEAT, 'ws', 'read', 'projects')
-  dot(BEAT, 'lockfile', 'read', 'lockfile')
-  dot(BEAT, 'migrate', 'read', 'graph')
-  // History's timings and the cache's probe answer before the first plan.
-  const plan = 2 * BEAT
-  dot(plan, 'history', 'read', 'timings')
-  dot(plan, 'cache', 'remote', 'probe')
-  dot(plan + T, 'cache', 'remote', 'hits', true)
-  const planned = plan + 2 * T
-
-  const workers = [...run.workers].sort((a, b) => a.spawnMs - b.spawnMs)
-  // The first worker: asked for once the plan is made, boots, joins, takes its first task.
-  const firstJoin = planned + T + BOOT_MS + 2 * T
-  const zero = firstJoin + 2 * T
+  const zero = at('run')
+  const scale = STEP_MS / (last - first)
   const t = (ms: number): number => zero + (ms - first) * scale
   const end = t(last)
-  lit['schedule']!.push([plan, end])
-  lit['cache']!.push([plan, end + 3 * T])
-  lit['run']!.push([planned, end])
-  lit['report']!.push([zero, end + 3 * T])
+  const lead = 600
+
+  // Setup: the workspace's config, and the cache scope vx-ci reads from the CI it runs on.
+  dot(at('setup') + lead, 'ws', 'read', 'config')
+  dot(at('setup') + lead, 'reports', 'report', 'CI scope', true)
+  // Graph: the configs, the lockfile and a Turbo or Nx graph resolve into keyed tasks.
+  dot(at('graph') + lead, 'ws', 'read', 'projects')
+  dot(at('graph') + lead, 'lockfile', 'read', 'lockfile')
+  dot(at('graph') + lead, 'migrate', 'read', 'graph')
+  // Cache: the probe asks for every key at once; the hits restore without running.
+  const probe = at('cache') + lead
+  dot(probe, 'cache', 'remote', 'probe')
+  dot(probe + T, 'cache', 'remote', 'hits', true)
+  // Schedule: history's timings, then vx hands the plan to DTE, which
+  // starts the workers and orchestrates them from here on.
+  dot(at('schedule') + lead, 'history', 'read', 'timings')
+  dot(at('schedule') + lead + 2 * T, 'relay', 'dte', 'plan')
+
+  const byId = new Map(run.tasks.map((x) => [x.id, x]))
+  // When a task's inputs are all there: a hit restores then.
+  const readyMs = (id: string): number =>
+    Math.max(0, ...byId.get(id)!.deps.map((d) => byId.get(d)!.endMs ?? readyMs(d)))
+  const hits = run.tasks
+    .filter((x) => x.hit)
+    .map((x, i) => (readyMs(x.id) <= first ? probe + 2 * T + i * 300 : t(readyMs(x.id))))
+  for (const h of hits) {
+    dot(h, 'cache', 'remote', 'restore', true)
+    dot(h + T, 'reports', 'report', 'span')
+  }
 
   // Each worker takes the first slot free when it starts.
+  const workers = [...run.workers].sort((a, b) => a.spawnMs - b.spawnMs)
+  const firstJoin = zero - 3 * T
   const free: number[] = []
   const lanes: Lane[] = []
   const slotOf = new Map<string, number>()
   for (const w of workers) {
-    // It joins when the run had it join, booted `BOOT_MS` before; the first joins as vx is ready.
+    // It joins when the run had it join, booted `BOOT_MS` before; the first joins as its first task waits.
     const joinMs = w.joinMs ?? w.leaveMs
-    const join = w === workers[0] ? firstJoin : Math.max(firstJoin, t(joinMs) - 2 * T)
+    const join = w === workers[0] ? firstJoin : Math.max(firstJoin, t(joinMs) - 3 * T)
     const spawn = join - BOOT_MS - T
     let slot = free.findIndex((until) => until <= spawn)
     if (slot < 0) slot = free.length
@@ -265,27 +272,10 @@ export function play(run: Run): Play {
     const k = slot + 1
     slotOf.set(w.id, k)
     lanes.push({ slot: k, cores: w.cores, spawn: spawn + T, join, leave })
-    // vx asks CI for it; it boots, then says it joined through the relay;
-    // let go, it hears so through the relay and stops.
-    dot(spawn, `p${k}`, 'dte', 'start')
-    if (w.joinMs !== null) {
-      dot(join, `s${k}`, 'dte', 'join', true)
-      dot(join + T, 'relay', 'dte', 'join', true)
-    }
-    dot(t(w.leaveMs), 'relay', 'dte', 'leave')
-    dot(t(w.leaveMs) + T, `s${k}`, 'dte', 'leave')
-  }
-
-  const byId = new Map(run.tasks.map((x) => [x.id, x]))
-  // When a task's inputs are all there: a hit restores then.
-  const readyMs = (id: string): number =>
-    Math.max(0, ...byId.get(id)!.deps.map((d) => byId.get(d)!.endMs ?? readyMs(d)))
-  const hits = run.tasks
-    .filter((x) => x.hit)
-    .map((x) => Math.max(planned, readyMs(x.id) <= first ? planned : t(readyMs(x.id))))
-  for (const at of hits) {
-    dot(at, 'cache', 'remote', 'restore', true)
-    dot(at + T, 'reports', 'report', 'span')
+    // DTE starts it; it boots, then joins DTE; let go, it hears so and stops.
+    dot(spawn, `s${k}`, 'dte', 'start')
+    if (w.joinMs !== null) dot(join, `s${k}`, 'dte', 'join', true)
+    dot(t(w.leaveMs), `s${k}`, 'dte', 'leave')
   }
 
   const bars: Bar[] = []
@@ -297,39 +287,45 @@ export function play(run: Run): Play {
     const busy = bars
       .filter((b) => b.slot === slot && b.start < stop && b.end > start)
       .sort((a, b) => a.at - b.at)
-    let at = 0
-    for (const b of busy) if (b.at < at + x.cores! && b.at + b.cores > at) at = b.at + b.cores
+    let from = 0
+    for (const b of busy) if (b.at < from + x.cores! && b.at + b.cores > from) from = b.at + b.cores
     const cores = run.workers.find((w) => w.id === x.worker)!.cores
     bars.push({
       id: x.id,
       slot,
-      at: Math.min(at, Math.max(0, cores - x.cores!)),
+      at: Math.min(from, Math.max(0, cores - x.cores!)),
       cores: x.cores!,
       start,
       end: stop,
     })
-    // The order goes out through the relay; the worker restores the inputs
-    // another machine made from the cache, then runs.
+    // DTE sends the task; the worker restores the inputs another machine
+    // made from the cache, then runs.
     const fetches = x.deps.some((d) => byId.get(d)!.worker !== x.worker)
-    const order = start - (fetches ? 3 : 2) * T
-    dot(order, 'relay', 'dte', 'task')
-    dot(order + T, `s${slot}`, 'dte', 'task')
+    const order = start - (fetches ? 2 : 1) * T
+    dot(order, `s${slot}`, 'dte', 'task')
     if (fetches) dot(start - T, `c${slot}`, 'remote', 'inputs', true)
-    // It ends: its outputs go to the cache under its key, its result to vx
-    // through the relay, and vx restores the outputs as its own.
+    // It ends: its outputs go to the cache under its key, its result through
+    // DTE to vx, and vx restores the outputs as its own.
     dot(stop, `c${slot}`, 'remote', 'outputs')
     dot(stop, `s${slot}`, 'dte', 'done', true)
     dot(stop + T, 'relay', 'dte', 'done', true)
     dot(stop + 2 * T, 'cache', 'remote', 'restore', true)
     dot(stop + 2 * T, 'reports', 'report', 'span')
   }
-  // Teardown: the job summary is written and the run's timings go back to history.
-  const down = Math.max(end, ...lanes.map((l) => l.leave))
+  // Report: the job summary is written and the run's timings go back to history.
+  const down = Math.max(at('report') + lead, end + 3 * T)
   dot(down, 'reports', 'report', 'summary')
   dot(down, 'history', 'report', 'timings', true)
-  lit['report']![0]![1] = down + T
+
+  // A group is at work over its own window and, from Cache on, while the tasks run.
+  const lit: Record<string, [number, number][]> = Object.fromEntries(
+    steps.map((s) => [s.group, [[s.from, s.to]] as [number, number][]]),
+  )
+  lit['cache']!.push([zero, end + 3 * T])
+  lit['schedule']!.push([zero, end])
+  lit['report']!.push([probe, end + 3 * T])
   dots.sort((a, b) => a.at - b.at)
-  return { lit, dots, lanes, bars, hits, zero, first, scale, end, loop: down + T + HOLD_MS }
+  return { steps, lit, dots, lanes, bars, hits, zero, first, scale, end, loop: ORDER.length * STEP_MS }
 }
 
 // ---- layouts ----
@@ -347,7 +343,7 @@ interface Layout {
 
 const WIDE: Layout = {
   width: 1200,
-  height: 560,
+  height: 520,
   pad: 0,
   chipRows: 1,
   boxes: {
@@ -355,12 +351,12 @@ const WIDE: Layout = {
     lockfile: { x: 460, y: 16, w: 280, h: 62 },
     migrate: { x: 770, y: 16, w: 280, h: 62 },
     history: { x: 20, y: 150, w: 240, h: 66 },
-    core: { x: 280, y: 124, w: 640, h: 150 },
-    reports: { x: 940, y: 166, w: 240, h: 66 },
-    relay: { x: 330, y: 330, w: 250, h: 58 },
-    cache: { x: 620, y: 330, w: 250, h: 58 },
-    slot1: { x: 380, y: 462, w: 200, h: 76 },
-    slot2: { x: 620, y: 462, w: 200, h: 76 },
+    core: { x: 280, y: 124, w: 640, h: 118 },
+    reports: { x: 940, y: 150, w: 240, h: 66 },
+    relay: { x: 330, y: 300, w: 250, h: 58 },
+    cache: { x: 620, y: 300, w: 250, h: 58 },
+    slot1: { x: 380, y: 426, w: 200, h: 76 },
+    slot2: { x: 620, y: 426, w: 200, h: 76 },
   },
   ends: {
     ws: [{ side: 'bottom' }, { side: 'top', at: 0.2 }],
@@ -370,8 +366,6 @@ const WIDE: Layout = {
     reports: [{ side: 'right', at: 0.45 }, { side: 'left' }],
     relay: [{ side: 'bottom', at: 0.28 }, { side: 'top', at: 0.5 }],
     cache: [{ side: 'bottom', at: 0.72 }, { side: 'top', at: 0.5 }],
-    p1: [{ side: 'left', at: 0.9 }, { side: 'left', at: 0.5 }],
-    p2: [{ side: 'right', at: 0.9 }, { side: 'right', at: 0.5 }],
     s1: [{ side: 'bottom', at: 0.4 }, { side: 'top', at: 0.3 }],
     s2: [{ side: 'bottom', at: 0.85 }, { side: 'top', at: 0.2 }],
     c1: [{ side: 'top', at: 0.8 }, { side: 'bottom', at: 0.15 }],
@@ -383,20 +377,20 @@ const WIDE: Layout = {
 // the cache side by side, the workers last; side wires bend into the margins.
 const NARROW: Layout = {
   width: 360,
-  height: 600,
+  height: 584,
   pad: 24,
   chipRows: 2,
   boxes: {
     ws: { x: 0, y: 0, w: 112, h: 66 },
     lockfile: { x: 124, y: 0, w: 112, h: 66 },
     migrate: { x: 248, y: 0, w: 112, h: 66 },
-    core: { x: 0, y: 104, w: 360, h: 168 },
-    history: { x: 0, y: 312, w: 172, h: 62 },
-    reports: { x: 188, y: 312, w: 172, h: 62 },
-    relay: { x: 0, y: 410, w: 172, h: 62 },
-    cache: { x: 188, y: 410, w: 172, h: 62 },
-    slot1: { x: 0, y: 516, w: 172, h: 72 },
-    slot2: { x: 188, y: 516, w: 172, h: 72 },
+    core: { x: 0, y: 104, w: 360, h: 160 },
+    history: { x: 0, y: 302, w: 172, h: 62 },
+    reports: { x: 188, y: 302, w: 172, h: 62 },
+    relay: { x: 0, y: 400, w: 172, h: 62 },
+    cache: { x: 188, y: 400, w: 172, h: 62 },
+    slot1: { x: 0, y: 502, w: 172, h: 72 },
+    slot2: { x: 188, y: 502, w: 172, h: 72 },
   },
   ends: {
     ws: [{ side: 'bottom' }, { side: 'top', at: 0.16 }],
@@ -406,8 +400,6 @@ const NARROW: Layout = {
     reports: [{ side: 'bottom', at: 0.76 }, { side: 'top' }],
     relay: [{ side: 'left', at: 0.6 }, { side: 'left', at: 0.5 }],
     cache: [{ side: 'right', at: 0.6 }, { side: 'right', at: 0.5 }],
-    p1: [{ side: 'left', at: 0.9 }, { side: 'left', at: 0.5 }],
-    p2: [{ side: 'right', at: 0.9 }, { side: 'right', at: 0.5 }],
     s1: [{ side: 'bottom', at: 0.3 }, { side: 'top', at: 0.3 }],
     s2: [{ side: 'bottom', at: 0.8 }, { side: 'top', at: 0.2 }],
     c1: [{ side: 'top', at: 0.8 }, { side: 'bottom', at: 0.2 }],
@@ -455,7 +447,10 @@ export function wirePath(layout: LayoutName, w: Wire): string {
   return `M${r1(p[0])} ${r1(p[1])} C${r1(p[0] + dx1 * k)} ${r1(p[1] + dy1 * k)} ${r1(q[0] + dx2 * k)} ${r1(q[1] + dy2 * k)} ${r1(q[0])} ${r1(q[1])}`
 }
 
-/** The core's hook-group chips, laid out in its lower part. */
+/** The core's padding, the same on every side and between its title and its group chips (M, 2026-11-18). */
+export const PAD = 16
+
+/** The core's group chips, laid out under its title. */
 export function chips(
   layout: LayoutName,
 ): { id: string; x: number; y: number; w: number; h: number }[] {
@@ -464,7 +459,7 @@ export function chips(
   const rows = L.chipRows
   const perRow = Math.ceil(GROUPS.length / rows)
   const gap = 8
-  const inset = 14
+  const inset = PAD
   const w = (c.w - inset * 2 - gap * (perRow - 1)) / perRow
   const h = 34
   const top = c.y + c.h - inset - rows * h - (rows - 1) * gap

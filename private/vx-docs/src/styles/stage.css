@@ -476,12 +476,6 @@
   font: 600 10.5px var(--font-mono);
   fill: #f6f2ff;
 }
-.map-svg .dot-label {
-  font: 600 10.5px var(--font-mono);
-  paint-order: stroke;
-  stroke: #05060a;
-  stroke-width: 3px;
-}
 /* the story: at rest a list of the six hook groups */
 .stage-story {
   position: relative;
@@ -571,43 +565,62 @@
 .stage.js .stage-story {
   max-width: 1180px;
   margin: 28px auto 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
 }
 .stage.js .story-kicker {
   display: none;
 }
-/* All six groups always shown; the ones running now are lit, several at once. */
+/* One card, the step running now; every card sits in one cell, so the
+   panel is as tall as the tallest and the page never jumps. */
 .stage.js .story-steps {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 640px);
 }
 .stage.js .story-steps li {
-  padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  grid-area: 1 / 1;
+  visibility: hidden;
+  padding: 18px 22px;
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  border-left: 3px solid var(--tone);
   border-radius: 10px;
   background: rgba(8, 10, 14, 0.92);
-  opacity: 0.55;
-  transition:
-    opacity 0.2s,
-    border-color 0.2s;
 }
 .stage.js .story-steps li.on {
-  opacity: 1;
-  border-color: var(--tone);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--tone) 25%, transparent);
+  visibility: visible;
+  animation: step-in 0.45s var(--ease-out);
 }
 .stage.js .story-title {
-  font-size: 19px;
+  font-size: clamp(26px, 3vw, 40px);
 }
 .stage.js .story-steps p {
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: #c3ccbf;
+  font-size: clamp(15px, 1.3vw, 18px);
+  color: #d3dbcf;
 }
-@media (max-width: 1000px) {
-  .stage.js .story-steps {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
   }
+}
+.stage.js .story-rail {
+  display: flex;
+  gap: 6px;
+}
+.story-rail button {
+  all: unset;
+  cursor: pointer;
+  width: 26px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(148, 170, 200, 0.22);
+  transition: background 0.3s;
+}
+.story-rail button.on {
+  background: var(--tone);
+  box-shadow: 0 0 10px var(--tone);
 }
 @media (max-width: 720px) {
   .stage h1 {
@@ -616,11 +629,12 @@
   .stage h1 .l2 {
     padding-left: 0;
   }
-  .stage.js .story-steps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .stage.js .stage-story {
+    flex-direction: column;
+    align-items: stretch;
   }
   .stage.js .story-steps li {
-    padding: 10px 12px;
+    padding: 14px 16px;
   }
   .specs li {
     flex-direction: column;
