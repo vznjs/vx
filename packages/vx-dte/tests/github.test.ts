@@ -711,8 +711,8 @@ it('adopts the workers a step started, watching and stopping them as its own', a
     const adopted: string[] = []
     const why: string[] = []
     const adapter = github()
-    adapter.adopt?.((id, size, startedAt) => {
-      adopted.push(`${id} ${size} ${startedAt}`)
+    adapter.adopt?.((id, size) => {
+      adopted.push(`${id} ${size} ${adapter.startedAt?.(id)}`)
       return spawn(id, size, (w) => why.push(`${id}: ${w}`))
     })
     expect(adopted).toEqual(['small#1 small 1700000000123', 'small#2 small 1700000000123'])

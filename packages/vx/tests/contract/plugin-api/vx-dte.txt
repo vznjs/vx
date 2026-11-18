@@ -26,7 +26,8 @@ export interface DteAdapter {
   workerRuns?(): ReadonlySet<string> | undefined
   workerId?(): string | undefined
   runId?(): string | undefined
-  adopt?(worker: (id: string, size: string, startedAt?: number) => WorkerSpawn): void
+  adopt?(worker: (id: string, size: string) => WorkerSpawn): void
+  startedAt?(id: string): number | undefined
 }
 == type DteInit (src/init.ts)
 export interface DteInit {

@@ -114,10 +114,14 @@ export interface DteAdapter {
    * Workers the CI started for this run before it began (`size#n`): each
    * is handed to `worker`, which counts it against its size's `max` and
    * returns its spawn, for the adapter to watch and stop as its own.
-   * `startedAt` (epoch ms) is when the CI started it: its warm-up is read
-   * from then, where from the run's start it read short by the head start.
    */
-  adopt?(worker: (id: string, size: string, startedAt?: number) => WorkerSpawn): void
+  adopt?(worker: (id: string, size: string) => WorkerSpawn): void
+  /**
+   * When the CI started worker `id` it hands to `adopt` (epoch ms), asked
+   * as each is handed over: its warm-up is read from then, where from the
+   * run's start it read short by the head start.
+   */
+  startedAt?(id: string): number | undefined
 }
 
 export interface DteOptions {
@@ -861,7 +865,8 @@ export function dte(options: DteOptions = {}) {
       }
       adapter?.report?.(ctx.warn)
       // Workers the CI started before the run did (`DteAdapter.adopt`).
-      adapter?.adopt?.((id, size, startedAt) => {
+      adapter?.adopt?.((id, size) => {
+        const startedAt = adapter.startedAt?.(id)
         const s = sizes.find((x) => x.name === size)
         const n = Number(id.slice(id.lastIndexOf('#') + 1))
         if (s === undefined || !Number.isInteger(n) || n < 1)
