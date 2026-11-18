@@ -503,6 +503,10 @@ too: they format one run's result.
    keys-only plan (`hearIfKeysMoved`, no store asked) is compared with
    the run's keys, and the files are events when one moved. A start with
    no edit pays `-m`'s stats alone (`tests/watch-initial-edit-done.test.ts`).
+   A loop that armed while the run waited on a server has neither the
+   keys nor `drifted` yet: `InitialCycle` carries both once the run
+   returns, and `runCycle` does the same then (`inWindowAtArm`,
+   `tests/watch-initial-edit-server.test.ts`).
 5. **Watch loop** (`runWatchLoop`):
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with

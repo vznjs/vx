@@ -232,6 +232,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       keys = new Map(
         run.outcomes.flatMap((o) => (o.hash === undefined ? [] : [[o.node.id, o.hash]])),
       )
+      if (drifted !== undefined) initial.drifted = drifted
+      initial.keys = keys
       if (run.refused !== undefined) {
         const hint = run.refused.startsWith('no projects declare')
           ? await spacedHint(parsed, cwd)
