@@ -49,6 +49,39 @@ const run = (cmd: string[], label: string): void => {
   }
 }
 
+// This task's own sandbox, where one is required: on Linux its tracer is
+// vx's observer, an ancestor of this process, and not the strace it falls
+// back to in silence when the host probe fails. The arm64 worker runs
+// nothing else, so this is where the arm64 helper is proven.
+if (
+  process.platform === 'linux' &&
+  process.env['VX_REQUIRE_SANDBOX'] === '1' &&
+  process.env['VX_DEBUG_STRACE'] !== '1'
+) {
+  // From `self`, by the numbers /proc itself gives: a container that cannot
+  // mount /proc shows the outer namespace's, where `process.ppid` is no name.
+  const chain: string[] = []
+  for (let at = 'self'; at !== '0';) {
+    let stat: string
+    try {
+      stat = readFileSync(`/proc/${at}/stat`, 'utf8')
+    } catch {
+      break
+    }
+    if (at !== 'self') chain.push(stat.slice(stat.indexOf('(') + 1, stat.lastIndexOf(')')))
+    at = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1] ?? '0'
+  }
+  if (!chain.some((comm) => comm.startsWith('vx-observe'))) {
+    process.stderr.write(
+      `this task's sandbox is not under vx's observer: its ancestors are ${chain.join(' < ') || 'unreadable'}\n`,
+    )
+    process.exit(1)
+  }
+  console.log(
+    `this task's sandbox reports through ${chain.find((comm) => comm.startsWith('vx-observe'))}`,
+  )
+}
+
 run(
   [
     'bun',

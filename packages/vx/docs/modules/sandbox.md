@@ -804,7 +804,8 @@ a kernel before 5.5 (no `SECCOMP_USER_NOTIF_FLAG_CONTINUE`), a listener
 refused (a seccomp profile, or another listener above vx), a foreign
 `/proc` on a kernel before 6.9. vx probes it once per run on a shell that
 opens a path no host has, and trusts it only with that refused open in
-its report (the arm64 build runs on no machine of CI's). Refused there,
+its report. `scripts/check-binary.ts` holds its own sandbox to the observer,
+which is where CI's arm64 worker proves the arm64 build. Refused there,
 or inside a task's sandbox (remembered for the process, by
 `weakerWhenNested`, and that task run again), tasks are traced by strace
 as before. `VX_DEBUG_STRACE=1` asks for strace
