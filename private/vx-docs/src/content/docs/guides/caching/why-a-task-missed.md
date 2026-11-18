@@ -18,7 +18,7 @@ vx why @demo/ui#build
   [2mprevious[0m  [38;2;203;213;225m2026-11-06T23:45:28.739Z · success · executed · key e5e0d59872972e71[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/ui/src/index.ts[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 3[0m[4m[58;2;110;118;129m                                                                                                   [0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 4[0m[4m[58;2;110;118;129m                                                                                                   [0m
   [2mchange   kind  name                      before → after[0m
   [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1mpackages/ui/src/index.ts[0m  [38;2;203;213;225md00491fd7e5bb6fa28c517a0bb32b8b506539d4d → 0cfbf08886fca9a91cb753ec8734c84fcbe52c9f[0m
 
@@ -42,7 +42,7 @@ vx why @demo/web#build
   [2mprevious[0m  [38;2;203;213;225m2026-11-06T23:45:28.766Z · success · executed · key 9f5b31f786697a14[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 4[0m[4m[58;2;110;118;129m                                                                                                   [0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 5[0m[4m[58;2;110;118;129m                                                                                                   [0m
   [2mchange   kind      name            before → after[0m
   [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225me5e0d59872972e71 → 5ddbd27f9f4d08e9[0m
 

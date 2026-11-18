@@ -21,6 +21,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.657
 
+### cache: put the vx version in every cache key
+
+every cache key moves; each cached task misses once after the upgrade, and after every later one.
+
 ### vx-dte: start CI's workers when the run asks, not before
 
 No migration note.
