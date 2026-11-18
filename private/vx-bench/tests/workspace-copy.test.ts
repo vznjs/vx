@@ -3,7 +3,7 @@ import { lstat, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { benchEnv } from '../bench-env.js'
-import { copyWorkspace, outputMtimes } from '../workspace-copy.js'
+import { copyWorkspaces, outputMtimes } from '../workspace-copy.js'
 
 // No background maintenance: a commit starts one, and `cp -a` found its
 // `.git/objects/maintenance.lock` listed and gone (CI, 2026-11-18).
@@ -28,7 +28,7 @@ it('copies a workspace whose git index vouches for every file, apart from the so
     git(['add', '-A'], src)
     git(['-c', 'commit.gpgsign=false', 'commit', '-qm', 'f'], src)
     const dst = path.join(root, 'b')
-    copyWorkspace(src, dst)
+    await copyWorkspaces(src, [dst])
     // A stale index stat would list the file here until git rehashed it.
     expect(git(['diff-files', '--name-only'], dst)).toBe('')
     expect(git(['status', '--porcelain'], dst)).toBe('')
@@ -53,7 +53,7 @@ it('refreshes the copy in a later second than its files were copied in', async (
     git(['add', '-A'], src)
     git(['-c', 'commit.gpgsign=false', 'commit', '-qm', 'f'], src)
     const dst = path.join(root, 'b')
-    copyWorkspace(src, dst)
+    await copyWorkspaces(src, [dst])
     const written = Math.floor((await lstat(path.join(dst, '.git', 'index'))).mtimeMs / 1000)
     const ctime = /^  ctime: (\d+):/m.exec(git(['ls-files', '--debug'], dst))
     // The entry was refreshed: it holds the copy's ctime, not the source's.

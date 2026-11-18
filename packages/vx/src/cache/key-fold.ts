@@ -7,7 +7,9 @@ import type { CacheKeyInput } from './layer.js'
 
 // Bump when stored bytes are wrong under an unchanged key, or the artifact's
 // container changes. A key-derivation fix whose old keys were already wrong
-// heals itself and needs no bump.
+// heals itself and needs no bump. A release needs none: its version is in
+// the key. A source checkout's version never moves, so this is what parts
+// two commits there.
 export const CACHE_VERSION = 'vx-cache-v56'
 
 /**
@@ -117,13 +119,17 @@ export function foldHead(
   // matters. Each `cap` push mirrors the fold beside it, so the recorded set
   // cannot drift from the key.
   const cap = input.captureInto
-  let h = xxh3(CACHE_VERSION)
+  // A release may run one command differently (a shell's start, the env a
+  // task is given) under an unchanged key, and nobody bumps for each: what
+  // one vx saved, another never reads.
+  let h = xxh3(`${CACHE_VERSION}\0${input.vxVersion}`)
   h = xxh3(`task:${input.taskId}`, h)
   h = xxh3(`config:${input.taskConfigHash}`, h)
   if (cap) {
     // Recorded so `vx why` can name a key that moved only because vx keys
     // differently now (an upgrade).
     cap.push({ kind: 'format', name: 'cache-version', hash: CACHE_VERSION })
+    cap.push({ kind: 'format', name: 'vx-version', hash: input.vxVersion })
     cap.push({ kind: 'config', name: 'config', hash: input.taskConfigHash })
   }
 

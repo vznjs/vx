@@ -504,6 +504,7 @@ describe('Cache.key — fileHashes seam', () => {
 
   const baseKeyInput = (files: string[]) => ({
     taskId: 'p#build',
+    vxVersion: '0.0.0',
     taskConfigHash: 'cfg',
     envValues: [] as Array<[string, string]>,
     inputFiles: files,

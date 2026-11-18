@@ -1104,14 +1104,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1011,
-        "can": 1011,
-        "of": 1013
+        "pass": 1012,
+        "can": 1012,
+        "of": 1014
       },
       "correctness": {
-        "pass": 833,
-        "can": 833,
-        "of": 835
+        "pass": 834,
+        "can": 834,
+        "of": 836
       },
       "efficiency": {
         "pass": 169,
@@ -1174,21 +1174,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 36,
-        "can": 36,
-        "of": 36
+        "pass": 37,
+        "can": 37,
+        "of": 37
       }
     },
     "turbo": {
       "all": {
-        "pass": 637,
-        "can": 924,
-        "of": 1013
+        "pass": 638,
+        "can": 925,
+        "of": 1014
       },
       "correctness": {
-        "pass": 514,
-        "can": 752,
-        "of": 835
+        "pass": 515,
+        "can": 753,
+        "of": 836
       },
       "efficiency": {
         "pass": 119,
@@ -1251,21 +1251,21 @@
         "of": 23
       },
       "watch": {
-        "pass": 30,
-        "can": 35,
-        "of": 36
+        "pass": 31,
+        "can": 36,
+        "of": 37
       }
     },
     "nx": {
       "all": {
         "pass": 653,
-        "can": 950,
-        "of": 1013
+        "can": 951,
+        "of": 1014
       },
       "correctness": {
         "pass": 493,
-        "can": 774,
-        "of": 835
+        "can": 775,
+        "of": 836
       },
       "efficiency": {
         "pass": 156,
@@ -1329,20 +1329,20 @@
       },
       "watch": {
         "pass": 28,
-        "can": 36,
-        "of": 36
+        "can": 37,
+        "of": 37
       }
     },
     "vite-task": {
       "all": {
         "pass": 506,
         "can": 757,
-        "of": 1013
+        "of": 1014
       },
       "correctness": {
         "pass": 417,
         "can": 627,
-        "of": 835
+        "of": 836
       },
       "efficiency": {
         "pass": 87,
@@ -1407,19 +1407,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 36
+        "of": 37
       }
     },
     "nix": {
       "all": {
         "pass": 486,
         "can": 722,
-        "of": 1013
+        "of": 1014
       },
       "correctness": {
         "pass": 418,
         "can": 599,
-        "of": 835
+        "of": 836
       },
       "efficiency": {
         "pass": 66,
@@ -1484,19 +1484,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 36
+        "of": 37
       }
     },
     "moon": {
       "all": {
         "pass": 590,
         "can": 906,
-        "of": 1013
+        "of": 1014
       },
       "correctness": {
         "pass": 458,
         "can": 743,
-        "of": 835
+        "of": 836
       },
       "efficiency": {
         "pass": 127,
@@ -1561,7 +1561,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 36
+        "of": 37
       }
     }
   },
@@ -33509,6 +33509,41 @@
           "status": "fail",
           "step": 1,
           "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/commit-in-first-run-rebuilds",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A source file saved and committed during the watch’s first build, after its task finished, is built right after",
+      "why": "The first build of a watch takes a while, and work does not wait for it: a fix is saved and committed while another project still builds. The finished output holds the bytes from before the fix, and after the commit the file no longer shows as modified. A watch that looks only at modified files keeps the old output until something else is saved.",
+      "from": [
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
         },
         "nx": {
           "status": "fail",

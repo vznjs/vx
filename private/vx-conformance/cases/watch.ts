@@ -587,6 +587,44 @@ export default [
   }),
 
   watchCase({
+    id: 'watch/commit-in-first-run-rebuilds',
+    kind: 'correctness',
+    title:
+      'A source file saved and committed during the watch’s first build, after its task finished, is built right after',
+    why: 'The first build of a watch takes a while, and work does not wait for it: a fix is saved and committed while another project still builds. The finished output holds the bytes from before the fix, and after the commit the file no longer shows as modified. A watch that looks only at modified files keeps the old output until something else is saved.',
+    from: ['watch-initial-edit-done'],
+    workspace: {
+      projects: {
+        lib: { tasks: { build: build() }, files: { 'src/a.txt': 'a1\n' } },
+        // `started` at once, so the commit lands while this still builds.
+        app: {
+          tasks: {
+            build: build(
+              'mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt',
+            ),
+          },
+          files: { 'src/a.txt': 'app1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          files: {
+            'packages/lib/dist/out.txt': 'a1\n',
+            'packages/app/dist/started': 'app1\n',
+          },
+          inFlight: true,
+        },
+      },
+      {
+        sh: "printf 'a2\\n' > packages/lib/src/a.txt && git -c user.name=u -c user.email=u@example.com commit -qam fix",
+        expect: { ran: ['lib#build'], files: { 'packages/lib/dist/out.txt': 'a2\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
     id: 'watch/keeps-watching-after-failure',
     kind: 'correctness',
     title: 'A build that fails while watching is built again once the source is fixed',

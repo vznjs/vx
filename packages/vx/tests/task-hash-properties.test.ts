@@ -70,6 +70,7 @@ function draw(r: Rand, size = 3): Drawn {
   const pair = (): [string, string] => [s(NAME_CHARS), s(VALUE_CHARS)]
   const input: CacheKeyInput = {
     taskId: s(VALUE_CHARS),
+    vxVersion: '0.0.0',
     taskConfigHash: s(VALUE_CHARS),
     envValues: l(2, () => [s(NAME_CHARS), r() < 0.25 ? undefined : s(VALUE_CHARS)]),
     upstreamHashes: l(3, () => s(VALUE_CHARS)),
@@ -207,7 +208,7 @@ describe('the fold keys exactly what the key means', () => {
     const cases: Case[] = [
       {
         read: (i) => [i.taskId, i.taskConfigHash],
-        write: (i, [t, c]) => ({ ...i, taskId: t!, taskConfigHash: c! }),
+        write: (i, [t, c]) => ({ ...i, taskId: t!, vxVersion: '0.0.0', taskConfigHash: c! }),
       },
       {
         read: (i) => [...(i.forwardArgs ?? [])],
@@ -525,6 +526,7 @@ describe('input file bytes, read from disk', () => {
         const k = async (dir: string): Promise<string> =>
           await cache.key({
             taskId: 'p#t',
+            vxVersion: '0.0.0',
             taskConfigHash: 'cfg',
             envValues: [],
             upstreamHashes: [],

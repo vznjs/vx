@@ -8,6 +8,8 @@ import type { OutputDirRow, OutputFileRow } from '../memo/index.js'
 
 export interface CacheKeyInput {
   taskId: string
+  /** The version of the vx that keys the task. */
+  vxVersion: string
   /**
    * Hash of the resolved task config: everything the user wrote, including
    * values a config imported.

@@ -884,6 +884,7 @@ describe('LayeredCache', () => {
     const layered = makeLayered()
     const input = {
       taskId: 'pkg#build',
+      vxVersion: '0.0.0',
       taskConfigHash: 'cfg',
       envValues: [] as Array<[string, string]>,
       inputFiles: [],

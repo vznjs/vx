@@ -135,6 +135,24 @@ export function baseSlower(
 }
 
 /**
+ * Whether the base's core is this checkout's, byte for byte. The base's
+ * binary is built from its `packages/vx/src` alone (`buildBase`), so one
+ * timed against the other reads only the machine: a coin, which leans
+ * slower half the time and then asks for more pairs, up to all 40 (a PR
+ * that changed only the bench ran 519 s for 256 s, 2026-11-18). False
+ * when git cannot say.
+ */
+export function sameCore(repo: string, sha: string): boolean {
+  if (!/^[0-9a-f]{7,40}$/.test(sha)) return false
+  const r = Bun.spawnSync(['git', 'diff', '--quiet', sha, '--', 'packages/vx/src'], {
+    cwd: repo,
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  return r.exitCode === 0
+}
+
+/**
  * The base commit's vx, compiled as this checkout's is, to `outfile`:
  * `packages/vx` at `sha` comes out of git's objects (`git archive`), so no
  * worktree is written into the repository. Throws when the commit is not

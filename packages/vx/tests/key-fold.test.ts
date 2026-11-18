@@ -7,7 +7,7 @@
 // `CACHE_VERSION` first, so a bump re-pins it (v31, item 726) and the
 // capture's first row, which records the version (X-142). Re-pinned when
 // the `workspace:` and `pkg:` parts left the fold (core keys no package
-// file, 2026-10-14).
+// file, 2026-10-14), and when the vx version joined it.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -25,6 +25,7 @@ writeFileSync(path.join(root, 'a.ts'), 'export const a = 1\n')
 function input(captureInto?: Array<{ kind: string; name: string; hash: string }>) {
   return {
     taskId: 'pkg#build',
+    vxVersion: '0.0.0',
     taskConfigHash: 'cfg0123456789abc',
     envValues: [
       ['NODE_ENV', 'production'],
@@ -49,7 +50,7 @@ describe('the key fold (item 691)', () => {
     try {
       const captured: Array<{ kind: string; name: string; hash: string }> = []
       const key = await cache.key(input(captured))
-      expect(key).toBe('463c7e166ffa3d3c')
+      expect(key).toBe('c4c7e15c2e3274e8')
       // A value-bearing row is a digest under the store's salt (L-4); the
       // Cache-less fold below pins its unsalted default byte for byte.
       const db = indexDb(cache)
@@ -61,6 +62,7 @@ describe('the key fold (item 691)', () => {
       const salted = (v: string): string => xxh3hex(`${salt}\0${v}`)
       expect(captured.map((c) => `${c.kind} ${c.name} ${c.hash}`)).toEqual([
         'format cache-version vx-cache-v56',
+        'format vx-version 0.0.0',
         'config config cfg0123456789abc',
         `forward argv ${salted(JSON.stringify(['--watch', 'x y']))}`,
         `env NODE_ENV ${salted('production')}`,
@@ -94,7 +96,7 @@ describe('the key fold (item 691)', () => {
       },
       (f) => relPosix(root, f),
     )
-    expect(key).toBe('463c7e166ffa3d3c')
+    expect(key).toBe('c4c7e15c2e3274e8')
     expect(asked).toEqual(['a.ts'])
     expect(
       captured

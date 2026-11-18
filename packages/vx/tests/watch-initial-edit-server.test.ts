@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { startWatch, until, type Watch } from './helpers/watch-loop.js'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const made: string[] = []
 let watch: Watch | undefined
@@ -98,6 +98,26 @@ it('an edit under a running task, before the loop armed behind a server, starts 
   await until(() => w.out().includes('watching'), 'the watching marker')
   await writeFile(ready, '')
   await until(async () => (await out()) === 'new\n', 'the output built from the edit')
+}, 40_000)
+
+// Committed, the edit is in no list of modified files: git's index moved, so the keys judge.
+it('an edit committed beside a server already up, before the loop armed behind another server, starts a cycle', async () => {
+  const { root, app, go, ready } = await fixture()
+  // The server's own file is ignored: listed, it is asked the keys and hides the commit.
+  await writeFile(path.join(root, '.gitignore'), 'dist\nup.txt\n')
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  watch = startWatch(root, ['--all'], {}, 'dev')
+  const w = watch
+  const out = output(app)
+  await until(() => w.out().includes('app#dev'), 'app#dev to be up')
+  await writeFile(path.join(app, 'src', 'a.txt'), 'new\n')
+  git('commit', '-q', '-m', 'edit', '--', 'packages/app/src/a.txt')
+  await writeFile(go, '')
+  await until(() => w.out().includes('watching'), 'the watching marker')
+  await writeFile(ready, '')
+  await until(async () => (await out()) === 'new\n', 'the output built from the committed edit')
 }, 40_000)
 
 // CONTROL: the server's own write, in its window, moves no key.

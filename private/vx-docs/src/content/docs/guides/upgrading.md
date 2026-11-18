@@ -14,11 +14,16 @@ Upgrade every machine and CI job together, then re-run `vx lock` with the
 new vx: an older vx refuses a newer lock, and its `vx lock` writes the
 older version, which the new vx refuses.
 
-A release that changes `CACHE_VERSION` leaves the old entries on disk,
-never read again, until `vx cache clean --older-than <duration>` ages
+Every key holds the vx version, so after an upgrade each cached task
+misses once and saves again. The old entries stay on disk, never read
+again, until `vx cache clean --older-than <duration>` ages
 them out or `vx cache clean` clears the cache.
 
 ## After v0.0.657
+
+### cache: put the vx version in every cache key
+
+every cache key moves; each cached task misses once after the upgrade, and after every later one.
 
 ### vx-dte: start CI's workers when the run asks, not before
 

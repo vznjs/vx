@@ -41,8 +41,9 @@ layouts never collide.
 
 The parts, as [Caching](../../caching/) numbers them:
 
-1. The key-derivation sentinel (`CACHE_VERSION`), so a change to how
-   keys are derived is never served by an older entry.
+1. The key-derivation sentinel (`CACHE_VERSION`) and the vx version, so
+   a change to how keys are derived or how a task runs is never served
+   by an older entry: an upgrade misses once.
 2. The task id, `project#task`.
 3. The **evaluated task config**, not its source text
    ([its own post](../resolved-config-hashing/)).
