@@ -248,7 +248,8 @@ CPU: it runs one process where vx runs a shell per task.
 A `SLOWER` line names a case where vx ran slower than the base in more of its quiet
 pairs than chance explains (a sign test, p < 0.002). There is no slack: a
 4% tolerance let a regression land 3% at a time. A case whose pairs lean
-slower without proving it keeps adding pairs, 40 at most. Simulated, an
+slower without proving it keeps adding pairs, 40 at most. Those later
+pairs time vx and the base only: Turbo's figures are settled by then. Simulated, an
 unchanged vx is flagged in 0.7% of cases, and one slower in 3 of 4 pairs
 in 63%.
 
