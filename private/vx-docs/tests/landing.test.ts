@@ -576,18 +576,19 @@ describe('the hero run', () => {
     }
   })
 
-  // M (2026-11-18): a step's group lights for its 5 s; outside it, only
-  // what vx calls through its hooks is done by vx, so a group lights only
-  // as a message on one of vx's own wires leaves.
-  it('lights a group for its step, and else only while vx calls its hooks', () => {
+  // M (2026-11-18): a step's group lights for its window; outside it, only
+  // what vx calls through its hooks is done by vx, and a group vx calls in
+  // a step stays lit that whole step, never blinking.
+  it('lights a group for every whole step vx calls its hooks in', () => {
     const own = new Set(
       map.WIRES.filter((w) => w.from === 'core' || w.to === 'core').map((w) => w.id),
     )
     for (const [group, spans] of Object.entries(P.lit))
       for (const [from, to] of spans) {
-        const step = P.steps.find((x) => x.group === group)!
-        if (from === step.from && to === step.to) continue
-        expect(P.dots.some((d) => d.at === from && own.has(d.wire))).toBe(true)
+        const step = P.steps.find((x) => x.from === from && x.to === to)
+        expect(step).toBeDefined()
+        if (step!.group === group) continue
+        expect(P.dots.some((d) => d.at >= from && d.at < to && own.has(d.wire))).toBe(true)
       }
   })
 

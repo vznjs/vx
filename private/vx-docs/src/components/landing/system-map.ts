@@ -408,8 +408,8 @@ export function play(run: Run): Play {
   dot(down, 'ci', 'report', 'summary', true, loop - down)
   dot(down, 'history', 'report', 'timings', true, loop - down)
 
-  // A group lights for its step's window and, outside it, only while vx
-  // calls its hooks: a message vx sent or answered through them travels.
+  // A group lights for its step's window and, outside it, for each other
+  // step where vx calls its hooks: a message vx sent or answered through them.
   // What DTE and the workers do with the cache lights nothing in vx.
   const lit: Record<string, [number, number][]> = Object.fromEntries(
     steps.map((x) => [x.group, [[x.from, x.to]] as [number, number][]]),
@@ -428,8 +428,11 @@ export function play(run: Run): Play {
       flows.push(g)
       open.set(k, g)
     }
+    // A group vx calls in a step stays lit the whole step, never blinking (M, 2026-11-18).
     const h = hookOf(d)
-    if (h !== undefined) lit[h]!.push([d.at, to + 250])
+    const step = steps.find((x) => x.from <= d.at && d.at < x.to)
+    if (h !== undefined && step && !lit[h]!.some(([a, b]) => a === step.from && b === step.to))
+      lit[h]!.push([step.from, step.to])
   }
   return {
     steps,
