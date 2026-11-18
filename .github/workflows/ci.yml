@@ -85,43 +85,6 @@ jobs:
       # through the remote.
       VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}
     steps:
-      # This job's checkout and install take 15 s before the run can ask
-      # for a worker, and a worker then needs 18 s more (main 97a7943). A
-      # change to core's sources or tests misses every test shard, so the
-      # run asks for every small and every Mac: started here, they warm up
-      # beside this job, and the run adopts them (`github()`'s `adopt`,
-      # `$RUNNER_TEMP/vx-dte-started`). One up before its run waits for it
-      # (VX_DTE_WAIT). Any other change starts none: the run asks for what
-      # it misses, as before. Nor does one that changes a server the run
-      # dials, which uses that server's Preview (the two picks below). A
-      # step that fails starts none and fails nothing.
-      - name: Start the workers early
-        if: github.event_name == 'push' || github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-          REF: ${{ github.head_ref || github.ref_name }}
-        run: |
-          api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
-          auth="authorization: Bearer $GITHUB_TOKEN"
-          files=$(curl -fsS -H "$auth" "$api/compare/$BASE...$HEAD" | jq -r '.files[].filename')
-          grep -qE '^packages/vx/(src|tests|scripts)/' <<<"$files" || exit 0
-          if grep -qE '^(packages/vx-dte-server|private/vx-dte-service|packages/vx-cache-server|packages/vx-devtools|private/vx-cache-service)/|^bun\.lock$' <<<"$files"; then exit 0; fi
-          run=$(cat /proc/sys/kernel/random/uuid)
-          at=$(date +%s%3N)
-          for group in hosted.small:9 hosted.mac:3; do
-            size=${group%:*}
-            workers=$(seq 1 "${group#*:}" | jq -Rnc --arg s "$size" '[inputs | "\($s)#\(.)"]')
-            body=$(jq -nc --arg ref "$REF" --arg run "$run" --arg relay "$VX_DTE_RELAY" --arg sha "$GITHUB_SHA" --arg size "$size" --arg workers "$workers" \
-              --arg parent "$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" --arg env "{\"VX_CACHE_URL\":\"$VX_CACHE_URL\",\"VX_DTE_WAIT\":\"60\"}" \
-              '{ref: $ref, inputs: {run: $run, relay: $relay, sha: $sha, size: $size, workers: $workers, parent: $parent, env: $env}}')
-            id=$(curl -fsS -X POST -H "$auth" -H 'x-github-api-version: 2026-03-10' -d "$body" "$api/actions/workflows/vx-worker.yml/dispatches" | jq -r '.workflow_run_id // empty') || continue
-            [ -n "$id" ] || continue
-            echo "/repos/$GITHUB_REPOSITORY/actions/runs/$id $(jq -r 'join(",")' <<<"$workers") $at" >> "$RUNNER_TEMP/vx-dte-started"
-            echo "/repos/$GITHUB_REPOSITORY/actions/runs/$id" >> "$RUNNER_TEMP/vx-dte-runs"
-          done
-          if [ -f "$RUNNER_TEMP/vx-dte-started" ]; then echo "VX_DTE_RUN=$run" >> "$GITHUB_ENV"; fi
       # One commit: --affected and vx-history's timings import fetch
       # the merge-base themselves, commits and trees only; main needs none.
       - name: Check out
@@ -191,10 +154,8 @@ jobs:
         run: echo "[Run profile]($URL), opened in https://ui.perfetto.dev" >> "$GITHUB_STEP_SUMMARY"
       # github() lists each worker run it dispatched: a run cancelled or
       # timed out can die before it cancels them itself (2026-10-28).
-      # A failure too: workers started early wait for a run that a failed
-      # step before it never began.
       - name: Cancel the workers
-        if: cancelled() || failure()
+        if: cancelled()
         run: |
           [ -f "$RUNNER_TEMP/vx-dte-runs" ] || exit 0
           while read -r run; do curl -sS -o /dev/null -X POST -H "authorization: Bearer $GITHUB_TOKEN" "$GITHUB_API_URL$run/cancel" || true; done < "$RUNNER_TEMP/vx-dte-runs"
