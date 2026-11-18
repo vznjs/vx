@@ -53,7 +53,7 @@ export interface Group {
 }
 
 /** The workers' slots each layout draws: as many as the run had at once. */
-export const SLOTS = 2
+export const SLOTS = 3
 
 export const BOXES: Box[] = [
   { id: 'core', label: 'vx', sub: 'one run, every stage', tone: 'core' },
@@ -449,8 +449,9 @@ const WIDE: Layout = {
     reports: { x: 940, y: 200, w: 240, h: 66 },
     relay: { x: 330, y: 300, w: 250, h: 58 },
     cache: { x: 620, y: 300, w: 250, h: 58 },
-    slot1: { x: 380, y: 426, w: 200, h: 76 },
-    slot2: { x: 620, y: 426, w: 200, h: 76 },
+    slot1: { x: 270, y: 426, w: 200, h: 76 },
+    slot2: { x: 500, y: 426, w: 200, h: 76 },
+    slot3: { x: 730, y: 426, w: 200, h: 76 },
   },
   ends: {
     ws: [{ side: 'bottom' }, { side: 'top', at: 0.2 }],
@@ -468,20 +469,28 @@ const WIDE: Layout = {
       { side: 'top', at: 0.5 },
     ],
     s1: [
-      { side: 'bottom', at: 0.4 },
-      { side: 'top', at: 0.3 },
+      { side: 'bottom', at: 0.2 },
+      { side: 'top', at: 0.5 },
     ],
     s2: [
-      { side: 'bottom', at: 0.85 },
-      { side: 'top', at: 0.2 },
+      { side: 'bottom', at: 0.6 },
+      { side: 'top', at: 0.25 },
+    ],
+    s3: [
+      { side: 'bottom', at: 0.95 },
+      { side: 'top', at: 0.15 },
     ],
     c1: [
-      { side: 'top', at: 0.8 },
-      { side: 'bottom', at: 0.15 },
+      { side: 'top', at: 0.85 },
+      { side: 'bottom', at: 0.1 },
     ],
     c2: [
-      { side: 'top', at: 0.7 },
-      { side: 'bottom', at: 0.6 },
+      { side: 'top', at: 0.8 },
+      { side: 'bottom', at: 0.3 },
+    ],
+    c3: [
+      { side: 'top', at: 0.6 },
+      { side: 'bottom', at: 0.85 },
     ],
   },
 }
@@ -490,7 +499,7 @@ const WIDE: Layout = {
 // the cache side by side, the workers last; side wires bend into the margins.
 const NARROW: Layout = {
   width: 360,
-  height: 584,
+  height: 596,
   pad: 24,
   chipRows: 2,
   boxes: {
@@ -503,8 +512,9 @@ const NARROW: Layout = {
     reports: { x: 248, y: 302, w: 112, h: 62 },
     relay: { x: 0, y: 400, w: 172, h: 62 },
     cache: { x: 188, y: 400, w: 172, h: 62 },
-    slot1: { x: 0, y: 502, w: 172, h: 72 },
-    slot2: { x: 188, y: 502, w: 172, h: 72 },
+    slot1: { x: 0, y: 502, w: 112, h: 84 },
+    slot2: { x: 124, y: 502, w: 112, h: 84 },
+    slot3: { x: 248, y: 502, w: 112, h: 84 },
   },
   ends: {
     ws: [{ side: 'bottom' }, { side: 'top', at: 0.16 }],
@@ -526,16 +536,24 @@ const NARROW: Layout = {
       { side: 'top', at: 0.3 },
     ],
     s2: [
-      { side: 'bottom', at: 0.8 },
+      { side: 'bottom', at: 0.75 },
+      { side: 'top', at: 0.25 },
+    ],
+    s3: [
+      { side: 'bottom', at: 0.95 },
       { side: 'top', at: 0.2 },
     ],
     c1: [
       { side: 'top', at: 0.8 },
-      { side: 'bottom', at: 0.2 },
+      { side: 'bottom', at: 0.05 },
     ],
     c2: [
+      { side: 'top', at: 0.75 },
+      { side: 'bottom', at: 0.3 },
+    ],
+    c3: [
       { side: 'top', at: 0.7 },
-      { side: 'bottom', at: 0.7 },
+      { side: 'bottom', at: 0.8 },
     ],
   },
 }
@@ -596,7 +614,10 @@ export function chips(
   const w = (c.w - inset * 2 - gap * (perRow - 1)) / perRow
   const h = 34
   const top = c.y + c.h - inset - rows * h - (rows - 1) * gap
-  return GROUPS.map((g, i) => {
+  // The chips sit in the pipeline's order, Cache beside Run and Report (M, 2026-11-18).
+  const order = ['setup', 'graph', 'schedule', 'cache', 'run', 'report']
+  const sorted = [...GROUPS].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+  return sorted.map((g, i) => {
     const row = Math.floor(i / perRow)
     const col = i % perRow
     return {

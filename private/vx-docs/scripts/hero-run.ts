@@ -11,16 +11,18 @@ const s = 1000
 const GB = 1e9
 // Three libraries and an app: a build waits on the builds it imports, a
 // test or e2e on its own build. How each miss ran (s, cores); the rest hit.
+// Shaped so the run boots three workers at different times and lets one go
+// while the other two still run (M, 2026-11-18).
 const TASKS: [string, string[], [number, number]?][] = [
-  ['utils#build', [], [9, 2]],
+  ['utils#build', [], [10, 2]],
   ['utils#lint', []],
-  ['core#build', ['utils#build'], [24, 3]],
-  ['core#test', ['core#build'], [38, 2]],
-  ['ui#build', ['utils#build'], [14, 2]],
-  ['ui#lint', []],
+  ['core#build', ['utils#build'], [20, 4]],
+  ['core#test', ['core#build'], [35, 4]],
+  ['ui#build', ['utils#build'], [16, 4]],
+  ['ui#test', ['ui#build'], [25, 4]],
   ['web#build', ['core#build', 'ui#build'], [30, 4]],
-  ['web#test', ['web#build'], [22, 2]],
-  ['web#e2e', ['web#build'], [34, 2]],
+  ['web#test', ['web#build'], [40, 4]],
+  ['web#e2e', ['web#build'], [60, 4]],
   ['web#lint', []],
 ]
 const graph: SimTask[] = TASKS.map(([id, deps, r]) => ({

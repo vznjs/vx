@@ -59,15 +59,21 @@ const summary = `${run.tasks.length} tasks · ${hits} cached · ${run.workers.le
           const r = rect(name, `slot${k}`)
           const barX = r.x + 10
           const barW = r.w - 20
-          const barY = r.y + 32
-          const barH = r.h - 42
+          // A phone's slot is too narrow for name and state on one line.
+          const barY = r.y + (split ? 44 : 32)
+          const barH = r.h - (split ? 54 : 42)
           return (
             <g class="slot tone-dte" data-slot={k} data-state="off" data-x={barX} data-y={barY} data-w={barW} data-h={barH} data-cores={cores}>
               <rect class="slot-edge" x={r.x} y={r.y + 6} width={r.w} height={r.h} rx="10" />
               <rect class="slot-face" x={r.x} y={r.y} width={r.w} height={r.h} rx="10" />
               <rect class="slot-warm" x={r.x} y={r.y} width="0" height={r.h} rx="10" />
               <text class="slot-name" x={r.x + 10} y={r.y + 20}>worker {k}</text>
-              <text class="slot-state" x={r.x + r.w - 10} y={r.y + 20} text-anchor="end">
+              <text
+                class="slot-state"
+                x={split ? r.x + 10 : r.x + r.w - 10}
+                y={r.y + (split ? 36 : 20)}
+                text-anchor={split ? 'start' : 'end'}
+              >
                 off
               </text>
               {Array.from({ length: cores }, (_, i) => (

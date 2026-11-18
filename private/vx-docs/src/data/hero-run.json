@@ -1,5 +1,5 @@
 {
-  "endMs": 118000,
+  "endMs": 141000,
   "tasks": [
     {
       "id": "utils#build",
@@ -7,7 +7,7 @@
       "cores": 2,
       "worker": "linux-4#1",
       "startMs": 21000,
-      "endMs": 30000
+      "endMs": 31000
     },
     {
       "id": "utils#lint",
@@ -17,55 +17,58 @@
     {
       "id": "core#build",
       "deps": ["utils#build"],
-      "cores": 3,
+      "cores": 4,
       "worker": "linux-4#1",
-      "startMs": 30000,
-      "endMs": 54000
+      "startMs": 31000,
+      "endMs": 51000
     },
     {
       "id": "core#test",
       "deps": ["core#build"],
-      "cores": 2,
+      "cores": 4,
       "worker": "linux-4#2",
-      "startMs": 54000,
-      "endMs": 92000
+      "startMs": 72000,
+      "endMs": 107000
     },
     {
       "id": "ui#build",
       "deps": ["utils#build"],
-      "cores": 2,
+      "cores": 4,
       "worker": "linux-4#2",
-      "startMs": 30000,
-      "endMs": 44000
+      "startMs": 31000,
+      "endMs": 47000
     },
     {
-      "id": "ui#lint",
-      "deps": [],
-      "hit": true
+      "id": "ui#test",
+      "deps": ["ui#build"],
+      "cores": 4,
+      "worker": "linux-4#2",
+      "startMs": 47000,
+      "endMs": 72000
     },
     {
       "id": "web#build",
       "deps": ["core#build", "ui#build"],
       "cores": 4,
       "worker": "linux-4#1",
-      "startMs": 54000,
-      "endMs": 84000
+      "startMs": 51000,
+      "endMs": 81000
     },
     {
       "id": "web#test",
       "deps": ["web#build"],
-      "cores": 2,
-      "worker": "linux-4#2",
-      "startMs": 92000,
-      "endMs": 114000
+      "cores": 4,
+      "worker": "linux-4#3",
+      "startMs": 81000,
+      "endMs": 121000
     },
     {
       "id": "web#e2e",
       "deps": ["web#build"],
-      "cores": 2,
-      "worker": "linux-4#2",
-      "startMs": 84000,
-      "endMs": 118000
+      "cores": 4,
+      "worker": "linux-4#1",
+      "startMs": 81000,
+      "endMs": 141000
     },
     {
       "id": "web#lint",
@@ -79,14 +82,21 @@
       "cores": 4,
       "spawnMs": 0,
       "joinMs": 21000,
-      "leaveMs": 84000
+      "leaveMs": 141000
     },
     {
       "id": "linux-4#2",
       "cores": 4,
-      "spawnMs": 4000,
-      "joinMs": 30000,
-      "leaveMs": 118000
+      "spawnMs": 5000,
+      "joinMs": 31000,
+      "leaveMs": 107000
+    },
+    {
+      "id": "linux-4#3",
+      "cores": 4,
+      "spawnMs": 60682,
+      "joinMs": 78682,
+      "leaveMs": 121000
     }
   ]
 }
