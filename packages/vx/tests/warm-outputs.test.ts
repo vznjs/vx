@@ -139,6 +139,28 @@ describe('LocalMemo.warmOutputs', () => {
     ])
     expect(rows('ffff0000ffff0000')).toEqual([])
   })
+
+  // A store that lost its inventory takes an entry back between the read
+  // ahead and the probe: with "no rows" remembered, the hit had no file to
+  // prove and stood as up to date over a deleted output.
+  it('rows written after a read ahead that found none are read', async () => {
+    const hash = 'aaaa1111bbbb9999'
+    cache.memo.folds.set('proj#build', 'probe', hash)
+    await warm([['proj#build', dir]])
+    const other = new Cache(path.join(root, '.vx', 'cache'))
+    try {
+      writeFileSync(file(0), 'v0')
+      await other.save({
+        hash,
+        projectDir: dir,
+        outputFiles: [file(0)],
+        entry: { taskId: 'proj#build', command: 'x', durationMs: 1, stdout: '' },
+      })
+    } finally {
+      other.close()
+    }
+    expect(rows(hash)).toHaveLength(1)
+  })
 })
 
 describe('a run over many output files', () => {

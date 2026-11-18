@@ -232,6 +232,7 @@ export class OutputIndex {
   replaceFileRows(hash: string, rows: ReadonlyArray<[string, number, number, number]>): number {
     // A stamp taken for the rows this replaces describes their files, not these.
     this.held.delete(hash)
+    this.warmed.delete(hash)
     this.pendingStamps.delete(hash)
     this.deleteOutputFiles.run(hash)
     this.deleteStamps.run(hash)
@@ -339,7 +340,7 @@ export class OutputIndex {
   /**
    * Each hash's rows, read ahead of the probe that will ask for them
    * (`loadOutputFilesBatch` hands these same arrays over, once). A hash with
-   * no row answers empty.
+   * no row is not answered.
    */
   warmRows(hashes: readonly string[]): Map<string, readonly OutputFileRow[]> {
     const out = new Map<string, readonly OutputFileRow[]>()
@@ -351,8 +352,9 @@ export class OutputIndex {
     }
     if (ask.length === 0) return out
     const read = this.readOutputFiles(ask, JSON.stringify(ask))
-    for (const h of ask) {
-      const rows = read.get(h) ?? []
+    // A hash with no row is not remembered: a row written before the probe
+    // (a store that lost its inventory takes its entries back) must be read.
+    for (const [h, rows] of read) {
       this.warmed.set(h, rows)
       out.set(h, rows)
     }

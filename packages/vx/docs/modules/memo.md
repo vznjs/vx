@@ -85,7 +85,10 @@ payload (45 builds, 14,484 output files): a no-op went from 164 to 118 ms.
 It reads only while git walks: once git has answered nothing here is free,
 and the site's 9,603-task no-op, whose git starts first, read 6 ms slower
 when it read on. The run waits for the thread (`warmSettled`) just before
-the graph starts.
+the graph starts. A key with no row is not remembered as having none, and
+an entry whose rows are replaced forgets the ones read ahead: rows written
+before the probe (a store that lost its inventory takes its entries back)
+are the ones it reads.
 
 A stat taken before the graph started proves nothing once anything may
 have written. A run calls `dropWarm` when a command that is no probed hit

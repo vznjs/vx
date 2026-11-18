@@ -317,8 +317,8 @@ export class LocalMemo implements StoreMemo {
       const keys = this.folds.lastKeys([...dirs.keys()])
       const rowsOf = this.guard(() => this.outputs.warmRows([...new Set(keys.values())]))
       for (const [id, key] of keys) {
-        const rows = rowsOf.get(key)!
-        if (rows.length === 0) continue
+        const rows = rowsOf.get(key)
+        if (rows === undefined) continue
         files += rows.length
         waiting.push([rows, baseOf(dirs.get(id)!)])
       }
