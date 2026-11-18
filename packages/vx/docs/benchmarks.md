@@ -207,10 +207,7 @@ Run it through `vx run`.
 
 `private/vx-bench/pr-bench.ts` runs in every PR's gate after
 perf-guard.ts, in the same task (`@vzn/vx-bench#check.perf`), so the
-two benchmarks never share a machine. CI runs the task on two runners,
-`VX_BENCH_PART=cold` (perf-guard.ts and the cold arm) and
-`VX_BENCH_PART=site` (restore and nothing-changed on the site's
-workspace); unset, one process runs all of it. It times this checkout's vx,
+two benchmarks never share a machine. It times this checkout's vx,
 compiled as released, against the base commit's vx (`VX_BENCH_BASE`: the
 PR's base, or main before a push, built in the same job from `git archive`
 of `packages/vx`), Turborepo, Nx and Vite Task (pinned in
@@ -251,8 +248,7 @@ CPU: it runs one process where vx runs a shell per task.
 A `SLOWER` line names a case where vx ran slower than the base in more of its quiet
 pairs than chance explains (a sign test, p < 0.002). There is no slack: a
 4% tolerance let a regression land 3% at a time. A case whose pairs lean
-slower without proving it keeps adding pairs, 40 at most. Those later
-pairs time vx and the base only: Turbo's figures are settled by then. Simulated, an
+slower without proving it keeps adding pairs, 40 at most. Simulated, an
 unchanged vx is flagged in 0.7% of cases, and one slower in 3 of 4 pairs
 in 63%.
 

@@ -59,7 +59,7 @@ export interface Pair {
 }
 
 /** The `keep` pairs others disturbed least, in the order they ran. */
-export function quietest<P extends Pick<Pair, 'others'>>(pairs: readonly P[], keep: number): P[] {
+export function quietest(pairs: readonly Pair[], keep: number): Pair[] {
   const ranked = pairs
     .map((p, i) => ({ p, i }))
     .sort((a, b) => a.p.others - b.p.others || a.i - b.i)
@@ -70,10 +70,6 @@ export function quietest<P extends Pick<Pair, 'others'>>(pairs: readonly P[], ke
 }
 
 /** Whether enough pairs ran with the machine to themselves. */
-export function enoughQuiet(
-  pairs: readonly Pick<Pair, 'others'>[],
-  keep: number,
-  quietCores: number,
-): boolean {
+export function enoughQuiet(pairs: readonly Pair[], keep: number, quietCores: number): boolean {
   return pairs.filter((p) => p.others <= quietCores).length >= keep
 }
