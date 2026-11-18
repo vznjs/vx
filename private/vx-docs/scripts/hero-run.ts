@@ -64,10 +64,10 @@ const out = {
     leaveMs: Math.round(w.leftAt ?? w.cancelledAt ?? r.endMs),
   })),
 }
-writeFileSync(
-  path.resolve(import.meta.dir, '../src/data/hero-run.json'),
-  `${JSON.stringify(out, null, 2)}\n`,
-)
+const file = path.resolve(import.meta.dir, '../src/data/hero-run.json')
+writeFileSync(file, `${JSON.stringify(out, null, 2)}\n`)
+// In the workspace's own format, so lint.oxfmt holds it as written.
+Bun.spawnSync(['oxfmt', file], { stdio: ['ignore', 'inherit', 'inherit'] })
 console.log(
   `end ${out.endMs / s} s, ${out.workers.length} workers, utilization ${r.utilization.toFixed(2)}`,
 )

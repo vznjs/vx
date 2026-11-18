@@ -16,9 +16,7 @@
     },
     {
       "id": "core#build",
-      "deps": [
-        "utils#build"
-      ],
+      "deps": ["utils#build"],
       "cores": 3,
       "worker": "linux-4#1",
       "startMs": 30000,
@@ -26,9 +24,7 @@
     },
     {
       "id": "core#test",
-      "deps": [
-        "core#build"
-      ],
+      "deps": ["core#build"],
       "cores": 2,
       "worker": "linux-4#2",
       "startMs": 54000,
@@ -36,9 +32,7 @@
     },
     {
       "id": "ui#build",
-      "deps": [
-        "utils#build"
-      ],
+      "deps": ["utils#build"],
       "cores": 2,
       "worker": "linux-4#2",
       "startMs": 30000,
@@ -51,10 +45,7 @@
     },
     {
       "id": "web#build",
-      "deps": [
-        "core#build",
-        "ui#build"
-      ],
+      "deps": ["core#build", "ui#build"],
       "cores": 4,
       "worker": "linux-4#1",
       "startMs": 54000,
@@ -62,9 +53,7 @@
     },
     {
       "id": "web#test",
-      "deps": [
-        "web#build"
-      ],
+      "deps": ["web#build"],
       "cores": 2,
       "worker": "linux-4#2",
       "startMs": 92000,
@@ -72,9 +61,7 @@
     },
     {
       "id": "web#e2e",
-      "deps": [
-        "web#build"
-      ],
+      "deps": ["web#build"],
       "cores": 2,
       "worker": "linux-4#2",
       "startMs": 84000,
