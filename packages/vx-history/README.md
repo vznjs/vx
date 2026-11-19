@@ -51,13 +51,17 @@ that reads no ref (a detached HEAD with no default branch) asks nothing.
 A ref over the 512 characters a server takes is said and not read;
 the run reads the others.
 The run starts on its local history and re-ranks the tasks not yet
-started when they land; it never waits for them. At its end it sends the
-timings of the tasks it ran, once: under DTE that is the orchestrator,
-with each worker's measurements. The upload starts as the last task
-ends, beside core's own end of run, and the plugin's teardown waits at
-most 2 s more for it (core bounds a teardown at 3 s); one not done by
-then is dropped and said, with how many timings it held and the status
-the server last answered, if one came. A task that shared a crowded worker's
+started when they land; it never waits for them. It sends the timings
+of the tasks it ran while it goes, each task once (the server counts every
+report): an upload once 50 tasks have finished or 10 s after the first of
+them, one at a time. Under DTE that is the orchestrator, with each
+worker's measurements, which go with the last upload, as the last task
+ends, beside core's own end of run. An upload that fails mid-run holds
+its tasks, and the run's later ones, for that last upload, so a server
+down is said once. The plugin's teardown waits at most 2 s for the rest
+(core bounds a teardown at 3 s); what is not sent by then is dropped and
+said, with how many timings it held and the status the server last
+answered, if one came. A task that shared a crowded worker's
 cores is sent as long as it would have taken alone, and its cores at
 most its machine's, as local history keeps them. A refusal is said with the server's
 words, each token the request sent written `***`. Every warning shows the server's url with a `user:pass@` as

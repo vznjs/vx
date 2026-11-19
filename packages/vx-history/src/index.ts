@@ -517,10 +517,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if (url === undefined) return undefined
     return new m.HistoryServer(url, named, Bun.env, fetch, headers)
   }
-  // What the run sends the history server at its end, by task definition.
-  let reported: Reported | undefined
-  // The upload, once the run has ended.
-  let uploading: Upload | undefined
+  // What the run sends the history server, by task definition.
+  let reported: Live | undefined
   // Stops the server's answer from landing once the run is over: no row
   // lands after the cache closes.
   let stopImport: (() => void) | undefined
@@ -555,25 +553,19 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if (remote?.writes === true) {
       const { timingOf: timing, outcomeOf } = await import('./history-server.js')
       // Only the run that ran the tasks hears them: under DTE, the
-      // orchestrator, with each worker's measurements.
-      const timings = new Map<string, ServerTiming>()
-      // Each task and key once, as the server takes them.
-      const outcomes = new Map<string, ServerOutcome>()
-      const sent = (reported = { timings, outcomes, warn: ctx.warn })
-      const server = remote
+      // orchestrator, with each worker's measurements. Sent while the run
+      // goes, so the server knows a long run's tasks before it ends.
+      const sent = (reported = new Live(remote, ctx.warn))
       ctx.on('onTaskComplete', (node, outcome) => {
         if (node.config.exec?.command === undefined) return
         const def = taskDefinitions([node]).get(node.id)
         if (def === undefined) return
-        const t = timing(outcome)
-        if (t !== undefined) timings.set(def, t)
-        const o = outcomeOf(outcome, def)
-        if (o !== undefined) outcomes.set(`${o.hash}\0${o.key}`, o)
+        sent.task(def, timing(outcome), outcomeOf(outcome, def))
       })
       // A plugin's measure goes up as a task's timing: the run's last of each.
       try {
         ctx.on('onMeasure', (m) => {
-          timings.set(m.def, {
+          sent.measure(m.def, {
             durationMs: Math.round(m.durationMs),
             ...(m.cores === undefined ? {} : { cores: m.cores }),
           })
@@ -581,10 +573,10 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         // quiet: a core before measures (the perf bench's base arm) has no such hook
       } catch {}
       // Every outcome is known here, and core's own end of run (history
-      // rows, cache uploads, telemetry) is still ahead: sent from teardown,
-      // a new OIDC token and the upload shared its 3 s bound.
+      // rows, cache uploads, telemetry) is still ahead: the remainder is
+      // sent from here, and teardown waits for it within its bound.
       ctx.on('onRunEnd', () => {
-        if (reported === sent) uploading ??= sendTimings(server, sent)
+        if (reported === sent) void sent.end()
       })
     } else if (remote !== undefined) {
       if (ctx.ci)
@@ -623,10 +615,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     stopImport = undefined
     const server = remote
     const sent = reported
-    const up = uploading
     remote = undefined
     reported = undefined
-    uploading = undefined
     // Counted from here: the file's write below shares the bound.
     const waited = server !== undefined && sent !== undefined ? waitFor(UPLOAD_WAIT_MS) : undefined
     const sched = scheduled
@@ -682,13 +672,12 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       }
     } finally {
       if (server !== undefined && sent !== undefined && waited !== undefined) {
-        const u = up ?? sendTimings(server, sent)
-        const late = await Promise.race([u.done.then(() => false), waited.done])
+        const late = await Promise.race([sent.end().then(() => false), waited.done])
         waited.cancel()
         if (late) {
-          u.stop.abort()
-          const n = sent.timings.size
-          const status = u.answered()
+          const n = sent.unsent()
+          const status = sent.answered
+          sent.stop.abort()
           sent.warn(
             `[vx] vx-history: the timings of ${n} task${n === 1 ? '' : 's'} were not sent to the history server at ${shown(server.url)}: ${status === undefined ? `no answer in the ${UPLOAD_WAIT_MS} ms a teardown waits` : `it answered HTTP ${status}, and the ${UPLOAD_WAIT_MS} ms a teardown waits ran out before it was asked again`}`,
           )
@@ -719,19 +708,10 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   return definePlugin(import.meta, hooks)
 }
 
-interface Reported {
-  readonly timings: Map<string, ServerTiming>
-  readonly outcomes: ReadonlyMap<string, ServerOutcome>
-  readonly warn: (m: string) => void
-}
-
-interface Upload {
-  /** Settles when sent, or once a failure is said; never rejects. */
-  readonly done: Promise<void>
-  readonly stop: AbortController
-  /** The status the upload's latest try answered; undefined while it waits for one. */
-  readonly answered: () => number | undefined
-}
+/** Tasks sent in one upload while the run goes, at most. */
+const FLUSH_TASKS = 50
+/** How long a finished task waits to be sent while the run goes, at most. */
+const FLUSH_MS = 10_000
 
 /**
  * How long a teardown waits for the upload: under core's bound on one
@@ -740,19 +720,112 @@ interface Upload {
  */
 const UPLOAD_WAIT_MS = 2_000
 
-function sendTimings(server: HistoryServer, sent: Reported): Upload {
-  const stop = new AbortController()
-  let answered: number | undefined
-  const done = server
-    .upload(sent.timings, stop.signal, [...sent.outcomes.values()], (s) => (answered = s))
-    .catch((err: unknown) => {
-      // Abandoned by teardown, which says so itself.
-      if (stop.signal.aborted) return
-      sent.warn(
-        `[vx] vx-history: the timings were not sent to the history server at ${shown(server.url)}: ${err instanceof Error ? err.message : String(err)}`,
-      )
+/**
+ * A run's timings and outcomes on their way to the server: each task's
+ * once, in uploads of up to `FLUSH_TASKS` or `FLUSH_MS` apart while the
+ * run goes, one at a time; measures, which a run refines to its end, and
+ * the rest, at its end. The server folds every report it gets: a task sent
+ * twice in one run would move its row twice.
+ */
+class Live {
+  readonly stop = new AbortController()
+  /** The status the latest try answered; undefined while it waits for one. */
+  answered: number | undefined
+  private timings = new Map<string, ServerTiming>()
+  private outcomes = new Map<string, ServerOutcome>()
+  private readonly measures = new Map<string, ServerTiming>()
+  private sending = 0
+  private chain: Promise<void> = Promise.resolve()
+  private timer: ReturnType<typeof setTimeout> | undefined
+  // A batch is queued and has not taken its tasks yet: one is enough.
+  private waiting = false
+  // A failed upload waits for the run's end, which says it once.
+  private held = false
+  private ended: Promise<void> | undefined
+
+  constructor(
+    private readonly server: HistoryServer,
+    readonly warn: (m: string) => void,
+  ) {}
+
+  task(def: string, t: ServerTiming | undefined, o: ServerOutcome | undefined): void {
+    if (this.ended !== undefined) return
+    if (t !== undefined) this.timings.set(def, t)
+    if (o !== undefined) this.outcomes.set(`${o.hash}\0${o.key}`, o)
+    if (this.held) return
+    if (Math.max(this.timings.size, this.outcomes.size) >= FLUSH_TASKS) void this.flush()
+    else if (this.timer === undefined) {
+      this.timer = setTimeout(() => void this.flush(), FLUSH_MS)
+      // A run that never ends its uploads is not held open by one.
+      this.timer.unref()
+    }
+  }
+
+  measure(def: string, t: ServerTiming): void {
+    if (this.ended === undefined) this.measures.set(def, t)
+  }
+
+  /** Timings not yet taken by the server. */
+  unsent(): number {
+    return this.timings.size + this.measures.size + this.sending
+  }
+
+  /** The rest, sent once; settles when every upload has, never rejects. */
+  end(): Promise<void> {
+    if (this.ended === undefined) {
+      for (const [def, t] of this.measures) this.timings.set(def, t)
+      this.measures.clear()
+      this.ended = this.flush(true)
+    }
+    return this.ended
+  }
+
+  private flush(last = false): Promise<void> {
+    clearTimeout(this.timer)
+    this.timer = undefined
+    if (this.waiting && !last) return this.chain
+    this.waiting = true
+    // Taken when its turn comes: a batch before it that failed is back in.
+    this.chain = this.chain.then(async () => {
+      this.waiting = false
+      // After a failure, the rest waits for the last upload.
+      if (this.held && !last) return
+      const timings = this.timings
+      const outcomes = this.outcomes
+      if (timings.size === 0 && outcomes.size === 0) return
+      this.timings = new Map()
+      this.outcomes = new Map()
+      const n = timings.size
+      this.sending += n
+      try {
+        await this.server.upload(timings, this.stop.signal, [...outcomes.values()], (s) => {
+          this.answered = s
+        })
+      } catch (err) {
+        // Abandoned by teardown, which says so itself.
+        if (this.stop.signal.aborted) return
+        if (!last) {
+          this.held = true
+          this.restore(timings, outcomes)
+          return
+        }
+        this.warn(
+          `[vx] vx-history: the timings were not sent to the history server at ${shown(this.server.url)}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      } finally {
+        this.sending -= n
+      }
     })
-  return { done, stop, answered: () => answered }
+    return this.chain
+  }
+
+  private restore(
+    timings: ReadonlyMap<string, ServerTiming>,
+    outcomes: ReadonlyMap<string, ServerOutcome>,
+  ): void {
+    for (const [k, v] of timings) if (!this.timings.has(k)) this.timings.set(k, v)
+    for (const [k, v] of outcomes) if (!this.outcomes.has(k)) this.outcomes.set(k, v)
+  }
 }
 
 /** Resolves true after `ms`, unless cancelled first. */
