@@ -201,6 +201,8 @@ export interface OrchestratorOptions {
   readonly starts?: Map<string, number>
   /** A size's cores its machines spent besides an earlier run's tasks (`othersOf`). */
   readonly learnedOther?: (size: string) => number | undefined
+  /** A size's warm-up as the plan expects it before any of it joins: an earlier run's, else the default. */
+  readonly warmUp?: (size: string) => number | undefined
   /** The run's cache, by key: what workers save to and this machine restores from. */
   readonly artifacts: TaskArtifacts
   /** What workers read the cache under (`ExecutorContext.cacheFacts`). */
@@ -219,7 +221,7 @@ export interface OrchestratorOptions {
   readonly lost?: (id: string) => void
   /** A worker joined: the run plans again. */
   readonly joined?: () => void
-  /** Worker `id` did not join within twice its size's first join: given up, for its adapter to stop. */
+  /** Worker `id` did not join within its size's join limit (`deadline`): given up, for its adapter to stop. */
   readonly overdue?: (id: string) => void
   /** Worker `id`, given up as late (`overdue`), joined after all and is taken. */
   readonly kept?: (id: string) => void
@@ -2054,10 +2056,15 @@ export class Orchestrator {
         typeof info.booted === 'number' ? info.booted : undefined,
       )
       const size = spawn?.declared.size
-      if (warmUpMs !== undefined && size !== undefined && !this.joinLimitMs.has(size)) {
-        this.joinLimitMs.set(size, 2 * warmUpMs)
-        for (const [s, { at, declared }] of this.spawnedAt)
-          if (s !== info.id && declared.size === size) this.deadline(s, at, size)
+      if (warmUpMs !== undefined && size !== undefined) {
+        const had = this.joinLimitMs.get(size)
+        const ms = 2 * Math.max(warmUpMs, this.o.warmUp?.(size) ?? 0)
+        if (had === undefined || ms > had) {
+          this.joinLimitMs.set(size, ms)
+          if (had === undefined)
+            for (const [s, { at, declared }] of this.spawnedAt)
+              if (s !== info.id && declared.size === size) this.deadline(s, at, size)
+        }
       }
       this.workers.set(id, {
         id,
@@ -2343,6 +2350,8 @@ export class Orchestrator {
       () => {
         if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
         if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
+        // a slower join of its size since raised the limit
+        if ((this.joinLimitMs.get(size) ?? ms) > ms) return this.deadline(id, at, size)
         this.cancelled.add(id)
         this.cancelledAt.set(id, performance.now())
         this.late.add(id)

@@ -731,6 +731,7 @@ export function dte(options: DteOptions = {}) {
         bases,
         starts,
         learnedOther: (size) => learned.others.get(size),
+        warmUp: (size) => learned.warmUps.get(size) ?? WARM_UP_MS,
         artifacts: ctx.artifacts,
         cacheFacts: () => ctx.cacheFacts(),
         run,

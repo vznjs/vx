@@ -927,6 +927,30 @@ it('takes a worker given up past its join limit that joins after all', async () 
   }
 })
 
+// Main 03:24 UTC 2026-11-19, local-e2e-workers: on one machine (`local()`)
+// the first mac joined in a few ms, its fellows' join limit was twice that,
+// and all four were given up ("did not join within 0 s") on a loaded runner.
+// The limit is never under twice the warm-up the plan expects of the size.
+it("gives a worker as long as its size's expected warm-up, not twice a first join in ms", async () => {
+  const overdue: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
+    overdue: (id) => overdue.push(id),
+    warmUp: () => 20_000,
+  })
+  try {
+    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
+    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
+    await h.worker(1, 'worker#1')
+    await Bun.sleep(300)
+    const late = await h.worker(1, 'worker#2')
+    const first = (await late.poll()).map((m) => m.body as { type: string; name?: string })
+    expect(first[0]).toMatchObject({ type: 'welcome', name: 'worker#2' })
+    expect(overdue).toEqual([])
+  } finally {
+    await h.stop()
+  }
+})
+
 /** A cache by key, in memory: what workers saved, and each restore asked. */
 function fakeArtifacts() {
   const saved = new Map<string, CapturedChunk[]>()
@@ -972,6 +996,7 @@ async function harness(
     pinWaitMs?: number
     warn?: (m: string) => void
     learnedOther?: (size: string) => number | undefined
+    warmUp?: (size: string) => number | undefined
     starts?: Map<string, number>
   } = {},
 ) {

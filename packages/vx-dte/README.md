@@ -701,8 +701,11 @@ use your own instead.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
-  that first join is given up (`did not join within 60 s`) and its job
-  stopped; before one has, none is. One its CI started anyway that joins
+  the slowest of its size's joins and its warm-up as an earlier run knew
+  it (20 s with none) is given up (`did not join within 60 s`) and its job
+  stopped; before one has, none is. On one machine (`local()`) the first
+  joined in milliseconds, and its fellows, on a loaded machine, were given
+  up at once. One its CI started anyway that joins
   later is taken, as any worker the plan may let go. The first three such failures in a
   run each start another worker in its place, as a checkout, install or
   join can fail on the network; a fourth starts none. While a worker of
