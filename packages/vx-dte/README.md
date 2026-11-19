@@ -223,8 +223,7 @@ every 30 s, asks with each answer's ETag (an unchanged answer is free),
 and asks nothing until a spent limit resets. A dispatch the limit refuses
 is sent again at the reset, if that comes within 5 minutes; past that it
 fails, naming when. A cancel the limit refuses is sent again at the
-reset, if that comes within a minute, unless a worker given up as late
-joined meanwhile: the run took it, so its workflow run goes on. A run that dies before it cancels
+reset, if that comes within a minute. A run that dies before it cancels
 (a cancelled or timed-out job) leaves it to the job's last step, which
 cancels each worker run the run listed in `RUNNER_TEMP`. Past both, a
 worker that starts reads its run's attempt (`parent`) first, and once
@@ -699,19 +698,15 @@ use your own instead.
 <origin>: no answer in 10 s`; four failed tries say why and how long,
   as `cannot connect to the relay <origin>: ENOTFOUND, 4 dials in 9.1 s`.
 - A worker that never joins says why on its row (`failed  exited 1:
-…`); its job ending, a success too, is what says so. Once the first
-  worker of a size joins, each other of that size not joined within twice
-  the slowest of its size's joins and its warm-up as an earlier run knew
-  it (20 s with none) is given up (`did not join within 60 s`) and its job
-  stopped; before one has, none is. On one machine (`local()`) the first
-  joined in milliseconds, and its fellows, on a loaded machine, were given
-  up at once. One its CI started anyway that joins
-  later is taken, as any worker the plan may let go. The first three such failures in a
+…`); its job ending, a success too, is what says so. A worker asked is
+  never given up for joining late: the run waits on it until its job ends
+  or the run does. Given up and asked again, a CI with no runner to give
+  queues both, and later hands over the extra ones only for them to be
+  told to exit. The first three such failures in a
   run each start another worker in its place, as a checkout, install or
   join can fail on the network; a fourth starts none. While a worker of
   a size is past when it was due to join (its warm-up, a spread after the
-  one of its size before it), or given up so beside one of its size
-  online, the run asks no more of that size: its CI queued it, and
+  one of its size before it), the run asks no more of that size: its CI queued it, and
   one asked then would queue behind it. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
@@ -1069,7 +1064,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   when the run ended before it joined. On SIGINT or SIGTERM it stops its
   tasks, leaves the run, which runs them again on another worker, and
   exits 130 or 143; a second signal ends it at once.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined, and may answer with those it left running, which the run takes (with `late`, workers given up on joining, stopped whatever their job holds); `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined, and may answer with those it left running, which the run takes; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
   `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`linux.small#2`, numbered within its size), `commit` the

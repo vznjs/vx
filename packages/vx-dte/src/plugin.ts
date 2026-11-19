@@ -81,12 +81,9 @@ export interface DteAdapter {
   /**
    * Workers `ids` it started are not needed: stop each that has not joined,
    * if it can. Answers with those it left running (`github()`: its job had a
-   * runner already), which the run takes when they join. `late`: given up
-   * on joining, stuck or queued, so stopped whatever its job holds.
+   * runner already), which the run takes when they join.
    */
-  cancel?(ids: readonly string[], late?: boolean): void | Promise<readonly string[]>
-  /** Worker `id`, given up as late, joined after all and the run took it: a stop not yet sent is dropped. */
-  kept?(id: string): void
+  cancel?(ids: readonly string[]): void | Promise<readonly string[]>
   /** The CI files that start its workers, which `vx dte init` writes; none for an adapter that starts them on this machine. */
   init?(setup: DteSetup): Promise<DteInit>
   /** Where it says a fault it works around (a status poll or a cancel that failed); called as the run starts. */
@@ -747,10 +744,6 @@ export function dte(options: DteOptions = {}) {
         spawn: (size) => spawnSize(size),
         home,
         joinedPlace,
-        // Given up as late and taken after all: its adapter is told.
-        kept: (id) => adapter?.kept?.(id),
-        // A worker given up on joining: its job, still queued or stuck, is stopped.
-        overdue: (id) => void adapter?.cancel?.([id], true),
         // One the plan let go before it joined: stopped, unless its adapter cannot, and then taken when it joins.
         cancel: (ids) =>
           void Promise.resolve(adapter?.cancel === undefined ? ids : adapter.cancel(ids))

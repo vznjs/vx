@@ -221,10 +221,6 @@ export interface OrchestratorOptions {
   readonly lost?: (id: string) => void
   /** A worker joined: the run plans again. */
   readonly joined?: () => void
-  /** Worker `id` did not join within its size's join limit (`deadline`): given up, for its adapter to stop. */
-  readonly overdue?: (id: string) => void
-  /** Worker `id`, given up as late (`overdue`), joined after all and is taken. */
-  readonly kept?: (id: string) => void
   /** A worker failed a task or dropped it: the run plans again, now, so a replacement starts. */
   readonly faulted?: () => void
   /**
@@ -360,12 +356,6 @@ export class Orchestrator {
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
-  /**
-   * How long a worker of a size may take to join: twice the first of its
-   * size that did (2026-10-23: "we learn that from first we get, and
-   * double its time"). Unknown until one joins, so no wait before.
-   */
-  private readonly joinLimitMs = new Map<string, number>()
   private endedAt = 0
   /** A long result's lists, by worker and task, until its `end` comes. */
   private readonly parts = new Map<string, Partial<Record<PartList, unknown[]>>>()
@@ -379,7 +369,7 @@ export class Orchestrator {
   private waited = false
   /** Why each worker this run refused was refused, in order. */
   private readonly refused: string[] = []
-  /** Started, then not needed before they joined (`release`), or given up as late. */
+  /** Started, then not needed before they joined (`release`). */
   private readonly cancelled = new Set<string>()
   /** When each cancelled one was: held from its ask until then (`heldMs`). */
   private readonly cancelledAt = new Map<string, number>()
@@ -387,8 +377,6 @@ export class Orchestrator {
   private due: { at: number; timer: ReturnType<typeof setTimeout> } | undefined
   /** The planner the run's events reach (`planner`). */
   private bound: Planner | undefined
-  /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
-  private readonly late = new Set<string>()
   /** Of `cancelled`, those that joined anyway and were told to exit. */
   private readonly turnedAway = new Set<string>()
   /** Let go before they joined, and left running by their adapter (`leftRunning`): no plan lets them go again. */
@@ -841,7 +829,7 @@ export class Orchestrator {
         const memory = Math.min(job.need.memory, a.memory)
         return !at || a.memory - this.used(a).memory >= memory
       },
-      // One asked now queues behind a worker of its size the CI has not started past its join limit.
+      // One asked now queues behind a worker of its size the CI has not started when it was due.
       size: (task, size) => {
         if (queued.has(size.name)) return false
         // Pinned to a worker online: no new one may take it.
@@ -945,26 +933,21 @@ export class Orchestrator {
   }
 
   /**
-   * Sizes the CI has not started a worker of past when it was due (`p`'s): one
-   * given up as late counts while one of its size is online. A worker asked
-   * now queues behind it: PR 2f0e2a4's run asked 7 more while GitHub queued
-   * its first 11 for 30-85 s; none got a runner before its join limit
-   * cancelled it (2026-10-24).
+   * Sizes the CI has not started a worker of past when it was due (`p`'s):
+   * no more of it is asked until that one joins, its job ends, or the plan
+   * lets it go. Asked again, a CI with no runner to give queues both, and
+   * hands over the extra ones later only for them to be told to exit; so a
+   * late worker is waited on, never given up and asked again (2026-11-19).
+   * PR 2f0e2a4's run asked 7 more while GitHub queued its first 11 for
+   * 30-85 s (2026-10-24).
    */
   private queued(p: Planner): Set<string> {
-    const online = new Set([...this.workers.values()].map((a) => a.declared?.size))
     const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
     const out = new Set<string>()
     const t = this.clock()
-    for (const [id, { declared }] of this.spawnedAt) {
-      if (joined.has(id)) continue
-      if (
-        this.late.has(id)
-          ? online.has(declared.size)
-          : !this.cancelled.has(id) && !this.unstarted.has(id) && p.overdue(id, t)
-      )
+    for (const [id, { declared }] of this.spawnedAt)
+      if (!joined.has(id) && !this.cancelled.has(id) && !this.unstarted.has(id) && p.overdue(id, t))
         out.add(declared.size)
-    }
     return out
   }
 
@@ -2022,14 +2005,6 @@ export class Orchestrator {
           `runs on ${platform ?? 'no platform it names'}, and its size ${sized.size} says ${sized.platform}`,
         )
       }
-      // One given up only for joining late is work the run can use: main
-      // db1702f told three smalls GitHub queued 60 s to exit and ended at
-      // 232 s against an ideal of 141 s. The plan lets it go if not.
-      if (info.id !== undefined && this.late.delete(info.id)) {
-        this.cancelled.delete(info.id)
-        this.unstarted.delete(info.id)
-        this.o.kept?.(info.id)
-      }
       if (info.id !== undefined && this.cancelled.has(info.id)) {
         this.turnedAway.add(info.id)
         void this.o.me
@@ -2055,17 +2030,6 @@ export class Orchestrator {
         asked,
         typeof info.booted === 'number' ? info.booted : undefined,
       )
-      const size = spawn?.declared.size
-      if (warmUpMs !== undefined && size !== undefined) {
-        const had = this.joinLimitMs.get(size)
-        const ms = 2 * Math.max(warmUpMs, this.o.warmUp?.(size) ?? 0)
-        if (had === undefined || ms > had) {
-          this.joinLimitMs.set(size, ms)
-          if (had === undefined)
-            for (const [s, { at, declared }] of this.spawnedAt)
-              if (s !== info.id && declared.size === size) this.deadline(s, at, size)
-        }
-      }
       this.workers.set(id, {
         id,
         warmUpMs,
@@ -2335,33 +2299,10 @@ export class Orchestrator {
 
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
   spawned(id: string, declared: Declared): void {
-    // A worker whose start broke where no adapter sees it counted as
-    // starting for good: main's run sat 18 min (ee3fc6e, 2026-10-23). Its
-    // job ending says so (`failed`); one that never ends is given up past
-    // its size's join limit.
-    const at = performance.now()
-    this.spawnedAt.set(id, { at, declared })
-    this.deadline(id, at, declared.size)
-  }
-
-  /** Worker `id`, started at `at`, is given up once its size's join limit passes unjoined. */
-  private deadline(id: string, at: number, size: string): void {
-    const ms = this.joinLimitMs.get(size)
-    if (ms === undefined) return
-    setTimeout(
-      () => {
-        if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
-        if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
-        // a slower join of its size since raised the limit
-        if ((this.joinLimitMs.get(size) ?? ms) > ms) return this.deadline(id, at, size)
-        this.cancelled.add(id)
-        this.cancelledAt.set(id, performance.now())
-        this.late.add(id)
-        this.o.overdue?.(id)
-        this.failed(id, `did not join within ${Math.round(ms / 1000)} s`, true)
-      },
-      Math.max(0, at + ms - performance.now()),
-    ).unref()
+    // No join limit: a worker asked is waited on until its job ends
+    // (`failed`) or the run does. Given up and asked again, a queued job
+    // takes a runner only to be told to exit (2026-11-19).
+    this.spawnedAt.set(id, { at: performance.now(), declared })
   }
 
   /**
@@ -2462,7 +2403,7 @@ export class Orchestrator {
   leftRunning(ids: Iterable<string>): string[] {
     const out: string[] = []
     for (const id of ids)
-      if (this.cancelled.has(id) && !this.late.has(id) && !this.turnedAway.has(id)) {
+      if (this.cancelled.has(id) && !this.turnedAway.has(id)) {
         this.cancelled.delete(id)
         this.unstoppable.add(id)
         out.push(id)
@@ -2496,10 +2437,8 @@ export class Orchestrator {
    * joined is lost now, not when the relay stops hearing it (20 s, its tasks
    * waiting).
    */
-  failed(id: string, reason: string, overdue = false): void {
-    // Its job ended: one given up as late no longer joins after all.
-    if (!overdue) this.late.delete(id)
-    if (this.ended || (this.cancelled.has(id) && !overdue)) return
+  failed(id: string, reason: string): void {
+    if (this.ended || this.cancelled.has(id)) return
     const live = [...this.workers.values()].find((a) => a.label === id)
     if (live !== undefined) {
       this.lose(live)
@@ -2735,8 +2674,8 @@ export class Orchestrator {
         if (declared.platform === undefined || declared.platform === platform.get(id))
           late.push([
             at + r.warm(platform.get(id)),
-            // Given up for joining late, it is late still; let go by the plan, no longer.
-            joinedAt.get(w) ?? (this.late.has(w) ? until : (this.cancelledAt.get(w) ?? until)),
+            // let go by the plan, no longer
+            joinedAt.get(w) ?? this.cancelledAt.get(w) ?? until,
           ])
       const joining = covered(late, earliest, l.sent)
       const again = covered(
@@ -2984,7 +2923,7 @@ export class Orchestrator {
             : ''),
       ])
     for (const id of this.spawnedAt.keys())
-      if (!joined.has(id) && (!this.cancelled.has(id) || this.late.has(id))) {
+      if (!joined.has(id) && !this.cancelled.has(id)) {
         const why = this.unstarted.get(id)
         // Over, the run waits on none: one still starting then never joined.
         lines.push(
@@ -2996,9 +2935,7 @@ export class Orchestrator {
         )
       }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
-    const cancelled = [...this.cancelled].filter(
-      (id) => !joined.has(id) && !this.late.has(id),
-    ).length
+    const cancelled = [...this.cancelled].filter((id) => !joined.has(id)).length
     if (cancelled > 0)
       lines.push([`${cancelled} worker${cancelled === 1 ? '' : 's'}`, 'cancelled', 'not needed'])
     if (left.length > 0)

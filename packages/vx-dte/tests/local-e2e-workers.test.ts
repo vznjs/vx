@@ -251,11 +251,10 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { linux
   }
 }, 60_000)
 
-// A worker given up for joining late left its size's count, and joining
-// after all it was taken but not counted back: PR 5335's first run held 9
-// smalls of 9, counted 4, and asked a tenth. Here the size's two are both
-// held once the late one joins, and the run asked a third as it did.
-it('counts a worker given up as late again once it joins after all', async () => {
+// A worker that joins long after its fellow is waited on, not given up and
+// asked again: PR 5335's first run held 9 smalls of 9, counted 4, and asked
+// a tenth. Here the size's two are both held once the late one joins.
+it('waits on a worker that joins late, asking none in its place', async () => {
   const { serveRelay } = await import('@vzn/vx-dte-server')
   const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
   const spawns = path.join(root, 'spawns.log')
@@ -303,7 +302,7 @@ export default { name: 'w', tasks: { n1: t, n2: t, n3: t, n4: t, n5: t, n6: t, n
         stderr: 'pipe',
       })
     const first = workerOf(start('linux.small#1'), run)
-    // Past the join limit its fellow's join set (twice that one's warm-up).
+    // Long past its fellow's warm-up.
     await Bun.sleep(5000)
     const late = workerOf(start('linux.small#2'), run)
     const out = await new Response(run.stdout).text()
