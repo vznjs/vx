@@ -52,7 +52,7 @@ A ref over the 512 characters a server takes is said and not read;
 the run reads the others.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. It sends the timings
-of the tasks it ran while it goes, each task once (the server folds every
+of the tasks it ran while it goes, each task once (the server counts every
 report): an upload once 50 tasks have finished or 10 s after the first of
 them, one at a time. Under DTE that is the orchestrator, with each
 worker's measurements, which go with the last upload, as the last task
