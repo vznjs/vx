@@ -1966,7 +1966,11 @@ one leading out of the workspace or into `.git` (as text, and on disk: a
 link already there before a `..` is followed, so with a committed
 `up -> ..` the target `../up/../x` is out), fails the save by name
 (the restore's own check, so no entry is stored that every restore refuses), as the config
-spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
+spells the path (`workspaceFiles output gen/latest`). An output that
+another process swaps for a link, rewrites or resizes while the save
+copies it is not saved: `outputs/dist/a.js changed while it was saved:
+it is not the file the task left`. The save checks each file again after
+the copy, so the entry never stores a link's target as the file. The clean before exec and restore removes every
 file, symlink, FIFO, socket and device the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, named by a glob
