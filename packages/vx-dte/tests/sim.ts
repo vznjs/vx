@@ -28,7 +28,12 @@ export interface SimTask {
     readonly afterMs?: number
   }
   /** What history said of it before the run, when that differs from how it ran; null: never measured; no cores: its time alone. */
-  readonly known?: { readonly ms: number; readonly cores?: number; readonly memory: number } | null
+  readonly known?: {
+    readonly ms: number
+    readonly cores?: number
+    readonly memory: number
+    readonly afterMs?: number
+  } | null
   /** The platform core placed it on (`TaskNode.platform`). */
   readonly platform?: string
   /** Core's probe found it held, and its restore then failed: it runs (`ran`) once ready. */
@@ -175,7 +180,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     sizes,
     known: (id) => {
       const k = known(id)
-      return k === undefined ? undefined : { ms: k.ms, cores: k.cores }
+      return k === undefined ? undefined : { ms: k.ms, cores: k.cores, afterMs: k.afterMs }
     },
     expected,
     ...(options.unmeasuredCores === undefined ? {} : { unmeasuredCores: options.unmeasuredCores }),
@@ -320,6 +325,15 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         return false
       },
     })
+    if (process.env.SIMDBG && d.ask.length)
+      console.log(
+        'decide',
+        (now / 1000).toFixed(1),
+        'end',
+        (d.end / 1000).toFixed(1),
+        'ask',
+        d.ask.join(','),
+      )
     const before = new Map<Live, number>()
     const loadBefore = (w: Live): number => before.get(w) ?? load(w)
     for (const [, worker] of d.start) {

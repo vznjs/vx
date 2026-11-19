@@ -2304,7 +2304,13 @@ export class Orchestrator {
    * the run in the sim.
    */
   planning(input: {
-    readonly tasks: readonly { id: string; ms?: number; cores: number; memory: number }[]
+    readonly tasks: readonly {
+      id: string
+      ms?: number
+      afterMs?: number
+      cores: number
+      memory: number
+    }[]
     readonly warmUps: Readonly<Record<string, number>>
   }): void {
     this.trace.mark(ORCHESTRATOR, 'plan', {

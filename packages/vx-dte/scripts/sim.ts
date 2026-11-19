@@ -62,7 +62,18 @@ const graph: SimTask[] = f.nodes.map((n) => {
           },
         }
   if (k === undefined) return t
-  return { ...t, known: k === null ? null : { ms: k[0], cores: k[1], memory: k[2] * 1e6 } }
+  return {
+    ...t,
+    known:
+      k === null
+        ? null
+        : {
+            ms: k[0],
+            cores: k[1],
+            memory: k[2] * 1e6,
+            ...(k[3] === undefined ? {} : { afterMs: k[3] }),
+          },
+  }
 })
 const likely = new Set(graph.filter((t) => t.ran !== undefined).map((t) => t.id))
 const joins = f.joins

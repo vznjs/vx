@@ -44,6 +44,11 @@ export interface EngineGraph {
   readonly sd: readonly (number | null)[]
   /** The cores it keeps busy, as history measured. */
   readonly cores: readonly number[]
+  /**
+   * What its end waits past its command, its cores free (ms): servers it starts, its save. Main 4c30e53's
+   * plan put a 10 s test last that started its services for 14 s first: 150 s for 130 (2026-11-19).
+   */
+  readonly after?: readonly (number | null)[]
 }
 
 export interface EngineOptions {
@@ -269,6 +274,8 @@ export class Engine {
   private readonly handed: Uint8Array
   private readonly doneAt: Float64Array
   private readonly ranMs: Float64Array
+  /** What each task's end waits past its command (`EngineGraph.after`). */
+  private aft: Float64Array
   /** 1: ended, its command's time not yet told; 2: that time counted in this run's speed. */
   private readonly timed: Uint8Array
   private readonly onWorker: Int32Array
@@ -360,6 +367,8 @@ export class Engine {
       }
     }
     this.kms = Array.from(g.ms)
+    this.aft = Float64Array.from(g.after ?? [], (a) => a ?? 0)
+    if (this.aft.length < n) this.aft = new Float64Array(n)
     this.ksd = Array.from(g.sd)
     this.kcores = Float64Array.from(g.cores)
     this.cEst = new Float64Array(n)
@@ -431,8 +440,10 @@ export class Engine {
     ms: readonly (number | null)[],
     sd: readonly (number | null)[],
     cores: readonly number[],
+    after?: readonly (number | null)[],
   ): void {
     for (let i = 0; i < this.n; i++) {
+      if (after !== undefined) this.aft[i] = after[i] ?? 0
       this.kms[i] = ms[i] ?? null
       this.ksd[i] = sd[i] ?? null
       this.kcores[i] = cores[i]!
@@ -828,7 +839,7 @@ export class Engine {
           v = tv[k]!
         }
       }
-      tail[i] = E[i]! + m
+      tail[i] = E[i]! + this.aft[i]! + m
       tv[i] = S2[i]! + v
     }
     const { avail, firstRun, sizePlat } = this
@@ -866,7 +877,7 @@ export class Engine {
           : state[i] === RUNNING && this.progress[i]! > 0
             ? this.progress[i]! + this.rem(i)
             : E[i]!
-      efs[i] = m + took
+      efs[i] = m + took + (state[i] === DONE && this.timed[i] === 0 ? 0 : this.aft[i]!)
       this.efsV[i] = state[i] === DONE ? mv : mv + S2[i]!
       if (efs[i]! > D) {
         D = efs[i]!
@@ -1209,6 +1220,9 @@ export class Engine {
       return (part(Tw, Lw) - before) * s.cores
     }
     const fin = new Float64Array(n)
+    // when its dependants may start: its cores' end and what its end waits past them
+    const out = (i: number): number =>
+      fin[i]! + (state[i] === DONE && this.timed[i] === 0 ? 0 : this.aft[i]!)
     const st = new Float64Array(n).fill(-1)
     const on: (Slot | undefined)[] = Array.from({ length: n })
     let end = t
@@ -1231,7 +1245,7 @@ export class Engine {
           const sd = this.sdOf(i)
           if (sd > 0) (s.unc ??= []).push({ F: f, sd, c: cEst[i]!, i })
         }
-        if (f > end) end = f
+        if (f + this.aft[i]! > end) end = f + this.aft[i]!
         open--
         continue
       }
@@ -1312,8 +1326,8 @@ export class Engine {
       let rd = -1
       for (let x = dOff[i]!; x < dOff[i + 1]!; x++) {
         const d = dArr[x]!
-        if (fin[d]! > r) {
-          r = fin[d]!
+        if (out(d) > r) {
+          r = out(d)
           rd = d
         }
       }
@@ -1484,7 +1498,7 @@ export class Engine {
       st[i] = bS
       on[i] = bs
       open--
-      if (bF > end) end = bF
+      if (bF + this.aft[i]! > end) end = bF + this.aft[i]!
     }
     const start: [number, number][] = []
     for (const i of todo)
@@ -1934,7 +1948,7 @@ export class Engine {
             r = Math.max(
               r,
               state[u] === DONE || st[u]! >= 0 || (state[u] === RUNNING && this.onWorker[u]! >= 0)
-                ? fin[u]!
+                ? fin[u]! + this.aft[u]!
                 : this.efs[u]!,
             )
           }
@@ -2092,7 +2106,7 @@ export class Engine {
       if (x === Infinity) break
       while (endsH.length > 0 && fin[endsH[0]!]! <= x) {
         const i = epop()
-        if (fin[i]! > end) end = fin[i]!
+        if (fin[i]! + this.aft[i]! > end) end = fin[i]! + this.aft[i]!
         open--
         const s = on[i]
         if (s !== undefined) {

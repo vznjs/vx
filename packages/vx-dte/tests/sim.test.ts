@@ -13,6 +13,7 @@ import a2c from './fixtures/main-run-a2c25b0.json'
 import m4c3 from './fixtures/main-run-4c30e53.json'
 import { compare } from '../scripts/compare.js'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
+import { rng } from './families.js'
 import { Planner, type PlannerSize } from '../src/plan/planner.js'
 import type { TaskNode } from '@vzn/vx'
 
@@ -768,6 +769,59 @@ it('plays main d36eed9 sooner than it ran, asking its workers in the first secon
   expect(r.endMs).toBeLessThan(150_000)
 })
 
+// Main 4c30e53 (2026-11-19): the reapi live test starts its two services for
+// 14 s before its 10 s command. Its plan read 10 s, put it last, and the run
+// waited on it to the end: the sim of the run ended 150.4 s, its ideal 129.6.
+it('starts main 4c30e53\'s reapi live test early enough for its services', () => {
+  const graph = load(m4c3).map((t) => {
+    const k = (m4c3.known as Record<string, number[] | null>)[t.id]
+    return k === undefined
+      ? t
+      : {
+          ...t,
+          known:
+            k === null
+              ? null
+              : {
+                  ms: k[0]!,
+                  cores: k[1]!,
+                  memory: k[2]! * 1e6,
+                  ...(k[3] === undefined ? {} : { afterMs: k[3] }),
+                },
+        }
+  })
+  const joins = m4c3.joins as Record<string, number[]>
+  // the run's workers' joins, each size's in five other orders
+  const ends: number[] = []
+  for (let seed = 1; seed <= 5; seed++) {
+    const r0 = rng(seed * 7919 + 1)
+    const js: Record<string, number[]> = {}
+    for (const [k, v] of Object.entries(joins)) {
+      const a = [...v]
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(r0() * (i + 1))
+        ;[a[i], a[j]] = [a[j]!, a[i]!]
+      }
+      js[k] = a
+    }
+    const r = simulate(graph, {
+      sizes: [
+        { name: 'small', max: 9, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+        { name: 'mac', max: 3, cpu: 2, memory: 7e9, platform: 'darwin-arm64' },
+        { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+      ],
+      home: 'linux-x64',
+      warmUpMs: (_, size, k) => js[size]![k - 1]!,
+      warmUpsMs: new Map(Object.entries(m4c3.warmUps)),
+      likely: misses(graph),
+    })
+    expect(r.endedAt.get('@vzn/vx-reapi#test.live')!).toBeLessThan(r.endMs - 10_000)
+    ends.push(r.endMs)
+  }
+  // not knowing: 143.9-155.9 s, median 151.0
+  expect(ends.sort((a, b) => a - b)[2]!).toBeLessThan(145_000)
+})
+
 // M, 2026-11-18: a task using 20 cores and only a 10-core worker, busy with a
 // 150 s chain. Waiting for all ten: 290 s, 2,900 core-s held. On the 9 free
 // cores now, twice and more as long: 236 s, 2,360 core-s.
@@ -896,7 +950,7 @@ it('main 4c30e53 reads its speed from a command time, not from when it heard the
   planner.finished('@vzn/vx#check.bun', 19_080)
   const heard = planner.decide(19_080, spawn).end
   expect(heard).toBeLessThan(first * 1.1)
-  planner.finished('@vzn/vx#check.bun', 19_500, 85)
-  // told, its time counts: the run read as going 85/126 of history
-  expect(planner.decide(19_500, spawn).end).toBeLessThan(heard)
+  planner.finished('@vzn/vx#check.bun', 19_500, 1_260)
+  // told, its time counts: a command 10x its history reads the run slower
+  expect(planner.decide(19_500, spawn).end).toBeGreaterThan(heard)
 })

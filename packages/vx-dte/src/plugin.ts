@@ -833,7 +833,17 @@ export function dte(options: DteOptions = {}) {
         if (!missed || pending === undefined || nodes === undefined || !ready()) return undefined
         const known = (id: string) => {
           const p = peaks.get(id)
-          return p === undefined ? undefined : { ms: p.p50DurationMs, cores: p.maxCpuParallelism }
+          if (p === undefined) return undefined
+          // Its servers start before its command, its cores free: main 4c30e53's reapi live
+          // test waited 14 s on its services, and the plan, not knowing, put it last.
+          let afterMs = 0
+          for (const sv of serversOf(nodes, id))
+            afterMs = Math.max(afterMs, starts.get(sv) ?? learned.starts.get(sv) ?? 0)
+          return {
+            ms: p.p50DurationMs,
+            cores: p.maxCpuParallelism,
+            ...(afterMs > 0 ? { afterMs } : {}),
+          }
         }
         const warmUps = Object.fromEntries(
           sizes.map((s) => [s.name, learned.warmUps.get(s.name) ?? WARM_UP_MS]),
@@ -863,6 +873,7 @@ export function dte(options: DteOptions = {}) {
             return {
               id,
               ...(k?.ms === undefined ? {} : { ms: k.ms }),
+              ...(k?.afterMs === undefined ? {} : { afterMs: k.afterMs }),
               cores: k?.cores ?? 0,
               memory: peaks.get(id)?.maxPeakRssBytes ?? 0,
             }

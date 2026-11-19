@@ -23,6 +23,8 @@ export interface PlannerSize {
 export interface Known {
   readonly ms: number | undefined
   readonly cores: number | undefined
+  /** What its end waited past its command, its cores free: servers it started, its save (ms). */
+  readonly afterMs?: number | undefined
 }
 
 export interface PlannerInput {
@@ -120,7 +122,7 @@ export class Planner {
       sizes.push({ name: '', cores: 1, memory: 0, max: 0, platform: p, warmUpMs: 0 })
     }
     this.sizes = sizes
-    const { ms, cores } = this.history()
+    const { ms, cores, after } = this.history()
     this.engine = new Engine(
       {
         deps: this.ids.map((id) => graph.get(id)!.map((d) => this.ix.get(d)!)),
@@ -128,6 +130,7 @@ export class Planner {
         ms,
         sd: ms.map(() => null),
         cores,
+        after,
       },
       sizes.map((s) => ({
         cores: s.cores,
@@ -146,25 +149,28 @@ export class Planner {
     })
   }
 
-  private history(): { ms: (number | null)[]; cores: number[] } {
+  private history(): { ms: (number | null)[]; cores: number[]; after: number[] } {
     const ms: (number | null)[] = []
     const cores: number[] = []
+    const after: number[] = []
     for (const id of this.ids) {
       const k = this.input.known(id)
       ms.push(k?.ms ?? null)
+      after.push(k?.afterMs ?? 0)
       // a task keeps at least the one core it is given busy
       cores.push(Math.max(1, k?.cores ?? 1))
     }
-    return { ms, cores }
+    return { ms, cores, after }
   }
 
   /** History landed or changed: read it again. */
   learn(): void {
-    const { ms, cores } = this.history()
+    const { ms, cores, after } = this.history()
     this.engine.learn(
       ms,
       ms.map(() => null),
       cores,
+      after,
     )
   }
 

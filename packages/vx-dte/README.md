@@ -993,7 +993,11 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     (kept in history, as warm-ups are). A worker's tasks share its cores:
     past them, each runs at its share. A task's time is its history
     scaled by how this run's finished tasks compared to theirs; a running
-    task's rest is what tasks that ran that long took more. A task history
+    task's rest is what tasks that ran that long took more; their times
+    are their commands' own, told with each result, not when the run
+    heard them end. A task's dependants and the run's end also wait for
+    the servers it starts first (each server's learned start, its cores
+    free meanwhile). A task history
     never measured takes what the measured ones take, with the unmeasured
     that ended, and each still running past that mean counted as ended at
     what it has run, so the first to end, the short ones, do not speak
