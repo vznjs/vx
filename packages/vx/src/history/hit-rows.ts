@@ -148,9 +148,9 @@ const OPTIONAL = [
 export interface PackedHits {
   n: number
   /**
-   * JSON: a `[project, task, hash, def]` per hit. Its own column, shared by
-   * every run that hit the same keys in the same order, as successive
-   * no-op runs do: SQL reads it (`json_each`) without the numbers.
+   * JSON: a `[project, task, hash, def]` per hit, by task. Its own column,
+   * shared by every run that hit the same keys, as successive no-op runs
+   * do: SQL reads it (`json_each`) without the numbers.
    */
   keys: string
   /** zstd of a u32 count, the hits' numbers, then the rare fields as JSON. */
@@ -161,16 +161,33 @@ export interface PackedHits {
 export function encodeHits(batches: readonly HitRows[]): PackedHits {
   let n = 0
   for (const b of batches) n += b.n
-  const nums = new Float64Array(n * WIDTH)
-  const keys: (string | null)[][] = []
+  const all = new Float64Array(n * WIDTH)
+  const strs: (string | null)[] = []
   const rare: HitRows['rare'] = []
   let at = 0
   for (const b of batches) {
-    nums.set(b.nums.subarray(0, b.n * WIDTH), at * WIDTH)
-    for (let i = 0; i < b.strs.length; i += STRINGS) keys.push(b.strs.slice(i, i + STRINGS))
+    all.set(b.nums.subarray(0, b.n * WIDTH), at * WIDTH)
+    for (const s of b.strs) strs.push(s)
     for (const [row, field, value] of b.rare) rare.push([at + row, field, value])
     at += b.n
   }
+  // In task order, not the order hits settled: concurrent lookups settle in
+  // any order, and each new order stored the whole key list again (and
+  // failed kept-hits' one-row check under load).
+  const order = byTask(strs, n)
+  const nums = new Float64Array(n * WIDTH)
+  const keys: (string | null)[][] = Array.from({ length: n })
+  const placed = new Uint32Array(n)
+  for (let i = 0; i < n; i++) {
+    const from = order[i]!
+    placed[from] = i
+    for (let c = 0, src = from * WIDTH, dst = i * WIDTH; c < WIDTH; c++)
+      nums[dst + c] = all[src + c]!
+    const s = from * STRINGS
+    keys[i] = [strs[s]!, strs[s + 1]!, strs[s + 2] ?? null, strs[s + 3] ?? null]
+  }
+  for (const r of rare) r[0] = placed[r[0]]!
+  rare.sort((a, b) => a[0] - b[0])
   const text = new TextEncoder().encode(JSON.stringify(rare))
   const head = new Uint8Array(new Uint32Array([n]).buffer)
   const numBytes = new Uint8Array(nums.buffer)
@@ -179,6 +196,15 @@ export function encodeHits(batches: readonly HitRows[]): PackedHits {
   raw.set(numBytes, head.length)
   raw.set(text, head.length + numBytes.length)
   return { n, keys: JSON.stringify(keys), nums: Bun.zstdCompressSync(raw, { level: 1 }) }
+}
+
+/** Row indices by project, then task: one task is one hit in a run. */
+function byTask(strs: readonly (string | null)[], n: number): Uint32Array {
+  const ids: string[] = Array.from({ length: n })
+  for (let i = 0; i < n; i++) ids[i] = `${strs[i * STRINGS]}\0${strs[i * STRINGS + 1]}`
+  const order = new Uint32Array(n)
+  for (let i = 0; i < n; i++) order[i] = i
+  return order.sort((a, b) => (ids[a]! < ids[b]! ? -1 : ids[a]! > ids[b]! ? 1 : 0))
 }
 
 /** The rows `encodeHits` packed. */
