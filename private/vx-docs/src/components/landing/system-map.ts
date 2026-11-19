@@ -406,7 +406,7 @@ export function play(run: Run): Play {
     dot(stop + 2 * T, 'reports', 'report', 'span')
   }
   // vx-history sends the finished tasks' timings while the run goes, as
-  // it does: a batch 10 s after the first one not yet sent ends (a run of
+  // it does: a batch 10 s after the first unsent one ends (a run of
   // 10 tasks never reaches its 50).
   let due: number | undefined
   for (const e of ran.map((x) => x.endMs!).sort((a, b) => a - b)) {
