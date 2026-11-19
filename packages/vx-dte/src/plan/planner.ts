@@ -238,12 +238,6 @@ export class Planner {
     this.name(this.engine.adopt(z, t, sized === undefined ? cores : this.sizes[z]!.cores), worker)
   }
 
-  /** `worker`, asked, is past when it was due to join at `t` (its warm-up, behind the ones of its size before it). */
-  overdue(worker: string, t: number): boolean {
-    const w = this.workerIx.get(worker)
-    return w !== undefined && this.engine.overdue(w, t)
-  }
-
   knows(worker: string): boolean {
     const w = this.workerIx.get(worker)
     return w !== undefined && !this.engine.gone(w)

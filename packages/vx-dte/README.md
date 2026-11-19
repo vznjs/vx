@@ -704,10 +704,10 @@ use your own instead.
   queues both, and later hands over the extra ones only for them to be
   told to exit. The first three such failures in a
   run each start another worker in its place, as a checkout, install or
-  join can fail on the network; a fourth starts none. While a worker of
-  a size is past when it was due to join (its warm-up, a spread after the
-  one of its size before it), the run asks no more of that size: its CI queued it, and
-  one asked then would queue behind it. When none is online
+  join can fail on the network; a fourth starts none. No worker is
+  promised: a run may get one of those it asked, or none. A late one
+  blocks no ask; each worker the plan needs is asked, up to its size's
+  max, and the run goes on with whichever join. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
 - Only `leave` ends a participant at once (2026-10-25): the

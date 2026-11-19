@@ -776,7 +776,6 @@ export class Orchestrator {
     }
     const byLabel = new Map<string, Worker>()
     for (const a of this.workers.values()) byLabel.set(a.label, a)
-    const queued = this.queued(p)
     // A task that filled its worker goes only to a bigger one, while its platform has or may ask one.
     const roomier = (need: Need, cores: number, memory: number): boolean =>
       need.above === undefined || cores > need.above.cores || memory > need.above.memory
@@ -829,9 +828,8 @@ export class Orchestrator {
         const memory = Math.min(job.need.memory, a.memory)
         return !at || a.memory - this.used(a).memory >= memory
       },
-      // One asked now queues behind a worker of its size the CI has not started when it was due.
+      // A worker the CI has not started blocks no ask: no worker is promised, so each the plan needs is asked (2026-11-19).
       size: (task, size) => {
-        if (queued.has(size.name)) return false
         // Pinned to a worker online: no new one may take it.
         if ((pins.get(task) ?? byId.get(task)?.again)?.only !== undefined) return false
         const need = byId.get(task)?.need
@@ -930,25 +928,6 @@ export class Orchestrator {
       if (cancelled.length > 0) this.o.cancel?.(cancelled)
     }
     this.wake(now, d.due === Infinity ? undefined : this.startedAt + d.due)
-  }
-
-  /**
-   * Sizes the CI has not started a worker of past when it was due (`p`'s):
-   * no more of it is asked until that one joins, its job ends, or the plan
-   * lets it go. Asked again, a CI with no runner to give queues both, and
-   * hands over the extra ones later only for them to be told to exit; so a
-   * late worker is waited on, never given up and asked again (2026-11-19).
-   * PR 2f0e2a4's run asked 7 more while GitHub queued its first 11 for
-   * 30-85 s (2026-10-24).
-   */
-  private queued(p: Planner): Set<string> {
-    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
-    const out = new Set<string>()
-    const t = this.clock()
-    for (const [id, { declared }] of this.spawnedAt)
-      if (!joined.has(id) && !this.cancelled.has(id) && !this.unstarted.has(id) && p.overdue(id, t))
-        out.add(declared.size)
-    return out
   }
 
   /** A pump at `at`, when the planner asked to decide again. */
@@ -2299,9 +2278,9 @@ export class Orchestrator {
 
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
   spawned(id: string, declared: Declared): void {
-    // No join limit: a worker asked is waited on until its job ends
-    // (`failed`) or the run does. Given up and asked again, a queued job
-    // takes a runner only to be told to exit (2026-11-19).
+    // No join limit and no ask in its place: a worker asked is waited on
+    // until its job ends (`failed`) or the run does. Given up and asked
+    // again, a queued job took a runner only to be told to exit (2026-11-19).
     this.spawnedAt.set(id, { at: performance.now(), declared })
   }
 

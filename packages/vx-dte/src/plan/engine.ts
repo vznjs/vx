@@ -799,11 +799,6 @@ export class Engine {
       },
     }
   }
-  /** Worker `w`, asked, is past when it was due to join at `t`: the CI queues it. */
-  overdue(w: number, t: number): boolean {
-    const x = this.workers[w]!
-    return x.joinedAt === undefined && x.leftAt === undefined && t > this.dues()[w]! + 1e-6
-  }
   private loadEst(w: Worker, extra = 0): number {
     let s = extra
     for (const j of w.run) s += this.cEst[j]!

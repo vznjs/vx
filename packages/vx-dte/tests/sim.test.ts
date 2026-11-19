@@ -474,9 +474,9 @@ it('a run of unmeasured needs keeps the workers it asks', () => {
 // PR 2f0e2a4 (2026-10-24): GitHub queued 9 of the 11 workers asked at 1 s
 // for 30-85 s. The run planned each to join at once and asked 4 more, then
 // 3 to replace those its join limit gave up on; none of the 7 got a
-// runner before it was cancelled. A worker asked behind a queued one joins
-// after it: none is asked while one of its size is late.
-it('asks no worker while the CI queues one of its size', () => {
+// runner before it was cancelled. Now none is given up or replaced; one the
+// plan needs is asked, and the run packs onto the workers that join.
+it('ends near its ideal while the CI queues most workers it asks', () => {
   const unmeasured = new Set([
     '@vzn/vx#check.bun',
     '@vzn/vx-docs#build',
@@ -511,8 +511,6 @@ it('asks no worker while the CI queues one of its size', () => {
       ['mac', 7_200],
     ]),
   })
-  // None asked while one of its size, asked before, is past when it was due to join.
-  expect(r.askedBehind).toBe(0)
   // Asked at once for tasks of no history, which no guess gives slack,
   // those the CI queued past 81 s are cancelled once those ran shorter and
   // the rest packs onto the workers that joined: four, where a play kept
@@ -523,6 +521,30 @@ it('asks no worker while the CI queues one of its size', () => {
   // With a whole core a task (`MIN_CORES`) on the few workers the CI let
   // join early, 136.5 s.
   expect(r.endMs).toBeLessThanOrEqual(137_000)
+})
+
+// No worker is promised (2026-11-19): a CI may give a run one worker or
+// none. Each the plan needs is asked once and waited on; none is given up
+// or asked in its place, so the asks never pass the size's max.
+describe('a CI that gives few of the workers asked', () => {
+  const sizes: Size[] = [{ ...small, max: 6 }]
+  it('ends on the one worker it got, asking no more than its max', () => {
+    const asked: number[] = []
+    const r = simulate(growing(), {
+      sizes,
+      warmUpMs: (n) => (asked.push(n), n === 1 ? 20_000 : Infinity),
+    })
+    expect(r.executed).toBe(growing().filter((t) => t.exec).length)
+    expect(asked.length).toBeLessThanOrEqual(6)
+    expect(r.workers.filter((w) => w.joinedAt !== undefined).map((w) => w.id)).toEqual(['small#1'])
+  })
+  it('waits with none, asking no more than its max', () => {
+    const asked: number[] = []
+    expect(() =>
+      simulate(growing(), { sizes, warmUpMs: (n) => (asked.push(n), Infinity) }),
+    ).toThrow(/^sim: stuck at/)
+    expect([asked.length > 0, asked.length <= 6]).toEqual([true, true])
+  })
 })
 
 // Main, 2026-11-06: the one arm worker (max 1) was let go idle, then
