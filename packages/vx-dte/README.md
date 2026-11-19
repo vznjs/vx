@@ -701,8 +701,11 @@ use your own instead.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
-  that first join is given up (`did not join within 60 s`) and its job
-  stopped; before one has, none is. One its CI started anyway that joins
+  the slowest of its size's joins and its warm-up as an earlier run knew
+  it (20 s with none) is given up (`did not join within 60 s`) and its job
+  stopped; before one has, none is. On one machine (`local()`) the first
+  joined in milliseconds, and its fellows, on a loaded machine, were given
+  up at once. One its CI started anyway that joins
   later is taken, as any worker the plan may let go. The first three such failures in a
   run each start another worker in its place, as a checkout, install or
   join can fail on the network; a fourth starts none. While a worker of
@@ -993,7 +996,11 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     (kept in history, as warm-ups are). A worker's tasks share its cores:
     past them, each runs at its share. A task's time is its history
     scaled by how this run's finished tasks compared to theirs; a running
-    task's rest is what tasks that ran that long took more. A task history
+    task's rest is what tasks that ran that long took more; their times
+    are their commands' own, told with each result, not when the run
+    heard them end. A task's dependants and the run's end also wait for
+    the servers it starts first (each server's learned start, its cores
+    free meanwhile). A task history
     never measured takes what the measured ones take, with the unmeasured
     that ended, and each still running past that mean counted as ended at
     what it has run, so the first to end, the short ones, do not speak

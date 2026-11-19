@@ -24,7 +24,7 @@ interface TraceEvent {
 }
 
 interface PlanInput {
-  tasks: { id: string; ms?: number; cores: number; memory: number }[]
+  tasks: { id: string; ms?: number; afterMs?: number; cores: number; memory: number }[]
   warmUps?: Record<string, number>
   spreads?: Record<string, number>
 }
@@ -90,10 +90,14 @@ export function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: st
   const first = trace.find((e) => e.ph === 'i' && e.name === 'plan' && e.args?.input !== undefined)
   const input: PlanInput | undefined =
     first === undefined ? undefined : JSON.parse(first.args!.input!)
-  const known: Record<string, [number, number, number] | null> = {}
+  type Known = [ms: number, cores: number, mb: number, afterMs?: number]
+  const known: Record<string, Known | null> = {}
   for (const t of input?.tasks ?? [])
-    if (t.id in ran)
-      known[t.id] = t.ms === undefined ? null : [t.ms, t.cores, Math.round(t.memory / 1e6)]
+    if (t.id in ran) {
+      const k: Known = [t.ms ?? 0, t.cores, Math.round(t.memory / 1e6)]
+      if (t.afterMs !== undefined) k.push(t.afterMs)
+      known[t.id] = t.ms === undefined ? null : k
+    }
   const bySize = (r: Record<string, number> = {}) =>
     Object.fromEntries(Object.entries(r).map(([k, v]) => [sizeOf(k), v]))
   // Each worker's warm-up, by size in the order they were numbered.
