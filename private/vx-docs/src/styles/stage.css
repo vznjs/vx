@@ -780,14 +780,36 @@
   inset: auto 0 0;
   transform-origin: bottom;
 }
+/* Only the cases a tool supports but fails: from its passes up to its supports. */
 .col-can {
-  height: calc(var(--s) * 1%);
-  background: rgba(148, 170, 200, 0.1);
-  border-top: 1px dashed rgba(148, 170, 200, 0.5);
+  bottom: calc(var(--h) * 1%);
+  height: calc((var(--s) - var(--h)) * 1%);
+  background: rgba(200, 120, 120, 0.14);
+  border-top: 1px dashed rgba(200, 120, 120, 0.4);
+}
+/* Each rival passes in its own brand colour. */
+.columns li[data-tool='nx'] {
+  --brand: #4f9cf9;
+}
+.columns li[data-tool='turbo'] {
+  --brand: #ff1e56;
+}
+.columns li[data-tool='moon'] {
+  --brand: #6f53f3;
+}
+.columns li[data-tool='vite-task'] {
+  --brand: #bd34fe;
+}
+.columns li[data-tool='nix'] {
+  --brand: #7ebae4;
 }
 .col-pass {
   height: calc(var(--h) * 1%);
-  background: linear-gradient(to top, rgba(148, 170, 200, 0.18), rgba(148, 170, 200, 0.42));
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--brand) 18%, transparent),
+    color-mix(in srgb, color-mix(in srgb, var(--brand) 60%, #8a94a0) 55%, transparent)
+  );
 }
 .col-name {
   font: 600 13px var(--font-body);
@@ -799,7 +821,7 @@
   position: absolute;
   inset: auto 0 calc(var(--s) * 1% - 22px);
   font: 400 11px / 16px var(--font-mono);
-  color: #8f9a93;
+  color: #b48a8a;
   white-space: nowrap;
 }
 .columns .vx .col-pct {

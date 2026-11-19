@@ -144,7 +144,7 @@ const startCommands = [
           <ol class="columns" style={`--n:${board.length}`}>
             {
               board.map((b) => (
-                <li class:list={{ vx: b.tool === 'vx' }} style={`--h:${b.h.toFixed(1)}; --s:${b.s.toFixed(1)}`}>
+                <li class:list={{ vx: b.tool === 'vx' }} data-tool={b.tool} style={`--h:${b.h.toFixed(1)}; --s:${b.s.toFixed(1)}`}>
                   <span class="col-pct">{b.pct}</span>
                   <span class="col-bar">
                     <span class="col-can" aria-hidden="true" />
