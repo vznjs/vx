@@ -17,7 +17,6 @@ const shew = (quote: string, comment?: string): Voice => ({
   href: comment ? `${PR}#issuecomment-${comment}` : PR,
 })
 
-const B = '6082220886'
 const C = '6085989849'
 
 export const ALL_VOICES: Voice[] = [
@@ -35,21 +34,15 @@ export const ALL_VOICES: Voice[] = [
     C,
   ),
   shew('To say that vx is faster than other build tools because of this is dishonest.'),
-  shew(
-    'I obviously don’t know if you did that on purpose or Claude chose to do it, but this is, of course, not something that someone who is interested in being forthcoming would do.',
-    C,
-  ),
   shew('Just because a benchmark is reproducible doesn’t make it useful.', C),
   shew(
-    'When I saw your post, I was excited because I thought you’d found some edge case in Turborepo so that I could make things faster.',
+    'When I saw your post, I was excited because I thought you’d found some edge case in Turborepo so that I could make things faster. Then, I got disappointed when that turned out to not be the case since the benchmarking methodology was so flawed - which is fine!',
     C,
   ),
-  shew('But now I’m disappointed because it seems your intent is to be dishonest.', C),
   shew(
     'We all use the same models and have seen this scheduling recommendation, but those of us with experience in build systems know that this algorithm is incorrect.',
     C,
   ),
-  shew('why would you stand by statements that are literally and provably incorrect?', B),
   shew(
     'Obviously, you can’t count on a graph having uniform timing in a real world repository, so unblocking more tasks sooner is generally meaningless at scale.',
   ),
