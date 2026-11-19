@@ -880,6 +880,8 @@ export function dte(options: DteOptions = {}) {
             }
           }),
           warmUps,
+          // The fixture a sim replays reads them: main 9600386's had none, and the sim asked late.
+          spreads: Object.fromEntries(learned.spreads),
           paces: Object.fromEntries(learned.paces),
         })
         const made = planner

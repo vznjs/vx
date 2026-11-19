@@ -157,6 +157,22 @@ it('profiles a distributed run’s workers with --profile', async () => {
   expect(ev.some((e) => e.ph === 'X' && e.name === 'warm-up')).toBe(true)
 }, 60_000)
 
+// Main 9600386, 2026-11-19: the profile's plan held no join spreads since
+// the engine (#5378), so its sim asked workers later than the run did.
+it('the profile’s plan holds the join spreads an earlier run learned', async () => {
+  expect(vx(['run', 'c#z1', 'c#z2'], 'e2e-spread-1').exitCode).toBe(0)
+  const r = vx(['run', 'c#z1', 'c#z2', '--force', '--profile=out.json'], 'e2e-spread-2')
+  expect(r.exitCode).toBe(0)
+  const ev = (
+    JSON.parse(await readFile(path.join(root, 'out.json'), 'utf8')) as {
+      traceEvents: { ph: string; name: string; args?: { input?: string } }[]
+    }
+  ).traceEvents
+  const plan = ev.find((e) => e.ph === 'i' && e.name === 'plan')!
+  const input = JSON.parse(plan.args!.input!) as { spreads?: Record<string, number> }
+  expect(input.spreads?.['linux.small']).toBeNumber()
+}, 60_000)
+
 it('brings a worker’s outputs back under --force', async () => {
   const run = vx(['run', 'b#use', '--force'], 'e2e-force')
   const out = run.stdout.toString() + run.stderr.toString()
