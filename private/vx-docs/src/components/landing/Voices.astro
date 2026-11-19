@@ -27,13 +27,14 @@ const rows = [ALL_VOICES.slice(0, half), ALL_VOICES.slice(half)]
                   <blockquote>“{v.quote}”</blockquote>
                   <figcaption>
                     <span>
-                      <strong>{v.who}</strong> · {v.role}
+                      <strong>{v.who}</strong>
+                      {v.role && ` · ${v.role}`}
                     </span>
-                    <a class="say-src" href={v.href} rel="noopener" target="_blank" aria-label="Where he said it" title="Where he said it">
+                    {v.href && (<a class="say-src" href={v.href} rel="noopener" target="_blank" aria-label="Where it was said" title="Where it was said">
                       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                         <path d="M9 2h5v5M14 2 7 9M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
                       </svg>
-                    </a>
+                    </a>)}
                   </figcaption>
                 </figure>
               </li>

@@ -539,7 +539,8 @@ const startCommands = [
         for (const li of [...track.children]) {
           const copy = li.cloneNode(true) as HTMLElement
           copy.setAttribute('aria-hidden', 'true')
-          copy.querySelector('a')!.tabIndex = -1
+          const a = copy.querySelector('a')
+          if (a) a.tabIndex = -1
           track.appendChild(copy)
         }
         const dir = Number(lane.dataset['dir'])

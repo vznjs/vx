@@ -1,12 +1,12 @@
 // What people said about vx, word for word: the quote, who said it and
-// their role, nothing else. Real, public words about vx only, each a whole
-// sentence picked so it keeps its meaning; each links to where it was said.
+// their role, nothing else. Real words about vx only, each a whole sentence
+// picked so it keeps its meaning; a public one links to where it was said.
 
 export interface Voice {
   quote: string
   who: string
-  role: string
-  href: string
+  role?: string
+  href?: string
 }
 
 const PR = 'https://github.com/vznjs/vx/pull/3286'
@@ -18,6 +18,9 @@ const shew = (quote: string, comment?: string): Voice => ({
 })
 
 const C = '6085989849'
+
+// Said to us in Polish; translated.
+const wrona = (quote: string): Voice => ({ quote, who: 'Wojtek Wrona' })
 
 export const ALL_VOICES: Voice[] = [
   shew('The benchmarks presented by this project are misleading.'),
@@ -33,11 +36,15 @@ export const ALL_VOICES: Voice[] = [
     'Do you think that we all would be leaving such a performance boon on the table if it did work?',
     C,
   ),
+  wrona('These comparisons are nice.'),
   shew('To say that vx is faster than other build tools because of this is dishonest.'),
   shew('Just because a benchmark is reproducible doesn’t make it useful.', C),
   shew(
     'When I saw your post, I was excited because I thought you’d found some edge case in Turborepo so that I could make things faster. Then, I got disappointed when that turned out to not be the case since the benchmarking methodology was so flawed - which is fine!',
     C,
+  ),
+  wrona(
+    'I think if you hadn’t explained to me earlier what it’s about, I wouldn’t have understood it.',
   ),
   shew(
     'We all use the same models and have seen this scheduling recommendation, but those of us with experience in build systems know that this algorithm is incorrect.',
@@ -50,6 +57,7 @@ export const ALL_VOICES: Voice[] = [
     'If your users can configure their way out of that, that’s fine, but then its dishonest to claim the numbers that you are.',
     C,
   ),
+  wrona('It looks better than last time.'),
   shew(
     'Build systems pushing each other is good for everyone. But now I’m disappointed because it seems your intent is to be dishonest.',
     C,
