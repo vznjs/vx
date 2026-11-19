@@ -46,7 +46,7 @@ export interface SimOptions {
   readonly warmUpMs?: (n: number, size: string, k: number) => number
   /** Each size's warm-up an earlier run learned (`learned.warmUps`); else 20 s. */
   readonly warmUpsMs?: ReadonlyMap<string, number>
-  /** Kept for fixtures that carry it; the planner learns joins from the run. */
+  /** Each size's join spread an earlier run learned (`learned.spreads`): how far apart its joins may land before one does. */
   readonly spreadsMs?: ReadonlyMap<string, number>
   /** The tasks the forecast says miss (`likelyMisses`), before any does. */
   readonly likely?: ReadonlySet<string>
@@ -164,6 +164,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     max: s.max,
     platform: s.platform ?? home,
     warmUpMs: options.warmUpsMs?.get(s.name) ?? DEFAULT_WARM_UP_MS,
+    spreadMs: options.spreadsMs?.get(s.name) ?? 0,
   }))
   const planner = new Planner({
     nodes,
@@ -295,6 +296,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         const m = known(task)?.memory ?? 0
         return at ? w.memory - memoryUsed(w) >= Math.min(m, w.memory) : true
       },
+      load: (worker) => load(byWorker.get(worker)!),
       // It holds files a task to come reads (`Orchestrator.kept`).
       stay: (worker) => {
         for (const [u, on] of keptOn)

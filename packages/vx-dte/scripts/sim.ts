@@ -94,6 +94,7 @@ for (let seed = 0; seed < orders; seed++) {
           warmUpMs: (_: number, size: string, k: number) =>
             js[size]![(k - 1) % js[size]!.length]!,
           warmUpsMs: new Map(Object.entries(f.warmUps ?? {})),
+          spreadsMs: new Map(Object.entries(f.spreads ?? {})),
         }),
   })
   ends.push(s.endMs)

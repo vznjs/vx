@@ -843,6 +843,7 @@ export function dte(options: DteOptions = {}) {
             max: adapter === undefined ? 0 : s.max,
             platform: s.platform ?? host,
             warmUpMs: warmUps[s.name]!,
+            spreadMs: learned.spreads.get(s.name) ?? 0,
           })),
           known,
           expected: new Set([...likely, ...sure, ...executed]),

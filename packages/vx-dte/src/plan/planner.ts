@@ -15,6 +15,8 @@ export interface PlannerSize {
   readonly platform: string
   /** Its warm-up as an earlier run knew it (ms). */
   readonly warmUpMs: number
+  /** How much later each next worker of it joined than the one before, an earlier run (ms). */
+  readonly spreadMs?: number
 }
 
 /** What history knew of a task: its time alone (ms) and the cores it kept busy. */
@@ -51,6 +53,8 @@ export interface PlannerFits {
   on?(task: string, worker: string, now: boolean): boolean
   size?(task: string, size: PlannerSize): boolean
   stay?(worker: string): boolean
+  /** Cores the worker uses now, as measured. */
+  load?(worker: string): number
 }
 
 /** The tasks that run a command, each with the ones it waits on, groups passed through. */
@@ -126,6 +130,7 @@ export class Planner {
         max: s.max,
         platform: s.platform,
         warmUpMs: s.warmUpMs,
+        spreadMs: s.spreadMs ?? 0,
       })),
       {
         gated: true,
@@ -239,6 +244,7 @@ export class Planner {
         ? {}
         : { size: (i: number, z: number) => fits.size!(ids[i]!, this.sizes[z]!) }),
       ...(fits.stay === undefined ? {} : { stay: (w: number) => fits.stay!(workerId[w]!) }),
+      ...(fits.load === undefined ? {} : { load: (w: number) => fits.load!(workerId[w]!) }),
     }
     const d = this.engine.decide(t, f)
     const ask = d.ask.map(([w, z]) => {
