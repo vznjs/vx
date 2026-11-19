@@ -632,6 +632,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-history/history-server',
     'vx-history/history-view',
     'vx-history/lazy-load',
+    'vx-history/live-upload',
     'vx-history/resource-estimates',
     'vx-history/server-answers',
     'vx-history/timings-file',
