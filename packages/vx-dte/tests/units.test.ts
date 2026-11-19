@@ -404,8 +404,10 @@ it('a worker late for a run that ended exits 0', async () => {
 
 // A worker that ended on its orchestrator's silence stopped every task it
 // ran and left with no word: its CI job green, the cause found only in the
-// run's profile (CI run 40886829588, 2026-10-29). It says why.
-it('a worker its orchestrator went silent on says so and exits 0', async () => {
+// run's profile (CI run 40886829588, 2026-10-29). It says why. Then it joins
+// again: main 612c755's mac#1 lost its orchestrator for 6 s and left, and
+// the run went on one Mac short. Once the run is over, it exits 0.
+it('a worker its orchestrator went silent on says so, joins again, and exits 0 at the run end', async () => {
   let silent = false
   const served = servedRelay({ heartbeatMs: 100 }, (frame) => {
     if (!silent) return frame
@@ -420,8 +422,52 @@ it('a worker its orchestrator went silent on says so and exits 0', async () => {
     return true
   }) as typeof process.stderr.write
   try {
-    const o = await join(served.url, R, 'orchestrator', null, undefined)
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
     const code = runWorker({
+      relay: served.url,
+      run: R,
+      root: process.cwd(),
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    // Each join welcomed, as the run takes a worker.
+    const welcomes = async (): Promise<void> => {
+      for (let i = 0; i < 200; i++)
+        for (const { from, body } of flat(await o.poll())) {
+          const m = body as { type: string; id?: string }
+          if (from !== 'relay' || m.type !== 'joined') continue
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          return
+        }
+      throw new Error('no worker joined')
+    }
+    await welcomes()
+    silent = true
+    for (let i = 0; i < 100 && !written.join('').includes('went silent'); i++) await Bun.sleep(20)
+    expect(written.join('')).toContain(
+      'the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers; joining it again',
+    )
+    silent = false
+    await welcomes()
+    await o.leave()
+    expect(await code).toBe(0)
+  } finally {
+    process.stderr.write = write
+    await served.stop()
+  }
+})
+
+// One never answered again (a hung run) ends at its next silence, not a join loop.
+it('a worker whose join the orchestrator never answers ends at its silence', async () => {
+  const served = servedRelay({ heartbeatMs: 100 })
+  try {
+    const o = await join(served.url, R, 'orchestrator', null, undefined)
+    const code = await runWorker({
       relay: served.url,
       run: R,
       root: process.cwd(),
@@ -429,15 +475,9 @@ it('a worker its orchestrator went silent on says so and exits 0', async () => {
       proof: { psk: async () => new Uint8Array(32), mismatch: 'no key' },
       artifacts: () => fakeArtifacts().artifacts,
     })
-    for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
-    silent = true
-    expect(await code).toBe(0)
-    expect(written.join('')).toContain(
-      'the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers',
-    )
+    expect(code).toBe(0)
     await o.leave()
   } finally {
-    process.stderr.write = write
     await served.stop()
   }
 })
@@ -901,6 +941,25 @@ it('never gives up a worker that has not joined, however late it joins', async (
     const first = (await late.poll()).map((m) => m.body as { type: string; name?: string })
     expect(first[0]).toMatchObject({ type: 'welcome', name: 'worker#2' })
     expect([cancelled, lost]).toEqual([[], []])
+  } finally {
+    await h.stop()
+  }
+})
+
+// A worker that left on its orchestrator's silence joins again under the
+// id the run started it as: it is taken, a worker as any other, not turned
+// away as one the run already had (main 612c755, 2026-11-19).
+it('takes a worker it started again after it left', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, 60_000)
+  try {
+    h.o.spawned('mac#1', { size: 'mac', cpu: 1, memory: 1 })
+    const first = await h.worker(1, 'mac#1')
+    expect((await first.poll())[0]?.body).toMatchObject({ type: 'welcome', name: 'mac#1' })
+    await first.leave()
+    const again = await h.worker(1, 'mac#1')
+    const body = (await again.poll())[0]?.body as { type: string; name: string }
+    expect(body.type).toBe('welcome')
+    expect(body.name).not.toBe('mac#1')
   } finally {
     await h.stop()
   }
