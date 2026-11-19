@@ -20,7 +20,11 @@ const shew = (quote: string, comment?: string): Voice => ({
 const C = '6085989849'
 
 // Said to us in Polish; translated.
-const wrona = (quote: string): Voice => ({ quote, who: 'Wojtek Wrona' })
+const wrona = (quote: string): Voice => ({
+  quote,
+  who: 'Wojtek Wrona',
+  role: 'Team Lead at Selleo',
+})
 
 export const ALL_VOICES: Voice[] = [
   shew('The benchmarks presented by this project are misleading.'),
