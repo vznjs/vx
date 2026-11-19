@@ -8,7 +8,6 @@ import type { Participant } from '../src/wire.js'
 import type { RelayMessage } from '../src/wire.js'
 import type { ToOrchestrator, ToWorker } from '../src/messages.js'
 import { Orchestrator } from '../src/orchestrator.js'
-import { tailsMs } from '../src/plan/model.js'
 import type { Need } from '../src/plan/model.js'
 
 export interface LiveTask {
@@ -160,8 +159,6 @@ export async function liveRun(
     cacheFacts: async () => ({ refs: [], lent: {} }),
     run: 'run',
     keyOf: (id) => `k-${id}`,
-    // As `dte()`'s: the queue places the longest chain first.
-    tail: tailsMs(nodes, () => options.taskMs),
   })
   for (let i = 0; i < options.workers; i++)
     line.deliver({
