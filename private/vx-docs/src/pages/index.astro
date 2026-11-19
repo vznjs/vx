@@ -35,7 +35,14 @@ const vxAll = RESULTS.scores['vx']!.all!
 // Highest score first.
 const board = TOOLS.map((t) => {
   const all = RESULTS.scores[t]!.all!
-  return { tool: t, name: toolName(t), pct: percent(all), sup: supports(all), h: (all.pass / all.of) * 100 }
+  return {
+    tool: t,
+    name: toolName(t),
+    pct: percent(all),
+    sup: supports(all),
+    h: (all.pass / all.of) * 100,
+    s: (all.can / all.of) * 100,
+  }
 }).sort((x, y) => y.h - x.h)
 
 // ---- the race: what each tool adds over the ideal run, from bench.json ----
@@ -134,14 +141,20 @@ const startCommands = [
             <strong class="count" data-to={vxAll.pass}>{vxAll.pass}</strong>{' '}
             <span>of {vxAll.of} cases pass on vx</span>
           </div>
-          <ol class="columns">
+          <ol class="columns" style={`--n:${board.length}`}>
             {
               board.map((b) => (
-                <li class:list={{ vx: b.tool === 'vx' }} style={`--h:${b.h.toFixed(1)}`}>
+                <li class:list={{ vx: b.tool === 'vx' }} data-tool={b.tool} style={`--h:${b.h.toFixed(1)}; --s:${b.s.toFixed(1)}`}>
                   <span class="col-pct">{b.pct}</span>
-                  <span class="col-bar" aria-hidden="true"><span /></span>
+                  <span class="col-bar">
+                    <span class="col-can" aria-hidden="true" />
+                    <span class="col-pass" aria-hidden="true" />
+                    <span class="col-sup">
+                      <span>supports </span>
+                      {b.sup}
+                    </span>
+                  </span>
                   <span class="col-name">{b.name}</span>
-                  <span class="col-sup">supports {b.sup}</span>
                 </li>
               ))
             }

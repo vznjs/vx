@@ -738,10 +738,15 @@
   text-transform: uppercase;
   color: #9aa59a;
 }
+/* One row of every tool. The rows are shared (subgrid), so a name that wraps
+   or vx's bigger percent never makes one bar shorter than the others. Inside
+   each bar: faint is what the tool supports, solid is what it passes. */
 .columns {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  grid-template-rows: auto 1fr auto;
+  column-gap: 12px;
+  row-gap: 8px;
   height: 340px;
   margin: 0;
   padding: 0;
@@ -749,14 +754,15 @@
 }
 .columns li {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  gap: 8px;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
   margin: 0;
   min-width: 0;
   text-align: center;
 }
 .col-pct {
-  font: 700 22px var(--font-display);
+  align-self: end;
+  font: 700 22px / 1 var(--font-display);
   letter-spacing: -0.03em;
   color: #c3ccbf;
   font-variant-numeric: tabular-nums;
@@ -768,21 +774,55 @@
   border: 1px solid var(--hair);
   overflow: hidden;
 }
-.col-bar span {
+.col-can,
+.col-pass {
   position: absolute;
   inset: auto 0 0;
-  height: calc(var(--h) * 1%);
-  background: linear-gradient(to top, rgba(148, 170, 200, 0.18), rgba(148, 170, 200, 0.42));
   transform-origin: bottom;
+}
+/* Only the cases a tool supports but fails: from its passes up to its supports. */
+.col-can {
+  bottom: calc(var(--h) * 1%);
+  height: calc((var(--s) - var(--h)) * 1%);
+  background: rgba(200, 120, 120, 0.14);
+  border-top: 1px dashed rgba(200, 120, 120, 0.4);
+}
+/* Each rival passes in its own brand colour. */
+.columns li[data-tool='nx'] {
+  --brand: #4f9cf9;
+}
+.columns li[data-tool='turbo'] {
+  --brand: #ff1e56;
+}
+.columns li[data-tool='moon'] {
+  --brand: #6f53f3;
+}
+.columns li[data-tool='vite-task'] {
+  --brand: #bd34fe;
+}
+.columns li[data-tool='nix'] {
+  --brand: #7ebae4;
+}
+.col-pass {
+  height: calc(var(--h) * 1%);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--brand) 18%, transparent),
+    color-mix(in srgb, color-mix(in srgb, var(--brand) 60%, #8a94a0) 55%, transparent)
+  );
 }
 .col-name {
   font: 600 13px var(--font-body);
   color: #dfe6da;
   overflow-wrap: anywhere;
 }
-.col-sup {
-  font: 400 11px var(--font-mono);
-  color: #5f6863;
+/* The supported share, written just under its dashed line. */
+.col-bar .col-sup {
+  position: absolute;
+  inset: auto 0 calc(var(--s) * 1% - 22px);
+  font: 400 11px / 16px var(--font-mono);
+  color: #b48a8a;
+  white-space: nowrap;
 }
 .columns .vx .col-pct {
   color: var(--tone-core);
@@ -791,29 +831,36 @@
 .columns .vx .col-bar {
   border-color: rgba(198, 248, 78, 0.45);
 }
-.columns .vx .col-bar span {
+.columns .vx .col-can {
+  background: rgba(198, 248, 78, 0.16);
+  border-top-color: rgba(198, 248, 78, 0.7);
+}
+.columns .vx .col-pass {
   background: linear-gradient(to top, rgba(198, 248, 78, 0.55), var(--tone-core));
   box-shadow: 0 0 30px rgba(198, 248, 78, 0.5);
 }
 .columns .vx .col-name {
   color: var(--tone-core);
 }
-.band.play .col-bar span {
+.columns .vx .col-sup {
+  color: #1d2a06;
+}
+.band.play .col-bar > :is(.col-can, .col-pass) {
   animation: rise 1.6s var(--ease-out) backwards;
 }
-.band.play .columns li:nth-child(2) .col-bar span {
+.band.play .columns li:nth-child(2) .col-bar > :is(.col-can, .col-pass) {
   animation-delay: 0.12s;
 }
-.band.play .columns li:nth-child(3) .col-bar span {
+.band.play .columns li:nth-child(3) .col-bar > :is(.col-can, .col-pass) {
   animation-delay: 0.24s;
 }
-.band.play .columns li:nth-child(4) .col-bar span {
+.band.play .columns li:nth-child(4) .col-bar > :is(.col-can, .col-pass) {
   animation-delay: 0.36s;
 }
-.band.play .columns li:nth-child(5) .col-bar span {
+.band.play .columns li:nth-child(5) .col-bar > :is(.col-can, .col-pass) {
   animation-delay: 0.48s;
 }
-.band.play .columns li:nth-child(6) .col-bar span {
+.band.play .columns li:nth-child(6) .col-bar > :is(.col-can, .col-pass) {
   animation-delay: 0.6s;
 }
 @keyframes rise {
@@ -1757,19 +1804,22 @@
 }
 @media (max-width: 620px) {
   .columns {
-    height: 260px;
-    gap: 6px;
+    height: 240px;
+    column-gap: 6px;
   }
   .col-pct {
-    font-size: 15px;
+    font-size: 14px;
   }
   .columns .vx .col-pct {
-    font-size: 18px;
+    font-size: 17px;
   }
   .col-name {
-    font-size: 11px;
+    font-size: 10.5px;
   }
-  .col-sup {
+  .col-bar .col-sup {
+    font-size: 9.5px;
+  }
+  .col-sup > span {
     display: none;
   }
   .vows,
