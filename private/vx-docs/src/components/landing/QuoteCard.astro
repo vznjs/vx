@@ -1,7 +1,7 @@
 ---
-// A small quote card beside the part of the page it is about: the quote,
-// who said it and their role. It fades through its quotes while in view;
-// at rest (no script, reduced motion) the first shows, whole.
+// A quiet note beside a band's title: what someone said about it, word
+// for word, with their name and role. It fades through its quotes while
+// in view; at rest (no script, reduced motion) the first shows, still.
 import type { Voice } from './voices.ts'
 
 interface Props {
@@ -18,8 +18,7 @@ const { voices } = Astro.props
           <a href={v.href} rel="noopener" target="_blank">“{v.quote}”</a>
         </blockquote>
         <figcaption>
-          <strong>{v.who}</strong>
-          <span>{v.role}</span>
+          <strong>{v.who}</strong> · {v.role}
         </figcaption>
       </figure>
     ))

@@ -138,9 +138,9 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">Conformance · {caseCount} cases · {TOOLS.length} tools</p>
           <h2>Their tests.<br /><em>Our score.</em></h2>
+          <QuoteCard voices={BAND_VOICES.proof} />
           <p class="band-sub">Every test in vx, Turbo, Nx, Vite Task, Nix and moon, turned into one suite and run sandboxed against each tool.</p>
         </header>
-        <QuoteCard voices={BAND_VOICES.proof} />
         <div class="score">
           <div class="score-big">
             <strong class="count" data-to={vxAll.pass}>{vxAll.pass}</strong>{' '}
@@ -179,8 +179,8 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">{fillBench('%bench.tasks% tasks · %bench.projects% projects · same commands, same machine')}</p>
           <h2>Blink and<br /><em>it’s done.</em></h2>
+          <QuoteCard voices={BAND_VOICES.speed} />
         </header>
-        <QuoteCard voices={BAND_VOICES.speed} />
         <div class="races">
           {
             races.map((race) => (
@@ -279,9 +279,9 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">Distributed task execution</p>
           <h2>One run.<br /><em>Every machine you’ve got.</em></h2>
+          <QuoteCard voices={BAND_VOICES.dte} />
           <p class="band-sub">Add <code>@vzn/vx-dte</code> and a single <code>vx run</code> on CI starts workers on your own CI, feeds them the critical path first and reports back as one run.</p>
         </header>
-        <QuoteCard voices={BAND_VOICES.dte} />
         <DteRun />
         <a class="band-link" href={href('plugins/vx-dte/')}>Distributed task execution <span class="arr">→</span></a>
       </div>
@@ -321,9 +321,9 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">Plugins</p>
           <h2>Swap any piece.<br /><em>Fork nothing.</em></h2>
+          <QuoteCard voices={BAND_VOICES.plugins} />
           <p class="band-sub">Each part on the graph is its own package on the public plugin API, and every server is yours to host.</p>
         </header>
-        <QuoteCard voices={BAND_VOICES.plugins} />
         <div class="parts">
           {
             parts.map((p) => (
@@ -351,6 +351,7 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">AI first</p>
           <h2>Your agents<br /><em>already speak vx.</em></h2>
+          <QuoteCard voices={BAND_VOICES.agents} />
           <p class="band-sub">One skill teaches any coding agent the whole CLI, and every report prints JSON with a published schema.</p>
           <button class="install-pill small" data-copy="bunx skills add vznjs/vx" type="button">
             <span class="dollar">$</span><span class="cmd">bunx skills add vznjs/vx</span><span class="copied-note" aria-live="polite"></span>
@@ -538,7 +539,7 @@ const startCommands = [
         },
         { threshold: 0.4 },
       ).observe(hop)
-      // Each quote card fades to its next quote while it is in view.
+      // Each title's note fades to its next quote while it is in view.
       document.querySelectorAll<HTMLElement>('.qc').forEach((card) => {
         const ones = [...card.querySelectorAll<HTMLElement>('.qc-one')]
         if (ones.length < 2) return
@@ -554,41 +555,82 @@ const startCommands = [
         }
         new IntersectionObserver(([e]) => {
           clearInterval(turn)
-          if (e!.isIntersecting) turn = window.setInterval(show, 5200)
+          if (e!.isIntersecting) turn = window.setInterval(show, 6000)
         }).observe(card)
       })
-      // The wall swaps one quote at a time for one not on it, while in view.
-      const wall = document.querySelector<HTMLElement>('.wall')!
-      const voices = JSON.parse(wall.dataset['voices']!) as Array<{ quote: string; who: string; role: string; href: string }>
-      const slots = [...wall.querySelectorAll<HTMLElement>('li')]
-      let next = slots.length
-      let lastSlot = -1
-      let swapT = 0
-      const swap = (): void => {
-        const shown = slots.filter((li) => li.offsetParent !== null)
-        let k = Math.floor(Math.random() * shown.length)
-        if (k === lastSlot) k = (k + 1) % shown.length
-        lastSlot = k
-        const fig = shown[k]!.querySelector('figure')!
-        const on = new Set(slots.map((li) => li.querySelector('strong')!.parentElement!.previousElementSibling!.textContent))
-        let v = voices[next++ % voices.length]!
-        while (on.has(`“${v.quote}”`)) v = voices[next++ % voices.length]!
-        fig.classList.add('out')
-        setTimeout(() => {
-          fig.querySelector('a')!.href = v.href
-          fig.querySelector('a')!.textContent = `“${v.quote}”`
-          fig.querySelector('strong')!.textContent = v.who
-          fig.querySelector('figcaption span')!.textContent = v.role
-          fig.classList.remove('out')
-          fig.classList.remove('in')
-          void fig.offsetWidth
-          fig.classList.add('in')
-        }, 500)
+      // The sky: quotes pop in at a free spot, drift up and sway, then pop
+      // out, a few at a time, while it is in view. A hovered one stays.
+      const sky = document.querySelector<HTMLElement>('.sky')!
+      const voices = JSON.parse(sky.dataset['voices']!) as Array<{ quote: string; who: string; role: string; href: string }>
+      const TINTS = ['#c6f84e', '#5ee0ff', '#ff5e9c', '#ff9d42', '#b18cff']
+      const tpl = sky.querySelector<HTMLElement>('.sky-rest .bubble-in')!
+      let next = 0
+      let spawnT = 0
+      const aloft = new Set<{ el: HTMLElement; cell: number }>()
+      const grid = (): { cols: number; rows: number } => (sky.clientWidth < 620 ? { cols: 1, rows: 4 } : sky.clientWidth < 1000 ? { cols: 2, rows: 3 } : { cols: 3, rows: 3 })
+      const spawn = (): void => {
+        const { cols, rows } = grid()
+        const taken = new Set([...aloft].map((b) => b.cell))
+        const free = [...Array(cols * rows).keys()].filter((c) => !taken.has(c) && !taken.has(c - cols) && !taken.has(c + cols))
+        if (free.length === 0) return
+        const cell = free[Math.floor(Math.random() * free.length)]!
+        const v = voices[next++ % voices.length]!
+        const el = document.createElement('div')
+        el.className = 'bubble'
+        const fig = tpl.cloneNode(true) as HTMLElement
+        const a = fig.querySelector('a')!
+        a.href = v.href
+        a.textContent = `“${v.quote}”`
+        fig.querySelector('strong')!.textContent = v.who
+        fig.querySelector('figcaption')!.lastChild!.textContent = ` · ${v.role}`
+        el.appendChild(fig)
+        const cw = sky.clientWidth / cols
+        const ch = sky.clientHeight / rows
+        const w = Math.min(cw - 24, 380)
+        el.style.width = `${w}px`
+        el.style.left = `${(cell % cols) * cw + Math.random() * (cw - w)}px`
+        el.style.top = `${Math.floor(cell / cols) * ch + Math.random() * ch * 0.3}px`
+        el.style.setProperty('--tint', TINTS[next % TINTS.length]!)
+        el.style.setProperty('--r', `${(Math.random() * 6 - 3).toFixed(1)}deg`)
+        el.style.setProperty('--fs', v.quote.length < 40 ? '22px' : v.quote.length < 90 ? '17px' : '15px')
+        sky.appendChild(el)
+        const life = 6500 + Math.random() * 3500
+        const sway = Math.random() * 40 - 20
+        el.animate(
+          [
+            { transform: 'translate(0, 24px)' },
+            { transform: `translate(${sway}px, -16px)` },
+            { transform: `translate(${-sway / 2}px, -56px)` },
+          ],
+          { duration: life + 600, easing: 'ease-in-out', fill: 'forwards' },
+        )
+        const b = { el, cell }
+        aloft.add(b)
+        requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')))
+        const end = (): void => {
+          if (el.matches(':hover')) {
+            window.setTimeout(end, 500)
+            return
+          }
+          el.classList.add('off')
+          window.setTimeout(() => {
+            el.remove()
+            aloft.delete(b)
+          }, 500)
+        }
+        el.addEventListener('pointerenter', () => el.getAnimations().forEach((x) => x.pause()))
+        el.addEventListener('pointerleave', () => el.getAnimations().forEach((x) => x.play()))
+        window.setTimeout(end, life)
       }
       new IntersectionObserver(([e]) => {
-        clearInterval(swapT)
-        if (e!.isIntersecting) swapT = window.setInterval(swap, 2600)
-      }).observe(wall)
+        clearInterval(spawnT)
+        if (!e!.isIntersecting) return
+        if (!sky.classList.contains('live')) {
+          sky.classList.add('live')
+          for (let i = 0; i < 3; i++) window.setTimeout(spawn, i * 350)
+        }
+        spawnT = window.setInterval(spawn, 1300)
+      }).observe(sky)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {
