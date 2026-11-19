@@ -21,6 +21,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.657
 
+### vx-dte: drop DteAdapter's late cancel and kept hook
+
+a DteAdapter's cancel() gets no late argument and kept() is no longer called; drop both from a custom adapter.
+
 ### vx-dte: plan a distributed run with one engine
 
 dte({ scheduler }) is removed.

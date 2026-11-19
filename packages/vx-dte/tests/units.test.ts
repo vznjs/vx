@@ -878,74 +878,29 @@ it('starts another for a worker whose job ended before it joined, a success too'
   }
 })
 
-// Owner, 2026-10-23: "we learn that from fist we get, and double its time
-// as max wait time for other". Before, a fixed 3 min.
-it('gives up a started worker past twice the first of its size’s join, and stops it', async () => {
-  const overdue: string[] = []
+// A worker asked and not joined is never given up, however late (2026-11-19):
+// given up and asked again, GitHub queued both and later handed over the
+// extra runners only for them to be told to exit. Before, one not joined
+// within twice its size's first join was cancelled (main db1702f: three
+// smalls queued 60 s were given up, joined later and sent away).
+it('never gives up a worker that has not joined, however late it joins', async () => {
+  const cancelled: string[] = []
+  const lost: string[] = []
   const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
-    overdue: (id) => overdue.push(id),
+    cancel: (ids) => cancelled.push(...ids),
+    lost: (id) => lost.push(id),
+    warmUp: () => 1,
   })
   try {
     h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
     h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
-    h.o.spawned('mac#1', { size: 'mac', cpu: 1, memory: 1 })
-    await Bun.sleep(100)
-    expect(overdue).toEqual([])
     await h.worker(1, 'worker#1')
+    // Past twice the size's first join and its 1 ms warm-up many times over.
     await Bun.sleep(400)
-    expect(overdue).toEqual(['worker#2'])
-  } finally {
-    await h.stop()
-  }
-})
-
-// Main db1702f (2026-10-24): three smalls GitHub queued 60 s were given up
-// at their join limit and others asked; the three joined later, were told
-// to exit, and the run ended at 232 s against an ideal of 141 s. A worker
-// given up for lateness that joins after all is taken, and its adapter is
-// told: PR #4955's late smalls joined and ran tasks, then the stop asked
-// when they were given up cancelled them mid-task (2026-11-05).
-it('takes a worker given up past its join limit that joins after all', async () => {
-  const overdue: string[] = []
-  const kept: string[] = []
-  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
-    overdue: (id) => overdue.push(id),
-    kept: (id) => kept.push(id),
-  })
-  try {
-    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
-    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
-    await h.worker(1, 'worker#1')
-    for (let i = 0; i < 50 && overdue.length === 0; i++) await Bun.sleep(20)
-    expect(overdue).toEqual(['worker#2'])
     const late = await h.worker(1, 'worker#2')
     const first = (await late.poll()).map((m) => m.body as { type: string; name?: string })
     expect(first[0]).toMatchObject({ type: 'welcome', name: 'worker#2' })
-    expect(kept).toEqual(['worker#2'])
-  } finally {
-    await h.stop()
-  }
-})
-
-// Main 03:24 UTC 2026-11-19, local-e2e-workers: on one machine (`local()`)
-// the first mac joined in a few ms, its fellows' join limit was twice that,
-// and all four were given up ("did not join within 0 s") on a loaded runner.
-// The limit is never under twice the warm-up the plan expects of the size.
-it("gives a worker as long as its size's expected warm-up, not twice a first join in ms", async () => {
-  const overdue: string[] = []
-  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
-    overdue: (id) => overdue.push(id),
-    warmUp: () => 20_000,
-  })
-  try {
-    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
-    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
-    await h.worker(1, 'worker#1')
-    await Bun.sleep(300)
-    const late = await h.worker(1, 'worker#2')
-    const first = (await late.poll()).map((m) => m.body as { type: string; name?: string })
-    expect(first[0]).toMatchObject({ type: 'welcome', name: 'worker#2' })
-    expect(overdue).toEqual([])
+    expect([cancelled, lost]).toEqual([[], []])
   } finally {
     await h.stop()
   }
@@ -990,8 +945,8 @@ async function harness(
     joinedPlace?: (size: string | undefined, platform: string | undefined) => string | undefined
     stalled?: (waiting: string) => void
     stallMs?: number
-    overdue?: (id: string) => void
-    kept?: (id: string) => void
+    cancel?: (ids: readonly string[]) => void
+    lost?: (id: string) => void
     sent?: Map<string, number>
     pinWaitMs?: number
     warn?: (m: string) => void

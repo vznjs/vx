@@ -163,8 +163,6 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const deciding = new Map<string, (left: boolean) => void>()
   // Workers whose dispatch has not answered yet.
   const flying = new Set<string>()
-  // Of `cancelled`, those given up as late: stuck or queued, stopped whatever their job holds.
-  const late = new Set<string>()
   const decide = (id: string, left: boolean): void => {
     deciding.get(id)?.(left)
     deciding.delete(id)
@@ -201,9 +199,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const letGo = (run: string, workers: Map<string, WorkerSpawn>): void => {
     const ids = [...workers.keys()]
     if (!ids.every((id) => cancelled.has(id))) {
-      for (const id of ids)
-        if (late.has(id)) decide(id, false)
-        else if (cancelled.delete(id)) decide(id, true)
+      for (const id of ids) if (cancelled.delete(id)) decide(id, true)
       return
     }
     watched.delete(run)
@@ -211,7 +207,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     const i = runs.indexOf(run)
     if (i < 0) return
     runs.splice(i, 1)
-    const p = (ids.some((id) => late.has(id)) ? Promise.resolve(false) : hasRunner(run))
+    const p = hasRunner(run)
       .then((held) => {
         if (held === true && !closed) {
           runs.push(run)
@@ -459,10 +455,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
     },
     // Before a worker's setup when its job has yet to run: its runner is free
     // for others. A run with a worker still needed, or a job with a runner,
-    // goes on; the workers let go in it are left running. One given up as late
-    // is stopped whatever its job holds.
-    cancel(ids, givenUp) {
-      if (givenUp === true) for (const id of ids) late.add(id)
+    // goes on; the workers let go in it are left running.
+    cancel(ids) {
       const left = ids.map((id) => new Promise<boolean>((done) => deciding.set(id, done)))
       // Neither watched nor in flight (its job ended, its dispatch failed): nothing to stop.
       const gone = ids.filter(
@@ -473,11 +467,6 @@ export function github(options: GithubOptions = {}): DteAdapter {
         if (ids.some((id) => workers.has(id))) letGo(run, workers)
       for (const id of gone) decide(id, false)
       return Promise.all(left).then((l) => ids.filter((_, i) => l[i]))
-    },
-    // One given up as late joined after all: its run is not cancelled.
-    kept(id) {
-      late.delete(id)
-      cancelled.delete(id)
     },
     // A finished run answers 409; one still queued or running is the
     // run's no more: its results are in, or the run failed without them.

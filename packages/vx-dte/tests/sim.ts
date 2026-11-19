@@ -111,8 +111,6 @@ export interface SimResult {
   readonly utilization: number
   /** Tasks sent to a worker whose running tasks already used all its cores before the decision sent them. */
   readonly overSent: number
-  /** Workers asked while one of their size, asked before, was past when it was due to join (`Orchestrator.queued`). */
-  readonly askedBehind: number
   /** Each executed task's ms from ready to started. */
   readonly waitedMs: ReadonlyMap<string, number>
   /** Each executed task's start. */
@@ -198,7 +196,6 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const goneAt: { size: string; at: number }[] = []
   let churn = 0
   let overSent = 0
-  let askedBehind = 0
   let due = Infinity
   // Each task that leaves files, and the workers holding them (`Orchestrator.kept`).
   const keptOn = new Map<string, Set<string>>()
@@ -259,16 +256,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   // The probe's hits leave the run's work at once.
   if (probe) for (const t of graph) if (t.exec && t.ran === undefined) planner.drop(t.id, 0)
 
-  const queued = (size: string): boolean =>
-    workers.some(
-      (w) =>
-        w.size.name === size &&
-        w.joinAt > now &&
-        w.cancelledAt === undefined &&
-        planner.overdue(w.id, now),
-    )
   const spawn = (s: PlannerSize): string => {
-    if (queued(s.name)) askedBehind++
     const size = options.sizes.find((x) => x.name === s.name)!
     const k = (started.get(s.name) ?? 0) + 1
     started.set(s.name, k)
@@ -318,8 +306,6 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         return at ? w.memory - memoryUsed(w) >= Math.min(m, w.memory) : true
       },
       load: (worker) => load(byWorker.get(worker)!),
-      // One asked now queues behind a worker of its size the CI has not started past when it was due (`Orchestrator.queued`).
-      size: (_task, size) => !queued(size.name),
       // It holds files a task to come reads (`Orchestrator.kept`).
       stay: (worker) => {
         for (const [u, on] of keptOn)
@@ -442,7 +428,6 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     executed: executed.size,
     utilization: online > 0 ? cpu / online : 0,
     overSent,
-    askedBehind,
     waitedMs,
     startedAt,
     endedAt,

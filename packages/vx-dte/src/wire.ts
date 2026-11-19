@@ -347,6 +347,8 @@ export async function join(
    * closed and says so.
    */
   const heard = new Map<string, number>()
+  /** Workers the orchestrator lost for their silence (`listen`). */
+  const silenced = new Set<string>()
   /** `quiet`: a beat or a resend, which waits on no answer: the relay says only a failure. */
   const put = (to: string, frame: object, quiet = true): Promise<void> =>
     over((s) => s.send(relayIds.get(to) ?? to, frame, quiet))
@@ -379,6 +381,10 @@ export async function join(
         continue
       }
       const from = heldIds.get(m.from) ?? m.from
+      // Lost for its silence, it is the run's no more: unanswered, it ends on
+      // its orchestrator's. Acked, main 4ba95d2's mac#3 ran 2.5 min more for
+      // nothing, its tasks run again elsewhere.
+      if (silenced.has(from)) continue
       if (heard.has(from)) heard.set(from, performance.now())
       if (isAcked(body)) settle(from, body.a)
       else if (isBeat(body)) {
@@ -462,6 +468,7 @@ export async function join(
           end(new RelayError(410, ORCHESTRATOR_SILENT))
           return
         }
+        silenced.add(peer)
         inbox.push({ from: 'relay', body: { type: 'lost', id: peer } })
         nudge()
         continue
