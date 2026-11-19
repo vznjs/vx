@@ -32,6 +32,8 @@ export interface EngineSize {
   readonly warmUpMs: number
   /** How much later each next worker of it joined than the one before, as history knew it (ms). */
   readonly spreadMs?: number
+  /** How many times history's time its tasks took, as an earlier run knew it; this run's replaces it. */
+  readonly pace?: number
 }
 
 /** The run's graph and what history knew of each task. */
@@ -291,6 +293,10 @@ export class Engine {
   // this run against history: Σ known, Σ ran, and the ratio's moments
   private finishedKnown = 0
   private finishedKnownRan = 0
+  /** Per platform: history's time of its measured tasks that ended, what they took, and an earlier run's pace. */
+  private readonly paceKnown: Float64Array
+  private readonly paceRan: Float64Array
+  private readonly pacePrior: Float64Array
   private ratioN = 0
   private ratioSum = 0
   private ratioSq = 0
@@ -329,6 +335,18 @@ export class Engine {
     this.plat = Int32Array.from(g.platform, ix)
     this.platforms = names.length
     this.platIx = new Map(names.map((p, k) => [p, k]))
+    this.paceKnown = new Float64Array(names.length)
+    this.paceRan = new Float64Array(names.length)
+    // a platform's sizes' paces, each a size's machines: one size a platform on CI
+    const pn = new Float64Array(names.length)
+    this.pacePrior = new Float64Array(names.length)
+    sizes.forEach((s, z) => {
+      if (s.pace === undefined || !(s.pace > 0)) return
+      this.pacePrior[this.sizePlat[z]!]! += s.pace
+      pn[this.sizePlat[z]!]!++
+    })
+    for (let q = 0; q < names.length; q++)
+      this.pacePrior[q] = pn[q]! > 0 ? this.pacePrior[q]! / pn[q]! : NaN
     // adjacency as flat arrays: a million tasks stay in cache
     const dOff = (this.dOff = new Int32Array(n + 1))
     const kOff = (this.kOff = new Int32Array(n + 1))
@@ -577,6 +595,8 @@ export class Engine {
     if (k !== null && k !== undefined) {
       this.finishedKnown += k
       this.finishedKnownRan += took
+      this.paceKnown[this.plat[i]!]! += k
+      this.paceRan[this.plat[i]!]! += took
       if (k > 0) {
         const r = took / k
         this.ratioN++
@@ -627,6 +647,25 @@ export class Engine {
   private speed(): number {
     return this.finishedKnown > 0 ? this.finishedKnownRan / this.finishedKnown : 1
   }
+  /**
+   * How task `i`'s platform's tasks take against history: its ended ones', else an earlier run's pace, else
+   * the run's. History keeps a task's time alone: main 4c30e53's Linux tasks, four to a small, took 1.47 times
+   * it and its Macs 1.05 (2026-11-19). Read as one speed, the first plan saw its Linux lane end before its Mac
+   * one and asked 5 smalls of 9; the other 4 joined 17 s late.
+   */
+  private speedOf(i: number): number {
+    const q = this.plat[i]!
+    if (this.paceKnown[q]! > 0) return this.paceRan[q]! / this.paceKnown[q]!
+    const p = this.pacePrior[q]!
+    return p === p ? p : this.speed()
+  }
+  /** Each platform's pace this run: how many times history's time its ended measured tasks took. */
+  paces(): Map<string, number> {
+    const out = new Map<string, number>()
+    for (const [name, q] of this.platIx)
+      if (this.paceKnown[q]! > 0) out.set(name, this.paceRan[q]! / this.paceKnown[q]!)
+    return out
+  }
   /** A task's spread relative to its mean when history knows none: history's pooled, else this run's. */
   private cv(): number {
     if (this.cvPool > 0 || this.ratioN < 2) return this.cvPool
@@ -636,7 +675,7 @@ export class Engine {
   }
   private est(i: number): number {
     const k = this.kms[i]
-    if (k !== null && k !== undefined) return k * this.speed()
+    if (k !== null && k !== undefined) return k * this.speedOf(i)
     return this.unmeasuredMean()
   }
   /**
@@ -676,7 +715,7 @@ export class Engine {
     const k = this.kms[i]
     const sd = this.ksd[i]
     if (k !== null && k !== undefined)
-      return (sd !== null && sd !== undefined ? sd : this.cv() * k) * this.speed()
+      return (sd !== null && sd !== undefined ? sd : this.cv() * k) * this.speedOf(i)
     const [n, s1, s2] = this.unmeasuredMoments()
     return n > 1 ? Math.sqrt(Math.max(0, (s2 - (s1 * s1) / n) / (n - 1))) : 0
   }
@@ -2273,13 +2312,15 @@ export class Engine {
         extra[bz]! += bk
         p = bp!
       }
-      if (p.end > D + 1e-6 && extra.every((x, z) => x <= now[z]!)) {
-        // late even so: a worker asked as soon as a task waits for room, if that ends the run sooner
-        const e = P([], true)
+      if (p.end > D + 1e-6) {
+        // late even so: a worker asked as soon as a task waits for room, if that ends the run sooner. Its own
+        // asks stand for the ones judged in place of the plan's; those judged past them are kept (main
+        // 4c30e53, its Macs judged and its smalls not, asked its smalls one by one over 43 s)
+        const past = extra.map((x, z) => Math.max(0, x - now[z]!))
+        const e = P(past, true)
         if (e.end < p.end - 1e-6) {
-          // its own asks stand for the ones judged in their place
           p = e
-          extra.fill(0)
+          for (let z = 0; z < extra.length; z++) extra[z] = past[z]!
         }
       }
       return { p, extra, now }

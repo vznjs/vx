@@ -345,9 +345,12 @@ export function dte(options: DteOptions = {}) {
     warmUps: new Map(),
     others: new Map(),
     spreads: new Map(),
+    paces: new Map(),
     bases: new Map(),
     starts: new Map(),
   }
+  /** Each size's pace this run so far (`Planner.paces`): none before its planner. */
+  let pacesNow = (): ReadonlyMap<string, number> => new Map()
   /** Each server's start this run's workers measured, ms. */
   let starts = new Map<string, number>()
   /** Each server's base an earlier run learned, then this run's workers' over it (`server-fit.ts`). */
@@ -381,9 +384,11 @@ export function dte(options: DteOptions = {}) {
       warmUps: new Map(),
       others: new Map(),
       spreads: new Map(),
+      paces: new Map(),
       bases: new Map(),
       starts: new Map(),
     }
+    pacesNow = () => new Map()
     bases = new Map()
     starts = new Map()
     reported.clear()
@@ -542,6 +547,7 @@ export function dte(options: DteOptions = {}) {
             warmUps: o.warmUpsMs(),
             others: o.othersOf(),
             spreads: o.spreadsMs(),
+            paces: pacesNow(),
             bases: fitted,
             starts: started,
           },
@@ -861,6 +867,7 @@ export function dte(options: DteOptions = {}) {
             platform: s.platform ?? host,
             warmUpMs: warmUps[s.name]!,
             spreadMs: learned.spreads.get(s.name) ?? 0,
+            ...(learned.paces.has(s.name) ? { pace: learned.paces.get(s.name)! } : {}),
           })),
           known,
           expected: new Set([...likely, ...sure, ...executed]),
@@ -880,7 +887,18 @@ export function dte(options: DteOptions = {}) {
             }
           }),
           warmUps,
+          paces: Object.fromEntries(learned.paces),
         })
+        const made = planner
+        pacesNow = () => {
+          const by = made.paces()
+          const out = new Map<string, number>()
+          for (const s of sizes) {
+            const pace = by.get(s.platform ?? host)
+            if (pace !== undefined) out.set(s.name, pace)
+          }
+          return out
+        }
         return planner
       }
       const replan = (): void => o.poke()
