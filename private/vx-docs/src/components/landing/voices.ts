@@ -50,5 +50,8 @@ export const ALL_VOICES: Voice[] = [
     'If your users can configure their way out of that, that’s fine, but then its dishonest to claim the numbers that you are.',
     C,
   ),
-  shew('Build systems pushing each other is good for everyone.', C),
+  shew(
+    'Build systems pushing each other is good for everyone. But now I’m disappointed because it seems your intent is to be dishonest.',
+    C,
+  ),
 ]
