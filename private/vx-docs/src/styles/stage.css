@@ -767,6 +767,11 @@
   color: #c3ccbf;
   font-variant-numeric: tabular-nums;
 }
+.col-pct small {
+  font: 500 11px var(--font-body);
+  letter-spacing: 0;
+  color: #8b938f;
+}
 .col-bar {
   position: relative;
   border-radius: 6px;
@@ -816,14 +821,6 @@
   color: #dfe6da;
   overflow-wrap: anywhere;
 }
-/* The supported share, written just under its dashed line. */
-.col-bar .col-sup {
-  position: absolute;
-  inset: auto 0 calc(var(--s) * 1% - 22px);
-  font: 400 11px / 16px var(--font-mono);
-  color: #b48a8a;
-  white-space: nowrap;
-}
 .columns .vx .col-pct {
   color: var(--tone-core);
   font-size: 28px;
@@ -841,9 +838,6 @@
 }
 .columns .vx .col-name {
   color: var(--tone-core);
-}
-.columns .vx .col-sup {
-  color: #1d2a06;
 }
 .band.play .col-bar > :is(.col-can, .col-pass) {
   animation: rise 1.6s var(--ease-out) backwards;
@@ -1815,12 +1809,6 @@
   }
   .col-name {
     font-size: 10.5px;
-  }
-  .col-bar .col-sup {
-    font-size: 9.5px;
-  }
-  .col-sup > span {
-    display: none;
   }
   .vows,
   .parts,

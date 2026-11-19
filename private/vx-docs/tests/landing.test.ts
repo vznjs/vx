@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
-import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
+import { RESULTS, TOOLS, toolName } from '../src/conformance/data.ts'
 import {
   BURN_HOLD_MS,
   BURN_MS,
@@ -24,13 +24,14 @@ import {
 } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
 import run from '../src/data/hero-run.json'
+import { ALL_VOICES } from '../src/components/landing/voices.ts'
 import { PLUGIN_HOOKS } from '@vzn/vx'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every band under the stage, top to bottom.
-const SECTIONS = ['proof', 'speed', 'data', 'dte', 'flaky', 'plugins', 'agents', 'start']
+const SECTIONS = ['proof', 'speed', 'data', 'dte', 'flaky', 'plugins', 'agents', 'voices', 'start']
 
 // The anchors the old chapters and landings redirect to (redirects.test.ts),
 // each on the step, vow or card that now says it.
@@ -227,7 +228,8 @@ describe('the landing page', () => {
     ).toEqual([])
   })
 
-  // Passes out of every case, rounded down, from the site's conformance data.
+  // Bars are passes; each label counts the cases a tool supports but fails
+  // (issues), from the site's conformance data.
   it('scores every tool on the conformance suite, first after the stage', () => {
     const proof = section(html, 'proof')
     expect(text(proof)).toContain(`${RESULTS.cases.length} cases`)
@@ -241,7 +243,6 @@ describe('the landing page', () => {
     ].map((m) => [
       text(/class="col-name">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
       text(/class="col-pct">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
-      text(/class="col-sup">((?:\s*<span>[^<]*<\/span>)?[^<]*)<\/span>/.exec(m[1]!)![1]!),
     ])
     // Highest score first.
     const rate = (t: string): number => RESULTS.scores[t]!.all!.pass / RESULTS.scores[t]!.all!.of
@@ -250,7 +251,8 @@ describe('the landing page', () => {
         .sort((x, y) => rate(y) - rate(x))
         .map((t) => {
           const all = RESULTS.scores[t]!.all!
-          return [toolName(t), percent(all), `supports ${supports(all)}`]
+          const issues = all.can - all.pass
+          return [toolName(t), `${issues} ${issues === 1 ? 'issue' : 'issues'}`]
         }),
     )
     expect(cols[0]![0]).toBe('vx')
@@ -431,6 +433,24 @@ describe('the landing page', () => {
       .map((m) => m[1]!)
       .join('\n')
     expect(scripts).toContain('prefers-reduced-motion: reduce')
+  })
+
+  // Quotes only (2026-11-19): the words, who said them and their role,
+  // a public one linked to where it was said, all in one band.
+  it('quotes people word for word, in one band', () => {
+    expect(html).not.toContain('class="qc"')
+    const wall = section(html, 'voices')
+    expect(text(/<h2>([\s\S]*?)<\/h2>/.exec(wall)![1]!.replace(/<br\s*\/?>/, ' '))).toBe(
+      'What others say about us.',
+    )
+    const quotes = [...wall.matchAll(/<blockquote>([\s\S]*?)<\/blockquote>/g)].map((m) =>
+      text(m[1]!),
+    )
+    expect(quotes).toEqual(ALL_VOICES.map((v) => `“${v.quote}”`))
+    expect(hrefs(wall)).toEqual(ALL_VOICES.flatMap((v) => (v.href ? [v.href] : [])))
+    for (const v of ALL_VOICES) {
+      if (v.href) expect(v.href).toMatch(/^https:\/\/github\.com\/vznjs\/vx\//)
+    }
   })
 
   it('writes no paragraph longer than one sentence', () => {

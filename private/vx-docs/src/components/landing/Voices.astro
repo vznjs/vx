@@ -1,0 +1,47 @@
+---
+// What others say about us: every quote, word for word, in two rows that
+// slide on their own and loop, the second offset from the first. Without
+// script or with reduced motion each row scrolls by hand.
+import { ALL_VOICES } from './voices.ts'
+
+const TINTS = ['#c6f84e', '#5ee0ff', '#ff5e9c', '#ff9d42', '#b18cff']
+const half = Math.ceil(ALL_VOICES.length / 2)
+const rows = [ALL_VOICES.slice(0, half), ALL_VOICES.slice(half)]
+---
+
+<section class="band" id="voices">
+  <div class="band-in">
+    <header class="band-head">
+      <p class="kicker">Word for word</p>
+      <h2>What others<br /><em>say about us.</em></h2>
+    </header>
+  </div>
+  <div class="sky">
+    {
+      rows.map((row, r) => (
+        <div class="say-row" data-dir={r === 0 ? '-1' : '1'}>
+          <ul class="say-track">
+            {row.map((v, i) => (
+              <li class="bubble" style={`--tint:${TINTS[(i * 2 + r) % TINTS.length]};--w:${Math.round(Math.min(560, 300 + v.quote.length))}px`}>
+                <figure class="bubble-in">
+                  <blockquote>“{v.quote}”</blockquote>
+                  <figcaption>
+                    <span>
+                      <strong>{v.who}</strong>
+                      {v.role && ` · ${v.role}`}
+                    </span>
+                    {v.href && (<a class="say-src" href={v.href} rel="noopener" target="_blank" aria-label="Where it was said" title="Where it was said">
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path d="M9 2h5v5M14 2 7 9M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </a>)}
+                  </figcaption>
+                </figure>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+</section>

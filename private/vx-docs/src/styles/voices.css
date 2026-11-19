@@ -1,0 +1,105 @@
+/* What others say: two rows of quotes that slide and loop, offset. */
+
+.sky {
+  display: grid;
+  gap: 22px;
+  margin: 48px 0 0;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.say-row {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.say-row::-webkit-scrollbar {
+  display: none;
+}
+.sky.live .say-row {
+  overflow: hidden;
+}
+.say-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  width: max-content;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  will-change: transform;
+}
+/* The second row starts half a card later, so no card sits over another. */
+.say-row + .say-row .say-track {
+  padding-left: 190px;
+}
+.sky.live .say-row + .say-row .say-track {
+  padding-left: 0;
+}
+.bubble {
+  flex: none;
+  width: var(--w, 380px);
+}
+.bubble-in {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 168px;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--tint, var(--tone-core)) 35%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--tint, var(--tone-core)) 7%, rgba(12, 14, 18, 0.94));
+  box-shadow: 0 0 30px -12px color-mix(in srgb, var(--tint, var(--tone-core)) 40%, transparent);
+}
+.bubble-in blockquote {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: 500 17px/1.4 var(--font-body);
+  color: #f2f5ef;
+}
+.bubble-in figcaption {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin: auto 0 0;
+  padding-top: 10px;
+  font: 400 12px/1.35 var(--font-body);
+  color: #8b938f;
+}
+.bubble-in figcaption strong {
+  color: #cbd1c9;
+  font-weight: 600;
+}
+.say-src {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border-radius: 8px;
+  color: #8b938f;
+  background: rgba(255, 255, 255, 0.05);
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+.say-src:hover,
+.say-src:focus-visible {
+  color: var(--tint, #fff);
+  background: color-mix(in srgb, var(--tint, #fff) 16%, transparent);
+}
+
+@media (max-width: 620px) {
+  .bubble {
+    width: clamp(250px, calc(var(--w, 380px) * 0.66), 310px);
+  }
+  .bubble-in {
+    height: 236px;
+  }
+  .bubble-in blockquote {
+    font-size: 15px;
+  }
+  .say-row + .say-row .say-track {
+    padding-left: 140px;
+  }
+}
