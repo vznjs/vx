@@ -28,6 +28,7 @@ interface PlanInput {
   warmUps?: Record<string, number>
   spreads?: Record<string, number>
   paces?: Record<string, number>
+  paceSpreads?: Record<string, number>
 }
 
 /** `hosted.small#3` -> `small`: the size as `.vx/workspace.ts` names it. */
@@ -109,7 +110,7 @@ export function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: st
       ;(joins[sizeOf(w)] ??= [])[Number(w.split('#')[1]) - 1] = Math.round(e.dur! / 1000)
     }
   return {
-    _: `${note}: the CI graph (cache: false for an uncached task), and the tasks that ran with how long each's command ran, its cores (cpu over wall), peak RSS in MB and the ms its worker took after the command; every other task hit. known: what the first plan's history said of each (ms, cores, MB; null: unmeasured); warmUps, spreads, paces: what it had learned of each size; joins: each worker's warm-up (ms) by size`,
+    _: `${note}: the CI graph (cache: false for an uncached task), and the tasks that ran with how long each's command ran, its cores (cpu over wall), peak RSS in MB and the ms its worker took after the command; every other task hit. known: what the first plan's history said of each (ms, cores, MB; null: unmeasured); warmUps, spreads, paces, paceSpreads: what it had learned of each size; joins: each worker's warm-up (ms) by size`,
     nodes: dry.tasks.map((t) => ({
       id: t.id,
       deps: t.deps,
@@ -125,6 +126,7 @@ export function fixture(dry: { tasks: DryTask[] }, trace: TraceEvent[], note: st
           warmUps: bySize(input.warmUps),
           spreads: bySize(input.spreads),
           ...(input.paces === undefined ? {} : { paces: bySize(input.paces) }),
+          ...(input.paceSpreads === undefined ? {} : { paceSpreads: bySize(input.paceSpreads) }),
           joins,
         }),
   }

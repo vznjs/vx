@@ -2266,6 +2266,8 @@ export class Orchestrator {
     readonly spreads?: Readonly<Record<string, number>>
     /** Each size's pace an earlier run learned (`measures.ts` `paceId`). */
     readonly paces?: Readonly<Record<string, number>>
+    /** Each size's spread of took / history an earlier run learned (`measures.ts` `paceSpreadId`). */
+    readonly paceSpreads?: Readonly<Record<string, number>>
   }): void {
     this.trace.mark(ORCHESTRATOR, 'plan', {
       tasks: input.tasks.length,

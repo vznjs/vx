@@ -19,6 +19,8 @@ export interface PlannerSize {
   readonly spreadMs?: number
   /** How many times history's time its tasks took, an earlier run (`measures.ts` `paceId`). */
   readonly pace?: number
+  /** How far its tasks' times strayed from history's, an earlier run (`measures.ts` `paceSpreadId`). */
+  readonly paceSpread?: number
 }
 
 /** What history knew of a task: its time alone (ms) and the cores it kept busy. */
@@ -141,6 +143,7 @@ export class Planner {
         warmUpMs: s.warmUpMs,
         spreadMs: s.spreadMs ?? 0,
         ...(s.pace === undefined ? {} : { pace: s.pace }),
+        ...(s.paceSpread === undefined ? {} : { paceSpread: s.paceSpread }),
       })),
       {
         gated: true,
@@ -262,6 +265,10 @@ export class Planner {
   /** Each platform's pace this run (`Engine.paces`): how many times history's time its ended tasks took. */
   paces(): Map<string, number> {
     return this.engine.paces()
+  }
+  /** Each platform's spread of took / history this run (`Engine.paceSpreads`). */
+  paceSpreads(): Map<string, number> {
+    return this.engine.paceSpreads()
   }
 
   /** What to do at `t`; `spawn` names each worker asked, of its size. */

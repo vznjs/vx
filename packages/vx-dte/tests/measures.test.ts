@@ -9,6 +9,7 @@ import {
   learnedOf,
   measureDefs,
   paceId,
+  paceSpreadId,
   runMeasures,
   spreadId,
   workerId,
@@ -50,6 +51,7 @@ it('defines each size by its name and what it is, and each server by its definit
     '@vzn/vx-dte#worker:linux.small',
     '@vzn/vx-dte#join-spread:linux.small',
     '@vzn/vx-dte#pace:linux.small',
+    '@vzn/vx-dte#pace-spread:linux.small',
     '@vzn/vx-dte#server-base:a#dev',
   ])
   // Its worker's warm-up and its spread are two measures, apart.
@@ -80,6 +82,7 @@ it("reads back a run's measures as what it learned", () => {
     others: new Map([['linux.small', 0.4]]),
     spreads: new Map([['linux.small', 1_500]]),
     paces: new Map([['linux.small', 1.47]]),
+    paceSpreads: new Map([['linux.small', 0.23]]),
     bases: new Map([['a#dev', 0.75]]),
     starts: new Map([['a#dev', 9_000]]),
   })
@@ -88,6 +91,7 @@ it("reads back a run's measures as what it learned", () => {
     workerId('linux.small'),
     spreadId('linux.small'),
     paceId('linux.small'),
+    paceSpreadId('linux.small'),
     baseId('a#dev'),
   ])
   for (const m of run) expect(m.def).toBe(defs.get(m.id)!)
@@ -97,6 +101,7 @@ it("reads back a run's measures as what it learned", () => {
     others: new Map([['linux.small', 0.4]]),
     spreads: new Map([['linux.small', 1_500]]),
     paces: new Map([['linux.small', 1.47]]),
+    paceSpreads: new Map([['linux.small', 0.23]]),
     bases: new Map([['a#dev', 0.75]]),
     starts: new Map([['a#dev', 9_000]]),
   })

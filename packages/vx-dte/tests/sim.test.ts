@@ -11,6 +11,7 @@ import q2f0 from './fixtures/pr-run-2f0e2a4.json'
 import d36 from './fixtures/main-run-d36eed9.json'
 import a2c from './fixtures/main-run-a2c25b0.json'
 import m4c3 from './fixtures/main-run-4c30e53.json'
+import m960 from './fixtures/main-run-9600386.json'
 import { compare } from '../scripts/compare.js'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
 import { rng } from './families.js'
@@ -1029,3 +1030,64 @@ it.each([1.13, 1.3, 1.47])(
     expect(after.endMs).toBeLessThan(before.endMs - 5_000)
   },
 )
+
+// Main 9600386 (2026-11-19): 98 s, its ideal 70.6. At its start no task had
+// ended, so its plan took every history time as a fact: each lane planned to
+// end on the dot, smalls asked at the last moment, and the docs chain (55 s)
+// waited for them. Its tasks took 0.6 to 1.6 times history (0.23 the spread
+// over the mean, as every main run's): an earlier run's spread plans for it.
+it("main 9600386's plan allows its tasks' times the spread an earlier run's had", () => {
+  const graph = load(m960).map((t) => {
+    const k = (m960.known as Record<string, number[] | null>)[t.id]
+    return k === undefined
+      ? t
+      : {
+          ...t,
+          known: k === null ? null : { ms: k[0]!, cores: k[1]!, memory: k[2]! * 1e6 },
+        }
+  })
+  const joins = m960.joins as Record<string, number[]>
+  const median = (paceSpreads?: Map<string, number>): number => {
+    const ends: number[] = []
+    for (let seed = 1; seed <= 5; seed++) {
+      const r0 = rng(seed * 7919 + 1)
+      const js: Record<string, number[]> = {}
+      for (const [k, v] of Object.entries(joins)) {
+        const a = [...v]
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(r0() * (i + 1))
+          ;[a[i], a[j]] = [a[j]!, a[i]!]
+        }
+        js[k] = a
+      }
+      ends.push(
+        simulate(graph, {
+          sizes: [
+            { name: 'small', max: 9, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+            { name: 'mac', max: 3, cpu: 2, memory: 7e9, platform: 'darwin-arm64' },
+            { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+          ],
+          home: 'linux-x64',
+          // one that left and was asked again joins as the run's next did
+          warmUpMs: (_, size, k) => js[size]![(k - 1) % js[size]!.length]!,
+          warmUpsMs: new Map(Object.entries(m960.warmUps)),
+          spreadsMs: new Map(Object.entries(m960.spreads)),
+          paces: new Map(Object.entries(m960.paces)),
+          likely: new Set(Object.keys(m960.ran)),
+          ...(paceSpreads === undefined ? {} : { paceSpreads }),
+        }).endMs,
+      )
+    }
+    return ends.sort((a, b) => a - b)[2]!
+  }
+  // main 4c30e53's: Linux 0.22, Mac 0.24
+  const spread = new Map([
+    ['small', 0.22],
+    ['arm', 0.22],
+    ['mac', 0.24],
+  ])
+  const [before, after] = [median(), median(spread)]
+  // 77.0 s before, 72.5 after (ideal 70.6)
+  expect(before).toBeGreaterThan(76_000)
+  expect(after).toBeLessThan(74_000)
+})
