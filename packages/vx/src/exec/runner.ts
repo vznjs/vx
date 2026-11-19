@@ -685,7 +685,10 @@ export async function drainOrAbort(
   ac: AbortController,
 ): Promise<boolean> {
   const deadline = new Promise<'timeout'>((resolve) => {
-    setTimeout(() => resolve('timeout'), POST_EXIT_DRAIN_MS).unref?.()
+    setTimeout(
+      () => resolve('timeout'),
+      testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS),
+    ).unref?.()
   })
   const winner = await Promise.race([streams.then(() => 'drained' as const), deadline])
   if (winner === 'timeout') ac.abort()
