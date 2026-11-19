@@ -1218,6 +1218,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'ulid',
     'uncached-key-once',
     'unpassed-env',
+    'upstream-output-moved',
     'user-error-classify',
     'util-hash',
     'util-num',

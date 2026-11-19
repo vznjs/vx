@@ -965,7 +965,16 @@ one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 11). This covers a formatter rewriting its own input
-(turborepo#10111) and a user's edit mid-run (turborepo#1146). A file
+(turborepo#10111) and a user's edit mid-run (turborepo#1146). A
+dependency's outputs are held the same way. The key folds a dependency's
+input key, never its bytes. So a `git checkout` or `git stash` that puts
+back a committed output of a dependency while its dependant runs would
+file bytes no key names. The save checks each dependency's outputs against
+the stamps its save or restore left, and withholds the entry when one
+moved: `[vx] app#build: an output of lib#build changed while it ran (a
+checkout, a stash, another process) — …`. Only outputs git lists are
+checked (tracked, or untracked and not ignored): an ignored `dist` costs
+nothing. A file
 whose ctime alone moved during the command, its bytes and mtime as the
 key found them (a hard link such as `cp -al src dist`, a chmod, a chown),
 is withheld too, since an edit undone with its mtime put back looks the
