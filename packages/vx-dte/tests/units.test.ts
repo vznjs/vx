@@ -27,7 +27,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, changedSinceParent, homeOf, needOf, pace, serversOf } from '../src/plugin.js'
-import { isUserError, type Platform, UserError, workerRuntime } from '@vzn/vx'
+import { hostPlatform, isUserError, type Platform, UserError, workerRuntime } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -37,10 +37,12 @@ import {
   ui,
 } from '@vzn/vx'
 import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
+import { assign, dispatch, fits, ordered } from '../src/plan/dispatch.js'
 import type { Need } from '../src/plan/model.js'
-import { Planner } from '../src/plan/planner.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
+import { planTasks, tailsMs } from '../src/plan/model.js'
+import { plan } from '../src/plan/plan.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { DepOrder, RunOrder, SentOrder, ToWorker, WiredResult } from '../src/messages.js'
@@ -927,6 +929,32 @@ it('takes a worker given up past its join limit that joins after all', async () 
   }
 })
 
+// PR 2f0e2a4 (2026-10-24): GitHub queued smalls 30-85 s; the run asked
+// more behind them and replaced those its join limit gave up on. A size
+// with a worker late to join, or given up as late beside one online, is
+// queued: the plan starts none of it.
+it('a size is queued while a worker of it is late, given up beside one online', async () => {
+  const overdue: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
+    overdue: (id) => overdue.push(id),
+  })
+  try {
+    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
+    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
+    expect(h.o.queued(() => 60_000)).toEqual(new Set())
+    expect(h.o.queued(() => 0)).toEqual(new Set(['small']))
+    await h.worker(1, 'worker#1')
+    for (let i = 0; i < 50 && overdue.length === 0; i++) await Bun.sleep(20)
+    expect(overdue).toEqual(['worker#2'])
+    expect(h.o.queued(() => 60_000)).toEqual(new Set(['small']))
+    // Its job ended: it joins no more.
+    h.o.failed('worker#2', 'job cancelled')
+    expect(h.o.queued(() => 60_000)).toEqual(new Set())
+  } finally {
+    await h.stop()
+  }
+})
+
 /** A cache by key, in memory: what workers saved, and each restore asked. */
 function fakeArtifacts() {
   const saved = new Map<string, CapturedChunk[]>()
@@ -989,21 +1017,9 @@ async function harness(
     cacheFacts: async () => cache.facts,
     run: R,
     keyOf,
-    // As `dte()`'s, with no size to ask: every task expected, history as `need` and `tail` say.
-    planner: () =>
-      (planner ??= new Planner({
-        nodes,
-        platform: (n) => n.platform ?? more.home ?? '',
-        sizes: [],
-        known: (id) => {
-          const c = need(id).cores
-          return { ms: tail?.(id), cores: Number.isFinite(c) ? c : undefined }
-        },
-        expected: new Set(nodes.keys()),
-      })),
+    ...(tail === undefined ? {} : { tail }),
     ...more,
   })
-  let planner: Planner | undefined
   const worker = async (cores: number, id?: string, platform?: string) => {
     const me = await join(
       url,
@@ -1173,17 +1189,8 @@ it('a lent token already ended is not lent again at once, in a loop', async () =
   }
 })
 
-const node = (id: string, deps: string[] = [], platform?: string) =>
-  [
-    id,
-    {
-      id,
-      deps,
-      projectDir: '/ws',
-      ...(platform === undefined ? {} : { platform }),
-      config: { exec: { command: 'x' } },
-    } as unknown as TaskNode,
-  ] as const
+const node = (id: string, deps: string[] = []) =>
+  [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
 
 // Each pump walked every queued task's upstreams and asked every worker of
 // each: 2000 queued down one chain spent 4 million walks a pump (2026-10-25).
@@ -1220,7 +1227,7 @@ it('holds a task for a machine from the moment core hands it over, and a stop th
           id: 'up',
           deps: [],
           projectDir: '/ws',
-          config: { exec: { command: 'x' }, cache: true, outputs: { files: ['out/**'] } },
+          config: { cache: true, outputs: { files: ['out/**'] } },
         } as unknown as TaskNode,
       ],
       node('t', ['up']),
@@ -1238,6 +1245,210 @@ it('holds a task for a machine from the moment core hands it over, and a stop th
     stop.abort()
     shared()
     expect([(await run).exitCode, h.o.where('t')]).toEqual([130, undefined])
+  } finally {
+    await h.stop()
+  }
+})
+
+// 2026-10-23: "we should not send tasks in batches unless we are 100%
+// sure ... they can fit". Main bf77a58: small#3's load read low while 38
+// test shards began, so it took them all on 4 cores, 28 failed, and the 5
+// workers started for them got none. Load only ever adds to the booking.
+it('sends a worker what its booking fits, though its load reads low; busier than booked, less', async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3', 't4'],
+      batch: 1,
+      load: { cpu: 0.1, memory: 0 },
+    })
+    await Bun.sleep(50)
+    expect(h.o.where('t5')).toBeNull()
+    // The worker started for them gets them.
+    const b = await h.worker(4)
+    expect(await b.batches()).toEqual([['t5', 't6', 't7', 't8']])
+    // Its machine busier than booked: the core a task freed stays taken.
+    await b.say({
+      type: 'report',
+      running: ['t5', 't6', 't7', 't8'],
+      batch: 1,
+      load: { cpu: 4, memory: 0 },
+    })
+    await b.finish('t5')
+    await b.say({
+      type: 'report',
+      running: ['t6', 't7', 't8'],
+      batch: 1,
+      load: { cpu: 4, memory: 0 },
+    })
+    const t9 = h.o.execute(h.req('t9'))
+    await Bun.sleep(50)
+    expect(h.o.where('t9')).toBeNull()
+    // The plan holds its tasks at what its load says, not their history.
+    const held = h.o
+      .planState(() => undefined, 0)
+      .workers.find((w) => w.id === b.id)!
+      .running.reduce((n, r) => n + r.cores, 0)
+    expect(held).toBeCloseTo(4)
+    void t9
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main 36e410f: a 4-core small spent 0.6 to 1.1 cores on no task of the
+// run (GitHub's runner agent among them), the run booked all 4, and its
+// test shards ran 30% past their history. What a machine spends besides
+// the run's tasks is booked on it, and the plan leaves it out.
+it("books a worker's cores its machine spends besides the run's tasks", async () => {
+  const ids = Array.from({ length: 5 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3', 't4'],
+      batch: 1,
+      load: { cpu: 4, memory: 0, tasks: 2.4 },
+    })
+    await a.say({ type: 'ran', task: 't1', load: { cpu: 3.9, memory: 0, tasks: 2.3 } })
+    await Bun.sleep(50)
+    expect(h.o.where('t5')).toBeNull()
+    const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
+    expect(w.cores).toBeCloseTo(3)
+    expect(w.running.reduce((n, r) => n + r.cores, 0)).toBeCloseTo(3)
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main b5e0826: test.live held its worker 45 s, 11 of them its two
+// servers starting before its command; the plan knew only the command's
+// time and started it that much too late. The worker says how long each
+// server it started took, and the plan adds the longest to the task.
+it("hears each server's start from its worker, and plans its task that much longer", async () => {
+  const starts = new Map<string, number>()
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    starts,
+  })
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({
+      type: 'ran',
+      task: 't1',
+      load: { cpu: 1, memory: 0, starts: { 's#db': 9000, 's#bad': -1 } },
+    })
+    await Bun.sleep(50)
+    expect([...starts]).toEqual([['s#db', 9000]])
+    await a.finish('t1')
+  } finally {
+    await h.stop()
+  }
+  const exec = { exec: { command: 'x' } }
+  const nodes = new Map(
+    ['e2e', 'unit', 'new'].map((id) => [id, { id, deps: [], config: exec } as unknown as TaskNode]),
+  )
+  const work = planTasks(
+    ['e2e', 'unit', 'new'],
+    nodes,
+    (id) => ({
+      cores: 1,
+      memory: 1,
+      ...(id === 'unit'
+        ? {}
+        : {
+            servers: [
+              { id: 's#db', cores: 0.1, ms: starts.get('s#db')! },
+              { id: 's#api', cores: 0.1, ms: 2000 },
+              { id: 's#unmeasured', cores: 0 },
+            ],
+          }),
+    }),
+    (id) => (id === 'new' ? undefined : 4000),
+    undefined,
+    () => 6000,
+  )
+  expect(work.map((t) => [t.id, t.ms, t.slowMs])).toEqual([
+    ['e2e', 13_000, 15_000],
+    ['unit', 4000, 6000],
+    ['new', undefined, 15_000],
+  ])
+})
+
+// Main f2ddcb6: a small just joined, booked on all 4 cores until its
+// first frame, took six shards where the plan gave three; its machine ran
+// busy for 50 s and they ran 1.7 times their history. Before it says, it
+// spends what its size's machines did.
+it("books a joining worker's other cores as its size's, before it says its own", async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 100 })
+    h.o.spawned('small#2', { size: 'small', cpu: 4, memory: 100 })
+    const a = await h.worker(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ids.slice(0, 4)) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3', 't4'],
+      batch: 1,
+      load: { cpu: 4, memory: 0, tasks: 2.4 },
+    })
+    await Bun.sleep(50)
+    const b = await h.worker(4, 'small#2')
+    await Bun.sleep(50)
+    for (const id of ids.slice(4)) void h.o.execute(h.req(id))
+    expect(await b.batches()).toEqual([['t5', 't6', 't7']])
+    const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === b.id)!
+    expect(w.cores).toBeCloseTo(3)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A size no machine of this run has spoken for yet: as an earlier run's did.
+it("books a joining worker's other cores as an earlier run learned its size's", async () => {
+  const ids = ['t1', 't2', 't3', 't4']
+  const h = await harness(
+    new Map(ids.map((id) => node(id))),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      learnedOther: (size) => (size === 'small' ? 1.6 : undefined),
+    },
+  )
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 100 })
+    const a = await h.worker(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    // Its first frame moves it a step from its size's, not all the way:
+    // booked as the one whole core still.
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3'],
+      batch: 1,
+      load: { cpu: 3, memory: 0, tasks: 1 },
+    })
+    await Bun.sleep(50)
+    const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
+    expect(w.cores).toBeCloseTo(3)
   } finally {
     await h.stop()
   }
@@ -1318,6 +1529,82 @@ it('places on a worker by its booking once a task ends: the load it reported cou
     expect(h.o.where('t3')).toBeNull()
     await a.say({ type: 'ran', task: 't1', load: { cpu: 2, memory: 0 } })
     expect(await a.batches()).toEqual([['t3']])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Cold main bcc84f1: an unmeasured task counted 2 cores waiting and the
+// one it holds running, so each start freed room the plan found spare and
+// it cancelled 11 of the 25 workers it asked.
+it('plans a running unmeasured task as it planned it waiting', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]), () => ({
+    cores: 1,
+    memory: 0,
+    ask: { cores: 2, memory: 4e9 },
+  }))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    await a.say({ type: 'report', running: ['t1', 't2'], batch: 1, load: { cpu: 0.1, memory: 0 } })
+    await Bun.sleep(50)
+    const running = h.o.planState(() => undefined, 0).workers.find((w) => w.id === a.id)!.running
+    expect(running.map((r) => r.cores)).toEqual([2, 2])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Cold run 3, 2026-10-23: tasks booked at their history used 82% of it,
+// and every Linux worker ran at 63-73% CPU against the sim's 86%.
+it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
+  const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`)
+  // Two cores each: a task never books under one (`MIN_CORES`).
+  const h = await harness(new Map(ids.map((id) => node(id))), () => ({ cores: 2, memory: 10 }))
+  try {
+    const a = await h.worker(8)
+    await Bun.sleep(50)
+    for (const id of ids.slice(0, 4)) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    for (const id of ['t1', 't2', 't3', 't4']) {
+      h.store.saved.set(`k-${id}`, [])
+      // Half a core of the one its history booked.
+      await a.say({
+        type: 'end',
+        task: id,
+        key: `k-${id}`,
+        result: { exitCode: 0, durationMs: 20_000, cpuMs: 20_000 },
+      })
+    }
+    await Bun.sleep(50)
+    for (const id of ids.slice(4)) void h.o.execute(h.req(id))
+    // Half each would fit 8; bookings stop at 1.5 times its cores.
+    expect((await a.batches()).flat()).toEqual(['t5', 't6', 't7', 't8', 't9', 't10'])
+    await h.stop()
+    const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.find((r) => r.includes('total'))).toContain('tasks used 50% of their history')
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main, 2026-10-23: 12 workers of 4 cores each ran about one task, at 25%
+// CPU all their time online; packed, the ones the rest does not need leave.
+it('packs tasks onto the worker with fewest cores free, and the idle one leaves', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const a = await h.worker(4)
+    const b = await h.worker(4)
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    // Only an idle one goes.
+    h.o.release([a.id, b.id])
+    expect(await b.bodies()).toEqual([{ type: 'exit' }])
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.id)).toEqual([a.id])
   } finally {
     await h.stop()
   }
@@ -1510,15 +1797,42 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
     batch: 1,
     load: { cpu: 1.5, memory: 0, tasks: 1.2 },
   })
-  // What the planner was given, whole: scripts/fixture.ts replays the run from it.
-  const input = {
-    tasks: [
-      { id: 'p#build', ms: 33_240, cores: 2.16, memory: 3.14e9 },
-      { id: 'p#new', cores: 1, memory: 0 },
+  // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
+  h.o.planned({
+    start: ['small'],
+    release: [],
+    tasks: 3,
+    endsInMs: 60_000,
+    boundMs: 63_000,
+    workers: [
+      { ...h.o.planState(() => 5_000, 0).workers[0]!, id: 'worker#1' },
+      {
+        id: 'small#2',
+        cores: 4,
+        memory: 1e9,
+        at: 12_000,
+        running: [],
+        idle: false,
+        starting: true,
+      },
     ],
-    warmUps: { mac: 16_900 },
-  }
-  h.o.planning(input)
+    // Main d8a795c planned 38 s for an 88 s Mac lane: what it thought each took.
+    work: [
+      {
+        id: 'p#build',
+        cores: 2.16,
+        memory: 3.14e9,
+        ms: 33_240,
+        deps: [],
+        platform: 'darwin',
+        servers: [{ id: 'p#db', cores: 0.5 }],
+      },
+      { id: 'p#new', cores: 1, memory: 0, ms: undefined, deps: [] },
+    ],
+    warmUps: new Map([['mac', 16_900]]),
+    sizes: [{ name: 'mac', cpu: 2.5 }],
+    unpacked: 'a task has no history',
+  })
   await Bun.sleep(20)
   await a.say({ type: 'ran', task: 't1' })
   await Bun.sleep(20)
@@ -1572,10 +1886,77 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
       .map((e) => e.args as unknown),
   ).toContainEqual({ busy: 1.5, tasks: 1.2 })
   const plan = ev.find((e) => e.ph === 'i' && e.pid === 1 && e.name === 'plan') as
-    | { args: { tasks: number; input: string } }
+    | { args: Record<string, unknown> }
     | undefined
-  expect(plan?.args.tasks).toBe(2)
-  expect(JSON.parse(plan!.args.input)).toEqual(input)
+  expect(plan?.args).toMatchObject({ start: 'small', tasks: 3, endsInMs: 60_000, boundMs: 63_000 })
+  expect(plan?.args.workers).toMatch(/^worker#1 1c\/\d+ 1c\/\d+ · small#2 joins 12000$/)
+  expect(plan?.args).toMatchObject({
+    work: 'p#build 33.2s 2.16c 3.1G darwin +p#db 0.5c · p#new ?s 1c',
+    warmUps: 'mac 16.9s',
+    sizes: 'mac 2.5c',
+    unpacked: 'a task has no history',
+  })
+})
+
+// Main 18a8446: a packing that ended at 130 s where the play ended at
+// 55 s asked 4 workers mid-run, and the rounded marks played back packed
+// it at 54 s. Such a plan marks what it was given, whole, as does the
+// run's first: where it placed what ran last is the tail's why.
+it('marks the first plan, and one whose packing lost on its end, with its whole input', async () => {
+  const h = await harness(new Map([node('t1')]))
+  h.o.spawned('small#1', { size: 'small', cpu: 3, memory: 1e9 })
+  const input = {
+    tasks: [{ id: 'p#a', cores: 1, memory: 0, ms: 5_000, deps: [] }],
+    sizes: [{ name: 'small', cpu: 3, memory: 1e9, max: 2 }],
+    warmUps: new Map([['small', 16_000]]),
+    spreads: new Map([['small', 0]]),
+    limitMs: undefined,
+  }
+  const worker = {
+    id: 'w1',
+    cores: 3,
+    memory: 1e9,
+    at: 0,
+    idle: false,
+    running: [{ id: 'p#x', cores: 1, memory: 0, endsIn: Infinity }],
+    serving: new Map([['p#db', 0.5]]),
+  }
+  for (const unpacked of [
+    'holds 9, the play 8',
+    'ends 130000 ms, the play 55000',
+    'holds 9, the play 8',
+  ])
+    h.o.planned({
+      start: [],
+      release: ['w9'],
+      tasks: 1,
+      endsInMs: 55_000,
+      boundMs: 60_000,
+      workers: [worker],
+      unpacked,
+      input,
+    })
+  await h.stop()
+  const marks = (
+    h.o.profile() as unknown as { ph: string; name: string; args?: Record<string, unknown> }[]
+  )
+    .filter((e) => e.ph === 'i' && e.name === 'plan')
+    .map((e) => e.args!)
+  expect(marks).toHaveLength(3)
+  expect(marks[0]!.input).toBe(marks[1]!.input)
+  expect(JSON.parse(marks[1]!.input as string)).toEqual({
+    ...input,
+    warmUps: { small: 16_000 },
+    spreads: { small: 0 },
+    workers: [
+      {
+        ...worker,
+        running: [{ ...worker.running[0], endsIn: 'Infinity' }],
+        serving: { 'p#db': 0.5 },
+      },
+    ],
+  })
+  expect(marks[2]!.input).toBeUndefined()
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
@@ -1621,6 +2002,29 @@ it('ranks the waiting again when history lands, not as they joined', async () =>
   }
 })
 
+it('a task’s tail is its duration and its longest chain of dependants', () => {
+  const runs = (id: string, deps: string[] = []) =>
+    [
+      id,
+      { id, deps, projectDir: '/ws', config: { exec: { command: 'x' } } } as unknown as TaskNode,
+    ] as const
+  const nodes = new Map([
+    runs('import'),
+    runs('build', ['import']),
+    runs('test', ['build']),
+    runs('shard'),
+    [
+      'ci',
+      { id: 'ci', deps: ['test', 'shard'], projectDir: '/ws', config: {} } as unknown as TaskNode,
+    ] as const,
+  ])
+  const ms: Record<string, number> = { import: 1_000, build: 41_000, test: 4_000 }
+  const tail = tailsMs(nodes, (id) => ms[id])
+  expect(['import', 'build', 'test', 'shard', 'ci'].map(tail)).toEqual([
+    46_000, 45_000, 4_000, 30_000, 0,
+  ])
+})
+
 // 2026-10-21: check.bun, ahead of 8 shards, sat in a busy worker's
 // queue as its prefetch while workers that joined later stood idle. None
 // waits in a worker's queue now: it waits here for the first that is free.
@@ -1638,6 +2042,30 @@ it('a task no worker fits waits here, and goes to the first one free', async () 
   }
 })
 
+// Main 871ffba, 2026-10-23: check.bun, unmeasured so alone on a worker,
+// waited 50 s while tasks behind it filled that worker again and again.
+it('a task that runs alone holds the worker it waits for; none after it takes it', async () => {
+  const h = await harness(
+    new Map([node('t1'), node('alone'), node('t3')]),
+    (id) => (id === 'alone' ? { cores: Infinity, memory: Infinity } : { cores: 1, memory: 10 }),
+    undefined,
+    undefined,
+    (id) => (id === 'alone' ? 100 : 1),
+  )
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    for (const id of ['alone', 't3']) void h.o.execute(h.req(id))
+    await Bun.sleep(50)
+    await a.finish('t1')
+    expect(await a.batches()).toEqual([['alone']])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-23: "If workers joined and nothing is queued anymore orch
 // should ... close them": one started and not needed is cancelled, and
 // told to exit should it join anyway.
@@ -1647,9 +2075,10 @@ it('a worker cancelled before it joined is told to exit when it joins, and never
     h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
     // Another size: small#1's join, a few ms here, would give it up first.
     h.o.spawned('small#2', { size: 'big', cpu: 1, memory: 100 })
-    await h.worker(1, 'small#1')
+    const a = await h.worker(1, 'small#1')
     await Bun.sleep(50)
     expect(h.o.release(['small#2'])).toEqual(['small#2'])
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.id)).toEqual([a.id])
     const b = await h.worker(1, 'small#2')
     expect(await b.types()).toEqual(['exit'])
     h.o.failed('small#2', 'job cancelled')
@@ -1679,7 +2108,8 @@ it('a worker let go that its adapter left running is taken when it joins', async
     const c = await h.worker(1, 'small#3')
     expect(await c.types()).toEqual(['exit'])
     expect(h.o.leftRunning(['small#2', 'small#3'])).toEqual(['small#2'])
-    // Not let go again: it joins and takes what waits.
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.id)).toEqual([a.id, 'small#2'])
+    // No plan lets it go again: it joins whatever the plan says.
     expect(h.o.release(['small#2'])).toEqual([])
     const b = await h.worker(1, 'small#2')
     expect(await b.batches()).toEqual([['t2']])
@@ -1691,13 +2121,14 @@ it('a worker let go that its adapter left running is taken when it joins', async
 // exec.platforms (2026-10-23): a task core placed on a platform goes
 // only to a worker of it, and a worker whose size says another is refused.
 it('a task on a platform goes only to a worker of it', async () => {
-  const h = await harness(new Map([node('t1', [], 'darwin-arm64')]))
+  const h = await harness(new Map([node('t1')]))
   try {
-    await h.worker(4, undefined, 'linux-x64')
+    const a = await h.worker(4, undefined, 'linux-x64')
     const b = await h.worker(4, undefined, 'darwin-arm64')
     await Bun.sleep(50)
     void h.o.execute({ ...h.req('t1'), platform: 'darwin-arm64' })
     expect(await b.batches()).toEqual([['t1']])
+    expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === a.id)?.idle).toBe(true)
   } finally {
     await h.stop()
   }
@@ -1706,17 +2137,10 @@ it('a task on a platform goes only to a worker of it', async () => {
 // exec.worker (2026-11-07): with several worker types, a worker's type
 // rides its platform, so a Playwright task goes only to the Ubuntu one.
 it('a task of a worker type goes only to a worker of it on the same platform', async () => {
-  const h = await harness(
-    new Map([node('t1', [], 'ubuntu:linux-x64')]),
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    {
-      joinedPlace: (size, platform) =>
-        size === undefined ? platform : `${size.slice(0, size.indexOf('.'))}:${platform}`,
-    },
-  )
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    joinedPlace: (size, platform) =>
+      size === undefined ? platform : `${size.slice(0, size.indexOf('.'))}:${platform}`,
+  })
   try {
     const declared = (type: string) => ({
       size: `${type}.small`,
@@ -1727,11 +2151,14 @@ it('a task of a worker type goes only to a worker of it on the same platform', a
     })
     h.o.spawned('alpine.small#1', declared('alpine'))
     h.o.spawned('ubuntu.small#1', declared('ubuntu'))
-    await h.worker(4, 'alpine.small#1', 'linux-x64')
+    const alpine = await h.worker(4, 'alpine.small#1', 'linux-x64')
     const ubuntu = await h.worker(4, 'ubuntu.small#1', 'linux-x64')
     await Bun.sleep(50)
     void h.o.execute({ ...h.req('t1'), platform: 'ubuntu:linux-x64' })
     expect(await ubuntu.batches()).toEqual([['t1']])
+    expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === alpine.id)?.idle).toBe(
+      true,
+    )
   } finally {
     await h.stop()
   }
@@ -1742,11 +2169,33 @@ it('a task naming no platform goes only to a worker of the run’s home platform
     home: 'linux-x64',
   })
   try {
-    await h.worker(4, undefined, 'darwin-arm64')
+    const mac = await h.worker(4, undefined, 'darwin-arm64')
     const linux = await h.worker(4, undefined, 'linux-x64')
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await linux.batches()).toEqual([['t1']])
+    expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === mac.id)?.idle).toBe(true)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A size that names no platform is planned as this machine's (plugin.ts),
+// but its workers still starting were planned on none: in a run over two
+// platforms every task names one, so none fit them, and each plan
+// cancelled the Linux workers the one before had asked.
+it('plans a worker still starting, of a size naming no platform, as this machine’s', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    home: hostPlatform(),
+  })
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 1e9 })
+    const { workers } = h.o.planState(() => undefined, 20_000)
+    expect(workers.map((w) => w.platform)).toEqual([hostPlatform()])
+    const t1 = { id: 't1', cores: 1, memory: 1, ms: 10_000, deps: [], platform: hostPlatform() }
+    const small = { name: 'small', max: 2, cpu: 4, memory: 1e9, platform: hostPlatform() }
+    const p = plan([t1], workers, [small], 20_000)
+    expect([p.release, p.start]).toEqual([[], []])
   } finally {
     await h.stop()
   }
@@ -1857,6 +2306,46 @@ it('a task sent to a worker runs there, one not sent waits; the live rows leave 
     const live = JSON.stringify(h.o.footer())
     expect(live).toContain('2 running')
     expect(live).not.toMatch(/\dc\//)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A worker the rest of the run cannot keep busy leaves rather than idle
+// until the run ends; one a remaining task needs for its size stays.
+it('a worker the plan lets go leaves, and the plan no longer places on it', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(4)
+    const b = await h.worker(2)
+    await Bun.sleep(50)
+    h.o.release([b.id])
+    expect(await b.types()).toContain('exit')
+    const footer = JSON.stringify(h.o.footer())
+    expect(footer).toContain('left')
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.cores)).toEqual([4])
+    h.o.release([a.id])
+    expect(await a.types()).toContain('exit')
+    expect(h.o.planState(() => undefined, 0).workers).toEqual([])
+  } finally {
+    await h.stop()
+  }
+})
+
+// PR #5291's run: the plan held 9 ready lints for a later start on the
+// workers it packed them on and let the idle ones go; tasks ran past their
+// history, and the lints ran one at a time on the last worker.
+it('an idle worker the plan lets go takes a waiting task it has room for instead', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    h.o.place({ placed: new Map([['t1', 'another']]), after: new Map([['t1', 60_000]]) })
+    void h.o.execute(h.req('t1'))
+    await Bun.sleep(50)
+    expect(h.o.where('t1')).toBeNull()
+    h.o.release([a.id])
+    expect(await a.batches()).toEqual([['t1']])
   } finally {
     await h.stop()
   }
@@ -2513,7 +3002,7 @@ it('an order lists each dependency after its own dependencies', async () => {
         id,
         deps,
         projectDir: '/ws/a',
-        config: { exec: { command: 'x' }, outputs: { files: ['dist/**'] }, cache: true },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(
@@ -2542,7 +3031,7 @@ it('an order names its key and each dependency’s; the result comes back by the
         id,
         deps,
         projectDir: `/ws/${id}`,
-        config: { exec: { command: 'x' }, outputs: { files: ['dist/**'] }, cache: true },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(
@@ -2977,7 +3466,7 @@ it('an order names every dependency, held by its worker or not', async () => {
         id,
         deps,
         projectDir: `/ws/${id}`,
-        config: { exec: { command: 'x' }, outputs: { files: ['dist/**'] }, cache: true },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(new Map([cached('t1'), cached('x'), cached('w'), cached('y', ['x'])]))
@@ -2985,8 +3474,8 @@ it('an order names every dependency, held by its worker or not', async () => {
     const a = await h.worker(1)
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
-    expect(await a.batches()).toEqual([['t1']])
     void h.o.execute(h.req('x', 'k-x'))
+    expect(await a.batches()).toEqual([['t1']])
     const b = await h.worker(1)
     expect(await b.batches()).toEqual([['x']])
     await b.finish('x', 'k-x')
@@ -3254,7 +3743,7 @@ for (const sent of [true, false]) {
 }
 
 it('an uncached task’s dependant on another platform has it made again on a worker of that one', async () => {
-  const h = await harness(new Map([node('g', [], 'linux-x64'), node('u', ['g'], 'darwin-arm64')]))
+  const h = await harness(new Map([node('g'), node('u', ['g'])]))
   try {
     const linux = await h.worker(2, 'l', 'linux-x64')
     const g = h.o.execute({ ...h.req('g'), platform: 'linux-x64' })
@@ -3278,12 +3767,7 @@ it('a cached task’s dependant goes wherever it fits: a cache carries its outpu
   const cached = (id: string, deps: string[] = []) =>
     [
       id,
-      {
-        id,
-        deps,
-        projectDir: '/ws',
-        config: { exec: { command: 'x' }, outputs: { files: ['out/**'] }, cache: true },
-      },
+      { id, deps, projectDir: '/ws', config: { outputs: { files: ['out/**'] }, cache: true } },
     ] as unknown as readonly [string, TaskNode]
   const h = await harness(new Map([cached('g'), cached('x'), cached('u', ['g'])]))
   try {
@@ -4340,10 +4824,45 @@ it('books the cores a task keeps busy on average, to the quarter, a whole core a
 // before the Linux sandbox's first look, so none has a CPU measure; each
 // booked a whole worker and small#1 ran at 13%. Wasted: "we can't waste whole
 // worker for one task", "pack them where we have free capability".
-it('books an unmeasured task next to nothing, and sizes the run by 2 cores and 4GB or what is set', () => {
+it('places an unmeasured task on any free core, and sizes the run by 2 cores and 4GB or what is set', () => {
   const fresh = needOf({ p50DurationMs: 143 })
   expect(fresh).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
   expect(needOf(undefined, { cores: 1, memory: 5 }).ask).toEqual({ cores: 1, memory: 5 })
+  // A worker with 3 cores free takes all three: none waits for a new one.
+  const busy = {
+    id: 'w',
+    cores: 4,
+    memory: 16e9,
+    used: { cores: 1, memory: 15e9 },
+    running: 1,
+    has: new Set<string>(),
+    platform: undefined,
+  }
+  const to = assign(
+    ['a', 'b', 'c'].map((id) => ({ id, need: fresh, up: [] })),
+    [busy],
+    undefined,
+    'best-fit',
+  )
+  expect([...to.keys()].sort()).toEqual(['a', 'b', 'c'])
+  // CONTROL: a task measured at 4 cores does not fit there.
+  expect(
+    assign([{ id: 'm', need: { cores: 4, memory: 1 }, up: [] }], [busy], undefined, 'best-fit')
+      .size,
+  ).toBe(0)
+  // The plan counts each as its ask: two of them want 4 cores of workers.
+  const node = (id: string) =>
+    [id, { id, deps: [], config: { exec: { command: 'x' } } } as unknown as TaskNode] as const
+  const work = planTasks(
+    ['a', 'b'],
+    new Map([node('a'), node('b')]),
+    () => fresh,
+    () => 100,
+  )
+  expect(work.map((t) => [t.cores, t.memory])).toEqual([
+    [2, 4e9],
+    [2, 4e9],
+  ])
   expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } }))).toBe(
     'dte() option "unmeasured.cpu" must be a number above 0, got 0',
   )
@@ -4352,6 +4871,61 @@ it('books an unmeasured task next to nothing, and sizes the run by 2 cores and 4
   )
 })
 
+// Lab, 2026-11-10: graphs a third unmeasured ran 4.47% late, as best-fit
+// stacked their tasks, booked at a core each, on one worker they overran.
+it('places an unmeasured task where most cores are free, a measured one where fewest are', () => {
+  const bin = (id: string, used: number) => ({
+    id,
+    cores: 8,
+    memory: 64e9,
+    used: { cores: used, memory: 0 },
+    running: used,
+    has: new Set<string>(),
+    platform: undefined,
+  })
+  const bins = [bin('full', 6), bin('half', 4), bin('empty', 0)]
+  const fresh = needOf(undefined)
+  expect(assign([{ id: 'u', need: fresh, up: [] }], bins, undefined, 'best-fit').get('u')?.id).toBe(
+    'empty',
+  )
+  // CONTROL: a task measured at a core goes where fewest are free.
+  expect(
+    assign([{ id: 'm', need: { cores: 1, memory: 1 }, up: [] }], bins, undefined, 'best-fit').get(
+      'm',
+    )?.id,
+  ).toBe('full')
+})
+
+// M, 2026-11-18: a task using more than one core can parallelize, so with no
+// worker big enough free it runs on fewer cores, slower, when that ends sooner.
+it('runs a task wider than every worker on the cores free now when that ends sooner than waiting', () => {
+  const ten = (fillerEndsAt: number) => ({
+    id: 'ten',
+    cores: 10,
+    memory: 64e9,
+    used: { cores: 1, memory: 0 },
+    running: 1,
+    has: new Set<string>(),
+    platform: undefined,
+    ends: [[fillerEndsAt, 1, 0]] as const,
+  })
+  const big = { id: 'big', need: { cores: 20, memory: 1e9 }, up: [], takes: 60_000 }
+  const given = new Map<string, number>()
+  const all = (given: Map<string, number>) => ({ given, floor: { cores: 1, memory: 0 }, kinds: 1 })
+  // Waiting 150 s for the whole worker then 120 s on it, or 133 s on 9 cores now.
+  expect(assign([big], [ten(150_000)], undefined, 'best-fit', all(given)).get('big')?.id).toBe(
+    'ten',
+  )
+  expect(given.get('big')).toBe(9)
+  // CONTROL: its room frees in 1 s, so it waits for all ten.
+  expect(assign([big], [ten(1_000)], undefined, 'best-fit', all(new Map())).size).toBe(0)
+  // CONTROL: a time unknown never runs on fewer.
+  const { takes: _, ...unknown } = big
+  expect(assign([unknown], [ten(150_000)], undefined, 'best-fit', all(new Map())).size).toBe(0)
+  // CONTROL: a worker it fits whole is in the pool: it waits for that one.
+  const twenty = { ...ten(150_000), id: 'twenty', cores: 20, used: { cores: 20, memory: 0 } }
+  expect(assign([big], [ten(150_000), twenty], undefined, 'best-fit', all(new Map())).size).toBe(0)
+})
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),
@@ -4461,9 +5035,11 @@ it('refuses options it does not read and workers it cannot start', () => {
       }),
     ),
   ).toBe('taken')
-  // The planner is one: no scheduler to choose.
-  expect(refusal(() => dte({ workers: W, adapter, scheduler: {} } as never))).toContain(
-    'dte() has unknown option "scheduler"',
+  expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
+    'dte() option "scheduler.order" must be one of critical-path, graphene, fifo, got "lifo"',
+  )
+  expect(refusal(() => dte({ workers: W, adapter, scheduler: { pace: 'x' } as never }))).toBe(
+    'dte() option "scheduler" has no layer "pace" (layers: order, place, book, scale)',
   )
   expect(refusal(() => dte({}))).toBe(
     'dte(): with no adapter, set relay: the workers that join it run the tasks',
@@ -4860,7 +5436,7 @@ console.log(JSON.stringify(seen.sort()))
     'vx-dte/src/gitlab.ts',
     'vx-dte/src/index.ts',
     'vx-dte/src/local.ts',
-    'vx-dte/src/plan/model.ts',
+    'vx-dte/src/plan/strategy.ts',
     'vx-dte/src/plugin.ts',
     'vx-dte/src/printable.ts',
   ])
@@ -5189,21 +5765,29 @@ it('knows how long a worker took to join', async () => {
   }
 })
 
-it('gives a task that filled its worker a bigger one', async () => {
-  const h = await harness(new Map([node('heavy')]), () => ({
-    cores: Infinity,
-    memory: Infinity,
-    above: { cores: 2, memory: 100 },
-  }))
+it('gives an unmeasured task a whole worker, and one that filled its worker a bigger one', async () => {
+  const whole = { cores: Infinity, memory: Infinity }
+  const h = await harness(new Map([node('u1'), node('u2'), node('heavy')]), (id) =>
+    id === 'heavy' ? { ...whole, above: { cores: 2, memory: 100 } } : whole,
+  )
   try {
-    await h.worker(2)
+    const small = await h.worker(2)
     await Bun.sleep(50)
+    // No history: alone on its worker.
+    const u1 = h.o.execute(h.req('u1'))
+    void h.o.execute(h.req('u2'))
+    expect(await small.batches()).toEqual([['u1']])
+    await small.finish('u1')
+    // The run keeps where it ran and that machine's size, for the next run.
+    expect(await u1).toMatchObject({ where: 'worker#1', machine: { cores: 2, memoryBytes: 100 } })
+    expect(await small.batches()).toEqual([['u2']])
+    await small.finish('u2')
     // It filled a 2-core worker: the idle one is passed over for the
     // bigger one starting.
     h.o.spawned('big#2', { size: 'big', cpu: 8, memory: 1000 })
     void h.o.execute(h.req('heavy'))
     await Bun.sleep(50)
-    const big = await h.worker(8, 'big#2')
+    const big = await h.worker(8)
     expect(await big.batches()).toEqual([['heavy']])
   } finally {
     await h.stop()
@@ -5213,7 +5797,7 @@ it('gives a task that filled its worker a bigger one', async () => {
 // A bigger worker of another platform cannot take it: a Mac task that
 // filled its Mac waited for a Linux worker to join, and then ran on the Mac.
 it('a task that filled its worker waits for no bigger one of another platform', async () => {
-  const h = await harness(new Map([node('heavy', [], 'darwin-arm64')]), () => ({
+  const h = await harness(new Map([node('heavy')]), () => ({
     cores: Infinity,
     memory: Infinity,
     above: { cores: 2, memory: 100 },
@@ -5255,6 +5839,24 @@ it('a worker’s reason is its error line, not the hint after it', () => {
     '✗ vx  refused a b c',
     "fatal: detected dubious ownership in repository at '/src/.git'",
   ])
+})
+
+// Main's workers booked 4.3 of 4 cores (2026-10-23): a task began on a
+// free core whatever it asked. Beside others it fits in full or waits;
+// an empty worker takes anything, alone.
+it('a task begins beside others only when its cores and memory fit in full', () => {
+  const bin = (cores: number, memory: number, running = 1) => ({
+    id: 'w',
+    cores: 4,
+    memory: 16e9,
+    used: { cores, memory },
+    running,
+  })
+  expect(fits(bin(2.5, 1e9), { cores: 1.5, memory: 1e9 })).toBe(true)
+  expect(fits(bin(3.2, 1e9), { cores: 1.5, memory: 1e9 })).toBe(false)
+  expect(fits(bin(1, 15e9), { cores: 1, memory: 2e9 })).toBe(false)
+  expect(fits(bin(0.5, 0), { cores: 4, memory: 0 })).toBe(false)
+  expect(fits(bin(0, 0, 0), { cores: Infinity, memory: Infinity })).toBe(true)
 })
 
 // Main fd9afe0: a Mac's tasks' exits said 1.8 cores and they ran at half
@@ -5995,7 +6597,7 @@ it('sends an order too long for one frame with its deps ahead, all of them arriv
         id,
         deps: id === 'final' ? ids : [],
         projectDir: '/ws',
-        config: { exec: { command: 'x' }, outputs: out, cache: true },
+        config: { outputs: out, cache: true },
       } as unknown as TaskNode,
     ]),
   )
@@ -6254,15 +6856,7 @@ it('removes a worker’s removed outputs only where no link leads elsewhere', as
   store.saved.set('k', [])
   const said: string[] = []
   const nodes = new Map([
-    [
-      't',
-      {
-        id: 't',
-        deps: [],
-        projectDir: path.join(ws, 'pkg'),
-        config: { exec: { command: 'x' } },
-      } as unknown as TaskNode,
-    ],
+    ['t', { id: 't', projectDir: path.join(ws, 'pkg'), config: {} } as unknown as TaskNode],
   ])
   const o = new Orchestrator({
     me: await join(served.url, R, 'orchestrator', null, undefined),
@@ -6320,6 +6914,82 @@ it('removes a worker’s removed outputs only where no link leads elsewhere', as
     await o.close()
     await served.stop()
   }
+})
+
+// 2026-11-05: placing scored every worker a task fit, 200 per task on a
+// big run: 15% of the orchestrator's CPU. It scores the first 16, as
+// Kubernetes scores a share of its nodes; workers fill in order.
+it('scores a task on the first 16 workers it fits, not every one', () => {
+  let read = 0
+  const bins = Array.from({ length: 200 }, (_, i) => ({
+    id: `w${i}`,
+    cores: 4,
+    memory: 16e9,
+    used: { cores: 0, memory: 0 },
+    n: 0,
+    get running(): number {
+      read++
+      return this.n
+    },
+    set running(n: number) {
+      this.n = n
+    },
+    has: new Set<string>(),
+    platform: undefined,
+  }))
+  const to = assign(
+    [{ id: 't', need: { cores: 1, memory: 0 }, up: [] }],
+    bins,
+    undefined,
+    'best-fit',
+  )
+  expect([to.get('t')?.id, read]).toEqual(['w0', 18])
+})
+
+it('orders a queue that left in order plus what got ready since as one sort would', () => {
+  const tails: Record<string, number> = { a: 9, b: 7, c: 7, d: 3, e: 8, f: 7, g: 1, h: 10 }
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+  const tail = (id: string) => tails[id]!
+  const need = (id: string): Need => ({ cores: id === 'd' ? 4 : 1, memory: 0 })
+  expect(ordered(ids, 'critical-path', tail, need, 8)).toEqual(
+    [...ids].sort((x, y) => tail(y) - tail(x)),
+  )
+  // Graphene: within a quarter of the longest, or half a worker wide, first.
+  expect(ordered(ids, 'graphene', tail, need, 8)).toEqual(['h', 'a', 'e', 'd', 'b', 'c', 'f', 'g'])
+  expect(ordered(['c', 'b'], 'critical-path', tail, need, 8)).toEqual(['c', 'b'])
+})
+
+// 2026-11-06: a task of the run's platform, which every live one names,
+// was never found dead, so each pass asked every bin for each queued task.
+it('makes no ask of a platform task no worker of its platform can take', () => {
+  const full = (id: string, platform: string) => ({
+    id,
+    cores: 4,
+    memory: 16e9,
+    used: { cores: 3.5, memory: 0 },
+    running: 2,
+    has: new Set<string>(),
+    platform,
+  })
+  const bins = [full('l', 'linux'), { ...full('m', 'darwin'), used: { cores: 0, memory: 0 } }]
+  const ids = Array.from({ length: 100 }, (_, i) => `t${i}`)
+  let asked = 0
+  const { to, left } = dispatch(ids, bins, {
+    how: { order: 'fifo', place: 'best-fit', book: 'measured', scale: 'plan' },
+    need: () => ({ cores: 2, memory: 1e9, platform: 'linux' }),
+    deps: () => {
+      asked++
+      return []
+    },
+  })
+  expect([to.size, left.length, asked]).toEqual([0, 100, 0])
+  // One that fits is still placed.
+  const one = dispatch(['x'], bins, {
+    how: { order: 'fifo', place: 'best-fit', book: 'measured', scale: 'plan' },
+    need: () => ({ cores: 0.5, memory: 1e9, platform: 'linux' }),
+    deps: () => [],
+  })
+  expect(one.to.get('x')?.id).toBe('l')
 })
 
 it('serversOf names a task’s servers through groups, and the servers they need', () => {

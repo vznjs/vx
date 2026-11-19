@@ -127,9 +127,8 @@ it('numbers workers within their size', async () => {
     git('init', '-q')
     git('add', '.')
     git('commit', '-qm', 'r')
-    // As many unmeasured tasks as the four workers have cores.
     const graph = new Map(
-      ['t1', 't2', 't3', 't4', 't5', 't6'].map((id) => [
+      ['t1', 't2', 't3', 't4'].map((id) => [
         id,
         {
           id,

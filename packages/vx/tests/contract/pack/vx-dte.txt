@@ -16,11 +16,13 @@ src/noise.ts
 src/orchestrator.ts
 src/outputs.ts
 src/plan/advise.ts
-src/plan/engine.ts
+src/plan/dispatch.ts
 src/plan/index.ts
 src/plan/model.ts
-src/plan/planner.ts
-src/plan/replay.ts
+src/plan/pack.ts
+src/plan/plan.ts
+src/plan/play.ts
+src/plan/strategy.ts
 src/plugin.ts
 src/printable.ts
 src/seal.ts

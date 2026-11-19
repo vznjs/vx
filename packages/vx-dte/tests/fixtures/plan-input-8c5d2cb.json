@@ -1,0 +1,1070 @@
+{
+  "tasks": [
+    {
+      "id": "@vzn/vx#lint.oxlint",
+      "cores": 3.485964569385814,
+      "memory": 1370365952,
+      "ms": 3848,
+      "slowMs": 3848,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 2,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#check.bun",
+      "cores": 2,
+      "memory": 4000000000,
+      "ms": 435,
+      "slowMs": 435,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 4,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx#lint.oxfmt",
+      "cores": 3.645080701065517,
+      "memory": 1620844544,
+      "ms": 5650,
+      "slowMs": 5650,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 5,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-1",
+      "cores": 1,
+      "memory": 267091968,
+      "ms": 90797,
+      "slowMs": 90797,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 8,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-2",
+      "cores": 1,
+      "memory": 432484352,
+      "ms": 45809,
+      "slowMs": 45809,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 9,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-3",
+      "cores": 1,
+      "memory": 247799808,
+      "ms": 63239,
+      "slowMs": 63239,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 10,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-4",
+      "cores": 1,
+      "memory": 326643425,
+      "ms": 51349,
+      "slowMs": 51349,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 11,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-5",
+      "cores": 1,
+      "memory": 413751213,
+      "ms": 51161,
+      "slowMs": 51161,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 12,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-6",
+      "cores": 1,
+      "memory": 282091520,
+      "ms": 53199,
+      "slowMs": 53199,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 13,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-7",
+      "cores": 1,
+      "memory": 284537732,
+      "ms": 53556,
+      "slowMs": 53556,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 14,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-8",
+      "cores": 1,
+      "memory": 437686272,
+      "ms": 79237,
+      "slowMs": 79237,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 15,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-9",
+      "cores": 1,
+      "memory": 476565504,
+      "ms": 78324,
+      "slowMs": 78324,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 16,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-10",
+      "cores": 1,
+      "memory": 318181376,
+      "ms": 63034,
+      "slowMs": 63034,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 17,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-11",
+      "cores": 1,
+      "memory": 319815680,
+      "ms": 58221,
+      "slowMs": 58221,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 18,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-12",
+      "cores": 1,
+      "memory": 267653120,
+      "ms": 62557,
+      "slowMs": 62557,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 19,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-13",
+      "cores": 1,
+      "memory": 326114242,
+      "ms": 53154,
+      "slowMs": 53154,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 20,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-14",
+      "cores": 1,
+      "memory": 295420723,
+      "ms": 86279,
+      "slowMs": 86279,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 21,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-15",
+      "cores": 1,
+      "memory": 282152960,
+      "ms": 52853,
+      "slowMs": 52853,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 22,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-16",
+      "cores": 1,
+      "memory": 879304704,
+      "ms": 62020,
+      "slowMs": 62020,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 23,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-17",
+      "cores": 1,
+      "memory": 335179776,
+      "ms": 92779,
+      "slowMs": 92779,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 24,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-18",
+      "cores": 1,
+      "memory": 1260652953,
+      "ms": 49840,
+      "slowMs": 49840,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 25,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-19",
+      "cores": 1,
+      "memory": 399365406,
+      "ms": 57385,
+      "slowMs": 57385,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 26,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-20",
+      "cores": 1,
+      "memory": 283930624,
+      "ms": 56771,
+      "slowMs": 56771,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 27,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-21",
+      "cores": 1,
+      "memory": 254595072,
+      "ms": 49391,
+      "slowMs": 49391,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 28,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-22",
+      "cores": 1,
+      "memory": 519966720,
+      "ms": 57085,
+      "slowMs": 57085,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 29,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-23",
+      "cores": 1,
+      "memory": 287506022,
+      "ms": 48143,
+      "slowMs": 48143,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 30,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-24",
+      "cores": 1,
+      "memory": 397123584,
+      "ms": 77261,
+      "slowMs": 77261,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 31,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-25",
+      "cores": 1,
+      "memory": 332192563,
+      "ms": 47345,
+      "slowMs": 47345,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 32,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-26",
+      "cores": 1,
+      "memory": 403196313,
+      "ms": 66062,
+      "slowMs": 66062,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 33,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-27",
+      "cores": 1,
+      "memory": 320782336,
+      "ms": 53307,
+      "slowMs": 53307,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 34,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-28",
+      "cores": 1,
+      "memory": 517297540,
+      "ms": 60332,
+      "slowMs": 60332,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 35,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-29",
+      "cores": 1,
+      "memory": 365293568,
+      "ms": 59036,
+      "slowMs": 59036,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 36,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-30",
+      "cores": 1,
+      "memory": 666812416,
+      "ms": 57472,
+      "slowMs": 57472,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 37,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-31",
+      "cores": 1,
+      "memory": 306864128,
+      "ms": 52365,
+      "slowMs": 52365,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 38,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-32",
+      "cores": 1,
+      "memory": 1011490816,
+      "ms": 71488,
+      "slowMs": 71488,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 39,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-33",
+      "cores": 1,
+      "memory": 282451968,
+      "ms": 81580,
+      "slowMs": 81580,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 40,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-34",
+      "cores": 1,
+      "memory": 388346029,
+      "ms": 57813,
+      "slowMs": 57813,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 41,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-35",
+      "cores": 1,
+      "memory": 376664064,
+      "ms": 79683,
+      "slowMs": 79683,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 42,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-36",
+      "cores": 1,
+      "memory": 334630912,
+      "ms": 60759,
+      "slowMs": 60759,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 43,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-37",
+      "cores": 1,
+      "memory": 334205337,
+      "ms": 75021,
+      "slowMs": 75021,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 44,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-38",
+      "cores": 1,
+      "memory": 632851660,
+      "ms": 55929,
+      "slowMs": 55929,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 45,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-39",
+      "cores": 1,
+      "memory": 483622912,
+      "ms": 52247,
+      "slowMs": 52247,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 46,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-40",
+      "cores": 1,
+      "memory": 377240371,
+      "ms": 100489,
+      "slowMs": 100489,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 47,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-41",
+      "cores": 1,
+      "memory": 362115072,
+      "ms": 78766,
+      "slowMs": 78766,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 48,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-42",
+      "cores": 1,
+      "memory": 397829283,
+      "ms": 55683,
+      "slowMs": 55683,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 49,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-43",
+      "cores": 1,
+      "memory": 326701056,
+      "ms": 64125,
+      "slowMs": 64125,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 50,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-44",
+      "cores": 1,
+      "memory": 326069452,
+      "ms": 50915,
+      "slowMs": 50915,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 51,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-45",
+      "cores": 1,
+      "memory": 283410432,
+      "ms": 51809,
+      "slowMs": 51809,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 52,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-46",
+      "cores": 1,
+      "memory": 516141056,
+      "ms": 55348,
+      "slowMs": 55348,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 53,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-1",
+      "cores": 1.1149286624730812,
+      "memory": 223211520,
+      "ms": 25623,
+      "slowMs": 25623,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 55,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-2",
+      "cores": 1,
+      "memory": 205176832,
+      "ms": 25777,
+      "slowMs": 25777,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 56,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-3",
+      "cores": 1.1660456282671259,
+      "memory": 219623424,
+      "ms": 22625,
+      "slowMs": 22625,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 57,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-4",
+      "cores": 1,
+      "memory": 255590400,
+      "ms": 20776,
+      "slowMs": 20776,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 58,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-5",
+      "cores": 1,
+      "memory": 236195840,
+      "ms": 21158,
+      "slowMs": 21158,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 59,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-6",
+      "cores": 1,
+      "memory": 362201088,
+      "ms": 40292,
+      "slowMs": 40292,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 60,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-7",
+      "cores": 1,
+      "memory": 299515904,
+      "ms": 25405,
+      "slowMs": 25405,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 61,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-8",
+      "cores": 1.125363863266978,
+      "memory": 640593920,
+      "ms": 26142,
+      "slowMs": 26142,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 62,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-9",
+      "cores": 1,
+      "memory": 292978688,
+      "ms": 27380,
+      "slowMs": 27380,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 63,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-10",
+      "cores": 1,
+      "memory": 576548864,
+      "ms": 34474,
+      "slowMs": 34474,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 64,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-1",
+      "cores": 1,
+      "memory": 311345152,
+      "ms": 64788,
+      "slowMs": 64788,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 67,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-2",
+      "cores": 1,
+      "memory": 185286656,
+      "ms": 59799,
+      "slowMs": 59799,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 68,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-3",
+      "cores": 1,
+      "memory": 215662592,
+      "ms": 71222,
+      "slowMs": 71222,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 69,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-4",
+      "cores": 1,
+      "memory": 785483366,
+      "ms": 60087,
+      "slowMs": 60087,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 70,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-5",
+      "cores": 1,
+      "memory": 137641984,
+      "ms": 54665,
+      "slowMs": 54665,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 71,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-6",
+      "cores": 1,
+      "memory": 798326784,
+      "ms": 53254,
+      "slowMs": 53254,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 72,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.unsafe.shard-1",
+      "cores": 1,
+      "memory": 174014464,
+      "ms": 19262,
+      "slowMs": 19262,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 73,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.unsafe.shard-2",
+      "cores": 1,
+      "memory": 146440192,
+      "ms": 6431,
+      "slowMs": 6431,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 74,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#test.platform.unsafe.shard-3",
+      "cores": 1.3663434001263133,
+      "memory": 147161088,
+      "ms": 17417,
+      "slowMs": 17417,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "darwin-arm64",
+      "n": 75,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#build.bun.linux-arm64",
+      "cores": 1,
+      "memory": 362909696,
+      "ms": 2956,
+      "slowMs": 2956,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 76,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx#build.bun.darwin-arm64",
+      "cores": 1,
+      "memory": 552656896,
+      "ms": 2763,
+      "slowMs": 2763,
+      "deps": ["@vzn/vx#check.bun"],
+      "platform": "linux-x64",
+      "n": 77,
+      "depsN": {
+        "0": 4
+      }
+    },
+    {
+      "id": "@vzn/vx-conformance#test",
+      "cores": 1,
+      "memory": 81244160,
+      "ms": 5208,
+      "slowMs": 5208,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 126,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-migrate#test.live",
+      "cores": 2.9298682162317413,
+      "memory": 538189824,
+      "ms": 43738,
+      "slowMs": 43738,
+      "deps": ["@vzn/vx-migrate#nx.install"],
+      "platform": "linux-x64",
+      "n": 211,
+      "depsN": {
+        "0": 212
+      },
+      "servers": [
+        {
+          "id": "@vzn/vx-migrate#nx.install",
+          "cores": 0.52
+        }
+      ]
+    },
+    {
+      "id": "@vzn/vx-reapi#test.live",
+      "cores": 1,
+      "memory": 150347776,
+      "ms": 35788,
+      "slowMs": 35788,
+      "deps": ["@vzn/vx-reapi#services.cache", "@vzn/vx-reapi#services.exec"],
+      "platform": "linux-x64",
+      "n": 234,
+      "depsN": {
+        "0": 235,
+        "1": 236
+      },
+      "servers": [
+        {
+          "id": "@vzn/vx-reapi#services.exec",
+          "cores": 0.09
+        },
+        {
+          "id": "@vzn/vx-reapi#services.cache",
+          "cores": 0
+        }
+      ]
+    }
+  ],
+  "sizes": [
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.mac",
+      "max": 3,
+      "cpu": 2,
+      "memory": 7000000000,
+      "platform": "darwin-arm64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.mac",
+      "max": 3,
+      "cpu": 2,
+      "memory": 7000000000,
+      "platform": "darwin-arm64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.mac",
+      "max": 3,
+      "cpu": 2,
+      "memory": 7000000000,
+      "platform": "darwin-arm64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.arm",
+      "max": 1,
+      "cpu": 4,
+      "memory": 16000000000,
+      "platform": "linux-arm64"
+    }
+  ],
+  "warmUps": {
+    "hosted.small": 15856,
+    "hosted.arm": 21084,
+    "hosted.mac": 20746
+  },
+  "spreads": {
+    "hosted.small": 5214,
+    "hosted.arm": 0,
+    "hosted.mac": 7668
+  },
+  "workers": []
+}

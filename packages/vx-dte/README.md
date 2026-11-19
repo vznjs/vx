@@ -491,15 +491,28 @@ use your own instead.
   shard idle for a second then uses all its cores. A command that ended
   frees its cores while its outputs save, and its worker's load until the
   next frame: that load counted the task. Every
-  task sent begins at once; none waits in a worker's queue. Where each
-  task goes is the plan's (see `workers` under [API](#api)): a task fills
-  a worker before another is asked, so a 10-core task facing one free
-  core asks a worker, and two small tasks share a busy one rather than
-  pay a warm-up. A task that filled its worker last time runs only on a
-  bigger size while the run has or may ask one. A task wider than every
-  worker runs on the most cores free on one when that ends the run
-  sooner than waiting for room: a 20-core task of 60 s starts now on the
-  9 free cores of a 10-core worker busy with a 150 s chain, not after it.
+  task sent begins at once; none waits in a worker's queue. A task asking
+  a whole worker, or bigger than any, runs alone on an idle one (one that
+  filled its worker last time). A task booking more than one core can
+  parallelize, so one wider than every worker in the run, with no room
+  for it now, runs on the most whole cores free on one worker when, as
+  many times as long as it is short of its cores, it ends sooner than
+  waiting for room: a 20-core task of 60 s starts now on the 9 free cores
+  of a 10-core worker busy with a 150 s chain, not after it.
+  The run books it those cores and expects it that much later; a size
+  that fits it whole is still waited for. A task with history goes only on a size
+  with room for its cores and memory when some size has it, so a 4-core
+  task never runs at half speed on a 2-core worker while 8-core sizes
+  go unasked. Workers its work needs within a warm-up of each other
+  start as fewer, bigger ones with the cores of them all: four 2-core
+  tasks ready at once start one 8-core worker, so fewer machines pay a
+  warm-up. The first such task waiting holds
+  the worker that empties soonest: no task after it is sent there, so it
+  is not passed over again and again. Any ready task with history that
+  fits no worker now keeps its room where it first frees: a task of lower
+  rank goes there only beside it, and one with no history still goes.
+  A task given keeps room for the tasks it makes ready before the rest of
+  the pass takes it, so a chain's next step never waits on fillers.
 - A task naming `exec.platforms` runs only on a worker of the platform
   core placed it on: this machine's when a size has it, else the first of
   the task's a size has. A worker reports its platform when it joins: a
@@ -518,8 +531,13 @@ use your own instead.
   starts when no type has the name, or none of its machines runs one of
   the task's platforms. A worker that joins on its own is of the first
   type with its platform.
-- Of equal choices, a task goes to the worker the last plan gave it,
-  then to the busiest, so workers fill before the next takes work and the
+- Tasks waiting for room go out longest tail first: a task's recorded
+  duration and its longest chain of dependants, so a long chain that got
+  ready late does not queue behind many short tasks ready at once.
+- A task goes first to the worker the last plan gave it, where it fits
+  now, while every task left has history; then to the worker that holds
+  most of its dependencies' outputs, so a chain stays on one machine; then to the one with fewest cores
+  free that it fits, so workers fill before the next takes work and the
   ones the rest no longer needs fall idle and leave.
 - A sandboxed task runs on a worker inside the worker's own sandbox, with
   the same `exec.sandbox`, built there (`workerRuntime().prepare`): its paths,
@@ -706,9 +724,8 @@ use your own instead.
   later is taken, as any worker the plan may let go. The first three such failures in a
   run each start another worker in its place, as a checkout, install or
   join can fail on the network; a fourth starts none. While a worker of
-  a size is past when it was due to join (its warm-up, a spread after the
-  one of its size before it), or given up so beside one of its size
-  online, the run asks no more of that size: its CI queued it, and
+  a size is past its warm-up unjoined, or given up so beside one of its
+  size online, the run asks no more of that size: its CI queued it, and
   one asked then would queue behind it. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
@@ -960,7 +977,7 @@ What `@vzn/vx-dte` reads from the CI job it runs in:
 ## API
 
 - `dte(options?: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token?, unmeasured?, headers? }`;
+  `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured?, headers? }`;
   a key it does not take, in a size or `unmeasured` too, is refused.
   `headers` go on every dial to the relay, the orchestrator's and each
   worker's (redials too), for a proxy in front of it, such as a
@@ -983,38 +1000,94 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     absent, planned as this machine's and not checked on join). With no adapter, the sizes' platforms are
     the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did, and
-    every uncached task, which runs every time; groups and hits need no worker. The run
-    plans that work over its workers and new ones (`src/plan/engine.ts`,
-    design `docs/design/dte-planner-2026-11.md`), each new one joining
-    after its size's warm-up (the mean of this run's joins of that size,
-    else an earlier run's) and a spread after the one of its size asked
-    before it, as a CI queue lets them in one after another: the spread
-    the workers this run asked together showed, else an earlier run's
-    (kept in history, as warm-ups are). A worker's tasks share its cores:
-    past them, each runs at its share. A task's time is its history
-    scaled by how this run's finished tasks compared to theirs; a running
-    task's rest is what tasks that ran that long took more. A task history
-    never measured takes what the measured ones take, with the unmeasured
-    that ended, and each still running past that mean counted as ended at
-    what it has run, so the first to end, the short ones, do not speak
-    for all; while
-    no task's time is known at all, no idle worker leaves. The plan compares, in order: the run's expected end, then the
-    core-time its workers are held (warm-ups included), then fewer
-    workers. Each task, least slack first, goes where it adds least to
-    the first, then the second: room on a worker now, a wait for room
-    there, or a new worker of the smallest size it fits, asked a warm-up
-    before the task needs it. A task waiting on running tasks whose ends
-    are uncertain expects to start past the latest of them, not their
-    mean; a task placed before one whose start is uncertain pays the
-    lateness its overrun would add. With every time known, the plan tries
-    other starts within each task's slack, up to 16 times a decision
-    (fewer as tasks grow), and keeps the best, trying it first at the
-    next. Past 10,000 tasks it plans in one forward
-    pass instead: a million plan in about two seconds. The run
-    then starts what the plan starts now, asks the workers it asks now,
-    and plans again at each event: a task ready, started or ended, a
-    worker asked, joined or lost. An idle worker no planned task needs
-    leaves, unless it holds files a task to come reads.
+    every uncached task, which runs every time; groups and hits need no worker. The run plays
+    that work out on its workers and on N more (`src/plan/`), each new
+    one joining after its size's warm-up: this run's first of that size,
+    else an earlier run's, else any size's this run, else 20 s,
+    and the best end is the one with all N. A worker counts its cores
+    less what its machine spends besides the run's tasks, in whole cores
+    from 1.5 on (a task's whole core covers the rest), and a new one
+    of a size what this run's of that size spent, else an earlier run's
+    (kept in history, as warm-ups are), else none; so does one just joined,
+    until its own load says, which then moves it from there a step a frame,
+    as tasks are placed on it. A new worker starts only when
+    a task reaches its latest start (the best end less three times its
+    chain, as history is a guess) with no room sooner on a worker running
+    or starting: a task with slack waits for room the run pays for
+    anyway, and the critical path never waits. A worker started for a
+    task starts as soon as that task is ready, and tasks with slack fill
+    its room. A chain through a task with no history has no slack the
+    plan can prove: it takes room on a worker running or starting as it
+    gets ready, and starts no worker for that alone. A task running past
+    its history counts as running as long again.
+    It plays only two warm-ups and the longest task ahead; past that, the
+    rest ends no sooner than its longest chain, nor than its work spread
+    on the cores it has, nor than a ready task with no room in the window
+    can end from the window's end, and the next plan, a warm-up on, sees
+    further. A task on fewer cores than it asks is played at their share
+    of its pace. A worker started in place of one let go is asked as its
+    work nears, as any later start is.
+    A big worker whose last work fits a smaller size stops taking tasks
+    once its big work ends: the rest goes to the smallest size it fits,
+    started to join then, when that holds less CPU and the run ends no
+    later. The big one leaves once its running tasks end. While a task
+    with no history is left, this happens only for the run's last work.
+    With every task's time known, the plan packs the work instead, when
+    that holds less CPU and ends as soon (`src/plan/pack.ts`): each task, in
+    order of its latest start, goes where a worker has room for it
+    between its ready time and the start that ends its chain by the
+    deadline run slow (each task's slow run from history, else 15% over
+    its usual time), on the worker whose
+    time it lengthens least; with no such room, where one has room by
+    its latest start; a new worker, of the smallest size it fits,
+    starts for a task none has room for by then, or when keeping a worker
+    idle until it costs more than a new one's warm-up (two warm-ups for a
+    worker the run has; never while one sits idle that could take it),
+    asked to join as that task gets ready. The plan packs to the longest
+    chain from now first, then past it by a warm-up, then to the earliest
+    end between that and the best that packs (halved, six tries), then to the best
+    end; a packing that leaves out a task fits no worker and is not
+    used. A task booking more cores than any size of its platform has
+    is packed onto any worker whole, as the run books it. A task reading files an uncached upstream left on its worker
+    is packed there, or anywhere else with that upstream's time added, as
+    the run makes it again first; the worker holding them stays while it
+    has such a task to come, whichever of the packing and the play the
+    plan follows. A server's base is packed as the run books
+    it: once on each worker that starts it, from its first dependant
+    there until its last dependant anywhere ends. A server's start, from
+    its spawn to its first dependant's as its worker measured it and
+    history keeps it, is added to each dependant's time: the task holds
+    its worker that long before its command. It then packs again in other orders, up to 64 times (fewer
+    past 100 tasks, none past 6400), each new worker's task a random way
+    into its slack, and keeps the one holding least by the same end. How far that is from the least
+    a run can hold: `scripts/optimum.ts` plays small graphs and
+    `scripts/optimum.py` solves each exactly (CP-SAT). It
+    packs the whole run, past the window. Each next new
+    worker of a size is counted as joining later by the spread this run's
+    joins of it showed (the slowest less the fastest, over the joins
+    between), else an earlier run's (kept in history, as warm-ups
+    are); the play it is compared with counts its new workers so too. A
+    worker past its warm-up is packed as if asked now. The run then gives each task only to the worker the plan gave
+    it, once that joined, and not before the plan starts it: one the plan
+    starts as it gets ready goes as soon as it is. A task whose worker
+    has not joined by its start goes to any worker with room. A task the
+    plan has not seen (its miss came after) waits for the plan its
+    arrival asks: let go, it took the room the plan kept for a longer chain.
+    The plan may end 5% (5 s at least) past the best; that margin is
+    spent once: later plans keep its deadline until new work is known. A task waiting on one that runs waits until it ends.
+    Then the run follows that plan: a start it wants later is asked when
+    due, and a worker idle with its planned work done goes, once every
+    task planned on it has started. It plays again
+    only when reality leaves the plan: new work, work that leaves without
+    running, a worker idle at its planned end with a task planned on it not
+    started, a worker that joins, leaves or warms up off plan, a task past
+    its time or ending sooner, one of no known time ending, a task starting
+    with its time, CPU or memory more than 5% off (1 s, 0.05 cores, 64 MiB
+    at least), or its window moving on.
+    What is left, running tasks too, takes as many times its history as
+    the run's finished tasks took theirs (once they had 20 s of it; never
+    less): a task past its forecast would otherwise be planned to end now,
+    and a plan that thinks the run nearly done cancels the worker it asked.
     Before any worker can say what misses, the run counts as work each
     cached task whose inputs changed since HEAD's parent (`git diff
 HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
@@ -1023,35 +1096,72 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     Each task core's up-front cache probe found in no store
     (`TaskExecutor.demand`'s `missed`) counts as work too, the moment the
     probe answers.
-    A measured task counts for the cores it kept busy on average, and a
-    whole core at least. What a task used counts divided by its share of
-    the CPU: a Linux worker reads its run queue (`procs_running` in
-    /proc/stat) every 200 ms, a macOS one its load average while all its
-    cores are busy, and a task whose threads got a third of a core each
-    used a third of its need, not its need. The run history keeps that
-    share (`ExecuteResult.machine.cpuShare`) and learns the need, at most
-    the machine's cores, as the mean over runs.
-    A worker still starting is cancelled once its platform has no task
-    left: the adapter stops it before its setup if it can (`github()` cancels its
-    workflow run once no worker in it is needed and none of its jobs has a
-    runner), and one that joins anyway is told to exit. One the adapter
-    leaves running (its job had a runner, its run holds a worker still
-    needed, or the adapter stops none) is counted again, and the run takes
-    it when it joins. A task that used all of its worker's cores or memory
-    (90%) last time runs only on a bigger size while the run has or may
-    ask one. Each run's history keeps where every task ran and that
-    machine's size, so sizing improves run by run.
+    A measured task books the cores it kept busy on average, and a whole
+    core at least: eight test shards at 0.3 cores each shared one 4-core
+    worker and ran 2-3 times their time alone, which their history then
+    kept. It books those cores times the share of their history the
+    run's finished tasks used (once they used a minute of core-time; never
+    under two thirds, nor a core), so a worker's bookings may reach 1.5 times its
+    cores when tasks use less than history says; plans book the same.
+    What a task used counts divided by its share of the CPU: a Linux
+    worker reads its run queue (`procs_running` in /proc/stat) every 200 ms,
+    a macOS one its load average while all its cores are busy (a GitHub Mac reads a load of 49 with a core idle), and a task whose threads got a third of a core each used a third of
+    its need, not its need. A task wanted at most what it used and the
+    cores left free beside it, so its share is never read below that. The run history keeps that share
+    (`ExecuteResult.machine.cpuShare`) and learns the need, at most the
+    machine's cores: learning the share packed the next run tighter, nine
+    1.1-core test shards on one 4-core worker. The need is the mean over
+    runs, and a task fills its worker only when it does on average: one
+    crowded run's 2.84 cores for a build using 1.3 to 1.9 booked it a whole
+    Mac.
+    A worker the plan needs later starts when its warm-up nears. An idle
+    worker leaves when the plan gives it no task (its warm-up is spent), or,
+    when its next task is two warm-ups away, with one started in its place
+    a warm-up after it left: none is let go and started again. One the
+    plan lets go first takes the waiting tasks it has room for now, and
+    stays for them: the plan starts a task with slack late. An idle
+    worker takes the work of one its CI has not started past its warm-up,
+    which is cancelled. A worker still
+    starting that the plan gives no task (asked, a worker stays while the
+    plan has work for it, though the run would end no later without) is
+    cancelled: the adapter
+    stops it before its setup if it can (`github()` cancels its workflow
+    run once no worker in it is needed and none of its jobs has a runner),
+    and one that joins anyway is told to exit. One the adapter leaves
+    running (its job had a runner, its run holds a worker still needed, or
+    the adapter stops none) is counted again, and the run takes it when it
+    joins: its setup is paid, and a cancel landing late could stop it
+    mid-task. The same signal changes nothing. The
+    run ends: a task the history has not measured books one free core on
+    any worker (`unmeasured` sizes the run); one that used all of its worker's cores or memory (90%) last time runs
+    alone on the smallest bigger size, which the run starts for it. Each
+    run's history keeps where every task ran and that machine's size, so
+    sizing improves run by run.
   - `adapter` is the `DteAdapter` that starts workers, of the sizes in
     `workers`: at least one with `max` above 0, or `dte()` is refused.
     Absent, the run starts none and uses the workers that join `relay`.
   - `relay` is the relay's base URL, http(s), without `/v1`, `?query` or `#fragment`; absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
-  - `unmeasured`, `{ cpu, memory }`, is what a task with no measure keeps
-    busy: a new task, or one over before the Linux sandbox's first look
-    (250 ms), which leaves no CPU. The plan counts it for `cpu` cores;
-    absent, for the measured tasks' mean. On a worker it holds one free
-    core and no memory, so it goes to any worker with a free core.
+  - `unmeasured`, `{ cpu, memory }` (default 2 cores, `'4GB'`), is what a
+    task with no measure counts for when the run decides how many workers
+    to start: a new task, or one over before the Linux sandbox's first
+    look (250 ms), which leaves no CPU. It books one free core on any
+    worker, so it waits for no worker of its own, and goes where the most
+    cores are free, room to use more than it booked.
+  - `scheduler` (a partial `Strategy`) picks each layer of how the run schedules; a layer left
+    out is the default (first named):
+    - `order`, which waiting task goes first: `critical-path` (the
+      longest chain after it), `graphene` (the long and the wide first),
+      `fifo`;
+    - `place`, which worker takes a measured task: `best-fit` (fewest cores left),
+      `tetris` (needs aligned with what is free), `worst-fit`,
+      `first-fit`;
+    - `book`, what a task holds: `measured` (its history), `margin`
+      (a fifth more), `whole` (a worker each);
+    - `scale`, how many workers: `plan` (above), `backlog` (cores, of each platform, for
+      what is ready or running, Spark's dynamic allocation).
+      `tests/sim.test.ts` plays main's runs with each.
 - `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (unset or empty,
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_WORKER` (its name). It is

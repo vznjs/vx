@@ -152,20 +152,25 @@ cacophony vectors (`packages/vx-dte/src/noise.ts`).
 
 Only misses need workers. A run the cache answers whole starts none.
 
-- **How many workers:** the planner (`packages/vx-dte/src/plan/engine.ts`)
-  asks a worker only when it ends the run sooner, then holds less
-  worker time. Tasks with slack wait for room on workers already
-  running. Idle workers leave.
-- **Where a task goes:** where it adds least to the run's expected
-  end, then to the worker time held.
-- **Which first:** the least slack.
+- **How many workers:** the planner (`packages/vx-dte/src/plan/`)
+  starts a worker only when a task would otherwise miss the best end.
+  Tasks with slack wait for room on workers already running. Idle
+  workers leave.
+- **Where a task goes:** to a worker with room, holding most of its
+  dependencies' outputs, then the fullest one.
+- **Which first:** the longest tail of recorded time.
 - **What it books:** the cores and memory its history used. No history
-  takes what the measured tasks take.
+  gets one free core.
 
-_Update, 2026-11-19:_ the `dte({ scheduler })` layers this post listed
-are gone. One forecast and one objective (the run's end, then worker
-time, then fewer workers) place and size every run; the design is
-`packages/vx/docs/design/dte-planner-2026-11.md`.
+Each is a layer you swap with `dte({ scheduler })`
+(`packages/vx-dte/src/plan/strategy.ts`):
+
+| Layer   | Choices (default first)                                                                                   |
+| ------- | --------------------------------------------------------------------------------------------------------- |
+| `order` | `critical-path` (HEFT's rank), `graphene` (long and wide first, Grandl OSDI'16), `fifo`                   |
+| `place` | `best-fit` (fewest cores left), `tetris` (needs aligned with what is free, SIGCOMM'14), `worst-fit`, `first-fit` |
+| `book`  | `measured` (history), `margin` (a fifth more, as Borg does), `whole` (a worker each)                        |
+| `scale` | `plan` (the planner above), `backlog` (cores for what is ready or running, as Spark's dynamic allocation)  |
 
 ## The simulator matches real runs
 

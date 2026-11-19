@@ -1,17 +1,30 @@
 // The planner: what a run needs, where each task goes and when. Pure: it
 // reads no clock, wire, relay, cache or file (tests/plan-boundary.test.ts).
 export { advise, type Fleets } from './advise.js'
+export { Placing, Queue, type Soon } from './dispatch.js'
 export {
-  bookedCores,
+  keepLast,
+  knownMisses,
   leaves,
-  MIN_CORES,
+  leftMs,
   spreadMs,
+  slowdowns,
+  tailsMs,
+  UNKNOWN_MS,
   WARM_UP_MS,
-  wholeCores,
   type Need,
   type PlanTask,
-  sized,
+  type PlanWorker,
   type Size,
+  type WarmUp,
 } from './model.js'
-export { commands, Planner, type PlannerSize } from './planner.js'
-export { replay } from './replay.js'
+export { decide, type Forecast } from './plan.js'
+export { simulate, sized } from './play.js'
+export {
+  booked,
+  DEFAULT_STRATEGY,
+  MIN_CORES,
+  STRATEGIES,
+  type Strategy,
+  wholeCores,
+} from './strategy.js'

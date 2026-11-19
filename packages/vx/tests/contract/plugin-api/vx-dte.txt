@@ -39,6 +39,7 @@ export interface DteOptions {
   readonly adapter?: DteAdapter
   readonly relay?: string
   readonly token?: () => string | undefined | Promise<string | undefined>
+  readonly scheduler?: Partial<Strategy>
   readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
   readonly headers?: Readonly<Record<string, string | undefined>>
 }
@@ -73,6 +74,13 @@ export interface LocalOptions {
 }
 == type PackageManager (src/init.ts)
 export type PackageManager = 'bun' | 'pnpm' | 'yarn' | 'npm'
+== type Strategy (src/plan/strategy.ts)
+export interface Strategy {
+  readonly order: 'critical-path' | 'graphene' | 'fifo'
+  readonly place: 'best-fit' | 'tetris' | 'worst-fit' | 'first-fit'
+  readonly book: 'measured' | 'margin' | 'whole'
+  readonly scale: 'plan' | 'backlog'
+}
 == type WorkerSize (src/plugin.ts)
 export interface WorkerSize {
   readonly max?: number

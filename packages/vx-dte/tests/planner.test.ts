@@ -1,0 +1,1173 @@
+import { expect, it } from 'bun:test'
+import type { TaskNode } from '@vzn/vx'
+import { advise } from '../src/plan/advise.js'
+import {
+  knownMisses,
+  missedWork,
+  planTasks,
+  type PlanTask,
+  type PlanWorker,
+  type Size,
+} from '../src/plan/model.js'
+import { candidates, decide, type Forecast, plan } from '../src/plan/plan.js'
+import { simulate, sized } from '../src/plan/play.js'
+import replay from './fixtures/main-run-2026-10-23.json'
+import input0 from './fixtures/plan-input-8c5d2cb.json'
+import input89 from './fixtures/plan-input-bf52a3e.json'
+
+const small: Size = { name: 'small', max: 12, cpu: 4, memory: 16e9 }
+const WARM = 20_000
+
+const worker = (id: string, over: Partial<PlanWorker> = {}): PlanWorker => ({
+  id,
+  cores: 4,
+  memory: 16e9,
+  at: 0,
+  running: [],
+  idle: true,
+  ...over,
+})
+const task = (id: string, ms: number, deps: string[] = [], cores = 1): PlanTask => ({
+  id,
+  cores,
+  memory: 1e8,
+  ms,
+  deps,
+})
+
+// Main 2163fff asked 6 workers at 0.6 s for 109 tasks; 85 hit and 2 did
+// the work at 46% (2026-10-23). Booked in full beside others, it takes four.
+it('plans main’s run on four workers: only its misses are work, never a group or a hit', () => {
+  const nodes = new Map(
+    replay.nodes.map((n) => [
+      n.id,
+      {
+        id: n.id,
+        deps: n.deps,
+        config: {
+          ...(n.exec ? { exec: { command: 'x' } } : {}),
+          ...(n.cache ? { cache: true } : {}),
+        },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const ran = replay.ran as unknown as Record<string, [number, number, number]>
+  const work = missedWork(
+    nodes.keys(),
+    nodes,
+    new Set(Object.keys(ran)),
+    (id) => ({ cores: ran[id]![1], memory: ran[id]![2] * 1e6 }),
+    (id) => ran[id]?.[0],
+  )
+  expect(work.map((t) => t.id).sort()).toEqual(Object.keys(ran).sort())
+  const p = plan(work, [], candidates([small], new Map(), [], work.length), WARM)
+  // Two end it on its longest chain, its slack packed beside the chain
+  // (2026-11-11); played as soon as there was room, it took three. The
+  // second asked 15 s in, its work in its slack: the same end on less.
+  expect(p.start).toEqual([small])
+  expect(p.later.map((l) => [l.size, Math.round(l.inMs / 1000)])).toEqual([[small, 15]])
+  expect(p.release).toEqual([])
+  // How busy it keeps them is tests/sim.test.ts's to judge.
+  // The longest chain, vx-docs's import, build and test, after the warm-up.
+  expect(p.endsInMs).toBeLessThan(WARM + 75_000)
+})
+
+it('packs the run past two warm-ups, and plans again a margin before its next worker is due', () => {
+  // A 200 s chain, then 16 wide: the wide part is past the window.
+  const tasks = [
+    task('a', 100_000),
+    task('b', 100_000, ['a']),
+    ...Array.from({ length: 16 }, (_, i) => task(`w${i}`, 30_000, ['b'])),
+  ]
+  const online = [worker('one', { idle: false, running: [] })]
+  const p = plan(tasks, online, candidates([small], new Map(), [], tasks.length), WARM)
+  expect(p.start).toEqual([])
+  // Not asked for the wide part yet: asked a warm-up and a margin before it is ready.
+  expect(p.againInMs).toBe(200_000 - WARM - 5_000)
+  // The rest ends no sooner than its chain.
+  expect(p.endsInMs).toBeGreaterThanOrEqual(230_000)
+})
+
+it('starts a worker the plan needs later only when its warm-up nears', () => {
+  // One long task, then 16 wide: a worker for the wide part is used 60 s in.
+  const tasks = [
+    task('a', 60_000),
+    ...Array.from({ length: 16 }, (_, i) => task(`w${i}`, 30_000, ['a'])),
+  ]
+  const online = [worker('one', { idle: false, running: [] })]
+  const p = plan(tasks, online, candidates([small], new Map(), [], tasks.length), WARM)
+  expect(p.start).toEqual([])
+  expect(p.againInMs).toBe(60_000 - WARM - 5_000)
+  // 35 s on, `a` near its end: the plan starts them now.
+  const later = plan(
+    tasks.slice(1),
+    [worker('one', { idle: false, running: [{ cores: 1, memory: 1e8, endsIn: 25_000 }] })],
+    candidates([small], new Map(), [], tasks.length),
+    WARM,
+  )
+  expect(later.start.length).toBeGreaterThan(0)
+  expect(later.againInMs).toBeUndefined()
+})
+
+it('changes nothing on the same signal again', () => {
+  const tasks = Array.from({ length: 12 }, (_, i) => task(`t${i}`, 40_000))
+  const first = plan(tasks, [], candidates([small], new Map(), [], tasks.length), WARM)
+  expect(first.start.length).toBeGreaterThan(0)
+  // Those it started, starting.
+  const starting = first.start.map((s, i) =>
+    worker(`${s.name}#${i + 1}`, { at: WARM, idle: false }),
+  )
+  const started = new Map([['small', first.start.length]])
+  const again = plan(tasks, starting, candidates([small], started, [], tasks.length), WARM)
+  expect([again.start, again.release]).toEqual([[], []])
+})
+
+it('lets an idle worker go only when one started in its place would be in time', () => {
+  const soon = [
+    task('a', 3_000),
+    ...Array.from({ length: 8 }, (_, i) => task(`w${i}`, 30_000, ['a'])),
+  ]
+  const two = [
+    worker('busy', { idle: false, running: [{ cores: 1, memory: 1e8, endsIn: 3_000 }] }),
+    worker('idle'),
+  ]
+  // Its work comes in 3 s: it stays.
+  expect(
+    plan(
+      soon.slice(1).map((t) => ({ ...t, deps: [] })),
+      two,
+      [],
+      WARM,
+    ).release,
+  ).toEqual([])
+  // Its work comes in 5 minutes: it goes, and a worker starts nearer then.
+  const late = [
+    task('a', 300_000),
+    ...Array.from({ length: 8 }, (_, i) => task(`w${i}`, 30_000, ['a'])),
+  ]
+  const lull = [worker('busy', { idle: false }), worker('idle', { size: 'small' })]
+  expect(plan(late, lull, [small], WARM).release).toEqual(['idle'])
+  // With its size's starts spent, none could: it stays (fuzz, 2026-10-25).
+  const kept = plan(late, lull, [], WARM)
+  expect(kept.release).toEqual([])
+  expect(kept.endsInMs).toBe(330_000)
+  // With nothing left, every idle one goes.
+  expect(plan([], two, [], WARM).release).toEqual(['idle'])
+})
+
+it('plays tasks out in their dependencies’ order, packed while a core is free', () => {
+  // Two at once on one worker, the third after the first.
+  const tasks = [task('a', 1_000, [], 2), task('b', 2_000, [], 2), task('c', 1_000, ['a'], 2)]
+  expect(simulate(tasks, [worker('w')])).toBe(2_000)
+  // No worker: never.
+  expect(simulate(tasks, [])).toBe(Infinity)
+  // One joining later begins then.
+  expect(simulate([task('a', 1_000)], [worker('w', { at: 5_000 })])).toBe(6_000)
+})
+
+// 2026-10-23: five workers joined to nothing queued and were let go at once.
+it('cancels a worker still starting that the plan ends as well without', () => {
+  const tasks = [task('a', 30_000), task('b', 30_000)]
+  const online = worker('one', { idle: false, running: [{ cores: 1, memory: 1e8, endsIn: 1_000 }] })
+  const starting = worker('two', { at: WARM, idle: false, starting: true })
+  // One online fits both: the one starting is not needed.
+  expect(plan(tasks, [online, starting], [], WARM).release).toEqual(['two'])
+  // Eight 30 s tasks on 4 cores: it is needed, and stays.
+  const wide = Array.from({ length: 8 }, (_, i) => task(`w${i}`, 30_000))
+  expect(plan(wide, [online, starting], [], WARM).release).toEqual([])
+})
+
+// PR #4214: each plan asked one worker for a run 5% over its best, and
+// the next, a second later, found it ended within the margin without it:
+// 7 asked and cancelled. Asked, a worker goes only when it adds nothing.
+it('keeps a starting worker that ends the run sooner, though within the margin', () => {
+  const online = worker('one', { idle: false, running: [{ cores: 4, memory: 1e8, endsIn: 1_000 }] })
+  const starting = worker('two', { at: 1_000, idle: false, starting: true })
+  const tasks = [task('a', 40_000, [], 4), task('b', 3_000, [], 4)]
+  // Without it the run ends 3 s later, within 5 s of its best: it stays.
+  expect(simulate(tasks, [online])).toBeLessThanOrEqual(simulate(tasks, [online, starting]) + 5_000)
+  expect(simulate(tasks, [online])).toBeGreaterThan(simulate(tasks, [online, starting]))
+  expect(plan(tasks, [online, starting], [], WARM).release).toEqual([])
+})
+
+// Main 005e8f2: asked at 2.1 s, mac#2 was cancelled 0.2 s later as adding
+// nothing to the run's end, and a mac asked again at 19.9 s joined 20 s
+// late: a play of a window let it go for work past the window. Packed,
+// the whole run has no task for it.
+it('lets a starting worker go only when the whole run has no task for it', () => {
+  const one = worker('one', { idle: false })
+  const three = worker('three', { idle: false })
+  const two = worker('two', { at: 1_000, idle: false, starting: true })
+  const tasks = [task('a', 40_000, [], 4), task('b', 3_000, [], 4), task('c', 3_000, [], 4)]
+  expect(simulate(tasks, [one, three])).toBe(simulate(tasks, [one, three, two]))
+  const p = plan(tasks, [one, three, two], [], WARM)
+  expect(p.release).toEqual(['two'])
+  expect(p.endsInMs).toBe(40_000)
+  // Each task on the run's workers: none waits for one let go.
+  expect(new Set(p.placed!.values())).toEqual(new Set(['one', 'three']))
+})
+
+// PR #5271's run: GitHub gave 4 asked workers no runner for 113-138 s.
+// Planned to join at once, they held 4 lints 126-147 s while a plan let
+// an idle joined one go.
+it('keeps an idle joined worker over one the CI has not started past its warm-up', () => {
+  const busy = worker('busy', {
+    idle: false,
+    running: [{ id: 'r', cores: 4, memory: 1e8, endsIn: 10_000 }],
+  })
+  const late = worker('late', { idle: false, starting: true, overdue: true })
+  const tasks = [task('l1', 40_000, ['r'], 3.6), task('l2', 40_000, ['r'], 3.6)]
+  const p = plan(tasks, [busy, late, worker('idle')], [], WARM)
+  expect(p.release).toEqual(['late'])
+  expect(new Set(p.placed!.values())).toEqual(new Set(['busy', 'idle']))
+})
+
+// Main 88a2500 and 327a98e: docs#build.live, uncached, ended on a worker
+// that went idle while docs#test still ran elsewhere. The play, which
+// reads no kept files, held less than the packing and let that worker go;
+// deploy.pages then made build.live again, 20-25 s past the ideal.
+it('keeps an idle worker holding files a task to come reads', () => {
+  const holder = worker('holder', { holds: new Map([['live', 19_000]]) })
+  const busy = worker('busy', {
+    idle: false,
+    running: [
+      { id: 'test', cores: 1, memory: 1e8, endsIn: 2_000 },
+      { id: 'other', cores: 1, memory: 1e8, endsIn: 6_000 },
+    ],
+  })
+  const deploy = { ...task('deploy', 8_000, ['test'], 1), reads: ['live'] }
+  const p = plan([deploy], [busy, holder], [], WARM)
+  expect(p.release).toEqual([])
+  // CONTROL: holding nothing it reads, the idle one goes.
+  expect(plan([deploy], [busy, worker('holder')], [], WARM).release).toEqual(['holder'])
+})
+
+// Main 643d38d: the packing gave the deploy to a worker busy past it,
+// build.live made again there, and let the idle holder go. That worker's
+// work ended early, it left too, and the build ran again at the run's end.
+it('keeps the holder when the packing gives its reader to a busy worker', () => {
+  const sized = (id: string, over: Partial<PlanWorker> = {}) =>
+    worker(id, { size: 'small', ...over })
+  const busy = sized('busy', {
+    idle: false,
+    running: [{ id: 'other', cores: 1, memory: 1e8, endsIn: 70_000 }],
+  })
+  const testing = sized('testing', {
+    idle: false,
+    running: [{ id: 'test', cores: 1, memory: 1e8, endsIn: 7_000 }],
+  })
+  const deploy = { ...task('deploy', 9_000, ['test'], 1), reads: ['live'] }
+  const work = [deploy, task('x', 20_000, [], 3)]
+  const p = plan(
+    work,
+    [busy, testing, sized('holder', { holds: new Map([['live', 25_000]]) })],
+    [small],
+    WARM,
+  )
+  // The packing, not the play: the play's own guard is pinned above.
+  expect(p.unpacked).toBeUndefined()
+  expect(p.release).toEqual([])
+  // CONTROL: holding nothing, the idle one goes.
+  expect(plan(work, [busy, testing, sized('holder')], [small], WARM).release).toEqual(['holder'])
+})
+
+it('waits a task on the running task it depends on', () => {
+  const busy = worker('busy', {
+    idle: false,
+    running: [{ id: 'build', cores: 1, memory: 1e8, endsIn: 10_000 }],
+  })
+  // Taken as ready, a growing graph's checks asked a worker that joined to nothing.
+  expect(simulate([task('check', 1_000, ['build'])], [busy])).toBe(11_000)
+})
+
+it('spends its margin once: a later plan of the same work keeps the first one’s deadline', () => {
+  // Two workers end it in 40 s: the run may end 5 s past that.
+  const work = [task('a', 40_000, [], 4), task('b', 4_000, [], 4)]
+  const two = [worker('x'), worker('y')]
+  expect(plan(work, two, [], WARM).boundMs).toBe(45_000)
+  // A deadline 2 s past the best is kept.
+  expect(plan(work, two, [], WARM, true, 42_000).boundMs).toBe(42_000)
+})
+
+// Main e05bd71: mac#2 joined at 18.4 s and was let go, the run ending
+// within its margin without it; a mac asked 4 s later joined at 44 s.
+it('keeps an idle worker the plan gives a task, though the run ends within its margin without it', () => {
+  const work = [task('a', 40_000, [], 4), task('b', 4_000, [], 4)]
+  const two = [worker('x'), worker('y')]
+  expect(simulate(work, [two[0]!])).toBeLessThanOrEqual(simulate(work, two) + 5_000)
+  expect(plan(work, two, [], WARM).release).toEqual([])
+})
+
+it('starts a worker of each platform its work needs, though that size is declared last', () => {
+  const linux: Size = { ...small, max: 8, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 2, cpu: 4, memory: 16e9, platform: 'darwin-arm64' }
+  const sizes = candidates([linux, mac], new Map(), [], 3, new Map([['darwin-arm64', 1]]))
+  expect(sizes.map((s) => s.name)).toContain('mac')
+  const task: PlanTask = {
+    id: 'ios',
+    cores: 1,
+    memory: 1e9,
+    ms: 1_000,
+    deps: [],
+    platform: 'darwin-arm64',
+  }
+  const workers: PlanWorker[] = [
+    { id: 'l', cores: 4, memory: 16e9, at: 0, running: [], idle: true, platform: 'linux-x64' },
+  ]
+  expect(simulate([task], workers)).toBe(Infinity)
+  expect(plan([task], workers, sizes, WARM).start.map((s) => s.name)).toEqual(['mac'])
+})
+
+// A Mac task that filled its Mac: a bigger Linux worker cannot take it,
+// so the plan neither waits for one nor starts one for it.
+it('plays a task that filled its worker on no bigger one of another platform', () => {
+  const mac = 'darwin-arm64'
+  const heavy: PlanTask = {
+    id: 'ios',
+    cores: Infinity,
+    memory: Infinity,
+    above: { cores: 4, memory: 4e9 },
+    ms: 10_000,
+    deps: [],
+    platform: mac,
+  }
+  const workers: PlanWorker[] = [
+    worker('mac#1', { memory: 4e9, platform: mac }),
+    worker('big#1', { cores: 8, at: WARM, idle: false, starting: true, platform: 'linux-x64' }),
+  ]
+  expect(simulate([heavy], workers)).toBe(10_000)
+  const big: Size = { name: 'big', max: 2, cpu: 8, memory: 32e9, platform: 'linux-x64' }
+  const macBig: Size = { name: 'mac-big', max: 2, cpu: 8, memory: 32e9, platform: mac }
+  const sizes = candidates([big, macBig], new Map(), [{ ...heavy.above!, platform: mac }], 0)
+  expect(sizes.map((s) => s.name)).toEqual(['mac-big'])
+})
+
+// Main c27c238 asked 13 workers at 2.4 s and cancelled 7 at 2.6 s: the
+// Mac came after every Linux size, so reaching it took all twelve.
+it("reaches each platform's first worker without taking another's all", () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const platforms = new Map([
+    ['linux-x64', 70],
+    ['darwin-arm64', 4],
+  ])
+  const sizes = candidates([linux, mac], new Map(), [], 74, platforms)
+  expect(sizes.slice(0, 2).map((s) => s.name)).toEqual(['small', 'mac'])
+  const work: PlanTask[] = [
+    ...Array.from({ length: 8 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    { ...task('ios', 30_000), platform: 'darwin-arm64' },
+  ]
+  expect(plan(work, [], sizes, WARM).start.map((s) => s.name)).toEqual(['small', 'mac', 'small'])
+})
+
+// Main c27c238 at 19.2 s: four Linux workers 17 s into their warm-up were
+// cancelled while seven new ones were asked, each a warm-up away.
+it('keeps a worker still starting over a new one of its shape', () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const starting = ['small#2', 'small#3'].map((id) =>
+    worker(id, { at: 0, idle: false, starting: true, platform: 'linux-x64' }),
+  )
+  const work: PlanTask[] = [
+    ...Array.from({ length: 8 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    { ...task('ios', 30_000), platform: 'darwin-arm64' },
+  ]
+  const sizes = candidates(
+    [linux, mac],
+    new Map([['small', 2]]),
+    [],
+    work.length,
+    new Map([
+      ['linux-x64', 8],
+      ['darwin-arm64', 1],
+    ]),
+  )
+  const p = plan(work, starting, sizes, WARM, true, 100_000)
+  expect(p.start.map((s) => s.name)).toEqual(['mac'])
+  expect(p.release).toEqual([])
+})
+
+// Main e3c76a2: the commit's forecast kept a build the probe found held,
+// and every test after it counted as work: 121 tasks asked for, 16 ran.
+it('counts no work after a forecast miss the probe found held', () => {
+  const nodes = new Map(
+    [
+      ['b', []],
+      ['t', ['b']],
+    ].map(([id, deps]) => [
+      id as string,
+      { id, deps, config: { exec: { command: 'x' }, cache: true } } as unknown as TaskNode,
+    ]),
+  )
+  const one = () => ({ cores: 1, memory: 1e9 })
+  // `b` was held, so it left `remaining`; `t`'s key, unknown until `b` ends, was not asked.
+  const remaining = new Set(['t'])
+  const known = knownMisses(new Set(['b']), new Set(), new Set(), remaining)
+  expect(missedWork(remaining, nodes, known, one, () => 1000)).toEqual([])
+  // Still remaining, the forecast stands.
+  const both = new Set(['b', 't'])
+  const still = knownMisses(new Set(['b']), new Set(), new Set(), both)
+  expect(missedWork(both, nodes, still, one, () => 1000).map((t) => t.id)).toEqual(['b', 't'])
+})
+
+// Main e38d1d2: check.build-cold, uncached, waited on install; counted
+// only once handed over, the first plan asked one Mac for a 37 s lane.
+it('counts an uncached task as work before it is handed over', () => {
+  const nodes = new Map(
+    [
+      ['install', [], true],
+      ['cold', ['install'], false],
+      ['after', ['cold'], true],
+    ].map(([id, deps, cached]) => [
+      id as string,
+      {
+        id,
+        deps,
+        config: { exec: { command: 'x' }, ...(cached ? { cache: true } : {}) },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const one = () => ({ cores: 1, memory: 1e9 })
+  const remaining = new Set(['install', 'cold', 'after'])
+  // Nothing missed: the uncached task still runs, and its dependant's key holds.
+  expect(missedWork(remaining, nodes, new Set(), one, () => 1000).map((t) => t.id)).toEqual([
+    'cold',
+  ])
+})
+
+// Main fd5c72e: small workers joined in 15 s and its Mac in 27 s, while
+// every plan waited 20 s for each.
+it("plans each size's own warm-up", () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 1, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const work: PlanTask[] = [
+    { ...task('l', 75_000), platform: 'linux-x64' },
+    { ...task('ios', 10_000), platform: 'darwin-arm64' },
+  ]
+  const ups = new Map([
+    ['small', 15_000],
+    ['mac', 27_000],
+  ])
+  const p = plan(work, [], [linux, mac], (size) => ups.get(size!)!)
+  expect(p.start.map((s) => s.name)).toEqual(['small', 'mac'])
+  expect(p.endsInMs).toBe(90_000)
+  expect(plan(work, [], [linux, mac], WARM).endsInMs).toBe(95_000)
+})
+
+// Main e118ccf (2026-10-24): five Linux tasks fit one small, the two Mac
+// ones needed two Macs. Sizes come in turns (small mac small mac), and
+// the shortest prefix with the second Mac took a second small too: it was
+// asked, given nothing, and cancelled unjoined.
+it('asks the fewest of each size, not the shortest prefix of the turns', () => {
+  const linux = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const on = (t: PlanTask, platform: string): PlanTask => ({ ...t, platform })
+  const tasks = [
+    on(task('check.bun', 300, [], 2), 'linux-x64'),
+    on(task('migrate.live', 25_800, [], 1.31), 'linux-x64'),
+    on(task('reapi.live', 11_300, [], 0.52), 'linux-x64'),
+    on(task('release.sync', 1_400, [], 0.25), 'linux-x64'),
+    on(task('deploy.pages', 26_900, [], 0.25), 'linux-x64'),
+    on(task('check.sandbox-canary', 5_200, [], 1.31), 'darwin-arm64'),
+    on(task('check.build-cold', 32_800, [], 2.11), 'darwin-arm64'),
+  ]
+  const sizes = candidates(
+    [linux, mac],
+    new Map(),
+    [],
+    tasks.length,
+    new Map([
+      ['linux-x64', 5],
+      ['darwin-arm64', 2],
+    ]),
+  )
+  expect(sizes.slice(0, 4).map((s) => s.name)).toEqual(['small', 'mac', 'small', 'mac'])
+  const p = plan(tasks, [], sizes, WARM)
+  expect(p.start.map((s) => s.name).sort()).toEqual(['mac', 'mac', 'small'])
+})
+
+// 2026-10-25: a run of 9000 tasks failed every one: each plan read every
+// ready task at each step of its play-out, and the orchestrator, planning,
+// stopped answering its workers. A complexity guard: timed in CPU, not wall.
+it('plans 9000 ready tasks of mixed needs in seconds of CPU, not minutes', () => {
+  const tasks: PlanTask[] = Array.from({ length: 9000 }, (_, i) => ({
+    id: `t${i}`,
+    cores: [0.25, 0.7, 1, 1.5][i % 4]!,
+    memory: 0,
+    ms: 100 + (i % 7) * 30,
+    deps: [],
+  }))
+  tasks.push({ id: 'final', cores: 1, memory: 0, ms: 100, deps: tasks.map((t) => t.id) })
+  const sizes = Array.from({ length: 3 }, () => ({ name: 'small', cpu: 2, memory: 8e9, max: 3 }))
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, 3000)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(5000)
+}, 60_000)
+
+// 2026-11-11: a ~380-project workspace, tasks of measured varied needs,
+// planned 2.9 s mid-run (one sim plan 21.5 s): every ask that fit nowhere
+// read every worker. A plan never takes more than 1 s.
+it('plans 3800 tasks of varied needs mid-run in under a second of CPU', () => {
+  let seed = 7
+  const r = (): number => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed / 0x7fffffff)
+  const need = () => ({
+    cores: 0.3 + r() * 1.5,
+    memory: 2e8 + Math.floor(r() * 2e9),
+    ms: 2000 + Math.floor(r() * 60_000),
+  })
+  const tasks: PlanTask[] = []
+  for (let p = 0; p < 380; p++) {
+    const up = Array.from({ length: Math.min(p, 6) }, () => `p${Math.floor(r() * p)}#compile`)
+    tasks.push({ id: `p${p}#compile`, deps: [...new Set(up)], ...need() })
+    tasks.push({ id: `p${p}#lint`, deps: [`p${p}#compile`], ...need() })
+    for (let k = 0; k < 8; k++)
+      tasks.push({ id: `p${p}#test${k}`, deps: [`p${p}#compile`], ...need() })
+  }
+  const busy = Array.from({ length: 10 }, (_, i) =>
+    worker(`w${i}`, {
+      size: 'small',
+      idle: false,
+      running: [{ cores: 3, memory: 4e9, endsIn: 5000 + i * 1000 }],
+    }),
+  )
+  const start = process.cpuUsage()
+  plan(tasks, busy, [{ ...small, max: 40 }], WARM)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(1000)
+}, 60_000)
+
+// 2026-10-25: measured needs are unrounded, so every task can be its own
+// kind; read kind by kind, a plan of 1000 took 37 s. Read task by task,
+// each pass asked every ready one that fit nowhere: 9000 took 15 s.
+it('plans 9000 ready tasks each of its own need in seconds of CPU', () => {
+  const tasks: PlanTask[] = Array.from({ length: 9000 }, (_, i) => ({
+    id: `t${i}`,
+    cores: 0.25 + ((i * 7919) % 1000) / 700,
+    memory: (i * 104729) % 3e8,
+    ms: 100 + (i % 7) * 30,
+    deps: [],
+  }))
+  const sizes = Array.from({ length: 3 }, () => ({ name: 'small', cpu: 2, memory: 8e9, max: 3 }))
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, 3000)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(8000)
+  // CPU is the guard; the wall clock of a loaded runner is not (2.2 s here, over 5 s on CI).
+}, 60_000)
+
+// 2026-10-25: each play-out copied a task's dependant list to add one,
+// so one install under 9000 tasks was 40 million copies a play, and a
+// plan 9.5 s of CPU. A complexity guard: timed in CPU, not wall.
+it('plans 9000 tasks behind one install in seconds of CPU', () => {
+  const tasks: PlanTask[] = [{ id: 'install', cores: 1, memory: 0, ms: 30_000, deps: [] }]
+  for (let i = 0; i < 9000; i++)
+    tasks.push({ id: `t${i}`, cores: 1, memory: 0, ms: 500, deps: ['install'] })
+  const sizes = candidates([{ ...small, max: 20 }], new Map(), [], tasks.length)
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, WARM)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(5000)
+}, 60_000)
+
+it('plans a 6000-task tree in seconds of CPU', () => {
+  let seed = 1
+  const random = (): number => (seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32
+  const tasks: PlanTask[] = []
+  for (let i = 0; i < 6000; i++)
+    tasks.push({
+      id: `t${i}`,
+      cores: 1,
+      memory: 0,
+      ms: 500 + (i % 4) * 250,
+      deps: i === 0 ? [] : [`t${Math.floor(random() * i)}`],
+    })
+  const sizes = candidates([{ ...small, max: 20 }], new Map(), [], tasks.length)
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, WARM)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(10_000)
+}, 120_000)
+
+// 2026-11-05: "what would be the optimal number and spec of workers for
+// the simulated run, and what would be optimal numbers based on provided
+// specification. So I can add more or change their specs".
+it('advises the workers that would have run it best: of the declared sizes, past their max, and of any cores', () => {
+  const tasks = Array.from({ length: 16 }, (_, i) => task(`t${i}`, 10_000))
+  const two: Size = { ...small, max: 2 }
+  const advice = advise(tasks, [two], () => 0)
+  // Two of four cores: 16 one-core tasks of 10 s, in two waves.
+  expect(advice.declared).toEqual({
+    fleet: [{ count: 2, cores: 4, memory: 16e9, platform: undefined, size: 'small' }],
+    endMs: 20_000,
+  })
+  // Four end it in one wave, past the margin sooner.
+  expect(advice.more).toEqual({
+    fleet: [{ count: 4, cores: 4, memory: 16e9, platform: undefined, size: 'small' }],
+    endMs: 10_000,
+  })
+  // Of any cores, as cheap in core time from 2 to 16: the fewest machines.
+  expect(advice.any).toEqual({
+    fleet: [{ count: 1, cores: 16, memory: 64e9, platform: undefined }],
+    endMs: 10_000,
+  })
+  // As many as it needs already: nothing more to say.
+  expect(advise(tasks, [{ ...small, max: 4 }], () => 0).more).toBeUndefined()
+})
+
+// 2026-11-11: a 25 GB task was advised a 16 GB worker: alone on an empty
+// worker any task fits.
+it('advises a task only workers with room for its peak memory', () => {
+  const tasks = [
+    { ...task('heavy', 10_000), memory: 25e9 },
+    ...Array.from({ length: 4 }, (_, i) => task(`t${i}`, 10_000)),
+  ]
+  const big: Size = { name: 'big', max: 1, cpu: 4, memory: 32e9 }
+  const advice = advise(tasks, [{ ...small, max: 4 }, big], () => 0)
+  expect(advice.declared?.fleet.some((f) => f.size === 'big')).toBe(true)
+  expect(advice.any?.fleet.every((f) => f.memory >= 25e9)).toBe(true)
+})
+
+// 2026-11-11: "scale the workers to as big as possible at the same time
+// to save on startup times": four 2-core tasks ready at once.
+it('starts workers needed at once as one sized to them all', () => {
+  const sizes: Size[] = [2, 4, 8, 16].map((cpu) => ({
+    name: `c${cpu}`,
+    max: 4,
+    cpu,
+    memory: cpu * 4e9,
+  }))
+  const tasks = Array.from({ length: 4 }, (_, i) => ({ ...task(`t${i}`, 60_000), cores: 2 }))
+  const p = plan(tasks, [], candidates(sizes, new Map(), [], tasks.length), 20_000)
+  expect(p.start.map((s) => s.name)).toEqual(['c8'])
+  expect(p.endsInMs).toBe(80_000)
+})
+
+it('sizes a need against its own platform’s sizes only', () => {
+  const sizes: Size[] = [
+    { name: 'small', max: 9, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+    { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' },
+    { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+  ]
+  expect(sized({ cores: 3.6, memory: 1e9 }, sizes, 'linux-x64').above).toBeUndefined()
+  // CONTROL: against every platform's, the mac is too small for it.
+  expect(sized({ cores: 3.6, memory: 1e9 }, sizes).above).toBeDefined()
+})
+
+it('keeps a need to the sizes with room for all of it', () => {
+  const sizes: Size[] = [
+    { name: 'c2', max: 1, cpu: 2, memory: 8e9 },
+    { name: 'c8', max: 1, cpu: 8, memory: 32e9 },
+  ]
+  expect(sized({ cores: 4, memory: 1e9 }, sizes).above?.cores).toBeLessThan(4)
+  expect(sized({ cores: 4, memory: 1e9 }, sizes).above?.cores).toBeGreaterThan(2)
+  expect(sized({ cores: 1, memory: 16e9 }, sizes).above?.cores).toBeGreaterThan(2)
+  // Room on each, or on none: as asked.
+  expect(sized({ cores: 1, memory: 1e9 }, sizes).above).toBeUndefined()
+  expect(sized({ cores: 16, memory: 1e9 }, sizes).above).toBeUndefined()
+  // More memory, not more cores, where only memory sets them apart.
+  const wide: Size[] = [
+    { name: 'lean', max: 1, cpu: 8, memory: 8e9 },
+    { name: 'fat', max: 1, cpu: 8, memory: 64e9 },
+  ]
+  expect(sized({ cores: 2, memory: 16e9 }, wide).above).toEqual({
+    cores: Infinity,
+    memory: 16e9 - 1,
+  })
+})
+
+it('advises each platform its own workers, joined after its warm-up', () => {
+  const tasks = [
+    ...Array.from({ length: 4 }, (_, i) => ({ ...task(`l${i}`, 10_000), platform: 'linux' })),
+    { ...task('m', 10_000), platform: 'mac' },
+  ]
+  const sizes: Size[] = [
+    { name: 'linux', max: 4, cpu: 2, memory: 8e9, platform: 'linux' },
+    { name: 'mac', max: 1, cpu: 3, memory: 7e9, platform: 'mac' },
+  ]
+  const advice = advise(tasks, sizes, (p) => (p === 'mac' ? 30_000 : 5_000))
+  // The Mac's task ends at 40 s: one Linux worker's two waves end at 25 s.
+  expect(advice.declared).toEqual({
+    fleet: [
+      { count: 1, cores: 2, memory: 8e9, platform: 'linux', size: 'linux' },
+      { count: 1, cores: 3, memory: 7e9, platform: 'mac', size: 'mac' },
+    ],
+    endMs: 40_000,
+  })
+  expect(advice.more).toBeUndefined()
+})
+
+// 2026-11-05: "Simulations should be turbo fast". A plan tried every
+// candidate while its end lay past their warm-up: 60 plays of 40 tasks
+// though the tenth new worker already sat idle. Its twins after it get
+// nothing either, so the plan stops there, and plans the same.
+it('stops trying workers once one like the rest sits idle in its play', () => {
+  let plays = 0
+  const counted: PlanWorker = {
+    ...worker('w', { idle: false }),
+    get running() {
+      plays++
+      return []
+    },
+  }
+  const tasks = Array.from({ length: 40 }, (_, i) => task(`t${i}`, 60_000))
+  const sixty = Array.from({ length: 60 }, () => ({ ...small, max: 60 }))
+  const p = plan(tasks, [counted], sixty, WARM)
+  expect([p.start.length, p.endsInMs]).toEqual([9, 80_000])
+  // Two reads a play; every candidate tried read 144.
+  expect(plays).toBeLessThan(60)
+})
+
+// 2026-11-05: "It's just about filling boxes to full"; "Reality changes
+// by leave some margin. 5% or sth"; "And resource usage". Planned at
+// each task's end, a 1000-task run replayed itself ten thousand times.
+// While what the plan saw holds within 5%, the next is that plan again.
+it('follows the plan, played again only when an event moves past 5%', () => {
+  const ids = Array.from({ length: 6 }, (_, i) => `t${i}`)
+  const nodes = new Map(
+    ids.map((id) => [
+      id,
+      { id, deps: [], config: { exec: { command: 'x' }, cache: true } } as unknown as TaskNode,
+    ]),
+  )
+  let plays = 0
+  // A play reads each worker's cores; telling whether the plan holds does not.
+  const counted = (running: PlanWorker['running'], idle = false): PlanWorker => ({
+    ...worker('w', { idle, running }),
+    get cores() {
+      plays++
+      return 4
+    },
+  })
+  const last: { forecast?: Forecast } = {}
+  const at = (
+    now: number,
+    o: {
+      ms?: number
+      cores?: number
+      memory?: number
+      runCores?: number
+      endsIn?: number
+      idle?: boolean
+    } = {},
+  ) => {
+    const before = plays
+    const p = decide({
+      remaining: ids,
+      nodes,
+      executed: new Set(ids),
+      need: () => ({ cores: o.cores ?? 1, memory: o.memory ?? 1e9 }),
+      durationMs: () => o.ms ?? 10_000,
+      workers: [
+        counted(
+          o.idle === true
+            ? []
+            : [{ id: 'r', cores: o.runCores ?? 1, memory: 1e9, endsIn: o.endsIn ?? 5_000 }],
+          o.idle,
+        ),
+      ],
+      running: new Set(),
+      sizes: [small],
+      started: new Map(),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+    return [plays > before, p.endsInMs, p.release] as const
+  }
+  const [first, ends] = at(0)
+  expect(first).toBe(true)
+  // A second on, all as planned: the same plan, a second shorter.
+  expect(at(1_000)).toEqual([false, ends - 1_000, []])
+  // A waiting task's estimate is not read again: what it runs shows it.
+  expect(at(2_000, { ms: 12_000, cores: 1.2, memory: 2e9 })[0]).toBe(false)
+  // A running task's cores within 5%: as planned; past it, played again.
+  expect(at(3_000, { runCores: 1.04 })[0]).toBe(false)
+  expect(at(4_000, { runCores: 1.2 })[0]).toBe(true)
+  // Past its time by 5% of the run's plays again; a moment late does not.
+  expect(at(5_000, { runCores: 1.2, endsIn: -100 })[0]).toBe(false)
+  expect(at(6_000, { runCores: 1.2, endsIn: -20_000 })[0]).toBe(true)
+  expect(at(7_000, { runCores: 1.2, endsIn: -20_000 })[0]).toBe(false)
+  // Ended, idle between the tasks the plan gives it: as planned.
+  expect(at(8_000, { idle: true })[0]).toBe(false)
+  // Idle past its planned work's end with that work not started: played
+  // again, and kept for it.
+  expect(at(10_000_000, { idle: true })).toEqual([true, expect.any(Number), []])
+})
+
+// 2026-11-06: a's end left the one worker of a max-1 size idle a moment
+// before b, its dependant, was handed to it. b's 50 ms were within the
+// plan's slack of its end, so the plan let it go as done, started none,
+// and the run never ended.
+it('lets no worker go before the work planned on it has started', () => {
+  const nodes = new Map(
+    [
+      ['a', []],
+      ['b', ['a']],
+    ].map(([id, deps]) => [
+      id as string,
+      {
+        id,
+        deps,
+        config: { exec: { command: 'x' }, cache: true },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const one: Size = { name: 'one', max: 1, cpu: 1, memory: 1e9 }
+  const last: { forecast?: Forecast } = {}
+  const at = (now: number, remaining: string[], running: PlanWorker['running']) =>
+    decide({
+      remaining,
+      nodes,
+      executed: new Set(['a', 'b']),
+      need: () => ({ cores: 1, memory: 1e8 }),
+      durationMs: (id) => (id === 'a' ? 100 : 50),
+      workers: [worker('w', { cores: 1, memory: 1e9, idle: running.length === 0, running })],
+      running: new Set(running.map((r) => r.id!)),
+      sizes: [one],
+      started: new Map([['one', 1]]),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+  expect(at(0, ['a', 'b'], [{ id: 'a', cores: 1, memory: 1e8, endsIn: 100 }]).release).toEqual([])
+  // a ended, b not handed to it yet.
+  expect(at(100, ['b'], []).release).toEqual([])
+  expect(at(120, ['b'], [{ id: 'b', cores: 1, memory: 1e8, endsIn: 50 }]).release).toEqual([])
+  // Its work done, it goes.
+  expect(at(170, [], []).release).toEqual(['w'])
+})
+
+// Main 6bc3c90: the forecast let the docs build's worker go as its work
+// ended; the deploy that read its files built them again elsewhere.
+it('follows no forecast into letting go a worker whose files a task to come reads', () => {
+  const nodes = new Map(
+    [
+      ['a', []],
+      ['slow', []],
+      ['c', ['a', 'slow']],
+    ].map(([id, deps]) => [
+      id as string,
+      {
+        id,
+        deps,
+        config: {
+          exec: { command: 'x' },
+          ...(id === 'a' ? { outputs: ['out'] } : { cache: true }),
+        },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const two: Size = { name: 'two', max: 2, cpu: 1, memory: 1e9 }
+  const last: { forecast?: Forecast } = {}
+  const at = (now: number, remaining: string[], w: Partial<PlanWorker>, slowEndsIn: number) =>
+    decide({
+      remaining,
+      nodes,
+      executed: new Set(['a', 'slow', 'c']),
+      need: () => ({ cores: 1, memory: 1e8 }),
+      durationMs: (id) => (id === 'slow' ? 20_000 : 5_000),
+      workers: [
+        worker('w', { cores: 1, memory: 1e9, size: 'two', ...w }),
+        worker('v', {
+          cores: 1,
+          memory: 1e9,
+          size: 'two',
+          idle: false,
+          running: [{ id: 'slow', cores: 1, memory: 1e8, endsIn: slowEndsIn }],
+        }),
+      ],
+      running: new Set(['slow', ...(w.running ?? []).map((r) => r.id!)]),
+      sizes: [two],
+      started: new Map([['two', 2]]),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+  at(
+    0,
+    ['a', 'slow', 'c'],
+    { idle: false, running: [{ id: 'a', cores: 1, memory: 1e8, endsIn: 5_000 }] },
+    20_000,
+  )
+  // a ended: c waits on slow, and reads a's files, which only w holds.
+  const p = at(5_000, ['slow', 'c'], { holds: new Map([['a', 5_000]]) }, 15_000)
+  expect(p.release).toEqual([])
+})
+
+it('starts a worker the plan foresaw without reading the work, and none past its size', () => {
+  // One task, then 16 long and wide: workers for those start later.
+  const ids = ['a', ...Array.from({ length: 16 }, (_, i) => `w${i}`)]
+  const nodes = new Map(
+    ids.map((id) => [
+      id,
+      {
+        id,
+        deps: id === 'a' ? [] : ['a'],
+        config: { exec: { command: 'x' }, cache: true },
+      } as unknown as TaskNode,
+    ]),
+  )
+  let reads = 0
+  const remaining = {
+    *[Symbol.iterator]() {
+      reads++
+      yield* ids
+    },
+  }
+  const at = (now: number, started: number, last: { forecast?: Forecast }) =>
+    decide({
+      remaining,
+      nodes,
+      executed: new Set(ids),
+      need: () => ({ cores: 1, memory: 1e9 }),
+      durationMs: (id) => (id === 'a' ? 60_000 : 100_000),
+      workers: [
+        worker('one', {
+          idle: false,
+          running: [{ id: 'a', cores: 1, memory: 1e9, endsIn: 60_000 - now }],
+        }),
+      ],
+      running: new Set(['a']),
+      sizes: [small],
+      started: new Map([['small', started]]),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+  const last: { forecast?: Forecast } = {}
+  const first = at(0, 0, last)
+  expect(first.start).toEqual([])
+  const due = first.againInMs!
+  reads = 0
+  const now = at(due, 0, last)
+  expect(now.start.length).toBeGreaterThan(0)
+  // Each start read every task: a run of 10 000 read them at each one.
+  expect(reads).toBe(0)
+  // Its size's max spent since: played again, and none started past it.
+  const spent: { forecast?: Forecast } = {}
+  at(0, 0, spent)
+  expect(at(due, small.max, spent).start).toEqual([])
+})
+
+// 2026-11-11, a ~380-project workspace: `<p>#build` a group over
+// `install` and `^build`, each a group over the deps' `#build`. A group's
+// deps joined as lists held a task once per path to it: 2e9 for one
+// task's 570, and the first plan never returned.
+it('a task behind a diamond of groups waits on each task once', () => {
+  const nodes = new Map<string, TaskNode>()
+  const add = (id: string, deps: string[], runs: boolean) =>
+    nodes.set(id, {
+      id,
+      deps,
+      config: runs ? { exec: { command: 'x' } } : {},
+    } as unknown as TaskNode)
+  add('c', [], true)
+  let below = 'c'
+  // Each level two groups on the one below, joined by a third: 2^20 paths.
+  for (let i = 0; i < 20; i++) {
+    add(`a${i}`, [below], false)
+    add(`b${i}`, [below], false)
+    add(`g${i}`, [`a${i}`, `b${i}`], false)
+    below = `g${i}`
+  }
+  add('top', [below], true)
+  const tasks = planTasks(
+    ['c', 'top'],
+    nodes,
+    () => ({ cores: 1, memory: 1e9 }),
+    () => 1000,
+  )
+  expect(tasks.find((t) => t.id === 'top')!.deps).toEqual(['c'])
+})
+
+// 2026-11-06: a plan reads the run's tasks by number, not by id, where a
+// map of a million ids was most of it. By number or by id, it plans alike.
+it('plans tasks read by number as it plans them read by id', () => {
+  let s = 11
+  const r = (): number => ((s = (s * 1103515245 + 12345) & 0x7fffffff), s / 0x7fffffff)
+  const nodes = new Map<string, TaskNode>()
+  for (let i = 0; i < 400; i++) {
+    const deps = i < 5 ? [] : [...new Set([0, 1, 2].map(() => `t${Math.floor(r() * i)}`))]
+    // Every tenth a group: its dependants wait on what it waits on.
+    const exec = i % 10 === 3 ? {} : { exec: { command: 'x' } }
+    nodes.set(`t${i}`, { id: `t${i}`, deps, config: exec } as unknown as TaskNode)
+  }
+  const ms = new Map([...nodes.keys()].map((id) => [id, 1000 + Math.floor(r() * 30_000)]))
+  const cores = new Map([...nodes.keys()].map((id) => [id, 0.5 + Math.floor(r() * 6) / 2]))
+  const byNumber = planTasks(
+    nodes.keys(),
+    nodes,
+    (id) => ({ cores: cores.get(id)!, memory: 1e9 }),
+    (id) => ms.get(id),
+  )
+  const byId = byNumber.map(({ n: _n, depsN: _d, ...t }) => t)
+  expect(byNumber.every((t) => t.depsN !== undefined)).toBe(true)
+  const running: PlanWorker = {
+    id: 'w',
+    cores: 8,
+    memory: 32e9,
+    at: 0,
+    idle: false,
+    running: [{ id: 't0', cores: 2, memory: 1e9, endsIn: 4000 }],
+  }
+  const work = (ts: readonly PlanTask[]): PlanTask[] => ts.filter((t) => t.id !== 't0')
+  const sizes: Size[] = [{ name: 'big', max: 10, cpu: 8, memory: 32e9 }]
+  const a = plan(work(byNumber), [running], sizes, () => 20_000)
+  const b = plan(work(byId), [running], sizes, () => 20_000)
+  expect(a.endsInMs).toBeGreaterThan(0)
+  expect(a).toEqual(b)
+})
+
+// Main a1950a2, 2026-11-07: 4 Macs started for ~410 s of Mac work that 2
+// would have ended 40 s before the Linux work did. The run is judged by
+// its end, not each platform's: a platform may end later while it ends
+// two warm-ups before the run.
+it("starts a platform's fewest workers that end before the run does", () => {
+  const linux: Size = { ...small, max: 9, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const work: PlanTask[] = [
+    ...Array.from({ length: 200 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    ...Array.from({ length: 9 }, (_, i) => ({
+      ...task(`m${i}`, 30_000),
+      platform: 'darwin-arm64',
+    })),
+  ]
+  const platforms = new Map([
+    ['linux-x64', 200],
+    ['darwin-arm64', 9],
+  ])
+  const sizes = candidates([linux, mac], new Map(), [], 13, platforms)
+  const p = plan(work, [], sizes, WARM)
+  const start = p.start.map((s) => s.name)
+  // One Mac ends at 110 s, the run past 150 s: two warm-ups of room for
+  // a Mac the CI queues.
+  expect(p.endsInMs).toBeGreaterThan(150_000)
+  expect(start.filter((s) => s === 'mac').length).toBe(1)
+})
+
+// #5134's run started 2 Macs while its footer's best said 4: the advice
+// kept every Mac of its prefix. It trims as the live plan does.
+it('advises the Macs the live plan would start', () => {
+  const linux: Size = { ...small, max: 9, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const work: PlanTask[] = [
+    ...Array.from({ length: 200 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    ...Array.from({ length: 9 }, (_, i) => ({
+      ...task(`m${i}`, 30_000),
+      platform: 'darwin-arm64',
+    })),
+  ]
+  const advice = advise(work, [linux, mac], () => WARM)
+  const macs = advice.declared!.fleet.find((f) => f.size === 'mac')
+  expect(macs?.count).toBe(1)
+})
+
+// A server's base is booked once on each worker that runs it, not per
+// dependant (2026-11-07).
+it('books a server’s base once per worker, beside each dependant’s own cores', () => {
+  const servers = [{ id: 's#db', cores: 2 }]
+  const plain = ['a', 'b', 'c'].map((id) => task(id, 1_000))
+  const tasks = plain.map((t) => ({ ...t, servers }))
+  // 2 for the base, then 1 each: two fit on 4 cores, the third after.
+  expect(simulate(tasks, [worker('w')])).toBe(2_000)
+  // CONTROL: with no base all three fit at once.
+  expect(simulate(plain, [worker('w')])).toBe(1_000)
+  // A worker already running it books it no more.
+  const serving = worker('w', { serving: new Map([['s#db', 2]]) })
+  expect(simulate(tasks, [serving])).toBe(2_000)
+  expect(simulate(tasks.slice(0, 2), [serving])).toBe(1_000)
+})
+
+// Main bf52a3e at 89 s: 18 tasks left, 12 of them lints that each take a
+// whole worker. Its play started six new workers as if all joined at
+// once, ended 13 s before any packing, and the run asked six workers for
+// one lint each. Joining a spread apart, as asked workers do, the
+// packing ends within the bound on the workers the run has.
+it('plays new workers a join spread apart, as it packs them', () => {
+  const inp = JSON.parse(JSON.stringify(input89), (_k, v) => (v === 'Infinity' ? Infinity : v))
+  const map = (o: object | undefined) => new Map(Object.entries(o ?? {}))
+  const workers = inp.workers.map((w: PlanWorker & { serving?: object; holds?: object }) => ({
+    ...w,
+    ...(w.serving === undefined ? {} : { serving: map(w.serving) }),
+    ...(w.holds === undefined ? {} : { holds: map(w.holds) }),
+  }))
+  const warm = map(inp.warmUps) as Map<string, number>
+  const spreads = map(inp.spreads) as Map<string, number>
+  const p = plan(
+    inp.tasks,
+    workers,
+    inp.sizes,
+    (s) => warm.get(s ?? '') ?? 20_000,
+    true,
+    inp.limitMs ?? Infinity,
+    undefined,
+    (s) => spreads.get(s) ?? 0,
+  )
+  expect(p.unpacked).toBeUndefined()
+  expect(p.start).toEqual([])
+  expect(p.endsInMs).toBeLessThanOrEqual(p.boundMs)
+})
+
+// PR #5282's run at 1 s: 64 Linux tasks for at most 9 smalls of 3 free
+// cores, more than end by the chain. Packed to the play's end alone, the
+// plan said 193 s and asked 8; 171 s packs, on all 9.
+it('seeks the earliest end that packs when its sizes hold fewer than the chain asks', () => {
+  const inp = JSON.parse(JSON.stringify(input0), (_k, v) => (v === 'Infinity' ? Infinity : v))
+  const warm = new Map(Object.entries(inp.warmUps)) as Map<string, number>
+  const spreads = new Map(Object.entries(inp.spreads)) as Map<string, number>
+  const p = plan(
+    inp.tasks,
+    [],
+    inp.sizes,
+    (s) => warm.get(s ?? '') ?? 20_000,
+    true,
+    Infinity,
+    undefined,
+    (s) => spreads.get(s) ?? 0,
+  )
+  expect(p.unpacked).toBeUndefined()
+  expect(p.endsInMs).toBeLessThan(175_000)
+  expect(p.start.filter((s) => s.name === 'hosted.small')).toHaveLength(9)
+})
+
+// Main 98088da: the run's first plan packed its work and said nothing of
+// what it was given, so the profile had no input to play it back.
+it('says what plan() was given, packed or played', () => {
+  const ids = ['a', 'b', ...Array.from({ length: 10 }, (_, i) => `f${i}`)]
+  const nodes = new Map(
+    ids.map((id) => [
+      id,
+      {
+        id,
+        deps: id === 'b' ? ['a'] : [],
+        config: { exec: { command: 'x' }, cache: true },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const p = decide({
+    remaining: ids,
+    nodes,
+    executed: new Set(ids),
+    need: () => ({ cores: 1, memory: 1e9 }),
+    durationMs: (id) => (id.startsWith('f') ? 30_000 : 60_000),
+    workers: [],
+    running: new Set(),
+    sizes: [{ ...small, max: 9 }],
+    started: new Map(),
+    final: false,
+    warmUpMs: WARM,
+    replaceable: true,
+    now: 0,
+  })
+  expect(p.unpacked).toBeUndefined()
+  expect(new Set(p.played?.sizes.map((s) => s.name))).toEqual(new Set(['small']))
+})

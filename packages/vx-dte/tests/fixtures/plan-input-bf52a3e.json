@@ -1,0 +1,357 @@
+{
+  "tasks": [
+    {
+      "id": "@vzn/vx-bench#lint.oxlint",
+      "cores": 3.5646811610222566,
+      "memory": 1805099008,
+      "ms": 5891.38398452314,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 80,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-cache#lint.oxlint",
+      "cores": 3.2533172574697913,
+      "memory": 1539817472,
+      "ms": 3266.943398527493,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 98,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-cache-service#lint.oxlint",
+      "cores": 3.3497551990406444,
+      "memory": 1603346432,
+      "ms": 4394.577248146002,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 111,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-ci#lint.oxlint",
+      "cores": 3.275125557967607,
+      "memory": 1481912320,
+      "ms": 3439.6973775876213,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 117,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-docs#lint.oxlint",
+      "cores": 1.3983936355327276,
+      "memory": 586420224,
+      "ms": 2138.1263024770665,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 135,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-docs#test",
+      "cores": 1.2457917475216174,
+      "memory": 602165248,
+      "ms": 6214.410260436941,
+      "deps": ["@vzn/vx-docs#build", "@vzn/vx-docs#import"],
+      "platform": "linux-x64",
+      "n": 142,
+      "depsN": {
+        "0": 139,
+        "1": 140
+      }
+    },
+    {
+      "id": "@vzn/vx-dte#lint.oxlint",
+      "cores": 3.4418940357734,
+      "memory": 1600675840,
+      "ms": 3754.4409284779917,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 145,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-dte-service#lint.oxlint",
+      "cores": 3.2929421715419016,
+      "memory": 1473224704,
+      "ms": 3245.644962752957,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 166,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-dte-service#test",
+      "cores": 2,
+      "memory": 4000000000,
+      "ms": 115.95815032803127,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 169,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-history#lint.oxlint",
+      "cores": 3.2815598036615405,
+      "memory": 1567035392,
+      "ms": 3362.7863595129065,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 172,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-history#lint.oxfmt",
+      "cores": 1.0785357123798074,
+      "memory": 386891776,
+      "ms": 602.2724338466114,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 174,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-history-server#lint.oxlint",
+      "cores": 1.2254696488473633,
+      "memory": 461713408,
+      "ms": 699.2986412639436,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 178,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-history-server#lint.oxfmt",
+      "cores": 1.2697411199453628,
+      "memory": 403767296,
+      "ms": 447.26715126526346,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 180,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-history-service#lint.oxlint",
+      "cores": 2.782242841298322,
+      "memory": 1419427840,
+      "ms": 6311.436467854273,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 185,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-history-service#test",
+      "cores": 2,
+      "memory": 4000000000,
+      "ms": 119.50788962378732,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 188,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-otel#lint.oxlint",
+      "cores": 3.60488541963711,
+      "memory": 1340551168,
+      "ms": 3035.0270978714307,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 212,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-plugin-examples#lint.oxlint",
+      "cores": 3.6008217631297863,
+      "memory": 1450594304,
+      "ms": 3907.0797181955027,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 218,
+      "depsN": {}
+    },
+    {
+      "id": "@vzn/vx-servers#lint.oxlint",
+      "cores": 3.5121859679474254,
+      "memory": 1471717376,
+      "ms": 5270.179607765829,
+      "deps": [],
+      "platform": "linux-x64",
+      "n": 235,
+      "depsN": {}
+    }
+  ],
+  "sizes": [
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3.4894286693100103,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3.4894286693100103,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3.4894286693100103,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3.4894286693100103,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3.4894286693100103,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.small",
+      "max": 9,
+      "cpu": 3.4894286693100103,
+      "memory": 16000000000,
+      "platform": "linux-x64"
+    },
+    {
+      "name": "hosted.arm",
+      "max": 1,
+      "cpu": 3.6685,
+      "memory": 16000000000,
+      "platform": "linux-arm64"
+    },
+    {
+      "name": "hosted.mac",
+      "max": 4,
+      "cpu": 1.8747798151512007,
+      "memory": 7000000000,
+      "platform": "darwin-arm64"
+    },
+    {
+      "name": "hosted.mac",
+      "max": 4,
+      "cpu": 1.8747798151512007,
+      "memory": 7000000000,
+      "platform": "darwin-arm64"
+    },
+    {
+      "name": "hosted.mac",
+      "max": 4,
+      "cpu": 1.8747798151512007,
+      "memory": 7000000000,
+      "platform": "darwin-arm64"
+    }
+  ],
+  "limitMs": 40180.50710590693,
+  "warmUps": {
+    "hosted.small": 17881.185058,
+    "hosted.arm": 22990,
+    "hosted.mac": 23561.031986
+  },
+  "spreads": {
+    "hosted.small": 6947.721075,
+    "hosted.arm": 0,
+    "hosted.mac": 4477
+  },
+  "workers": [
+    {
+      "id": "3021d4f640814369985613fb505ffd7c",
+      "cores": 3.524311341681306,
+      "memory": 16000000000,
+      "platform": "linux-x64",
+      "size": "hosted.small",
+      "at": 0,
+      "idle": false,
+      "running": [
+        {
+          "id": "@vzn/vx-dte#test.rest",
+          "cores": 0.6195400230895767,
+          "memory": 344412160,
+          "endsIn": 18648.63021239618
+        },
+        {
+          "id": "@vzn/vx-dte#test.local-e2e",
+          "cores": 1.0565999922528004,
+          "memory": 467705856,
+          "endsIn": 8181.635290643477
+        },
+        {
+          "id": "@vzn/vx-dte#test.local-e2e-saves",
+          "cores": 1.038171326338929,
+          "memory": 307736576,
+          "endsIn": 5122.944857133669
+        }
+      ]
+    },
+    {
+      "id": "456958b226524cb58ffeb20b12031096",
+      "cores": 3.3645514448411595,
+      "memory": 16000000000,
+      "platform": "linux-x64",
+      "size": "hosted.small",
+      "at": 0,
+      "idle": false,
+      "running": [
+        {
+          "id": "@vzn/vx#test.bun.unsafe.shard-10",
+          "cores": 0.946330618602165,
+          "memory": 578981888,
+          "endsIn": -7712.913675138829
+        },
+        {
+          "id": "@vzn/vx#test.bun.unsafe.shard-6",
+          "cores": 0.9592111301465941,
+          "memory": 358629376,
+          "endsIn": -8732.870105452737
+        },
+        {
+          "id": "@vzn/vx#test.bun.unsafe.shard-3",
+          "cores": 1.4490096960924006,
+          "memory": 270757888,
+          "endsIn": -8858.292704236119
+        }
+      ]
+    },
+    {
+      "id": "8044493afa794a2db7f601826528cecc",
+      "cores": 3.4839543998881903,
+      "memory": 16000000000,
+      "platform": "linux-x64",
+      "serving": {
+        "@vzn/vx-reapi#services.exec": 0.04,
+        "@vzn/vx-reapi#services.cache": 0
+      },
+      "size": "hosted.small",
+      "at": 0,
+      "idle": false,
+      "running": [
+        {
+          "id": "@vzn/vx-reapi#test.live",
+          "cores": 0.810252802447928,
+          "memory": 140681216,
+          "endsIn": -6162.304527401743
+        },
+        {
+          "id": "@vzn/vx-bench#lint.oxfmt",
+          "cores": 0.8416661638612136,
+          "memory": 382267392,
+          "endsIn": 557.2244253108171
+        }
+      ]
+    }
+  ]
+}
