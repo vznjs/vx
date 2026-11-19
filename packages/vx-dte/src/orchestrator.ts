@@ -381,7 +381,6 @@ export class Orchestrator {
   private readonly cancelled = new Set<string>()
   /** When each cancelled one was: held from its ask until then (`heldMs`). */
   private readonly cancelledAt = new Map<string, number>()
-  /** Whether a plan's whole input was marked (`planned`). */
   /** The pump at the next planned start (`Placing.next`). */
   private due: { at: number; timer: ReturnType<typeof setTimeout> } | undefined
   /** The planner the run's events reach (`planner`). */

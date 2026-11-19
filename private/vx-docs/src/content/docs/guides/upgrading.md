@@ -21,6 +21,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.657
 
+### vx-dte: plan a distributed run with one engine
+
+dte({ scheduler }) is removed.
+
 ### cache: put the vx version in every cache key
 
 every cache key moves; each cached task misses once after the upgrade, and after every later one.
