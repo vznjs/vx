@@ -15,19 +15,12 @@ import {
   type TaskResources,
 } from '@vzn/vx'
 import type { DteInit, DteSetup } from './init.js'
-import type { Need, Soon } from './plan/index.js'
-// Not the index: a config load reads the strategies alone, never the planner.
-import {
-  booked,
-  DEFAULT_STRATEGY,
-  bookedCores,
-  STRATEGIES,
-  type Strategy,
-  wholeCores,
-} from './plan/strategy.js'
+import type { Need } from './plan/index.js'
+// Not the index: a config load never reads the planner.
+import { bookedCores } from './plan/model.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
-import type { Forecast, Size } from './plan/index.js'
+import type { Size } from './plan/index.js'
 import type { Learned } from './measures.js'
 
 /** One worker type: the machines of it the adapter can start, by name (letters, digits, `_` and `-`). */
@@ -132,8 +125,6 @@ export interface DteOptions {
   readonly relay?: string
   /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
-  /** How the run orders, places, books and scales (`Strategy`); each layer absent is the default's. */
-  readonly scheduler?: Partial<Strategy>
   /**
    * What a task with no measure counts for when the run decides how many
    * workers to start (default 2 cores, 4GB). It books next to nothing, so
@@ -155,7 +146,6 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   adapter: 'object',
   relay: 'string',
   token: 'function',
-  scheduler: 'object',
   unmeasured: 'object',
   headers: 'object',
 }
@@ -217,17 +207,6 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
 export function dte(options: DteOptions = {}) {
   refuseUnknownOptions('dte()', options, KEYS)
   const headers = proxyHeaders(options.headers)
-  const how: Strategy = { ...DEFAULT_STRATEGY }
-  for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
-    const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
-    if (choices === undefined)
-      throw new UserError(
-        `dte() option "scheduler" has no layer ${JSON.stringify(layer)} (layers: ${Object.keys(STRATEGIES).join(', ')})`,
-      )
-    if (!choices.includes(choice as string))
-      refuse(`scheduler.${layer}`, `one of ${choices.join(', ')}`, choice)
-    ;(how as unknown as Record<string, unknown>)[layer] = choice
-  }
   const declared = Object.entries(options.workers ?? {}).flatMap(([type, t]) => {
     if (!NAME.test(type)) refuse('workers', NAMED, type)
     refuseUnknownOptions(`dte() option "workers.${type}"`, t, TYPE_KEYS)
@@ -375,8 +354,6 @@ export function dte(options: DteOptions = {}) {
   let bases = new Map<string, number>()
   /** Each measure as last reported (`ctx.measure`): one unchanged is not reported again. */
   const reported = new Map<string, string>()
-  /** Each task's tail by `nodes` and `peaks`, made again when either changes. */
-  let tails: ((id: string) => number) | undefined
   /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
   let needsIn: (() => Promise<void>) | undefined
   /** Called when `schedule` has read history; set by the executor, which core makes first. */
@@ -411,7 +388,6 @@ export function dte(options: DteOptions = {}) {
     starts = new Map()
     reported.clear()
     peaks = new Map()
-    tails = undefined
     needsIn = undefined
     scheduled = undefined
     likely = new Set()
@@ -591,7 +567,6 @@ export function dte(options: DteOptions = {}) {
     async schedule(graph, ctx) {
       nodes = graph
       ran = undefined
-      tails = undefined
       // A run that is not distributed reads nothing.
       if (orchestrator === undefined) return undefined
       // An uncached upstream runs again where its dependant runs, on a
@@ -627,7 +602,6 @@ export function dte(options: DteOptions = {}) {
             branch: ctx.branch,
             defs: taskDefinitions(graph.values()),
           }).resourcesFor(ids)
-          tails = undefined
           orchestrator?.rerank()
         } catch (err) {
           ctx.warn(
@@ -677,16 +651,7 @@ export function dte(options: DteOptions = {}) {
       const [
         { Orchestrator },
         { joinOffLoop },
-        {
-          decide,
-          keepLast,
-          knownMisses,
-          sized: within,
-          slowdowns,
-          tailsMs,
-          UNKNOWN_MS,
-          WARM_UP_MS,
-        },
+        { Planner, sized: within, WARM_UP_MS },
         { snapshot, untrackedWorkspace },
         seal,
         m,
@@ -734,7 +699,7 @@ export function dte(options: DteOptions = {}) {
             : multi
               ? placeOf(node.worker, node.platform)
               : (node.platform ?? home)
-        const n = within(booked(needOf(peaks.get(id), unmeasured), how.book), sizes, platform)
+        const n = within(needOf(peaks.get(id), unmeasured), sizes, platform)
         let ids = serves.get(id)
         if (ids === undefined) {
           ids = serversOf(nodes, id)
@@ -750,11 +715,6 @@ export function dte(options: DteOptions = {}) {
           }),
         }
       }
-      // The run plans again on it, now when `now`; set once the plan is.
-      let onChange = (_now?: boolean): void => {}
-      // Tasks about to be ready (`OrchestratorOptions.soon`); set once the run's work is known.
-      let soonOf = (_ends: ReadonlyMap<string, number>): (Soon & { id: string })[] => []
-      let nextOf = (_id: string, _ends: ReadonlyMap<string, number>): Soon[] => []
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
           // Off this loop: the run's own sync work held its acks, and every
@@ -776,49 +736,28 @@ export function dte(options: DteOptions = {}) {
         run,
         sent,
         keyOf: (id) => keys.get(id),
-        tail: (id) =>
-          (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
-        ms: (id) => peaks.get(id)?.p50DurationMs,
-        soon: (ends) => soonOf(ends),
-        next: (id, ends) => nextOf(id, ends),
-        how,
+        planner: () => plannerOf(),
+        spawn: (size) => spawnSize(size),
         home,
         joinedPlace,
-        lost: (id) => {
-          const s = sizeOf.get(id)
-          if (s === undefined) return
-          sizeOf.delete(id)
-          lostAs.set(id, s)
-          started.set(s.name, started.get(s.name)! - 1)
-          // Before the run counts what is left to start: none would fail it.
-          onChange(true)
-        },
-        joined: () => onChange(),
+        // Given up as late and taken after all: its adapter is told.
+        kept: (id) => adapter?.kept?.(id),
         // A worker given up on joining: its job, still queued or stuck, is stopped.
         overdue: (id) => void adapter?.cancel?.([id], true),
-        // Given up as late and taken after all: it holds one of its size
-        // again. Left uncounted, 9 smalls of 9 read as 4 and a tenth was asked.
-        kept: (id) => {
-          adapter?.kept?.(id)
-          const s = lostAs.get(id)
-          if (s === undefined || sizeOf.has(id)) return
-          lostAs.delete(id)
-          sizeOf.set(id, s)
-          started.set(s.name, (started.get(s.name) ?? 0) + 1)
-        },
-        // Before the run counts what is left to start: a worker that let a
-        // task's lease end failed main's macOS run with another to start
-        // (2026-10-23).
-        faulted: () => onChange(true),
+        // One the plan let go before it joined: stopped, unless its adapter cannot, and then taken when it joins.
+        cancel: (ids) =>
+          void Promise.resolve(adapter?.cancel === undefined ? ids : adapter.cancel(ids))
+            .then((left) => orchestrator?.leftRunning(left ?? []))
+            .catch((err: unknown) =>
+              ctx.warn(
+                `[vx] dte(): stopping ${ids.join(', ')} failed: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            ),
         stalled: (waiting) =>
           ctx.warn(`[vx] dte(): no task began or ended for a minute; waiting on\n${waiting}`),
         warn: ctx.warn,
       })
       orchestrator = o
-      const started = new Map<string, number>()
-      const sizeOf = new Map<string, Size>()
-      /** The size of each worker the run gave up, should it join after all (`kept`). */
-      const lostAs = new Map<string, Size>()
       let index = 0
       // Numbered within its size: one count across sizes left M asking
       // where small#1 was (mac#1 had it, 2026-10-23).
@@ -828,9 +767,7 @@ export function dte(options: DteOptions = {}) {
         numbered.set(size, n)
         return `${size}#${n}`
       }
-      // A worker the run counts as started, against its size's max.
       const spawnOf = (s: Size, id: string, n: number): WorkerSpawn => {
-        started.set(s.name, (started.get(s.name) ?? 0) + 1)
         o.spawned(id, {
           size: s.name,
           cpu: s.cpu,
@@ -838,7 +775,6 @@ export function dte(options: DteOptions = {}) {
           ...named(s.name),
           ...(multi && s.platform !== undefined ? { place: s.platform } : {}),
         })
-        sizeOf.set(id, s)
         return {
           run,
           relay,
@@ -876,189 +812,67 @@ export function dte(options: DteOptions = {}) {
       })
       // Tasks core handed over: each missed the cache (`missedWork`).
       const executed = new Set<string>()
-      // The run's deadline (`Plan.boundMs`), and the work its plans knew.
-      let deadline: number | undefined
-      const known = new Set<string>()
-      // The last plan, which stands while what it saw holds (`decide`).
-      const last: { forecast?: Forecast } = {}
-      // A plan that needs a worker later plans again then.
-      let again: ReturnType<typeof setTimeout> | undefined
-      // The workers the run's known work needs to end as soon as all
-      // would, each started when a task needs it, played out
-      // (`plan/`); idle ones it does without leave. Again at each miss, finish, join and history read.
-      const shape = (remaining: ReadonlySet<string>): void => {
-        // This run's for the size, else an earlier run's, else any size's
-        // this run, else the default.
-        const ups = o.warmUpsMs()
-        const any = o.warmUpMs()
-        const warmUp = (size: string | undefined): number =>
-          (size === undefined ? undefined : (ups.get(size) ?? learned.warmUps.get(size))) ??
-          any ??
-          WARM_UP_MS
-        // What is left takes as much longer than history as what ended
-        // did, on its platform (`slowdowns`).
-        const p50 = (id: string): number | undefined => peaks.get(id)?.p50DurationMs
-        const slowOn = slowdowns(o.finished(p50))
-        const slow = (id: string): number => {
-          const n = nodes?.get(id)
-          return slowOn(n === undefined ? home : placeOf(n.worker, n.platform))
-        }
-        const ms = (id: string): number | undefined => {
-          const m = p50(id)
-          return m === undefined ? undefined : m * slow(id)
-        }
-        const slowMs = (id: string): number | undefined => {
-          const m = peaks.get(id)?.slowDurationMs
-          return m === undefined ? undefined : m * slow(id)
-        }
-        const state = o.planState(ms, warmUp)
-        const running = state.running
-        // Each size as the plan counts it: its cores less what its
-        // machines spend besides the run's tasks, this run's or an earlier one's.
-        const others = o.othersOf()
-        const spreads = o.spreadsMs()
-        const planned = sizes.map((s) => {
-          const other = wholeCores(others.get(s.name) ?? learned.others.get(s.name) ?? 0)
-          return other > 0 ? { ...s, cpu: Math.max(s.cpu / 2, s.cpu - other) } : s
-        })
-        const workers = keepLast(
-          state.workers,
-          planned,
-          started,
-          (p) => (leftOf.get(p) ?? 0) > 0 || (p === home && (leftOf.get('') ?? 0) > 0),
+      /** A worker of `name` the planner asked for, started: its id. */
+      const spawnSize = (name: string): string => {
+        const s = sizes.find((x) => x.name === name)!
+        const id = nextId(s.name)
+        const a = spawnOf(s, id, ++index)
+        o.asked(1, planner?.ids.length ?? 0, planner?.ids.filter(measured).length ?? 0, 0)
+        // A sync throw too: `spawn` may return void, and one thrown here
+        // escaped the pump and ended the process.
+        void new Promise<void>((done) => done(adapter!.spawn(a))).catch((err: unknown) =>
+          o.failed(id, err instanceof Error ? err.message : String(err)),
         )
-        const final = adapter === undefined
-        const p = decide({
-          remaining,
-          nodes: nodes ?? new Map(),
-          executed: knownMisses(likely, sure, executed, remaining),
-          // As the run books them: a plan of history alone asks for workers it then fills less.
-          need: (id) => o.booking(need(id)),
-          durationMs: ms,
-          slowMs,
-          workers,
-          running,
-          sizes: planned,
-          started,
-          final,
-          warmUpMs: warmUp,
-          spreadMs: (size) => spreads.get(size) ?? learned.spreads.get(size) ?? 0,
-          replaceable: adapter !== undefined,
-          limitMs: deadline === undefined ? undefined : deadline - performance.now(),
+        return id
+      }
+      // The run's planner (`plan/planner.ts`): made once a task misses and
+      // history is read, from the graph and what history knows; it decides
+      // in the orchestrator at each event.
+      let planner: InstanceType<typeof Planner> | undefined
+      const plannerOf = (): InstanceType<typeof Planner> | undefined => {
+        if (planner !== undefined) return planner
+        if (!missed || pending === undefined || nodes === undefined || !ready()) return undefined
+        const known = (id: string) => {
+          const p = peaks.get(id)
+          return p === undefined ? undefined : { ms: p.p50DurationMs, cores: p.maxCpuParallelism }
+        }
+        const warmUps = Object.fromEntries(
+          sizes.map((s) => [s.name, learned.warmUps.get(s.name) ?? WARM_UP_MS]),
+        )
+        planner = new Planner({
+          nodes,
+          platform: (n) => (multi ? placeOf(n.worker, n.platform) : (n.platform ?? home)) ?? host,
+          sizes: sizes.map((s) => ({
+            name: s.name,
+            cores: s.cpu,
+            memory: s.memory,
+            // With no adapter the run starts none: workers join on their own.
+            max: adapter === undefined ? 0 : s.max,
+            platform: s.platform ?? host,
+            warmUpMs: warmUps[s.name]!,
+            spreadMs: learned.spreads.get(s.name) ?? 0,
+          })),
           known,
-          how,
-          home: multi ? (n: TaskNode) => placeOf(n.worker, n.platform) : home,
-          queued: o.queued(warmUp),
-          last,
-          now: performance.now(),
+          expected: new Set([...likely, ...sure, ...executed]),
+          ...(options.unmeasured === undefined ? {} : { unmeasuredCores: unmeasured.cores }),
         })
-        deadline = performance.now() + p.boundMs
-        for (const t of p.tasks) known.add(t.id)
-        if (p.drain.length > 0) o.drain(p.drain)
-        o.place(p)
-        if ((p.start.length > 0 && !final) || p.release.length > 0)
-          o.planned({
-            start: final ? [] : p.start.map((s) => s.name),
-            release: p.release,
-            tasks: p.tasks.length,
-            endsInMs: p.endsInMs,
-            boundMs: p.boundMs,
-            workers,
-            ...(p.start.length > 0 && !final
-              ? {
-                  work: p.tasks,
-                  warmUps: new Map(sizes.map((s) => [s.name, warmUp(s.name)])),
-                  sizes: planned,
-                }
-              : {}),
-            ...(p.unpacked === undefined ? {} : { unpacked: p.unpacked }),
-            ...(p.played === undefined
-              ? {}
-              : {
-                  input: {
-                    tasks: p.tasks,
-                    ...p.played,
-                    warmUps: new Map(sizes.map((s) => [s.name, warmUp(s.name)])),
-                    spreads: new Map(
-                      sizes.map((s) => [
-                        s.name,
-                        spreads.get(s.name) ?? learned.spreads.get(s.name) ?? 0,
-                      ]),
-                    ),
-                  },
-                }),
-          })
-        const { tasks } = p
-        // At the end the relay closing ends them all.
-        if (p.release.length > 0 && remaining.size > 0) {
-          const cancelled = o.release(p.release)
-          const sized = new Map<string, Size>()
-          for (const id of cancelled) {
-            const s = sizeOf.get(id)
-            if (s === undefined) continue
-            sized.set(id, s)
-            sizeOf.delete(id)
-            started.set(s.name, started.get(s.name)! - 1)
-          }
-          // One its adapter cannot stop joins all the same: the run counts
-          // it again, and takes it.
-          if (cancelled.length > 0)
-            void Promise.resolve(
-              adapter?.cancel === undefined ? cancelled : adapter.cancel(cancelled),
-            )
-              .then((left) => {
-                const back = o.leftRunning(left ?? [])
-                for (const id of back) {
-                  const s = sized.get(id)
-                  if (s === undefined) continue
-                  sizeOf.set(id, s)
-                  started.set(s.name, (started.get(s.name) ?? 0) + 1)
-                }
-                if (back.length > 0) onChange()
-              })
-              .catch((err: unknown) =>
-                ctx.warn(
-                  `[vx] dte(): stopping ${cancelled.join(', ')} failed: ${err instanceof Error ? err.message : String(err)}`,
-                ),
-              )
-        }
-        if (again !== undefined) clearTimeout(again)
-        again = undefined
-        if (p.againInMs !== undefined && !final) {
-          again = setTimeout(replan, p.againInMs)
-          again.unref?.()
-        }
-        if (p.start.length === 0 || final) return
-        o.asked(
-          p.start.length,
-          tasks.length,
-          tasks.filter((t) => measured(t.id)).length,
-          p.endsInMs,
-          tasks.filter((t) => !measured(t.id)).map((t) => t.id),
-        )
-        for (const p0 of p.start) {
-          // Started as declared: the plan's size is its cores less the other.
-          const s = sizes.find((x) => x.name === p0.name) ?? p0
-          ++index
-          const id = nextId(s.name)
-          const a = spawnOf(s, id, index)
-          // A sync throw too: `spawn` may return void, and one thrown here
-          // escaped the plan's timer and ended the process.
-          void new Promise<void>((done) => done(adapter.spawn(a))).catch((err: unknown) =>
-            o.failed(id, err instanceof Error ? err.message : String(err)),
-          )
-        }
+        // The probe's hits: none runs.
+        for (const id of planner.ids) if (!pending.has(id) && !executed.has(id)) planner.drop(id, 0)
+        o.planning({
+          tasks: planner.ids.map((id) => {
+            const k = known(id)
+            return {
+              id,
+              ...(k?.ms === undefined ? {} : { ms: k.ms }),
+              cores: k?.cores ?? 0,
+              memory: peaks.get(id)?.maxPeakRssBytes ?? 0,
+            }
+          }),
+          warmUps,
+        })
+        return planner
       }
-      // Events come in bursts (core hands over tasks ready at once): one
-      // plan per tick, paced by its cost.
-      const paced = pace(() => {
-        if (pending !== undefined) shape(pending)
-      })
-      const replan = (now?: boolean): void => {
-        if (!missed || pending === undefined || !ready()) return
-        if (now === true) return paced.now()
-        paced.soon()
-      }
+      const replan = (): void => o.poke()
       // Until a task misses, demand waits: a run all hits starts no worker.
       let missed = false
       let pending: ReadonlySet<string> | undefined
@@ -1087,7 +901,6 @@ export function dte(options: DteOptions = {}) {
         }
         return false
       }
-      onChange = replan
       // Work the last commit's changes make: planned before any task misses.
       const forecast = (): void => {
         if (likely.size > 0) missed = true
@@ -1095,59 +908,6 @@ export function dte(options: DteOptions = {}) {
       }
       if (needsIn === undefined) scheduled = forecast
       else forecast()
-      // Each task's dependants, by the graph: made once it is.
-      let after: Map<string, string[]> | undefined
-      let afterOf: ReadonlyMap<string, TaskNode> | undefined
-      // The tasks about to be ready once each of `from` ends, the rest of
-      // their dependencies ending as `ends` says, each `from` by `at`.
-      const soonAfter = (
-        from: Iterable<string>,
-        ends: ReadonlyMap<string, number>,
-        at: (id: string) => number,
-      ): (Soon & { id: string })[] => {
-        const graph = nodes
-        if (graph === undefined || pending === undefined) return []
-        if (afterOf !== graph) {
-          afterOf = graph
-          after = new Map()
-          for (const [id, n] of graph)
-            for (const d of n.deps) {
-              const list = after.get(d)
-              if (list === undefined) after.set(d, [id])
-              else list.push(id)
-            }
-        }
-        const rest = pending
-        const out: (Soon & { id: string })[] = []
-        const seen = new Set<string>()
-        for (const id of from)
-          for (const d of after!.get(id) ?? []) {
-            if (seen.has(d) || !rest.has(d) || !(likely.has(d) || sure.has(d))) continue
-            seen.add(d)
-            let when = 0
-            let all = true
-            for (const x of graph.get(d)!.deps) {
-              if (!rest.has(x)) continue
-              const e = x === id ? at(x) : ends.get(x)
-              if (e === undefined) {
-                all = false
-                break
-              }
-              when = Math.max(when, e)
-            }
-            if (!all) continue
-            out.push({
-              id: d,
-              need: o.booking(need(d)),
-              at: when,
-              rank: (tails ??= tailsMs(graph, (x) => peaks.get(x)?.p50DurationMs))(d),
-              ms: peaks.get(d)?.p50DurationMs ?? UNKNOWN_MS,
-            })
-          }
-        return out.sort((a, b) => b.rank - a.rank)
-      }
-      soonOf = (ends) => soonAfter(ends.keys(), ends, (x) => ends.get(x)!)
-      nextOf = (id, ends) => soonAfter([id], ends, (x) => peaks.get(x)?.p50DurationMs ?? UNKNOWN_MS)
       // Core asks the footer and the summary after teardown: the last run's graph.
       const depsOf = (id: string): readonly string[] => (nodes ?? ran)?.get(id)?.deps ?? []
       return {
@@ -1212,6 +972,10 @@ export function dte(options: DteOptions = {}) {
             o.missed = misses
             pending = remaining
             sure = misses
+            // Held: it restores here, and runs on no worker.
+            if (planner !== undefined)
+              for (const id of planner.ids)
+                if (!remaining.has(id) && !executed.has(id)) planner.drop(id, 0)
             if (misses.size > 0) missed = true
             replan()
           },

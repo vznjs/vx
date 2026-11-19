@@ -32,9 +32,8 @@ it('nothing outside src/plan reaches past its index', async () => {
     if (!f.endsWith('.ts')) continue
     const text = await Bun.file(path.join(src, f)).text()
     for (const m of text.matchAll(/from\s+'\.\/plan\/([\w-]+)\.js'/g))
-      // A config load reads the strategies alone, never the planner.
-      if (!(m[1] === 'index' || (f === 'plugin.ts' && m[1] === 'strategy')))
-        bad.push(`${f}: ${m[1]}`)
+      // A config load reads the booking rule alone, never the planner.
+      if (!(m[1] === 'index' || (f === 'plugin.ts' && m[1] === 'model'))) bad.push(`${f}: ${m[1]}`)
   }
   expect(bad).toEqual([])
 })
