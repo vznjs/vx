@@ -719,9 +719,10 @@ use your own instead.
   rest follows from that: a worker that said nothing for half of it (3 s)
   sends its report; the orchestrator never speaks on a timer, only orders
   and the acks of what it heard; a send unacknowledged for 3 s goes again.
-  A worker that loses its orchestrator ends, and says so. One the
-  orchestrator lost that speaks again is answered no more, so it ends too:
-  its tasks already run elsewhere. Nobody probes, the relay answers
+  A worker that loses its orchestrator stops its tasks, says so, and joins
+  the run again as a new worker; once the run is over it exits. One the
+  orchestrator lost that speaks again is answered no more, so it does the
+  same: its tasks already run elsewhere. Nobody probes, the relay answers
   neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed

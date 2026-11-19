@@ -43,7 +43,7 @@ import { changedFiles, snapshot, unfilter } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, ORCHESTRATOR_SILENT, RelayError, unsent as unsentBy } from './wire.js'
 
-export async function runWorker(opts: {
+type WorkerOptions = {
   relay: string
   run: string
   /** `WorkerSpawn.id`, when the run started it. */
@@ -56,7 +56,26 @@ export async function runWorker(opts: {
   proof: Proof
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
   artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
-}): Promise<number> {
+}
+
+/**
+ * Joins its run and serves it. One its orchestrator went silent on joins
+ * again, as a worker that just came: main 612c755's mac#1 and 4ba95d2's
+ * mac#3 each lost the orchestrator for 6 s mid-run, and the run went on
+ * one Mac short (the run never asks a worker in place of one it lost to
+ * silence). The checkout read once serves every join; a join the
+ * orchestrator never answers ends it, as a run hung for good.
+ */
+export async function runWorker(opts: WorkerOptions): Promise<number> {
+  const checkout = await readCheckout(opts)
+  for (;;) {
+    let silent = false
+    const code = await serve(opts, checkout, () => (silent = true))
+    if (!silent) return code
+  }
+}
+
+async function readCheckout(opts: WorkerOptions) {
   // The tracked files as they are, as the run snapshots its own: HEAD's tree
   // let in a checkout whose prepare rewrote a tracked file, and the task built
   // from it was saved under the clean key. Its files first as the commit holds
@@ -80,6 +99,14 @@ export async function runWorker(opts: {
     ...(changed.length === 0 ? {} : { changed }),
     booted: Math.round(performance.timeOrigin),
   }
+  return { base, tree, tracked, cores, memory, info }
+}
+
+async function serve(
+  opts: WorkerOptions,
+  { base, tracked, cores, memory, info }: Awaited<ReturnType<typeof readCheckout>>,
+  silenced: () => void,
+): Promise<number> {
   let me
   try {
     me = await sealWorker(
@@ -204,16 +231,20 @@ export async function runWorker(opts: {
    * every task stopped in one second, each job green and silent, and the cause
    * was found only in the run's profile (CI).
    */
+  // Taken by its orchestrator in this session: only then is a silence one to join again after.
+  let welcomed = false
   const ended = (err: RelayError): number => {
-    if (err.message === ORCHESTRATOR_SILENT)
+    if (err.message === ORCHESTRATOR_SILENT) {
+      if (welcomed) silenced()
       ui.print(
         'err',
         ui.status(
           'warn',
           'vx dte worker',
-          'the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers',
+          `the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers${welcomed ? '; joining it again' : ''}`,
         ),
       )
+    }
     return 0
   }
 
@@ -674,6 +705,7 @@ export async function runWorker(opts: {
         if (m.type === 'exit') return 0
         if (m.type === 'cache') facts = m.cache
         else if (m.type === 'welcome') {
+          welcomed = true
           facts = m.cache
           ui.print(
             'out',
