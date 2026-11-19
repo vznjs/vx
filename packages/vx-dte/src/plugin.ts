@@ -817,7 +817,6 @@ export function dte(options: DteOptions = {}) {
         const s = sizes.find((x) => x.name === name)!
         const id = nextId(s.name)
         const a = spawnOf(s, id, ++index)
-        o.asked(1, planner?.ids.length ?? 0, planner?.ids.filter(measured).length ?? 0, 0)
         // A sync throw too: `spawn` may return void, and one thrown here
         // escaped the pump and ended the process.
         void new Promise<void>((done) => done(adapter!.spawn(a))).catch((err: unknown) =>
@@ -878,7 +877,6 @@ export function dte(options: DteOptions = {}) {
       let pending: ReadonlySet<string> | undefined
       // The tasks core's probe found in no cache: they run, known before any worker keys them.
       let sure: ReadonlySet<string> = new Set()
-      const measured = (id: string): boolean => peaks.get(id)?.maxCpuParallelism !== undefined
       // Needs another plugin fetches (the default branch's timings) land a
       // moment into the run. Asked before them, every task books a whole
       // worker: main asked 12 workers for 13 misses and 5 ran nothing

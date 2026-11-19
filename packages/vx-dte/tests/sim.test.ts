@@ -9,8 +9,11 @@ import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
 import q2f0 from './fixtures/pr-run-2f0e2a4.json'
 import d36 from './fixtures/main-run-d36eed9.json'
+import a2c from './fixtures/main-run-a2c25b0.json'
 import { compare } from '../scripts/compare.js'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
+import { Planner } from '../src/plan/planner.js'
+import type { TaskNode } from '@vzn/vx'
 
 const small: Size = { name: 'small', max: 12, cpu: 4, memory: 16e9 }
 type Ran = { ms: number; cores: number; memory: number }
@@ -443,13 +446,16 @@ function slowerThanHistory(seed: number): SimTask[] {
 // it joins, and asks none again: ending as soon, on 16% less worker time
 // (2026-11-11). 151 lets one go whose next task was planned past a
 // warm-up and two away, and asks one for it 10 s later, as planned: the
-// seeds end as soon on 1% less worker time (2026-11-11).
+// seeds end as soon on 1% less worker time (2026-11-11). 29 asks two at its
+// start, as a plan whose next count is judged where one more changes nothing
+// (main a2c25b0), lets one go idle at 176 s and asks one at 200 s for the
+// tail its history put short: ending as soon (2026-11-19).
 it.each([14, 29, 74, 90, 151, 195, 283])(
   'a run slower than its history asks for more, not workers it then cancels (seed %d)',
   (seed) => {
     const r = simulate(slowerThanHistory(seed), { sizes: [small] })
     expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(1)
-    expect(r.churn).toBeLessThanOrEqual(seed === 151 ? 1 : 0)
+    expect(r.churn).toBeLessThanOrEqual(seed === 151 || seed === 29 ? 1 : 0)
   },
 )
 
@@ -485,7 +491,9 @@ it('asks no worker while the CI queues one of its size', () => {
   const graph = load(q2f0).map((t) =>
     t.ran !== undefined && unmeasured.has(t.id) ? { ...t, known: null } : t,
   )
-  // Each worker's join, in the order the run asked them; later ones queue behind.
+  // Each Linux worker's join, in the order the run asked them; later ones queue behind. A Mac
+  // queues for a Mac runner, not behind them: played by its global ask order, the one Mac a
+  // plan asked after 11 smalls in one decide drew the 90 s fallback.
   const joins = [16.5, 84.3, 78.5, 67.4, 44.9, 85.9, 80.0, 18.1, 78.3, 74.3, 13.9]
   const r = simulate(graph, {
     sizes: [
@@ -494,7 +502,7 @@ it('asks no worker while the CI queues one of its size', () => {
       { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' },
     ],
     home: 'linux-x64',
-    warmUpMs: (n) => (joins[n - 1] ?? 90) * 1_000,
+    warmUpMs: (_, size, k) => (size === 'small' ? (joins[k - 1] ?? 90) : 30) * 1_000,
     // As the next run knows them: each next worker joined (85.9 − 13.9) / 10 s later than the one before.
     spreadsMs: new Map([
       ['small', 7_200],
@@ -784,3 +792,74 @@ it('runs a 20-core task on the 9 cores a busy 10-core worker has free: sooner, a
   const held = r.workers.reduce((a, w) => a + w.cores * ((w.leftAt ?? r.endMs) - w.spawnedAt), 0)
   expect([r.startedAt.get('big'), r.endMs, held]).toEqual([20_000, 236_000, 2_360_000])
 })
+
+// Main a2c25b0 (2026-11-19), its end bound by the Macs: at its first decide
+// one more small worker changed nothing, being the one the plan asked now
+// itself, and the search stopped there. The run asked 1 small of 9, the
+// other 7 only once it joined, 30 s later, and took 197.5 s. How many it
+// asked swung with the learned join spread (2 s: 9, 5 s: 1, 8 s: 9).
+it.each([0, 2_000, 5_000, 8_000, 13_000])(
+  'main a2c25b0 asks its Linux workers at its first decide (spread %d ms)',
+  (spreadMs) => {
+    const nodes = new Map(
+      a2c.nodes.map((n) => [
+        n.id,
+        {
+          id: n.id,
+          deps: n.deps,
+          platform: (n as { platform?: string }).platform ?? 'linux-x64',
+          config: n.exec ? { exec: { command: 'x' } } : {},
+        } as unknown as TaskNode,
+      ]),
+    )
+    const known: Record<string, readonly (number | null)[]> = a2c.known
+    const expected = new Set(a2c.expected)
+    const planner = new Planner({
+      nodes,
+      platform: (n) => n.platform ?? 'linux-x64',
+      sizes: [
+        {
+          name: 'small',
+          cores: 4,
+          memory: 16e9,
+          max: 9,
+          platform: 'linux-x64',
+          warmUpMs: a2c.warmUps.small,
+          spreadMs,
+        },
+        {
+          name: 'arm',
+          cores: 4,
+          memory: 16e9,
+          max: 1,
+          platform: 'linux-arm64',
+          warmUpMs: a2c.warmUps.arm,
+        },
+        {
+          name: 'mac',
+          cores: 2,
+          memory: 7e9,
+          max: 3,
+          platform: 'darwin-arm64',
+          warmUpMs: a2c.warmUps.mac,
+          spreadMs: 3_000,
+        },
+      ],
+      known: (id) => {
+        const k = known[id]
+        return k === undefined ? undefined : { ms: k[0] ?? undefined, cores: k[1] ?? undefined }
+      },
+      expected,
+    })
+    for (const id of planner.ids) if (!expected.has(id)) planner.drop(id, 0)
+    const asked: string[] = []
+    const d = planner.decide(730, (s) => {
+      asked.push(s.name)
+      return `${s.name}#${asked.length}`
+    })
+    // what the footer says each ask's plan ends at: it said 0 s for every ask
+    expect(d.end).toBeGreaterThan(a2c.warmUps.mac)
+    // 107 tasks of ~40 s wait on check.bun: a third of the fleet or more, now
+    expect(asked.filter((n) => n === 'small').length).toBeGreaterThanOrEqual(3)
+  },
+)

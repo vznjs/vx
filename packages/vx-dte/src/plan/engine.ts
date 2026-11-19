@@ -76,6 +76,8 @@ export interface Decision {
   readonly leave: readonly number[]
   /** When to decide again with nothing else happening (ms), or Infinity. */
   readonly due: number
+  /** When its plan ends the run (ms). */
+  readonly end: number
 }
 
 const phi = (z: number): number => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI)
@@ -2200,36 +2202,55 @@ export class Engine {
       big ? this.plan4(t, D, fits, Dv) : this.plan3(t, D, fits, extra, eager, soon, Dv)
     const better = (o: Plan, b: Plan): boolean =>
       o.end < b.end - 1e-6 || (o.end <= b.end + 1e-6 && o.held < b.held - 1e-6)
-    const best = (): { p: Plan; extra: number[] } => {
+    const best = (): { p: Plan; extra: number[]; now: number[] } => {
       let p = P()
       const extra = Array.from({ length: this.sizes.length }, () => 0)
-      if (big) return { p, extra }
-      // one more worker asked now while that ends the run sooner, or as soon and holds less
+      // the workers the plan alone asks now, of each size: asked now whatever more are judged instead
+      const now = Array.from({ length: this.sizes.length }, () => 0)
+      for (const [z, at] of p.asks) if (at <= t + 1e-6) now[z]!++
+      if (big) return { p, extra, now }
+      // one more worker asked now while that ends the run sooner, or as soon and holds less. One more that
+      // changes nothing is the one the plan asks now itself: the next count is judged instead (main a2c25b0,
+      // its end bound by the Macs, asked 1 small of 9 at its start, as 2 more held less, and 7 30 s late)
       const cnt = Array.from({ length: this.sizes.length }, () => 0)
       for (const w of this.live()) cnt[w.size]!++
+      const same = (o: Plan, b: Plan): boolean =>
+        Math.abs(o.end - b.end) <= 1e-6 && Math.abs(o.held - b.held) <= 1e-6
       for (;;) {
         let bz = -1
+        let bk = 1
         let bp: Plan | undefined
-        for (let z = 0; z < this.sizes.length; z++) {
-          if (cnt[z]! + extra[z]! >= this.sizes[z]!.max) continue
-          extra[z]!++
-          const r = P(extra)
-          extra[z]!--
-          if (better(r, bp ?? p)) {
-            bz = z
-            bp = r
+        // the workers the plan itself asks now, of each size; none while no task's time is known, measured
+        // or ended: then no count is judged better than another but by chance
+        const own = Array.from({ length: this.sizes.length }, () => 0)
+        if (this.knownN + this.finishedN > 0)
+          for (const [z, at] of p.asks) if (at <= t + 1e-6) own[z]!++
+        for (let z = 0; z < this.sizes.length; z++)
+          for (let k = 1; cnt[z]! + extra[z]! + k <= this.sizes[z]!.max; k++) {
+            extra[z]! += k
+            const r = P(extra)
+            extra[z]! -= k
+            if (better(r, bp ?? p)) {
+              bz = z
+              bk = k
+              bp = r
+            }
+            if (k > own[z]! || !same(r, p)) break
           }
-        }
         if (bz < 0) break
-        extra[bz]!++
+        extra[bz]! += bk
         p = bp!
       }
-      if (p.end > D + 1e-6 && extra.every((x) => x === 0)) {
+      if (p.end > D + 1e-6 && extra.every((x, z) => x <= now[z]!)) {
         // late even so: a worker asked as soon as a task waits for room, if that ends the run sooner
         const e = P([], true)
-        if (e.end < p.end - 1e-6) p = e
+        if (e.end < p.end - 1e-6) {
+          // its own asks stand for the ones judged in their place
+          p = e
+          extra.fill(0)
+        }
       }
-      return { p, extra }
+      return { p, extra, now }
     }
     let r = best()
     // with restarts, an idle worker's leaving is judged plain against plain: a restart's plan is the least of
@@ -2244,7 +2265,7 @@ export class Engine {
       // the order kept from the decide before, then the draws: the best order found carries across decides
       if (this.kept !== undefined) {
         const o = this.plan3(t, D, fits, r.extra, false, soon, Dv, this.kept)
-        if (better(o, r.p)) r = { p: o, extra: r.extra }
+        if (better(o, r.p)) r = { p: o, extra: r.extra, now: r.now }
         else this.kept = undefined
       }
       // each task's start drawn a way into its slack; the draw that ends soonest, then holds least, is kept
@@ -2258,7 +2279,7 @@ export class Engine {
         const key = this.drawKeys(u, D)
         const o = this.plan3(t, D, fits, r.extra, false, soon, Dv, key)
         if (better(o, r.p)) {
-          r = { p: o, extra: r.extra }
+          r = { p: o, extra: r.extra, now: r.now }
           this.kept = key
         }
       }
@@ -2318,8 +2339,9 @@ export class Engine {
     for (let z = 0; z < r.extra.length; z++)
       for (let k = 0; k < r.extra[z]!; k++) {
         const f = p.firstX?.[xk] ?? t
-        // one the plan first gives work later than a warm-up from now is asked then
-        if (f > t + this.lead(z) + 1e-6) {
+        // one the plan first gives work later than a warm-up from now is asked then, but not in place of one
+        // the plan alone asked now: its tasks placed late in their slack would have no worker by then
+        if (k >= r.now[z]! && f > t + this.lead(z) + 1e-6) {
           if (f < Infinity) nextAsk = Math.min(nextAsk, f - this.lead(z))
           xk++
           continue
@@ -2359,6 +2381,6 @@ export class Engine {
       nextAsk > t + 1e-6 ? nextAsk : Infinity,
       keepUntil > t + 1e-6 ? keepUntil : Infinity,
     )
-    return { start, ask: asked, leave, due }
+    return { start, ask: asked, leave, due, end: p.end }
   }
 }
