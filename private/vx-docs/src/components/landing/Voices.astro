@@ -1,11 +1,12 @@
 ---
-// What others say about us: every quote, word for word, all on screen at
-// once, each zooming in and out in turn. Without script or with reduced
-// motion they sit still.
+// What others say about us: every quote, word for word, in two rows that
+// slide on their own and loop, the second offset from the first. Without
+// script or with reduced motion each row scrolls by hand.
 import { ALL_VOICES } from './voices.ts'
 
 const TINTS = ['#c6f84e', '#5ee0ff', '#ff5e9c', '#ff9d42', '#b18cff']
-const TILT = [-2, 1.5, -1, 2, -1.5, 1, -2.5, 0.5]
+const half = Math.ceil(ALL_VOICES.length / 2)
+const rows = [ALL_VOICES.slice(0, half), ALL_VOICES.slice(half)]
 ---
 
 <section class="band" id="voices">
@@ -14,24 +15,29 @@ const TILT = [-2, 1.5, -1, 2, -1.5, 1, -2.5, 0.5]
       <p class="kicker">Word for word</p>
       <h2>What others<br /><em>say about us.</em></h2>
     </header>
-    <ul class="sky">
-      {
-        ALL_VOICES.map((v, i) => (
-          <li
-            class="bubble"
-            style={`--tint:${TINTS[i % TINTS.length]};--r:${TILT[i % TILT.length]}deg;--fs:${v.quote.length < 70 ? 20 : v.quote.length < 140 ? 17 : 15}px`}
-          >
-            <figure class="bubble-in">
-              <blockquote>
-                <a href={v.href} rel="noopener" target="_blank">“{v.quote}”</a>
-              </blockquote>
-              <figcaption>
-                <strong>{v.who}</strong> · {v.role}
-              </figcaption>
-            </figure>
-          </li>
-        ))
-      }
-    </ul>
+  </div>
+  <div class="sky">
+    {
+      rows.map((row, r) => (
+        <div class="say-row" data-dir={r === 0 ? '-1' : '1'}>
+          <ul class="say-track">
+            {row.map((v, i) => (
+              <li class="bubble" style={`--tint:${TINTS[(i * 2 + r) % TINTS.length]};--w:${Math.round(Math.min(560, Math.max(240, v.quote.length * 2.6)))}px`}>
+                <figure class="bubble-in">
+                  <blockquote>
+                    <a href={v.href} rel="noopener" target="_blank">
+                      “{v.quote}”
+                    </a>
+                  </blockquote>
+                  <figcaption>
+                    <strong>{v.who}</strong> · {v.role}
+                  </figcaption>
+                </figure>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
   </div>
 </section>

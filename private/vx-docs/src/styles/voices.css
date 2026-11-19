@@ -1,55 +1,64 @@
-/* What others say: every card on screen, each zooming in and out in turn. */
+/* What others say: two rows of quotes that slide and loop, offset. */
 
 .sky {
-  columns: 3 300px;
-  column-gap: 28px;
+  display: grid;
+  gap: 22px;
   margin: 48px 0 0;
-  padding: 0;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.say-row {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.say-row::-webkit-scrollbar {
+  display: none;
+}
+.sky.live .say-row {
+  overflow: hidden;
+}
+.say-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  width: max-content;
+  margin: 0;
+  padding: 6px 0;
   list-style: none;
+  will-change: transform;
+}
+/* The second row starts half a card later, so no card sits over another. */
+.say-row + .say-row .say-track {
+  padding-left: 190px;
+}
+.sky.live .say-row + .say-row .say-track {
+  padding-left: 0;
 }
 .bubble {
-  break-inside: avoid;
-  padding: 14px 0;
+  flex: none;
+  width: var(--w, 380px);
 }
 .bubble-in {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 190px;
   margin: 0;
   padding: 16px 18px;
   border: 1px solid color-mix(in srgb, var(--tint, var(--tone-core)) 35%, transparent);
   border-radius: 18px;
   background: color-mix(in srgb, var(--tint, var(--tone-core)) 7%, rgba(12, 14, 18, 0.94));
-  box-shadow:
-    0 20px 50px -20px rgba(0, 0, 0, 0.8),
-    0 0 30px -12px color-mix(in srgb, var(--tint, var(--tone-core)) 40%, transparent);
-  transform: rotate(var(--r, 0deg));
-  transition:
-    transform 0.9s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.9s ease;
-  will-change: transform;
-}
-.sky.live .bubble-in {
-  transform: scale(0.94) rotate(var(--r, 0deg));
-}
-.sky.live .bubble.big .bubble-in,
-.sky.live .bubble:hover .bubble-in {
-  transform: scale(1.08) rotate(0deg);
-  box-shadow:
-    0 30px 60px -20px rgba(0, 0, 0, 0.9),
-    0 0 44px -10px color-mix(in srgb, var(--tint, var(--tone-core)) 70%, transparent);
-}
-.bubble.big,
-.bubble:hover {
-  position: relative;
-  z-index: 2;
+  box-shadow: 0 0 30px -12px color-mix(in srgb, var(--tint, var(--tone-core)) 40%, transparent);
 }
 .bubble-in blockquote {
   margin: 0;
   padding: 0;
   border: 0;
-  font: 500 var(--fs, 17px) / 1.4 var(--font-body);
+  font: 500 17px/1.4 var(--font-body);
   color: #f2f5ef;
 }
 .bubble-in figcaption {
-  margin: 10px 0 0;
+  margin: auto 0 0;
+  padding-top: 10px;
   font: 400 12px/1.35 var(--font-body);
   color: #8b938f;
 }
@@ -66,8 +75,16 @@
 }
 
 @media (max-width: 620px) {
-  .sky.live .bubble.big .bubble-in,
-  .sky.live .bubble:hover .bubble-in {
-    transform: scale(1.03) rotate(0deg);
+  .bubble {
+    width: clamp(210px, calc(var(--w, 380px) * 0.7), 300px);
+  }
+  .bubble-in {
+    height: 236px;
+  }
+  .bubble-in blockquote {
+    font-size: 15px;
+  }
+  .say-row + .say-row .say-track {
+    padding-left: 140px;
   }
 }

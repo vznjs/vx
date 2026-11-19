@@ -532,24 +532,34 @@ const startCommands = [
         },
         { threshold: 0.4 },
       ).observe(hop)
-      // The sky: every card stays; one or two at a time zoom in, then back.
+      // The sky: each row slides on its own and loops; the second runs the
+      // other way, offset by half a card. A hovered row stops.
       const sky = document.querySelector<HTMLElement>('.sky')!
-      const cards = [...sky.querySelectorAll<HTMLElement>('.bubble')]
-      let zoomT = 0
-      let lit = 0
-      const zoom = (): void => {
-        cards.forEach((c) => c.classList.remove('big'))
-        cards[lit % cards.length]!.classList.add('big')
-        cards[(lit + 5) % cards.length]!.classList.add('big')
-        lit++
-      }
-      new IntersectionObserver(([e]) => {
-        clearInterval(zoomT)
-        if (!e!.isIntersecting) return
-        sky.classList.add('live')
-        zoom()
-        zoomT = window.setInterval(zoom, 1800)
-      }).observe(sky)
+      const runs = [...sky.querySelectorAll<HTMLElement>('.say-row')].map((lane, r) => {
+        const track = lane.querySelector<HTMLElement>('.say-track')!
+        const one = track.scrollWidth + 22
+        for (const li of [...track.children]) {
+          const copy = li.cloneNode(true) as HTMLElement
+          copy.setAttribute('aria-hidden', 'true')
+          copy.querySelector('a')!.tabIndex = -1
+          track.appendChild(copy)
+        }
+        const dir = Number(lane.dataset['dir'])
+        const start = -(r * 200)
+        const run = track.animate(
+          [
+            { transform: `translateX(${dir < 0 ? start : start - one}px)` },
+            { transform: `translateX(${dir < 0 ? start - one : start}px)` },
+          ],
+          { duration: one * 28, iterations: Infinity },
+        )
+        run.pause()
+        lane.addEventListener('pointerenter', () => run.pause())
+        lane.addEventListener('pointerleave', () => run.play())
+        return run
+      })
+      sky.classList.add('live')
+      new IntersectionObserver(([e]) => runs.forEach((run) => (e!.isIntersecting ? run.play() : run.pause()))).observe(sky)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {
