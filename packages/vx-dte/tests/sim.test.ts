@@ -856,7 +856,7 @@ interface MainFixture {
 }
 
 /** The planner main's run had at its start: its graph, history and sizes, its probe's hits dropped. */
-function mainPlanner(f: MainFixture, smallSpreadMs?: number): Planner {
+function mainPlanner(f: MainFixture, smallSpreadMs?: number, smallPace?: number): Planner {
   const nodes = new Map(
     f.nodes.map((n) => [
       n.id,
@@ -881,6 +881,7 @@ function mainPlanner(f: MainFixture, smallSpreadMs?: number): Planner {
         platform: 'linux-x64',
         warmUpMs: f.warmUps.small,
         ...(smallSpreadMs === undefined ? {} : { spreadMs: smallSpreadMs }),
+        ...(smallPace === undefined ? {} : { pace: smallPace }),
       },
       {
         name: 'arm',
@@ -954,3 +955,55 @@ it('main 4c30e53 reads its speed from a command time, not from when it heard the
   // told, its time counts: a command 10x its history reads the run slower
   expect(planner.decide(19_500, spawn).end).toBeGreaterThan(heard)
 })
+
+// Main 4c30e53 (2026-11-19): history keeps a task's time alone, and its
+// Linux tasks, four to a small, took 1.47 times it, its Macs 1.05. Read as
+// one speed, its first plan ended the Linux lane before the Mac one, asked
+// 5 smalls of 9 and the other 4 when the first joined, 17 s later. With an
+// earlier run's pace it asks all 9 at once. At the run's own pace, its first
+// plan, late, judged the Macs and not the smalls, and left them to come one
+// by one over 43 s.
+it.each([1.13, 1.3, 1.47])(
+  'main 4c30e53 asks its 9 smalls at its start at a pace of %d',
+  (pace) => {
+    const graph = load(m4c3).map((t) => {
+      const k = (m4c3.known as Record<string, number[] | null>)[t.id]
+      return k === undefined
+        ? t
+        : {
+            ...t,
+            known:
+              k === null
+                ? null
+                : {
+                    ms: k[0]!,
+                    cores: k[1]!,
+                    memory: k[2]! * 1e6,
+                    ...(k[3] === undefined ? {} : { afterMs: k[3] }),
+                  },
+          }
+    })
+    const joins = m4c3.joins as Record<string, number[]>
+    const play = (paces?: Map<string, number>) =>
+      simulate(graph, {
+        sizes: [
+          { name: 'small', max: 9, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+          { name: 'mac', max: 3, cpu: 2, memory: 7e9, platform: 'darwin-arm64' },
+          { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+        ],
+        home: 'linux-x64',
+        warmUpMs: (_, size, k) => joins[size]![k - 1]!,
+        warmUpsMs: new Map(Object.entries(m4c3.warmUps)),
+        likely: misses(graph),
+        ...(paces === undefined ? {} : { paces }),
+      })
+    const smalls = (r: SimResult): number =>
+      r.workers.filter((w) => w.id.startsWith('small') && w.spawnedAt < 1_000).length
+    const before = play()
+    const after = play(new Map([['small', pace]]))
+    expect(smalls(before)).toBeLessThan(9)
+    expect(smalls(after)).toBe(9)
+    // 139.4 s, its join order, before; 133.9 s at each pace
+    expect(after.endMs).toBeLessThan(before.endMs - 5_000)
+  },
+)

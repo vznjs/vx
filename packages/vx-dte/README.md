@@ -783,7 +783,10 @@ warm-up, not before it. Each size's worker is timed as a task is:
 `@vzn/vx-dte#worker:<size>`, defined by the size's name, platform, cores,
 memory and runner, so a size changed starts over. Its warm-up is the
 task's time, at most twice what history said (more is the CI's queue),
-and its machine's cores besides the run's tasks its cores; its join spread is `@vzn/vx-dte#join-spread:<size>`, and each server's
+and its machine's cores besides the run's tasks its cores; its join spread is `@vzn/vx-dte#join-spread:<size>`; its pace,
+`@vzn/vx-dte#pace:<size>`, how long its tasks took per 1000 ms history said
+(history keeps a task's time alone, and packed tasks run slower), so a plan
+reads each platform's work as long as it ran before any of its tasks ends; and each server's
 base `@vzn/vx-dte#server-base:<task>`, its start that measure's time. Core keeps them in the run's
 history, and a history plugin (`@vzn/vx-history`) shares them as it does
 task timings, so the next run plans by them before any worker of that

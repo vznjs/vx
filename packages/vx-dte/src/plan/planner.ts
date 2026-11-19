@@ -17,6 +17,8 @@ export interface PlannerSize {
   readonly warmUpMs: number
   /** How much later each next worker of it joined than the one before, an earlier run (ms). */
   readonly spreadMs?: number
+  /** How many times history's time its tasks took, an earlier run (`measures.ts` `paceId`). */
+  readonly pace?: number
 }
 
 /** What history knew of a task: its time alone (ms) and the cores it kept busy. */
@@ -138,6 +140,7 @@ export class Planner {
         platform: s.platform,
         warmUpMs: s.warmUpMs,
         spreadMs: s.spreadMs ?? 0,
+        ...(s.pace === undefined ? {} : { pace: s.pace }),
       })),
       {
         gated: true,
@@ -260,6 +263,11 @@ export class Planner {
   private name(w: number, id: string): void {
     this.workerIx.set(id, w)
     this.workerId[w] = id
+  }
+
+  /** Each platform's pace this run (`Engine.paces`): how many times history's time its ended tasks took. */
+  paces(): Map<string, number> {
+    return this.engine.paces()
   }
 
   /** What to do at `t`; `spawn` names each worker asked, of its size. */

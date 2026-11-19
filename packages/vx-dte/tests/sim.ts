@@ -53,6 +53,8 @@ export interface SimOptions {
   readonly warmUpsMs?: ReadonlyMap<string, number>
   /** Each size's join spread an earlier run learned (`learned.spreads`): how far apart its joins may land before one does. */
   readonly spreadsMs?: ReadonlyMap<string, number>
+  /** Each size's pace an earlier run learned (`learned.paces`): how many times history's time its tasks took. */
+  readonly paces?: ReadonlyMap<string, number>
   /** The tasks the forecast says miss (`likelyMisses`), before any does. */
   readonly likely?: ReadonlySet<string>
   /** The platform a task naming none runs on (`homeOf`). */
@@ -173,6 +175,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     platform: s.platform ?? home,
     warmUpMs: options.warmUpsMs?.get(s.name) ?? DEFAULT_WARM_UP_MS,
     spreadMs: options.spreadsMs?.get(s.name) ?? 0,
+    ...(options.paces?.has(s.name) ? { pace: options.paces.get(s.name)! } : {}),
   }))
   const planner = new Planner({
     nodes,

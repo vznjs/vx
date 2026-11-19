@@ -21,6 +21,12 @@ export interface MeasuredSize {
 export const workerId = (size: string): string => `${PLUGIN}#worker:${size}`
 /** How much later each next worker of a size joins than the one before (ms). */
 export const spreadId = (size: string): string => `${PLUGIN}#join-spread:${size}`
+/**
+ * How long a size's tasks took against history's time for them: ms per 1000 ms history said. History keeps a
+ * task's time alone; packed four to a small, main 4c30e53's shards took 1.6 to 2 times it, Mac tasks 1.05
+ * (2026-11-19), so a plan read from history alone asked for too few smalls.
+ */
+export const paceId = (size: string): string => `${PLUGIN}#pace:${size}`
 /** A server as a task: its start (ms, spawn to ready) and its base, the cores it uses with no dependant's work (`server-fit.ts`). */
 export const baseId = (server: string): string => `${PLUGIN}#server-base:${server}`
 
@@ -34,7 +40,8 @@ export function measureDefs(
   const out = new Map<string, string>()
   for (const s of sizes) {
     const def = JSON.stringify([s.platform, s.cpu, s.memory, s.runsOn ?? null])
-    for (const id of [workerId(s.name), spreadId(s.name)]) out.set(id, hash(`${id}\0${def}`))
+    for (const id of [workerId(s.name), spreadId(s.name), paceId(s.name)])
+      out.set(id, hash(`${id}\0${def}`))
   }
   const servers = [...nodes.values()].filter((n) => n.config.exec?.persistent !== undefined)
   for (const [server, def] of taskDefinitions(servers)) {
@@ -52,6 +59,8 @@ export interface Learned {
   readonly others: Map<string, number>
   /** Each size's join spread (ms). */
   readonly spreads: Map<string, number>
+  /** Each size's pace: how many times history's time its tasks took. */
+  readonly paces: Map<string, number>
   /** Each server's base (cores). */
   readonly bases: Map<string, number>
   /** Each server's start (ms): what the first task needing it on a worker waits. */
@@ -66,6 +75,7 @@ export function learnedOf(
     warmUps: new Map(),
     others: new Map(),
     spreads: new Map(),
+    paces: new Map(),
     bases: new Map(),
     starts: new Map(),
   }
@@ -75,7 +85,9 @@ export function learnedOf(
       out.warmUps.set(name, m.durationMs)
       if (m.cores !== undefined) out.others.set(name, m.cores)
     } else if (id.startsWith(`${PLUGIN}#join-spread:`)) out.spreads.set(name, m.durationMs)
-    else if (id.startsWith(`${PLUGIN}#server-base:`)) {
+    else if (id.startsWith(`${PLUGIN}#pace:`)) {
+      if (m.durationMs > 0) out.paces.set(name, m.durationMs / 1000)
+    } else if (id.startsWith(`${PLUGIN}#server-base:`)) {
       if (m.cores !== undefined) out.bases.set(name, m.cores)
       if (m.durationMs > 0) out.starts.set(name, m.durationMs)
     }
@@ -104,6 +116,7 @@ export function runMeasures(
     warmUps: ReadonlyMap<string, number>
     others: ReadonlyMap<string, number>
     spreads: ReadonlyMap<string, number>
+    paces?: ReadonlyMap<string, number>
     bases: ReadonlyMap<string, number>
     starts?: ReadonlyMap<string, number>
   },
@@ -122,6 +135,7 @@ export function runMeasures(
       run.others.get(size),
     )
   for (const [size, ms] of run.spreads) add(spreadId(size), ms)
+  for (const [size, pace] of run.paces ?? []) add(paceId(size), Math.round(pace * 1000))
   for (const [server, cores] of run.bases) add(baseId(server), run.starts?.get(server) ?? 0, cores)
   return out
 }

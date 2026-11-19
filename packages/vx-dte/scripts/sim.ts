@@ -6,7 +6,7 @@
 // the median and worst end, and the core time the workers were held.
 //
 //   bun packages/vx-dte/scripts/sim.ts [fixture.json] [--orders 30]
-//     [--max 12] [--cpu 4] [--warm-up 20000]
+//     [--max 12] [--cpu 4] [--warm-up 20000] [--pace small=1.3]
 //
 // With no `joins` in the fixture, one size: `--max` workers of `--cpu`
 // cores that each join `--warm-up` after their ask.
@@ -24,6 +24,8 @@ const { values, positionals } = parseArgs({
     max: { type: 'string', default: '12' },
     cpu: { type: 'string', default: '4' },
     'warm-up': { type: 'string', default: '20000' },
+    /** A size's pace in place of the fixture's, `small=1.3`; repeatable. */
+    pace: { type: 'string', multiple: true, default: [] },
   },
 })
 
@@ -45,6 +47,8 @@ const f = JSON.parse(readFileSync(file, 'utf8')) as {
   warmUps?: Record<string, number>
   /** Per size, how much later each next worker joined than the one before (ms). */
   spreads?: Record<string, number>
+  /** Per size, how many times history's time its tasks took, as an earlier run learned. */
+  paces?: Record<string, number>
 }
 const graph: SimTask[] = f.nodes.map((n) => {
   const r = f.ran[n.id]
@@ -81,6 +85,12 @@ const sizes =
   joins === undefined
     ? [{ name: 'small', max: Number(values.max), cpu: Number(values.cpu), memory: 16e9 }]
     : MAIN
+const paces = Object.fromEntries(
+  values.pace.map((p) => {
+    const [size, x] = p.split('=')
+    return [size!, Number(x)]
+  }),
+)
 const orders = Number(values.orders)
 const ends: number[] = []
 const held: number[] = []
@@ -107,6 +117,7 @@ for (let seed = 0; seed < orders; seed++) {
           warmUpMs: (_: number, size: string, k: number) => js[size]![(k - 1) % js[size]!.length]!,
           warmUpsMs: new Map(Object.entries(f.warmUps ?? {})),
           spreadsMs: new Map(Object.entries(f.spreads ?? {})),
+          paces: new Map(Object.entries({ ...f.paces, ...paces })),
         }),
   })
   ends.push(s.endMs)

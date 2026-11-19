@@ -4,7 +4,15 @@
 
 import { expect, it } from 'bun:test'
 import type { TaskNode } from '@vzn/vx'
-import { baseId, learnedOf, measureDefs, runMeasures, spreadId, workerId } from '../src/measures.js'
+import {
+  baseId,
+  learnedOf,
+  measureDefs,
+  paceId,
+  runMeasures,
+  spreadId,
+  workerId,
+} from '../src/measures.js'
 
 const small = { name: 'linux.small', platform: 'linux', cpu: 2, memory: 2 ** 30, runsOn: undefined }
 const node = (id: string, exec: Record<string, unknown>): TaskNode =>
@@ -41,6 +49,7 @@ it('defines each size by its name and what it is, and each server by its definit
   expect([...defs.keys()]).toEqual([
     '@vzn/vx-dte#worker:linux.small',
     '@vzn/vx-dte#join-spread:linux.small',
+    '@vzn/vx-dte#pace:linux.small',
     '@vzn/vx-dte#server-base:a#dev',
   ])
   // Its worker's warm-up and its spread are two measures, apart.
@@ -70,6 +79,7 @@ it("reads back a run's measures as what it learned", () => {
     ]),
     others: new Map([['linux.small', 0.4]]),
     spreads: new Map([['linux.small', 1_500]]),
+    paces: new Map([['linux.small', 1.47]]),
     bases: new Map([['a#dev', 0.75]]),
     starts: new Map([['a#dev', 9_000]]),
   })
@@ -77,6 +87,7 @@ it("reads back a run's measures as what it learned", () => {
   expect(run.map((m) => m.id)).toEqual([
     workerId('linux.small'),
     spreadId('linux.small'),
+    paceId('linux.small'),
     baseId('a#dev'),
   ])
   for (const m of run) expect(m.def).toBe(defs.get(m.id)!)
@@ -85,6 +96,7 @@ it("reads back a run's measures as what it learned", () => {
     warmUps: new Map([['linux.small', 14_000]]),
     others: new Map([['linux.small', 0.4]]),
     spreads: new Map([['linux.small', 1_500]]),
+    paces: new Map([['linux.small', 1.47]]),
     bases: new Map([['a#dev', 0.75]]),
     starts: new Map([['a#dev', 9_000]]),
   })
