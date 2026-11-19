@@ -772,7 +772,7 @@ it('plays main d36eed9 sooner than it ran, asking its workers in the first secon
 // Main 4c30e53 (2026-11-19): the reapi live test starts its two services for
 // 14 s before its 10 s command. Its plan read 10 s, put it last, and the run
 // waited on it to the end: the sim of the run ended 150.4 s, its ideal 129.6.
-it('starts main 4c30e53\'s reapi live test early enough for its services', () => {
+it("starts main 4c30e53's reapi live test early enough for its services", () => {
   const graph = load(m4c3).map((t) => {
     const k = (m4c3.known as Record<string, number[] | null>)[t.id]
     return k === undefined

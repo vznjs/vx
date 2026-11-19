@@ -325,15 +325,6 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         return false
       },
     })
-    if (process.env.SIMDBG && d.ask.length)
-      console.log(
-        'decide',
-        (now / 1000).toFixed(1),
-        'end',
-        (d.end / 1000).toFixed(1),
-        'ask',
-        d.ask.join(','),
-      )
     const before = new Map<Live, number>()
     const loadBefore = (w: Live): number => before.get(w) ?? load(w)
     for (const [, worker] of d.start) {
