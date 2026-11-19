@@ -1158,6 +1158,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'save-index-from-plan',
     'save-lane',
     'save-output-moved-size',
+    'save-output-swapped-link',
     'scale-graph',
     'scan-tar-bytes',
     'schema-reset-notice',
