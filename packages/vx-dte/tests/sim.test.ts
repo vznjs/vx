@@ -853,10 +853,12 @@ it.each([0, 2_000, 5_000, 8_000, 13_000])(
     })
     for (const id of planner.ids) if (!expected.has(id)) planner.drop(id, 0)
     const asked: string[] = []
-    planner.decide(730, (s) => {
+    const d = planner.decide(730, (s) => {
       asked.push(s.name)
       return `${s.name}#${asked.length}`
     })
+    // what the footer says each ask's plan ends at: it said 0 s for every ask
+    expect(d.end).toBeGreaterThan(a2c.warmUps.mac)
     // 107 tasks of ~40 s wait on check.bun: a third of the fleet or more, now
     expect(asked.filter((n) => n === 'small').length).toBeGreaterThanOrEqual(3)
   },

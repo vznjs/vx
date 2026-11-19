@@ -46,6 +46,8 @@ export interface PlannerDecision {
   readonly leave: readonly string[]
   /** When to decide again with nothing else happening (ms), or Infinity. */
   readonly due: number
+  /** When its plan ends the run (ms). */
+  readonly end: number
 }
 
 /** What may run where, by name (`Fits`). */
@@ -166,6 +168,13 @@ export class Planner {
     )
   }
 
+  /** The tasks history measured. */
+  measured(): number {
+    let n = 0
+    for (const id of this.ids) if (this.input.known(id)?.ms !== undefined) n++
+    return n
+  }
+
   has(task: string): boolean {
     return this.ix.has(task)
   }
@@ -274,6 +283,7 @@ export class Planner {
       ask,
       leave: d.leave.map((w) => workerId[w]!),
       due: d.due,
+      end: d.end,
     }
   }
 }

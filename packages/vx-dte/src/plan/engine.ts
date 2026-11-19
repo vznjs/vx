@@ -76,6 +76,8 @@ export interface Decision {
   readonly leave: readonly number[]
   /** When to decide again with nothing else happening (ms), or Infinity. */
   readonly due: number
+  /** When its plan ends the run (ms). */
+  readonly end: number
 }
 
 const phi = (z: number): number => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI)
@@ -2379,6 +2381,6 @@ export class Engine {
       nextAsk > t + 1e-6 ? nextAsk : Infinity,
       keepUntil > t + 1e-6 ? keepUntil : Infinity,
     )
-    return { start, ask: asked, leave, due }
+    return { start, ask: asked, leave, due, end: p.end }
   }
 }

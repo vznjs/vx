@@ -880,6 +880,8 @@ export class Orchestrator {
         return false
       },
     })
+    // the plan's end, said once a decide asks: each ask said 0 s (main a2c25b0, 2026-11-19)
+    if (d.ask.length > 0) this.asked(d.ask.length, p.ids.length, p.measured(), d.end - this.clock())
     const batches = new Map<Worker, Job[]>()
     for (const [id, label] of d.start) {
       const job = byId.get(id)
