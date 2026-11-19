@@ -236,13 +236,13 @@ describe('the landing page', () => {
     expect(text(/<div class="score-big">([\s\S]*?)<\/div>/.exec(proof)![1]!)).toBe(
       `${vx.pass} of ${vx.of} cases pass on vx`,
     )
-    const cols = [...proof.matchAll(/<li\b[^>]*style="--h:[\d.]+"[^>]*>([\s\S]*?)<\/li>/g)].map(
-      (m) => [
-        text(/class="col-name">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
-        text(/class="col-pct">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
-        text(/class="col-sup">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
-      ],
-    )
+    const cols = [
+      ...proof.matchAll(/<li\b[^>]*style="--h:[\d.]+; --s:[\d.]+"[^>]*>([\s\S]*?)<\/li>/g),
+    ].map((m) => [
+      text(/class="col-name">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
+      text(/class="col-pct">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
+      text(/class="col-sup">((?:\s*<span>[^<]*<\/span>)?[^<]*)<\/span>/.exec(m[1]!)![1]!),
+    ])
     // Highest score first.
     const rate = (t: string): number => RESULTS.scores[t]!.all!.pass / RESULTS.scores[t]!.all!.of
     expect(cols).toEqual(
