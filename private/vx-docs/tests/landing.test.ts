@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
-import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
+import { RESULTS, TOOLS, toolName } from '../src/conformance/data.ts'
 import {
   BURN_HOLD_MS,
   BURN_MS,
@@ -228,7 +228,8 @@ describe('the landing page', () => {
     ).toEqual([])
   })
 
-  // Passes out of every case, rounded down, from the site's conformance data.
+  // Bars are passes; each label counts the cases a tool supports but fails
+  // (issues), from the site's conformance data.
   it('scores every tool on the conformance suite, first after the stage', () => {
     const proof = section(html, 'proof')
     expect(text(proof)).toContain(`${RESULTS.cases.length} cases`)
@@ -242,7 +243,6 @@ describe('the landing page', () => {
     ].map((m) => [
       text(/class="col-name">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
       text(/class="col-pct">([\s\S]*?)<\/span>/.exec(m[1]!)![1]!),
-      text(/class="col-sup">((?:\s*<span>[^<]*<\/span>)?[^<]*)<\/span>/.exec(m[1]!)![1]!),
     ])
     // Highest score first.
     const rate = (t: string): number => RESULTS.scores[t]!.all!.pass / RESULTS.scores[t]!.all!.of
@@ -251,7 +251,8 @@ describe('the landing page', () => {
         .sort((x, y) => rate(y) - rate(x))
         .map((t) => {
           const all = RESULTS.scores[t]!.all!
-          return [toolName(t), percent(all), `supports ${supports(all)}`]
+          const issues = all.can - all.pass
+          return [toolName(t), `${issues} ${issues === 1 ? 'issue' : 'issues'}`]
         }),
     )
     expect(cols[0]![0]).toBe('vx')

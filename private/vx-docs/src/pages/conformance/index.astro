@@ -35,7 +35,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
 ---
 
 <FeaturesPage
-  title="Conformance"
+  title="One test suite, run on every task runner"
   description={`${cases.length} task-runner behaviours, each run against ${RANKED.map(toolName).join(', ')}: what each tool did, case by case.`}
   edit="src/pages/conformance/index.astro"
 >
@@ -43,17 +43,18 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
     <section class="fhub-hero cfm-hero">
       <div class="container">
         <p class="vx-kicker">// {cases.length} cases, {RANKED.length} tools</p>
-        <h1>Conformance</h1>
+        <h1>One test suite, run on every task runner</h1>
         <p class="lede">
-          One neutral suite of task-runner behaviours. Each case is a small workspace, run
-          sandboxed against each tool.
+          We took the tests of vx, Turbo, Nx, Vite Task, Nix and moon and rewrote each as a small
+          workspace with one expected outcome, so every tool gets the same tests.
         </p>
         <p class="lede">
-          Only outcomes count: which commands ran, the files left on disk, the exit code, and the
-          data each tool reports about a run.
+          Each case runs sandboxed on each tool, and only the outcome counts: which commands ran,
+          the files left on disk, the exit code, and what the tool reports about the run.
         </p>
         <p class="lede">
-          The cases come from parsing every test in vx, Turbo, Nx, Vite Task, Nix and moon.
+          A tool that cannot express a case does not support it. A case it supports but gets
+          wrong is an issue: you would hit it using that feature.
         </p>
         <ul class="chips" aria-label="Tool versions">
           {

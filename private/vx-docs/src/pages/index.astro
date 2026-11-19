@@ -21,7 +21,7 @@ import '../styles/voices.css'
 import { posts } from '../blog/posts.js'
 import { parseDuration } from '../plugins/data-charts.ts'
 import { FIGURES, fillBench } from '../bench/data.ts'
-import { RESULTS, TOOLS, percent, supports, toolName } from '../conformance/data.ts'
+import { RESULTS, TOOLS, toolName } from '../conformance/data.ts'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
@@ -31,7 +31,7 @@ const DESCRIPTION =
 
 const latest = (await posts('releases'))[0]!
 
-// ---- the scoreboard: every tool's passes out of every case, rounded down ----
+// ---- the scoreboard: bars are passes; a label counts the cases a tool supports but fails ----
 const caseCount = RESULTS.cases.length
 const vxAll = RESULTS.scores['vx']!.all!
 // Highest score first.
@@ -40,8 +40,7 @@ const board = TOOLS.map((t) => {
   return {
     tool: t,
     name: toolName(t),
-    pct: percent(all),
-    sup: supports(all),
+    issues: all.can - all.pass,
     h: (all.pass / all.of) * 100,
     s: (all.can / all.of) * 100,
   }
@@ -135,8 +134,8 @@ const startCommands = [
       <div class="band-in">
         <header class="band-head">
           <p class="kicker">Conformance · {caseCount} cases · {TOOLS.length} tools</p>
-          <h2>Their tests.<br /><em>Our score.</em></h2>
-          <p class="band-sub">Every test in vx, Turbo, Nx, Vite Task, Nix and moon, turned into one suite and run sandboxed against each tool.</p>
+          <h2>Each tool’s tests,<br /><em>run on all six tools.</em></h2>
+          <p class="band-sub">Every test in vx, Turbo, Nx, Vite Task, Nix and moon, turned into one suite and run sandboxed against each tool; an issue is a case a tool supports but gets wrong.</p>
         </header>
         <div class="score">
           <div class="score-big">
@@ -147,14 +146,13 @@ const startCommands = [
             {
               board.map((b) => (
                 <li class:list={{ vx: b.tool === 'vx' }} data-tool={b.tool} style={`--h:${b.h.toFixed(1)}; --s:${b.s.toFixed(1)}`}>
-                  <span class="col-pct">{b.pct}</span>
+                  <span class="col-pct">
+                    {b.issues}
+                    <small> {b.issues === 1 ? 'issue' : 'issues'}</small>
+                  </span>
                   <span class="col-bar">
                     <span class="col-can" aria-hidden="true" />
                     <span class="col-pass" aria-hidden="true" />
-                    <span class="col-sup">
-                      <span>supports </span>
-                      {b.sup}
-                    </span>
                   </span>
                   <span class="col-name">{b.name}</span>
                 </li>
@@ -217,7 +215,7 @@ const startCommands = [
       <div class="band-in">
         <header class="band-head">
           <p class="kicker">Every task, measured · no account</p>
-          <h2>Every number.<br /><em>Yours.</em></h2>
+          <h2>Every task’s numbers,<br /><em>kept on your disk.</em></h2>
           <p class="band-sub">Time, CPU, peak memory, output size, the cache result and what changed, recorded for every task in a file on your disk, with no dashboard to buy and no login.</p>
         </header>
         <div class="scope" data-scope={JSON.stringify(SCOPE)}>
@@ -274,7 +272,7 @@ const startCommands = [
       <div class="band-in">
         <header class="band-head">
           <p class="kicker">Distributed task execution</p>
-          <h2>One run.<br /><em>Every machine you’ve got.</em></h2>
+          <h2>Spread one run<br /><em>over your CI machines.</em></h2>
           <p class="band-sub">Add <code>@vzn/vx-dte</code> and a single <code>vx run</code> on CI starts workers on your own CI, feeds them the critical path first and reports back as one run.</p>
         </header>
         <DteRun />
@@ -286,7 +284,7 @@ const startCommands = [
       <div class="band-in">
         <header class="band-head">
           <p class="kicker">Flaky tasks · Distributed task execution</p>
-          <h2>Fails here.<br /><em>Retries there.</em></h2>
+          <h2>A failed task retries<br /><em>on another worker.</em></h2>
           <p class="band-sub">A task that fails and retries runs on another worker than the one it failed on, because the worker, or what ran beside the task, may be the flake.</p>
         </header>
         <div class="hop">
@@ -315,7 +313,7 @@ const startCommands = [
       <div class="band-in">
         <header class="band-head">
           <p class="kicker">Plugins</p>
-          <h2>Swap any piece.<br /><em>Fork nothing.</em></h2>
+          <h2>Replace any part<br /><em>without forking vx.</em></h2>
           <p class="band-sub">Each part on the graph is its own package on the public plugin API, and every server is yours to host.</p>
         </header>
         <div class="parts">
@@ -554,12 +552,20 @@ const startCommands = [
           { duration: one * 28, iterations: Infinity },
         )
         run.pause()
-        lane.addEventListener('pointerenter', () => run.pause())
-        lane.addEventListener('pointerleave', () => run.play())
-        return run
+        return { lane, run }
+      })
+      // A row stops while the pointer is on it, and every row while the sky is off screen.
+      let skyInView = false
+      const syncRows = (): void => runs.forEach(({ lane, run }) => (skyInView && !lane.matches(':hover') ? run.play() : run.pause()))
+      runs.forEach(({ lane }) => {
+        lane.addEventListener('pointerenter', syncRows)
+        lane.addEventListener('pointerleave', () => requestAnimationFrame(syncRows))
       })
       sky.classList.add('live')
-      new IntersectionObserver(([e]) => runs.forEach((run) => (e!.isIntersecting ? run.play() : run.pause()))).observe(sky)
+      new IntersectionObserver(([e]) => {
+        skyInView = e!.isIntersecting
+        syncRows()
+      }).observe(sky)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {
