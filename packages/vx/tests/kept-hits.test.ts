@@ -89,8 +89,11 @@ it('writes out the rows, and the flaky record, a run wrote for its hits before',
   const kept = new Cache(path.join(dir, 'kept'))
   const direct = new Cache(path.join(dir, 'direct'))
   runHistory(kept).recordRuns([], undefined, hitsOf('run-1', 40))
-  // The same hits as records, the way a bundle wrote them before.
-  runHistory(direct).recordRuns(hitRecords(batchOf(40), { runId: 'run-1', startedAtMs: T }))
+  // The same hits as records, the way a bundle wrote them before, in the
+  // task order a run keeps its hits in.
+  const records = hitRecords(batchOf(40), { runId: 'run-1', startedAtMs: T })
+  records.sort((a, b) => (a.project < b.project ? -1 : a.project > b.project ? 1 : 0))
+  runHistory(direct).recordRuns(records)
   expect([count(indexDb(kept), 'main.runs'), count(indexDb(kept), 'main.run_hits')]).toEqual([0, 1])
   expect(expandHits(indexDb(kept))).toBe(40)
   for (const sql of [

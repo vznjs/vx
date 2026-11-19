@@ -2186,8 +2186,8 @@ CREATE TABLE run_hits (
   keys       INTEGER NOT NULL,     -- its hit_keys row
   nums       BLOB NOT NULL         -- zstd: a count, 23 float64 per hit, the rare text fields as JSON
 );
--- The hits' keys, a JSON [project, task, hash, def] each, under their
--- xxh3: no-op runs of one workspace share one row.
+-- The hits' keys, a JSON [project, task, hash, def] each in task order,
+-- under their xxh3: no-op runs of one workspace share one row.
 CREATE TABLE hit_keys (
   id   INTEGER PRIMARY KEY,
   keys TEXT NOT NULL

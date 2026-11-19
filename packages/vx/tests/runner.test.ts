@@ -217,14 +217,12 @@ describe('runCommand', () => {
   // A process of its own releases the grandchild: it holds the only reader
   // of `gone`, whose one writer is the shell (the exit is its EOF), and 50
   // ms after that EOF writes `go`, which the grandchild waits on to print.
-  // Late enough that a 0 ms drain loses it; and nothing after the exit
-  // forks. The grandchild's own `sleep 0.05` (CI, macOS, 2026-10-03), a
-  // fixed `sleep 0.1` (292 ms) and a `kill -0` loop forking `sleep 0.01`
-  // (317 ms) each paid an exec under load and overran the 250 ms drain
-  // (M-68). The test itself releasing it (`await readFile(gone)`, then
-  // `Bun.sleep(50)`) ran on the event loop vx's drain deadline runs on: a
-  // traced, loaded worker stalled that loop 250-540 ms, both timers fired
-  // late, and vx cut before the test had written `go` (CI, 2026-11-06).
+  // Nothing after the exit forks. The drain is lengthened past the test's
+  // timeout: it still ends at the grandchild's EOF, and a run that did not
+  // wait for it loses TAIL. Every wall-clock budget under the real 250 ms
+  // flaked: a grandchild `sleep`, a test-side release on vx's own event
+  // loop, and this helper on a stalled Mac worker (TAIL lost, job
+  // 134436718345, 2026-11-17).
   it('a grandchild that prints within the post-exit drain reaches the live stream and the result', async () => {
     const gone = path.join(cwd, 'gone')
     const go = path.join(cwd, 'go')
@@ -239,6 +237,7 @@ describe('runCommand', () => {
       { stdio: ['ignore', 'ignore', 'inherit'] },
     )
     let live = ''
+    process.env['VX_TEST_POST_EXIT_DRAIN'] = '600000ms'
     const result = await runCommand({
       command: '(read _ < go; echo TAIL) & exec 3> gone; echo HEAD',
       cwd,
@@ -246,7 +245,7 @@ describe('runCommand', () => {
       onStdout: (chunk) => {
         live += chunk
       },
-    })
+    }).finally(() => delete process.env['VX_TEST_POST_EXIT_DRAIN'])
     expect(await release.exited).toBe(0)
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toBe('HEAD\nTAIL\n')
