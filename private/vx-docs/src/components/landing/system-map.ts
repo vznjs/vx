@@ -411,16 +411,16 @@ export function play(run: Run): Play {
   let due: number | undefined
   for (const e of ran.map((x) => x.endMs!).sort((a, b) => a - b)) {
     if (due !== undefined && e >= due) {
-      dot(t(due) + 2 * T, 'history', 'report', 'timings', true)
+      dot(t(due) + 2 * T, 'history', 'read', 'timings', true)
       due = undefined
     }
     if (due === undefined && e < last) due = e + HISTORY_FLUSH_MS
   }
-  if (due !== undefined && due < last) dot(t(due) + 2 * T, 'history', 'report', 'timings', true)
+  if (due !== undefined && due < last) dot(t(due) + 2 * T, 'history', 'read', 'timings', true)
   // Report: the job summary is written and the rest of the timings go back to history.
   const down = Math.max(at('report'), end + 3 * T)
   dot(down, 'ci', 'report', 'summary', true, loop - down)
-  dot(down, 'history', 'report', 'timings', true, loop - down)
+  dot(down, 'history', 'read', 'timings', true, loop - down)
 
   // A group lights for its step's window and, outside it, for each other
   // step where vx calls its hooks: a message vx sent or answered through them.
