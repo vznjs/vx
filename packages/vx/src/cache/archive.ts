@@ -267,7 +267,50 @@ const ON_THREAD_STATS = 32
 export interface ArtifactPlan {
   inputs: TarInput[]
   size: number
+  /** Each regular output as the plan's lstat saw it, held to that after the copy (`assertHeld`). */
+  held?: readonly Held[]
 }
+
+/** A regular output as the plan's lstat saw it. */
+interface Held {
+  name: string
+  abs: string
+  ino: number
+  size: number
+  mtimeMs: number
+}
+
+/**
+ * Refuse a plan whose outputs moved since its lstat: the copy reads by path
+ * and follows a link, so an output swapped for one stored the target's bytes
+ * as a regular file, and every hit replayed another file's bytes there. Called
+ * after the copy, so a move during it is caught too.
+ */
+function assertHeldSync(held: readonly Held[] | undefined): void {
+  for (const h of held ?? []) {
+    const st = lstatSync(h.abs, { throwIfNoEntry: false })
+    if (!sameFile(h, st)) throw movedError(h)
+  }
+}
+
+async function assertHeld(held: readonly Held[] | undefined): Promise<void> {
+  if (held === undefined) return
+  if (held.length <= ON_THREAD_STATS) return assertHeldSync(held)
+  const sts = await Promise.all(held.map((h) => lstat(h.abs).catch(() => undefined)))
+  held.forEach((h, i) => {
+    if (!sameFile(h, sts[i])) throw movedError(h)
+  })
+}
+
+const sameFile = (h: Held, st: Stats | undefined): boolean =>
+  st !== undefined &&
+  st.isFile() &&
+  st.ino === h.ino &&
+  st.size === h.size &&
+  Math.floor(st.mtimeMs) === h.mtimeMs
+
+const movedError = (h: Held): Error =>
+  new Error(`${h.name} changed while it was saved: it is not the file the task left`)
 
 /**
  * Stat every output once (size, mode, millisecond mtime) and lay out the tar
@@ -344,6 +387,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       return {
         name,
         abs,
+        ino: st.ino,
         size: st.size,
         mode,
         mtimeMs: Math.floor(st.mtimeMs),
@@ -425,7 +469,14 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
     })),
     { name: META_ENTRY, size: metaBytes.byteLength, body: metaBytes },
   ]
-  return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
+  const held = regular.map(({ name, abs, ino, size, mtimeMs }) => ({
+    name,
+    abs,
+    ino,
+    size,
+    mtimeMs,
+  }))
+  return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]), held }
 }
 
 /**
@@ -460,7 +511,7 @@ function narrowDirModes(
 
 /** The tar as a stream: each output is read from disk as it is written. */
 export function packArtifactStream(plan: ArtifactPlan): ReadableStream<Uint8Array> {
-  return streamOf(tarPack(summed(plan.inputs)))
+  return streamOf(tarPack(summed(plan.inputs, plan.held)))
 }
 
 const sumInput = (hex: string): TarInput => ({ name: SUM_ENTRY, size: SUM_SIZE, body: hex })
@@ -470,7 +521,10 @@ const sumInput = (hex: string): TarInput => ({ name: SUM_ENTRY, size: SUM_SIZE, 
  * `tarPack` drains one input before asking for the next, so the sum is whole
  * when asked for.
  */
-async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
+async function* summed(
+  inputs: readonly TarInput[],
+  held?: readonly Held[],
+): AsyncGenerator<TarInput> {
   const sum = new EntrySum()
   for (const i of inputs) {
     sum.entry(i.name)
@@ -484,6 +538,7 @@ async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
       yield { ...i, body: sum.through(i.body) }
     }
   }
+  await assertHeld(held)
   yield sumInput(sum.hex())
 }
 
@@ -500,6 +555,7 @@ export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array>
       i.body instanceof Blob ? { ...i, body: await i.body.bytes() } : i,
     ),
   )
+  await assertHeld(plan.held)
   const out = new Uint8Array(plan.size)
   let off = 0
   for await (const chunk of tarPack(summed(inputs))) {
@@ -529,6 +585,7 @@ function packSmall(plan: ArtifactPlan): Uint8Array {
   const out = new Uint8Array(plan.size)
   const n = tarPackInto(inputs, out)
   if (n !== plan.size) throw new TarFormatError(`packed ${n} bytes, planned ${plan.size}`)
+  assertHeldSync(plan.held)
   return out
 }
 
@@ -598,6 +655,7 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
   ])
   const failed = settled.find((s) => s.status === 'rejected')
   if (failed !== undefined) throw failed.reason
+  await assertHeld(plan.held)
   return fold.result()
 }
 
