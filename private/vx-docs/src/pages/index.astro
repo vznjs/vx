@@ -532,78 +532,23 @@ const startCommands = [
         },
         { threshold: 0.4 },
       ).observe(hop)
-      // The sky: quotes pop in at a free spot, drift up and sway, then pop
-      // out, a few at a time, while it is in view. A hovered one stays.
+      // The sky: every card stays; one or two at a time zoom in, then back.
       const sky = document.querySelector<HTMLElement>('.sky')!
-      const voices = JSON.parse(sky.dataset['voices']!) as Array<{ quote: string; who: string; role: string; href: string }>
-      const TINTS = ['#c6f84e', '#5ee0ff', '#ff5e9c', '#ff9d42', '#b18cff']
-      const tpl = sky.querySelector<HTMLElement>('.sky-rest .bubble-in')!
-      let next = 0
-      let spawnT = 0
-      const aloft = new Set<{ el: HTMLElement; cell: number }>()
-      const grid = (): { cols: number; rows: number } => (sky.clientWidth < 620 ? { cols: 1, rows: 4 } : sky.clientWidth < 1000 ? { cols: 2, rows: 3 } : { cols: 3, rows: 3 })
-      const spawn = (): void => {
-        const { cols, rows } = grid()
-        const taken = new Set([...aloft].map((b) => b.cell))
-        const free = [...Array(cols * rows).keys()].filter((c) => !taken.has(c) && !taken.has(c - cols) && !taken.has(c + cols))
-        if (free.length === 0) return
-        const cell = free[Math.floor(Math.random() * free.length)]!
-        const v = voices[next++ % voices.length]!
-        const el = document.createElement('div')
-        el.className = 'bubble'
-        const fig = tpl.cloneNode(true) as HTMLElement
-        const a = fig.querySelector('a')!
-        a.href = v.href
-        a.textContent = `“${v.quote}”`
-        fig.querySelector('strong')!.textContent = v.who
-        fig.querySelector('figcaption')!.lastChild!.textContent = ` · ${v.role}`
-        el.appendChild(fig)
-        const cw = sky.clientWidth / cols
-        const ch = sky.clientHeight / rows
-        const w = Math.min(cw - 24, 380)
-        el.style.width = `${w}px`
-        el.style.left = `${(cell % cols) * cw + Math.random() * (cw - w)}px`
-        el.style.top = `${Math.floor(cell / cols) * ch + Math.random() * ch * 0.3}px`
-        el.style.setProperty('--tint', TINTS[next % TINTS.length]!)
-        el.style.setProperty('--r', `${(Math.random() * 6 - 3).toFixed(1)}deg`)
-        el.style.setProperty('--fs', v.quote.length < 40 ? '22px' : v.quote.length < 90 ? '17px' : '15px')
-        sky.appendChild(el)
-        const life = 6500 + Math.random() * 3500
-        const sway = Math.random() * 40 - 20
-        el.animate(
-          [
-            { transform: 'translate(0, 24px)' },
-            { transform: `translate(${sway}px, -16px)` },
-            { transform: `translate(${-sway / 2}px, -56px)` },
-          ],
-          { duration: life + 600, easing: 'ease-in-out', fill: 'forwards' },
-        )
-        const b = { el, cell }
-        aloft.add(b)
-        requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')))
-        const end = (): void => {
-          if (el.matches(':hover')) {
-            window.setTimeout(end, 500)
-            return
-          }
-          el.classList.add('off')
-          window.setTimeout(() => {
-            el.remove()
-            aloft.delete(b)
-          }, 500)
-        }
-        el.addEventListener('pointerenter', () => el.getAnimations().forEach((x) => x.pause()))
-        el.addEventListener('pointerleave', () => el.getAnimations().forEach((x) => x.play()))
-        window.setTimeout(end, life)
+      const cards = [...sky.querySelectorAll<HTMLElement>('.bubble')]
+      let zoomT = 0
+      let lit = 0
+      const zoom = (): void => {
+        cards.forEach((c) => c.classList.remove('big'))
+        cards[lit % cards.length]!.classList.add('big')
+        cards[(lit + 5) % cards.length]!.classList.add('big')
+        lit++
       }
       new IntersectionObserver(([e]) => {
-        clearInterval(spawnT)
+        clearInterval(zoomT)
         if (!e!.isIntersecting) return
-        if (!sky.classList.contains('live')) {
-          sky.classList.add('live')
-          for (let i = 0; i < 3; i++) window.setTimeout(spawn, i * 350)
-        }
-        spawnT = window.setInterval(spawn, 1300)
+        sky.classList.add('live')
+        zoom()
+        zoomT = window.setInterval(zoom, 1800)
       }).observe(sky)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {

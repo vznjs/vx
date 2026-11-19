@@ -24,7 +24,7 @@ import {
 } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
 import run from '../src/data/hero-run.json'
-import { ALL_VOICES, type Voice } from '../src/components/landing/voices.ts'
+import { ALL_VOICES } from '../src/components/landing/voices.ts'
 import { PLUGIN_HOOKS } from '@vzn/vx'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
@@ -442,13 +442,11 @@ describe('the landing page', () => {
     expect(text(/<h2>([\s\S]*?)<\/h2>/.exec(wall)![1]!.replace(/<br\s*\/?>/, ' '))).toBe(
       'What others say about us.',
     )
-    const shown = JSON.parse(
-      /data-voices="([^"]*)"/
-        .exec(wall)![1]!
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&'),
-    ) as Voice[]
-    expect(shown).toEqual(ALL_VOICES)
+    const quotes = [...wall.matchAll(/<blockquote>([\s\S]*?)<\/blockquote>/g)].map((m) =>
+      text(m[1]!),
+    )
+    expect(quotes).toEqual(ALL_VOICES.map((v) => `“${v.quote}”`))
+    expect(hrefs(wall)).toEqual(ALL_VOICES.map((v) => v.href))
     for (const v of ALL_VOICES) {
       expect(Object.keys(v).sort()).toEqual(['href', 'quote', 'role', 'who'])
       expect(v.href).toMatch(/^https:\/\/(github\.com\/vznjs\/vx\/|dev\.to\/)/)

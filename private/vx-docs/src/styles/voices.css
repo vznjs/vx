@@ -1,26 +1,15 @@
-/* What others say: quotes float up, pop in and pop out. */
+/* What others say: every card on screen, each zooming in and out in turn. */
 
 .sky {
-  position: relative;
+  columns: 3 300px;
+  column-gap: 28px;
   margin: 48px 0 0;
-}
-.sky-rest {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin: 0;
   padding: 0;
   list-style: none;
 }
-.sky.live {
-  height: 620px;
-}
-.sky.live .sky-rest {
-  display: none;
-}
 .bubble {
-  position: absolute;
-  will-change: transform;
+  break-inside: avoid;
+  padding: 14px 0;
 }
 .bubble-in {
   margin: 0;
@@ -31,33 +20,25 @@
   box-shadow:
     0 20px 50px -20px rgba(0, 0, 0, 0.8),
     0 0 30px -12px color-mix(in srgb, var(--tint, var(--tone-core)) 40%, transparent);
-}
-.bubble .bubble-in {
-  transform: scale(0) rotate(var(--r, 0deg));
-  opacity: 0;
+  transform: rotate(var(--r, 0deg));
   transition:
-    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
-    opacity 0.3s ease;
+    transform 0.9s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.9s ease;
+  will-change: transform;
 }
-.bubble.on .bubble-in {
-  transform: scale(1) rotate(var(--r, 0deg));
-  opacity: 1;
+.sky.live .bubble-in {
+  transform: scale(0.94) rotate(var(--r, 0deg));
 }
-.bubble.off .bubble-in {
-  transform: scale(0.6) rotate(calc(var(--r, 0deg) * -2));
-  opacity: 0;
-  transition:
-    transform 0.45s cubic-bezier(0.55, 0, 1, 0.45),
-    opacity 0.45s ease;
+.sky.live .bubble.big .bubble-in,
+.sky.live .bubble:hover .bubble-in {
+  transform: scale(1.08) rotate(0deg);
+  box-shadow:
+    0 30px 60px -20px rgba(0, 0, 0, 0.9),
+    0 0 44px -10px color-mix(in srgb, var(--tint, var(--tone-core)) 70%, transparent);
 }
-.sky a {
-  color: inherit;
-  text-decoration: none;
-}
-.sky a:hover {
-  color: #fff;
-}
+.bubble.big,
 .bubble:hover {
+  position: relative;
   z-index: 2;
 }
 .bubble-in blockquote {
@@ -76,12 +57,17 @@
   color: #cbd1c9;
   font-weight: 600;
 }
+.sky a {
+  color: inherit;
+  text-decoration: none;
+}
+.sky a:hover {
+  color: #fff;
+}
 
 @media (max-width: 620px) {
-  .sky-rest {
-    grid-template-columns: 1fr;
-  }
-  .sky.live {
-    height: 560px;
+  .sky.live .bubble.big .bubble-in,
+  .sky.live .bubble:hover .bubble-in {
+    transform: scale(1.03) rotate(0deg);
   }
 }

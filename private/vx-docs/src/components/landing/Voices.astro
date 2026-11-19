@@ -1,7 +1,11 @@
 ---
-// What others say about us: every quote, word for word, floating up,
-// popping in and out. At rest (no script, reduced motion) a few sit still.
+// What others say about us: every quote, word for word, all on screen at
+// once, each zooming in and out in turn. Without script or with reduced
+// motion they sit still.
 import { ALL_VOICES } from './voices.ts'
+
+const TINTS = ['#c6f84e', '#5ee0ff', '#ff5e9c', '#ff9d42', '#b18cff']
+const TILT = [-2, 1.5, -1, 2, -1.5, 1, -2.5, 0.5]
 ---
 
 <section class="band" id="voices">
@@ -10,23 +14,24 @@ import { ALL_VOICES } from './voices.ts'
       <p class="kicker">Word for word</p>
       <h2>What others<br /><em>say about us.</em></h2>
     </header>
-    <div class="sky" data-voices={JSON.stringify(ALL_VOICES)}>
-      <ul class="sky-rest">
-        {
-          ALL_VOICES.slice(0, 4).map((v) => (
-            <li>
-              <figure class="bubble-in">
-                <blockquote>
-                  <a href={v.href} rel="noopener" target="_blank">“{v.quote}”</a>
-                </blockquote>
-                <figcaption>
-                  <strong>{v.who}</strong> · {v.role}
-                </figcaption>
-              </figure>
-            </li>
-          ))
-        }
-      </ul>
-    </div>
+    <ul class="sky">
+      {
+        ALL_VOICES.map((v, i) => (
+          <li
+            class="bubble"
+            style={`--tint:${TINTS[i % TINTS.length]};--r:${TILT[i % TILT.length]}deg;--fs:${v.quote.length < 70 ? 20 : v.quote.length < 140 ? 17 : 15}px`}
+          >
+            <figure class="bubble-in">
+              <blockquote>
+                <a href={v.href} rel="noopener" target="_blank">“{v.quote}”</a>
+              </blockquote>
+              <figcaption>
+                <strong>{v.who}</strong> · {v.role}
+              </figcaption>
+            </figure>
+          </li>
+        ))
+      }
+    </ul>
   </div>
 </section>
