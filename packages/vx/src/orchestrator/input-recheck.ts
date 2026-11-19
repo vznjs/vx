@@ -5,10 +5,12 @@
 import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
-import { racyWindowMs, stampGrainMs } from '../memo/index.js'
+import { racyWindowMs, stampGrainMs, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import { type ExecuteResult } from '../exec/index.js'
+import type { TaskNode, TaskOutcome } from '../graph/index.js'
+import type { GitFilesCache } from '../cache/index.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from '../sandbox/index.js'
-import { printable, relPosix, span, taskGlobOf } from '../util/index.js'
+import { printable, relPosix, span, taskGlob, taskGlobOf } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { MissRun } from './miss-run.js'
@@ -300,4 +302,81 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
   if (st.ctimeMs < from - stampGrainMs(st.ctimeMs)) return false
   if (st.mtimeMs >= from - stampGrainMs(st.mtimeMs)) return false
   return (await cache.memo.hashFile(fact.path).catch(() => undefined)) === fact.digest
+}
+
+/**
+ * Did each dependency's outputs stay as its task left them while this one
+ * ran? The key folds a dependency's input key, never its bytes: a checkout
+ * or stash that put a dependency's committed output back mid-run let this
+ * task build from bytes no key names, and the save filed them under one
+ * that does, so every later hit replayed them under a green run. Held to
+ * the rows the dependency's own save or restore stamped; one with none
+ * stamped here (it ran elsewhere) is not checked, nor one whose outputs git
+ * neither tracks nor lists, which no checkout or stash moves (a stat per
+ * output and a read of its rows per save, ~1.4 ms at 600 outputs, paid only
+ * where outputs are committed).
+ */
+export function upstreamOutputsHeld(m: MissRun): boolean {
+  const { args } = m
+  if (args.executor.capabilities?.remote === true) return true
+  const deps: TaskOutcome[] = []
+  const add = (o: TaskOutcome): void => {
+    if (o.groupUpstream !== undefined) o.groupUpstream.forEach(add)
+    else if ((o.status === 'success' || o.status === 'cache-hit') && o.hash !== undefined)
+      deps.push(o)
+  }
+  args.upstream.forEach(add)
+  const files = args.run.gitFilesCache
+  const exposed = deps.filter((d) => gitSees(d.node, files))
+  if (exposed.length === 0) return true
+  const { memo } = args.run.cache
+  const endCheck = span('miss: recheck upstream outputs')
+  const rows = memo.loadOutputFilesBatch(exposed.map((d) => d.hash!))
+  const moved = exposed.find((d) => {
+    const own = rows.get(d.hash!)
+    if (own === undefined || own.length === 0) return false
+    const proj = own.filter((r) => !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+    const ws = own
+      .filter((r) => r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+      .map((r) => ({ ...r, path: r.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
+    return !(
+      memo.isOutputsCurrent(d.node.projectDir, proj) &&
+      memo.isOutputsCurrent(args.run.workspaceRoot, ws)
+    )
+  })
+  endCheck()
+  if (moved === undefined) return true
+  warnOf(args.log)(
+    `[vx] ${args.node.id}: an output of ${moved.node.id} changed while it ran (a checkout, a stash, another process) — ` +
+      'the result stands, but is not saved under a key that names the bytes it was built from',
+  )
+  forgetUndeclaredWrites(args.node, args.run.gitFilesCache, 'workspace')
+  return false
+}
+
+const seenByGit = new WeakMap<GitFilesCache, WeakMap<TaskNode, boolean>>()
+
+/**
+ * Does git list a file under `node`'s declared outputs (tracked, or untracked
+ * and not ignored), so a checkout or stash may move one? Asked of the run's
+ * listing once per task; a workspace output, or a project the listing lacks,
+ * is taken as seen.
+ */
+function gitSees(node: TaskNode, files: GitFilesCache | undefined): boolean {
+  // No listing: a run outside git, which vx refuses; no checkout moves anything.
+  if (files === undefined) return false
+  let memo = seenByGit.get(files)
+  if (memo === undefined) seenByGit.set(files, (memo = new WeakMap()))
+  let seen = memo.get(node)
+  if (seen === undefined) {
+    const outputs = node.config.outputs
+    const listed = files.get(node.projectDir)
+    const globs = (outputs?.files ?? []).filter((g) => !g.startsWith('!')).map(taskGlob)
+    seen =
+      (outputs?.workspaceFiles?.length ?? 0) > 0 ||
+      listed === undefined ||
+      listed.some((f) => globs.some((g) => g.match(f)))
+    memo.set(node, seen)
+  }
+  return seen
 }
