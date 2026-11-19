@@ -30,7 +30,7 @@
 .say-row + .say-row .say-track {
   padding-left: 190px;
 }
-.sky.live .say-row + .say-row .say-track {
+.sky:is(.live, .swipe) .say-row + .say-row .say-track {
   padding-left: 0;
 }
 .bubble {
@@ -90,6 +90,12 @@
 }
 
 @media (max-width: 620px) {
+  /* Edge to edge on a phone, with no fade: the cards run off the screen. */
+  .sky {
+    margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px)))
+      calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+    mask-image: none;
+  }
   .bubble {
     width: clamp(250px, calc(var(--w, 380px) * 0.66), 310px);
   }
