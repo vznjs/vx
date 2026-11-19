@@ -269,6 +269,8 @@ export class Engine {
   private readonly handed: Uint8Array
   private readonly doneAt: Float64Array
   private readonly ranMs: Float64Array
+  /** 1: ended, its command's time not yet told; 2: that time counted in this run's speed. */
+  private readonly timed: Uint8Array
   private readonly onWorker: Int32Array
   /** The worker the last plan had each task on (-1: none). */
   private readonly planned: Int32Array
@@ -369,6 +371,7 @@ export class Engine {
     this.handed = new Uint8Array(n)
     this.doneAt = new Float64Array(n)
     this.ranMs = new Float64Array(n)
+    this.timed = new Uint8Array(n)
     this.onWorker = new Int32Array(n).fill(-1)
     this.planned = new Int32Array(n).fill(-1)
     this.joins = sizes.map(() => [])
@@ -514,6 +517,7 @@ export class Engine {
     if (q !== undefined) this.plat[i] = q
     this.unplace(i)
     this.progress[i] = 0
+    this.timed[i] = 0
     this.state[i] = READY
   }
 
@@ -529,14 +533,28 @@ export class Engine {
     this.t = Math.max(this.t, t)
   }
 
-  /** Task `i` ended at `t` after `ms` of its command alone; absent, as long as the engine believes it ran. */
+  /**
+   * Task `i` ended at `t` after `ms` of its command alone. Absent, its cores are free and it counts as having
+   * run as long as the engine believes, but that is no time of its command: it holds the send, the restore of
+   * its inputs and the wait for its worker's next message. A 126 ms task seen as 1 s read the run 6x slower
+   * than history and forecast its end at 790 s for 130 (main 4c30e53, 2026-11-19). Its time counts once told.
+   */
   finished(i: number, t: number, ms?: number): void {
     this.advance(t)
-    if (this.state[i] === DONE) return
-    const took = ms ?? this.progress[i]!
+    if (this.state[i] === DONE) {
+      if (ms !== undefined && this.timed[i] === 1) this.time(i, ms)
+      return
+    }
     this.unplace(i)
     this.done(i, t)
-    this.ranMs[i] = took
+    this.ranMs[i] = ms ?? this.progress[i]!
+    this.timed[i] = 1
+    if (ms !== undefined) this.time(i, ms)
+  }
+
+  /** What task `i`'s command took says of this run: its speed against history, or what an unmeasured task takes. */
+  private time(i: number, took: number): void {
+    this.timed[i] = 2
     // only an unmeasured task's time is a draw of what an unmeasured task takes
     if (this.kms[i] == null) {
       this.finishedSum += took

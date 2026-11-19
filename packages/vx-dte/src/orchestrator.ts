@@ -1654,7 +1654,12 @@ export class Orchestrator {
     a.busy.delete(task)
     const room = job.held?.cores ?? 1
     this.unhold(a, job)
-    this.bound?.finished(task, endAt - this.startedAt)
+    // its command's own time, what its `ran` could not say (`Engine.finished`); a failure's says nothing of the run's speed
+    this.bound?.finished(
+      task,
+      endAt - this.startedAt,
+      head.exitCode === 0 ? head.durationMs : undefined,
+    )
     a.started.delete(task)
     a.ran++
     a.done.push(task)

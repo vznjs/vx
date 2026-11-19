@@ -404,7 +404,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       for (const r of [...w.running.values()])
         if (r.left <= 1e-6) {
           w.running.delete(r.id)
-          planner.finished(r.id, now)
+          planner.finished(r.id, now, now - startedAt.get(r.id)!)
           const t = byId.get(r.id)!
           if (t.leaves === true) keptOn.set(r.id, new Set([w.id]))
           ending.set(r.id, now + (t.ran?.afterMs ?? 0))
