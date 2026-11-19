@@ -1152,6 +1152,7 @@ Spans, accumulated per call:
 - `miss: build request`
 - `miss: clean outputs`
 - `miss: execute`
+- `miss: recheck upstream outputs`
 - `miss: recheck inputs`
 - `miss: resolve outputs`
 - `miss: save`
