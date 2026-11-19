@@ -41,7 +41,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  height: 190px;
+  height: 168px;
   margin: 0;
   padding: 16px 18px;
   border: 1px solid color-mix(in srgb, var(--tint, var(--tone-core)) 35%, transparent);
@@ -91,7 +91,7 @@
 
 @media (max-width: 620px) {
   .bubble {
-    width: clamp(210px, calc(var(--w, 380px) * 0.7), 300px);
+    width: clamp(250px, calc(var(--w, 380px) * 0.66), 310px);
   }
   .bubble-in {
     height: 236px;

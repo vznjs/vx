@@ -22,7 +22,7 @@ const rows = [ALL_VOICES.slice(0, half), ALL_VOICES.slice(half)]
         <div class="say-row" data-dir={r === 0 ? '-1' : '1'}>
           <ul class="say-track">
             {row.map((v, i) => (
-              <li class="bubble" style={`--tint:${TINTS[(i * 2 + r) % TINTS.length]};--w:${Math.round(Math.min(560, Math.max(240, v.quote.length * 2.6)))}px`}>
+              <li class="bubble" style={`--tint:${TINTS[(i * 2 + r) % TINTS.length]};--w:${Math.round(Math.min(560, 300 + v.quote.length))}px`}>
                 <figure class="bubble-in">
                   <blockquote>“{v.quote}”</blockquote>
                   <figcaption>
