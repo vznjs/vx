@@ -1,0 +1,33 @@
+---
+// What people say about us: every quote, popping in and out of a grid.
+// At rest (no script, reduced motion) the first ones show, still.
+import { ALL_VOICES } from './voices.ts'
+
+const SLOTS = 6
+---
+
+<section class="band" id="voices">
+  <div class="band-in">
+    <header class="band-head">
+      <p class="kicker">Word for word</p>
+      <h2>What people<br /><em>say about us.</em></h2>
+    </header>
+    <ul class="wall" data-voices={JSON.stringify(ALL_VOICES)}>
+      {
+        ALL_VOICES.slice(0, SLOTS).map((v, i) => (
+          <li style={`--i:${i}`}>
+            <figure>
+              <blockquote>
+                <a href={v.href} rel="noopener" target="_blank">“{v.quote}”</a>
+              </blockquote>
+              <figcaption>
+                <strong>{v.who}</strong>
+                <span>{v.role}</span>
+              </figcaption>
+            </figure>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>

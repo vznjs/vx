@@ -14,8 +14,12 @@ import { SCOPE } from '../components/landing/scope.ts'
 import { BURN_ROWS, burnClip, timesLabel } from '../components/landing/race.ts'
 import HeroStage from '../components/landing/HeroStage.astro'
 import DteRun from '../components/landing/DteRun.astro'
+import QuoteCard from '../components/landing/QuoteCard.astro'
+import Voices from '../components/landing/Voices.astro'
+import { BAND_VOICES } from '../components/landing/voices.ts'
 import '../styles/landing.css'
 import '../styles/stage.css'
+import '../styles/voices.css'
 import { posts } from '../blog/posts.js'
 import { parseDuration } from '../plugins/data-charts.ts'
 import { FIGURES, fillBench } from '../bench/data.ts'
@@ -136,6 +140,7 @@ const startCommands = [
           <h2>Their tests.<br /><em>Our score.</em></h2>
           <p class="band-sub">Every test in vx, Turbo, Nx, Vite Task, Nix and moon, turned into one suite and run sandboxed against each tool.</p>
         </header>
+        <QuoteCard voices={BAND_VOICES.proof} />
         <div class="score">
           <div class="score-big">
             <strong class="count" data-to={vxAll.pass}>{vxAll.pass}</strong>{' '}
@@ -175,6 +180,7 @@ const startCommands = [
           <p class="kicker">{fillBench('%bench.tasks% tasks · %bench.projects% projects · same commands, same machine')}</p>
           <h2>Blink and<br /><em>it’s done.</em></h2>
         </header>
+        <QuoteCard voices={BAND_VOICES.speed} />
         <div class="races">
           {
             races.map((race) => (
@@ -275,6 +281,7 @@ const startCommands = [
           <h2>One run.<br /><em>Every machine you’ve got.</em></h2>
           <p class="band-sub">Add <code>@vzn/vx-dte</code> and a single <code>vx run</code> on CI starts workers on your own CI, feeds them the critical path first and reports back as one run.</p>
         </header>
+        <QuoteCard voices={BAND_VOICES.dte} />
         <DteRun />
         <a class="band-link" href={href('plugins/vx-dte/')}>Distributed task execution <span class="arr">→</span></a>
       </div>
@@ -316,6 +323,7 @@ const startCommands = [
           <h2>Swap any piece.<br /><em>Fork nothing.</em></h2>
           <p class="band-sub">Each part on the graph is its own package on the public plugin API, and every server is yours to host.</p>
         </header>
+        <QuoteCard voices={BAND_VOICES.plugins} />
         <div class="parts">
           {
             parts.map((p) => (
@@ -358,6 +366,8 @@ const startCommands = [
         </div>
       </div>
     </section>
+
+    <Voices />
 
     <section class="band" id="start">
       <div class="band-in start">
@@ -528,6 +538,57 @@ const startCommands = [
         },
         { threshold: 0.4 },
       ).observe(hop)
+      // Each quote card fades to its next quote while it is in view.
+      document.querySelectorAll<HTMLElement>('.qc').forEach((card) => {
+        const ones = [...card.querySelectorAll<HTMLElement>('.qc-one')]
+        if (ones.length < 2) return
+        let at = 0
+        let turn = 0
+        const show = (): void => {
+          at = (at + 1) % ones.length
+          ones.forEach((o, j) => {
+            o.classList.toggle('on', j === at)
+            if (j === at) o.removeAttribute('aria-hidden')
+            else o.setAttribute('aria-hidden', 'true')
+          })
+        }
+        new IntersectionObserver(([e]) => {
+          clearInterval(turn)
+          if (e!.isIntersecting) turn = window.setInterval(show, 5200)
+        }).observe(card)
+      })
+      // The wall swaps one quote at a time for one not on it, while in view.
+      const wall = document.querySelector<HTMLElement>('.wall')!
+      const voices = JSON.parse(wall.dataset['voices']!) as Array<{ quote: string; who: string; role: string; href: string }>
+      const slots = [...wall.querySelectorAll<HTMLElement>('li')]
+      let next = slots.length
+      let lastSlot = -1
+      let swapT = 0
+      const swap = (): void => {
+        const shown = slots.filter((li) => li.offsetParent !== null)
+        let k = Math.floor(Math.random() * shown.length)
+        if (k === lastSlot) k = (k + 1) % shown.length
+        lastSlot = k
+        const fig = shown[k]!.querySelector('figure')!
+        const on = new Set(slots.map((li) => li.querySelector('strong')!.parentElement!.previousElementSibling!.textContent))
+        let v = voices[next++ % voices.length]!
+        while (on.has(`“${v.quote}”`)) v = voices[next++ % voices.length]!
+        fig.classList.add('out')
+        setTimeout(() => {
+          fig.querySelector('a')!.href = v.href
+          fig.querySelector('a')!.textContent = `“${v.quote}”`
+          fig.querySelector('strong')!.textContent = v.who
+          fig.querySelector('figcaption span')!.textContent = v.role
+          fig.classList.remove('out')
+          fig.classList.remove('in')
+          void fig.offsetWidth
+          fig.classList.add('in')
+        }, 500)
+      }
+      new IntersectionObserver(([e]) => {
+        clearInterval(swapT)
+        if (e!.isIntersecting) swapT = window.setInterval(swap, 2600)
+      }).observe(wall)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {

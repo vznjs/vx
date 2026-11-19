@@ -24,13 +24,14 @@ import {
 } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
 import run from '../src/data/hero-run.json'
+import { ALL_VOICES, BAND_VOICES, type Voice } from '../src/components/landing/voices.ts'
 import { PLUGIN_HOOKS } from '@vzn/vx'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every band under the stage, top to bottom.
-const SECTIONS = ['proof', 'speed', 'data', 'dte', 'flaky', 'plugins', 'agents', 'start']
+const SECTIONS = ['proof', 'speed', 'data', 'dte', 'flaky', 'plugins', 'agents', 'voices', 'start']
 
 // The anchors the old chapters and landings redirect to (redirects.test.ts),
 // each on the step, vow or card that now says it.
@@ -134,7 +135,8 @@ function section(html: string, id: string): string {
     ...html.matchAll(new RegExp(`<section\\b[^>]*\\bid="${id}"[^>]*>([\\s\\S]*?)</section>`, 'g')),
   ]
   expect(found).toHaveLength(1)
-  return found[0]![1]!
+  // A band's quote card is checked on its own (quotes), not as the band's.
+  return found[0]![1]!.replace(/<aside class="qc"[\s\S]*?<\/aside>/g, '')
 }
 
 function hrefs(html: string): string[] {
@@ -431,6 +433,33 @@ describe('the landing page', () => {
       .map((m) => m[1]!)
       .join('\n')
     expect(scripts).toContain('prefers-reduced-motion: reduce')
+  })
+
+  // Quotes only (2026-11-19): the words, who said them and their role,
+  // each linked to where it was said; one card beside its band, all of
+  // them in the voices band.
+  it('quotes people word for word, beside the band each is about', () => {
+    for (const id of ['proof', 'speed', 'dte', 'plugins']) {
+      const raw = /<section\b[^>]*\bid="([\w-]+)"[^>]*>[\s\S]*?<\/section>/g
+      const band = [...html.matchAll(raw)].find((m) => m[1] === id)![0]
+      const card = /<aside class="qc"[\s\S]*?<\/aside>/.exec(band)![0]
+      expect(BAND_VOICES[id as keyof typeof BAND_VOICES].map((v) => v.href)).toEqual(hrefs(card))
+    }
+    const wall = section(html, 'voices')
+    expect(text(/<h2>([\s\S]*?)<\/h2>/.exec(wall)![1]!.replace(/<br\s*\/?>/, ' '))).toBe(
+      'What people say about us.',
+    )
+    const shown = JSON.parse(
+      /data-voices="([^"]*)"/
+        .exec(wall)![1]!
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&'),
+    ) as Voice[]
+    expect(shown).toEqual(ALL_VOICES)
+    for (const v of ALL_VOICES) {
+      expect(Object.keys(v).sort()).toEqual(['href', 'quote', 'role', 'who'])
+      expect(v.href).toMatch(/^https:\/\/(github\.com\/vznjs\/vx\/|dev\.to\/)/)
+    }
   })
 
   it('writes no paragraph longer than one sentence', () => {

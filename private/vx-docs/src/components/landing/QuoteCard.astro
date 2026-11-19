@@ -1,0 +1,27 @@
+---
+// A small quote card beside the part of the page it is about: the quote,
+// who said it and their role. It fades through its quotes while in view;
+// at rest (no script, reduced motion) the first shows, whole.
+import type { Voice } from './voices.ts'
+
+interface Props {
+  voices: Voice[]
+}
+const { voices } = Astro.props
+---
+
+<aside class="qc" aria-label="What people say">
+  {
+    voices.map((v, i) => (
+      <figure class:list={['qc-one', { on: i === 0 }]} aria-hidden={i === 0 ? undefined : 'true'}>
+        <blockquote>
+          <a href={v.href} rel="noopener" target="_blank">“{v.quote}”</a>
+        </blockquote>
+        <figcaption>
+          <strong>{v.who}</strong>
+          <span>{v.role}</span>
+        </figcaption>
+      </figure>
+    ))
+  }
+</aside>
