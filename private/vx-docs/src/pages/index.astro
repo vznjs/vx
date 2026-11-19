@@ -14,9 +14,7 @@ import { SCOPE } from '../components/landing/scope.ts'
 import { BURN_ROWS, burnClip, timesLabel } from '../components/landing/race.ts'
 import HeroStage from '../components/landing/HeroStage.astro'
 import DteRun from '../components/landing/DteRun.astro'
-import QuoteCard from '../components/landing/QuoteCard.astro'
 import Voices from '../components/landing/Voices.astro'
-import { BAND_VOICES } from '../components/landing/voices.ts'
 import '../styles/landing.css'
 import '../styles/stage.css'
 import '../styles/voices.css'
@@ -138,7 +136,6 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">Conformance · {caseCount} cases · {TOOLS.length} tools</p>
           <h2>Their tests.<br /><em>Our score.</em></h2>
-          <QuoteCard voices={BAND_VOICES.proof} />
           <p class="band-sub">Every test in vx, Turbo, Nx, Vite Task, Nix and moon, turned into one suite and run sandboxed against each tool.</p>
         </header>
         <div class="score">
@@ -179,7 +176,6 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">{fillBench('%bench.tasks% tasks · %bench.projects% projects · same commands, same machine')}</p>
           <h2>Blink and<br /><em>it’s done.</em></h2>
-          <QuoteCard voices={BAND_VOICES.speed} />
         </header>
         <div class="races">
           {
@@ -279,7 +275,6 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">Distributed task execution</p>
           <h2>One run.<br /><em>Every machine you’ve got.</em></h2>
-          <QuoteCard voices={BAND_VOICES.dte} />
           <p class="band-sub">Add <code>@vzn/vx-dte</code> and a single <code>vx run</code> on CI starts workers on your own CI, feeds them the critical path first and reports back as one run.</p>
         </header>
         <DteRun />
@@ -321,7 +316,6 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">Plugins</p>
           <h2>Swap any piece.<br /><em>Fork nothing.</em></h2>
-          <QuoteCard voices={BAND_VOICES.plugins} />
           <p class="band-sub">Each part on the graph is its own package on the public plugin API, and every server is yours to host.</p>
         </header>
         <div class="parts">
@@ -351,7 +345,6 @@ const startCommands = [
         <header class="band-head">
           <p class="kicker">AI first</p>
           <h2>Your agents<br /><em>already speak vx.</em></h2>
-          <QuoteCard voices={BAND_VOICES.agents} />
           <p class="band-sub">One skill teaches any coding agent the whole CLI, and every report prints JSON with a published schema.</p>
           <button class="install-pill small" data-copy="bunx skills add vznjs/vx" type="button">
             <span class="dollar">$</span><span class="cmd">bunx skills add vznjs/vx</span><span class="copied-note" aria-live="polite"></span>
@@ -539,25 +532,6 @@ const startCommands = [
         },
         { threshold: 0.4 },
       ).observe(hop)
-      // Each title's note fades to its next quote while it is in view.
-      document.querySelectorAll<HTMLElement>('.qc').forEach((card) => {
-        const ones = [...card.querySelectorAll<HTMLElement>('.qc-one')]
-        if (ones.length < 2) return
-        let at = 0
-        let turn = 0
-        const show = (): void => {
-          at = (at + 1) % ones.length
-          ones.forEach((o, j) => {
-            o.classList.toggle('on', j === at)
-            if (j === at) o.removeAttribute('aria-hidden')
-            else o.setAttribute('aria-hidden', 'true')
-          })
-        }
-        new IntersectionObserver(([e]) => {
-          clearInterval(turn)
-          if (e!.isIntersecting) turn = window.setInterval(show, 6000)
-        }).observe(card)
-      })
       // The sky: quotes pop in at a free spot, drift up and sway, then pop
       // out, a few at a time, while it is in view. A hovered one stays.
       const sky = document.querySelector<HTMLElement>('.sky')!

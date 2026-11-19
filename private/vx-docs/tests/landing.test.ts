@@ -24,7 +24,7 @@ import {
 } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
 import run from '../src/data/hero-run.json'
-import { ALL_VOICES, BAND_VOICES, type Voice } from '../src/components/landing/voices.ts'
+import { ALL_VOICES, type Voice } from '../src/components/landing/voices.ts'
 import { PLUGIN_HOOKS } from '@vzn/vx'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
@@ -135,8 +135,7 @@ function section(html: string, id: string): string {
     ...html.matchAll(new RegExp(`<section\\b[^>]*\\bid="${id}"[^>]*>([\\s\\S]*?)</section>`, 'g')),
   ]
   expect(found).toHaveLength(1)
-  // A band's quote card is checked on its own (quotes), not as the band's.
-  return found[0]![1]!.replace(/<aside class="qc"[\s\S]*?<\/aside>/g, '')
+  return found[0]![1]!
 }
 
 function hrefs(html: string): string[] {
@@ -436,18 +435,12 @@ describe('the landing page', () => {
   })
 
   // Quotes only (2026-11-19): the words, who said them and their role,
-  // each linked to where it was said; one card beside its band, all of
-  // them in the voices band.
-  it('quotes people word for word, beside the band each is about', () => {
-    for (const id of ['proof', 'speed', 'dte', 'plugins']) {
-      const raw = /<section\b[^>]*\bid="([\w-]+)"[^>]*>[\s\S]*?<\/section>/g
-      const band = [...html.matchAll(raw)].find((m) => m[1] === id)![0]
-      const card = /<aside class="qc"[\s\S]*?<\/aside>/.exec(band)![0]
-      expect(BAND_VOICES[id as keyof typeof BAND_VOICES].map((v) => v.href)).toEqual(hrefs(card))
-    }
+  // each linked to where it was said, all in one band.
+  it('quotes people word for word, in one band', () => {
+    expect(html).not.toContain('class="qc"')
     const wall = section(html, 'voices')
     expect(text(/<h2>([\s\S]*?)<\/h2>/.exec(wall)![1]!.replace(/<br\s*\/?>/, ' '))).toBe(
-      'What people say about us.',
+      'What others say about us.',
     )
     const shown = JSON.parse(
       /data-voices="([^"]*)"/

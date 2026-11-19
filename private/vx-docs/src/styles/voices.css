@@ -1,83 +1,5 @@
-/* What people say: a quiet note beside each band's title, and the sky. */
+/* What others say: quotes float up, pop in and pop out. */
 
-/* ---- the note beside a title ---- */
-.qc {
-  display: grid;
-  max-width: 300px;
-  margin: 20px 0 0;
-}
-.qc-one {
-  grid-area: 1 / 1;
-  align-self: center;
-  margin: 0;
-  padding-left: 14px;
-  border-left: 2px solid color-mix(in srgb, var(--tone-core) 55%, transparent);
-  opacity: 0;
-  transform: translateY(6px);
-  transition:
-    opacity 0.8s var(--ease-out),
-    transform 0.8s var(--ease-out);
-  pointer-events: none;
-}
-.qc-one.on {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
-}
-.qc blockquote {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  font: italic 400 14px/1.45 var(--font-body);
-  color: #aeb8ad;
-}
-.qc a,
-.sky a {
-  color: inherit;
-  text-decoration: none;
-}
-.qc a:hover,
-.sky a:hover {
-  color: #f2f5ef;
-}
-.qc figcaption {
-  margin: 6px 0 0;
-  font: 400 11px/1.35 var(--font-body);
-  color: #5b635f;
-}
-.qc figcaption strong {
-  color: #8b938f;
-  font-weight: 600;
-}
-
-/* Beside the title on wide screens, centred on it; under it on phones. */
-@media (min-width: 900px) {
-  .band-head:has(> .qc) {
-    display: grid;
-    grid-template-columns: max-content minmax(220px, 300px);
-    column-gap: clamp(32px, 5vw, 80px);
-    align-items: center;
-    max-width: none;
-  }
-  .band-head:has(> .qc) > * {
-    grid-column: 1 / -1;
-  }
-  .band-head:has(> .qc) > h2 {
-    grid-column: 1;
-  }
-  .band-head:has(> .qc) > .qc {
-    grid-column: 2;
-    margin: 16px 0 0;
-  }
-  .agents .band-head:has(> .qc) {
-    display: block;
-  }
-  .agents .band-head > .qc {
-    margin: 20px 0 0;
-  }
-}
-
-/* ---- the sky: quotes float up, pop in and pop out ---- */
 .sky {
   position: relative;
   margin: 48px 0 0;
@@ -128,6 +50,13 @@
     transform 0.45s cubic-bezier(0.55, 0, 1, 0.45),
     opacity 0.45s ease;
 }
+.sky a {
+  color: inherit;
+  text-decoration: none;
+}
+.sky a:hover {
+  color: #fff;
+}
 .bubble:hover {
   z-index: 2;
 }
@@ -149,9 +78,6 @@
 }
 
 @media (max-width: 620px) {
-  .qc {
-    max-width: none;
-  }
   .sky-rest {
     grid-template-columns: 1fr;
   }
