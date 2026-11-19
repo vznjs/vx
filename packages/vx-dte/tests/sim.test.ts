@@ -10,9 +10,10 @@ import f2163 from './fixtures/main-run-2026-10-23.json'
 import q2f0 from './fixtures/pr-run-2f0e2a4.json'
 import d36 from './fixtures/main-run-d36eed9.json'
 import a2c from './fixtures/main-run-a2c25b0.json'
+import m4c3 from './fixtures/main-run-4c30e53.json'
 import { compare } from '../scripts/compare.js'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
-import { Planner } from '../src/plan/planner.js'
+import { Planner, type PlannerSize } from '../src/plan/planner.js'
 import type { TaskNode } from '@vzn/vx'
 
 const small: Size = { name: 'small', max: 12, cpu: 4, memory: 16e9 }
@@ -793,6 +794,68 @@ it('runs a 20-core task on the 9 cores a busy 10-core worker has free: sooner, a
   expect([r.startedAt.get('big'), r.endMs, held]).toEqual([20_000, 236_000, 2_360_000])
 })
 
+interface MainFixture {
+  readonly nodes: readonly { id: string; deps: string[]; exec: boolean; platform?: string }[]
+  readonly expected: readonly string[]
+  readonly known: Record<string, readonly (number | null)[]>
+  readonly warmUps: { small: number; arm: number; mac: number }
+}
+
+/** The planner main's run had at its start: its graph, history and sizes, its probe's hits dropped. */
+function mainPlanner(f: MainFixture, smallSpreadMs?: number): Planner {
+  const nodes = new Map(
+    f.nodes.map((n) => [
+      n.id,
+      {
+        id: n.id,
+        deps: n.deps,
+        platform: n.platform ?? 'linux-x64',
+        config: n.exec ? { exec: { command: 'x' } } : {},
+      } as unknown as TaskNode,
+    ]),
+  )
+  const expected = new Set(f.expected)
+  const planner = new Planner({
+    nodes,
+    platform: (n) => n.platform ?? 'linux-x64',
+    sizes: [
+      {
+        name: 'small',
+        cores: 4,
+        memory: 16e9,
+        max: 9,
+        platform: 'linux-x64',
+        warmUpMs: f.warmUps.small,
+        ...(smallSpreadMs === undefined ? {} : { spreadMs: smallSpreadMs }),
+      },
+      {
+        name: 'arm',
+        cores: 4,
+        memory: 16e9,
+        max: 1,
+        platform: 'linux-arm64',
+        warmUpMs: f.warmUps.arm,
+      },
+      {
+        name: 'mac',
+        cores: 2,
+        memory: 7e9,
+        max: 3,
+        platform: 'darwin-arm64',
+        warmUpMs: f.warmUps.mac,
+        ...(smallSpreadMs === undefined ? {} : { spreadMs: 3_000 }),
+      },
+    ],
+    known: (id) => {
+      const k = f.known[id]
+      return k === undefined ? undefined : { ms: k[0] ?? undefined, cores: k[1] ?? undefined }
+    },
+    expected,
+  })
+  for (const id of planner.ids) if (!expected.has(id)) planner.drop(id, 0)
+  return planner
+}
+
 // Main a2c25b0 (2026-11-19), its end bound by the Macs: at its first decide
 // one more small worker changed nothing, being the one the plan asked now
 // itself, and the search stopped there. The run asked 1 small of 9, the
@@ -801,57 +864,7 @@ it('runs a 20-core task on the 9 cores a busy 10-core worker has free: sooner, a
 it.each([0, 2_000, 5_000, 8_000, 13_000])(
   'main a2c25b0 asks its Linux workers at its first decide (spread %d ms)',
   (spreadMs) => {
-    const nodes = new Map(
-      a2c.nodes.map((n) => [
-        n.id,
-        {
-          id: n.id,
-          deps: n.deps,
-          platform: (n as { platform?: string }).platform ?? 'linux-x64',
-          config: n.exec ? { exec: { command: 'x' } } : {},
-        } as unknown as TaskNode,
-      ]),
-    )
-    const known: Record<string, readonly (number | null)[]> = a2c.known
-    const expected = new Set(a2c.expected)
-    const planner = new Planner({
-      nodes,
-      platform: (n) => n.platform ?? 'linux-x64',
-      sizes: [
-        {
-          name: 'small',
-          cores: 4,
-          memory: 16e9,
-          max: 9,
-          platform: 'linux-x64',
-          warmUpMs: a2c.warmUps.small,
-          spreadMs,
-        },
-        {
-          name: 'arm',
-          cores: 4,
-          memory: 16e9,
-          max: 1,
-          platform: 'linux-arm64',
-          warmUpMs: a2c.warmUps.arm,
-        },
-        {
-          name: 'mac',
-          cores: 2,
-          memory: 7e9,
-          max: 3,
-          platform: 'darwin-arm64',
-          warmUpMs: a2c.warmUps.mac,
-          spreadMs: 3_000,
-        },
-      ],
-      known: (id) => {
-        const k = known[id]
-        return k === undefined ? undefined : { ms: k[0] ?? undefined, cores: k[1] ?? undefined }
-      },
-      expected,
-    })
-    for (const id of planner.ids) if (!expected.has(id)) planner.drop(id, 0)
+    const planner = mainPlanner(a2c, spreadMs)
     const asked: string[] = []
     const d = planner.decide(730, (s) => {
       asked.push(s.name)
@@ -863,3 +876,27 @@ it.each([0, 2_000, 5_000, 8_000, 13_000])(
     expect(asked.filter((n) => n === 'small').length).toBeGreaterThanOrEqual(3)
   },
 )
+
+// Main 4c30e53 (2026-11-19): check.bun, 126 ms in history, ended 1 s after
+// the plan started it, its send, restore and the wait for its worker's next
+// message counted as its command. Read as the run going 8x slower than
+// history, the plan's end moved from 121 s to 797 s; on it the run asked 5
+// more workers and left the arm one for 20 s. Its command took 85 ms.
+it('main 4c30e53 reads its speed from a command time, not from when it heard the end', () => {
+  const planner = mainPlanner(m4c3)
+  planner.ready('@vzn/vx#check.bun')
+  const asked: string[] = []
+  const spawn = (s: PlannerSize): string => {
+    asked.push(s.name)
+    return `${s.name}#${asked.filter((n) => n === s.name).length}`
+  }
+  const first = planner.decide(860, spawn).end
+  planner.joined('small#1', 18_060)
+  expect(planner.decide(18_060, spawn).start).toEqual([['@vzn/vx#check.bun', 'small#1']])
+  planner.finished('@vzn/vx#check.bun', 19_080)
+  const heard = planner.decide(19_080, spawn).end
+  expect(heard).toBeLessThan(first * 1.1)
+  planner.finished('@vzn/vx#check.bun', 19_500, 85)
+  // told, its time counts: the run read as going 85/126 of history
+  expect(planner.decide(19_500, spawn).end).toBeLessThan(heard)
+})
