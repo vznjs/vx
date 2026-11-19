@@ -592,6 +592,17 @@ describe('the hero run', () => {
       }
   })
 
+  // vx-history sends finished tasks' timings while the run goes (M,
+  // 2026-11-18): History hears a stream through Run, not only at the end.
+  it('streams timings to history during Run', () => {
+    const run = P.steps.find((x) => x.group === 'run')!
+    const live = P.dots.filter(
+      (d) => d.wire === 'history' && d.back && d.at >= run.from && d.at < run.to,
+    )
+    expect(live.length).toBeGreaterThanOrEqual(2)
+    expect(run.boxes).toContain('history')
+  })
+
   // vx hands DTE the plan before DTE starts a worker.
   it('starts no worker before DTE has the plan', () => {
     const plan = P.dots.find((d) => d.label === 'plan')!

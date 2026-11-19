@@ -136,7 +136,7 @@ export const GROUPS: Group[] = [
     id: 'run',
     title: 'Run',
     hooks: ['executor', 'output'],
-    line: 'Distributed task execution boots workers as the work needs them and sends them tasks; outputs land in the cache.',
+    line: "Distributed task execution boots workers as needed; outputs land in the cache, and each task's time streams to history.",
     tone: 'dte',
   },
   {
@@ -232,6 +232,8 @@ export const STEP_MS = 5000
 const RUN_MS = 10_000
 /** A worker's boot, shown as 2 s whatever the run's took (M, 2026-11-18). */
 export const BOOT_MS = 2000
+/** How long vx-history holds a finished task's timing before it sends it, at most (its FLUSH_MS). */
+const HISTORY_FLUSH_MS = 10_000
 /** How far apart one way's messages on a wire may be and still read as one stream. */
 const MERGE_MS = 1500
 /** The steps in the order a run reaches them: the cache's probe answers before the first plan. */
@@ -277,7 +279,7 @@ export function play(run: Run): Play {
       ['history', 'relay'],
       ['history', 'relay'],
     ],
-    run: [['relay', 'cache', 'reports'], []],
+    run: [['relay', 'cache', 'reports', 'history'], []],
     report: [
       ['ci', 'history', 'reports'],
       ['ci', 'history'],
@@ -403,7 +405,19 @@ export function play(run: Run): Play {
     dot(stop + 2 * T, 'cache', 'remote', 'restore', true)
     dot(stop + 2 * T, 'reports', 'report', 'span')
   }
-  // Report: the job summary is written and the run's timings go back to history.
+  // vx-history sends the finished tasks' timings while the run goes, as
+  // it does: a batch 10 s after the first one not yet sent ends (a run of
+  // 10 tasks never reaches its 50).
+  let due: number | undefined
+  for (const e of ran.map((x) => x.endMs!).sort((a, b) => a - b)) {
+    if (due !== undefined && e >= due) {
+      dot(t(due) + 2 * T, 'history', 'report', 'timings', true)
+      due = undefined
+    }
+    if (due === undefined && e < last) due = e + HISTORY_FLUSH_MS
+  }
+  if (due !== undefined && due < last) dot(t(due) + 2 * T, 'history', 'report', 'timings', true)
+  // Report: the job summary is written and the rest of the timings go back to history.
   const down = Math.max(at('report'), end + 3 * T)
   dot(down, 'ci', 'report', 'summary', true, loop - down)
   dot(down, 'history', 'report', 'timings', true, loop - down)
