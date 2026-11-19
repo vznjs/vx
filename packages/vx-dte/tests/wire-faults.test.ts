@@ -399,6 +399,44 @@ it('sends to a worker lost while an ack to it was owed as to any lost one', asyn
   }
 })
 
+// Main 4ba95d2 (2026-11-19): nothing of mac#3 reached the orchestrator for
+// 6 s, and it was lost, its tasks sent elsewhere; then its sends came, the
+// orchestrator acked them, and it ran on 2.5 min for nothing. A worker lost
+// for its silence is answered no more: it ends on its orchestrator's.
+it('a worker lost for its silence that speaks again is not answered, and ends', async () => {
+  let cut = false
+  // While `cut`, the worker's sends to its orchestrator are taken and lost.
+  const served = servedRelay({ heartbeatMs: 500 }, (f) =>
+    cut && f.includes('"to":"host"') ? f.replace(/"sends":\[.*\]/, '"sends":[]') : f,
+  )
+  try {
+    const o = await join(served.url, R2, 'orchestrator', null, undefined)
+    const a = await join(served.url, R2, 'worker', null, undefined)
+    await o.poll()
+    let ended: unknown
+    const working = (async () => {
+      for (;;) await a.poll()
+    })().catch((e: unknown) => (ended = e))
+    cut = true
+    // The orchestrator goes on sending it orders, which it hears.
+    const got: RelayMessage[] = []
+    while (!got.some((m) => (m.body as { type?: string } | null)?.type === 'lost')) {
+      await o.send(a.id, 'order').catch(() => undefined)
+      got.push(...(await o.poll()))
+    }
+    cut = false
+    for (let i = 0; i < 30 && ended === undefined; i++) {
+      await a.send('orchestrator', 'still here').catch(() => undefined)
+      await Bun.sleep(100)
+    }
+    expect((ended as RelayError | undefined)?.message).toBe('relay: the orchestrator went silent')
+    void working
+    await o.leave()
+  } finally {
+    await served.stop()
+  }
+}, 30_000)
+
 // CI run 40886829588 (2026-10-29): the orchestrator said nothing for 12 s
 // and every worker then running ended. Its own sync work (whatever held its
 // loop) starved its socket's acks. Off the loop, a held loop sends them
