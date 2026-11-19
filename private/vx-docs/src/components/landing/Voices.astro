@@ -24,13 +24,16 @@ const rows = [ALL_VOICES.slice(0, half), ALL_VOICES.slice(half)]
             {row.map((v, i) => (
               <li class="bubble" style={`--tint:${TINTS[(i * 2 + r) % TINTS.length]};--w:${Math.round(Math.min(560, Math.max(240, v.quote.length * 2.6)))}px`}>
                 <figure class="bubble-in">
-                  <blockquote>
-                    <a href={v.href} rel="noopener" target="_blank">
-                      “{v.quote}”
-                    </a>
-                  </blockquote>
+                  <blockquote>“{v.quote}”</blockquote>
                   <figcaption>
-                    <strong>{v.who}</strong> · {v.role}
+                    <span>
+                      <strong>{v.who}</strong> · {v.role}
+                    </span>
+                    <a class="say-src" href={v.href} rel="noopener" target="_blank" aria-label="Where he said it" title="Where he said it">
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path d="M9 2h5v5M14 2 7 9M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </a>
                   </figcaption>
                 </figure>
               </li>

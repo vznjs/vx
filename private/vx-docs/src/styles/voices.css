@@ -57,6 +57,9 @@
   color: #f2f5ef;
 }
 .bubble-in figcaption {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
   margin: auto 0 0;
   padding-top: 10px;
   font: 400 12px/1.35 var(--font-body);
@@ -66,12 +69,24 @@
   color: #cbd1c9;
   font-weight: 600;
 }
-.sky a {
-  color: inherit;
-  text-decoration: none;
+.say-src {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border-radius: 8px;
+  color: #8b938f;
+  background: rgba(255, 255, 255, 0.05);
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
 }
-.sky a:hover {
-  color: #fff;
+.say-src:hover,
+.say-src:focus-visible {
+  color: var(--tint, #fff);
+  background: color-mix(in srgb, var(--tint, #fff) 16%, transparent);
 }
 
 @media (max-width: 620px) {
