@@ -517,6 +517,13 @@ without importing it counts when the plugin claims it
 (`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
 `turbo.jsonc`, `nx()` claims `nx.json`, and either answers every project.
 
+**A `.gitattributes` change selects every project under it.** Its
+line-ending and filter rules change the bytes a checkout writes while
+git's blobs stay the same, so no input path moves, yet a fresh clone
+reads new bytes. The root one selects every project; one in `packages/`
+selects the projects in it; a project's own selects its every task
+(vercel/turborepo#15004).
+
 **A file your config imports selects that project.** The key holds the
 resolved config, so a shared preset a `vx.config.*` imports is part of
 it. Editing `shared/preset.ts` selects every project whose config
