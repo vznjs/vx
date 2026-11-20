@@ -99,6 +99,44 @@ export default [
   }),
 
   defineCase({
+    id: 'cache/failed-forced-run-keeps-the-stored-pass',
+    category: 'cache',
+    kind: 'correctness',
+    title:
+      'A forced run that fails leaves the stored pass for the same inputs, and a read-only run replays it',
+    why: 'A forced run can fail for a reason outside the task’s inputs: a flaky network, a full disk. The entry an earlier run saved for those same inputs is still right. A runner that lets the failure poison it rebuilds on every later run, and a read-only run, which cannot save the fix, never hits again.',
+    from: ['task-save'],
+    needs: ['force', 'read-only-cache'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: {
+              command: 'test ! -f ../../FAIL && mkdir -p dist && cat src/a.txt > dist/out.txt',
+              // vx retries a failed key that passed before; this case asks about the entry.
+              retries: 0,
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'a\n' },
+        },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { FAIL: '' } },
+      { run: 'build', force: true, expect: { exit: 'fail' } },
+      { write: { FAIL: null, [out('a')]: null } },
+      {
+        run: 'build',
+        readOnlyCache: true,
+        expect: { exit: 0, notRan: ['a#build'], files: { [out('a')]: 'a\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'cache/read-only-replays-and-saves-nothing',
     category: 'cache',
     kind: 'correctness',

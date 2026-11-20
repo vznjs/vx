@@ -96,6 +96,19 @@ export default [
   }),
 
   defineCase({
+    id: 'failure/timeout-reaps-a-grandchild',
+    category: 'failure',
+    kind: 'correctness',
+    title:
+      'A timeout kills the grandchild a backgrounded shell started, not only the task’s children',
+    why: 'Tools start tools: a script backgrounds a shell that starts a server of its own. A timeout that kills the task’s shell, or only its direct children, leaves that grandchild running after the run has failed, holding ports, files and the CI job. Every process the task started must die with it.',
+    from: ['task-tree-kill'],
+    needs: ['timeout'],
+    workspace: a({ t: { command: `sh -c 'sleep 60 & wait' & sleep 60 & wait`, timeout: 1 } }),
+    steps: [{ run: 't', expect: { exit: 'fail', within: 20, alone: true } }],
+  }),
+
+  defineCase({
     id: 'failure/timeout-reaps-a-backgrounded-child-ignoring-sigterm',
     category: 'failure',
     kind: 'correctness',

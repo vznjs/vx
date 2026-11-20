@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 242,
+    "ported": 244,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -383,12 +383,8 @@
         "vx-dte/measures",
         "vx-dte/noise",
         "vx-dte/outputs",
-        "vx-dte/pack",
         "vx-dte/plan-boundary",
-        "vx-dte/planner",
-        "vx-dte/planner-properties",
         "vx-dte/plugin-order",
-        "vx-dte/queue",
         "vx-dte/run-id",
         "vx-dte/seal",
         "vx-dte/server-fit",
@@ -410,6 +406,7 @@
         "vx-history/history-server",
         "vx-history/history-view",
         "vx-history/lazy-load",
+        "vx-history/live-upload",
         "vx-history/resource-estimates",
         "vx-history/server-answers",
         "vx-history/timings-file",
@@ -764,6 +761,7 @@
         "cli-verb-sections",
         "closure-search",
         "colors",
+        "consumer-types.unsafe",
         "core-source-key.unsafe",
         "dependencies-lock",
         "dependency-outputs-there",
@@ -817,6 +815,7 @@
         "keep-alive-sigkill",
         "kept-hits",
         "key-fold",
+        "key-vx-version",
         "kill-tree-guard-backlog",
         "kill-tree-guard-lines.unsafe",
         "kill-tree-guard-zombie.unsafe",
@@ -845,6 +844,7 @@
         "output-dirs-snapshot",
         "output-log",
         "output-memory.unsafe",
+        "output-stamps-link",
         "output-stamps-scale",
         "package-entry-shims.unsafe",
         "painted-output",
@@ -909,6 +909,7 @@
         "save-index-from-plan",
         "save-lane",
         "save-output-moved-size",
+        "save-output-swapped-link",
         "scale-graph",
         "scan-tar-bytes",
         "schema-reset-notice",
@@ -950,7 +951,6 @@
         "task-outputs-shape",
         "task-platforms",
         "task-policy",
-        "task-save",
         "task-verb",
         "term-dumb",
         "terminal.unsafe",
@@ -966,6 +966,7 @@
         "ulid",
         "uncached-key-once",
         "unpassed-env",
+        "upstream-output-moved",
         "user-error-classify",
         "util-hash",
         "util-num",
@@ -996,6 +997,7 @@
         "watch-pool-close",
         "watch-server-blame",
         "watch-timing",
+        "watch-tracked-output-notice",
         "watch-ws-import-in-project",
         "workspace-files-shared-memo",
         "workspace-output-config",
@@ -1104,14 +1106,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1012,
-        "can": 1012,
-        "of": 1014
+        "pass": 1016,
+        "can": 1016,
+        "of": 1018
       },
       "correctness": {
-        "pass": 834,
-        "can": 834,
-        "of": 836
+        "pass": 838,
+        "can": 838,
+        "of": 840
       },
       "efficiency": {
         "pass": 169,
@@ -1134,24 +1136,24 @@
         "of": 8
       },
       "failure": {
-        "pass": 75,
-        "can": 75,
-        "of": 75
+        "pass": 76,
+        "can": 76,
+        "of": 76
       },
       "affected": {
-        "pass": 98,
-        "can": 98,
-        "of": 98
+        "pass": 99,
+        "can": 99,
+        "of": 99
       },
       "cache": {
-        "pass": 42,
-        "can": 42,
-        "of": 42
+        "pass": 43,
+        "can": 43,
+        "of": 43
       },
       "inputs": {
-        "pass": 308,
-        "can": 308,
-        "of": 308
+        "pass": 309,
+        "can": 309,
+        "of": 309
       },
       "env": {
         "pass": 31,
@@ -1181,14 +1183,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 638,
-        "can": 925,
-        "of": 1014
+        "pass": 640,
+        "can": 928,
+        "of": 1018
       },
       "correctness": {
-        "pass": 515,
-        "can": 753,
-        "of": 836
+        "pass": 517,
+        "can": 756,
+        "of": 840
       },
       "efficiency": {
         "pass": 119,
@@ -1213,22 +1215,22 @@
       "failure": {
         "pass": 24,
         "can": 48,
-        "of": 75
+        "of": 76
       },
       "affected": {
         "pass": 67,
-        "can": 98,
-        "of": 98
+        "can": 99,
+        "of": 99
       },
       "cache": {
-        "pass": 34,
-        "can": 42,
-        "of": 42
+        "pass": 35,
+        "can": 43,
+        "of": 43
       },
       "inputs": {
-        "pass": 187,
-        "can": 298,
-        "of": 308
+        "pass": 188,
+        "can": 299,
+        "of": 309
       },
       "env": {
         "pass": 27,
@@ -1258,14 +1260,14 @@
     },
     "nx": {
       "all": {
-        "pass": 653,
-        "can": 951,
-        "of": 1014
+        "pass": 654,
+        "can": 953,
+        "of": 1018
       },
       "correctness": {
-        "pass": 493,
-        "can": 775,
-        "of": 836
+        "pass": 494,
+        "can": 777,
+        "of": 840
       },
       "efficiency": {
         "pass": 156,
@@ -1290,22 +1292,22 @@
       "failure": {
         "pass": 37,
         "can": 56,
-        "of": 75
+        "of": 76
       },
       "affected": {
         "pass": 57,
-        "can": 98,
-        "of": 98
+        "can": 99,
+        "of": 99
       },
       "cache": {
         "pass": 37,
         "can": 40,
-        "of": 42
+        "of": 43
       },
       "inputs": {
-        "pass": 187,
-        "can": 308,
-        "of": 308
+        "pass": 188,
+        "can": 309,
+        "of": 309
       },
       "env": {
         "pass": 25,
@@ -1335,14 +1337,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 506,
-        "can": 757,
-        "of": 1014
+        "pass": 507,
+        "can": 758,
+        "of": 1018
       },
       "correctness": {
-        "pass": 417,
-        "can": 627,
-        "of": 836
+        "pass": 418,
+        "can": 628,
+        "of": 840
       },
       "efficiency": {
         "pass": 87,
@@ -1367,22 +1369,22 @@
       "failure": {
         "pass": 28,
         "can": 36,
-        "of": 75
+        "of": 76
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 98
+        "of": 99
       },
       "cache": {
         "pass": 34,
         "can": 35,
-        "of": 42
+        "of": 43
       },
       "inputs": {
-        "pass": 178,
-        "can": 299,
-        "of": 308
+        "pass": 179,
+        "can": 300,
+        "of": 309
       },
       "env": {
         "pass": 29,
@@ -1412,14 +1414,14 @@
     },
     "nix": {
       "all": {
-        "pass": 486,
-        "can": 722,
-        "of": 1014
+        "pass": 487,
+        "can": 723,
+        "of": 1018
       },
       "correctness": {
-        "pass": 418,
-        "can": 599,
-        "of": 836
+        "pass": 419,
+        "can": 600,
+        "of": 840
       },
       "efficiency": {
         "pass": 66,
@@ -1444,22 +1446,22 @@
       "failure": {
         "pass": 17,
         "can": 37,
-        "of": 75
+        "of": 76
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 98
+        "of": 99
       },
       "cache": {
         "pass": 28,
         "can": 35,
-        "of": 42
+        "of": 43
       },
       "inputs": {
-        "pass": 177,
-        "can": 298,
-        "of": 308
+        "pass": 178,
+        "can": 299,
+        "of": 309
       },
       "env": {
         "pass": 22,
@@ -1489,14 +1491,14 @@
     },
     "moon": {
       "all": {
-        "pass": 590,
-        "can": 906,
-        "of": 1014
+        "pass": 591,
+        "can": 910,
+        "of": 1018
       },
       "correctness": {
-        "pass": 458,
-        "can": 743,
-        "of": 836
+        "pass": 459,
+        "can": 747,
+        "of": 840
       },
       "efficiency": {
         "pass": 127,
@@ -1520,23 +1522,23 @@
       },
       "failure": {
         "pass": 42,
-        "can": 60,
-        "of": 75
+        "can": 61,
+        "of": 76
       },
       "affected": {
         "pass": 69,
-        "can": 98,
-        "of": 98
+        "can": 99,
+        "of": 99
       },
       "cache": {
         "pass": 38,
-        "can": 41,
-        "of": 42
+        "can": 42,
+        "of": 43
       },
       "inputs": {
-        "pass": 193,
-        "can": 308,
-        "of": 308
+        "pass": 194,
+        "can": 309,
+        "of": 309
       },
       "env": {
         "pass": 26,
@@ -23585,6 +23587,37 @@
       }
     },
     {
+      "id": "inputs/new-eol-rule-reaches-the-checkout",
+      "ref": "xsytib",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A file checked out again under a new `eol=crlf` rule runs the task again, though git still calls it clean",
+      "why": "A new line-ending rule changes nothing git stores: the blob stays the same and, once the file is checked out again, git calls the tree clean. The bytes on disk are CRLF now, and the task reads those. A runner that keys a clean file by its git blob replays the LF build for a CRLF file.",
+      "from": [
+        "affected-gitattributes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "inputs/project-gitattributes-crlf",
       "ref": "4h9vm9",
       "category": "inputs",
@@ -26628,6 +26661,43 @@
           "status": "fail",
           "step": 1,
           "detail": "left running: bash -c printf '+%s\\n' 'a#t' >> ../../.ran && (sh -c 'exec sleep 60' & sleep 60) && printf -- '-%s\\n' 'a#t' >> ../../.ran; sleep 60; sleep 60"
+        }
+      }
+    },
+    {
+      "id": "failure/timeout-reaps-a-grandchild",
+      "ref": "h6rv38",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A timeout kills the grandchild a backgrounded shell started, not only the task’s children",
+      "why": "Tools start tools: a script backgrounds a shell that starts a server of its own. A timeout that kills the task’s shell, or only its direct children, leaves that grandchild running after the run has failed, holding ports, files and the CI job. Every process the task started must die with it.",
+      "from": [
+        "task-tree-kill"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs timeout"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs timeout"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs timeout"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs timeout"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: bash -c printf '+%s\\n' 'a#t' >> ../../.ran && (sh -c 'sleep 60 & wait' & sleep 60 & wait) && printf -- '-%s\\n' 'a#t' >> ../../.ran; sh -c sleep 60 & wait; sleep 60; sleep 60"
         }
       }
     },
@@ -29714,6 +29784,45 @@
       }
     },
     {
+      "id": "affected/gitattributes-rule-selects-projects",
+      "ref": "3i32vp",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A new line-ending rule in `.gitattributes` selects the projects it covers",
+      "why": "A line-ending rule changes the bytes a fresh checkout writes for every file it covers, while git stores the same blobs, so no source file shows in the diff. CI checks out the new bytes and the tasks read them. A runner that selects only by changed source paths skips those tasks and CI stays green on a build it never ran.",
+      "from": [
+        "affected-gitattributes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#test, b#test"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#test, b#test"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs affected"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#test, b#test"
+        }
+      }
+    },
+    {
       "id": "affected/removed-tasks-select-dependents",
       "ref": "nmosoq",
       "category": "affected",
@@ -32669,6 +32778,42 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/failed-forced-run-keeps-the-stored-pass",
+      "ref": "dbr6wr",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A forced run that fails leaves the stored pass for the same inputs, and a read-only run replays it",
+      "why": "A forced run can fail for a reason outside the task’s inputs: a flaky network, a full disk. The entry an earlier run saved for those same inputs is still right. A runner that lets the failure poison it rebuilds on every later run, and a read-only run, which cannot save the fix, never hits again.",
+      "from": [
+        "task-save"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs read-only-cache"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs force, read-only-cache"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs force, read-only-cache"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 5,
+          "detail": "ran a#build, expected it replayed or left out"
         }
       }
     },

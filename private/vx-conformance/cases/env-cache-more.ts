@@ -324,6 +324,35 @@ export default [
     'With `eol=crlf`, git writes CRLF on checkout but stores LF, so what is on disk and what git holds differ by design. The task reads the disk, so those bytes are the input. A same-size edit that git’s stat does not catch must still run the task again, or the runner replays output built from the old text.',
   ),
   keyCase({
+    id: 'inputs/new-eol-rule-reaches-the-checkout',
+    kind: 'correctness',
+    title:
+      'A file checked out again under a new `eol=crlf` rule runs the task again, though git still calls it clean',
+    why: 'A new line-ending rule changes nothing git stores: the blob stays the same and, once the file is checked out again, git calls the tree clean. The bytes on disk are CRLF now, and the task reads those. A runner that keys a clean file by its git blob replays the LF build for a CRLF file.',
+    from: ['affected-gitattributes'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: {
+              command: "mkdir -p dist && tr '\\r' R < src/a.txt > dist/out.txt",
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'x\n' },
+        },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'x\n' } } },
+      { write: { '.gitattributes': '*.txt text eol=crlf\n' } },
+      { commit: 'eol rule' },
+      { sh: `rm ${A}/src/a.txt && git checkout -- ${A}/src/a.txt` },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'xR\n' } } },
+    ],
+  }),
+  keyCase({
     id: 'inputs/project-gitattributes-crlf',
     kind: 'correctness',
     title:

@@ -29,6 +29,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'affected-diff-early',
     'affected-discover-stage',
     'affected-dry-reasons',
+    'affected-gitattributes',
     'affected-flagged',
     'affected-head-range',
     'affected-linked-inputs',
