@@ -537,6 +537,24 @@ describe('a written config passes the repo’s own checks', () => {
     expect(stdout).toContain('  note      formatted with fmt\n')
   })
 
+  // prisma's `biome check`: organizeImports wants a blank line between the
+  // imports and turbo()'s declarations, and the imports sorted by package.
+  it('separates the imports from the declarations, and sorts the workspace imports', async () => {
+    const p = plan([['a', [task('build', exec('x'))]]])
+    p.projects[0]!.importLines = ["import pkg from './package.json'", 'const g = [1]']
+    const plugins = [
+      { factory: 'pnpm', pkg: '@vzn/vx-lockfile' },
+      { factory: 'github', pkg: '@vzn/vx-ci' },
+    ]
+    expect(await apply(p, { plugins })).toBe(0)
+    expect(readFileSync(path.join(root, 'a', 'vx.config.ts'), 'utf8')).toStartWith(
+      "import type { ProjectConfig } from '@vzn/vx/config'\nimport pkg from './package.json'\n\nconst g = [1]\n\nexport default {",
+    )
+    expect(readFileSync(path.join(root, '.vx', 'workspace.ts'), 'utf8')).toStartWith(
+      "import type { WorkspaceConfig } from '@vzn/vx/config'\nimport { github } from '@vzn/vx-ci'\nimport { pnpm } from '@vzn/vx-lockfile'\n\nexport default { plugins: [pnpm(), github()] }",
+    )
+  })
+
   it('a dry run calls no step after the write', async () => {
     let called = false
     const written = () => ((called = true), [])

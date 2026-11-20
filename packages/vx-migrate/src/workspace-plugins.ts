@@ -44,9 +44,19 @@ export function undeclared(text: string, plugins: readonly WorkspacePlugin[]): W
   return plugins.filter((p) => !new RegExp(`\\b${p.factory}\\s*\\(`).test(text))
 }
 
+/**
+ * One line per package, packages and names sorted: biome's organizeImports
+ * (prisma's `biome check`) failed on the order the plugins were declared in.
+ */
 function importLines(plugins: readonly WorkspacePlugin[]): string[] {
-  return plugins.map((p) => `import { ${p.factory} } from '${p.pkg}'`)
+  const byPkg = new Map<string, Set<string>>()
+  for (const p of plugins) byPkg.set(p.pkg, (byPkg.get(p.pkg) ?? new Set()).add(p.factory))
+  return [...byPkg.keys()]
+    .sort(byCodeUnit)
+    .map((pkg) => `import { ${[...byPkg.get(pkg)!].sort(byCodeUnit).join(', ')} } from '${pkg}'`)
 }
+
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 
 function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] {
   return plugins.map((p) => `${indent}${p.factory}(),`)

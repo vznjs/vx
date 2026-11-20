@@ -1692,9 +1692,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
         )
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
-            "import { turbo } from '@vzn/vx-migrate'\n" +
+            "import { vxHistory } from '@vzn/vx-history'\n" +
             "import { npm } from '@vzn/vx-lockfile'\n" +
-            "import { vxHistory } from '@vzn/vx-history'\n\n" +
+            "import { turbo } from '@vzn/vx-migrate'\n\n" +
             'export default {\n  plugins: [\n    turbo(),\n    npm(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
         expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(false)
@@ -1823,7 +1823,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
     const shares = (factory: string, why: string) => [
       0,
       [
-        `import { ${factory} } from '@vzn/vx-migrate'`,
+        `import { ${factory.replace('Cache', '')}, ${factory} } from '@vzn/vx-migrate'`,
         `    ${factory}(),`,
         `${factory}(): ${why}, so vx shares that remote cache (token: the variable, else the OS keychain).`,
       ],
@@ -2803,9 +2803,9 @@ describe('vx init declares the lockfile plugin', () => {
         expect(r.code).toBe(0)
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
-            "import { turbo } from '@vzn/vx-migrate'\n" +
+            "import { vxHistory } from '@vzn/vx-history'\n" +
             "import { yarn } from '@vzn/vx-lockfile'\n" +
-            "import { vxHistory } from '@vzn/vx-history'\n\n" +
+            "import { turbo } from '@vzn/vx-migrate'\n\n" +
             'export default {\n  plugins: [\n    turbo(),\n    yarn(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
         // Installed with yarn (a stand-in that installs only the lockfile
