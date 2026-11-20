@@ -237,10 +237,24 @@ export async function affectedChanges(
   // can re-key any task. Selection is not hashed, so widening changes no key.
   const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
   if (wsConfig !== undefined) return everything(wsConfig)
+  // A line-ending rule changes the bytes a checkout writes for every file
+  // under it while git's blobs stay the same, so no input path moves
+  // (vercel/turborepo#15004).
+  const rules = changed.filter((rel) => path.posix.basename(rel) === ATTRIBUTES && !VX_OWN.has(rel))
+  if (rules.includes(ATTRIBUTES)) return everything(ATTRIBUTES)
   const extrasBy = await claimedExtras(args, diff)
   if (typeof extrasBy === 'string') return everything(extrasBy)
   const claimedOwned = await claimedOwners(args, diff, extrasBy)
   if (typeof claimedOwned === 'string') return everything(claimedOwned)
+  for (const rule of rules) {
+    const dir = path.posix.dirname(rule)
+    for (const p of diff.projects) {
+      const key = lockKey(diff.rootDir, p.dir)
+      if ((key === dir || key.startsWith(`${dir}/`)) && !claimedOwned.has(p.name)) {
+        claimedOwned.set(p.name, rule)
+      }
+    }
+  }
   const owners = await pathOwners(args, diff, claimedOwned, perTask)
   if (typeof owners === 'string') return everything(owners)
   const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet } = owners
@@ -773,6 +787,9 @@ async function pathOwners(
   for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
   return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet }
 }
+
+/** Git's attributes file: its eol and filter rules shape the bytes a checkout writes. */
+const ATTRIBUTES = '.gitattributes'
 
 /** What vx writes under `.vx`, which no key reads (cache/inputs.ts `ALWAYS_IGNORE`). */
 const VX_OWN: ReadonlySet<string> = new Set([

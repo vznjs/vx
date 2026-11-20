@@ -115,6 +115,22 @@ export default [
   }),
 
   defineCase({
+    id: 'affected/gitattributes-rule-selects-projects',
+    category: 'affected',
+    kind: 'correctness',
+    title: 'A new line-ending rule in `.gitattributes` selects the projects it covers',
+    why: 'A line-ending rule changes the bytes a fresh checkout writes for every file it covers, while git stores the same blobs, so no source file shows in the diff. CI checks out the new bytes and the tasks read them. A runner that selects only by changed source paths skips those tasks and CI stays green on a build it never ran.',
+    from: ['affected-gitattributes'],
+    needs: ['affected'],
+    workspace: pair(),
+    steps: [
+      { write: { '.gitattributes': '*.txt text eol=crlf\n' } },
+      { commit: 'eol rule' },
+      { affected: 'test', base: 'HEAD~1', expect: { exit: 0, ran: ['a#test', 'b#test'] } },
+    ],
+  }),
+
+  defineCase({
     id: 'affected/removed-tasks-select-dependents',
     category: 'affected',
     kind: 'correctness',

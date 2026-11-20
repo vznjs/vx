@@ -1,4 +1,11 @@
+import { readFileSync } from 'node:fs'
+
 export type Json = Record<string, unknown>
+
+/** A file's text past a leading UTF-8 BOM, which every package manager skips (nrwl/nx#37621). */
+export function readUtf8(file: string): string {
+  return new TextDecoder().decode(readFileSync(file))
+}
 
 const DEP_FIELDS = [
   'dependencies',

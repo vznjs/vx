@@ -806,10 +806,7 @@ function manifestReader(
 function isClassicWorkspace(root: string, dir: string): boolean {
   let pkg: Record<string, unknown> | null
   try {
-    pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<
-      string,
-      unknown
-    >
+    pkg = JSON.parse(readUtf8(path.join(root, 'package.json'))) as Record<string, unknown>
   } catch {
     return false
   }
@@ -829,10 +826,7 @@ function isClassicWorkspace(root: string, dir: string): boolean {
 function classicManifests(root: string): string[] {
   let pkg: Record<string, unknown> | null
   try {
-    pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<
-      string,
-      unknown
-    >
+    pkg = JSON.parse(readUtf8(path.join(root, 'package.json'))) as Record<string, unknown>
   } catch {
     return []
   }
@@ -1184,8 +1178,13 @@ export function yarn(options: LockfileOptions = {}): VxPlugin {
 /** A file's text, undefined when it cannot be read. Sync: the digest seam is. */
 function readText(file: string): string | undefined {
   try {
-    return readFileSync(file, 'utf8')
+    return readUtf8(file)
   } catch {
     return undefined
   }
+}
+
+/** json.ts's `readUtf8`, kept here: importing json.ts would load it on every run (lazy-load.test.ts). */
+function readUtf8(file: string): string {
+  return new TextDecoder().decode(readFileSync(file))
 }

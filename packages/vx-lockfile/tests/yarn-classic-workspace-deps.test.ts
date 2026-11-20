@@ -62,6 +62,18 @@ it("a classic workspace's dependency ranges key the tasks that reach it", async 
   expect(await keyOfC()).toBe(before)
 })
 
+it('a root manifest with a byte-order mark still folds the workspace ranges', async () => {
+  // Yarn reads a manifest past a UTF-8 BOM, as a Windows editor saves it
+  // (nrwl/nx#37621); read as no workspaces, the ranges went unfolded.
+  await write(
+    'package.json',
+    `\uFEFF${JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] })}`,
+  )
+  const before = await keyOfC()
+  await write('packages/a/package.json', a('^7.0.0'))
+  expect(await keyOfC()).not.toBe(before)
+})
+
 it("a change to a classic workspace's ranges selects its dependents under --affected", () => {
   const enc = new TextEncoder()
   const lock = enc.encode(LOCK)

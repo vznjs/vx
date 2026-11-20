@@ -4,7 +4,7 @@
 //
 //   bun src/cli.ts                       all tools, all cases → the site's data
 //   bun src/cli.ts --tool vx,turbo       some tools
-//   bun src/cli.ts --case inputs/        cases whose id starts with that
+//   bun src/cli.ts --case inputs/,cache/ cases whose id starts with one of those
 //   bun src/cli.ts --jobs 8              cases at once (default: CPU count)
 //   bun src/cli.ts --out file.json       where the results go
 //   bun src/cli.ts --verbose             print each failed run's output
@@ -35,7 +35,8 @@ if (!sandboxAvailable()) {
 const tools = values.tool
   ? ADAPTERS.filter((a) => values.tool!.split(',').includes(a.name))
   : ADAPTERS
-const cases = CASES.filter((c) => !values.case || c.id.startsWith(values.case))
+const prefixes = values.case?.split(',') ?? ['']
+const cases = CASES.filter((c) => prefixes.some((p) => c.id.startsWith(p)))
 const jobs = Number(values.jobs ?? os.availableParallelism())
 const out =
   values.out ?? path.join(import.meta.dir, '..', '..', 'vx-docs', 'src', 'data', 'conformance.json')
