@@ -196,8 +196,10 @@ const startCommands = [
                         <span class="runner" />
                       </span>
                     )}
-                    <span class="lane-laps" aria-hidden="true"></span>
-                    <span class="lane-value"><b>{l.ratio}</b></span>
+                    <span class="lane-value">
+                      <b>{l.ratio}</b>
+                      {race.k !== 'cpu' && <span class="lane-laps" aria-hidden="true" />}
+                    </span>
                   </div>
                 ))}
               </figure>

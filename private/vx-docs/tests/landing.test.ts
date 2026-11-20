@@ -298,7 +298,7 @@ describe('the landing page', () => {
       // Each lane leads with its ratio to the row's fastest, whoever that is,
       // and shows no time: a time moves every run, the ratio far less.
       expect(
-        lanes.map((m) => text(/class="lane-value"><b>([\s\S]*?)<\/b>/.exec(m[3]!)![1]!)),
+        lanes.map((m) => text(/class="lane-value">\s*<b>([\s\S]*?)<\/b>/.exec(m[3]!)![1]!)),
       ).toEqual(
         figures.map((v) =>
           ratioLabel(parseDuration(v)!, Math.min(...figures.map((f) => parseDuration(f)!))),
