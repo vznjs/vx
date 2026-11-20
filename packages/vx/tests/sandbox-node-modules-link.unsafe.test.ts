@@ -8,7 +8,8 @@
 // key never folds (globs stop at a nested project). Linux-only for the
 // strace line.
 import { realpathSync } from 'node:fs'
-import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { type RunSummary } from '../src/orchestrator/index.js'
@@ -157,6 +158,34 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(testOutcome(first)?.sandbox?.lines?.[0]).toBe(
           `openat(node_modules/@x/b/c/secret.txt) = -1 ENOENT  [${realpathSync(nested)}/secret.txt]`,
         )
+      },
+      TIMEOUT,
+    )
+
+    // A root `node_modules` linked out of the workspace (a store on another
+    // disk, a container volume) was granted at its target only: the link's
+    // own path was never bound, so `node_modules/.bin` on the task's PATH
+    // led nowhere and the tool was "not found", vx saying to install it.
+    it(
+      'a root node_modules linked outside the workspace still puts its bin on PATH',
+      async () => {
+        const outside = await mkdtemp(path.join(tmpdir(), 'vx-outside-modules-'))
+        try {
+          await mkdir(path.join(outside, '.bin'), { recursive: true })
+          await writeFile(path.join(outside, '.bin', 'hello'), '#!/bin/sh\necho hello\n', {
+            mode: 0o755,
+          })
+          await rm(path.join(fixture.root, 'node_modules'), { recursive: true, force: true })
+          await symlink(outside, path.join(fixture.root, 'node_modules'))
+          const app = await addProject(fixture.root, '@x/app', {
+            files: { 'src/index.js': '' },
+            config: `export default { tasks: { test: { exec: { command: 'mkdir -p dist && hello > dist/out.txt', sandbox: { allow: { read: ['src/**'], write: ['dist/'] } } }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }`,
+          })
+          expectOk(await runTest(), fixture)
+          expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('hello\n')
+        } finally {
+          await rm(outside, { recursive: true, force: true })
+        }
       },
       TIMEOUT,
     )

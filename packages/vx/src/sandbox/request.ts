@@ -649,7 +649,14 @@ async function linkedDeps(
   ])
   for (const [target, link] of outward) {
     if (realDirs.some((d) => atOrUnder(target, d))) granted.push(link)
-    else if (!walled(target) && !targets.has(target)) {
+    else if (!atOrUnder(target, root)) {
+      // Out of the workspace, so no key could answer for it either way:
+      // bound at the link's own path, where PATH and imports look for it.
+      // Granted at its target alone, `node_modules/.bin` led nowhere.
+      granted.push(link)
+      realDirs.push(target)
+      frontier.push([target, undefined])
+    } else if (!walled(target) && !targets.has(target)) {
       targets.set(target, { link, name: relPosix(root, target) })
       if (grants(target)) {
         realDirs.push(target)

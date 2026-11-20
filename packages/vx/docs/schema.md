@@ -2055,7 +2055,10 @@ says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant
 vx makes for you is dependencies: `node_modules` and, through it, the
 real path of every workspace package linked there, and in turn in each
-such package's own `node_modules`. A project never names
+such package's own `node_modules`. A `node_modules` linked out of the
+workspace (a store on another disk, a container volume) is granted at
+its target and laid as that link on Linux, so its `.bin` stays on the
+task's PATH. A project never names
 a sibling to import what its `package.json` already depends on. A link
 back to the task's own project, or to a directory holding it, is not
 followed: npm and Yarn link every workspace package at the root, the
