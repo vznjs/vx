@@ -35,6 +35,7 @@
         "watch-edit-before-keys",
         "watch-late-batch",
         "watch-lossy-name",
+        "watch-own-rewrite-loop",
         "watch-node-modules-input",
         "workspace-file-broken"
       ],
@@ -427,6 +428,7 @@
         "vx-lockfile/pnpm-ignored-optional",
         "vx-lockfile/pnpm-injected-workspace",
         "vx-lockfile/pnpm-manifest-files",
+        "vx-lockfile/pnpm-v13",
         "vx-lockfile/pnpm-workspace-precise",
         "vx-lockfile/refusal-message",
         "vx-lockfile/rehoist-identity",
@@ -1106,14 +1108,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1016,
-        "can": 1016,
-        "of": 1018
+        "pass": 1017,
+        "can": 1017,
+        "of": 1019
       },
       "correctness": {
-        "pass": 838,
-        "can": 838,
-        "of": 840
+        "pass": 839,
+        "can": 839,
+        "of": 841
       },
       "efficiency": {
         "pass": 169,
@@ -1161,9 +1163,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 232,
-        "can": 232,
-        "of": 232
+        "pass": 233,
+        "can": 233,
+        "of": 233
       },
       "report": {
         "pass": 9,
@@ -1183,14 +1185,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 640,
-        "can": 928,
-        "of": 1018
+        "pass": 641,
+        "can": 929,
+        "of": 1019
       },
       "correctness": {
-        "pass": 517,
-        "can": 756,
-        "of": 840
+        "pass": 518,
+        "can": 757,
+        "of": 841
       },
       "efficiency": {
         "pass": 119,
@@ -1238,9 +1240,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 167,
-        "can": 229,
-        "of": 232
+        "pass": 168,
+        "can": 230,
+        "of": 233
       },
       "report": {
         "pass": 4,
@@ -1260,14 +1262,14 @@
     },
     "nx": {
       "all": {
-        "pass": 654,
-        "can": 953,
-        "of": 1018
+        "pass": 655,
+        "can": 954,
+        "of": 1019
       },
       "correctness": {
-        "pass": 494,
-        "can": 777,
-        "of": 840
+        "pass": 495,
+        "can": 778,
+        "of": 841
       },
       "efficiency": {
         "pass": 156,
@@ -1315,9 +1317,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 163,
-        "can": 229,
-        "of": 232
+        "pass": 164,
+        "can": 230,
+        "of": 233
       },
       "report": {
         "pass": 4,
@@ -1338,13 +1340,13 @@
     "vite-task": {
       "all": {
         "pass": 507,
-        "can": 758,
-        "of": 1018
+        "can": 759,
+        "of": 1019
       },
       "correctness": {
         "pass": 418,
-        "can": 628,
-        "of": 840
+        "can": 629,
+        "of": 841
       },
       "efficiency": {
         "pass": 87,
@@ -1393,8 +1395,8 @@
       },
       "outputs": {
         "pass": 144,
-        "can": 229,
-        "of": 232
+        "can": 230,
+        "of": 233
       },
       "report": {
         "pass": 2,
@@ -1415,13 +1417,13 @@
     "nix": {
       "all": {
         "pass": 487,
-        "can": 723,
-        "of": 1018
+        "can": 724,
+        "of": 1019
       },
       "correctness": {
         "pass": 419,
-        "can": 600,
-        "of": 840
+        "can": 601,
+        "of": 841
       },
       "efficiency": {
         "pass": 66,
@@ -1470,8 +1472,8 @@
       },
       "outputs": {
         "pass": 164,
-        "can": 227,
-        "of": 232
+        "can": 228,
+        "of": 233
       },
       "report": {
         "pass": 2,
@@ -1492,13 +1494,13 @@
     "moon": {
       "all": {
         "pass": 591,
-        "can": 910,
-        "of": 1018
+        "can": 911,
+        "of": 1019
       },
       "correctness": {
         "pass": 459,
-        "can": 747,
-        "of": 840
+        "can": 748,
+        "of": 841
       },
       "efficiency": {
         "pass": 127,
@@ -1547,8 +1549,8 @@
       },
       "outputs": {
         "pass": 129,
-        "can": 232,
-        "of": 232
+        "can": 233,
+        "of": 233
       },
       "report": {
         "pass": 5,
@@ -15158,6 +15160,43 @@
         },
         "nix": {
           "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/x is missing, expected \"x\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/absolute-link-into-workspace-restored",
+      "ref": "7iemg7",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output symlink with an absolute target inside the workspace is cached and comes back",
+      "why": "Next.js copies a server external package into `.next/node_modules` with its bin link absolute, and other tools link packages absolutely into the install. The link points inside the workspace, so a replay can give it back. A runner that refuses to store it caches nothing for that build, and every run builds again.",
+      "from": [
+        "output-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/x is missing, expected \"x\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/x is missing, expected \"x\\n\""
         },
         "moon": {
           "status": "fail",
