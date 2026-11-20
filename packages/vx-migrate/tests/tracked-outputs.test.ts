@@ -96,9 +96,11 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
     name: 'build',
     task: { exec: { command: 'b' }, inputs } as Record<string, unknown>,
   })
-  // hono/middleware: lint declared the committed `eslint-suppressions.json`,
-  // and every build and typecheck beside it ran uncached.
-  it('keeps the entry, drops the `!` readers got for it; readers stay cached', () => {
+  // hono/middleware: lint declared the committed `eslint-suppressions.json`.
+  // Dropping the `!` builds got for it wrote configs core refuses at load (a
+  // key over another task's output): a reader with no edge to lint runs
+  // uncached; one that folds lint keeps its `!` and its cache.
+  it('keeps the entry and the `!`; a reader that does not fold the writer runs uncached', () => {
     const lint = {
       name: 'lint',
       task: {
@@ -109,6 +111,14 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
       } as Record<string, unknown>,
     }
     const build = reader({ files: ['**/*', '!eslint-suppressions.json', '!dist/**'] })
+    const folds = {
+      name: 'typecheck',
+      task: {
+        exec: { command: 'tsc' },
+        dependsOn: ['a#lint'],
+        inputs: { files: ['**/*', '!eslint-suppressions.json'] },
+      } as Record<string, unknown>,
+    }
     const rootReader = reader({
       files: ['src/**'],
       workspaceFiles: ['packages/a/**', '!packages/a/eslint-suppressions.json'],
@@ -118,23 +128,31 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
     const todos = spareTrackedOutputs(
       '/w',
       [
-        { name: 'a', dir: '/w/packages/a', tasks: [lint, build] },
+        { name: 'a', dir: '/w/packages/a', tasks: [lint, build, folds] },
         { name: 'b', dir: '/w/packages/b', tasks: [rootReader, other] },
       ],
       ['packages/a/eslint-suppressions.json', 'packages/a/src/index.ts'],
     )
+    const why =
+      "reads the committed eslint-suppressions.json, which its inputs take back with a#lint's " +
+      'outputs — task runs uncached; declare its inputs in a vx.config to cache it'
     expect([
       lint.task['outputs'],
       build.task['inputs'],
+      folds.task['inputs'],
       rootReader.task['inputs'],
       other.task['inputs'],
       todos,
     ]).toEqual([
       { files: ['.cache/.eslintcache', 'eslint-suppressions.json'] },
-      { files: ['**/*', '!dist/**'] },
-      { files: ['src/**'], workspaceFiles: ['packages/a/**'] },
+      undefined,
       { files: ['**/*', '!eslint-suppressions.json'] },
-      [],
+      undefined,
+      { files: ['**/*', '!eslint-suppressions.json'] },
+      [
+        ['a#build', why],
+        ['b#build', why.replace('eslint-suppressions.json', 'packages/a/eslint-suppressions.json')],
+      ],
     ])
   })
 })

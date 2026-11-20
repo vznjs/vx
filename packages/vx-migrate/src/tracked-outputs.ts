@@ -9,7 +9,7 @@
 
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
+import { outputsOverlap } from '@vzn/vx'
 import { relPosix } from './paths.js'
 import type * as SharedOutputs from './shared-outputs.js'
 
@@ -283,27 +283,6 @@ export function spareTrackedOutputs(
   // Loaded here, on a remap only: a kept mapping's run never reads it.
   const { isKeyedGroup, unkey } = require('./shared-outputs.js') as typeof SharedOutputs
   const todos: [string, string][] = []
-  const trackedSet = new Set(tracked)
-  /** Drop the `!` entries readers carry for a committed file no output names any more. */
-  const unhide = (owner: (typeof projects)[number] | null, rooted: string) => {
-    for (const q of projects) {
-      const qrel = relPosix(root, q.dir)
-      for (const r of q.tasks) {
-        const inputs = r.task?.['inputs'] as Outputs | undefined
-        if (inputs === undefined) continue
-        const own =
-          q === owner &&
-          Array.isArray(inputs.files) &&
-          (qrel === '' || rooted.startsWith(`${qrel}/`))
-            ? rooted.slice(qrel === '' ? 0 : qrel.length + 1)
-            : undefined
-        if (own !== undefined)
-          inputs.files = (inputs.files as unknown[]).filter((g) => g !== `!${own}`)
-        if (Array.isArray(inputs.workspaceFiles))
-          inputs.workspaceFiles = inputs.workspaceFiles.filter((g) => g !== `!${rooted}`)
-      }
-    }
-  }
   for (const p of projects) {
     const rel = relPosix(root, p.dir)
     const own = rel === '' ? tracked : filesUnder(tracked, rel).map((f) => f.slice(rel.length + 1))
@@ -318,15 +297,6 @@ export function spareTrackedOutputs(
         const globs = outputs[key]
         if (!Array.isArray(globs) || globs.length === 0) continue
         const strings = globs.filter((g): g is string => typeof g === 'string')
-        // An output naming one committed file (eslint's
-        // `eslint-suppressions.json`, a codegen's `gen.ts`) is also a
-        // source: the `!` a reader's inputs got for it goes, or every
-        // reader ran uncached (hono). The entry stays: dropped, a task
-        // that rewrites the file never saved.
-        const rootedOf = (g: string) => (key === 'files' && rel !== '' ? `${rel}/${g}` : g)
-        for (const g of strings)
-          if (isLiteralPattern(g) && trackedSet.has(rootedOf(g)))
-            unhide(key === 'files' ? p : null, rootedOf(g))
         const hit = coveredTracked(strings, base)
         if (hit.length > 0) hits.push([key, hit])
       }
@@ -353,6 +323,12 @@ export function spareTrackedOutputs(
           if (r === t) continue
           const inputs = r.task?.['inputs'] as Outputs | undefined
           if (inputs === undefined) continue
+          // A reader that folds the writer's key reads the committed file
+          // through it (still the writer's input), so its `!` stays and it
+          // stays cached. Any other reader cannot drop the `!`: core refuses
+          // a key over another task's output (solid's build over the
+          // `jsx/*.d.ts` its types task regenerates; hono's lint output).
+          if (q === p && dependsOnTask(q, r, t)) continue
           const f =
             (q === p ? hidden(inputs.files, local) : undefined) ??
             hidden(inputs.workspaceFiles, rooted)
@@ -377,4 +353,41 @@ export function spareTrackedOutputs(
     }
   }
   return todos
+}
+
+/**
+ * Does `reader` reach `writer` through its project's own `dependsOn`
+ * edges, spelled `name` or `<project>#name`? Only an edge the default
+ * `inputs.tasks` folds counts: a reader that names its folded tasks
+ * itself may leave the writer out, and then its key reads the bytes.
+ */
+function dependsOnTask(
+  project: {
+    readonly name: string
+    readonly tasks: readonly {
+      readonly name: string
+      readonly task: Record<string, unknown> | null
+    }[]
+  },
+  reader: { readonly task: Record<string, unknown> | null },
+  writer: { readonly name: string },
+): boolean {
+  const own = `${project.name}#`
+  const byName = new Map(project.tasks.map((t) => [t.name, t]))
+  const seen = new Set<unknown>([reader])
+  const queue = [reader]
+  for (let at = queue.shift(); at !== undefined; at = queue.shift()) {
+    if ((at.task?.['inputs'] as { tasks?: unknown } | undefined)?.tasks !== undefined) continue
+    const deps = at.task?.['dependsOn']
+    if (!Array.isArray(deps)) continue
+    for (const d of deps) {
+      if (typeof d !== 'string') continue
+      const next = byName.get(d.startsWith(own) ? d.slice(own.length) : d)
+      if (next === undefined || seen.has(next)) continue
+      if (next.name === writer.name) return true
+      seen.add(next)
+      queue.push(next)
+    }
+  }
+  return false
 }
