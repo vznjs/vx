@@ -3,8 +3,11 @@
 // `scripts/tsconfig.json` type-checked the written `vx.config.mjs`, and its
 // import of the root `vx-preset.mjs` failed the build (TS6059, TS6307). So
 // did `packages/astro/tsconfig.test.json`, which takes in the nested
-// `performance/vx.config.mjs`. A config such a project takes in declares
-// the preset values it uses itself.
+// `performance/vx.config.mjs`. An emitting project (`outDir`) takes the
+// preset in and computes its root above it, so its output moved: cal.com's
+// `"include": ["."]` put `dist/index.js` at
+// `dist/packages/platform/constants/index.js`. A config such a project takes
+// in declares the preset values it uses itself.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -14,7 +17,7 @@ type TsConfig = {
   include?: unknown
   exclude?: unknown
   files?: unknown
-  compilerOptions?: { composite?: unknown; rootDir?: unknown }
+  compilerOptions?: { composite?: unknown; rootDir?: unknown; outDir?: unknown; noEmit?: unknown }
 }
 
 function read(file: string): TsConfig | null {
@@ -33,9 +36,14 @@ function pattern(p: string): string {
   return /[*?{]/.test(rel) || /\.[A-Za-z0-9]+$/.test(rel) ? rel : `${rel.replace(/\/$/, '')}/**/*`
 }
 
-/** Does the project `file` states take in `rel` (relative to its directory) and refuse files outside it? */
+/**
+ * Does the project `file` states take in `rel` (relative to its directory)
+ * and refuse files outside it, or emit with them?
+ */
 function seals(file: string, rel: string): boolean {
   let sealed: boolean | undefined
+  let outDir: unknown
+  let noEmit: unknown
   let include: unknown
   let exclude: unknown
   let files: unknown
@@ -46,6 +54,8 @@ function seals(file: string, rel: string): boolean {
     const o = at.compilerOptions
     if (sealed === undefined && o?.composite !== undefined) sealed = o.composite === true
     if (sealed !== true && typeof o?.rootDir === 'string') sealed = true
+    outDir ??= o?.outDir
+    noEmit ??= o?.noEmit
     include ??= at.include
     exclude ??= at.exclude
     files ??= at.files
@@ -56,7 +66,7 @@ function seals(file: string, rel: string): boolean {
     from = path.dirname(next)
     at = read(next)
   }
-  if (sealed !== true) return false
+  if (sealed !== true && (typeof outDir !== 'string' || noEmit === true)) return false
   const hit = (list: unknown): boolean =>
     Array.isArray(list) &&
     list.some((g) => typeof g === 'string' && new Bun.Glob(pattern(g)).match(rel))
