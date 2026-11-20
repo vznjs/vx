@@ -24,6 +24,16 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { shellQuote } from './nx-command.js'
 
+/**
+ * Does the command read the script's name from `$npm_lifecycle_event`,
+ * spelled or not? Wireit (`"build": "wireit"`, react-router's packages)
+ * reads it from the environment to find its own config: run by vx with
+ * none set, every such build failed "wireit must be launched with npm run".
+ */
+export function readsLifecycleEvent(command: string): boolean {
+  return /\$\{?npm_lifecycle_event\b/.test(command) || /(^|&&|\|\||;)\s*wireit(\s|$)/.test(command)
+}
+
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
 
 function usable(value: unknown): value is string {

@@ -47,10 +47,9 @@ function seals(file: string, rel: string): boolean {
   let include: unknown
   let exclude: unknown
   let files: unknown
-  let at: TsConfig | null = read(file)
-  let from = path.dirname(file)
-  // The nearest file that states a field decides it, as `extends` resolves.
-  for (let depth = 0; at !== null && depth < 8; depth++) {
+  // The nearest file that states a field decides it, as `extends` resolves:
+  // the file, then its bases, a later entry of an `extends` list first.
+  for (const at of chain(file)) {
     const o = at.compilerOptions
     if (sealed === undefined && o?.composite !== undefined) sealed = o.composite === true
     if (sealed !== true && typeof o?.rootDir === 'string') sealed = true
@@ -59,12 +58,6 @@ function seals(file: string, rel: string): boolean {
     include ??= at.include
     exclude ??= at.exclude
     files ??= at.files
-    const ext = at.extends
-    // A package (`@tsconfig/node20`) is not followed: what it seals is rare.
-    if (typeof ext !== 'string' || !ext.startsWith('.')) break
-    const next = path.resolve(from, ext.endsWith('.json') ? ext : `${ext}.json`)
-    from = path.dirname(next)
-    at = read(next)
   }
   if (sealed !== true && (typeof outDir !== 'string' || noEmit === true)) return false
   const hit = (list: unknown): boolean =>
@@ -76,6 +69,43 @@ function seals(file: string, rel: string): boolean {
   if (Array.isArray(include)) return hit(include)
   // `files` alone lists exactly what it compiles; neither means everything.
   return !Array.isArray(files)
+}
+
+/**
+ * `file` and the configs it extends, in the order they decide a field.
+ * A package base is followed too: trpc's monotest packages extend
+ * `@monotest/tsconfig/base.json`, whose `rootDir` refused the preset.
+ */
+function chain(file: string): TsConfig[] {
+  const out: TsConfig[] = []
+  const seen = new Set<string>()
+  const visit = (at: string, depth: number): void => {
+    if (depth > 8 || seen.has(at)) return
+    seen.add(at)
+    const cfg = read(at)
+    if (cfg === null) return
+    out.push(cfg)
+    const ext = typeof cfg.extends === 'string' ? [cfg.extends] : cfg.extends
+    if (!Array.isArray(ext)) return
+    for (const e of [...ext].reverse()) {
+      if (typeof e !== 'string') continue
+      const next = resolveBase(path.dirname(at), e)
+      if (next !== null) visit(next, depth + 1)
+    }
+  }
+  visit(file, 0)
+  return out
+}
+
+/** Where tsc finds an `extends` entry: a path, or a package's file. */
+function resolveBase(from: string, spec: string): string | null {
+  if (spec.startsWith('.') || path.isAbsolute(spec))
+    return path.resolve(from, spec.endsWith('.json') ? spec : `${spec}.json`)
+  for (const s of spec.endsWith('.json') ? [spec] : [spec, `${spec}.json`, `${spec}/tsconfig.json`])
+    try {
+      return Bun.resolveSync(s, from)
+    } catch {}
+  return null
 }
 
 /**

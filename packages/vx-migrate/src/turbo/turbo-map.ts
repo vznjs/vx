@@ -16,7 +16,13 @@ import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
 import { apartTakeBacks, literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
-import { type Owner, runsScriptHooks, scriptCommand, yarnPnp } from '../script-command.js'
+import {
+  type Owner,
+  readsLifecycleEvent,
+  runsScriptHooks,
+  scriptCommand,
+  yarnPnp,
+} from '../script-command.js'
 import {
   ownFileTakeBacks,
   excludeSiblingOutputs,
@@ -1674,6 +1680,7 @@ export async function mapTurboWorkspace(
         'any other a task reads to inputs.env and exec.env.passThrough',
     )
   literalEnvGapsOnce(projects, notes)
+  nestedOutputs(root, projects)
   resolveSharedWorkspaceOutputs(root, projects)
   // A written config spreads the preset (`...globalInputs`), which the
   // take-back pass must read as its globs: unread, opencode's configs
@@ -1769,6 +1776,49 @@ function nestedInputs(root: string, projects: readonly TurboMappedProject[]): vo
       if (!extra.some((g) => !g.startsWith('!'))) continue
       const ws = inputs['workspaceFiles']
       inputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...extra])
+    }
+  })
+}
+
+/**
+ * An output whose literal head lies in a nested package (trpc's
+ * `examples-minimal-react#build` outputs `client/dist/**`, its nested
+ * `client` package's build) is another project's path, which core's
+ * project globs never reach: it refused the written config. Turbo saves
+ * it from the package, so it is named from the workspace root.
+ */
+function nestedOutputs(root: string, projects: readonly TurboMappedProject[]): void {
+  const rels = projects.map((p) => relPosix(root, p.dir))
+  projects.forEach((p, i) => {
+    const own = rels[i]!
+    if (own === '' || own === '.') return
+    const inside = rels.filter((r) => r.startsWith(`${own}/`))
+    if (inside.length === 0) return
+    for (const t of p.tasks) {
+      const outputs = t.task?.['outputs'] as Record<string, unknown> | undefined
+      const files = outputs?.['files']
+      if (outputs === undefined || !Array.isArray(files)) continue
+      const moved: string[] = []
+      const kept = files.filter((g) => {
+        if (typeof g !== 'string') return true
+        const body = g.startsWith('!') ? g.slice(1) : g
+        const segs = body.replace(/^(\.\/)+/, '').split('/')
+        const lit: string[] = []
+        for (const seg of segs) {
+          if (!isLiteral(seg)) break
+          lit.push(seg)
+        }
+        const head = `${own}/${lit.join('/')}`
+        if (!inside.some((d) => head === d || head.startsWith(`${d}/`))) return true
+        moved.push(`${g.startsWith('!') ? '!' : ''}${own}/${body.replace(/^(\.\/)+/, '')}`)
+        return false
+      })
+      if (moved.length === 0) continue
+      outputs['files'] = kept
+      const ws = outputs['workspaceFiles']
+      outputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...moved]).sort(
+        negationsLast,
+      )
     }
   })
 }
@@ -1911,7 +1961,7 @@ function npmScriptEnv(
   const version = meta.packageJson.version
   if (typeof version === 'string' && version !== '' && wanted('npm_package_version'))
     define['npm_package_version'] = field('version', version)
-  if (unfolded && wanted('npm_lifecycle_event')) define['npm_lifecycle_event'] = script
+  if (unfolded && readsLifecycleEvent(exec.command)) define['npm_lifecycle_event'] = script
   if (Object.keys(define).length > 0) exec.env = { ...exec.env, define }
 }
 

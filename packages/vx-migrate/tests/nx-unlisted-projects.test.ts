@@ -15,12 +15,12 @@ const node = (name: string, root: string) => ({
   data: { root, targets: { build: { command: 'tsc' } } },
 })
 
-async function plan(opts: { pnpm?: boolean; manifest?: boolean }) {
+async function plan(opts: { pnpm?: boolean; manifest?: boolean; globs?: string[] }) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-unlisted-'))
   try {
     await writeFile(
       path.join(root, 'package.json'),
-      JSON.stringify({ name: 'r', private: true, workspaces: ['libs/listed'] }),
+      JSON.stringify({ name: 'r', private: true, workspaces: opts.globs ?? ['libs/listed'] }),
     )
     if (opts.pnpm) await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
     for (const d of ['apps/ng', 'libs/ui', 'libs/listed']) {
@@ -48,7 +48,15 @@ async function plan(opts: { pnpm?: boolean; manifest?: boolean }) {
         configPath: null,
       },
     ]
-    const p = await migrateNx(root, metas, 'ts', path.join(root, 'graph.json'))
+    const p = await migrateNx(
+      root,
+      metas,
+      'ts',
+      path.join(root, 'graph.json'),
+      false,
+      false,
+      opts.globs ?? ['libs/listed'],
+    )
     return { extraFiles: p.extraFiles, notes: p.notes.filter((n) => n.includes('workspace glob')) }
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -78,4 +86,54 @@ describe('Nx projects no workspace glob lists', () => {
       ],
     })
   })
+
+  it('one a glob already lists gets its package.json and no note', async () => {
+    // analog, 2026-11-20: `apps/*` lists its e2e projects, which had no
+    // package.json; the note said to add them to the globs.
+    expect(await plan({ globs: ['libs/listed', 'apps/*', '!apps/skip'] })).toEqual({
+      extraFiles: [
+        { relPath: 'apps/ng/package.json', contents: '{\n  "name": "ng",\n  "private": true\n}\n' },
+        { relPath: 'libs/ui/package.json', contents: '{\n  "name": "ui",\n  "private": true\n}\n' },
+      ],
+      notes: [
+        '1 Nx project is in no workspace glob (a package.json is written where there was none) — vx finds a project by a package.json the workspace lists: add "libs/ui" to package.json `workspaces`',
+      ],
+    })
+    expect((await plan({ globs: ['libs/*', 'apps/*'] })).notes).toEqual([])
+  })
+})
+
+it('names the install a package.json under a glob calls for', async () => {
+  // The manager's lockfile lists no member the written package.json made,
+  // and the lockfile plugin refused `vx lock` after `vx init`.
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-members-'))
+  try {
+    await writeFile(
+      path.join(root, 'package.json'),
+      '{"name":"r","private":true,"workspaces":["apps/*"]}\n',
+    )
+    await writeFile(path.join(root, 'nx.json'), '{}\n')
+    await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })
+    await mkdir(path.join(root, 'apps', 'e2e'), { recursive: true })
+    await writeFile(
+      path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+      JSON.stringify({ nodes: { e2e: node('e2e', 'apps/e2e') }, dependencies: {} }),
+    )
+    const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const proc = Bun.spawn([process.execPath, '--no-install', bin, '--no-install'], {
+      cwd: root,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = Bun.stripANSI(await new Response(proc.stdout).text())
+    expect(await proc.exited).toBe(0)
+    expect(out.replace(/\s+/g, ' ')).toContain(
+      'a package.json is written in "apps/e2e", which a workspace glob lists: run your package manager\'s install, so its lockfile lists them, then vx lock',
+    )
+    expect(out).not.toContain('no workspace glob')
+    expect(await Bun.file(path.join(root, 'apps/e2e/package.json')).exists()).toBe(true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

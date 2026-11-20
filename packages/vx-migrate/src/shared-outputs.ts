@@ -296,6 +296,15 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
           "cached tasks on one path would delete each other's work; this one runs uncached. " +
           'Give it its own output path to cache it.',
       )
+      // mastra's build (api-extractor over dist/index.d.ts) depends on
+      // build:lib (tsdown into dist): build's clean deletes what build:lib
+      // wrote, and the build fails. vx is right to clean; the user is told.
+      if (reaches(tasks, clash.index, c.index))
+        tasks[clash.index]!.todos.push(
+          `depends on "${c.name}" and declares its output ${JSON.stringify(theirs)}: vx cleans ` +
+            `a task's outputs before it runs, so this task deletes what "${c.name}" wrote there ` +
+            'and runs without it. Give each task its own output path.',
+        )
     }
   }
   return tasks

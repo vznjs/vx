@@ -266,10 +266,20 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
     const base = read('tsconfig.json')
     if (base === undefined) continue
     const options = (base['compilerOptions'] ?? {}) as Record<string, unknown>
+    // A `rootDir` the config lies outside stops tsc even with `noEmit`:
+    // vercel/ai's 80 packages set `rootDir: "src"`, and every
+    // `tsc --noEmit` type-check failed on the written config.
+    const rootDir = options['rootDir']
+    const outsideRoot =
+      typeof rootDir === 'string' &&
+      !(
+        path.resolve(dir, rootDir) === dir ||
+        dir.startsWith(`${path.resolve(dir, rootDir)}${path.sep}`)
+      )
     const emits =
       options['noEmit'] !== true &&
-      (typeof options['outDir'] === 'string' || typeof options['rootDir'] === 'string')
-    if (!emits) continue
+      (typeof options['outDir'] === 'string' || typeof rootDir === 'string')
+    if (!emits && !outsideRoot) continue
     // tsc reads an entry with no wildcard and no extension as a directory.
     const reaches = (entry: unknown): boolean => {
       if (typeof entry !== 'string') return false
@@ -292,11 +302,17 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
     )
     const where = configs.map((f) => relPosix(root, path.join(dir, f))).join(' and ')
     notes.push(
-      how === 'all'
-        ? `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles ` +
+      outsideRoot
+        ? (how === 'all'
+            ? `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles `
+            : `${where}'s "include" takes `) +
+            `${relPosix(root, abs)}, outside its "rootDir" ${JSON.stringify(rootDir)}, and stops ` +
+            `(TS6059): add "${name}" to "exclude" there`
+        : how === 'all'
+          ? `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles ` +
             `${relPosix(root, abs)} too and its output moves (dist/main.js becomes dist/src/main.js): ` +
             `add "${name}" to "exclude" there`
-        : `${where}'s "include" takes ${relPosix(root, abs)}, so tsc compiles it into the ` +
+          : `${where}'s "include" takes ${relPosix(root, abs)}, so tsc compiles it into the ` +
             `build's output: add "${name}" to "exclude" there`,
     )
   }
