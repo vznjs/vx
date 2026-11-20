@@ -98,6 +98,18 @@ describe.skipIf(!loaderPresent)('npm launcher (sh)', () => {
     expect(run([path.join(pkg, 'launcher.sh'), 'x'])).toEqual({ code: 7, out: 'bin x' })
   })
 
+  it('npm, both: its own node_modules wins over a sibling of another release', () => {
+    // npm nests the platform package only when the hoisted slot holds another
+    // version (one listed or installed by hand): the sibling was run, the old
+    // release, after an upgrade said it moved. Node resolves the nested first.
+    const pkg = path.join(root, 'node_modules', '@vzn', 'vx')
+    install(pkg, path.join(pkg, 'node_modules', '@vzn', `vx-${KEY}`, 'vx'))
+    const sibling = path.join(root, 'node_modules', '@vzn', `vx-${KEY}`)
+    mkdirSync(sibling)
+    exe(path.join(sibling, 'vx'), 'echo "old $*"; exit 1')
+    expect(run([path.join(pkg, 'launcher.sh'), 'x'])).toEqual({ code: 7, out: 'bin x' })
+  })
+
   it('with no platform binary, hands the argv to launcher.cjs under node', () => {
     const pkg = path.join(root, 'node_modules', '@vzn', 'vx')
     install(pkg)
