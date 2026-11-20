@@ -121,6 +121,26 @@ describe('an output that covers the project’s own package.json', () => {
     ])
   })
 
+  // Hardening, 2026-11-20 (trigger.dev): tshy rewrites `exports` on every
+  // build with no output naming package.json, so under the default
+  // stability no tshy build was saved, nor any build over one.
+  it('turbo(): a tshy build counts its own manifest rewrite as unchanged', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { build: { outputs: ['dist/**'] } } }),
+    )
+    const a = await pkg('a', { build: 'pnpm run vendor && tshy && node x.mjs' })
+    const b = await pkg('b', { build: 'tshyx && tsc' })
+    const m = await mapTurboWorkspace(root, [a, b], {
+      splice: ownSplice,
+      persistentTodo: 'PERSIST',
+    })
+    expect(m.projects.map((p) => p.tasks[0]!.task?.['inputs'])).toEqual([
+      { files: ['**/*'], stability: { strategy: 'mutable' } },
+      { files: ['**/*'] },
+    ])
+  })
+
   it('nx(): a cached target takes the manifest back and stays cached', async () => {
     const a = await pkg('a', { build: 'tsdown' })
     const m = await mapNxWorkspace(
