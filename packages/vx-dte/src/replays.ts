@@ -67,6 +67,7 @@ export function playAside(
         w.postMessage(job)
         threads.push(w)
       } catch {
+        // quiet: no thread to start costs only time; this thread plays every fleet
         break
       }
     try {
