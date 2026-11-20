@@ -72,6 +72,21 @@ describe('vx lock and what a key never sees', () => {
     expect(r.err.match(/packages\/app#build/g)?.length).toBe(2)
   })
 
+  // create-t3-turbo's vx-migrate output passes NODE_ENV through on every
+  // task (Turbo's globalPassThroughEnv): one line per task was 78 lines.
+  it('names a finding once for every task it holds for', async () => {
+    const pass = { passThrough: ['NODE_ENV'] }
+    const r = await lock(
+      ['a', 'b', 'c', 'd', 'e'].map((n) => task(n, { files: ['src/**'] }, pass)).join(', '),
+    )
+    expect(r.code).toBe(0)
+    const lines = r.err.split('\n').filter((l) => l.includes('forwards NODE_ENV'))
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain(
+      'packages/app#a, packages/app#b and 3 more tasks: exec.env.passThrough forwards NODE_ENV,',
+    )
+  })
+
   it('names a bundler variable inputs.env keys that the child never gets', async () => {
     const r = await lock(
       task(
