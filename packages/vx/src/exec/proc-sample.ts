@@ -7,7 +7,7 @@
 // has its parent. A process that left the tree (re-parented to init) is not
 // counted; nor is the CPU of a descendant that already exited.
 
-import { readdir, readFile } from 'node:fs/promises'
+import { closeSync, openSync, readdirSync, readSync } from 'node:fs'
 import { helperEnv, procfsIsOwn } from '../util/index.js'
 
 export interface TreeUsage {
@@ -62,14 +62,38 @@ export async function sampleTrees(
     }
     let cpuMs = 0
     let rssKiB = 0
-    const rss = await Promise.all(tree.map((pid) => table.get(pid)!.rssKiB ?? linuxRssKiB(pid)))
-    for (const [i, pid] of tree.entries()) {
-      cpuMs += table.get(pid)!.cpuMs
-      rssKiB += rss[i]!
+    for (const pid of tree) {
+      const p = table.get(pid)!
+      cpuMs += p.cpuMs
+      rssKiB += p.rssKiB ?? linuxRssKiB(pid)
     }
     out.set(root, { cpuMs, rssBytes: rssKiB * 1024 })
   }
   return out
+}
+
+/**
+ * A `/proc` file's start, read in one call into one buffer: a look reads
+ * every process's `stat` on the machine, and a promise per file cost ~16 µs
+ * of vx's thread each (1.3 ms a look at 84 processes, 4 looks a second while
+ * any task runs; 0.44 ms read this way). Undefined when it is gone.
+ */
+const procBuf = Buffer.allocUnsafe(4096)
+function readProc(file: string): string | undefined {
+  let fd: number
+  try {
+    fd = openSync(file, 'r')
+  } catch {
+    return undefined // exited between the listing and the read
+  }
+  try {
+    const n = readSync(fd, procBuf, 0, procBuf.length, 0)
+    return n === 0 ? undefined : procBuf.toString('latin1', 0, n)
+  } catch {
+    return undefined
+  } finally {
+    closeSync(fd)
+  }
 }
 
 async function linuxTable(): Promise<Map<number, Proc> | undefined> {
@@ -77,48 +101,38 @@ async function linuxTable(): Promise<Map<number, Proc> | undefined> {
   if (!procfsIsOwn()) return undefined
   let entries: string[]
   try {
-    entries = await readdir('/proc')
+    entries = readdirSync('/proc')
   } catch {
     return undefined
   }
   const table = new Map<number, Proc>()
-  await Promise.all(
-    entries.map(async (entry) => {
-      const first = entry.charCodeAt(0)
-      if (first < 48 || first > 57) return
-      let stat: string
-      try {
-        stat = await readFile(`/proc/${entry}/stat`, 'utf8')
-      } catch {
-        return // exited between the listing and the read
-      }
-      // `<pid> (<comm>) <state> <ppid> …` — comm may hold spaces and parens,
-      // so the fields start after the LAST ')': state is [0], ppid [1],
-      // utime [11], stime [12], cutime [13], cstime [14]. The reaped
-      // children's share keeps a tree's sum from dropping when a member
-      // exits: what a task's short-lived processes used stays counted.
-      const close = stat.lastIndexOf(')')
-      const f = stat.slice(close + 2).split(' ')
-      if (f[0] === 'Z' || f[0] === 'X') return
-      table.set(Number(entry), {
-        ppid: Number(f[1]),
-        cpuMs: (Number(f[11]) + Number(f[12]) + Number(f[13]) + Number(f[14])) * TICK_MS,
-        comm: stat.slice(stat.indexOf('(') + 1, close),
-      })
-    }),
-  )
+  for (const entry of entries) {
+    const first = entry.charCodeAt(0)
+    if (first < 48 || first > 57) continue
+    const stat = readProc(`/proc/${entry}/stat`)
+    if (stat === undefined) continue
+    // `<pid> (<comm>) <state> <ppid> …` — comm may hold spaces and parens,
+    // so the fields start after the LAST ')': state is [0], ppid [1],
+    // utime [11], stime [12], cutime [13], cstime [14]. The reaped
+    // children's share keeps a tree's sum from dropping when a member
+    // exits: what a task's short-lived processes used stays counted.
+    const close = stat.lastIndexOf(')')
+    const f = stat.slice(close + 2).split(' ')
+    if (f[0] === 'Z' || f[0] === 'X') continue
+    table.set(Number(entry), {
+      ppid: Number(f[1]),
+      cpuMs: (Number(f[11]) + Number(f[12]) + Number(f[13]) + Number(f[14])) * TICK_MS,
+      comm: stat.slice(stat.indexOf('(') + 1, close),
+    })
+  }
   return table
 }
 
 /** `VmRSS` carries its unit (kB); 0 for a process gone or a kernel thread. */
-async function linuxRssKiB(pid: number): Promise<number> {
-  try {
-    const status = await readFile(`/proc/${pid}/status`, 'utf8')
-    const m = /^VmRSS:\s+(\d+) kB$/m.exec(status)
-    return m === null ? 0 : Number(m[1])
-  } catch {
-    return 0
-  }
+function linuxRssKiB(pid: number): number {
+  const status = readProc(`/proc/${pid}/status`)
+  const m = status === undefined ? null : /^VmRSS:\s+(\d+) kB$/m.exec(status)
+  return m === null ? 0 : Number(m[1])
 }
 
 /** macOS (and any non-Linux): one `ps` for the whole table. */
