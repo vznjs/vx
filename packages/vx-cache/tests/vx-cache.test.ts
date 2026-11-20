@@ -304,8 +304,8 @@ describe('VxCacheLayer', () => {
     expect(layer(srv.url, write, [MAIN], fake('check')).hasMany(['e1'])).rejects.toThrow(
       '/v1/artifacts answered over',
     )
-    expect(layer(srv.url, write, [MAIN], fake('refusal', 500)).get('e1')).rejects.toThrow(
-      'HTTP 500',
+    expect(layer(srv.url, write, [MAIN], fake('refusal', 400)).get('e1')).rejects.toThrow(
+      'HTTP 400',
     )
     await Bun.sleep(50)
     for (const n of Object.values(pulled)) expect(n).toBeLessThanOrEqual(256 * 1024)
@@ -438,7 +438,7 @@ describe('VxCacheLayer', () => {
       expect(await c.put(hash, new Blob(['good']), { durationMs: 1, replace: true })).toBe(false)
     expect(srv.seen.length).toBe(before)
     expect(said).toEqual([
-      "[vx] vx-cache: c0de did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; the remote misses it until the bucket's lifecycle rule expires it",
+      "[vx] vx-cache: c0de did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it, so a task that needs it fails",
     ])
   })
 
@@ -1363,6 +1363,33 @@ describe('config', () => {
     }
   })
 
+  // A reset connection on a download read as a miss: a DTE worker failed
+  // main 979cb59's docs build on an entry the remote held (2026-11-20).
+  it('asks for a download again after the connection resets', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      await layer(srv.url, token).put('ab16', new Blob(['xyzw']), { durationMs: 1 })
+      let down = 1
+      const flaky: typeof fetch = Object.assign(
+        (input: string | URL | Request, init?: RequestInit) =>
+          init?.method === 'GET' &&
+          (input instanceof Request ? input.url : input.toString()).includes(
+            '/v1/artifacts/ab16',
+          ) &&
+          down-- > 0
+            ? Promise.reject(Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }))
+            : fetch(input, init),
+        { preconnect: fetch.preconnect },
+      )
+      const got = await layer(srv.url, token, [MAIN], flaky).get('ab16')
+      expect(await got!.body.text()).toBe('xyzw')
+      expect(down).toBe(-1)
+    } finally {
+      await srv.stop()
+    }
+  })
+
   // A URL of a website answers any path 200 with its page: JSON.parse's
   // "Unrecognized token '<'" named no fault.
   it('says a 200 that is no JSON is not a vx-cache server', async () => {
@@ -1681,7 +1708,7 @@ describe('vx run with vxCache()', () => {
     expect(fx.log.filter((l) => l.startsWith('[vx]'))).toEqual([
       expect.stringMatching(/download [0-9a-f]+ from .* failed: cache: corrupt artifact for /),
       expect.stringMatching(
-        /^\[vx\] vx-cache: [0-9a-f]+ did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; /,
+        /^\[vx\] vx-cache: [0-9a-f]+ did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it, /,
       ),
     ])
     expect(new TextDecoder().decode(srv.blobs.get(name!))).toBe('not an artifact')

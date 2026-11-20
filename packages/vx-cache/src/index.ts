@@ -845,11 +845,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       // null forgot each hit the index kept, the remote never asked).
       if (this.disabled) return undefined
       const some = scopes.slice(next, next + (this.limits?.maxCheckHashes ?? scopes.length))
-      const res = await this.request(`/v1/artifacts/${hash}`, {
-        method: 'GET',
-        headers: { 'vx-scope': some.join(', ') },
-        streamed: true,
-      })
+      const res = await this.fetched(hash, some)
       if (res === undefined) return undefined
       if (res.status === 404) {
         await res.body?.cancel()
@@ -868,6 +864,33 @@ export class VxCacheLayer implements RemoteCacheLayer {
       return { body: sized(res), durationMs: undefined }
     }
     return null
+  }
+
+  /**
+   * A download's answer, asked again after a 5xx, a 429 or a reset connection, up to three tries, as an
+   * upload is: one ECONNRESET read as a miss, and a DTE worker failed main 979cb59's docs build on an
+   * entry the remote held (2026-11-20). A deadline is not retried: the download already had its time.
+   */
+  private async fetched(hash: string, scopes: readonly string[]): Promise<Response | undefined> {
+    for (let attempt = 1; ; attempt++) {
+      let res: Response | undefined
+      try {
+        res = await this.request(`/v1/artifacts/${hash}`, {
+          method: 'GET',
+          headers: { 'vx-scope': scopes.join(', ') },
+          streamed: true,
+        })
+      } catch (err) {
+        if (!RESET.has((err as { code?: unknown }).code as string) || attempt === ASK_ATTEMPTS)
+          throw err
+        await this.wait(1000 * attempt)
+        continue
+      }
+      if (res === undefined || (res.status !== 429 && res.status < 500) || attempt === ASK_ATTEMPTS)
+        return res
+      await res.body?.cancel()
+      await this.wait(1000 * attempt)
+    }
   }
 
   /** An artifact over the server's upload limit is not sent: it is said. */
@@ -893,7 +916,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (meta.replace === true) {
       if (!this.saidNoReplace)
         this.warn(
-          `[vx] vx-cache: ${hash} did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; the remote misses it until the bucket's lifecycle rule expires it`,
+          `[vx] vx-cache: ${hash} did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it, so a task that needs it fails`,
         )
       this.saidNoReplace = true
       return false
