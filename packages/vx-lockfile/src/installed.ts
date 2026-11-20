@@ -212,15 +212,22 @@ function versionAt(root: string, dir: string): string | undefined {
   // A registry package has a top-level version, so a sole `"version":` is
   // it: parsing every manifest was half a cold check (10 of 20 ms, 630 packages).
   const keys = text.match(VERSION_KEY)
-  if (keys?.length === 1) return /"version"\s*:\s*"([^"\\]*)"/.exec(text)?.[1]
+  if (keys?.length === 1) return clean(/"version"\s*:\s*"([^"\\]*)"/.exec(text)?.[1])
   let version: unknown
   try {
     version = obj(JSON.parse(text))['version']
   } catch {
     return undefined
   }
-  return typeof version === 'string' ? version : undefined
+  return typeof version === 'string' ? clean(version) : undefined
 }
+
+/**
+ * A manifest version as npm cleans it on publish and every lockfile records
+ * it: typebot's @upstash/redis ships `"version": "v1.35.3"`, which bun.lock
+ * names 1.35.3, and the check refused every run as another install.
+ */
+const clean = (v: string | undefined): string | undefined => v?.trim().replace(/^[=v]+/, '')
 const VERSION_KEY = /"version"\s*:/g
 
 /**
