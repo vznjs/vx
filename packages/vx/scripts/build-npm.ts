@@ -171,6 +171,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     keywords: string[]
     dependencies?: Record<string, string>
     exports: Record<string, unknown>
+    typesVersions?: Record<string, unknown>
   }
 
   const mainDir = join(outDir, 'vx')
@@ -201,6 +202,9 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     // The same exports map the workspace package declares.
     exports: corePkg.exports,
     types: './src/index.ts',
+    // `@vzn/vx/config` under `moduleResolution: node` (node10), which reads no
+    // `exports`: unpublished, cal.com's builds failed on it (TS2307).
+    typesVersions: corePkg.typesVersions,
     // The CLI: a sh launcher that execs the matching platform binary (no
     // Node start on the common path), Node's when run by `node` (Yarn 2+).
     bin: { vx: './launcher.cjs' },

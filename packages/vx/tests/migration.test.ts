@@ -123,6 +123,27 @@ describe('tscCompilesConfigNotes', () => {
     ])
   })
 
+  // cal.com's platform packages: `"include": ["."]` took the vx.config.mts
+  // written there into every build, with no word from vx.
+  it('names an include that reaches the config, a .mts one too', () => {
+    const out = `"compilerOptions": { "outDir": "./dist" }`
+    for (const include of ['["."]', '["./"]', '["**/*"]', '["*.mts", "src"]'])
+      expect(notes(`{ ${out}, "include": ${include} }`, undefined, 'vx.config.mts')).toEqual([
+        `tsconfig.json's "include" takes vx.config.mts, so tsc compiles it into the build's output: ` +
+          'add "vx.config.mts" to "exclude" there',
+      ])
+    expect(notes(`{ ${out}, "include": ["src", "*.d.ts"] }`, undefined, 'vx.config.mts')).toEqual(
+      [],
+    )
+    expect(
+      notes(
+        `{ ${out}, "include": ["."], "exclude": ["vx.config.mts"] }`,
+        undefined,
+        'vx.config.mts',
+      ),
+    ).toEqual([])
+  })
+
   it('says nothing where tsc leaves the config alone', () => {
     const out = `"compilerOptions": { "outDir": "dist" }`
     expect(notes(`{ ${out}, "include": ["src"] }`)).toEqual([])

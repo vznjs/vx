@@ -305,6 +305,8 @@ interface Literals {
   readonly globs: ReadonlyMap<string, 'files' | 'workspaceFiles'>
   /** The global `!` entries, which a preset spread may hide from the lists. */
   readonly taken: readonly string[]
+  /** The task's own outputs, root-relative: a key over them never holds. */
+  readonly own: string[]
   /** The package, root-relative (`files` entries are relative to it). */
   readonly pkgDir: string
 }
@@ -409,7 +411,12 @@ function keyIgnoredGlobbed(
         : [],
     ),
   )
-  const taken = [...l.taken, ...current].map((t) => new Bun.Glob(t))
+  const taken = [...l.taken, ...l.own, ...current].map((t) => new Bun.Glob(t))
+  // A directory ignored whole is taken back whole when a `!` reaches every
+  // path under it (`!pkg/dist/**` over `pkg/dist/`): named, it re-added
+  // what was taken, and a task's own output dir keyed its own build.
+  const takenWhole = (dir: string) =>
+    taken.some((t) => t.match(`${dir}\u0000`) && t.match(`${dir}\u0000/\u0000`))
   for (const [glob, kind] of l.globs) {
     const matcher = new Bun.Glob(glob)
     const at = kind === 'files' && l.pkgDir !== '' ? `${l.pkgDir}/` : ''
@@ -420,7 +427,9 @@ function keyIgnoredGlobbed(
       const nested = at !== '' && projectDirs.some((d) => d.startsWith(at) && e.startsWith(`${d}/`))
       const base = nested ? '' : at
       const entry = e.endsWith('/')
-        ? globUnder(glob.slice(at.length), e.slice(at.length, -1))
+        ? takenWhole(e)
+          ? null
+          : globUnder(glob.slice(at.length), e.slice(at.length, -1))
         : matcher.match(e) && !taken.some((t) => t.match(e))
           ? literalGlob(e.slice(base.length))
           : null
@@ -1932,7 +1941,9 @@ function keyOnlyGroup(t: TurboMappedTask): TurboMappedTask {
     return t
   const { exec: _exec, ...group } = task
   uncache(group)
-  return { ...t, task: group }
+  // Its pass-through went with the command: an import nothing spreads
+  // fails a tsc with noUnusedLocals over the config (astro's `scripts`).
+  return { ...t, task: group, uses: new Set([...t.uses].filter((k) => k !== 'pass')) }
 }
 
 function buildTask(
@@ -2287,7 +2298,8 @@ function buildTask(
   for (const g of globalKept)
     if (g.startsWith('!')) taken.push(g.slice(1))
     else if (!isLiteral(g) && !globs.has(g)) globs.set(g, 'workspaceFiles')
-  literals.tasks.push({ inputs, rels, globs, taken, pkgDir: atRoot ? '' : pkgDir })
+  const ownOut: string[] = []
+  literals.tasks.push({ inputs, rels, globs, taken, own: ownOut, pkgDir: atRoot ? '' : pkgDir })
   // Turbo keys every task on its inputs, cached or not, and a dependant
   // folds that key: an uncached task's inputs still move its dependants.
   task.inputs = inputs
@@ -2361,6 +2373,8 @@ function buildTask(
   // as unchanged ('mutable').
   const takeBacks = ownFileTakeBacks(outFiles, opts.ownConfig?.(pkgDir))
   outFiles.push(...takeBacks)
+  for (const g of outFiles) if (!g.startsWith('!')) ownOut.push(atRoot ? g : `${pkgDir}/${g}`)
+  for (const g of wsOutFiles) if (!g.startsWith('!')) ownOut.push(g)
   const rewritesManifest = takeBacks.includes('!package.json')
 
   if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))

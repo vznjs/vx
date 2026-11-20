@@ -38,7 +38,7 @@ import {
 import type { PackageMeta } from './packages.js'
 import { relPosix } from './paths.js'
 import { foldScriptHooks, type Owner, ownerOf, runsScriptHooks } from './script-command.js'
-import { onceReader, tscBuildInfo } from './tsc-buildinfo.js'
+import { onceReader, RUNS_SCRIPT, tscBuildInfo } from './tsc-buildinfo.js'
 
 /**
  * Task names that conventionally never exit. Every mapper guesses the same
@@ -579,10 +579,6 @@ const PNP_NOTE =
 
 /** A runner of this package's scripts by name: `run-p build:*`. */
 const RUNS_OWN = /(?:^|\s)(?:run-s|run-p|npm-run-all)(?:\s|$)/
-
-/** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
-const RUNS_SCRIPT =
-  /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
 
 /**
  * The scripts a command runs by name: a package manager's (`pnpm x`, `npm run

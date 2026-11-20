@@ -71,7 +71,7 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
     expect(p.projects.every((x) => !x.importLines.some((l) => l.startsWith('import')))).toBe(true)
   })
 
-  it('sealsConfig: composite or rootDir, own or extended, whose project takes the file', async () => {
+  it('sealsConfig: composite, rootDir or outDir, own or extended, whose project takes the file', async () => {
     const at = async (name: string, body: string) => {
       const dir = path.join(root, name)
       await mkdir(dir, { recursive: true })
@@ -93,6 +93,9 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       await at('files', '{"compilerOptions":{"composite":true},"files":["index.ts"]}'),
       await at('unsealed', '{"extends":"../base.json","compilerOptions":{"composite":false}}'),
       await at('broken', '{ not json'),
+      // cal.com: an emitting project takes the preset in and its output moves.
+      await at('emitting', '{"compilerOptions":{"outDir":"./dist"},"include":["."]}'),
+      await at('no-emit', '{"compilerOptions":{"outDir":"dist","noEmit":true}}'),
     ]).toEqual([
       true,
       true,
@@ -106,6 +109,8 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       false,
       false,
       false,
+      false,
+      true,
       false,
     ])
     expect(sealsConfig(root, path.join(root, 'none', 'vx.config.mjs'))).toBe(false)

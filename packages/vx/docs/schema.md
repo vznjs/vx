@@ -79,9 +79,10 @@ It resolves under every `moduleResolution`, `node` (node10) included.
 
 A `tsconfig.json` with no `include` takes every `.ts` beside it, a
 `vx.config.ts` too: an emitting build's output then moves (`dist/main.js`
-becomes `dist/src/main.js`, as in a NestJS app). `vx init` and
-`@vzn/vx-migrate` say so where they write one; add `"vx.config.ts"` to
-that tsconfig's `exclude`.
+becomes `dist/src/main.js`, as in a NestJS app). An `include` that reaches
+the config (`["."]`) compiles it into the output too. `vx init` and
+`@vzn/vx-migrate` say so where they write one; add the config's file name
+to that tsconfig's `exclude`.
 
 The object is JSON data. The cache key folds `JSON.stringify` of each
 task's config, `vx lock` stores the same JSON, and `vx watch` re-reads a
