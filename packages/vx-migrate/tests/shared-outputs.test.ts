@@ -463,3 +463,33 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
     ])
   })
 })
+
+describe('resolveSharedOutputs — an earlier task whose writes are undeclared', () => {
+  it('keeps the outputs of a task that runs after one declaring none', () => {
+    // ngrx, 2026-11-20: build-package (ng-packagr into dist/modules/store,
+    // no outputs in Nx) then build (tsc + cpy into the same dir, declared):
+    // the clean before build deleted the package ng-packagr wrote.
+    const build = task('build', [], ['^build', 'build-package'])
+    build.task!['outputs'] = { files: [], workspaceFiles: ['dist/modules/store'] }
+    const tasks = resolveSharedOutputs([
+      task('build-package', []),
+      build,
+      task('test', ['coverage/**'], ['build']),
+      task('lint', ['report.json']),
+      task('pack', ['out/**'], ['lint']),
+    ])
+    expect((tasks[1]!.task!['outputs'] as { clean?: boolean }).clean).toBe(false)
+    // Through build, whose own outputs are declared, test reaches
+    // build-package too: its writes are unknown everywhere downstream.
+    expect((tasks[2]!.task!['outputs'] as { clean?: boolean }).clean).toBe(false)
+    // lint declares its writes, so pack's clean deletes none of them.
+    expect((tasks[4]!.task!['outputs'] as { clean?: boolean }).clean).toBeUndefined()
+    expect(tasks.every((t) => t.todos.length === 0)).toBe(true)
+  })
+
+  it('cleans after a group or an upstream project, whose writes are not this task’s', () => {
+    const group: GeneratedTask = { name: 'all', todos: [], task: { dependsOn: ['^build'] } }
+    const tasks = resolveSharedOutputs([group, task('build', ['dist/**'], ['all', '^build'])])
+    expect((tasks[1]!.task!['outputs'] as { clean?: boolean }).clean).toBeUndefined()
+  })
+})

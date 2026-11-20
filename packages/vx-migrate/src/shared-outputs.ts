@@ -315,7 +315,50 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
       )
     }
   }
+  keepUndeclaredWrites(tasks)
   return tasks
+}
+
+/**
+ * A cached task that runs after a same-project task declaring no outputs
+ * keeps its outputs on a miss (`clean: false`): that task's writes are
+ * unknown, so they may land in this task's outputs, and Turbo and Nx never
+ * clean before a run. ngrx's build (tsc + cpy into dist/modules/store) runs
+ * after build-package (ng-packagr into the same dir, no outputs in Nx), and
+ * the clean deleted the package. A task declaring its outputs is held to
+ * them by the overlap rules above; a group writes nothing.
+ */
+function keepUndeclaredWrites(tasks: GeneratedTask[]): void {
+  const byName = new Map(tasks.map((t, i) => [t.name, i]))
+  const positive = (v: unknown): boolean =>
+    Array.isArray(v) && v.some((f) => typeof f === 'string' && !f.startsWith('!'))
+  const outputsOf = (t: GeneratedTask) =>
+    t.task?.['outputs'] as { files?: unknown; workspaceFiles?: unknown; clean?: unknown } | undefined
+  const declares = (t: GeneratedTask): boolean => {
+    const o = outputsOf(t)
+    return positive(o?.files) || positive(o?.workspaceFiles)
+  }
+  const writesUnknown = (t: GeneratedTask): boolean =>
+    t.task?.['exec'] !== undefined && !declares(t)
+  for (const t of tasks) {
+    const outputs = outputsOf(t)
+    if (t.task?.['cache'] !== true || !declares(t) || outputs!.clean !== undefined) continue
+    const seen = new Set<number>()
+    const queue = [t]
+    let unknown = false
+    for (let u = queue.shift(); u !== undefined && !unknown; u = queue.shift()) {
+      const deps = u.task?.['dependsOn']
+      if (!Array.isArray(deps)) continue
+      for (const d of deps) {
+        const i = typeof d === 'string' ? byName.get(d) : undefined
+        if (i === undefined || seen.has(i)) continue
+        seen.add(i)
+        if (writesUnknown(tasks[i]!)) unknown = true
+        queue.push(tasks[i]!)
+      }
+    }
+    if (unknown) outputs!.clean = false
+  }
 }
 
 /**
