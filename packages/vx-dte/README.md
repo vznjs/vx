@@ -921,7 +921,9 @@ worker, no task waiting for room, each worker there after its platform's
 fastest real warm-up. The ideal end is the best with the workers the run
 may start: the perfect end, or later where a platform's work (each
 task's cores for as long as it held them) fills every core its sizes'
-`max` allows from that platform's fastest warm-up. The ideal end
+`max` allows, each worker from the first ask after its own real
+warm-up (a slot no worker joined, after the platform's fastest): the
+spread of joins is no plan's, but when it asked is. The ideal end
 (`distribution.idealMs`) sits beside the real time in the run summary
 and the footer's `ideal` line, and `@vzn/vx-ci` prints it.
 

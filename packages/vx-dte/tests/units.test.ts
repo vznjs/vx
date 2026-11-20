@@ -5209,6 +5209,40 @@ it('learns from what a crowded task would have used, and keeps its share for the
   }
 })
 
+// Main bb5f317, 2026-11-20: 151.4 s against an ideal of 142.0 s, its 9
+// smalls joining 14.1-24.5 s while the ideal had all 9 at 14.1 s. The
+// spread of joins is no plan's (2026-11-18: "We should not be penalized
+// for that"): each worker counts from its own warm-up.
+it('the ideal counts each worker from its own warm-up', async () => {
+  const ids = ['t1', 't2', 't3', 't4']
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 2, memory: 100 })
+    h.o.spawned('small#2', { size: 'small', cpu: 2, memory: 100 })
+    const asked = performance.now()
+    const w1 = await h.worker(2, 'small#1')
+    await Bun.sleep(50)
+    const runs = ids.map((id) => h.o.execute(h.req(id)))
+    for (let done = 0; done < ids.length; )
+      for (const id of (await w1.batches()).flat()) {
+        await w1.finish(id, `k-${id}`, { exitCode: 0, durationMs: 400, cpuMs: 100 })
+        done++
+      }
+    // The second joins 400 ms after the first, once the tasks are over.
+    await Bun.sleep(Math.max(0, asked + 400 - performance.now()))
+    await h.worker(2, 'small#2')
+    await Bun.sleep(50)
+    await Promise.all(runs)
+    const perfect = h.o.perfectMs(() => [])!
+    // 1,600 core-ms on 4 cores: 400 ms from the first join, as the
+    // perfect end, had both joined then; the second 400 ms later adds 200.
+    const size = [{ name: 'small', max: 2, cpu: 2, memory: 16e9 }]
+    expect(h.o.idealMs(() => [], size)! - perfect).toBeGreaterThanOrEqual(150)
+  } finally {
+    await h.stop()
+  }
+})
+
 it('knows how long a worker took to join', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
