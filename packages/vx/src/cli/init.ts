@@ -20,6 +20,7 @@ import {
   projectManager,
   startedVersion,
   targetVersion,
+  settleArgv,
   upgradeArgv,
   type ManagedInstall,
 } from './upgrade.js'
@@ -271,6 +272,8 @@ export function initInstalls(
       plugins: [...plugins],
     }
     out.push({ argv: upgradeArgv(install, version), cwd: pkgRoot })
+    const settle = settleArgv(install)
+    if (settle !== undefined) out.push({ argv: settle, cwd: pkgRoot })
   }
   return out
 }

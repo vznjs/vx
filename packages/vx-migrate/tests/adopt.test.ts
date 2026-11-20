@@ -410,7 +410,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           r.out.includes('Declare pnpm()'),
         ]).toEqual([
           0,
-          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\n',
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\ninstall\n',
           { build: 'turbo run build' },
           true,
           // No task Turbo runs, and still a config (2026-10-14).
@@ -447,7 +447,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
         ]).toEqual([
           0,
-          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history @vzn/vx-ci\n',
+          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history @vzn/vx-ci\ninstall\n',
           true,
           ['turbo', 'pnpm', 'vxHistory', 'github', 'gitlab'],
           true,
@@ -487,7 +487,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         ]).toEqual([
           0,
           ['pnpm', 'vxHistory'],
-          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\n',
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\ninstall\n',
           true,
           ws,
         ])
@@ -770,9 +770,9 @@ describe('vx-migrate on a pnpm Nx repo', () => {
         const c = await migrate(shell.root, shell.env, [])
         expect([r.code, await calls(exec.root), c.code, await calls(shell.root)]).toEqual([
           0,
-          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history\n',
+          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history\ninstall\n',
           0,
-          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\n',
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\ninstall\n',
         ])
       } finally {
         await rm(exec.root, { recursive: true, force: true })
@@ -865,7 +865,7 @@ describe('install when PATH holds an unrunnable manager', () => {
     // Its words are shown only on failure, so it leaves a mark instead.
     await writeFile(
       path.join(root, 'real', 'pnpm'),
-      '#!/bin/sh\necho "real pnpm $*" > "$(dirname "$0")/ran"\n',
+      '#!/bin/sh\necho "real pnpm $*" >> "$(dirname "$0")/ran"\n',
     )
     await chmod(path.join(root, 'real', 'pnpm'), 0o755)
     await writeFile(path.join(root, 'ws', 'package.json'), '{"name":"ws"}')
@@ -894,8 +894,10 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
     return out
   }
 
-  it('runs the pnpm that launched it', async () => {
-    expect(await probe('real/pnpm')).toBe('real pnpm add -D -w @vzn/vx')
+  // Then a plain install: pnpm 10.19's `add` on create-t3-turbo left a peer
+  // set linked that its new lockfile no longer named, and the first run refused.
+  it('runs the pnpm that launched it, add then install', async () => {
+    expect(await probe('real/pnpm')).toBe('real pnpm add -D -w @vzn/vx\nreal pnpm install')
   })
 
   it('names minimumReleaseAgeExclude when pnpm ran and refused', async () => {

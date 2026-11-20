@@ -1295,7 +1295,7 @@ describe('upgradeManaged: core and its plugins move together', () => {
     const tools = path.join(root, 'tools')
     const said = path.join(root, 'said')
     await mkdir(tools)
-    await writeFile(path.join(tools, 'pnpm'), `#!/bin/sh\necho "$*" > ${said}\nexit ${code}\n`)
+    await writeFile(path.join(tools, 'pnpm'), `#!/bin/sh\necho "$*" >> ${said}\nexit ${code}\n`)
     await chmod(path.join(tools, 'pnpm'), 0o755)
     const install = {
       manager: 'pnpm' as const,
@@ -1319,7 +1319,11 @@ describe('upgradeManaged: core and its plugins move together', () => {
   it('a core already at the release still installs a plugin left behind', async () => {
     const { said, run } = await project('9.9.9', '0.0.1')
     await run()
-    expect(await readFile(said, 'utf8')).toBe('add @vzn/vx@9.9.9 @vzn/vx-otel@9.9.9 --save-dev\n')
+    // Then a plain install: pnpm 10.19's `add` on create-t3-turbo left a peer
+    // set linked that its new lockfile no longer named.
+    expect(await readFile(said, 'utf8')).toBe(
+      'add @vzn/vx@9.9.9 @vzn/vx-otel@9.9.9 --save-dev\ninstall\n',
+    )
     // Control: both at the release, nothing runs.
     const both = await project('9.9.9', '9.9.9')
     await both.run()

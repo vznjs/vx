@@ -2668,8 +2668,10 @@ already at the release (`› vx upgrade  plugins → 0.0.2`); a plugin in
 another field than core is refused, so no install moves a dependency's
 field. The versions are pinned, so pnpm's `minimumReleaseAge` refuses a
 release too young rather than mixing releases, and the error names
-`minimumReleaseAgeExclude`. vx prints what it runs, runs it there, and
-exits with an error if it fails:
+`minimumReleaseAgeExclude`. Under pnpm a plain `pnpm install` follows:
+pnpm's `add` can leave a peer set linked that the lockfile it wrote no
+longer names, and the lockfile plugin refuses that tree. vx prints what
+it runs, runs it there, and exits with an error if it fails:
 
 ### A project's vx and the global one
 
@@ -2768,7 +2770,8 @@ $ vx init --dry
 ran it, else Bun, also under Yarn 2+, which has no `yarn global`;
 skipped when the `vx` on `PATH` is already that
 version) and, under the topmost `package.json`, as a root
-devDependency with that repo's own manager (2026-10-20). The latest
+devDependency with that repo's own manager (2026-10-20), then a plain
+`pnpm install` under pnpm (as `vx upgrade` does). The latest
 version is read from the registry that manager is configured for
 ([Which registry](#which-registry)). A failed install stops init.
 Before the first install there is no lockfile, so init declares the
