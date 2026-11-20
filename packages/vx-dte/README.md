@@ -618,6 +618,9 @@ use your own instead.
   dependant fails on the worker, naming the entry. One whose remote copy
   does not read back on a worker (a truncated upload) is sent again from
   this machine over that copy, and the task runs again; once per entry.
+  A remote that never writes over a copy it holds (`@vzn/vx-cache`) takes
+  none: the task runs again once all the same, as a read that failed on its
+  way (a reset connection) reads the next time.
 - A failed or uncached task is saved under a key of the run, the task and
   the send (a retry gets its own), so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, a dependant of a failure under
