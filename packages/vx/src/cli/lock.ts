@@ -622,7 +622,15 @@ const INLINED_ENV =
  * that the command never gets. One git spawn at most.
  */
 function unkeyedReads(root: string, check: GraphCheck): string[] {
-  const lines: string[] = []
+  // One line per finding, naming every task it holds for: a migrated Turbo
+  // repo's shared `globalPassThroughEnv` (NODE_ENV) printed it once per task,
+  // 78 lines on create-t3-turbo.
+  const tasksOf = new Map<string, string[]>()
+  const said = (task: string, line: string) => {
+    const tasks = tasksOf.get(line)
+    if (tasks === undefined) tasksOf.set(line, [task])
+    else tasks.push(task)
+  }
   const found: { task: string; ws: string; rel: string; glob: string }[] = []
   for (const m of check.all) {
     for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
@@ -650,8 +658,9 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
         (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),
       )
       if (unkeyed.length > 0)
-        lines.push(
-          `${task}: exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
+        said(
+          task,
+          `exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
         )
       // The reverse: the key moves with the value, but the build never sees it.
       const given = new Set([
@@ -660,17 +669,22 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
       ])
       const unseen = (t.inputs?.env ?? []).filter((v) => INLINED_ENV.test(v) && !given.has(v))
       if (unseen.length > 0)
-        lines.push(
-          `${task}: inputs.env keys ${unseen.join(', ')}, which a bundler writes into its output, but the command never gets ${unseen.length === 1 ? 'it' : 'them'} — add ${unseen.length === 1 ? 'it' : 'them'} to exec.env.passThrough`,
+        said(
+          task,
+          `inputs.env keys ${unseen.join(', ')}, which a bundler writes into its output, but the command never gets ${unseen.length === 1 ? 'it' : 'them'} — add ${unseen.length === 1 ? 'it' : 'them'} to exec.env.passThrough`,
         )
     }
   }
   const ignored =
     found.length === 0 ? null : checkIgnoreSync(root, [...new Set(found.map((f) => f.ws))])
-  const said = found
+  const ignoredLines = found
     .filter((f) => ignored?.has(f.ws) === true)
     .map((f) => ignoredInputLine(f.task, f.rel, f.glob))
-  return [...said, ...lines]
+  const lines = [...tasksOf].map(
+    ([line, tasks]) =>
+      `${tasks.length <= 3 ? tasks.join(', ') : `${tasks.slice(0, 2).join(', ')} and ${tasks.length - 2} more tasks`}: ${line}`,
+  )
+  return [...ignoredLines, ...lines]
 }
 
 /**

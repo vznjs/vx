@@ -1970,8 +1970,12 @@ same gate (`restorableOutput`). On the save side a
 **symlinked output** is stored as the link, as Turbo and Nx keep it: a
 link to a file, to a directory or to nothing comes back as that link,
 and no byte of its target is read, so a link a sandboxed task planted to
-a file it could not read packs nothing of it (L-23). An absolute link, or
-one leading out of the workspace or into `.git` (as text, and on disk: a
+a file it could not read packs nothing of it (L-23). An absolute link
+into the workspace is stored, and rewritten on disk, as the relative link
+that lands on the same path (Next 16's `.next/node_modules` copy of a
+server external package keeps its bin link absolute), so the entry hits
+in any checkout. An absolute link out of the workspace, or a link
+leading out of it or into `.git` (as text, and on disk: a
 link already there before a `..` is followed, so with a committed
 `up -> ..` the target `../up/../x` is out), fails the save by name
 (the restore's own check, so no entry is stored that every restore refuses), as the config

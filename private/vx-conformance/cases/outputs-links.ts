@@ -51,6 +51,29 @@ export const outputsLinks = [
   }),
 
   defineCase({
+    id: 'outputs/absolute-link-into-workspace-restored',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An output symlink with an absolute target inside the workspace is cached and comes back',
+    why: 'Next.js copies a server external package into `.next/node_modules` with its bin link absolute, and other tools link packages absolutely into the install. The link points inside the workspace, so a replay can give it back. A runner that refuses to store it caches nothing for that build, and every run builds again.',
+    from: ['output-links'],
+    workspace: {
+      ...one({
+        command: `${CONCAT} && ln -s "$PWD/../../shared/x.txt" dist/x`,
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      }),
+      files: { 'shared/x.txt': 'x\n' },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [`${A}/dist`]: null } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'], files: { [`${A}/dist/x`]: 'x\n' } } },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/link-beside-large-file-restored',
     category: 'outputs',
     kind: 'correctness',
