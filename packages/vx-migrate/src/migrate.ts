@@ -45,6 +45,7 @@ import type { LoadReads } from './package-fs.js'
 import {
   discoverPackages,
   findManifestRoot,
+  globLists,
   loadPackageWorkspace,
   type PackageMeta,
   type PackageWorkspace,
@@ -71,6 +72,7 @@ import {
   packageManagerOf,
   type PackageManager,
   parseModeAnswer,
+  relink,
   uninstall,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
@@ -292,7 +294,15 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   } else if (runner === 'nx') {
     if (hasGraph) {
       source = NX_GRAPH_REL
-      plan = await migrateNx(root, metas, format, undefined, writesWorkspace, bare)
+      plan = await migrateNx(
+        root,
+        metas,
+        format,
+        undefined,
+        writesWorkspace,
+        bare,
+        workspace.packageGlobs,
+      )
     } else {
       // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
       // when exported. The workspace's own nx exports it, as `nx()` does, into
@@ -316,7 +326,15 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           )
         }
         source = 'nx graph'
-        plan = await migrateNx(root, metas, format, snapshot, writesWorkspace, bare)
+        plan = await migrateNx(
+          root,
+          metas,
+          format,
+          snapshot,
+          writesWorkspace,
+          bare,
+          workspace.packageGlobs,
+        )
       } finally {
         await rm(tmp, { recursive: true, force: true })
       }
@@ -411,6 +429,24 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
             needsSelf ? [] : ['@vzn/vx-migrate'],
           )),
         ]
+  // A package.json written where a member glob already reaches is a new
+  // member the manager's lockfile does not list yet, and the lockfile plugin
+  // refuses the lock: the manager installs first (analog's e2e projects).
+  const members = plan.extraFiles
+    .map((f) => f.relPath)
+    .filter((r) => path.posix.basename(r) === 'package.json')
+    .map((r) => path.posix.dirname(r))
+    .filter((d) => globLists(workspace.packageGlobs, d))
+    .sort()
+  const membersNote =
+    members.length === 0 || refused || bare
+      ? []
+      : [
+          `a package.json is written in ${members.map((d) => JSON.stringify(d)).join(', ')}, which a workspace glob lists: ` +
+            (parsed.noInstall === true
+              ? "run your package manager's install, so its lockfile lists them"
+              : "the package manager's install ran after, so its lockfile lists them"),
+        ]
   const code = await applyMigration({
     root,
     metas: migrationMembers(metas, plan),
@@ -419,13 +455,23 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     verb: 'vx-migrate',
     written: formatWritten(root),
     steps,
-    notes: refused || bare || cacheNote === undefined ? [] : [cacheNote],
+    notes: [...membersNote, ...(refused || bare || cacheNote === undefined ? [] : [cacheNote])],
     dry: parsed.dry,
     json: parsed.json === true,
     force: parsed.force,
     format,
     // The written workspace file imports plugins `--no-install` left out.
-    ...(parsed.noInstall === true ? {} : { lock: lockWorkspace }),
+    ...(parsed.noInstall === true
+      ? {}
+      : {
+          lock:
+            members.length === 0 || parsed.dry
+              ? lockWorkspace
+              : async (at: string) => {
+                  await relink(at)
+                  return lockWorkspace(at)
+                },
+        }),
   })
   return exitAfter(code, steps)
 }
