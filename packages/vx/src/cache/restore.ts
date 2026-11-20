@@ -16,7 +16,6 @@ import path from 'node:path'
 import { isIndexFull } from '../index-db/index.js'
 import {
   UserError,
-  formatBytes,
   isDiskFull,
   isFsRefusal,
   isOutOfFds,
@@ -235,15 +234,9 @@ async function restoreTree(
   dated: Map<string, number>,
   absentDirs: Set<string>,
 ): Promise<void> {
+  // No ceiling: a tree is this machine's own save, or a remote's artifact
+  // the ceiling already bounded as it was decoded into one.
   const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
-  let bytes = 0
-  for (const r of files) bytes += r.size
-  if (bytes > ix.artifactCeiling) {
-    throw new CorruptArtifactError(
-      hash,
-      `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(ix.artifactCeiling)} artifact ceiling`,
-    )
-  }
   if (
     await copyTree(
       ix,

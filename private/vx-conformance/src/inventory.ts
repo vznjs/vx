@@ -951,6 +951,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'archive-extract-meta',
     'archive-security',
     'artifact-ceiling',
+    'artifact-ceiling-tree',
     'artifact-checksum',
     'artifact-pack-properties',
     'attempt-steps',

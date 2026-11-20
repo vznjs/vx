@@ -1867,7 +1867,17 @@ anywhere. So is a body that is not exactly one frame: the declaration is
 the first frame's alone, while the one-call decoder decodes every frame,
 so until 2026-09-27 (A-5) a 100-byte frame with a large one appended
 expanded whole in memory (2 GiB from a 32 KB body) before its length was
-checked. The frame's blocks are walked by their own sizes to tell. A save meets the same ceiling first: the pack plans the tar
+checked. The frame's blocks are walked by their own sizes to tell.
+The ceiling bounds bytes that are decoded. The default store keeps this
+machine's entries as plain files, never decoded, so it saves and
+restores an entry past 2 GiB: a Next.js `output: 'standalone'` build
+packs to 2.1 GB (formbricks, 2026-11-20) and was never cached before.
+Only its upload meets the ceiling, the bound every remote hit enforces:
+the remote warns `not sent to a remote: its outputs pack to …, past the
+2.0 GB artifact ceiling a remote hit enforces; this machine keeps it`
+(`tests/artifact-ceiling-tree.test.ts`). The `.tar.zst` store
+(`decompress: false`) decodes on restore, so its save meets the ceiling
+first: the pack plans the tar
 from one stat per output, and a tar past 2 GiB is refused before a byte
 is compressed — the run stays green, one status line names the task
 (`[vx] cache save failed: <task> is not cached: its outputs pack to …,
