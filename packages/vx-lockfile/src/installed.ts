@@ -23,6 +23,7 @@ import {
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { UserError } from '@vzn/vx'
+import { readUtf8 } from './json.js'
 
 const load = createRequire(import.meta.url)
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
@@ -204,7 +205,7 @@ function yarnBerryCompare(
 function versionAt(root: string, dir: string): string | undefined {
   let text: string
   try {
-    text = readFileSync(path.join(root, dir, 'package.json'), 'utf8')
+    text = readUtf8(path.join(root, dir, 'package.json'))
   } catch {
     return undefined
   }
@@ -420,11 +421,9 @@ export function checkInstalled(
   let verdict: Verdict
   try {
     verdict = check.compare(
-      readFileSync(path.join(root, lockFile), 'utf8'),
+      readUtf8(path.join(root, lockFile)),
       parse,
-      marker === undefined
-        ? undefined
-        : { file: marker, text: readFileSync(path.join(root, marker), 'utf8') },
+      marker === undefined ? undefined : { file: marker, text: readUtf8(path.join(root, marker)) },
       root,
     )
   } catch (err) {

@@ -11,11 +11,10 @@
 //
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { reachDigests } from '@vzn/vx'
 import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
-import { record, sectionsOf, stable } from './json.js'
+import { readUtf8, record, sectionsOf, stable } from './json.js'
 import { topLevel } from './pnpm-blocks.js'
 import { joinPosix, resolvePosix } from './posix.js'
 
@@ -407,7 +406,7 @@ export function manifestLinks(lock: Lockfile, root: string): string[] {
       const rel = joinPosix(importer, base)!
       let pkg: unknown
       try {
-        const text = readFileSync(path.join(root, rel), 'utf8')
+        const text = readUtf8(path.join(root, rel))
         out.add(rel)
         pkg = base.endsWith('.yaml')
           ? Bun.YAML.parse(text)
