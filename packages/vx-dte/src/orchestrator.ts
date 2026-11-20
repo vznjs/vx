@@ -448,6 +448,11 @@ export class Orchestrator {
   private readonly lenders = new Set<string>()
   /** Each graph's upstreams as orders name them (`dep`). */
   private readonly deps = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, DepFiles | null>>()
+  /** Each graph's tasks after an uncached one: its files lie on one worker only (`pinUp`). */
+  private readonly afterUncached = new WeakMap<
+    ReadonlyMap<string, TaskNode>,
+    Map<string, boolean>
+  >()
 
   constructor(private readonly o: OrchestratorOptions) {
     this.sent = o.sent ?? new Map()
@@ -808,8 +813,10 @@ export class Orchestrator {
         const job = byId.get(task)
         // One made again during this pass (`remake`) has its own pin.
         const pin = pins.get(task) ?? job?.again
-        // Not handed over yet: what it needs is unknown, so any worker may take it once it is.
-        if (job === undefined) return a === undefined ? !at : !a.faulty
+        // Not handed over yet: what it needs is unknown, so any worker may take it once it is,
+        // but one not joined only if no uncached upstream's files will pin it elsewhere.
+        if (job === undefined)
+          return a === undefined ? !at && !this.pinnedAhead(nodes, task) : !a.faulty
         // Not joined yet: it may wait for it, unless pinned to a worker online.
         if (a === undefined) {
           if (at || pin?.only !== undefined) return false
@@ -833,7 +840,8 @@ export class Orchestrator {
         // Pinned to a worker online: no new one may take it.
         if ((pins.get(task) ?? byId.get(task)?.again)?.only !== undefined) return false
         const need = byId.get(task)?.need
-        return need === undefined || roomier(need, size.cores, size.memory) || !bigger(need)
+        if (need === undefined) return !this.pinnedAhead(nodes, task)
+        return roomier(need, size.cores, size.memory) || !bigger(need)
       },
       // A server base a start brings is booked once on its worker: a worker it fills takes no more this pass.
       admit: (task, worker) => {
@@ -968,6 +976,31 @@ export class Orchestrator {
       if (w.id !== avoid && !w.faulty && (platform === undefined || w.platform === platform))
         return { avoid }
     return where
+  }
+
+  /**
+   * Whether `id`, not yet handed over, reads an uncached upstream's files
+   * (`kept`), which only the worker that made them holds: a new worker
+   * would make them again. Asked ahead for one, the lull of main's local e2e started
+   * a worker its task, pinned to the first, never used.
+   */
+  private pinnedAhead(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string): boolean {
+    if (nodes === undefined) return false
+    let memo = this.afterUncached.get(nodes)
+    if (memo === undefined) this.afterUncached.set(nodes, (memo = new Map()))
+    const known = memo.get(id)
+    if (known !== undefined) return known
+    let after = false
+    for (const d of upstream(nodes, id)) {
+      const n = nodes.get(d)
+      const exec = n?.config.exec
+      if (exec?.command !== undefined && exec.persistent === undefined && leaves(n!)) {
+        after = true
+        break
+      }
+    }
+    memo.set(id, after)
+    return after
   }
 
   /** Where `job` may go as its upstreams' files lie (`pin`, before a retry's own rule). */
