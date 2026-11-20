@@ -611,9 +611,15 @@ describe('a written config passes the repo’s own checks', () => {
 // init on every vx.lock.json and the .vx cache: prettier reads the root
 // .gitignore alone, and a lock is vx's to write, not the formatter's.
 describe('a repo formatted by prettier or oxfmt', () => {
-  const bin = (name: string) => {
+  const bin = (name: string, declared = true) => {
     mkdirSync(path.join(root, 'node_modules', '.bin'), { recursive: true })
     writeFileSync(path.join(root, 'node_modules', '.bin', name), '')
+    if (declared) {
+      writeFileSync(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', devDependencies: { [name]: '1' } }),
+      )
+    }
   }
   const IGNORED = [
     '.vx/cache',
@@ -644,6 +650,14 @@ describe('a repo formatted by prettier or oxfmt', () => {
       expect(lines()).toEqual(IGNORED)
     })
   }
+
+  // Hardening, 2026-11-20 (documenso): a biome repo's hoisted, undeclared
+  // prettier got a .prettierignore written beside its biome.json.
+  it('writes none where prettier is only hoisted, not declared at the root', async () => {
+    bin('prettier', false)
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+    expect(existsSync(path.join(root, '.prettierignore'))).toBe(false)
+  })
 
   it('names the lines a biome config needs, and nothing once it has them', async () => {
     writeFileSync(path.join(root, 'biome.jsonc'), '{ "files": { "includes": ["**"] } }\n')

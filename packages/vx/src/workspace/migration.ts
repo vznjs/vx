@@ -667,8 +667,11 @@ const FORMATTER_IGNORED = [
 function formatterIgnore(root: string): string[] {
   const file = path.join(root, '.prettierignore')
   const had = existsSync(file)
-  const bins = ['prettier', 'oxfmt'].some((n) =>
-    existsSync(path.join(root, 'node_modules', '.bin', n)),
+  // Declared at the root, not merely hoisted: documenso's biome repo got a
+  // .prettierignore because a dependency's prettier sat in node_modules/.bin.
+  const declared = rootDeclared(root)
+  const bins = ['prettier', 'oxfmt'].some(
+    (n) => declared.has(n) && existsSync(path.join(root, 'node_modules', '.bin', n)),
   )
   if (!had && !bins) return []
   // One linked elsewhere is not the workspace's to write.
@@ -685,6 +688,23 @@ function formatterIgnore(root: string): string[] {
   return [
     `${had ? 'added' : 'wrote'} .prettierignore lines for vx's locks and cache, which prettier and oxfmt would check`,
   ]
+}
+
+/** What the root package.json lists in its dependencies and devDependencies. */
+function rootDeclared(root: string): Set<string> {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(path.join(root, 'package.json'), 'utf8').replace(/^\uFEFF/, ''),
+    ) as Record<string, unknown> | null
+    return new Set(
+      ['dependencies', 'devDependencies'].flatMap((f) => {
+        const deps = pkg?.[f]
+        return deps !== null && typeof deps === 'object' ? Object.keys(deps) : []
+      }),
+    )
+  } catch {
+    return new Set()
+  }
 }
 
 /**

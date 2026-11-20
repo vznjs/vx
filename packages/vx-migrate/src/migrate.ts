@@ -914,12 +914,12 @@ function esModuleAt(dir: string): boolean {
   }
 }
 
-/** The formatters a repo installs at its root, each with its write command. */
-const FORMATTERS: readonly (readonly [string, readonly string[]])[] = [
-  ['prettier', ['--write']],
-  ['biome', ['format', '--write']],
-  ['oxfmt', []],
-  ['dprint', ['fmt']],
+/** The formatters a repo installs at its root: bin, package, write command. */
+const FORMATTERS: readonly (readonly [string, string, readonly string[]])[] = [
+  ['prettier', 'prettier', ['--write']],
+  ['biome', '@biomejs/biome', ['format', '--write']],
+  ['oxfmt', 'oxfmt', []],
+  ['dprint', 'dprint', ['fmt']],
 ]
 
 /**
@@ -932,9 +932,12 @@ function formatWritten(root: string): (relPaths: readonly string[]) => string[] 
     // A formatter has no parser for `.vx/.gitignore`.
     const relPaths = written.filter((f) => /\.[cm]?[jt]s$/.test(f))
     if (relPaths.length === 0) return []
-    for (const [name, args] of FORMATTERS) {
+    // Declared at the root, not merely hoisted: documenso's biome repo got
+    // its configs formatted by a dependency's prettier, and `biome check` failed.
+    const declared = rootDeclared(root)
+    for (const [name, pkg, args] of FORMATTERS) {
       const bin = path.join(root, 'node_modules', '.bin', name)
-      if (!existsSync(bin)) continue
+      if (!declared.has(pkg) || !existsSync(bin)) continue
       const r = Bun.spawnSync({
         cmd: [bin, ...args, ...relPaths],
         cwd: root,
@@ -950,6 +953,22 @@ function formatWritten(root: string): (relPaths: readonly string[]) => string[] 
       return [`${name} did not format the written files (exit ${r.exitCode ?? 'signal'}): ${why}`]
     }
     return []
+  }
+}
+
+/** What the root package.json lists in its dependencies and devDependencies. */
+function rootDeclared(root: string): Set<string> {
+  try {
+    const text = readFileSync(path.join(root, 'package.json'), 'utf8').replace(/^\uFEFF/, '')
+    const pkg = JSON.parse(text) as Record<string, unknown> | null
+    return new Set(
+      ['dependencies', 'devDependencies'].flatMap((f) => {
+        const deps = pkg?.[f]
+        return deps !== null && typeof deps === 'object' ? Object.keys(deps) : []
+      }),
+    )
+  } catch {
+    return new Set()
   }
 }
 
