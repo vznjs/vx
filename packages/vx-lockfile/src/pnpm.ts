@@ -15,7 +15,8 @@ import path from 'node:path'
 import { reachDigests } from '@vzn/vx'
 import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
 import { readUtf8, record, sectionsOf, stable } from './json.js'
-import { topLevel } from './pnpm-blocks.js'
+import { topLevel, v13Document } from './pnpm-blocks.js'
+import { fromV13 } from './pnpm-v13.js'
 import { joinPosix, resolvePosix } from './posix.js'
 
 // The graph the digest built from this parse, for `importerLinks`: `vx
@@ -74,14 +75,17 @@ export function parseLockfile(text: string): Lockfile {
   // with "regenerate it", which regenerates the same two documents.
   const parsed: unknown = Bun.YAML.parse(text)
   const docs = (Array.isArray(parsed) ? parsed : [parsed]).filter((d) => d !== null)
-  const doc = record(docs.at(-1))
+  const last = record(docs.at(-1))
   const leading = docs.slice(0, -1)
-  if (doc === undefined) throw new Error('pnpm-lock.yaml: not a YAML document')
-  const version = scalar(doc['lockfileVersion'])
+  if (last === undefined) throw new Error('pnpm-lock.yaml: not a YAML document')
+  const version = scalar(last['lockfileVersion'])
   const major = Number.parseInt(version, 10)
   if (!Number.isFinite(major) || major < 5) {
     throw new Error(`pnpm-lock.yaml: unsupported lockfileVersion ${JSON.stringify(version)}`)
   }
+  // Read as v9, a v13 file had no `importers`: no project folded a
+  // dependency, and a bump replayed every project's old output.
+  const doc = major >= 13 ? fromV13(last) : last
 
   const importers = new Map<string, ReadonlyMap<string, string>>()
   const sections = new Map<string, string>()
@@ -168,7 +172,8 @@ export function parseLockfile(text: string): Lockfile {
  * next top-level key; any other shape is parsed whole.
  */
 export function recordedImporters(text: string): ReadonlyMap<string, ReadonlyMap<string, string>> {
-  const rawImporters = record(topLevel(text, 'importers'))
+  const rawImporters =
+    record(topLevel(text, 'importers')) ?? record(v13Document(text)?.['projects'])
   if (rawImporters === undefined) return parseLockfile(text).importers
   const importers = new Map<string, ReadonlyMap<string, string>>()
   for (const [dir, entry] of Object.entries(rawImporters)) importers.set(dir, depsOf(entry))

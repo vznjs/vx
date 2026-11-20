@@ -1151,7 +1151,7 @@ const LOCKFILE_KEYS: PluginOptionKinds<LockfileOptions> = {
   scope: 'string',
 }
 
-/** `pnpm-lock.yaml` (lockfile v5, v6, v9, one document or pnpm 11's two): importers, snapshots, peers, patches, `link:`. */
+/** `pnpm-lock.yaml` (lockfile v5, v6, v9, v13; one document or pnpm 11's two): importers, snapshots, peers, patches, `link:`. */
 export function pnpm(options: LockfileOptions = {}): VxPlugin {
   refuseUnknownOptions('pnpm()', options, LOCKFILE_KEYS)
   return plugin(MANAGERS.pnpm, options)
