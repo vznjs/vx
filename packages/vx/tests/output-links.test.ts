@@ -2,8 +2,9 @@
 // Turbo and Nx keep it (M's call, 2026-10-16): a link to a file came back
 // as a copy of its target, and a link to a directory failed every save
 // ("vx stores regular files only"), so a Next.js standalone or pnpm layout
-// never hit. A link whose target leaves the workspace, is absolute, or
-// lies in .git is refused on save and on restore.
+// never hit. A link whose target leaves the workspace or lies in .git is
+// refused on save and on restore; an absolute one into the workspace is
+// kept relative.
 
 import {
   existsSync,
@@ -132,7 +133,7 @@ it.skipIf(process.platform === 'win32')(
 )
 
 it.skipIf(process.platform === 'win32')(
-  'a link out of the workspace, into .git, or an absolute one fails the save and names the link',
+  'a link out of the workspace or into .git fails the save and names the link',
   async () => {
     const out = await workspace(
       'rm -rf dist && mkdir -p dist && ln -s ../../../../../etc/hosts dist/x',
@@ -141,11 +142,6 @@ it.skipIf(process.platform === 'win32')(
     expect(r.out + r.err).toMatch(
       /output dist\/x is a symlink to \.\.\/\.\.\/\.\.\/\.\.\/\.\.\/etc\/hosts, outside the workspace/,
     )
-    const abs = await workspace(
-      'rm -rf dist && mkdir -p dist && echo a > dist/a.txt && ln -s "$PWD/dist/a.txt" dist/x',
-    )
-    const r2 = await build(abs.root)
-    expect(r2.out + r2.err).toMatch(/output dist\/x is a symlink to an absolute path/)
     // A venv's `bin/python -> /usr/local/bin/python3` was told it named
     // this machine's checkout: it names a path outside the workspace.
     const sys = await workspace('rm -rf dist && mkdir -p dist && ln -s /usr/bin/env dist/python')
@@ -616,6 +612,33 @@ it.skipIf(process.platform === 'win32')(
       const r = await build(root)
       expect(r.out + r.err).toMatch(said)
     }
+  },
+  TIMEOUT,
+)
+
+// Next 16 copies a server external package (`serverExternalPackages:
+// ['esbuild']`) into `.next/node_modules` with its bin link absolute, and
+// react-email's preview links its packages absolutely into the pnpm store:
+// on resend/react-email 3 of 7 builds never cached, while Turbo hit.
+it.skipIf(process.platform === 'win32')(
+  'an absolute link into the workspace is kept relative: saved, hit, and restored to the same file',
+  async () => {
+    const { root, dir } = await workspace(
+      'rm -rf dist && mkdir -p dist/bin dist/pkg && echo a > dist/pkg/a.txt && ln -s "$PWD/dist/pkg/a.txt" dist/bin/x && ln -s "$PWD/src" dist/src',
+    )
+    const first = await ok(root)
+    expect(first).not.toContain('cache save failed')
+    expect([
+      readlinkSync(path.join(dir, 'dist/bin/x')),
+      readlinkSync(path.join(dir, 'dist/src')),
+    ]).toEqual(['../pkg/a.txt', '../src'])
+    // The link on disk is the one the entry holds: the next run hits, with nothing to restore.
+    expect(await ok(root)).not.toContain('↓')
+    rmSync(path.join(dir, 'dist'), { recursive: true, force: true })
+    await ok(root)
+    expect(readlinkSync(path.join(dir, 'dist/bin/x'))).toBe('../pkg/a.txt')
+    expect(await Bun.file(path.join(dir, 'dist/bin/x')).text()).toBe('a\n')
+    expect(readlinkSync(path.join(dir, 'dist/src'))).toBe('../src')
   },
   TIMEOUT,
 )

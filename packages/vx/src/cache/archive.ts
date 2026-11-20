@@ -359,13 +359,15 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
             `${shown} is a symlink to ${to}, an absolute path outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there (a copy, e.g. \`python -m venv --copies\`), or take it back with a '!' entry`,
           )
         }
-        if (path.isAbsolute(to)) {
-          throw new UserError(
-            `${shown} is a symlink to an absolute path (${to}): vx restores a link as written, and an absolute one names this machine's checkout — make it relative, or take it back with a '!' entry`,
-          )
-        }
+        // One into the workspace is kept as the relative link that lands on the
+        // same path: Next 16 copies a server external package into
+        // `.next/node_modules` with its bin link absolute, and an absolute link
+        // named this checkout on every other (resend/react-email never cached
+        // 3 of 7 builds; Turbo hit). The disk takes the same link below.
+        const rel = path.isAbsolute(to) ? path.relative(path.dirname(abs), to) || '.' : undefined
+        const link = rel ?? to
         const refused =
-          args.root === undefined ? 'out' : linkRefused(path.dirname(abs), to, args.root)
+          args.root === undefined ? 'out' : linkRefused(path.dirname(abs), link, args.root)
         if (refused === 'out') {
           throw new UserError(
             `${shown} is a symlink to ${to}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
@@ -376,7 +378,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
             `${shown} is a symlink to ${to}, inside .git: vx never restores into Git's metadata — emit a file there, or take it back with a '!' entry`,
           )
         }
-        return { name, link: to, abs, shown }
+        return { name, link, abs, shown, absolute: rel !== undefined }
       }
       if (!st.isFile()) {
         throw new UserError(
@@ -435,6 +437,14 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         )
       }
     }
+  }
+  // The entry holds the relative form, so the disk does too: a hit compares
+  // the link's text, and the absolute one restored on every next run.
+  for (const f of symlinks) {
+    if (!f.absolute) continue
+    const tmp = `${f.abs}.vx-link-${process.pid}-${Math.random().toString(36).slice(2)}`
+    await symlink(f.link, tmp)
+    await rename(tmp, f.abs)
   }
   // In the outputs' order, not as each stat settled: one tree, one artifact.
   const regular: Array<Exclude<(typeof files)[number], { link: string }>> = []
