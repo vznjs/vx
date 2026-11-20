@@ -153,6 +153,8 @@ const KNOWN = new Set([
   '097cc74e9dae38f656af626eaa5f8e222f46bb16',
   // #5386's, type style; the branch takes no force push.
   'a8ff13f3fca2945ad7c721dcc6355b5e90a517f9',
+  // #5402's, type style; the branch takes no force push.
+  '27cdf07dbccde44938573ce434315cc852da1389',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {

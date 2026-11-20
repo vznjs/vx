@@ -2517,9 +2517,13 @@ export class Orchestrator {
    * (2026-11-18: "we shoud have a ideal time with current configuration
    * not perfect. for perfect that should be othe rnumber"). Its perfect
    * end (`perfectMs`), or later where a platform's work, each task's cores
-   * for as long as it held them, fills every core its sizes' `max` allows
-   * from that platform's fastest real warm-up. Still a floor: no run with
-   * these sizes beats it. With no sizes it is the perfect end.
+   * for as long as it held them, fills every core its sizes' `max` allows,
+   * each worker from the first ask after its own real warm-up: the spread
+   * of joins is a side effect no plan escapes (2026-11-18: "We should not
+   * be penalized for that"), and when it asked is the plan's own. A slot
+   * no worker joined counts from its platform's fastest warm-up. Still a
+   * floor: no run with these sizes beats it. With no sizes it is the
+   * perfect end.
    */
   idealMs(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): number | undefined {
     const perfect = this.perfectMs(depsOf)
@@ -2528,13 +2532,36 @@ export class Orchestrator {
     const work = new Map<string | undefined, number>()
     for (const t of r.tasks)
       work.set(t.platform, (work.get(t.platform) ?? 0) + t.cores * (t.ms ?? 0))
+    const ups = new Map<string, number[]>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      const size = a.declared?.size
+      if (a.warmUpMs === undefined || size === undefined) continue
+      const of = ups.get(size)
+      if (of === undefined) ups.set(size, [a.warmUpMs])
+      else of.push(a.warmUpMs)
+    }
     let end = perfect
     for (const [platform, w] of work) {
+      // Each core slot's start, and its cores.
+      const slots: [number, number][] = []
+      for (const s of sizes) {
+        if (platform !== undefined && s.platform !== undefined && s.platform !== platform) continue
+        const own = [...(ups.get(s.name) ?? [])].sort((a, b) => a - b)
+        for (let i = 0; i < s.max; i++) slots.push([own[i] ?? r.warm(platform), s.cpu])
+      }
+      if (slots.length === 0) continue
+      slots.sort((a, b) => a[0] - b[0])
+      // Water-filled: the end at which the slots online by then hold the work.
       let cores = 0
-      for (const s of sizes)
-        if (platform === undefined || s.platform === undefined || s.platform === platform)
-          cores += s.max * s.cpu
-      if (cores > 0) end = Math.max(end, r.from + r.warm(platform) + w / cores)
+      let started = 0
+      let at = Infinity
+      for (let i = 0; i < slots.length; i++) {
+        cores += slots[i]![1]
+        started += slots[i]![0] * slots[i]![1]
+        at = (w + started) / cores
+        if (i + 1 === slots.length || at <= slots[i + 1]![0]) break
+      }
+      if (cores > 0) end = Math.max(end, r.from + at)
     }
     return end
   }
