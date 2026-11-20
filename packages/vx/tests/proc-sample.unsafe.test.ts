@@ -94,6 +94,26 @@ describe('sampleTrees', () => {
       stop(live)
     }
   })
+
+  // A look reads every process's stat on the machine, 4 times a second while
+  // any task runs. A promise per file cost 1.3 ms of vx's thread a look at 84
+  // processes, against 0.44 read in place: such a look ends before a timer
+  // queued beside it gets a turn.
+  it.skipIf(process.platform !== 'linux')(
+    'reads the process table in place, with no turn of the loop per file',
+    async () => {
+      const live = burner()
+      try {
+        let turned = false
+        const immediate = setImmediate(() => (turned = true))
+        const usage = await sampleTrees([live.pid])
+        clearImmediate(immediate)
+        expect([usage.has(live.pid), turned]).toEqual([true, false])
+      } finally {
+        stop(live)
+      }
+    },
+  )
 })
 
 it("reads ps's time column, macOS hundredths (either decimal point) and days included", () => {
