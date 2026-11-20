@@ -15,7 +15,12 @@ const node = (name: string, root: string) => ({
   data: { root, targets: { build: { command: 'tsc' } } },
 })
 
-async function plan(opts: { pnpm?: boolean; manifest?: boolean; globs?: string[] }) {
+async function plan(opts: {
+  pnpm?: boolean
+  pnpmLock?: boolean
+  manifest?: boolean
+  globs?: string[]
+}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-unlisted-'))
   try {
     await writeFile(
@@ -23,6 +28,8 @@ async function plan(opts: { pnpm?: boolean; manifest?: boolean; globs?: string[]
       JSON.stringify({ name: 'r', private: true, workspaces: opts.globs ?? ['libs/listed'] }),
     )
     if (opts.pnpm) await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
+    if (opts.pnpmLock)
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n")
     for (const d of ['apps/ng', 'libs/ui', 'libs/listed']) {
       await mkdir(path.join(root, d), { recursive: true })
     }
@@ -85,6 +92,14 @@ describe('Nx projects no workspace glob lists', () => {
         '2 Nx projects are in no workspace glob (a package.json is written where there was none) — vx finds a project by a package.json the workspace lists: add "apps/ng", "libs/ui" to pnpm-workspace.yaml\'s `packages`',
       ],
     })
+  })
+
+  // spartan: an Nx repo on pnpm with no pnpm-workspace.yaml was told to edit
+  // package.json `workspaces`, which pnpm never reads.
+  it('pnpm with no pnpm-workspace.yaml is told to create it', async () => {
+    expect((await plan({ pnpmLock: true })).notes).toEqual([
+      '2 Nx projects are in no workspace glob (a package.json is written where there was none) — vx finds a project by a package.json the workspace lists: add "apps/ng", "libs/ui" to pnpm-workspace.yaml\'s `packages` (create the file: pnpm reads no package.json `workspaces`)',
+    ])
   })
 
   it('one a glob already lists gets its package.json and no note', async () => {
