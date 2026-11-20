@@ -87,12 +87,15 @@ uses a lent token over its own and never lends one on, nor any once
 its remote is off for the run.
 
 An upload answered with a 5xx or a 429, or whose connection reset, is sent again, three tries in
-all: a PUT names its hash, so a second one stores the same bytes.
+all: a PUT names its hash, so a second one stores the same bytes. A
+download is asked again the same way, so one reset connection is no miss:
+in a distributed run a read that fails fails the run.
 
 An artifact is immutable on the server: one that did not read back
 (corrupt) is not replaced. Its re-run's upload is not sent and not
 counted as landed (a DTE worker is not told it did), and the run says
-once that the remote misses the key until the bucket's lifecycle rule
+once that this machine's copy is not sent over it, so a task that needs
+it fails; the remote misses the key until the bucket's lifecycle rule
 expires it (`@vzn/vx-cache-server`'s Expiry). A download that ends
 short of the size the server names (`vx-size`) is a transfer that
 failed, not a corrupt artifact: a miss, asked again next run.

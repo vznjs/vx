@@ -2776,28 +2776,6 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
   }
 })
 
-// Main 979cb59 (2026-11-20): a worker's read of a dependency's copy, which
-// the remote held, failed on ECONNRESET; vx-cache never writes over a copy it
-// holds, so nothing was sent again, and the docs build failed the run.
-it('reads a dependency again once when its copy could not be sent again', async () => {
-  const h = await harness(new Map([node('t')]))
-  h.store.artifacts.resend = async () => false
-  try {
-    const a = await h.worker(1)
-    await Bun.sleep(50)
-    const ran = h.o.execute(h.req('t'))
-    expect(await a.batches()).toEqual([['t']])
-    const unread = { exitCode: 1, durationMs: 0, unread: ['k-d'] }
-    await a.finish('t', a.orders[0]!.runKey, unread)
-    expect(await a.batches()).toEqual([['t']])
-    // Read again once: the next fails the task.
-    await a.finish('t', a.orders[1]!.runKey, unread)
-    expect((await ran).exitCode).toBe(1)
-  } finally {
-    await h.stop()
-  }
-})
-
 // A worker ended its task and held it no more while this machine sent a
 // dependency it could not read again, longer than a lease: the lease
 // ending meanwhile called the worker faulty and gave the task to another.
@@ -2817,24 +2795,14 @@ for (const sent of [true, false])
       expect(await a.batches()).toEqual([['t']])
       const b = await h.worker(1)
       await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
-      // Past the lease, before the resend ends: once it does, the task runs again.
-      const until = performance.now() + 3.5 * beat
+      const until = performance.now() + 6 * beat
       const toB: string[] = []
       while (performance.now() < until)
         for (const m of await b.poll()) toB.push((m.body as { type: string }).type)
       expect(toB.filter((t) => t === 'batch')).toEqual([])
       expect(faults).toEqual([])
       if (sent) expect(await a.batches()).toEqual([['t']])
-      else {
-        // read again once, on either: the second unread fails it
-        const w = await Promise.race([a.batches().then(() => a), b.batches().then(() => b)])
-        await w.finish('t', w.orders.at(-1)!.runKey, {
-          exitCode: 1,
-          durationMs: 0,
-          unread: ['k-d'],
-        })
-        expect((await ran).exitCode).toBe(1)
-      }
+      else expect((await ran).exitCode).toBe(1)
     } finally {
       await h.stop()
     }

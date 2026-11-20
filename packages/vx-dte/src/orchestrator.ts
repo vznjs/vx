@@ -1597,13 +1597,10 @@ export class Orchestrator {
     // the task's failure, it failed every run, the remote saying it held the
     // key (2026-10-25).
     if (head.unread !== undefined) {
-      // A read that failed on its way (main 979cb59: ECONNRESET on a copy the
-      // remote held, which vx-cache never writes over) is read again once.
-      const first = head.unread.some((k) => job.reread?.has(k) !== true)
       const sent = await this.resend(job, head.unread)
       // Its worker was lost meanwhile: the task went back to the queue.
       if (a.busy.get(task) !== job) return
-      if (sent || first) {
+      if (sent) {
         // Its cores back while it still counts as begun, which `unhold` reads;
         // then not begun, so `retry` holds no fault against its worker.
         this.unhold(a, job)
