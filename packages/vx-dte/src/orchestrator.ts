@@ -448,10 +448,10 @@ export class Orchestrator {
   private readonly lenders = new Set<string>()
   /** Each graph's upstreams as orders name them (`dep`). */
   private readonly deps = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, DepFiles | null>>()
-  /** Each graph's tasks after an uncached one: its files lie on one worker only (`pinUp`). */
+  /** Each graph's tasks' uncached upstreams, whose files lie on one worker only (`pinUp`). */
   private readonly afterUncached = new WeakMap<
     ReadonlyMap<string, TaskNode>,
-    Map<string, boolean>
+    Map<string, readonly string[]>
   >()
 
   constructor(private readonly o: OrchestratorOptions) {
@@ -979,28 +979,27 @@ export class Orchestrator {
   }
 
   /**
-   * Whether `id`, not yet handed over, reads an uncached upstream's files
-   * (`kept`), which only the worker that made them holds: a new worker
-   * would make them again. Asked ahead for one, the lull of main's local e2e started
-   * a worker its task, pinned to the first, never used.
+   * Whether `id`, not yet handed over, reads files an uncached upstream
+   * left on a worker (`kept`): a new worker would make them again. Asked
+   * ahead for one, the lull of the local e2e started a worker that ran
+   * nothing. An upstream yet to run pins nothing: it may run where its
+   * dependant goes (main 4035f14 planned Infinity before any join).
    */
   private pinnedAhead(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string): boolean {
-    if (nodes === undefined) return false
+    if (nodes === undefined || this.kept.size === 0) return false
     let memo = this.afterUncached.get(nodes)
     if (memo === undefined) this.afterUncached.set(nodes, (memo = new Map()))
-    const known = memo.get(id)
-    if (known !== undefined) return known
-    let after = false
-    for (const d of upstream(nodes, id)) {
-      const n = nodes.get(d)
-      const exec = n?.config.exec
-      if (exec?.command !== undefined && exec.persistent === undefined && leaves(n!)) {
-        after = true
-        break
-      }
+    let ups = memo.get(id)
+    if (ups === undefined) {
+      ups = [...upstream(nodes, id)].filter((d) => {
+        const n = nodes.get(d)
+        const exec = n?.config.exec
+        return exec?.command !== undefined && exec.persistent === undefined && leaves(n!)
+      })
+      memo.set(id, ups)
     }
-    memo.set(id, after)
-    return after
+    for (const d of ups) if (this.kept.has(d)) return true
+    return false
   }
 
   /** Where `job` may go as its upstreams' files lie (`pin`, before a retry's own rule). */
