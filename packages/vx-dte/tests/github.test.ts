@@ -2,7 +2,6 @@
 // size, naming the run, the relay, the commit and the workers; a refused
 // dispatch says so for each worker.
 
-import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -136,8 +135,7 @@ it('refuses a workflow that is not a file name in .github/workflows', () => {
   expect(() => github({ workflow: 'workers.yml' })).not.toThrow()
 })
 
-// A dispatch's inputs are no secret: the worker job's log prints its
-// steps' env, `GITHUB_ENV`'s too, unmasked.
+// A dispatch's inputs are no secret: GitHub shows them with its run.
 it('refuses to hand its workers a secret-named variable', () => {
   expect(() => github({ env: { NPM_TOKEN: 'npm_secret-value' } })).toThrow(
     'github(): env "NPM_TOKEN" is a secret',
@@ -419,39 +417,6 @@ it('says a worker let go in a run that goes on is left running', async () => {
   }
 })
 
-// A killed orchestrator never closes: the job's `if: cancelled()` step cancels
-// what this file lists, or the queued workers hold macOS runners.
-it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async () => {
-  let id = 0
-  const server = Bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    fetch: () => Response.json({ workflow_run_id: ++id, run_url: '', html_url: '' }),
-  })
-  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
-  Object.assign(process.env, {
-    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
-    GITHUB_REPOSITORY: 'o/r',
-    GITHUB_TOKEN: 'ght',
-    RUNNER_TEMP: temp,
-  })
-  try {
-    const adapter = github()
-    void adapter.spawn(spawn('small#1', 'small'))
-    void adapter.spawn(spawn('mac#2', 'mac'))
-    const file = path.join(temp, 'vx-dte-runs')
-    let lines: string[] = []
-    for (let i = 0; i < 100 && lines.length < 2; i++) {
-      await Bun.sleep(10)
-      lines = existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n') : []
-    }
-    expect(lines.toSorted()).toEqual(['/repos/o/r/actions/runs/1', '/repos/o/r/actions/runs/2'])
-  } finally {
-    await server.stop(true)
-    await rm(temp, { recursive: true, force: true })
-  }
-})
-
 // A job that failed at its install told the run nothing: its worker stayed
 // `starting` and the run waited for the job's timeout (2026-10-22).
 it('says why for each worker whose job ended, a success too', async () => {
@@ -581,59 +546,6 @@ it("dispatches on the base branch once a merged PR's branch is gone", async () =
     await server.stop(true)
   }
 })
-
-// A step before checkout dispatches workers, so they start while the job
-// installs (~20 s on CI); the run adopts them as its own: it watches their
-// jobs and cancels their run when it closes.
-it('adopts the workers a step started, watching and stopping them as its own', async () => {
-  const calls: string[] = []
-  const server = Bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    fetch(req) {
-      const path = new URL(req.url).pathname
-      calls.push(`${req.method} ${path}`)
-      if (path === '/repos/o/r/actions/runs/9/jobs')
-        return Response.json({
-          jobs: [{ name: 'small#2', status: 'completed', conclusion: 'failure', steps: [] }],
-        })
-      return new Response(null, { status: 202 })
-    },
-  })
-  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
-  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/9 small#1,small#2\n')
-  Object.assign(process.env, {
-    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
-    GITHUB_REPOSITORY: 'o/r',
-    GITHUB_TOKEN: 'ght',
-    RUNNER_TEMP: temp,
-  })
-  try {
-    const adopted: string[] = []
-    const why: string[] = []
-    const adapter = github()
-    adapter.adopt?.((id, size) => {
-      adopted.push(`${id} ${size}`)
-      return spawn(id, size, (w) => why.push(`${id}: ${w}`))
-    })
-    expect(adopted).toEqual(['small#1 small', 'small#2 small'])
-    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(100)
-    expect(why).toEqual(['small#2: job failure'])
-    await adapter.close?.()
-    expect(calls).toContain('POST /repos/o/r/actions/runs/9/cancel')
-    // Control: with no file there is nothing to adopt.
-    await rm(path.join(temp, 'vx-dte-started'))
-    const none: string[] = []
-    github().adopt?.((id, size) => {
-      none.push(id)
-      return spawn(id, size)
-    })
-    expect(none).toEqual([])
-  } finally {
-    await server.stop(true)
-    await rm(temp, { recursive: true, force: true })
-  }
-}, 30_000)
 
 // 2026-10-23: a remote fault is at least a warning. A jobs poll or a
 // cancel GitHub refused went unsaid: a dead worker unseen, a run left to
@@ -822,10 +734,99 @@ it('names the spent API limit, not a permission, when its reset is too far', asy
   }
 }, 30_000)
 
+/** A job of `workflow` that `inputs` dispatched, its event file in `dir`. */
+async function dispatchedJob(dir: string, inputs: unknown, workflow = 'vx-worker.yml') {
+  const event = path.join(dir, 'event.json')
+  await Bun.write(event, JSON.stringify({ inputs }))
+  Object.assign(process.env, {
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_EVENT_PATH: event,
+    GITHUB_WORKFLOW_REF: `o/r/.github/workflows/${workflow}@refs/heads/main`,
+  })
+}
+
+// The worker is one command (2026-11-20): what the run hands its job is read
+// there, never set by a workflow step.
+it("hands a worker's job what the run dispatched it with, in the workers' workflow only", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
+  try {
+    const inputs = {
+      run: 'r1',
+      relay: 'https://relay.test',
+      sha: 'abc',
+      size: 'small',
+      workers: '["small#1"]',
+      env: '{"VX_CACHE_URL":"https://preview.test"}',
+    }
+    await dispatchedJob(dir, inputs)
+    expect(github().handed?.()).toEqual({
+      run: 'r1',
+      relay: 'https://relay.test',
+      env: { VX_CACHE_URL: 'https://preview.test' },
+    })
+    expect(github({ workflow: 'w.yml' }).handed?.()).toBeUndefined()
+    await dispatchedJob(dir, { ...inputs, env: '' })
+    expect(github().handed?.()?.env).toEqual({})
+    // A value of two lines, or a name no variable has, is no variable.
+    await dispatchedJob(dir, { ...inputs, env: '{"A":"x\\nB=y"}' })
+    expect(() => github().handed?.()).toThrow(`vx dte worker: the run's env "A"`)
+    await dispatchedJob(dir, { ...inputs, env: '[1]' })
+    expect(() => github().handed?.()).toThrow(
+      "vx dte worker: the run's env input is not a JSON object",
+    )
+    process.env['GITHUB_EVENT_NAME'] = 'push'
+    expect(github().handed?.()).toBeUndefined()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 // An orchestrator that died where it could not cancel (the API limit spent,
 // a SIGKILL) left its queued workers to start for no one, each holding a
-// runner (2026-10-28): each worker reads its run's attempt first.
-it("names the run's own attempt to the workers it dispatches", async () => {
+// runner (2026-10-28): the first to find its run over cancels its own run.
+it("cancels a worker's own workflow run once its run is over", async () => {
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      calls.push(`${req.method} ${new URL(req.url).pathname} ${req.headers.get('authorization')}`)
+      return new Response(null, { status: 202 })
+    },
+  })
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
+  const warned: string[] = []
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_RUN_ID: '90',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    // A job of any other workflow is no worker's.
+    await dispatchedJob(dir, { run: 'r1' }, 'other.yml')
+    await github().over?.()
+    expect(calls).toEqual([])
+    await dispatchedJob(dir, { run: 'r1' })
+    await github().over?.()
+    expect(calls).toEqual(['POST /repos/o/r/actions/runs/90/cancel Bearer ght'])
+    delete process.env['GITHUB_TOKEN']
+    const adapter = github()
+    adapter.report?.((m) => warned.push(m))
+    await adapter.over?.()
+    expect(calls).toHaveLength(1)
+    expect(warned).toEqual([
+      "[vx] github(): the run is over, and workflow run 90's queued workers wait for runners: give vx dte worker GITHUB_TOKEN (actions: write) to cancel them",
+    ])
+  } finally {
+    await server.stop(true)
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+// No input names a run's attempt any more: a worker learns its run is over
+// from the relay.
+it('dispatches no parent input', async () => {
   const bodies: { inputs: Record<string, string> }[] = []
   const server = Bun.serve({
     port: 0,
@@ -839,13 +840,14 @@ it("names the run's own attempt to the workers it dispatches", async () => {
     GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
     GITHUB_REPOSITORY: 'o/r',
     GITHUB_TOKEN: 'ght',
+    GITHUB_SHA: 'abc123',
     GITHUB_RUN_ID: '55',
     GITHUB_RUN_ATTEMPT: '2',
   })
   try {
     void github().spawn(spawn('small#1', 'small'))
     for (let i = 0; i < 50 && bodies.length === 0; i++) await Bun.sleep(10)
-    expect(bodies[0]?.inputs['parent']).toBe('55/attempts/2')
+    expect(Object.keys(bodies[0]!.inputs)).toEqual(['run', 'relay', 'sha', 'size', 'workers'])
   } finally {
     await server.stop(true)
   }
@@ -929,7 +931,7 @@ it('says a cancel the spent API limit refuses past its wait, with the reset', as
   }
 })
 
-// The workflow runs it dispatched or adopted are the only ones whose jobs
+// The workflow runs it dispatched are the only ones whose jobs
 // the orchestrator admits as its workers (seal.ts githubProof). A dispatch
 // that named no run is refused: before, it admitted any job of the
 // repository with id-token: write as a worker.
@@ -949,23 +951,20 @@ it('names the workflow runs its workers come from, refusing a dispatch that name
       return Response.json({ jobs: [] })
     },
   })
-  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
-  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/5 small#1\n')
   Object.assign(process.env, {
     GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
     GITHUB_REPOSITORY: 'o/r',
     GITHUB_TOKEN: 'ght',
     GITHUB_REF_NAME: 'main',
     GITHUB_SHA: 'abc123',
-    RUNNER_TEMP: temp,
   })
   try {
     const adapter = github()
     expect([...adapter.workerRuns!()!]).toEqual([])
-    adapter.adopt?.((w, size) => spawn(w, size))
-    void adapter.spawn(spawn('small#2', 'small'))
+    void adapter.spawn(spawn('small#1', 'small'))
+    void adapter.spawn(spawn('mac#2', 'mac'))
     for (let i = 0; i < 50 && adapter.workerRuns!()!.size < 2; i++) await Bun.sleep(20)
-    expect([...adapter.workerRuns!()!].sort()).toEqual(['5', '7'])
+    expect([...adapter.workerRuns!()!].sort()).toEqual(['7', '8'])
     named = false
     const why: string[] = []
     void adapter.spawn(spawn('big#3', 'big', (w) => why.push(w)))
@@ -974,7 +973,7 @@ it('names the workflow runs its workers come from, refusing a dispatch that name
       [
         'github(): dispatching vx-worker.yml named no workflow run (204): its workers cannot be told from any job of the repository',
       ],
-      ['5', '7'],
+      ['7', '8'],
     ])
     // A 200 whose body names no run id (a proxy's page, a string id) was a
     // JSON parse error, or a run id no job carries.
@@ -989,52 +988,44 @@ it('names the workflow runs its workers come from, refusing a dispatch that name
     }
   } finally {
     await server.stop(true)
-    await rm(temp, { recursive: true, force: true })
   }
 })
 
 it('keeps every other run to cancel when one is let go twice', async () => {
   const calls: string[] = []
+  let id = 0
   const server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
     fetch(req) {
       const path = new URL(req.url).pathname
       calls.push(`${req.method} ${path}`)
-      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 1 })
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: ++id })
       if (path.endsWith('/jobs')) return Response.json({ jobs: [] })
       return new Response(null, { status: 202 })
     },
   })
-  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
-  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/9 small#9\n')
-  // Its append waits for a reader: the dispatch is held between its run and its letGo.
-  const fifo = path.join(temp, 'vx-dte-runs')
-  expect(Bun.spawnSync(['mkfifo', fifo]).exitCode).toBe(0)
   Object.assign(process.env, {
     GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
     GITHUB_REPOSITORY: 'o/r',
     GITHUB_TOKEN: 'ght',
-    RUNNER_TEMP: temp,
   })
   try {
     const adapter = github()
-    adapter.adopt?.((id, size) => spawn(id, size))
+    void adapter.spawn(spawn('mac#9', 'mac'))
     void adapter.spawn(spawn('small#1', 'small'))
-    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/dispatches')); i++)
+    for (let i = 0; i < 50 && calls.filter((c) => c.endsWith('/dispatches')).length < 2; i++)
       await Bun.sleep(10)
     await Bun.sleep(50)
     void adapter.cancel?.(['small#1'])
-    expect(readFileSync(fifo, 'utf8')).toBe('/repos/o/r/actions/runs/1\n')
     await Bun.sleep(50)
     await adapter.close?.()
     expect(calls.filter((c) => c.endsWith('/cancel')).toSorted()).toEqual([
       'POST /repos/o/r/actions/runs/1/cancel',
-      'POST /repos/o/r/actions/runs/9/cancel',
+      'POST /repos/o/r/actions/runs/2/cancel',
     ])
   } finally {
     await server.stop(true)
-    await rm(temp, { recursive: true, force: true })
   }
 })
 

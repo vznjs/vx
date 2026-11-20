@@ -5,6 +5,7 @@ export {
   type WorkerSpawn,
   type DteAdapter,
   type DteOptions,
+  type Handed,
 } from './plugin.js'
 export type { DteInit, DteSetup, PackageManager } from './init.js'
 export { local, type LocalOptions } from './local.js'

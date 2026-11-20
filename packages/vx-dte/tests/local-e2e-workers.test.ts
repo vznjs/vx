@@ -196,6 +196,86 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)} })] }
   }
 }, 30_000)
 
+// The worker is one command (2026-11-20): on GitHub it reads what the run
+// dispatched it with, the workspace's config under the run's variables, and
+// one that finds its run over cancels its own workflow run, its queued
+// fellows with it. No workflow step does any of it.
+it('a GitHub worker reads its dispatch and cancels its own run once the run is over', async () => {
+  const { serveRelay } = await import('@vzn/vx-dte-server')
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const calls: string[] = []
+  const api = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      calls.push(`${req.method} ${new URL(req.url).pathname} ${req.headers.get('authorization')}`)
+      return new Response(null, { status: 202 })
+    },
+  })
+  const seen = path.join(root, 'seen.log')
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { appendFileSync } from 'node:fs'
+import { dte, github } from ${JSON.stringify(DTE)}
+appendFileSync(${JSON.stringify(seen)}, (process.env.PREVIEW ?? '-') + '\\n')
+export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }, adapter: github() })] }
+`,
+    )
+    const run = crypto.randomUUID()
+    const event = path.join(root, 'event.json')
+    await writeFile(
+      event,
+      JSON.stringify({
+        inputs: {
+          run,
+          relay: relay.url,
+          sha: 'abc',
+          size: 's',
+          workers: '["s#1"]',
+          env: '{"PREVIEW":"https://preview.test"}',
+        },
+      }),
+    )
+    const {
+      VX_DTE_RUN: _,
+      VX_DTE_RELAY: __,
+      VX_DTE_WORKER: ___,
+      PREVIEW: ____,
+      ...env
+    } = process.env
+    const worker = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
+      cwd: root,
+      env: {
+        ...env,
+        VX_DTE_SECRET: 'early-secret',
+        VX_DTE_WORKER: 's#1',
+        GITHUB_EVENT_NAME: 'workflow_dispatch',
+        GITHUB_EVENT_PATH: event,
+        GITHUB_WORKFLOW_REF: 'o/r/.github/workflows/vx-worker.yml@refs/heads/main',
+        GITHUB_API_URL: `http://127.0.0.1:${api.port}`,
+        GITHUB_REPOSITORY: 'o/r',
+        GITHUB_RUN_ID: '90',
+        GITHUB_TOKEN: 'ght',
+        NO_COLOR: '1',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [exited, err] = await Promise.all([worker.exited, new Response(worker.stderr).text()])
+    expect([exited, err]).toEqual([
+      0,
+      expect.stringContaining('the run is over: cancelling workflow run 90'),
+    ])
+    expect(calls).toEqual(['POST /repos/o/r/actions/runs/90/cancel Bearer ght'])
+    // Read once before the run's variables, once under them.
+    expect((await readFile(seen, 'utf8')).trim().split('\n')).toEqual(['-', 'https://preview.test'])
+  } finally {
+    await relay.stop()
+    await api.stop(true)
+  }
+}, 30_000)
+
 // A CI step that started a worker before the run began (github()'s
 // adopt): the run counts it against its size's max and starts no other.
 it('runs on a worker the adapter adopted, and starts none of its own', async () => {

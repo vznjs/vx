@@ -25,6 +25,8 @@ export interface DteAdapter {
   workerRuns?(): ReadonlySet<string> | undefined
   workerId?(): string | undefined
   runId?(): string | undefined
+  handed?(): Handed | undefined
+  over?(): Promise<void>
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void
 }
 == type DteInit (src/init.ts)
@@ -65,6 +67,12 @@ export interface GithubOptions {
 == type GitlabOptions (src/gitlab.ts)
 export interface GitlabOptions {
   readonly tags?: Readonly<Record<string, readonly string[]>>
+}
+== type Handed (src/plugin.ts)
+export interface Handed {
+  readonly run?: string
+  readonly relay?: string
+  readonly env: Readonly<Record<string, string>>
 }
 == type LocalOptions (src/local.ts)
 export interface LocalOptions {

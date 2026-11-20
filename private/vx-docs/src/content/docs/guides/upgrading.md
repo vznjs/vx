@@ -21,6 +21,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.657
 
+### vx-dte: say a bad env input, record the new API, split a long line
+
+the worker workflow's parent input, the run's RUNNER_TEMP list of worker runs and github()'s adopt of workers a step started are gone; run vx dte init again to rewrite both workflows.
+
 ### npm: let Yarn 2+ start the vx bin
 
 @vzn/vx no longer ships launcher.sh; bin.vx is ./launcher.cjs.

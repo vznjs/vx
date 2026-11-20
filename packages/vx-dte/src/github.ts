@@ -5,10 +5,8 @@
 // prove themselves by their OIDC identity: the run makes no secret.
 
 import { readFileSync } from 'node:fs'
-import { appendFile } from 'node:fs/promises'
-import path from 'node:path'
 import { refuseUnknownOptions, secretNamed, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
-import type { WorkerSpawn, DteAdapter } from './plugin.js'
+import type { WorkerSpawn, DteAdapter, Handed } from './plugin.js'
 import { printable } from './printable.js'
 
 export interface GithubOptions {
@@ -34,16 +32,6 @@ const KEYS: PluginOptionKinds<GithubOptions> = {
   env: 'object',
 }
 
-/** In `RUNNER_TEMP`: one dispatched workflow run's API path per line. */
-const RUNS_FILE = 'vx-dte-runs'
-
-/**
- * In `RUNNER_TEMP`: the worker runs a step dispatched before the run began,
- * one per line, `<API path> <worker>,<worker>`: they start while the job
- * checks out and installs (`adopt`).
- */
-const STARTED_FILE = 'vx-dte-started'
-
 /**
  * A dispatched run's jobs are first read this soon, then twice as late each
  * time, up to `WATCH_MAX_MS`. Every job of a repository shares GITHUB_TOKEN's
@@ -58,8 +46,8 @@ const DISPATCH_WAIT_MS = 5 * 60_000
 
 /**
  * A cancel the API limit refused waits for its reset only this long: a
- * worker run left queued starts for no one, then reads its run is over
- * and cancels itself (the workflow's first step, `parent`).
+ * worker run left queued starts for no one, finds its run over at the
+ * relay, and cancels itself (`over`).
  */
 const CANCEL_WAIT_MS = 60_000
 
@@ -203,7 +191,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
       return
     }
     watched.delete(run)
-    // Let go already (a cancel while its dispatch wrote RUNNER_TEMP).
+    // Let go already.
     const i = runs.indexOf(run)
     if (i < 0) return
     runs.splice(i, 1)
@@ -337,11 +325,6 @@ export function github(options: GithubOptions = {}): DteAdapter {
             sha,
             size,
             workers: JSON.stringify(workers.map((a) => a.id)),
-            // This run's attempt: a worker that starts after it ended
-            // cancels its own workflow run instead of working for no one.
-            ...(env['GITHUB_RUN_ID'] === undefined
-              ? {}
-              : { parent: `${env['GITHUB_RUN_ID']}/attempts/${env['GITHUB_RUN_ATTEMPT'] ?? '1'}` }),
             ...(options.env === undefined ? {} : { env: handed }),
           },
         }),
@@ -390,9 +373,6 @@ export function github(options: GithubOptions = {}): DteAdapter {
     const mine = new Map(workers.map((a) => [a.id, a]))
     watched.set(run, mine)
     if (watch === undefined && !closed) look(WATCH_FIRST_MS)
-    // For the job's last step, which cancels them when this process
-    // dies before close() (a kill, an OOM, the job's timeout).
-    if (env['RUNNER_TEMP']) await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
     // Let go while this dispatch was in flight: cancel() knew no run.
     if (!closed) letGo(run, mine)
   }
@@ -401,30 +381,33 @@ export function github(options: GithubOptions = {}): DteAdapter {
     init: async (setup) => (await import('./init.js')).githubInit(options, setup),
     keyless: true,
     workerRuns: () => workerRuns,
-    report(w) {
-      warn = w
+    handed() {
+      const inputs = dispatched(workflow)
+      if (inputs === undefined) return undefined
+      const text = typeof inputs['env'] === 'string' ? inputs['env'] : ''
+      return {
+        ...(typeof inputs['run'] === 'string' ? { run: inputs['run'] } : {}),
+        ...(typeof inputs['relay'] === 'string' ? { relay: inputs['relay'] } : {}),
+        env: text === '' ? {} : handedBack(text),
+      } satisfies Handed
     },
-    adopt(worker) {
-      const temp = process.env['RUNNER_TEMP']
-      if (!temp) return
-      let text: string
-      try {
-        text = readFileSync(path.join(temp, STARTED_FILE), 'utf8')
-        // quiet: no list: this job started no worker
-      } catch {
+    // A run that died where it could not cancel its workers (a kill, its API
+    // limit spent) left them queued, each to hold a runner for no one: the
+    // first to find it over cancels its workflow run, its fellows with it.
+    async over() {
+      const { GITHUB_RUN_ID: id, GITHUB_REPOSITORY: repo, GITHUB_TOKEN: token } = process.env
+      if (dispatched(workflow) === undefined || !id || !repo) return
+      if (!token) {
+        warn(
+          `[vx] github(): the run is over, and workflow run ${id}'s queued workers wait for runners: give vx dte worker GITHUB_TOKEN (actions: write) to cancel them`,
+        )
         return
       }
-      for (const line of text.split('\n')) {
-        const [run, ids] = line.trim().split(/\s+/)
-        if (!run || !ids) continue
-        const workers = new Map<string, WorkerSpawn>()
-        for (const id of ids.split(','))
-          workers.set(id, worker(id, id.slice(0, id.lastIndexOf('#'))))
-        runs.push(run)
-        watched.set(run, workers)
-        workerRuns.add(run.slice(run.lastIndexOf('/') + 1))
-      }
-      if (watched.size > 0 && watch === undefined) look(WATCH_FIRST_MS)
+      ui.say('info', `[vx] github(): the run is over: cancelling workflow run ${id}`)
+      await cancelOf(`/repos/${repo}/actions/runs/${id}`)
+    },
+    report(w) {
+      warn = w
     },
     spawn(a) {
       flying.add(a.id)
@@ -496,10 +479,58 @@ export async function githubRelayToken(relay: string): Promise<string | undefine
 }
 
 /**
+ * The inputs of the dispatch that started this job, in a job of the
+ * workers' `workflow`; undefined in any other.
+ */
+function dispatched(workflow: string): Record<string, unknown> | undefined {
+  const env = process.env
+  if (env['GITHUB_EVENT_NAME'] !== 'workflow_dispatch' || !env['GITHUB_EVENT_PATH'])
+    return undefined
+  // `<owner>/<repo>/.github/workflows/<file>@<ref>`
+  if (!env['GITHUB_WORKFLOW_REF']?.includes(`/.github/workflows/${workflow}@`)) return undefined
+  let event: unknown
+  try {
+    event = JSON.parse(readFileSync(env['GITHUB_EVENT_PATH'], 'utf8'))
+  } catch {
+    // quiet: an event that cannot be read handed nothing
+    return undefined
+  }
+  const inputs = (event as { inputs?: unknown } | null)?.inputs
+  return typeof inputs === 'object' && inputs !== null
+    ? (inputs as Record<string, unknown>)
+    : undefined
+}
+
+/** The `env` input, as `handedEnv` wrote it: each a variable's name, each value one line. */
+function handedBack(text: string): Record<string, string> {
+  const refused = new UserError(
+    `vx dte worker: the run's env input is not a JSON object: ${printable(text.slice(0, 200))}`,
+  )
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw refused
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw refused
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(parsed)) {
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ||
+      typeof value !== 'string' ||
+      /[\r\n\0]/.test(value)
+    )
+      throw new UserError(
+        `vx dte worker: the run's env ${JSON.stringify(name)}: a variable's name, and a string of one line`,
+      )
+    out[name] = value
+  }
+  return out
+}
+
+/**
  * `env` as the workflow's input: each name a variable's, each value one
- * line, since the workflow writes each as a line of `GITHUB_ENV`. No
- * secret: a dispatch's inputs are shown with its run, and the worker
- * job's log prints each step's env unmasked.
+ * line. No secret: a dispatch's inputs are shown with its run.
  */
 function handedEnv(env: Readonly<Record<string, string | undefined>>): string {
   const out: Record<string, string> = {}

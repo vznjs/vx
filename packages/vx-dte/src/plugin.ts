@@ -1,3 +1,4 @@
+import { constants } from 'node:os'
 import path from 'node:path'
 import {
   definePlugin,
@@ -101,11 +102,32 @@ export interface DteAdapter {
   /** The run's id when `VX_DTE_RUN` is unset, in a CI job it starts workers from; none elsewhere. */
   runId?(): string | undefined
   /**
+   * In a worker's job its CI started: what the run handed it there (GitHub:
+   * the dispatch's inputs), for `vx dte worker` to read as `VX_DTE_RUN`,
+   * `VX_DTE_RELAY` and the run's variables (`github({ env })`). Undefined
+   * in any other job.
+   */
+  handed?(): Handed | undefined
+  /**
+   * In a worker's job: its run ended before the worker joined. Stop the
+   * workers its CI still holds for that run (GitHub: cancel this workflow
+   * run, its queued jobs with it).
+   */
+  over?(): Promise<void>
+  /**
    * Workers the CI started for this run before it began (`size#n`): each
    * is handed to `worker`, which counts it against its size's `max` and
    * returns its spawn, for the adapter to watch and stop as its own.
    */
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void
+}
+
+/** What a worker's CI job was handed by its run (`DteAdapter.handed`). */
+export interface Handed {
+  readonly run?: string
+  readonly relay?: string
+  /** The run's variables, set before the workspace's config is read. */
+  readonly env: Readonly<Record<string, string>>
 }
 
 export interface DteOptions {
@@ -475,6 +497,20 @@ export function dte(options: DteOptions = {}) {
               `vx dte worker: ${argv[1]!.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${argv[1]} (see \`vx dte --help\`)`,
               'VX_E_USAGE',
             )
+          const handed = adapter?.handed?.()
+          if (handed !== undefined) {
+            // The workspace's config may read a handed variable (a server's
+            // URL for this commit), and it was read before this command ran:
+            // once more, under them.
+            const now: Readonly<Record<string, string | undefined>> = process.env
+            const read = Object.entries(handed.env).some(([k, v]) => now[k] !== v)
+            const env: Record<string, string | undefined> = read
+              ? { ...process.env, ...handed.env }
+              : process.env
+            if (handed.run && !env['VX_DTE_RUN']) env['VX_DTE_RUN'] = handed.run
+            if (handed.relay && !env['VX_DTE_RELAY']) env['VX_DTE_RELAY'] = handed.relay
+            if (read) return again([...ctx.vx, 'dte', 'worker'], env)
+          }
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] || options.relay
           // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
@@ -510,6 +546,7 @@ export function dte(options: DteOptions = {}) {
             headers,
             proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
             artifacts: ctx.artifactsFor,
+            ...(adapter?.over === undefined ? {} : { over: () => adapter.over!() }),
           })
         },
       },
@@ -1177,6 +1214,27 @@ export function bytes(v: unknown): number | undefined {
   const n = unit === undefined ? 0 : Number(m![1]) * unit
   // `'0GB'` is no more a size than `0`: a worker of no memory fits nothing beside.
   return n > 0 ? n : undefined
+}
+
+/** `argv` run here under `env`, signals passed on: its exit is this one's. */
+async function again(
+  argv: readonly string[],
+  env: Record<string, string | undefined>,
+): Promise<number> {
+  const child = Bun.spawn([...argv], { env, stdio: ['inherit', 'inherit', 'inherit'] })
+  const pass = (signal: 'SIGINT' | 'SIGTERM') => (): void => child.kill(signal)
+  const onInt = pass('SIGINT')
+  const onTerm = pass('SIGTERM')
+  process.on('SIGINT', onInt)
+  process.on('SIGTERM', onTerm)
+  try {
+    await child.exited
+  } finally {
+    process.off('SIGINT', onInt)
+    process.off('SIGTERM', onTerm)
+  }
+  const signal = child.signalCode as keyof typeof constants.signals | null
+  return child.exitCode ?? (signal === null ? 1 : 128 + constants.signals[signal])
 }
 
 /** A random (v4) UUID, as the relay takes: a run id no one can guess. */
