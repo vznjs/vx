@@ -157,4 +157,19 @@ describe('tscBuildInfo', () => {
       watch: [],
     })
   })
+
+  // payload's `build` is `pnpm build:types && …`: its tsc was never seen.
+  it('follows the scripts a command runs by name', async () => {
+    expect(
+      await at(
+        {
+          'pkg/tsconfig.json': opts({ composite: true, rootDir: 'src', outDir: 'dist' }),
+          'pkg/package.json': {
+            scripts: { 'build:types': 'npm run emit', emit: 'tsc --emitDeclarationOnly' },
+          },
+        },
+        'pnpm build:types && pnpm build:swc',
+      ),
+    ).toEqual(['tsconfig.tsbuildinfo'])
+  })
 })

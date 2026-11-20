@@ -106,13 +106,43 @@ const projectFile = (dir: string, arg: string): string =>
 /** Words that may run `tsc` before it: a runner, or an env assignment. */
 const RUNNER = /^(?:npx|bunx|pnpx|pnpm|yarn|npm|bun|exec|run|-y|--yes|--|[A-Za-z_][\w]*=\S*)$/
 
+/** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
+export const RUNS_SCRIPT =
+  /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+
+/**
+ * `command` and every script of the package at `dir` it runs by name, and
+ * theirs: payload's `build` is `pnpm build:types && …`, whose `tsc` was
+ * never seen, so its buildinfo stayed out of the outputs.
+ */
+function withScripts(read: ReadText, dir: string, command: string): string {
+  const text = read(path.join(dir, 'package.json'))
+  let scripts: Record<string, unknown> = {}
+  try {
+    const v: unknown = text === null ? null : JSON.parse(text)
+    const s = (v as { scripts?: unknown } | null)?.scripts
+    if (s !== null && typeof s === 'object') scripts = s as Record<string, unknown>
+  } catch {}
+  const commands = [command]
+  const seen = new Set<string>()
+  for (let i = 0; i < commands.length; i++)
+    for (const m of commands[i]!.matchAll(RUNS_SCRIPT)) {
+      const s = Object.hasOwn(scripts, m[1]!) ? scripts[m[1]!] : undefined
+      if (typeof s === 'string' && !seen.has(m[1]!)) {
+        seen.add(m[1]!)
+        commands.push(s)
+      }
+    }
+  return commands.join('\n')
+}
+
 /**
  * The buildinfo files `command`'s `tsc` runs write, relative to the
  * package `dir` (POSIX); one outside `dir` is another package's.
  */
 export function tscBuildInfo(read: ReadText, dir: string, command: string): string[] {
   const out = new Set<string>()
-  for (const segment of command.split(/&&|\|\||[;|&()\n]/)) {
+  for (const segment of withScripts(read, dir, command).split(/&&|\|\||[;|&()\n]/)) {
     const words = segment.trim().split(/\s+/)
     const at = words.indexOf('tsc')
     if (at < 0 || !words.slice(0, at).every((w) => RUNNER.test(w))) continue
