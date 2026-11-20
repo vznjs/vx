@@ -730,6 +730,19 @@ describe('a root .gitignore that drops .vx', () => {
     expect(stdout).not.toContain('!vx.config.ts')
   })
 
+  // drizzle-orm: drizzle-kit/.gitignore allowlists (`/*`, then `!src` …).
+  // git check-ignore applies that file to `drizzle-kit/` itself, so the note
+  // said to stop ignoring the directory, where a `!` line works.
+  it("reads a directory's own allowlist .gitignore as ignoring the file, not the directory", async () => {
+    mkdirSync(path.join(root, 'k'), { recursive: true })
+    writeFileSync(path.join(root, 'k', '.gitignore'), '/*\n!package.json\n!.gitignore\n')
+    writeFileSync(path.join(root, 'k', 'package.json'), '{}')
+    Bun.spawnSync({ cmd: ['git', 'add', 'k'], cwd: root })
+    expect(await apply(plan([['k', [task('build', null)]]]))).toBe(0)
+    expect(stdout).toContain('add !vx.config.ts to .gitignore')
+    expect(stdout).not.toContain('stop ignoring')
+  })
+
   it('CONTROL: a file ignored by its own name still gets the ! line', async () => {
     writeFileSync(path.join(root, '.gitignore'), 'vx.config.ts\n')
     expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)

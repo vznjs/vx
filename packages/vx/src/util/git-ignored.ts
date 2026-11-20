@@ -117,7 +117,13 @@ function ignoredOf(exitCode: number, stdout: Uint8Array): Set<string> | null {
   const rules = new Map<string, string>()
   for (let i = 0; i + 3 < fields.length; i += 4) {
     const rule = fields[i + 2]!
-    if (!rule.startsWith('!')) rules.set(fields[i + 3]!.slice(2), rule)
+    const at = fields[i + 3]!.slice(2)
+    // git applies a directory's own .gitignore to the directory asked with a
+    // trailing slash (drizzle-kit/.gitignore's `/*`), though only a rule
+    // from above can exclude it: the note told drizzle-orm to stop ignoring
+    // drizzle-kit/, where a `!` line works.
+    if (at.endsWith('/') && fields[i]!.replace(/^\.\//, '').startsWith(at)) continue
+    if (!rule.startsWith('!')) rules.set(at, rule)
   }
   const out = new Set(rules.keys())
   rulesOf.set(out, rules)
