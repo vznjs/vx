@@ -153,6 +153,23 @@ describe('bun(): no install record, so the workspaces’ dependencies as Node re
     expect(await run(bun())).toBe('ok')
   })
 
+  // typebot: @upstash/redis 1.35.3 ships `"version": "v1.35.3"`, which npm
+  // cleans to 1.35.3 on publish and in every lockfile; the check read the
+  // two as different installs and refused every run until an install that
+  // changed nothing.
+  it('reads a manifest version with a leading v as the version it cleans to', async () => {
+    await write({
+      ...MANIFESTS,
+      'bun.lock': bunLock('7.0.0'),
+      'node_modules/.bun/is-number@7.0.0/node_modules/is-number/package.json': pkg('v7.0.0'),
+      'packages/a/node_modules/is-number/package.json': pkg('v7.0.1'),
+    })
+    // CONTROL: another version still refuses.
+    expect(await run(bun())).toContain("packages/a's is-number is 7.0.1, the lockfile names 7.0.0")
+    await write({ 'packages/a/node_modules/is-number/package.json': pkg('v7.0.0') })
+    expect(await run(bun())).toBe('ok')
+  })
+
   // npm 11.21's tarball ships @sigstore/protobuf-specs 0.5.1 under a
   // bundled package, where bun.lock names 0.5.2 and Bun installs nothing.
   it('reads nothing under a package that bundles its dependencies', async () => {
@@ -263,6 +280,16 @@ describe('npm(): node_modules/.package-lock.json', () => {
       'node_modules was installed from a different package-lock.json (node_modules/is-number is 7.0.0, the lockfile names 5.0.0) — run `npm install`',
     )
     await write(npmInstall(npmTree('5.0.0')))
+    expect(await run(npm())).toBe('ok')
+  })
+
+  it('reads a manifest version with a leading v as the version it cleans to', async () => {
+    await write({
+      ...MANIFESTS,
+      'package-lock.json': npmLock('5.0.0'),
+      ...npmInstall(npmTree('5.0.0')),
+      'node_modules/is-number/package.json': '{ "name": "is-number", "version": "v5.0.0" }',
+    })
     expect(await run(npm())).toBe('ok')
   })
 

@@ -183,7 +183,10 @@ export function mapNxOutputs(
     }
     for (const g of globs) {
       const gn = g.startsWith('!') ? '!' : ''
-      const gs = g.slice(gn.length)
+      // Normalized before the project test: typebot's `reportsDirectory`
+      // `{projectRoot}/../../coverage/<lib>` began with the project dir, and
+      // became the project output `../../coverage/<lib>`, which core refuses.
+      const gs = path.posix.normalize(g.slice(gn.length)).replace(/^\.\//, '')
       // As the root project's inputs map (nx-inputs.ts): a `{workspaceRoot}`
       // output names a workspace path, which may lie in a nested project a
       // project glob never reaches (core refuses one there).

@@ -37,4 +37,21 @@ describe('an output outside the workspace', () => {
     ).toEqual({ outFiles: [], wsOutFiles: ['coverage/libs/util'] })
     expect(todos).toEqual([])
   })
+
+  // typebot: `{projectRoot}/../../coverage/<lib>`, its project dir filled in, begins with the project
+  // dir and was written as the project output `../../coverage/<lib>`, which
+  // core refuses, so vx lock refused the config.
+  it('a path through the project dir and back out is a workspace output', () => {
+    const todos: string[] = []
+    expect(
+      mapNxOutputs(
+        ['{options.reportsDirectory}'],
+        { reportsDirectory: 'packages/spaces/../../coverage/packages/spaces' },
+        'packages/spaces',
+        'spaces',
+        todos,
+      ),
+    ).toEqual({ outFiles: [], wsOutFiles: ['coverage/packages/spaces'] })
+    expect(todos).toEqual([])
+  })
 })
