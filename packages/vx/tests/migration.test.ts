@@ -555,6 +555,50 @@ describe('a written config passes the repo’s own checks', () => {
     )
   })
 
+  // tldraw's editor: `rootDir: src` and no `include`, so tsc compiled the
+  // config and stopped at TS6059 on the first run. Its `exclude` list is
+  // tsc's whole exclude, so the config joins it; with none, a new list would
+  // drop tsc's default one, and only the note speaks.
+  it("adds the config to a tsconfig's own exclude list, and only notes one with none", async () => {
+    const tsconfig = (dir: string, text: string) => {
+      mkdirSync(path.join(root, dir), { recursive: true })
+      writeFileSync(path.join(root, dir, 'tsconfig.json'), text)
+    }
+    const listed =
+      '{\n\t// built by tsc\n\t"exclude": [\n\t\t"dist",\n\t],\n\t"compilerOptions": { "rootDir": "src" }\n}\n'
+    tsconfig('a', listed)
+    tsconfig('b', '{ "exclude": [], "compilerOptions": { "outDir": "dist" } }\n')
+    tsconfig('c', '{ "compilerOptions": { "rootDir": "src" } }\n')
+    const metas = ['a', 'b', 'c'].map((name) => ({
+      name,
+      dir: path.join(root, name),
+      configPath: null,
+      esModule: true,
+    }))
+    expect(
+      await apply(
+        plan([
+          ['a', [task('build', exec('tsc'))]],
+          ['b', [task('build', exec('tsc'))]],
+          ['c', [task('build', exec('tsc'))]],
+        ]),
+        { metas },
+      ),
+    ).toBe(0)
+    expect(readFileSync(path.join(root, 'a', 'tsconfig.json'), 'utf8')).toBe(
+      '{\n\t// built by tsc\n\t"exclude": [\n\t\t"vx.config.ts",\n\t\t"dist",\n\t],\n\t"compilerOptions": { "rootDir": "src" }\n}\n',
+    )
+    expect(readFileSync(path.join(root, 'b', 'tsconfig.json'), 'utf8')).toBe(
+      '{ "exclude": ["vx.config.ts"], "compilerOptions": { "outDir": "dist" } }\n',
+    )
+    expect(readFileSync(path.join(root, 'c', 'tsconfig.json'), 'utf8')).toBe(
+      '{ "compilerOptions": { "rootDir": "src" } }\n',
+    )
+    expect(stdout).toContain('added the config to "exclude" in a/tsconfig.json, b/tsconfig.json')
+    expect(stdout).toContain('c/tsconfig.json names no "include"')
+    expect(stdout).not.toContain('a/tsconfig.json names no "include"')
+  })
+
   it('a dry run calls no step after the write', async () => {
     let called = false
     const written = () => ((called = true), [])

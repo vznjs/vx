@@ -517,8 +517,15 @@ export async function writeMigration(
   const next = steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`
   const emptyReason = empty ? args.emptyReason : undefined
   const example = empty && (args.example ?? emptyReason === undefined)
+  const excluded = dry
+    ? []
+    : excludeFromTsc(
+        root,
+        files.map((f) => f.abs),
+      )
   const notes = [
     ...(args.notes ?? []),
+    ...excluded,
     ...tscCompilesConfigNotes(
       root,
       files.map((f) => f.abs),
@@ -594,6 +601,54 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
     return { code: a.code, said: a.said }
   return { code: 1, said: 'vx lock: the migration tool answered no result: run `vx lock`\n' }
 }
+/**
+ * Adds a written config to the `exclude` its package's tsconfig already
+ * lists, where tsc would compile it: tldraw's editor (`rootDir: src`, no
+ * `include`) stopped at TS6059 on the first `vx run`. A tsconfig with no
+ * `exclude` keeps tsc's default one, which a new list would replace: there
+ * the note says what to add. Returns what it changed.
+ */
+function excludeFromTsc(root: string, written: readonly string[]): string[] {
+  const changed: string[] = []
+  for (const abs of written) {
+    const name = path.basename(abs)
+    if (tscCompilesConfigNotes(root, [abs]).length === 0) continue
+    for (const f of ['tsconfig.json', 'tsconfig.build.json']) {
+      const file = path.join(path.dirname(abs), f)
+      if (!existsSync(file) || lstatSync(file).isSymbolicLink()) continue
+      const text = readFileSync(file, 'utf8')
+      const next = withExcluded(text, name)
+      if (next === undefined) continue
+      writeFileSync(file, next)
+      changed.push(relPosix(root, file))
+    }
+  }
+  return changed.length === 0
+    ? []
+    : [`added the config to "exclude" in ${changed.join(', ')}, so tsc does not compile it`]
+}
+
+/** `text` with `name` first in its one `"exclude"` array; undefined where that is not certain. */
+function withExcluded(text: string, name: string): string | undefined {
+  const at = [...text.matchAll(/"exclude"\s*:\s*\[/g)]
+  if (at.length !== 1) return undefined
+  const open = at[0]!.index + at[0]![0].length
+  const indent = /^\r?\n([ \t]*)\S/.exec(text.slice(open))
+  const rest = text.slice(open).trimStart()
+  const entry = JSON.stringify(name)
+  const insert =
+    indent !== null ? `\n${indent[1]}${entry},` : rest.startsWith(']') ? entry : `${entry}, `
+  const next = text.slice(0, open) + insert + text.slice(open)
+  try {
+    const parsed = Bun.JSONC.parse(next) as { exclude?: unknown }
+    const before = Bun.JSONC.parse(text) as { exclude?: unknown }
+    if (!Array.isArray(before.exclude) || before.exclude.includes(name)) return undefined
+    return Array.isArray(parsed.exclude) && parsed.exclude[0] === name ? next : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** What `vx lock` and a run write, which no formatter should check. */
 const FORMATTER_IGNORED = [
   '.vx/cache',
