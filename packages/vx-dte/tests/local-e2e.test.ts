@@ -180,6 +180,21 @@ it('brings a worker’s outputs back under --force', async () => {
   expect(await readFile(path.join(root, 'b/out/b.txt'), 'utf8')).toBe('made\n')
 }, 60_000)
 
+// Main 4035f14, 2026-11-20: a task after an uncached one could take no
+// worker before any joined, so the first ask's plan ended at Infinity.
+it('plans a task after an uncached one before any worker joins', async () => {
+  const r = vx(['run', 'k#both', '--profile=out.json'], 'e2e-ahead')
+  expect(r.exitCode).toBe(0)
+  const ev = (
+    JSON.parse(await readFile(path.join(root, 'out.json'), 'utf8')) as {
+      traceEvents: { ph: string; name: string; args?: { planEndsInMs?: number } }[]
+    }
+  ).traceEvents
+  const asks = ev.filter((e) => e.ph === 'i' && e.name.startsWith('ask '))
+  expect(asks.length).toBeGreaterThan(0)
+  for (const a of asks) expect(a.args?.planEndsInMs).toBeLessThan(60_000)
+}, 60_000)
+
 // An idle worker stays while the rest of the run will need it again: one
 // left in the lull and another started for the wide part after it.
 it('keeps an idle worker the rest of the run needs again', () => {
