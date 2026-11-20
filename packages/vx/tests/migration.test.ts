@@ -601,6 +601,22 @@ describe('a repo formatted by prettier or oxfmt', () => {
     })
   }
 
+  it('names the lines a biome config needs, and nothing once it has them', async () => {
+    writeFileSync(path.join(root, 'biome.jsonc'), '{ "files": { "includes": ["**"] } }\n')
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+    expect(stdout).toContain(
+      'add "!**/vx.lock.json", "!**/.vx/*.lock.json" to files.includes in biome.jsonc',
+    )
+    writeFileSync(
+      path.join(root, 'biome.jsonc'),
+      '{ "files": { "includes": ["**", "!**/vx.lock.json", "!**/.vx/*.lock.json"] } }\n',
+    )
+    rmSync(path.join(root, 'a', 'vx.config.ts'))
+    stdout = ''
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]), { force: true })).toBe(0)
+    expect(stdout).not.toContain('biome')
+  })
+
   it('writes none where neither is installed, nor under a dry run', async () => {
     expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
     bin('prettier')

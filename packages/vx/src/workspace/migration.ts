@@ -480,7 +480,7 @@ export async function writeMigration(
   }
   const formatted =
     dry || args.written === undefined ? [] : args.written(files.map((f) => f.relPath))
-  const formatIgnored = dry ? [] : formatterIgnore(root)
+  const formatIgnored = dry ? [] : [...formatterIgnore(root), ...biomeNote(root)]
 
   // One reason, its tasks: the same TODO repeated per task reads as noise. A
   // file.gitignore drops is lost at the first commit, unnoticed.
@@ -629,6 +629,20 @@ function formatterIgnore(root: string): string[] {
   )
   return [
     `${had ? 'added' : 'wrote'} .prettierignore lines for vx's locks and cache, which prettier and oxfmt would check`,
+  ]
+}
+
+/**
+ * biome reads no `.prettierignore`, and `biome check` failed on every lock
+ * (prisma). Its config is the user's JSONC, maybe one per package, so the
+ * lines are named, not written.
+ */
+function biomeNote(root: string): string[] {
+  const config = ['biome.json', 'biome.jsonc'].find((n) => existsSync(path.join(root, n)))
+  if (config === undefined) return []
+  if (readFileSync(path.join(root, config), 'utf8').includes('vx.lock.json')) return []
+  return [
+    `biome checks vx's locks: add "!**/vx.lock.json", "!**/.vx/*.lock.json" to files.includes in ${config} (files.ignore before biome 2), and in any package's own biome config that sets its files`,
   ]
 }
 
