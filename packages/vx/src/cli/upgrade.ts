@@ -746,6 +746,17 @@ export function upgradeArgv(install: ManagedInstall, version: string): string[] 
 }
 
 /**
+ * The install that follows `upgradeArgv`'s, if any. pnpm's `add` can write a
+ * lockfile its own install does not match: on create-t3-turbo (pnpm 10.19)
+ * it re-resolved a peer set (`metro-config@0.83.3(bufferutil)(utf-8-validate)`)
+ * and kept the old one linked, so the lockfile plugin refused the next run.
+ * A plain install links what the lockfile names, and is a no-op otherwise.
+ */
+export function settleArgv(install: ManagedInstall): string[] | undefined {
+  return install.manager === 'pnpm' && install.scope === 'project' ? ['pnpm', 'install'] : undefined
+}
+
+/**
  * The version `tag` names, or the registry's latest: read for the "already
  * at" check, and by `vx init`, which always installs the latest release.
  */
@@ -795,22 +806,25 @@ export async function upgradeManaged(
     ),
     ui.text([ui.cmd(argv.join(' ')), ui.dim(` in ${install.cwd}`)]),
   )
-  const proc = Bun.spawnSync({
-    cmd: [bin, ...argv.slice(1)],
-    cwd: install.cwd,
-    stdio: ['inherit', 'inherit', 'inherit'],
-  })
-  if (proc.exitCode !== 0) {
-    throw new UserError(
-      `vx upgrade: ${argv.join(' ')} failed (exit ${proc.exitCode}) — vx changed nothing itself${
-        // The install is pinned, so pnpm refuses a release younger than its
-        // minimumReleaseAge rather than mixing releases; its words print above,
-        // so the way out is named.
-        install.manager === 'pnpm'
-          ? `; if pnpm refused a version published within its minimumReleaseAge, list ${[PACKAGE, ...plugins].join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
-          : ''
-      }`,
-    )
+  for (const cmd of [argv, settleArgv(install)]) {
+    if (cmd === undefined) continue
+    const proc = Bun.spawnSync({
+      cmd: [bin, ...cmd.slice(1)],
+      cwd: install.cwd,
+      stdio: ['inherit', 'inherit', 'inherit'],
+    })
+    if (proc.exitCode !== 0) {
+      throw new UserError(
+        `vx upgrade: ${cmd.join(' ')} failed (exit ${proc.exitCode}) — vx changed nothing itself${
+          // The install is pinned, so pnpm refuses a release younger than its
+          // minimumReleaseAge rather than mixing releases; its words print above,
+          // so the way out is named.
+          install.manager === 'pnpm'
+            ? `; if pnpm refused a version published within its minimumReleaseAge, list ${[PACKAGE, ...plugins].join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
+            : ''
+        }`,
+      )
+    }
   }
   return true
 }

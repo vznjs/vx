@@ -480,6 +480,9 @@ describe('initInstalls', () => {
         argv: ['pnpm', 'add', '@vzn/vx@1.2.3', '--save-dev', '--workspace-root'],
         cwd: root,
       },
+      // pnpm 10.19's `add` on create-t3-turbo left a peer set linked that its
+      // new lockfile no longer named; the plain install links the lockfile's.
+      { argv: ['pnpm', 'install'], cwd: root },
     ])
   })
 

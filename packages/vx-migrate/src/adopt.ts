@@ -234,31 +234,48 @@ export function importedPackages(text: string): string[] {
 }
 
 /** Install `packages` (at `version`, given one) with the repo's manager; its output only on failure. */
-export function install(
+export async function install(
   root: string,
   packages: readonly string[],
   version: string | null = null,
 ): Promise<string> {
   const pm = packageManagerOf(root, process.env['npm_config_user_agent'])
-  return runManager(
+  return settled(
     root,
-    installArgv(root, pm, version === null ? packages : packages.map((p) => `${p}@${version}`)),
-    'installing vx',
-    // pnpm 12 refuses a version younger than minimumReleaseAge, and vx
-    // releases daily; its words print above, so the way out is named.
-    pm === 'pnpm'
-      ? `; if pnpm refused a version published within its minimumReleaseAge, list ${packages.join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
-      : '',
+    pm,
+    await runManager(
+      root,
+      installArgv(root, pm, version === null ? packages : packages.map((p) => `${p}@${version}`)),
+      'installing vx',
+      // pnpm 12 refuses a version younger than minimumReleaseAge, and vx
+      // releases daily; its words print above, so the way out is named.
+      pm === 'pnpm'
+        ? `; if pnpm refused a version published within its minimumReleaseAge, list ${packages.join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
+        : '',
+    ),
   )
 }
 
 /** Remove `packages` with the repo's manager. */
-export function uninstall(root: string, packages: readonly string[]): Promise<string> {
-  return runManager(
+export async function uninstall(root: string, packages: readonly string[]): Promise<string> {
+  const pm = packageManagerOf(root, process.env['npm_config_user_agent'])
+  return settled(
     root,
-    removeArgv(root, packageManagerOf(root, process.env['npm_config_user_agent']), packages),
-    `removing ${packages.join(' ')}`,
+    pm,
+    await runManager(root, removeArgv(root, pm, packages), `removing ${packages.join(' ')}`),
   )
+}
+
+/**
+ * `line`, then pnpm's plain install after it. pnpm's `add` can write a
+ * lockfile its own install does not match: on create-t3-turbo (pnpm 10.19)
+ * it re-resolved a peer set and kept the old one linked, so the lockfile
+ * plugin refused the first run after `vx init`. The install links what the
+ * lockfile names, and is a no-op otherwise.
+ */
+async function settled(root: string, pm: PackageManager, line: string): Promise<string> {
+  if (pm !== 'pnpm') return line
+  return `${line} && ${await runManager(root, ['pnpm', 'install'], 'installing vx')}`
 }
 
 /**

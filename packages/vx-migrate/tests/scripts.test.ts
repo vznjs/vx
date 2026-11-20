@@ -2679,7 +2679,7 @@ describe('vx init declares the lockfile plugin', () => {
         // A stand-in pnpm: records its argv and installs the package.
         await writeFile(
           path.join(bin, 'pnpm'),
-          `#!/bin/sh\necho "$@" > argv\ncp -R ${path.join(bin, 'pkg')} node_modules/@vzn/vx-lockfile\n`,
+          `#!/bin/sh\necho "$@" >> argv\n[ "$1" = install ] || cp -R ${path.join(bin, 'pkg')} node_modules/@vzn/vx-lockfile\n`,
           { mode: 0o755 },
         )
         const proc = Bun.spawn([process.execPath, '--no-install', BIN], {
@@ -2691,7 +2691,9 @@ describe('vx init declares the lockfile plugin', () => {
         const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
         expect(code).toBe(0)
         expect((await Bun.file(path.join(root, 'argv')).text()).trim()).toBe(
-          `add -D -w @vzn/vx-lockfile${VERSION === '0.0.0' ? '' : `@${VERSION}`}`,
+          // Then a plain install: pnpm's `add` can leave a peer set linked that
+          // its new lockfile no longer names.
+          `add -D -w @vzn/vx-lockfile${VERSION === '0.0.0' ? '' : `@${VERSION}`}\ninstall`,
         )
         expect(row(out, 'ran')[0]).toStartWith('pnpm add -D -w @vzn/vx-lockfile')
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toContain('pnpm()')
