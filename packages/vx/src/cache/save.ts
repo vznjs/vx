@@ -441,7 +441,7 @@ async function packArtifact(
  * costs a stat per output; left to the scan it cost a whole compress and decode
  * and called the task's own outputs corrupt.
  */
-export async function planWithin(
+async function planWithin(
   ix: StoreIndex,
   args: Parameters<typeof packArtifact>[1],
 ): Promise<ArtifactPlan> {
