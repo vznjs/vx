@@ -80,6 +80,7 @@ import {
   grantPrefix,
   isTmpdirRefusal,
   notify,
+  POST_EXIT_DRAIN_MS,
   procfsIsOwn,
   relPosix,
   scannable,
@@ -126,7 +127,7 @@ import {
 } from './violations.js'
 import {
   closeSignalChannel,
-  groupAlive,
+  groupOutlives,
   killTree,
   releaseGroup,
   runTime,
@@ -3060,7 +3061,7 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   const stderr = blame ? streamed + cutLine : streamed
   // As runCommand: a leftover holding no pipe is still in the group. Under
   // Linux's pid namespace it died with the command; macOS keeps it.
-  const left = cut || groupAlive(proc)
+  const left = cut || (await groupOutlives(proc, POST_EXIT_DRAIN_MS))
   args.liveChildren?.delete(proc)
   releaseGroup(proc)
   closeSignalChannel(proc)

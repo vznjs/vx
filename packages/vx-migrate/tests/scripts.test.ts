@@ -117,11 +117,22 @@ async function addPackage(
 }
 
 describe('vx init writes configs the repo’s own tools accept', () => {
-  const prettier = async (root: string, body: string): Promise<void> => {
+  const formatter = async (root: string, name: string, body: string): Promise<void> => {
     await mkdir(path.join(root, 'node_modules', '.bin'), { recursive: true })
-    await writeFile(path.join(root, 'node_modules', '.bin', 'prettier'), `#!/bin/sh\n${body}\n`, {
+    await writeFile(path.join(root, 'node_modules', '.bin', name), `#!/bin/sh\n${body}\n`, {
       mode: 0o755,
     })
+  }
+  const declare = async (root: string, ...pkgs: string[]): Promise<void> => {
+    const devDependencies = Object.fromEntries(pkgs.map((p) => [p, '1']))
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'fixture-root', private: true, devDependencies }),
+    )
+  }
+  const prettier = async (root: string, body: string): Promise<void> => {
+    await formatter(root, 'prettier', body)
+    await declare(root, 'prettier')
   }
 
   it(
@@ -136,6 +147,31 @@ describe('vx init writes configs the repo’s own tools accept', () => {
           '--write packages/a/vx.config.ts .vx/workspace.ts',
         )
         expect(row(r.out, 'note')).toContain('formatted 2 files with prettier')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // Hardening, 2026-11-20 (documenso): npm hoisted a dependency's prettier
+  // into node_modules/.bin of a biome repo; init formatted with it, and the
+  // repo's own `biome check` failed on every config written.
+  it(
+    'formats with the formatter the root declares, not one merely hoisted',
+    async () => {
+      const root = await makeRoot('vx-init-format-hoisted-')
+      try {
+        await addPackage(root, 'a', { build: 'tsc' })
+        await formatter(root, 'prettier', `touch "${root}/.prettier-ran"`)
+        await formatter(root, 'biome', `echo "$@" > "${root}/.biome-args"`)
+        await declare(root, '@biomejs/biome')
+        const r = await vx(root, ['init'])
+        expect(existsSync(path.join(root, '.prettier-ran'))).toBe(false)
+        expect(readFileSync(path.join(root, '.biome-args'), 'utf8').trim()).toBe(
+          'format --write packages/a/vx.config.ts .vx/workspace.ts',
+        )
+        expect(row(r.out, 'note')).toContain('formatted 2 files with biome')
       } finally {
         await rm(root, { recursive: true, force: true })
       }

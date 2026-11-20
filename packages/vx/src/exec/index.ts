@@ -68,7 +68,7 @@ export { TaskPipes } from './pipes.js'
 export { watchTree } from './proc-sample.js'
 export {
   closeSignalChannel,
-  groupAlive,
+  groupOutlives,
   releaseGroup,
   runTime,
   signalThrough,

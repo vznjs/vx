@@ -352,7 +352,8 @@ A package with a `tsconfig.json` and no `"type": "module"` gets
 CommonJS, and its type import of the ESM `@vzn/vx/config` fails
 (TS1479, TS1541: medusa's plugin builds, 2026-10-14); an output that
 takes the config back names the `.mts`. The files written
-then go through the repo's own formatter when its root installs one
+then go through the repo's own formatter when its root package.json
+declares one and it is installed
 (`prettier --write`, `biome format --write`, `oxfmt` or `dprint fmt`,
 the first found), and a `note:` says so: create-t3-turbo's `prettier
 --check` failed on the quotes of a written config. A formatter that
