@@ -545,6 +545,53 @@ describe('a written config passes the repo’s own checks', () => {
   })
 })
 
+// Hardening, 2026-11-20 (vuejs/core): `prettier --check .` failed after
+// init on every vx.lock.json and the .vx cache: prettier reads the root
+// .gitignore alone, and a lock is vx's to write, not the formatter's.
+describe('a repo formatted by prettier or oxfmt', () => {
+  const bin = (name: string) => {
+    mkdirSync(path.join(root, 'node_modules', '.bin'), { recursive: true })
+    writeFileSync(path.join(root, 'node_modules', '.bin', name), '')
+  }
+  const IGNORED = [
+    '.vx/cache',
+    '.vx/tmp',
+    '.vx/projects.lock.json',
+    '.vx/dependencies.lock.json',
+    'vx.lock.json',
+  ]
+  const lines = () =>
+    readFileSync(path.join(root, '.prettierignore'), 'utf8')
+      .split('\n')
+      .filter((l) => l !== '' && !l.startsWith('#'))
+
+  it("adds vx's locks and cache to an existing .prettierignore, once", async () => {
+    writeFileSync(path.join(root, '.prettierignore'), 'dist\npnpm-lock.yaml')
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+    expect(lines()).toEqual(['dist', 'pnpm-lock.yaml', ...IGNORED])
+    expect(stdout).toContain('.prettierignore')
+    rmSync(path.join(root, 'a', 'vx.config.ts'))
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]), { force: true })).toBe(0)
+    expect(lines()).toEqual(['dist', 'pnpm-lock.yaml', ...IGNORED])
+  })
+
+  for (const name of ['prettier', 'oxfmt']) {
+    it(`writes one where ${name} is installed and none is`, async () => {
+      bin(name)
+      expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+      expect(lines()).toEqual(IGNORED)
+    })
+  }
+
+  it('writes none where neither is installed, nor under a dry run', async () => {
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+    bin('prettier')
+    rmSync(path.join(root, 'a', 'vx.config.ts'))
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]), { dry: true })).toBe(0)
+    expect(existsSync(path.join(root, '.prettierignore'))).toBe(false)
+  })
+})
+
 // Bug hunt, 2026-10-14: a root .gitignore from the old layout drops `.vx`,
 // where the workspace config and lock now live, so neither reached git and
 // CI found no workspace. The note's `!workspace.ts` could not help: git

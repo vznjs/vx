@@ -3,7 +3,7 @@
 // reads the same whoever wrote it. Core knows no source format: a mapper
 // returns a `MigrationPlan` and this does the rest.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
@@ -480,6 +480,7 @@ export async function writeMigration(
   }
   const formatted =
     dry || args.written === undefined ? [] : args.written(files.map((f) => f.relPath))
+  const formatIgnored = dry ? [] : formatterIgnore(root)
 
   // One reason, its tasks: the same TODO repeated per task reads as noise. A
   // file.gitignore drops is lost at the first commit, unnoticed.
@@ -524,6 +525,7 @@ export async function writeMigration(
     ),
     ...ignoredNote,
     ...formatted,
+    ...formatIgnored,
     ...plan.headerNotes,
     ...plan.notes,
   ]
@@ -592,6 +594,44 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
     return { code: a.code, said: a.said }
   return { code: 1, said: 'vx lock: the migration tool answered no result: run `vx lock`\n' }
 }
+/** What `vx lock` and a run write, which no formatter should check. */
+const FORMATTER_IGNORED = [
+  '.vx/cache',
+  '.vx/tmp',
+  '.vx/projects.lock.json',
+  '.vx/dependencies.lock.json',
+  'vx.lock.json',
+]
+
+/**
+ * prettier and oxfmt read the root `.gitignore` and `.prettierignore` alone:
+ * `prettier --check .` failed on every lock and on `.vx/cache`, which only
+ * `.vx/.gitignore` drops (vuejs/core). Adds the missing lines, as `nx init`
+ * adds its cache; returns the note.
+ */
+function formatterIgnore(root: string): string[] {
+  const file = path.join(root, '.prettierignore')
+  const had = existsSync(file)
+  const bins = ['prettier', 'oxfmt'].some((n) =>
+    existsSync(path.join(root, 'node_modules', '.bin', n)),
+  )
+  if (!had && !bins) return []
+  // One linked elsewhere is not the workspace's to write.
+  if (had && lstatSync(file).isSymbolicLink()) return []
+  const text = had ? readFileSync(file, 'utf8') : ''
+  const present = new Set(text.split(/\r?\n/).map((l) => l.trim()))
+  const missing = FORMATTER_IGNORED.filter((l) => !present.has(l))
+  if (missing.length === 0) return []
+  const sep = text === '' || text.endsWith('\n') ? '' : '\n'
+  writeFileSync(
+    file,
+    `${text}${sep}${text === '' ? '' : '\n'}# vx: what vx lock and runs write\n${missing.join('\n')}\n`,
+  )
+  return [
+    `${had ? 'added' : 'wrote'} .prettierignore lines for vx's locks and cache, which prettier and oxfmt would check`,
+  ]
+}
+
 /**
  * What to do about written files `.gitignore` drops. A `!file` line cures a
  * file, but git re-includes nothing inside an ignored directory: an old `/.vx/`
