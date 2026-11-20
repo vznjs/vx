@@ -645,6 +645,19 @@ describe('a root .gitignore that drops .vx', () => {
     expect(stdout).not.toContain('!workspace.ts')
   })
 
+  // pnpm/pnpm: `__typecheck__/` ignores a member whose package.json was
+  // added with -f. git check-ignore skips a directory holding tracked files,
+  // so the note said `!vx.config.ts`, which cannot work.
+  it('names an ignored directory that holds tracked files', async () => {
+    writeFileSync(path.join(root, '.gitignore'), '__t/\n')
+    mkdirSync(path.join(root, 'p', '__t'), { recursive: true })
+    writeFileSync(path.join(root, 'p', '__t', 'package.json'), '{}')
+    Bun.spawnSync({ cmd: ['git', 'add', '-f', 'p/__t/package.json'], cwd: root })
+    expect(await apply(plan([['p/__t', [task('build', null)]]]))).toBe(0)
+    expect(stdout).toContain('stop ignoring p/__t/')
+    expect(stdout).not.toContain('!vx.config.ts')
+  })
+
   it('CONTROL: a file ignored by its own name still gets the ! line', async () => {
     writeFileSync(path.join(root, '.gitignore'), 'vx.config.ts\n')
     expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)

@@ -657,7 +657,7 @@ function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): s
       .split('/')
       .slice(0, -1)
       .map((_, i, parts) => `${parts.slice(0, i + 1).join('/')}/`)
-  const dirs = new Set(gitIgnored(root, [...new Set(ignored.flatMap(ancestors))]))
+  const dirs = new Set(checkIgnoreSync(root, [...new Set(ignored.flatMap(ancestors))], true))
   const blocking = new Set<string>()
   const names = new Set<string>()
   for (const f of ignored) {

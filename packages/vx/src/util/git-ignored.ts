@@ -146,12 +146,25 @@ export async function checkIgnore(
   }
 }
 
-/** {@link checkIgnore} for `vx lock`, which builds its graph synchronously. */
-export function checkIgnoreSync(cwd: string, paths: readonly string[]): Set<string> | null {
+/**
+ * {@link checkIgnore} for `vx lock`, which builds its graph synchronously.
+ * `byRules`: what the ignore rules match, tracked or not (`--no-index`): a
+ * directory holding a file added with `-f` is otherwise not reported.
+ */
+export function checkIgnoreSync(
+  cwd: string,
+  paths: readonly string[],
+  byRules = false,
+): Set<string> | null {
   if (paths.length === 0) return new Set()
   try {
     const r = Bun.spawnSync({
-      cmd: [executablePath('git'), ...gitCaseArgs(cwd), ...CHECK_IGNORE],
+      cmd: [
+        executablePath('git'),
+        ...gitCaseArgs(cwd),
+        ...CHECK_IGNORE,
+        ...(byRules ? ['--no-index'] : []),
+      ],
       env: gitEnv(),
       cwd,
       stdin: stdinOf(paths),
