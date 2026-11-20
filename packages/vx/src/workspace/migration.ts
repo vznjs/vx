@@ -3,7 +3,14 @@
 // reads the same whoever wrote it. Core knows no source format: a mapper
 // returns a `MigrationPlan` and this does the rest.
 
-import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
@@ -238,6 +245,59 @@ export interface WorkspacePlugin {
 
 export type MigrationFormat = 'ts' | 'mjs'
 
+/** Does a tsconfig `include` entry take the file `name` beside it? */
+function includeReaches(entry: unknown, name: string): boolean {
+  if (typeof entry !== 'string') return false
+  // tsc reads an entry with no wildcard and no extension as a directory.
+  const e = entry.replace(/^\.\//, '').replace(/\/$/, '')
+  const glob =
+    e === '' || e === '.' ? '**/*' : /[*?]/.test(e) || path.extname(e) !== '' ? e : `${e}/**/*`
+  return new Bun.Glob(glob).match(name)
+}
+
+/**
+ * The tsconfigs beside the config, other than `tsconfig.json`, that a build
+ * runs over and whose own `include` takes it: Nx's `tsconfig.lib.json` and
+ * `tsconfig.app.json` (`"include": ["**\/*.ts"]`, beside a solution
+ * `tsconfig.json` that includes nothing). analog's content build compiled
+ * vx.config.ts under `isolatedDeclarations` and stopped at TS9037. One with
+ * its own `exclude` gets the config added; one without may inherit a list,
+ * so only the note speaks. One with `noEmit` only type-checks, and an
+ * ESLint one must keep every file it lints in its program.
+ */
+function buildTsconfigsTaking(dir: string, name: string): string[] {
+  let entries: string[]
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return []
+  }
+  return entries
+    .filter((f) => /^tsconfig\..+\.json$/.test(f) && !/eslint/i.test(f))
+    .sort()
+    .filter((f) => {
+      const file = path.join(dir, f)
+      let c: unknown
+      try {
+        if (lstatSync(file).isSymbolicLink()) return false
+        c = Bun.JSONC.parse(readFileSync(file, 'utf8'))
+      } catch {
+        return false
+      }
+      if (typeof c !== 'object' || c === null) return false
+      const t = c as Record<string, unknown>
+      const options = (t['compilerOptions'] ?? {}) as Record<string, unknown>
+      return (
+        options['noEmit'] !== true &&
+        !(
+          Array.isArray(t['exclude']) && t['exclude'].some((e) => e === name || e === `./${name}`)
+        ) &&
+        Array.isArray(t['include']) &&
+        t['include'].some((e) => includeReaches(e, name))
+      )
+    })
+}
+
 /**
  * The note for each directory whose `tsc` would compile the config
  * written there: a `tsconfig.json` with no `include` or `files` takes every
@@ -248,6 +308,11 @@ export type MigrationFormat = 'ts' | 'mjs'
  * files as written; one the config extends is not followed.
  */
 export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[] {
+  return compilesConfigNotes(root, written, true)
+}
+
+/** `builds`: also the notes for `buildTsconfigsTaking`'s files. */
+function compilesConfigNotes(root: string, written: readonly string[], builds: boolean): string[] {
   const notes: string[] = []
   for (const abs of written) {
     const name = path.basename(abs)
@@ -263,6 +328,13 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
         return undefined
       }
     }
+    const extra = buildTsconfigsTaking(dir, name)
+    if (builds && extra.length > 0)
+      notes.push(
+        `${extra.map((f) => relPosix(root, path.join(dir, f))).join(' and ')}'s "include" takes ` +
+          `${relPosix(root, abs)}, so a build over ${extra.length === 1 ? 'it' : 'them'} compiles it: ` +
+          `add "${name}" to "exclude" there`,
+      )
     const base = read('tsconfig.json')
     if (base === undefined) continue
     const options = (base['compilerOptions'] ?? {}) as Record<string, unknown>
@@ -270,14 +342,7 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
       options['noEmit'] !== true &&
       (typeof options['outDir'] === 'string' || typeof options['rootDir'] === 'string')
     if (!emits) continue
-    // tsc reads an entry with no wildcard and no extension as a directory.
-    const reaches = (entry: unknown): boolean => {
-      if (typeof entry !== 'string') return false
-      const e = entry.replace(/^\.\//, '').replace(/\/$/, '')
-      const glob =
-        e === '' || e === '.' ? '**/*' : /[*?]/.test(e) || path.extname(e) !== '' ? e : `${e}/**/*`
-      return new Bun.Glob(glob).match(name)
-    }
+    const reaches = (entry: unknown): boolean => includeReaches(entry, name)
     const takes = (c: Record<string, unknown> | undefined): 'all' | 'include' | undefined => {
       if (c === undefined) return undefined
       if (Array.isArray(c['exclude']) && c['exclude'].some((e) => e === name || e === `./${name}`))
@@ -288,8 +353,9 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
     const how = takes(base)
     if (how === undefined) continue
     const configs = ['tsconfig.json', 'tsconfig.build.json'].filter(
-      (f) => takes(read(f)) !== undefined,
+      (f) => !extra.includes(f) && takes(read(f)) !== undefined,
     )
+    if (configs.length === 0) continue
     const where = configs.map((f) => relPosix(root, path.join(dir, f))).join(' and ')
     notes.push(
       how === 'all'
@@ -614,10 +680,20 @@ function excludeFromTsc(root: string, written: readonly string[]): string[] {
   const changed: string[] = []
   for (const abs of written) {
     const name = path.basename(abs)
-    if (tscCompilesConfigNotes(root, [abs]).length === 0) continue
+    if (!/\.[mc]?ts$/.test(name)) continue
+    const dir = path.dirname(abs)
+    const extra = buildTsconfigsTaking(dir, name)
+    for (const f of extra) {
+      const file = path.join(dir, f)
+      const next = withExcluded(readFileSync(file, 'utf8'), name)
+      if (next === undefined) continue
+      writeFileSync(file, next)
+      changed.push(relPosix(root, file))
+    }
+    if (compilesConfigNotes(root, [abs], false).length === 0) continue
     for (const f of ['tsconfig.json', 'tsconfig.build.json']) {
-      const file = path.join(path.dirname(abs), f)
-      if (!existsSync(file) || lstatSync(file).isSymbolicLink()) continue
+      const file = path.join(dir, f)
+      if (extra.includes(f) || !existsSync(file) || lstatSync(file).isSymbolicLink()) continue
       const text = readFileSync(file, 'utf8')
       const next = withExcluded(text, name) ?? withDefaultExclude(text, name)
       if (next === undefined) continue

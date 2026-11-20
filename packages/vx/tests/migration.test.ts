@@ -613,6 +613,45 @@ describe('a written config passes the repo’s own checks', () => {
     expect(stdout).not.toContain('c/tsconfig.json names no "include"')
   })
 
+  // analog's content library: a solution tsconfig.json including nothing,
+  // and tsconfig.lib.json taking `**/*.ts`. The build compiled the config
+  // under isolatedDeclarations and stopped at TS9037; vx said nothing.
+  it("adds the config to a build tsconfig's exclude beside a solution tsconfig", async () => {
+    const at = (file: string, text: string) => {
+      mkdirSync(path.join(root, 'lib'), { recursive: true })
+      writeFileSync(path.join(root, 'lib', file), text)
+    }
+    at('tsconfig.json', '{ "files": [], "include": [], "references": [] }\n')
+    const lib =
+      '{\n  "extends": "./tsconfig.json",\n  "exclude": ["**/*.spec.ts"],\n  "include": ["**/*.ts"]\n}\n'
+    at('tsconfig.lib.json', lib)
+    at('tsconfig.spec.json', '{ "exclude": [], "include": ["**/*.spec.ts"] }\n')
+    at(
+      'tsconfig.check.json',
+      '{ "compilerOptions": { "noEmit": true }, "exclude": [], "include": ["**/*.ts"] }\n',
+    )
+    at('tsconfig.eslint.json', '{ "exclude": [], "include": ["**/*.ts"] }\n')
+    at('tsconfig.app.json', '{ "include": ["**/*.ts"] }\n')
+    const metas = [{ name: 'lib', dir: path.join(root, 'lib'), configPath: null, esModule: true }]
+    expect(await apply(plan([['lib', [task('build', exec('tsc'))]]]), { metas })).toBe(0)
+    expect(readFileSync(path.join(root, 'lib', 'tsconfig.lib.json'), 'utf8')).toBe(
+      '{\n  "extends": "./tsconfig.json",\n  "exclude": ["vx.config.ts", "**/*.spec.ts"],\n  "include": ["**/*.ts"]\n}\n',
+    )
+    // Untouched: one that does not take it, one that only type-checks, one
+    // ESLint lints through, and one with no exclude of its own to add to.
+    for (const [file, text] of [
+      ['tsconfig.json', '{ "files": [], "include": [], "references": [] }\n'],
+      ['tsconfig.spec.json', '{ "exclude": [], "include": ["**/*.spec.ts"] }\n'],
+      ['tsconfig.eslint.json', '{ "exclude": [], "include": ["**/*.ts"] }\n'],
+      ['tsconfig.app.json', '{ "include": ["**/*.ts"] }\n'],
+    ])
+      expect(readFileSync(path.join(root, 'lib', file!), 'utf8')).toBe(text!)
+    expect(stdout).toContain('added the config to "exclude" in lib/tsconfig.lib.json')
+    expect(tscCompilesConfigNotes(root, [path.join(root, 'lib', 'vx.config.ts')])).toEqual([
+      'lib/tsconfig.app.json\'s "include" takes lib/vx.config.ts, so a build over it compiles it: add "vx.config.ts" to "exclude" there',
+    ])
+  })
+
   it('a dry run calls no step after the write', async () => {
     let called = false
     const written = () => ((called = true), [])
