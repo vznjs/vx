@@ -439,7 +439,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   // In the outputs' order, not as each stat settled: one tree, one artifact.
   const regular: Array<Exclude<(typeof files)[number], { link: string }>> = []
   for (const f of files) {
-    if ('link' in f) (meta.links ??= {})[f.name] = f.link
+    if (f.link !== undefined) (meta.links ??= {})[f.name] = f.link
     else {
       meta.files[f.name] = [f.mode, f.mtimeMs]
       regular.push(f)

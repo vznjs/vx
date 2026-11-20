@@ -98,10 +98,11 @@ esac
 
 # The platform package sits beside this one under npm, pnpm and Bun
 # (node_modules/@vzn/vx-<key>), or under this package's own node_modules
-# when npm could not hoist it. The glibc binary needs its loader (musl
-# has none); launcher.cjs names that cause.
+# when npm could not hoist it. The nested one first, as Node resolves:
+# npm nests it only when the slot beside holds another release. The glibc
+# binary needs its loader (musl has none); launcher.cjs names that cause.
 if [ -n "$key" ] && { [ -z "$loader" ] || [ -e "$loader" ]; }; then
-  for bin in "$here/../$base-$key/$base" "$here/node_modules/$scope/$base-$key/$base"; do
+  for bin in "$here/node_modules/$scope/$base-$key/$base" "$here/../$base-$key/$base"; do
     if [ -x "$bin" ]; then exec "$bin" "$@"; fi
   done
 fi

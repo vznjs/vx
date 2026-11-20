@@ -1,3 +1,7 @@
+// A user's tsc reads this file but not our tsconfig's `include`: the reference
+// brings the file-import declarations along (no import can name a script .d.ts).
+// oxlint-disable-next-line typescript/triple-slash-reference
+/// <reference path="./vendor-files.d.ts" />
 // SRT's Linux seccomp helper (`apply-seccomp`), where a task can exec it.
 // SRT finds it beside its own files, then under `npm root -g`. A compiled
 // vx bundles SRT's JS but not its `vendor/`, so the published binary found
