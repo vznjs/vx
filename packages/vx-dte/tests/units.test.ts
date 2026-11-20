@@ -37,7 +37,9 @@ import {
   ui,
 } from '@vzn/vx'
 import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
-import type { Need } from '../src/plan/model.js'
+import type { Need, PlanTask, Size } from '../src/plan/model.js'
+import { advise } from '../src/plan/advise.js'
+import { playAside } from '../src/replays.js'
 import { Planner } from '../src/plan/planner.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
@@ -1995,6 +1997,29 @@ it('advises the workers that would have run it best, from the same replay', asyn
   } finally {
     await h.stop()
   }
+})
+
+// 2026-11-20: advice's eight replays took 15 s of one core on a
+// 200-task run once the uncapped fleets planned again; played side by
+// side they must say what one thread says.
+it('advises the same from replays played side by side', () => {
+  const tasks: PlanTask[] = Array.from({ length: 24 }, (_, i) => ({
+    id: `t${i}`,
+    ms: 1000 + 137 * i,
+    cores: 1 + (i % 3),
+    memory: 1e9,
+    deps: i < 4 ? [] : [`t${i % 4}`],
+    platform: i % 5 === 0 ? 'darwin-arm64' : 'linux-x64',
+  }))
+  const sizes: Size[] = [
+    { name: 'small', max: 3, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+    { name: 'mac', max: 1, cpu: 2, memory: 7e9, platform: 'darwin-arm64' },
+  ]
+  const warm = (): number => 500
+  const one = advise(tasks, sizes, warm)
+  expect(one.more).toBeDefined()
+  expect(one.any).toBeDefined()
+  expect(advise(tasks, sizes, warm, playAside(tasks, warm))).toEqual(one)
 })
 
 // Main 5c2463f: the least held read 14.9 core-min, its tasks and one

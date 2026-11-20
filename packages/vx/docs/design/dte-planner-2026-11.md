@@ -81,6 +81,8 @@ draws each decide. The order that won is tried first at the next decide
 while it still beats the plain one, so the search carries through the
 run: 64 fresh tries a decide planned the same and took sims 3 to 7 times
 as long. Under spread a draw judged on means loses, so it does not run.
+Advice's replays (`advise`) plan without restarts: a live run never has
+them, and they doubled advice's time for ends within its margin.
 
 Idle workers no forecast task needs leave. Leaving is judged by the same
 objective: the plan without the worker against the plan with it.

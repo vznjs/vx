@@ -1,5 +1,5 @@
 import { MARGIN, MARGIN_MS, type PlanTask, type Size } from './model.js'
-import { replay } from './replay.js'
+import { type Replayed, replay } from './replay.js'
 
 /** Workers of one shape. */
 export interface Fleet {
@@ -30,6 +30,9 @@ export interface Advice {
   readonly any?: Fleets | undefined
 }
 
+/** Each fleet's replay of the run, in order: `replay` one after another, or as many at once as a caller can. */
+export type Play = (fleets: readonly (readonly Size[])[]) => readonly Replayed[]
+
 /** The cores a shape of `Advice.any` may have. */
 const SHAPES = [2, 4, 8, 16, 32, 64]
 /** Memory a core of a shape has when nothing declares any: as GitHub's larger runners. */
@@ -41,18 +44,45 @@ const marginOf = (ms: number): number => Math.max(MARGIN_MS, ms * MARGIN)
  * The run's workers, judged after it: `tasks` as each took, played by the
  * live engine from nothing with every time known (`replay`), on `sizes`;
  * again with each size's `max` lifted; and on one shape a platform of any
- * cores. Each worker joins after its platform's `warm` warm-up.
+ * cores. Each worker joins after its platform's `warm` warm-up. `play`
+ * replays the fleets, all asked at once.
  */
 export function advise(
   tasks: readonly PlanTask[],
   sizes: readonly Size[],
   warm: (platform: string | undefined) => number,
+  play: Play = (fleets) => fleets.map((of) => replay(tasks, of, warm)),
 ): Advice {
   if (tasks.length === 0) return {}
-  const on = (
-    of: readonly Size[],
-  ): { fleets: Fleets; heldMs: number; workers: number } | undefined => {
-    const r = replay(tasks, of, warm)
+  const wide = sizes.some((s) => s.max < Infinity)
+  // Of any cores: each platform's memory a core as its sizes have most.
+  const platforms = new Set(tasks.map((t) => t.platform))
+  const ratio = new Map<string | undefined, number>()
+  for (const s of sizes)
+    ratio.set(s.platform, Math.max(ratio.get(s.platform) ?? 0, s.memory / s.cpu))
+  const most = new Map<string | undefined, number>()
+  for (const t of tasks) most.set(t.platform, Math.max(most.get(t.platform) ?? 0, t.memory))
+  const shapes = SHAPES.map((cores): Size[] =>
+    [...platforms].map((platform) => ({
+      name: `${cores}#${platform ?? ''}`,
+      max: Infinity,
+      cpu: cores,
+      memory: Math.max(
+        cores * (ratio.get(platform) ?? ratio.get(undefined) ?? MEMORY_PER_CORE),
+        most.get(platform) ?? 0,
+      ),
+      platform,
+    })),
+  )
+  const fleets = [
+    ...(sizes.length === 0 ? [] : [sizes]),
+    ...(wide ? [sizes.map((s) => ({ ...s, max: Infinity }))] : []),
+    ...shapes,
+  ]
+  const played = play(fleets)
+  const on = (z: number): { fleets: Fleets; heldMs: number; workers: number } | undefined => {
+    const of = fleets[z]!
+    const r = played[z]!
     if (!Number.isFinite(r.endMs)) return undefined
     const fleet = of.flatMap((s, z) =>
       r.asked[z] === 0
@@ -73,36 +103,17 @@ export function advise(
       workers: r.asked.reduce((a, b) => a + b, 0),
     }
   }
-  const declared = sizes.length === 0 ? undefined : on(sizes)?.fleets
-  const wider = sizes.some((s) => s.max < Infinity)
-    ? on(sizes.map((s) => ({ ...s, max: Infinity })))?.fleets
-    : undefined
+  const declared = sizes.length === 0 ? undefined : on(0)?.fleets
+  const wider = wide ? on(1)?.fleets : undefined
   const more =
     wider !== undefined &&
     declared !== undefined &&
     wider.endMs + marginOf(declared.endMs) < declared.endMs
       ? wider
       : undefined
-  // Of any cores: each platform's memory a core as its sizes have most.
-  const platforms = new Set(tasks.map((t) => t.platform))
-  const ratio = new Map<string | undefined, number>()
-  for (const s of sizes)
-    ratio.set(s.platform, Math.max(ratio.get(s.platform) ?? 0, s.memory / s.cpu))
-  const most = new Map<string | undefined, number>()
-  for (const t of tasks) most.set(t.platform, Math.max(most.get(t.platform) ?? 0, t.memory))
   const tried: { fleets: Fleets; heldMs: number; workers: number }[] = []
-  for (const cores of SHAPES) {
-    const shapes: Size[] = [...platforms].map((platform) => ({
-      name: `${cores}#${platform ?? ''}`,
-      max: Infinity,
-      cpu: cores,
-      memory: Math.max(
-        cores * (ratio.get(platform) ?? ratio.get(undefined) ?? MEMORY_PER_CORE),
-        most.get(platform) ?? 0,
-      ),
-      platform,
-    }))
-    const got = on(shapes)
+  for (let z = fleets.length - shapes.length; z < fleets.length; z++) {
+    const got = on(z)
     if (got !== undefined) tried.push(got)
   }
   let any: Fleets | undefined

@@ -388,6 +388,34 @@ it('starts a worker of the platform a ready task needs, though others are spare'
   expect(r.workers.find((w) => w.platform === 'darwin-arm64')?.ran).toEqual(['mac'])
 })
 
+// 2026-11-20: a size with no `max` and no learned spread asked its
+// first worker `Infinity × 0` (NaN) ms early, so two platforms of such
+// sizes asked none and the run never ended.
+it('asks workers of sizes with no max on their first run', () => {
+  const t = (id: string, deps: string[], platform: string): SimTask => ({
+    id,
+    deps,
+    exec: true,
+    cache: true,
+    ran: { ms: 30_000, cores: 1, memory: 5e8 },
+    platform,
+  })
+  const graph = [
+    t('a', [], 'linux-x64'),
+    ...Array.from({ length: 8 }, (_, i) => t(`mac${i}`, ['a'], 'darwin-arm64')),
+    ...Array.from({ length: 16 }, (_, i) => t(`l${i}`, ['a'], 'linux-x64')),
+  ]
+  const r = simulate(graph, {
+    sizes: [
+      { ...small, max: Infinity, platform: 'linux-x64' },
+      { name: 'mac', max: Infinity, cpu: 2, memory: 16e9, platform: 'darwin-arm64' },
+    ],
+    home: 'linux-x64',
+  })
+  expect(r.executed).toBe(graph.length)
+  expect(r.workers.some((w) => w.platform === 'darwin-arm64')).toBe(true)
+})
+
 // 2026-10-23: history is an estimate; a suite given more workers (a
 // Playwright config from 3 to 10) uses far more than it says. Four shards
 // that used 0.75 cores now fill a worker: none is sent work while its

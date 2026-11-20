@@ -1,6 +1,6 @@
 // The planner: what a run needs, where each task goes and when. Pure: it
 // reads no clock, wire, relay, cache or file (tests/plan-boundary.test.ts).
-export { advise, type Fleets } from './advise.js'
+export { advise, type Fleets, type Play } from './advise.js'
 export {
   bookedCores,
   leaves,
@@ -14,4 +14,4 @@ export {
   type Size,
 } from './model.js'
 export { commands, Planner, type PlannerSize } from './planner.js'
-export { replay } from './replay.js'
+export { replay, type Replayed } from './replay.js'

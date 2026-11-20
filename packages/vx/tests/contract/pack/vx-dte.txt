@@ -23,6 +23,8 @@ src/plan/planner.ts
 src/plan/replay.ts
 src/plugin.ts
 src/printable.ts
+src/replay-thread.ts
+src/replays.ts
 src/seal.ts
 src/server-fit.ts
 src/trace.ts
