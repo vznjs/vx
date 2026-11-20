@@ -112,6 +112,39 @@ function namedOutputs(command: string): string[] | undefined {
   return undefined
 }
 
+/** The buildinfo files a command's `tsc` writes: its project's own, and those inside another member. */
+interface BuildInfo {
+  files: readonly string[]
+  /** Workspace-root-relative: a project's `files` never reach another project's. */
+  workspaceFiles: readonly string[]
+}
+
+const NO_BUILD_INFO: BuildInfo = { files: [], workspaceFiles: [] }
+
+/**
+ * `rels` (relative to `dir`) split by owner: nestjs/nest's root `tsc -b
+ * packages` writes each member's buildinfo in that member, and the TODO's
+ * `files` naming them was refused by `vx lock`.
+ */
+function placeBuildInfo(
+  rels: readonly string[],
+  dir: string,
+  members: readonly string[],
+  workspaceRoot: string,
+): BuildInfo {
+  const files: string[] = []
+  const workspaceFiles: string[] = []
+  for (const rel of rels) {
+    const abs = path.join(dir, rel)
+    const inOther = members.some(
+      (m) => m !== dir && m.startsWith(dir + path.sep) && abs.startsWith(m + path.sep),
+    )
+    if (inOther) workspaceFiles.push(path.relative(workspaceRoot, abs).split(path.sep).join('/'))
+    else files.push(rel)
+  }
+  return { files, workspaceFiles }
+}
+
 /**
  * The cache block the task that builds `command` should declare, as a TODO
  * on it. `buildInfo` is what its `tsc` writes (`tscBuildInfo`): outside the
@@ -120,16 +153,20 @@ function namedOutputs(command: string): string[] | undefined {
  * lists: pasted as `src/**`, a Vite app's `index.html` and config were in no
  * key and an edit to either replayed the old build.
  */
-export function cacheTodo(command: string, buildInfo: readonly string[] = []): string {
+export function cacheTodo(command: string, buildInfo: BuildInfo = NO_BUILD_INFO): string {
   // Padded, separators as spaces: `next build && …` and `(next build)` match.
   const words = ` ${command.replace(/[;&|()]/g, ' ')} `
   const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
   const dirs = hit?.[1] ?? namedOutputs(command) ?? ['dist/**']
-  const outside = buildInfo.filter(
+  const outside = buildInfo.files.filter(
     (rel) => !dirs.some((d) => d.endsWith('/**') && rel.startsWith(d.slice(0, -2))),
   )
-  const outputs = [...dirs, ...outside].map((o) => `'${o}'`).join(', ')
-  return `cache: add \`inputs: { files: ['**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
+  const quoted = (list: readonly string[]) => list.map((o) => `'${o}'`).join(', ')
+  const workspace =
+    buildInfo.workspaceFiles.length === 0
+      ? ''
+      : `, workspaceFiles: [${quoted(buildInfo.workspaceFiles)}]`
+  return `cache: add \`inputs: { files: ['**'] }, outputs: { files: [${quoted([...dirs, ...outside])}]${workspace} }, cache: true\` with this package's real outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
 }
 
 // `lint` is not here: a linter reads sources, and an edge to `build` serialises
@@ -363,7 +400,7 @@ function scriptsOf(meta: PackageMeta): Record<string, unknown> {
  */
 function upstreamBuildOnWorker(
   tasks: GeneratedTask[],
-  buildInfo: (command: string) => readonly string[],
+  buildInfo: (command: string) => BuildInfo,
 ): void {
   const byName = new Map(tasks.map((t) => [t.name, t]))
   const seen = new Set<string>()
@@ -826,6 +863,13 @@ export function migrateScripts(
     const hooksBy = runsScriptHooks(meta.dir, hookMemo)
     const runsHooks = hooksBy !== null
     const berry = ownerOf(meta.dir, hookMemo).manager === 'berry'
+    const buildInfoOf = (command: string): BuildInfo =>
+      placeBuildInfo(
+        tscBuildInfo(tsc.read, meta.dir, command),
+        meta.dir,
+        metas.map((m) => m.dir),
+        root?.dir ?? outsideDir ?? meta.dir,
+      )
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
@@ -955,7 +999,7 @@ export function migrateScripts(
       }
       if (name === 'build') {
         task['dependsOn'] = ['^build']
-        todos.push(cacheTodo(own, tscBuildInfo(tsc.read, meta.dir, own)))
+        todos.push(cacheTodo(own, buildInfoOf(own)))
       } else if (AFTER_BUILD.has(name) && hasBuild) {
         task['dependsOn'] = ['build']
       }
@@ -970,7 +1014,7 @@ export function migrateScripts(
         task: null,
       })
     }
-    upstreamBuildOnWorker(tasks, (command) => tscBuildInfo(tsc.read, meta.dir, command))
+    upstreamBuildOnWorker(tasks, buildInfoOf)
     if (tasks.length > 0) {
       const importLines = readsManifest ? [MANIFEST_IMPORT] : []
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
