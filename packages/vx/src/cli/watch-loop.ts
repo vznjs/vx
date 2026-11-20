@@ -670,7 +670,7 @@ class WatchLoop {
     )
     this.current = current
     const cycle = await runOrchestrator(current.opts)
-    changes.unseen(
+    changes.drifted(
       cycle.outcomes.flatMap((o) =>
         o.cache?.driftedInput === undefined ? [] : [o.cache.driftedInput],
       ),
