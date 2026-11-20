@@ -239,18 +239,19 @@ export interface WorkspacePlugin {
 export type MigrationFormat = 'ts' | 'mjs'
 
 /**
- * The note for each directory whose `tsc` would compile the `vx.config.ts`
+ * The note for each directory whose `tsc` would compile the config
  * written there: a `tsconfig.json` with no `include` or `files` takes every
  * `.ts` beside it, so an emitting build's output moves (`dist/main.js`
  * becomes `dist/src/main.js`, and a NestJS app no longer starts) or, under
- * `rootDir`, stops with TS6059. Judged from the files as written; one the
- * config extends is not followed.
+ * `rootDir`, stops with TS6059. An `include` that reaches it (cal.com's
+ * `["."]`) takes it too, and emits it beside the build. Judged from the
+ * files as written; one the config extends is not followed.
  */
 export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[] {
   const notes: string[] = []
   for (const abs of written) {
     const name = path.basename(abs)
-    if (!name.endsWith('.ts')) continue
+    if (!/\.[mc]?ts$/.test(name)) continue
     const dir = path.dirname(abs)
     const read = (file: string): Record<string, unknown> | undefined => {
       try {
@@ -269,18 +270,34 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
       options['noEmit'] !== true &&
       (typeof options['outDir'] === 'string' || typeof options['rootDir'] === 'string')
     if (!emits) continue
-    const takes = (c: Record<string, unknown> | undefined): boolean =>
-      c !== undefined &&
-      c['include'] === undefined &&
-      c['files'] === undefined &&
-      !(Array.isArray(c['exclude']) && c['exclude'].some((e) => e === name || e === `./${name}`))
-    const configs = ['tsconfig.json', 'tsconfig.build.json'].filter((f) => takes(read(f)))
-    if (!configs.includes('tsconfig.json')) continue
+    // tsc reads an entry with no wildcard and no extension as a directory.
+    const reaches = (entry: unknown): boolean => {
+      if (typeof entry !== 'string') return false
+      const e = entry.replace(/^\.\//, '').replace(/\/$/, '')
+      const glob =
+        e === '' || e === '.' ? '**/*' : /[*?]/.test(e) || path.extname(e) !== '' ? e : `${e}/**/*`
+      return new Bun.Glob(glob).match(name)
+    }
+    const takes = (c: Record<string, unknown> | undefined): 'all' | 'include' | undefined => {
+      if (c === undefined) return undefined
+      if (Array.isArray(c['exclude']) && c['exclude'].some((e) => e === name || e === `./${name}`))
+        return undefined
+      if (c['include'] === undefined) return c['files'] === undefined ? 'all' : undefined
+      return Array.isArray(c['include']) && c['include'].some(reaches) ? 'include' : undefined
+    }
+    const how = takes(base)
+    if (how === undefined) continue
+    const configs = ['tsconfig.json', 'tsconfig.build.json'].filter(
+      (f) => takes(read(f)) !== undefined,
+    )
     const where = configs.map((f) => relPosix(root, path.join(dir, f))).join(' and ')
     notes.push(
-      `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles ` +
-        `${relPosix(root, abs)} too and its output moves (dist/main.js becomes dist/src/main.js): ` +
-        `add "${name}" to "exclude" there`,
+      how === 'all'
+        ? `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles ` +
+            `${relPosix(root, abs)} too and its output moves (dist/main.js becomes dist/src/main.js): ` +
+            `add "${name}" to "exclude" there`
+        : `${where}'s "include" takes ${relPosix(root, abs)}, so tsc compiles it into the ` +
+            `build's output: add "${name}" to "exclude" there`,
     )
   }
   return notes
