@@ -23,7 +23,8 @@ import {
   taskEntryHashes,
 } from '../cache/index.js'
 import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
-import { OutputsFailed } from '../graph/index.js'
+import { OutputsFailed, type TaskOutcome } from '../graph/index.js'
+import { warnOf } from '../report/index.js'
 import { relPosix, span } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { TaskPolicy } from './task-policy.js'
@@ -140,12 +141,36 @@ export class OutputGuard {
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
       const endClean = span('miss: clean outputs')
+      const writers = attempt === 1 ? ranBefore(args) : []
+      const written = new Map<string, string[]>()
       const cleanedRels = await cleanOutputs({
         ...cleanArgs,
         beforeRun: true,
         kept: this.committedKept,
+        written:
+          writers.length === 0
+            ? undefined
+            : {
+                windows: writers.map((w) => w.window),
+                onWritten: (abs, i) => {
+                  const id = writers[i]!.id
+                  let files = written.get(id)
+                  if (files === undefined) written.set(id, (files = []))
+                  files.push(relPosix(node.projectDir, abs))
+                },
+              },
       })
       endClean()
+      for (const [id, files] of written) {
+        const shown =
+          files.length > 3
+            ? `${files.slice(0, 3).join(', ')} and ${files.length - 3} more`
+            : files.join(', ')
+        warnOf(args.log)(
+          `[vx] ${node.id}: its outputs' clean before it ran deleted ${shown}, which ${id} wrote earlier in this run ` +
+            `— declare ${files.length === 1 ? 'it' : 'them'} in ${id}'s outputs, or have ${id} write outside ${node.id}'s outputs`,
+        )
+      }
       args.run.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
       this.committedBefore = this.checkCommitted(
         node.projectDir,
@@ -309,4 +334,35 @@ export class OutputGuard {
       await cleanOutputPaths({ projectDir: root, rels, outputs: outs, committed })
     return rels
   }
+}
+
+/**
+ * The same-project dependencies that ran a command earlier in this run, with
+ * their wall-clock windows (ms): a file the clean deletes stamped inside one
+ * is that task's write, which the clean is about to take (ngrx: an
+ * ng-packagr step with no outputs, then `build` over the same `dist/`).
+ */
+function ranBefore(args: ExecuteArgs): { id: string; window: readonly [number, number] }[] {
+  const out: { id: string; window: readonly [number, number] }[] = []
+  const toWall = (ns: bigint, nowWall: number, nowNs: bigint): number =>
+    nowWall - Number(nowNs - args.run.runStartHrTimeNs - ns) / 1e6
+  const nowWall = Date.now()
+  const nowNs = process.hrtime.bigint()
+  const seen = new Set<string>()
+  const visit = (outcomes: readonly TaskOutcome[]): void => {
+    for (const o of outcomes) {
+      if (seen.has(o.node.id)) continue
+      seen.add(o.node.id)
+      if (o.groupUpstream !== undefined) visit(o.groupUpstream)
+      const t = o.timing
+      if (o.status !== 'success' || o.node.projectDir !== args.node.projectDir) continue
+      if (t?.startNs === undefined || t.endNs === undefined || t.endNs <= t.startNs) continue
+      out.push({
+        id: o.node.id,
+        window: [toWall(t.startNs, nowWall, nowNs), toWall(t.endNs, nowWall, nowNs)],
+      })
+    }
+  }
+  visit(args.upstream)
+  return out
 }

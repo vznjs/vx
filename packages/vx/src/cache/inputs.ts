@@ -1334,6 +1334,17 @@ export async function cleanOutputs(args: {
   beforeRun?: boolean
   /** Filled with the committed files it found and left (absolute). */
   kept?: string[]
+  /**
+   * Wall-clock windows (ms) of tasks that ran earlier in this run: each file
+   * the clean deletes whose mtime falls in one is reported, with the window's
+   * index, to `onWritten` before it goes. One lstat per file, only when given.
+   */
+  written?:
+    | {
+        windows: readonly (readonly [number, number])[]
+        onWritten: (abs: string, window: number) => void
+      }
+    | undefined
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.projectDir,
@@ -1347,13 +1358,13 @@ export async function cleanOutputs(args: {
       ? await resolveOutputTree({ ...args, special: true, clearing: true })
       : { files: args.resolved, emptyDirs: [], special: [] }
   const matched = tree.files
+  const doomed = [...matched, ...tree.special].filter(
+    (f) => !keptCommitted(f, committed, args.kept),
+  )
+  if (args.written !== undefined) reportWritten(doomed, args.written)
   // `force: true` tolerates ENOENT from overlapping globs. A symlink is
   // unlinked, never followed.
-  const removed = await removeAll(
-    [...matched, ...tree.special].filter((f) => !keptCommitted(f, committed, args.kept)),
-    args.projectDir,
-    args.beforeRun,
-  )
+  const removed = await removeAll(doomed, args.projectDir, args.beforeRun)
   await pruneEmptiedDirs(
     args.projectDir,
     removed,
@@ -1366,6 +1377,18 @@ export async function cleanOutputs(args: {
   // `GitFilesCache.markOutputsChanged`: a committed one kept here is the task's
   // to rewrite, so its index OID no longer vouches for it.
   return matched.map((f) => relPosix(args.projectDir, f))
+}
+
+function reportWritten(
+  files: readonly string[],
+  w: NonNullable<Parameters<typeof cleanOutputs>[0]['written']>,
+): void {
+  for (const f of files) {
+    const at = lstatSync(f, { throwIfNoEntry: false })?.mtimeMs
+    if (at === undefined) continue
+    const i = w.windows.findIndex(([from, to]) => at >= from && at <= to)
+    if (i >= 0) w.onWritten(f, i)
+  }
 }
 
 /**

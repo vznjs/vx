@@ -985,6 +985,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'capture-cap',
     'ci-env-readers',
     'ci-output',
+    'clean-deletes-upstream-writes',
     'cli',
     'cli-arg-hygiene',
     'cli-bare',

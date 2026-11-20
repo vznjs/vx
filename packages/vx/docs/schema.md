@@ -1591,6 +1591,12 @@ outside the project refuses the task, naming the link. The clean also prunes the
 emptied, so an output that is a directory one run and a file the next
 restores either way.
 
+The clean deletes what a dependency of the same project wrote there
+earlier in the run, too: a step with no outputs that writes into
+`dist/` (an `ng-packagr` before a `build` over `dist/**`). vx warns,
+naming the files and the task that wrote them; declare them in that
+task's outputs, or have it write elsewhere.
+
 Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
 `typecheck`, `test`); you still cache the no-op success so the next
 run is a no-op too.
