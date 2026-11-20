@@ -152,3 +152,38 @@ it('names the install a package.json under a glob calls for', async () => {
     await rm(root, { recursive: true, force: true })
   }
 })
+
+// ngxtension: the Nx project `ngxtension/computed` got a package.json of
+// that name, which pnpm hoisted to node_modules/.pnpm/node_modules/ngxtension/computed,
+// through the `ngxtension` link into the library's source; its build then
+// failed on the dangling link left there. The manifest takes a valid name,
+// and the config keeps the Nx one its dependants spell.
+it('a project whose Nx name is no package name gets a valid one, and the config keeps its own', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-npmname-'))
+  try {
+    await writeFile(path.join(root, 'package.json'), '{"name":"r","private":true}\n')
+    await mkdir(path.join(root, 'libs/a/computed'), { recursive: true })
+    await mkdir(path.join(root, 'libs/b'), { recursive: true })
+    const graph = {
+      graph: {
+        nodes: {
+          'a/computed': node('a/computed', 'libs/a/computed'),
+          b: node('b', 'libs/b'),
+        },
+        dependencies: {},
+      },
+    }
+    await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
+    const p = await migrateNx(root, [], 'ts', path.join(root, 'graph.json'), false, false, [])
+    expect(p.extraFiles.map((f) => [f.relPath, JSON.parse(f.contents).name])).toEqual([
+      ['libs/a/computed/package.json', '@a/computed'],
+      ['libs/b/package.json', 'b'],
+    ])
+    expect(p.projects.map((x) => [x.name, x.writeName === true])).toEqual([
+      ['a/computed', true],
+      ['b', false],
+    ])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

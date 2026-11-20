@@ -133,7 +133,7 @@ function bareNotes(projects: readonly GeneratedProject[]): string[] {
 async function unlistedProjects(
   root: string,
   metas: readonly PackageMeta[],
-  projects: readonly { name: string; dir: string }[],
+  projects: readonly { name: string; dir: string; writeName?: boolean }[],
   packageGlobs: readonly string[],
 ): Promise<{ manifests: { relPath: string; contents: string }[]; notes: string[] }> {
   const listed = new Set(metas.map((m) => path.resolve(m.dir)))
@@ -144,6 +144,7 @@ async function unlistedProjects(
   const outside = unlisted.filter((p) => !globLists(packageGlobs, relPosix(root, p.dir)))
   const rels = outside.map((p) => relPosix(root, p.dir)).sort()
   const manifests: { relPath: string; contents: string }[] = []
+  const taken = new Set([...metas.map((m) => m.name), ...projects.map((p) => p.name)])
   for (const p of unlisted) {
     const file = path.join(p.dir, 'package.json')
     if (
@@ -153,9 +154,13 @@ async function unlistedProjects(
       )
     )
       continue
+    const name = npmName(p.name, taken)
+    taken.add(name)
+    // The config keeps the Nx name the configs' dependsOn spell.
+    if (name !== p.name) p.writeName = true
     manifests.push({
       relPath: relPosix(root, file),
-      contents: `${JSON.stringify({ name: p.name, private: true }, null, 2)}\n`,
+      contents: `${JSON.stringify({ name, private: true }, null, 2)}\n`,
     })
   }
   const exists = (f: string) =>
@@ -184,6 +189,28 @@ async function unlistedProjects(
               `vx finds a project by a package.json the workspace lists: add ${rels.map((r) => JSON.stringify(r)).join(', ')} to ${where}`,
           ],
   }
+}
+
+const NPM_NAME = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
+
+/**
+ * A package.json name the package manager takes for an Nx project's name.
+ * An unscoped name with a slash is none: pnpm hoisted ngxtension's
+ * `ngxtension/computed` to `node_modules/.pnpm/node_modules/ngxtension/computed`,
+ * through the `ngxtension` link into the library's own source, and its
+ * build failed on the dangling link it left there. `a/b` becomes `@a/b`.
+ */
+function npmName(name: string, taken: ReadonlySet<string>): string {
+  if (NPM_NAME.test(name)) return name
+  const parts = name
+    .toLowerCase()
+    .replace(/^@/, '')
+    .split('/')
+    .map((x) => x.replace(/[^a-z0-9-._~]/g, '-').replace(/^[._]+/, '') || 'x')
+  const base = parts.length === 1 ? parts[0]! : `@${parts[0]}/${parts.slice(1).join('-')}`
+  let out = base
+  for (let i = 2; taken.has(out); i++) out = `${base}-${i}`
+  return out
 }
 
 /** A `.vx/workspace.ts` field nx.json's run settings call for. */
