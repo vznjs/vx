@@ -482,9 +482,16 @@ export class LayeredCache implements CacheLayer {
       this.downloads.delete(hash)
     }
     this.remoteSourced.set(hash, Math.round(performance.now() - fetchStart))
+    const bytes = remoteBody.body instanceof Blob ? remoteBody.body.size : dl.received
     this.local.downloads.count++
-    this.local.downloads.bytes +=
-      remoteBody.body instanceof Blob ? remoteBody.body.size : dl.received
+    this.local.downloads.bytes += bytes
+    // No probe answered for it (one failed, or the remote has no batch query):
+    // the GET is the answer, kept as a probe's would be.
+    if (!this.infos.has(hash)) {
+      const info = { size: bytes, durationMs: meta.durationMs }
+      this.infos.set(hash, info)
+      this.local.remoteHits.record([hash], new Map([[hash, info]]))
+    }
     return true
   }
 

@@ -266,7 +266,8 @@ export class StatThread {
 
 Kept across runs and processes in `remote_hits`, so any run with a remote
 cache plans on them at once instead of waiting on a `hasMany`. A whole
-answer rewrites the rows; a pull that finds a key gone forgets it.
+answer rewrites the rows; a pull that finds a key gone forgets it, and
+one that serves a hit no answer covered keeps it.
 
 ### Public surface
 

@@ -433,6 +433,51 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     TIMEOUT,
   )
 
+  // A probe that failed or a remote with no batch query left the hit a GET
+  // served out of the index: the next run with a wiped local trusted none
+  // (turbo-cache.test.ts's flake, 2026-11-19).
+  it(
+    'a hit a GET served is kept when no probe answered',
+    async () => {
+      const fixture = await makeFixture('vx-remote-get-kept-')
+      const remote = startArtifactEndpoint()
+      const cacheDir = path.join(fixture.root, '.vx', 'cache')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const opts = { cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }
+        expect((await run({ ...opts, remoteCache: remote.layer })).ok).toBe(true)
+        await rm(cacheDir, { recursive: true, force: true })
+        await rm(path.join(fixture.root, 'packages', 'app', 'out.txt'))
+        for (const hasMany of [
+          async () => null,
+          async () => {
+            throw new Error('connection reset')
+          },
+        ]) {
+          await rm(cacheDir, { recursive: true, force: true })
+          const second = await run({ ...opts, remoteCache: { ...remote.layer, hasMany } })
+          const local = new Cache(cacheDir)
+          let rows: unknown[]
+          try {
+            rows = indexDb(local).query('SELECT hash FROM remote_hits').all()
+          } finally {
+            local.close()
+          }
+          expect([second.outcomes[0]!.status, rows]).toEqual([
+            'cache-hit-remote',
+            [{ hash: second.outcomes[0]!.hash }],
+          ])
+        }
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // A local save stores the masked command (L-11), but a remote hit's
   // ingest wrote the one the lookup carried, raw: the token a config
   // inlined sat in cache.db, where `vx why` reads it (L-27).
