@@ -557,9 +557,11 @@ describe('a written config passes the repo’s own checks', () => {
 
   // tldraw's editor: `rootDir: src` and no `include`, so tsc compiled the
   // config and stopped at TS6059 on the first run. Its `exclude` list is
-  // tsc's whole exclude, so the config joins it; with none, a new list would
-  // drop tsc's default one, and only the note speaks.
-  it("adds the config to a tsconfig's own exclude list, and only notes one with none", async () => {
+  // tsc's whole exclude, so the config joins it; with none, a new list
+  // restates tsc's default (docmost's editor-ext emitted into dist/src and
+  // its dependants failed TS2307); one that extends may inherit a list, so
+  // only the note speaks.
+  it("adds the config to a tsconfig's exclude, and only notes one that extends", async () => {
     const tsconfig = (dir: string, text: string) => {
       mkdirSync(path.join(root, dir), { recursive: true })
       writeFileSync(path.join(root, dir, 'tsconfig.json'), text)
@@ -569,7 +571,9 @@ describe('a written config passes the repo’s own checks', () => {
     tsconfig('a', listed)
     tsconfig('b', '{ "exclude": [], "compilerOptions": { "outDir": "dist" } }\n')
     tsconfig('c', '{ "compilerOptions": { "rootDir": "src" } }\n')
-    const metas = ['a', 'b', 'c'].map((name) => ({
+    tsconfig('d', '{\n  "compilerOptions": {\n    "outDir": "./dist"\n  }\n}\n')
+    tsconfig('e', '{ "extends": "../base.json", "compilerOptions": { "outDir": "dist" } }\n')
+    const metas = ['a', 'b', 'c', 'd', 'e'].map((name) => ({
       name,
       dir: path.join(root, name),
       configPath: null,
@@ -581,6 +585,8 @@ describe('a written config passes the repo’s own checks', () => {
           ['a', [task('build', exec('tsc'))]],
           ['b', [task('build', exec('tsc'))]],
           ['c', [task('build', exec('tsc'))]],
+          ['d', [task('build', exec('tsc'))]],
+          ['e', [task('build', exec('tsc'))]],
         ]),
         { metas },
       ),
@@ -592,11 +598,19 @@ describe('a written config passes the repo’s own checks', () => {
       '{ "exclude": ["vx.config.ts"], "compilerOptions": { "outDir": "dist" } }\n',
     )
     expect(readFileSync(path.join(root, 'c', 'tsconfig.json'), 'utf8')).toBe(
-      '{ "compilerOptions": { "rootDir": "src" } }\n',
+      '{ "compilerOptions": { "rootDir": "src" }, "exclude": ["vx.config.ts", "node_modules", "bower_components", "jspm_packages"] }\n',
     )
-    expect(stdout).toContain('added the config to "exclude" in a/tsconfig.json, b/tsconfig.json')
-    expect(stdout).toContain('c/tsconfig.json names no "include"')
-    expect(stdout).not.toContain('a/tsconfig.json names no "include"')
+    expect(readFileSync(path.join(root, 'd', 'tsconfig.json'), 'utf8')).toBe(
+      '{\n  "compilerOptions": {\n    "outDir": "./dist"\n  },\n  "exclude": ["vx.config.ts", "node_modules", "bower_components", "jspm_packages", "./dist"]\n}\n',
+    )
+    expect(readFileSync(path.join(root, 'e', 'tsconfig.json'), 'utf8')).toBe(
+      '{ "extends": "../base.json", "compilerOptions": { "outDir": "dist" } }\n',
+    )
+    expect(stdout).toContain(
+      'added the config to "exclude" in a/tsconfig.json, b/tsconfig.json, c/tsconfig.json, d/tsconfig.json',
+    )
+    expect(stdout).toContain('e/tsconfig.json names no "include"')
+    expect(stdout).not.toContain('c/tsconfig.json names no "include"')
   })
 
   it('a dry run calls no step after the write', async () => {

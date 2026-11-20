@@ -605,8 +605,10 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
  * Adds a written config to the `exclude` its package's tsconfig already
  * lists, where tsc would compile it: tldraw's editor (`rootDir: src`, no
  * `include`) stopped at TS6059 on the first `vx run`. A tsconfig with no
- * `exclude` keeps tsc's default one, which a new list would replace: there
- * the note says what to add. Returns what it changed.
+ * `exclude` gets one that restates tsc's default beside the config (docmost's
+ * editor-ext emitted into `dist/src`, and its dependants found no module);
+ * one that `extends` may inherit a list, so there the note says what to
+ * add. Returns what it changed.
  */
 function excludeFromTsc(root: string, written: readonly string[]): string[] {
   const changed: string[] = []
@@ -617,7 +619,7 @@ function excludeFromTsc(root: string, written: readonly string[]): string[] {
       const file = path.join(path.dirname(abs), f)
       if (!existsSync(file) || lstatSync(file).isSymbolicLink()) continue
       const text = readFileSync(file, 'utf8')
-      const next = withExcluded(text, name)
+      const next = withExcluded(text, name) ?? withDefaultExclude(text, name)
       if (next === undefined) continue
       writeFileSync(file, next)
       changed.push(relPosix(root, file))
@@ -626,6 +628,46 @@ function excludeFromTsc(root: string, written: readonly string[]): string[] {
   return changed.length === 0
     ? []
     : [`added the config to "exclude" in ${changed.join(', ')}, so tsc does not compile it`]
+}
+
+/**
+ * `text` with an `"exclude"` of `name` and tsc's default (`node_modules`,
+ * `bower_components`, `jspm_packages`, `outDir`, `declarationDir`), where it
+ * has none and extends nothing; undefined where that is not certain.
+ */
+function withDefaultExclude(text: string, name: string): string | undefined {
+  let before: Record<string, unknown>
+  try {
+    before = Bun.JSONC.parse(text) as Record<string, unknown>
+  } catch {
+    return undefined
+  }
+  if (typeof before !== 'object' || before === null || Array.isArray(before)) return undefined
+  if ('exclude' in before || 'extends' in before || /"exclude"\s*:/.test(text)) return undefined
+  const options = (before['compilerOptions'] ?? {}) as Record<string, unknown>
+  const dirs = ['outDir', 'declarationDir'].flatMap((k) =>
+    typeof options[k] === 'string' ? [options[k] as string] : [],
+  )
+  const list = [name, 'node_modules', 'bower_components', 'jspm_packages', ...dirs]
+  const close = text.lastIndexOf('}')
+  if (close < 0) return undefined
+  const head = text.slice(0, close).trimEnd()
+  const indent = /\n([ \t]+)"/.exec(text)?.[1]
+  const sep = head.endsWith('{') || head.endsWith(',') ? '' : ','
+  const entry = `"exclude": ${JSON.stringify(list).replaceAll('","', '", "')}`
+  const next =
+    indent === undefined
+      ? `${head}${sep} ${entry} ${text.slice(close)}`
+      : `${head}${sep}\n${indent}${entry}\n${text.slice(close)}`
+  try {
+    const parsed = Bun.JSONC.parse(next) as Record<string, unknown>
+    const kept = Object.keys(before).every(
+      (k) => JSON.stringify(parsed[k]) === JSON.stringify(before[k]),
+    )
+    return kept && JSON.stringify(parsed['exclude']) === JSON.stringify(list) ? next : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** `text` with `name` first in its one `"exclude"` array; undefined where that is not certain. */
