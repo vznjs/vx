@@ -437,3 +437,23 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
     ])
   })
 })
+
+describe('resolveSharedOutputs — a keeper that depends on the task it cleans', () => {
+  it('tells the user the keeper deletes that task’s output', () => {
+    // mastra, 2026-11-20: build (api-extractor over dist) depends on
+    // build:lib (tsdown into dist); build's clean deleted build:lib's work.
+    const tasks = resolveSharedOutputs([
+      task('build:lib', ['dist/**']),
+      task('build', ['dist/**'], ['build:lib']),
+    ])
+    expect(tasks[1]!.task!['cache']).toBe(true)
+    expect(tasks[1]!.todos).toEqual([
+      'depends on "build:lib" and declares its output "dist/**": vx cleans a task\'s outputs ' +
+        'before it runs, so this task deletes what "build:lib" wrote there and runs without it. ' +
+        'Give each task its own output path.',
+    ])
+    // CONTROL: no edge between them, no such word.
+    const apart = resolveSharedOutputs([task('build:lib', ['dist/**']), task('build', ['dist/**'])])
+    expect(apart[1]!.todos).toEqual([])
+  })
+})
