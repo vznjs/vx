@@ -773,6 +773,9 @@ on, as the cache keys decide.
   it is neither ignored nor declared: the loop re-runs on it, and after
   three cycles in a row started by the same path after a run, watch
   names it and the remedy once (`watch-loop-selfwrite.test.ts`). A
+  declared output git tracks still counts as an edit, so its remedy is
+  `.gitignore` and `git rm --cached`, not declaring it
+  (`watch-tracked-output-notice.test.ts`). A
   held server is blamed only for a file in its own project (`serverDirs`,
   not a nested project's) that git does not track: `gitFiles`' `tracked`
   at the arm, then `gitTracks` when it would be blamed, so a file

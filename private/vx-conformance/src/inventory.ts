@@ -1251,6 +1251,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-pool-close',
     'watch-server-blame',
     'watch-timing',
+    'watch-tracked-output-notice',
     'watch-ws-import-in-project',
     'workspace-files-shared-memo',
     'workspace-output-config',
