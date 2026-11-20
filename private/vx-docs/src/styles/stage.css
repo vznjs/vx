@@ -925,7 +925,7 @@
   font: 600 13px var(--font-body);
   color: #9aa59a;
 }
-/* The ratio to the row's fastest leads; the measured time sits under it. */
+/* The ratio to the row's fastest, never a time: times move every run. */
 .lane-value {
   display: flex;
   flex-direction: column;
@@ -939,11 +939,6 @@
 .lane-value b {
   font-size: 15px;
   font-weight: 700;
-}
-.lane-value small {
-  font-size: 11px;
-  font-weight: 500;
-  color: #69726d;
 }
 .lane.best:not(.vx) .lane-value b {
   color: #f2f5ef;
@@ -982,11 +977,9 @@
 }
 .lane.vx .streak {
   background: linear-gradient(90deg, transparent, var(--tone-core));
-  box-shadow: 0 0 16px rgba(198, 248, 78, 0.7);
 }
 .lane.vx .streak::after {
-  background: #f4ffd6;
-  box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
+  background: var(--tone-core);
 }
 /* Live, the lengths give way to runners: one track, each at its own pace. */
 /* Every tail follows one rule, its runner's speed (race.ts tailPct): only
@@ -1031,8 +1024,7 @@
     3px no-repeat;
 }
 .lane.vx .runner::after {
-  background: #f4ffd6;
-  box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
+  background: var(--tone-core);
 }
 /* CPU is an amount, not a pace: a meter of cells, one per CPU second. The
    lit layer is the whole meter in its heat colours, cut to the cells burned. */

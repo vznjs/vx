@@ -196,15 +196,15 @@ const startCommands = [
                         <span class="runner" />
                       </span>
                     )}
-                    <span class="lane-laps" aria-hidden="true">{race.k === 'cpu' ? `${l.cells} s` : ''}</span>
-                    <span class="lane-value"><b>{l.ratio}</b><small>{l.value}</small></span>
+                    <span class="lane-laps" aria-hidden="true"></span>
+                    <span class="lane-value"><b>{l.ratio}</b></span>
                   </div>
                 ))}
               </figure>
             ))
           }
         </div>
-        <p class="fine race-note">The fastest tool in each row is 1×, a tool at 2× takes twice as long, and the measured time sits under each number.</p>
+        <p class="fine race-note">The fastest tool in each row is 1×, and a tool at 2× takes twice as long.</p>
         <p class="fine race-note">Every tool runs the same track in real time: one lap takes the time it measured.</p>
         <p class="fine race-note">CPU is an amount, so it fills a meter: one cell per CPU second.</p>
         <p class="fine">{benchFormula}</p>
@@ -442,7 +442,6 @@ const startCommands = [
       const cols = Number(meter.style.getPropertyValue('--cols'))
       const fires = [...meter.querySelectorAll<HTMLElement>('.lane')].map((lane) => ({
         fire: lane.querySelector<HTMLElement>('.fire')!,
-        count: lane.querySelector<HTMLElement>('.lane-laps')!,
         total: Number(lane.querySelector<HTMLElement>('.fire')!.dataset['cells']),
         shown: -1,
       }))
@@ -467,7 +466,6 @@ const startCommands = [
           if (lit === f.shown) continue
           f.shown = lit
           f.fire.style.clipPath = burnClip(lit, cols)
-          f.count.textContent = `${lit} s`
         }
         requestAnimationFrame(frame)
       }

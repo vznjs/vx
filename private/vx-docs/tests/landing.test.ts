@@ -296,7 +296,7 @@ describe('the landing page', () => {
         (r) => FIGURES.get(`${r}.${ROWS[i]}`) ?? 'missing',
       )
       // Each lane leads with its ratio to the row's fastest, whoever that is,
-      // and keeps the measured time under it.
+      // and shows no time: a time moves every run, the ratio far less.
       expect(
         lanes.map((m) => text(/class="lane-value"><b>([\s\S]*?)<\/b>/.exec(m[3]!)![1]!)),
       ).toEqual(
@@ -304,7 +304,7 @@ describe('the landing page', () => {
           ratioLabel(parseDuration(v)!, Math.min(...figures.map((f) => parseDuration(f)!))),
         ),
       )
-      expect(lanes.map((m) => text(/<small>([\s\S]*?)<\/small>/.exec(m[3]!)![1]!))).toEqual(figures)
+      expect(f).not.toMatch(/<small>/)
       expect(lanes.filter((m) => m[0].includes('<b>1×</b>')).length).toBeGreaterThanOrEqual(1)
     })
     const fine = [...speed.matchAll(/<p class="fine">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
