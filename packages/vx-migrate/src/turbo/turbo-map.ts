@@ -1932,7 +1932,9 @@ function keyOnlyGroup(t: TurboMappedTask): TurboMappedTask {
     return t
   const { exec: _exec, ...group } = task
   uncache(group)
-  return { ...t, task: group }
+  // Its pass-through went with the command: an import nothing spreads
+  // fails a tsc with noUnusedLocals over the config (astro's `scripts`).
+  return { ...t, task: group, uses: new Set([...t.uses].filter((k) => k !== 'pass')) }
 }
 
 function buildTask(
