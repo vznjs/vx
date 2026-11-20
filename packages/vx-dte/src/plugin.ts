@@ -343,11 +343,13 @@ export function dte(options: DteOptions = {}) {
     others: new Map(),
     spreads: new Map(),
     paces: new Map(),
+    paceSpreads: new Map(),
     bases: new Map(),
     starts: new Map(),
   }
-  /** Each size's pace this run so far (`Planner.paces`): none before its planner. */
+  /** Each size's pace and spread of it this run so far (`Planner.paces`): none before its planner. */
   let pacesNow = (): ReadonlyMap<string, number> => new Map()
+  let paceSpreadsNow = (): ReadonlyMap<string, number> => new Map()
   /** Each server's start this run's workers measured, ms. */
   let starts = new Map<string, number>()
   /** Each server's base an earlier run learned, then this run's workers' over it (`server-fit.ts`). */
@@ -382,10 +384,12 @@ export function dte(options: DteOptions = {}) {
       others: new Map(),
       spreads: new Map(),
       paces: new Map(),
+      paceSpreads: new Map(),
       bases: new Map(),
       starts: new Map(),
     }
     pacesNow = () => new Map()
+    paceSpreadsNow = () => new Map()
     bases = new Map()
     starts = new Map()
     reported.clear()
@@ -545,6 +549,7 @@ export function dte(options: DteOptions = {}) {
             others: o.othersOf(),
             spreads: o.spreadsMs(),
             paces: pacesNow(),
+            paceSpreads: paceSpreadsNow(),
             bases: fitted,
             starts: started,
           },
@@ -861,6 +866,9 @@ export function dte(options: DteOptions = {}) {
             warmUpMs: warmUps[s.name]!,
             spreadMs: learned.spreads.get(s.name) ?? 0,
             ...(learned.paces.has(s.name) ? { pace: learned.paces.get(s.name)! } : {}),
+            ...(learned.paceSpreads.has(s.name)
+              ? { paceSpread: learned.paceSpreads.get(s.name)! }
+              : {}),
           })),
           known,
           expected: new Set([...likely, ...sure, ...executed]),
@@ -880,18 +888,23 @@ export function dte(options: DteOptions = {}) {
             }
           }),
           warmUps,
+          // The fixture a sim replays reads them: main 9600386's had none, and the sim asked late.
+          spreads: Object.fromEntries(learned.spreads),
           paces: Object.fromEntries(learned.paces),
+          paceSpreads: Object.fromEntries(learned.paceSpreads),
         })
         const made = planner
-        pacesNow = () => {
-          const by = made.paces()
+        // a platform's, each of its sizes'
+        const bySize = (by: ReadonlyMap<string, number>): Map<string, number> => {
           const out = new Map<string, number>()
           for (const s of sizes) {
-            const pace = by.get(s.platform ?? host)
-            if (pace !== undefined) out.set(s.name, pace)
+            const v = by.get(s.platform ?? host)
+            if (v !== undefined) out.set(s.name, v)
           }
           return out
         }
+        pacesNow = () => bySize(made.paces())
+        paceSpreadsNow = () => bySize(made.paceSpreads())
         return planner
       }
       const replan = (): void => o.poke()

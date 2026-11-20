@@ -35,7 +35,13 @@ lets them in: each a spread after the one of its size asked before it
 when it was due is queued, and no more of its size is asked meanwhile.
 
 **The forecast.** A task's time is history's mean, scaled by how this
-run's finished tasks compared to history, with its spread. A running
+run's finished tasks compared to history, with its spread: the spread of
+took / history over its mean, this run's once two measured tasks ended,
+before that an earlier run's (`pace-spread`, 0.22-0.25 on every main
+run). Read as 0 at the start, every time was a fact: each lane planned to
+end on the dot, workers asked at the last moment, and main 9600386's docs
+chain began 39 s in (98 s, ideal 70.6; its sim 77.0 s, 72.5 with the
+spread). A running
 task's rest is the lognormal residual of what it has run. One backward
 pass, with Clark's moments of a maximum (1961), gives each task its tail
 to the run's end and the end's mean and variance. A task history never

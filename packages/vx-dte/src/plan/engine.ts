@@ -34,6 +34,12 @@ export interface EngineSize {
   readonly spreadMs?: number
   /** How many times history's time its tasks took, as an earlier run knew it; this run's replaces it. */
   readonly pace?: number
+  /**
+   * How far its tasks' times strayed from history's, as an earlier run knew it: the spread of took / history over
+   * its mean. This run's replaces it. Without it a plan's first decides took every time as a fact, planned each
+   * lane to end on the dot and asked workers at the last moment: main 9600386's docs chain began 39 s in.
+   */
+  readonly paceSpread?: number
 }
 
 /** The run's graph and what history knew of each task. */
@@ -110,6 +116,12 @@ const at = (T: readonly number[], x: number): number => {
     else hi = m - 1
   }
   return lo
+}
+/** The spread over the mean of n draws with sum s and sum of squares sq. */
+const cvFrom = (n: number, s: number, sq: number): number => {
+  const m = s / n
+  const v = (sq - n * m * m) / (n - 1)
+  return m > 0 && v > 0 ? Math.sqrt(v) / m : 0
 }
 const clarkMean = (a: number, va: number, b: number, vb: number): number => {
   const th = Math.sqrt(va + vb)
@@ -297,6 +309,11 @@ export class Engine {
   private readonly paceKnown: Float64Array
   private readonly paceRan: Float64Array
   private readonly pacePrior: Float64Array
+  /** Per platform: its ended measured tasks' took / history, count and moments, and an earlier run's spread of it. */
+  private readonly qN: Float64Array
+  private readonly qSum: Float64Array
+  private readonly qSq: Float64Array
+  private readonly cvPrior: Float64Array
   private ratioN = 0
   private ratioSum = 0
   private ratioSq = 0
@@ -347,6 +364,18 @@ export class Engine {
     })
     for (let q = 0; q < names.length; q++)
       this.pacePrior[q] = pn[q]! > 0 ? this.pacePrior[q]! / pn[q]! : NaN
+    this.qN = new Float64Array(names.length)
+    this.qSum = new Float64Array(names.length)
+    this.qSq = new Float64Array(names.length)
+    const cn = new Float64Array(names.length)
+    this.cvPrior = new Float64Array(names.length)
+    sizes.forEach((s, z) => {
+      if (s.paceSpread === undefined || !(s.paceSpread > 0)) return
+      this.cvPrior[this.sizePlat[z]!]! += s.paceSpread
+      cn[this.sizePlat[z]!]!++
+    })
+    for (let q = 0; q < names.length; q++)
+      this.cvPrior[q] = cn[q]! > 0 ? this.cvPrior[q]! / cn[q]! : NaN
     // adjacency as flat arrays: a million tasks stay in cache
     const dOff = (this.dOff = new Int32Array(n + 1))
     const kOff = (this.kOff = new Int32Array(n + 1))
@@ -602,6 +631,10 @@ export class Engine {
         this.ratioN++
         this.ratioSum += r
         this.ratioSq += r * r
+        const q = this.plat[i]!
+        this.qN[q]!++
+        this.qSum[q]! += r
+        this.qSq[q]! += r * r
       }
     }
   }
@@ -666,12 +699,23 @@ export class Engine {
       if (this.paceKnown[q]! > 0) out.set(name, this.paceRan[q]! / this.paceKnown[q]!)
     return out
   }
-  /** A task's spread relative to its mean when history knows none: history's pooled, else this run's. */
-  private cv(): number {
-    if (this.cvPool > 0 || this.ratioN < 2) return this.cvPool
-    const m = this.ratioSum / this.ratioN
-    const v = (this.ratioSq - this.ratioN * m * m) / (this.ratioN - 1)
-    return m > 0 && v > 0 ? Math.sqrt(v) / m : 0
+  /**
+   * A platform's task's spread relative to its mean when history knows none: history's pooled, else the run's once
+   * two of its measured tasks ended, else an earlier run's of the platform (`paceSpread`). The run's, not the
+   * platform's own: two Macs' tasks ended said little, and main d36eed9's sim ended 8 s later on them.
+   */
+  private cvOf(q: number): number {
+    if (this.cvPool > 0) return this.cvPool
+    if (this.ratioN >= 2) return cvFrom(this.ratioN, this.ratioSum, this.ratioSq)
+    const p = this.cvPrior[q]!
+    return p === p ? p : 0
+  }
+  /** Each platform's spread of took / history this run (`paceSpread`): each two of whose measured tasks ended. */
+  paceSpreads(): Map<string, number> {
+    const out = new Map<string, number>()
+    for (const [name, q] of this.platIx)
+      if (this.qN[q]! >= 2) out.set(name, cvFrom(this.qN[q]!, this.qSum[q]!, this.qSq[q]!))
+    return out
   }
   private est(i: number): number {
     const k = this.kms[i]
@@ -715,7 +759,7 @@ export class Engine {
     const k = this.kms[i]
     const sd = this.ksd[i]
     if (k !== null && k !== undefined)
-      return (sd !== null && sd !== undefined ? sd : this.cv() * k) * this.speedOf(i)
+      return (sd !== null && sd !== undefined ? sd : this.cvOf(this.plat[i]!) * k) * this.speedOf(i)
     const [n, s1, s2] = this.unmeasuredMoments()
     return n > 1 ? Math.sqrt(Math.max(0, (s2 - (s1 * s1) / n) / (n - 1))) : 0
   }

@@ -55,6 +55,8 @@ export interface SimOptions {
   readonly spreadsMs?: ReadonlyMap<string, number>
   /** Each size's pace an earlier run learned (`learned.paces`): how many times history's time its tasks took. */
   readonly paces?: ReadonlyMap<string, number>
+  /** Each size's spread of took / history an earlier run learned (`learned.paceSpreads`). */
+  readonly paceSpreads?: ReadonlyMap<string, number>
   /** The tasks the forecast says miss (`likelyMisses`), before any does. */
   readonly likely?: ReadonlySet<string>
   /** The platform a task naming none runs on (`homeOf`). */
@@ -174,6 +176,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     warmUpMs: options.warmUpsMs?.get(s.name) ?? DEFAULT_WARM_UP_MS,
     spreadMs: options.spreadsMs?.get(s.name) ?? 0,
     ...(options.paces?.has(s.name) ? { pace: options.paces.get(s.name)! } : {}),
+    ...(options.paceSpreads?.has(s.name) ? { paceSpread: options.paceSpreads.get(s.name)! } : {}),
   }))
   const planner = new Planner({
     nodes,

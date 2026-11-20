@@ -784,7 +784,9 @@ task's time, at most twice what history said (more is the CI's queue),
 and its machine's cores besides the run's tasks its cores; its join spread is `@vzn/vx-dte#join-spread:<size>`; its pace,
 `@vzn/vx-dte#pace:<size>`, how long its tasks took per 1000 ms history said
 (history keeps a task's time alone, and packed tasks run slower), so a plan
-reads each platform's work as long as it ran before any of its tasks ends; and each server's
+reads each platform's work as long as it ran before any of its tasks ends; its pace's spread,
+`@vzn/vx-dte#pace-spread:<size>`, how far its tasks' times strayed from that (per 1000 of the mean), so a
+plan's first decides leave each lane room for a task that runs long, not end it on the dot; and each server's
 base `@vzn/vx-dte#server-base:<task>`, its start that measure's time. Core keeps them in the run's
 history, and a history plugin (`@vzn/vx-history`) shares them as it does
 task timings, so the next run plans by them before any worker of that
