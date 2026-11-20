@@ -63,6 +63,9 @@ it('a task that always rewrites its input in place settles after an edit', async
   await Bun.sleep(SETTLE_MS)
   expect(await runs(f.log)).toBe(settled)
   expect(await readFile(f.src, 'utf8')).toBe('c\nd\n')
+  // Its line said the next cycle runs on it: watch says why none did, once.
+  const notice = 'packages/app/src/a.txt is rewritten in place by its own task every run'
+  expect(w.out().split(notice).length - 1).toBe(1)
 }, 40_000)
 
 it('an editor saving over its rewrite mid-run still starts a cycle', async () => {

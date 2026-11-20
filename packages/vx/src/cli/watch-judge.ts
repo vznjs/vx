@@ -254,7 +254,18 @@ export class ChangeJudge {
     for (const abs of moved) {
       if (abs !== null) {
         const was = this.lastState.get(abs)
-        if (before.has(abs) && was !== undefined && was === settledState(abs)) continue
+        if (before.has(abs) && was !== undefined && was === settledState(abs)) {
+          // The run's line said the next cycle runs on it; none does.
+          if (!this.noticed.has(abs)) {
+            this.noticed.add(abs)
+            ui.say(
+              'info',
+              `vx watch: ${printable(path.relative(this.ctx.workspaceRoot, abs))} is rewritten in place by its own task every run, so its rewrite starts no cycle. Set inputs.stability: { strategy: 'mutable' } to cache that task.\n`,
+              'out',
+            )
+          }
+          continue
+        }
         this.driftedLast.add(abs)
       }
       unseen.push(abs)
