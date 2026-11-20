@@ -333,7 +333,9 @@ function keepUndeclaredWrites(tasks: GeneratedTask[]): void {
   const positive = (v: unknown): boolean =>
     Array.isArray(v) && v.some((f) => typeof f === 'string' && !f.startsWith('!'))
   const outputsOf = (t: GeneratedTask) =>
-    t.task?.['outputs'] as { files?: unknown; workspaceFiles?: unknown; clean?: unknown } | undefined
+    t.task?.['outputs'] as
+      | { files?: unknown; workspaceFiles?: unknown; clean?: unknown }
+      | undefined
   const declares = (t: GeneratedTask): boolean => {
     const o = outputsOf(t)
     return positive(o?.files) || positive(o?.workspaceFiles)
