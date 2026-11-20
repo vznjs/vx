@@ -17,7 +17,9 @@ export interface Replayed {
 
 /**
  * `tasks` as each took, from nothing, on `sizes`: each worker joins its
- * platform's `warm` after the engine asks for it.
+ * platform's `warm` after the engine asks for it. Planned plain, with no
+ * restarts: a live run under history's spread never restarts, and the
+ * restarts doubled advice's time for ends within its margin (2026-11-20).
  */
 export function replay(
   tasks: readonly PlanTask[],
@@ -43,6 +45,7 @@ export function replay(
       platform: platformOf(s.platform),
       warmUpMs: warm(s.platform),
     })),
+    { restarts: false },
   )
   interface W {
     readonly z: number

@@ -45,6 +45,7 @@ import {
   type WiredResult,
 } from './messages.js'
 import { advise, leaves, type Fleets, type PlanTask, type Size, spreadMs } from './plan/index.js'
+import { playAside } from './replays.js'
 import { Usage, type UsageStats } from './usage.js'
 import { MIN_CORES, Planner, wholeCores, type Need } from './plan/index.js'
 import { RelayError, unsent, type Participant } from './wire.js'
@@ -2784,7 +2785,7 @@ export class Orchestrator {
               }, new Map<string, Size>())
               .values(),
           ]
-    const a = advise(r.tasks, shapes, r.warm)
+    const a = advise(r.tasks, shapes, r.warm, playAside(r.tasks, r.warm))
     const wire = (of: WorkerAdvice['of'], f: Fleets | undefined): WorkerAdvice[] =>
       f === undefined
         ? []

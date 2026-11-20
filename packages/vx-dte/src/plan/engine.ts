@@ -64,6 +64,11 @@ export interface EngineOptions {
   readonly gated?: boolean
   /** What a task history never measured keeps busy (`dte({ unmeasured })`); absent, history's mean. */
   readonly unmeasuredCores?: number
+  /**
+   * Whether a decide restarts once every open time is a fact (default true). A replay judging many fleets
+   * plans plain, as a live run under history's spread does.
+   */
+  readonly restarts?: boolean
 }
 
 /** What may run where: a pin to or away from a worker, its memory. */
@@ -260,6 +265,9 @@ export class Engine {
   private readonly plat: Int32Array
   private readonly sizePlat: Int32Array
   private readonly platforms: number
+  private readonly restarts: boolean
+  /** The most workers of each size a full fleet has. */
+  private readonly fleet: Float64Array
   private readonly platIx: ReadonlyMap<string, number>
   /** What history knew of each task, as `learn` last said. */
   private readonly kms: (number | null)[]
@@ -342,6 +350,7 @@ export class Engine {
     const n = (this.n = g.deps.length)
     this.gated = opts.gated === true
     this.unmeasured = opts.unmeasuredCores
+    this.restarts = opts.restarts !== false
     const names: string[] = []
     const ix = (p: string): number => {
       let k = names.indexOf(p)
@@ -351,6 +360,10 @@ export class Engine {
     this.sizePlat = Int32Array.from(sizes, (s) => ix(s.platform))
     this.plat = Int32Array.from(g.platform, ix)
     this.platforms = names.length
+    // an uncapped size's fleet: no more workers than its platform has tasks (Infinity × 0 read NaN, and nothing was asked)
+    const tasksOn = new Float64Array(names.length)
+    for (const q of this.plat) tasksOn[q]!++
+    this.fleet = Float64Array.from(sizes, (s, z) => Math.min(s.max, tasksOn[this.sizePlat[z]!]!))
     this.platIx = new Map(names.map((p, k) => [p, k]))
     this.paceKnown = new Float64Array(names.length)
     this.paceRan = new Float64Array(names.length)
@@ -776,7 +789,7 @@ export class Engine {
     const j = this.joins[z]!
     // none joined yet: the slowest join history's spread allows a full fleet of it
     if (j.length === 0)
-      return this.warm(z) + (this.sizes[z]!.spreadMs ?? 0) * Math.max(0, this.sizes[z]!.max - 1)
+      return this.warm(z) + (this.sizes[z]!.spreadMs ?? 0) * Math.max(0, this.fleet[z]! - 1)
     return Math.max(this.warm(z), ...j)
   }
   /**
@@ -2369,7 +2382,7 @@ export class Engine {
     // many draws, so a plan without the worker would never pass it
     let plain: Plan | undefined
     // restarts judge a draw by its mean outcome: sound only while every duration left is a fact
-    let certain = !big
+    let certain = !big && this.restarts
     for (let i = 0; i < n && certain; i++)
       if (state[i] !== DONE && (S2[i]! > 0 || this.kms[i] == null)) certain = false
     if (certain) {

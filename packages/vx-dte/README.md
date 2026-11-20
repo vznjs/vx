@@ -935,7 +935,9 @@ is how many of each size; `more`, shown only when more than a size's
 take; `any` is one shape for each platform, of 2 to 64 cores (memory a
 core as the platform's sizes have most), the one ending as soon for the
 least CPU held, each worker from its ask to its last task's end. A task goes only on a size with room for its cores
-and peak memory, when one is declared. Raise a size's `max`, or change its `cpu` and
+and peak memory, when one is declared. The replays plan plain, as a live
+run does under history's spread, and play side by side on this machine's
+cores once the run ends. Raise a size's `max`, or change its `cpu` and
 `memory`, by them. They are in the footer and the run summary, and
 `@vzn/vx-ci` prints them under "Workers to declare".
 
