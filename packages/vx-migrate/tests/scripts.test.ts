@@ -939,6 +939,24 @@ describe('migrateScripts', () => {
     expect(project({ plain: 'echo hi' })?.importLines).toEqual([])
   })
 
+  // react-router: `"build": "wireit"` in every package. Wireit reads the
+  // script's name from npm_lifecycle_event, which vx never set: each build
+  // failed "wireit must be launched with npm run".
+  it('a wireit script gets $npm_lifecycle_event, as a package manager sets it', () => {
+    const p = project({ compile: 'wireit', test: 'vitest && wireit' })
+    const tasks = Object.fromEntries((p?.tasks ?? []).map((t) => [t.name, t]))
+    expect(tasks['compile']?.task).toEqual({
+      exec: { command: 'wireit', env: { define: { npm_lifecycle_event: 'compile' } } },
+    })
+    expect(tasks['test']?.task).toEqual({
+      exec: { command: 'vitest && wireit', env: { define: { npm_lifecycle_event: 'test' } } },
+    })
+    // CONTROL: a command that only names wireit as an argument.
+    expect(project({ x: 'echo wireit-ish' })?.tasks[0]?.task).toEqual({
+      exec: { command: 'echo wireit-ish' },
+    })
+  })
+
   it('the hook rules read the manager as each writes itself (D-35)', async () => {
     // A sweep of D-31 to D-34 found these unheld: each flips a fold.
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-hookrules-'))

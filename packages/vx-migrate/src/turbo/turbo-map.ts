@@ -16,7 +16,13 @@ import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
 import { apartTakeBacks, literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
-import { type Owner, runsScriptHooks, scriptCommand, yarnPnp } from '../script-command.js'
+import {
+  type Owner,
+  readsLifecycleEvent,
+  runsScriptHooks,
+  scriptCommand,
+  yarnPnp,
+} from '../script-command.js'
 import {
   ownFileTakeBacks,
   excludeSiblingOutputs,
@@ -1952,7 +1958,7 @@ function npmScriptEnv(
   const version = meta.packageJson.version
   if (typeof version === 'string' && version !== '' && wanted('npm_package_version'))
     define['npm_package_version'] = field('version', version)
-  if (unfolded && wanted('npm_lifecycle_event')) define['npm_lifecycle_event'] = script
+  if (unfolded && readsLifecycleEvent(exec.command)) define['npm_lifecycle_event'] = script
   if (Object.keys(define).length > 0) exec.env = { ...exec.env, define }
 }
 
