@@ -2346,8 +2346,6 @@ function buildTask(
       )
     } else outFiles.push(...signed(o))
   }
-  for (const g of outFiles) if (!g.startsWith('!')) ownOut.push(atRoot ? g : `${pkgDir}/${g}`)
-  for (const g of wsOutFiles) if (!g.startsWith('!')) ownOut.push(g)
 
   // With git's file list known, a wildcard-first output stays cached as
   // nx() keeps it: core never
@@ -2375,6 +2373,8 @@ function buildTask(
   // as unchanged ('mutable').
   const takeBacks = ownFileTakeBacks(outFiles, opts.ownConfig?.(pkgDir))
   outFiles.push(...takeBacks)
+  for (const g of outFiles) if (!g.startsWith('!')) ownOut.push(atRoot ? g : `${pkgDir}/${g}`)
+  for (const g of wsOutFiles) if (!g.startsWith('!')) ownOut.push(g)
   const rewritesManifest = takeBacks.includes('!package.json')
 
   if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))

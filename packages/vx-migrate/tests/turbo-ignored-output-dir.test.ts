@@ -39,6 +39,8 @@ it('a gitignored output directory under a global glob is named in no task', asyn
     splice: ownSplice,
     persistentTodo: 'PERSIST',
     ignoredUnder: async () => ['packages/plugin/dist/', 'packages/plugin/tsconfig.tsbuildinfo'],
+    // payload's `tsc` keeps its buildinfo beside the tsconfig: an output too.
+    buildInfo: (rel) => (rel === 'packages/plugin' ? ['tsconfig.tsbuildinfo'] : []),
   })
   const ws = Object.fromEntries(
     m.projects.map((p) => [
@@ -47,7 +49,7 @@ it('a gitignored output directory under a global glob is named in no task', asyn
     ]),
   )
   expect(ws['plugin']).not.toContain('packages/plugin/dist/**')
+  expect(ws['plugin']).not.toContain('packages/plugin/tsconfig.tsbuildinfo')
   expect(ws['app']).not.toContain('packages/plugin/dist/**')
   expect(ws['app']).toContain('!packages/plugin/dist/**')
-  expect(ws['app']).toContain('packages/plugin/tsconfig.tsbuildinfo')
 })
