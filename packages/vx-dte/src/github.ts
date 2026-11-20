@@ -503,16 +503,16 @@ function dispatched(workflow: string): Record<string, unknown> | undefined {
 
 /** The `env` input, as `handedEnv` wrote it: each a variable's name, each value one line. */
 function handedBack(text: string): Record<string, string> {
+  const refused = new UserError(
+    `vx dte worker: the run's env input is not a JSON object: ${printable(text.slice(0, 200))}`,
+  )
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
-    parsed = undefined
+    throw refused
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-    throw new UserError(
-      `vx dte worker: the run's env input is not a JSON object: ${printable(text.slice(0, 200))}`,
-    )
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw refused
   const out: Record<string, string> = {}
   for (const [name, value] of Object.entries(parsed)) {
     if (

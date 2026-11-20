@@ -107,8 +107,10 @@ vx dte init
 
 `ci.yml` is the job that runs `vx run`. `vx-worker.yml` is the job each
 worker runs: check out, install, then one command, `vx dte worker`. It
-joins the run, works, and leaves when the run ends. In a terminal, `vx dte init` asks which tasks to run.
-Otherwise, name them yourself in the last line of `ci.yml`:
+joins the run, works, and leaves when the run ends.
+
+In a terminal, `vx dte init` asks which tasks to run. Otherwise, name
+them yourself in the last line of `ci.yml`:
 
 ```yaml title=".github/workflows/ci.yml"
       - run: bun vx run build test ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
