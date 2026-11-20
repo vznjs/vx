@@ -10,6 +10,7 @@ src/json.ts
 src/npm.ts
 src/pnpm-blocks.ts
 src/pnpm-settings.ts
+src/pnpm-v13.ts
 src/pnpm.ts
 src/posix.ts
 src/syml.ts

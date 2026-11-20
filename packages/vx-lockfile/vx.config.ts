@@ -15,6 +15,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'link-to-workspace',
     'lockfile-shapes',
     'npm',
+    'pnpm-v13',
     'pnpm-workspace-precise',
     'rehoist-identity',
     'transitive-workspace',

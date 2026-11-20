@@ -14,8 +14,14 @@ import { record } from './json.js'
  * and a repeated pattern still counts in the matcher's order.
  */
 export function stalenessFacts(text: string): string[] {
-  const facts = excludesLinks(text) ? ['links'] : []
-  const list = topLevel(text, 'ignoredOptionalDependencies')
+  // v13 keeps both in `settings`, in one JSON-like document with no YAML blocks.
+  const v13 = v13Document(text)
+  const settings = record(v13 === undefined ? topLevel(text, 'settings') : v13['settings'])
+  const facts = settings?.['excludeLinksFromLockfile'] === true ? ['links'] : []
+  const list =
+    v13 === undefined
+      ? topLevel(text, 'ignoredOptionalDependencies')
+      : settings?.['ignoredOptionalDependencies']
   if (Array.isArray(list))
     for (const p of list) if (typeof p === 'string') facts.push(`optional:${facts.length}:${p}`)
   return facts
@@ -58,9 +64,17 @@ export function ignoredOptional(
   }
 }
 
-/** `settings.excludeLinksFromLockfile`, read from its block alone as `recordedImporters` reads. */
-function excludesLinks(text: string): boolean {
-  return record(topLevel(text, 'settings'))?.['excludeLinksFromLockfile'] === true
+/**
+ * The last document parsed whole where it is pnpm's v13 format (one
+ * JSON-like object, no top-level YAML keys to slice); undefined for v9
+ * and older.
+ */
+export function v13Document(text: string): Record<string, unknown> | undefined {
+  const doc = lastDocument(text)
+  const body =
+    doc === 0 && !text.startsWith('---') ? text : text.slice(text.indexOf('\n', doc + 1) + 1)
+  if (!/^\s*\{/.test(body)) return undefined
+  return record(Bun.YAML.parse(body))
 }
 
 /**
