@@ -37,7 +37,13 @@ import {
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { relPosix } from './paths.js'
-import { foldScriptHooks, type Owner, ownerOf, runsScriptHooks } from './script-command.js'
+import {
+  foldScriptHooks,
+  type Owner,
+  ownerOf,
+  readsLifecycleEvent,
+  runsScriptHooks,
+} from './script-command.js'
 import { onceReader, RUNS_SCRIPT, tscBuildInfo } from './tsc-buildinfo.js'
 
 /**
@@ -262,6 +268,7 @@ function npmEnv(
   const define: Record<string, unknown> = {}
   const unset: string[] = []
   let readsManifest = false
+  if (!folded && readsLifecycleEvent(command)) define['npm_lifecycle_event'] = script
   for (const [, v] of command.matchAll(/\$\{?(npm_[A-Za-z0-9_]+)/g)) {
     if (v! in define || unset.includes(v!)) continue
     if (v === 'npm_package_name' || v === 'npm_package_version') {
@@ -269,8 +276,7 @@ function npmEnv(
       if (typeof manifest[key] !== 'string') continue
       define[v] = { raw: `pkg.${key}` }
       readsManifest = true
-    } else if (v === 'npm_lifecycle_event' && !folded) define[v] = script
-    else unset.push(v!)
+    } else if (v !== 'npm_lifecycle_event' || folded) unset.push(v!)
   }
   return { define, unset, readsManifest }
 }
