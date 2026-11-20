@@ -71,7 +71,7 @@ it('a task that always rewrites its input in place settles after an edit', async
 it('an editor saving over its rewrite mid-run still starts a cycle', async () => {
   const f = await fixture(
     (o) =>
-      `sort -o src/a.txt src/a.txt; echo run >> ${o}/log; if [ -f ${o}/gate ]; then touch ${o}/started; while [ ! -f ${o}/go ]; do sleep 0.02; done; fi`,
+      `sort -o src/a.txt src/a.txt; echo "run $(paste -sd, src/a.txt)" >> ${o}/log; if [ -f ${o}/gate ]; then touch ${o}/started; while [ ! -f ${o}/go ]; do sleep 0.02; done; fi`,
   )
   watch = startWatch(f.root, ['--all'], {}, 'fmt')
   const w = watch
@@ -85,9 +85,14 @@ it('an editor saving over its rewrite mid-run still starts a cycle', async () =>
   // judgement that started the cycle saw, so no state differs.
   await writeFile(f.src, 'd\nc\n')
   await rm(path.join(f.outside, 'gate'))
+  const atGo = await runs(f.log)
   await writeFile(path.join(f.outside, 'go'), '')
-  await until(async () => (await readFile(f.src, 'utf8')) === 'c\nd\n', 'a cycle that sorts it')
-  const sorted = await runs(f.log)
+  // Counted by its log line, not the file: the file is sorted before the
+  // run logs, so a count read off the file missed the sorting run.
+  const sortedAt = async (): Promise<number> =>
+    (await readFile(f.log, 'utf8')).split('\n').findIndex((l, i) => i >= atGo && l === 'run c,d')
+  await until(async () => (await sortedAt()) >= 0, 'a cycle that sorts it')
+  const sorted = (await sortedAt()) + 1
   await Bun.sleep(3 * SETTLE_MS)
   expect(await runs(f.log)).toBeLessThanOrEqual(sorted + 1)
 }, 40_000)
