@@ -224,10 +224,9 @@ and asks nothing until a spent limit resets. A dispatch the limit refuses
 is sent again at the reset, if that comes within 5 minutes; past that it
 fails, naming when. A cancel the limit refuses is sent again at the
 reset, if that comes within a minute. A run that dies before it cancels
-(a cancelled or timed-out job) leaves it to the job's last step, which
-cancels each worker run the run listed in `RUNNER_TEMP`. Past both, a
-worker that starts reads its run's attempt (`parent`) first, and once
-that is over cancels its own workflow run, its queued fellows with it.
+(a kill, a timed-out job) leaves it to its workers: the first that starts
+finds the run gone at the relay, and cancels its own workflow run, its
+queued fellows with it.
 On GitHub Actions with a relay, the run names itself: no
 `VX_DTE_RUN` to set. No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
@@ -287,11 +286,6 @@ jobs:
       # Name the tasks to run, as 'bun vx run build test --affected': with
       # none named, vx fails, listing the workspace's tasks.
       - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
-      - name: Cancel the workers
-        if: cancelled()
-        run: |
-          [ -f "$RUNNER_TEMP/vx-dte-runs" ] || exit 0
-          while read -r run; do curl -sS -o /dev/null -X POST -H "authorization: Bearer $GITHUB_TOKEN" "$GITHUB_API_URL$run/cancel" || true; done < "$RUNNER_TEMP/vx-dte-runs"
 ```
 
 `vx dte init` writes both from `dte()`, the run's above and the workers' below,
@@ -308,7 +302,11 @@ a machine's `runsOn: 'ubuntu-latest-16-cores'` names, as
 names and runs vx as `bun vx`, which runs the repo's own and never
 downloads one, as `pnpm exec` does (Yarn too: Bun reads no Plug'n'Play,
 so a Yarn workspace sets `nodeLinker: node-modules`). `--dry` prints it; a file you changed
-is kept unless `--force`. For the sizes above:
+is kept unless `--force`. A worker's job is its setup and one command:
+`vx dte worker` reads what the run dispatched it with (the run, the relay,
+`github({ env })`) from the event (`GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`,
+in the workflow `GITHUB_WORKFLOW_REF` names), joins, works, and leaves when
+the run ends. For the sizes above:
 
 ```yaml
 # .github/workflows/vx-worker.yml
@@ -327,8 +325,6 @@ on:
       workers: { required: true }
       # The variables github({ env }) hands the workers, as a JSON object.
       env: { required: false, default: '{}' }
-      # The run's attempt, which a worker reads first.
-      parent: { required: false, default: '' }
 
 permissions:
   contents: read
@@ -351,29 +347,18 @@ jobs:
       matrix:
         worker: ${{ fromJSON(inputs.workers) }}
     env:
-      VX_DTE_RUN: ${{ inputs.run }}
-      VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_WORKER: ${{ matrix.worker }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - name: Leave if the run is over
-        if: inputs.parent != ''
-        env: { GH_TOKEN: '${{ github.token }}', PARENT: '${{ inputs.parent }}' }
-        run: |
-          runs="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs"
-          status=$(curl -fsS -H "authorization: Bearer $GH_TOKEN" "$runs/$PARENT" | jq -r .status) || exit 0
-          [ "$status" = completed ] || exit 0
-          echo "::notice::run $PARENT is over: cancelling this one"
-          curl -fsS -o /dev/null -X POST -H "authorization: Bearer $GH_TOKEN" "$runs/$GITHUB_RUN_ID/cancel"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ inputs.sha }}', persist-credentials: false }
-      - env: { HANDED: '${{ inputs.env }}' }
-        run: |
-          jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       # Every project: only pnpm selects by a git diff, as
       # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
       # (fetch origin/main first: the checkout is one commit).
       - run: bun install --frozen-lockfile
+      # Joins the run, works, and leaves when it ends; one that finds its
+      # run over cancels this workflow run, its queued workers with it.
       - run: bun vx dte worker
 ```
 

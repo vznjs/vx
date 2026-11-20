@@ -56,6 +56,8 @@ type WorkerOptions = {
   proof: Proof
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
   artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
+  /** The run is over before this worker joined: its CI stops the rest it holds (`DteAdapter.over`). */
+  over?: () => Promise<void>
 }
 
 /**
@@ -131,6 +133,7 @@ async function serve(
           ),
         )
       }
+      await opts.over?.()
       return 0
     }
     throw err
