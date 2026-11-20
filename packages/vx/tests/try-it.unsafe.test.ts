@@ -194,8 +194,8 @@ case "$2" in --file=*) f="\${2#--file=}"; mkdir -p "$(dirname "$f")"; cp "$(dirn
 // `vx init` runs vx-migrate, native without a terminal (2026-10-08):
 // the workspace file declares the npm lockfile's plugin, never turbo() or nx().
 const NATIVE = `import type { WorkspaceConfig } from '@vzn/vx/config'
-import { npm } from '@vzn/vx-lockfile'
 import { vxHistory } from '@vzn/vx-history'
+import { npm } from '@vzn/vx-lockfile'
 
 export default {
   plugins: [
