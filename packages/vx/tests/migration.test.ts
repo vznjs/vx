@@ -144,6 +144,19 @@ describe('tscCompilesConfigNotes', () => {
     ).toEqual([])
   })
 
+  // vercel/ai: 80 packages set `rootDir: "src"` with no "include", and
+  // every `tsc --noEmit` type-check stopped on the written config (TS6059)
+  // while the note said only that an output moves, or, with noEmit, nothing.
+  it('names a rootDir the config lies outside, noEmit or not', () => {
+    const said =
+      'tsconfig.json names no "include", so tsc compiles vx.config.ts, outside its "rootDir" ' +
+      '"src", and stops (TS6059): add "vx.config.ts" to "exclude" there'
+    expect(notes(`{ "compilerOptions": { "rootDir": "src", "outDir": "dist" } }`)).toEqual([said])
+    expect(notes(`{ "compilerOptions": { "rootDir": "src", "noEmit": true } }`)).toEqual([said])
+    // CONTROL: a rootDir that holds it.
+    expect(notes(`{ "compilerOptions": { "rootDir": ".", "noEmit": true } }`)).toEqual([])
+  })
+
   it('says nothing where tsc leaves the config alone', () => {
     const out = `"compilerOptions": { "outDir": "dist" }`
     expect(notes(`{ ${out}, "include": ["src"] }`)).toEqual([])
