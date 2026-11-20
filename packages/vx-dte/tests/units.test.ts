@@ -5223,7 +5223,7 @@ it('the ideal counts each worker from its own warm-up', async () => {
     const w1 = await h.worker(2, 'small#1')
     await Bun.sleep(50)
     const runs = ids.map((id) => h.o.execute(h.req(id)))
-    for (let done = 0; done < ids.length; )
+    for (let done = 0; done < ids.length;)
       for (const id of (await w1.batches()).flat()) {
         await w1.finish(id, `k-${id}`, { exitCode: 0, durationMs: 400, cpuMs: 100 })
         done++
