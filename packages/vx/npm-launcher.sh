@@ -3,9 +3,16 @@
 # platform package's prebuilt binary straight from the shell, since Node's
 # own start was ~40 ms of every `vx` call made through node_modules/.bin
 # (45-53 ms against 12-14 ms for `vx --version`, 2026-10-12). Anything it
-# cannot settle (no sibling platform package, musl, Yarn PnP, an unknown
-# platform) goes to launcher.cjs beside it, which resolves through Node and
-# owns the fallbacks and the error messages.
+# cannot settle (no sibling platform package, musl, an unknown platform)
+# goes to launcher.cjs, which resolves through Node and owns the fallbacks
+# and the error messages.
+#
+# Published, this script and npm-launcher.cjs are ONE file, launcher.cjs
+# (scripts/build-npm.ts): this part sits in a JS block comment, so the
+# script must never hold a star then a slash. Yarn 2+ runs every package
+# bin through `node`, whatever it holds: a bin named `.sh` died there with
+# ERR_UNKNOWN_FILE_EXTENSION before vx started. Started by the kernel, sh
+# reads the first line as `:` and never parses past its last `exec`.
 
 # The real file: npm's .bin entry is a symlink to it. Parameter expansion,
 # not dirname/basename, and no `cd`: each fork is a millisecond, and the
@@ -22,12 +29,12 @@ while [ -L "$self" ] && [ "$hops" -lt 40 ]; do
   esac
 done
 case $self in
-  */*) here=${self%/*} ;;
+  *[/]*) here=${self%/*} ;;
   *) here=. ;;
 esac
-base=${here##*/}
+base=${here##*[/]}
 scope=${here%/*}
-scope=${scope##*/}
+scope=${scope##*[/]}
 
 # A global vx hands off to the project's own (2026-10-13): the
 # workspace root's node_modules/<scope>/<name>, through its .bin entry. The

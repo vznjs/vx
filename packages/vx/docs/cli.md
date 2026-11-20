@@ -1201,8 +1201,11 @@ download: what was half-read is dropped and fetched again next run.
 Installed from npm, `vx` is a sh launcher that execs the platform
 binary, so every signal reaches vx directly and no Node starts first
 (a `vx --version` through npm: 14 ms, was 56 ms with the Node launcher, 2026-10-12). Where it
-finds no binary beside it (musl, Yarn PnP, a platform with none) it
-hands off to a Node launcher. On Node 22.15 or later that one
+finds no binary beside it (musl, a platform with none) it
+hands off to a Node launcher. Both are one file, `launcher.cjs`: Yarn 2+
+runs every package bin through `node` (`yarn vx`, a package.json script),
+which reads it as the Node launcher, and the platform package asks Yarn
+Plug'n'Play to keep it unzipped, where its binary can run. On Node 22.15 or later that one
 replaces itself with the binary (`process.execve`) too. On older Node it runs the binary and waits for it:
 a signal sent to the launcher alone (`kill`, a process manager) is
 passed to the binary, and a terminal's Ctrl-C already reaches both, so
