@@ -1646,7 +1646,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    task read the other one, but once: a task whose next run leaves the
    file as that cycle found it rewrote it itself (`sort -o`, `sed -i`
    write even when nothing changed) and starts none, where it re-ran
-   forever, `watch-own-rewrite-loop.test.ts`; so does a file written during the cycle
+   forever, and watch says so once, `watch-own-rewrite-loop.test.ts`; so does a file written during the cycle
    where no command of it may write, an edit landing before the keys
    and put back while the cycle runs included). A task that writes into its own project,
    `rm -rf dist && tsc` included, costs one extra cycle instead of
