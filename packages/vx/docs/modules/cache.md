@@ -1017,7 +1017,9 @@ Waiting made every remote hit two round-trips, the probe then the GET
 fast as the probe would, so the cost is one GET for each task that asks
 before the probe answers. A whole `hasMany` answer rewrites the rows it asked (new hits
 in, gone ones out), and a `get` every remote answers with `null` drops
-its row. A `get` that fails keeps it: the key may still be there.
+its row. A `get` that fails keeps it: the key may still be there. A
+`get` that serves a hit no probe answered for (the probe failed, or the
+remote has no batch query) keeps its row too, as a probe's answer would.
 A remote whose batch gives no answer is asked `has` per key when a run
 needs the answer to plan (`remoteHasEach`); that whole answer is
 recorded the same way, and one failed `has` is no answer.
