@@ -158,11 +158,19 @@ async function unlistedProjects(
       contents: `${JSON.stringify({ name: p.name, private: true }, null, 2)}\n`,
     })
   }
-  const pnpm = await stat(path.join(root, 'pnpm-workspace.yaml')).then(
-    () => true,
-    () => false,
-  )
-  const where = pnpm ? "pnpm-workspace.yaml's `packages`" : 'package.json `workspaces`'
+  const exists = (f: string) =>
+    stat(path.join(root, f)).then(
+      () => true,
+      () => false,
+    )
+  const pnpmFile = await exists('pnpm-workspace.yaml')
+  // pnpm reads no package.json `workspaces`: spartan (an Nx repo on pnpm
+  // with no pnpm-workspace.yaml) was told to list its projects there, and
+  // they stayed outside the workspace.
+  const pnpm = pnpmFile || (await exists('pnpm-lock.yaml'))
+  const where = pnpm
+    ? `pnpm-workspace.yaml's \`packages\`${pnpmFile ? '' : ' (create the file: pnpm reads no package.json `workspaces`)'}`
+    : 'package.json `workspaces`'
   const wrote = manifests.some((m) => rels.includes(path.posix.dirname(m.relPath)))
     ? ' (a package.json is written where there was none)'
     : ''

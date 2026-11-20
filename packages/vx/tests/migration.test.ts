@@ -157,6 +157,32 @@ describe('tscCompilesConfigNotes', () => {
     expect(notes(`{ "compilerOptions": { "rootDir": ".", "noEmit": true } }`)).toEqual([])
   })
 
+  // analog: an Nx library's tsconfig.json is a solution file ("files": []);
+  // tsconfig.lib.json, which `ngc -p tsconfig.lib.prod.json` builds, took
+  // the written config in with `include: ["**/*.ts"]` and stopped (TS9037
+  // under isolatedDeclarations), with no word from vx.
+  it('names a tsconfig.lib.json beside a solution tsconfig.json, through extends', () => {
+    writeFileSync(
+      path.join(dir, 'tsconfig.lib.json'),
+      `{ "extends": "./tsconfig.json", "compilerOptions": { "outDir": "../../dist/out-tsc", "rootDir": "." },
+         "exclude": ["**/*.spec.ts"], "include": ["**/*.ts"] }`,
+    )
+    writeFileSync(
+      path.join(dir, 'tsconfig.lib.prod.json'),
+      `{ "extends": "./tsconfig.lib.json", "exclude": ["**/*.spec.ts"], "include": ["**/*.ts"] }`,
+    )
+    writeFileSync(
+      path.join(dir, 'tsconfig.spec.json'),
+      `{ "extends": "./tsconfig.json", "compilerOptions": { "outDir": "out" }, "include": ["**/*.spec.ts"] }`,
+    )
+    expect(
+      notes(`{ "files": [], "include": [], "references": [{ "path": "./tsconfig.lib.json" }] }`),
+    ).toEqual([
+      `tsconfig.lib.json and tsconfig.lib.prod.json's "include" takes vx.config.ts, so tsc compiles it ` +
+        `into the build's output: add "vx.config.ts" to "exclude" there`,
+    ])
+  })
+
   it('says nothing where tsc leaves the config alone', () => {
     const out = `"compilerOptions": { "outDir": "dist" }`
     expect(notes(`{ ${out}, "include": ["src"] }`)).toEqual([])
