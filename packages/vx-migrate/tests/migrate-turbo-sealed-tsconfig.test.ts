@@ -141,4 +141,35 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       sealsConfig(root, config()),
     ]).toEqual([true, false, false])
   })
+
+  // trpc 2026-11: examples/.test/monotest-trpc's tsconfig is
+  // `{ "extends": ["@monotest/tsconfig/base.json"] }`, a package whose
+  // `rootDir: "${configDir}"` refused the written config's preset import
+  // (TS6059), and init said nothing: a package base was never followed.
+  it('sealsConfig: a package base, named in an extends list', async () => {
+    const base = path.join(root, 'node_modules', '@monotest', 'tsconfig')
+    await mkdir(base, { recursive: true })
+    await writeFile(
+      path.join(base, 'base.json'),
+      '{ "compilerOptions": { "rootDir": "${configDir}", "outDir": "${configDir}/dist" },\n' +
+        '  "include": ["${configDir}/**/*"] }\n',
+    )
+    await writeFile(path.join(base, 'package.json'), '{"name":"@monotest/tsconfig"}')
+    await writeFile(path.join(root, 'loose.json'), '{"compilerOptions":{"composite":false}}')
+    const at = async (name: string, body: string) => {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'tsconfig.json'), body)
+      return sealsConfig(root, path.join(dir, 'vx.config.ts'))
+    }
+    expect([
+      await at('list', '{"extends":["@monotest/tsconfig/base.json"]}'),
+      await at('one', '{"extends":"@monotest/tsconfig/base"}'),
+      // CONTROL: a later entry decides; this one's `include` leaves the config out.
+      await at(
+        'later',
+        '{"extends":["@monotest/tsconfig/base.json","../../loose.json"],"include":["src/**"]}',
+      ),
+    ]).toEqual([true, true, false])
+  })
 })
