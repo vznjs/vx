@@ -1983,7 +1983,11 @@ export async function checkIgnore(
   cwd: string,
   paths: readonly string[],
 ): Promise<Set<string> | null>
-export function checkIgnoreSync(cwd: string, paths: readonly string[]): Set<string> | null
+export function checkIgnoreSync(
+  cwd: string,
+  paths: readonly string[],
+  byRules?: boolean,
+): Set<string> | null
 export function listedSync(cwd: string, dirs: readonly string[]): string[] | null
 export function skipWorktreeSync(cwd: string, rel: string): string | null
 export function ignoreCaseLies(dir: string, probe: string): boolean
@@ -2020,7 +2024,8 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
   (no work tree). Each path is sent as
   `./<path>`: git reads a line as a pathspec, so `:top/dist/` was asked as
   `top/dist/` (the command refuses `:(literal)`). `migration.ts` asks
-  through `checkIgnoreSync` too.
+  through `checkIgnoreSync` too, with `byRules` (`--no-index`) for a
+  directory: git skips one holding a file added with `-f`.
 - `listedSync`: `git ls-files --cached --others --exclude-standard` under
   `dirs`, for `vx lock`; a run reads its own enumeration instead.
 - `skipWorktreeSync`: `git ls-files -t --full-name` of one path: its

@@ -255,7 +255,19 @@ function implied(
     // `{ specifier, version }`, or the version alone where they are one.
     const entry = catalog?.[name]
     const version = typeof entry === 'string' ? entry : record(entry)?.['version']
-    return typeof version === 'string' ? bare(version) : s
+    if (typeof version !== 'string') return s
+    // `{ specifier: 'npm:is-odd@^3.0.1', version: '3.0.1' }`: v9 names the package, `is-odd@3.0.1`.
+    const specifier = record(entry)?.['specifier']
+    if (
+      typeof specifier === 'string' &&
+      specifier.startsWith('npm:') &&
+      !version.startsWith('npm:')
+    ) {
+      const target = bare(specifier)
+      const at = target.lastIndexOf('@')
+      return `${at > 0 ? target.slice(0, at) : target}@${version}`
+    }
+    return bare(version)
   }
   if (s.startsWith('workspace:')) {
     const alias = /^(@?[^@]+)@/.exec(s.slice('workspace:'.length))

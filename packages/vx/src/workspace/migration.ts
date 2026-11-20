@@ -3,7 +3,7 @@
 // reads the same whoever wrote it. Core knows no source format: a mapper
 // returns a `MigrationPlan` and this does the rest.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
@@ -480,6 +480,7 @@ export async function writeMigration(
   }
   const formatted =
     dry || args.written === undefined ? [] : args.written(files.map((f) => f.relPath))
+  const formatIgnored = dry ? [] : [...formatterIgnore(root), ...biomeNote(root)]
 
   // One reason, its tasks: the same TODO repeated per task reads as noise. A
   // file.gitignore drops is lost at the first commit, unnoticed.
@@ -516,14 +517,22 @@ export async function writeMigration(
   const next = steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`
   const emptyReason = empty ? args.emptyReason : undefined
   const example = empty && (args.example ?? emptyReason === undefined)
+  const excluded = dry
+    ? []
+    : excludeFromTsc(
+        root,
+        files.map((f) => f.abs),
+      )
   const notes = [
     ...(args.notes ?? []),
+    ...excluded,
     ...tscCompilesConfigNotes(
       root,
       files.map((f) => f.abs),
     ),
     ...ignoredNote,
     ...formatted,
+    ...formatIgnored,
     ...plan.headerNotes,
     ...plan.notes,
   ]
@@ -593,6 +602,106 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
   return { code: 1, said: 'vx lock: the migration tool answered no result: run `vx lock`\n' }
 }
 /**
+ * Adds a written config to the `exclude` its package's tsconfig already
+ * lists, where tsc would compile it: tldraw's editor (`rootDir: src`, no
+ * `include`) stopped at TS6059 on the first `vx run`. A tsconfig with no
+ * `exclude` keeps tsc's default one, which a new list would replace: there
+ * the note says what to add. Returns what it changed.
+ */
+function excludeFromTsc(root: string, written: readonly string[]): string[] {
+  const changed: string[] = []
+  for (const abs of written) {
+    const name = path.basename(abs)
+    if (tscCompilesConfigNotes(root, [abs]).length === 0) continue
+    for (const f of ['tsconfig.json', 'tsconfig.build.json']) {
+      const file = path.join(path.dirname(abs), f)
+      if (!existsSync(file) || lstatSync(file).isSymbolicLink()) continue
+      const text = readFileSync(file, 'utf8')
+      const next = withExcluded(text, name)
+      if (next === undefined) continue
+      writeFileSync(file, next)
+      changed.push(relPosix(root, file))
+    }
+  }
+  return changed.length === 0
+    ? []
+    : [`added the config to "exclude" in ${changed.join(', ')}, so tsc does not compile it`]
+}
+
+/** `text` with `name` first in its one `"exclude"` array; undefined where that is not certain. */
+function withExcluded(text: string, name: string): string | undefined {
+  const at = [...text.matchAll(/"exclude"\s*:\s*\[/g)]
+  if (at.length !== 1) return undefined
+  const open = at[0]!.index + at[0]![0].length
+  const indent = /^\r?\n([ \t]*)\S/.exec(text.slice(open))
+  const rest = text.slice(open).trimStart()
+  const entry = JSON.stringify(name)
+  const insert =
+    indent !== null ? `\n${indent[1]}${entry},` : rest.startsWith(']') ? entry : `${entry}, `
+  const next = text.slice(0, open) + insert + text.slice(open)
+  try {
+    const parsed = Bun.JSONC.parse(next) as { exclude?: unknown }
+    const before = Bun.JSONC.parse(text) as { exclude?: unknown }
+    if (!Array.isArray(before.exclude) || before.exclude.includes(name)) return undefined
+    return Array.isArray(parsed.exclude) && parsed.exclude[0] === name ? next : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** What `vx lock` and a run write, which no formatter should check. */
+const FORMATTER_IGNORED = [
+  '.vx/cache',
+  '.vx/tmp',
+  '.vx/projects.lock.json',
+  '.vx/dependencies.lock.json',
+  'vx.lock.json',
+]
+
+/**
+ * prettier and oxfmt read the root `.gitignore` and `.prettierignore` alone:
+ * `prettier --check .` failed on every lock and on `.vx/cache`, which only
+ * `.vx/.gitignore` drops (vuejs/core). Adds the missing lines, as `nx init`
+ * adds its cache; returns the note.
+ */
+function formatterIgnore(root: string): string[] {
+  const file = path.join(root, '.prettierignore')
+  const had = existsSync(file)
+  const bins = ['prettier', 'oxfmt'].some((n) =>
+    existsSync(path.join(root, 'node_modules', '.bin', n)),
+  )
+  if (!had && !bins) return []
+  // One linked elsewhere is not the workspace's to write.
+  if (had && lstatSync(file).isSymbolicLink()) return []
+  const text = had ? readFileSync(file, 'utf8') : ''
+  const present = new Set(text.split(/\r?\n/).map((l) => l.trim()))
+  const missing = FORMATTER_IGNORED.filter((l) => !present.has(l))
+  if (missing.length === 0) return []
+  const sep = text === '' || text.endsWith('\n') ? '' : '\n'
+  writeFileSync(
+    file,
+    `${text}${sep}${text === '' ? '' : '\n'}# vx: what vx lock and runs write\n${missing.join('\n')}\n`,
+  )
+  return [
+    `${had ? 'added' : 'wrote'} .prettierignore lines for vx's locks and cache, which prettier and oxfmt would check`,
+  ]
+}
+
+/**
+ * biome reads no `.prettierignore`, and `biome check` failed on every lock
+ * (prisma). Its config is the user's JSONC, maybe one per package, so the
+ * lines are named, not written.
+ */
+function biomeNote(root: string): string[] {
+  const config = ['biome.json', 'biome.jsonc'].find((n) => existsSync(path.join(root, n)))
+  if (config === undefined) return []
+  if (readFileSync(path.join(root, config), 'utf8').includes('vx.lock.json')) return []
+  return [
+    `biome checks vx's locks: add "!**/vx.lock.json", "!**/.vx/*.lock.json" to files.includes in ${config} (files.ignore before biome 2), and in any package's own biome config that sets its files`,
+  ]
+}
+
+/**
  * What to do about written files `.gitignore` drops. A `!file` line cures a
  * file, but git re-includes nothing inside an ignored directory: an old `/.vx/`
  * line hides config and lock, so that advice names the directory.
@@ -603,7 +712,7 @@ function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): s
       .split('/')
       .slice(0, -1)
       .map((_, i, parts) => `${parts.slice(0, i + 1).join('/')}/`)
-  const dirs = new Set(gitIgnored(root, [...new Set(ignored.flatMap(ancestors))]))
+  const dirs = new Set(checkIgnoreSync(root, [...new Set(ignored.flatMap(ancestors))], true))
   const blocking = new Set<string>()
   const names = new Set<string>()
   for (const f of ignored) {
@@ -691,7 +800,11 @@ export function renderWorkspace(
   format: MigrationFormat,
   plugins: readonly WorkspacePlugin[],
 ): string {
-  const imports = plugins.map((p) => `import { ${p.factory} } from '${p.pkg}'\n`).join('')
+  // Sorted by package, as biome's organizeImports wants; the plugins keep their order.
+  const imports = [...plugins]
+    .sort((a, b) => (a.pkg < b.pkg ? -1 : a.pkg > b.pkg ? 1 : 0))
+    .map((p) => `import { ${p.factory} } from '${p.pkg}'\n`)
+    .join('')
   const body = `export default { plugins: [${plugins.map((p) => `${p.factory}()`).join(', ')}] }`
   return format === 'ts'
     ? `import type { WorkspaceConfig } from '@vzn/vx/config'\n${imports}\n${body} satisfies WorkspaceConfig\n`
@@ -727,7 +840,13 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat, verb: st
   // "generated by" header: the file is the user's.
   const lines: string[] = []
   if (format === 'ts') lines.push("import type { ProjectConfig } from '@vzn/vx/config'")
-  if (p.importLines.length > 0) lines.push(...p.importLines)
+  // A plan's lines may declare too (turbo()'s `const globalInputs`): a blank
+  // line after the imports, as biome's organizeImports wants.
+  const imports = p.importLines.filter((l) => l.startsWith('import '))
+  const decls = p.importLines.filter((l) => !l.startsWith('import '))
+  lines.push(...imports)
+  if (lines.length > 0 && decls.length > 0) lines.push('')
+  lines.push(...decls)
   if (lines.length > 0) lines.push('')
   lines.push('export default {')
   if (p.writeName === true) lines.push(`  name: ${quoteTsLiteral(p.name)},`)

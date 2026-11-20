@@ -537,11 +537,136 @@ describe('a written config passes the repo’s own checks', () => {
     expect(stdout).toContain('  note      formatted with fmt\n')
   })
 
+  // prisma's `biome check`: organizeImports wants a blank line between the
+  // imports and turbo()'s declarations, and the imports sorted by package.
+  it('separates the imports from the declarations, and sorts the workspace imports', async () => {
+    const p = plan([['a', [task('build', exec('x'))]]])
+    p.projects[0]!.importLines = ["import pkg from './package.json'", 'const g = [1]']
+    const plugins = [
+      { factory: 'pnpm', pkg: '@vzn/vx-lockfile' },
+      { factory: 'github', pkg: '@vzn/vx-ci' },
+    ]
+    expect(await apply(p, { plugins })).toBe(0)
+    expect(readFileSync(path.join(root, 'a', 'vx.config.ts'), 'utf8')).toStartWith(
+      "import type { ProjectConfig } from '@vzn/vx/config'\nimport pkg from './package.json'\n\nconst g = [1]\n\nexport default {",
+    )
+    expect(readFileSync(path.join(root, '.vx', 'workspace.ts'), 'utf8')).toStartWith(
+      "import type { WorkspaceConfig } from '@vzn/vx/config'\nimport { github } from '@vzn/vx-ci'\nimport { pnpm } from '@vzn/vx-lockfile'\n\nexport default { plugins: [pnpm(), github()] }",
+    )
+  })
+
+  // tldraw's editor: `rootDir: src` and no `include`, so tsc compiled the
+  // config and stopped at TS6059 on the first run. Its `exclude` list is
+  // tsc's whole exclude, so the config joins it; with none, a new list would
+  // drop tsc's default one, and only the note speaks.
+  it("adds the config to a tsconfig's own exclude list, and only notes one with none", async () => {
+    const tsconfig = (dir: string, text: string) => {
+      mkdirSync(path.join(root, dir), { recursive: true })
+      writeFileSync(path.join(root, dir, 'tsconfig.json'), text)
+    }
+    const listed =
+      '{\n\t// built by tsc\n\t"exclude": [\n\t\t"dist",\n\t],\n\t"compilerOptions": { "rootDir": "src" }\n}\n'
+    tsconfig('a', listed)
+    tsconfig('b', '{ "exclude": [], "compilerOptions": { "outDir": "dist" } }\n')
+    tsconfig('c', '{ "compilerOptions": { "rootDir": "src" } }\n')
+    const metas = ['a', 'b', 'c'].map((name) => ({
+      name,
+      dir: path.join(root, name),
+      configPath: null,
+      esModule: true,
+    }))
+    expect(
+      await apply(
+        plan([
+          ['a', [task('build', exec('tsc'))]],
+          ['b', [task('build', exec('tsc'))]],
+          ['c', [task('build', exec('tsc'))]],
+        ]),
+        { metas },
+      ),
+    ).toBe(0)
+    expect(readFileSync(path.join(root, 'a', 'tsconfig.json'), 'utf8')).toBe(
+      '{\n\t// built by tsc\n\t"exclude": [\n\t\t"vx.config.ts",\n\t\t"dist",\n\t],\n\t"compilerOptions": { "rootDir": "src" }\n}\n',
+    )
+    expect(readFileSync(path.join(root, 'b', 'tsconfig.json'), 'utf8')).toBe(
+      '{ "exclude": ["vx.config.ts"], "compilerOptions": { "outDir": "dist" } }\n',
+    )
+    expect(readFileSync(path.join(root, 'c', 'tsconfig.json'), 'utf8')).toBe(
+      '{ "compilerOptions": { "rootDir": "src" } }\n',
+    )
+    expect(stdout).toContain('added the config to "exclude" in a/tsconfig.json, b/tsconfig.json')
+    expect(stdout).toContain('c/tsconfig.json names no "include"')
+    expect(stdout).not.toContain('a/tsconfig.json names no "include"')
+  })
+
   it('a dry run calls no step after the write', async () => {
     let called = false
     const written = () => ((called = true), [])
     expect(await apply(plan([['a', [task('build', null)]]]), { dry: true, written })).toBe(0)
     expect(called).toBe(false)
+  })
+})
+
+// Hardening, 2026-11-20 (vuejs/core): `prettier --check .` failed after
+// init on every vx.lock.json and the .vx cache: prettier reads the root
+// .gitignore alone, and a lock is vx's to write, not the formatter's.
+describe('a repo formatted by prettier or oxfmt', () => {
+  const bin = (name: string) => {
+    mkdirSync(path.join(root, 'node_modules', '.bin'), { recursive: true })
+    writeFileSync(path.join(root, 'node_modules', '.bin', name), '')
+  }
+  const IGNORED = [
+    '.vx/cache',
+    '.vx/tmp',
+    '.vx/projects.lock.json',
+    '.vx/dependencies.lock.json',
+    'vx.lock.json',
+  ]
+  const lines = () =>
+    readFileSync(path.join(root, '.prettierignore'), 'utf8')
+      .split('\n')
+      .filter((l) => l !== '' && !l.startsWith('#'))
+
+  it("adds vx's locks and cache to an existing .prettierignore, once", async () => {
+    writeFileSync(path.join(root, '.prettierignore'), 'dist\npnpm-lock.yaml')
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+    expect(lines()).toEqual(['dist', 'pnpm-lock.yaml', ...IGNORED])
+    expect(stdout).toContain('.prettierignore')
+    rmSync(path.join(root, 'a', 'vx.config.ts'))
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]), { force: true })).toBe(0)
+    expect(lines()).toEqual(['dist', 'pnpm-lock.yaml', ...IGNORED])
+  })
+
+  for (const name of ['prettier', 'oxfmt']) {
+    it(`writes one where ${name} is installed and none is`, async () => {
+      bin(name)
+      expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+      expect(lines()).toEqual(IGNORED)
+    })
+  }
+
+  it('names the lines a biome config needs, and nothing once it has them', async () => {
+    writeFileSync(path.join(root, 'biome.jsonc'), '{ "files": { "includes": ["**"] } }\n')
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+    expect(stdout).toContain(
+      'add "!**/vx.lock.json", "!**/.vx/*.lock.json" to files.includes in biome.jsonc',
+    )
+    writeFileSync(
+      path.join(root, 'biome.jsonc'),
+      '{ "files": { "includes": ["**", "!**/vx.lock.json", "!**/.vx/*.lock.json"] } }\n',
+    )
+    rmSync(path.join(root, 'a', 'vx.config.ts'))
+    stdout = ''
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]), { force: true })).toBe(0)
+    expect(stdout).not.toContain('biome')
+  })
+
+  it('writes none where neither is installed, nor under a dry run', async () => {
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]))).toBe(0)
+    bin('prettier')
+    rmSync(path.join(root, 'a', 'vx.config.ts'))
+    expect(await apply(plan([['a', [task('build', exec('x'))]]]), { dry: true })).toBe(0)
+    expect(existsSync(path.join(root, '.prettierignore'))).toBe(false)
   })
 })
 
@@ -562,6 +687,19 @@ describe('a root .gitignore that drops .vx', () => {
       'stop ignoring .vx/ (a ! line cannot re-include a file inside an ignored directory)',
     )
     expect(stdout).not.toContain('!workspace.ts')
+  })
+
+  // pnpm/pnpm: `__typecheck__/` ignores a member whose package.json was
+  // added with -f. git check-ignore skips a directory holding tracked files,
+  // so the note said `!vx.config.ts`, which cannot work.
+  it('names an ignored directory that holds tracked files', async () => {
+    writeFileSync(path.join(root, '.gitignore'), '__t/\n')
+    mkdirSync(path.join(root, 'p', '__t'), { recursive: true })
+    writeFileSync(path.join(root, 'p', '__t', 'package.json'), '{}')
+    Bun.spawnSync({ cmd: ['git', 'add', '-f', 'p/__t/package.json'], cwd: root })
+    expect(await apply(plan([['p/__t', [task('build', null)]]]))).toBe(0)
+    expect(stdout).toContain('stop ignoring p/__t/')
+    expect(stdout).not.toContain('!vx.config.ts')
   })
 
   it('CONTROL: a file ignored by its own name still gets the ! line', async () => {

@@ -867,6 +867,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/vite-task-env-wildcard',
     'vx-migrate/vite-task-glued-globstar',
     'vx-migrate/vite-task-nested-run',
+    'vx-migrate/workspace-imports-sorted',
     'vx-migrate/workspace-keys',
     'vx-migrate/yarn-berry-no-lock',
     'vx-otel/boolean-options',

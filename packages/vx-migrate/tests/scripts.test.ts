@@ -4,7 +4,7 @@
 // init.test.ts; `vx init` hands such a repo to this bin
 // (init-no-manifest.test.ts in core holds the hand-off).
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -658,6 +658,43 @@ describe('migrateScripts', () => {
     expect(outputsOf({ rootDir: 'src', outDir: 'dist' })).toBe("'dist/**', 'tsconfig.tsbuildinfo'")
     // CONTROL: a buildinfo under `dist/` is one of its outputs already.
     expect(outputsOf({ outDir: 'dist', tsBuildInfoFile: 'dist/.tsbuildinfo' })).toBe("'dist/**'")
+  })
+
+  // nestjs/nest: the root's `tsc -b packages` writes each member's buildinfo
+  // in that member; the TODO listed them under `files`, which `vx lock`
+  // refuses (a project's globs never reach another project).
+  it('the cache TODO names a buildinfo inside another member under workspaceFiles', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'vx-scripts-tsc-'))
+    try {
+      const lib = path.join(root, 'packages', 'lib')
+      mkdirSync(lib, { recursive: true })
+      writeFileSync(
+        path.join(root, 'packages', 'tsconfig.json'),
+        JSON.stringify({ files: [], references: [{ path: './lib/tsconfig.build.json' }] }),
+      )
+      writeFileSync(
+        path.join(lib, 'tsconfig.build.json'),
+        JSON.stringify({ compilerOptions: { composite: true, outDir: '.', rootDir: '.' } }),
+      )
+      const plan = migrateScripts([
+        {
+          name: 'repo',
+          dir: root,
+          packageJson: { name: 'repo', scripts: { build: 'tsc -b packages' } } as never,
+          configPath: null,
+        },
+        { name: 'lib', dir: lib, packageJson: { name: 'lib' } as never, configPath: null },
+      ])
+      const todo = plan.projects
+        .find((p) => p.name === 'repo')
+        ?.tasks.find((t) => t.name === 'build')
+        ?.todos.find((d) => d.startsWith('cache: add'))
+      expect(todo).toContain(
+        "outputs: { files: ['dist/**', 'packages/tsconfig.tsbuildinfo'], workspaceFiles: ['packages/lib/tsconfig.build.tsbuildinfo'] }",
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it("the cache TODO names the framework's own build output", () => {
@@ -1655,9 +1692,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
         )
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
-            "import { turbo } from '@vzn/vx-migrate'\n" +
+            "import { vxHistory } from '@vzn/vx-history'\n" +
             "import { npm } from '@vzn/vx-lockfile'\n" +
-            "import { vxHistory } from '@vzn/vx-history'\n\n" +
+            "import { turbo } from '@vzn/vx-migrate'\n\n" +
             'export default {\n  plugins: [\n    turbo(),\n    npm(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
         expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(false)
@@ -1786,7 +1823,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
     const shares = (factory: string, why: string) => [
       0,
       [
-        `import { ${factory} } from '@vzn/vx-migrate'`,
+        `import { ${factory.replace('Cache', '')}, ${factory} } from '@vzn/vx-migrate'`,
         `    ${factory}(),`,
         `${factory}(): ${why}, so vx shares that remote cache (token: the variable, else the OS keychain).`,
       ],
@@ -2766,9 +2803,9 @@ describe('vx init declares the lockfile plugin', () => {
         expect(r.code).toBe(0)
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
-            "import { turbo } from '@vzn/vx-migrate'\n" +
+            "import { vxHistory } from '@vzn/vx-history'\n" +
             "import { yarn } from '@vzn/vx-lockfile'\n" +
-            "import { vxHistory } from '@vzn/vx-history'\n\n" +
+            "import { turbo } from '@vzn/vx-migrate'\n\n" +
             'export default {\n  plugins: [\n    turbo(),\n    yarn(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
         // Installed with yarn (a stand-in that installs only the lockfile

@@ -106,9 +106,9 @@ becomes a `TODO(vx-migrate)` comment. It never overwrites a file without
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
-import { turbo } from '@vzn/vx-migrate'
-import { npm } from '@vzn/vx-lockfile'
 import { vxHistory } from '@vzn/vx-history'
+import { npm } from '@vzn/vx-lockfile'
+import { turbo } from '@vzn/vx-migrate'
 
 export default {
   plugins: [

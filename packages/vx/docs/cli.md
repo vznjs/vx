@@ -2827,7 +2827,14 @@ Beside a lockfile at that `package.json` (`pnpm-lock.yaml`, `bun.lock`,
 `@vzn/vx-lockfile` plugin (`plugins: [bun()]`), installed beside
 `@vzn/vx`, so a package's `^build` has project edges.
 
-plus `.vx/.gitignore` and `.vx/.gitattributes`. It then runs `vx lock`'s
+plus `.vx/.gitignore` and `.vx/.gitattributes`. Where prettier or oxfmt
+is installed at the root, or a `.prettierignore` exists, it adds the
+locks and `.vx/cache` to `.prettierignore`: both read only the root's
+ignore files, and `prettier --check .` failed on them. Beside a
+`biome.json(c)` it names the `files.includes` lines biome needs. Where
+a package's tsconfig would compile the config it wrote and already lists
+an `exclude`, the config joins that list; with none, a note says to add
+one. It then runs `vx lock`'s
 step, and `next:` says to declare a task and run `vx lock && vx run
 <task>`, preceded by `git init` outside a git work tree. Where that
 `package.json` has scripts, or declares a workspace (`workspaces`,
