@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
+import { parseDuration } from '../src/plugins/data-charts.ts'
 import { RESULTS, TOOLS, toolName } from '../src/conformance/data.ts'
 import {
   BURN_HOLD_MS,
@@ -20,7 +21,11 @@ import {
   lapsLabel,
   racing,
   step,
-  timesLabel,
+  ratioLabel,
+  tailPct,
+  TAIL_MAX,
+  TAIL_MIN,
+  TAIL_MS,
 } from '../src/components/landing/race.ts'
 import * as map from '../src/components/landing/system-map.ts'
 import run from '../src/data/hero-run.json'
@@ -278,16 +283,29 @@ describe('the landing page', () => {
     const ROWS = ['warm', 'restore', 'cold', 'cpu']
     races.forEach((f, i) => {
       const lanes = [
-        ...f.matchAll(/<div class="lane( vx)?" style="--w:([\d.]+);[^"]*">([\s\S]*?)<\/div>/g),
+        ...f.matchAll(
+          /<div class="lane( vx)?(?: best)?" style="--w:([\d.]+);[^"]*">([\s\S]*?)<\/div>/g,
+        ),
       ]
       expect(
         lanes.map((m) => text(/class="lane-name">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
       ).toEqual(['vx', 'Turbo', 'Nx', 'Vite Task'])
       expect(lanes.map((m) => m[1] ?? '')).toEqual([' vx', '', '', ''])
       expect(Math.max(...lanes.map((m) => Number(m[2])))).toBe(100)
+      const figures = ['vx', 'turbo', 'nx', 'vt'].map(
+        (r) => FIGURES.get(`${r}.${ROWS[i]}`) ?? 'missing',
+      )
+      // Each lane leads with its ratio to the row's fastest, whoever that is,
+      // and keeps the measured time under it.
       expect(
-        lanes.map((m) => text(/class="lane-value">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
-      ).toEqual(['vx', 'turbo', 'nx', 'vt'].map((r) => FIGURES.get(`${r}.${ROWS[i]}`) ?? 'missing'))
+        lanes.map((m) => text(/class="lane-value"><b>([\s\S]*?)<\/b>/.exec(m[3]!)![1]!)),
+      ).toEqual(
+        figures.map((v) =>
+          ratioLabel(parseDuration(v)!, Math.min(...figures.map((f) => parseDuration(f)!))),
+        ),
+      )
+      expect(lanes.map((m) => text(/<small>([\s\S]*?)<\/small>/.exec(m[3]!)![1]!))).toEqual(figures)
+      expect(lanes.filter((m) => m[0].includes('<b>1×</b>')).length).toBeGreaterThanOrEqual(1)
     })
     const fine = [...speed.matchAll(/<p class="fine">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(fine[0]).toBe('Time each tool adds over the ideal run; lower is better.')
@@ -387,8 +405,19 @@ describe('the landing page', () => {
       'polygon(0 0, 3.279% 0, 3.279% 100%, 4.918% 100%, 4.918% 100%, 0 100%)',
     )
     expect(burnClip(9, 61)).toContain('3.279% 75%, 4.918% 75%')
-    expect(timesLabel(244_000, 28_710)).toBe('8.5×')
-    expect(timesLabel(28_710, 28_710)).toBe('1×')
+    // Every figure is a ratio to the row's fastest; a near tie never reads as 1×.
+    expect(ratioLabel(28_710, 28_710)).toBe('1×')
+    expect(ratioLabel(405, 390)).toBe('1.04×')
+    expect(ratioLabel(28_710, 16_030)).toBe('1.79×')
+    expect(ratioLabel(62_000, 28_710)).toBe('2.2×')
+    expect(ratioLabel(7460, 390)).toBe('19×')
+    // A tail follows its runner's speed, the same rule for every tool,
+    // between a floor that always shows and a ceiling.
+    expect(tailPct(TAIL_MS * 2)).toBe(TAIL_MAX)
+    expect(tailPct(TAIL_MS * 5)).toBe(20)
+    expect(tailPct(107_000)).toBe(TAIL_MIN)
+    expect(tailPct(1)).toBe(TAIL_MAX)
+    expect(tailPct(400)).toBeGreaterThan(tailPct(800))
     const view = 900
     expect(racing({ top: 899, bottom: 2000 }, view, false)).toBe(true)
     expect(racing({ top: -1500, bottom: 1 }, view, false)).toBe(true)

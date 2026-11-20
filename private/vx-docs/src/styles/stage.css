@@ -925,12 +925,28 @@
   font: 600 13px var(--font-body);
   color: #9aa59a;
 }
+/* The ratio to the row's fastest leads; the measured time sits under it. */
 .lane-value {
-  font: 600 13px var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  font-family: var(--font-mono);
   white-space: nowrap;
   color: #9aa59a;
-  text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.lane-value b {
+  font-size: 15px;
+  font-weight: 700;
+}
+.lane-value small {
+  font-size: 11px;
+  font-weight: 500;
+  color: #69726d;
+}
+.lane.best:not(.vx) .lane-value b {
+  color: #f2f5ef;
 }
 .lane-track {
   position: relative;
@@ -965,7 +981,6 @@
   color: var(--tone-core);
 }
 .lane.vx .streak {
-  height: 4px;
   background: linear-gradient(90deg, transparent, var(--tone-core));
   box-shadow: 0 0 16px rgba(198, 248, 78, 0.7);
 }
@@ -974,12 +989,15 @@
   box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
 }
 /* Live, the lengths give way to runners: one track, each at its own pace. */
+/* Every tail follows one rule, its runner's speed (race.ts tailPct): only
+   the colour tells vx apart. */
 .runner {
   display: none;
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 62%, rgba(148, 170, 200, 0.5)) center / 100% 3px
-    no-repeat;
+  --tail-from: calc(100% - var(--tail) * 1%);
+  background: linear-gradient(90deg, transparent var(--tail-from), rgba(148, 170, 200, 0.5)) center
+    / 100% 3px no-repeat;
   transform: translateX(-100%);
 }
 .runner::after {
@@ -1009,7 +1027,8 @@
   display: block;
 }
 .lane.vx .runner {
-  background: linear-gradient(90deg, transparent 30%, var(--tone-core)) center / 100% 4px no-repeat;
+  background: linear-gradient(90deg, transparent var(--tail-from), var(--tone-core)) center / 100%
+    3px no-repeat;
 }
 .lane.vx .runner::after {
   background: #f4ffd6;

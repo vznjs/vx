@@ -44,5 +44,22 @@ export const burnClip = (cells: number, cols: number): string => {
   return `polygon(0 0, ${pct(full)} 0, ${pct(full)} ${top}, ${pct(full + 1)} ${top}, ${pct(full + 1)} 100%, 0 100%)`
 }
 
-/** A tool's burn against vx's. */
-export const timesLabel = (ms: number, vx: number): string => `${Number((ms / vx).toFixed(1))}×`
+/** A tool's figure against the row's fastest: the fastest is 1×, the rest
+ * how many times longer, so every number reads the same way in every row.
+ * A near tie keeps two decimals so it never shows as the winner's 1×. */
+export const ratioLabel = (ms: number, fastest: number): string => {
+  if (ms === fastest) return '1×'
+  const r = ms / fastest
+  return `${r < 2 ? r.toFixed(2) : r < 10 ? r.toFixed(1) : Math.round(r)}×`
+}
+
+// A runner's tail is the track it covered in the last TAIL_MS, like a
+// streak of motion blur: one rule for every tool, so a faster runner draws a
+// longer tail, held between a floor that always shows and a ceiling.
+export const TAIL_MS = 150
+export const TAIL_MIN = 8
+export const TAIL_MAX = 40
+
+/** A runner's tail, in % of the track, for a lap of `lapMs`. */
+export const tailPct = (lapMs: number): number =>
+  Math.min(TAIL_MAX, Math.max(TAIL_MIN, (TAIL_MS / lapMs) * 100))

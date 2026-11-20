@@ -11,7 +11,7 @@
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import Footer from '../components/landing/Footer.astro'
 import { SCOPE } from '../components/landing/scope.ts'
-import { BURN_ROWS, burnClip, timesLabel } from '../components/landing/race.ts'
+import { BURN_ROWS, burnClip, ratioLabel, tailPct } from '../components/landing/race.ts'
 import HeroStage from '../components/landing/HeroStage.astro'
 import DteRun from '../components/landing/DteRun.astro'
 import Voices from '../components/landing/Voices.astro'
@@ -64,6 +64,7 @@ const races = (
 ).map(([k, title]) => {
   const lanes = RACERS.map(([r, name]) => ({ r, name, value: bench(`${r}.${k}`), ms: parseDuration(bench(`${r}.${k}`))! }))
   const max = Math.max(...lanes.map((l) => l.ms))
+  const fastest = Math.min(...lanes.map((l) => l.ms))
   // Live, every tool runs the same track in real time: one lap takes the
   // time it measured.
   // CPU is an amount: its lanes are meters, one cell per CPU second.
@@ -77,7 +78,8 @@ const races = (
       w: (l.ms / max) * 100,
       lap: l.ms / 1000,
       cells: Math.round(l.ms / 1000),
-      times: timesLabel(l.ms, lanes[0]!.ms),
+      tail: tailPct(l.ms),
+      ratio: ratioLabel(l.ms, fastest),
     })),
   }
 })
@@ -181,7 +183,7 @@ const startCommands = [
               <figure class:list={['race', { burn: race.k === 'cpu' }]} style={`--cols:${race.cols}`}>
                 <figcaption>{race.title}</figcaption>
                 {race.lanes.map((l) => (
-                  <div class:list={['lane', { vx: l.r === 'vx' }]} style={`--w:${l.w.toFixed(1)}; --lap:${l.lap.toFixed(3)}s`}>
+                  <div class:list={['lane', { vx: l.r === 'vx', best: l.ratio === '1×' }]} style={`--w:${l.w.toFixed(1)}; --lap:${l.lap.toFixed(3)}s; --tail:${l.tail.toFixed(1)}`}>
                     <span class="lane-name">{l.name}</span>
                     {race.k === 'cpu' ? (
                       <span class="lane-track">
@@ -194,14 +196,15 @@ const startCommands = [
                         <span class="runner" />
                       </span>
                     )}
-                    <span class="lane-laps" aria-hidden="true">{race.k === 'cpu' ? l.times : ''}</span>
-                    <span class="lane-value">{l.value}</span>
+                    <span class="lane-laps" aria-hidden="true">{race.k === 'cpu' ? `${l.cells} s` : ''}</span>
+                    <span class="lane-value"><b>{l.ratio}</b><small>{l.value}</small></span>
                   </div>
                 ))}
               </figure>
             ))
           }
         </div>
+        <p class="fine race-note">The fastest tool in each row is 1×, a tool at 2× takes twice as long, and the measured time sits under each number.</p>
         <p class="fine race-note">Every tool runs the same track in real time: one lap takes the time it measured.</p>
         <p class="fine race-note">CPU is an amount, so it fills a meter: one cell per CPU second.</p>
         <p class="fine">{benchFormula}</p>
@@ -441,7 +444,6 @@ const startCommands = [
         fire: lane.querySelector<HTMLElement>('.fire')!,
         count: lane.querySelector<HTMLElement>('.lane-laps')!,
         total: Number(lane.querySelector<HTMLElement>('.fire')!.dataset['cells']),
-        times: lane.querySelector<HTMLElement>('.lane-laps')!.textContent,
         shown: -1,
       }))
       const most = Math.max(...fires.map((f) => f.total))
@@ -465,7 +467,7 @@ const startCommands = [
           if (lit === f.shown) continue
           f.shown = lit
           f.fire.style.clipPath = burnClip(lit, cols)
-          f.count.textContent = lit < f.total ? `${lit} s` : f.times
+          f.count.textContent = `${lit} s`
         }
         requestAnimationFrame(frame)
       }
