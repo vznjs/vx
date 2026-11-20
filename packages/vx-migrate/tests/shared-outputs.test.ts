@@ -40,6 +40,32 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     }
   })
 
+  it('keeps the upstream a preferred keeper rewrites in place, and uncaches the keeper', () => {
+    // mastra, 2026-11-20: build:lib (tsdown) fills dist, build runs
+    // api-extractor over dist/index.d.ts into the same dist. Kept, build's
+    // clean before its run deleted the file it reads, and it failed.
+    const mastra = resolveSharedOutputs([
+      task('build:lib', ['dist/**'], ['^build']),
+      task('build', ['dist/**'], ['build:lib']),
+    ])
+    expect(mastra.map((t) => [t.name, t.task!['cache'] !== undefined, t.todos.length])).toEqual([
+      ['build:lib', true, 0],
+      ['build', false, 1],
+    ])
+    expect(mastra[1]!.todos[0]).toContain('"build:lib" also declares')
+    // Through a chain: build reads build:types, which reads build:lib.
+    const chain = resolveSharedOutputs([
+      task('build', ['dist/**'], ['build:types']),
+      task('build:types', ['dist/types/**'], ['build:lib']),
+      task('build:lib', ['dist/**']),
+    ])
+    expect(chain.map((t) => [t.name, t.task!['cache'] !== undefined])).toEqual([
+      ['build', false],
+      ['build:types', false],
+      ['build:lib', true],
+    ])
+  })
+
   it('uncaches a dependant too: the default rules refuse the pair edge or not (X-53)', () => {
     // twenty: build → dist, build:individual depends on build → dist/individual;
     // and strapi's chain, build:types depending on build, both on dist/**.
