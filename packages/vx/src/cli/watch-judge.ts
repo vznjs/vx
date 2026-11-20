@@ -120,6 +120,8 @@ export interface JudgeContext {
   trackedAtArm?: ReadonlySet<string>
   /** Whether the watched set waits on a re-read, which only a cycle makes. */
   rereadPending?(): boolean
+  /** Whether `abs` is a task's declared output (a tracked one still counts as an edit). */
+  declaredOutput?(abs: string): boolean
 }
 
 export class ChangeJudge {
@@ -436,7 +438,9 @@ export class ChangeJudge {
         'warn',
         byServer
           ? `vx watch: ${first} has started 3 cycles in a row, written while a server was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write starts a cycle.\n`
-          : `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
+          : this.ctx.declaredOutput?.(firstAbs) === true
+            ? `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each. It is a declared output, but git tracks it, so each write counts as an edit. Add it to .gitignore and remove it from git (git rm --cached); until then every run re-runs.\n`
+            : `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
         'out',
       )
     }

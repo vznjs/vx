@@ -252,6 +252,8 @@ class WatchLoop {
   /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
   private readonly atArm: ReturnType<typeof gitFiles>
   private isIgnoredPath: ReturnType<typeof makeWatchIgnore>
+  /** A declared output, tracked or not: the cycle notice's advice turns on it. */
+  private isOutputPath: ReturnType<typeof makeWatchIgnore>
   private fenced: ReturnType<typeof makeFence>
   private matters: ReturnType<typeof makeRootEventFilter>
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
@@ -337,6 +339,7 @@ class WatchLoop {
       this.inputs,
       this.atArm?.tracked,
     )
+    this.isOutputPath = makeWatchIgnore(this.cacheDir, this.outputs)
     this.fenced = makeFence(args.fenceDirs)
     this.matters = makeRootEventFilter(
       workspaceRoot,
@@ -378,6 +381,7 @@ class WatchLoop {
         : {}),
 
       rereadPending: () => this.reread,
+      declaredOutput: (abs) => this.isOutputPath(path.dirname(abs), path.basename(abs)),
     })
     this.oneStream = process.platform === 'darwin' && !args.poll
     this.treeArms = process.platform === 'linux' && !args.poll
@@ -1112,6 +1116,7 @@ class WatchLoop {
       this.inputs,
       this.atArm?.tracked,
     )
+    this.isOutputPath = makeWatchIgnore(this.cacheDir, this.outputs)
     this.fenced = makeFence(next.fenceDirs)
     this.matters = makeRootEventFilter(
       this.workspaceRoot,
