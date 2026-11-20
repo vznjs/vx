@@ -343,6 +343,19 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
     ])
   })
 
+  // With no read inside the cwd at all, the note listed none and read
+  // "only of  inside it", a hole where the grants go.
+  it('says the cwd is empty when no read is granted inside it', async () => {
+    expect(await outcome(tsc('tsconfig.other.json'), '{}')).toEqual([
+      'failed',
+      [
+        `vx: this sandbox grants no read of the task's own working directory (${root}/packages/app) ` +
+          'or of anything inside it, so the command sees it empty, and no violation names that. ' +
+          "Grant what it reads, or the directory: `sandbox: { allow: { read: ['.'] } }`.",
+      ],
+    ])
+  })
+
   // cargo and make say neither "not found" nor "no such file": their
   // failures named no hidden path.
   it.each([

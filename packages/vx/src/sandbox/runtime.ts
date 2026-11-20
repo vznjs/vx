@@ -1317,6 +1317,32 @@ interface CanonicalBaselines {
   cwd: string
 }
 
+/**
+ * Linux: each baseline read that is itself a link (a `node_modules` linked
+ * out of the workspace), as `[text, at]` for `withPunchedLinks`, when no
+ * other read already shows the place it sits. SRT binds the target alone,
+ * so with its directory hidden the link was gone and `node_modules/.bin`
+ * on the task's PATH led nowhere.
+ */
+function baselineLinks(
+  baseAllowRead: readonly string[],
+  allowRead: readonly string[],
+): Array<readonly [string, string]> {
+  if (process.platform !== 'linux') return []
+  const out: Array<readonly [string, string]> = []
+  for (const at of baseAllowRead) {
+    let text: string
+    try {
+      text = readlinkSync(at)
+    } catch {
+      continue
+    }
+    const shown = allowRead.some((r) => r !== toRealPath(at) && atOrUnder(at, r))
+    if (!shown) out.push([text, at])
+  }
+  return out
+}
+
 function canonicalBaselines(
   args: Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead' | 'cwd'>,
 ): CanonicalBaselines {
@@ -1613,10 +1639,13 @@ async function wrapIn(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
-  const links = punchedLinks(
-    [...baselines.allowRead, ...args.config.allowRead],
-    customConfig.filesystem!.allowRead!,
-  )
+  const links = [
+    ...punchedLinks(
+      [...baselines.allowRead, ...args.config.allowRead],
+      customConfig.filesystem!.allowRead!,
+    ),
+    ...baselineLinks(args.baseAllowRead, customConfig.filesystem!.allowRead!),
+  ]
   // The directories `punchedWriteGlobs` bound, and the globs they hold.
   const own = new Set(bindableWrites(args.config.allowWrite))
   const heldDirs = customConfig.filesystem!.allowWrite.filter((w) => !own.has(w))
@@ -3302,11 +3331,15 @@ function addHints(
           timestamp: new Date(),
           hint: true,
           line:
-            `vx: this sandbox grants no read of the task's own working directory (${args.cwd}), ` +
-            `only of ${inside.length > 4 ? `${inside.slice(0, 4).join(', ')}, …` : inside.join(', ')} inside it, ` +
-            'so a command that lists it (a test runner looking for its files) sees nothing else, ' +
-            'and no violation names that. Grant what it lists, or the directory: ' +
-            "`sandbox: { allow: { read: ['.'] } }`.",
+            inside.length === 0
+              ? `vx: this sandbox grants no read of the task's own working directory (${args.cwd}) ` +
+                'or of anything inside it, so the command sees it empty, and no violation names that. ' +
+                "Grant what it reads, or the directory: `sandbox: { allow: { read: ['.'] } }`."
+              : `vx: this sandbox grants no read of the task's own working directory (${args.cwd}), ` +
+                `only of ${inside.length > 4 ? `${inside.slice(0, 4).join(', ')}, …` : inside.join(', ')} inside it, ` +
+                'so a command that lists it (a test runner looking for its files) sees nothing else, ' +
+                'and no violation names that. Grant what it lists, or the directory: ' +
+                "`sandbox: { allow: { read: ['.'] } }`.",
         })
       }
     }
