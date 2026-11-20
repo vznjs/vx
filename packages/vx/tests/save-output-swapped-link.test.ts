@@ -41,8 +41,8 @@ for (const [store, label] of [
         undefined,
         store,
       )
-      const plan = saving.planWithin
-      const spy = spyOn(saving, 'planWithin').mockImplementation(async (...args) => {
+      const plan = saving.planOutputs
+      const spy = spyOn(saving, 'planOutputs').mockImplementation(async (...args) => {
         const p = await plan(...args)
         unlinkSync(a)
         symlinkSync('b.bin', a)

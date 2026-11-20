@@ -36,8 +36,8 @@ for (const [store, label] of [
       undefined,
       store,
     )
-    const plan = saving.planWithin
-    const spy = spyOn(saving, 'planWithin').mockImplementation(async (...a) => {
+    const plan = saving.planOutputs
+    const spy = spyOn(saving, 'planOutputs').mockImplementation(async (...a) => {
       const p = await plan(...a)
       appendFileSync(out, 'late write')
       return p
