@@ -1,7 +1,6 @@
 LICENSE
 README.md
 launcher.cjs
-launcher.sh
 package.json
 schemas/cache.json
 schemas/docs.json

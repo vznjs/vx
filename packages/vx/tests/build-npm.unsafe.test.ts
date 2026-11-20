@@ -7,11 +7,28 @@
 //
 // `.unsafe`: the emitted package carries the repo-root README and LICENSE,
 // which a sandboxed project task may not read.
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
+import {
+  TARGETS,
+  emitMainPackage,
+  emitPlatformPackages,
+  emitPluginPackages,
+} from '../scripts/build-npm.ts'
 import { publishOrder } from '../scripts/release.ts'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -39,7 +56,7 @@ describe('the published @vzn/vx tree', () => {
 
   it('ships the entry the exports map and the launcher name', async () => {
     expect(await Bun.file(path.join(mainDir, 'src', 'index.ts')).exists()).toBe(true)
-    expect(manifest.bin).toEqual({ vx: './launcher.sh' })
+    expect(manifest.bin).toEqual({ vx: './launcher.cjs' })
     expect(await Bun.file(path.join(mainDir, manifest.bin.vx!)).exists()).toBe(true)
   })
 
@@ -50,11 +67,67 @@ describe('the published @vzn/vx tree', () => {
       'src',
       'schemas',
       'skills',
-      'launcher.sh',
       'launcher.cjs',
       'README.md',
       'LICENSE',
     ])
+  })
+})
+
+// Yarn 2+ runs every package bin through `node`, whatever the file holds:
+// the published bin was `launcher.sh`, and `yarn vx` (or a package.json
+// script calling vx) died in Node with ERR_UNKNOWN_FILE_EXTENSION before vx
+// started. The bin is now one file that sh and Node both run.
+const KEY = `${process.platform}-${process.arch}`
+const GLIBC = { x64: '/lib64/ld-linux-x86-64.so.2', arm64: '/lib/ld-linux-aarch64.so.1' }
+const NODE = Bun.which('node')
+const nativeBinary =
+  TARGETS.some((t) => t.target === KEY) &&
+  (process.platform !== 'linux' || existsSync(GLIBC[process.arch as keyof typeof GLIBC] ?? '/'))
+
+describe.skipIf(NODE === null || !nativeBinary)('the published bin, installed', async () => {
+  const root = path.join(out, 'installed')
+  const dist = path.join(out, 'dist')
+  mkdirSync(dist, { recursive: true })
+  for (const t of TARGETS) {
+    writeFileSync(path.join(dist, `vx-${t.target}`), '#!/bin/sh\necho "vx $*"\n')
+    chmodSync(path.join(dist, `vx-${t.target}`), 0o755)
+  }
+  const nodeModules = path.join(root, 'node_modules')
+  await emitPlatformPackages({
+    mainName: '@vzn/vx',
+    base: 'vx',
+    distPrefix: 'vx',
+    targets: TARGETS,
+    version: '9.9.9',
+    outDir: nodeModules,
+    distDir: dist,
+  })
+  cpSync(mainDir, path.join(nodeModules, '@vzn', 'vx'), { recursive: true })
+  const bin = path.join(nodeModules, '@vzn', 'vx', manifest.bin.vx!)
+  // Started by the kernel, the bin must reach the binary with no Node at all.
+  const noNode = path.join(out, 'tools')
+  mkdirSync(noNode)
+  for (const t of ['sh', 'readlink', 'uname']) symlinkSync(Bun.which(t)!, path.join(noNode, t))
+  const run = (cmd: string[], PATH = process.env['PATH']) => {
+    const r = Bun.spawnSync({ cmd, cwd: root, env: { ...process.env, PATH, VX_HANDED_OFF: '/x' } })
+    return [r.exitCode, `${r.stdout.toString()}${r.stderr.toString()}`]
+  }
+
+  it('runs the binary when Node starts it, as Yarn 2+ does', () => {
+    expect(run([NODE!, bin, '--version'])).toEqual([0, 'vx --version\n'])
+  })
+
+  it('runs the binary when the kernel starts it, as npm, pnpm and Bun do', () => {
+    expect(run([bin, '--version'], noNode)).toEqual([0, 'vx --version\n'])
+    expect(readFileSync(bin, 'utf8')).toStartWith("#!/bin/sh\n':' /*\n")
+  })
+
+  it('asks Yarn to unzip the platform package, where its binary can run', () => {
+    const platform = JSON.parse(
+      readFileSync(path.join(nodeModules, '@vzn', `vx-${KEY}`, 'package.json'), 'utf8'),
+    ) as { preferUnplugged?: boolean }
+    expect(platform.preferUnplugged).toBe(true)
   })
 })
 

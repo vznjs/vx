@@ -3,10 +3,12 @@
 // (`dist/vx-<target>`, produced by `vx run build`).
 //
 // Emits, under <out> (default dist/npm):
-//   @vzn/vx-<target>/  — one per platform: the raw `vx` binary + os/cpu manifest
+//   @vzn/vx-<target>/  — one per platform: the raw `vx` binary + os/cpu manifest,
+//                        kept unzipped under Yarn Plug'n'Play
 //   vx/                — the primary @vzn/vx package: library source
-//                        (exports ./src/index.ts) PLUS the sh launcher (Node fallback) +
-//                        the 4 platform packages as optionalDependencies.
+//                        (exports ./src/index.ts) PLUS launcher.cjs (sh, or Node
+//                        when `node` runs it) + the 4 platform packages as
+//                        optionalDependencies.
 //   plugins/<dir>/     — every other public workspace package (the plugins),
 //                        at the same version, peer-pinned to this @vzn/vx
 //                        (`--only=plugins` emits these alone).
@@ -123,6 +125,8 @@ export async function emitPlatformPackages(args: {
       repository: REPOSITORY,
       os: [t.os],
       cpu: [t.cpu],
+      // Yarn Plug'n'Play keeps a package zipped, where no binary can run.
+      preferUnplugged: true,
       files: [base, 'LICENSE', NOTICES_FILE],
     })
     await Bun.write(
@@ -130,6 +134,21 @@ export async function emitPlatformPackages(args: {
       `# ${pkgName}\n\nThe ${t.os}-${t.cpu} prebuilt binary for [\`${mainName}\`](${REPO_URL}).\n\nYou don't install this directly — it's an optionalDependency of \`${mainName}\`, which npm installs automatically on a matching platform.\n`,
     )
   }
+}
+
+/**
+ * The published `bin`: npm-launcher.sh and npm-launcher.cjs in one file.
+ * The kernel starts it as sh, which reads `':' /*` as the no-op `:` and
+ * stops at the script's last `exec`; `node` (how Yarn 2+ runs every bin)
+ * skips the hashbang and the script in a block comment, and runs the cjs.
+ */
+async function launcher(): Promise<string> {
+  const sh = await Bun.file(join(CORE, 'npm-launcher.sh')).text()
+  const cjs = await Bun.file(join(CORE, 'npm-launcher.cjs')).text()
+  if (sh.includes('*/'))
+    throw new Error('npm-launcher.sh holds */, which ends the comment it ships in')
+  const body = (text: string): string => text.slice(text.indexOf('\n') + 1)
+  return `#!/bin/sh\n':' /*\n${body(sh)}*/\n${body(cjs)}`
 }
 
 // The compiled binary serves `@vzn/vx` and `@vzn/vx/config` from its own
@@ -168,9 +187,8 @@ export async function emitMainPackage(args: { version: string; outDir: string })
   for (const dir of PACKAGE_DATA) await cp(join(CORE, dir), join(mainDir, dir), { recursive: true })
   // At the repo root, where `npx skills add vznjs/vx` finds it.
   await cp(join(ROOT, 'skills'), join(mainDir, 'skills'), { recursive: true })
-  await cp(join(CORE, 'npm-launcher.cjs'), join(mainDir, 'launcher.cjs'))
-  await cp(join(CORE, 'npm-launcher.sh'), join(mainDir, 'launcher.sh'))
-  await chmod(join(mainDir, 'launcher.sh'), 0o755)
+  await Bun.write(join(mainDir, 'launcher.cjs'), await launcher())
+  await chmod(join(mainDir, 'launcher.cjs'), 0o755)
   await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
   await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
 
@@ -183,23 +201,15 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     // The same exports map the workspace package declares.
     exports: corePkg.exports,
     types: './src/index.ts',
-    // The CLI: a sh launcher that execs the matching platform binary, with
-    // launcher.cjs as its fallback (no Node start on the common path).
-    bin: { vx: './launcher.sh' },
+    // The CLI: a sh launcher that execs the matching platform binary (no
+    // Node start on the common path), Node's when run by `node` (Yarn 2+).
+    bin: { vx: './launcher.cjs' },
     engines: { node: '>=18' },
     optionalDependencies: allOptional('@vzn/vx', version),
     // Runtime deps the library source needs when imported (the binary embeds
     // its own copy). Mirrors the workspace root so versions never drift.
     dependencies: corePkg.dependencies ?? {},
-    files: [
-      ...CORE_ENTRIES,
-      ...PACKAGE_DATA,
-      'skills',
-      'launcher.sh',
-      'launcher.cjs',
-      'README.md',
-      'LICENSE',
-    ],
+    files: [...CORE_ENTRIES, ...PACKAGE_DATA, 'skills', 'launcher.cjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
     homepage: corePkg.homepage,
     bugs: `${REPO_URL}/issues`,
