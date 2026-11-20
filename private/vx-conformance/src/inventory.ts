@@ -225,6 +225,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-mode-change',
     'watch-nested-boundary',
     'watch-new-member-edit',
+    'watch-own-rewrite-loop',
     'watch-node-modules-input',
     'watch-project-dir-write',
     'watch-ready-interrupt',

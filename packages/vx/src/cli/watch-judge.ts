@@ -173,6 +173,8 @@ export class ChangeJudge {
   // came).
   private readonly streak = { abs: '', n: 0 }
   private readonly noticed = new Set<string>()
+  /** The inputs the last cycle's run moved under its keys (`drifted`). */
+  private driftedLast = new Set<string>()
   /** Files git came to track after the arm (`tracked`). */
   private readonly trackedSince = new Set<string>()
 
@@ -231,6 +233,33 @@ export class ChangeJudge {
   unseen(moved: readonly (string | null)[]): void {
     for (const abs of moved)
       for (const p of abs === null ? [...this.pending.keys()] : [abs]) this.lastState.set(p, UNSEEN)
+  }
+
+  /**
+   * The inputs a cycle's run moved under its keys (`unseen`), less the
+   * task's own rewrite: one the last cycle's run moved too, which this run
+   * left as the judgement that started it saw it. That ends the chain: the
+   * next run to move it starts one again. A tool that writes even
+   * when nothing changed (`sort -o`, `sed -i`) moves its input every run,
+   * and each move started the next cycle, forever (~9 a second). The
+   * first move still starts one: an editor's save over a formatter's write
+   * settles to the state judged before the run, and only that cycle formats
+   * it. A user's edit put back inside the second run's command is the gap,
+   * as any write inside a command's window is (`sawEvent`).
+   */
+  drifted(moved: readonly (string | null)[]): void {
+    const before = this.driftedLast
+    this.driftedLast = new Set()
+    const unseen: (string | null)[] = []
+    for (const abs of moved) {
+      if (abs !== null) {
+        const was = this.lastState.get(abs)
+        if (before.has(abs) && was !== undefined && was === settledState(abs)) continue
+        this.driftedLast.add(abs)
+      }
+      unseen.push(abs)
+    }
+    this.unseen(unseen)
   }
 
   // A path this loop has never judged is a change only if it moved since the
