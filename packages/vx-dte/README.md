@@ -596,7 +596,7 @@ use your own instead.
   gone or of another platform, or with its uncached upstreams on two
   workers, the upstream runs again where the dependant can go, and the
   dependant follows it. An idle worker holding such files stays while a
-  task to come reads them. One whose `exec.worker` or `exec.platforms` rules
+  task to come reads them, and no new worker is asked for such a task. One whose `exec.worker` or `exec.platforms` rules
   out where its dependant runs refuses the run before a worker starts,
   naming both: cache it, or run both alike. A task whose upload no remote took after three
   tries (too big, a 429, a reset connection) is its worker's fault: that
@@ -1030,9 +1030,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
 HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     `.vx/` change counts every cached task. A hit it guessed wrong costs a
     worker the plan cancels; with no parent, the run waits for its misses.
-    Each task core's up-front cache probe found in no store
-    (`TaskExecutor.demand`'s `missed`) counts as work too, the moment the
-    probe answers.
+    Each task core's up-front cache probe found in no store, and each
+    uncached task, which no probe asks (`TaskExecutor.demand`'s `missed`),
+    counts as work too, the moment the probe answers.
     A measured task counts for the cores it kept busy on average, and a
     whole core at least. What a task used counts divided by its share of
     the CPU: a Linux worker reads its run queue (`procs_running` in

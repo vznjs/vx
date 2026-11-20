@@ -479,7 +479,8 @@ export interface Distribution {
    * remaining work and release capacity early. Absent: nothing is computed.
    *
    * `missed`: of `remaining`, those the up-front probe found in no store (or,
-   * without a batch probe, those the index has no hit of): they will run. The
+   * without a batch probe, those the index has no hit of), and those with a
+   * command and no cache: they will run. The
    * rest may still restore or were not probed. The same set each call, changed
    * in place.
    */

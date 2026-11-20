@@ -960,12 +960,17 @@ const NO_DEMAND: ExecutorDemand = {
  * container, a pod) need not guess from `capacity` and hold everything to
  * teardown. Built only for executors that asked.
  *
+ * `uncached`: the tasks with a command and no cache, which no probe asks
+ * and which run whatever it answers: missed from the start (main 979cb59:
+ * an uncached 19 s build planned only once ready ended the run 15 s late).
+ *
  * The same set is handed back, narrowed in place, so a later reader sees the
  * truth. A hint, like `admit`: one that throws is named once and asked no more.
  */
 export function executorDemand(
   placed: ReadonlyMap<string, TaskExecutor>,
   warn: (message: string) => void,
+  uncached: Iterable<string> = [],
 ): ExecutorDemand {
   const demandOf = new Map<TaskExecutor, Set<string>>()
   for (const [id, executor] of placed) {
@@ -1009,7 +1014,8 @@ export function executorDemand(
     settle(hits, misses = []) {
       if (settled) return
       settled = true
-      for (const id of misses) if (placed.has(id) && !done.has(id)) missed.add(id)
+      for (const m of [misses, uncached])
+        for (const id of m) if (placed.has(id) && !done.has(id)) missed.add(id)
       for (const id of hits) {
         if (ran.has(id) || done.has(id)) continue
         const executor = placed.get(id)

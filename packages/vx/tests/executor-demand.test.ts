@@ -64,3 +64,23 @@ it('tells the tasks the probe found in no store, narrowed as they finish', () =>
   d.finished('a')
   expect(missed).toEqual([['a', 'b'], ['b']])
 })
+
+// An uncached task runs whatever the cache answers, and no probe asks it:
+// main 979cb59 planned docs#build.live (19 s) only once it was ready, held
+// the task before it to 123 s, and ended 15 s past its ideal.
+it('tells a task with no cache as missed from the start', () => {
+  const missed: string[][] = []
+  const executor = {
+    name: 'spy',
+    distribution: {
+      demand: (_: ReadonlySet<string>, m: ReadonlySet<string>) => missed.push([...m].sort()),
+    },
+    execute: () => Promise.reject(new Error('not run')),
+  } as unknown as TaskExecutor
+  const d = executorDemand(new Map(['a', 'b', 'live'].map((id) => [id, executor])), () => {}, [
+    'live',
+    'not-placed',
+  ])
+  d.settle(['b'], ['a'])
+  expect(missed).toEqual([['a', 'live']])
+})

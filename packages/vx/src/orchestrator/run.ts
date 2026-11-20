@@ -806,7 +806,13 @@ async function runOnBus(
   }
   // Demand: what each executor still has left to run (`executorDemand`),
   // told once the cache has said what it answers.
-  const demand = executorDemand(placements.executors, warnOf(log))
+  const demand = executorDemand(
+    placements.executors,
+    warnOf(log),
+    [...nodes].flatMap(([id, n]) =>
+      n.config.exec?.command !== undefined && n.config.cache !== true ? [id] : [],
+    ),
+  )
 
   // `cache.download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.

@@ -680,8 +680,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   cache answers is never counted"). A left-out task that executes after
   all is counted again. Its second argument, `missed`, holds the left
   tasks whose keys that probe found in no store, each store answering
-  for every key: they will run, so a plan sizes on them rather than a
-  guess (`executor-demand.test.ts`). Behind a remote with a batch
+  for every key, and every left task with a command and no cache, which
+  no probe asks and which runs whatever it answers (main 979cb59 planned
+  an uncached 19 s build only once ready and ended 15 s late): they will
+  run, so a plan sizes on them rather than a guess (`executor-demand.test.ts`). Behind a remote with a batch
   `hasMany`, that first call waits for its answer, however many hits
   the index keeps: a key the index lacks may still be held (main
   7391c93 asked 14 workers for 71 tasks, 17 of which ran, 2026-10-23).
