@@ -137,6 +137,7 @@ describe('verbFlags is what each verb accepts', () => {
           '--dev',
           '--optional',
           '--workspace-root',
+          '--prefix',
           '--version',
         ])
           named.delete(f)

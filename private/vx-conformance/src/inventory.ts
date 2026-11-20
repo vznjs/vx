@@ -993,6 +993,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'cli-verb-sections',
     'closure-search',
     'colors',
+    'consumer-types.unsafe',
     'continue-cache-properties',
     'core-source-key.unsafe',
     'dependencies-lock',
