@@ -2633,13 +2633,13 @@ A vx a package manager installed (the npm package's launcher runs
 manager, never by a rename over its file, which the next install would
 undo. The path names the install:
 
-| Install                | Detected by                           | Runs                          |
-| ---------------------- | ------------------------------------- | ----------------------------- |
-| npm global             | `<prefix>/lib/node_modules`           | `npm install -g @vzn/vx@<v>`  |
-| pnpm global            | `…/pnpm/global/…`                     | `pnpm add -g @vzn/vx@<v>`     |
-| bun global             | `~/.bun/install/global`               | `bun add -g @vzn/vx@<v>`      |
-| yarn global            | `…/yarn/global/…`                     | `yarn global add @vzn/vx@<v>` |
-| a project's dependency | the package.json that lists `@vzn/vx` | its manager's add, same field |
+| Install                | Detected by                           | Runs                                           |
+| ---------------------- | ------------------------------------- | ---------------------------------------------- |
+| npm global             | `<prefix>/lib/node_modules`           | `npm install -g --prefix <prefix> @vzn/vx@<v>` |
+| pnpm global            | `…/pnpm/global/…`                     | `pnpm add -g @vzn/vx@<v>`                      |
+| bun global             | `~/.bun/install/global`               | `bun add -g @vzn/vx@<v>`                       |
+| yarn global            | `…/yarn/global/…`                     | `yarn global add @vzn/vx@<v>`                  |
+| a project's dependency | the package.json that lists `@vzn/vx` | its manager's add, same field                  |
 
 A project's package.json is the tree's root, or for a hoisted workspace
 the nearest one above the current directory that lists `@vzn/vx`. Its

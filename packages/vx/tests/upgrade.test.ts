@@ -962,9 +962,9 @@ describe('managedInstall', () => {
 
   it('global argv per manager', () => {
     const g = (manager: 'npm' | 'pnpm' | 'bun' | 'yarn'): string =>
-      upgradeArgv({ manager, scope: 'global', cwd: '/' }, '1.2.3').join(' ')
+      upgradeArgv({ manager, scope: 'global', cwd: '/usr/lib' }, '1.2.3').join(' ')
     expect([g('npm'), g('pnpm'), g('bun'), g('yarn')]).toEqual([
-      'npm install -g @vzn/vx@1.2.3',
+      'npm install -g --prefix /usr @vzn/vx@1.2.3',
       'pnpm add -g @vzn/vx@1.2.3',
       'bun add -g @vzn/vx@1.2.3',
       'yarn global add @vzn/vx@1.2.3',
@@ -1149,7 +1149,7 @@ describe('upgradeGlobal: the global vx that handed the run to the project', () =
       process.env['PATH'] = PATH
     }
     expect(await readFile(said, 'utf8')).toBe(
-      `${realpathSync(path.join(prefix, 'lib'))} install -g @vzn/vx@9.9.9\n`,
+      `${realpathSync(path.join(prefix, 'lib'))} install -g --prefix ${realpathSync(prefix)} @vzn/vx@9.9.9\n`,
     )
   })
 
@@ -1229,7 +1229,7 @@ describe('upgradeOnlyGlobal: `vx upgrade -g` moves only the global vx', () => {
       process.env['PATH'] = PATH
     }
     expect(await readFile(said, 'utf8')).toBe(
-      `${realpathSync(path.join(prefix, 'lib'))} install -g @vzn/vx@9.9.9\n`,
+      `${realpathSync(path.join(prefix, 'lib'))} install -g --prefix ${realpathSync(prefix)} @vzn/vx@9.9.9\n`,
     )
   })
 

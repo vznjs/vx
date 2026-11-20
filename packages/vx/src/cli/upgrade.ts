@@ -706,7 +706,12 @@ export function upgradeArgv(install: ManagedInstall, version: string): string[] 
   const { manager } = install
   if (install.scope === 'global') {
     if (manager === 'yarn') return ['yarn', 'global', 'add', spec]
-    return manager === 'npm' ? ['npm', 'install', '-g', spec] : [manager, 'add', '-g', spec]
+    // npm's -g writes to its configured prefix, not where this vx lives: a
+    // global under another prefix (`npm i -g --prefix`, an old
+    // NPM_CONFIG_PREFIX) was left as it was while a second one went in.
+    if (manager === 'npm')
+      return ['npm', 'install', '-g', '--prefix', path.dirname(install.cwd), spec]
+    return [manager, 'add', '-g', spec]
   }
   const field = install.field ?? 'devDependencies'
   const flag = {
