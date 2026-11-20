@@ -121,8 +121,12 @@ describe('a run', () => {
       const { tasks } = lock.projects['packages/a'].config
       tasks['b'] = tasks['a']
       await writeFile(lockFile, JSON.stringify(lock))
-      const r = vx(root, ['run', 'a', 'b', '--all'])
-      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      // One run each: run together, the two raced on dist/o, and a's save
+      // saw b's clean (`changed while it was saved`), which is no rule's.
+      for (const t of ['a', 'b']) {
+        const r = vx(root, ['run', t, '--all'])
+        expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      }
     },
     TIMEOUT,
   )
