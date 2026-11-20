@@ -44,6 +44,9 @@ const PAIRS = (): [string, string, string][] => [
     BELOW_PEER_PATCH_NAMED_CATALOG_V13,
     BELOW_PEER_PATCH_NAMED_CATALOG_V9,
   ],
+  // pnpm/pnpm's own `which: npm:@pnpm/which@^3.0.1`: read as `3.0.1`, the
+  // entry named no package and the lock refused the workspace.
+  ['catalog entry that is an npm: alias', CATALOG_NPM_ALIAS_V13, CATALOG_NPM_ALIAS_V9],
 ]
 
 describe('pnpm v13 lockfile', () => {
@@ -1454,4 +1457,173 @@ snapshots:
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
+`
+
+const CATALOG_NPM_ALIAS_V13 = `{
+	"lockfileVersion": "13.0",
+
+	"settings": {
+		"autoInstallPeers": true,
+		"excludeLinksFromLockfile": false,
+		"catalogs": {
+			"default": {
+				"al": {
+					"specifier": "npm:is-odd@^3.0.1",
+					"version": "3.0.1",
+				},
+			},
+		},
+	},
+
+	"projects": {
+		".": {},
+
+		"apps/a": {
+			"dependencies": {
+				"al": "catalog:",
+			},
+		},
+
+		"apps/b": {
+			"dependencies": {
+				"is-even": "1.0.0",
+			},
+		},
+	},
+
+	"packages": {
+		"is-buffer@1.1.6": {
+			"integrity": "sha512-NcdALwpXkTm5Zvvbk7owOUSvVvBKDgKP5/ewfXEznmQFfs4ZRmanOeKBTjRVjka3QFoN6XJ+9F3USqfHqTaU5w==",
+		},
+
+		"is-even@1.0.0": {
+			"integrity": "sha512-LEhnkAdJqic4Dbqn58A0y52IXoHWlsueqQkKfMfdEnIYG8A1sm/GHidKkS6yvXlMoRrkM34csHnXQtOqcb+Jzg==",
+			"engines": {"node": ">=0.10.0"},
+			"dependencies": {
+				"is-odd": "0.1.2",
+			},
+		},
+
+		"is-number@3.0.0": {
+			"integrity": "sha512-4cboCqIpliH+mAvFNegjZQ4kgKc3ZUhQVr3HvWbSh5q3WH2v82ct+T2Y1hdU5Gdtorx/cLifQjqCbL7bpznLTg==",
+			"engines": {"node": ">=0.10.0"},
+			"dependencies": {
+				"kind-of": "3.2.2",
+			},
+		},
+
+		"is-number@6.0.0": {
+			"integrity": "sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg==",
+			"engines": {"node": ">=0.10.0"},
+		},
+
+		"is-odd@0.1.2": {
+			"integrity": "sha512-Ri7C2K7o5IrUU9UEI8losXJCCD/UtsaIrkR5sxIcFg4xQ9cRJXlWA5DQvTE0yDc0krvSNLsRGXN11UPS6KyfBw==",
+			"engines": {"node": ">=0.10.0"},
+			"dependencies": {
+				"is-number": "3.0.0",
+			},
+		},
+
+		"is-odd@3.0.1": {
+			"integrity": "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA==",
+			"engines": {"node": ">=4"},
+			"dependencies": {
+				"is-number": "6.0.0",
+			},
+		},
+
+		"kind-of@3.2.2": {
+			"integrity": "sha512-NOW9QQXMoZGg/oqnVNoNTTIFEIid1627WCffUBJEdMxYApq7mNE7CpzucIPc+ZQg25Phej7IJSmX3hO+oblOtQ==",
+			"engines": {"node": ">=0.10.0"},
+			"dependencies": {
+				"is-buffer": "1.1.6",
+			},
+		},
+	},
+}
+`
+
+const CATALOG_NPM_ALIAS_V9 = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+catalogs:
+  default:
+    al:
+      specifier: npm:is-odd@^3.0.1
+      version: 3.0.1
+
+importers:
+
+  .: {}
+
+  apps/a:
+    dependencies:
+      al:
+        specifier: 'catalog:'
+        version: is-odd@3.0.1
+
+  apps/b:
+    dependencies:
+      is-even:
+        specifier: 1.0.0
+        version: 1.0.0
+
+packages:
+
+  is-buffer@1.1.6:
+    resolution: {integrity: sha512-NcdALwpXkTm5Zvvbk7owOUSvVvBKDgKP5/ewfXEznmQFfs4ZRmanOeKBTjRVjka3QFoN6XJ+9F3USqfHqTaU5w==}
+
+  is-even@1.0.0:
+    resolution: {integrity: sha512-LEhnkAdJqic4Dbqn58A0y52IXoHWlsueqQkKfMfdEnIYG8A1sm/GHidKkS6yvXlMoRrkM34csHnXQtOqcb+Jzg==}
+    engines: {node: '>=0.10.0'}
+
+  is-number@3.0.0:
+    resolution: {integrity: sha512-4cboCqIpliH+mAvFNegjZQ4kgKc3ZUhQVr3HvWbSh5q3WH2v82ct+T2Y1hdU5Gdtorx/cLifQjqCbL7bpznLTg==}
+    engines: {node: '>=0.10.0'}
+
+  is-number@6.0.0:
+    resolution: {integrity: sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg==}
+    engines: {node: '>=0.10.0'}
+
+  is-odd@0.1.2:
+    resolution: {integrity: sha512-Ri7C2K7o5IrUU9UEI8losXJCCD/UtsaIrkR5sxIcFg4xQ9cRJXlWA5DQvTE0yDc0krvSNLsRGXN11UPS6KyfBw==}
+    engines: {node: '>=0.10.0'}
+
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA==}
+    engines: {node: '>=4'}
+
+  kind-of@3.2.2:
+    resolution: {integrity: sha512-NOW9QQXMoZGg/oqnVNoNTTIFEIid1627WCffUBJEdMxYApq7mNE7CpzucIPc+ZQg25Phej7IJSmX3hO+oblOtQ==}
+    engines: {node: '>=0.10.0'}
+
+snapshots:
+
+  is-buffer@1.1.6: {}
+
+  is-even@1.0.0:
+    dependencies:
+      is-odd: 0.1.2
+
+  is-number@3.0.0:
+    dependencies:
+      kind-of: 3.2.2
+
+  is-number@6.0.0: {}
+
+  is-odd@0.1.2:
+    dependencies:
+      is-number: 3.0.0
+
+  is-odd@3.0.1:
+    dependencies:
+      is-number: 6.0.0
+
+  kind-of@3.2.2:
+    dependencies:
+      is-buffer: 1.1.6
 `
