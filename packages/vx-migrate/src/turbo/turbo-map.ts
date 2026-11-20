@@ -82,6 +82,9 @@ interface TurboJson {
 
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
+/** A command that runs tshy, which writes the package.json `exports` in place. */
+const TSHY = /(?:^|[\s;&|(/])tshy(?=$|[\s;&|)])/
+
 /**
  * A Turbo env list's explicit names, read as Turbo reads them
  * (`wildcard_to_regex_pattern`): `*` is the one wildcard, `\*` a
@@ -2370,12 +2373,13 @@ function buildTask(
   // An output over the project's own package.json (trpc's builds list it:
   // tsdown rewrites `exports`) is taken back and keeps the cache, as nx() does.
   // The build rewrites an input the key folds, so its identical rewrite counts
-  // as unchanged ('mutable').
+  // as unchanged ('mutable'). tshy rewrites it on every build, listed or not:
+  // trigger.dev's 10 tshy builds were never saved, nor their 14 dependants.
   const takeBacks = ownFileTakeBacks(outFiles, opts.ownConfig?.(pkgDir))
   outFiles.push(...takeBacks)
   for (const g of outFiles) if (!g.startsWith('!')) ownOut.push(atRoot ? g : `${pkgDir}/${g}`)
   for (const g of wsOutFiles) if (!g.startsWith('!')) ownOut.push(g)
-  const rewritesManifest = takeBacks.includes('!package.json')
+  const rewritesManifest = takeBacks.includes('!package.json') || TSHY.test(command)
 
   if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))
   // Sorted here, before the passes that take them back from other tasks'
