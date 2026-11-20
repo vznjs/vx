@@ -81,6 +81,35 @@ it(
   TIMEOUT,
 )
 
+// Hardening, 2026-11-20 (documenso): Turbopack's pool workers die ~90 ms
+// after a cold `next build` exits, so the group check read every such build
+// as a leftover and saved none. A member gone within the bound has written
+// all it will: the task is saved, with what it wrote.
+it(
+  'a task whose group empties just after its shell exits is saved',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-left-running-' })
+    made.push(root)
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'mkdir -p dist; echo early > dist/early.txt; (sleep 0.05; echo late > dist/late.txt) >/dev/null 2>&1 &' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    const first = await run(opts)
+    expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(fx.log.join('\n')).not.toContain('a process it left running')
+    await rm(path.join(app, 'dist'), { recursive: true })
+    const second = await run(opts)
+    expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    expect((await readdir(path.join(app, 'dist'))).sort()).toEqual(['early.txt', 'late.txt'])
+  },
+  TIMEOUT,
+)
+
 // A failed attempt's leftover writes into the retry's tree: the retry
 // passes, but its outputs are not only its own, so nothing is saved.
 it(
@@ -91,7 +120,7 @@ it(
     const app = await addProject(root, 'app', {
       files: { 'src/a.txt': 'a', '.gitignore': 'dist/\nn\n' },
       config: `export default { tasks: { build: {
-        exec: { command: 'n=$(cat n 2>/dev/null || echo 0); n=$((n+1)); echo $n > n; mkdir -p dist; if [ $n -eq 1 ]; then (sleep 0.3; echo leaked > dist/leak.txt) >/dev/null 2>&1 & exit 1; fi; sleep 0.6; echo good > dist/good.txt', retries: 1 },
+        exec: { command: 'n=$(cat n 2>/dev/null || echo 0); n=$((n+1)); echo $n > n; mkdir -p dist; if [ $n -eq 1 ]; then (sleep 1; echo leaked > dist/leak.txt) >/dev/null 2>&1 & exit 1; fi; sleep 1.5; echo good > dist/good.txt', retries: 1 },
         inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       } } }`,
     })

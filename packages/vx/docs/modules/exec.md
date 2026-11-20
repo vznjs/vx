@@ -31,6 +31,7 @@ export function listGroup(pid: number): void // vx lists a child that runs nothi
 export function flushGuard(): void // write the turn's queued lines now
 export function releaseGroup(child: Child): void
 export function groupAlive(child: Child): boolean // a group the guard still lists
+export async function groupOutlives(child: Child, ms: number): Promise<boolean> // still alive ms after the shell's exit
 export function holdGroups(children: readonly Child[]): () => void
 export function releaseServerGroup(child: Child): void
 export function guardSession(pids: readonly number[], paths: readonly string[]): () => void
@@ -636,7 +637,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor's, so no "command not found" line follows; A-41).
   `leftRunning: true` says a process the command left still ran when
   its shell exited (it held the output past the drain bound, or was
-  still in the task's process group): core saves no entry for the task.
+  still in the task's process group that bound later): core saves no
+  entry for the task. A pool's workers that die just after their parent
+  (Turbopack's, ~90 ms in a cold `next build`) are not a leftover.
   `changed` lists the tracked files (workspace-relative) the command
   changed where an executor ran it elsewhere, and the untracked ones it
   found there: one the key read, or one its inputs declare (this disk

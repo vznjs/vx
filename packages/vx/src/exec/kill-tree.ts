@@ -418,6 +418,23 @@ export async function untilGroupsGone(
 }
 
 /**
+ * Does the group still run `ms` after the shell's exit? A pool's workers die
+ * just after the process that ran them: Turbopack's, in documenso's cold
+ * `next build`, were gone ~90 ms later, and every such build read as a
+ * leftover that may write outputs, so none was saved. What dies within the
+ * bound has written all it will.
+ */
+export async function groupOutlives(child: Child, ms: number): Promise<boolean> {
+  const deadline = performance.now() + ms
+  while (groupAlive(child)) {
+    const rest = deadline - performance.now()
+    if (rest <= 0) return true
+    await Bun.sleep(Math.min(GROUP_POLL_MS, rest))
+  }
+  return false
+}
+
+/**
  * Does any process of the group still run? `kill(-pgid, 0)` counts a zombie,
  * and an orphan dead of SIGTERM waits 1-2 s for a container's init to reap it,
  * so on Linux /proc decides, when it is this namespace's. Another namespace's

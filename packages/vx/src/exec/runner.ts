@@ -20,7 +20,7 @@ import {
 import {
   type Child,
   closeSignalChannel,
-  groupAlive,
+  groupOutlives,
   holdGroups,
   killTree,
   releaseGroup,
@@ -1241,7 +1241,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const stderr = blame ? streamed + cutLine : streamed
   // A leftover with stdio sent elsewhere holds no pipe to cut: its non-empty
   // group says so. One kill(0) when empty.
-  const left = cut || groupAlive(proc)
+  const left = cut || (await groupOutlives(proc, POST_EXIT_DRAIN_MS))
   opts.liveChildren?.delete(proc)
   releaseGroup(proc)
   const exited = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
