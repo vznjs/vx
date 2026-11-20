@@ -907,13 +907,15 @@
 }
 .lane {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 64px 84px;
+  grid-template-columns: 84px minmax(0, 1fr) 84px;
   align-items: center;
   gap: 12px;
   height: 34px;
 }
+/* The lap count sits under the ratio, one line up to "1000 laps". */
 .lane-laps {
-  font: 600 12px var(--font-mono);
+  font: 600 11px var(--font-mono);
+  white-space: nowrap;
   color: #69726d;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -925,7 +927,8 @@
   font: 600 13px var(--font-body);
   color: #9aa59a;
 }
-/* The ratio to the row's fastest, never a time: times move every run. */
+/* The ratio to the row's fastest, never a time (times move every run), and
+   under it the lap count. */
 .lane-value {
   display: flex;
   flex-direction: column;
@@ -1827,11 +1830,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .lane {
-    grid-template-columns: 62px minmax(0, 1fr) 44px 76px;
+    grid-template-columns: 62px minmax(0, 1fr) 72px;
     gap: 8px;
   }
-  .lane-name,
-  .lane-value {
+  .lane-name {
     font-size: 12px;
   }
   .cells {
