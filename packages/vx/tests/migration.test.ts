@@ -570,11 +570,9 @@ describe('a written config passes the repo’s own checks', () => {
 
   // tldraw's editor: `rootDir: src` and no `include`, so tsc compiled the
   // config and stopped at TS6059 on the first run. Its `exclude` list is
-  // tsc's whole exclude, so the config joins it; with none, a new list
-  // restates tsc's default (docmost's editor-ext emitted into dist/src and
-  // its dependants failed TS2307); one that extends may inherit a list, so
-  // only the note speaks.
-  it("adds the config to a tsconfig's exclude, and only notes one that extends", async () => {
+  // tsc's whole exclude, so the config joins it; with none, a new list would
+  // drop tsc's default one, and only the note speaks.
+  it("adds the config to a tsconfig's own exclude list, and only notes one with none", async () => {
     const tsconfig = (dir: string, text: string) => {
       mkdirSync(path.join(root, dir), { recursive: true })
       writeFileSync(path.join(root, dir, 'tsconfig.json'), text)
@@ -584,9 +582,7 @@ describe('a written config passes the repo’s own checks', () => {
     tsconfig('a', listed)
     tsconfig('b', '{ "exclude": [], "compilerOptions": { "outDir": "dist" } }\n')
     tsconfig('c', '{ "compilerOptions": { "rootDir": "src" } }\n')
-    tsconfig('d', '{\n  "compilerOptions": {\n    "outDir": "./dist"\n  }\n}\n')
-    tsconfig('e', '{ "extends": "../base.json", "compilerOptions": { "outDir": "dist" } }\n')
-    const metas = ['a', 'b', 'c', 'd', 'e'].map((name) => ({
+    const metas = ['a', 'b', 'c'].map((name) => ({
       name,
       dir: path.join(root, name),
       configPath: null,
@@ -598,8 +594,6 @@ describe('a written config passes the repo’s own checks', () => {
           ['a', [task('build', exec('tsc'))]],
           ['b', [task('build', exec('tsc'))]],
           ['c', [task('build', exec('tsc'))]],
-          ['d', [task('build', exec('tsc'))]],
-          ['e', [task('build', exec('tsc'))]],
         ]),
         { metas },
       ),
@@ -611,58 +605,11 @@ describe('a written config passes the repo’s own checks', () => {
       '{ "exclude": ["vx.config.ts"], "compilerOptions": { "outDir": "dist" } }\n',
     )
     expect(readFileSync(path.join(root, 'c', 'tsconfig.json'), 'utf8')).toBe(
-      '{ "compilerOptions": { "rootDir": "src" }, "exclude": ["vx.config.ts", "node_modules", "bower_components", "jspm_packages"] }\n',
+      '{ "compilerOptions": { "rootDir": "src" } }\n',
     )
-    expect(readFileSync(path.join(root, 'd', 'tsconfig.json'), 'utf8')).toBe(
-      '{\n  "compilerOptions": {\n    "outDir": "./dist"\n  },\n  "exclude": ["vx.config.ts", "node_modules", "bower_components", "jspm_packages", "./dist"]\n}\n',
-    )
-    expect(readFileSync(path.join(root, 'e', 'tsconfig.json'), 'utf8')).toBe(
-      '{ "extends": "../base.json", "compilerOptions": { "outDir": "dist" } }\n',
-    )
-    expect(stdout).toContain(
-      'added the config to "exclude" in a/tsconfig.json, b/tsconfig.json, c/tsconfig.json, d/tsconfig.json',
-    )
-    expect(stdout).toContain('e/tsconfig.json names no "include"')
-    expect(stdout).not.toContain('c/tsconfig.json names no "include"')
-  })
-
-  // analog's content library: a solution tsconfig.json including nothing,
-  // and tsconfig.lib.json taking `**/*.ts`. The build compiled the config
-  // under isolatedDeclarations and stopped at TS9037; vx said nothing.
-  it("adds the config to a build tsconfig's exclude beside a solution tsconfig", async () => {
-    const at = (file: string, text: string) => {
-      mkdirSync(path.join(root, 'lib'), { recursive: true })
-      writeFileSync(path.join(root, 'lib', file), text)
-    }
-    at('tsconfig.json', '{ "files": [], "include": [], "references": [] }\n')
-    const lib =
-      '{\n  "extends": "./tsconfig.json",\n  "exclude": ["**/*.spec.ts"],\n  "include": ["**/*.ts"]\n}\n'
-    at('tsconfig.lib.json', lib)
-    at('tsconfig.spec.json', '{ "exclude": [], "include": ["**/*.spec.ts"] }\n')
-    at(
-      'tsconfig.check.json',
-      '{ "compilerOptions": { "noEmit": true }, "exclude": [], "include": ["**/*.ts"] }\n',
-    )
-    at('tsconfig.eslint.json', '{ "exclude": [], "include": ["**/*.ts"] }\n')
-    at('tsconfig.app.json', '{ "include": ["**/*.ts"] }\n')
-    const metas = [{ name: 'lib', dir: path.join(root, 'lib'), configPath: null, esModule: true }]
-    expect(await apply(plan([['lib', [task('build', exec('tsc'))]]]), { metas })).toBe(0)
-    expect(readFileSync(path.join(root, 'lib', 'tsconfig.lib.json'), 'utf8')).toBe(
-      '{\n  "extends": "./tsconfig.json",\n  "exclude": ["vx.config.ts", "**/*.spec.ts"],\n  "include": ["**/*.ts"]\n}\n',
-    )
-    // Untouched: one that does not take it, one that only type-checks, one
-    // ESLint lints through, and one with no exclude of its own to add to.
-    for (const [file, text] of [
-      ['tsconfig.json', '{ "files": [], "include": [], "references": [] }\n'],
-      ['tsconfig.spec.json', '{ "exclude": [], "include": ["**/*.spec.ts"] }\n'],
-      ['tsconfig.eslint.json', '{ "exclude": [], "include": ["**/*.ts"] }\n'],
-      ['tsconfig.app.json', '{ "include": ["**/*.ts"] }\n'],
-    ])
-      expect(readFileSync(path.join(root, 'lib', file!), 'utf8')).toBe(text!)
-    expect(stdout).toContain('added the config to "exclude" in lib/tsconfig.lib.json')
-    expect(tscCompilesConfigNotes(root, [path.join(root, 'lib', 'vx.config.ts')])).toEqual([
-      'lib/tsconfig.app.json\'s "include" takes lib/vx.config.ts, so a build over it compiles it: add "vx.config.ts" to "exclude" there',
-    ])
+    expect(stdout).toContain('added the config to "exclude" in a/tsconfig.json, b/tsconfig.json')
+    expect(stdout).toContain('c/tsconfig.json names no "include"')
+    expect(stdout).not.toContain('a/tsconfig.json names no "include"')
   })
 
   it('a dry run calls no step after the write', async () => {
@@ -780,19 +727,6 @@ describe('a root .gitignore that drops .vx', () => {
     expect(await apply(plan([['p/__t', [task('build', null)]]]))).toBe(0)
     expect(stdout).toContain('stop ignoring p/__t/')
     expect(stdout).not.toContain('!vx.config.ts')
-  })
-
-  // drizzle-orm: drizzle-kit/.gitignore allowlists (`/*`, then `!src` …).
-  // git check-ignore applies that file to `drizzle-kit/` itself, so the note
-  // said to stop ignoring the directory, where a `!` line works.
-  it("reads a directory's own allowlist .gitignore as ignoring the file, not the directory", async () => {
-    mkdirSync(path.join(root, 'k'), { recursive: true })
-    writeFileSync(path.join(root, 'k', '.gitignore'), '/*\n!package.json\n!.gitignore\n')
-    writeFileSync(path.join(root, 'k', 'package.json'), '{}')
-    Bun.spawnSync({ cmd: ['git', 'add', 'k'], cwd: root })
-    expect(await apply(plan([['k', [task('build', null)]]]))).toBe(0)
-    expect(stdout).toContain('add !vx.config.ts to .gitignore')
-    expect(stdout).not.toContain('stop ignoring')
   })
 
   it('CONTROL: a file ignored by its own name still gets the ! line', async () => {

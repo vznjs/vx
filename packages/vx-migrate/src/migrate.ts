@@ -72,7 +72,6 @@ import {
   packageManagerOf,
   type PackageManager,
   parseModeAnswer,
-  relink,
   uninstall,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
@@ -430,8 +429,8 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           )),
         ]
   // A package.json written where a member glob already reaches is a new
-  // member the manager's lockfile does not list yet, and the lockfile plugin
-  // refuses the lock: the manager installs first (analog's e2e projects).
+  // member the manager's lockfile does not list yet (analog's e2e
+  // projects): the lockfile plugin refuses the lock until it installs.
   const members = plan.extraFiles
     .map((f) => f.relPath)
     .filter((r) => path.posix.basename(r) === 'package.json')
@@ -443,9 +442,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       ? []
       : [
           `a package.json is written in ${members.map((d) => JSON.stringify(d)).join(', ')}, which a workspace glob lists: ` +
-            (parsed.noInstall === true
-              ? "run your package manager's install, so its lockfile lists them"
-              : "the package manager's install ran after, so its lockfile lists them"),
+            "run your package manager's install, so its lockfile lists them, then vx lock",
         ]
   const code = await applyMigration({
     root,
@@ -461,17 +458,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     force: parsed.force,
     format,
     // The written workspace file imports plugins `--no-install` left out.
-    ...(parsed.noInstall === true
-      ? {}
-      : {
-          lock:
-            members.length === 0 || parsed.dry
-              ? lockWorkspace
-              : async (at: string) => {
-                  await relink(at)
-                  return lockWorkspace(at)
-                },
-        }),
+    ...(parsed.noInstall === true || members.length > 0 ? {} : { lock: lockWorkspace }),
   })
   return exitAfter(code, steps)
 }

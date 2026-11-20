@@ -7,8 +7,7 @@
 // twenty's `build:individual` writes into `build`'s `dist`; the refusal came at
 // load time, after the migration had reported clean. The mapping resolves it:
 // the task with a `^` edge keeps its cache (it is the one a dependant waits
-// for), or the first declared when none has one, unless it depends on another
-// of them, whose output it would clean; every other task whose outputs
+// for), or the first declared when none has one; every other task whose outputs
 // overlap a kept task's runs uncached, with a todo that names the keeper and
 // the fix (its own output path).
 //
@@ -242,24 +241,8 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
     // `build` is the product Turbo and Nx repos run: typescript-eslint's
     // typecheck (with `^typecheck`) writes declarations into build's dist, and
     // keeping typecheck left every build uncached (Growth parity).
-    let keeper =
+    const keeper =
       all.find((c) => c.name === 'build') ?? all.find((c) => c.hasUpstreamEdge) ?? all[0]!
-    // A keeper that reads another's output in place is cleaned of it before
-    // it runs: mastra's build (api-extractor over dist/index.d.ts) after
-    // build:lib (tsdown into dist) failed on every run. The task it reads
-    // keeps the cache; an uncached task cleans nothing.
-    const seen = new Set<Cached>([keeper])
-    for (;;) {
-      const read = all.find(
-        (c) =>
-          !seen.has(c) &&
-          reaches(tasks, keeper.index, c.index) &&
-          cleansAny(tasks[keeper.index]!, c),
-      )
-      if (read === undefined) break
-      seen.add(read)
-      keeper = read
-    }
     const kept: Cached[] = [keeper]
     for (const c of all) {
       if (c === keeper) continue
@@ -315,79 +298,7 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
       )
     }
   }
-  keepUndeclaredWrites(tasks)
   return tasks
-}
-
-/**
- * A cached task that runs after a same-project task declaring no outputs
- * keeps its outputs on a miss (`clean: false`): that task's writes are
- * unknown, so they may land in this task's outputs, and Turbo and Nx never
- * clean before a run. ngrx's build (tsc + cpy into dist/modules/store) runs
- * after build-package (ng-packagr into the same dir, no outputs in Nx), and
- * the clean deleted the package. A task declaring its outputs is held to
- * them by the overlap rules above; a group writes nothing.
- */
-function keepUndeclaredWrites(tasks: GeneratedTask[]): void {
-  const byName = new Map(tasks.map((t, i) => [t.name, i]))
-  const positive = (v: unknown): boolean =>
-    Array.isArray(v) && v.some((f) => typeof f === 'string' && !f.startsWith('!'))
-  const outputsOf = (t: GeneratedTask) =>
-    t.task?.['outputs'] as
-      | { files?: unknown; workspaceFiles?: unknown; clean?: unknown }
-      | undefined
-  const declares = (t: GeneratedTask): boolean => {
-    const o = outputsOf(t)
-    return positive(o?.files) || positive(o?.workspaceFiles)
-  }
-  const writesUnknown = (t: GeneratedTask): boolean =>
-    t.task?.['exec'] !== undefined && !declares(t)
-  for (const t of tasks) {
-    const outputs = outputsOf(t)
-    if (t.task?.['cache'] !== true || !declares(t) || outputs!.clean !== undefined) continue
-    const seen = new Set<number>()
-    const queue = [t]
-    let unknown = false
-    for (let u = queue.shift(); u !== undefined && !unknown; u = queue.shift()) {
-      const deps = u.task?.['dependsOn']
-      if (!Array.isArray(deps)) continue
-      for (const d of deps) {
-        const i = typeof d === 'string' ? byName.get(d) : undefined
-        if (i === undefined || seen.has(i)) continue
-        seen.add(i)
-        if (writesUnknown(tasks[i]!)) unknown = true
-        queue.push(tasks[i]!)
-      }
-    }
-    if (unknown) outputs!.clean = false
-  }
-}
-
-/**
- * Would `t`'s clean reach any of `c`'s outputs? Not one its own `!` entries
- * take back by its literal head: medusa's build outputs `*\/**` minus
- * `!src/**` beside codegen's `src/gen/**`, and cleans none of it.
- */
-function cleansAny(t: GeneratedTask, c: Cached): boolean {
-  const files = (t.task!['outputs'] as { files: string[] }).files
-  const back = files
-    .filter((f) => f.startsWith('!'))
-    .flatMap((f) => {
-      const n = f
-        .slice(1)
-        .replace(/^(\.\/)+/, '')
-        .replace(/\/+$/, '')
-      return [n, `${n}/**`]
-    })
-    .map((g) => new Bun.Glob(g))
-  return c.files.some((g) => {
-    const head: string[] = []
-    for (const seg of g.replace(/^(\.\/)+/, '').split('/')) {
-      if (!isLiteralPattern(seg) || seg === '') break
-      head.push(seg)
-    }
-    return head.length === 0 || !back.some((b) => b.match(head.join('/')))
-  })
 }
 
 /** `"<mine>" that <owner> also declares`, or both globs when they only overlap. */

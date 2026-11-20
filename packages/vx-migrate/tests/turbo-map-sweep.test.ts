@@ -443,11 +443,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     const one = all.find((t) => t['dependsOn'] !== undefined)!
     // A `!` entry takes back from the positives in any order (core's
     // outputMatcher), so the negations sorting last changes nothing.
-    // lint and test declare no outputs, so build keeps its own on a miss.
-    expect(one['outputs']).toEqual({
-      files: ['a/**', 'b/**', '!a/tmp/**', '!b/tmp/**'],
-      clean: false,
-    })
+    expect(one['outputs']).toEqual({ files: ['a/**', 'b/**', '!a/tmp/**', '!b/tmp/**'] })
     expect(one['dependsOn']).toEqual(['lint', 'test'])
   })
 

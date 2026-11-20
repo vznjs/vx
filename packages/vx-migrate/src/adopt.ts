@@ -256,32 +256,6 @@ export async function install(
   )
 }
 
-/**
- * The manager's install, so its lockfile lists the members a written
- * package.json made. Scripts stay off: the members hold none, and analog's
- * root `prepare` (a Node 24 build) failed the init around it. In CI pnpm and
- * Yarn 2+ refuse to change the lockfile unless told.
- */
-export async function relink(root: string): Promise<string> {
-  const pm = packageManagerOf(root, process.env['npm_config_user_agent'])
-  return runManager(root, relinkArgv(root, pm), 'linking the written workspace packages')
-}
-
-export function relinkArgv(root: string, pm: PackageManager): string[] {
-  switch (pm) {
-    case 'pnpm':
-      return ['pnpm', 'install', '--ignore-scripts', '--no-frozen-lockfile']
-    case 'yarn':
-      return berry(root)
-        ? ['yarn', 'install', '--mode=skip-build', '--no-immutable']
-        : ['yarn', 'install', '--ignore-scripts']
-    case 'bun':
-      return ['bun', 'install', '--ignore-scripts']
-    case 'npm':
-      return ['npm', 'install', '--ignore-scripts']
-  }
-}
-
 /** Remove `packages` with the repo's manager. */
 export async function uninstall(root: string, packages: readonly string[]): Promise<string> {
   const pm = packageManagerOf(root, process.env['npm_config_user_agent'])

@@ -82,8 +82,7 @@ describe('resolveSharedOutputs: an edge keeps no pair cached (core default rules
           task('build', ['dist/**'], ['^build', 'gen']),
         ]),
       ),
-      // gen keeps it: build's clean would delete what gen wrote (mastra).
-    ).toEqual([true, false])
+    ).toEqual([false, true])
   })
 
   it('a dependant of the keeper is uncached, and names the keeper', () => {

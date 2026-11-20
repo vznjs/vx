@@ -2726,17 +2726,9 @@ refused before the first write (`refusing to write <file>: <dir>
 resolves to <real>, outside the workspace; remove the link and run
 again`), with nothing written.
 
-A `tsconfig.json` beside a written `vx.config.ts` that would compile it
-(no `include`, an `outDir`) moves the build's output, so init adds the
-file to its `exclude`. With no `exclude`, the new list restates tsc's
-default (`node_modules`, `bower_components`, `jspm_packages`, the
-`outDir`). One that `extends` another may inherit a list: a `note` row
-names it instead. Add the file to its `exclude`, or pass `--mjs`.
-A build tsconfig beside it whose own `include` takes it (Nx's
-`tsconfig.lib.json` with `["**/*.ts"]`, beside a `tsconfig.json` that
-includes nothing) gets it in its own `exclude` too; one with no `exclude`
-gets the note. One with `noEmit`, or with `eslint` in its name, is left
-alone: it only type-checks, or lints every file it holds.
+A `note` row names a `tsconfig.json` beside a written `vx.config.ts` that
+would compile it (no `include`, an `outDir`): the build's output would
+move. Add the file to that tsconfig's `exclude`, or pass `--mjs`.
 
 ### Usage
 

@@ -10,7 +10,6 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   installArgv,
-  relinkArgv,
   managerArgv,
   missingPackages,
   workspaceVersion,
@@ -107,31 +106,6 @@ describe('the package manager', () => {
         'bun',
         'pnpm',
         'npm',
-      ])
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  it('relinks written members without scripts, and may change the lockfile in CI', async () => {
-    // analog: the root `prepare` (a Node 24 build) failed the relink.
-    const root = await tmp('vx-adopt-relink-')
-    try {
-      await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
-      const yarn1 = relinkArgv(root, 'yarn')
-      await writeFile(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
-      expect([
-        relinkArgv(root, 'pnpm'),
-        yarn1,
-        relinkArgv(root, 'yarn'),
-        relinkArgv(root, 'bun'),
-        relinkArgv(root, 'npm'),
-      ]).toEqual([
-        ['pnpm', 'install', '--ignore-scripts', '--no-frozen-lockfile'],
-        ['yarn', 'install', '--ignore-scripts'],
-        ['yarn', 'install', '--mode=skip-build', '--no-immutable'],
-        ['bun', 'install', '--ignore-scripts'],
-        ['npm', 'install', '--ignore-scripts'],
       ])
     } finally {
       await rm(root, { recursive: true, force: true })

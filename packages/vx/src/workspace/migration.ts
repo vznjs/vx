@@ -3,14 +3,7 @@
 // reads the same whoever wrote it. Core knows no source format: a mapper
 // returns a `MigrationPlan` and this does the rest.
 
-import {
-  existsSync,
-  lstatSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
@@ -245,59 +238,6 @@ export interface WorkspacePlugin {
 
 export type MigrationFormat = 'ts' | 'mjs'
 
-/** Does a tsconfig `include` entry take the file `name` beside it? */
-function includeReaches(entry: unknown, name: string): boolean {
-  if (typeof entry !== 'string') return false
-  // tsc reads an entry with no wildcard and no extension as a directory.
-  const e = entry.replace(/^\.\//, '').replace(/\/$/, '')
-  const glob =
-    e === '' || e === '.' ? '**/*' : /[*?]/.test(e) || path.extname(e) !== '' ? e : `${e}/**/*`
-  return new Bun.Glob(glob).match(name)
-}
-
-/**
- * The tsconfigs beside the config, other than `tsconfig.json`, that a build
- * runs over and whose own `include` takes it: Nx's `tsconfig.lib.json` and
- * `tsconfig.app.json` (`"include": ["**\/*.ts"]`, beside a solution
- * `tsconfig.json` that includes nothing). analog's content build compiled
- * vx.config.ts under `isolatedDeclarations` and stopped at TS9037. One with
- * its own `exclude` gets the config added; one without may inherit a list,
- * so only the note speaks. One with `noEmit` only type-checks, and an
- * ESLint one must keep every file it lints in its program.
- */
-function buildTsconfigsTaking(dir: string, name: string): string[] {
-  let entries: string[]
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return []
-  }
-  return entries
-    .filter((f) => /^tsconfig\..+\.json$/.test(f) && !/eslint/i.test(f))
-    .sort()
-    .filter((f) => {
-      const file = path.join(dir, f)
-      let c: unknown
-      try {
-        if (lstatSync(file).isSymbolicLink()) return false
-        c = Bun.JSONC.parse(readFileSync(file, 'utf8'))
-      } catch {
-        return false
-      }
-      if (typeof c !== 'object' || c === null) return false
-      const t = c as Record<string, unknown>
-      const options = (t['compilerOptions'] ?? {}) as Record<string, unknown>
-      return (
-        options['noEmit'] !== true &&
-        !(
-          Array.isArray(t['exclude']) && t['exclude'].some((e) => e === name || e === `./${name}`)
-        ) &&
-        Array.isArray(t['include']) &&
-        t['include'].some((e) => includeReaches(e, name))
-      )
-    })
-}
-
 /**
  * The note for each directory whose `tsc` would compile the config
  * written there: a `tsconfig.json` with no `include` or `files` takes every
@@ -308,11 +248,6 @@ function buildTsconfigsTaking(dir: string, name: string): string[] {
  * files as written; one the config extends is not followed.
  */
 export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[] {
-  return compilesConfigNotes(root, written, true)
-}
-
-/** `builds`: also the notes for `buildTsconfigsTaking`'s files. */
-function compilesConfigNotes(root: string, written: readonly string[], builds: boolean): string[] {
   const notes: string[] = []
   for (const abs of written) {
     const name = path.basename(abs)
@@ -328,13 +263,6 @@ function compilesConfigNotes(root: string, written: readonly string[], builds: b
         return undefined
       }
     }
-    const extra = buildTsconfigsTaking(dir, name)
-    if (builds && extra.length > 0)
-      notes.push(
-        `${extra.map((f) => relPosix(root, path.join(dir, f))).join(' and ')}'s "include" takes ` +
-          `${relPosix(root, abs)}, so a build over ${extra.length === 1 ? 'it' : 'them'} compiles it: ` +
-          `add "${name}" to "exclude" there`,
-      )
     const base = read('tsconfig.json')
     if (base === undefined) continue
     const options = (base['compilerOptions'] ?? {}) as Record<string, unknown>
@@ -352,7 +280,14 @@ function compilesConfigNotes(root: string, written: readonly string[], builds: b
       options['noEmit'] !== true &&
       (typeof options['outDir'] === 'string' || typeof rootDir === 'string')
     if (!emits && !outsideRoot) continue
-    const reaches = (entry: unknown): boolean => includeReaches(entry, name)
+    // tsc reads an entry with no wildcard and no extension as a directory.
+    const reaches = (entry: unknown): boolean => {
+      if (typeof entry !== 'string') return false
+      const e = entry.replace(/^\.\//, '').replace(/\/$/, '')
+      const glob =
+        e === '' || e === '.' ? '**/*' : /[*?]/.test(e) || path.extname(e) !== '' ? e : `${e}/**/*`
+      return new Bun.Glob(glob).match(name)
+    }
     const takes = (c: Record<string, unknown> | undefined): 'all' | 'include' | undefined => {
       if (c === undefined) return undefined
       if (Array.isArray(c['exclude']) && c['exclude'].some((e) => e === name || e === `./${name}`))
@@ -363,9 +298,8 @@ function compilesConfigNotes(root: string, written: readonly string[], builds: b
     const how = takes(base)
     if (how === undefined) continue
     const configs = ['tsconfig.json', 'tsconfig.build.json'].filter(
-      (f) => !extra.includes(f) && takes(read(f)) !== undefined,
+      (f) => takes(read(f)) !== undefined,
     )
-    if (configs.length === 0) continue
     const where = configs.map((f) => relPosix(root, path.join(dir, f))).join(' and ')
     notes.push(
       outsideRoot
@@ -687,31 +621,19 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
  * Adds a written config to the `exclude` its package's tsconfig already
  * lists, where tsc would compile it: tldraw's editor (`rootDir: src`, no
  * `include`) stopped at TS6059 on the first `vx run`. A tsconfig with no
- * `exclude` gets one that restates tsc's default beside the config (docmost's
- * editor-ext emitted into `dist/src`, and its dependants found no module);
- * one that `extends` may inherit a list, so there the note says what to
- * add. Returns what it changed.
+ * `exclude` keeps tsc's default one, which a new list would replace: there
+ * the note says what to add. Returns what it changed.
  */
 function excludeFromTsc(root: string, written: readonly string[]): string[] {
   const changed: string[] = []
   for (const abs of written) {
     const name = path.basename(abs)
-    if (!/\.[mc]?ts$/.test(name)) continue
-    const dir = path.dirname(abs)
-    const extra = buildTsconfigsTaking(dir, name)
-    for (const f of extra) {
-      const file = path.join(dir, f)
-      const next = withExcluded(readFileSync(file, 'utf8'), name)
-      if (next === undefined) continue
-      writeFileSync(file, next)
-      changed.push(relPosix(root, file))
-    }
-    if (compilesConfigNotes(root, [abs], false).length === 0) continue
+    if (tscCompilesConfigNotes(root, [abs]).length === 0) continue
     for (const f of ['tsconfig.json', 'tsconfig.build.json']) {
-      const file = path.join(dir, f)
-      if (extra.includes(f) || !existsSync(file) || lstatSync(file).isSymbolicLink()) continue
+      const file = path.join(path.dirname(abs), f)
+      if (!existsSync(file) || lstatSync(file).isSymbolicLink()) continue
       const text = readFileSync(file, 'utf8')
-      const next = withExcluded(text, name) ?? withDefaultExclude(text, name)
+      const next = withExcluded(text, name)
       if (next === undefined) continue
       writeFileSync(file, next)
       changed.push(relPosix(root, file))
@@ -720,46 +642,6 @@ function excludeFromTsc(root: string, written: readonly string[]): string[] {
   return changed.length === 0
     ? []
     : [`added the config to "exclude" in ${changed.join(', ')}, so tsc does not compile it`]
-}
-
-/**
- * `text` with an `"exclude"` of `name` and tsc's default (`node_modules`,
- * `bower_components`, `jspm_packages`, `outDir`, `declarationDir`), where it
- * has none and extends nothing; undefined where that is not certain.
- */
-function withDefaultExclude(text: string, name: string): string | undefined {
-  let before: Record<string, unknown>
-  try {
-    before = Bun.JSONC.parse(text) as Record<string, unknown>
-  } catch {
-    return undefined
-  }
-  if (typeof before !== 'object' || before === null || Array.isArray(before)) return undefined
-  if ('exclude' in before || 'extends' in before || /"exclude"\s*:/.test(text)) return undefined
-  const options = (before['compilerOptions'] ?? {}) as Record<string, unknown>
-  const dirs = ['outDir', 'declarationDir'].flatMap((k) =>
-    typeof options[k] === 'string' ? [options[k] as string] : [],
-  )
-  const list = [name, 'node_modules', 'bower_components', 'jspm_packages', ...dirs]
-  const close = text.lastIndexOf('}')
-  if (close < 0) return undefined
-  const head = text.slice(0, close).trimEnd()
-  const indent = /\n([ \t]+)"/.exec(text)?.[1]
-  const sep = head.endsWith('{') || head.endsWith(',') ? '' : ','
-  const entry = `"exclude": ${JSON.stringify(list).replaceAll('","', '", "')}`
-  const next =
-    indent === undefined
-      ? `${head}${sep} ${entry} ${text.slice(close)}`
-      : `${head}${sep}\n${indent}${entry}\n${text.slice(close)}`
-  try {
-    const parsed = Bun.JSONC.parse(next) as Record<string, unknown>
-    const kept = Object.keys(before).every(
-      (k) => JSON.stringify(parsed[k]) === JSON.stringify(before[k]),
-    )
-    return kept && JSON.stringify(parsed['exclude']) === JSON.stringify(list) ? next : undefined
-  } catch {
-    return undefined
-  }
 }
 
 /** `text` with `name` first in its one `"exclude"` array; undefined where that is not certain. */

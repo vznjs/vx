@@ -129,7 +129,7 @@ it('names the install a package.json under a glob calls for', async () => {
     const out = Bun.stripANSI(await new Response(proc.stdout).text())
     expect(await proc.exited).toBe(0)
     expect(out.replace(/\s+/g, ' ')).toContain(
-      'a package.json is written in "apps/e2e", which a workspace glob lists: run your package manager\'s install, so its lockfile lists them',
+      'a package.json is written in "apps/e2e", which a workspace glob lists: run your package manager\'s install, so its lockfile lists them, then vx lock',
     )
     expect(out).not.toContain('no workspace glob')
     expect(await Bun.file(path.join(root, 'apps/e2e/package.json')).exists()).toBe(true)
