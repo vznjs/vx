@@ -201,9 +201,10 @@ export class Cache implements CacheLayer {
   // (git-inputs.md). Absent, the directory of the first file hashed.
   // In a named cache dir it also keys the output stamps and directory
   // snapshots this handle reads and writes: clones sharing one keep their own.
-  // artifactCeiling: the largest artifact, decoded, this cache saves,
-  // ingests or restores — 2 GiB; lowered only by a test, through
-  // `RunOptions.artifactCeiling` (tests/artifact-ceiling.test.ts).
+  // artifactCeiling: the largest artifact this cache decodes (an ingest, a
+  // `.tar.zst` save or restore) or uploads — 2 GiB; a plain-file entry of
+  // this machine's own is not bounded. Lowered only by a test, through
+  // `RunOptions.artifactCeiling` (tests/artifact-ceiling*.test.ts).
   constructor(
     cacheDir: string,
     localPolicy?: { read: boolean; write: boolean },

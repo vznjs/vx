@@ -4,9 +4,11 @@
 import { CorruptArtifactError } from './layer.js'
 
 /**
- * A decompressed artifact above this is refused as a bomb: far past any real
- * build output, it bounds what a hostile remote can make a hit allocate.
- * Lowered only by tests (`artifactCeiling`).
+ * A decompressed artifact above this is refused as a bomb: it bounds what a
+ * hostile remote can make a hit allocate. A real build can pass it (a Next.js
+ * standalone build, 2.1 GB), so the plain-file store keeps such an entry on
+ * this machine and only its upload is refused. Lowered only by tests
+ * (`artifactCeiling`).
  */
 export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
 
