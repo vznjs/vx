@@ -2726,9 +2726,11 @@ refused before the first write (`refusing to write <file>: <dir>
 resolves to <real>, outside the workspace; remove the link and run
 again`), with nothing written.
 
-A `note` row names a `tsconfig.json` beside a written `vx.config.ts` that
-would compile it (no `include`, an `outDir`): the build's output would
-move. Add the file to that tsconfig's `exclude`, or pass `--mjs`.
+A `note` row names each `tsconfig*.json` beside a written `vx.config.ts`
+that would compile it (no `include`, an `outDir`): the build's output would
+move. That covers an Nx library's `tsconfig.lib.json` beside a solution
+`tsconfig.json`, with options read through `extends`. Add the file to that
+tsconfig's `exclude`, or pass `--mjs`.
 
 ### Usage
 

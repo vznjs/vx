@@ -3,7 +3,14 @@
 // reads the same whoever wrote it. Core knows no source format: a mapper
 // returns a `MigrationPlan` and this does the rest.
 
-import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
@@ -238,34 +245,76 @@ export interface WorkspacePlugin {
 
 export type MigrationFormat = 'ts' | 'mjs'
 
+type TscJudge = {
+  /** The tsconfigs in the config's directory that compile it, workspace-relative. */
+  readonly configs: readonly string[]
+  readonly how: 'all' | 'include'
+  /** The first one's `rootDir`, when the config lies outside it. */
+  readonly outsideRoot: string | undefined
+}
+
 /**
- * The note for each directory whose `tsc` would compile the config
- * written there: a `tsconfig.json` with no `include` or `files` takes every
- * `.ts` beside it, so an emitting build's output moves (`dist/main.js`
- * becomes `dist/src/main.js`, and a NestJS app no longer starts) or, under
- * `rootDir`, stops with TS6059. An `include` that reaches it (cal.com's
- * `["."]`) takes it too, and emits it beside the build. Judged from the
- * files as written; one the config extends is not followed.
+ * Which `tsconfig*.json` beside a written config would compile it: one with
+ * no `include` or `files` takes every `.ts` beside it, so an emitting
+ * build's output moves (`dist/main.js` becomes `dist/src/main.js`, and a
+ * NestJS app no longer starts) or, under `rootDir`, stops with TS6059. An
+ * `include` that reaches it (cal.com's `["."]`) takes it too, and emits it
+ * beside the build. Not only `tsconfig.json`: an Nx library's is a solution
+ * file (`"files": []`), and its `tsconfig.lib.json`, which `ngc -p` builds
+ * with `isolatedDeclarations`, stopped on the config (analog, TS9037).
+ * Compiler options follow `extends`; `include`, `exclude` and `files` only
+ * within the directory, since a base elsewhere resolves them from there.
  */
-export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[] {
-  const notes: string[] = []
-  for (const abs of written) {
-    const name = path.basename(abs)
-    if (!/\.[mc]?ts$/.test(name)) continue
-    const dir = path.dirname(abs)
-    const read = (file: string): Record<string, unknown> | undefined => {
-      try {
-        const parsed: unknown = Bun.JSONC.parse(readFileSync(path.join(dir, file), 'utf8'))
-        return typeof parsed === 'object' && parsed !== null
-          ? (parsed as Record<string, unknown>)
-          : undefined
-      } catch {
-        return undefined
-      }
+function tscTakers(root: string, abs: string): TscJudge | undefined {
+  const name = path.basename(abs)
+  if (!/\.[mc]?ts$/.test(name)) return undefined
+  const dir = path.dirname(abs)
+  const read = (file: string): Record<string, unknown> | undefined => {
+    try {
+      const parsed: unknown = Bun.JSONC.parse(readFileSync(file, 'utf8'))
+      return typeof parsed === 'object' && parsed !== null
+        ? (parsed as Record<string, unknown>)
+        : undefined
+    } catch {
+      return undefined
     }
-    const base = read('tsconfig.json')
-    if (base === undefined) continue
-    const options = (base['compilerOptions'] ?? {}) as Record<string, unknown>
+  }
+  // tsc reads an entry with no wildcard and no extension as a directory.
+  const reaches = (entry: unknown): boolean => {
+    if (typeof entry !== 'string') return false
+    const e = entry.replace(/^\.\//, '').replace(/\/$/, '')
+    const glob =
+      e === '' || e === '.' ? '**/*' : /[*?]/.test(e) || path.extname(e) !== '' ? e : `${e}/**/*`
+    return new Bun.Glob(glob).match(name)
+  }
+  const judge = (
+    file: string,
+  ): { how: 'all' | 'include'; outsideRoot: string | undefined } | undefined => {
+    const options: Record<string, unknown> = {}
+    const lists: Record<string, unknown> = {}
+    let foreign = false
+    const seen = new Set<string>()
+    for (let at: string | undefined = file; at !== undefined && !seen.has(at);) {
+      seen.add(at)
+      const c = read(at)
+      if (c === undefined) {
+        if (at === file) return undefined
+        break
+      }
+      for (const [k, v] of Object.entries((c['compilerOptions'] ?? {}) as Record<string, unknown>))
+        if (!(k in options)) options[k] = v
+      for (const k of ['include', 'exclude', 'files'])
+        if (!(k in lists) && c[k] !== undefined) {
+          lists[k] = c[k]
+          if (path.dirname(at) !== dir) foreign = true
+        }
+      const ext = c['extends']
+      at =
+        typeof ext === 'string' && (ext.startsWith('.') || path.isAbsolute(ext))
+          ? path.resolve(path.dirname(at), ext.endsWith('.json') ? ext : `${ext}.json`)
+          : undefined
+    }
+    if (foreign) return undefined
     // A `rootDir` the config lies outside stops tsc even with `noEmit`:
     // vercel/ai's 80 packages set `rootDir: "src"`, and every
     // `tsc --noEmit` type-check failed on the written config.
@@ -279,37 +328,65 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
     const emits =
       options['noEmit'] !== true &&
       (typeof options['outDir'] === 'string' || typeof rootDir === 'string')
-    if (!emits && !outsideRoot) continue
-    // tsc reads an entry with no wildcard and no extension as a directory.
-    const reaches = (entry: unknown): boolean => {
-      if (typeof entry !== 'string') return false
-      const e = entry.replace(/^\.\//, '').replace(/\/$/, '')
-      const glob =
-        e === '' || e === '.' ? '**/*' : /[*?]/.test(e) || path.extname(e) !== '' ? e : `${e}/**/*`
-      return new Bun.Glob(glob).match(name)
-    }
-    const takes = (c: Record<string, unknown> | undefined): 'all' | 'include' | undefined => {
-      if (c === undefined) return undefined
-      if (Array.isArray(c['exclude']) && c['exclude'].some((e) => e === name || e === `./${name}`))
-        return undefined
-      if (c['include'] === undefined) return c['files'] === undefined ? 'all' : undefined
-      return Array.isArray(c['include']) && c['include'].some(reaches) ? 'include' : undefined
-    }
-    const how = takes(base)
-    if (how === undefined) continue
-    const configs = ['tsconfig.json', 'tsconfig.build.json'].filter(
-      (f) => takes(read(f)) !== undefined,
-    )
-    const where = configs.map((f) => relPosix(root, path.join(dir, f))).join(' and ')
+    if (!emits && !outsideRoot) return undefined
+    const exclude = lists['exclude']
+    if (Array.isArray(exclude) && exclude.some((e) => e === name || e === `./${name}`))
+      return undefined
+    const include = lists['include']
+    const how =
+      include === undefined
+        ? lists['files'] === undefined
+          ? 'all'
+          : undefined
+        : Array.isArray(include) && include.some(reaches)
+          ? 'include'
+          : undefined
+    return how === undefined
+      ? undefined
+      : { how, outsideRoot: outsideRoot ? (rootDir as string) : undefined }
+  }
+  let names: string[] = []
+  try {
+    names = readdirSync(dir).filter((n) => /^tsconfig.*\.json$/.test(n))
+  } catch {
+    return undefined
+  }
+  const first = ['tsconfig.json', 'tsconfig.build.json']
+  names.sort((x, y) => {
+    const [i, j] = [first.indexOf(x), first.indexOf(y)]
+    return (i < 0 ? first.length : i) - (j < 0 ? first.length : j) || (x < y ? -1 : x > y ? 1 : 0)
+  })
+  const takers = names.flatMap((n) => {
+    const v = judge(path.join(dir, n))
+    return v === undefined ? [] : [{ file: n, ...v }]
+  })
+  const lead = takers[0]
+  if (lead === undefined) return undefined
+  return {
+    configs: takers.map((t) => relPosix(root, path.join(dir, t.file))),
+    how: lead.how,
+    outsideRoot: lead.outsideRoot,
+  }
+}
+
+/** The note for each directory whose `tsc` would compile the config written there (`tscTakers`). */
+export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[] {
+  const notes: string[] = []
+  for (const abs of written) {
+    const t = tscTakers(root, abs)
+    if (t === undefined) continue
+    const name = path.basename(abs)
+    const where = t.configs.join(' and ')
+    const one = t.configs.length === 1
     notes.push(
-      outsideRoot
-        ? (how === 'all'
-            ? `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles `
+      t.outsideRoot !== undefined
+        ? (t.how === 'all'
+            ? `${where} ${one ? 'names' : 'name'} no "include", so tsc compiles `
             : `${where}'s "include" takes `) +
-            `${relPosix(root, abs)}, outside its "rootDir" ${JSON.stringify(rootDir)}, and stops ` +
+            `${relPosix(root, abs)}, outside its "rootDir" ${JSON.stringify(t.outsideRoot)}, and stops ` +
             `(TS6059): add "${name}" to "exclude" there`
-        : how === 'all'
-          ? `${where} ${configs.length === 1 ? 'names' : 'name'} no "include", so tsc compiles ` +
+        : t.how === 'all'
+          ? `${where} ${one ? 'names' : 'name'} no "include", so tsc compiles ` +
             `${relPosix(root, abs)} too and its output moves (dist/main.js becomes dist/src/main.js): ` +
             `add "${name}" to "exclude" there`
           : `${where}'s "include" takes ${relPosix(root, abs)}, so tsc compiles it into the ` +
@@ -628,9 +705,8 @@ function excludeFromTsc(root: string, written: readonly string[]): string[] {
   const changed: string[] = []
   for (const abs of written) {
     const name = path.basename(abs)
-    if (tscCompilesConfigNotes(root, [abs]).length === 0) continue
-    for (const f of ['tsconfig.json', 'tsconfig.build.json']) {
-      const file = path.join(path.dirname(abs), f)
+    for (const rel of tscTakers(root, abs)?.configs ?? []) {
+      const file = path.join(root, rel)
       if (!existsSync(file) || lstatSync(file).isSymbolicLink()) continue
       const text = readFileSync(file, 'utf8')
       const next = withExcluded(text, name)
