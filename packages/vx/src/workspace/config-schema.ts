@@ -1146,7 +1146,10 @@ const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
  * a task was refused as an unknown field that named neither the field
  * nor where vx keeps it.
  */
-const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, string>>> = new Map([
+const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, string>>> = new Map<
+  ReadonlySet<string>,
+  Readonly<Record<string, string>>
+>([
   [
     TASK_FIELDS,
     {

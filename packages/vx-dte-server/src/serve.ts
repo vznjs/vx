@@ -25,7 +25,8 @@ export function serveRelay(opts: ServeOptions): RelayServer {
   const relay = createRelay({
     ...opts,
     upgrade: (key, id, req, protocol) => {
-      const headers = protocol === undefined ? {} : { 'sec-websocket-protocol': protocol }
+      const headers: Record<string, string> =
+        protocol === undefined ? {} : { 'sec-websocket-protocol': protocol }
       if (!server!.upgrade(req, { data: { key, id }, headers })) {
         return Response.json({ error: 'not a websocket' }, { status: 426 })
       }
