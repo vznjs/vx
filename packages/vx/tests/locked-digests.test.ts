@@ -97,7 +97,7 @@ it(
     expect(g.__vxParses).toBeGreaterThan(0)
     expect(await part()).toBe('a1')
     // The record is what keys the task: the proof nothing was parsed.
-    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace('"a1"', '"planted"')
+    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace(',a1"', ',planted"')
     await writeFile(path.join(root, LOCK), text)
     expect(await part()).toBe('planted')
   },
@@ -158,7 +158,7 @@ it(
   'a file its digests read, changed since `vx lock`, is digested anew: the record is stale',
   async () => {
     await lock(root)
-    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace('"a1"', '"planted"')
+    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace(',a1"', ',planted"')
     await writeFile(path.join(root, LOCK), text)
     // CONTROL: unchanged, the record keys it.
     expect(await part()).toBe('planted')
@@ -229,7 +229,7 @@ it(
     // upgrade, a hand edit) fails: a run keys from the record, not afresh.
     await claimed('packages/a=a1\nextra:patches/p.patch\n')
     expect(check()).toEqual([0, ''])
-    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace('"a1"', '"planted"')
+    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace(',a1"', ',planted"')
     await writeFile(path.join(root, LOCK), text)
     const [code, err] = check('--check')
     expect(code).toBe(1)

@@ -458,8 +458,8 @@ export function lockedExtras(workspaceRoot: string): Set<string> {
   }
   const lock = parseDependenciesLock(bytes)
   const out = new Set<string>()
-  for (const rec of Object.values(lock?.files ?? {}))
-    for (const rel of Object.keys(rec.extras ?? {})) out.add(path.resolve(workspaceRoot, rel))
+  for (const rec of Object.values(lock?.extras ?? {}))
+    for (const rel of Object.keys(rec)) out.add(path.resolve(workspaceRoot, rel))
   return out
 }
 

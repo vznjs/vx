@@ -40,6 +40,7 @@ export {
   dependenciesLock,
   parseDependenciesLock,
   readDependenciesLock,
+  liveRecords,
   recordedDigests,
   dependenciesLockWrite,
   type DependenciesLock,

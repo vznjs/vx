@@ -71,6 +71,7 @@ import {
   lockfileWrite,
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
+  liveRecords,
   parseDependenciesLock,
   dependenciesLockWrite,
   type DependenciesLock,
@@ -1011,29 +1012,6 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
 }
 
 /**
- * `read` with each file's record taken from `fresh` where only the files
- * its digests read moved (same bytes, same extra files, an extra's hash
- * changed): a run digests anew on such an edit (`lockfileClaim`'s
- * `lockedOnce`), and cli.md says it needs no `vx lock`, yet `--check`
- * failed every edit in a `file:` directory or a patch. With every hash
- * unchanged a run keys from the record, so its digests are compared.
- */
-function liveExtras(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock {
-  const files = { ...read.files }
-  for (const [name, now] of Object.entries(fresh.files)) {
-    const was = files[name]
-    if (
-      was !== undefined &&
-      was.hash === now.hash &&
-      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {})) &&
-      !Bun.deepEquals(was.extras ?? {}, now.extras ?? {})
-    )
-      files[name] = now
-  }
-  return { ...read, files }
-}
-
-/**
  * Audit the lock: find and re-evaluate every config in the CURRENT
  * environment and deep-compare it with the locked object. That sees an
  * edit to the config, to a file it imports, and to the environment it
@@ -1185,7 +1163,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     const read = parseDependenciesLock(text)
     if (
       read === null ||
-      !Bun.deepEquals(liveExtras(read, check.dependencies), check.dependencies, true)
+      !Bun.deepEquals(liveRecords(read, check.dependencies), check.dependencies, true)
     )
       failures.push(
         `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,

@@ -202,8 +202,9 @@ it("`vx lock --check` passes where the injected copy differs from the lock's", a
   // CONTROL: a record that is not what the dependencies resolve to fails.
   const lockPath = path.join(root, '.vx/dependencies.lock.json')
   const rec = await Bun.file(lockPath).text()
-  const bad = JSON.parse(rec) as { files: Record<string, { digests: string[] }> }
-  bad.files['pnpm-lock.yaml']!.digests = bad.files['pnpm-lock.yaml']!.digests.map(() => '0')
+  const bad = JSON.parse(rec) as { graph: (string | number)[] }
+  // Each project's digest rides after its directory: zero them all.
+  bad.graph = bad.graph.map((v) => (typeof v === 'string' ? v.replace(/,.*/, ',0') : v))
   await writeFile(lockPath, JSON.stringify(bad))
   expect(check()).toBe(1)
   await writeFile(lockPath, rec)

@@ -92,12 +92,11 @@ async function dropLib(lockedAtBase: boolean): Promise<string> {
 it('a deleted project selects only the dependants the base dependencies lock records', async () => {
   const root = await dropLib(true)
   const recorded = JSON.parse(gitIn(root)('show', 'HEAD~1:.vx/dependencies.lock.json')) as {
-    projects: [string, number[]?][]
+    graph: (string | number)[]
   }
-  const dirs = recorded.projects.map((row) => row[0])
-  expect(recorded.projects[dirs.indexOf('packages/app')]![1]).toEqual([
-    dirs.indexOf('packages/lib'),
-  ])
+  const dirs = recorded.graph.filter((v): v is string => typeof v === 'string')
+  const app = recorded.graph.indexOf('packages/app')
+  expect(recorded.graph[app + 1]).toBe(dirs.indexOf('packages/lib'))
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   expect(tasks.map((t) => t.id)).toEqual(['app#build'])
   expect(tasks[0]!.affected).toMatchObject({ file: 'packages/lib/vx.config.mjs' })
@@ -192,7 +191,7 @@ it('a base whose dependencies lock a newer vx wrote is read, not refused', async
   await lock(root)
   const file = path.join(root, '.vx', 'dependencies.lock.json')
   const text = await Bun.file(file).text()
-  await Bun.write(file, text.replace('"version":5', '"version":6'))
+  await Bun.write(file, text.replace('"version":4', '"version":5'))
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'base')

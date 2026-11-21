@@ -2024,14 +2024,15 @@ any refusal that comes first.
 ```ts
 export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
 export interface DependenciesLock {
-  version: number // 5
-  // per project, sorted by directory: [dir, deps?, reach?], each list the
-  // sorted indexes (into this list) of the projects it builds after / reaches
-  // for selection only; a trailing empty list is left out
-  projects: [dir: string, deps?: number[], reach?: number[]][]
-  // claimed file → its bytes' xxh3, each project's digest ('' none), and each
-  // other file the digests read → its hash (absent when none)
-  files: Record<string, { hash: string; digests: string[]; extras?: Record<string, string> }>
+  version: number // 4
+  // per project, sorted by directory: "dir[,digest…]" (its digest for each
+  // claimed file in `files` order, trailing empty slots left out), then the
+  // indexes of the projects it builds after, then -(index + 1) of each it
+  // reaches for selection only; an index counts the strings
+  graph: (string | number)[]
+  files: string[] // [file, hash, file, hash, …], sorted: each claimed file and its bytes' xxh3
+  // claimed file → each other file its digests read → its hash; absent when none
+  extras?: Record<string, Record<string, string>>
 }
 export function dependenciesLock(
   root: string,
@@ -2048,6 +2049,7 @@ export function dependenciesLock(
 export function readDependenciesLock(root: string, reads?: LoadReads): Promise<Uint8Array | null>
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null
 export function dependantsOf(lock: DependenciesLock, dir: string): string[]
+export function liveRecords(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock // `read` with a file's digests and extras from `fresh` where only its extras' hashes moved (`vx lock --check`)
 export function recordedDigests(
   lock: DependenciesLock,
   file: string,
@@ -2070,11 +2072,14 @@ patch, a `file:` directory). A run keys from those digests and never
 parses the file (`orchestrator/locked-digests.ts`, below). Flat: each directory once, in a sorted
 `projects` list, and every edge and digest an index into it (a third
 the size of keying each by its directory, and a quarter of the parse
-and lookup time at 2,000 projects). Each project's edges ride on its own
-row, a trailing empty list left out: most projects have no reach and
-many no deps, and against a list of every project's `deps` and `reach`
-it parses 1.1 to 1.2x faster (21 projects: 3.1 to 2.6 µs; 2,000: 509 to
-460 µs sparse, 656 to 574 µs dense; the write is no slower). Every list
+and lookup time at 2,000 projects). Laid out for the parse first, then
+the size: one `graph` array, each project's digests inside its directory
+string (read by `indexOf` and `slice`, never `split`, and only for the
+project asked about), and nothing written for an empty slot. Against
+version 3's directory list, per-project `deps` and `reach` arrays and a
+digest array per file, it parses 2x faster. A digest may not hold a
+comma (`vx lock` refuses one); a directory may, and its row then keeps
+every slot, so it holds more commas than there are files. Every list
 is sorted, so the same
 workspace writes the same bytes. `--affected` reads the base commit's
 copy (`git show`): a deleted project's dependants are the projects
