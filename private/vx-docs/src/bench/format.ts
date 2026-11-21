@@ -142,8 +142,8 @@ const RACES = {
 /**
  * Every figure where vx loses to a rival: time on a cold build, a restore
  * or nothing changed against any of them, and CPU against any but Vite
- * Task. Main's Bench and the site's build fail on any (2026-11-21): vx
- * is the fastest, or main is red until it is again.
+ * Task. Main's Bench fails on any (2026-11-21), so CI says when vx
+ * needs a fix; the site still deploys the numbers.
  */
 export function losses(d: BenchData): string[] {
   const vx = overhead(d.runners.vx)

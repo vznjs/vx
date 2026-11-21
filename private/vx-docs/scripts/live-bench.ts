@@ -3,10 +3,9 @@
 // from (deploy.pages). The deploy is a task of main's DTE run, and the
 // committed src/data/bench.json is older than the live numbers
 // (2026-11-01); none found fails the deploy, never ships the committed copy.
-// Numbers where vx loses any race fail it too, so main goes red.
+// Numbers where vx loses still deploy: Bench itself goes red on them.
 
 import { inflateRawSync } from 'node:zlib'
-import { assertFastest, type BenchData } from '../src/bench/format.ts'
 
 export interface LiveEnv {
   GITHUB_TOKEN: string
@@ -91,6 +90,5 @@ if (import.meta.main) {
   if (missing.length > 0) throw new Error(`live-bench: ${missing.join(', ')} not set`)
   const { run, json } = await newestBench(env as unknown as LiveEnv)
   await Bun.write('measured/live.json', json)
-  assertFastest(JSON.parse(json) as BenchData, `live-bench (Bench run ${run})`)
   console.log(`live-bench: measured/live.json from Bench run ${run}`)
 }

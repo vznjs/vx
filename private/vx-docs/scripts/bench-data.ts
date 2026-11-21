@@ -54,6 +54,6 @@ const data: BenchData = {
 await mkdir(path.dirname(OUT), { recursive: true })
 await writeFile(OUT, JSON.stringify(data, null, 2) + '\n')
 console.log(`bench data → ${path.relative(process.cwd(), OUT)}`)
-// Written first: Bench uploads the losing numbers too, and the site's
-// build fails on them as well.
+// Written first: Bench goes red on a loss but still uploads the numbers,
+// and the site deploys them.
 assertFastest(data, 'bench-data')
