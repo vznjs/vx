@@ -221,6 +221,7 @@ here, itself or in a brace group.
 | [`util.md`](./util.md#srcexecrunnerts--child-process-invocation--rusage-capture)    | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                           |
 | [`util.md`](./util.md#spawning-rules)                                               | `src/exec/spawn-off.ts` — `spawnOff`: a task's spawn on a thread of its own, off the scheduler's.             |
 | [`util.md`](./util.md#spawning-rules)                                               | `src/exec/pipes.ts` — `TaskPipes`: a task's stdout, stderr and held stdin as pipes vx makes (Linux).          |
+| [`util.md`](./util.md#spawning-rules)                                               | `src/exec/read-off.ts` — `readOff`: a task's output pipe read on a thread of its own, off the scheduler's.    |
 | [`util.md`](./util.md#spawning-rules)                                               | `src/exec/warm-shell.ts` — `takeSpare`: a task's shell started before the task, so a freed slot runs at once. |
 | [`exec.md`](./exec.md#srcexeckill-treets--a-task-dies-with-everything-it-forked)    | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).        |
 | [`exec.md`](./exec.md#srcexecproc-samplets--what-a-running-tasks-processes-use-now) | `src/exec/proc-sample.ts` — `sampleTrees`: a running task's process tree CPU and memory, for `task.sample`.   |

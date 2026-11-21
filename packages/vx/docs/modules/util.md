@@ -187,10 +187,18 @@ held to its start; at the exit, `end` lets everything go; and an
   its own (`spawn-off.ts`). Bun's spawn holds its thread until the child
   has exec'd, ~0.6 ms a task, and on a cold run that thread is the
   scheduler's. The pipes are vx's own descriptors (`TaskPipes`), which
-  every thread shares, so they are made and read on the scheduler's
-  thread as before; only the spawn and the wait for its exit move. A
+  every thread shares, so they are made on the scheduler's thread; only
+  the spawn and the wait for its exit move. A
   terminal handed over and Bun's own pipes (macOS) keep the spawn here,
   as do `runPersistent` and the sandbox's spawn.
+- **Reader thread:** on Linux, a task's two output pipes are read on a
+  thread of their own (`read-off.ts`), which owns each read end from the
+  hand-off and closes it once its stream ends. Bun's pipe reader takes
+  about 256 KiB a stream, a silent one too: read on the scheduler's
+  thread that was ~5 GB of garbage a cold run of the site's 9,600 tasks,
+  and the full collections it drove paused the scheduler. With the reads
+  moved, a cold run of that shape took 0.35-0.64 s less and 2.5 s less
+  of vx's own CPU. Each chunk crosses as its bytes, transferred.
 - **Spare shell:** on Linux, a task's shell is started before the task
   is asked for (`warm-shell.ts`), so the slot that frees does not wait
   for sh to exec: 200 `sleep 0.02` took 4.4 ms each past their sleep
