@@ -1549,9 +1549,10 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    (its key no longer describes them), and the loop starts its first
    cycle on that, labelled `<task> inputs, edited during the first run`.
    Any other (an input of a task that already finished, a new lock) is
-   found as the loop arms: a file git lists as untracked or modified,
-   written since the run started by none of its commands, is a change,
-   and the first cycle runs on it. One written while a command of its
+   found as the loop arms: a file git lists as untracked or modified
+   (asked again once the watchers are up, so a save between the two is
+   not lost), written since the run started by none of its commands, is
+   a change, and the first cycle runs on it. One written while a command of its
    own project ran may be that command's: the keys are taken again, and
    it is a change when one moved. A loop that armed while the run
    waited on a server does both once the run returns, so an edit beside

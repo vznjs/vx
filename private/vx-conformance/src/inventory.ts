@@ -1255,6 +1255,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-claimed-extras',
     'watch-claimed-files',
     'watch-cycle-clock',
+    'watch-edit-before-arm',
     'watch-ignore-submodule',
     'watch-initial-readiness',
     'watch-judge-label',
