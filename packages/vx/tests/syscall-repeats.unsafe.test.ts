@@ -19,7 +19,10 @@
 //   - a tree hit's restore asked about its tree three times, its project
 //     directory and the staging directory twice each, and the walk asked
 //     about a missing output directory the link check had just found
-//     absent (2026-11-07).
+//     absent (2026-11-07);
+//   - each save stat'ed the inputs of every task under it, so a file at
+//     the bottom of a chain was stat'ed once per task above it (a 9,603-
+//     task cold run went from 120 s to 288 s, 2026-11-21).
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -604,6 +607,50 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       const three = lookups(await trace(dir, spawns(3)), 'git')
       expect(one).toBeGreaterThan(0)
       expect(three).toBe(one)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a chain's bottom input: stat-ed a few times a run, not once per task above it",
+    async () => {
+      const depth = 12
+      const names = Array.from({ length: depth }, (_, i) => `p${i}`)
+      const root = await makeWorkspace({
+        dir,
+        git: false,
+        edges: Object.fromEntries(names.slice(1).map((n, i) => [n, [names[i]!]])),
+      })
+      for (const name of names) {
+        await addProject(root, name, {
+          config: `export default { tasks: { build: {
+            exec: { command: 'mkdir -p dist && cp src/a.txt dist/' }, dependsOn: ['^build'],
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+          } } }\n`,
+          files: { 'src/a.txt': name },
+        })
+      }
+      const lock = Bun.spawnSync({
+        cmd: [process.execPath, path.join(SRC, 'bin.ts'), 'lock'],
+        cwd: root,
+        stderr: 'pipe',
+      })
+      expect(`${lock.exitCode}\n${lock.stderr.toString()}`).toBe('0\n')
+      gitInitCommit(root)
+      const calls = await trace(
+        dir,
+        `
+        process.chdir(${JSON.stringify(root)})
+        process.argv.splice(2, Infinity, 'run', 'build', '--all')
+        await import('$SRC/bin.ts')
+        `,
+      )
+      const stats = on(calls, path.join(root, 'packages', 'p0', 'src', 'a.txt')).filter(
+        (c) => c === 'lstat' || c === 'stat',
+      )
+      // Its own re-check, the first save above it, and the sweep once the
+      // graph is done: 3. When every save above it asked again: 12.
+      expect(stats.length).toBeLessThan(depth / 2)
     },
     TIMEOUT,
   )

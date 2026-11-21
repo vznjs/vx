@@ -984,15 +984,19 @@ dependencies too (`inputs.tasks` decides which): an editor's save or a
 sibling task writing a dependency's source while its dependant runs
 (documenso's `remix#build` rewrites `lib`'s `.po` files) let the
 dependant build from bytes the folded key never saw, and once the edit
-was undone every hit replayed that build. Each such file is `lstat`ed
-after the dependant's command, and one written since that task's key was
-taken (a miss: its command's end; a hit: its key) withholds the entry:
+was undone every hit replayed that build. A save re-checks such a task
+only when a command, restore or fetch that may write its project ran
+since its inputs were last found unmoved, so a file is `lstat`ed a few
+times a run, not once per task above it (that took a 9,603-task cold run
+from 120 s to 288 s). One written since that task's key was taken (a
+miss: its command's end; a hit: its key) withholds the entry:
 ``[vx] app#build: `packages/lib/src/a.ts`, an input of lib#build, changed
 after that task's key was taken — …``, naming the run's task that may
 have written it. A write in that moment's own tick is judged by its
-bytes. A task whose closure was swept clean after the dependant's command
-ended is not swept again; a cold run of 1,000 builds each folding ~300
-others pays ~0.4 s of `lstat` for it. A file
+bytes. A write no window covers (a task writing into another project, an
+editor) is found once the graph is done: one sweep `lstat`s every input
+under a save this run made, each file once, and drops each entry built
+over one that moved, naming it. A remote took such an entry already. A file
 whose ctime alone moved during the command, its bytes and mtime as the
 key found them (a hard link such as `cp -al src dist`, a chmod, a chown),
 is withheld too, since an edit undone with its mtime put back looks the

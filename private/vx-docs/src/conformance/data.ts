@@ -2,8 +2,14 @@
 // @vzn/vx-conformance's `conformance` task (its `Results`). A static import,
 // as the bench data's: a build without the file fails to resolve it. The
 // type is restated, not imported: the site's type-check reads no other
-// private package.
-import raw from '../data/conformance.json'
+// private package. Main's deploy names the results with the newest weekly
+// run's rivals in VX_DOCS_CONFORMANCE (build.live,
+// scripts/live-conformance.ts), read as VX_DOCS_BENCH is.
+import { readFileSync } from 'node:fs'
+import committed from '../data/conformance.json'
+
+const live = process.env['VX_DOCS_CONFORMANCE']
+const raw: unknown = live ? JSON.parse(readFileSync(live, 'utf8')) : committed
 
 export type Status = 'pass' | 'fail' | 'n/a'
 

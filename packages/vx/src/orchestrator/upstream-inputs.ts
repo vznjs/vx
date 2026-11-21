@@ -4,14 +4,25 @@
 // let the dependant build from bytes no key names, and the save filed them
 // under the dependency's old key. Undo the edit and every later hit replayed
 // the edited build under a green run.
+//
+// Two checks, so a run pays for each file about once, not once per dependant
+// (a closure re-stat'd by every save took a 9,603-task cold run from 120 s to
+// 288 s). A save re-stats a task under it only when a command, restore or
+// fetch that may write its project ran since its inputs were last found
+// unmoved: every write in contract. A write out of contract (a task writing
+// another project, an editor) needs no window, so once the graph is done
+// one sweep stats every input under a save again and drops each entry built
+// over one that moved.
 
 import { lstatSync } from 'node:fs'
 import path from 'node:path'
 import { foldedDeps, type TaskNode } from '../graph/index.js'
 import { ABSENT_INPUT } from '../cache/index.js'
 import { FILE_HASH_RACY_MS, fsClockNow, racyWindowMs, stampGrainMs } from '../memo/index.js'
-import { outputMatcher, relPosix, span } from '../util/index.js'
+import { outputMatcher, printable, relPosix, span } from '../util/index.js'
+import { type Logger, warnOf } from '../report/index.js'
 import type { ExecuteArgs, RunContext } from './execute-task.js'
+import type { CommandWindows } from './command-windows.js'
 import { type InputFact, inputFilesOf, movedInput } from './task-hash.js'
 
 /** What a dependant's save asks of one task under it. */
@@ -29,28 +40,93 @@ interface Keyed {
   facts?: readonly InputFact[]
   /** A hit's input files, listed again on the first dependant's save. */
   files?: Promise<readonly string[]>
-  /**
-   * When a sweep found its inputs and its whole closure's unmoved: a
-   * dependant whose command ended before it needs none of it walked again.
-   */
-  closureCleanAt?: number
+}
+
+/** `lstatSync(file).ctimeMs`, or undefined when there is no file. */
+type CtimeOf = (file: string) => number | undefined
+
+const ctimeNow: CtimeOf = (file) => {
+  try {
+    return lstatSync(file).ctimeMs
+  } catch {
+    return undefined
+  }
 }
 
 /** One run's tasks as each settled its key, by id. */
 export class KeyedTasks {
   private readonly keyed = new Map<string, Keyed>()
   private readonly foldedIds = new Map<string, readonly string[]>()
+  /**
+   * The tasks a write in contract may have reached since their inputs were
+   * last found unmoved: keyed since, or a command, restore or fetch that may
+   * write their project opened since. A save stats only these of its closure.
+   */
+  private readonly dirty = new Set<string>()
+  private projectDirs: string[] | undefined
+  /** `projectsAt`, by directory. */
+  private readonly under = new Map<string, readonly string[]>()
+  /** The tasks some key folds: only these are ever asked (`dirty`). */
+  private foldedAny: Set<string> | undefined
+  /** Keyed tasks by project directory, for a window that opens there. */
+  private readonly byProject = new Map<string, Set<string>>()
+  /** Each node's index into `closureBits`. */
+  private readonly index = new Map<string, number>()
+  /** Every task a node's key folds, transitively, as bits over `index`. */
+  private readonly closureBits = new Map<string, Uint32Array>()
+  /** The entries this run saved here, for the end sweep (`sweep`). */
+  private readonly savedHere: { args: ExecuteArgs; hash: string }[] = []
 
   constructor(
     private readonly nodes: ReadonlyMap<string, TaskNode>,
     /** When the up-front keys were taken: every key dispatch does not take again. */
     readonly keysFrom: number,
     private readonly keysFromMs: number,
-  ) {}
+    private readonly windows?: CommandWindows,
+  ) {
+    let i = 0
+    for (const id of nodes.keys()) this.index.set(id, i++)
+    windows?.onOpen((dir, reach) => {
+      if (reach === 'workspace') {
+        for (const id of this.keyed.keys()) this.dirty.add(id)
+        return
+      }
+      for (const projectDir of this.projectsAt(dir))
+        for (const id of this.byProject.get(projectDir) ?? []) this.dirty.add(id)
+    })
+  }
+
+  /** The project directories at or under `dir`: a window there may write in each. */
+  private projectsAt(dir: string): readonly string[] {
+    let dirs = this.under.get(dir)
+    if (dirs === undefined) {
+      this.projectDirs ??= [...new Set([...this.nodes.values()].map((n) => n.projectDir))].sort()
+      const all = this.projectDirs
+      const inside = dir + path.sep
+      const found: string[] = all.includes(dir) ? [dir] : []
+      // Sorted: everything under `dir` is one run of entries from `inside` on.
+      let lo = 0
+      let hi = all.length
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        if (all[mid]! < inside) lo = mid + 1
+        else hi = mid
+      }
+      for (let i = lo; i < all.length && all[i]!.startsWith(inside); i++) found.push(all[i]!)
+      dirs = found
+      this.under.set(dir, dirs)
+    }
+    return dirs
+  }
 
   /** A task dispatched: its key is the up-front one until `keyedNow` says otherwise. */
   dispatched(args: ExecuteArgs): void {
-    this.keyed.set(args.node.id, { args, at: this.keysFrom, atMs: this.keysFromMs })
+    const { id, projectDir } = args.node
+    this.keyed.set(id, { args, at: this.keysFrom, atMs: this.keysFromMs })
+    this.dirty.add(id)
+    const ids = this.byProject.get(projectDir)
+    if (ids === undefined) this.byProject.set(projectDir, new Set([id]))
+    else ids.add(id)
   }
 
   /** The task takes its key now. */
@@ -59,6 +135,7 @@ export class KeyedTasks {
     if (k === undefined) return
     k.at = clockOf(args.run)
     k.atMs = Date.now()
+    this.dirty.add(args.node.id)
   }
 
   /** A miss's command ended: its facts answer for its inputs from here. */
@@ -68,46 +145,126 @@ export class KeyedTasks {
     k.at = at
     k.atMs = Date.now()
     if (facts !== undefined) k.facts = facts
+    this.dirty.add(args.node.id)
+  }
+
+  /** An entry saved here under `hash`: the end sweep may take it back. */
+  saved(args: ExecuteArgs, hash: string): void {
+    if (args.executor.capabilities?.remote !== true) this.savedHere.push({ args, hash })
   }
 
   /**
    * The first task under `args` (dependencies of dependencies too, through
-   * groups) with an input written since its key was settled, or undefined.
-   * `until` is when the dependant's command ended, on the same clock.
+   * groups) with an input written in contract since its key was settled, or
+   * undefined. Each is stat'd only while a write may have reached it since
+   * it was last found unmoved (`dirty`); the end sweep answers for writes out
+   * of contract.
    */
   async moved(
     args: ExecuteArgs,
-    until: number,
   ): Promise<{ task: string; file: string; sinceMs: number } | undefined> {
-    const from = clockOf(args.run)
-    // Every task visited had its inputs, and its own closure's, unmoved as of
-    // `clean`: a later dependant whose command ended before it walks none of it.
-    let clean = from
-    const seen = new Set<string>()
-    const visited: Keyed[] = []
-    const stack = [...this.folded(args.node)]
-    while (stack.length > 0) {
-      const id = stack.pop()!
-      if (seen.has(id)) continue
-      seen.add(id)
-      const node = this.nodes.get(id)
-      if (node === undefined) continue
-      const k = this.keyed.get(id)
-      if (k?.closureCleanAt !== undefined && k.closureCleanAt >= until) {
-        clean = Math.min(clean, k.closureCleanAt)
+    const bits = this.bitsOf(args.node)
+    const folded = (this.foldedAny ??= this.foldedByAny())
+    for (const id of this.dirty) {
+      // No key folds it: no save ever asks.
+      if (!folded.has(id)) {
+        this.dirty.delete(id)
         continue
       }
-      stack.push(...this.folded(node))
-      if (k === undefined) continue
-      visited.push(k)
+      const i = this.index.get(id)
+      if (i === undefined || (bits[i >>> 5]! & (1 << (i & 31))) === 0) continue
+      const k = this.keyed.get(id)!
+      const node = k.args.node
       // A server's inputs are its live state, and a task with no inputs keys none.
-      if (node.config.inputs === undefined || node.config.exec?.persistent !== undefined) continue
-      const sweep = movedSince(k, args)
+      if (node.config.inputs === undefined || node.config.exec?.persistent !== undefined) {
+        this.dirty.delete(id)
+        continue
+      }
+      const at = Date.now()
+      const sweep = movedSince(k, args, ctimeNow)
       const file = typeof sweep === 'object' ? await sweep : sweep
       if (file !== undefined) return { task: id, file, sinceMs: k.atMs }
+      // Unmoved as of `at`, and nothing that may write there was open then:
+      // the next write in contract opens a window, which marks it again.
+      if (this.windows !== undefined && !this.windows.reachedSince(node.projectDir, at, at))
+        this.dirty.delete(id)
     }
-    for (const k of visited) k.closureCleanAt = Math.max(k.closureCleanAt ?? clean, clean)
     return undefined
+  }
+
+  /**
+   * Once the graph is done: every input under an entry this run saved, each
+   * file stat'd once, and each entry over one written after its task's key
+   * was taken removed again. Writes in contract were judged at each save;
+   * this catches the rest (a task writing into another project, an editor).
+   */
+  async sweep(run: RunContext, log: Logger): Promise<void> {
+    if (this.savedHere.length === 0) return
+    const discard = run.cache.discard
+    if (discard === undefined) return
+    const end = span('upstream inputs sweep')
+    const under = new Set<string>()
+    const stack: string[] = []
+    for (const { args } of this.savedHere) stack.push(...this.folded(args.node))
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      if (under.has(id)) continue
+      under.add(id)
+      const node = this.nodes.get(id)
+      if (node !== undefined) stack.push(...this.folded(node))
+    }
+    const ctimes = new Map<string, number | undefined>()
+    const ctimeOf: CtimeOf = (file) => {
+      if (ctimes.has(file)) return ctimes.get(file)
+      const c = ctimeNow(file)
+      ctimes.set(file, c)
+      return c
+    }
+    const moved = new Map<string, { file: string; sinceMs: number }>()
+    for (const id of under) {
+      const k = this.keyed.get(id)
+      const node = this.nodes.get(id)
+      if (k === undefined || node === undefined) continue
+      if (node.config.inputs === undefined || node.config.exec?.persistent !== undefined) continue
+      const sweep = movedSince(k, k.args, ctimeOf)
+      const file = typeof sweep === 'object' ? await sweep : sweep
+      if (file !== undefined) moved.set(id, { file, sinceMs: k.atMs })
+    }
+    end()
+    if (moved.size === 0) return
+    const dropped = new Map<string, string[]>()
+    for (const { args, hash } of this.savedHere) {
+      const seen = new Set<string>()
+      const todo = [...this.folded(args.node)]
+      let hit: string | undefined
+      while (todo.length > 0 && hit === undefined) {
+        const id = todo.pop()!
+        if (seen.has(id)) continue
+        seen.add(id)
+        if (moved.has(id)) hit = id
+        else {
+          const node = this.nodes.get(id)
+          if (node !== undefined) todo.push(...this.folded(node))
+        }
+      }
+      if (hit === undefined) continue
+      await discard.call(run.cache, hash).catch(() => {})
+      const list = dropped.get(hit)
+      if (list === undefined) dropped.set(hit, [args.node.id])
+      else list.push(args.node.id)
+    }
+    for (const [task, ids] of dropped) {
+      const { file, sinceMs } = moved.get(task)!
+      const rel = printable(relPosix(run.workspaceRoot, file))
+      const by = run.commandWindows?.writerDuring(task, file, sinceMs, Date.now())
+      const named =
+        ids.slice(0, 3).join(', ') + (ids.length > 3 ? ` and ${ids.length - 3} more` : '')
+      warnOf(log)(
+        `[vx] \`${rel}\`, an input of ${task}, changed after that task's key was taken` +
+          (by === undefined ? '' : ` while ${by} ran`) +
+          ` — the results stand, but the entries of ${named} are dropped: their keys do not name the bytes they were built from`,
+      )
+    }
   }
 
   /** The tasks `node`'s key folds (`inputs.tasks`): one it does not fold answers for nothing in it. */
@@ -119,6 +276,29 @@ export class KeyedTasks {
     }
     return ids
   }
+
+  private foldedByAny(): Set<string> {
+    const ids = new Set<string>()
+    for (const node of this.nodes.values()) for (const id of this.folded(node)) ids.add(id)
+    return ids
+  }
+
+  /** Every task `node`'s key folds, transitively, as bits over `index`. */
+  private bitsOf(node: TaskNode): Uint32Array {
+    const known = this.closureBits.get(node.id)
+    if (known !== undefined) return known
+    const bits = new Uint32Array((this.index.size + 31) >>> 5)
+    for (const id of this.folded(node)) {
+      const i = this.index.get(id)
+      const dep = this.nodes.get(id)
+      if (i === undefined || dep === undefined) continue
+      bits[i >>> 5]! |= 1 << (i & 31)
+      const b = this.bitsOf(dep)
+      for (let w = 0; w < bits.length; w++) bits[w]! |= b[w]!
+    }
+    this.closureBits.set(node.id, bits)
+    return bits
+  }
 }
 
 function clockOf(run: RunContext): number {
@@ -129,29 +309,28 @@ function clockOf(run: RunContext): number {
 function movedSince(
   k: Keyed,
   dependant: ExecuteArgs,
+  ctimeOf: CtimeOf,
 ): string | undefined | Promise<string | undefined> {
   const at = k.at
   // A write stamped in the tick `at` was read in may be the task's own last
   // one (tsdown's package.json): judged by its bytes. Any later one moved
   // the file whatever it holds.
   if (k.facts !== undefined)
-    return unwritten(k.facts, at)
+    return unwritten(k.facts, at, ctimeOf)
       ? undefined
       : movedInput(k.facts, dependant.run.cache, at, (_, ctimeMs) => ctimeMs <= at)
-  return movedFile(k, dependant)
+  return movedFile(k, dependant, ctimeOf)
 }
 
 /**
  * Every fact's file written before both its digest was learned and `at`,
  * by its ctime alone: `movedInput` would hash none of them. One lstat each.
  */
-function unwritten(facts: readonly InputFact[], at: number): boolean {
+function unwritten(facts: readonly InputFact[], at: number, ctimeOf: CtimeOf): boolean {
   for (const f of facts) {
     if (f.behind !== undefined) return false
-    let ctimeMs: number
-    try {
-      ctimeMs = lstatSync(f.path).ctimeMs
-    } catch {
+    const ctimeMs = ctimeOf(f.path)
+    if (ctimeMs === undefined) {
       if (f.digest === ABSENT_INPUT) continue
       return false
     }
@@ -163,16 +342,18 @@ function unwritten(facts: readonly InputFact[], at: number): boolean {
   return true
 }
 
-async function movedFile(k: Keyed, dependant: ExecuteArgs): Promise<string | undefined> {
+async function movedFile(
+  k: Keyed,
+  dependant: ExecuteArgs,
+  ctimeOf: CtimeOf,
+): Promise<string | undefined> {
   const { cache, gitFilesCache } = dependant.run
   const at = k.at
   k.files ??= ownInputs(k.args)
   const { projectDir } = k.args.node
   for (const f of await k.files) {
-    let ctimeMs: number
-    try {
-      ctimeMs = lstatSync(f).ctimeMs
-    } catch {
+    const ctimeMs = ctimeOf(f)
+    if (ctimeMs === undefined) {
       // Gone: since `at` only if its directory changed since.
       if (changedAfter(path.dirname(f), at)) return f
       continue

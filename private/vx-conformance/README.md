@@ -18,6 +18,15 @@ bun src/cli.ts                    # every case, every tool → the site's data
 bun src/cli.ts --tool nx --case outputs/ --verbose
 ```
 
+Turborepo, Nx, Vite Task and moon install at npm's latest at the start of
+each run, never pinned (`src/tools.ts`); Nix is the one on the PATH. The
+Conformance workflow (`.github/workflows/conformance.yml`) runs the whole
+suite weekly, after the Monday rival sweep dispatches it, with Nix from
+its installer's latest. Main's deploy shows the rivals' outcomes and
+versions from its newest run and vx's from the commit
+(`private/vx-docs/scripts/live-conformance.ts`). A case vx fails fails
+the run.
+
 ## A case
 
 A case speaks no tool's language. Its workspace names projects, their

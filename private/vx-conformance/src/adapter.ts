@@ -13,7 +13,7 @@ export type Command = (project: string, task: string) => string
  */
 export interface Adapter {
   name: string
-  /** The package whose version the report names, linked into the workspace from this package's install. Absent: a tool installed on the machine. */
+  /** The package whose version the report names, linked into the workspace from its install (tools.ts). Absent: a tool installed on the machine. */
   pkg?: string
   /** Bins linked into the workspace's node_modules/.bin. */
   bins: string[]
