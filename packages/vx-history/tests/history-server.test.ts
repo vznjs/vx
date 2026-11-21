@@ -395,6 +395,50 @@ describe('HistoryServer', () => {
     expect(refused.asked).toEqual(['403'])
   })
 
+  it('tries a busy request again `retries` times, and gives a silent one `timeoutMs`', async () => {
+    const clientOf = (answer: (signal: AbortSignal) => Promise<Response>) => {
+      let asked = 0
+      const fake = (async (_input: string | URL, init?: RequestInit) => {
+        asked++
+        return answer(init!.signal!)
+      }) as typeof fetch
+      const waits: number[] = []
+      const client = new HistoryServer(
+        'https://h.example',
+        NAMED,
+        { VX_HISTORY_TOKEN: 't' },
+        fake,
+        {},
+        async (ms) => {
+          waits.push(ms)
+        },
+        { timeoutMs: 20, retries: 4 },
+      )
+      return { client, waits, asked: () => asked }
+    }
+    const busy = clientOf(async () => new Response('busy', { status: 503 }))
+    await expect(busy.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow('503')
+    expect([busy.asked(), busy.waits]).toEqual([5, [1000, 2000, 3000, 4000]])
+    const silent = clientOf(
+      (signal) =>
+        new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason))),
+    )
+    await expect(silent.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'no answer within 20 ms',
+    )
+  })
+
+  it('refuses a timeoutMs or retries it cannot use', () => {
+    expect(() => vxHistory({ timeoutMs: 0 })).toThrow(
+      'vxHistory() option "timeoutMs" must be a whole number of ms from 1 to 2147483647, got 0',
+    )
+    expect(() => vxHistory({ retries: -1 })).toThrow(
+      'vxHistory() option "retries" must be a whole number from 0 to 10, got -1',
+    )
+    expect(() => vxHistory({ retries: 1.5 })).toThrow('got 1.5')
+    expect(() => vxHistory({ timeoutMs: 5000, retries: 0 })).not.toThrow()
+  })
+
   // A 200 that is not JSON (a proxy's page) threw the parser's own words.
   it("says GitHub's OIDC endpoint sent no token when its answer is not JSON", async () => {
     const fake = (async (input: string | URL) => {

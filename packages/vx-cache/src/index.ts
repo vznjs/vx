@@ -30,6 +30,8 @@ export interface VxCacheOptions {
   timeoutMs?: number
   /** … and for an upload (default 60 s): its bytes must leave at 1 MiB a second over each, then its answer come within one. */
   uploadTimeoutMs?: number
+  /** Tries after the first for a request that failed with a 5xx, a 429 or a reset connection, 1 s, 2 s, … apart (default 2). */
+  retries?: number
   /**
    * Headers every request to the server carries, for a proxy in front of it (`{
    * 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an Access
@@ -46,6 +48,7 @@ const KEYS: PluginOptionKinds<VxCacheOptions> = {
   repository: 'string',
   timeoutMs: 'number',
   uploadTimeoutMs: 'number',
+  retries: 'number',
   headers: 'object',
 }
 
@@ -66,8 +69,6 @@ function expiryOf(jwt: string): number {
 
 /** A lent token ending sooner than this is asked again first, so a request never carries a spent one. */
 const LEND_MARGIN_MS = 5 * 60_000
-/** Tries of GitHub's OIDC endpoint before the remote turns off (`askOnce`). */
-const ASK_ATTEMPTS = 3
 /** A connection that dropped, not a server that answered: an upload is sent again. */
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'ECONNREFUSED'])
 
@@ -498,7 +499,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /**
    * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
-   * or none, up to three tries: a DTE run asks every few minutes for the
+   * or none, up to `retries` + 1 tries (3): a DTE run asks every few minutes for the
    * token it lends, and one 503 turned the remote off for the rest of the
    * run on every worker. A refusal (a 4xx) is final.
    */
@@ -516,7 +517,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         failure = err
       }
       if (res !== undefined && res.status !== 429 && res.status < 500) return res
-      if (attempt === ASK_ATTEMPTS) {
+      if (attempt > this.config.retries) {
         if (res === undefined) throw failure
         return res
       }
@@ -867,7 +868,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /**
-   * A download's answer, asked again after a 5xx, a 429 or a reset connection, up to three tries, as an
+   * A download's answer, asked again after a 5xx, a 429 or a reset connection, up to `retries` + 1 tries (3), as an
    * upload is: one ECONNRESET read as a miss, and a DTE worker failed main 979cb59's docs build on an
    * entry the remote held (2026-11-20). A deadline is not retried: the download already had its time.
    */
@@ -881,12 +882,16 @@ export class VxCacheLayer implements RemoteCacheLayer {
           streamed: true,
         })
       } catch (err) {
-        if (!RESET.has((err as { code?: unknown }).code as string) || attempt === ASK_ATTEMPTS)
+        if (!RESET.has((err as { code?: unknown }).code as string) || attempt > this.config.retries)
           throw err
         await this.wait(1000 * attempt)
         continue
       }
-      if (res === undefined || (res.status !== 429 && res.status < 500) || attempt === ASK_ATTEMPTS)
+      if (
+        res === undefined ||
+        (res.status !== 429 && res.status < 500) ||
+        attempt > this.config.retries
+      )
         return res
       await res.body?.cancel()
       await this.wait(1000 * attempt)
@@ -946,7 +951,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private async upload(item: { hash: string; body: Blob }): Promise<void | false> {
     // Queued before the remote or its writes were turned off.
     if (this.disabled || this.writesRefused) return false
-    // Sent again after a 5xx, a 429 or a reset connection, up to three tries,
+    // Sent again after a 5xx, a 429 or a reset connection, up to `retries` + 1 tries (3),
     // as the token's ask: the server failing to read GitHub's keys once, and
     // one ECONNRESET, each lost a DTE worker's entry. A PUT names its hash, so
     // a second one stores the same bytes. A deadline is not retried: the upload
@@ -963,7 +968,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
           paced: true,
         })
       } catch (err) {
-        if (!RESET.has((err as { code?: unknown }).code as string) || attempt === ASK_ATTEMPTS)
+        if (!RESET.has((err as { code?: unknown }).code as string) || attempt > this.config.retries)
           throw err
         await this.wait(1000 * attempt)
         continue
@@ -976,7 +981,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         await res.body?.cancel()
         return false
       }
-      if ((res.status !== 429 && res.status < 500) || attempt === ASK_ATTEMPTS)
+      if ((res.status !== 429 && res.status < 500) || attempt > this.config.retries)
         throw await refusal(res, this.hidden)
       await res.body?.cancel()
       await this.wait(1000 * attempt)
@@ -1081,6 +1086,7 @@ export function resolveVxCacheConfig(
     ...named,
     timeoutMs: options.timeoutMs ?? 30_000,
     uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+    retries: options.retries ?? 2,
     headers: proxyHeaders('vxCache()', options.headers),
   }
 }
@@ -1122,6 +1128,11 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
         `vxCache() option "${name}" must be a positive number of ms up to ${MAX_TIMER_MS}, got ${ms}`,
       )
   }
+  const { retries } = options
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0 && retries <= 10))
+    throw new UserError(
+      `vxCache() option "retries" must be a whole number from 0 to 10, got ${retries}`,
+    )
   proxyHeaders('vxCache()', options.headers)
   namedOf(options)
   // At the call, as vxHistory() checks its url: in the hook alone, a verb

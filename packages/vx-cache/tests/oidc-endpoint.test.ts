@@ -36,6 +36,7 @@ function endpoint(status: number) {
       repository: 'acme/app',
       timeoutMs: 5_000,
       uploadTimeoutMs: 5_000,
+      retries: 2,
       headers: {},
     },
     fetchImpl,

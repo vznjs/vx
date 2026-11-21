@@ -100,6 +100,10 @@ export interface VxHistoryOptions {
    */
   readonly issuer?: string
   readonly repository?: string
+  /** One request to `url`'s deadline, in ms. Default 10 000: a run never waits on history longer. */
+  readonly timeoutMs?: number
+  /** Tries after the first for a request that failed with a 5xx or a 429, 1 s, 2 s, … apart. Default 2. */
+  readonly retries?: number
 }
 
 // The provider's own default (50) serves `--dry` predictions; an ordering
@@ -257,6 +261,8 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   headers: 'object',
   issuer: 'string',
   repository: 'string',
+  timeoutMs: 'number',
+  retries: 'number',
 }
 
 /** `vxHistory({ issuer, repository })`, checked; the server's requests name them. */
@@ -339,6 +345,26 @@ function proxyHeaders(
   return out
 }
 
+/** `timeoutMs` and `retries`, checked: a NaN or zero deadline aborted every request as it began, one over 2³¹−1 ran after 1 ms. */
+function limitsOf(options: VxHistoryOptions): { timeoutMs?: number; retries?: number } {
+  const { timeoutMs, retries } = options
+  if (
+    timeoutMs !== undefined &&
+    !(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 2 ** 31 - 1)
+  )
+    throw new UserError(
+      `vxHistory() option "timeoutMs" must be a whole number of ms from 1 to ${2 ** 31 - 1}, got ${timeoutMs}`,
+    )
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0 && retries <= 10))
+    throw new UserError(
+      `vxHistory() option "retries" must be a whole number from 0 to 10, got ${retries}`,
+    )
+  return {
+    ...(timeoutMs !== undefined && { timeoutMs }),
+    ...(retries !== undefined && { retries }),
+  }
+}
+
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('vxHistory()', options, VX_HISTORY_KEYS)
   const named =
@@ -348,6 +374,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   // At the call: refused once a server was named, a laptop passed what
   // failed the first CI run.
   const headers = proxyHeaders(options.headers)
+  const limits = limitsOf(options)
   // `'any'` above lets `null` through, and every run then failed in
   // `schedule` reading `null.headroom`.
   const { resources } = options
@@ -515,7 +542,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     const m = await import('./history-server.js')
     const url = serverUrlOf(options.url)
     if (url === undefined) return undefined
-    return new m.HistoryServer(url, named, Bun.env, fetch, headers)
+    return new m.HistoryServer(url, named, Bun.env, fetch, headers, Bun.sleep, limits)
   }
   // What the run sends the history server, by task definition.
   let reported: Live | undefined

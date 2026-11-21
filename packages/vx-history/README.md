@@ -19,7 +19,7 @@ import { vxHistory } from '@vzn/vx-history'
 export default { plugins: [vxHistory()] }
 ```
 
-`vxHistory({ window?, assume?, file?, url?, issuer?, repository?, headers?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `localHistory(cache)`, which reads the cache's index and returns rows; the plugin never touches cache.db. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`vxHistory({ window?, assume?, file?, url?, issuer?, repository?, headers?, timeoutMs?, retries?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `localHistory(cache)`, which reads the cache's index and returns rows; the plugin never touches cache.db. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -78,6 +78,10 @@ names the fix for the CI it is on (`GITHUB_ACTIONS`, `GITLAB_CI`).
 (`org/name` there) are required with a server: the run's one query
 names them, with its refs and every task hash, and nothing guesses
 them; `VX_HISTORY_URL` alone, with neither declared, is said and not asked.
+`timeoutMs` (default 10 000, whole ms from 1 to 2³¹−1) bounds each
+request to the server; `retries` (default 2, 0 to 10) is how many times
+one answered 5xx or 429, or GitHub's OIDC endpoint, is asked again, 1 s,
+2 s, … apart.
 `headers` are sent on every request to the server, for a proxy in
 front of it (a Cloudflare Access service token:
 `{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`); an
