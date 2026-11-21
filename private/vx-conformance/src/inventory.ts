@@ -1205,6 +1205,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'summary',
     'summary-meters',
     'summary-skipped-cached',
+    'symlinks-in-repo.unsafe',
     'syscall-repeats.unsafe',
     'taint-properties',
     'taint-tracker',
