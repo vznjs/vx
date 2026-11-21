@@ -10,6 +10,8 @@
 //   save      task-save.ts       the one save verdict, carried out
 //   outcome   miss-outcome.ts    what it all adds up to
 
+import path from 'node:path'
+import { fsClockNow } from '../memo/index.js'
 import { ArtifactVanishedError, type CacheEntry, FULL_CACHE_POLICY } from '../cache/index.js'
 import { signalExitCode } from '../exec/index.js'
 import { RestoreDemoted, RestoreFailed, type TaskOutcome } from '../graph/index.js'
@@ -165,6 +167,16 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   const stamp = stampState(m)
   const ran = await runAttempts(m, wallclockStartNs)
   if ('outcome' in ran) return ran.outcome
+  const keyedTasks = args.run.keyedTasks
+  if (keyedTasks !== undefined) {
+    m.endedAt = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
+    const described = inputs.described
+    keyedTasks.ran(
+      args,
+      described === undefined ? undefined : inputs.keyed(described.facts),
+      m.endedAt,
+    )
+  }
   const landed = ran.result.outputs?.kind === 'trailing' ? ran.result.outputs.landed : undefined
   if (landed !== undefined) args.run.trailing?.add(node.id, landed)
   const wallclockEndNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
@@ -216,24 +228,23 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
  * so its live `upstream` is incomplete.
  */
 async function keyFor(args: ExecuteArgs): Promise<string> {
-  return (
-    args.preProbed?.hash ??
-    args.upfrontKey ??
-    (await keyOf(
-      computeTaskHash({
-        node: args.node,
-        upstream: args.upstream,
-        workspaceRoot: args.run.workspaceRoot,
-        cache: args.run.cache,
-        forwardArgs: args.run.forwardArgs,
-        nestedProjectDirs: args.nestedProjectDirs,
-        ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
-        ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
-        ...(args.run.probesAfterWrites !== undefined
-          ? { probesAfterWrites: args.run.probesAfterWrites }
-          : {}),
-      }),
-    ))
+  const known = args.preProbed?.hash ?? args.upfrontKey
+  if (known !== undefined) return known
+  args.run.keyedTasks?.keyedNow(args)
+  return await keyOf(
+    computeTaskHash({
+      node: args.node,
+      upstream: args.upstream,
+      workspaceRoot: args.run.workspaceRoot,
+      cache: args.run.cache,
+      forwardArgs: args.run.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
+      ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
+      ...(args.run.probesAfterWrites !== undefined
+        ? { probesAfterWrites: args.run.probesAfterWrites }
+        : {}),
+    }),
   )
 }
 
