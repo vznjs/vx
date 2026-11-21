@@ -6,7 +6,7 @@
 // that partial `dist/`. Turbo never cleans, so its `dist/` stayed whole; Nx
 // infers the buildinfo as an output. A mapped task declares it too.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 /** A file's text, or null when it cannot be read. */
@@ -38,14 +38,26 @@ function parse(read: ReadText, file: string): TsConfig | null {
   }
 }
 
-/** The file an `extends` entry names, as tsc resolves it (a package through `node_modules`). */
+/**
+ * The file an `extends` entry names, as tsc resolves it: a package through
+ * `node_modules`, at its real path. A path in that file is relative to where
+ * it really is: plane's `@plane/typescript-config` sets `tsBuildInfoFile`,
+ * which taken through the workspace link sat inside each package, so the
+ * mapped output crossed the link and every build refused to run.
+ */
 function extended(read: ReadText, from: string, ext: string): string | null {
   const withJson = (p: string) => (p.endsWith('.json') ? p : `${p}.json`)
   if (ext.startsWith('.') || path.isAbsolute(ext)) return withJson(path.resolve(from, ext))
   for (let dir = from; ; dir = path.dirname(dir)) {
     const base = path.join(dir, 'node_modules', ext)
     for (const f of [withJson(base), path.join(base, 'tsconfig.json')])
-      if (read(f) !== null) return f
+      if (read(f) !== null) {
+        try {
+          return realpathSync(f)
+        } catch {
+          return f
+        }
+      }
     if (path.dirname(dir) === dir) return null
   }
 }

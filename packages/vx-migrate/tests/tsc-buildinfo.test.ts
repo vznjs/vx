@@ -3,7 +3,7 @@
 // miss, tsc re-emitted only the edited file, and vx cached that partial
 // `dist/` (Growth, migrate-tsc-build-partial-dist). Nx infers the buildinfo
 // as an output; a mapped task declares it.
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -91,12 +91,20 @@ describe('migrateTurbo: a `tsc -b` build', () => {
 })
 
 describe('tscBuildInfo', () => {
-  const at = async (files: Record<string, unknown>, command: string) => {
+  const at = async (
+    files: Record<string, unknown>,
+    command: string,
+    links: Record<string, string> = {},
+  ) => {
     const dir = await mkdtemp(path.join(tmpdir(), 'vx-tsc-buildinfo-'))
     try {
       for (const [f, v] of Object.entries(files)) {
         await mkdir(path.dirname(path.join(dir, f)), { recursive: true })
         await writeFile(path.join(dir, f), JSON.stringify(v))
+      }
+      for (const [link, to] of Object.entries(links)) {
+        await mkdir(path.dirname(path.join(dir, link)), { recursive: true })
+        await symlink(path.join(dir, to), path.join(dir, link), 'dir')
       }
       return tscBuildInfo(onceReader().read, path.join(dir, 'pkg'), command)
     } finally {
@@ -156,6 +164,25 @@ describe('tscBuildInfo', () => {
       references: ['tsconfig.tsbuildinfo', 'tsconfig.lib.tsbuildinfo'],
       watch: [],
     })
+  })
+
+  // plane: a workspace config package linked into each package sets
+  // tsBuildInfoFile, which tsc resolves from the package's real directory.
+  // Through the link it was an output of every package, and vx refused it.
+  it('resolves a linked config package at its real path', async () => {
+    expect(
+      await at(
+        {
+          'ts-config/base.json': opts({
+            incremental: true,
+            tsBuildInfoFile: '.turbo/x.tsbuildinfo',
+          }),
+          'pkg/tsconfig.json': { extends: '@repo/ts-config/base.json' },
+        },
+        'tsc',
+        { 'pkg/node_modules/@repo/ts-config': 'ts-config' },
+      ),
+    ).toEqual([])
   })
 
   // payload's `build` is `pnpm build:types && …`: its tsc was never seen.
