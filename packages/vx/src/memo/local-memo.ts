@@ -37,7 +37,12 @@ export interface StoreMemo {
     prefixes: readonly string[],
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
+  recordOutputStamps(
+    hash: string,
+    projectDir: string,
+    workspaceRoot: string,
+    written?: boolean,
+  ): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   warmOutputs(
@@ -272,10 +277,15 @@ export class LocalMemo implements StoreMemo {
   }
 
   /** Stamp `hash`'s output rows once a save or restore left the tree equal to the entry. */
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
+  recordOutputStamps(
+    hash: string,
+    projectDir: string,
+    workspaceRoot: string,
+    written?: boolean,
+  ): void {
     const dated = this.datedMtimes.get(hash)
     this.datedMtimes.delete(hash)
-    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated)
+    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated, written)
   }
 
   /**

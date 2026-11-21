@@ -338,8 +338,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     }
     // The files the task just wrote are the entry's bytes: stamp them,
     // so the next hit can tell them from another entry's with the same
-    // size and mtime (item 886).
-    cache.memo.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot)
+    // size and mtime (item 886). A kept entry names the last save's mtimes:
+    // stamped as written, a dependant's save does not take them for a move.
+    cache.memo.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot, kept)
     // The directory snapshot behind the next hit's skip-restore, taken at
     // run end from the run's list: the task wrote these directories
     // milliseconds ago, inside the snapshot's racy window, so a snapshot

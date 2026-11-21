@@ -307,9 +307,15 @@ export interface TaskMemo {
   /**
    * Stamp `hash`'s output rows with each file's inode and ctime once the tree
    * equals the entry (optional: without it `isOutputsCurrent` trusts no row and
-   * every hit restores). Skips a file that no longer matches.
+   * every hit restores). Skips a file that no longer matches. `written`: a
+   * `--force` run wrote the tree and kept the entry; stamped for this run only.
    */
-  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  recordOutputStamps?(
+    hash: string,
+    projectDir: string,
+    workspaceRoot: string,
+    written?: boolean,
+  ): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   /**
