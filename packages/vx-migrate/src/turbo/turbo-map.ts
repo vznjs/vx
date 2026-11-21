@@ -1342,6 +1342,12 @@ export async function mapTurboWorkspace(
   }
   const emittedAnywhere = new Set<string>()
   for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
+  const metaByName = new Map(metas.map((m) => [m.name, m]))
+  // Whether turbo.json (the root's, or the package's own) defines `task` for `pkg`.
+  const turboDefines = (pkg: string, task: string): boolean => {
+    const m = metaByName.get(pkg)
+    return m !== undefined && definitions(m).defined.has(task)
+  }
 
   // A live mapping infers as Turbo does: the prefix joins each task's env
   // list, where the task's own `!` entries can take names back.
@@ -1490,6 +1496,7 @@ export async function mapTurboWorkspace(
               defFor,
               emitted,
               emittedAnywhere,
+              turboDefines,
               globals,
               opts,
               relPosix(root, meta.dir),
@@ -1523,6 +1530,7 @@ export async function mapTurboWorkspace(
           defFor,
           emitted,
           emittedAnywhere,
+          turboDefines,
           globals,
           opts,
           relPosix(root, meta.dir),
@@ -1583,6 +1591,7 @@ export async function mapTurboWorkspace(
         defFor,
         emitted,
         emittedAnywhere,
+        turboDefines,
         globals,
         opts,
         relPosix(root, meta.dir),
@@ -2053,6 +2062,7 @@ function buildTask(
   defFor: (name: string) => TurboTask | undefined,
   emitted: ReadonlyMap<string, ReadonlySet<string>>,
   emittedAnywhere: ReadonlySet<string>,
+  turboDefines: (pkg: string, task: string) => boolean,
   globals: TurboMapping['globals'],
   opts: MapTurboOptions,
   pkgDir: string,
@@ -2173,6 +2183,13 @@ function buildTask(
         else if (d.startsWith(`${ROOT}#`))
           todos.push(
             `dependsOn ${JSON.stringify(d)}: turbo.json defines no "${d}" task — edge dropped`,
+          )
+        // Turbo refuses a `pkg#task` turbo.json defines no `task` for, whatever
+        // the package's scripts hold; saying "no script" there sent users to
+        // a package.json that had it.
+        else if (!turboDefines(pkg, task))
+          todos.push(
+            `dependsOn ${JSON.stringify(d)}: turbo.json defines no "${task}" task, which Turbo refuses — edge dropped`,
           )
         else
           todos.push(
