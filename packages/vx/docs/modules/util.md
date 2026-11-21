@@ -1656,6 +1656,22 @@ export function envFlagOn(v: string | undefined): boolean
 Every reader of `CI` asks this one, so a run cannot be CI to one part of
 vx and a laptop to another.
 
+### util/out-pace
+
+```ts
+// Record what a write() to vx's own stdout or stderr returned.
+export function noteWrite(stream: object, accepted: unknown): void
+// A stream still draining after a refused write, or undefined.
+export function outputPaced(): Promise<void> | undefined
+```
+
+The output writer notes every write; `streamToString` waits on
+`outputPaced()` before it reads a task's next chunk. So a slow reader of
+vx (`vx run … | slow-tool`) holds the task back, as a direct pipe would,
+instead of costing vx the backlog in memory: 128 MiB read slowly cost
++260 MiB before. A stream that closes or fails releases its readers.
+`tests/out-pace.test.ts`, `tests/memory-ceiling-output.unsafe.test.ts`.
+
 ## `src/util/which.ts` — a tool's absolute path, found once
 
 ### Purpose

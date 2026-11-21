@@ -7,7 +7,18 @@
 // output floods before (output-memory.unsafe.test.ts, item 925).
 
 import { beforeAll, describe, expect, it } from 'bun:test'
-import { floor, linux, MIB, run, task, text, TIMEOUT, workspace } from './helpers/memory-ceiling.js'
+import {
+  floor,
+  linux,
+  MIB,
+  peakMib,
+  run,
+  spawnVx,
+  task,
+  text,
+  TIMEOUT,
+  workspace,
+} from './helpers/memory-ceiling.js'
 
 let base = 0
 beforeAll(async () => {
@@ -23,6 +34,22 @@ describe.skipIf(!linux)('vx peak memory under task output', () => {
       const { peak, out } = await run(root, ['a#out', '--no-cache'])
       expect(out).toContain('success')
       expect(peak - base).toBeLessThan(128)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a reader slower than the task holds vx back, not its memory',
+    async () => {
+      // vx's stdout read from 2 s in, 1 MiB per 20 ms at most. Bun queues what
+      // a full pipe refuses: 128 MiB measured +260 MiB before out-pace.ts.
+      const root = await workspace({ a: task(text(128 * MIB)) })
+      const s = spawnVx(
+        root,
+        ['run', 'a#out', '--no-cache'],
+        'sleep 2; while c=$(dd bs=64k count=16 iflag=fullblock status=none | wc -c); [ "$c" -gt 0 ]; do sleep 0.02; done',
+      )
+      expect((await peakMib(s)) - base).toBeLessThan(96)
     },
     TIMEOUT,
   )
