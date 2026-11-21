@@ -2129,7 +2129,8 @@ with the hash of the file and of each other file they read (a
 `bun.lock` patch), minified as the config lock is, since only vx reads
 it. Commit it too: a run keys each task from those digests and never
 parses the lockfile, so after an install, run `vx lock`; a run whose
-lockfile changed since refuses (`VX_E_LOCK`), and so does one with no
+lockfile changed since refuses (`VX_E_LOCK`), `--affected` too when the
+change moves no project (an install adding a package not yet locked), and so does one with no
 dependencies lock while a plugin claims a lockfile that is there. An
 edit in a `link:` or `file:` directory the lockfile names needs no
 `vx lock`: the plugin digests anew, and `vx lock --check` accepts it.
@@ -2206,7 +2207,7 @@ earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
 the root); two projects of one name are refused naming both
-directories. The plugin `discover` stage runs here and nowhere else, and may
+directories, every such clash at once. The plugin `discover` stage runs here and nowhere else, and may
 add directories (X-143); one holding a config git ignores is refused, as
 is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
 gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
@@ -2218,7 +2219,9 @@ checks, `dependencies` (which projects a project may depend on,
 `VX_E_DEPENDENCY_RULE`) among them, and refuses a task glob whose
 bracket class spells a path that exists (`app/[id]/**` beside the
 directory `app/[id]`; write `app/\[id\]/**`): a broken one prints `✗ vx lock  lock not written`
-with the rule's refusal under it and writes nothing.
+with the rule's refusal under it and writes nothing. Each refusal is
+named in one lock: every config that does not load, and every task
+whose `dependsOn` is broken or loops (a cycle once).
 A lock or review copy that is a symlink, or whose directory resolves
 outside the workspace (a `.vx` linked out of it), is refused the same
 way, before anything is written.
@@ -2343,7 +2346,7 @@ or one that is not valid JSON, is a problem the audit names (a
 `problems` entry under `--format json`, not a refusal) and asks for `vx lock`. Every config that does
 not load is named, as `vx lock` names them: each with its line and frame,
 and root-relative under `--format json`. It also checks the graph rules over the configs as they
-evaluate now, and that each `vx.lock.json` is what its project resolves to
+evaluate now (each broken `dependsOn` named, root-relative), and that each `vx.lock.json` is what its project resolves to
 here, and that none is left where a `vx.config` was deleted, the
 directory still a project or not (delete that one yourself: vx never
 deletes a committed file; `vx lock` names it too, as a warning; one

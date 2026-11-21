@@ -638,56 +638,25 @@ export async function mapNxWorkspace(
     }
     return reach(name)
   }
-  // The nodes vx's own `^name` from a package reaches: each nearest
-  // manifest dependency declaring `name`, through those that do not.
-  const holdersMemo = new Map<string, ReadonlySet<string>>()
-  const vxHolders = (pkg: string, name: string): ReadonlySet<string> => {
-    const key = `${pkg}\0${name}`
-    let r = holdersMemo.get(key)
-    if (r !== undefined) return r
-    const out = new Set<string>()
-    const seen = new Set<string>([pkg])
-    const stack = [...packageGraph().directDeps(pkg)]
-    while (stack.length > 0) {
-      const p = stack.pop()!
-      if (seen.has(p)) continue
-      seen.add(p)
-      if (emittedIds.has(`${p}#${name}`)) out.add(p)
-      else stack.push(...packageGraph().directDeps(p))
-    }
-    holdersMemo.set(key, (r = out))
-    return r
-  }
   const projects: GeneratedProject[] = []
   for (const { meta, tasks } of mapped) {
     const nodeName = nodeNameOf.get(meta)
     for (const t of tasks) {
       const c = configured.get(t)
-      const names = caretNames(t.task)
       if (nodeName !== undefined && c !== undefined)
-        passConfiguration(t.task, nodeName, c, names, nxEdges, metaByNode, emittedIds, taskNameFor)
+        passConfiguration(t.task, nodeName, c, nxEdges, metaByNode, emittedIds, taskNameFor)
       if (nodeName !== undefined) {
         narrowToNxGraph(
           t.task,
           nodeName,
           meta.name,
           nxClosure,
-          names,
           nxEdges,
           metaByNode,
           emittedIds,
           (p) => packageGraph().directDeps(p),
         )
-        followNxGraph(
-          t.task,
-          nodeName,
-          meta.name,
-          names,
-          nxEdges,
-          metaByNode,
-          emittedIds,
-          vxHolders,
-        )
+        followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
       }
       dropUnheldDeps(t, meta.name, emitted, emittedIds)
       const reader = dependentReaders.get(t)
@@ -696,7 +665,7 @@ export async function mapNxWorkspace(
         !reachesProducer(t, meta.name, emittedIds, reached, (target) =>
           nodeName === undefined
             ? undefined
-            : nxEdges(nodeName, target, names).map((n) => metaByNode.get(n)?.name),
+            : nxEdges(nodeName, target).map((n) => metaByNode.get(n)?.name),
         )
       ) {
         uncache(t.task!)
@@ -1710,53 +1679,29 @@ function nxDirectDeps(
  * e2e projects → their apps) ordered nothing and folded nothing: an
  * app's source edit left its e2e `typecheck` a hit. It was reported
  * "not representable"; it is an explicit `pkg#target` edge.
- *
- * `names` is every `^` name of the task. Nx walks through a dependency
- * lacking any one of them with ALL of them (its dummy task replays the
- * task's whole `dependsOn`): `["^build", "^test"]` through a `b` with
- * `test` but no `build` also waits on `c:test` below it, which vx's
- * nearest-holder `^test` stops short of.
  */
 function nxDependencyTargets(
   nodeMap: Readonly<Record<string, NxNode>>,
   direct: ReadonlyMap<string, readonly string[]>,
-): NxEdges {
-  const memo = new Map<string, ReadonlyMap<string, readonly string[]>>()
-  return (from, target, names) => {
-    const all = names.includes(target) ? names : [...names, target]
-    const key = `${from}\0${all.join('\0')}`
-    let byName = memo.get(key)
-    if (byName === undefined) {
-      const out = new Map<string, string[]>(all.map((n) => [n, []]))
-      const seen = new Set<string>([from])
-      const stack = [...(direct.get(from) ?? [])].reverse()
-      while (stack.length > 0) {
-        const n = stack.pop()!
-        if (seen.has(n)) continue
-        seen.add(n)
-        const targets = nodeMap[n]?.data?.targets ?? {}
-        let lacks = false
-        for (const name of all) {
-          if (Object.hasOwn(targets, name)) out.get(name)!.push(n)
-          else lacks = true
-        }
-        if (lacks) stack.push(...[...(direct.get(n) ?? [])].reverse())
-      }
-      memo.set(key, (byName = out))
+): (from: string, target: string) => readonly string[] {
+  const memo = new Map<string, readonly string[]>()
+  return (from, target) => {
+    const key = `${from}\0${target}`
+    const known = memo.get(key)
+    if (known !== undefined) return known
+    const out: string[] = []
+    const seen = new Set<string>([from])
+    const stack = [...(direct.get(from) ?? [])].reverse()
+    while (stack.length > 0) {
+      const n = stack.pop()!
+      if (seen.has(n)) continue
+      seen.add(n)
+      if (Object.hasOwn(nodeMap[n]?.data?.targets ?? {}, target)) out.push(n)
+      else stack.push(...[...(direct.get(n) ?? [])].reverse())
     }
-    return byName.get(target)!
+    memo.set(key, out)
+    return out
   }
-}
-
-type NxEdges = (from: string, target: string, names: readonly string[]) => readonly string[]
-
-/** The `^` names of a task's `dependsOn`: what Nx's walk through a dependency replays. */
-function caretNames(task: Record<string, unknown> | null): string[] {
-  const deps = task?.['dependsOn']
-  if (!Array.isArray(deps)) return []
-  return deps.flatMap((d) =>
-    typeof d === 'string' && d.startsWith('^') && !d.includes('*') ? [d.slice(1)] : [],
-  )
 }
 
 /**
@@ -1772,8 +1717,7 @@ function passConfiguration(
   task: Record<string, unknown> | null,
   nodeName: string,
   configuration: string,
-  names: readonly string[],
-  nxEdges: NxEdges,
+  nxEdges: (from: string, target: string) => readonly string[],
   metaByNode: ReadonlyMap<string, PackageMeta>,
   emittedIds: ReadonlySet<string>,
   taskNameFor: TaskNameFor,
@@ -1787,7 +1731,7 @@ function passConfiguration(
       continue
     }
     const name = d.slice(1)
-    const nodes = nxEdges(nodeName, name, names)
+    const nodes = nxEdges(nodeName, name)
     if (!nodes.some((n) => taskNameFor(n, name, configuration) !== null)) {
       out.push(d)
       continue
@@ -1813,8 +1757,7 @@ function narrowToNxGraph(
   nodeName: string,
   pkgName: string,
   nxClosure: (node: string) => ReadonlySet<string>,
-  names: readonly string[],
-  nxEdges: NxEdges,
+  nxEdges: (from: string, target: string) => readonly string[],
   metaByNode: ReadonlyMap<string, PackageMeta>,
   emittedIds: ReadonlySet<string>,
   directDeps: (pkg: string) => readonly string[],
@@ -1839,7 +1782,7 @@ function narrowToNxGraph(
       continue
     }
     const name = d.slice(1)
-    for (const n of nxEdges(nodeName, name, names)) {
+    for (const n of nxEdges(nodeName, name)) {
       const m = metaByNode.get(n)
       if (m === undefined) continue
       const id = `${m.name}#${name}`
@@ -1851,25 +1794,24 @@ function narrowToNxGraph(
   else delete task['dependsOn']
 }
 
-/** Each `^name` of `task` gains the explicit edges Nx's graph draws for it and vx's `^name` does not. */
+/** Each `^name` of `task` gains the explicit edges Nx's graph draws for it and vx's `^` does not. */
 function followNxGraph(
   task: Record<string, unknown> | null,
   nodeName: string,
   pkgName: string,
-  names: readonly string[],
-  nxEdges: NxEdges,
+  nxEdges: (from: string, target: string) => readonly string[],
   metaByNode: ReadonlyMap<string, PackageMeta>,
   emittedIds: ReadonlySet<string>,
-  vxHolders: (pkg: string, name: string) => ReadonlySet<string>,
+  reached: (name: string) => ReadonlySet<string>,
 ): void {
   const deps = task?.['dependsOn']
   if (!Array.isArray(deps)) return
   for (const d of [...deps]) {
     if (typeof d !== 'string' || !d.startsWith('^')) continue
     const name = d.slice(1)
-    for (const n of nxEdges(nodeName, name, names)) {
+    for (const n of nxEdges(nodeName, name)) {
       const m = metaByNode.get(n)
-      if (m === undefined || vxHolders(pkgName, name).has(m.name)) continue
+      if (m === undefined || reached(pkgName).has(m.name)) continue
       const id = `${m.name}#${name}`
       if (emittedIds.has(id) && !deps.includes(id)) deps.push(id)
     }

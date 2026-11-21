@@ -133,6 +133,21 @@ describe('nx-map: what the sweep found unheld', () => {
     )
   })
 
+  // One-to-one: outputs that only take paths back are no outputs in vx; the task stays cached.
+  it('outputs of negations alone keep the task cached, with no todo', async () => {
+    const a = await meta('a', { build: 'tsc' })
+    const t = await tasksOf([a], {
+      a: node('packages/a', {
+        build: { command: 'tsc', cache: true, outputs: ['!{projectRoot}/lib'] },
+      }),
+    })
+    const task = t.get('a#build')!
+    expect(task.task?.cache).toBe(true)
+    expect(
+      task.todos.filter((x) => x.includes('negation') || x.includes('take paths back')),
+    ).toEqual([])
+  })
+
   // Nx 23.2.1's project schema has both; each was dropped in silence.
   it('`parallelism: false` is a todo; its default says nothing', async () => {
     const a = await meta('a')

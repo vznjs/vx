@@ -15,6 +15,7 @@ import {
   splitNegations,
   staticPrefix,
   taskGlob,
+  isUserError,
   refusal,
   UserError,
   wholeIgnored,
@@ -277,6 +278,11 @@ export interface BuildGraphOptions {
    * `outputs.workspaceFiles` glob covering one is refused (`refuseConfigOutputs`).
    */
   projectConfigs?: ReadonlyArray<{ name: string; configPath: string }>
+  /**
+   * Given at a refused `vx lock`: each `dependsOn` entry's refusal is pushed
+   * here and the entry skipped, so a task's every bad entry is named.
+   */
+  refusals?: UserError[]
 }
 
 /**
@@ -371,7 +377,7 @@ interface Frame {
 }
 
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode> {
-  const { projects, packageGraph, requested, undeclaredDeps } = options
+  const { projects, packageGraph, requested, undeclaredDeps, refusals } = options
   const nodes = new Map<string, TaskNode>()
 
   // An explicit stack, not recursion per edge: a chain ~20,000 deep overflowed
@@ -704,7 +710,15 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         frame.added = false
         frame.pending = null
         frame.next = 0
-        resolveEntry(frame, entries[frame.entry++]!)
+        const entry = entries[frame.entry++]!
+        if (refusals === undefined) resolveEntry(frame, entry)
+        else
+          try {
+            resolveEntry(frame, entry)
+          } catch (err) {
+            if (!isUserError(err)) throw err
+            refusals.push(err)
+          }
         continue
       }
       // Sorted for deterministic scheduling and keys, and deduped: a target

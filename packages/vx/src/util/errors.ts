@@ -26,6 +26,17 @@ export class UserError extends Error {
   }
 }
 
+/**
+ * Several refusals at once (configs that do not load, names that clash, a broken graph): the first is the error and `all` names
+ * each, or a rename after an upgrade took one run per config.
+ */
+export class ConfigsRefused extends UserError {
+  constructor(readonly all: readonly UserError[]) {
+    super(all[0]!.message, all[0]!.code)
+    if (all[0]!.parts !== undefined) this.parts = all[0]!.parts
+  }
+}
+
 /** A refusal in parts, as `ui.notice` draws it: one fact a line, why, and the fix. */
 export interface RefusalParts {
   /** `info`: nothing is wrong, there is just nothing to show yet. Default `error`. */

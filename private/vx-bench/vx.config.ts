@@ -92,8 +92,9 @@ export default defineProject({
     // The site's head-to-head (2026-10-29: no figure on the site is typed by
     // hand). One task per runner, each writing its rows to site/<runner>.json,
     // which @vzn/vx-docs#bench.data gathers into the site's bench.json. vx's is
-    // keyed on its source through install's ^build, a rival's on the
-    // harness and the pins in package.json. One runner at a time on a
+    // keyed on its source through install's ^build. A rival's is never
+    // cached: it runs the rival at npm latest, installed right before the
+    // run (site-workspace.ts, 2026-11-21), which no key sees. One runner at a time on a
     // machine of its own: only CI's Bench job (bench.yml) runs them, with
     // `--concurrency 1 --force`, so all four time the same CPU, and no build
     // depends on them, so a DTE worker, packed beside other tasks, never does.
@@ -129,7 +130,7 @@ export default defineProject({
             files: [...HARNESS, ...(runner === 'vx' ? ['edges.ts'] : [])],
           },
           outputs: { files: [`site/${runner}.json`] },
-          cache: true,
+          cache: runner === 'vx',
         },
       ]),
     ),
@@ -209,6 +210,8 @@ export default defineProject({
           allow: {
             read: ['**/*'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            // site-workspace.test.ts installs the rivals at npm latest.
+            network: ['registry.npmjs.org'],
           },
         },
       },

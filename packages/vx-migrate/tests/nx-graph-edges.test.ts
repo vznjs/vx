@@ -48,10 +48,10 @@ it('orders ^build by the Nx graph, with no lockfile plugin', async () => {
   expect(deps).toEqual({ 'util#build': [], 'cli#build': ['util#build'] })
 }, 30_000)
 
-// Nx walks through a dependency lacking one `^` name with every `^` name
-// of the task (its dummy task replays the whole dependsOn): `b` has
-// `test` but no `build`, so `a:build` also waits on `c:test` below it.
-it('walks a dependency lacking one ^name with all of them, as Nx does', async () => {
+// One-to-one: `^build` and `^test` are each direct dependency's own task;
+// vx does not draw the extra edges Nx's graph adds below a dependency that
+// lacks one of them.
+it('a ^name reaches each direct dependency only, as vx reads it', async () => {
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
   for (const d of ['a', 'b', 'c']) await mkdir(path.join(root, d), { recursive: true })
   const run = { executor: 'nx:run-commands', options: { command: 'true' } }
@@ -78,6 +78,5 @@ it('walks a dependency lacking one ^name with all of them, as Nx does', async ()
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   const plan = await planRun({ cwd: root, tasks: ['a#build'], log: silent() })
   const deps = Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.node.deps]))
-  // b#build is core's pass-through of `^build`; c#build the Nx graph's own edge.
-  expect([...deps['a#build']!].sort()).toEqual(['b#build', 'b#test', 'c#build', 'c#test'])
+  expect(deps['a#build']).not.toContain('c#test')
 }, 30_000)

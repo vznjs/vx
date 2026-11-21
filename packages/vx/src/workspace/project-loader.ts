@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { isUserError, UserError, xxh3hex } from '../util/index.js'
+import { ConfigsRefused, isUserError, UserError, xxh3hex } from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 import {
@@ -636,17 +636,6 @@ function sharedModuleRefused(
   return new UserError(
     `${configPath ?? 'a project config'} changed ${what} of ${shared.file} while it was evaluated, and another project config imports that module: configs share one evaluation of it, so what they read from it depended on which loaded first; build a config's own value (\`[...list, x]\`, \`{ ...preset }\`) instead of changing a shared one`,
   )
-}
-
-/**
- * Several configs refused in one load: the first is the error and `all` names
- * each, or a rename after an upgrade took one run per config.
- */
-export class ConfigsRefused extends UserError {
-  constructor(readonly all: readonly UserError[]) {
-    super(all[0]!.message, all[0]!.code)
-    if (all[0]!.parts !== undefined) this.parts = all[0]!.parts
-  }
 }
 
 /**
