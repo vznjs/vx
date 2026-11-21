@@ -886,7 +886,11 @@ async function scripts(
         : [
             `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
           ]
-  const installed = await prepareRepo(root, [...new Set(plugins.map((p) => p.pkg))], args)
+  const installed = await prepareRepo(
+    root,
+    ['@vzn/vx', ...new Set(plugins.map((p) => p.pkg))],
+    args,
+  )
   const code = await applyMigration({
     root,
     metas: migrationMembers(metas, plan),

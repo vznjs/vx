@@ -317,6 +317,8 @@ const SERVER_TOOLS = new Set([
   'react-native',
 ])
 const SERVER_VERBS = new Set(['dev', 'serve', 'start', 'preview'])
+/** vite's verbs that exit. */
+const VITE_EXITS = new Set(['build', 'optimize'])
 const LAUNCHERS = new Set(['cross-env', 'npx', 'bunx', 'exec', 'dlx'])
 
 /**
@@ -349,7 +351,14 @@ function servesCommand(command: string): boolean {
     if (program === undefined) continue
     if (SERVERS.has(program)) return true
     if (SERVER_TOOLS.has(program) && verb !== undefined && SERVER_VERBS.has(verb)) return true
-    if (program === 'vite' && (verb === undefined || verb.startsWith('-'))) return true
+    // Bare `vite` serves; options may come before the verb, and an option's
+    // value is no verb: vite's playground runs `vite --config x.js build`.
+    if (
+      program === 'vite' &&
+      (verb === undefined ||
+        (verb.startsWith('-') && !words.slice(i + 1).some((w) => VITE_EXITS.has(w))))
+    )
+      return true
   }
   return false
 }
