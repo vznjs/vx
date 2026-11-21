@@ -101,6 +101,7 @@ import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
 import { commandWriteReach, prepareSandbox } from '../sandbox/index.js'
 import {
   recordOutputDirSnapshots,
+  snapshotWhileRunning,
   type OutputDirSnapshot,
   type SaveFacts,
   withSaveFacts,
@@ -857,9 +858,12 @@ async function runOnBus(
   let live: ReturnType<typeof serveLive> | undefined
   let unfold = (): void => {}
   let cacheClosed = false
+  // Stops the snapshots the run takes while it goes; every exit, before the close.
+  let stopSnapshots: (() => Promise<unknown>) | undefined
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
+    await stopSnapshots?.()
     await prepared.localCache.stopCheckpoints()
     cache.close()
     live?.unlisten()
@@ -977,6 +981,8 @@ async function runOnBus(
     const keyed = keyedProjects(nodes, prepared.keyOnly)
     const readable = readableDeps(nodes, prepared.keyOnly)
     const outputDirSnapshots: OutputDirSnapshot[] = []
+    const snapshotsLeft = snapshotWhileRunning(cache, outputDirSnapshots)
+    stopSnapshots = snapshotsLeft
     // Saves run off the execution slot, at twice the cap (each pack holds an
     // artifact's bytes). A failed save is said once, with its task (the work
     // ran); a full disk fails every save after, named once the graph ends.
@@ -1971,7 +1977,7 @@ async function runOnBus(
     // Each plugin's teardown, crash-isolated and time-bounded, after the drains
     // above; other exits reach it through `teardown`. Output-directory
     // snapshots first (miss-save.ts).
-    await step('vx:snapshots', () => recordOutputDirSnapshots(cache, outputDirSnapshots))
+    await step('vx:snapshots', async () => recordOutputDirSnapshots(cache, await snapshotsLeft()))
     mark('output dir snapshots')
     // A plugin hears the run until its teardown and nothing after, or its
     // handlers heard a kept server through the whole wait. Idempotent.
