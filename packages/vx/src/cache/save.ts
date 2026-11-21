@@ -36,7 +36,14 @@ import {
   type TaskInputRow,
 } from './layer.js'
 import { WORKSPACE_OUTPUT_PREFIX, DIR_MODE, LINK_MODE } from '../memo/index.js'
-import { bytesOf, decodedTar, STREAM_DECODE_FROM, zstdCompress, zstdEncoder } from './zstd.js'
+import {
+  bytesOf,
+  decodedTar,
+  STREAM_DECODE_FROM,
+  zstdCompress,
+  zstdContentSize,
+  zstdEncoder,
+} from './zstd.js'
 import { WalCheckpointer } from './checkpointer.js'
 import { declaredName, treePlan, usageOfEntry } from './restore.js'
 import {
@@ -282,7 +289,12 @@ export async function pinArtifact(
   hash: string,
 ): Promise<{ body: Blob; release: () => Promise<void> }> {
   const blob = guard(ix, () => ix.selectBlob.get(hash) as { bytes: Uint8Array } | null)
-  if (blob !== null) return { body: new Blob([blob.bytes]), release: async () => {} }
+  if (blob !== null) {
+    // A ceiling set below the inline bound (32 KiB) holds here too.
+    const size = zstdContentSize(blob.bytes)
+    if (size !== null && size > BigInt(ix.artifactCeiling)) throw pastCeiling(ix, Number(size))
+    return { body: new Blob([blob.bytes]), release: async () => {} }
+  }
   const pinned = tempPath(ix, hash)
   try {
     linkSync(tarPath(ix, hash), pinned)
@@ -296,12 +308,7 @@ export async function pinArtifact(
     // A tree is packed into the artifact a remote expects here, in the
     // upload queue, off the save; a small one in memory.
     const plan = treePlan(ix, hash, tree, ix.outputs.rowsOf(hash))
-    if (plan.size > ix.artifactCeiling) {
-      throw new Error(
-        `not sent to a remote: its outputs pack to ${formatBytes(plan.size)}, past the ` +
-          `${formatBytes(ix.artifactCeiling)} cache.artifactCeiling a remote hit enforces; this machine keeps it`,
-      )
-    }
+    if (plan.size > ix.artifactCeiling) throw pastCeiling(ix, plan.size)
     if (plan.size <= STREAM_DECODE_FROM) {
       const bytes = await zstdCompress(await packArtifactBytes(plan))
       return { body: new Blob([bytes]), release: async () => {} }
@@ -315,6 +322,13 @@ export async function pinArtifact(
     })
   }
   return { body: Bun.file(pinned), release: () => unlink(pinned).catch(() => undefined) }
+}
+
+function pastCeiling(ix: StoreIndex, size: number): Error {
+  return new Error(
+    `not sent to a remote: its outputs pack to ${formatBytes(size)}, past the ` +
+      `${formatBytes(ix.artifactCeiling)} cache.artifactCeiling a remote hit enforces; this machine keeps it`,
+  )
 }
 
 export async function ingest(
