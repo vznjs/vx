@@ -707,7 +707,8 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    before — and a reader in the same process flushes them first. A
    save's or restore's snapshot is taken once the directories are past
    the racy window: while the run goes, two seconds after the save or
-   restore and once the entry's rows are in (the run-end walks of 8,002
+   restore, held to the rows the process stamped then, so no statement
+   makes a run's work depend on its length (the run-end walks of 8,002
    tasks held a cold run's exit ~40 ms), else at run end. A tree a
    dependant's glob adds to waits for the end, so its walk sees those
    files. By then a later task or another process may have written into

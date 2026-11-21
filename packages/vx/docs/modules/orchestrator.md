@@ -1080,13 +1080,13 @@ export function entryHolds(
 export async function recordOutputDirSnapshots(
   cache: CacheLayer,
   snapshots: readonly OutputDirSnapshot[],
-  unsaved?: OutputDirSnapshot[], // takes the snapshots whose entry has no rows yet, instead of refusing them
-): Promise<void> // every entry's rows in one batch read, then the walks, 32 at a time
+  unread?: OutputDirSnapshot[], // takes the snapshots this process stamped no rows for, instead of reading them
+): Promise<void> // the stamped rows, else one batch read; then the walks, 32 at a time
 export function snapshotWhileRunning(
   cache: CacheLayer,
   snapshots: readonly OutputDirSnapshot[],
   tickMs?: number, // 1,000
-): () => Promise<OutputDirSnapshot[]> // walks each snapshot two ticks after it was queued; stop hands back the rest for run end
+): () => Promise<OutputDirSnapshot[]> // walks each stamped snapshot two ticks after it was queued, with no statement; stop hands back the rest for run end
 
 export interface SaveMissArgs {
   node: TaskNode

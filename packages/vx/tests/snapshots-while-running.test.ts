@@ -1,25 +1,34 @@
 // A long run takes its output-directory snapshots while it goes, once each
 // is two ticks old, so its end walks only the last seconds' trees: the run-
-// end walks of 8,002 tasks held a cold run's exit ~40 ms. A snapshot whose
-// save has not landed waits for a later tick; one a dependant's glob adds to
-// waits for the end.
+// end walks of 8,002 tasks held a cold run's exit ~40 ms. Only snapshots
+// whose rows the process stamped are taken then, with no statement, so a
+// run's statements do not depend on how long it took; the rest, and a tree
+// a dependant's glob adds to, wait for the end.
 
 import { expect, it } from 'bun:test'
 import type { CacheLayer } from '../src/cache/index.js'
-import { type OutputDirSnapshot, snapshotWhileRunning } from '../src/orchestrator/miss-save.js'
+import {
+  type OutputDirSnapshot,
+  recordOutputDirSnapshots,
+  snapshotWhileRunning,
+} from '../src/orchestrator/miss-save.js'
 
-function fakeCache(saved: Set<string>) {
+function fakeCache(stamped: Set<string>) {
   const walked: string[] = []
+  const reads: string[][] = []
   const cache = {
     memo: {
-      loadOutputFilesBatch: (hashes: readonly string[]) =>
-        new Map(hashes.filter((h) => saved.has(h)).map((h) => [h, [{ path: 'dist/a.js' }]])),
+      stampedRowsOf: (h: string) => (stamped.has(h) ? [{ path: 'dist/a.js' }] : undefined),
+      loadOutputFilesBatch: (hashes: readonly string[]) => {
+        reads.push([...hashes])
+        return new Map(hashes.map((h) => [h, [{ path: 'dist/a.js' }]]))
+      },
       recordOutputDirs: async (hash: string) => {
         walked.push(hash)
       },
     },
   } as unknown as CacheLayer
-  return { cache, walked }
+  return { cache, walked, reads }
 }
 
 const snap = (hash: string, atEnd = false): OutputDirSnapshot => ({
@@ -40,9 +49,8 @@ async function until(done: () => boolean): Promise<void> {
 
 const TICK = 20
 
-it('walks a snapshot once it is two ticks old, holding back the added-to and retrying the unsaved', async () => {
-  const saved = new Set(['a', 'b'])
-  const { cache, walked } = fakeCache(saved)
+it('walks a stamped snapshot once it is two ticks old, leaving the rest for the end', async () => {
+  const { cache, walked, reads } = fakeCache(new Set(['a', 'b', 'e']))
   const list: OutputDirSnapshot[] = []
   const stop = snapshotWhileRunning(cache, list, TICK)
   const pushed = Date.now()
@@ -50,34 +58,17 @@ it('walks a snapshot once it is two ticks old, holding back the added-to and ret
   await until(() => walked.length > 0)
   // Two whole ticks at least (a timer may fire a millisecond early).
   expect(Date.now() - pushed).toBeGreaterThanOrEqual(2 * TICK - 5)
-  // `b` waits for the end; `c`'s save has not landed.
-  expect(walked).toEqual(['a'])
-  // Its save lands with nothing new pushed: a later tick takes it.
-  saved.add('c')
-  await until(() => walked.length > 1)
-  expect(walked).toEqual(['a', 'c'])
+  await Bun.sleep(3 * TICK)
+  // `b` waits for the end; `c` holds no stamped rows, and is not read.
+  expect([walked, reads]).toEqual([['a'], []])
   list.push(snap('e'))
   const left = await stop()
-  expect(left.map((s) => s.hash)).toEqual(['b', 'e'])
+  expect(left.map((s) => s.hash)).toEqual(['b', 'c', 'e'])
   // Stopped: nothing more is walked.
   list.push(snap('f'))
   await Bun.sleep(5 * TICK)
-  expect(walked).toEqual(['a', 'c'])
-})
-
-it('hands back the unsaved for the run-end pass', async () => {
-  const saved = new Set<string>()
-  const { cache, walked } = fakeCache(saved)
-  let asked = 0
-  const memo = cache.memo as unknown as { loadOutputFilesBatch: (h: readonly string[]) => unknown }
-  const load = memo.loadOutputFilesBatch
-  memo.loadOutputFilesBatch = (h) => {
-    asked++
-    return load(h)
-  }
-  const list: OutputDirSnapshot[] = [snap('x')]
-  const stop = snapshotWhileRunning(cache, list, TICK)
-  await until(() => asked > 0)
-  expect(walked).toEqual([])
-  expect((await stop()).map((s) => s.hash)).toEqual(['x'])
+  expect(walked).toEqual(['a'])
+  // The run-end pass reads only the unstamped.
+  await recordOutputDirSnapshots(cache, left)
+  expect([walked.toSorted(), reads]).toEqual([['a', 'b', 'c', 'e'], [['c']]])
 })
