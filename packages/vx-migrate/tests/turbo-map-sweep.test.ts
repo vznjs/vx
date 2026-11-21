@@ -770,6 +770,21 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(t.task!['cache']).toBeUndefined()
   })
 
+  // Turbo 2.11 refuses `^biuld` / `gen` when turbo.json defines no such
+  // task; dropped without a word, the typo left `build` unordered and its
+  // key blind to its dependencies' edits.
+  it.each(['^biuld', 'gen'])('a dependsOn %s naming no turbo.json task says so', async (d) => {
+    const m = await map(
+      { tasks: { build: { dependsOn: [d] } } },
+      { a: { scripts: { build: 'b', gen: 'g' } } },
+    )
+    const a = m.projects[0]!.tasks[0]!
+    expect(a.task!['dependsOn']).toBeUndefined()
+    expect(a.todos).toEqual([
+      `dependsOn ${JSON.stringify(d)}: turbo.json defines no "${d.replace('^', '')}" task, which Turbo refuses — edge dropped`,
+    ])
+  })
+
   // Turbo refuses `b#gen` when turbo.json defines no `gen` task, script or
   // not; "b declares no gen script" pointed at a script that is there.
   it.each([
