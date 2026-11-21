@@ -18,26 +18,26 @@ import { lockKey } from './lockfile.js'
 import { type LoadReads, readOnce } from './load-reads.js'
 
 export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
-const DEPENDENCIES_LOCK_VERSION = 4
+const DEPENDENCIES_LOCK_VERSION = 5
 
 // Flat: each directory once, everything else an index into `projects`, so
-// a parse builds few strings and a lookup is an array read. Edges are one
-// number array per field, only the projects that have any: most have none,
-// and against an array per project it parses 1.2-1.6x faster.
+// a parse builds few strings and a lookup is an array read. A project's
+// edges ride on its own row, and an empty list at a row's end is left
+// out: most projects have no reach and many no deps.
 export interface DependenciesLock {
   version: number
-  /** Project directories (root-relative POSIX, `.` for the root), sorted. */
-  projects: string[]
-  /** The projects each builds after, as `Edges`; absent when none has any. */
-  deps?: Edges
-  /** The projects each reaches for selection only, as `Edges`; absent when none has any. */
-  reach?: Edges
+  /** Per project, sorted by directory: its directory (root-relative POSIX, `.` for the root), then `ProjectRow`'s edges. */
+  projects: ProjectRow[]
   /** Claimed file → its bytes' xxh3, each project's digest by index ('' when none), and each other file read → its hash. */
   files: Record<string, LockedFile>
 }
 
-/** `project, count, ...targets` runs, projects ascending, counts ≥ 1, targets sorted: every one an index into `projects`. */
-type Edges = number[]
+/**
+ * `[dir, deps?, reach?]`: the indexes of the projects it builds after, then
+ * of those it reaches for selection only, each sorted; a trailing empty list
+ * is left out, so deps stays `[]` only before a reach.
+ */
+type ProjectRow = [dir: string, deps?: number[], reach?: number[]]
 
 interface LockedFile {
   hash: string
@@ -60,28 +60,28 @@ export function dependenciesLock(
   >,
 ): DependenciesLock {
   const dirOf = new Map(metas.map((m) => [m.name, lockKey(root, m.dir)]))
-  const projects = [...new Set(dirOf.values())].sort(cmp)
-  const at = new Map(projects.map((d, i) => [d, i]))
+  const dirs = [...new Set(dirOf.values())].sort(cmp)
+  const at = new Map(dirs.map((d, i) => [d, i]))
   const byDir = new Map(metas.map((m) => [dirOf.get(m.name)!, m]))
-  const edges = (field: 'deps' | 'reach'): Edges | undefined => {
-    const out: Edges = []
-    for (let i = 0; i < projects.length; i++) {
-      const names = byDir.get(projects[i]!)![field]
-      if (names === undefined || names.length === 0) continue
-      const to = new Set<number>()
-      for (const n of names) {
-        const j = at.get(dirOf.get(n) ?? '')
-        if (j !== undefined) to.add(j)
-      }
-      if (to.size === 0) continue
-      out.push(i, to.size, ...[...to].sort((a, b) => a - b))
+  const indexes = (names: readonly string[] | undefined): number[] => {
+    if (names === undefined || names.length === 0) return []
+    const to = new Set<number>()
+    for (const n of names) {
+      const j = at.get(dirOf.get(n) ?? '')
+      if (j !== undefined) to.add(j)
     }
-    return out.length === 0 ? undefined : out
+    return [...to].sort((a, b) => a - b)
   }
+  const projects = dirs.map((dir): ProjectRow => {
+    const meta = byDir.get(dir)!
+    const deps = indexes(meta.deps)
+    const reach = indexes(meta.reach)
+    return reach.length > 0 ? [dir, deps, reach] : deps.length > 0 ? [dir, deps] : [dir]
+  })
   const out: DependenciesLock['files'] = {}
   for (const file of [...files.keys()].sort(cmp)) {
     const { hash, projects: byName, extras } = files.get(file)!
-    const digests = projects.map(() => '')
+    const digests = dirs.map(() => '')
     for (const [name, digest] of Object.entries(byName)) {
       const i = at.get(dirOf.get(name) ?? '')
       if (i !== undefined) digests[i] = digest
@@ -92,15 +92,7 @@ export function dependenciesLock(
         ? { hash, digests }
         : { hash, digests, extras: Object.fromEntries(rels.map((r) => [r, extras![r]!])) }
   }
-  const deps = edges('deps')
-  const reach = edges('reach')
-  return {
-    version: DEPENDENCIES_LOCK_VERSION,
-    projects,
-    ...(deps !== undefined ? { deps } : {}),
-    ...(reach !== undefined ? { reach } : {}),
-    files: out,
-  }
+  return { version: DEPENDENCIES_LOCK_VERSION, projects, files: out }
 }
 
 /** Minified, as the config lock: only vx reads it, and minified JSON parses faster. */
@@ -153,10 +145,15 @@ export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLoc
 // entry is checked: one bad entry read on would throw a raw TypeError at
 // its first lookup instead of the "invalid, run `vx lock`" refusal.
 function wellFormed(lock: Partial<DependenciesLock>): boolean {
-  const { projects, deps, reach, files } = lock
-  if (!Array.isArray(projects) || !projects.every((d) => typeof d === 'string')) return false
+  const { projects, files } = lock
+  if (!Array.isArray(projects) || !isRecord(files)) return false
   const n = projects.length
-  if (!edgesFit(deps, n) || !edgesFit(reach, n) || !isRecord(files)) return false
+  for (const row of projects as unknown[]) {
+    if (!Array.isArray(row) || row.length < 1 || row.length > 3 || typeof row[0] !== 'string')
+      return false
+    if (row.length > 1 && !indexesFit(row[1], n)) return false
+    if (row.length > 2 && !indexesFit(row[2], n)) return false
+  }
   return Object.values(files).every(
     (rec: unknown) =>
       isRecord(rec) &&
@@ -170,28 +167,9 @@ function wellFormed(lock: Partial<DependenciesLock>): boolean {
   )
 }
 
-function edgesFit(v: unknown, n: number): boolean {
-  if (v === undefined) return true
+function indexesFit(v: unknown, n: number): boolean {
   if (!Array.isArray(v)) return false
-  const index = (i: unknown): boolean =>
-    Number.isInteger(i) && (i as number) >= 0 && (i as number) < n
-  let last = -1
-  for (let p = 0; p < v.length;) {
-    const from: unknown = v[p]
-    const count: unknown = v[p + 1]
-    if (
-      !index(from) ||
-      (from as number) <= last ||
-      !Number.isInteger(count) ||
-      (count as number) < 1
-    )
-      return false
-    last = from as number
-    p += 2
-    const end = p + (count as number)
-    if (end > v.length) return false
-    for (; p < end; p++) if (!index(v[p])) return false
-  }
+  for (const i of v) if (!Number.isInteger(i) || i < 0 || i >= n) return false
   return true
 }
 
@@ -201,18 +179,12 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 /** The project directories whose edges reach `dir`. */
 export function dependantsOf(lock: DependenciesLock, dir: string): string[] {
-  const i = lock.projects.indexOf(dir)
+  const i = lock.projects.findIndex((row) => row[0] === dir)
   if (i < 0) return []
-  const by = new Set<number>()
-  for (const edges of [lock.deps, lock.reach]) {
-    if (edges === undefined) continue
-    for (let p = 0; p < edges.length;) {
-      const from = edges[p]!
-      const end = p + 2 + edges[p + 1]!
-      for (p += 2; p < end; p++) if (edges[p] === i) by.add(from)
-    }
-  }
-  return lock.projects.filter((_, j) => by.has(j))
+  const out: string[] = []
+  for (const [d, deps, reach] of lock.projects)
+    if (deps?.includes(i) === true || reach?.includes(i) === true) out.push(d)
+  return out
 }
 
 /** `file`'s recorded hashes and each project directory's digest (undefined when none). */
@@ -229,7 +201,7 @@ export function recordedDigests(
   | undefined {
   const rec = Object.hasOwn(lock.files, file) ? lock.files[file] : undefined
   if (rec === undefined) return undefined
-  const at = new Map(lock.projects.map((d, i) => [d, i]))
+  const at = new Map(lock.projects.map((row, i) => [row[0], i]))
   return {
     hash: rec.hash,
     extras: rec.extras ?? {},

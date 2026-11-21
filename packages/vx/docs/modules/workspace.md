@@ -2024,12 +2024,11 @@ any refusal that comes first.
 ```ts
 export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
 export interface DependenciesLock {
-  version: number // 4
-  projects: string[] // directories, sorted; every other list indexes this one
-  // only the projects with edges, as `project, count, ...targets` runs
-  // (projects ascending, targets sorted); absent when no project has any
-  deps?: number[] // the projects each builds after
-  reach?: number[] // the projects each reaches for selection only
+  version: number // 5
+  // per project, sorted by directory: [dir, deps?, reach?], each list the
+  // sorted indexes (into this list) of the projects it builds after / reaches
+  // for selection only; a trailing empty list is left out
+  projects: [dir: string, deps?: number[], reach?: number[]][]
   // claimed file → its bytes' xxh3, each project's digest ('' none), and each
   // other file the digests read → its hash (absent when none)
   files: Record<string, { hash: string; digests: string[]; extras?: Record<string, string> }>
@@ -2071,11 +2070,12 @@ patch, a `file:` directory). A run keys from those digests and never
 parses the file (`orchestrator/locked-digests.ts`, below). Flat: each directory once, in a sorted
 `projects` list, and every edge and digest an index into it (a third
 the size of keying each by its directory, and a quarter of the parse
-and lookup time at 2,000 projects). `deps` and `reach` are one number
-array each, listing only the projects that have edges: most have none,
-and it parses 1.2 to 1.5x faster than an array per project (21 projects:
-2.9 to 2.0 µs; 2,000: 465 to 353 µs sparse, 616 to 526 µs dense; the
-write is no slower). Every list is sorted, so the same
+and lookup time at 2,000 projects). Each project's edges ride on its own
+row, a trailing empty list left out: most projects have no reach and
+many no deps, and against a list of every project's `deps` and `reach`
+it parses 1.1 to 1.2x faster (21 projects: 3.1 to 2.6 µs; 2,000: 509 to
+460 µs sparse, 656 to 574 µs dense; the write is no slower). Every list
+is sorted, so the same
 workspace writes the same bytes. `--affected` reads the base commit's
 copy (`git show`): a deleted project's dependants are the projects
 whose edges hold its index, and a changed claimed file

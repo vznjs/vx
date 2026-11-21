@@ -1,9 +1,8 @@
 // `.vx/dependencies.lock.json` is flat: each directory once, sorted, every
 // edge and digest an index into that list, so the same workspace writes
-// the same bytes and a parse builds few strings. `deps` and `reach` list
-// only the projects with edges, as `project, count, ...targets` runs, and
-// are left out when no project has any: most entries are empty, and one
-// flat number array parses faster than an array per project.
+// the same bytes and a parse builds few strings. Each project is one row,
+// `[dir, deps?, reach?]`, with a trailing empty list left out: most
+// projects have no reach and many no deps.
 
 import { expect, it } from 'bun:test'
 import {
@@ -34,19 +33,24 @@ const files = new Map([['bun.lock', { hash: 'h1', projects: { web: 'dw', ui: 'du
 
 it('writes each directory once, sorted, and every edge and digest as a sorted index', () => {
   expect(dependenciesLock(root, metas, files)).toEqual({
-    version: 4,
-    projects: ['apps/docs', 'apps/web', 'packages/core', 'packages/ui'],
-    deps: [1, 2, 2, 3, 3, 1, 2],
-    reach: [0, 1, 3],
+    version: 5,
+    projects: [
+      ['apps/docs', [], [3]],
+      ['apps/web', [2, 3]],
+      ['packages/core'],
+      ['packages/ui', [2]],
+    ],
     files: { 'bun.lock': { hash: 'h1', digests: ['', 'dw', 'dc', 'du'] } },
   })
 })
 
-it('leaves out a field no project has an edge in', () => {
-  const lock = dependenciesLock(root, [meta('a', 'a'), meta('b', 'b', ['a'])], new Map())
-  expect(lock).toEqual({ version: 4, projects: ['a', 'b'], deps: [1, 1, 0], files: {} })
-  const none = dependenciesLock(root, [meta('a', 'a')], new Map())
-  expect(none).toEqual({ version: 4, projects: ['a'], files: {} })
+it("leaves out a row's trailing empty edge lists", () => {
+  const lock = dependenciesLock(
+    root,
+    [meta('a', 'a', [], []), meta('b', 'b', ['a'], [])],
+    new Map(),
+  )
+  expect(JSON.stringify(lock)).toBe('{"version":5,"projects":[["a"],["b",[0]]],"files":{}}')
   const read = parseDependenciesLock(new TextEncoder().encode(JSON.stringify(lock)))!
   expect([dependantsOf(read, 'a'), dependantsOf(read, 'b')]).toEqual([['b'], []])
 })
@@ -98,7 +102,7 @@ it('reads nothing from a missing file, another version or another shape', () => 
     parseDependenciesLock(enc({ version: 2, projects: [], deps: [], reach: [], files: {} })),
   ).toBeNull()
   expect(
-    parseDependenciesLock(enc({ version: 3, projects: ['a'], deps: [[]], reach: [[]], files: {} })),
+    parseDependenciesLock(enc({ version: 4, projects: ['a'], deps: [0, 1, 0], files: {} })),
   ).toBeNull()
   expect(parseDependenciesLock(new TextEncoder().encode('{'))).toBeNull()
 })
@@ -106,7 +110,7 @@ it('reads nothing from a missing file, another version or another shape', () => 
 it('refuses a lock a newer vx wrote: re-locking would write the older version over it', () => {
   const bytes = new TextEncoder().encode(JSON.stringify({ version: 99 }))
   expect(() => parseDependenciesLock(bytes)).toThrow(
-    '.vx/dependencies.lock.json was written by a newer vx (version 99; this vx reads 4) — upgrade vx',
+    '.vx/dependencies.lock.json was written by a newer vx (version 99; this vx reads 5) — upgrade vx',
   )
 })
 
@@ -116,21 +120,21 @@ it('refuses a lock a newer vx wrote: re-locking would write the older version ov
 // "invalid, run `vx lock`" refusal.
 it('reads nothing from a lock whose entries are not this shape', () => {
   const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v))
-  const good = { version: 4, projects: ['a', 'b', 'c'], deps: [1, 1, 0, 2, 2, 0, 1], files: {} }
+  const good = { version: 5, projects: [['a'], ['b', [0]], ['c', [], [0, 1]]], files: {} }
   expect(parseDependenciesLock(enc(good))).not.toBeNull()
   const rec = { hash: 'h', digests: ['', 'd', ''] }
   for (const bad of [
-    { projects: ['a', 5] },
-    { deps: [[], [0]] },
-    { deps: {} },
-    { deps: [1, 1, '0'] },
-    { deps: [1, 1, 3] },
-    { deps: [3, 1, 0] },
-    { deps: [1, 0] },
-    { deps: [1, 2, 0] },
-    { deps: [2, 1, 0, 1, 1, 0] },
-    { deps: [1, 1.5, 0] },
-    { reach: [null] },
+    { projects: ['a', 'b', 'c'] },
+    { projects: [['a'], ['b', [0]], [5]] },
+    { projects: [['a'], ['b', [0]], []] },
+    { projects: [['a'], ['b', 0], ['c']] },
+    { projects: [['a'], ['b', ['0']], ['c']] },
+    { projects: [['a'], ['b', [3]], ['c']] },
+    { projects: [['a'], ['b', [-1]], ['c']] },
+    { projects: [['a'], ['b', [0.5]], ['c']] },
+    { projects: [['a'], ['b'], ['c', [], null]] },
+    { projects: [['a'], ['b'], ['c', [], [], []]] },
+    { projects: {} },
     { files: [] },
     { files: { 'bun.lock': null } },
     { files: { 'bun.lock': { ...rec, hash: 5 } } },
