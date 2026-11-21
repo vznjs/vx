@@ -397,6 +397,7 @@ const startCommands = [
   <script>
     import { burnAt, burnClip, lapAt, lapsLabel, racing, step } from '../components/landing/race.ts'
     import { DRIFT_REST_MS, drift } from '../components/landing/drift.ts'
+    import { COUNT_MS, countAt } from '../components/landing/count.ts'
 
     // Bands play once as they come near: the count runs up, the columns
     // rise, the race starts. Everything already shows at rest; the play
@@ -406,9 +407,8 @@ const startCommands = [
         const to = Number(el.dataset['to'])
         const t0 = performance.now()
         const tick = (now: number): void => {
-          const t = Math.min(1, (now - t0) / 1800)
-          el.textContent = String(Math.round(to * (1 - (1 - t) ** 4)))
-          if (t < 1) requestAnimationFrame(tick)
+          el.textContent = String(countAt(to, now - t0))
+          if (now - t0 < COUNT_MS) requestAnimationFrame(tick)
         }
         requestAnimationFrame(tick)
       }
