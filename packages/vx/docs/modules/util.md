@@ -1374,7 +1374,7 @@ plugin's `telemetry()` consultation before the run too (item 921).
 ```ts
 timerSettingMs(variable, defaultMs): number       // the variable, else .vx/workspace's, else defaultMs
 setWorkspaceTimers(values): void                  // .vx/workspace's timers, by variable (settings.ts)
-teardownTimeoutMs(): number                       // run.pluginTimeout, default 3000
+teardownTimeoutMs(): number                       // default 3000, run.pluginTimeout
 settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // run.killGrace, else defaultMs
 POST_EXIT_DRAIN_MS                                // 250: the drain after a shell exits

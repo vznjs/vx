@@ -348,6 +348,7 @@ export function setting(path: string): Setting
 export function kindHint(kind: SettingKind): string
 export function atPath(config: unknown, path: string): unknown
 export function runRules(workspace: unknown): { exclusiveOutputs?: boolean }
+export function applyWorkspaceTimers(workspace: unknown): void // run timers → util/settle.ts, once per workspace load
 export function envName(path: string): string
 export function parseSettingValue(kind: SettingKind, raw: unknown): unknown
 export function settingRefusal(path: string, where: string, raw: unknown, got?: string): string

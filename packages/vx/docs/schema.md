@@ -2420,6 +2420,16 @@ interface RunSettings {
   timeout?: Duration
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'
+  /** SIGTERM to SIGKILL, for a task, server or plugin process. Omitted → '2s'. */
+  killGrace?: Duration
+  /** One plugin's end-of-run flush or teardown; '0ms' waits for nothing. Omitted → '3s'. */
+  pluginTimeout?: Duration
+  /** Output read after a task's shell exits. Omitted → '250ms'. */
+  drainGrace?: Duration
+  /** One stream waiting on the other's open line. Omitted → '50ms'. */
+  lineWait?: Duration
+  /** A persistent task's wait on readyWhen before vx says so. Omitted → '10s'. */
+  readyNotice?: Duration
   /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; dependencies?: DependencyRule[] }
 }
