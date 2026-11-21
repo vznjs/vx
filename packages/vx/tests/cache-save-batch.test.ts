@@ -121,7 +121,7 @@ describe('saves in one turn', () => {
       await expect(save(cache, 1, true)).rejects.toThrow('refused')
       expect(savepoints.n).toBe(0)
       expect(await cache.get('h1')).toBeNull()
-      expect(db.prepare("SELECT count(*) AS n FROM entries WHERE hash = 'h1'").get()).toEqual({
+      expect(db.query("SELECT count(*) AS n FROM entries WHERE hash = 'h1'").get()).toEqual({
         n: 0,
       })
       expect(existsSync(cache.outputsPath('h1'))).toBe(false)
