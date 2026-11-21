@@ -57,7 +57,7 @@ import {
 import { relPosix } from './paths.js'
 import { REMOTE_CACHE, remoteCacheNote } from './remote-cache.js'
 import { migrateNx, NX_GRAPH_REL, nxWorkspaceFields } from './migrate-nx.js'
-import { exportGraph, nxBin } from './nx/export-graph.js'
+import { exportGraph, hasNx } from './nx/export-graph.js'
 import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
@@ -308,7 +308,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       // a temp file.
       // A fresh clone: the export's own reason names the plugin's `graph`
       // option, which the CLI does not take.
-      if (nxBin(root) === undefined) {
+      if (!hasNx(root)) {
         throw new UserError(
           `nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — ` +
             `run \`${packageManagerOf(root, process.env['npm_config_user_agent'])} install\`, then vx-migrate again`,

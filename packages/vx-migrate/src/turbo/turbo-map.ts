@@ -300,6 +300,11 @@ export interface MapTurboOptions {
    * relative to the package (`tscBuildInfo`). Absent, none.
    */
   buildInfo?: (rel: string, command: string) => readonly string[]
+  /**
+   * The buildinfo and outDir a root-relative package's own tsconfig.json
+   * keeps, relative to the package (`ownBuildInfo`). Absent, none.
+   */
+  ownBuildInfo?: (rel: string) => { info: string; outDir: string } | null
 }
 
 /**
@@ -2417,9 +2422,24 @@ function buildTask(
   // tsc re-emits only what its buildinfo calls changed: outside the
   // outputs it survives the clean before a miss, and the miss caches a
   // partial `dist/` (`tsc-buildinfo.ts`).
-  if (outFiles.some((g) => !g.startsWith('!')))
+  if (outFiles.some((g) => !g.startsWith('!'))) {
     for (const rel of opts.buildInfo?.(pkgDir, command) ?? [])
       if (!covers(outFiles, rel)) outFiles.push(literalGlob(rel))
+    // A tsc this task runs unseen (a wrapper script) is named, not guessed.
+    const own = opts.ownBuildInfo?.(pkgDir)
+    // An output names a directory too: `dist` holds `dist/x`.
+    const deep = [...outFiles, ...outFiles.map((g) => `${g}/**`)]
+    if (
+      own != null &&
+      !covers(deep, own.info) &&
+      (covers(deep, own.outDir) || covers(deep, `${own.outDir}/index.js`))
+    )
+      todos.push(
+        `tsconfig.json keeps tsc's buildinfo at ${own.info}, outside the outputs, and emits into ${own.outDir}, an output: ` +
+          'vx empties the outputs before a miss, so a tsc this task runs emits only what its buildinfo calls changed — ' +
+          `if it runs tsc, add "${own.info}" to the outputs`,
+      )
+  }
   // An output over the project's own package.json (trpc's builds list it:
   // tsdown rewrites `exports`) is taken back and keeps the cache, as nx() does.
   // The build rewrites an input the key folds, so its identical rewrite counts

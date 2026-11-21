@@ -44,6 +44,9 @@ const GUARDS: Record<string, string> = {
   // A core older than vx-migrate may have no `ui` (bunx keeps the installed
   // one): the release refusal is written bare there, through `ui` otherwise.
   'vx-migrate/src/bin.ts': 'refuses a core with no ui',
+  // The Node script that exports a Lerna repo's Nx graph prints its failure
+  // to its own stderr, which vx reads into the reason it names.
+  'vx-migrate/src/nx/export-graph.ts': "a child script's error, read back by vx",
 }
 
 async function sources(): Promise<string[]> {

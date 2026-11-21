@@ -262,6 +262,41 @@ interface Outputs {
   workspaceFiles?: unknown
 }
 
+/** The tasks of `project` whose `dependsOn` reaches `writer` within it. */
+function runsAfter<
+  T extends { readonly name: string; readonly task: Record<string, unknown> | null },
+>(project: { readonly name: string; readonly tasks: readonly T[] }, writer: T): Set<T> {
+  const byName = new Map(project.tasks.map((t) => [t.name, t]))
+  const deps = (t: T): T[] => {
+    const raw = t.task?.['dependsOn']
+    if (!Array.isArray(raw)) return []
+    const out: T[] = []
+    for (const d of raw) {
+      if (typeof d !== 'string' || d.startsWith('^')) continue
+      const name = d.startsWith(`${project.name}#`) ? d.slice(project.name.length + 1) : d
+      const hit = name.includes('#') ? undefined : byName.get(name)
+      if (hit !== undefined) out.push(hit)
+    }
+    return out
+  }
+  const after = new Set<T>()
+  for (const t of project.tasks) {
+    const seen = new Set<T>()
+    const stack = deps(t)
+    while (stack.length > 0) {
+      const d = stack.pop()!
+      if (d === writer) {
+        after.add(t)
+        break
+      }
+      if (seen.has(d)) continue
+      seen.add(d)
+      stack.push(...deps(d))
+    }
+  }
+  return after
+}
+
 /**
  * Fit a mapped task's outputs to the committed files they cover, in place, and
  * return one `[pkg#task, todo]` per task this leaves uncached. Core never
@@ -284,11 +319,25 @@ export function spareTrackedOutputs(
   const { isKeyedGroup, unkey } = require('./shared-outputs.js') as typeof SharedOutputs
   const todos: [string, string][] = []
   const trackedSet = new Set(tracked)
-  /** Drop the `!` entries readers carry for a committed file no output names any more. */
-  const unhide = (owner: (typeof projects)[number] | null, rooted: string) => {
+  /**
+   * Drop the `!` entries readers carry for a committed file no output names
+   * any more — only where the reader runs after the writer: core refuses a
+   * key that reads another task's output it does not depend on (tamagui's
+   * `clean` beside `build`'s committed `tamagui.generated.css`: `vx lock`
+   * refused the whole workspace). A `^` edge is not followed: which packages
+   * it reaches is not known here, and keeping the `!` is the safe side.
+   */
+  const unhide = (
+    owner: (typeof projects)[number],
+    writer: (typeof owner.tasks)[number],
+    rooted: string,
+  ) => {
+    const after = runsAfter(owner, writer)
     for (const q of projects) {
+      if (q !== owner) continue
       const qrel = relPosix(root, q.dir)
       for (const r of q.tasks) {
+        if (r !== writer && !after.has(r)) continue
         const inputs = r.task?.['inputs'] as Outputs | undefined
         if (inputs === undefined) continue
         const own =
@@ -325,8 +374,7 @@ export function spareTrackedOutputs(
         // that rewrites the file never saved.
         const rootedOf = (g: string) => (key === 'files' && rel !== '' ? `${rel}/${g}` : g)
         for (const g of strings)
-          if (isLiteralPattern(g) && trackedSet.has(rootedOf(g)))
-            unhide(key === 'files' ? p : null, rootedOf(g))
+          if (isLiteralPattern(g) && trackedSet.has(rootedOf(g))) unhide(p, t, rootedOf(g))
         const hit = coveredTracked(strings, base)
         if (hit.length > 0) hits.push([key, hit])
       }

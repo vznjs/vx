@@ -97,8 +97,12 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
     task: { exec: { command: 'b' }, inputs } as Record<string, unknown>,
   })
   // hono/middleware: lint declared the committed `eslint-suppressions.json`,
-  // and every build and typecheck beside it ran uncached.
-  it('keeps the entry, drops the `!` readers got for it; readers stay cached', () => {
+  // and every build and typecheck beside it ran uncached. A reader that runs
+  // after lint reads it in its key; one that does not keeps the `!` and runs
+  // uncached: core refuses a key reading an output of a task it does not
+  // depend on (tamagui's clean beside build's `tamagui.generated.css`:
+  // `vx lock` refused the whole workspace).
+  it('keeps the entry; a reader after the writer reads it, any other keeps the `!`', () => {
     const lint = {
       name: 'lint',
       task: {
@@ -108,33 +112,53 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
         cache: true,
       } as Record<string, unknown>,
     }
+    const check = {
+      name: 'check',
+      task: {
+        exec: { command: 'c' },
+        dependsOn: ['typecheck'],
+        inputs: { files: ['**/*', '!eslint-suppressions.json'] },
+      } as Record<string, unknown>,
+    }
+    const typecheck = {
+      name: 'typecheck',
+      task: {
+        exec: { command: 't' },
+        dependsOn: ['a#lint', '^build'],
+        inputs: { files: ['**/*', '!eslint-suppressions.json', '!dist/**'] },
+      } as Record<string, unknown>,
+    }
     const build = reader({ files: ['**/*', '!eslint-suppressions.json', '!dist/**'] })
     const rootReader = reader({
       files: ['src/**'],
       workspaceFiles: ['packages/a/**', '!packages/a/eslint-suppressions.json'],
     })
     // CONTROL: another project's own file of that name stays taken back.
-    const other = reader({ files: ['**/*', '!eslint-suppressions.json'] })
+    const other = { ...reader({ files: ['**/*', '!eslint-suppressions.json'] }), name: 'other' }
     const todos = spareTrackedOutputs(
       '/w',
       [
-        { name: 'a', dir: '/w/packages/a', tasks: [lint, build] },
+        { name: 'a', dir: '/w/packages/a', tasks: [lint, check, typecheck, build] },
         { name: 'b', dir: '/w/packages/b', tasks: [rootReader, other] },
       ],
       ['packages/a/eslint-suppressions.json', 'packages/a/src/index.ts'],
     )
     expect([
       lint.task['outputs'],
+      check.task['inputs'],
+      typecheck.task['inputs'],
       build.task['inputs'],
       rootReader.task['inputs'],
       other.task['inputs'],
-      todos,
+      todos.map(([id]) => id),
     ]).toEqual([
       { files: ['.cache/.eslintcache', 'eslint-suppressions.json'] },
+      { files: ['**/*'] },
       { files: ['**/*', '!dist/**'] },
-      { files: ['src/**'], workspaceFiles: ['packages/a/**'] },
+      undefined,
+      undefined,
       { files: ['**/*', '!eslint-suppressions.json'] },
-      [],
+      ['a#build', 'b#build'],
     ])
   })
 })
