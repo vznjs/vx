@@ -73,6 +73,7 @@ src/exec/index.ts
 src/exec/kill-tree.ts
 src/exec/pipes.ts
 src/exec/proc-sample.ts
+src/exec/read-off.ts
 src/exec/runner.ts
 src/exec/spawn-off.ts
 src/exec/warm-shell.ts
