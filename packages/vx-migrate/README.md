@@ -295,8 +295,10 @@ package's `package.json` scripts become its `vx.config.ts`, plus a
 `.vx/workspace.ts` that declares the `@vzn/vx-lockfile` plugin for the lockfile at
 the root (`bun()`, `pnpm()`, `npm()` or `yarn()`; with none yet, the
 one its install writes; `{ plugins: [] }` under `--no-install`): package edges (`^build`, `--affected`) come from it.
-With no plugin declared there are none: a lone package's tasks get no `^` edge,
-and a workspace's report names the install and the plugin `^build` needs.
+With no plugin declared there are none: a workspace's report names the install
+and the plugin `^build` needs. A lone package's tasks get no `^` edge whatever
+the workspace file declares (`vx init`'s, written first, names no plugin):
+there is no other package to build first.
 vx runs and caches on this machine with no plugin, so it declares no executor or
 cache, and the file carries no comment (it is the user's). When
 `@vzn/vx-lockfile` is not installed, it installs it with that manager,
