@@ -359,6 +359,14 @@ function collapseDots(glob: string): string {
   return path.posix.normalize(glob)
 }
 
+/** `""`, `.` or `./`, the package directory itself, as `all`; any other glob as is. */
+function selfDir(glob: string, all: string): string {
+  return glob === '.' || glob === './' ? all : glob
+}
+
+/** Outputs Turbo reads as every file in the package (checked on turbo 2.11.10). */
+const WHOLE_PACKAGE = new Set(['.', './', '**', '**/*', '**/**'])
+
 /** A glob, `!` or not, and the X its `X/**` also matches in Turbo (`zeroSegments`). */
 function withZeroSegments(glob: string): string[] {
   const neg = glob.startsWith('!') ? '!' : ''
@@ -2263,7 +2271,7 @@ function buildTask(
         if (!neg) files.push('**/*')
         continue
       }
-      const wax = collapseDots(vx)
+      const wax = selfDir(collapseDots(vx), '**/*')
       const translated = (neg ? '!' : '') + wax
       const body = wax
       const up = climbed(translated)
@@ -2389,10 +2397,13 @@ function buildTask(
     // `!.next/cache/**` saved the cache and cleaned it before every run while
     // vx outputs could not exclude.
     const neg = mapped.startsWith('!') ? '!' : ''
-    const o = collapseDots(mapped.slice(neg.length))
-    // Turbo joins it to the package directory and collects files: `""` or
-    // `"."` collects none, while core refuses one naming the project itself.
-    if (o === '.' || o === './') continue
+    // Turbo reads `""`, `"."`, `"./"`, `**` and `**/*` as the whole package
+    // and caches every file in it (graphql-hive's `check:build` writes
+    // `[""]`). Core refuses `.`, and `**` beside the default `**/*` inputs as
+    // the task's own sources; `*/**`, with the `*` its zero segments add,
+    // names the same files, which core cleans only where git tracks none.
+    const clean = collapseDots(mapped.slice(neg.length))
+    const o = WHOLE_PACKAGE.has(clean) ? '*/**' : clean
     const signed = (g: string) => {
       const head = zeroSegments(g)
       const out = head === null ? [neg + g] : [neg + g, neg + head]
