@@ -437,6 +437,7 @@ export async function resolveFilters(
           untracked,
         ),
       fingerprintClaims: async () => workspaceFingerprintClaims(root, await discovering, load),
+      ...(verb === 'show' ? {} : { lockedClaims: true as const }),
       untracked: async () => (await enumeration())?.untracked ?? null,
       links: async () => {
         const g = await enumeration()

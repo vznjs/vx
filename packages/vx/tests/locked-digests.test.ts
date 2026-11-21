@@ -19,6 +19,7 @@ import { CORE_INDEX, localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
+const CLI = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const LOCK = '.vx/dependencies.lock.json'
 const g = globalThis as { __vxParses?: number; __vxNoParse?: boolean }
 let root: string
@@ -112,6 +113,43 @@ it(
     g.__vxNoParse = false
     await lock(root)
     expect(await part()).toBe('a2')
+  },
+  TIMEOUT,
+)
+
+// An install that adds a member no project is yet (a new package before
+// `vx lock`) moves no project's digest: --affected said "nothing affected"
+// and exited 0, where any run that keys refuses.
+it(
+  '--affected refuses a claimed file changed since `vx lock`, even when it moves no project',
+  async () => {
+    await lock(root)
+    const git = (...args: string[]) =>
+      Bun.spawnSync({
+        cmd: [
+          'git',
+          '-c',
+          'commit.gpgsign=false',
+          '-c',
+          'user.email=t@vx',
+          '-c',
+          'user.name=t',
+          ...args,
+        ],
+        cwd: root,
+      })
+    git('add', '-A')
+    git('commit', '-qm', 'init')
+    await claimed('packages/a=a1\npackages/z=z1\nextra:patches/p.patch\n')
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, CLI, 'run', 'build', '--affected=HEAD'],
+      cwd: root,
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+    })
+    expect(new TextDecoder().decode(r.stderr)).toContain(
+      'deps.lock changed since `vx lock`: run `vx lock`',
+    )
+    expect(r.exitCode).not.toBe(0)
   },
   TIMEOUT,
 )
