@@ -198,7 +198,10 @@ held to its start; at the exit, `end` lets everything go; and an
   thread that was ~5 GB of garbage a cold run of the site's 9,600 tasks,
   and the full collections it drove paused the scheduler. With the reads
   moved, a cold run of that shape took 0.35-0.64 s less and 2.5 s less
-  of vx's own CPU. Each chunk crosses as its bytes, transferred.
+  of vx's own CPU. Each chunk crosses as its bytes, transferred. The
+  thread reads only on credit, at most 16 chunks ahead of the consumer,
+  so a task writing faster than vx logs waits on its pipe instead of
+  filling vx's memory.
 - **Spare shell:** on Linux, a task's shell is started before the task
   is asked for (`warm-shell.ts`), so the slot that frees does not wait
   for sh to exec: 200 `sleep 0.02` took 4.4 ms each past their sleep
