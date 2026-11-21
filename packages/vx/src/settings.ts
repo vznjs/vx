@@ -461,7 +461,8 @@ export function settingRefusal(
     // `'0s'` looks like the examples the generic refusal gives.
     const negative = typeof raw === 'string' && raw.startsWith('-') && parseDuration(raw.slice(1))
     if ((ms === 0 && kind.zero !== true) || (negative !== false && negative !== null)) {
-      const none = kind.timer === true ? ' — omit it for no limit' : ''
+      // Only an omitted run.timeout is no limit; the others fall to a default.
+      const none = path === 'run.timeout' ? ' — omit it for no limit' : ''
       return `${where} must be more than 0${none} (got ${got})`
     }
     if (kind.timer === true && ms !== null && ms > MAX_TIMEOUT_MS) {

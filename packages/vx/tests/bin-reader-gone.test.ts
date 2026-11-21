@@ -21,6 +21,7 @@ const CONFIG = `
   export default {
     tasks: {
       first: { exec: { command: 'true' } },
+      loud: { exec: { command: 'seq 1 300000' } },
       second: {
         exec: { command: 'sleep 1.5 && mkdir -p dist && echo hi > dist/out.txt' },
         inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
@@ -30,19 +31,20 @@ const CONFIG = `
 `
 
 /** `set -o pipefail; vx … | head -1`: the pipeline's code is vx's own. */
-async function vxIntoHead(cwd: string): Promise<{ code: number; err: string }> {
+async function vxIntoHead(
+  cwd: string,
+  args = ['first', 'second', '--all'],
+): Promise<{ code: number; err: string }> {
   const proc = Bun.spawn(
     [
       'bash',
       '-c',
-      'set -o pipefail; "$@" | head -1 >/dev/null',
+      'set -o pipefail; timeout -s KILL 20 "$@" | head -1 >/dev/null',
       'sh',
       process.execPath,
       BIN,
       'run',
-      'first',
-      'second',
-      '--all',
+      ...args,
     ],
     { cwd, stdout: 'ignore', stderr: 'pipe', env: { ...process.env, NO_COLOR: '1' } },
   )
@@ -97,6 +99,16 @@ describe('bin.ts: a reader that leaves does not fail the run', () => {
   it('an error report into a reader already gone exits with its own code, without a stack', () => {
     const p = intoGone(['run', 'nosuchtask', '--all'], 2)
     expect([p.exitCode, p.stderr.toString()]).toEqual([1, ''])
+  }, 30_000)
+
+  // After the EPIPE every write is refused and the stream raises nothing
+  // more: a refused write held the reader of a task streaming live for good
+  // (out-pace.ts), and the run never ended.
+  it('a task still printing when the reader leaves ends with its verdict', async () => {
+    const t = performance.now()
+    const r = await vxIntoHead(root, ['app#loud'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect(performance.now() - t).toBeLessThan(15_000)
   }, 30_000)
 
   it('exits with its own verdict, without a stack, saves, and releases its lock', async () => {

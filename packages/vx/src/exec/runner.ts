@@ -676,6 +676,17 @@ export function lineEnds(
   }
 }
 
+/** What a task's readers took, counted for `drainOrAbort`. */
+export interface StreamTally {
+  chars: number
+}
+
+/**
+ * The text an exited task can still have in flight: its pipe (1 MiB at
+ * most, `pipe-max-size`) and the reader's credit window (read-off.ts).
+ */
+const PACED_DRAIN_CHARS = 8 * 1024 * 1024
+
 /**
  * After the child exits, wait for the readers' EOF, bounded: an orphaned
  * grandchild holding the pipe would hang the run. On expiry abort the readers
@@ -685,14 +696,19 @@ export function lineEnds(
  * cold run's saves held the scheduler past the bound while a heavy task's
  * last chunks waited, and it was cut as a leftover and went unsaved. Text
  * still coming is no reason to wait: a leftover that logs every 50 ms
- * kept the run forever. Unref'd, never cleared: a late resolve changes
- * nothing.
+ * kept the run forever. A bound that ends with vx's own stdout still
+ * draining (out-pace.ts holds the readers) is not judged either, until the
+ * readers took `PACED_DRAIN_CHARS` since the exit: `vx run … | slow-tool`
+ * cut an exited task's last lines and its save. Past that much, the text is
+ * a leftover's. Unref'd, never cleared: a late resolve changes nothing.
  */
 export async function drainOrAbort(
   streams: Promise<unknown>,
   ac: AbortController,
+  taken: StreamTally,
 ): Promise<boolean> {
   const bound = testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS)
+  const atExit = taken.chars
   const deadline = new Promise<'timeout'>((resolve) => {
     let armedAt = 0
     let stalls = 0
@@ -702,6 +718,7 @@ export async function drainOrAbort(
     }
     const due = (): void => {
       if (performance.now() - armedAt > bound * 1.5 && stalls++ < 5) return arm()
+      if (outputPaced() !== undefined && taken.chars - atExit < PACED_DRAIN_CHARS) return arm()
       resolve('timeout')
     }
     arm()
@@ -1231,9 +1248,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const ac = new AbortController()
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(opts.onStdout, opts.onStderr)
+  const taken: StreamTally = { chars: 0 }
   const streams = Promise.all([
-    streamToString(out, ends.onStdout, ac.signal, opts.capture?.stdout ?? true),
-    streamToString(err, ends.onStderr, ac.signal, opts.capture?.stderr ?? true),
+    streamToString(out, ends.onStdout, ac.signal, opts.capture?.stdout ?? true, taken),
+    streamToString(err, ends.onStderr, ac.signal, opts.capture?.stderr ?? true, taken),
   ]).finally(() => pipes.close())
   // Gate on the child's exit, not stream EOF: an orphaned grandchild (`server &
   // echo up`, or after a timeout) keeps the pipe open. A timeout aborts the
@@ -1247,7 +1265,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
-  else cut = await drainOrAbort(streams, ac)
+  else cut = await drainOrAbort(streams, ac, taken)
   const [stdout, streamed] = await streams
   ends.end()
   // A leftover of a task the run stopped is vx's doing, not the task's.
@@ -1529,6 +1547,7 @@ export async function streamToString(
   onChunk?: (s: string) => void,
   signal?: AbortSignal,
   retain = true,
+  taken?: StreamTally,
 ): Promise<string> {
   // Bun.spawn types stdout/stderr as `ReadableStream | number | undefined`;
   // a stream the child inherited (`terminal`) is not one, and holds nothing.
@@ -1546,6 +1565,7 @@ export async function streamToString(
       const { value, done } = await reader.read()
       if (done) break
       const chunk = decoder.decode(value, { stream: true })
+      if (taken !== undefined) taken.chars += chunk.length
       if (retain) full.push(chunk)
       onChunk?.(chunk)
       // The next chunk waits for vx's own stdout to take this one (out-pace.ts).

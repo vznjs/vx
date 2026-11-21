@@ -30,6 +30,35 @@ describe('out-pace', () => {
     })
   }
 
+  // Past an EPIPE, Bun refuses every write and raises nothing more.
+  for (const event of ['close', 'error', 'finish']) {
+    it(`a stream that raised ${event} paces nothing again`, async () => {
+      const s = new EventEmitter()
+      noteWrite(s, false)
+      s.emit(event, event === 'error' ? new Error('EPIPE') : undefined)
+      await outputPaced()
+      noteWrite(s, false)
+      expect(outputPaced()).toBeUndefined()
+    })
+  }
+
+  it('a stream already failed or destroyed paces nothing', () => {
+    noteWrite(Object.assign(new EventEmitter(), { errored: new Error('EPIPE') }), false)
+    noteWrite(Object.assign(new EventEmitter(), { destroyed: true }), false)
+    expect(outputPaced()).toBeUndefined()
+  })
+
+  it('a drained stream paces again', async () => {
+    const s = new EventEmitter()
+    noteWrite(s, false)
+    s.emit('drain')
+    await outputPaced()
+    noteWrite(s, false)
+    expect(outputPaced()).toBeDefined()
+    s.emit('drain')
+    await outputPaced()
+  })
+
   it('a stream with no events paces nothing', () => {
     noteWrite({}, false)
     expect(outputPaced()).toBeUndefined()
