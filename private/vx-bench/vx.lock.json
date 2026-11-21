@@ -156,7 +156,7 @@
           "site/turbo.json"
         ]
       },
-      "cache": true
+      "cache": false
     },
     "bench.nx": {
       "description": "compare.ts: nx on the 9,603-task head-to-head → site/nx.json",
@@ -193,7 +193,7 @@
           "site/nx.json"
         ]
       },
-      "cache": true
+      "cache": false
     },
     "bench.vite-task": {
       "description": "compare.ts: vite-task on the 9,603-task head-to-head → site/vite-task.json",
@@ -230,7 +230,7 @@
           "site/vite-task.json"
         ]
       },
-      "cache": true
+      "cache": false
     },
     "bench.real": {
       "description": "real/nightly.ts: real repos on native config vs their own tool → real-repos.json",
@@ -345,6 +345,9 @@
             "systemInfo": [
               "vfs.disk-space",
               "net.link.addr"
+            ],
+            "network": [
+              "registry.npmjs.org"
             ]
           }
         }

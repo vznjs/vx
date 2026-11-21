@@ -8,8 +8,8 @@
  *   bun private/vx-bench/compare.ts [reps=3]
  *   CONCURRENCY=10 COLD_REPS=1 RUNNERS=vx,turbo OUT=out.json bun private/vx-bench/compare.ts
  *
- * Turborepo, Nx and vite-plus are this package's pinned devDependencies,
- * linked into the workspace: no install, so a run needs no network.
+ * Turborepo, Nx and vite-plus run at npm latest, installed right before
+ * the run and linked into the workspace (site-workspace.ts): never pinned.
  *
  * The workspace is shape.ts (owner's spec, 2026-10-09): 29 levels of 50
  * libs and 100 apps, 50 terminal libs at level 15, one `e2e`
@@ -152,7 +152,7 @@ async function buildRunners(dir: string, wanted: (name: string) => boolean): Pro
     })
   }
 
-  // turbo + nx + vite-plus — this package's pinned installs, linked in.
+  // turbo + nx + vite-plus at npm latest, linked in.
   const bin = (t: string) => path.join(dir, 'node_modules', '.bin', t)
   const rivals = rivalRuns(dir, CONCURRENCY)
   const clear = (r: Rival) => async () => {
