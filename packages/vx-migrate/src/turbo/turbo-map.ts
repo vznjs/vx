@@ -2390,6 +2390,9 @@ function buildTask(
     // vx outputs could not exclude.
     const neg = mapped.startsWith('!') ? '!' : ''
     const o = collapseDots(mapped.slice(neg.length))
+    // Turbo joins it to the package directory and collects files: `""` or
+    // `"."` collects none, while core refuses one naming the project itself.
+    if (o === '.' || o === './') continue
     const signed = (g: string) => {
       const head = zeroSegments(g)
       const out = head === null ? [neg + g] : [neg + g, neg + head]
