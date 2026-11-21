@@ -1170,6 +1170,8 @@ describe('whyDidThisRerunQuery', () => {
       failed?: [number, number]
       /** The previous run's blocker, and whether that run recorded it. */
       prevBlockedBy?: [string, boolean]
+      /** A warning the previous run kept. */
+      prevWarning?: string
     }): string =>
       (() => {
         let note = ''
@@ -1224,6 +1226,11 @@ describe('whyDidThisRerunQuery', () => {
               )
               .run(setup.entryAt, setup.entryAt)
           }
+          if (setup.prevWarning !== undefined) {
+            indexDb(cache)
+              .query(`INSERT INTO warnings(run_id, seq, text) VALUES ('r-1', 0, ?)`)
+              .run(setup.prevWarning)
+          }
           note = whyDidThisRerunQuery(indexDb(cache), 'r-2', 'pkg#test').note
         })
         return note
@@ -1240,6 +1247,18 @@ describe('whyDidThisRerunQuery', () => {
       'cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write)',
     )
     expect(verdict({ entryAt: 2500 })).toBe(
+      'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one',
+    )
+    // The previous run withheld its save (an input edited while it ran) and
+    // said so: this named a prune that never happened.
+    const moved =
+      '[vx] pkg#test: `pkg/src/x.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs'
+    const withheld =
+      'cache key unchanged — the previous run on this key did not save its result (`pkg/src/x.txt` changed after its key was taken), so there was nothing to hit'
+    expect(verdict({ entryAt: 2500, prevWarning: moved })).toBe(withheld)
+    expect(verdict({ prevWarning: moved })).toBe(withheld)
+    // CONTROL: another task's warning explains nothing here.
+    expect(verdict({ entryAt: 2500, prevWarning: moved.replace('pkg#test', 'pkg#build') })).toBe(
       'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one',
     )
     // CONTROL: a read policy, an entry older than the run, a sound previous

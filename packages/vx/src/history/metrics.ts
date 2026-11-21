@@ -12,6 +12,7 @@ import path from 'node:path'
 // rule written once cannot drift.
 import { KEYED_RUNS_SQL } from '../index-db/index.js'
 import { expandHits } from './run-history.js'
+import { keptWarnings } from './run-notes.js'
 import { type TaskInputComponent } from '../cache/index.js'
 import { isPassStatus, splitTaskId } from '../graph/index.js'
 import { clampInt, MASKED, secretNamed } from '../util/index.js'
@@ -411,12 +412,29 @@ function runWritesCache(db: Database, id: string | null): boolean {
 }
 
 /**
+ * Why `runId` did not save `taskId`, as its own warning said it
+ * (`[vx] <task>: … — the result stands, but is not saved …`), up to the
+ * dash: a save the run withheld left no entry, and "pruned or evicted"
+ * named a prune that never happened. Only the newest runs keep warnings.
+ */
+function withheldSave(db: Database, runId: string | null, taskId: string): string | undefined {
+  if (runId === null) return undefined
+  const head = `[vx] ${taskId}: `
+  const said = keptWarnings(db, runId).find((w) => w.startsWith(head) && w.includes('not saved'))
+  if (said === undefined) return undefined
+  const what = said.slice(head.length)
+  const dash = what.indexOf(' — ')
+  return dash === -1 ? what : what.slice(0, dash)
+}
+
+/**
  * The endings an unchanged key can have, told apart by the index's evidence:
  * blaming `--no-cache` / `--force` was wrong when the previous run failed (a
  * failure saves nothing), the entry was pruned, or no flag was recorded.
  */
 function unchangedKeyNote(
   db: Database,
+  taskId: string,
   runId: string,
   this_: { hash: string; status: string; cacheHit: number | null; startedAt: number },
   prev: { status: string; cacheHit: number | null; runId: string | null; blockedBy: string | null },
@@ -488,6 +506,15 @@ function unchangedKeyNote(
     !runWritesCache(db, prev.runId)
   ) {
     return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
+  }
+  const withheld =
+    prev.status === 'success' &&
+    prev.cacheHit === 0 &&
+    (createdAt === undefined || createdAt >= this_.startedAt)
+      ? withheldSave(db, prev.runId, taskId)
+      : undefined
+  if (withheld !== undefined) {
+    return `cache key unchanged — the previous run on this key did not save its result (${withheld}), so there was nothing to hit`
   }
   if (createdAt !== undefined && createdAt >= this_.startedAt) {
     return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
@@ -620,7 +647,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
                 // so blaming `--no-cache` named a cause that cannot have applied. Only a run that
                 // EXECUTED on an unchanged key is the case this verb exists to explain. A row with
                 // no recorded cacheHit (older rows) is neither — say that, do not guess.
-                unchangedKeyNote(db, runId, this_, prev)
+                unchangedKeyNote(db, taskId, runId, this_, prev)
               : 'no prior run for this (project, task)',
   }
 }
@@ -869,6 +896,10 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
                 : old.length === 0 && prevNoWrite
                   ? `the previous run did not write the cache (${NO_WRITE})`
                   : null
+    const withheld =
+      unsaved === null && old.length === 0 && isPassStatus(prev.status)
+        ? withheldSave(db, prev.runId, taskId)
+        : undefined
     // An entry a remote put here arrives with no fingerprints (the artifact
     // carries none): that is why, not a prune.
     const remote =
@@ -893,9 +924,11 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
             'without `cache: true` it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key'
           : unsaved !== null
             ? `cache key changed but input fingerprints are unavailable — ${unsaved} and saved no entry; only the key change is known`
-            : remote !== null
-              ? `cache key changed but input fingerprints are unavailable — ${remote} was restored from the remote cache, which keeps no input fingerprints, so vx cannot name what changed; only the key change is known`
-              : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
+            : withheld !== undefined
+              ? `cache key changed but input fingerprints are unavailable — the previous run did not save its result (${withheld}); only the key change is known`
+              : remote !== null
+                ? `cache key changed but input fingerprints are unavailable — ${remote} was restored from the remote cache, which keeps no input fingerprints, so vx cannot name what changed; only the key change is known`
+                : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
     }
   }
 
