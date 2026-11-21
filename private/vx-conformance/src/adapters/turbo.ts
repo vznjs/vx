@@ -4,23 +4,11 @@ import { readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pnpmFilter, type Adapter } from '../adapter.ts'
 import { projectDir } from '../spec.ts'
+import { TURBO_FUTURE_FLAGS } from '../turbo-flags.ts'
 
 /** A workspace-root-relative glob as Turbo spells it; a `!` stays in front. */
 function fromRoot(glob: string): string {
   return glob.startsWith('!') ? `!$TURBO_ROOT$/${glob.slice(1)}` : `$TURBO_ROOT$/${glob}`
-}
-
-// Every opt-in Turbo ships that changes what a run selects, keys or
-// reports. `filterUsingTasks` costs Turbo its package-graph `--filter`
-// walks; the cases score that as Turbo's, since vx selects both ways.
-const FUTURE_FLAGS = {
-  affectedUsingTaskInputs: true,
-  filterUsingTasks: true,
-  strictTaskEntrypointSelection: true,
-  experimentalTaskCommand: true,
-  githubActionsRemoteBaseRefFallback: true,
-  experimentalObservability: true,
-  watchUsingTaskInputs: true,
 }
 
 export const turbo: Adapter = {
@@ -85,7 +73,7 @@ export const turbo: Adapter = {
       for (const t of Object.keys(p.tasks ?? {})) tasks[t] ??= { dependsOn: [], outputs: [] }
     await writeFile(
       path.join(dir, 'turbo.json'),
-      JSON.stringify({ futureFlags: FUTURE_FLAGS, tasks }, null, 2),
+      JSON.stringify({ futureFlags: TURBO_FUTURE_FLAGS, tasks }, null, 2),
     )
     return []
   },
