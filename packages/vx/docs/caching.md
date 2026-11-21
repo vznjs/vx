@@ -916,9 +916,11 @@ is on):
    rows, and the entry's one `entry_inputs` row (`INSERT OR IGNORE`).
    Saves that reach this step in one event-loop turn share the
    transaction, each in a savepoint of its own: a refused write undoes
-   only its own rows and artifact. A BEGIN and COMMIT per save were half
-   the index time on a cold run's main thread (500 saves, 81 of 164 ms,
-   2026-11-03).
+   only its own rows and artifact. A save alone in its turn (most of a
+   cold run's) takes no savepoint: its refusal rolls the whole
+   transaction back, which holds only its rows. A BEGIN and COMMIT per
+   save were half the index time on a cold run's main thread (500 saves,
+   81 of 164 ms, 2026-11-03).
    Concurrent readers see either no entry or a complete entry — never a
    partial one — and bytes and rows go live together: the rename waits
    for the write lock, so no other writer's rows land beside it, and a
@@ -1001,7 +1003,9 @@ after that task's key was taken — …``, naming the run's task that may
 have written it. A write in that moment's own tick is judged by its
 bytes. A write no window covers (a task writing into another project, an
 editor) is found once the graph is done: one sweep `lstat`s every input
-under a save this run made, each file once, and drops each entry built
+under a save this run made, each file once and all at once on the thread
+pool (one at a time held the site's 9,603-task cold run's end ~105 ms,
+now ~75), and drops each entry built
 over one that moved, naming it. Its remote upload waited for this sweep, so
 it is dropped too. A file
 whose ctime alone moved during the command, its bytes and mtime as the
