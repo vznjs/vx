@@ -955,6 +955,11 @@ export class UserError extends Error {
   parts?: RefusalParts // the terminal form, when a verb renders it as a notice
   constructor(message: string, code?: string)
 }
+// Several refusals at once (configs that do not load, names that clash,
+// broken dependsOn): the first's message, and `all`, so `vx lock` names each.
+export class ConfigsRefused extends UserError {
+  readonly all: readonly UserError[]
+}
 export interface RefusalParts {
   readonly tone?: 'info' // nothing is wrong, just nothing to show yet; default error
   readonly headline: string

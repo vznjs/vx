@@ -36,6 +36,7 @@ import {
   isFsRefusal,
   isLiteralPattern,
   isOutOfFds,
+  ConfigsRefused,
   isUserError,
   listed,
   maskedLine,
@@ -53,7 +54,6 @@ import {
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
-  ConfigsRefused,
   configImports,
   findProjectConfigs,
   findWorkspaceRoot,
@@ -303,27 +303,30 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       )
     const rules = runRules(workspaceConfig)
     const nameOf = new Map(out.all.map((m) => [m.dir, m.name]))
-    const nodes = buildTaskGraph({
-      projects,
-      packageGraph: buildPackageGraph(out.all),
-      requested: expandRequested([...names], [...projects.keys()], projects, isDefaultBuild),
-      workspaceRoot: root,
-      rules,
-      nestedProjects: new Map(
-        [...computeNestedProjectDirs(out.all, nestedWorkspaces)].map(([name, dirs]) => [
-          name,
-          dirs.map((dir) => {
-            const project = nameOf.get(dir)
-            return project === undefined
-              ? { name: relPosix(root, dir), dir, workspace: true }
-              : { name: project, dir }
-          }),
-        ]),
-      ),
-      projectConfigs: out.all.flatMap((m) =>
-        m.configPath === null ? [] : [{ name: m.name, configPath: m.configPath }],
-      ),
-    })
+    const nodes = everyGraphRefusal(
+      {
+        projects,
+        packageGraph: buildPackageGraph(out.all),
+        requested: expandRequested([...names], [...projects.keys()], projects, isDefaultBuild),
+        workspaceRoot: root,
+        rules,
+        nestedProjects: new Map(
+          [...computeNestedProjectDirs(out.all, nestedWorkspaces)].map(([name, dirs]) => [
+            name,
+            dirs.map((dir) => {
+              const project = nameOf.get(dir)
+              return project === undefined
+                ? { name: relPosix(root, dir), dir, workspace: true }
+                : { name: project, dir }
+            }),
+          ]),
+        ),
+        projectConfigs: out.all.flatMap((m) =>
+          m.configPath === null ? [] : [{ name: m.name, configPath: m.configPath }],
+        ),
+      },
+      (err) => placedDependsOn(err, out.all, root),
+    )
     if (hasHook(plugins, 'graph'))
       await applyGraphStage(plugins, nodes, {
         workspaceRoot: root,
@@ -346,6 +349,50 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     throw err
   }
   return out
+}
+
+/**
+ * The task graph, or every refusal building it meets: the first build stops
+ * at one, so each requested task is built alone, every bad `dependsOn` entry
+ * collected, to name the rest (a cycle once, whichever task reached it).
+ * Only on the refused path.
+ */
+function everyGraphRefusal(
+  options: Parameters<typeof buildTaskGraph>[0],
+  placed: (err: UserError) => string | undefined,
+): ReturnType<typeof buildTaskGraph> {
+  try {
+    return buildTaskGraph(options)
+  } catch (first) {
+    if (!isUserError(first)) throw first
+    // One refusal however a build met it: a cycle or a pair of tasks is
+    // named from whichever end that task's build started at.
+    const keyOf = (err: UserError): string => {
+      const ids = err.message.match(/[^\s:'"`,]+#[^\s:'"`,]+/g)
+      return ids === null ? err.message : `${err.code}\0${[...new Set(ids)].sort().join('\0')}`
+    }
+    const all = new Map<string, UserError>([[keyOf(first), first]])
+    const sound = new Set<string>()
+    for (const one of options.requested) {
+      if (sound.has(`${one.project}#${one.task}`)) continue
+      const refusals: UserError[] = []
+      try {
+        const nodes = buildTaskGraph({ ...options, requested: [one], refusals })
+        if (refusals.length === 0) for (const id of nodes.keys()) sound.add(id)
+      } catch (err) {
+        if (!isUserError(err)) throw err
+        refusals.push(err)
+      }
+      for (const err of refusals) {
+        const key = keyOf(err)
+        if (all.has(key)) continue
+        const at = placed(err)
+        all.set(key, at === undefined ? err : new UserError(at, err.code))
+      }
+    }
+    if (all.size < 2) throw first
+    throw new ConfigsRefused([...all.values()])
+  }
 }
 
 interface GraphCheck {
@@ -1065,7 +1112,10 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       ...discoverDrift(lock, check.fresh, drifted),
       ...stageDrift(lock, check.fresh, drifted),
     )
-  if (broken !== null && check.loaded) failures.push(broken)
+  // Every graph refusal, root-relative as the rest of the audit.
+  if (broken !== null && check.loaded)
+    for (const m of [broken, ...(check.alsoBroken ?? []).map((e) => e.message)])
+      failures.push(m.startsWith(`${root}/`) ? m.slice(root.length + 1) : m)
   // What `vx lock` refuses to write here fails here too: a lock written
   // where the value was no secret passed in an env where it is one.
   if (check.loaded)

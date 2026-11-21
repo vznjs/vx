@@ -145,3 +145,23 @@ it('every config that does not load is named, root-relative, with its frame', as
   expect(err).toContain('> 1 | export default { tasks: { b: { bad: 1 } } }')
   expect(err).not.toContain(ws)
 })
+
+it('every broken dependsOn is named, root-relative', async () => {
+  const ws = await makeWorkspace({ prefix: 'vx-lock-check-graph-' })
+  const a = await addProject(ws, 'a', CONFIG)
+  const b = await addProject(ws, 'b', CONFIG)
+  expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws }).exitCode).toBe(0)
+  const BAD = `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['zz'] } } }\n`
+  for (const dir of [a, b]) await writeFile(path.join(dir, 'vx.config.mjs'), BAD)
+  const r = Bun.spawnSync({
+    cmd: [process.execPath, BIN, 'lock', '--check', '--format', 'json'],
+    cwd: ws,
+  })
+  await rm(ws, { recursive: true, force: true })
+  const { problems } = JSON.parse(r.stdout.toString()) as { problems: string[] }
+  expect(r.exitCode).toBe(1)
+  expect(problems.filter((p) => p.includes('no such task'))).toEqual([
+    'packages/a/vx.config.mjs: tasks.build.dependsOn names a#zz but no such task is declared',
+    'packages/b/vx.config.mjs: tasks.build.dependsOn names b#zz but no such task is declared',
+  ])
+})

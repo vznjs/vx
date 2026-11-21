@@ -54,6 +54,7 @@ const GRAPH_PARTS = memoParts<BuildGraphOptions & Omit<GraphMemo, 'folds'>>({
   undeclaredDeps: onlyAbsent('a scoped load judges its graph against the rest'),
   nestedProjects: onlyAbsent('a refusal is never decided from a memo'),
   projectConfigs: onlyAbsent('a refusal is never decided from a memo'),
+  refusals: onlyAbsent('a refusal is never decided from a memo'),
 })
 
 /**
