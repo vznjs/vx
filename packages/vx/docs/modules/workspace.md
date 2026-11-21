@@ -1192,6 +1192,9 @@ export interface AffectedArgs {
   /** The fingerprint files a plugin claims and its answer for a change to
    *  one; resolved lazily, only when a diff touches a root file. */
   fingerprintClaims?: () => Promise<FingerprintClaims>
+  /** A run (not `vx show`): a changed claimed file whose `vx lock`
+   *  record is stale refuses, as a keyed run does. */
+  lockedClaims?: true
   /** The untracked files, from a walk shared with the run; null or absent
    *  spawns `git ls-files --others` here (I-26). */
   untracked?: () => Promise<readonly string[] | null>
