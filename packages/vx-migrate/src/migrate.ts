@@ -823,9 +823,12 @@ async function scripts(
   )
   // With no lockfile plugin declared the graph has no project edges, and
   // `vx lock` refuses every `^build`: a lone package has none to lose, so
-  // it drops them; a workspace is told what gives them.
+  // it drops them; a workspace is told what gives them. A lone package's
+  // `^build` folds nothing whatever the workspace file declares: `vx init`'s,
+  // written first, names no plugin, and the lock after refused it.
   const edgeless = plugins.length === 0 && workspaceFileAt(root) === undefined
-  if (edgeless && plan.projects.length === 1) dropUpstreamEdges(plan.projects[0]!)
+  const lone = plan.projects.length === 1 && metas.every((m) => m.dir === root)
+  if ((edgeless || lone) && plan.projects.length === 1) dropUpstreamEdges(plan.projects[0]!)
   else if (edgeless && plan.projects.some(readsUpstream))
     plan.notes.push(
       'no lockfile here, so .vx/workspace.ts declares no lockfile plugin and `^build` has no project edges: install with the package manager, declare its pnpm() / bun() / npm() / yarn() from @vzn/vx-lockfile in .vx/workspace.ts, then run `vx lock`',

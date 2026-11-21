@@ -166,6 +166,40 @@ describe('vx-migrate on package.json scripts', () => {
     }
   })
 
+  // `vx init` first, as its next line says: its workspace file names no
+  // plugin, the lone package kept `^build`, and the `vx lock` after
+  // refused it (2026-11-21).
+  it('a lone package after vx init gets no ^ edge, and vx lock passes', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-solo-init-'))
+    roots.push(root)
+    await writeFile(
+      path.join(root, 'package.json'),
+      '{"name":"solo","scripts":{"build":"echo built","test":"echo tested"}}\n',
+    )
+    await writeFile(
+      path.join(root, 'package-lock.json'),
+      '{"lockfileVersion":3,"packages":{"":{"name":"solo"}}}\n',
+    )
+    const env = {
+      ...process.env,
+      HOME: root,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+    }
+    expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
+    const vx = (args: string[]) =>
+      Bun.spawnSync(
+        [process.execPath, path.resolve(import.meta.dir, '../../vx/src/bin.ts'), ...args],
+        { cwd: root, env, stdout: 'pipe', stderr: 'pipe' },
+      )
+    expect(vx(['init']).exitCode).toBe(0)
+    const r = await migrate(root, ['--no-install'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect(await readFile(path.join(root, 'vx.config.ts'), 'utf8')).not.toContain('^build')
+    const p = vx(['lock'])
+    expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+  })
+
   it('a workspace with no lockfile plugin is told what gives `^build` its edges', async () => {
     const root = await bunRepo()
     await rm(path.join(root, 'bun.lock'))
