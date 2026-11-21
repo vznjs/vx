@@ -1101,7 +1101,9 @@ describe('vx why — an input another task rewrites', () => {
       const libDir = path.join(root, 'packages', 'lib')
       try {
         // app#build rewrites a file lib#check's key reads, as documenso's
-        // build rewrites @documenso/lib's translations: each run re-keys both.
+        // build rewrites @documenso/lib's translations: each run re-keys
+        // lib#check, and app#build, which wrote an input of a task its key
+        // folds while it ran, is never saved (upstream-inputs.ts).
         await mkdir(path.join(libDir, 'src'), { recursive: true })
         await writeFile(path.join(libDir, 'package.json'), JSON.stringify({ name: 'lib' }))
         await writeFile(path.join(libDir, 'src', 'gen.txt'), '0\n')
@@ -1125,7 +1127,7 @@ describe('vx why — an input another task rewrites', () => {
         )
         await vx(root, ['run', 'app#build'])
         await vx(root, ['run', 'app#build'])
-        const r = await vx(root, ['why', 'app#build'])
+        const r = await vx(root, ['why', 'lib#check'])
         expect(r.code).toBe(0)
         expect(r.out).toMatch(
           /\n {2}Changed during a run\n {2}file {22}written while\n {2}packages\/lib\/src\/gen\.txt {2}app#build\n/,
@@ -1138,14 +1140,14 @@ describe('vx why — an input another task rewrites', () => {
           `  file      ${WHAT_TO_DO['file']}`,
           '  written   a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files',
         ])
-        const j = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
+        const j = JSON.parse((await vx(root, ['why', 'lib#check', '--format', 'json'])).out)
         expect(j.writers).toEqual([
           { taskId: 'lib#check', file: 'packages/lib/src/gen.txt', writers: ['app#build'] },
         ])
 
         // An edit after the run names no writer.
         await writeFile(path.join(libDir, 'src', 'gen.txt'), 'hand\n')
-        const later = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
+        const later = JSON.parse((await vx(root, ['why', 'lib#check', '--format', 'json'])).out)
         expect(later.writers).toEqual([])
       } finally {
         await rm(root, { recursive: true, force: true })

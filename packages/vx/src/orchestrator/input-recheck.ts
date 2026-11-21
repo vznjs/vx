@@ -360,7 +360,7 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
  * editor or a sibling task (documenso's remix build rewrites lib's `.po`
  * files), was read by this command under a key that folds the old one.
  */
-export async function upstreamInputsHeld(m: MissRun): Promise<boolean> {
+export async function upstreamInputsHeld(m: MissRun, check: KeyCheck): Promise<boolean> {
   const { args } = m
   const keyed = args.run.keyedTasks
   if (keyed === undefined || m.endedAt === undefined) return true
@@ -385,6 +385,9 @@ export async function upstreamInputsHeld(m: MissRun): Promise<boolean> {
         : `; if ${by} writes it, exclude it from ${moved.task}'s inputs or move the write into a task ${moved.task} depends on`),
   )
   forgetUndeclaredWrites(args.node, args.run.gitFilesCache, 'workspace')
+  // Its key folds one that no longer describes its bytes: nothing built on it saves either.
+  check.unkeyed = true
+  check.drifted = moved.file
   return false
 }
 
