@@ -382,3 +382,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   went red with workers "lost" that had finished their tasks. Local
   runs and two CI runs were green first. Measure the work after the
   task, on the largest task, before a merge (2026-11-18).
+- A rival's grammar is read off its binary, not reasoned out. vx-migrate
+  mapped Turbo's `"outputs": [""]` to no output on the belief that Turbo
+  collects no file there; a real run of turbo 2.11.10 cached and restored
+  the whole package. Before mapping a rival edge case, run the bundled
+  binary on a scratch workspace twice (miss, delete, hit) (2026-11-21).
