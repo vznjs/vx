@@ -222,6 +222,7 @@ export class Cache implements CacheLayer {
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
   kept(hash: string): boolean
+  async discard(hash: string): Promise<void>
   artifactSize(hash: string): number | undefined
   async restoreOutputs(
     hash: string,
@@ -358,6 +359,7 @@ export interface CacheLayer {
   artifactSize?(hash: string): number | undefined
   outputBytes?(hash: string): number | undefined
   kept?(hash: string): boolean
+  discard?(hash: string): Promise<void>
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }

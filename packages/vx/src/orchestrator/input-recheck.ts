@@ -366,7 +366,7 @@ export async function upstreamInputsHeld(m: MissRun, check: KeyCheck): Promise<b
   if (keyed === undefined || m.endedAt === undefined) return true
   if (args.executor.capabilities?.remote === true) return true
   const endCheck = span('miss: recheck upstream inputs')
-  const moved = await keyed.moved(args, m.endedAt)
+  const moved = await keyed.moved(args)
   endCheck()
   if (moved === undefined) return true
   const rel = printable(relPosix(args.run.workspaceRoot, moved.file))
