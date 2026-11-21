@@ -2,10 +2,11 @@
 // hand). Gathers the head-to-head rows each `@vzn/vx-bench#bench.<runner>`
 // task wrote into measured/bench.json. Its committed copy,
 // src/data/bench.json, is the one file every page reads (src/bench/data.ts).
-// A runner missing, or measured on another shape, fails the task.
+// A runner missing, or measured on another shape, fails the task, and so
+// does vx losing any race (format.ts `losses`).
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { RUNNERS, type BenchData, type RunnerResult } from '../src/bench/format.ts'
+import { RUNNERS, assertFastest, type BenchData, type RunnerResult } from '../src/bench/format.ts'
 
 const SITE = path.resolve(import.meta.dir, '../../vx-bench/site')
 const OUT = path.resolve(import.meta.dir, '../measured/bench.json')
@@ -53,3 +54,6 @@ const data: BenchData = {
 await mkdir(path.dirname(OUT), { recursive: true })
 await writeFile(OUT, JSON.stringify(data, null, 2) + '\n')
 console.log(`bench data → ${path.relative(process.cwd(), OUT)}`)
+// Written first: Bench uploads the losing numbers too, and the site's
+// build fails on them as well.
+assertFastest(data, 'bench-data')

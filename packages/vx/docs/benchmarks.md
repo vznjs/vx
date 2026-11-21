@@ -382,6 +382,12 @@ builds the site with it while the tests run, so it never waits on Bench
 and never ships the committed copy, older than the live one; the upload
 waits only on `ci`. New numbers go live with the next main push.
 
+vx must win. Bench fails when vx is slower than any rival on a cold build,
+a restore or nothing changed, or burns more cold CPU than Turbo or Nx
+(`losses` in `private/vx-docs/src/bench/format.ts`). It still uploads
+those numbers, and `build.live` fails on them too, so main stays red
+until a change makes vx the fastest again.
+
 No build depends on the
 benchmarks, so neither the DTE run, where a worker is packed beside
 other tasks and would time its neighbours, nor a fresh clone's `vx run
