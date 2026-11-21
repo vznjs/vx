@@ -387,3 +387,14 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   collects no file there; a real run of turbo 2.11.10 cached and restored
   the whole package. Before mapping a rival edge case, run the bundled
   binary on a scratch workspace twice (miss, delete, hit) (2026-11-21).
+- Memory is measured on the whole process, not only on the unit. #5466
+  took a 3 GB task log from 100 MB of RSS to 1.5 GB with every heap test
+  green. The memory-ceiling suites read a spawned vx's own VmHWM (a
+  preload; a child's `ru_maxrss` holds the spawning runner's memory under
+  vfork) over a floor read in the same file (2026-11-21).
+- A slow reader of a child's stdout must be another process. Bun's
+  `Bun.spawn` pipe is drained into the test process as fast as it fills,
+  so a test that sleeps between its reads never slows the child. Pipe
+  the child into a shell loop instead. `process.stdout.writableNeedDrain`
+  is always false in Bun 1.4.4; only `write()`'s return says a pipe is
+  full (2026-11-21).

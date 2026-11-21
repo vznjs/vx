@@ -15,6 +15,7 @@ import {
   testTimerMs,
   limitSetting,
   helperEnv,
+  outputPaced,
   RawUtf8Decoder,
   type SecretMask,
 } from '../util/index.js'
@@ -1547,6 +1548,8 @@ export async function streamToString(
       const chunk = decoder.decode(value, { stream: true })
       if (retain) full.push(chunk)
       onChunk?.(chunk)
+      // The next chunk waits for vx's own stdout to take this one (out-pace.ts).
+      for (let p = outputPaced(); p !== undefined; p = outputPaced()) await p
     }
     const tail = decoder.decode()
     if (tail.length > 0) {
