@@ -93,4 +93,41 @@ describe('an output set past the artifact ceiling, on the plain-file store', () 
       cache.close()
     }
   })
+
+  it('is not sent to a remote when it is stored inline, under a ceiling below the inline bound', async () => {
+    const small = 4 * 1024
+    await rm(root, { recursive: true, force: true })
+    root = await makeWorkspace({ prefix: 'vx-artifact-ceiling-inline-' })
+    await addProject(root, 'small', {
+      files: { 'src/x.txt': 'x' },
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && head -c ${small * 2} /dev/urandom > dist/out.bin' },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+            },
+          },
+        }
+      `,
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await runAt(small, { cwd: root, tasks: ['build'], log: collecting([]) })
+    const dir = path.join(root, '.vx', 'cache')
+    const [hash] = storedKeys(dir)
+    const cache = new Cache(dir, undefined, root, small)
+    try {
+      const err = await cache.pinArtifact(hash!).then(
+        () => null,
+        (e: unknown) => (e as Error).message,
+      )
+      expect(err).toMatch(
+        /^not sent to a remote: its outputs pack to \d+(\.\d)? KB, past the 4\.0 KB cache\.artifactCeiling a remote hit enforces; this machine keeps it$/,
+      )
+    } finally {
+      cache.close()
+    }
+  })
 })
