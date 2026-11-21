@@ -93,10 +93,10 @@ it('a deleted project selects only the dependants the base dependencies lock rec
   const root = await dropLib(true)
   const recorded = JSON.parse(gitIn(root)('show', 'HEAD~1:.vx/dependencies.lock.json')) as {
     projects: string[]
-    deps: number[][]
+    deps: number[]
   }
   const app = recorded.projects.indexOf('packages/app')
-  expect(recorded.deps[app]).toEqual([recorded.projects.indexOf('packages/lib')])
+  expect(recorded.deps).toEqual([app, 1, recorded.projects.indexOf('packages/lib')])
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   expect(tasks.map((t) => t.id)).toEqual(['app#build'])
   expect(tasks[0]!.affected).toMatchObject({ file: 'packages/lib/vx.config.mjs' })
@@ -191,7 +191,7 @@ it('a base whose dependencies lock a newer vx wrote is read, not refused', async
   await lock(root)
   const file = path.join(root, '.vx', 'dependencies.lock.json')
   const text = await Bun.file(file).text()
-  await Bun.write(file, text.replace('"version":3', '"version":4'))
+  await Bun.write(file, text.replace('"version":4', '"version":5'))
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'base')

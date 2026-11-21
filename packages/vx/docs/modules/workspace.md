@@ -2024,10 +2024,12 @@ any refusal that comes first.
 ```ts
 export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
 export interface DependenciesLock {
-  version: number // 3
+  version: number // 4
   projects: string[] // directories, sorted; every other list indexes this one
-  deps: number[][] // per project, the projects it builds after, sorted
-  reach: number[][] // per project, the projects it reaches for selection only, sorted
+  // only the projects with edges, as `project, count, ...targets` runs
+  // (projects ascending, targets sorted); absent when no project has any
+  deps?: number[] // the projects each builds after
+  reach?: number[] // the projects each reaches for selection only
   // claimed file → its bytes' xxh3, each project's digest ('' none), and each
   // other file the digests read → its hash (absent when none)
   files: Record<string, { hash: string; digests: string[]; extras?: Record<string, string> }>
@@ -2069,7 +2071,11 @@ patch, a `file:` directory). A run keys from those digests and never
 parses the file (`orchestrator/locked-digests.ts`, below). Flat: each directory once, in a sorted
 `projects` list, and every edge and digest an index into it (a third
 the size of keying each by its directory, and a quarter of the parse
-and lookup time at 2,000 projects). Every list is sorted, so the same
+and lookup time at 2,000 projects). `deps` and `reach` are one number
+array each, listing only the projects that have edges: most have none,
+and it parses 1.2 to 1.5x faster than an array per project (21 projects:
+2.9 to 2.0 µs; 2,000: 465 to 353 µs sparse, 616 to 526 µs dense; the
+write is no slower). Every list is sorted, so the same
 workspace writes the same bytes. `--affected` reads the base commit's
 copy (`git show`): a deleted project's dependants are the projects
 whose edges hold its index, and a changed claimed file
