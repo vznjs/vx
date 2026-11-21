@@ -19,6 +19,7 @@ export {
   type CachePolicy,
   cachePolicyEnvRefusal,
   cachesNothing,
+  flushMemos,
   historyFiles,
   holdCacheDir,
   holdStore,

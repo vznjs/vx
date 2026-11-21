@@ -17,6 +17,7 @@ import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fsClockNow } from '../memo/index.js'
 import {
+  flushMemos,
   historyFiles,
   indexDb,
   Cache,
@@ -1512,8 +1513,8 @@ async function runOnBus(
       packed.add(o)
     }
     // A green miss's row is whole when it finishes too: written while the
-    // run goes, ROWS_PER_WRITE at a time, so the run's end writes only the
-    // rest. A failure (it writes out kept hits first), a server (its outcome
+    // run goes, ROWS_PER_WRITE at a time with the memos made meanwhile, so
+    // the run's end writes only the rest. A failure (it writes out kept hits first), a server (its outcome
     // changes after) and forwarded args stay the bundle's. A refused write
     // leaves its rows to the bundle.
     const written = new Set<TaskOutcome>()
@@ -1541,6 +1542,7 @@ async function runOnBus(
         written.add(done)
         writtenRows.push(r)
       }
+      flushMemos(prepared.localCache)
     }
     /** The run's packed hits, for the write that keeps its rows. */
     const keptHits = (): RunHits => ({

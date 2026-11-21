@@ -40,6 +40,9 @@ the `history` module's (history.md), and the tables `index-db`'s
   thread of their own every 100 ms, through a second connection, and the
   run's connection checkpoints nothing until its close
   (`stopCheckpoints` first). A thread that fails hands them back.
+  `flushMemos(cache)` writes the output-directory snapshots and key folds made so
+  far: a run calls it with each block of history rows it writes while it
+  goes, so its close writes only the rest (~30 ms of an 8,000-miss end).
 - `store-index.ts` — `StoreIndex`: the open index (the `SCHEMA_VERSION`
   check and reset, the attached store, the prepared statements) and the
   state every part shares; `guard` refuses an unreadable page by its file.
@@ -353,6 +356,8 @@ export function holdCacheDir(
 ): Promise<() => void>
 // The files a store keeps its history in; undefined when it keeps none on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
+// The run's output-dir snapshots and key folds so far, written now (memos: a refused write drops them).
+export function flushMemos(cache: Cache): void
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
