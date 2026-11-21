@@ -47,7 +47,8 @@ it('Turbo runs on the opt-ins conformance scores it on', async () => {
     })
     const out = r.stdout.toString() + r.stderr.toString()
     expect(r.exitCode, out).toBe(0)
-    expect(out).toMatch(/Tasks: +10 successful, 10 total/)
+    // A CI terminal colours the summary.
+    expect(Bun.stripANSI(out)).toMatch(/Tasks: +10 successful, 10 total/)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
