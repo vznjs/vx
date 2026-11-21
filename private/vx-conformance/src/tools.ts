@@ -3,19 +3,23 @@
 // (2026-11-21): the site scores what a user gets today. The install starts
 // from an empty cache, so nothing older is reused. vx is this checkout.
 import { realpathSync } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import os from 'node:os'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export const LATEST = ['turbo', 'nx', 'vite-plus', '@moonrepo/cli']
 
 const LOCAL = path.join(import.meta.dir, '..', 'node_modules')
+// Inside this package: the sandbox mounts its own /tmp over the host's, so a
+// tool installed there would be no file to the runs that link it.
+const ROOT = path.join(LOCAL, '.latest')
 let latest: string | undefined
 
-/** Install `pkgs` (some of {@link LATEST}) at npm's latest into a fresh directory. */
+/** Install `pkgs` (some of {@link LATEST}) at npm's latest into an emptied directory. */
 export async function installLatest(pkgs: string[]): Promise<void> {
   if (pkgs.length === 0) return
-  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-conformance-tools-'))
+  const root = ROOT
+  await rm(root, { recursive: true, force: true })
+  await mkdir(root, { recursive: true })
   await writeFile(path.join(root, 'package.json'), '{ "private": true }\n')
   const specs = pkgs.map((p) => `${p}@latest`)
   const proc = Bun.spawn([process.execPath, 'add', ...specs], {
