@@ -705,9 +705,14 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    transaction at the first read, at prune, at stats or at close, since
    item 622; a thousand commits at run end were the whole snapshot stage
    before — and a reader in the same process flushes them first. A
-   save's or restore's snapshot is taken at run end, once the directories
-   are past the racy window, and by then a later task or another process
-   may have written into them: the walk collects the files it passes and
+   save's or restore's snapshot is taken once the directories are past
+   the racy window: while the run goes, two seconds after the save or
+   restore, held to the rows the process stamped then, so no statement
+   makes a run's work depend on its length (the run-end walks of 8,002
+   tasks held a cold run's exit ~40 ms), else at run end. A tree a
+   dependant's glob adds to waits for the end, so its walk sees those
+   files. By then a later task or another process may have written into
+   them: the walk collects the files it passes and
    records nothing unless the files the globs take there are the entry's
    rows (item 1087), so a source file beside the outputs is no stray. A
    glob that leaves the project, a missing row set (a remote ingest

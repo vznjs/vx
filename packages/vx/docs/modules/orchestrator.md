@@ -1070,7 +1070,8 @@ export interface OutputDirSnapshot {
   hash: string
   projectDir: string
   prefixes: readonly string[] // the whole-subtree output prefixes
-  holds: (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean // the run-end walk's files are the entry's rows (item 1087)
+  holds: (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean // the walk's files are the entry's rows (item 1087)
+  atEnd?: boolean // a dependant's glob adds to this tree: walked at run end only
 }
 export function entryHolds(
   node: TaskNode,
@@ -1079,7 +1080,13 @@ export function entryHolds(
 export async function recordOutputDirSnapshots(
   cache: CacheLayer,
   snapshots: readonly OutputDirSnapshot[],
-): Promise<void> // at run end: every entry's rows in one batch read, then the walks, 32 at a time
+  unread?: OutputDirSnapshot[], // takes the snapshots this process stamped no rows for, instead of reading them
+): Promise<void> // the stamped rows, else one batch read; then the walks, 32 at a time
+export function snapshotWhileRunning(
+  cache: CacheLayer,
+  snapshots: readonly OutputDirSnapshot[],
+  tickMs?: number, // 1,000
+): () => Promise<OutputDirSnapshot[]> // walks each stamped snapshot two ticks after it was queued, with no statement; stop hands back the rest for run end
 
 export interface SaveMissArgs {
   node: TaskNode
@@ -1099,7 +1106,7 @@ export interface SaveMissArgs {
   stdout: string
   cpuMs?: number | undefined // what the execution used — stored on the entry and the artifact's sidecar
   peakRssBytes?: number | undefined
-  outputDirSnapshots?: OutputDirSnapshot[] | undefined // queued for run end when present
+  outputDirSnapshots?: OutputDirSnapshot[] | undefined // queued for the snapshots when present (`snapshotWhileRunning`)
   deferSave?: ((save: () => Promise<void>, taskId: string) => Promise<boolean>) | undefined // the run's save lane; resolves when the save settles, true when it landed
   measure?: boolean | undefined // a telemetry sink listens: time the save, stat its artifact
   state?: StateStamps | undefined // the undeclared untracked files the miss stamped (below)
@@ -1537,8 +1544,9 @@ restores or runs after it, by the edge.
 - A hit on a task with no declared outputs touches no artifact: nothing
   to clean, nothing to restore, the outcome says `restored: false`.
 - The directory snapshot behind the next hit's skip-restore is queued
-  (`outputDirSnapshots`) and taken at run end, not inside the restore —
-  a directory written microseconds ago sits in the snapshot's racy
+  (`outputDirSnapshots`) and taken two seconds later while the run goes,
+  or at its end (`snapshotWhileRunning`), not inside the restore — a
+  directory written microseconds ago sits in the snapshot's racy
   window — and artifact writes overlap across concurrent restores.
 - The outcome carries what the producing execution used (`storedCpuMs`,
   `storedPeakRssBytes`), read from the entry the artifact's sidecar

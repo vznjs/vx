@@ -42,6 +42,11 @@ export interface OutputDirSnapshot {
   prefixes: readonly string[]
   /** Whether the files the run-end walk saw are the entry's rows (`recordOutputDirs`). */
   holds: (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean
+  /**
+   * Taken only at run end: a dependant's glob adds to this tree, and a walk
+   * before it wrote would stamp directories its write then moves.
+   */
+  atEnd?: boolean
 }
 
 /**
@@ -75,25 +80,40 @@ export function entryHolds(
 }
 
 /**
- * The run-end output-directory snapshots, taken once the directories are
- * old enough for the snapshot's racy window. Each walk is held to its
- * entry's rows (item 1087), read in one batch: read per snapshot, each read
- * also flushed the snapshots before it, one transaction apiece (+110 ms at
- * 1,000). A few walks at a time: each is an lstat + readdir per prefix; the
- * rows land together at close, in one transaction.
+ * The output-directory snapshots, taken once the directories are old enough
+ * for the snapshot's racy window. Each walk is held to its entry's rows
+ * (item 1087): the ones this process stamped as it saved or restored the
+ * entry, else read in one batch (read per snapshot, each read also flushed
+ * the snapshots before it, one transaction apiece: +110 ms at 1,000). A few
+ * walks at a time: each is an lstat + readdir per prefix; the rows land
+ * together at close, in one transaction. `unread`: a snapshot whose rows
+ * this process holds none of goes there instead of being read.
  */
 export async function recordOutputDirSnapshots(
   cache: CacheLayer,
   snapshots: readonly OutputDirSnapshot[],
+  unread?: OutputDirSnapshot[],
 ): Promise<void> {
   const rowsOf = new Map<string, ReadonlyArray<{ path: string }>>()
-  for (let i = 0; i < snapshots.length; i += 900) {
-    const batch = cache.memo.loadOutputFilesBatch(snapshots.slice(i, i + 900).map((s) => s.hash))
-    for (const [hash, rows] of batch) rowsOf.set(hash, rows)
+  const toRead: OutputDirSnapshot[] = []
+  for (const s of snapshots) {
+    const stamped = cache.memo.stampedRowsOf?.(s.hash)
+    if (stamped !== undefined) rowsOf.set(s.hash, stamped)
+    else toRead.push(s)
   }
-  for (let i = 0; i < snapshots.length; i += 32) {
+  let ready = snapshots
+  if (unread !== undefined) {
+    ready = snapshots.filter((s) => rowsOf.has(s.hash))
+    unread.push(...toRead)
+  } else {
+    for (let i = 0; i < toRead.length; i += 900) {
+      const batch = cache.memo.loadOutputFilesBatch(toRead.slice(i, i + 900).map((s) => s.hash))
+      for (const [hash, rows] of batch) rowsOf.set(hash, rows)
+    }
+  }
+  for (let i = 0; i < ready.length; i += 32) {
     await Promise.all(
-      snapshots
+      ready
         .slice(i, i + 32)
         .map((s) =>
           cache.memo.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes, (files) =>
@@ -101,6 +121,52 @@ export async function recordOutputDirSnapshots(
           ),
         ),
     )
+  }
+}
+
+/** How long a snapshot waits, at least, before the run takes it while it goes. */
+const SNAPSHOT_AGE_TICKS = 3
+const SNAPSHOT_TICK_MS = 1000
+
+/**
+ * Takes `snapshots` while the run goes, each once it is two ticks (2 s) old,
+ * far past the racy window, on a main thread a long run leaves mostly idle:
+ * at its end, the walks of 8,002 tasks held a cold run's exit ~40 ms. Only
+ * those whose rows this process stamped: a read here would make a run's
+ * statements depend on how long it took. The returned stop waits for a walk
+ * in flight and hands back the rest for the run-end pass: the last seconds'
+ * snapshots, the unstamped, and those `atEnd` holds back.
+ */
+export function snapshotWhileRunning(
+  cache: CacheLayer,
+  snapshots: readonly OutputDirSnapshot[],
+  tickMs = SNAPSHOT_TICK_MS,
+): () => Promise<OutputDirSnapshot[]> {
+  const marks: number[] = []
+  let taken = 0
+  const atEnd: OutputDirSnapshot[] = []
+  let walking: Promise<void> = Promise.resolve()
+  const timer = setInterval(() => {
+    marks.push(snapshots.length)
+    if (marks.length > SNAPSHOT_AGE_TICKS) marks.shift()
+    if (marks.length < SNAPSHOT_AGE_TICKS || marks[0]! <= taken) return
+    const fresh = snapshots.slice(taken, marks[0])
+    taken = marks[0]!
+    walking = walking
+      .then(() => {
+        const due: OutputDirSnapshot[] = []
+        for (const s of fresh) (s.atEnd === true ? atEnd : due).push(s)
+        // A snapshot only spares the next hit a walk: one that fails is
+        // left to that walk, never to the run.
+        return recordOutputDirSnapshots(cache, due, atEnd)
+      })
+      .catch(() => {})
+  }, tickMs)
+  timer.unref()
+  return async () => {
+    clearInterval(timer)
+    await walking
+    return [...atEnd, ...snapshots.slice(taken)]
   }
 }
 
@@ -358,6 +424,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
         projectDir: node.projectDir,
         prefixes: savedDirPrefixes,
         holds: entryHolds(node, outputWalkTakes(node.projectDir, a.outputs, a.nestedProjectDirs)),
+        ...((node.outputsAddedToBy?.length ?? 0) > 0 ? { atEnd: true } : {}),
       })
     }
   }

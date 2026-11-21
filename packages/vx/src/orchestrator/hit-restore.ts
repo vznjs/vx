@@ -407,6 +407,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         projectDir: node.projectDir,
         prefixes: dirPrefixes,
         holds: entryHolds(node, outputWalkTakes(node.projectDir, outputs, outputNested)),
+        ...((node.outputsAddedToBy?.length ?? 0) > 0 ? { atEnd: true } : {}),
       })
     }
     // Restored outputs changed the project's tree — but on this
