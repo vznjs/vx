@@ -47,7 +47,8 @@ export interface StoreMemo {
     prefixes: readonly string[],
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string, written?: boolean): void
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
+  stampWritten(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   // Reads ahead what a hit on each task's last key will ask, while the run

@@ -37,12 +37,8 @@ export interface StoreMemo {
     prefixes: readonly string[],
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
-  recordOutputStamps(
-    hash: string,
-    projectDir: string,
-    workspaceRoot: string,
-    written?: boolean,
-  ): void
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
+  stampWritten(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   warmOutputs(
@@ -277,15 +273,16 @@ export class LocalMemo implements StoreMemo {
   }
 
   /** Stamp `hash`'s output rows once a save or restore left the tree equal to the entry. */
-  recordOutputStamps(
-    hash: string,
-    projectDir: string,
-    workspaceRoot: string,
-    written?: boolean,
-  ): void {
+  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
     const dated = this.datedMtimes.get(hash)
     this.datedMtimes.delete(hash)
-    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated, written)
+    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated)
+  }
+
+  /** Stamp `hash`'s files as a `--force` run wrote them beside its kept entry: this process only. */
+  stampWritten(hash: string, projectDir: string, workspaceRoot: string): void {
+    this.datedMtimes.delete(hash)
+    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, undefined, true)
   }
 
   /**
