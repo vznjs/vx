@@ -87,3 +87,33 @@ it('a dependency that writes outside the outputs draws no warning', async () => 
   expect(existsSync(path.join(app, 'dist/b.txt'))).toBe(true)
   expect(r.text).not.toContain("outputs' clean before it ran deleted")
 })
+
+// transloco (Nx): `build-package` (ng-packagr, no outputs) writes the
+// workspace's dist/libs/transloco, then `build` declares that root-anchored
+// path as its output; its clean took the package with no word, and every
+// dependant failed on types it could not find.
+it('a workspace-output clean that deletes a same-project dependency’s writes names them', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-clean-upstream-ws-' })
+  made.push(root)
+  const top = '"$(git rev-parse --show-toplevel)"'
+  await addProject(root, 'app', {
+    config: `export default { tasks: {
+      gen: { exec: { command: 'mkdir -p ${top}/dist/app && cat src/a > ${top}/dist/app/a.txt' } },
+      build: {
+        dependsOn: ['gen'],
+        exec: { command: 'cat ${top}/dist/app/a.txt > ${top}/dist/app/b.txt' },
+        inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['dist/app'] }, cache: true,
+      },
+    } }`,
+    files: { 'src/a': '1\n' },
+  })
+  await Bun.write(path.join(root, '.gitignore'), 'dist/\n')
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  const r = await vx(root, ['run', 'app#build'])
+  expect(r.code).not.toBe(0)
+  expect(r.text).toContain(
+    "app#build: its outputs' clean before it ran deleted dist/app/a.txt, which app#gen wrote earlier in this run",
+  )
+})
