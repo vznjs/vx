@@ -364,6 +364,9 @@ function selfDir(glob: string, all: string): string {
   return glob === '.' || glob === './' ? all : glob
 }
 
+/** Outputs Turbo reads as every file in the package (checked on turbo 2.11.10). */
+const WHOLE_PACKAGE = new Set(['.', './', '**', '**/*', '**/**'])
+
 /** A glob, `!` or not, and the X its `X/**` also matches in Turbo (`zeroSegments`). */
 function withZeroSegments(glob: string): string[] {
   const neg = glob.startsWith('!') ? '!' : ''
@@ -2394,18 +2397,13 @@ function buildTask(
     // `!.next/cache/**` saved the cache and cleaned it before every run while
     // vx outputs could not exclude.
     const neg = mapped.startsWith('!') ? '!' : ''
-    const o = collapseDots(mapped.slice(neg.length))
-    // Turbo reads `""`, `"."` and `"./"` as the package directory and caches
-    // every file under it (graphql-hive's `check:build`). Core refuses a glob
-    // naming the project itself, and `**` beside the default inputs would
-    // clean the task's own sources.
-    if (!neg && selfDir(o, '') === '') {
-      todos.push(
-        `output ${JSON.stringify(raw)}: Turbo caches every file in the package, sources too — ` +
-          'task runs uncached; declare the files it writes in a vx.config to cache it',
-      )
-      return { name, todos, task, uses }
-    }
+    // Turbo reads `""`, `"."`, `"./"`, `**` and `**/*` as the whole package
+    // and caches every file in it (graphql-hive's `check:build` writes
+    // `[""]`). Core refuses `.`, and `**` beside the default `**/*` inputs as
+    // the task's own sources; `*/**`, with the `*` its zero segments add,
+    // names the same files, which core cleans only where git tracks none.
+    const clean = collapseDots(mapped.slice(neg.length))
+    const o = WHOLE_PACKAGE.has(clean) ? '*/**' : clean
     const signed = (g: string) => {
       const head = zeroSegments(g)
       const out = head === null ? [neg + g] : [neg + g, neg + head]
