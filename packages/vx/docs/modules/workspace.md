@@ -616,8 +616,9 @@ and otherwise once a run that made `.vx/cache` has scheduled its tasks
 cold 8,002-task run's exit waited ~33 ms for it (2026-11-21).
 
 ```ts
-/** Start the bundle builds left for a `.vx/cache` the run made: a run calls it as its tasks start. */
-export function startDeferredBuilds(): void
+/** Start the bundle builds left for a `.vx/cache` the run made: a run calls it as its tasks
+ *  start and awaits it before its end, so an embedded run counts the same work. Never rejects. */
+export async function startDeferredBuilds(): Promise<void>
 ```
 
 Awaited inside the load, it was ~30 ms of `workspace config` on the run

@@ -217,9 +217,13 @@ export function buildCompiled(
 /** The builds `buildCompiled` left for a `.vx/cache` the run makes. */
 const deferred: (() => Promise<void>)[] = []
 
-/** Start each build left for `.vx/cache`: a run calls it once it made the cache and its tasks run. */
-export function startDeferredBuilds(): void {
-  for (const start of deferred.splice(0)) void start()
+/**
+ * Start each build left for `.vx/cache`: a run calls it once it made the
+ * cache and its tasks run, and awaits it before its end, so a run counts the
+ * same work wherever it is embedded. Never rejects.
+ */
+export async function startDeferredBuilds(): Promise<void> {
+  await Promise.allSettled(deferred.splice(0).map((start) => start()))
 }
 
 async function build(

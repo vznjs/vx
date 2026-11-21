@@ -861,6 +861,8 @@ async function runOnBus(
   let cacheClosed = false
   // Stops the snapshots the run takes while it goes; every exit, before the close.
   let stopSnapshots: (() => Promise<unknown>) | undefined
+  /** The config bundle builds the run started (`startDeferredBuilds`), awaited at its end. */
+  let bundling: Promise<void> | undefined
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
@@ -1436,7 +1438,7 @@ async function runOnBus(
     mark('schedule')
     // The config's bundle for the next run, built while the tasks run, not
     // after the run answered.
-    startDeferredBuilds()
+    bundling = startDeferredBuilds()
     // Judged as each task finishes, against history before this run's rows
     // land, so the row carries the verdict and nothing prints below the footer.
     // A hit or skip asks nothing; a green miss is one probe of the failed-row
@@ -1988,6 +1990,7 @@ async function runOnBus(
     disposePlugins?.()
     telemetry?.dispose()
     await teardown(undefined, report)
+    await bundling
     await step('vx:close', closeCache)
     mark('close')
     printTimings()
