@@ -19,6 +19,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import type { Adapter } from './adapter.ts'
+import { modulesOf, pkgDir } from './tools.ts'
 import { caseHome, sandboxed, spawnSandboxed, type SpawnOptions } from './sandbox.ts'
 import {
   projectDir,
@@ -67,8 +68,6 @@ const STOP = '.stop-watch'
 const WATCH = { initialMs: 60_000, timeoutMs: 30_000, quietMs: 8_000, pollMs: 50 }
 
 const SUPERVISE = path.join(import.meta.dir, 'supervise.ts')
-
-const MODULES = path.join(import.meta.dir, '..', 'node_modules')
 
 /** The command a tool runs for `project#task`: the case's own, between the harness's marks. */
 export function marked(ws: WorkspaceSpec, project: string, task: string): string {
@@ -162,16 +161,17 @@ async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
   }
 }
 
-/** The tool's package and bins, linked from this package's pinned install: no registry. */
+/** The tool's package and bins, linked from its install (tools.ts): no registry in the sandbox. */
 async function linkTool(root: string, adapter: Adapter): Promise<void> {
   if (adapter.pkg === undefined) return
   const bin = path.join(root, 'node_modules', '.bin')
   await mkdir(bin, { recursive: true })
   const pkg = path.join(root, 'node_modules', adapter.pkg)
   await mkdir(path.dirname(pkg), { recursive: true })
-  await symlink(realpathSync(path.join(MODULES, adapter.pkg)), pkg)
+  await symlink(pkgDir(adapter.pkg), pkg)
+  const modules = modulesOf(adapter.pkg)
   for (const b of adapter.bins)
-    await symlink(realpathSync(path.join(MODULES, '.bin', b)), path.join(bin, b))
+    await symlink(realpathSync(path.join(modules, '.bin', b)), path.join(bin, b))
 }
 
 export function check(

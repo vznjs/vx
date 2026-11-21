@@ -71,6 +71,7 @@ describe('a Linux CI job that runs a vx task', () => {
       'auto-release.yml#release',
       'bench.yml#bench',
       'ci.yml#perf',
+      'conformance.yml#conformance',
       'npm.yml#publish',
       'npm.yml#images',
       'real-repos.yml#real-repos',

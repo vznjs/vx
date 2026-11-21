@@ -397,6 +397,28 @@ describe('real-repos.yml', () => {
   })
 })
 
+// Weekly, against the rivals' latest releases, never pinned (2026-11-21);
+// the rival sweep dispatches it when it ends. The results leave as an
+// artifact main's deploy reads (live-conformance.ts), by this name.
+describe('conformance.yml', () => {
+  const doc = read('conformance.yml')
+  const job = doc.jobs['conformance']!
+  it('runs the conformance task weekly or dispatched, off the DTE run, one at a time', () => {
+    expect(Object.keys((doc.on ?? doc.true)!)).toEqual(['schedule', 'workflow_dispatch'])
+    expect(doc.concurrency).toEqual({ group: 'conformance', 'cancel-in-progress': false })
+    expect(JSON.stringify(job)).not.toContain('VX_DTE')
+    expect(job.permissions).toEqual({ contents: 'read' })
+    expect(job.steps?.find((s) => s.name === 'vx run conformance')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance',
+    )
+    expect(job.steps?.at(-1)?.if).toBe('always()')
+    expect(job.steps?.at(-1)?.with).toEqual({
+      name: 'conformance-data',
+      path: 'private/vx-docs/src/data/conformance.json',
+    })
+  })
+})
+
 describe('every `steps.<id>` a workflow reads names a step of its job', () => {
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.yml'))) {
     it(file, () => {

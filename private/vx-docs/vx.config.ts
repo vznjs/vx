@@ -389,25 +389,36 @@ export default defineProject({
     // It builds the site again with the newest numbers Bench measured on
     // main (scripts/live-bench.ts): the committed copy is older than the
     // live one (2026-11-01), and the deploy never waits on the bench
-    // (2026-11-06). Uncached: those numbers are no file of the commit.
+    // (2026-11-06). The conformance page takes the rivals' outcomes from
+    // the newest weekly Conformance run (scripts/live-conformance.ts).
+    // Uncached: those numbers are no file of the commit.
     // The build runs beside the tests and only the upload waits on `ci`:
     // built after `ci`, it added 108 s to main's run (2026-11-10). Its
     // files stay on its worker, where the upload follows it.
     'build.live': {
       description:
-        "build the site with main's newest bench numbers → dist-live/ (GitHub Actions only)",
+        "build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)",
       dependsOn: ['install', 'import', 'build.images'],
       exec: {
-        command: `bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live`,
+        command: `bun scripts/live-bench.ts && bun scripts/live-conformance.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live`,
         env: {
-          define: { ASTRO_TELEMETRY_DISABLED: '1', VX_DOCS_BENCH: 'measured/live.json' },
+          define: {
+            ASTRO_TELEMETRY_DISABLED: '1',
+            VX_DOCS_BENCH: 'measured/live.json',
+            VX_DOCS_CONFORMANCE: 'measured/live-conformance.json',
+          },
           passThrough: ['GITHUB_TOKEN', 'GITHUB_REPOSITORY', 'GITHUB_API_URL'],
           secret: ['GITHUB_TOKEN'],
         },
         sandbox: {
           allow: {
             read: ['**/*', REAL_ROWS_READ],
-            write: ['measured/live.json', 'dist-live/**', '.astro/**'],
+            write: [
+              'measured/live.json',
+              'measured/live-conformance.json',
+              'dist-live/**',
+              '.astro/**',
+            ],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
             network: ['api.github.com', '*.blob.core.windows.net'],

@@ -6,19 +6,21 @@
 // `dependsOn` in moon.yml, moon's explicit form. The report is the run
 // report moon writes after each run, `.moon/cache/runReport.json`.
 import { mkdir, writeFile } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
+import { pkgDir } from '../tools.ts'
 import { projectDir, type Selector, type TaskReport } from '../spec.ts'
 
 // The binary @moonrepo/cli's own bin (a Node shim) spawns: run directly, so
 // signals reach moon and no Node process stands between it and the harness.
-const MOON = path.join(
-  realpathSync(path.join(import.meta.dir, '..', '..', 'node_modules', '@moonrepo', 'cli')),
-  '..',
-  process.platform === 'darwin' ? `core-macos-${process.arch}` : `core-linux-${process.arch}-gnu`,
-  'moon',
-)
+function moonBin(): string {
+  return path.join(
+    pkgDir('@moonrepo/cli'),
+    '..',
+    process.platform === 'darwin' ? `core-macos-${process.arch}` : `core-linux-${process.arch}-gnu`,
+    'moon',
+  )
+}
 
 /** A project-relative glob as moon spells a workspace-relative one: a leading `/`, after any `!`. */
 function fromRoot(glob: string): string {
@@ -206,7 +208,7 @@ export const moon: Adapter = {
         ? projects.flatMap((p) => tasks.map((t) => `${p}:${t}`))
         : tasks.map((t) => `:${t}`)
     return [
-      MOON,
+      moonBin(),
       // `moon run` is `moon exec` bailing on the first failure; going on is exec's `--on-failure continue`.
       ...(opts.continue ? ['exec', '--on-failure', 'continue', '--upstream', 'deep'] : ['run']),
       ...targets,
@@ -220,7 +222,7 @@ export const moon: Adapter = {
   },
   // `--downstream deep --include-relations`: the dependents a change reaches, through task and project edges.
   affected: (task, base) => [
-    MOON,
+    moonBin(),
     'run',
     `:${task}`,
     '--affected',

@@ -16,6 +16,7 @@ import { ADAPTERS } from './adapters/index.ts'
 import { runCase, type Outcome } from './harness.ts'
 import { coverage, ref, scores, scoreTable, toolVersion, type Results } from './report.ts'
 import { sandboxAvailable } from './sandbox.ts'
+import { installLatest, LATEST } from './tools.ts'
 
 const { values } = parseArgs({
   options: {
@@ -40,6 +41,8 @@ const cases = CASES.filter((c) => prefixes.some((p) => c.id.startsWith(p)))
 const jobs = Number(values.jobs ?? os.availableParallelism())
 const out =
   values.out ?? path.join(import.meta.dir, '..', '..', 'vx-docs', 'src', 'data', 'conformance.json')
+
+await installLatest(tools.flatMap((t) => (t.pkg && LATEST.includes(t.pkg) ? [t.pkg] : [])))
 
 const work = tools.flatMap((t) => cases.map((c) => ({ t, c })))
 const outcomes = new Map<string, Outcome>()
@@ -93,3 +96,10 @@ console.log(scoreTable(results))
 // A partial run never replaces the site's results.
 if ((values.tool || values.case) && !values.out) process.exit(0)
 await Bun.write(out, JSON.stringify(results, null, 2) + '\n')
+// The site keeps vx's committed column (vx-docs scripts/live-conformance.ts):
+// a case vx fails is a vx bug to fix, and the weekly run goes red on it.
+const vxFails = rows.filter((r) => r.outcomes['vx']?.status === 'fail')
+if (vxFails.length > 0) {
+  console.error(`conformance: vx fails ${vxFails.map((r) => r.id).join(', ')}`)
+  process.exit(1)
+}
