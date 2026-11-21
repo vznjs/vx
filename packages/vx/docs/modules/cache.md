@@ -40,7 +40,7 @@ the `history` module's (history.md), and the tables `index-db`'s
   thread of their own every 100 ms, through a second connection, and the
   run's connection checkpoints nothing until its close
   (`stopCheckpoints` first). A thread that fails hands them back.
-  `flushMemos` writes the output-directory snapshots and key folds made so
+  `flushMemos(cache)` writes the output-directory snapshots and key folds made so
   far: a run calls it with each block of history rows it writes while it
   goes, so its close writes only the rest (~30 ms of an 8,000-miss end).
 - `store-index.ts` — `StoreIndex`: the open index (the `SCHEMA_VERSION`

@@ -17,6 +17,7 @@ import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fsClockNow } from '../memo/index.js'
 import {
+  flushMemos,
   historyFiles,
   indexDb,
   Cache,
@@ -1532,7 +1533,7 @@ async function runOnBus(
         written.add(done)
         writtenRows.push(r)
       }
-      prepared.localCache.flushMemos()
+      flushMemos(prepared.localCache)
     }
     /** The run's packed hits, for the write that keeps its rows. */
     const keptHits = (): RunHits => ({

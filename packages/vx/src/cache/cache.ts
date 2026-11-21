@@ -187,6 +187,21 @@ function closeStore(ix: StoreIndex): void {
   closeDb(ix.db)
 }
 
+/**
+ * The output-directory snapshots and key folds the run has made so far,
+ * written now, so its close writes only the rest. Memos: a refused write
+ * drops them.
+ */
+export function flushMemos(cache: Cache): void {
+  const ix = storeIndexOf(cache)
+  try {
+    ix.outputs.flushOutputDirs()
+    ix.folds.flush()
+  } catch {
+    // As `closeStore`: a memo row lost is one walk or fold more.
+  }
+}
+
 const indexes = new WeakMap<Cache, StoreIndex>()
 
 /** The store index behind `cache`, for the cache module and its tests only. */
@@ -475,20 +490,6 @@ export class Cache implements CacheLayer {
   /** Row-less artifacts past the in-flight grace, for `vx info`: a prune reaps them by its policy. */
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }> {
     return pruning.orphanStats(this.ix)
-  }
-
-  /**
-   * The output-directory snapshots and key folds the run has made so far,
-   * written now, so its end writes only the rest. Memos: a refused write
-   * drops them.
-   */
-  flushMemos(): void {
-    try {
-      this.ix.outputs.flushOutputDirs()
-      this.ix.folds.flush()
-    } catch {
-      // As `closeStore`: a memo row lost is one walk or fold more.
-    }
   }
 
   close(): void {
