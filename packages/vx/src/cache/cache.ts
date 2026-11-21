@@ -477,6 +477,20 @@ export class Cache implements CacheLayer {
     return pruning.orphanStats(this.ix)
   }
 
+  /**
+   * The output-directory snapshots and key folds the run has made so far,
+   * written now, so its end writes only the rest. Memos: a refused write
+   * drops them.
+   */
+  flushMemos(): void {
+    try {
+      this.ix.outputs.flushOutputDirs()
+      this.ix.folds.flush()
+    } catch {
+      // As `closeStore`: a memo row lost is one walk or fold more.
+    }
+  }
+
   close(): void {
     closeStore(this.ix)
   }

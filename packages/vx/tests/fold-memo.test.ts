@@ -270,6 +270,25 @@ it("a run's own row is read alone, and every task's row once a task asks", () =>
   db.close()
 })
 
+// A run writes its folds while it goes (`Cache.flushMemos`): a fold written
+// is still the memo's answer, not the stale row the bulk read held.
+it('a fold flushed while the run goes is still read back', () => {
+  const db = new Database(':memory:')
+  db.run('CREATE TABLE fold_memo (task_id TEXT PRIMARY KEY, probe TEXT, key TEXT, seen_at INTEGER)')
+  db.query('INSERT INTO fold_memo VALUES (?, ?, ?, 0)').run('a#build', 'p0', 'k0')
+  const memo = new IndexFoldMemo(db, true)
+  expect(memo.get('a#build', 'p0')).toBe('k0')
+  memo.set('a#build', 'p1', 'k1')
+  memo.set('\0run\0x', 'p2', 'k2')
+  memo.flush()
+  expect([memo.get('a#build', 'p1'), memo.get('\0run\0x', 'p2')]).toEqual(['k1', 'k2'])
+  expect(db.query('SELECT key FROM fold_memo ORDER BY task_id').all()).toEqual([
+    { key: 'k2' },
+    { key: 'k1' },
+  ])
+  db.close()
+})
+
 // The probe's digest closes over the records it reads: three strings per
 // file, ~3.7 MB at 1,601 projects, held to the end of the run while
 // anything kept the computation.
