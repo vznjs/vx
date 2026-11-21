@@ -722,7 +722,8 @@ Reads via `get()` are non-blocking thanks to WAL.
 ### Run history & stats
 
 `recordRunBundle()` is the run-history write at a run's end: one `runs`
-row for every task that ran, one `run_hits` row for all its cache hits
+row for every task that ran (less the green misses' rows written 256 at a
+time while the run went), one `run_hits` row for all its cache hits
 (a row per hit was 13% of an 8,002-hit no-op; a reader writes them out,
 history.md `expandHits`) and one `invocations` header row (command,
 git/CI/host context, run-level counts) **atomically in one

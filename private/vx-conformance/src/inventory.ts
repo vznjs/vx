@@ -1277,6 +1277,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-ws-import-in-project',
     'workspace-files-shared-memo',
     'workspace-output-config',
+    'written-rows',
     'zstd-frames',
   ],
   docs: [

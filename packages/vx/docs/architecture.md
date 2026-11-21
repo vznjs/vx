@@ -441,7 +441,9 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       them; an embedder aborts through `RunOptions.signal`.
    8. Summary + optional `--profile` (Chrome-trace JSON).
    9. `runHistory(cache).recordRunBundle({ runs, invocation })` — every real
-      task's row plus one invocation header row, in one transaction.
+      task's row plus one invocation header row, in one transaction; the
+      green misses' rows already written while the run went (256 at a
+      time) are not written again.
       Group and `aborted` tasks are skipped; a run a signal stopped
       records only the tasks that finished (`recordRuns`, no
       invocation row; their timings under the branch it ran on), so
@@ -650,7 +652,7 @@ Every `vx run` invocation stamps a UUIDv7 (`run_id`) and, unless a signal
 stopped it, writes, in one
 transaction (`recordRunBundle`), one row per real task (hits included) to the
 `runs` table plus one header row to the `invocations` table in
-`cache.db`. Per-task `runs` columns:
+`cache.db`; a green miss's row went in while the run went, 256 at a time. Per-task `runs` columns:
 
 | Column                                    | What                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------- |
