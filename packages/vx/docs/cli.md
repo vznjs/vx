@@ -2129,7 +2129,8 @@ with the hash of the file and of each other file they read (a
 `bun.lock` patch), minified as the config lock is, since only vx reads
 it. Commit it too: a run keys each task from those digests and never
 parses the lockfile, so after an install, run `vx lock`; a run whose
-lockfile changed since refuses (`VX_E_LOCK`), and so does one with no
+lockfile changed since refuses (`VX_E_LOCK`), `--affected` too when the
+change moves no project (an install adding a package not yet locked), and so does one with no
 dependencies lock while a plugin claims a lockfile that is there. An
 edit in a `link:` or `file:` directory the lockfile names needs no
 `vx lock`: the plugin digests anew, and `vx lock --check` accepts it.

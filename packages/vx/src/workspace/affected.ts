@@ -113,6 +113,11 @@ export interface AffectedArgs {
    */
   fingerprintClaims?: () => Promise<FingerprintClaims>
   /**
+   * A run keys from `vx lock`'s record of each claimed file, so a changed
+   * one whose record is stale refuses here too; `vx show` keys nothing.
+   */
+  lockedClaims?: true
+  /**
    * Untracked files from a walk shared with the run
    * (`GitEnumeration.untracked`); absent spawns `git ls-files --others` here.
    */
@@ -633,11 +638,25 @@ async function claimedOwners(
     if (!rootNamesChanged.includes(file)) rootNamesChanged.push(file)
   }
   const claimed = rootNamesChanged.length > 0 ? await diff.loadClaims() : undefined
+  let record: Promise<DependenciesLock | null> | undefined
   for (const file of rootNamesChanged) {
     if (claimed === undefined || !claimed.files.has(file)) continue
     const extras = extrasBy.get(file)
     const before = await gitBytesAt(args.workspaceRoot, base, file)
     const after = await bytesOrNull(path.join(args.workspaceRoot, file))
+    // As a run refuses it (locked-digests.ts): an install that adds a member
+    // no project is yet moves no digest, and "nothing affected" exited 0 on a
+    // lock the next keyed run refuses.
+    if (args.lockedClaims) {
+      record ??= bytesOrNull(path.join(args.workspaceRoot, DEPENDENCIES_LOCK_NAME)).then(
+        parseDependenciesLock,
+      )
+      const rec = (await record.catch(() => null)) ?? null
+      const was = rec === null ? undefined : recordedDigests(rec, file)
+      if (was !== undefined && (after === null || xxh3hex(after) !== was.hash)) {
+        throw new UserError(`${file} changed since \`vx lock\`: run \`vx lock\``, 'VX_E_LOCK')
+      }
+    }
     const answer =
       (extras === undefined
         ? await recordedMoves(diff, claimed, file, before, after)
