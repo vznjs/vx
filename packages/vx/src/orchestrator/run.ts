@@ -138,8 +138,7 @@ import {
   warnOf,
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
-import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
-import { freezeDeep } from './read-only.js'
+import { frozenReport, keepsFailures, RunKeeper } from './run-report.js'
 import {
   buildAdmission,
   executorDemand,
@@ -1936,12 +1935,10 @@ async function runOnBus(
         ),
       )
     // A stop passes none (`VxPlugin.teardown`): the run did not reach its end.
-    // Built and frozen only for a teardown that reads it.
+    // Only for a teardown, its tasks built only when one reads them.
     const report =
       stop.stoppedBy === undefined && prepared.plugins.some((p) => p.teardown !== undefined)
-        ? freezeDeep(
-            reportOf(list, { runId, commit: head.commitSha, ciRun: ciContext, ok }, keeper),
-          )
+        ? frozenReport(list, { runId, commit: head.commitSha, ciRun: ciContext, ok }, keeper)
         : undefined
     // Hand the summary to the telemetry sinks and drain them, only with a sink.
     // Crash-isolated, so a faulty sink cannot fail the run. After the upload
