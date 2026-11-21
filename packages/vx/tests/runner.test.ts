@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { fstatSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -28,6 +29,7 @@ import {
   OPEN_LINE_WAIT_MS,
 } from '../src/exec/runner.js'
 import { killTree, markStopped } from '../src/exec/kill-tree.js'
+import { noteWrite } from '../src/util/out-pace.js'
 import { watchedTrees } from '../src/exec/proc-sample.js'
 import { sparesSettled } from '../src/exec/warm-shell.js'
 
@@ -2296,12 +2298,12 @@ describe('drainOrAbort', () => {
         while (performance.now() - t < 120);
         await Bun.sleep(10)
       })()
-      expect(await drainOrAbort(streams, new AbortController())).toBe(false)
+      expect(await drainOrAbort(streams, new AbortController(), { chars: 0 })).toBe(false)
     }))
   it('cuts readers still open a whole free bound later', () =>
     withBound(async () => {
       const ac = new AbortController()
-      expect(await drainOrAbort(Bun.sleep(400), ac)).toBe(true)
+      expect(await drainOrAbort(Bun.sleep(400), ac, { chars: 0 })).toBe(true)
       expect(ac.signal.aborted).toBe(true)
     }))
   // A first fix waited while text kept coming, and a leftover that logs
@@ -2322,6 +2324,32 @@ describe('drainOrAbort', () => {
           true,
         ])
         expect(performance.now() - t).toBeLessThan(1500)
+      }),
+  )
+  // `vx run … | slow-tool`: vx's own stdout held the readers (out-pace.ts)
+  // past the bound, and an exited task lost its last lines and its save.
+  it.skipIf(process.platform !== 'linux')(
+    'a reader held back by a slow stdout of vx is no leftover',
+    () =>
+      withBound(async () => {
+        const stdout = new EventEmitter()
+        let held = false
+        const r = await runCommand({
+          command: 'seq 1 30000; echo END',
+          cwd: os.tmpdir(),
+          env: { PATH: process.env['PATH'] ?? '' },
+          onStdout: () => {
+            if (held) return
+            held = true
+            noteWrite(stdout, false)
+            setTimeout(() => stdout.emit('drain'), 600)
+          },
+        })
+        expect([
+          r.exitCode,
+          r.leftRunning === true,
+          r.stdout.trimEnd().endsWith('30000\nEND'),
+        ]).toEqual([0, false, true])
       }),
   )
 })

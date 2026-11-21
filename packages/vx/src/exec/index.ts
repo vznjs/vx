@@ -63,6 +63,7 @@ export {
   streamToString,
   resourceUsageToCpuRss,
   type RunResult,
+  type StreamTally,
 } from './runner.js'
 export { TaskPipes } from './pipes.js'
 export { watchTree } from './proc-sample.js'
