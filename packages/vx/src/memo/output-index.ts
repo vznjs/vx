@@ -144,7 +144,7 @@ export class OutputIndex {
   /**
    * Each entry's rows as this process last stamped them, by hash: what a read
    * after the stamp returns, so a dependant's save checks a dependency's
-   * outputs with no statement (input-recheck.ts). Dropped with the rows.
+   * outputs with no statement (`stampedRowsOf`). Dropped with the rows.
    */
   private readonly stamped = new Map<string, readonly OutputFileRow[]>()
   private rootKey: number | undefined
@@ -258,6 +258,11 @@ export class OutputIndex {
     for (const [hash, list] of rows) this.held.set(hash, list)
   }
 
+  /** `hash`'s rows as this process last stamped them, stamps included: no read. */
+  stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined {
+    return this.stamped.get(hash)
+  }
+
   /** The probe's rows of `hash` when held: no read. */
   heldRowsOf(hash: string): readonly OutputFileRow[] | undefined {
     return this.held.get(hash)
@@ -275,21 +280,17 @@ export class OutputIndex {
    */
   loadOutputFilesBatch(hashes: readonly string[], distinct?: string): Map<string, OutputFileRow[]> {
     if (hashes.length === 0) return new Map()
-    const { warmed, stamped } = this
-    if (warmed.size === 0 && stamped.size === 0) return this.readOutputFiles(hashes, distinct)
+    const warmed = this.warmed
+    if (warmed.size === 0) return this.readOutputFiles(hashes, distinct)
     const out = new Map<string, OutputFileRow[]>()
     const rest: string[] = []
     for (const h of hashes) {
-      // Warmed first: its stats ahead are keyed by that very array (`noteWarmStats`).
       const rows = warmed.get(h)
-      if (rows !== undefined) {
+      if (rows === undefined) rest.push(h)
+      else {
         warmed.delete(h)
         if (rows.length > 0) out.set(h, rows)
-        continue
       }
-      const own = stamped.get(h)
-      if (own === undefined) rest.push(h)
-      else if (own.length > 0) out.set(h, [...own])
     }
     if (rest.length > 0) for (const [h, rows] of this.readOutputFiles(rest)) out.set(h, rows)
     return out

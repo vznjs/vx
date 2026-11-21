@@ -39,6 +39,7 @@ export interface StoreMemo {
   rememberBlobVerdict(digest: string, paths: readonly string[]): void
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,

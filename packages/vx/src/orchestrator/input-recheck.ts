@@ -5,7 +5,13 @@
 import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
-import { fsClockNow, racyWindowMs, stampGrainMs, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
+import {
+  fsClockNow,
+  type OutputFileRow,
+  racyWindowMs,
+  stampGrainMs,
+  WORKSPACE_OUTPUT_PREFIX,
+} from '../memo/index.js'
 import { type ExecuteResult } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from '../sandbox/index.js'
@@ -340,8 +346,15 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   const endCheck = span('miss: recheck upstream outputs')
   // Taken before the stats: a write after it is one they may have missed.
   const now = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
-  // Rows this run's save or restore stamped come from memory, not the index.
-  const rows = memo.loadOutputFilesBatch(exposed.map((d) => d.hash!))
+  // Rows a save or restore stamped here come from memory, not the index.
+  const rows = new Map<string, readonly OutputFileRow[]>()
+  const unread: string[] = []
+  for (const d of exposed) {
+    const own = memo.stampedRowsOf?.(d.hash!)
+    if (own === undefined) unread.push(d.hash!)
+    else rows.set(d.hash!, own)
+  }
+  if (unread.length > 0) for (const [h, r] of memo.loadOutputFilesBatch(unread)) rows.set(h, r)
   // A file this task declares as its own output is its own to rewrite (an
   // emitter over its build's `dist`): it is saved with this entry.
   const { node } = args
