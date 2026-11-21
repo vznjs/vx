@@ -1249,6 +1249,28 @@ export async function mapTurboWorkspace(
         emitted.get(meta.name)!.add(name)
         entry.add(`${meta.name}#${name}`)
       }
+      // Turbo runs a no-op node's edges in every package `turbo run <name>`
+      // reaches, depended on or not: `deploy: [build, test, lint]` ran each
+      // package's `test` and `lint` where only one package has `deploy`
+      // (checked on turbo 2.11.10), and vx ran neither. Left none only when
+      // each edge is a task of its own package some `^` edge names, which
+      // its dependants' run reaches (`test: [build]` beside `^build`), or a
+      // `^` edge in a package that depends on none.
+      else if (
+        local &&
+        (def?.dependsOn ?? []).some(
+          (d) =>
+            !d.includes('#') &&
+            envDependency(d) === null &&
+            !d.includes('$TURBO_ROOT$') &&
+            d !== name &&
+            d !== `^${name}` &&
+            (d.startsWith('^')
+              ? metas.some((m) => declares(meta, m.name))
+              : (own.has(d) || defined.has(d)) && !caretNames.has(d)),
+        )
+      )
+        emitted.get(meta.name)!.add(name)
     }
   }
   // Turbo's transit node (its with-vitest example; the docs' pattern for a
