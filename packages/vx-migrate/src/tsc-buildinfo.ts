@@ -64,6 +64,15 @@ function extended(read: ReadText, from: string, ext: string): string | null {
 
 /** The buildinfo path tsc writes for the project `file` (tsc's `getTsBuildInfoEmitOutputFilePath`). */
 function buildInfoOf(read: ReadText, file: string, build: boolean): string | null {
+  return projectOf(read, file, build)?.info ?? null
+}
+
+/** The buildinfo tsc writes for the project `file`, and its outDir when it names one. */
+function projectOf(
+  read: ReadText,
+  file: string,
+  build: boolean,
+): { info: string; outDir: string | undefined } | null {
   const configDir = path.dirname(file)
   const opts: { [K in keyof Options]?: string | boolean } = {}
   const seen = new Set<string>()
@@ -96,11 +105,11 @@ function buildInfoOf(read: ReadText, file: string, build: boolean): string | nul
   if (parse(read, file) === null) return null
   // tsc 5.6+ writes a buildinfo for every project `-b` builds.
   if (!build && opts.incremental !== true && opts.composite !== true) return null
-  if (typeof opts.tsBuildInfoFile === 'string') return opts.tsBuildInfoFile
-  const bare = (p: string) => p.slice(0, p.length - path.extname(p).length)
-  if (typeof opts.outFile === 'string') return `${bare(opts.outFile)}.tsbuildinfo`
-  const config = bare(file)
   const outDir = opts.outDir as string | undefined
+  if (typeof opts.tsBuildInfoFile === 'string') return { info: opts.tsBuildInfoFile, outDir }
+  const bare = (p: string) => p.slice(0, p.length - path.extname(p).length)
+  if (typeof opts.outFile === 'string') return { info: `${bare(opts.outFile)}.tsbuildinfo`, outDir }
+  const config = bare(file)
   const rootDir = opts.rootDir as string | undefined
   const at =
     outDir === undefined
@@ -108,12 +117,15 @@ function buildInfoOf(read: ReadText, file: string, build: boolean): string | nul
       : rootDir === undefined
         ? path.join(outDir, path.basename(config))
         : path.resolve(outDir, path.relative(rootDir, config))
-  return `${at}.tsbuildinfo`
+  return { info: `${at}.tsbuildinfo`, outDir }
 }
 
 /** A project argument's tsconfig: a directory names its `tsconfig.json`. */
 const projectFile = (dir: string, arg: string): string =>
   arg.endsWith('.json') ? path.resolve(dir, arg) : path.resolve(dir, arg, 'tsconfig.json')
+
+/** tsc and the compilers that keep its buildinfo: Vue's, the native preview, ts-patch's. */
+const TSC = /^(?:tsc|vue-tsc|tsgo|tspc|ttsc)$/
 
 /** Words that may run `tsc` before it: a runner, or an env assignment. */
 const RUNNER = /^(?:npx|bunx|pnpx|pnpm|yarn|npm|bun|exec|run|-y|--yes|--|[A-Za-z_][\w]*=\S*)$/
@@ -156,7 +168,7 @@ export function tscBuildInfo(read: ReadText, dir: string, command: string): stri
   const out = new Set<string>()
   for (const segment of withScripts(read, dir, command).split(/&&|\|\||[;|&()\n]/)) {
     const words = segment.trim().split(/\s+/)
-    const at = words.indexOf('tsc')
+    const at = words.findIndex((w) => TSC.test(w))
     if (at < 0 || !words.slice(0, at).every((w) => RUNNER.test(w))) continue
     const args = words.slice(at + 1)
     if (args.some((a) => /^(?:-w|--watch|--clean)$/.test(a))) continue
@@ -191,6 +203,24 @@ export function tscBuildInfo(read: ReadText, dir: string, command: string): stri
     }
   }
   return [...out]
+}
+
+/**
+ * The buildinfo the package's own `tsconfig.json` keeps and the outDir it
+ * emits into, relative to `dir` (POSIX), when it is incremental and both sit
+ * inside `dir`. A task whose outputs take that outDir but not the buildinfo,
+ * through a command not seen as tsc (remotion: `node tsrs.cjs -d`, which
+ * runs tsc), emitted nothing after vx emptied the outputs: tsc called every
+ * file unchanged.
+ */
+export function ownBuildInfo(read: ReadText, dir: string): { info: string; outDir: string } | null {
+  const p = projectOf(read, path.join(dir, 'tsconfig.json'), false)
+  if (p === null || p.outDir === undefined) return null
+  const rel = (f: string) => path.relative(dir, f).split(path.sep).join('/')
+  const info = rel(p.info)
+  const outDir = rel(p.outDir)
+  const inside = (r: string) => r !== '' && !r.startsWith('../') && !path.isAbsolute(r)
+  return inside(info) && inside(outDir) ? { info, outDir } : null
 }
 
 /** A reader that reads each file once, and the texts it read (a mapping's cache key). */

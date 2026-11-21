@@ -88,6 +88,68 @@ describe('migrateTurbo: a `tsc -b` build', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // remotion: `node ../.monorepo/tsrs.cjs -d` runs tsc; the composite
+  // buildinfo stayed outside `dist`, vx emptied `dist` before a miss, and tsc
+  // emitted no declarations. The mapper cannot see the tsc, so it names it.
+  const mapped = async (
+    build: string,
+    compilerOptions: object = { composite: true, rootDir: 'src', outDir: 'dist' },
+  ) => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-tsc-migrate-'))
+    try {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['dist'] } } }),
+      )
+      const dir = path.join(root, 'packages', 'a')
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        path.join(dir, 'tsconfig.json'),
+        JSON.stringify({ compilerOptions: { composite: true, ...compilerOptions } }),
+      )
+      const metas: PackageMeta[] = [
+        {
+          name: 'a',
+          dir,
+          packageJson: { name: 'a', scripts: { build } } as never,
+          configPath: null,
+        },
+      ]
+      const task = (await migrateTurbo(root, metas)).projects[0]!.tasks[0]!
+      return {
+        files: (task.task as { outputs: { files: unknown } }).outputs.files,
+        todos: task.todos,
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
+  it('names a buildinfo outside the outputs its tsconfig emits into', async () => {
+    expect(await mapped('node ../tools/tsc-wrapper.cjs -d && bun bundle.ts')).toEqual({
+      files: ['dist'],
+      todos: [
+        "tsconfig.json keeps tsc's buildinfo at tsconfig.tsbuildinfo, outside the outputs, and emits into dist, an output: " +
+          'vx empties the outputs before a miss, so a tsc this task runs emits only what its buildinfo calls changed — ' +
+          'if it runs tsc, add "tsconfig.tsbuildinfo" to the outputs',
+      ],
+    })
+  })
+
+  it('control: a buildinfo inside an output directory is kept', async () => {
+    const { todos } = await mapped('node ../tools/tsc-wrapper.cjs', {
+      rootDir: 'src',
+      outDir: 'dist',
+      tsBuildInfoFile: 'dist/x.tsbuildinfo',
+    })
+    expect(todos).toEqual([])
+  })
+
+  it('control: a seen tsc (vue-tsc, tsgo too) declares it, with nothing to name', async () => {
+    for (const tsc of ['tsc -b', 'vue-tsc -b', 'tsgo -b'])
+      expect(await mapped(tsc)).toEqual({ files: ['dist', 'tsconfig.tsbuildinfo'], todos: [] })
+  })
 })
 
 describe('tscBuildInfo', () => {
