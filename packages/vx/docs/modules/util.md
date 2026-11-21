@@ -83,6 +83,7 @@ export function streamToString(
   onChunk?: (s: string) => void,
   signal?: AbortSignal,
   retain?: boolean, // default true; false drains the stream and feeds onChunk, keeps no copy
+  progress?: { chars: number }, // counts the text read, for drainOrAbort
 ): Promise<string>
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
@@ -110,7 +111,11 @@ export const POST_EXIT_CUT_LINE: string
 export const OPEN_LINE_WAIT_MS = 50
 export const OPEN_LINE_HOLD_CHARS: number
 export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string; end(): void }
-export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
+export function drainOrAbort(
+  streams: Promise<unknown>,
+  ac: AbortController,
+  progress?: { chars: number }, // streamToString's: a bound in which it moved is re-armed
+): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string, env?: NodeJS.ProcessEnv): string // E2BIG with `command`: its size and the 128 KiB limit, or the environment's size and largest entry when that is the cause
 export function sandboxArgTooLongText(bytes: number): string // the E2BIG line for a sandboxed task's wrap
 export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
@@ -198,7 +203,10 @@ held to its start; at the exit, `end` lets everything go; and an
   thread that was ~5 GB of garbage a cold run of the site's 9,600 tasks,
   and the full collections it drove paused the scheduler. With the reads
   moved, a cold run of that shape took 0.35-0.64 s less and 2.5 s less
-  of vx's own CPU. Each chunk crosses as its bytes, transferred.
+  of vx's own CPU. Each chunk crosses as its bytes, transferred. The
+  thread reads only on credit, at most 16 chunks ahead of the consumer,
+  so a task writing faster than vx logs waits on its pipe instead of
+  filling vx's memory.
 - **Spare shell:** on Linux, a task's shell is started before the task
   is asked for (`warm-shell.ts`), so the slot that frees does not wait
   for sh to exec: 200 `sleep 0.02` took 4.4 ms each past their sleep
@@ -308,7 +316,12 @@ The promise from `runCommand` always resolves (never rejects) with a
 `runCommand` gates on the child's exit, not on EOF: a process the task
 backgrounded holds the pipes open, and a reader that waited for EOF
 hung the run. `drainOrAbort` gives the readers `POST_EXIT_DRAIN_MS`
-(250 ms) to reach EOF, then aborts them and resolves true; the caller
+(250 ms) to reach EOF, then aborts them and resolves true. A bound in
+which `progress` moved, or the scheduler was blocked (it fired 1.5x
+late; five in a row with nothing read still cut), starts another, up to
+32 MiB after the exit: what the pipe and the reader thread hold drained
+30 ms past the bound under a cold run's saves, and heavy tasks went
+unsaved as leftovers. The caller
 then sends `POST_EXIT_CUT_LINE` through `onStderr` and appends it to the
 result's `stderr` (after a newline only when the output ended mid-line,
 `lineEnds`), so a cut is never silent (nx#35302 reproduced on vx,

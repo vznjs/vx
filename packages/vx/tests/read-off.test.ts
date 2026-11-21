@@ -69,4 +69,23 @@ describe("a task's output is read off the scheduler thread", () => {
     expect(() => fstatSync(r2!)).toThrow(/EBADF|bad file/i)
     closeSync(w!)
   })
+
+  // Unpaced, the thread drained a pipe as fast as the task wrote it and held
+  // every chunk the logger had not taken yet: 1.5 GB for a 3 GB stdout.
+  it.skipIf(!linux)('a stream nobody reads stalls the writer', async () => {
+    const [r, w] = heldPipe()!
+    const mib = 64
+    const child = Bun.spawn(['head', '-c', String(mib * 1024 * 1024), '/dev/zero'], {
+      stdout: w!,
+      stderr: 'ignore',
+    })
+    closeSync(w!)
+    const s = readOff(r!)
+    await Bun.sleep(1500)
+    // Before: the thread had taken all 64 MiB and the writer was gone.
+    expect(child.exitCode).toBeNull()
+    let n = 0
+    for await (const c of s) n += c.byteLength
+    expect([n, await child.exited]).toEqual([mib * 1024 * 1024, 0])
+  })
 })

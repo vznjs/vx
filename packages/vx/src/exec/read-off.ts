@@ -4,19 +4,33 @@
 // drove, each pausing the scheduler. Here the buffers churn in a small heap
 // of their own, and the main thread sees only each chunk's bytes.
 
+/**
+ * Chunks read ahead of the consumer. The thread reads only on credit, one
+ * per chunk the stream is asked for, so a slow consumer stalls the pipe and
+ * the task, as a pipe read here did: unpaced, a 3 GB stdout held 1.5 GB in
+ * this heap waiting for the logger (vs 100 MB before the thread). 16 drains
+ * a 1 GiB pipe as fast as unpaced (1.6 s; 4 took 2.1 s).
+ */
+const WINDOW = 16
+
 // The worker as source, not a file: a compiled vx carries only its entry
 // point's graph (spawn-off.ts).
 const WORKER = `
 import { closeSync } from 'node:fs'
 const live = new Map()
+const wake = (l) => { const w = l.wake; l.wake = undefined; w?.() }
 self.onmessage = async (e) => {
   const m = e.data
-  if (m.cancel !== undefined) { live.get(m.cancel)?.cancel().catch(() => {}); return }
+  if (m.more !== undefined) { const l = live.get(m.more); if (l) { l.credit++; wake(l) } return }
+  if (m.cancel !== undefined) { const l = live.get(m.cancel); if (l) { l.r.cancel().catch(() => {}); l.credit = Infinity; wake(l) } return }
   const r = Bun.file(m.fd).stream().getReader()
-  live.set(m.id, r)
+  const l = { r, credit: ${WINDOW}, wake: undefined }
+  live.set(m.id, l)
   let error
   try {
     for (;;) {
+      while (l.credit <= 0) await new Promise((res) => (l.wake = res))
+      l.credit--
       const { value, done } = await r.read()
       if (done) break
       postMessage({ id: m.id, chunk: value }, [value.buffer])
@@ -80,6 +94,9 @@ export function readOff(fd: number): ReadableStream<Uint8Array> {
         // An open stream holds the run, as a pipe read here does.
         w.ref()
         w.postMessage({ id, fd })
+      },
+      pull() {
+        w.postMessage({ more: id })
       },
       cancel() {
         const o = open.get(id)

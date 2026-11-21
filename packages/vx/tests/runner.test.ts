@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import {
   armTimeout,
+  drainOrAbort,
   POST_EXIT_CUT_LINE,
   execWord,
   execWrap,
@@ -2273,4 +2274,50 @@ describe('a stop that lands while the spawn is awaited', () => {
       await rm(cwd, { recursive: true, force: true })
     }
   }, 30_000)
+})
+
+// A busy scheduler read what a heavy task left buffered 30 ms past the bound
+// and cut it as a leftover: 11-14 of 16 tasks printing 0.3-5 MB went unsaved
+// on a cold run once the reader thread queued chunks (#5466).
+describe('drainOrAbort', () => {
+  const drain = async (stepMs: number, steps: number, flowing: boolean) => {
+    process.env['VX_TEST_POST_EXIT_DRAIN'] = '40ms'
+    try {
+      const progress = { chars: 0 }
+      const streams = (async () => {
+        for (let i = 0; i < steps; i++) {
+          await Bun.sleep(stepMs)
+          if (flowing) progress.chars += 4096
+        }
+      })()
+      const ac = new AbortController()
+      return [await drainOrAbort(streams, ac, progress), ac.signal.aborted]
+    } finally {
+      delete process.env['VX_TEST_POST_EXIT_DRAIN']
+    }
+  }
+  it('waits past the bound while the readers keep taking text', async () => {
+    expect(await drain(10, 15, true)).toEqual([false, false])
+  })
+  it('does not judge a bound the scheduler spent blocked', async () => {
+    process.env['VX_TEST_POST_EXIT_DRAIN'] = '40ms'
+    try {
+      const progress = { chars: 0 }
+      const streams = (async () => {
+        await Bun.sleep(5)
+        const t = performance.now()
+        while (performance.now() - t < 120);
+        for (let i = 0; i < 3; i++) {
+          await Bun.sleep(10)
+          progress.chars += 4096
+        }
+      })()
+      expect(await drainOrAbort(streams, new AbortController(), progress)).toBe(false)
+    } finally {
+      delete process.env['VX_TEST_POST_EXIT_DRAIN']
+    }
+  })
+  it('cuts readers that took nothing for a whole bound', async () => {
+    expect(await drain(10, 15, false)).toEqual([true, true])
+  })
 })
