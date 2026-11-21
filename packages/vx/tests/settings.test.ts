@@ -188,6 +188,15 @@ describe('a workspace', () => {
     expect(() => validateWorkspace({ run: { timeout: '-1s' } } as never, 'w')).toThrow(
       'w: `run.timeout` must be more than 0 — omit it for no limit (got "-1s")',
     )
+    // Omitted, these take their default, not "no limit".
+    for (const [key, raw] of [
+      ['killGrace', '0ms'],
+      ['pluginTimeout', '-1s'],
+    ] as const) {
+      expect(() => validateWorkspace({ run: { [key]: raw } } as never, 'w')).toThrow(
+        `w: \`run.${key}\` must be more than 0 (got "${raw}")`,
+      )
+    }
   })
 
   it('takes cache.artifactCeiling as a size, and refuses no unit or zero', () => {
