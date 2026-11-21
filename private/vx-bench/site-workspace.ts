@@ -5,6 +5,7 @@ import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { TURBO_FUTURE_FLAGS } from '@vzn/vx-conformance/turbo-flags'
 import { benchEnv } from './bench-env.js'
 import {
   DEPENDS_ON,
@@ -157,6 +158,8 @@ export async function generate(
   })
   await json('turbo.json', {
     $schema: 'https://turborepo.com/schema.json',
+    // The opt-ins conformance scores Turbo on: one Turbo, timed and scored.
+    futureFlags: TURBO_FUTURE_FLAGS,
     tasks: Object.fromEntries(
       (Object.keys(DEPENDS_ON) as TaskName[]).map((t) => [t, turboTask(t)]),
     ),
