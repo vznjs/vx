@@ -2207,7 +2207,7 @@ earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
 the root); two projects of one name are refused naming both
-directories. The plugin `discover` stage runs here and nowhere else, and may
+directories, every such clash at once. The plugin `discover` stage runs here and nowhere else, and may
 add directories (X-143); one holding a config git ignores is refused, as
 is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
 gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
@@ -2219,7 +2219,9 @@ checks, `dependencies` (which projects a project may depend on,
 `VX_E_DEPENDENCY_RULE`) among them, and refuses a task glob whose
 bracket class spells a path that exists (`app/[id]/**` beside the
 directory `app/[id]`; write `app/\[id\]/**`): a broken one prints `✗ vx lock  lock not written`
-with the rule's refusal under it and writes nothing.
+with the rule's refusal under it and writes nothing. Each refusal is
+named in one lock: every config that does not load, and every task
+whose `dependsOn` is broken or loops (a cycle once).
 A lock or review copy that is a symlink, or whose directory resolves
 outside the workspace (a `.vx` linked out of it), is refused the same
 way, before anything is written.

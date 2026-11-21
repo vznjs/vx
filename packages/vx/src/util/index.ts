@@ -11,6 +11,7 @@ export {
   isTmpdirRefusal,
   TMPDIR_HINT,
   isPermissionError,
+  ConfigsRefused,
   isUserError,
   PERMISSION_HINT,
   refusal,

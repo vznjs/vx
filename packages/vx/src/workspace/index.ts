@@ -45,7 +45,6 @@ export {
   type DependenciesLock,
 } from './dependencies-lock.js'
 export {
-  ConfigsRefused,
   loadProjectConfig,
   loadProjectConfigs,
   loadWorkspaceConfig,

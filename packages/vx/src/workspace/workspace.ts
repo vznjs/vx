@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
+  ConfigsRefused,
   executablePath,
   gitCaseArgs,
   gitEnv,
@@ -866,6 +867,7 @@ export function projectNameProblem(name: string): string | null {
  */
 export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMeta[] {
   metas.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  const same: UserError[] = []
   for (let i = 0; i < metas.length; i++) {
     const meta = metas[i]!
     const rel = relPosix(root, meta.dir) || '.'
@@ -879,12 +881,22 @@ export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMe
       )
     }
     const next = metas[i + 1]
-    if (next !== undefined && next.name === meta.name) {
-      const dirs = [meta, next].map((m) => relPosix(root, m.dir) || '.').sort()
-      throw new UserError(
-        `two projects are named "${meta.name}": ${dirs[0]} and ${dirs[1]} — give one another \`name\` in its vx.config`,
+    if (next !== undefined && next.name === meta.name && metas[i - 1]?.name !== meta.name) {
+      let end = i + 1
+      while (metas[end + 1]?.name === meta.name) end++
+      const dirs = metas
+        .slice(i, end + 1)
+        .map((m) => relPosix(root, m.dir) || '.')
+        .sort()
+      same.push(
+        new UserError(
+          `${dirs.length === 2 ? 'two' : dirs.length} projects are named "${meta.name}": ${dirs.slice(0, -1).join(', ')} and ${dirs.at(-1)} — give ${dirs.length === 2 ? 'one' : 'each but one'} another \`name\` in its vx.config`,
+        ),
       )
     }
   }
+  // Every clash at once: a migrated workspace can hold several.
+  if (same.length === 1) throw same[0]!
+  if (same.length > 1) throw new ConfigsRefused(same)
   return metas
 }
