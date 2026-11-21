@@ -22,7 +22,13 @@ import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { gitIgnored, gitIgnoredUnder, trackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
-import { onceReader, ownBuildInfo, type ReadText, tscBuildInfo } from '../tsc-buildinfo.js'
+import {
+  onceReader,
+  ownBuildInfo,
+  type ReadText,
+  tscBuildInfo,
+  undeclaredTscTodo,
+} from '../tsc-buildinfo.js'
 import type * as TurboMap from './turbo-map.js'
 import type { TurboMappedProject } from './turbo-map.js'
 import {
@@ -321,6 +327,10 @@ async function mapAll(
     ignoredUnder: (globs) => gitIgnoredUnder(root, globs),
     buildInfo: (rel, command) => tscBuildInfo(read, path.join(root, rel), command),
     ownBuildInfo: (rel) => ownBuildInfo(read, path.join(root, rel)),
+    tscReach: (rel, command) => {
+      const meta = metas.find((m) => m.dir === path.join(root, rel))
+      return meta === undefined ? null : undeclaredTscTodo(read, meta, metas, command, root)
+    },
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)

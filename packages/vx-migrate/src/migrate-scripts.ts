@@ -44,7 +44,7 @@ import {
   readsLifecycleEvent,
   runsScriptHooks,
 } from './script-command.js'
-import { onceReader, RUNS_SCRIPT, tscBuildInfo, tscBuiltElsewhere } from './tsc-buildinfo.js'
+import { onceReader, RUNS_SCRIPT, tscBuildInfo, undeclaredTscTodo } from './tsc-buildinfo.js'
 
 /**
  * Task names that conventionally never exit. Every mapper guesses the same
@@ -1015,18 +1015,8 @@ export function migrateScripts(
       if (name === 'build') {
         task['dependsOn'] = ['^build']
         todos.push(cacheTodo(own, buildInfoOf(own)))
-        const undeclared = referencedNotDepended(
-          meta,
-          metas,
-          tscBuiltElsewhere(tsc.read, meta.dir, own),
-          root?.dir,
-        )
-        if (undeclared.length > 0) {
-          const list = undeclared.map((n) => `\`${n}\``).join(', ')
-          todos.push(
-            `\`tsc -b\` builds ${list} through tsconfig "references", but this package does not depend on ${undeclared.length === 1 ? 'it' : 'them'}: ${undeclared.length === 1 ? 'that build runs' : 'those builds run'} inside this task, writing ${undeclared.length === 1 ? "that package's" : 'their'} outputs beside ${undeclared.length === 1 ? 'its' : 'their'} own build, and this task's key misses ${undeclared.length === 1 ? 'its' : 'their'} edits; add ${undeclared.length === 1 ? 'it' : 'them'} to this package's devDependencies (\`workspace:*\`)`,
-          )
-        }
+        const reach = undeclaredTscTodo(tsc.read, meta, metas, own, root?.dir)
+        if (reach !== null) todos.push(reach)
       } else if (AFTER_BUILD.has(name) && hasBuild) {
         task['dependsOn'] = ['build']
       }
@@ -1076,47 +1066,6 @@ export function migrateScripts(
 }
 
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
-
-/**
- * The members owning `dirs` that `meta` does not reach through its
- * manifests' workspace dependencies, by name: `^build` orders only those.
- */
-function referencedNotDepended(
-  meta: { name: string; dir: string; packageJson: object },
-  metas: readonly { name: string; dir: string; packageJson: object }[],
-  dirs: readonly string[],
-  rootDir: string | undefined,
-): string[] {
-  // The root's own `tsc -b packages` builds the members by design (nestjs/nest).
-  if (dirs.length === 0 || meta.dir === rootDir) return []
-  const byName = new Map(metas.map((m) => [m.name, m]))
-  const reach = new Set<string>()
-  const queue = [meta.name]
-  while (queue.length > 0) {
-    const m = byName.get(queue.shift()!)
-    if (m === undefined) continue
-    // Peers too: pnpm, Bun and npm install a workspace package's peers, and
-    // the lockfile plugin's `^build` follows them (Effect's packages peer `effect`).
-    for (const d of depsOf(m.packageJson)) {
-      if (byName.has(d) && !reach.has(d)) {
-        reach.add(d)
-        queue.push(d)
-      }
-    }
-  }
-  const out = new Set<string>()
-  for (const dir of dirs) {
-    let owner: (typeof metas)[number] | undefined
-    for (const m of metas) {
-      const inside = dir === m.dir || dir.startsWith(m.dir + path.sep)
-      if (inside && (owner === undefined || m.dir.length > owner.dir.length)) owner = m
-    }
-    // A workspace root is no package to depend on.
-    if (owner === undefined || owner === meta || owner.dir === rootDir) continue
-    if (!reach.has(owner.name)) out.add(owner.name)
-  }
-  return [...out].sort()
-}
 
 const depsOf = (manifest: object | undefined): Set<string> =>
   new Set(

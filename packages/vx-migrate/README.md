@@ -387,6 +387,7 @@ its `package.json` does not name gets a TODO to add it (Effect's
 `@effect/ai-openrouter` referenced `../openai`): `^build` does not order
 that package's build first, so tsc builds it inside this task, writing
 its outputs beside its own build, and this task's key misses its edits.
+A Turbo build gets the same TODO, from `turbo()` and from the migration.
 A script that runs a workspace package's bin the package gets only
 through the root's dependencies (vite's playgrounds run `vite` from the
 root's `vite: workspace:*`) also waits on that package's build
