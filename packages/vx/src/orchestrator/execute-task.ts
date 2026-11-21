@@ -26,6 +26,7 @@ import {
   type UpfrontGroupKey,
 } from './task-hash.js'
 import { executePersistentTask } from './persistent-task.js'
+import type { KeyedTasks } from './upstream-inputs.js'
 import { executeCachedTask, readsCache, restoreProbed } from './cached-task.js'
 
 /** What every task of a run shares: built once per run. */
@@ -186,6 +187,8 @@ export interface RunContext {
   leftRunning?: (node: TaskNode) => void
   /** A `vx watch` cycle (`RunHandoff.watch`): an input edited mid-run is the next cycle's. */
   watch?: true
+  /** When each task settled its key: what a dependant's save re-checks under it (upstream-inputs.ts). */
+  keyedTasks?: KeyedTasks
 }
 
 /** One dispatch: the run it belongs to, plus this task's own facts. */

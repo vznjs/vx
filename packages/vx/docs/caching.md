@@ -287,9 +287,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     declared `config.json` replayed seed B's build under seed A
     (turborepo#13788, item 743). A sandbox narrows the reach to its
     write grants: none reaches nothing, and a grant elsewhere in the
-    workspace reaches every project. An unsandboxed write into another
-    project crosses a project boundary and is not tracked, as for a
-    cached task's undeclared write (`tests/undeclared-writes.test.ts`).
+    workspace reaches every project, as does a declared
+    `outputs.workspaceFiles`: no save marks what it wrote, and a reader
+    in the project it lands in was keyed on the run-start bytes, so its
+    save was withheld every run (`tests/uncached-workspace-output-key.test.ts`).
+    An undeclared unsandboxed write into another project crosses a
+    project boundary and is not tracked, as for a cached task's
+    undeclared write (`tests/undeclared-writes.test.ts`).
 
     A task **with** `cache: true` may still rewrite its own inputs in
     place — a formatter declaring `outputs: []` — and a same-project
@@ -974,7 +978,20 @@ the stamps its save or restore left, and withholds the entry when one
 moved: `[vx] app#build: an output of lib#build changed while it ran (a
 checkout, a stash, another process) — …`. Only outputs git lists are
 checked (tracked, or untracked and not ignored): an ignored `dist` costs
-nothing. A file
+nothing. So are the inputs of every task the key folds, dependencies of
+dependencies too (`inputs.tasks` decides which): an editor's save or a
+sibling task writing a dependency's source while its dependant runs
+(documenso's `remix#build` rewrites `lib`'s `.po` files) let the
+dependant build from bytes the folded key never saw, and once the edit
+was undone every hit replayed that build. Each such file is `lstat`ed
+after the dependant's command, and one written since that task's key was
+taken (a miss: its command's end; a hit: its key) withholds the entry:
+``[vx] app#build: `packages/lib/src/a.ts`, an input of lib#build, changed
+after that task's key was taken — …``, naming the run's task that may
+have written it. A write in that moment's own tick is judged by its
+bytes. A task whose closure was swept clean after the dependant's command
+ended is not swept again; a cold run of 1,000 builds each folding ~300
+others pays ~0.4 s of `lstat` for it. A file
 whose ctime alone moved during the command, its bytes and mtime as the
 key found them (a hard link such as `cp -al src dist`, a chmod, a chown),
 is withheld too, since an edit undone with its mtime put back looks the

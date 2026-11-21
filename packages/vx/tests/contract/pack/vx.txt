@@ -187,6 +187,7 @@ src/orchestrator/telemetry-host.ts
 src/orchestrator/telemetry.ts
 src/orchestrator/trailing-outputs.ts
 src/orchestrator/undeclared-state.ts
+src/orchestrator/upstream-inputs.ts
 src/orchestrator/upstream.ts
 src/orchestrator/worker-runtime.ts
 src/report/events.ts

@@ -11,6 +11,7 @@ import {
   movedSinceKey,
   noStateWritten,
   type StateStamp,
+  upstreamInputsHeld,
   upstreamOutputsHeld,
 } from './input-recheck.js'
 import { markUnsaved, saveMiss, unsavedOutputBytes } from './miss-save.js'
@@ -71,6 +72,7 @@ export async function saveVerdict(
     noStateWritten(m, stamp) &&
     (await keyStillTrue(m, ran.result, check)) &&
     upstreamOutputsHeld(m) &&
+    (await upstreamInputsHeld(m, check)) &&
     (await args.run.serverDiedUnder?.(args.node)) !== true
   ) {
     const own = await m.guard.own()

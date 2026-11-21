@@ -52,6 +52,8 @@ export interface MissRun {
   readonly load: { untrack?: (() => TreeLoad | undefined) | undefined; seen?: TreeLoad | undefined }
   /** 1-based, the attempt running now. */
   attempt: number
+  /** When the last attempt's command ended, on the file system's clock (`KeyedTasks`). */
+  endedAt?: number
 }
 
 /** The attempt before this one, which stands if this one is withdrawn. */
