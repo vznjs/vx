@@ -9,6 +9,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
+  applyWorkspaceLimits,
   applyWorkspaceTimers,
   checkSettingsEnv,
   envName,
@@ -21,7 +22,15 @@ import {
   settingEnv,
 } from '../src/settings.js'
 import { validateWorkspace } from '../src/workspace/index.js'
-import { killGraceMs, teardownTimeoutMs, timerSettingMs } from '../src/util/index.js'
+import {
+  appendTail,
+  createTail,
+  killGraceMs,
+  secretMask,
+  teardownTimeoutMs,
+  timerSettingMs,
+} from '../src/util/index.js'
+import { BoundedCapture } from '../src/exec/index.js'
 import { acceptedFlags } from '../src/cli/help.js'
 import { parseRunArgs } from '../src/cli/run.js'
 
@@ -394,5 +403,39 @@ describe('timer settings (M 11-21: every magic number configurable)', () => {
     // Zero is a plugin timeout: wait for nothing not already done.
     expect(() => validateWorkspace({ run: { pluginTimeout: '0s' } }, 'ws')).not.toThrow()
     expect(() => checkSettingsEnv({ VX_RUN_DRAIN_GRACE: 'soon' })).toThrow(/VX_RUN_DRAIN_GRACE/)
+  })
+})
+
+describe('output budgets (M 11-21: every magic number configurable)', () => {
+  it('.vx/workspace run.logs and run.secrets reach the readers, under their variables', () => {
+    try {
+      applyWorkspaceLimits({
+        run: { logs: { captureHead: '1KiB', captureTail: '1KiB', persistentTail: '1KiB' } },
+      })
+      const cap = new BoundedCapture()
+      cap.push('a'.repeat(4096))
+      expect(cap.text()).toContain('vx keeps the first 1.0 KB and the last 1.0 KB')
+      const tail = createTail()
+      appendTail(tail, 'b'.repeat(4096))
+      expect(tail.chars).toBe(1024)
+
+      applyWorkspaceLimits({ run: { secrets: { minLength: 3 } } })
+      expect(secretMask([{ TOKEN: 'abc' }])?.mask('x abc y')).toBe('x *** y')
+      applyWorkspaceLimits({})
+      expect(secretMask([{ TOKEN: 'abc' }])).toBeNull()
+
+      process.env['VX_RUN_SECRETS_MIN_LENGTH'] = '2'
+      applyWorkspaceLimits({ run: { secrets: { minLength: 3 } } })
+      expect(secretMask([{ TOKEN: 'ab' }])?.mask('ab')).toBe('***')
+    } finally {
+      delete process.env['VX_RUN_SECRETS_MIN_LENGTH']
+      applyWorkspaceLimits(undefined)
+    }
+  })
+
+  it('refuses a budget with no unit', () => {
+    expect(() => validateWorkspace({ run: { logs: { captureHead: '512' } } }, 'ws')).toThrow(
+      /run.logs.captureHead/,
+    )
   })
 })

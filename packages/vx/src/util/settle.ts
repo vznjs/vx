@@ -33,6 +33,24 @@ export function setWorkspaceTimers(values: ReadonlyMap<string, number>): void {
 }
 
 /**
+ * The output budgets and counts a run reads (`run.logs.*`,
+ * `run.secrets.minLength`), by variable, resolved once per workspace load
+ * from the variable, else `.vx/workspace` (`applyWorkspaceLimits` in
+ * settings.ts): a reader on a hot path pays one map read.
+ */
+const workspaceLimits = new Map<string, number>()
+
+export function setWorkspaceLimits(values: ReadonlyMap<string, number>): void {
+  workspaceLimits.clear()
+  for (const [k, v] of values) workspaceLimits.set(k, v)
+}
+
+/** A limit setting as the last workspace load resolved it, else `defaultValue`. */
+export function limitSetting(variable: string, defaultValue: number): number {
+  return workspaceLimits.get(variable) ?? defaultValue
+}
+
+/**
  * A timer setting: its variable, else the workspace's, else `defaultMs`.
  * Zero only where `zero` allows it.
  */

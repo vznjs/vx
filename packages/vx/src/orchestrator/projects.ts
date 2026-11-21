@@ -26,7 +26,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
-import { applyWorkspaceTimers, atPath, SETTINGS } from '../settings.js'
+import { applyWorkspaceLimits, applyWorkspaceTimers, atPath, SETTINGS } from '../settings.js'
 import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '../cache/index.js'
 import {
   checkIgnoreSync,
@@ -85,6 +85,7 @@ export async function loadWorkspacePlugins(
   const settingPlugins = new Map<string, string>()
   if (loaded === null || !hasHook(plugins, 'config')) {
     applyWorkspaceTimers(loaded)
+    applyWorkspaceLimits(loaded)
     return { workspaceConfig: loaded, plugins, branch, settingPlugins }
   }
   // Bun keeps one module per specifier, so the file's export is one object per
@@ -141,6 +142,7 @@ export async function loadWorkspacePlugins(
     }
   })
   applyWorkspaceTimers(workspaceConfig)
+  applyWorkspaceLimits(workspaceConfig)
   return { workspaceConfig, plugins, branch, settingPlugins }
 }
 

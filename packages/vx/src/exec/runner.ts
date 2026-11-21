@@ -13,6 +13,7 @@ import {
   OUT_OF_FDS_HINT,
   POST_EXIT_DRAIN_MS,
   timerSettingMs,
+  limitSetting,
   helperEnv,
   RawUtf8Decoder,
   type SecretMask,
@@ -1333,11 +1334,15 @@ function rssFloorFor(peak: number): number {
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 
+/** `run.logs.captureHead` / `captureTail`: the kept head and tail, as set. */
+const captureHead = (): number => limitSetting('VX_RUN_LOGS_CAPTURE_HEAD', CAPTURE_HEAD_CHARS)
+const captureTail = (): number => limitSetting('VX_RUN_LOGS_CAPTURE_TAIL', CAPTURE_TAIL_CHARS)
+
 /** The line that stands where the dropped middle was. */
 export function droppedOutputLine(
   dropped: number,
-  headChars = CAPTURE_HEAD_CHARS,
-  tailChars = CAPTURE_TAIL_CHARS,
+  headChars = captureHead(),
+  tailChars = captureTail(),
 ): string {
   return (
     // In vx's own units: a fixed MiB tier printed a few KiB dropped as `0.0 MiB`.
@@ -1351,9 +1356,10 @@ export function droppedOutputLine(
  * head piece and a tail piece the whole-value mask missed.
  */
 export function maskCaptured(text: string, secrets: SecretMask): string {
-  const at = text.indexOf('\n[vx] ', CAPTURE_HEAD_CHARS - 1)
+  const headChars = captureHead()
+  const at = text.indexOf('\n[vx] ', headChars - 1)
   const end = at === -1 ? -1 : text.indexOf('\n', at + 1) + 1
-  if (at === -1 || at > CAPTURE_HEAD_CHARS || !DROPPED_LINE.test(text.slice(at, end))) {
+  if (at === -1 || at > headChars || !DROPPED_LINE.test(text.slice(at, end))) {
     return secrets.mask(text)
   }
   const [head, tail] = secrets.maskCut(text.slice(0, at), text.slice(end))
@@ -1403,15 +1409,15 @@ export class BoundedCapture {
   private seen = 0
 
   constructor(
-    private readonly headChars = CAPTURE_HEAD_CHARS,
-    private readonly tailChars = CAPTURE_TAIL_CHARS,
+    private readonly headChars = captureHead(),
+    private readonly tailChars = captureTail(),
   ) {}
 
   push(text: string, err = false): void {
     // A capture's output replayed into another (a distributed miss replays the
     // worker's): its dropped line is counted, not kept, or it fell into the new
     // middle with a wrong count.
-    const at = CAPTURE_HEAD_CHARS - this.seen
+    const at = captureHead() - this.seen
     this.seen += text.length
     if (!err && at >= 0 && at <= text.length) {
       // At the head's end, or a unit short of it (a surrogate pair's split).

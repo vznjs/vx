@@ -5,6 +5,7 @@
 
 import {
   machineParallelism,
+  setWorkspaceLimits,
   setWorkspaceTimers,
   MAX_TIMEOUT_MS,
   parseDecimalInt,
@@ -140,6 +141,54 @@ export const SETTINGS: readonly Setting[] = [
     kind: { type: 'duration', timer: true },
     default: "'10s'",
     doc: 'How long a persistent task may wait on its `readyWhen` before vx says it is still waiting.',
+  },
+  {
+    path: 'run.logs.captureHead',
+    kind: { type: 'size' },
+    default: "'8MiB'",
+    doc: "The start of a task's output vx keeps for its cache entry and replay; the live stream is never cut. Counted in characters.",
+  },
+  {
+    path: 'run.logs.captureTail',
+    kind: { type: 'size' },
+    default: "'8MiB'",
+    doc: "The end of a task's output vx keeps for its cache entry and replay. Counted in characters.",
+  },
+  {
+    path: 'run.logs.failedHead',
+    kind: { type: 'size' },
+    default: "'8KiB'",
+    doc: "The start of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
+  },
+  {
+    path: 'run.logs.failedTail',
+    kind: { type: 'size' },
+    default: "'56KiB'",
+    doc: "The end of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
+  },
+  {
+    path: 'run.logs.telemetryTail',
+    kind: { type: 'size' },
+    default: "'128KiB'",
+    doc: "The end of each task's output a telemetry plugin receives. Counted in characters.",
+  },
+  {
+    path: 'run.logs.telemetryBudget',
+    kind: { type: 'size' },
+    default: "'4MiB'",
+    doc: 'All task output a telemetry plugin receives in one run; failures are kept over successes. Counted in characters.',
+  },
+  {
+    path: 'run.logs.persistentTail',
+    kind: { type: 'size' },
+    default: "'64KiB'",
+    doc: 'The end of each stream a persistent task (a dev server) keeps in memory, shown if it fails. Counted in characters.',
+  },
+  {
+    path: 'run.secrets.minLength',
+    kind: { type: 'int', min: 1 },
+    default: '6',
+    doc: 'The shortest secret value vx masks in output; a shorter one (`KEY=1`) would mask every match in every line.',
   },
   {
     path: 'run.rules.exclusiveOutputs',
@@ -533,4 +582,37 @@ export function applyWorkspaceTimers(workspace: unknown): void {
     if (v !== undefined) values.set(envName(p), parseSettingValue(setting(p).kind, v) as number)
   }
   setWorkspaceTimers(values)
+}
+
+/** The output budgets and counts a run reads once (util/settle.ts `limitSetting`). */
+const WORKSPACE_LIMITS = [
+  'run.logs.captureHead',
+  'run.logs.captureTail',
+  'run.logs.failedHead',
+  'run.logs.failedTail',
+  'run.logs.telemetryTail',
+  'run.logs.telemetryBudget',
+  'run.logs.persistentTail',
+  'run.secrets.minLength',
+] as const
+
+/**
+ * Resolve `.vx/workspace`'s output budgets and counts, each under its
+ * variable, for the readers that run per chunk: at the CLI's start with
+ * no workspace (a verb that never loads one still honours the variable),
+ * then once per workspace load. A refused variable is skipped: the CLI
+ * refused it already, and `vx info` reports it.
+ */
+export function applyWorkspaceLimits(workspace: unknown): void {
+  const values = new Map<string, number>()
+  for (const p of WORKSPACE_LIMITS) {
+    let value: unknown
+    try {
+      value = resolveSetting(p, workspace).value
+    } catch {
+      continue
+    }
+    if (value !== undefined) values.set(envName(p), value as number)
+  }
+  setWorkspaceLimits(values)
 }

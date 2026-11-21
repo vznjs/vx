@@ -6,11 +6,7 @@ import { BoundedCapture } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type { Logger } from '../report/index.js'
 import { maskedStreams, type SecretMask } from '../util/index.js'
-import {
-  encodeOutputLog,
-  FAILED_OUTPUT_HEAD_CHARS,
-  FAILED_OUTPUT_TAIL_CHARS,
-} from './output-log.js'
+import { encodeOutputLog, failedOutputHead, failedOutputTail } from './output-log.js'
 import { taskLogMasks } from './telemetry.js'
 
 export interface StreamSnapshot {
@@ -47,7 +43,7 @@ export class AttemptStream {
     const { node, log } = this
     const kept = whole
       ? new BoundedCapture()
-      : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
+      : new BoundedCapture(failedOutputHead(), failedOutputTail())
     this.output = kept
     this.midLine = false
     this.errTail = ''

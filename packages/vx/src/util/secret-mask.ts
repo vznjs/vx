@@ -6,6 +6,7 @@
 // is replaced wherever it appears.
 
 import { ownEnv } from './essential-env.js'
+import { limitSetting } from './settle.js'
 
 /** A variable whose value is masked, by the words its name holds. */
 const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|CREDENTIAL/i
@@ -100,8 +101,9 @@ export function secretMask(
   named: readonly string[] = [],
 ): SecretMask | null {
   const values = new Set<string>()
+  const min = limitSetting('VX_RUN_SECRETS_MIN_LENGTH', MIN_SECRET_CHARS)
   const add = (value: string | undefined): void => {
-    if (value === undefined || value.length < MIN_SECRET_CHARS) return
+    if (value === undefined || value.length < min) return
     values.add(value)
     // A value with a `'` reaches a printed command spelled as shellQuote spells
     // it (`'\''`), which the plain value does not match.
@@ -112,7 +114,7 @@ export function secretMask(
     if (!value.includes('\n')) return
     for (const line of value.split(/\r?\n/)) {
       const trimmed = line.trim()
-      if (trimmed.length >= MIN_SECRET_CHARS) values.add(trimmed)
+      if (trimmed.length >= min) values.add(trimmed)
     }
   }
   for (const source of sources) {

@@ -83,6 +83,12 @@ export interface RunSettings {
   lineWait?: Duration
   /** How long a persistent task waits on `readyWhen` before vx says so. Omitted → `'10s'`. */
   readyNotice?: Duration
+  /** How much output vx keeps, in characters (a size: `'8MiB'`). */
+  logs?: RunLogs
+  secrets?: {
+    /** The shortest secret value vx masks in output. Omitted → 6. */
+    minLength?: number
+  }
   /**
    * What a failed task takes down: `never` stops the run, `deps-ok` (the
    * default) skips its dependents, `always` runs them too.
@@ -95,6 +101,24 @@ export interface RunSettings {
    * correctly but more slowly.
    */
   rules?: WorkspaceRules
+}
+
+/** `WorkspaceConfig.run.logs`: output vx keeps, counted in characters. */
+export interface RunLogs {
+  /** The start of a task's output kept for its entry and replay. Omitted → `'8MiB'`. */
+  captureHead?: string
+  /** The end of a task's output kept for its entry and replay. Omitted → `'8MiB'`. */
+  captureTail?: string
+  /** The start of a failed attempt's stored output. Omitted → `'8KiB'`. */
+  failedHead?: string
+  /** The end of a failed attempt's stored output. Omitted → `'56KiB'`. */
+  failedTail?: string
+  /** The end of each task's output a telemetry plugin receives. Omitted → `'128KiB'`. */
+  telemetryTail?: string
+  /** All task output a telemetry plugin receives in one run. Omitted → `'4MiB'`. */
+  telemetryBudget?: string
+  /** The end of each stream a persistent task keeps in memory. Omitted → `'64KiB'`. */
+  persistentTail?: string
 }
 
 /** `WorkspaceConfig.inputs`. */

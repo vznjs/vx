@@ -1374,6 +1374,8 @@ plugin's `telemetry()` consultation before the run too (item 921).
 ```ts
 timerSettingMs(variable, defaultMs): number       // the variable, else .vx/workspace's, else defaultMs
 setWorkspaceTimers(values): void                  // .vx/workspace's timers, by variable (settings.ts)
+limitSetting(variable, defaultValue): number      // run.logs.*, run.secrets.minLength as the workspace load resolved them
+setWorkspaceLimits(values): void                  // set once per workspace load (settings.ts applyWorkspaceLimits)
 teardownTimeoutMs(): number                       // default 3000, run.pluginTimeout
 settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // run.killGrace, else defaultMs

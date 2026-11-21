@@ -202,7 +202,8 @@ config, measured 2026-09-10). The scaffolds still write the type-only
 // Types
 export interface ProjectConfig
 export interface WorkspaceConfig // { run, cache, inputs, outputs, lock, watch, plugins }
-export interface RunSettings // `run`: concurrency, schedule, timeout, retries, rules …
+export interface RunSettings // `run`: concurrency, schedule, timeout, retries, timers, logs, secrets, rules …
+export interface RunLogs // `run.logs`: the output vx keeps, in characters (capture, failed, telemetry, persistent)
 export interface CacheSettings // `cache`: dir, retention, policy, scope, download
 export interface WorkspaceInputs // `inputs`: stability
 export interface WorkspaceOutputs // `outputs`: clean
@@ -349,6 +350,7 @@ export function kindHint(kind: SettingKind): string
 export function atPath(config: unknown, path: string): unknown
 export function runRules(workspace: unknown): { exclusiveOutputs?: boolean }
 export function applyWorkspaceTimers(workspace: unknown): void // run timers → util/settle.ts, once per workspace load
+export function applyWorkspaceLimits(workspace: unknown): void // output budgets → util/settle.ts, resolved once
 export function envName(path: string): string
 export function parseSettingValue(kind: SettingKind, raw: unknown): unknown
 export function settingRefusal(path: string, where: string, raw: unknown, got?: string): string
