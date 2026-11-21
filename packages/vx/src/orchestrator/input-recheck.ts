@@ -5,12 +5,17 @@
 import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
-import { racyWindowMs, stampGrainMs, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
+import {
+  LINK_MODE,
+  type OutputFileRow,
+  racyWindowMs,
+  stampGrainMs,
+  WORKSPACE_OUTPUT_PREFIX,
+} from '../memo/index.js'
 import { type ExecuteResult } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import type { GitFilesCache } from '../cache/index.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from '../sandbox/index.js'
-import { printable, relPosix, span, taskGlob, taskGlobOf } from '../util/index.js'
+import { outputMatcher, printable, relPosix, span, taskGlobOf } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { MissRun } from './miss-run.js'
@@ -307,14 +312,14 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
 /**
  * Did each dependency's outputs stay as its task left them while this one
  * ran? The key folds a dependency's input key, never its bytes: a checkout
- * or stash that put a dependency's committed output back mid-run let this
+ * or stash that put a dependency's committed output back mid-run, or a
+ * sibling task or another process that rewrote an ignored one, let this
  * task build from bytes no key names, and the save filed them under one
  * that does, so every later hit replayed them under a green run. Held to
- * the rows the dependency's own save or restore stamped; one with none
- * stamped here (it ran elsewhere) is not checked, nor one whose outputs git
- * neither tracks nor lists, which no checkout or stash moves (a stat per
- * output and a read of its rows per save, ~1.4 ms at 600 outputs, paid only
- * where outputs are committed).
+ * the stamps the dependency's own save or restore left; one with none
+ * stamped here (it ran elsewhere) is not checked. On every miss's save, so
+ * kept to an lstat per stamped file: rows stamped in this process come from
+ * memory, and no directory, link or span is asked.
  */
 export function upstreamOutputsHeld(m: MissRun): boolean {
   const { args } = m
@@ -326,25 +331,24 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
       deps.push(o)
   }
   args.upstream.forEach(add)
-  const files = args.run.gitFilesCache
-  const exposed = deps.filter((d) => gitSees(d.node, files))
-  if (exposed.length === 0) return true
+  if (deps.length === 0) return true
   const { memo } = args.run.cache
-  const endCheck = span('miss: recheck upstream outputs')
-  const rows = memo.loadOutputFilesBatch(exposed.map((d) => d.hash!))
-  const moved = exposed.find((d) => {
-    const own = rows.get(d.hash!)
-    if (own === undefined || own.length === 0) return false
-    const proj = own.filter((r) => !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
-    const ws = own
-      .filter((r) => r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
-      .map((r) => ({ ...r, path: r.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
-    return !(
-      memo.isOutputsCurrent(d.node.projectDir, proj) &&
-      memo.isOutputsCurrent(args.run.workspaceRoot, ws)
-    )
-  })
-  endCheck()
+  const { node } = args
+  const root = args.run.workspaceRoot
+  let unread: TaskOutcome[] | undefined
+  let moved: TaskOutcome | undefined
+  for (const d of deps) {
+    const rows = memo.stampedRowsOf?.(d.hash!)
+    if (rows === undefined) (unread ??= []).push(d)
+    else if (outputMoved(rows, d.node.projectDir, root, node)) {
+      moved = d
+      break
+    }
+  }
+  if (moved === undefined && unread !== undefined) {
+    const read = memo.loadOutputFilesBatch(unread.map((d) => d.hash!))
+    moved = unread.find((d) => outputMoved(read.get(d.hash!) ?? [], d.node.projectDir, root, node))
+  }
   if (moved === undefined) return true
   warnOf(args.log)(
     `[vx] ${args.node.id}: an output of ${moved.node.id} changed while it ran (a checkout, a stash, another process) — ` +
@@ -352,6 +356,63 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   )
   forgetUndeclaredWrites(args.node, args.run.gitFilesCache, 'workspace')
   return false
+}
+
+/**
+ * Whether a file of `rows` (a dependency's, under `projectDir`) is not the
+ * one its stamp names: another size, mtime, inode or ctime, gone, or never
+ * stamped. A file `node` declares as its own output is its own to rewrite
+ * (an emitter over its build's `dist`), saved with its entry.
+ */
+function outputMoved(
+  rows: readonly OutputFileRow[],
+  projectDir: string,
+  root: string,
+  node: TaskNode,
+): boolean {
+  if (rows.length === 0) return false
+  const claims = claimsOf(node, root)
+  const near = claims !== undefined && atOrUnder(projectDir, node.projectDir)
+  const base = projectDir.endsWith('/') ? projectDir : `${projectDir}/`
+  for (const r of rows as readonly StampedOutputRow[]) {
+    if (r.path.endsWith('/') || r.mode === LINK_MODE) continue
+    const ws = r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+    const abs = ws ? path.join(root, r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)) : base + r.path
+    if ((near || ws) && claims?.(abs) === true) continue
+    const s = lstatSync(abs, { throwIfNoEntry: false })
+    if (
+      s === undefined ||
+      r.ino === undefined ||
+      s.ino !== r.ino ||
+      Math.floor(s.ctimeMs) !== r.ctimeMs ||
+      s.size !== r.size ||
+      Math.abs(s.mtimeMs - (r.stampMtimeMs ?? r.mtimeMs)) >= 1
+    )
+      return true
+  }
+  return false
+}
+
+/** A row as `recordOutputStamps` leaves it: the mtime it stamped, beside the entry's. */
+type StampedOutputRow = OutputFileRow & { stampMtimeMs?: number }
+
+const claimsByNode = new WeakMap<TaskNode, ((abs: string) => boolean) | undefined>()
+
+/** Whether `node` declares an absolute path its output; undefined when it declares none. */
+function claimsOf(node: TaskNode, workspaceRoot: string): ((abs: string) => boolean) | undefined {
+  if (claimsByNode.has(node)) return claimsByNode.get(node)
+  const own = node.config.outputs?.files ?? []
+  const ws = node.config.outputs?.workspaceFiles ?? []
+  let claims: ((abs: string) => boolean) | undefined
+  if (own.length > 0 || ws.length > 0) {
+    const ownOut = outputMatcher(own)
+    const wsOut = outputMatcher(ws)
+    claims = (abs) =>
+      (atOrUnder(abs, node.projectDir) && ownOut(relPosix(node.projectDir, abs))) ||
+      (ws.length > 0 && wsOut(relPosix(workspaceRoot, abs)))
+  }
+  claimsByNode.set(node, claims)
+  return claims
 }
 
 /**
@@ -389,31 +450,4 @@ export async function upstreamInputsHeld(m: MissRun, check: KeyCheck): Promise<b
   check.unkeyed = true
   check.drifted = moved.file
   return false
-}
-
-const seenByGit = new WeakMap<GitFilesCache, WeakMap<TaskNode, boolean>>()
-
-/**
- * Does git list a file under `node`'s declared outputs (tracked, or untracked
- * and not ignored), so a checkout or stash may move one? Asked of the run's
- * listing once per task; a workspace output, or a project the listing lacks,
- * is taken as seen.
- */
-function gitSees(node: TaskNode, files: GitFilesCache | undefined): boolean {
-  // No listing: a run outside git, which vx refuses; no checkout moves anything.
-  if (files === undefined) return false
-  let memo = seenByGit.get(files)
-  if (memo === undefined) seenByGit.set(files, (memo = new WeakMap()))
-  let seen = memo.get(node)
-  if (seen === undefined) {
-    const outputs = node.config.outputs
-    const listed = files.get(node.projectDir)
-    const globs = (outputs?.files ?? []).filter((g) => !g.startsWith('!')).map(taskGlob)
-    seen =
-      (outputs?.workspaceFiles?.length ?? 0) > 0 ||
-      listed === undefined ||
-      listed.some((f) => globs.some((g) => g.match(f)))
-    memo.set(node, seen)
-  }
-  return seen
 }

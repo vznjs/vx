@@ -972,13 +972,14 @@ derivation, step 11). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A
 dependency's outputs are held the same way. The key folds a dependency's
 input key, never its bytes. So a `git checkout` or `git stash` that puts
-back a committed output of a dependency while its dependant runs would
+back a committed output of a dependency while its dependant runs, or a
+sibling task or another process that rewrites an ignored `dist`, would
 file bytes no key names. The save checks each dependency's outputs against
 the stamps its save or restore left, and withholds the entry when one
 moved: `[vx] app#build: an output of lib#build changed while it ran (a
-checkout, a stash, another process) — …`. Only outputs git lists are
-checked (tracked, or untracked and not ignored): an ignored `dist` costs
-nothing. So are the inputs of every task the key folds, dependencies of
+checkout, a stash, another process) — …`. Each output is `lstat`ed once
+per dependant's save, and not again for a dependant whose command ended
+before the last check found them held. So are the inputs of every task the key folds, dependencies of
 dependencies too (`inputs.tasks` decides which): an editor's save or a
 sibling task writing a dependency's source while its dependant runs
 (documenso's `remix#build` rewrites `lib`'s `.po` files) let the

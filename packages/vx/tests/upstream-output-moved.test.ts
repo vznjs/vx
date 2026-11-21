@@ -74,3 +74,39 @@ it('a dependency output a checkout puts back mid-run leaves the dependant unsave
   expect(await readFile(path.join(lib, 'dist/o'), 'utf8')).toBe('B\n')
   expect(await readFile(path.join(app, 'dist/o'), 'utf8')).toBe('B\n')
 }, 30_000)
+
+// Ignored outputs too: a sibling task or another process rewrites them as
+// readily as a checkout puts committed ones back.
+it('a dependency output git ignores, rewritten mid-run, is not replayed', async () => {
+  const lib = await addProject(root, 'lib', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat src/a > dist/o' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'A\n' },
+  })
+  const app = await addProject(root, 'app', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'touch ${marks}/started && while [ ! -f ${marks}/go ]; do sleep 0.01; done && mkdir -p dist && cat ../lib/dist/o > dist/o' },
+      dependsOn: ['^build'], inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'x\n' },
+  })
+  await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+  gitIn(root)('add', '-A')
+  gitIn(root)('commit', '-q', '-m', 'fixture')
+
+  const running = run({ cwd: root, tasks: ['build'], log: logger })
+  while (!existsSync(path.join(marks, 'started'))) await Bun.sleep(5)
+  await writeFile(path.join(lib, 'dist/o'), 'B\n')
+  await writeFile(path.join(marks, 'go'), '')
+  expect((await running).ok).toBe(true)
+  expect(await readFile(path.join(app, 'dist/o'), 'utf8')).toBe('B\n')
+
+  await rm(path.join(lib, 'dist'), { recursive: true })
+  await rm(path.join(app, 'dist'), { recursive: true })
+  // Before the fix: lib restored A and app hit, replaying B.
+  expect((await run({ cwd: root, tasks: ['build'], log: logger })).ok).toBe(true)
+  expect(await readFile(path.join(lib, 'dist/o'), 'utf8')).toBe('A\n')
+  expect(await readFile(path.join(app, 'dist/o'), 'utf8')).toBe('A\n')
+}, 30_000)

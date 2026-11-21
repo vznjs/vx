@@ -122,6 +122,7 @@ export interface CacheLayer {
 export interface TaskMemo {
   hashFile(filePath: string): Promise<string>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,

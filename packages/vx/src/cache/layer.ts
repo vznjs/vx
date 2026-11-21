@@ -280,6 +280,11 @@ export interface TaskMemo {
    */
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   /**
+   * An entry's rows as this process last stamped them (optional): a check
+   * after a save or restore here needs no query.
+   */
+  stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined
+  /**
    * True iff every `expected` row's file under `projectDir` matches its size,
    * mode and mtime: the hit then skips clean and restore. Any mismatch or
    * missing file falls through to a real restore.

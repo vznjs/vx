@@ -141,6 +141,12 @@ export class OutputIndex {
    * a since-pruned entry serve a restore that finds no artifact.
    */
   private readonly held = new Map<string, readonly OutputFileRow[]>()
+  /**
+   * Each entry's rows as this process last stamped them, by hash: what a read
+   * after the stamp returns, so a dependant's save checks a dependency's
+   * outputs with no statement (`stampedRowsOf`). Dropped with the rows.
+   */
+  private readonly stamped = new Map<string, readonly OutputFileRow[]>()
   private rootKey: number | undefined
 
   /**
@@ -210,6 +216,7 @@ export class OutputIndex {
     for (const h of hashes) {
       this.pendingStamps.delete(h)
       this.pendingDirs.delete(h)
+      this.stamped.delete(h)
     }
     const { test, params } = inHashes(hashes)
     this.db.prepare(`DELETE FROM output_stamps WHERE entry_hash ${test}`).run(...params)
@@ -234,6 +241,7 @@ export class OutputIndex {
     this.held.delete(hash)
     this.warmed.delete(hash)
     this.pendingStamps.delete(hash)
+    this.stamped.delete(hash)
     this.deleteOutputFiles.run(hash)
     this.deleteStamps.run(hash)
     let bytes = 0
@@ -248,6 +256,11 @@ export class OutputIndex {
   hold(rows: ReadonlyMap<string, readonly OutputFileRow[]>): void {
     this.held.clear()
     for (const [hash, list] of rows) this.held.set(hash, list)
+  }
+
+  /** `hash`'s rows as this process last stamped them, stamps included: no read. */
+  stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined {
+    return this.stamped.get(hash)
   }
 
   /** The probe's rows of `hash` when held: no read. */
@@ -578,6 +591,13 @@ export class OutputIndex {
       }
     }
     if (stamps.size > 0) this.pendingStamps.set(hash, stamps)
+    this.stamped.set(
+      hash,
+      rows.map((r): StampedRow => {
+        const t = stamps.get(r.path)
+        return t === undefined ? r : { ...r, ino: t[0], ctimeMs: t[1], stampMtimeMs: t[2] }
+      }),
+    )
   }
 
   /** Land every pending stamp and snapshot in one transaction each; a null snapshot clears its rows. */

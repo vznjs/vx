@@ -29,6 +29,7 @@ export interface StoreMemo {
   /** Each task's last key by its probe (`computeTaskHash`). */
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,
@@ -249,6 +250,11 @@ export class LocalMemo implements StoreMemo {
    */
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
     return this.outputs.isOutputsCurrent(projectDir, expected)
+  }
+
+  /** `hash`'s rows as this process last stamped them: no read. */
+  stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined {
+    return this.outputs.stampedRowsOf(hash)
   }
 
   /**
