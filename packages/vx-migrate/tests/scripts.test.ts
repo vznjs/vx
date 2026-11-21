@@ -1165,18 +1165,38 @@ describe('migrateScripts', () => {
         start: 'docusaurus start',
         'start:base': "cross-env BASE_URL='/b/' pnpm start",
         client: 'vite',
+        cd: 'vite --config ./vite.config-es.js dev',
+        cr: 'vite --mode staging ./app',
+        cp: 'vite --config v.js preview',
         pv: 'vite preview --port 3',
         ns: 'next start',
         nd: 'pnpm build && netlify dev',
         ws: 'webpack serve',
         build: 'tsc',
       }),
-    ).toEqual(['client', 'nd', 'ns', 'pv', 'serve:site', 'serve:ssl', 'start', 'start:base', 'ws'])
+    ).toEqual([
+      'cd',
+      'client',
+      'cp',
+      'cr',
+      'nd',
+      'ns',
+      'pv',
+      'serve:site',
+      'serve:ssl',
+      'start',
+      'start:base',
+      'ws',
+    ])
     // CONTROLS: a build, a server another tool runs and stops, or one sent
     // to the background before the real command.
     expect(
       persistent({
         vb: 'vite build',
+        // vite's playground: options before the verb (`vite --config x build`).
+        vc: 'vite --config ./vite.config-iife.js build',
+        vm: 'WORKER_MODE=inline vite -c v.js --mode x build',
+        vo: 'vite --force optimize',
         nb: 'next build',
         sb: 'storybook build',
         e2e: 'start-server-and-test "vite preview" 4173 "playwright test"',

@@ -392,7 +392,8 @@ edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks, with a TODO to add `readyWhen` when
 another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
 a `--watch` flag (not `--watch=false` / `--watchAll false`), `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
-`serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
+`serve <dir>`, `http-server`, bare `vite` (options before a `build` or
+`optimize` verb, `vite --config x.js build`, still exit), a tool's `dev` / `serve` /
 `start` / `preview` verb (`next start`, `netlify dev`), or a script that
 runs such a script of its package by name (`cross-env X=1 pnpm start`) or
 through a runner (`run-p web api`, `concurrently "npm:web" "npm:api"`, D-113),
