@@ -31,6 +31,8 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // #5452's sandbox-path fix, pushed before its subject was cut: 74 chars.
+  '8eaa06619f68173394b5fc0a57861b2e401349fc',
   // #5251's old-core fix for vx-history, pushed before its subject was cut: 76 chars.
   '3a50a99503149449d51d3c073a798259e9b30af4',
   // #5222's package-graph doc fix, pushed before its subject was cut: 77 chars.
