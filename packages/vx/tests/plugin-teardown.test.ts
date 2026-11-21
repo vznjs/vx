@@ -391,13 +391,14 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     }
   }, 30_000)
 
-  // A setup or executor factory that never settles held the run: the
+  // A setup, executor factory or schedule hook that never settles held the run: the
   // first signal was noted and waited on the hang, and the second (a CI's
   // KILL after its TERM) ended vx with no plugin torn down. The timer
   // keeps the loop alive, as a hung socket does.
   for (const [hook, body, signal, code] of [
     ['a setup', 'async setup()', 'SIGTERM', 143],
     ['an executor factory', 'executor()', 'SIGINT', 130],
+    ['a schedule hook', 'schedule()', 'SIGINT', 130],
   ] as const) {
     it(`one ${signal} during ${hook} that hangs tears every plugin down and exits ${code}`, async () => {
       const file = (name: string): string => JSON.stringify(path.join(root, name))

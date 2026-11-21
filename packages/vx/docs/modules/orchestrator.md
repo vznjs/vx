@@ -2545,7 +2545,10 @@ that leaves before it (a refusal, a setup that threw) exits of the
 signal from `run()`'s finally (`exitOfSignal`), its plugins torn down
 and its lock released. A setup or executor factory that never settles
 does not hold the first signal: `unlessStopped` ends its wait, and the
-run tears every plugin down and exits of the signal. It held it, so only
+run tears every plugin down and exits of the signal. A `schedule` hook
+that never settles does not either: the stop ends the wait unranked, and
+the stopped graph dispatches nothing (it waited out the signal's whole
+bound, 7 s by default, 2026-11-21). It held it, so only
 a second signal (a CI's KILL after its TERM) ended vx, with no teardown
 (2026-11-07). A second signal in the window exits at once
 (`tests/plugin-teardown.test.ts` › "a signal during a plugin setup
@@ -3430,7 +3433,7 @@ a run explorer's record on this API and reads it back through a verb.
   exception (item 849), nor is one that never started its schedule (a
   refused setup, a factory that threw, an unresolved name) or a plan
   (item 1021); a second signal, or a `kill -9`, is. A signal during a
-  setup or executor factory that never settles tears every plugin down,
+  setup, executor factory or `schedule` hook that never settles tears every plugin down,
   that one included, and exits. So does a run a hook strands (one that
   never settles, from the stage after the factories on): the loop
   drains, `bin.ts` names the plugin and hook and exits 1 once the
