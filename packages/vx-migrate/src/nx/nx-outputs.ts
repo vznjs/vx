@@ -9,6 +9,8 @@ import { takingBack } from '../shared-outputs.js'
 interface NxOutputs {
   readonly outFiles: string[]
   readonly wsOutFiles: string[]
+  /** Every output resolved to a `!` path: Nx caches the workspace minus them. */
+  readonly negOnly?: true
 }
 
 /**
@@ -208,7 +210,12 @@ export function mapNxOutputs(
         wsOutFiles.push(`${gn}${w}/**`)
     }
   }
-  return { outFiles: takingBack(outFiles), wsOutFiles: takingBack(wsOutFiles) }
+  const all = [...outFiles, ...wsOutFiles]
+  return {
+    outFiles: takingBack(outFiles),
+    wsOutFiles: takingBack(wsOutFiles),
+    ...(all.length > 0 && all.every((g) => g.startsWith('!')) ? { negOnly: true as const } : {}),
+  }
 }
 
 /**

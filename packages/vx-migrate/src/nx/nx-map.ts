@@ -983,7 +983,7 @@ function buildTask(
   // An output only matters to a task vx caches: Nx's default `build` /
   // `public` note sat on every uncached `build` that declares none.
   const outTodos = cacheWanted ? todos : []
-  const { outFiles, wsOutFiles } = mapNxOutputs(
+  const { outFiles, wsOutFiles, negOnly } = mapNxOutputs(
     target.outputs ??
       nxDefaultOutputs(targetName, options, projectRel, outTodos, opts.tracked?.(projectRel).tops),
     options,
@@ -1045,6 +1045,14 @@ function buildTask(
       ? (wildcardOutput(outFiles) ?? wildcardOutput(wsOutFiles))
       : undefined
   if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
+  // Nx reads outputs that only take paths back as the whole workspace minus
+  // them; vx cached the task with no output, so a hit restored no file.
+  if (negOnly && cacheWanted && !persistent) {
+    todos.push(
+      `outputs ${JSON.stringify(target.outputs)} only take paths back: Nx caches the whole workspace minus them — ` +
+        'task runs uncached; declare what it writes',
+    )
+  }
   // The manifest or config an output covers is taken back, so core loads it.
   if (wild === undefined) outFiles.push(...ownFileTakeBacks(outFiles, opts.ownConfig?.(projectRel)))
   // Nx keys the outputs of the tasks this one depends on, and vx their keys
@@ -1057,7 +1065,8 @@ function buildTask(
   if (orphanReader && cacheWanted && !persistent) {
     todos.push(orphanReaderTodo(inputs.dependentOutputs, target.dependsOn))
   }
-  const cacheEnabled = !persistent && cacheWanted && wild === undefined && !orphanReader
+  const cacheEnabled =
+    !persistent && cacheWanted && wild === undefined && !orphanReader && negOnly !== true
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
   }

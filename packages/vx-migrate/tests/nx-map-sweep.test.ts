@@ -133,6 +133,22 @@ describe('nx-map: what the sweep found unheld', () => {
     )
   })
 
+  // Nx 24 cached the whole workspace minus the negation; vx cached nothing, so a hit restored no file.
+  it.each([['!{projectRoot}/lib'], ['!{projectRoot}/dist/']])(
+    'outputs of negations alone %p run uncached with a todo',
+    async (o) => {
+      const a = await meta('a', { build: 'tsc' })
+      const t = await tasksOf([a], {
+        a: node('packages/a', { build: { command: 'tsc', cache: true, outputs: [o] } }),
+      })
+      const task = t.get('a#build')!
+      expect(task.task?.cache).toBeFalsy()
+      expect(task.todos).toContain(
+        `outputs ${JSON.stringify([o])} only take paths back: Nx caches the whole workspace minus them — task runs uncached; declare what it writes`,
+      )
+    },
+  )
+
   // Nx 23.2.1's project schema has both; each was dropped in silence.
   it('`parallelism: false` is a todo; its default says nothing', async () => {
     const a = await meta('a')
