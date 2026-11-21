@@ -3009,7 +3009,11 @@ export async function applyGitEnumeration(
   workspaceWide = false,
   memo?: BlobSizeMemo,
 ): Promise<void> {
-  await checkBlobSizes(enumeration, memo)
+  // The partition runs while the blob-size check's cat-file does (~140 ms
+  // over a fresh clone's loose objects): after it, a cold 8,002-task run's
+  // first task waited the partition's ~22 ms more. The check only drops
+  // OIDs, at once; one that dropped any partitions again.
+  const check = checkBlobSizes(enumeration, memo)
   const { all, trusted } = enumeration
   cache.setWorktreeDirty(enumeration.dirty)
   cache.setGitVars(enumeration.vars)
@@ -3070,97 +3074,108 @@ export async function applyGitEnumeration(
     for (const [rel, oid] of trusted) oids.set(abs(rel), oid)
     return oids
   }
-  for (const projectDir of projectDirs) {
-    const spelled =
-      base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
-        ? projectDir.slice(base.length).replace(/\/$/, '')
-        : relPosix(workspaceRoot, projectDir)
-    if (spelled === '' || spelled === '.') {
-      cache.set(projectDir, all)
-      cache.setLazyOids(projectDir, rootOids)
-      continue
-    }
-    let relPrefix = spelled
-    let start = lowerBound(`${spelled}/`)
-    let end = lowerBound(`${spelled}0`)
-    // macOS git reports paths NFC (core.precomposeunicode) while a dir
-    // discovered by readdir keeps the spelling it was created with: match
-    // NFC, and key the OIDs by the project's spelling, which is how
-    // `resolveFiles` looks them up. Only when the NFC name is this very
-    // directory: Linux git lists bytes as they are, `café` NFC and NFD are
-    // two directories there, and the NFD project took its sibling's files
-    // and OIDs, a stale hit.
-    if (start === end) {
-      const nfc = spelled.normalize('NFC')
-      if (nfc !== spelled && sameDir(projectDir, path.join(workspaceRoot, nfc))) {
-        relPrefix = nfc
-        start = lowerBound(`${nfc}/`)
-        end = lowerBound(`${nfc}0`)
+  const partition = (): void => {
+    for (const projectDir of projectDirs) {
+      const spelled =
+        base !== undefined &&
+        projectDir.startsWith(base) &&
+        path.normalize(projectDir) === projectDir
+          ? projectDir.slice(base.length).replace(/\/$/, '')
+          : relPosix(workspaceRoot, projectDir)
+      if (spelled === '' || spelled === '.') {
+        cache.set(projectDir, all)
+        cache.setLazyOids(projectDir, rootOids)
+        continue
       }
-    }
-    const prefix = `${relPrefix}/`
-    const matches: string[] = []
-    const projAbs =
-      relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
-    const projOids = (): Map<string, string> => {
-      const oids = new Map<string, string>()
-      // `resolveFiles` spells `matches[j]` the same, so both take one string.
-      const paths = base !== undefined && projAbs === abs ? cache.absPaths(matches) : undefined
+      let relPrefix = spelled
+      let start = lowerBound(`${spelled}/`)
+      let end = lowerBound(`${spelled}0`)
+      // macOS git reports paths NFC (core.precomposeunicode) while a dir
+      // discovered by readdir keeps the spelling it was created with: match
+      // NFC, and key the OIDs by the project's spelling, which is how
+      // `resolveFiles` looks them up. Only when the NFC name is this very
+      // directory: Linux git lists bytes as they are, `café` NFC and NFD are
+      // two directories there, and the NFD project took its sibling's files
+      // and OIDs, a stale hit.
+      if (start === end) {
+        const nfc = spelled.normalize('NFC')
+        if (nfc !== spelled && sameDir(projectDir, path.join(workspaceRoot, nfc))) {
+          relPrefix = nfc
+          start = lowerBound(`${nfc}/`)
+          end = lowerBound(`${nfc}0`)
+        }
+      }
+      const prefix = `${relPrefix}/`
+      const matches: string[] = []
+      const projAbs =
+        relPrefix === spelled
+          ? abs
+          : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
+      const projOids = (): Map<string, string> => {
+        const oids = new Map<string, string>()
+        // `resolveFiles` spells `matches[j]` the same, so both take one string.
+        const paths = base !== undefined && projAbs === abs ? cache.absPaths(matches) : undefined
+        for (let i = start; i < end; i++) {
+          const rel = sorted[i]!
+          const oid = trusted.get(rel)
+          if (oid === undefined) continue
+          oids.set(paths === undefined ? projAbs(rel) : (paths[i - start] ??= abs(rel)), oid)
+        }
+        return oids
+      }
+      // One hash of the records joined: one per record was ~25 ms of 125,000.
+      let records: string | undefined = ''
+      // A file git vouches for no OID (untracked, or changed since the
+      // index) is named by its stat instead, the identity `hashFile`'s memo
+      // trusts: a just-added config or an edited file turned the fold memo
+      // off for its whole project (+3-5 ms of solid's warm run, 2026-10-22).
+      const loose: string[] = []
       for (let i = start; i < end; i++) {
         const rel = sorted[i]!
+        const own = rel.slice(prefix.length)
+        matches.push(own)
+        if (records === undefined) continue
         const oid = trusted.get(rel)
-        if (oid === undefined) continue
-        oids.set(paths === undefined ? projAbs(rel) : (paths[i - start] ??= abs(rel)), oid)
+        if (undecodable?.has(rel) === true || oid?.startsWith('120000:') === true)
+          records = undefined
+        else if (oid === undefined) loose.push(rel)
+        else records += `${own}\0${oid}\n`
       }
-      return oids
+      // An empty slice is a directory git did not see, not an empty project:
+      // a project has at least its package.json, tracked or untracked. A
+      // nested repository — a submodule, an embedded repository, which the
+      // workspace's git holds as ONE entry (a gitlink, `dir/` when untracked)
+      // — is listed through its own git above (`expandNestedRepos`), but under
+      // a pathspec naming a project inside it the workspace's git lists
+      // nothing at all; so is a directory ignored outright. Storing the empty slice made the key never move: `inputs
+      // matched no files`, then a stale hit under a green run once the source
+      // changed (2026-09-16). No partition instead: `resolveFiles` spawns
+      // `git ls-files` in the project's own directory, which a nested
+      // repository answers, and the files hash by content (no index OID
+      // trusted from here) — one spawn per such project per run, nothing for
+      // a workspace without one.
+      if (matches.length === 0) continue
+      // setLazyOids AFTER set — set() drops the project's OID slot.
+      cache.set(projectDir, matches)
+      cache.setLazyOids(projectDir, projOids)
+      if (records !== undefined) {
+        const known = records
+        cache.noteFilesDigest(projectDir, matches, () => {
+          const statted = statRecords(loose, projAbs, prefix.length, (p) => cache.statOf(p))
+          return statted === undefined ? undefined : xxh3hex(`${known}\0${statted}`)
+        })
+      }
     }
-    // One hash of the records joined: one per record was ~25 ms of 125,000.
-    let records: string | undefined = ''
-    // A file git vouches for no OID (untracked, or changed since the
-    // index) is named by its stat instead, the identity `hashFile`'s memo
-    // trusts: a just-added config or an edited file turned the fold memo
-    // off for its whole project (+3-5 ms of solid's warm run, 2026-10-22).
-    const loose: string[] = []
-    for (let i = start; i < end; i++) {
-      const rel = sorted[i]!
-      const own = rel.slice(prefix.length)
-      matches.push(own)
-      if (records === undefined) continue
-      const oid = trusted.get(rel)
-      if (undecodable?.has(rel) === true || oid?.startsWith('120000:') === true) records = undefined
-      else if (oid === undefined) loose.push(rel)
-      else records += `${own}\0${oid}\n`
-    }
-    // An empty slice is a directory git did not see, not an empty project:
-    // a project has at least its package.json, tracked or untracked. A
-    // nested repository — a submodule, an embedded repository, which the
-    // workspace's git holds as ONE entry (a gitlink, `dir/` when untracked)
-    // — is listed through its own git above (`expandNestedRepos`), but under
-    // a pathspec naming a project inside it the workspace's git lists
-    // nothing at all; so is a directory ignored outright. Storing the empty slice made the key never move: `inputs
-    // matched no files`, then a stale hit under a green run once the source
-    // changed (2026-09-16). No partition instead: `resolveFiles` spawns
-    // `git ls-files` in the project's own directory, which a nested
-    // repository answers, and the files hash by content (no index OID
-    // trusted from here) — one spawn per such project per run, nothing for
-    // a workspace without one.
-    if (matches.length === 0) continue
-    // setLazyOids AFTER set — set() drops the project's OID slot.
-    cache.set(projectDir, matches)
-    cache.setLazyOids(projectDir, projOids)
-    if (records !== undefined) {
-      const known = records
-      cache.noteFilesDigest(projectDir, matches, () => {
-        const statted = statRecords(loose, projAbs, prefix.length, (p) => cache.statOf(p))
-        return statted === undefined ? undefined : xxh3hex(`${known}\0${statted}`)
-      })
+    if (workspaceWide) {
+      cache.set(workspaceRoot, all)
+      cache.setLazyOids(workspaceRoot, rootOids)
+      cache.setWorkspaceRoot(workspaceRoot)
     }
   }
-  if (workspaceWide) {
-    cache.set(workspaceRoot, all)
-    cache.setLazyOids(workspaceRoot, rootOids)
-    cache.setWorkspaceRoot(workspaceRoot)
-  }
+  const before = trusted.size
+  partition()
+  await check
+  if (trusted.size !== before) partition()
 }
 
 /** The whole of a file held only by `fd`, from its start. */

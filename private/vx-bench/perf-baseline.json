@@ -2,7 +2,7 @@
   "linux-x64": {
     "counts": {
       "cold run @25": {
-        "hash xxh3": 2185,
+        "hash xxh3": 2189,
         "spawn git": 6,
         "spawn sh": 1,
         "sqlite statement": 748
@@ -29,7 +29,7 @@
         "sqlite statement": 222
       },
       "cold run @100": {
-        "hash xxh3": 8859,
+        "hash xxh3": 8863,
         "spawn git": 8,
         "sqlite statement": 2853
       },

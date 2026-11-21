@@ -525,7 +525,9 @@ history.
 `recordRunBundle()` is the write at a run's end: one `runs` row for every
 task (hits and misses, successes and failures) and one `invocations`
 header row (command, git/CI/host context, run-level counts) **atomically
-in one transaction**, its cache hits as one `run_hits` row
+in one transaction**, less the green misses' rows the run already wrote
+while it went (`recordRuns`, 256 at a time: ~70 ms of an 8,000-miss
+run's end, moved onto a main thread the tasks leave idle), its cache hits as one `run_hits` row
 (`hit-rows.ts`, below) in place of a `runs` row each, with one shared-store `task_durations` row per executed
 success, tagged `branchSource(branch)` (`'branch:<name>'`, `'branch:'`
 with none) and the commit: what a duration forecast reads. The

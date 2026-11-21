@@ -395,4 +395,39 @@ describe('vx watch under a signal (e2e)', () => {
 
   it('SIGINT during the initial run reaches its task as SIGINT', reachesAsSigint(false), 30_000)
   it('SIGINT while idle reaches the dev server it holds as SIGINT', reachesAsSigint(true), 30_000)
+  // Bun ignores SIGPIPE, so past a gone reader (`vx watch dev | head -1`, a
+  // quit `| less`) the watch and its server ran on for nobody, and the
+  // shell waited on the pipeline for good.
+  it('a gone reader ends the watch and its server at the next output', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: 'echo $$ > pid.txt; echo READY; while :; do echo tick; sleep 0.1; done',
+                persistent: { readyWhen: 'READY' },
+              },
+            },
+          },
+        }
+      `,
+    )
+    const proc = Bun.spawn(
+      ['sh', '-c', `"$0" "$1" watch dev --all | head -c 1 > /dev/null`, process.execPath, BIN],
+      {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'pipe',
+        env: { ...process.env, ...NOT_CI, VX_RUN_KILL_GRACE: '200ms' },
+      },
+    )
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const exited = await Promise.race([proc.exited, Bun.sleep(10_000).then(() => 'hung' as const)])
+    if (exited === 'hung') proc.kill('SIGKILL')
+    expect(exited).toBe(0)
+    expect(await waitForDead(pid, 5_000)).toBe(true)
+  }, 30_000)
 })

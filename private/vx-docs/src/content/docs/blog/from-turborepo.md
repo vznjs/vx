@@ -144,7 +144,7 @@ Both use the same mapper.
 | `dotEnv` (Turbo 1)                              | `inputs.runtime`: a probe that hashes the `.env` files |
 | `command` (Turbo 2.11) | the task's `exec.command`; `null` is no task |
 | `description` | the task's `description` |
-| `globalDependencies`, `globalEnv`, `globalPassThroughEnv`, `globalDotEnv` | a generated `vx-preset.ts` you import and spread |
+| `globalDependencies`, `globalEnv`, `globalPassThroughEnv`, `globalDotEnv` | nothing: no task carries them, and each task gets a TODO to list what it reads |
 
 Those are every key the mapper knows. Any other key in a task becomes
 a TODO naming it, so nothing is dropped silently.

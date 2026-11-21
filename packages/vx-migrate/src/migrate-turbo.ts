@@ -1,7 +1,7 @@
 // Turbo → vx migration: the RENDERING half. The mapping itself lives in
-// `turbo()` (which runs it live); this file turns turbo's global
-// fields into a root vx-preset.ts that each generated config imports and
-// spreads — TypeScript composition replaces turbo's global config.
+// `turbo()` (which runs it live). Each written config holds what its tasks
+// declare and nothing else: turbo.json's global block is not carried, and
+// each task that lost it says so, for the user to list what it reads.
 
 import path from 'node:path'
 import {
@@ -12,10 +12,9 @@ import {
   quoteTsLiteral as quote,
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
-import { mapTurboWorkspace, type TurboGlobal, type TurboMappedProject } from './turbo/turbo-map.js'
+import { mapTurboWorkspace, type TurboMappedProject } from './turbo/turbo-map.js'
 import { rootTaskProject } from './turbo/turbo-reads.js'
 import { ROOT_ENGINES_PROBE } from './turbo/root-engines.js'
-import { relPosix } from './paths.js'
 import {
   gitIgnored,
   gitIgnoredUnder,
@@ -26,23 +25,14 @@ import {
 import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 import { adoptedToolNotes } from './workspace-notes.js'
 import { spelledNames } from './spelled-env.js'
-import { sealsConfig } from './sealed-tsconfig.js'
 import { onceReader, ownBuildInfo, tscBuildInfo, undeclaredTscTodo } from './tsc-buildinfo.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
 
-/** The preset takes the configs' extension: plain arrays either way. */
-function presetFile(format: MigrationFormat): string {
-  return `vx-preset.${format}`
-}
-
-/** The preset export each global field becomes. */
-const PRESET_NAMES: Record<TurboGlobal, string> = {
-  inputs: 'globalInputs',
-  env: 'globalEnvInputs',
-  pass: 'globalPassThroughEnv',
-}
+/** On each task with a command, when turbo.json writes a global field. */
+export const GLOBAL_TODO =
+  "turbo.json's global block is not carried: list the files and env this task reads in its inputs"
 
 export async function migrateTurbo(
   root: string,
@@ -53,7 +43,8 @@ export async function migrateTurbo(
   const tsc = onceReader()
   const members = await withRootProject(root, metas)
   const mapping = await mapTurboWorkspace(root, members, {
-    splice: (kind) => [{ raw: `...${PRESET_NAMES[kind]}` }],
+    ownOnly: true,
+    splice: (_, values) => values,
     persistentTodo: PERSISTENT_TODO,
     manifestField: (key) => ({ raw: `pkg.${key}` }),
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
@@ -78,46 +69,39 @@ export async function migrateTurbo(
       p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
     }
 
+  // vx keys a task on what it declares, nothing global: the user lists
+  // what each task reads (M, 2026-11-21).
+  const notes = [...mapping.notes]
+  if (mapping.dropped.length > 0) {
+    notes.push(
+      `turbo.json's global block (${mapping.dropped.join(', ')}) is carried onto no task: ` +
+        'list what each task reads in its own inputs and exec.env.passThrough',
+    )
+    for (const p of mapping.projects)
+      for (const t of p.tasks) if (t.task?.['exec'] !== undefined) t.todos.push(GLOBAL_TODO)
+  }
+
+  // Long values are named once at the top of the config that uses them.
   const shared = hoistTaskEnv(mapping.projects)
   const probes = nameProbes(mapping.projects)
-  const { inputs, env, pass } = mapping.globals
-  const decls = presetDeclarations(inputs, env, pass, shared.lists, probes.named)
-  // Written unless every config that uses it declares its values itself.
-  let imported = false
-  let anySealed = false
+  const decls = declarations(shared.lists, probes.named)
   const projects: GeneratedProject[] = mapping.projects.map((p) => {
     const used = new Set<string>([
       ...(shared.usedBy.get(p.name) ?? []),
       ...(probes.usedBy.get(p.name) ?? []),
     ])
-    for (const t of p.tasks) for (const kind of t.uses) used.add(PRESET_NAMES[kind])
     const readsManifest = p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
-    const sealed =
-      used.size > 0 &&
-      sealsConfig(root, path.join(path.resolve(root, p.dir), `vx.config.${format}`))
-    if (used.size > 0 && !sealed) imported = true
-    if (sealed) anySealed = true
     return {
       name: p.name,
       dir: p.dir,
       ...(p.tags !== undefined ? { tags: p.tags } : {}),
       importLines: [
         ...(readsManifest ? [MANIFEST_IMPORT] : []),
-        ...(sealed
-          ? decls.filter(([name]) => used.has(name)).map(([, line]) => line)
-          : presetImportLines(used, root, p.dir, format)),
+        ...decls.filter(([name]) => used.has(name)).map(([, line]) => line),
       ],
       tasks: p.tasks.map(({ name, todos, task }) => ({ name, todos, task })),
     }
   })
-
-  const extraFiles: MigrationPlan['extraFiles'] = []
-  if (decls.length > 0 && (imported || !anySealed)) {
-    extraFiles.push({
-      relPath: presetFile(format),
-      contents: [...decls.map(([, line]) => `export ${line}`), ''].join('\n'),
-    })
-  }
 
   return {
     headerNotes: await adoptedToolNotes(root, {
@@ -127,8 +111,8 @@ export async function migrateTurbo(
       keys: (lock) => `Turbo keys each package on its own ${lock} entries`,
     }),
     projects,
-    extraFiles,
-    notes: mapping.notes,
+    extraFiles: [],
+    notes,
   }
 }
 
@@ -150,37 +134,21 @@ async function withRootProject(
   return [...metas, { ...named, packageJson, configPath: null }]
 }
 
-function presetImportLines(
-  used: ReadonlySet<string>,
-  root: string,
-  dir: string,
-  format: MigrationFormat,
-): string[] {
-  if (used.size === 0) return []
-  // `.js` for the `.ts` file: Bun takes it to the `.ts`, and a user's
-  // `tsc` accepts it under every resolution mode, where `.ts` fails
-  // without `allowImportingTsExtensions` (TS5097; create-t3-turbo).
-  const file = format === 'ts' ? 'vx-preset.js' : presetFile(format)
-  const rel = relPosix(dir, path.join(root, file))
-  const spec = rel.startsWith('.') ? rel : `./${rel}`
-  return [`import { ${[...used].sort().join(', ')} } from '${spec}'`]
-}
-
-/** A task's own env names, the same in several packages: one preset export. */
+/** A task's own env names, the same in several packages: one named list. */
 interface SharedList {
   readonly name: string
   readonly task: string
   readonly values: readonly string[]
 }
 
-/** Fewer names than this stay inline: an import costs more than it saves. */
+/** Fewer names than this stay inline: a name costs more than it saves. */
 const HOIST_MIN = 3
 
 /**
  * Turbo states a task's `env` once, in the root turbo.json; written inline,
  * vercel/ai's 63 `build` names repeated twice in each of ~100 configs. A
- * task's own `inputs.env` names (after the spliced globals) that two
- * or more configs share become one preset export, spread where they stood
+ * task's own `inputs.env` names that two or more configs share are named
+ * once at the top of each config, spread where they stood
  * and where they lead `exec.env.passThrough` (its `passThroughEnv` names
  * follow): the evaluated arrays, and so every key, are unchanged. A
  * package whose list differs (its own turbo.json) keeps it inline unless
@@ -191,8 +159,7 @@ function hoistTaskEnv(projects: readonly TurboMappedProject[]): {
   usedBy: Map<string, Set<string>>
 } {
   const lists = (t: Task): (unknown[] | undefined)[] => [t.inputs?.env, t.exec?.env?.passThrough]
-  // The trailing run of names after the spliced globals, or null when the
-  // list is all names or mixes them in.
+  // The trailing run of names, or null when the list mixes in a spread.
   const own = (list: unknown[] | undefined): string[] | null => {
     if (list === undefined) return null
     const at = list.findIndex((v) => typeof v === 'string')
@@ -213,7 +180,7 @@ function hoistTaskEnv(projects: readonly TurboMappedProject[]): {
   const ranked = [...counts]
     .filter(([, n]) => n >= 2)
     .sort(([a, m], [b, n]) => n - m || (a < b ? -1 : 1))
-  const taken = new Set(Object.values(PRESET_NAMES))
+  const taken = new Set<string>()
   const nameOf = new Map<string, string>()
   const shared: SharedList[] = []
   for (const [k] of ranked) {
@@ -323,23 +290,13 @@ function nameProbes(projects: readonly TurboMappedProject[]): {
   return { named: named.sort((a, b) => order.indexOf(a) - order.indexOf(b)), usedBy }
 }
 
-/** Each preset value as `[name, 'const name = …']`, in the preset's order. */
-function presetDeclarations(
-  inputs: string[],
-  env: string[],
-  pass: string[],
-  shared: readonly SharedList[],
-  probes: readonly Probe[],
-): [string, string][] {
-  // Escape each entry via the shared `quote()` — a turbo.json global (a file
-  // glob, or an env name a user hand-wrote) may contain a `'`/`\`/newline that
-  // would otherwise splice into a malformed, unloadable `vx-preset.ts`.
+/** Each named value as `[name, 'const name = …']`. */
+function declarations(shared: readonly SharedList[], probes: readonly Probe[]): [string, string][] {
+  // An env name a user hand-wrote may hold a `'`, `\` or newline: quoted, or
+  // the config would not load.
   const arr = (xs: string[]): string => `[${xs.map(quote).join(', ')}]`
   const out: [string, string][] = []
   const add = (name: string, value: string) => out.push([name, `const ${name} = ${value}`])
-  if (inputs.length > 0) add('globalInputs', arr(inputs))
-  if (env.length > 0) add('globalEnvInputs', arr(env))
-  if (pass.length > 0) add('globalPassThroughEnv', arr(pass))
   for (const l of shared) add(l.name, arr([...l.values]))
   for (const probe of probes) add(probe.name, quote(probe.command))
   return out

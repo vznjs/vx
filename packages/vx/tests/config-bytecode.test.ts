@@ -273,6 +273,29 @@ describe('workspace config bytecode', () => {
   )
 
   it(
+    'a run that makes .vx/cache builds the bundle while its tasks run, not after it answers',
+    async () => {
+      // After the answer, a cold 8,002-task run's exit waited ~33 ms for it.
+      await rm(path.join(root, '.vx', 'cache'), { recursive: true })
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+      const wait =
+        'for i in $(seq 200); do ls .vx/cache/compiled/*.jsc >/dev/null 2>&1 && exit 0; sleep 0.05; done; exit 1'
+      await writeFile(
+        path.join(root, 'vx.config.mjs'),
+        `export default { name: 'ws', tasks: { hi: { exec: { command: ${JSON.stringify(wait)} } } } }\n`,
+      )
+      expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root }).exitCode).toBe(0)
+      const vx = (...args: string[]) =>
+        Bun.spawnSync([process.execPath, BIN, ...args], { cwd: root, stderr: 'pipe' })
+      expect(vx('lock').exitCode).toBe(0)
+      await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
+      const p = vx('run', 'hi')
+      expect(p.exitCode, p.stderr.toString()).toBe(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the bundle stays out of git under a cache dir elsewhere and no .vx/.gitignore',
     async () => {
       const cacheDir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-bytecode-cache-')))

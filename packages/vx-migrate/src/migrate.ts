@@ -90,7 +90,7 @@ import {
 export interface MigrateArgs {
   dry: boolean
   force: boolean
-  /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
+  /** `vx.config.mjs` instead of `.ts`. */
   mjs: boolean
   from?: 'turbo' | 'nx' | 'vite-task' | 'scripts'
   /** `--native` / `--keep`; unset asks a terminal and is native elsewhere. */

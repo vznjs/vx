@@ -63,6 +63,7 @@ export {
   validateWorkspace,
 } from './config-schema.js'
 export { configImports } from './config-imports.js'
+export { startDeferredBuilds } from './config-bytecode.js'
 export { repoIdsOf } from './repo-id.js'
 export {
   checkProjectNames,

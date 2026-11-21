@@ -139,9 +139,10 @@ describe('examples/basic', () => {
 })
 
 // The migrate guide's temporary start: turbo() maps the Turbo repo until
-// `vx-migrate` writes native configs, which derive the same keys, so the
-// cache turbo() filled still hits. Each step's output is what the guide's
-// "Try it in five minutes" block says in its comments.
+// `vx-migrate` writes native configs. Those hold only what each task
+// declares, without the Turbo env turbo() keys, so each task runs once more.
+// Each step's output is what the guide's "Try it in five minutes" block
+// says in its comments.
 describe('examples/turbo', () => {
   const said: string[] = []
   const root = fixture('turbo', ['vx', 'vx-migrate'])
@@ -164,7 +165,7 @@ describe('examples/turbo', () => {
 
   // The migrate guide's steps as written: the workspace file stays (the
   // CLI never overwrites one), then turbo() goes and the configs stand alone.
-  it('migrates to written configs that hit the cache turbo() filled', () => {
+  it('migrates to written configs that run once, then stand alone', () => {
     const workspace = readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')
     const migrate = Bun.spawnSync({
       cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
@@ -190,7 +191,7 @@ describe('examples/turbo', () => {
     commit(root)
     const kept = run(root, 'test')
     expect(kept.exit).toBe(0)
-    expect(kept.status).toEqual(all('cache-hit'))
+    expect(kept.status).toEqual(all('success'))
     said.push(kept.cache)
 
     // The file stays: it marks the root, and bun() keeps the edges.

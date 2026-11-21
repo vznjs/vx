@@ -11,11 +11,13 @@ import {
   lockEntryBroken,
   lockKey,
   readLockfile,
+  startDeferredBuilds,
 } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fsClockNow } from '../memo/index.js'
 import {
+  flushMemos,
   historyFiles,
   indexDb,
   Cache,
@@ -31,6 +33,7 @@ import {
   encodeHits,
   HitBatch,
   type RunHits,
+  type RunRecord,
   runHistory,
   keepRunNotes,
   createMissExplainer,
@@ -137,8 +140,7 @@ import {
   warnOf,
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
-import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
-import { freezeDeep } from './read-only.js'
+import { frozenReport, keepsFailures, RunKeeper } from './run-report.js'
 import {
   buildAdmission,
   executorDemand,
@@ -860,6 +862,8 @@ async function runOnBus(
   let cacheClosed = false
   // Stops the snapshots the run takes while it goes; every exit, before the close.
   let stopSnapshots: (() => Promise<unknown>) | undefined
+  /** The config bundle builds the run started (`startDeferredBuilds`), awaited at its end. */
+  let bundling: Promise<void> | undefined
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
@@ -1419,20 +1423,32 @@ async function runOnBus(
       (n) => n.config.exec?.command === undefined || shortCircuit.restoreTier.has(n.id),
     )
       ? new Map<string, number>()
-      : await prepared.priorities({
-          step,
-          refined: (merged) => {
-            if (reprioritize !== undefined) reprioritize(merged)
-            else if (!graphOver) refinedEarly = merged
-          },
-          flaky: (ids) => {
-            for (const id of ids) if (nodes.has(id)) sharedFlaky.add(id)
-          },
-        })
+      : // A stop ends the wait on a hook that never settles: a first Ctrl-C
+        // waited out the whole signal bound (7 s) for it. Unranked, the
+        // stopped graph then dispatches nothing and the run ends as stopped.
+        await Promise.race([
+          prepared.priorities({
+            step,
+            refined: (merged) => {
+              if (reprioritize !== undefined) reprioritize(merged)
+              else if (!graphOver) refinedEarly = merged
+            },
+            flaky: (ids) => {
+              for (const id of ids) if (nodes.has(id)) sharedFlaky.add(id)
+            },
+          }),
+          new Promise<ReadonlyMap<string, number>>((resolve) => {
+            if (stop.signal.aborted) resolve(new Map())
+            else stop.signal.addEventListener('abort', () => resolve(new Map()), { once: true })
+          }),
+        ])
     // The stats a thread took while git walked (`warmOutputs`): in by now,
     // it has had the stages since.
     await prepared.localCache.memo.warmSettled()
     mark('schedule')
+    // The config's bundle for the next run, built while the tasks run, not
+    // after the run answered.
+    bundling = startDeferredBuilds()
     // Judged as each task finishes, against history before this run's rows
     // land, so the row carries the verdict and nothing prints below the footer.
     // A hit or skip asks nothing; a green miss is one probe of the failed-row
@@ -1496,6 +1512,38 @@ async function runOnBus(
       packHit(o as RecordedOutcome, hitContext(), rows)
       packed.add(o)
     }
+    // A green miss's row is whole when it finishes too: written while the
+    // run goes, ROWS_PER_WRITE at a time with the memos made meanwhile, so
+    // the run's end writes only the rest. A failure (it writes out kept hits first), a server (its outcome
+    // changes after) and forwarded args stay the bundle's. A refused write
+    // leaves its rows to the bundle.
+    const written = new Set<TaskOutcome>()
+    const writtenRows: RunRecord[] = []
+    const pendingRows: [TaskOutcome, RunRecord][] = []
+    let writing = keepsHits
+    const writeRow = (o: TaskOutcome): void => {
+      if (!writing || o.status !== 'success' || isGroupTask(o.node)) return
+      if (o.node.config.exec?.persistent !== undefined) return
+      if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
+      if (forwards && o.node.requested) return
+      pendingRows.push([o, runRecordOf(o as RecordedOutcome, hitContext())])
+      if (pendingRows.length < ROWS_PER_WRITE) return
+      const rows = pendingRows.splice(0)
+      try {
+        runHistory(prepared.localCache).recordRuns(
+          rows.map(([, r]) => r),
+          gitContext,
+        )
+      } catch {
+        writing = false
+        return
+      }
+      for (const [done, r] of rows) {
+        written.add(done)
+        writtenRows.push(r)
+      }
+      flushMemos(prepared.localCache)
+    }
     /** The run's packed hits, for the write that keeps its rows. */
     const keptHits = (): RunHits => ({
       runId,
@@ -1511,6 +1559,7 @@ async function runOnBus(
         : (o) => {
             keeper?.taskDone(o)
             keepHit(o)
+            writeRow(o)
           },
     )
     unfold = bus.subscribe(fold.subscriber)
@@ -1734,9 +1783,10 @@ async function runOnBus(
     // A `setup` hook may have written: what was stat'ed before it proves no hit.
     if (prepared.plugins.some((p) => p.setup !== undefined)) prepared.localCache.memo.dropWarm()
 
-    // A packed hit is kept with the bundle, not written as a row of it.
+    // A packed hit is kept with the bundle, and a written row is in: neither
+    // is a row of the bundle.
     unfold()
-    const landed = packed
+    const landed = written.size === 0 ? packed : new Set([...packed, ...written])
     prepared.localCache.memo.dropWarm()
     mark('run graph')
 
@@ -1925,17 +1975,16 @@ async function runOnBus(
           [
             ...records.runs,
             ...[...packed].map((o) => runRecordOf(o as RecordedOutcome, hitContext())),
+            ...writtenRows,
           ],
           runId,
         ),
       )
     // A stop passes none (`VxPlugin.teardown`): the run did not reach its end.
-    // Built and frozen only for a teardown that reads it.
+    // Only for a teardown, its tasks built only when one reads them.
     const report =
       stop.stoppedBy === undefined && prepared.plugins.some((p) => p.teardown !== undefined)
-        ? freezeDeep(
-            reportOf(list, { runId, commit: head.commitSha, ciRun: ciContext, ok }, keeper),
-          )
+        ? frozenReport(list, { runId, commit: head.commitSha, ciRun: ciContext, ok }, keeper)
         : undefined
     // Hand the summary to the telemetry sinks and drain them, only with a sink.
     // Crash-isolated, so a faulty sink cannot fail the run. After the upload
@@ -1984,6 +2033,7 @@ async function runOnBus(
     disposePlugins?.()
     telemetry?.dispose()
     await teardown(undefined, report)
+    await bundling
     await step('vx:close', closeCache)
     mark('close')
     printTimings()
@@ -2297,6 +2347,8 @@ async function planRestorable(
 
 /** Hits one packed batch holds: a small run allocates one small batch. */
 const HITS_PER_BATCH = 512
+/** Green misses' rows a run writes at once while it goes: ~2 ms of a free main thread. */
+const ROWS_PER_WRITE = 256
 const LOCK_HINT = ' A run reads the lock: after editing a vx.config, run `vx lock`.'
 
 /**

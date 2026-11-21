@@ -1853,6 +1853,9 @@ re-runs itself and what it depends on.
   once it has returned, so a CI cancellation never orphans a task. A
   second signal during that teardown changes nothing: still `0`, once
   the cycle is down.
+  Also `0` once its reader is gone (`vx watch dev | head`, a quit
+  `| less`): Bun ignores SIGPIPE, so the next write's EPIPE stops
+  the watch as a SIGTERM does; an idle watch ends at its next output.
   Also `0`, with no watch, when `--affected` selects nothing: watch
   prints `vx watch: nothing affected since <ref>` and exits as `vx run`
   does.
@@ -2925,7 +2928,7 @@ exported Nx graph or Lerna on Nx —
 ```
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
-bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
+bunx @vzn/vx-migrate --force   # overwrite existing vx.config.*
 bunx @vzn/vx-migrate --from nx # disambiguate when several sources are checked in (turbo, nx, vite-task, scripts)
 ```
 

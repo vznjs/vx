@@ -231,7 +231,8 @@ export interface RunSummary {
     run holding a requested server does this after the wait (step 16).
 15. **Drain + close.** Await background prefetches, uploads and the
     run bytes `RunKeeper` (`run-report.ts`) sent as each task ended,
-    then `reportOf` builds the `RunReport` plugin teardowns read;
+    then `frozenReport` gives the `RunReport` plugin teardowns read
+    (its `tasks` built and frozen on their first read);
     `cache.close()`, sandbox teardown.
 16. **Keep-alive block.** If the user requested a persistent task,
     block on its exit AFTER everything above (`sessionEnd` picks the
@@ -2545,7 +2546,10 @@ that leaves before it (a refusal, a setup that threw) exits of the
 signal from `run()`'s finally (`exitOfSignal`), its plugins torn down
 and its lock released. A setup or executor factory that never settles
 does not hold the first signal: `unlessStopped` ends its wait, and the
-run tears every plugin down and exits of the signal. It held it, so only
+run tears every plugin down and exits of the signal. A `schedule` hook
+that never settles does not either: the stop ends the wait unranked, and
+the stopped graph dispatches nothing (it waited out the signal's whole
+bound, 7 s by default, 2026-11-21). It held it, so only
 a second signal (a CI's KILL after its TERM) ended vx, with no teardown
 (2026-11-07). A second signal in the window exits at once
 (`tests/plugin-teardown.test.ts` › "a signal during a plugin setup
@@ -3356,7 +3360,9 @@ and every task (`id`, `status`, `durationMs`, `key`, and `log` /
 `outputs` names when kept). `ctx.cache.getRun(name)` reads one from the
 first readable remote. Core writes no manifest: a plugin that wants a
 run record writes one from the report with `ctx.cache.put`. The report
-is frozen, so every teardown reads the same one; a run a stop ended
+is frozen, so every teardown reads the same one, its `tasks` built on
+their first read (a teardown that reads none, vx-history's, cost a cold
+8,002-task run ~10 ms of building them); a run a stop ended
 (Ctrl-C, an embedder's `signal` aborted with a signal's name) passes none,
 as plugin.ts says.
 
@@ -3430,7 +3436,7 @@ a run explorer's record on this API and reads it back through a verb.
   exception (item 849), nor is one that never started its schedule (a
   refused setup, a factory that threw, an unresolved name) or a plan
   (item 1021); a second signal, or a `kill -9`, is. A signal during a
-  setup or executor factory that never settles tears every plugin down,
+  setup, executor factory or `schedule` hook that never settles tears every plugin down,
   that one included, and exits. So does a run a hook strands (one that
   never settles, from the stage after the factories on): the loop
   drains, `bin.ts` names the plugin and hook and exits 1 once the

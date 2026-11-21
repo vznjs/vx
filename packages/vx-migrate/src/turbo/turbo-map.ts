@@ -3,8 +3,8 @@
 // scripts, and emits one TaskConfig-shaped object per (package, task) — a
 // task exists for a package only when the package declares the script,
 // turbo's own rule. Two consumers, one mapper, so they cannot drift:
-//   - `@vzn/vx-migrate` renders these to vx.config.ts files, splicing
-//     turbo's global fields in as imports of a generated preset;
+//   - `@vzn/vx-migrate` renders these to vx.config.ts files (`ownOnly`:
+//     no task carries turbo's global fields);
 //   - `@vzn/vx-migrate` hands them to the `project` stage live, with the
 //     global values inlined, so a Turbo repo runs under vx with no file
 //     written.
@@ -232,15 +232,25 @@ export interface TurboMapping {
   /** Report lines about what the workspace holds that vx has no place for. */
   notes: string[]
   globals: { inputs: string[]; env: string[]; pass: string[] }
+  /** Under `ownOnly`: the global fields turbo.json writes, none of which a task carries. */
+  dropped: string[]
 }
 
 export interface MapTurboOptions {
   /**
-   * What a task's array holds for one global field: `bunx @vzn/vx-migrate` splices a
-   * preset import (`{ raw: '...globalInputs' }`), the plugin the values
-   * themselves. Called only for a global that is non-empty.
+   * What a task's array holds for one global field: the plugin's are the
+   * values themselves; a splice may hold an expression instead, which the
+   * mapper reads as those values. Called only for a global that is non-empty.
    */
   splice(kind: TurboGlobal, values: readonly string[]): readonly unknown[]
+  /**
+   * Each task keeps only what its own entry declares (`bunx @vzn/vx-migrate`):
+   * turbo.json's global block and Turbo's implicit hash inputs (the root's
+   * dependencies and `engines`, its default env) stay out, and `dropped`
+   * names the global fields the file writes. Absent (`turbo()`), every task
+   * carries them.
+   */
+  ownOnly?: boolean
   /** The TODO attached to a persistent task, in the consumer's words. */
   persistentTodo: string
   /**
@@ -1066,34 +1076,42 @@ export async function mapTurboWorkspace(
       : rootDependencyGlobs(root, rootPkg, metas)),
     ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
-  const rootDotenv = globalFiles.filter((f) => isDotenvGlob(f))
+  const rootDotenv = opts.ownOnly ? [] : globalFiles.filter((f) => isDotenvGlob(f))
   // Turbo globs an explicit input on the disk, gitignored or not. Core
   // refuses a literal input git ignores (it would key nothing), so a
   // `config.local.json` in globalDependencies ran every task uncached: a
   // probe keys each such path instead. One `git check-ignore` per kind.
-  const globalIgnored = [
-    ...(await (opts.ignored?.(globalFiles.filter(isLiteral)) ?? new Set<string>())),
-  ].filter((f) => !isDotenvGlob(f))
-  const globals = {
-    inputs: globalFiles.filter((f) => !isDotenvGlob(f) && !globalIgnored.includes(f)),
-    env: [
-      // Turbo's defaults sit before the user's list, so its `!` takes them back.
-      ...envNames('globalEnv', [...TURBO_DEFAULT_ENV, ...(rootCfg.globalEnv ?? [])]),
-      ...globalDeps.flatMap((d) => envDependency(d) ?? []),
-    ],
-    pass: [
-      ...envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
-      ...BUILTIN_PASS_THROUGH,
-    ],
-  }
+  const globalIgnored = opts.ownOnly
+    ? []
+    : [...(await (opts.ignored?.(globalFiles.filter(isLiteral)) ?? new Set<string>()))].filter(
+        (f) => !isDotenvGlob(f),
+      )
+  const dropped = opts.ownOnly
+    ? (['globalDependencies', 'globalDotEnv', 'globalEnv', 'globalPassThroughEnv'] as const)
+        .filter((f) => (rootCfg[f]?.length ?? 0) > 0)
+        .map((f) => `${f} ${JSON.stringify(rootCfg[f])}`)
+    : []
+  const globals = opts.ownOnly
+    ? { inputs: [], env: [], pass: [] }
+    : {
+        inputs: globalFiles.filter((f) => !isDotenvGlob(f) && !globalIgnored.includes(f)),
+        env: [
+          // Turbo's defaults sit before the user's list, so its `!` takes them back.
+          ...envNames('globalEnv', [...TURBO_DEFAULT_ENV, ...(rootCfg.globalEnv ?? [])]),
+          ...globalDeps.flatMap((d) => envDependency(d) ?? []),
+        ],
+        pass: [
+          ...envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
+          ...BUILTIN_PASS_THROUGH,
+        ],
+      }
 
-  // A written config names no variable by pattern: Turbo's builtin
-  // families are the user's to list, once, for the tasks that read them.
-  if (opts.envNames === undefined && opts.sourceNames !== undefined)
+  // A written config passes only what a task lists; Turbo passes its
+  // builtin env to every task.
+  if (opts.ownOnly)
     notes.push(
-      `Turbo passes every ${TURBO_BUILTIN_PASS_THROUGH.filter((e) => e.endsWith('*')).join(', ')} ` +
-        'variable to each task; the configs pass its literal names only — add the ones a task ' +
-        'reads to exec.env.passThrough',
+      'Turbo passes its builtin env (HOME, CI, PATH, VERCEL_* and the rest) to each task; vx ' +
+        'passes the names a task lists — add the ones a task reads to exec.env.passThrough',
     )
 
   // The workspace root as a project (a `vx.config` there) holds Turbo's
@@ -1453,7 +1471,7 @@ export async function mapTurboWorkspace(
   const projects: TurboMappedProject[] = []
   // Turbo 2.11's `global.inputs` joins each task's own inputs, where its
   // `!` entries reach them; `globalDependencies` is hashed apart.
-  const globalPrepended = new Set(rootCfg.global?.inputs ?? [])
+  const globalPrepended = new Set(opts.ownOnly ? [] : (rootCfg.global?.inputs ?? []))
   const literals = { tasks: [] as Literals[], globalIgnored, globalPrepended }
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1714,7 +1732,7 @@ export async function mapTurboWorkspace(
     }
   }
 
-  if (keysRootEngines(rootPkg))
+  if (!opts.ownOnly && keysRootEngines(rootPkg))
     for (const p of projects)
       for (const t of p.tasks) {
         const inputs = t.task?.['inputs'] as Record<string, unknown> | undefined
@@ -1752,7 +1770,7 @@ export async function mapTurboWorkspace(
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   refuseTaskNames(projects, 'task')
   sortOrderFree(projects)
-  return { projects, notes, globals }
+  return { projects, notes, globals, dropped }
 }
 
 function byText(a: unknown, b: unknown): number {

@@ -183,6 +183,23 @@ it("a teardown's edit to the run report reaches no later plugin", async () => {
   expect(seen()).toEqual({ report: [true, 2] })
 })
 
+it("a run report's tasks, built when first read, are frozen and copy whole", async () => {
+  await twoProjects(true)
+  await plugins(
+    pluginSource(
+      'org/first',
+      `{ teardown(report) { try { report.tasks[0].status = 'failed' } catch {} ; try { report.tasks = [] } catch {} } }`,
+    ),
+    pluginSource(
+      'org/second',
+      `{ teardown(report) { globalThis.__ro.report = [Object.isFrozen(report.tasks), JSON.parse(JSON.stringify(report)).tasks.map((t) => t.status), { ...report }.tasks.length] } }`,
+    ),
+  )
+  const r = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
+  expect(r.ok).toBe(true)
+  expect(seen()).toEqual({ report: [true, ['success', 'success'], 2] })
+})
+
 // plugin.ts: "A run that ran to its end passes its `RunReport`; every
 // other exit (a refused setup, a stop) passes none."
 it('a stopped run passes teardown no report', async () => {

@@ -5,7 +5,6 @@
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { planRun as livePlan } from '@vzn/vx'
 import { lock, planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 
@@ -45,11 +44,10 @@ describe('turbo(): the root package.json engines', () => {
     TIMEOUT,
   )
 
-  // The README's rule: what turbo() runs is what a migration would write,
-  // minus the file. The configs are written after a lock, so the first plan
-  // still maps turbo.json live over the same files; the second locks them.
+  // A written config holds only what its tasks declare: Turbo's implicit
+  // `engines` hash is turbo()'s alone (M, 2026-11-21).
   it(
-    'the written config keys a task as turbo() does, engines and all',
+    'the written config keys no engines',
     async () => {
       await rootManifest({ engines: { node: '>=18', pnpm: '9' } })
       await mkdir(path.join(ws.root, 'node_modules', '@vzn'), { recursive: true })
@@ -68,18 +66,14 @@ describe('turbo(): the root package.json engines', () => {
         cwd: ws.root,
       })
       expect(migrated.exitCode).toBe(0)
-      const keyOf = async (plan: Awaited<ReturnType<typeof livePlan>>) =>
-        plan.tasks.find((t) => t.node.id === 'lib#build')!.hash
-      const live = await keyOf(await livePlan({ cwd: ws.root, tasks: ['build'], log: silent() }))
       const written = await key()
       await rootManifest({ engines: { node: '>=22', pnpm: '9' } })
+      const config = await Bun.file(path.join(ws.root, 'packages', 'lib', 'vx.config.ts')).text()
       expect({
-        same: written === live,
-        preset: (await Bun.file(path.join(ws.root, 'vx-preset.ts')).text()).includes(
-          'export const rootEngines = ',
-        ),
+        preset: await Bun.file(path.join(ws.root, 'vx-preset.ts')).exists(),
+        probe: config.includes('engines'),
         moved: (await key()) !== written,
-      }).toEqual({ same: true, preset: true, moved: true })
+      }).toEqual({ preset: false, probe: false, moved: false })
     },
     TIMEOUT,
   )

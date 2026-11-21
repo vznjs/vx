@@ -117,6 +117,11 @@ export class IndexFoldMemo implements FoldMemo {
     this.db.transaction(() => {
       for (const [taskId, r] of this.dirty) upsert.run(taskId, r.probe, r.key, now)
     })()
+    // Written while the run goes (`Cache.flushMemos`): still read from here.
+    for (const [taskId, r] of this.dirty) {
+      if (taskId.startsWith('\0')) this.runRows.set(taskId, r)
+      else this.rows?.set(taskId, r)
+    }
     this.dirty.clear()
   }
 

@@ -16,6 +16,7 @@ import type { CiContext } from './run-context.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { relPosix } from '../util/index.js'
 import { decodeOutputLog } from './output-log.js'
+import { freezeDeep } from './read-only.js'
 import type { RunReport, RunReportTask } from './plugin.js'
 
 /** Stores one run entry; resolves whether a remote kept it. */
@@ -166,8 +167,27 @@ export class RunKeeper {
   }
 }
 
+/**
+ * `reportOf`, frozen, its tasks built on their first read: vx-history's
+ * teardown reads none, and building and freezing them cost a cold 8,002-task
+ * run ~10 ms at its end.
+ */
+export function frozenReport(
+  final: readonly TaskOutcome[],
+  run: { runId: string; commit: string | null; ciRun: CiContext; ok: boolean },
+  keeper: RunKeeper | undefined,
+): RunReport {
+  let tasks: RunReport['tasks'] | undefined
+  const report = { runId: run.runId, commit: run.commit, ciRun: freezeDeep(run.ciRun), ok: run.ok }
+  Object.defineProperty(report, 'tasks', {
+    enumerable: true,
+    get: () => (tasks ??= freezeDeep(reportOf(final, run, keeper).tasks)),
+  })
+  return Object.freeze(report) as RunReport
+}
+
 /** The report: every task, with the names of what `keeper` kept of it. */
-export function reportOf(
+function reportOf(
   final: readonly TaskOutcome[],
   run: { runId: string; commit: string | null; ciRun: CiContext; ok: boolean },
   keeper: RunKeeper | undefined,
