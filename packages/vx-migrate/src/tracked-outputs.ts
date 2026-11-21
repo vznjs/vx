@@ -417,7 +417,11 @@ export function spareTrackedOutputs(
           unkey(r.task!)
           todos.push([
             `${q.name}#${r.name}`,
-            `reads the committed ${f}, which its inputs take back with ${p.name}#${t.name}'s ` +
+            // Its own package's writer by task name alone: one reason per
+            // workspace, not per package (honojs/middleware: 45 lines that
+            // differed only by the package's name).
+            `reads the committed ${f}, which its inputs take back with ` +
+              `${q === p ? `its own ${t.name}` : `${p.name}#${t.name}`}'s ` +
               'outputs — task runs uncached; declare its inputs in a vx.config to cache it',
           ])
         }

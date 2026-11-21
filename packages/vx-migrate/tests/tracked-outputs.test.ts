@@ -53,11 +53,25 @@ describe('spareTrackedOutputs — a reader whose `!` hides a committed file (X-5
       [
         [
           'a#test',
-          "reads the committed data/sponsors.json, which its inputs take back with a#build's " +
+          "reads the committed data/sponsors.json, which its inputs take back with its own build's " +
             'outputs — task runs uncached; declare its inputs in a vx.config to cache it',
         ],
       ],
     ])
+  })
+  it('one reason for each package whose own task takes back the same file', () => {
+    const pkg = (name: string) => ({
+      name,
+      dir: `/w/packages/${name}`,
+      tasks: [task({ files: ['data'] }), reader(['**/*', '!data'])],
+    })
+    const todos = spareTrackedOutputs(
+      '/w',
+      [pkg('a'), pkg('b')],
+      ['packages/a/data/sponsors.json', 'packages/b/data/sponsors.json'],
+    )
+    expect(todos.map(([t]) => t)).toEqual(['a#test', 'b#test'])
+    expect(new Set(todos.map(([, why]) => why)).size).toBe(1)
   })
 })
 
