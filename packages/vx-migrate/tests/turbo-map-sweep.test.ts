@@ -1063,47 +1063,6 @@ describe('turbo-map: Turbo’s glob grammar', () => {
   )
 })
 
-// Turbo 2.11.10 matches a `!` beside `$TURBO_DEFAULT$` against each file's
-// path alone: `!test` takes back no file under `test/`. A vx `!test` took the
-// tree, so an edit there was a hit where Turbo misses.
-it('a literal ! naming a directory beside $TURBO_DEFAULT$ takes back nothing, as Turbo', async () => {
-  const dir = path.join(root, 'packages', 'a')
-  await mkdir(dir, { recursive: true })
-  await writeFile(
-    path.join(root, 'turbo.json'),
-    JSON.stringify({
-      tasks: { build: { inputs: ['$TURBO_DEFAULT$', '!test', '!src/', '!README.md'] } },
-    }),
-  )
-  const files = ['src/x.ts', 'test/t.ts', 'README.md', 'package.json']
-  const mapped = await mapTurboWorkspace(
-    root,
-    [
-      {
-        name: 'a',
-        dir,
-        packageJson: { name: 'a', scripts: { build: 'b' } } as never,
-        configPath: null,
-      },
-    ],
-    {
-      ...opts,
-      tracked: (rel) => ({
-        exts: new Set(),
-        dirs: new Set(),
-        tops: new Set(),
-        files: rel === 'packages/a' ? files : [],
-      }),
-    },
-  )
-  const t = mapped.projects[0]!.tasks[0]!
-  expect((t.task!['inputs'] as { files: string[] }).files).toEqual(['**/*', '!README.md'])
-  expect(t.todos.filter((x) => x.includes('$TURBO_DEFAULT$'))).toEqual([
-    'input "!test": beside $TURBO_DEFAULT$, Turbo takes back only a file at that path, not a directory\'s files — dropped; "!test/**" takes back the tree',
-    'input "!src/": beside $TURBO_DEFAULT$, Turbo takes back only a file at that path, not a directory\'s files — dropped; "!src/**" takes back the tree',
-  ])
-})
-
 describe('turbo-map: a wildcard-first output of an untracked kind', () => {
   // n8n's tests output `*.xml` (junit); one segment and a literal
   // extension the package tracks none of reaches no source, so it is not
@@ -2141,4 +2100,36 @@ describe("turbo-map: Turbo's builtin env", () => {
     expect(r.pass).not.toContain('ProgramFiles(x86)')
     expect(r.pass.some((n) => n.includes('*'))).toBe(false)
   })
+})
+
+// One-to-one: a `!` beside `$TURBO_DEFAULT$` means in vx what vx's glob means.
+it('a ! beside $TURBO_DEFAULT$ is written as given', async () => {
+  const dir = path.join(root, 'packages', 'a')
+  await mkdir(dir, { recursive: true })
+  await writeFile(
+    path.join(root, 'turbo.json'),
+    JSON.stringify({
+      tasks: { build: { inputs: ['$TURBO_DEFAULT$', '!test', '!src/', '!README.md'] } },
+    }),
+  )
+  const mapped = await mapTurboWorkspace(
+    root,
+    [
+      {
+        name: 'a',
+        dir,
+        packageJson: { name: 'a', scripts: { build: 'b' } } as never,
+        configPath: null,
+      },
+    ],
+    opts,
+  )
+  const t = mapped.projects[0]!.tasks[0]!
+  expect((t.task!['inputs'] as { files: string[] }).files).toEqual([
+    '**/*',
+    '!test',
+    '!src/',
+    '!README.md',
+  ])
+  expect(t.todos.filter((x) => x.includes('$TURBO_DEFAULT$'))).toEqual([])
 })
