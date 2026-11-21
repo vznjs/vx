@@ -287,9 +287,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     declared `config.json` replayed seed B's build under seed A
     (turborepo#13788, item 743). A sandbox narrows the reach to its
     write grants: none reaches nothing, and a grant elsewhere in the
-    workspace reaches every project. An unsandboxed write into another
-    project crosses a project boundary and is not tracked, as for a
-    cached task's undeclared write (`tests/undeclared-writes.test.ts`).
+    workspace reaches every project, as does a declared
+    `outputs.workspaceFiles`: no save marks what it wrote, and a reader
+    in the project it lands in was keyed on the run-start bytes, so its
+    save was withheld every run (`tests/uncached-workspace-output-key.test.ts`).
+    An undeclared unsandboxed write into another project crosses a
+    project boundary and is not tracked, as for a cached task's
+    undeclared write (`tests/undeclared-writes.test.ts`).
 
     A task **with** `cache: true` may still rewrite its own inputs in
     place — a formatter declaring `outputs: []` — and a same-project

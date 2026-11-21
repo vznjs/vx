@@ -1126,6 +1126,9 @@ export type WriteReach = 'none' | 'project' | 'workspace'
  */
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach {
   if (node.config.cache === true) return 'none'
+  // Its declared workspace outputs are in contract, and no save marks them:
+  // a dependant in the project they land in was keyed on the run-start bytes.
+  if ((node.config.outputs?.workspaceFiles?.length ?? 0) > 0) return 'workspace'
   return commandWriteReach(node, workspaceRoot)
 }
 
