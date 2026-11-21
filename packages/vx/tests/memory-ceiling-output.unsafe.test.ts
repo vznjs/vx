@@ -1,0 +1,60 @@
+// Peak memory of a vx run whose task prints a lot (harness:
+// tests/helpers/memory-ceiling.ts). Before #5468 the reader thread took a
+// task's output as fast as it came: 1 GiB streamed peaked near 1.9 GB here
+// and a cached 1 GiB log 1.1 GB.
+//
+// `.unsafe`: a traced task's exit is strace's, and strace failed under
+// output floods before (output-memory.unsafe.test.ts, item 925).
+
+import { beforeAll, describe, expect, it } from 'bun:test'
+import { floor, linux, MIB, run, task, text, TIMEOUT, workspace } from './helpers/memory-ceiling.js'
+
+let base = 0
+beforeAll(async () => {
+  if (linux) base = await floor()
+}, TIMEOUT)
+
+describe.skipIf(!linux)('vx peak memory under task output', () => {
+  it(
+    'a task printing 1 GiB streams live in bounded memory',
+    async () => {
+      // Measured +23 MiB; +1,830 before #5468.
+      const root = await workspace({ a: task(text(1024 * MIB)) })
+      const { peak, out } = await run(root, ['a#out', '--no-cache'])
+      expect(out).toContain('success')
+      expect(peak - base).toBeLessThan(128)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cached task printing 512 MiB saves and replays in bounded memory',
+    async () => {
+      // The log keeps a head and a tail (CAPTURE_*_CHARS, 8 Mi each). 1 GiB
+      // measured +148 MiB saving and +83 replaying; +1,019 saving before #5468.
+      const root = await workspace({
+        a: task(text(512 * MIB), ', outputs: { files: [] }, cache: true'),
+      })
+      const miss = await run(root, ['a#out'])
+      const hit = await run(root, ['a#out'])
+      expect(hit.out).toContain('local 1✓')
+      expect(miss.peak - base).toBeLessThan(256)
+      expect(hit.peak - base).toBeLessThan(256)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a run of several tasks holds what it prints, and no more',
+    async () => {
+      // Several requested tasks each print as one block at the end, so `full`
+      // holds each task's output until then (docs/cli.md): 256 MiB measured
+      // +582 MiB, 2.3 bytes per byte. The line holds it there.
+      const root = await workspace({ a: task(text(256 * MIB)), b: task('true') })
+      const { peak, out } = await run(root, ['out', '--all', '--no-cache'])
+      expect(out).toContain('success')
+      expect(peak - base).toBeLessThan(256 * 3)
+    },
+    TIMEOUT,
+  )
+})
